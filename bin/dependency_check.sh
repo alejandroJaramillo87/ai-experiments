@@ -55,15 +55,25 @@ else
     echo "CUDA Toolkit (nvcc) not found in PATH. Ensure it's installed and configured."
 fi
 
-# Check for cuDNN (common path, might vary)
-echo "cuDNN Check (common paths):"
-if ls /usr/local/cuda/include/cudnn.h &> /dev/null; then
-    echo "  Found cuDNN header: /usr/local/cuda/include/cudnn.h"
-    echo "  (Version usually within the header file, e.g., CUDNN_MAJOR/MINOR/PATCH)"
+# Check for cuDNN (APT package)
+echo "--- cuDNN Check ---"
+
+# Check if any cuDNN package for CUDA is installed via APT
+CUDNN_APT_PACKAGE=$(apt list --installed 2>/dev/null | grep -E '^cudnn[0-9]*-cuda-[0-9]+' | head -n 1)
+
+if [ -n "$CUDNN_APT_PACKAGE" ]; then
+    CUDNN_NAME=$(echo "$CUDNN_APT_PACKAGE" | awk -F'/' '{print $1}')
+    CUDNN_VERSION=$(echo "$CUDNN_APT_PACKAGE" | awk '{print $2}' | sed 's/\/.*//')
+    echo "  cuDNN detected via APT:"
+    echo "    Package: ${CUDNN_NAME}"
+    echo "    Version: ${CUDNN_VERSION}"
+    echo "  Files are typically in system library paths (e.g., /usr/lib/x86_64-linux-gnu/ and /usr/include/)."
 else
-    echo "  cuDNN header not found in /usr/local/cuda/include/. Please verify cuDNN installation."
+    echo "  cuDNN APT package not detected."
+    echo "  If manually installed (from .tgz), verify files are in /usr/local/cuda/ or other standard paths."
 fi
 echo
+
 
 # --- 3. Python Environment & Core AI Libraries ---
 echo "--- Python Environment & Core AI Libraries ---"

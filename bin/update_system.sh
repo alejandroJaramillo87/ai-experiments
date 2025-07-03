@@ -1,4 +1,5 @@
 #!/bin/bash
+# Script for updating Ubuntu and related packages
 
 set -euo pipefail
 
@@ -25,3 +26,5 @@ echo "🧹 Cleaning old kernels and unnecessary packages..."
 sudo apt autoremove --purge -y
 
 echo "✅ AI engineering environment fully updated."
+
+
