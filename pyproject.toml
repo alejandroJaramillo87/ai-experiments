@@ -35,6 +35,7 @@ fastapi = ">=0.115.14,<0.116.0"
 uvicorn = ">=0.34.3,<0.35.0"
 #torch = { source = "pytorch-nightly" }
 #torch = { url = "https://download.pytorch.org/whl/nightly/cu128/torch-2.8.0.dev20250627%2Bcu128-cp310-cp310-linux_x86_64.whl" }
+tensorrt = "*" 
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
