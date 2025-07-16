@@ -79,4 +79,4 @@ echo "The system will now reboot to finalize the installation."
 echo "Press Ctrl+C to cancel reboot, otherwise rebooting in 5 seconds..."
 sleep 5
 
-sudo shutdown -r now
+# sudo shutdown -r now
