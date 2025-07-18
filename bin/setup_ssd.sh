@@ -46,9 +46,9 @@ echo "=== Target Device: ${DEVICE} ==="
 echo "=== Mount Point: ${MOUNT_POINT} ==="
 
 # === Format Device ===
-echo "=== Formatting ${DEVICE} as ext4 with AI workload optimizations ==="
-# run "sudo umount ${DEVICE} || true"
-run "sudo mkfs.ext4 -F -L $LABEL -E lazy_itable_init=0,lazy_journal_init=0 -O ^has_journal,extent,huge_file,flex_bg,uninit_bg,dir_nlink,extra_isize ${DEVICE}"
+echo "=== Formatting ${DEVICE} as ext4 with balanced AI workload optimizations ==="
+# FIXED: Keep journaling enabled but optimize it, remove aggressive lazy init options
+run "sudo mkfs.ext4 -F -L $LABEL -E lazy_itable_init=1,lazy_journal_init=1 -O extent,huge_file,flex_bg,uninit_bg,dir_nlink,extra_isize ${DEVICE}"
 
 # === Mount Drive ===
 echo "=== Creating and mounting at ${MOUNT_POINT} ==="
@@ -56,8 +56,11 @@ run "sudo mkdir -p $MOUNT_POINT"
 run "sudo mount ${DEVICE} $MOUNT_POINT"
 
 # === Filesystem Optimizations ===
-echo "=== Optimizing filesystem for AI workloads ==="
-run "sudo tune2fs -o journal_data_writeback $DEVICE"
+echo "=== Optimizing filesystem for AI workloads (balanced approach) ==="
+# FIXED: Use ordered mode instead of writeback, keep journaling but optimize it
+run "sudo tune2fs -o journal_data_ordered $DEVICE"
+# Set journal size to 128MB for better performance on large files
+run "sudo tune2fs -J size=128 $DEVICE"
 
 # === Directory Structure ===
 echo "=== Creating directory structure ==="
@@ -79,7 +82,8 @@ else
     fi
 fi
 
-FSTAB_LINE="UUID=${UUID} $MOUNT_POINT ext4 defaults,noatime,nodiratime,commit=60,barrier=0 0 2"
+# FIXED: More conservative mount options that won't cause boot issues
+FSTAB_LINE="UUID=${UUID} $MOUNT_POINT ext4 defaults,noatime,commit=30,data=ordered 0 2"
 
 if $DRY_RUN; then
     echo "[DRY-RUN] Would add to /etc/fstab: $FSTAB_LINE"
@@ -93,7 +97,7 @@ fi
 echo "=== Creating target directories for symlinks ==="
 run "mkdir -p $MOUNT_POINT/cache/{huggingface,torch,pip}"
 run "mkdir -p $MOUNT_POINT/models/gguf"
-run "mkdir -p $MOUNT_POINT/models/ollama"  # Uncomment if you want separate Ollama dir
+run "mkdir -p $MOUNT_POINT/models/ollama"
 
 # === Symbolic Links ===
 echo "=== Creating symbolic links for model caches ==="
@@ -117,7 +121,7 @@ echo "=== Script Complete ==="
 if $DRY_RUN; then
     echo "No changes were made to the system."
 else
-    echo "✅ Your AI SSD is fully configured and optimized for AI workloads."
+    echo "✅ Your AI SSD is configured with balanced optimizations for AI workloads."
     echo "📁 Available directories:"
     echo "   - Models: $MOUNT_POINT/models/{hf,gguf,onnx,safetensors,quantized}"
     echo "   - Datasets: $MOUNT_POINT/datasets/{commoncrawl,audio,vision,parquet,mmap,preprocessed}"
@@ -125,4 +129,10 @@ else
     echo "   - Cache: $MOUNT_POINT/cache/{huggingface,torch,webui,pip}"
     echo "   - Workspace: $MOUNT_POINT/workspace/{experiments,checkpoints,temp}"
     echo "   - Logs: $MOUNT_POINT/logs/{training,inference,crash_dumps}"
+    echo ""
+    echo "🔧 Performance optimizations applied:"
+    echo "   - Journal kept enabled but optimized (128MB size)"
+    echo "   - Reduced commit interval (30s vs default 5s)"
+    echo "   - noatime for faster file access"
+    echo "   - Ordered data mode for reliability"
 fi
