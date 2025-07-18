@@ -47,7 +47,7 @@ echo "=== Mount Point: ${MOUNT_POINT} ==="
 
 # === Format Device ===
 echo "=== Formatting ${DEVICE} as ext4 with AI workload optimizations ==="
-run "sudo umount ${DEVICE} || true"
+# run "sudo umount ${DEVICE} || true"
 run "sudo mkfs.ext4 -F -L $LABEL -E lazy_itable_init=0,lazy_journal_init=0 -O ^has_journal,extent,huge_file,flex_bg,uninit_bg,dir_nlink,extra_isize ${DEVICE}"
 
 # === Mount Drive ===
@@ -89,6 +89,12 @@ else
     fi
 fi
 
+# === Create target directories for symlinks ===
+echo "=== Creating target directories for symlinks ==="
+run "mkdir -p $MOUNT_POINT/cache/{huggingface,torch,pip}"
+run "mkdir -p $MOUNT_POINT/models/gguf"
+run "mkdir -p $MOUNT_POINT/models/ollama"  # Uncomment if you want separate Ollama dir
+
 # === Symbolic Links ===
 echo "=== Creating symbolic links for model caches ==="
 run "mkdir -p ~/.cache"
@@ -101,7 +107,7 @@ run "ln -s $MOUNT_POINT/cache/pip ~/.cache/pip"
 
 run "mkdir -p ~/.ollama"
 run "rm -rf ~/.ollama/models"
-run "ln -s $MOUNT_POINT/models/gguf ~/.ollama/models"
+run "ln -s $MOUNT_POINT/models/ollama ~/.ollama/models" 
 
 run "mkdir -p ~/.local/share"
 run "rm -rf ~/.local/share/models"
