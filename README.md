@@ -50,11 +50,8 @@ This guide documents the complete process of building a professional AI workstat
 - **[Dual Inference](docs/inference/dual-setup.md)** - Running GPU + CPU models simultaneously
 - **[Benchmarking](docs/inference/benchmarking.md)** - Performance testing and optimization
 
-## 🛠️ Automation & Scripts
 
-Configuration scripts and docs are in ```/utils```:
 
-```
 
 ## 🚦 Quick Start
 
