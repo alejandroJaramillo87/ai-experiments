@@ -1,9 +1,148 @@
-curl https://pyenv.run | bash
-pyenv install 3.13
-sudo apt install pipx
-pipx ensurepath
-pipx install poetry 
-poetry config virtualenvs.in-project true
-pyenv local 3.13.5
-poetry install
-### activate environemtn
+#!/bin/bash
+
+# Python Environment Setup Script
+# This script sets up a complete Python development environment with pyenv and Poetry
+# Execute each section step by step, not all at once
+
+echo "=== Python Environment Setup ==="
+echo "Execute each section manually, one command at a time"
+echo ""
+
+# ===== STEP 1: UPDATE SYSTEM PACKAGES =====
+echo "STEP 1: Update system package lists"
+echo "This ensures you have the latest package information"
+echo "Command: sudo apt update"
+echo ""
+
+# ===== STEP 2: INSTALL PYTHON BUILD DEPENDENCIES =====
+echo "STEP 2: Install Python build dependencies"
+echo "These packages are required to compile Python from source via pyenv"
+echo "- make: build automation tool"
+echo "- build-essential: essential compilation tools (gcc, g++, etc.)"
+echo "- libssl-dev: SSL/TLS library development files"
+echo "- zlib1g-dev: compression library"
+echo "- libbz2-dev: bzip2 compression library"
+echo "- libreadline-dev: command line editing library"
+echo "- libsqlite3-dev: SQLite database library"
+echo "- wget, curl: download utilities"
+echo "- llvm: compiler infrastructure"
+echo "- libncursesw5-dev: terminal handling library"
+echo "- xz-utils: XZ compression utilities"
+echo "- tk-dev: Tkinter GUI toolkit"
+echo "- libxml2-dev, libxmlsec1-dev: XML processing libraries"
+echo "- libffi-dev: foreign function interface library"
+echo "- liblzma-dev: LZMA compression library"
+echo ""
+echo "Command:"
+echo "sudo apt install -y make build-essential libssl-dev zlib1g-dev \\"
+echo "libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \\"
+echo "libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev \\"
+echo "libffi-dev liblzma-dev"
+echo ""
+
+# ===== STEP 3: INSTALL PYENV =====
+echo "STEP 3: Install pyenv (Python version manager)"
+echo "pyenv allows you to install and switch between multiple Python versions"
+echo "This downloads and installs pyenv from the official repository"
+echo ""
+echo "Command: curl https://pyenv.run | bash"
+echo ""
+echo "IMPORTANT: After running this command, you need to:"
+echo "1. Add pyenv to your shell PATH by adding these lines to ~/.bashrc or ~/.zshrc:"
+echo '   export PYENV_ROOT="$HOME/.pyenv"'
+echo '   [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"'
+echo '   eval "$(pyenv init -)"'
+echo "2. Restart your terminal or run: source ~/.bashrc"
+echo ""
+
+# ===== STEP 4: INSTALL PYTHON 3.13 =====
+echo "STEP 4: Install Python 3.13 using pyenv"
+echo "This compiles and installs Python 3.13 from source"
+echo "The process may take several minutes"
+echo ""
+echo "Command: pyenv install 3.13"
+echo ""
+echo "Optional: Set Python 3.13 as global default:"
+echo "pyenv global 3.13"
+echo ""
+
+# ===== STEP 5: INSTALL PIPX =====
+echo "STEP 5: Install pipx"
+echo "pipx installs Python applications in isolated environments"
+echo "This prevents conflicts between different Python tools"
+echo ""
+echo "Command: sudo apt install pipx"
+echo ""
+
+# ===== STEP 6: CONFIGURE PIPX PATH =====
+echo "STEP 6: Ensure pipx is in PATH"
+echo "This adds pipx-installed applications to your shell PATH"
+echo ""
+echo "Command: pipx ensurepath"
+echo ""
+echo "You may need to restart your terminal after this step"
+echo ""
+
+# ===== STEP 7: INSTALL POETRY =====
+echo "STEP 7: Install Poetry using pipx"
+echo "Poetry is a dependency management and packaging tool for Python"
+echo "Installing via pipx keeps it isolated from your projects"
+echo ""
+echo "Command: pipx install poetry"
+echo ""
+
+# ===== STEP 8: CONFIGURE POETRY =====
+echo "STEP 8: Configure Poetry to create virtual environments in project directories"
+echo "This creates .venv folders inside your projects instead of in a global location"
+echo "Makes it easier to manage and find your project environments"
+echo ""
+echo "Command: poetry config virtualenvs.in-project true"
+echo ""
+
+# ===== USAGE INSTRUCTIONS =====
+echo "=========================="
+echo "USAGE AFTER INSTALLATION:"
+echo "=========================="
+echo ""
+echo "FOR PROJECT-SPECIFIC ENVIRONMENTS:"
+echo "1. Navigate to your project directory"
+echo "2. If you have a pyproject.toml file:"
+echo "   poetry install    # Install dependencies from pyproject.toml"
+echo "   \$(poetry env activate)  # Activate the virtual environment"
+echo ""
+echo "3. If starting a new project:"
+echo "   poetry init       # Create a new pyproject.toml file"
+echo "   poetry add <package>  # Add dependencies"
+echo "   poetry install    # Install dependencies"
+echo "   \$(poetry env activate)  # Activate the virtual environment"
+echo ""
+echo "4. To use a specific Python version in your project:"
+echo "   pyenv local 3.13  # Set Python 3.13 for this project"
+echo "   poetry env use 3.13  # Tell Poetry to use Python 3.13"
+echo ""
+echo "FOR GLOBAL ENVIRONMENT WITH POETRY DEPENDENCIES:"
+echo "1. Create a global poetry project:"
+echo "   mkdir ~/global-python-env"
+echo "   cd ~/global-python-env"
+echo "   poetry init       # Create pyproject.toml with your global deps"
+echo "   poetry install    # Install the dependencies"
+echo ""
+echo "2. Activate the global environment:"
+echo "   cd ~/global-python-env"
+echo "   \$(poetry env activate)  # This activates the global environment"
+echo ""
+echo "USEFUL COMMANDS:"
+echo "- pyenv versions              # List installed Python versions"
+echo "- pyenv global <version>      # Set global Python version"
+echo "- pyenv local <version>       # Set local Python version for current directory"
+echo "- poetry --version            # Check Poetry version"
+echo "- poetry env info             # Show virtual environment info"
+echo "- poetry env list             # List virtual environments"
+echo "- poetry show                 # Show installed packages"
+echo "- poetry add <package>        # Add a new dependency"
+echo "- poetry remove <package>     # Remove a dependency"
+echo "- poetry update               # Update dependencies"
+echo ""
+echo "DEACTIVATION:"
+echo "- To exit Poetry environment: deactivate"
+echo "- To deactivate any virtual environment: deactivate"
