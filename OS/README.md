@@ -1,0 +1,360 @@
+# AI Engineering Workstation OS Setup Guide
+
+## Overview
+
+This guide provides a comprehensive walkthrough for configuring Ubuntu LTS 24.04 a high-performance local AI engineering workstation optimized for running large language models and AI workloads. The setup supports both GPU-accelerated inference (keeping models loaded in VRAM) and CPU-based model execution for running multiple models simultaneously.
+
+
+
+## Prerequisites
+
+- Basic familiarity with Linux command line
+- GitHub account for version control
+- Cloud storage account for configuration backups
+
+---
+
+## 1. Operating System Setup
+
+### 1.1 Ubuntu Installation and Configuration
+
+Ubuntu 24.04 LTS provides excellent hardware support for the RTX 5090 and modern AMD processors, making it the ideal foundation for AI development.
+
+**Key Steps:**
+- Install Ubuntu 24.04 on the 1TB Samsung 990 EVO SSD
+- Perform initial system updates and security hardening
+- Configure system settings for optimal AI workload performance
+- Implement automated update management
+
+**Reference Files:**
+- `scripts/system/ubuntu-setup.sh` - Automated Ubuntu configuration
+- `scripts/system/update-system.sh` - System update automation
+- `docs/ubuntu-installation.md` - Detailed installation guide
+
+### 1.2 Firefox Browser Configuration
+
+Firefox offers better privacy controls and extension ecosystem for AI development workflows compared to default browsers.
+
+**Key Steps:**
+- Replace default browser with Firefox
+- Install essential extensions for development and productivity
+- Configure privacy and security settings
+- Sync settings across development environments
+
+**Reference Files:**
+- `configs/firefox/extensions.md` - Recommended extensions list
+- `docs/firefox-setup.md` - Browser configuration guide
+
+### 1.3 Git and GitHub Integration
+
+Version control is essential for AI project management, model versioning, and collaboration.
+
+**Key Steps:**
+- Configure Git with proper credentials and signing
+- Set up GitHub integration with SSH keys
+- Implement automated backup of configuration files to cloud storage
+- Configure Git workflows for AI project management
+
+**Reference Files:**
+- `scripts/setup/git-setup.sh` - Git configuration automation
+- `configs/git/.gitconfig` - Git configuration template
+- `docs/github-setup.md` - GitHub integration guide
+
+### 1.4 VS Code Development Environment
+
+VS Code provides excellent support for AI/ML development with Python, Jupyter notebooks, and model management extensions.
+
+**Key Steps:**
+- Install VS Code with AI-focused extensions
+- Remove or disable Copilot if preferred
+- Configure workspace settings for Python AI development
+- Set up extension synchronization and backup
+
+**Reference Files:**
+- `configs/vscode/settings.json` - VS Code configuration
+- `configs/vscode/extensions.json` - Recommended extensions
+- `docs/vscode-setup.md` - Editor configuration guide
+
+---
+
+## 2. Linux Environment Configuration
+
+### 2.1 User and Security Setup
+
+Proper user management and security configuration ensures a stable and secure AI development environment.
+
+**Key Steps:**
+- Create dedicated AI development user with appropriate sudo privileges
+- Configure user groups for GPU and hardware access
+- Implement security best practices and access controls
+
+**Reference Files:**
+- `scripts/system/user-setup.sh` - User configuration automation
+- `docs/security-setup.md` - Security hardening guide
+
+### 2.2 Terminal Environment
+
+A powerful terminal environment accelerates AI development workflows and model management tasks.
+
+**Key Steps:**
+- Install and configure Zsh with AI-focused customizations
+- Set up Tilix terminal emulator for multi-session management
+- Install essential Linux packages for AI development
+- Create custom aliases and functions for common AI tasks
+- Configure environment variables for CUDA, Python, and model paths
+
+**Reference Files:**
+- `configs/shell/.zshrc` - Zsh configuration with AI aliases
+- `scripts/setup/terminal-setup.sh` - Terminal environment automation
+- `docs/terminal-setup.md` - Terminal configuration guide
+
+### 2.3 System Security
+
+Security hardening protects your AI models, data, and development environment from threats.
+
+**Key Steps:**
+- Configure UFW firewall with AI-specific rules
+- Enable automatic security updates
+- Implement backup and recovery strategies
+- Set up monitoring for system resources and security
+
+**Reference Files:**
+- `scripts/security/firewall-setup.sh` - Firewall configuration
+- `scripts/security/auto-updates.sh` - Update automation
+- `docs/security-guide.md` - Comprehensive security setup
+
+### 2.4 Storage Configuration
+
+Proper storage setup maximizes performance for model loading and data processing workloads.
+
+**Key Steps:**
+- Mount and configure the 2TB Samsung 990 Pro for model storage
+- Set up optimal file system settings for large model files
+- Configure automated storage monitoring and cleanup
+- Implement storage performance optimization
+
+**Reference Files:**
+- `scripts/system/storage-setup.sh` - Storage configuration automation
+- `docs/storage-optimization.md` - Storage setup guide
+
+### 2.5 System Information and Monitoring
+
+Understanding your system's capabilities is crucial for optimal AI model deployment and resource management.
+
+**Key Steps:**
+- Create comprehensive system information gathering script
+- Monitor GPU utilization and memory usage
+- Track CPU and RAM utilization during model inference
+- Set up automated performance logging
+
+**Reference Files:**
+- `scripts/monitoring/system-info.sh` - System information script
+- `scripts/monitoring/ai-monitor.sh` - AI workload monitoring
+- `docs/monitoring-setup.md` - System monitoring guide
+
+---
+
+## 3. NVIDIA GPU and CUDA Setup
+
+### 3.1 NVIDIA Driver Installation
+
+The RTX 5090 requires the latest NVIDIA drivers for optimal AI workload performance and compatibility.
+
+**Key Steps:**
+- Install NVIDIA drivers compatible with RTX 5090
+- Configure driver persistence and performance settings
+- Verify GPU detection and functionality
+- Set up driver update automation
+
+**Reference Files:**
+- `scripts/nvidia/driver-install.sh` - Driver installation automation
+- `scripts/nvidia/gpu-test.sh` - GPU functionality verification
+- `docs/nvidia-setup.md` - Complete NVIDIA setup guide
+
+### 3.2 CUDA Toolkit Configuration
+
+CUDA provides the foundation for GPU-accelerated AI model inference and training.
+
+**Key Steps:**
+- Install CUDA toolkit compatible with your AI frameworks
+- Configure CUDA environment variables and paths
+- Verify CUDA installation with sample programs
+- Set up multiple CUDA version management
+
+**Reference Files:**
+- `scripts/nvidia/cuda-install.sh` - CUDA installation script
+- `scripts/nvidia/cuda-verify.sh` - CUDA verification tests
+- `configs/nvidia/cuda-env.sh` - CUDA environment configuration
+
+### 3.3 cuDNN Installation
+
+cuDNN accelerates deep neural network computations and is essential for optimal model performance.
+
+**Key Steps:**
+- Install cuDNN libraries matching your CUDA version
+- Configure cuDNN for optimal performance on RTX 5090
+- Verify cuDNN functionality with test programs
+- Document version compatibility matrix
+
+**Reference Files:**
+- `scripts/nvidia/cudnn-install.sh` - cuDNN installation automation
+- `scripts/nvidia/cudnn-test.sh` - cuDNN functionality tests
+- `docs/cuda-cudnn-compatibility.md` - Version compatibility guide
+
+---
+
+## 4. Docker and Containerization
+
+### 4.1 Docker Engine Setup
+
+Docker enables consistent AI model deployment and simplified dependency management across different environments.
+
+**Key Steps:**
+- Install Docker CE with proper user permissions
+- Configure Docker for optimal performance with large models
+- Set up Docker resource limits and optimization
+- Configure Docker daemon for AI workloads
+
+**Reference Files:**
+- `scripts/docker/docker-install.sh` - Docker installation script
+- `configs/docker/daemon.json` - Docker daemon configuration
+- `docs/docker-setup.md` - Docker configuration guide
+
+### 4.2 NVIDIA Container Toolkit
+
+The NVIDIA Container Toolkit allows Docker containers to access GPU resources for AI model inference.
+
+**Key Steps:**
+- Install NVIDIA Container Toolkit
+- Configure Docker to recognize GPU resources
+- Test GPU access within containers
+- Set up AI-specific Docker images and configurations
+
+**Reference Files:**
+- `scripts/docker/nvidia-toolkit-install.sh` - Toolkit installation
+- `docker/ai-base/Dockerfile` - Base AI development container
+- `docs/gpu-docker-guide.md` - GPU containerization guide
+
+---
+
+## 5. Python Development Environment
+
+### 5.1 Python Version Management
+
+Pyenv provides flexible Python version management essential for AI development with different framework requirements.
+
+**Key Steps:**
+- Install Pyenv for Python version management
+- Install Python 3.13 optimized for AI workloads
+- Configure Python build optimizations for performance
+- Set up global and project-specific Python versions
+
+**Reference Files:**
+- `scripts/python/pyenv-install.sh` - Pyenv installation script
+- `scripts/python/python-install.sh` - Python installation automation
+- `docs/python-setup.md` - Python environment guide
+
+### 5.2 Virtual Environment and Dependency Management
+
+Poetry provides robust dependency management and virtual environment handling for AI projects.
+
+**Key Steps:**
+- Install Poetry for dependency management
+- Create optimized virtual environment for AI development
+- Configure Poetry for AI-specific package management
+- Set up automated dependency updates and security scanning
+
+**Reference Files:**
+- `scripts/python/poetry-setup.sh` - Poetry installation and configuration
+- `configs/python/pyproject.toml` - Poetry configuration template
+- `docs/dependency-management.md` - Dependency management guide
+
+### 5.3 AI Framework Installation and Testing
+
+Comprehensive testing ensures all AI frameworks can utilize your hardware effectively.
+
+**Key Steps:**
+- Install PyTorch, TensorFlow, and other AI frameworks
+- Configure frameworks for optimal RTX 5090 utilization
+- Create comprehensive GPU and CPU functionality tests
+- Set up automated testing for framework updates
+
+**Reference Files:**
+- `scripts/python/ai-frameworks-install.sh` - Framework installation
+- `scripts/testing/gpu-functionality-test.py` - GPU testing script
+- `scripts/testing/cpu-performance-test.py` - CPU performance validation
+- `docs/ai-frameworks.md` - Framework configuration guide
+
+### 5.4 Project Template and Repository Setup
+
+A well-structured project template accelerates AI development and ensures consistency across projects.
+
+**Key Steps:**
+- Create AI project template with best practices
+- Set up automated project initialization scripts
+- Configure pre-commit hooks and code quality tools
+- Push initial template to GitHub for version control
+
+**Reference Files:**
+- `templates/ai-project/` - Complete project template
+- `scripts/project/init-ai-project.sh` - Project initialization
+- `docs/project-structure.md` - Project organization guide
+
+---
+
+## 6. Backup and Recovery Strategy
+
+### 6.1 System Backup Configuration
+
+A robust backup strategy protects your AI development environment and valuable model data.
+
+**Key Steps:**
+- Configure Timeshift for automated system snapshots
+- Set up external backup storage (USB/network)
+- Create backup scripts for AI models and data
+- Implement automated backup verification and testing
+
+**Reference Files:**
+- `scripts/backup/timeshift-setup.sh` - Backup system configuration
+- `scripts/backup/model-backup.sh` - AI model backup automation
+- `docs/backup-strategy.md` - Complete backup guide
+
+---
+
+## Performance Optimization Guidelines
+
+### GPU Memory Management
+- Configure model loading strategies to maximize 24GB VRAM utilization
+- Implement model offloading for switching between different AI models
+- Use memory mapping for large models that exceed VRAM capacity
+
+### CPU and RAM Optimization  
+- Configure NUMA settings for optimal AMD 9950X performance
+- Set up memory allocation strategies for 128GB RAM utilization
+- Implement multi-model CPU inference pipelines
+
+### Storage Performance
+- Configure optimal file system settings for model loading
+- Set up RAM disk for frequently accessed model components
+- Implement model caching strategies across both SSDs
+
+---
+
+## Next Steps
+
+After completing this setup guide, you'll have a fully configured AI engineering workstation capable of:
+
+- Running large language models with optimal GPU acceleration
+- Managing multiple AI models simultaneously using CPU and RAM
+- Developing and deploying AI applications with professional tooling
+- Maintaining a secure, backed-up development environment
+
+For advanced configurations and specific AI framework optimizations, refer to the individual documentation files referenced throughout this guide.
+
+## Contributing
+
+This guide is actively maintained and improved based on real-world AI engineering requirements. Please submit issues and pull requests to help improve the setup process for the AI engineering community.
+
+## License
+
+This setup guide and associated scripts are provided under the MIT License. See `LICENSE` file for details.
