@@ -1,5 +1,35 @@
 # AI Engineering Workstation OS Setup Guide
 
+## Table of Contents
+
+- [AI Engineering Workstation OS Setup Guide](#ai-engineering-workstation-os-setup-guide)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Prerequisites](#prerequisites)
+  - [1. Operating System Setup](#1-operating-system-setup)
+    - [1.1 Ubuntu Installation and Configuration](#11-ubuntu-installation-and-configuration)
+    - [1.2 Firefox Browser Configuration](#12-firefox-browser-configuration)
+    - [1.3 Git and GitHub Integration](#13-git-and-github-integration)
+    - [1.4 VS Code Development Environment](#14-vs-code-development-environment)
+  - [2. Linux Environment Configuration](#2-linux-environment-configuration)
+    - [2.1 User Setup](#21-user-setup)
+    - [2.2 Terminal Environment](#22-terminal-environment)
+    - [2.3 System Security](#23-system-security)
+    - [2.4 Storage Configuration](#24-storage-configuration)
+    - [2.5 System Information and Dependencies](#25-system-information-and-dependencies)
+  - [3. NVIDIA GPU and CUDA Setup](#3-nvidia-gpu-and-cuda-setup)
+    - [3.1 NVIDIA Driver Installation](#31-nvidia-driver-installation)
+    - [3.2 CUDA Toolkit Configuration](#32-cuda-toolkit-configuration)
+    - [3.3 cuDNN Installation](#33-cudnn-installation)
+  - [4. Docker and Containerization](#4-docker-and-containerization)
+    - [4.1 Docker Engine and NVIDIA Container Toolkit Setup](#41-docker-engine-and-nvidia-container-toolkit-setup)
+  - [5. Python Development Environment](#5-python-development-environment)
+    - [5.1 Python Version Management and Dependency Management](#51-python-version-management-and-dependency-management)
+  - [6. Backup and Recovery Strategy](#6-backup-and-recovery-strategy)
+    - [6.1 System Backup Configuration](#61-system-backup-configuration)
+
+---
+
 ## Overview
 
 This guide provides a comprehensive walkthrough for configuring Ubuntu LTS 24.04 a high-performance local AI engineering workstation optimized for running large language models and AI workloads. The setup supports both GPU-accelerated inference (keeping models loaded in VRAM) and CPU-based model execution for running multiple models simultaneously. This guide has a suit of scripts and markup docs that can be referenced for seting up and maintaining AI engineering dependencies. Do **NOT** execute scripts or the commands in the docs; but instead use them as guides for what you may want to do on your OS.
@@ -222,4 +252,3 @@ A robust backup strategy protects your AI development environment and valuable m
 - `docs/backup_and_recovery.md` - Backup system configuration
 
 ---
-
