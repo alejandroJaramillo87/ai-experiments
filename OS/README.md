@@ -61,9 +61,9 @@ VS Code provides excellent support for AI/ML development with Python, Jupyter no
 
 ## 2. Linux Environment Configuration
 
-### 2.1 User and Security Setup
+### 2.1 User Setup
 
-Proper user management and security configuration ensures a stable and secure AI development environment.
+Proper user management ensures a stable and secure AI development environment.
 
 **Key Steps:**
 - Create dedicated AI development user with appropriate sudo privileges
@@ -82,7 +82,6 @@ A powerful terminal environment accelerates AI development workflows and model m
 - Set up Tilix terminal emulator for multi-session management
 - Install essential Linux packages for AI development
 - Create custom aliases and functions for common AI tasks
-- Configure environment variables for CUDA, Python, and model paths
 
 **Reference Files:**
 - `scripts/setup_terminal.sh` - Terminal configuration for Tillix and Zsh
@@ -143,9 +142,9 @@ The RTX 5090 requires the latest NVIDIA drivers for optimal AI workload performa
 - Set up driver update automation
 
 **Reference Files:**
-- `scripts/nvidia/driver-install.sh` - Driver installation automation
-- `scripts/nvidia/gpu-test.sh` - GPU functionality verification
-- `docs/nvidia-setup.md` - Complete NVIDIA setup guide
+- `scripts/setup_nvidia.sh` - Driver installation automation
+- `scripts/update_nvidia.sh` - Update drivers
+
 
 ### 3.2 CUDA Toolkit Configuration
 
@@ -154,13 +153,10 @@ CUDA provides the foundation for GPU-accelerated AI model inference and training
 **Key Steps:**
 - Install CUDA toolkit compatible with your AI frameworks
 - Configure CUDA environment variables and paths
-- Verify CUDA installation with sample programs
-- Set up multiple CUDA version management
 
 **Reference Files:**
-- `scripts/nvidia/cuda-install.sh` - CUDA installation script
-- `scripts/nvidia/cuda-verify.sh` - CUDA verification tests
-- `configs/nvidia/cuda-env.sh` - CUDA environment configuration
+- `scripts/setup_cuda.sh` - CUDA installation script
+- `scripts//update_cuda.sh` - CUDA update script
 
 ### 3.3 cuDNN Installation
 
@@ -169,47 +165,33 @@ cuDNN accelerates deep neural network computations and is essential for optimal 
 **Key Steps:**
 - Install cuDNN libraries matching your CUDA version
 - Configure cuDNN for optimal performance on RTX 5090
-- Verify cuDNN functionality with test programs
-- Document version compatibility matrix
 
 **Reference Files:**
-- `scripts/nvidia/cudnn-install.sh` - cuDNN installation automation
-- `scripts/nvidia/cudnn-test.sh` - cuDNN functionality tests
-- `docs/cuda-cudnn-compatibility.md` - Version compatibility guide
+- `scripts/setup_cudnn.sh` - cuDNN installation automation
+- `scripts/update_cudnn.sh` - cuDNN update scripts
 
 ---
 
 ## 4. Docker and Containerization
 
-### 4.1 Docker Engine Setup
+### 4.1 Docker Engine and NVIDIA Container Toolkit Setup
 
-Docker enables consistent AI model deployment and simplified dependency management across different environments.
+Docker enables consistent AI model deployment and simplified dependency management across different environments. The NVIDIA Container Toolkit allows Docker containers to access GPU resources for AI model inference.
 
 **Key Steps:**
 - Install Docker CE with proper user permissions
 - Configure Docker for optimal performance with large models
 - Set up Docker resource limits and optimization
 - Configure Docker daemon for AI workloads
-
-**Reference Files:**
-- `scripts/docker/docker-install.sh` - Docker installation script
-- `configs/docker/daemon.json` - Docker daemon configuration
-- `docs/docker-setup.md` - Docker configuration guide
-
-### 4.2 NVIDIA Container Toolkit
-
-The NVIDIA Container Toolkit allows Docker containers to access GPU resources for AI model inference.
-
-**Key Steps:**
+- 
 - Install NVIDIA Container Toolkit
 - Configure Docker to recognize GPU resources
 - Test GPU access within containers
 - Set up AI-specific Docker images and configurations
 
 **Reference Files:**
-- `scripts/docker/nvidia-toolkit-install.sh` - Toolkit installation
-- `docker/ai-base/Dockerfile` - Base AI development container
-- `docs/gpu-docker-guide.md` - GPU containerization guide
+- `scripts/docker/docker-install.sh` - Docker installation script
+- `configs/docker/daemon.json` - Docker daemon configuration
 
 ---
 
