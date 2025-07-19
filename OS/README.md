@@ -2,8 +2,7 @@
 
 ## Overview
 
-This guide provides a comprehensive walkthrough for configuring Ubuntu LTS 24.04 a high-performance local AI engineering workstation optimized for running large language models and AI workloads. The setup supports both GPU-accelerated inference (keeping models loaded in VRAM) and CPU-based model execution for running multiple models simultaneously.
-
+This guide provides a comprehensive walkthrough for configuring Ubuntu LTS 24.04 a high-performance local AI engineering workstation optimized for running large language models and AI workloads. The setup supports both GPU-accelerated inference (keeping models loaded in VRAM) and CPU-based model execution for running multiple models simultaneously. This guide has a suit of scripts and markup docs that can be referenced for seting up and maintaining AI engineering dependencies. Do **NOT** execute scripts or the commands in the docs; but instead use them as guides for what you may want to do on your OS.
 
 
 ## Prerequisites
@@ -18,18 +17,15 @@ This guide provides a comprehensive walkthrough for configuring Ubuntu LTS 24.04
 
 ### 1.1 Ubuntu Installation and Configuration
 
-Ubuntu 24.04 LTS provides excellent hardware support for the RTX 5090 and modern AMD processors, making it the ideal foundation for AI development.
+Ubuntu 24.04 LTS provides excellent hardware support for the Nvidia GPUs and modern AMD processors, making it the ideal foundation for AI development.
 
 **Key Steps:**
-- Install Ubuntu 24.04 on the 1TB Samsung 990 EVO SSD
-- Perform initial system updates and security hardening
-- Configure system settings for optimal AI workload performance
-- Implement automated update management
-
+- Install Ubuntu 24.04 on the dedicated OS SSD.
+- Perform initial system updates 
+- Configure system settings 
+  
 **Reference Files:**
-- `scripts/system/ubuntu-setup.sh` - Automated Ubuntu configuration
-- `scripts/system/update-system.sh` - System update automation
-- `docs/ubuntu-installation.md` - Detailed installation guide
+- `scripts/update_ubuntu.sh` - updates ubuntu system
 
 ### 1.2 Firefox Browser Configuration
 
@@ -41,10 +37,6 @@ Firefox offers better privacy controls and extension ecosystem for AI developmen
 - Configure privacy and security settings
 - Sync settings across development environments
 
-**Reference Files:**
-- `configs/firefox/extensions.md` - Recommended extensions list
-- `docs/firefox-setup.md` - Browser configuration guide
-
 ### 1.3 Git and GitHub Integration
 
 Version control is essential for AI project management, model versioning, and collaboration.
@@ -53,12 +45,7 @@ Version control is essential for AI project management, model versioning, and co
 - Configure Git with proper credentials and signing
 - Set up GitHub integration with SSH keys
 - Implement automated backup of configuration files to cloud storage
-- Configure Git workflows for AI project management
-
-**Reference Files:**
-- `scripts/setup/git-setup.sh` - Git configuration automation
-- `configs/git/.gitconfig` - Git configuration template
-- `docs/github-setup.md` - GitHub integration guide
+- Create and configure GitHub account
 
 ### 1.4 VS Code Development Environment
 
@@ -69,11 +56,6 @@ VS Code provides excellent support for AI/ML development with Python, Jupyter no
 - Remove or disable Copilot if preferred
 - Configure workspace settings for Python AI development
 - Set up extension synchronization and backup
-
-**Reference Files:**
-- `configs/vscode/settings.json` - VS Code configuration
-- `configs/vscode/extensions.json` - Recommended extensions
-- `docs/vscode-setup.md` - Editor configuration guide
 
 ---
 
@@ -89,8 +71,7 @@ Proper user management and security configuration ensures a stable and secure AI
 - Implement security best practices and access controls
 
 **Reference Files:**
-- `scripts/system/user-setup.sh` - User configuration automation
-- `docs/security-setup.md` - Security hardening guide
+- `scripts/setup_sudo_user.sh` - User configuration automation
 
 ### 2.2 Terminal Environment
 
@@ -104,53 +85,49 @@ A powerful terminal environment accelerates AI development workflows and model m
 - Configure environment variables for CUDA, Python, and model paths
 
 **Reference Files:**
-- `configs/shell/.zshrc` - Zsh configuration with AI aliases
-- `scripts/setup/terminal-setup.sh` - Terminal environment automation
-- `docs/terminal-setup.md` - Terminal configuration guide
+- `scripts/setup_terminal.sh` - Terminal configuration for Tillix and Zsh
 
 ### 2.3 System Security
 
-Security hardening protects your AI models, data, and development environment from threats.
+Security hardening protects your AI models, data, and development environment from threats while maintaining optimal performance for AI workloads.
 
 **Key Steps:**
-- Configure UFW firewall with AI-specific rules
-- Enable automatic security updates
-- Implement backup and recovery strategies
-- Set up monitoring for system resources and security
+- **Automated Security Updates**: Configures unattended-upgrades to automatically install security patches with scheduled 3 AM reboots for kernel updates
+- **AI Development Firewall**: Sets up UFW with rules specifically for AI workflows - allows Jupyter (8888), TensorBoard (6006), Gradio (7860), Streamlit (8501), and common development server ports while blocking unnecessary traffic
+- **Intrusion Prevention**: Deploys Fail2Ban to automatically block malicious login attempts and common attack patterns
+- **System Auditing**: Enables comprehensive logging of file access, authentication events, and system changes for security monitoring
+- **Kernel Security Hardening**: Applies 20+ security parameters including ASLR, SYN flood protection, IP spoofing prevention, and memory protection specifically tuned for AI workstation requirements
+- **Resource Limits for AI**: Configures system limits to handle large AI model loading (unlimited memory lock, 65K file descriptors, 32K processes)
+- **Daily Security Scanning**: Automated rootkit detection, security audits, and system integrity checks
+- **Container Security**: Secures Docker networking for containerized AI applications while maintaining development flexibility
+- **AppArmor Integration**: Leverages Ubuntu's built-in mandatory access controls for additional process isolation
 
 **Reference Files:**
-- `scripts/security/firewall-setup.sh` - Firewall configuration
-- `scripts/security/auto-updates.sh` - Update automation
-- `docs/security-guide.md` - Comprehensive security setup
+- `scripts/setup_security.sh` - Firewall configuration
+
 
 ### 2.4 Storage Configuration
 
 Proper storage setup maximizes performance for model loading and data processing workloads.
 
 **Key Steps:**
-- Mount and configure the 2TB Samsung 990 Pro for model storage
+- Mount and configure the SDD for model/data storage
 - Set up optimal file system settings for large model files
 - Configure automated storage monitoring and cleanup
 - Implement storage performance optimization
 
 **Reference Files:**
-- `scripts/system/storage-setup.sh` - Storage configuration automation
-- `docs/storage-optimization.md` - Storage setup guide
+- `scripts/setup_data_ssd.sh` - Storage configuration automation
 
-### 2.5 System Information and Monitoring
+### 2.5 System Information and Dependencies
 
-Understanding your system's capabilities is crucial for optimal AI model deployment and resource management.
+Understanding your system's state and dependencies is crucial for optimal AI model deployment and resource management.
 
 **Key Steps:**
-- Create comprehensive system information gathering script
-- Monitor GPU utilization and memory usage
-- Track CPU and RAM utilization during model inference
-- Set up automated performance logging
+- Create comprehensive system information and dependency gathering script
 
 **Reference Files:**
-- `scripts/monitoring/system-info.sh` - System information script
-- `scripts/monitoring/ai-monitor.sh` - AI workload monitoring
-- `docs/monitoring-setup.md` - System monitoring guide
+- `scripts/dependency_check.sh` - System information script
 
 ---
 
@@ -162,7 +139,6 @@ The RTX 5090 requires the latest NVIDIA drivers for optimal AI workload performa
 
 **Key Steps:**
 - Install NVIDIA drivers compatible with RTX 5090
-- Configure driver persistence and performance settings
 - Verify GPU detection and functionality
 - Set up driver update automation
 
@@ -321,40 +297,3 @@ A robust backup strategy protects your AI development environment and valuable m
 
 ---
 
-## Performance Optimization Guidelines
-
-### GPU Memory Management
-- Configure model loading strategies to maximize 24GB VRAM utilization
-- Implement model offloading for switching between different AI models
-- Use memory mapping for large models that exceed VRAM capacity
-
-### CPU and RAM Optimization  
-- Configure NUMA settings for optimal AMD 9950X performance
-- Set up memory allocation strategies for 128GB RAM utilization
-- Implement multi-model CPU inference pipelines
-
-### Storage Performance
-- Configure optimal file system settings for model loading
-- Set up RAM disk for frequently accessed model components
-- Implement model caching strategies across both SSDs
-
----
-
-## Next Steps
-
-After completing this setup guide, you'll have a fully configured AI engineering workstation capable of:
-
-- Running large language models with optimal GPU acceleration
-- Managing multiple AI models simultaneously using CPU and RAM
-- Developing and deploying AI applications with professional tooling
-- Maintaining a secure, backed-up development environment
-
-For advanced configurations and specific AI framework optimizations, refer to the individual documentation files referenced throughout this guide.
-
-## Contributing
-
-This guide is actively maintained and improved based on real-world AI engineering requirements. Please submit issues and pull requests to help improve the setup process for the AI engineering community.
-
-## License
-
-This setup guide and associated scripts are provided under the MIT License. See `LICENSE` file for details.
