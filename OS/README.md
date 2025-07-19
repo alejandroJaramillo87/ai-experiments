@@ -180,83 +180,29 @@ Docker enables consistent AI model deployment and simplified dependency manageme
 
 **Key Steps:**
 - Install Docker CE with proper user permissions
-- Configure Docker for optimal performance with large models
-- Set up Docker resource limits and optimization
-- Configure Docker daemon for AI workloads
-- 
 - Install NVIDIA Container Toolkit
-- Configure Docker to recognize GPU resources
-- Test GPU access within containers
-- Set up AI-specific Docker images and configurations
 
 **Reference Files:**
-- `scripts/docker/docker-install.sh` - Docker installation script
-- `configs/docker/daemon.json` - Docker daemon configuration
-
+- `scripts/setup_docker.sh` - Docker installation script
 ---
 
 ## 5. Python Development Environment
 
-### 5.1 Python Version Management
+### 5.1 Python Version Management and Dependency Management
 
-Pyenv provides flexible Python version management essential for AI development with different framework requirements.
+Pyenv provides flexible Python version management essential for AI development with different framework requirements. Poetry provides robust dependency management and virtual environment handling for AI projects.
 
 **Key Steps:**
 - Install Pyenv for Python version management
 - Install Python 3.13 optimized for AI workloads
-- Configure Python build optimizations for performance
 - Set up global and project-specific Python versions
-
-**Reference Files:**
-- `scripts/python/pyenv-install.sh` - Pyenv installation script
-- `scripts/python/python-install.sh` - Python installation automation
-- `docs/python-setup.md` - Python environment guide
-
-### 5.2 Virtual Environment and Dependency Management
-
-Poetry provides robust dependency management and virtual environment handling for AI projects.
-
-**Key Steps:**
 - Install Poetry for dependency management
-- Create optimized virtual environment for AI development
 - Configure Poetry for AI-specific package management
-- Set up automated dependency updates and security scanning
-
-**Reference Files:**
-- `scripts/python/poetry-setup.sh` - Poetry installation and configuration
-- `configs/python/pyproject.toml` - Poetry configuration template
-- `docs/dependency-management.md` - Dependency management guide
-
-### 5.3 AI Framework Installation and Testing
-
-Comprehensive testing ensures all AI frameworks can utilize your hardware effectively.
-
-**Key Steps:**
 - Install PyTorch, TensorFlow, and other AI frameworks
-- Configure frameworks for optimal RTX 5090 utilization
 - Create comprehensive GPU and CPU functionality tests
-- Set up automated testing for framework updates
 
 **Reference Files:**
-- `scripts/python/ai-frameworks-install.sh` - Framework installation
-- `scripts/testing/gpu-functionality-test.py` - GPU testing script
-- `scripts/testing/cpu-performance-test.py` - CPU performance validation
-- `docs/ai-frameworks.md` - Framework configuration guide
-
-### 5.4 Project Template and Repository Setup
-
-A well-structured project template accelerates AI development and ensures consistency across projects.
-
-**Key Steps:**
-- Create AI project template with best practices
-- Set up automated project initialization scripts
-- Configure pre-commit hooks and code quality tools
-- Push initial template to GitHub for version control
-
-**Reference Files:**
-- `templates/ai-project/` - Complete project template
-- `scripts/project/init-ai-project.sh` - Project initialization
-- `docs/project-structure.md` - Project organization guide
+- `docs/setup_python` - Framework installation
 
 ---
 
@@ -273,9 +219,7 @@ A robust backup strategy protects your AI development environment and valuable m
 - Implement automated backup verification and testing
 
 **Reference Files:**
-- `scripts/backup/timeshift-setup.sh` - Backup system configuration
-- `scripts/backup/model-backup.sh` - AI model backup automation
-- `docs/backup-strategy.md` - Complete backup guide
+- `docs/backup_and_recovery.md` - Backup system configuration
 
 ---
 
