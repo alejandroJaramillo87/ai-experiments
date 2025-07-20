@@ -117,7 +117,7 @@ This system is engineered to support dual AI inference patterns:
 ## AI Workload Optimization
 
 ### GPU Configuration
-- **VRAM Utilization**: 32GB allows for large models (70B+ parameters)
+- **VRAM Utilization**: 32GB allows for large models (34B parameters)
 - **Compute Capability**: Optimized for transformer architectures
 - **Concurrent Models**: Single large model or multiple smaller models
 

@@ -1,102 +1,157 @@
-# AI Engineering Workstation Build Guide
+# AI Engineering Workstation Guide
 
-A comprehensive guide for building a high-performance local AI engineering workstation optimized for running large language models and machine learning workloads.
+A comprehensive guide for building a high-performance local AI engineering workstation optimized for running large language models and machine learning workloads on modern hardware platforms.
 
-## 🚀 Build Overview
+## Table of Contents
+
+- [AI Engineering Workstation Guide](#ai-engineering-workstation-guide)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Reference Hardware Configuration](#reference-hardware-configuration)
+  - [Project Structure](#project-structure)
+  - [Documentation Sections](#documentation-sections)
+    - [🔩 Hardware](#-hardware)
+    - [⚙️ BIOS Configuration](#️-bios-configuration)
+    - [🐧 Operating System](#-operating-system)
+    - [🛠️ Sandbox Environment](#️-sandbox-environment)
+    - [🚀 AI Inference Configuration](#-ai-inference-configuration)
+    - [🚀 System Optimizations](#-system-optimizations)
+  - [Target Audience](#target-audience)
+  - [Key Features](#key-features)
+  - [Performance Benchmarks](#performance-benchmarks)
+  - [Contributing](#contributing)
+  - [Community \& Support](#community--support)
+  - [License](#license)
+
+## Overview
 
 This guide documents the complete process of building a professional AI workstation capable of:
 - **Simultaneous GPU + CPU inference** - Run one model on GPU while serving multiple models from CPU/RAM
-- **Large model support** - Handle 70B+ parameter models locally with 128GB DDR5 memory
-- **Multiple agents support** - Run multiple agentic worflows on CPU/RAM
+- **Medium model support** - Handle 30-34B quantized parameter models locally with KV cache + context on GPU
+- **Multiple agent support** - Run multiple agentic workflows on CPU/RAM simultaneously
 - **High-throughput inference** - Optimized for sustained AI workloads with proper cooling and power delivery
 - **Development flexibility** - Full containerization support for reproducible AI environments
-- **Security** - Hardened at every level for the upmost security
-- **Backup and Recovery** - Backup and recovery strategy outlined
+- **Security and sandboxing** - Hardened configuration at every level and Docker sandboxed environment for upmost security standards
+- **Backup and recovery** - Comprehensive data protection strategy
+- **RAG operations** - Run entire RAG operations in memory for faster inferencing 
+- **Optimizaed storage** - Store data/models on Gen 5 SSD with direct access to CPU while running OS on seperate SSD
+- **Full Ubuntu setup** - A full suit of docs and scripts outlining setting up Ubuntu for AI Engineering
+- **Bench Marking** - Outlined strategy and tooling for benchmarking models on GPU and CPU/RAM
 
-## 🔧 Target Hardware Configuration
+The goal of this 
+
+## Reference Hardware Configuration
+
+This guide is optimized for and tested on the following hardware configuration:
 
 | Component | Specification | Purpose |
 |-----------|---------------|---------|
-| **CPU** | AMD Ryzen 9950X | High core count for CPU inference + compilation |
-| **GPU** | NVIDIA RTX 5090 | Maximum VRAM for large model inference |
-| **Memory** | 128GB DDR5-6000 | Large model loading + multi-model serving |
-| **Storage** | Samsung 990 PRO 2TB + 990 EVO 1TB | High-speed model storage + OS |
+| **CPU** | AMD Ryzen 9950X | 16-core/32-thread for CPU inference + compilation |
+| **GPU** | NVIDIA RTX 5090 | 32GB VRAM for large model inference |
+| **Memory** | 128GB DDR5-6000 (2x64GB EXPO) | Large model loading + multi-model serving |
+| **Storage** | Samsung 990 PRO 2TB (models)<br>Samsung 990 EVO 1TB (Ubuntu 24.04) | High-speed model storage + OS separation |
 | **Motherboard** | Gigabyte X870E Aorus Elite WiFi | PCIe 5.0 support + robust power delivery |
 
+*Note: This configuration represents a mid-2025 high-performance setup. The guide supports scaling up/down based on requirements and budget.*
 
-## 📚 Documentation Structure
+## Project Structure
 
-### 🔩 [Hardware](docs/hardware/)
-- **[Component Selection](docs/hardware/component-selection.md)** - Why these specific parts for AI workloads
-- **[Compatibility Matrix](docs/hardware/compatibility-matrix.md)** - PCIe lanes, memory channels, thermal considerations
-- **[Assembly Guide](docs/hardware/assembly-guide.md)** - Step-by-step build process with photos
-- **[Troubleshooting](docs/hardware/troubleshooting.md)** - Common hardware issues and solutions
+```
+ai-workstation/
+│   ├── hardware/                  # Hardware selection and assembly
+│   ├── bios/                      # BIOS configuration and optimization
+│   ├── operating-system/          # OS installation and optimization
+│   └── sandbox/                   # Docker sandbox environemnt 
+|   └── inference/                 # Inference Configuration for GPU and CPU/RAM
+|   └── optimization/              # Optimizations for increasing inferencing speeds
+└── README.md                      # This overview document
+```
 
-### ⚙️ [BIOS Configuration](docs/bios/)
-- **[Initial Setup](docs/bios/initial-setup.md)** - Essential BIOS settings for AI workstations
-- **[Memory Overclocking](docs/bios/memory-overclocking.md)** - DDR5-6000 tuning and stability testing
-- **[CPU Optimization](docs/bios/cpu-optimization.md)** - PBO, curve optimizer, thermal management
-- **[Settings Reference](docs/bios/settings-reference.md)** - Complete BIOS configuration table
+## Documentation Sections
 
-### 🖥️ [Operating System](docs/operating-system/)
-- **[Ubuntu Installation](docs/operating-system/ubuntu-installation.md)** - AI-optimized Ubuntu 24.04 setup
-- **[System Optimization](docs/operating-system/system-optimization.md)** - Huge pages, CPU governor, NUMA tuning
-- **[Driver Installation](docs/operating-system/driver-installation.md)** - NVIDIA drivers, CUDA, cuDNN setup
-- **[Environment Setup](docs/operating-system/environment-setup.md)** - Python, Docker, development tools
+### 🔩 Hardware
+**Reference**: [`hardware/README.md`](./hardware/README.md)
 
-### 🤖 [AI Inference Setup](docs/inference/)
-- **[GPU Inference](docs/inference/gpu-setup.md)** - TensorRT-LLM, vLLM configuration
-- **[CPU Inference](docs/inference/cpu-setup.md)** - llama.cpp optimization for high-memory systems
-- **[Dual Inference](docs/inference/dual-setup.md)** - Running GPU + CPU models simultaneously
-- **[Benchmarking](docs/inference/benchmarking.md)** - Performance testing and optimization
+Complete hardware selection, compatibility, and assembly guidance documented in the hardware README.
 
+### ⚙️ BIOS Configuration  
+**Reference**: [`bios/README.md`](./bios/README.md)
 
+Minimal BIOS configuration and troubleshooting are documented in the BIOS  README.
 
+### 🐧 Operating System
+**Reference**: [`OS/README.md`](./OS/README.md), [`OS/scripts/`](./OS/scripts/) and [`OS/docs/`](./OS/docs)
 
-## 🚦 Quick Start
+Ubuntu 24.04 LTS installation and AI engineering tooling documented in the operating system README, scripts, and detailed documentation.
 
-1. **Hardware Assembly**: Follow the [assembly guide](docs/hardware/assembly-guide.md)
-2. **BIOS Configuration**: Apply settings from [BIOS setup](docs/bios/initial-setup.md)
-3. **OS Installation**: Install Ubuntu using [installation guide](docs/operating-system/ubuntu-installation.md)
-4. **AI Inference Setup**: Configure inference engines using [AI setup guides](docs/inference/)
+### 🛠️ Sandbox Environment
+**Reference**: [`sandbox/README.md`](./sandbox/README.md) and `sandbox/scripts/`](./sandbox/scripts/) 
 
-## 🎯 Who This Guide Is For
+Guide for setting up a Docker sandboxed environment that provides optimal security and development flexibility.
 
+### 🚀 AI Inference Configuration
+**Reference**: [`/inference/README.md`](./inference/README.md) and [`inference/scripts/`](./inference/scripts/)
+
+Dual GPU + CPU inference setup for maximum hardware utilization documented in the inference README, scripts, and detailed documentation.
+
+### 🚀 System Optimizations
+**Reference**: [`/optimizations/README.md`](./optimizations/README.md) and [`optimizations/scripts/`](./optimizations/scripts/)
+
+Optimizations at each level of the workstation aimed at improving overall model inference performance 
+
+## Target Audience
+
+This guide is designed for:
 - **AI Engineers** building local development environments
 - **ML Researchers** needing high-performance local inference
 - **Software Engineers** interested in self-hosted AI capabilities
-- **Enthusiasts** building professional-grade AI workstations
+- **Tech Enthusiasts** building professional-grade AI workstations
 
-## 💡 Key Differentiators
+## Key Features
 
 This guide focuses on:
-- **Dual inference architecture** - Maximize hardware utilization
-- **Real-world performance data** - Actual benchmarks, not theoretical specs
-- **Complete automation** - Reproducible setup with minimal manual intervention
+- **Dual inference architecture** - Maximize hardware utilization across GPU and CPU
+- **Real-world performance data** - Actual benchmarks, not theoretical specifications
+- **Code Examples** - Examples of code used are provided
 - **Professional stability** - Configurations tested under sustained AI workloads
 - **Cost optimization** - Maximum performance per dollar invested
+- **Modern hardware support** - Optimized for latest AMD Zen 5 + NVIDIA RTX 50 series
 
-## 📋 Prerequisites
+## Performance Benchmarks
 
-- **Budget**: $3,000-6,000 for complete build
-- **Technical Level**: Intermediate Linux/hardware knowledge
-- **Time Investment**: several days to potentially several weeks
-- **Space Requirements**: Full ATX case with robust cooling
+Based on the reference hardware configuration:
+- **GPU Inference**: TBD
+- **CPU Inference**: TBD
+- **Memory Utilization**: TBD
+- **Thermal Performance**: TBD
 
-## 🤝 Contributing
+*Detailed benchmarks available in [`docs/inference/benchmarking.md`](./docs/inference/benchmarking.md)*
+
+## Contributing
 
 This is a living document based on real-world AI workstation experience. Contributions welcome:
-- Performance benchmarks on similar hardware
-- Alternative configuration optimizations
+- Performance benchmarks on similar hardware configurations
+- Alternative optimization strategies
 - Additional model compatibility testing
-- Documentation improvements
+- Documentation improvements and corrections
+- Cost-effective hardware alternatives
 
-## 📄 License
+Please see our [Contributing Guidelines](./CONTRIBUTING.md) for details.
 
-This guide is open source and available under the MIT License. Hardware costs and performance results are documented for transparency and reproducibility.
+## Community & Support
+
+- **Issues**: Report bugs or request features via GitHub Issues
+- **Discussions**: Share configurations and ask questions in GitHub Discussions
+- **Updates**: Follow repository for hardware and software updates
+
+## License
+
+This guide is open source and available under the [MIT License](./LICENSE). Hardware costs and performance results are documented for transparency and reproducibility.
 
 ---
 
 **Built by the AI engineering community, for the AI engineering community.**
 
 *Last updated: July 2025*
+*Template version: 2.0*
+*Hardware revision: AMD Zen 5 + RTX 50 series*
