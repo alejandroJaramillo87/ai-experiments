@@ -25,7 +25,7 @@ A comprehensive guide for building a high-performance local AI engineering works
 This guide documents the complete process of building a professional AI workstation capable of:
 
 - **Simultaneous GPU + CPU inference** - Run one model on GPU while serving multiple models from CPU/RAM
-- **Medium model support** - Handle 30-34B quantized parameter models locally with KV cache + context on GPU
+- **Large model support** - Handle 30-34B quantized parameter models locally with KV cache + context on GPU
 - **Multiple agent support** - Run multiple agentic workflows on CPU/RAM simultaneously
 - **High-throughput inference** - Optimized for sustained AI workloads with proper cooling and power delivery
 - **Development flexibility** - Full containerization support for reproducible AI environments
