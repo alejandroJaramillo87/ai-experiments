@@ -1,5 +1,5 @@
 # AI Engineering Workstation Guide
-A comprehensive guide for building a high-performance local AI engineering workstation optimized for running large language models and machine learning workloads on modern hardware platforms.
+A comprehensive guide for building a high-performance local AI engineering workstation optimized for running large language models and agentic workloads on modern hardware platforms.
 
 ## Table of Contents
 - [AI Engineering Workstation Guide](#ai-engineering-workstation-guide)
