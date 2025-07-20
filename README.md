@@ -1,5 +1,5 @@
 # AI Engineering Workstation Guide
-A comprehensive guide for building a high-performance local AI engineering workstation optimized for running large language models and agentic workloads on modern hardware platforms.
+A comprehensive guide for building a high-performance local AI engineering workstation optimized for running large language models and machine learning workloads on modern hardware platforms.
 
 ## Table of Contents
 - [AI Engineering Workstation Guide](#ai-engineering-workstation-guide)
@@ -25,7 +25,7 @@ A comprehensive guide for building a high-performance local AI engineering works
 This guide documents the complete process of building a professional AI workstation capable of:
 
 - **Simultaneous GPU + CPU inference** - Run one model on GPU while serving multiple models from CPU/RAM
-- **Large model support** - Handle 30-34B quantized parameter models locally with KV cache + context on GPU
+- **Medium model support** - Handle 30-34B quantized parameter models locally with KV cache + context on GPU
 - **Multiple agent support** - Run multiple agentic workflows on CPU/RAM simultaneously
 - **High-throughput inference** - Optimized for sustained AI workloads with proper cooling and power delivery
 - **Development flexibility** - Full containerization support for reproducible AI environments
@@ -53,8 +53,8 @@ This guide is optimized for and tested on the following hardware configuration:
 ```
 ai-workstation/
 ├── hardware/                  # Hardware selection and assembly
-├── bios/                      # BIOS configuration and optimization
-├── operating-system/          # OS installation and optimization
+├── bios/                      # BIOS configuration and trouble shooting
+├── operating-system/          # OS installation, security and tooling
 ├── sandbox/                   # Docker sandbox environment 
 ├── inference/                 # Inference Configuration for GPU and CPU/RAM
 ├── optimization/              # Optimizations for increasing inference speeds
@@ -64,32 +64,32 @@ ai-workstation/
 ## Documentation Sections
 
 ### Hardware
-**Reference:** hardware/README.md
+**Reference:** [hardware/README.md](./hardware/README.md)
 
 Complete hardware selection, compatibility, and assembly guidance documented in the hardware README.
 
 ### BIOS Configuration
-**Reference:** bios/README.md
+**Reference:** [bios/README.md](./bios/README.md)
 
 Minimal BIOS configuration and troubleshooting are documented in the BIOS README.
 
 ### Operating System
-**Reference:** OS/README.md, OS/scripts/ and OS/docs/
+**Reference:** [OS/README.md](./operating-system/README.md), [OS/scripts/](./operating-system/scripts/) and [OS/docs/](./operating-system/docs/)
 
 Ubuntu 24.04 LTS installation and AI engineering tooling documented in the operating system README, scripts, and detailed documentation.
 
 ### Sandbox Environment
-**Reference:** sandbox/README.md and sandbox/scripts/
+**Reference:** [sandbox/README.md](./sandbox/README.md) and [sandbox/scripts/](./sandbox/scripts/)
 
 Guide for setting up a Docker sandboxed environment that provides optimal security and development flexibility.
 
 ### AI Inference Configuration
-**Reference:** inference/README.md and inference/scripts/
+**Reference:** [inference/README.md](./inference/README.md) and [inference/scripts/](./inference/scripts/)
 
 Dual GPU + CPU inference setup for maximum hardware utilization documented in the inference README, scripts, and detailed documentation.
 
 ### System Optimizations
-**Reference:** optimizations/README.md and optimizations/scripts/
+**Reference:** [optimizations/README.md](./optimization/README.md) and [optimizations/scripts/](./optimizations/scripts/)
 
 Optimizations at each level of the workstation aimed at improving overall model inference performance.
 
