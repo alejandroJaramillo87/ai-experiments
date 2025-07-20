@@ -3,6 +3,30 @@
 A high-performance desktop PC specifically designed for AI engineering workloads, optimized for running multiple models simultaneously on both GPU (VRAM) and CPU/RAM configurations.
 > Note: This build serves as a reference guide for the type of hardware specifications needed for AI engineering. Component choices should be adapted based on your specific requirements, budget, and availability rather than followed exactly.
 
+## Table of Contents
+
+- [AI Engineering Hardware Build](#ai-engineering-hardware-build)
+  - [Table of Contents](#table-of-contents)
+  - [Build Overview](#build-overview)
+  - [Performance Specifications](#performance-specifications)
+  - [Component Details](#component-details)
+    - [Motherboard](#motherboard)
+    - [CPU \& Cooling](#cpu--cooling)
+    - [Graphics Card](#graphics-card)
+    - [Memory Configuration](#memory-configuration)
+    - [Storage Layout](#storage-layout)
+    - [Power Supply](#power-supply)
+    - [Case \& Cooling](#case--cooling)
+    - [Networking](#networking)
+  - [AI Workload Optimization](#ai-workload-optimization)
+    - [GPU Configuration](#gpu-configuration)
+    - [CPU Configuration](#cpu-configuration)
+    - [Thermal Management](#thermal-management)
+  - [Installation Notes](#installation-notes)
+    - [Memory Installation](#memory-installation)
+    - [Storage Configuration](#storage-configuration)
+    - [PCIe Configuration](#pcie-configuration)
+
 ## Build Overview
 
 This system is engineered to support dual AI inference patterns:
@@ -79,7 +103,7 @@ This system is engineered to support dual AI inference patterns:
 **Corsair iCUE 5000D RGB Airflow**
 - Form Factor: Mid-tower ATX
 - Airflow: High-airflow design optimized for thermal performance
-- Fan Configuration: 10 total case fans + 3x AF120 RGB Elite included
+- Fan Configuration: 10 total case fans
 - Controller: iCUE Commander Core XT (x2)
 
 > **Linux Compatibility Note**: Corsair iCUE software is not compatible with Linux. RGB and fan control may require alternative solutions or manual configuration.
