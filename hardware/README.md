@@ -1,6 +1,7 @@
 # AI Engineering Hardware Build
 
 A high-performance desktop PC specifically designed for AI engineering workloads, optimized for running multiple models simultaneously on both GPU (VRAM) and CPU/RAM configurations.
+> Note: This build serves as a reference guide for the type of hardware specifications needed for AI engineering. Component choices should be adapted based on your specific requirements, budget, and availability rather than followed exactly.
 
 ## Build Overview
 

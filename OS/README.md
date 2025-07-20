@@ -32,7 +32,8 @@
 
 ## Overview
 
-This guide provides a comprehensive walkthrough for configuring Ubuntu LTS 24.04 a high-performance local AI engineering workstation optimized for running large language models and AI workloads. The setup supports both GPU-accelerated inference (keeping models loaded in VRAM) and CPU-based model execution for running multiple models simultaneously. This guide has a suit of scripts and markup docs that can be referenced for seting up and maintaining AI engineering dependencies. Do **NOT** execute scripts or the commands in the docs; but instead use them as guides for what you may want to do on your OS.
+This guide provides a comprehensive walkthrough for configuring Ubuntu LTS 24.04 a high-performance local AI engineering workstation optimized for running large language models and AI workloads. The setup supports both GPU-accelerated inference (keeping models loaded in VRAM) and CPU-based model execution for running multiple models simultaneously. 
+> **Note**: This guide has a suit of scripts and markup docs that can be referenced for seting up and maintaining AI engineering dependencies. Do **NOT** execute scripts or the commands in the docs; but instead use them as guides for what you may want to do on your OS.
 
 
 ## Prerequisites
