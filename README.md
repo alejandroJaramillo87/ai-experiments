@@ -1,5 +1,5 @@
 # AI Engineering Workstation Guide
-A comprehensive guide for building a high-performance local AI engineering workstation optimized for running large language models and machine learning workloads on modern hardware platforms.
+A comprehensive guide for building a high-performance local AI engineering workstation optimized for running large language models and agentic workloads on modern hardware platforms.
 
 ## Table of Contents
 - [AI Engineering Workstation Guide](#ai-engineering-workstation-guide)
@@ -25,7 +25,7 @@ A comprehensive guide for building a high-performance local AI engineering works
 This guide documents the complete process of building a professional AI workstation capable of:
 
 - **Simultaneous GPU + CPU inference** - Run one model on GPU while serving multiple models from CPU/RAM
-- **Medium model support** - Handle 30-34B quantized parameter models locally with KV cache + context on GPU
+- **Large model support** - Handle 30-34B quantized parameter models locally with KV cache + context on GPU
 - **Multiple agent support** - Run multiple agentic workflows on CPU/RAM simultaneously
 - **High-throughput inference** - Optimized for sustained AI workloads with proper cooling and power delivery
 - **Development flexibility** - Full containerization support for reproducible AI environments
@@ -74,7 +74,7 @@ Complete hardware selection, compatibility, and assembly guidance documented in 
 Minimal BIOS configuration and troubleshooting are documented in the BIOS README.
 
 ### Operating System
-**Reference:** [OS/README.md](./operating-system/README.md), [OS/scripts/](./operating-system/scripts/) and [OS/docs/](./operating-system/docs/)
+**Reference:** [OS/README.md](./OS/README.md), [OS/scripts/](./OS/scripts/) and [OS/docs/](./OS/docs/)
 
 Ubuntu 24.04 LTS installation and AI engineering tooling documented in the operating system README, scripts, and detailed documentation.
 
