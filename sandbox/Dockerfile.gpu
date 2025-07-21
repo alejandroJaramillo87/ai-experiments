@@ -1,0 +1,67 @@
+# Dockerfile.gpu - NVIDIA RTX 5090 Optimized for TensorRT-LLM Inference (Mid-2025)
+
+# 1. Base Image: Use the latest TensorRT-LLM container from NVIDIA NGC.
+# As of mid-2025, a dedicated TRT-LLM runtime image is ideal, or a specific TensorRT development image.
+# We'll assume 'nvcr.io/nvidia/tritonrts/trt-llm-python-runtime:25.06-py3' or similar for a lean runtime.
+# If a direct TRT-LLM image isn't available with Python, we fall back to a more general TensorRT image.
+# For training/building TRT-LLM engines, you might need a 'nvcr.io/nvidia/pytorch:xx.xx-py3' + TensorRT installation,
+# but for *inference*, a specialized runtime image is best.
+FROM nvcr.io/nvidia/tritonrts/trt-llm-python-runtime:25.06-py3 AS trt_llm_base
+
+# 2. Environment Variables: Standard and specific to GPU/TRT-LLM
+ENV PYTHONUNBUFFERED=1
+# Assuming you want to explicitly use the first GPU
+ENV CUDA_VISIBLE_DEVICES=0 
+# TensorRT-LLM specific env vars (may vary slightly with exact version)
+# These are often pre-configured in specialized TRT-LLM images but good to be explicit.
+ENV LD_LIBRARY_PATH="/usr/local/tensorrt_llm/lib:$LD_LIBRARY_PATH"
+ENV PATH="/usr/local/tensorrt_llm/bin:$PATH"
+
+# 3. System Packages: Keep it minimal. The base image should handle most GPU drivers/CUDA/cuDNN.
+# curl is already useful, no need for extensive updates as base image should be recent.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    # Add any other essential system tools your app might need beyond curl
+    # e.g., git if you pull models at runtime, although not ideal for production.
+    && rm -rf /var/lib/apt/lists/*
+
+# 4. Create non-root user for security
+RUN groupadd -r aiuser -g 1001 && useradd -r -g aiuser -u 1001 -m -s /bin/bash aiuser
+
+# 5. Set working directory
+WORKDIR /app
+
+# 6. Install Python dependencies:
+# We're building for TensorRT-LLM, so specific libraries are needed.
+# The 'requirements-gpu.txt' will be crucial here.
+COPY requirements-gpu.txt .
+RUN pip install --no-cache-dir -r requirements-gpu.txt
+
+# 7. Copy application code and models:
+# Application logic will interface with TensorRT-LLM.
+# Models would typically be pre-optimized TensorRT-LLM engines (.trt files)
+# which are built outside this container.
+COPY src/ ./src/
+COPY models/ ./models/
+
+# 8. Set proper permissions
+RUN chown -R aiuser:aiuser /app && \
+    chmod -R 755 /app/src && \
+    chmod -R 444 /app/models
+
+# 9. Create directories for model storage and logs
+RUN mkdir -p /app/logs /app/tmp && \
+    chown aiuser:aiuser /app/logs /app/tmp
+
+# 10. Switch to non-root user
+USER aiuser
+
+# 11. Expose port for HTTP server
+EXPOSE 8000
+
+# 12. Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# 13. Default command
+CMD ["python", "src/gpu_server.py"]

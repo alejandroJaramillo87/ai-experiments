@@ -1,0 +1,30 @@
+# requirements-cpu.txt - Updated for mid-2025
+--extra-index-url https://download.pytorch.org/whl/cpu
+# Core web framework
+fastapi==0.115.14
+uvicorn[standard]==0.34.3
+pydantic==2.9.0
+
+# Core ML/AI packages - CPU optimized versions
+torch>=2.7.0
+transformers>=4.53.0
+sentence-transformers>=3.1.0
+
+# Essential tokenization and model utilities
+sentencepiece>=0.2.0
+einops>=0.8.1
+safetensors>=0.4.0
+
+# CPU-optimized inference
+llama-cpp-python>=0.3.0
+onnxruntime>=1.19.0
+
+# Utilities
+numpy>=2.1.0
+scipy>=1.14.0
+requests>=2.32.0
+aiofiles>=24.1.0
+python-multipart>=0.0.12
+
+# Monitoring
+psutil>=6.0.0

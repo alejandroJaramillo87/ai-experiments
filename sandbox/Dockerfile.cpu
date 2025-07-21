@@ -1,0 +1,111 @@
+# Dockerfile.cpu - AMD Ryzen 9950X Zen 5 Optimized for AI Inference (Mid-2025)
+FROM python:3.12-slim
+
+# Set build environment variables for AMD Zen 4 architecture
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# AMD Zen 5 specific compiler flags
+ENV CFLAGS="-march=znver5 -mtune=znver5 -O3 -ffast-math -fno-finite-math-only -mavx512f -mavx512vl -mavx512bw -mavx512dq -mavx512cd -mavx512vnni -mavx512vbmi -mavx512vbmi2 -mavx512ifma -mavx512vpopcntdq"
+ENV CXXFLAGS="-march=znver5 -mtune=znver5 -O3 -ffast-math -fno-finite-math-only -mavx512f -mavx512vl -mavx512bw -mavx512dq -mavx512cd -mavx512vnni -mavx512vbmi -mavx512vbmi2 -mavx512ifma -mavx512vpopcntdq"
+ENV CC=gcc-14
+ENV CXX=g++-14
+
+# Threading configuration for 16-core AMD 9950X
+ENV OMP_NUM_THREADS=16
+ENV MKL_NUM_THREADS=16
+ENV OPENBLAS_NUM_THREADS=16
+ENV BLIS_NUM_THREADS=16
+
+# Install system dependencies including GCC-14 and AMD-optimized libraries for Zen 5
+RUN echo "deb http://deb.debian.org/debian unstable main" > /etc/apt/sources.list.d/sid.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc-14 \
+        g++-14 \
+        gfortran-14 \
+        build-essential \
+        cmake \
+        git \
+        curl \
+        pkg-config \
+        libssl-dev \
+        libomp-dev \
+        libopenblas-dev \
+        liblapack-dev \
+        libblis-dev \
+        software-properties-common \
+        && rm -rf /var/lib/apt/lists/*
+
+# Copy the pre-downloaded AOCL .deb package into the container build context
+COPY aocl-linux-gcc-5.1.0_1_amd64.deb /tmp/aocl-linux-gcc-5.1.0_1_amd64.deb
+
+# Install AOCL using dpkg
+RUN dpkg -i /tmp/aocl-linux-gcc-5.1.0_1_amd64.deb || apt-get install -f -y && \
+    rm /tmp/aocl-linux-gcc-5.1.0_1_amd64.deb
+
+# Set AMD AOCL environment variables
+ENV AOCL_ROOT=/opt/AMD/aocl
+ENV LD_LIBRARY_PATH=${AOCL_ROOT}/lib:${LD_LIBRARY_PATH}
+ENV PATH=${AOCL_ROOT}/bin:${PATH}
+ENV BLAS_LIBS="-L${AOCL_ROOT}/lib -lblis"
+ENV LAPACK_LIBS="-L${AOCL_ROOT}/lib -lflame"
+
+# Create non-root user for security
+RUN groupadd -r aiuser -g 1001 && useradd -r -g aiuser -u 1001 -m -s /bin/bash aiuser
+
+# Set working directory
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements-cpu.txt .
+RUN pip install --no-cache-dir -r requirements-cpu.txt
+
+# Build and install llama.cpp with AMD Zen 5 optimizations
+RUN git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
+    cd /tmp/llama.cpp && \
+    make -j16 \
+        LLAMA_NATIVE=1 \
+        LLAMA_BLAS=1 \
+        LLAMA_BLAS_VENDOR=BLIS \
+        LLAMA_FAST_MATH=1 \
+        LLAMA_NO_ACCELERATE=1 \
+        LLAMA_AVX512=1 \
+        LLAMA_AVX512_VBMI=1 \
+        LLAMA_AVX512_VNNI=1 \
+        LLAMA_METAL=0 \
+        LLAMA_CUBLAS=0 \
+        CC=gcc-14 \
+        CXX=g++-14 \
+        CFLAGS="${CFLAGS}" \
+        CXXFLAGS="${CXXFLAGS}" \
+        AOCL_ROOT=/opt/AMD/aocl \
+        AOCL_DIR=/opt/AMD/aocl \
+        BLIS_PATH=/opt/AMD/aocl/lib/libblis.so && \
+    cp llama-* /usr/local/bin/ && \
+    cp libllama.so /usr/local/lib/ 2>/dev/null || true && \
+    ldconfig && \
+    cd / && rm -rf /tmp/llama.cpp
+
+# Copy application code
+COPY src/ ./src/
+COPY models/ ./models/
+
+# Set proper permissions
+RUN chown -R aiuser:aiuser /app && \
+    chmod -R 755 /app/src && \
+    chmod -R 444 /app/models
+
+# Create directories for model storage and logs
+RUN mkdir -p /app/logs /app/tmp && \
+    chown aiuser:aiuser /app/logs /app/tmp
+
+# Switch to non-root user
+USER aiuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:${SERVER_PORT:-8001}/health || exit 1
+
+# Default command
+CMD ["python", "src/cpu_server.py"]
