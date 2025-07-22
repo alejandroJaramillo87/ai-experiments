@@ -1,67 +1,100 @@
-# Dockerfile.gpu - NVIDIA RTX 5090 Optimized for TensorRT-LLM Inference (Mid-2025)
+# Dockerfile.gpu: Optimized for TensorRT-LLM FP4 Inference on RTX 5090 (Mid-2025)
+# Based on official NVIDIA README for Qwen models.
+# Target Model: Qwen/Qwen3-30B-A3B
 
-# 1. Base Image: Use the latest TensorRT-LLM container from NVIDIA NGC.
-# As of mid-2025, a dedicated TRT-LLM runtime image is ideal, or a specific TensorRT development image.
-# We'll assume 'nvcr.io/nvidia/tritonrts/trt-llm-python-runtime:25.06-py3' or similar for a lean runtime.
-# If a direct TRT-LLM image isn't available with Python, we fall back to a more general TensorRT image.
-# For training/building TRT-LLM engines, you might need a 'nvcr.io/nvidia/pytorch:xx.xx-py3' + TensorRT installation,
-# but for *inference*, a specialized runtime image is best.
-FROM nvcr.io/nvidia/tritonrts/trt-llm-python-runtime:25.06-py3 AS trt_llm_base
+# -----------------------------------------------------------------------------------
+# Stage 1: Builder Environment
+# Converts Hugging Face weights and compiles the model into a TensorRT FP4 engine.
+# -----------------------------------------------------------------------------------
+FROM nvcr.io/nvidia/pytorch:25.06-py3 AS builder
 
-# 2. Environment Variables: Standard and specific to GPU/TRT-LLM
+
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-# Assuming you want to explicitly use the first GPU
-ENV CUDA_VISIBLE_DEVICES=0 
-# TensorRT-LLM specific env vars (may vary slightly with exact version)
-# These are often pre-configured in specialized TRT-LLM images but good to be explicit.
-ENV LD_LIBRARY_PATH="/usr/local/tensorrt_llm/lib:$LD_LIBRARY_PATH"
-ENV PATH="/usr/local/tensorrt_llm/bin:$PATH"
+ENV HF_HOME="/root/.cache/huggingface"
 
-# 3. System Packages: Keep it minimal. The base image should handle most GPU drivers/CUDA/cuDNN.
-# curl is already useful, no need for extensive updates as base image should be recent.
+# Install build tools and clone the TensorRT-LLM repository.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    # Add any other essential system tools your app might need beyond curl
-    # e.g., git if you pull models at runtime, although not ideal for production.
-    && rm -rf /var/lib/apt/lists/*
+    git \
+    git-lfs \
+    && rm -rf /var/lib/apt/lists/* \
+    && git lfs install
 
-# 4. Create non-root user for security
-RUN groupadd -r aiuser -g 1001 && useradd -r -g aiuser -u 1001 -m -s /bin/bash aiuser
+# We clone the main branch to get the latest features for new hardware.
+RUN git clone -b main https://github.com/NVIDIA/TensorRT-LLM.git /opt/tensorrt_llm
+WORKDIR /opt/tensorrt_llm/examples
 
-# 5. Set working directory
+# Install Python dependencies for the build process.
+# The examples folder has its own requirements.
+RUN pip install --no-cache-dir -r requirements.txt
+
+# --- STEP 1: Convert Hugging Face model to TensorRT-LLM checkpoint ---
+# This step uses the 'convert_checkpoint.py' script as specified in the README.
+# It reads the HF model from the mounted volume and saves the converted weights.
+# For a single GPU setup, moe_tp_size and moe_ep_size are both 1.
+RUN python qwen/convert_checkpoint.py \
+      --model_dir /mnt/ai-data/models/hf/Qwen3-30B-A3B-Base \
+      --output_dir /app/converted_checkpoint \
+      --dtype float16 \
+      --moe_tp_size 1 \
+      --moe_ep_size 1
+
+# --- STEP 2: Build the TensorRT Engine from the converted checkpoint ---
+# This uses the trtllm-build command with FP4 quantization.
+# The resulting engine is the final, highly optimized artifact.
+RUN trtllm-build \
+      --checkpoint_dir /app/converted_checkpoint \
+      --output_dir /app/trt_engine \
+      --gemm_plugin 'float16' \
+      --gpt_attention_plugin 'float16' \
+      --max_batch_size 1 \
+      --max_input_len 2048 \
+      --max_output_len 2048 \
+      --paged_kv_cache \
+      --remove_input_padding \
+      --use_inflight_batching \
+      --quant_mode 'fp4' \
+      --moe_tp_size 1 \
+      --moe_ep_size 1
+
+# --- STEP 3: Prepare runtime files ---
+# Copy the essential tokenizer files from the source model directory.
+# These are needed by the inference script in the final image.
+RUN mkdir -p /app/tokenizer
+RUN cp /mnt/ai-data/models/hf/Qwen3-30B-A3B-Base/tokenizer* /app/tokenizer/
+RUN cp /mnt/ai-data/models/hf/Qwen3-30B-A3B-Base/merges.txt /app/tokenizer/
+RUN cp /mnt/ai-data/models/hf/Qwen3-30B-A3B-Base/vocab.json /app/tokenizer/
+
+
+# -----------------------------------------------------------------------------------
+# Stage 2: Final Runtime Image
+# Minimal, secure, and fast. Contains only the engine, tokenizer, and run script.
+# -----------------------------------------------------------------------------------
+FROM nvcr.io/nvidia/tensorrtllm/python:25.06-py3-runtime
+
+LABEL description="Optimized runtime for Qwen3-30B-A3B FP4 inference."
+
+ENV PYTHONUNBUFFERED=1
+ENV NVIDIA_VISIBLE_DEVICES=0
+
+# Create a non-root user for security
+RUN groupadd --gid 1000 aiuser \
+    && useradd --uid 1000 --gid 1000 -m --shell /bin/bash aiuser
+
 WORKDIR /app
+RUN chown -R aiuser:aiuser /app
 
-# 6. Install Python dependencies:
-# We're building for TensorRT-LLM, so specific libraries are needed.
-# The 'requirements-gpu.txt' will be crucial here.
-COPY requirements-gpu.txt .
-RUN pip install --no-cache-dir -r requirements-gpu.txt
-
-# 7. Copy application code and models:
-# Application logic will interface with TensorRT-LLM.
-# Models would typically be pre-optimized TensorRT-LLM engines (.trt files)
-# which are built outside this container.
-COPY src/ ./src/
-COPY models/ ./models/
-
-# 8. Set proper permissions
-RUN chown -R aiuser:aiuser /app && \
-    chmod -R 755 /app/src && \
-    chmod -R 444 /app/models
-
-# 9. Create directories for model storage and logs
-RUN mkdir -p /app/logs /app/tmp && \
-    chown aiuser:aiuser /app/logs /app/tmp
-
-# 10. Switch to non-root user
 USER aiuser
 
-# 11. Expose port for HTTP server
-EXPOSE 8000
+# Copy the compiled engine, tokenizer files, and inference script from the builder
+COPY --from=builder --chown=aiuser:aiuser /app/trt_engine /app/trt_engine
+COPY --from=builder --chown=aiuser:aiuser /app/tokenizer /app/tokenizer
+COPY --chown=aiuser:aiuser ./src/run_inference.py /app/run_inference.py
 
-# 12. Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+# Install runtime dependencies (transformers for the tokenizer, and tensorrt_llm_bindings)
+RUN pip install --no-cache-dir transformers==4.41.2 sentencepiece==0.2.0
 
-# 13. Default command
-CMD ["python", "src/gpu_server.py"]
+# Default command to run inference on a sample prompt
+CMD ["python", "/app/run_inference.py"]
