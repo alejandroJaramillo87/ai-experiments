@@ -6,15 +6,8 @@ This document provides a detailed explanation of your Dockerfile.cpu, designed f
 
 This Dockerfile is meticulously crafted to build an optimized environment for running AI models on your AMD Ryzen 9950X CPU using llama.cpp and ollama.cpp. The goal is to leverage your specific hardware capabilities, especially the Zen 5 architecture, for maximum inference performance.
 
-## Core Concepts
-
-**Docker:** A platform that uses OS-level virtualization to deliver software in packages called containers. Containers are isolated from one another and bundle their own software, libraries, and configuration files; they can communicate with each other through well-defined channels. This ensures your AI environment is consistent and reproducible.
-
-**Dockerfile:** A text document that contains all the commands a user could call on the command line to assemble an image. Images are read-only templates that define the container's environment.
-
 **llama.cpp:** A high-performance inference engine for large language models (LLMs) that is designed to be efficient on CPU.
 
-**ollama.cpp:** An extension or application built upon llama.cpp (though the Dockerfile implies direct llama.cpp usage for inference, ollama.cpp is a common framework for serving models).
 
 ## Dockerfile Breakdown
 
@@ -419,4 +412,3 @@ It's understandable how these components can be confusing; they all relate to op
    - Directly uses your AMD Zen 5's advanced instruction sets (like AVX-512) for core operations.
    - Delegates all its intensive linear algebra calculations to the highly optimized BLIS library from AOCL.
 
-In essence, you're not choosing one over the other in a mutually exclusive way for many of these. Instead, you're building a stack of complementary optimizations: the compiler flags optimize the general code for your CPU, AOCL provides the specific, best-in-class BLAS implementation (BLIS), and the llama.cpp make arguments ensure that llama.cpp knows to use all these specific optimizations during its compilation process. They are all different pieces that work together to achieve the singular goal of maximizing CPU inference performance on your AMD Zen 5 system.
