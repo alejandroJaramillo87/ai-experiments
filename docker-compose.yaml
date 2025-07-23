@@ -5,7 +5,7 @@ services:
   gpu-model-service:
     build:
       context: .
-      dockerfile: Dockerfile.gpu
+      dockerfile: docker/Dockerfile.gpu
     container_name: ai-gpu-service
     restart: unless-stopped
     environment:
