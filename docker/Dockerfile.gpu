@@ -1,143 +1,31 @@
-# Dockerfile.gpu: Optimized for TensorRT-LLM INT4_AWQ Inference on RTX 5090 (Mid-2025)
-# Target Model: mistralai/Mistral-7B-v0.3
-# -----------------------------------------------------------------------------------
-# Stage 1: Builder Environment
-# Uses the official TensorRT-LLM release container
-# -----------------------------------------------------------------------------------
-FROM nvcr.io/nvidia/tritonserver:24.06-trtllm-python-py3 AS builder
+# Dockerfile.final.v2: Uses git to fetch all example dependencies
+FROM nvcr.io/nvidia/tritonserver:25.06-trtllm-python-py3
+LABEL description="Optimized runtime that mounts a pre-built engine and tokenizer."
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONDONTWRITEBYTECODE=1
+# --- Performance & Logging Environment Variables ---
 ENV PYTHONUNBUFFERED=1
-ENV HF_HOME="/workspace/.cache/huggingface"
-ENV CUDA_MODULE_LOADING=LAZY
-
-# The Triton TensorRT-LLM container includes TensorRT-LLM pre-installed
-WORKDIR /workspace
-
-# Clone TensorRT-LLM examples if not present
-RUN if [ ! -d "/opt/tensorrt_llm" ]; then \
-        git clone -b main https://github.com/NVIDIA/TensorRT-LLM.git /opt/tensorrt_llm; \
-    fi
-
-# --- STEP 1: Build the Optimized TensorRT Engine ---
-# These flags are optimized for INT4 AWQ inference on RTX 5090
-RUN trtllm-build \
-      --checkpoint_dir /mnt/ai-data/models/quantized/Mistral-7B-v0.3-int4-awq \
-      --output_dir /app/trt_engine \
-      --gemm_plugin float16 \
-      --gpt_attention_plugin float16 \
-      --max_batch_size 32 \
-      --max_input_len 4096 \
-      --max_output_len 2048 \
-      --context_fmha enable \
-      --paged_kv_cache enable \
-      --remove_input_padding enable \
-      --use_inflight_batching enable \
-      --enable_xqa enable \
-      --use_custom_all_reduce enable \
-      --multi_block_mode enable \
-      --enable_context_fmha_fp32_acc enable \
-      --kv_cache_type continuous \
-      --max_tokens_in_paged_kv_cache 32768 \
-      --tokens_per_block 128 \
-      --max_num_tokens 8192 \
-      --use_fused_mlp enable
-
-# --- STEP 2: Prepare runtime files ---
-# Copy the essential tokenizer files from the source model directory
-RUN mkdir -p /app/tokenizer && \
-    cp /mnt/ai-data/models/hf/Mistral-7B-v0.3/tokenizer* /app/tokenizer/ && \
-    cp /mnt/ai-data/models/hf/Mistral-7B-v0.3/special_tokens_map.json /app/tokenizer/ || true
-
-# Download the run.py and utils.py from TensorRT-LLM repository
-RUN apt-get update && apt-get install -y wget && \
-    wget -O /app/run.py https://raw.githubusercontent.com/NVIDIA/TensorRT-LLM/main/examples/run.py && \
-    wget -O /app/utils.py https://raw.githubusercontent.com/NVIDIA/TensorRT-LLM/main/examples/utils.py
-
-# -----------------------------------------------------------------------------------
-# Stage 2: Final Runtime Image
-# Uses the same Triton container for consistency
-# -----------------------------------------------------------------------------------
-FROM nvcr.io/nvidia/tritonserver:24.06-trtllm-python-py3
-
-LABEL description="Optimized runtime for Mistral-7B-v0.3 INT4_AWQ inference."
-
-ENV PYTHONUNBUFFERED=1
-ENV NVIDIA_VISIBLE_DEVICES=0
 ENV CUDA_MODULE_LOADING=LAZY
 ENV OMP_NUM_THREADS=1
 ENV TLLM_LOG_LEVEL=WARNING
+ENV TLLM_ENABLE_XQA=1
+ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+ENV CUDNN_BENCHMARK=1
+ENV NCCL_SINGLE_RING_THRESHOLD=0
 
-# Create a non-root user for security
-RUN groupadd --gid 1000 aiuser \
-    && useradd --uid 1000 --gid 1000 -m --shell /bin/bash aiuser
+# --- Install Dependencies & Scripts ---
+# Use git to clone the specific tag and copy all necessary example files
+RUN apt-get update && apt-get install -y --no-install-recommends git && \
+    pip install --no-cache-dir transformers==4.43.2 sentencepiece==0.2.0 && \
+    git clone --branch v0.20.0 --depth 1 https://github.com/NVIDIA/TensorRT-LLM.git /tmp/tensorrt_llm && \
+    cp -r /tmp/tensorrt_llm/examples/* /app/ && \
+    rm -rf /tmp/tensorrt_llm && \
+    apt-get purge -y git && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-RUN chown -R aiuser:aiuser /app
 
-USER aiuser
-
-# Copy the compiled engine, tokenizer files, and scripts from the builder
-COPY --from=builder --chown=aiuser:aiuser /app/trt_engine /app/trt_engine
-COPY --from=builder --chown=aiuser:aiuser /app/tokenizer /app/tokenizer
-COPY --from=builder --chown=aiuser:aiuser /app/run.py /app/run.py
-COPY --from=builder --chown=aiuser:aiuser /app/utils.py /app/utils.py
-
-# Create a wrapper script for optimized inference settings
-RUN echo '#!/bin/bash\n\
-export CUDA_DEVICE_MAX_CONNECTIONS=1\n\
-export CUDA_LAUNCH_BLOCKING=0\n\
-export CUDNN_BENCHMARK=1\n\
-export NCCL_SINGLE_RING_THRESHOLD=0\n\
-python /app/run.py "$@"' > /app/run_optimized.sh && \
-    chmod +x /app/run_optimized.sh
-
-# Default command using the official run.py with optimal runtime flags for INT4 AWQ
-CMD ["/app/run_optimized.sh", \
+# --- Default Command ---
+CMD ["python3", "/app/run.py", \
      "--engine_dir=/app/trt_engine", \
      "--tokenizer_dir=/app/tokenizer", \
-     "--input_text=What is the latest advancement in AI?", \
-     "--max_output_len=200", \
-     "--streaming", \
-     "--output_csv", \
-     "--output_npy", \
-     "--run_profiling", \
-     "--use_py_session", \
-     "--temperature=0.8", \
-     "--top_k=40", \
-     "--top_p=0.95", \
-     "--length_penalty=1.0", \
-     "--repetition_penalty=1.1", \
-     "--presence_penalty=0.0", \
-     "--beam_width=1"]
-
-# ===================================================================
-# ALTERNATIVE: Simpler approach using pre-built engine
-# ===================================================================
-# If you've already built the engine outside Docker, use this instead:
-#
-# FROM nvcr.io/nvidia/tritonserver:24.06-trtllm-python-py3
-# 
-# WORKDIR /app
-# 
-# # Install minimal dependencies
-# RUN pip install transformers sentencepiece numpy
-# 
-# # Download run scripts
-# RUN apt-get update && apt-get install -y wget && \
-#     wget https://raw.githubusercontent.com/NVIDIA/TensorRT-LLM/main/examples/run.py && \
-#     wget https://raw.githubusercontent.com/NVIDIA/TensorRT-LLM/main/examples/utils.py
-# 
-# # Run with mounted volumes:
-# # docker run --gpus all \
-# #   -v /path/to/engine:/app/trt_engine \
-# #   -v /path/to/tokenizer:/app/tokenizer \
-# #   your-image-name
-# 
-# CMD ["python", "run.py", \
-#      "--engine_dir=/app/trt_engine", \
-#      "--tokenizer_dir=/app/tokenizer", \
-#      "--input_text=Hello, how are you?", \
-#      "--max_output_len=200", \
-#      "--streaming"]
+     "--input_text=Tell me a story about a robot who discovers music.", \
+     "--streaming"]
