@@ -11,6 +11,8 @@ ENV TLLM_ENABLE_XQA=1
 ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ENV CUDNN_BENCHMARK=1
 ENV NCCL_SINGLE_RING_THRESHOLD=0
+ENV CUDA_DEVICE_MAX_CONNECTIONS=1
+ENV CUDA_LAUNCH_BLOCKING=0
 
 # --- Install Dependencies & Scripts ---
 # Use git to clone the specific tag and copy all necessary example files
@@ -24,8 +26,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && \
 WORKDIR /app
 
 # --- Default Command ---
-CMD ["python3", "/app/run.py", \
-     "--engine_dir=/app/trt_engine", \
-     "--tokenizer_dir=/app/tokenizer", \
-     "--input_text=Tell me a story about a robot who discovers music.", \
-     "--streaming"]
+# CMD ["python3", "/app/run.py", \
+#      "--engine_dir=/app/trt_engine", \
+#      "--tokenizer_dir=/app/tokenizer", \
+#      "--input_text=Tell me a story about a robot who discovers music.", \
+#      "--streaming"]
