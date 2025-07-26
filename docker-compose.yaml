@@ -1,28 +1,23 @@
 version: '3.9'
 
 services:
-  # GPU Model Service - Single high-performance model
+  # GPU Model Service using TensorRT-LLM REST API Server
   gpu-model-service:
     build:
       context: .
-      dockerfile: docker/Dockerfile.gpu
-    container_name: ai-gpu-service
+      dockerfile: docker/Dockerfile.trt-server # We use a new Dockerfile for the server
+    container_name: ai-gpu-service-trt
     restart: unless-stopped
-    environment:
-      - CUDA_VISIBLE_DEVICES=0
-      - MODEL_PATH=/app/models/gguf/gpu-model
-      - SERVER_PORT=8000
-      - MAX_CONTEXT_LENGTH=32768
-      - GPU_MEMORY_FRACTION=0.95
     ports:
+      # Exposing the API port to the host for direct access/testing
       - "127.0.0.1:8000:8000"
     volumes:
-      - /mnt/ai-data/models:/app/models:ro
+      # Mount the pre-built TensorRT engine (read-only)
+      - /mnt/ai-data/models/trtllm-engine/Mistral-7B-v0.3-int4-awq:/app/trt_engine:ro
+      # Mount the original HF model for the tokenizer (read-only)
+      - /mnt/ai-data/models/hf/Mistral-7B-v0.3:/app/tokenizer:ro
+      # Volume for logs
       - ./logs/gpu:/app/logs
-      - type: tmpfs
-        target: /app/tmp
-        tmpfs:
-          size: 2g
     networks:
       - ai-network
     deploy:
@@ -32,172 +27,53 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-        limits:
-          memory: 32G
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-    read_only: true
-    tmpfs:
-      - /tmp:noexec,nosuid,size=1g
-      - /app/tmp:noexec,nosuid,size=2g
+    # The command to start the persistent REST API server
+    command: >
+      python3 /app/rest_api_server.py
+      --engine_dir /app/trt_engine
+      --tokenizer_dir /app/tokenizer
+      --host 0.0.0.0
+      --port 8000
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      # The server provides a /health endpoint
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 120s
+      retries: 5
+      start_period: 300s # Give the model plenty of time to load
 
-  # CPU Model Service 1 - Generic inference service
-  cpu-model-service-1:
-    build:
-      context: .
-      dockerfile: Dockerfile.cpu
-    container_name: ai-cpu-service-1
+  # Open WebUI Service
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
     restart: unless-stopped
-    environment:
-      - MODEL_PATH=/app/models/gguf/cpu-model-1
-      - SERVER_PORT=8001
-      - OMP_NUM_THREADS=8
-      - MAX_CONTEXT_LENGTH=8192
     ports:
-      - "127.0.0.1:8001:8001"
+      - "3000:8080" # Access WebUI from http://localhost:3000
     volumes:
-      - /mnt/ai-data/models:/app/models:ro
-      - ./logs/cpu-1:/app/logs
-      - type: tmpfs
-        target: /app/tmp
-        tmpfs:
-          size: 1g
+      - open-webui-data:/app/backend/data
     networks:
       - ai-network
-    deploy:
-      resources:
-        limits:
-          memory: 24G
-          cpus: '8'
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-    read_only: true
-    tmpfs:
-      - /tmp:noexec,nosuid,size=512m
-      - /app/tmp:noexec,nosuid,size=1g
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-
-  # CPU Model Service 2 - Generic inference service
-  cpu-model-service-2:
-    build:
-      context: .
-      dockerfile: Dockerfile.cpu
-    container_name: ai-cpu-service-2
-    restart: unless-stopped
+    # This tells Open WebUI how to find and configure the backend model
     environment:
-      - MODEL_PATH=/app/models/gguf/cpu-model-2
-      - SERVER_PORT=8002
-      - OMP_NUM_THREADS=6
-      - MAX_CONTEXT_LENGTH=4096
-    ports:
-      - "127.0.0.1:8002:8002"
-    volumes:
-      - /mnt/ai-data/models:/app/models:ro
-      - ./logs/cpu-2:/app/logs
-      - type: tmpfs
-        target: /app/tmp
-        tmpfs:
-          size: 1g
-    networks:
-      - ai-network
-    deploy:
-      resources:
-        limits:
-          memory: 16G
-          cpus: '6'
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-    read_only: true
-    tmpfs:
-      - /tmp:noexec,nosuid,size=512m
-      - /app/tmp:noexec,nosuid,size=1g
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+      # Set the base URL for the OpenAI-compatible API
+      - 'OPENAI_API_BASE_URL=http://gpu-model-service:8000/v1'
+      # Since the API is internal to Docker, no key is needed
+      - 'OPENAI_API_KEY=NONE'
+      # Automatically import the model configuration into Open WebUI on startup
+      - 'WEBUI_IMPORTS=[{"name":"Mistral 7B (TRT-LLM)","model":"mistral-7b-v0.3-int4-awq","baseURL":"http://gpu-model-service:8000/v1","apiKey":"NONE"}]'
+    depends_on:
+      gpu-model-service:
+        condition: service_healthy # Wait for the GPU service to be healthy before starting
 
-  # CPU Model Service 3 - Generic inference service
-  cpu-model-service-3:
-    build:
-      context: .
-      dockerfile: Dockerfile.cpu
-    container_name: ai-cpu-service-3
-    restart: unless-stopped
-    environment:
-      - MODEL_PATH=/app/models/gguf/cpu-model-3
-      - SERVER_PORT=8003
-      - OMP_NUM_THREADS=4
-      - MAX_CONTEXT_LENGTH=2048
-    ports:
-      - "127.0.0.1:8003:8003"
-    volumes:
-      - /mnt/ai-data/models:/app/models:ro
-      - ./logs/cpu-3:/app/logs
-      - type: tmpfs
-        target: /app/tmp
-        tmpfs:
-          size: 1g
-    networks:
-      - ai-network
-    deploy:
-      resources:
-        limits:
-          memory: 12G
-          cpus: '4'
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-    read_only: true
-    tmpfs:
-      - /tmp:noexec,nosuid,size=512m
-      - /app/tmp:noexec,nosuid,size=1g
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+# Define a shared volume for Open WebUI data
+volumes:
+  open-webui-data:
 
+# Define the internal network for services to communicate
 networks:
   ai-network:
     driver: bridge
-    internal: true
+    internal: false # Set to false to allow pulling images, can be true in production
     ipam:
       config:
         - subnet: 172.20.0.0/16
