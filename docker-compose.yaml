@@ -42,6 +42,24 @@ services:
       retries: 5
       start_period: 300s # Give the model plenty of time to load
 
+  cpu_server:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    container_name: llama_cpp_server
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./src:/app/src
+      - ./models/gguf_models:/app/models # Mount your GGUF models here
+    command: >
+      python src/cpu_server.py
+      --model /app/models/llama-3.1-8b-instruct.Q4_K_M.gguf
+      --host 0.0.0.0
+      --port 8001
+      --n_threads 16
+    restart: unless-stopped
+  
   # Open WebUI Service
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
