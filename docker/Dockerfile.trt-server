@@ -1,0 +1,31 @@
+# Use the official NVIDIA TensorRT-LLM image as the base
+FROM nvcr.io/nvidia/tritonserver:25.06-trtllm-python-py3
+
+LABEL description="Container for running a custom TensorRT-LLM REST API server."
+
+# --- Environment Variables for Performance ---
+# These are good defaults for inference performance
+ENV PYTHONUNBUFFERED=1
+ENV CUDA_MODULE_LOADING=LAZY
+ENV TLLM_LOG_LEVEL=INFO
+
+WORKDIR /app
+
+# --- Install Python Dependencies ---
+# We install the necessary web server libraries (fastapi, uvicorn)
+# along with the core transformer libraries.
+RUN pip install --no-cache-dir \
+    "fastapi" \
+    "uvicorn[standard]" \
+    "pydantic" \
+    "transformers==4.43.2" \
+    "sentencepiece==0.2.0"
+
+# --- Copy the Custom Server Script ---
+# This is the key change: we copy your server script from your local
+# project directory directly into the image.
+COPY src/rest_api_server.py .
+
+# --- Expose the Network Port ---
+# This tells Docker that the container listens on port 8000.
+EXPOSE 8000
