@@ -3,21 +3,57 @@
 import argparse
 import json
 import uvicorn
+import time
+import uuid
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse, Response
 from llama_cpp import Llama
-from typing import Optional
+from typing import Optional, List
 
-# Reuse the same Pydantic models from your other server for consistency
-from rest_api_server import (
-    ChatCompletionRequest,
-    ChatCompletionResponse,
-    ChatCompletionResponseChoice,
-    ChatCompletionStreamResponse,
-    ChatCompletionResponseStreamChoice,
-    ChatMessage,
-    DeltaMessage
-)
+# --- Pydantic Models for OpenAI Compatibility ---
+# These models define the structure of the API requests and responses,
+# matching the OpenAI API specification. This is crucial for Open WebUI integration.
+from pydantic import BaseModel, Field
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatCompletionRequest(BaseModel):
+    model: str
+    messages: List[ChatMessage]
+    temperature: Optional[float] = 0.7
+    top_p: Optional[float] = 1.0
+    max_tokens: Optional[int] = 256
+    stream: Optional[bool] = False
+
+class ChatCompletionResponseChoice(BaseModel):
+    index: int
+    message: ChatMessage
+
+class ChatCompletionResponse(BaseModel):
+    id: str = Field(default_factory=lambda: f"chatcmpl-{uuid.uuid4()}")
+    object: str = "chat.completion"
+    created: int = Field(default_factory=lambda: int(time.time()))
+    model: str
+    choices: List[ChatCompletionResponseChoice]
+
+class DeltaMessage(BaseModel):
+    role: Optional[str] = None
+    content: Optional[str] = None
+
+class ChatCompletionResponseStreamChoice(BaseModel):
+    index: int
+    delta: DeltaMessage
+    finish_reason: Optional[str] = None
+
+class ChatCompletionStreamResponse(BaseModel):
+    id: str = Field(default_factory=lambda: f"chatcmpl-{uuid.uuid4()}")
+    object: str = "chat.completion.chunk"
+    created: int = Field(default_factory=lambda: int(time.time()))
+    model: str
+    choices: List[ChatCompletionResponseStreamChoice]
 
 # --- Global variables ---
 llm: Optional[Llama] = None

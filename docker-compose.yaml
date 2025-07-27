@@ -45,20 +45,33 @@ services:
   cpu_server:
     build:
       context: .
-      dockerfile: Dockerfile.cpu
-    container_name: llama_cpp_server
+      dockerfile: docker/Dockerfile.cpu
+    container_name: ai-cpu-service-gguf # A more descriptive name
+    restart: unless-stopped
     ports:
-      - "8001:8001"
+      # Exposing the API port to the host for direct access/testing
+      - "127.0.0.1:8001:8001"
     volumes:
-      - ./src:/app/src
-      - ./models/gguf_models:/app/models # Mount your GGUF models here
+      # Mount your GGUF models from a persistent location (read-only)
+      - /mnt/ai-data/models/gguf/Qwen2.5-Coder-32B-Instruct-Q5_K_M:/app/models:ro
+      # Volume for logs, matching the GPU service pattern
+      - ./logs/cpu:/app/logs
+    networks:
+      - ai-network
+    # The command to start the server, reading the model from the mounted volume
     command: >
-      python src/cpu_server.py
-      --model /app/models/llama-3.1-8b-instruct.Q4_K_M.gguf
+      python /app/cpu_server.py
+      --model /app/models/Qwen2.5-Coder-32B-Instruct-Q5_K_M.gguf
       --host 0.0.0.0
       --port 8001
       --n_threads 16
-    restart: unless-stopped
+    healthcheck:
+      # Healthcheck defined at the service level, just like the GPU service
+      test: ["CMD", "curl", "-f", "http://localhost:8001/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s # Give the CPU model time to load into RAM
   
   # Open WebUI Service
   open-webui:

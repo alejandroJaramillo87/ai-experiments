@@ -6964,6 +6964,21 @@ dev = ["build", "hatch"]
 doc = ["sphinx"]
 
 [[package]]
+name = "sseclient"
+version = "0.0.27"
+description = "Python client library for reading Server Sent Event streams."
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "sseclient-0.0.27.tar.gz", hash = "sha256:b2fe534dcb33b1d3faad13d60c5a7c718e28f85987f2a034ecf5ec279918c11c"},
+]
+
+[package.dependencies]
+requests = ">=2.9"
+six = "*"
+
+[[package]]
 name = "stack-data"
 version = "0.6.3"
 description = "Extract data from python stack frames and tracebacks for informative displays"
@@ -8375,4 +8390,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "35af16f1401d36848f128dafcee2b0d8c3f52acdebeb2665e843dd24ff4604b3"
+content-hash = "36829a601f893cc25de0e4e7faf92a01374dd798db98dade60a4648e61d600c4"
