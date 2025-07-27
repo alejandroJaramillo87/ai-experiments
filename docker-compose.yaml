@@ -2,21 +2,24 @@ version: '3.9'
 
 services:
   # GPU Model Service using TensorRT-LLM REST API Server
-  gpu-model-service:
+  trt-server:
     build:
       context: .
-      dockerfile: docker/Dockerfile.trt-server # We use a new Dockerfile for the server
-    container_name: ai-gpu-service-trt
+      dockerfile: docker/Dockerfile.trt-server
+      args:
+        # OPTIMIZATION: Pass the engine path as a build-time argument.
+        # This allows the Dockerfile to COPY the engine directly into the image,
+        # creating a self-contained and portable service.
+        # Change the path to point to your specific engine directory.
+        ENGINE_DIR: ./trt_engines/Mistral-7B-v0.3-int4-awq
+    container_name: trt-server
     restart: unless-stopped
     ports:
-      # Exposing the API port to the host for direct access/testing
-      - "127.0.0.1:8000:8000"
+      # Exposing to 0.0.0.0 (all interfaces) on the host.
+      # Change to "127.0.0.1:8000:8000" to restrict access to the host machine only.
+      - "8000:8000"
     volumes:
-      # Mount the pre-built TensorRT engine (read-only)
-      - /mnt/ai-data/models/trtllm-engine/Mistral-7B-v0.3-int4-awq:/app/trt_engine:ro
-      # Mount the original HF model for the tokenizer (read-only)
-      - /mnt/ai-data/models/hf/Mistral-7B-v0.3:/app/tokenizer:ro
-      # Volume for logs
+      # Mount a volume for persistent logs. This is good practice.
       - ./logs/gpu:/app/logs
     networks:
       - ai-network
@@ -27,20 +30,13 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    # The command to start the persistent REST API server
-    command: >
-      python3 /app/rest_api_server.py
-      --engine_dir /app/trt_engine
-      --tokenizer_dir /app/tokenizer
-      --host 0.0.0.0
-      --port 8000
     healthcheck:
-      # The server provides a /health endpoint
+      # Healthcheck remains the same. It's well-configured.
       test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 300s # Give the model plenty of time to load
+      start_period: 300s # Generous time for the model to load, which is good.
 
   cpu_server:
     build:

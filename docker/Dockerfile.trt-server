@@ -1,31 +1,44 @@
 # Use the official NVIDIA TensorRT-LLM image as the base
 FROM nvcr.io/nvidia/tritonserver:25.06-trtllm-python-py3
 
-LABEL description="Container for running a custom TensorRT-LLM REST API server."
+LABEL description="Optimized container for running a high-performance TensorRT-LLM REST API server."
 
 # --- Environment Variables for Performance ---
-# These are good defaults for inference performance
+# Set log level to WARNING to reduce I/O overhead in production.
+# LAZY loading speeds up container startup.
 ENV PYTHONUNBUFFERED=1
 ENV CUDA_MODULE_LOADING=LAZY
-ENV TLLM_LOG_LEVEL=INFO
+ENV TLLM_LOG_LEVEL=WARNING
 
 WORKDIR /app
+ARG ENGINE_DIR
+
 
 # --- Install Python Dependencies ---
-# We install the necessary web server libraries (fastapi, uvicorn)
-# along with the core transformer libraries.
+# Add gunicorn as a process manager to handle multiple worker processes,
+# which is essential for concurrent request handling.
 RUN pip install --no-cache-dir \
+    "gunicorn" \
     "fastapi" \
     "uvicorn[standard]" \
     "pydantic" \
     "transformers==4.43.2" \
     "sentencepiece==0.2.0"
 
-# --- Copy the Custom Server Script ---
-# This is the key change: we copy your server script from your local
-# project directory directly into the image.
-COPY src/rest_api_server.py .
+# --- Copy Application and Engine ---
+# Copy the server script and the pre-built TensorRT-LLM engine into the image.
+# This makes the container portable and self-sufficient.
+COPY src/trt_server.py .
+COPY ${ENGINE_DIR} /app/engine
 
 # --- Expose the Network Port ---
-# This tells Docker that the container listens on port 8000.
 EXPOSE 8000
+
+# --- Container Entrypoint ---
+# Use gunicorn to launch uvicorn workers. This is the key to unlocking
+# concurrent inference. The number of workers can be tuned (e.g., 2 * num_cores + 1).
+# We pass the engine and tokenizer paths to the server script.
+CMD ["gunicorn", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", \
+     "rest_api_server:app", \
+     "--engine_dir", "/app/engine", \
+     "--tokenizer_dir", "/app/engine"]
