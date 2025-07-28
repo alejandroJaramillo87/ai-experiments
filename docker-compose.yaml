@@ -38,7 +38,7 @@ services:
       retries: 5
       start_period: 300s # Generous time for the model to load, which is good.
 
-  cpu_server:
+  llama-cpp-server:
     build:
       context: .
       dockerfile: docker/Dockerfile.cpu
@@ -49,18 +49,12 @@ services:
       - "127.0.0.1:8001:8001"
     volumes:
       # Mount your GGUF models from a persistent location (read-only)
-      - /mnt/ai-data/models/gguf/Qwen2.5-Coder-32B-Instruct-Q5_K_M:/app/models:ro
+      - /mnt/ai-data/models/gguf:/app/models:ro
       # Volume for logs, matching the GPU service pattern
       - ./logs/cpu:/app/logs
     networks:
       - ai-network
     # The command to start the server, reading the model from the mounted volume
-    command: >
-      python /app/cpu_server.py
-      --model /app/models/Qwen2.5-Coder-32B-Instruct-Q5_K_M.gguf
-      --host 0.0.0.0
-      --port 8001
-      --n_threads 16
     healthcheck:
       # Healthcheck defined at the service level, just like the GPU service
       test: ["CMD", "curl", "-f", "http://localhost:8001/v1/health"]
