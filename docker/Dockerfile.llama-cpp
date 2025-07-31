@@ -21,11 +21,7 @@ RUN echo "deb http://deb.debian.org/debian unstable main" > /etc/apt/sources.lis
         libssl-dev libomp-dev libopenblas-dev liblapack-dev libblis-dev software-properties-common && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy and install AMD Optimized CPU Libraries (AOCL)
-# COPY docker/aocl-linux-gcc-5.1.0_1_amd64.deb /tmp/aocl-linux-gcc-5.1.0_1_amd64.deb
-# RUN dpkg -i /tmp/aocl-linux-gcc-5.1.0_1_amd64.deb || apt-
-
-# <<< FIX: All AOCL steps are now in a single, atomic RUN command
+# Install AMD Optimized CPU Libraries (AOCL)
 COPY docker/aocl-linux-gcc-5.1.0_1_amd64.deb /tmp/aocl.deb
 RUN PKG_NAME=$(dpkg-deb -f /tmp/aocl.deb Package) && \
     dpkg -i /tmp/aocl.deb || apt-get install -f -y && \
@@ -34,12 +30,11 @@ RUN PKG_NAME=$(dpkg-deb -f /tmp/aocl.deb Package) && \
     ln -s ${AOCL_LIB_PATH} /opt/aocl_libs && \
     rm /tmp/aocl.deb
 
-
 # Set environment variables using the new, consistent symlink path
 ENV AOCL_ROOT=/opt/aocl_libs
 ENV LD_LIBRARY_PATH=${AOCL_ROOT}:${LD_LIBRARY_PATH}
 
-# <<< FIX: Corrected cmake command with proper syntax
+# Build llama.cpp with optimizations
 RUN git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
     cd /tmp/llama.cpp && \
     mkdir build && cd build && \
@@ -64,6 +59,12 @@ ENV LD_LIBRARY_PATH=${AOCL_ROOT}/lib:${LD_LIBRARY_PATH}
 ENV CC=gcc-14
 ENV CXX=g++-14
 
+# Model configuration environment variables
+ENV MODEL_PATH="/app/models/DeepSeek-R1-0528-Qwen3-8B-GGUF/DeepSeek-R1-0528-Qwen3-8B-Q8_0.gguf"
+ENV N_CTX="4096"
+ENV N_THREADS="8"
+ENV N_BATCH="512"
+
 WORKDIR /app
 
 # Install only the necessary RUNTIME system libraries
@@ -85,15 +86,15 @@ RUN ldconfig && \
     CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=BLIS" pip install --no-cache-dir -r requirements-cpu.txt
 
 # Copy the application scripts
-COPY src/cpu_server.py .
+COPY src/llama_cpp_server.py .
 
 # Create a non-root user and set permissions
-RUN groupadd -r aiuser -g 1001 && useradd -r -g aiuser -u 1001 -m -s /bin/bash aiuser && \
-    chown -R aiuser:aiuser /app
-USER aiuser
+# RUN groupadd -r aiuser -g 1001 && useradd -r -g aiuser -u 1001 -m -s /bin/bash aiuser && \
+#     chown -R aiuser:aiuser /app
+# USER aiuser
 
 # Expose the network port
 EXPOSE 8001
 
-# Set the default command.
-CMD ["python", "-u", "cpu_server.py"]
+# Fixed CMD - note the correct module name and port
+CMD ["gunicorn", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8001", "llama_cpp_server:app"]

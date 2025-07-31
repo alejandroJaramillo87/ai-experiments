@@ -41,7 +41,7 @@ services:
   llama-cpp-server:
     build:
       context: .
-      dockerfile: docker/Dockerfile.cpu
+      dockerfile: docker/Dockerfile.llama-cpp
     container_name: ai-cpu-service-gguf # A more descriptive name
     restart: unless-stopped
     ports:
@@ -98,3 +98,5 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/16
+
+

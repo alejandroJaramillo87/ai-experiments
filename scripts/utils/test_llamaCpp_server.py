@@ -18,7 +18,7 @@ payload = {
             "content": "Write a python function that calculates the factorial of a number."
         }
     ],
-    "max_tokens": 150,
+    "max_tokens": 4096,
     "temperature": 0.2,
     "stream": False # Explicitly set to False for a simple test
 }

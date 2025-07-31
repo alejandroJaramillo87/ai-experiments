@@ -4,6 +4,7 @@
 fastapi==0.115.14
 uvicorn[standard]==0.34.3
 pydantic==2.9.0
+gunicorn==23.0.0
 
 # Core ML/AI packages - CPU optimized versions
 torch>=2.7.0
