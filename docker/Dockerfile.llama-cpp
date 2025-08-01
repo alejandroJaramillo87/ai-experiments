@@ -12,6 +12,8 @@ ENV CFLAGS="-march=znver5 -mtune=znver5 -O3 -ffast-math -fno-finite-math-only -m
 ENV CXXFLAGS="${CFLAGS}"
 ENV CC=gcc-14
 ENV CXX=g++-14
+ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed"
+
 
 # Install all build-time system dependencies
 RUN echo "deb http://deb.debian.org/debian unstable main" > /etc/apt/sources.list.d/sid.list && \
@@ -40,10 +42,14 @@ RUN rm -rf /tmp/llama.cpp && \
     cd /tmp/llama.cpp && \
     mkdir build && cd build && \
     cmake .. \
+        -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=ON \
         -DLLAMA_BLAS=ON \
         -DLLAMA_BLAS_VENDOR=BLIS \
-        -DLLAMA_CURL=OFF && \
+        -DLLAMA_LTO=ON \
+        -DLLAMA_CURL=OFF \
+        -DLLAMA_BUILD_TESTS=OFF \
+        -DLLAMA_BUILD_EXAMPLES=OFF && \
     make -j16 && \
     make install
 
@@ -55,16 +61,21 @@ LABEL description="Container for running a llama.cpp REST API server on Zen 5."
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 ENV AOCL_ROOT=/opt/AMD/aocl
 ENV LD_LIBRARY_PATH=${AOCL_ROOT}/lib:${LD_LIBRARY_PATH}
 ENV CC=gcc-14
 ENV CXX=g++-14
+ENV OMP_NUM_THREADS=auto
+ENV OMP_SCHEDULE=dynamic
+ENV OMP_PROC_BIND=true
+ENV OMP_PLACES=cores
 
 # Model configuration environment variables
-ENV MODEL_PATH="/app/models/DeepSeek-R1-0528-Qwen3-8B-GGUF/DeepSeek-R1-0528-Qwen3-8B-Q8_0.gguf"
-ENV N_CTX="4096"
-ENV N_THREADS="8"
-ENV N_BATCH="512"
+ENV MODEL_PATH="/app/models/DeepSeek-R1-0528-Qwen3-8B-Q4_K_M/DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf"
+# ENV N_CTX="4096"
+# ENV N_THREADS="8"
+# ENV N_BATCH="512"
 
 WORKDIR /app
 
@@ -84,7 +95,7 @@ COPY --from=builder ${AOCL_ROOT}/ ${AOCL_ROOT}/
 # Install Python dependencies. llama-cpp-python will find and use the pre-compiled libllama.so
 COPY docker/requirements-cpu.txt .
 RUN ldconfig && \
-    CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=BLIS" pip install --no-cache-dir -r requirements-cpu.txt
+    CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=BLIS -DLLAMA_NATIVE=ON" pip install --no-cache-dir -r requirements-cpu.txt
 
 # Copy the application scripts
 COPY src/llama_cpp_server.py .
@@ -98,4 +109,16 @@ COPY src/llama_cpp_server.py .
 EXPOSE 8001
 
 # Fixed CMD - note the correct module name and port
-CMD ["gunicorn", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8001", "llama_cpp_server:app"]
+# CMD ["gunicorn", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8001", "llama_cpp_server:app"]
+CMD ["gunicorn", \
+     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--workers", "1", \
+     "--threads", "4", \
+     "--timeout", "300", \
+     "--keep-alive", "5", \
+     "--bind", "0.0.0.0:8001", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-", \
+     "--log-level", "info", \
+     "--preload", \
+     "llama_cpp_server:app"]

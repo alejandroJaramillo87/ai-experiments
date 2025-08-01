@@ -2,15 +2,16 @@ import os
 import json
 import asyncio
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
 
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse, Response
-from llama_cpp import Llama
+from llama_cpp import Llama, LlamaCache
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +27,9 @@ class ChatCompletionRequest(BaseModel):
     top_p: Optional[float] = 1.0
     max_tokens: Optional[int] = 1024
     stream: Optional[bool] = False
+    # top_k: Optional[int] = 40
+    # repeat_penalty: Optional[float] = 1.1
+    # seed: Optional[int] = None
 
 class ChatCompletionResponseChoice(BaseModel):
     index: int
@@ -37,6 +41,7 @@ class ChatCompletionResponse(BaseModel):
     created: int = Field(default_factory=lambda: int(time.time()))
     model: str
     choices: List[ChatCompletionResponseChoice]
+    # usage: Optional[Dict[str, int]] = None
 
 class DeltaMessage(BaseModel):
     role: Optional[str] = None
@@ -46,6 +51,7 @@ class ChatCompletionResponseStreamChoice(BaseModel):
     index: int
     delta: DeltaMessage
     finish_reason: Optional[str] = None
+
 
 class ChatCompletionStreamResponse(BaseModel):
     id: str = Field(default_factory=lambda: f"chatcmpl-{uuid.uuid4()}")
@@ -69,9 +75,14 @@ async def startup_event():
 
     # Read configuration from environment variables
     model_path = os.environ.get("MODEL_PATH", "/app/models/model.gguf")
-    n_ctx = int(os.environ.get("N_CTX", "4096"))
-    n_threads = int(os.environ.get("N_THREADS", "8"))
-    n_batch = int(os.environ.get("N_BATCH", "512"))
+    n_ctx = int(os.environ.get("N_CTX", "8192"))
+    
+    # --- Performance & Core Settings ---
+    n_threads = int(os.environ.get("N_THREADS", "4"))
+    n_threads_batch = int(os.environ.get("N_THREADS_BATCH", "4"))  # Number of CPU threads for parallel prompt processing.
+    n_batch = int(os.environ.get("N_BATCH", "2048")) # Size of the batch for prompt processing. Higher is faster for long prompts.
+    n_ubatch = int(os.environ.get("N_UBATCH", str(n_batch)))
+    
 
     MODEL_NAME = Path(model_path).name
     print(f"Loading GGUF model from: {model_path}")
@@ -83,18 +94,27 @@ async def startup_event():
 
     # Offload the blocking Llama() constructor to the thread pool
     loop = asyncio.get_running_loop()
-    llm = await loop.run_in_executor(
-        executor,
-        lambda: Llama(
-            model_path=model_path,
-            n_ctx=n_ctx,
-            n_threads=n_threads,
-            n_batch=n_batch,
-            n_gpu_layers=0,  # Explicitly set for CPU-only inference
-            use_mlock=True   # Lock model in memory for performance
+    
+    try:
+        llm = await loop.run_in_executor(
+            executor,
+            lambda: Llama(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_threads=n_threads,
+                n_threads_batch=n_threads_batch,
+                n_batch=n_batch,
+                n_ubatch=n_ubatch,
+                n_gpu_layers=0,  # Explicitly set for CPU-only inference
+                use_mlock=True,   # Lock model in memory for performance
+                numa=True               # Enables NUMA optimizations for your multi-chiplet AMD CPU.
+            )
         )
-    )
-    print(f"✅ Model '{MODEL_NAME}' loaded successfully. Server is ready.")
+        
+        print(f"✅ Model '{MODEL_NAME}' loaded successfully. Server is ready.")
+    except Exception as e:
+        print(f"❌ Failed to load model: {e}")
+        raise
 
 
 @app.on_event("shutdown")
@@ -119,10 +139,16 @@ def generate_completion_sync(request: ChatCompletionRequest):
     )
 
 # --- FastAPI Endpoints ---
+@app.get("/health")
 @app.get("/v1/health")
 async def health():
     """Health check endpoint."""
-    return Response(status_code=200)
+    if llm is None:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "error": "Model not loaded"}
+        )
+    return {"status": "healthy", "model": MODEL_NAME}
 
 @app.get("/v1/models")
 async def show_available_models():
@@ -135,6 +161,13 @@ async def chat_completions(request: ChatCompletionRequest):
     """Handles OpenAI-compatible chat requests using a non-blocking architecture."""
     if not llm or not executor:
         return JSONResponse(status_code=503, content={"error": "Model is not loaded or ready."})
+    
+    # Validate request
+    if not request.messages:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Messages cannot be empty."}
+        )
 
     # Enforce that the client requests the model that is actually loaded.
     if request.model != MODEL_NAME:
@@ -146,23 +179,42 @@ async def chat_completions(request: ChatCompletionRequest):
         )
 
     loop = asyncio.get_running_loop()
-    # Offload the entire blocking generation process to the thread pool.
-    completion_or_generator = await loop.run_in_executor(
-        executor, generate_completion_sync, request
-    )
+    try:
+        # Process in thread pool to avoid blocking
+        completion_or_generator = await loop.run_in_executor(
+            executor, generate_completion_sync, request
+        )
 
-    if request.stream:
-        # For streaming, the llama-cpp-python library yields complete JSON chunks.
-        # We can pass them directly to the client.
-        async def stream_generator():
-            for chunk in completion_or_generator:
-                yield f"data: {json.dumps(chunk)}\n\n"
-            yield "data: [DONE]\n\n"
+        if request.stream:
+            # Streaming response with proper error handling
+            async def stream_generator():
+                try:
+                    for chunk in completion_or_generator:
+                        yield f"data: {json.dumps(chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
+                except Exception as e:
+                    error_chunk = {
+                        "error": {"message": str(e), "type": "server_error"}
+                    }
+                    yield f"data: {json.dumps(error_chunk)}\n\n"
 
-        return StreamingResponse(stream_generator(), media_type="text/event-stream")
-    else:
-        # For non-streaming, the result is already a complete dictionary.
-        return JSONResponse(content=completion_or_generator)
+            return StreamingResponse(
+                stream_generator(), 
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",  # Disable Nginx buffering
+                }
+            )
+        else:
+            # Non-streaming response
+            return JSONResponse(content=completion_or_generator)
+            
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": {"message": str(e), "type": "server_error"}}
+        )
 
 
 # This block is now only for local debugging, as Gunicorn will import 'app'.
