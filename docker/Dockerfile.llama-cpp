@@ -35,7 +35,8 @@ ENV AOCL_ROOT=/opt/aocl_libs
 ENV LD_LIBRARY_PATH=${AOCL_ROOT}:${LD_LIBRARY_PATH}
 
 # Build llama.cpp with optimizations
-RUN git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
+RUN rm -rf /tmp/llama.cpp && \
+    git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
     cd /tmp/llama.cpp && \
     mkdir build && cd build && \
     cmake .. \

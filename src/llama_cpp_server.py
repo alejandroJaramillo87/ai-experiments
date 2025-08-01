@@ -136,6 +136,15 @@ async def chat_completions(request: ChatCompletionRequest):
     if not llm or not executor:
         return JSONResponse(status_code=503, content={"error": "Model is not loaded or ready."})
 
+    # Enforce that the client requests the model that is actually loaded.
+    if request.model != MODEL_NAME:
+        return JSONResponse(
+            status_code=400, # Bad Request
+            content={
+                "error": f"Incorrect model specified. This server is running '{MODEL_NAME}', but your request specified '{request.model}'."
+            }
+        )
+
     loop = asyncio.get_running_loop()
     # Offload the entire blocking generation process to the thread pool.
     completion_or_generator = await loop.run_in_executor(
