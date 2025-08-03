@@ -11,11 +11,11 @@ headers = {
 
 # 3. Update the payload for a simple, non-streaming test
 payload = {
-    "model": "qwen2.5-coder-32b-instruct-q5_k_m.gguf",
+    "model": "SmallThinker-4B-A0.6B-Instruct.IQ4_XS.gguf",
     "messages": [
         {
             "role": "user",
-            "content": "Write a python function that calculates the factorial of a number."
+            "content": "In five paragraphs, compare and contrast the key features, use cases, and design philosophies of SQL and NoSQL databases."
         }
     ],
     "max_tokens": 4096,

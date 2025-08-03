@@ -1,0 +1,106 @@
+# --- Stage 1: The Builder ---
+# This stage compiles the optimized C++ server executable.
+FROM python:3.12-slim AS builder
+
+LABEL stage="builder"
+
+# Set build environment variables for AMD Zen 5 architecture
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV CFLAGS="-march=znver5 -mtune=znver5 -O3 -ffast-math -fno-finite-math-only -mavx512f -mavx512vl -mavx512bw -mavx512dq -mavx512cd -mavx512vnni -mavx512vbmi -mavx512vbmi2 -mavx512ifma -mavx512vpopcntdq"
+ENV CXXFLAGS="${CFLAGS}"
+ENV CC=gcc-14
+ENV CXX=g++-14
+ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed"
+ENV OMP_SCHEDULE=dynamic
+ENV OMP_PROC_BIND=true
+ENV OMP_PLACES=cores
+
+# Install all build-time system dependencies
+RUN echo "deb http://deb.debian.org/debian unstable main" > /etc/apt/sources.list.d/sid.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc-14 g++-14 gfortran-14 build-essential cmake git curl \
+        libssl-dev libomp-dev  libblis-dev software-properties-common pkg-config && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install AMD Optimized CPU Libraries (AOCL)
+COPY docker/aocl-linux-gcc-5.1.0_1_amd64.deb /tmp/aocl.deb
+RUN PKG_NAME=$(dpkg-deb -f /tmp/aocl.deb Package) && \
+    dpkg -i /tmp/aocl.deb || apt-get install -f -y && \
+    AOCL_LIB_PATH=$(dpkg -L ${PKG_NAME} | grep 'libblis.so$' | xargs dirname | head -n 1) && \
+    echo "Found AOCL package '${PKG_NAME}' with libs at: ${AOCL_LIB_PATH}" && \
+    ln -s ${AOCL_LIB_PATH} /opt/aocl_libs && \
+    rm /tmp/aocl.deb
+
+# Set environment variables using the new, consistent symlink path
+ENV AOCL_ROOT=/opt/aocl_libs
+ENV LD_LIBRARY_PATH=${AOCL_ROOT}:${LD_LIBRARY_PATH}
+
+# <<< ADD THIS BLOCK TO CREATE THE SYMLINK BRIDGE >>>
+# This "tricks" the linker into using AOCL while satisfying the standard BLAS name.
+RUN ln -s /opt/aocl_libs/libblis.so /opt/aocl_libs/libblas.so.3
+
+# Build llama.cpp with optimizations
+RUN rm -rf /tmp/llama.cpp && \
+    git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
+    cd /tmp/llama.cpp && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DGGML_CUDA=OFF \
+        -DGGML_BLAS=ON \
+        -DGGML_BLAS_VENDOR=Generic \
+        -DGGML_SHARED_LIBS=OFF \
+        -DGGML_NATIVE=ON \
+        -DGGML_BUILD_TESTS=OFF \
+        -DGGML_BUILD_EXAMPLES=OFF \
+        -DLLAMA_CURL=OFF \
+        -DGGML_CCACHE=OFF && \
+    cmake --build . --config Release -j$(nproc)
+
+# --- Stage 2: The Final Runtime Image ---
+FROM debian:unstable-slim
+
+LABEL description="Container for running the native llama.cpp REST API server."
+
+# Install only the necessary RUNTIME system libraries
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 python3  && rm -rf /var/lib/apt/lists/*
+
+# Copy the compiled AOCL libraries from the builder stage
+COPY --from=builder /opt/aocl_libs /opt/aocl_libs
+
+# # Set the library path so the system can find the AOCL libs
+ENV LD_LIBRARY_PATH=/opt/aocl_libs
+
+WORKDIR /app
+
+# Copy the server executable from the builder stage
+COPY --from=builder /tmp/llama.cpp/build/bin/llama-server /app/server
+COPY --from=builder /tmp/llama.cpp/build/bin/* /app/
+
+# Set environment variables for the model path.
+# ENV MODEL_PATH="/app/models/gguf/SmallThinker-4BA0.6B-Instruct-GGUF/SmallThinker-4B-A0.6B-Instruct.Q4_0.gguf"
+
+# Expose the network port
+EXPOSE 8001
+
+# Run the native C++ server. It provides an OpenAI-compatible API.
+# All settings are controlled via these command-line flags.
+CMD ["./server", \
+    "--model", "/app/models/gguf/SmallThinker-4BA0.6B-Instruct-GGUF/SmallThinker-4B-A0.6B-Instruct.IQ4_XS.gguf", \
+    "--host", "0.0.0.0", \
+    "--port", "8001", \
+    "--n-gpu-layers", "0", \
+    "--ctx-size", "8192", \
+    "--batch-size", "2048", \
+    "--ubatch-size", "2048", \
+    "--threads", "8", \
+    "--threads-batch", "8", \
+    "--cont-batching", \
+    "--metrics", \
+    "--numa", "distribute", \
+    "--mlock" \
+]
+
+

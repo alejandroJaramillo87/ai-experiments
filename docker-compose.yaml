@@ -39,9 +39,13 @@ services:
       start_period: 300s # Generous time for the model to load, which is good.
 
   llama-cpp-server:
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
     build:
       context: .
-      dockerfile: docker/Dockerfile.llama-cpp
+      dockerfile: docker/Dockerfile.llama-native-server
     container_name: ai-cpu-service-gguf # A more descriptive name
     restart: unless-stopped
     ports:
@@ -49,7 +53,7 @@ services:
       - "127.0.0.1:8001:8001"
     volumes:
       # Mount your GGUF models from a persistent location (read-only)
-      - /mnt/ai-data/models/gguf:/app/models:ro
+      - /mnt/ai-data/models/:/app/models:ro
       # Volume for logs, matching the GPU service pattern
       - ./logs/cpu:/app/logs
     networks:

@@ -11,7 +11,8 @@ import multiprocessing
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse, Response
-from llama_cpp import Llama, LlamaCache
+from llama_cpp import Llama, LlamaCache, LlamaDraftModel
+from llama_cpp.llama_speculative import LlamaPromptLookupDecoding
 
 from pydantic import BaseModel, Field
 
@@ -75,11 +76,12 @@ async def startup_event():
 
     # Read configuration from environment variables
     model_path = os.environ.get("MODEL_PATH", "/app/models/model.gguf")
+    # draft_model_path = os.environ.get("DRAFT_MODEL_PATH") 
     n_ctx = int(os.environ.get("N_CTX", "8192"))
     
     # --- Performance & Core Settings ---
-    n_threads = int(os.environ.get("N_THREADS", "4"))
-    n_threads_batch = int(os.environ.get("N_THREADS_BATCH", "4"))  # Number of CPU threads for parallel prompt processing.
+    n_threads = int(os.environ.get("N_THREADS", "16"))
+    n_threads_batch = int(os.environ.get("N_THREADS_BATCH", "16"))  # Number of CPU threads for parallel prompt processing.
     n_batch = int(os.environ.get("N_BATCH", "2048")) # Size of the batch for prompt processing. Higher is faster for long prompts.
     n_ubatch = int(os.environ.get("N_UBATCH", str(n_batch)))
     
@@ -96,10 +98,35 @@ async def startup_event():
     loop = asyncio.get_running_loop()
     
     try:
+        # draft_model_instance = None
+        # if draft_model_path:
+        #     print(f"🚀 Found draft model path. Enabling speculative decoding.")
+        #     print(f"Loading draft model from: {draft_model_path}")
+
+        #     # This is the simplest speculative decoding strategy.
+        #     # It uses a secondary model to generate candidate tokens.
+        #     # LlamaPromptLookupDecoding is another faster but less accurate option.
+        #     draft_model_instance = Llama(
+        #         model_path=draft_model_path,
+        #         n_ctx=n_ctx, # Draft model should have the same or larger context
+        #         n_gpu_layers=0 # Assuming draft model also runs on CPU
+        #     )
+
+        #     # llm.draft_model(draft_model_llama)
+        #     # draft_model = LlamaDraftModel(draft_model_instance)
+        #     print("✅ Draft model loaded successfully.")
+            
+        prompt_lookup_draft = LlamaPromptLookupDecoding(
+            max_ngram_size=2,      # Look for 2-token patterns
+            num_pred_tokens=10     # Predict up to 10 tokens ahead
+        )
+        
+        
         llm = await loop.run_in_executor(
             executor,
             lambda: Llama(
                 model_path=model_path,
+                draft_model=prompt_lookup_draft,
                 n_ctx=n_ctx,
                 n_threads=n_threads,
                 n_threads_batch=n_threads_batch,
@@ -111,7 +138,10 @@ async def startup_event():
             )
         )
         
-        print(f"✅ Model '{MODEL_NAME}' loaded successfully. Server is ready.")
+
+        # if draft_model_instance:
+        #     print(f"✅ Speculative decoding enabled with draft model.")
+        print("✅ Server is ready.")
     except Exception as e:
         print(f"❌ Failed to load model: {e}")
         raise

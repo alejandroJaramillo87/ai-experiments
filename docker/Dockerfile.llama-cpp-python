@@ -47,10 +47,11 @@ RUN rm -rf /tmp/llama.cpp && \
         -DLLAMA_BLAS=ON \
         -DLLAMA_BLAS_VENDOR=BLIS \
         -DLLAMA_LTO=ON \
+        -DLLAMA_POWERINFER=1 \
         -DLLAMA_CURL=OFF \
         -DLLAMA_BUILD_TESTS=OFF \
         -DLLAMA_BUILD_EXAMPLES=OFF && \
-    make -j16 && \
+    make -j$(nproc) && \
     make install
 
 # --- Stage 2: The Final Runtime Image ---
@@ -66,13 +67,14 @@ ENV AOCL_ROOT=/opt/AMD/aocl
 ENV LD_LIBRARY_PATH=${AOCL_ROOT}/lib:${LD_LIBRARY_PATH}
 ENV CC=gcc-14
 ENV CXX=g++-14
-ENV OMP_NUM_THREADS=auto
 ENV OMP_SCHEDULE=dynamic
 ENV OMP_PROC_BIND=true
 ENV OMP_PLACES=cores
 
-# Model configuration environment variables
-ENV MODEL_PATH="/app/models/DeepSeek-R1-0528-Qwen3-8B-Q4_K_M/DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf"
+# Path to the main, more powerful model
+ENV MODEL_PATH="/app/models/SmallThinker-4BA0.6B-Instruct-GGUF/SmallThinker-4B-A0.6B-Instruct.Q4_0.gguf"
+# Path to the small, fast draft model for speculative decoding
+# ENV DRAFT_MODEL_PATH="/app/models/phi-4-gguf/phi-4-Q4_K_S.gguf"
 # ENV N_CTX="4096"
 # ENV N_THREADS="8"
 # ENV N_BATCH="512"
@@ -92,10 +94,12 @@ RUN echo "deb http://deb.debian.org/debian unstable main" > /etc/apt/sources.lis
 COPY --from=builder /usr/local/lib/libllama.so /usr/local/lib/libllama.so
 COPY --from=builder ${AOCL_ROOT}/ ${AOCL_ROOT}/
 
+# COPY models/ /app/models/
+
 # Install Python dependencies. llama-cpp-python will find and use the pre-compiled libllama.so
 COPY docker/requirements-cpu.txt .
 RUN ldconfig && \
-    CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=BLIS -DLLAMA_NATIVE=ON" pip install --no-cache-dir -r requirements-cpu.txt
+    CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=BLIS -DLLAMA_NATIVE=ON -DLLAMA_POWERINFER=1" pip install --no-cache-dir -r requirements-cpu.txt
 
 # Copy the application scripts
 COPY src/llama_cpp_server.py .
@@ -119,6 +123,6 @@ CMD ["gunicorn", \
      "--bind", "0.0.0.0:8001", \
      "--access-logfile", "-", \
      "--error-logfile", "-", \
-     "--log-level", "info", \
+     "--log-level", "debug", \
      "--preload", \
      "llama_cpp_server:app"]
