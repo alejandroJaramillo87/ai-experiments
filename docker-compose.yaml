@@ -48,6 +48,7 @@ services:
       dockerfile: docker/Dockerfile.llama-native-server
     container_name: ai-cpu-service-gguf # A more descriptive name
     restart: unless-stopped
+    cpuset: "8-15"
     ports:
       # Exposing the API port to the host for direct access/testing
       - "127.0.0.1:8001:8001"

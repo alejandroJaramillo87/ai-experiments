@@ -12,9 +12,7 @@ ENV CXXFLAGS="${CFLAGS}"
 ENV CC=gcc-14
 ENV CXX=g++-14
 ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed"
-ENV OMP_SCHEDULE=dynamic
-ENV OMP_PROC_BIND=true
-ENV OMP_PLACES=cores
+
 
 # Install all build-time system dependencies
 RUN echo "deb http://deb.debian.org/debian unstable main" > /etc/apt/sources.list.d/sid.list && \
@@ -82,6 +80,17 @@ COPY --from=builder /tmp/llama.cpp/build/bin/* /app/
 # Set environment variables for the model path.
 # ENV MODEL_PATH="/app/models/gguf/SmallThinker-4BA0.6B-Instruct-GGUF/SmallThinker-4B-A0.6B-Instruct.Q4_0.gguf"
 
+# THESE were way slower!!!
+# ENV OMP_NUM_THREADS=8
+# ENV OMP_PROC_BIND=false
+# ENV OMP_PLACES=threads
+
+# Optimal settings
+ENV OMP_NUM_THREADS=8
+ENV OMP_PROC_BIND=true
+ENV OMP_PLACES=cores
+# ENV GOMP_CPU_AFFINITY="8-15"
+
 # Expose the network port
 EXPOSE 8001
 
@@ -99,7 +108,8 @@ CMD ["./server", \
     "--threads-batch", "8", \
     "--cont-batching", \
     "--metrics", \
-    "--numa", "distribute", \
+    "--no-warmup", \
+    "--threads-http", "2", \
     "--mlock" \
 ]
 
