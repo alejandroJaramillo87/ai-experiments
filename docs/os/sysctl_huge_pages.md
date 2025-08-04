@@ -57,13 +57,3 @@ echo 'GOVERNOR="performance"' | sudo tee /etc/default/cpufrequtils
 
 
 
-
-# GRUB BoOt params 
-GRUB_CMDLINE_LINUX="isolcpus=8-31 nohz_full=8-31 rcu_nocbs=8-31 idle=poll rcu_nocb_poll transparent_hugepage=never audit=0 nmi_watchdog=0"
-
-sudo update-grub
-sudo reboot
-
-# small gain from isolating imagEs using docker compose
-# matters that the cores are continous 
-
