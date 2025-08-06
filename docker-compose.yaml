@@ -2,53 +2,53 @@ version: '3.9'
 
 services:
   # GPU Model Service using TensorRT-LLM REST API Server
-  trt-server:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.trt-server
-      args:
-        # OPTIMIZATION: Pass the engine path as a build-time argument.
-        # This allows the Dockerfile to COPY the engine directly into the image,
-        # creating a self-contained and portable service.
-        # Change the path to point to your specific engine directory.
-        ENGINE_DIR: ./trt_engines/Mistral-7B-v0.3-int4-awq
-    container_name: trt-server
-    restart: unless-stopped
-    ports:
-      # Exposing to 0.0.0.0 (all interfaces) on the host.
-      # Change to "127.0.0.1:8000:8000" to restrict access to the host machine only.
-      - "8000:8000"
-    volumes:
-      # Mount a volume for persistent logs. This is good practice.
-      - ./logs/gpu:/app/logs
-    networks:
-      - ai-network
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    healthcheck:
-      # Healthcheck remains the same. It's well-configured.
-      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 300s # Generous time for the model to load, which is good.
+  # trt-server:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/Dockerfile.trt-server
+  #     args:
+  #       # OPTIMIZATION: Pass the engine path as a build-time argument.
+  #       # This allows the Dockerfile to COPY the engine directly into the image,
+  #       # creating a self-contained and portable service.
+  #       # Change the path to point to your specific engine directory.
+  #       ENGINE_DIR: ./trt_engines/Mistral-7B-v0.3-int4-awq
+  #   container_name: trt-server
+  #   restart: unless-stopped
+  #   ports:
+  #     # Exposing to 0.0.0.0 (all interfaces) on the host.
+  #     # Change to "127.0.0.1:8000:8000" to restrict access to the host machine only.
+  #     - "8000:8000"
+  #   volumes:
+  #     # Mount a volume for persistent logs. This is good practice.
+  #     - ./logs/gpu:/app/logs
+  #   networks:
+  #     - ai-network
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+  #   healthcheck:
+  #     # Healthcheck remains the same. It's well-configured.
+  #     test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  #     start_period: 300s # Generous time for the model to load, which is good.
 
-  llama-cpp-server:
+  llama-cpu-0:
     ulimits:
       memlock:
         soft: -1
         hard: -1
     build:
       context: .
-      dockerfile: docker/Dockerfile.llama-native-server
+      dockerfile: docker/Dockerfile.llama-cpu
     container_name: ai-cpu-service-gguf # A more descriptive name
     restart: unless-stopped
-    cpuset: "16-31"
+    cpuset: "0-7"
     ports:
       # Exposing the API port to the host for direct access/testing
       - "127.0.0.1:8001:8001"
@@ -67,6 +67,106 @@ services:
       timeout: 10s
       retries: 5
       start_period: 180s # Give the CPU model time to load into RAM
+
+  llama-cpu-1:
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.llama-cpu
+    container_name: ai-cpu-service-gguf # A more descriptive name
+    restart: unless-stopped
+    cpuset: "8-15"
+    ports:
+      # Exposing the API port to the host for direct access/testing
+      - "127.0.0.1:8001:8002"
+    volumes:
+      # Mount your GGUF models from a persistent location (read-only)
+      - /mnt/ai-data/models/:/app/models:ro
+      # Volume for logs, matching the GPU service pattern
+      - ./logs/cpu:/app/logs
+    networks:
+      - ai-network
+    # The command to start the server, reading the model from the mounted volume
+    healthcheck:
+      # Healthcheck defined at the service level, just like the GPU service
+      test: ["CMD", "curl", "-f", "http://localhost:8001/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s # Give the CPU model time to load into RAM
+
+  llama-cpu-2:
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.llama-cpu
+    container_name: ai-cpu-service-gguf # A more descriptive name
+    restart: unless-stopped
+    cpuset: "16-23"
+    ports:
+      # Exposing the API port to the host for direct access/testing
+      - "127.0.0.1:8001:8003"
+    volumes:
+      # Mount your GGUF models from a persistent location (read-only)
+      - /mnt/ai-data/models/:/app/models:ro
+      # Volume for logs, matching the GPU service pattern
+      - ./logs/cpu:/app/logs
+    networks:
+      - ai-network
+    # The command to start the server, reading the model from the mounted volume
+    healthcheck:
+      # Healthcheck defined at the service level, just like the GPU service
+      test: ["CMD", "curl", "-f", "http://localhost:8001/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s # Give the CPU model time to load into RAM
+
+  llama-gpu:
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.llama-gpu
+    container_name: ai-gpu-service-gguf
+    restart: unless-stopped
+    # runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - CUDA_VISIBLE_DEVICES=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    ports:
+      # Exposing the GPU API port to the host for direct access/testing
+      - "127.0.0.1:8002:8004"
+    volumes:
+      # Mount your GGUF models from a persistent location (read-only)
+      - /mnt/ai-data/models/:/app/models:ro
+      # Volume for logs
+      - ./logs/gpu:/app/logs
+    networks:
+      - ai-network
+    healthcheck:
+      # Healthcheck for GPU service
+      test: ["CMD", "curl", "-f", "http://localhost:8002/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s # Give the GPU model time to load into VRAM      
+
   
   # Open WebUI Service
   # open-webui:

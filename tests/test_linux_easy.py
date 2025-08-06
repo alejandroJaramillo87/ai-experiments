@@ -5,7 +5,7 @@ import os
 import textwrap
 
 # 1. Configuration
-API_URL = "http://127.0.0.1:8001/v1/chat/completions"
+API_URL = "http://127.0.0.1:8002/v1/chat/completions"
 HEADERS = {
     "Content-Type": "application/json"
 }

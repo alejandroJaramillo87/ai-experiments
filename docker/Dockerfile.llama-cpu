@@ -80,13 +80,8 @@ COPY --from=builder /tmp/llama.cpp/build/bin/* /app/
 # Set environment variables for the model path.
 # ENV MODEL_PATH="/app/models/gguf/SmallThinker-4BA0.6B-Instruct-GGUF/SmallThinker-4B-A0.6B-Instruct.Q4_0.gguf"
 
-# THESE were way slower!!!
-# ENV OMP_NUM_THREADS=8
-# ENV OMP_PROC_BIND=false
-# ENV OMP_PLACES=threads
-
 # Optimal settings
-ENV OMP_NUM_THREADS=16
+ENV OMP_NUM_THREADS=8
 ENV OMP_PROC_BIND=true
 ENV OMP_PLACES=cores
 # ENV GOMP_CPU_AFFINITY="8-15"
@@ -97,15 +92,15 @@ EXPOSE 8001
 # Run the native C++ server. It provides an OpenAI-compatible API.
 # All settings are controlled via these command-line flags.
 CMD ["./server", \
-    "--model", "/app/models/gguf/SmallThinker-21BA3B-Instruct-GGUF/SmallThinker-21B-A3B-Instruct.IQ4_XS.imatrix.gguf", \
+    "--model", "/app/models/gguf/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-UD-Q6_K_XL.gguf", \
     "--host", "0.0.0.0", \
     "--port", "8001", \
     "--n-gpu-layers", "0", \
-    "--ctx-size", "16384", \
+    "--ctx-size", "32768", \
     "--batch-size", "2048", \
     "--ubatch-size", "2048", \
-    "--threads", "16", \
-    "--threads-batch", "16", \
+    "--threads", "8", \
+    "--threads-batch", "8", \
     "--cont-batching", \
     "--metrics", \
     "--no-warmup", \

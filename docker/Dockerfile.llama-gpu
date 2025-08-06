@@ -1,0 +1,151 @@
+# --- Stage 1: The Builder ---
+# This stage compiles the CUDA-optimized C++ server executable.
+FROM nvidia/cuda:12.9.1-devel-ubuntu24.04 AS builder
+
+LABEL stage="builder"
+
+# Set build environment variables for NVIDIA RTX 5090 (Blackwell architecture)
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV CUDA_DOCKER_ARCH=sm_90
+ENV TORCH_CUDA_ARCH_LIST="9.0"
+ENV CUDA_ARCHITECTURES=90
+ENV CUDAFLAGS="-O3 --use_fast_math"
+ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed -L/usr/local/cuda/lib64/stubs"
+
+# Install all build-time system dependencies
+# RUN apt-get update && \
+#     apt-get install -y --no-install-recommends \
+#         gcc g++ build-essential cmake git curl ca-certificates \
+#         libssl-dev pkg-config python3 python3-pip \
+#         ninja-build ccache && \
+#     rm -rf /var/lib/apt/lists/*
+
+# Install specific CUDA components for optimal performance
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends --allow-change-held-packages \
+        gcc g++ build-essential cmake git curl ca-certificates \
+        libssl-dev pkg-config python3 python3-pip \
+        ninja-build ccache \
+        cuda-driver-dev-12-9 \
+        cuda-cudart-dev-12-9 \
+        cuda-cupti-dev-12-9 \
+        cuda-nvml-dev-12-9 \
+        cuda-nvtx-12-9 \
+        cudnn9-cuda-12-9 \
+        libcublas-dev-12-9 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set CUDA environment variables
+ENV PATH=/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+ENV CUDA_HOME=/usr/local/cuda
+ENV PKG_CONFIG_PATH=/usr/local/cuda/lib64/pkgconfig:${PKG_CONFIG_PATH}
+
+# Enable CUDA memory pooling for better performance
+ENV CUDA_MODULE_LOADING=LAZY
+ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
+
+# Create a symlink for the linker to find the CUDA stub library
+RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
+
+
+# Build llama.cpp with CUDA optimizations
+RUN rm -rf /tmp/llama.cpp && \
+    git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
+    cd /tmp/llama.cpp && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+        -DCMAKE_CUDA_ARCHITECTURES=90 \
+        -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs" \
+        -DGGML_CUDA=ON \
+        -DGGML_CUDA_FORCE_CUBLAS=ON \
+        -DGGML_CUDA_F16=ON \
+        -DGGML_CUDA_GRAPHS=ON \
+        -DGGML_CUDA_PEER_MAX_BATCH_SIZE=256 \
+        -DGGML_CUDA_NO_VMM=OFF \
+        -DGGML_NATIVE=ON \
+        -DGGML_LTO=ON \
+        -DGGML_BUILD_TESTS=OFF \
+        -DGGML_BUILD_EXAMPLES=OFF \
+        -DLLAMA_CURL=OFF \
+        -DGGML_CCACHE=ON \
+        -DGGML_CUDA_DMMV_X=64 \
+        -DGGML_CUDA_MMV_Y=2 \
+        -DGGML_CUDA_KQUANTS_ITER=2 && \
+     cmake --build . --target llama-server --config Release -j$(nproc)
+
+# --- Stage 2: The Final Runtime Image ---
+FROM nvidia/cuda:12.9.1-runtime-ubuntu24.04
+
+LABEL description="Container for running the CUDA-accelerated llama.cpp REST API server."
+
+# Install only the necessary RUNTIME system libraries
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends --allow-change-held-packages \
+        ca-certificates \
+        libgomp1 \
+        cudnn9-cuda-12-9 \
+        libcublas-12-9 \
+        # libnccl2 \
+        cuda-driver-dev-12-9 \
+        cuda-cupti-12-9 \
+        cuda-nvtx-12-9 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set runtime CUDA environment
+ENV PATH=/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+ENV CUDA_MODULE_LOADING=LAZY
+ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
+ENV CUDA_VISIBLE_DEVICES=0
+
+# Performance tuning for RTX 5090 (Blackwell, 32GB VRAM)
+ENV CUDA_LAUNCH_BLOCKING=0
+ENV CUDNN_LOGINFO_DBG=0
+ENV CUDNN_LOGDEST_DBG=stderr
+ENV CUDA_CACHE_DISABLE=0
+ENV CUDA_CACHE_PATH=/tmp/cuda_cache
+ENV CUDA_FORCE_PTX_JIT=0
+
+# NVIDIA GPU settings
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+ENV NVIDIA_REQUIRE_CUDA="cuda>=12.8"
+
+WORKDIR /app
+
+# Copy the server executable from the builder stage
+COPY --from=builder /tmp/llama.cpp/build/bin/llama-server /app/server
+COPY --from=builder /tmp/llama.cpp/build/bin/* /app/
+
+# Create cache directory
+RUN mkdir -p /tmp/cuda_cache
+
+# Expose the network port
+EXPOSE 8002
+
+# Run the CUDA-accelerated server
+# Adjust n-gpu-layers based on model size and available VRAM (RTX 5090 has 32GB)
+CMD ["./server", \
+    "--model", "/app/models/gguf/SmallThinker-21BA3B-Instruct-GGUF/SmallThinker-21B-A3B-Instruct.Q6_K.imatrix.gguf", \
+    "--host", "0.0.0.0", \
+    "--port", "8002", \
+    "--n-gpu-layers", "999", \
+    "--ctx-size", "65536", \
+    "--batch-size", "2048", \
+    "--ubatch-size", "512", \
+    "--threads", "1", \
+    "--threads-batch", "1", \
+    "--cont-batching", \
+    "--metrics", \
+    "--no-warmup", \
+    "--threads-http", "4", \
+    "--flash-attn", \
+    "--mlock", \
+    "--no-mmap", \
+    "--tensor-split", "1.0", \
+    "--main-gpu", "0" \
+]
