@@ -81,7 +81,7 @@ services:
     cpuset: "8-15"
     ports:
       # Exposing the API port to the host for direct access/testing
-      - "127.0.0.1:8001:8002"
+      - "127.0.0.1:8002:8002"
     volumes:
       # Mount your GGUF models from a persistent location (read-only)
       - /mnt/ai-data/models/:/app/models:ro
@@ -111,7 +111,7 @@ services:
     cpuset: "16-23"
     ports:
       # Exposing the API port to the host for direct access/testing
-      - "127.0.0.1:8001:8003"
+      - "127.0.0.1:8003:8003"
     volumes:
       # Mount your GGUF models from a persistent location (read-only)
       - /mnt/ai-data/models/:/app/models:ro
@@ -151,7 +151,7 @@ services:
               capabilities: [gpu]
     ports:
       # Exposing the GPU API port to the host for direct access/testing
-      - "127.0.0.1:8002:8004"
+      - "127.0.0.1:8004:8004"
     volumes:
       # Mount your GGUF models from a persistent location (read-only)
       - /mnt/ai-data/models/:/app/models:ro

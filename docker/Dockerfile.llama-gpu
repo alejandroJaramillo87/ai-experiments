@@ -130,9 +130,9 @@ EXPOSE 8002
 # Run the CUDA-accelerated server
 # Adjust n-gpu-layers based on model size and available VRAM (RTX 5090 has 32GB)
 CMD ["./server", \
-    "--model", "/app/models/gguf/SmallThinker-21BA3B-Instruct-GGUF/SmallThinker-21B-A3B-Instruct.Q6_K.imatrix.gguf", \
+    "--model", "/app/models/gguf/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-UD-Q6_K_XL.gguf", \
     "--host", "0.0.0.0", \
-    "--port", "8002", \
+    "--port", "8004", \
     "--n-gpu-layers", "999", \
     "--ctx-size", "65536", \
     "--batch-size", "2048", \
