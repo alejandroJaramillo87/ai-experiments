@@ -1,44 +1,105 @@
-# Use the official NVIDIA TensorRT-LLM image as the base
-FROM nvcr.io/nvidia/tritonserver:25.06-trtllm-python-py3
+# Dockerfile for running Qwen3 30B Coder with TensorRT-LLM
+# Projected for August 2025, optimized for NVIDIA Blackwell (RTX 5090)
 
-LABEL description="Optimized container for running a high-performance TensorRT-LLM REST API server."
+# Use a future NVIDIA PyTorch container as the base image.
+# This image comes with CUDA, cuDNN, NCCL, and PyTorch pre-installed.
+# Version 25.08 corresponds to August 2025.
+# FROM nvcr.io/nvidia/pytorch:25.06-py3
+FROM nvcr.io/nvidia/cuda:12.9.1-devel-ubuntu24.04
 
-# --- Environment Variables for Performance ---
-# Set log level to WARNING to reduce I/O overhead in production.
-# LAZY loading speeds up container startup.
-ENV PYTHONUNBUFFERED=1
+
+# Placeholder for the NVIDIA Blackwell architecture compute capability.
+# Hopper is 9.0; Blackwell is projected to be 10.0. Adjust if necessary.
+ARG CUDA_ARCH="10.0"
+
+# Set environment variables for non-interactive setup, working directory, and performance tuning.
+ENV DEBIAN_FRONTEND=noninteractive
+ENV WORK_DIR=/app
 ENV CUDA_MODULE_LOADING=LAZY
-ENV TLLM_LOG_LEVEL=WARNING
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
-WORKDIR /app
-ARG ENGINE_DIR
+WORKDIR ${WORK_DIR}
+
+# Install system dependencies required for building TensorRT-LLM and its dependencies.
+# git-lfs is needed for downloading large model files.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    git \
+    git-lfs \
+    openmpi-bin \
+    libopenmpi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone the TensorRT-LLM repository from GitHub.
+# We use the main branch to ensure we have the latest features and model support.
+RUN git clone https://github.com/NVIDIA/TensorRT-LLM.git
+
+# Set the working directory to the cloned repository.
+WORKDIR ${WORK_DIR}/TensorRT-LLM
+
+# Install PyTorch, a critical dependency for TensorRT-LLM.
+# We install a version compatible with the CUDA toolkit from the base image.
+RUN pip3 install --upgrade pip && \
+    pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+# Install the required Python packages.
+# This includes dependencies for the core library, running examples, and the FastAPI server.
+RUN pip install  --upgrade-strategy eager -r requirements.txt -r examples/models/core/qwen/requirements.txt
+ 
+# Build the TensorRT-LLM wheel from source.
+# This step compiles the library with optimizations for the target GPU architecture.
+# --cuda_arch_list is set to the projected Blackwell architecture (sm_100).
+RUN python3 scripts/build_wheel.py --build_type Release \
+                                   --cuda_arch_list ${CUDA_ARCH} \
+                                   --clean 
+
+# Install the compiled TensorRT-LLM wheel.
+RUN pip install build/tensorrt_llm*.whl
+
+# --- Model Preparation ---
+# Create directories to store the model weights and the compiled TensorRT engines.
+ENV MODEL_WEIGHTS="/app/models/hf/Qwen3-Coder-30B-A3B-Instruct"
+ENV ENGINE_DIR="/app/models/trtllm-engine"
 
 
-# --- Install Python Dependencies ---
-# Add gunicorn as a process manager to handle multiple worker processes,
-# which is essential for concurrent request handling.
-RUN pip install --no-cache-dir \
-    "gunicorn" \
-    "fastapi" \
-    "uvicorn[standard]" \
-    "pydantic" \
-    "transformers==4.43.2" \
-    "sentencepiece==0.2.0"
 
-# --- Copy Application and Engine ---
-# Copy the server script and the pre-built TensorRT-LLM engine into the image.
-# This makes the container portable and self-sufficient.
-COPY src/trt_server.py .
-COPY ${ENGINE_DIR} /app/engine
+# Convert the Hugging Face checkpoint to the TensorRT-LLM format.
+# This prepares the model weights for engine compilation. We use float16 as the base.
+RUN python3 examples/models/core/qwen/convert_checkpoint.py --model_dir ${MODEL_DIR} \
+                                                            --output_dir ${ENGINE_DIR}/trt_ckpt \
+                                                            --dtype float16
 
-# --- Expose the Network Port ---
-EXPOSE 8000
+# Build the optimized TensorRT engine.
+# This is the most critical step for achieving maximum performance.
+# We explicitly set the gemm/attention plugins, KV cache type, and token counts.
+RUN trtllm-build --checkpoint_dir ${ENGINE_DIR}/trt_ckpt \
+                 --output_dir ${ENGINE_DIR} \
+                 --gemm_plugin fp8 \
+                 --use_fused_mlp \
+                 --gpt_attention_plugin fp8 \
+                 --kv_cache_type paged \
+                 --max_batch_size 8 \
+                 --max_input_len 4096 \
+                 --max_seq_len 8192 \
+                 --max_num_tokens 32768 \
+                 --fp8_kv_cache \
+                 --remove_input_padding
 
-# --- Container Entrypoint ---
-# Use gunicorn to launch uvicorn workers. This is the key to unlocking
-# concurrent inference. The number of workers can be tuned (e.g., 2 * num_cores + 1).
-# We pass the engine and tokenizer paths to the server script.
-CMD ["gunicorn", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", \
-     "rest_api_server:app", \
-     "--engine_dir", "/app/engine", \
-     "--tokenizer_dir", "/app/engine"]
+# Expose the port the FastAPI server will listen on.
+EXPOSE 8005
+
+# Set the default command to run the inference server.
+# This uses the example run.py script, which wraps the compiled engine in a user-friendly API.
+# It's configured to be accessible from outside the container.
+CMD ["python3", "examples/run.py", \
+     "--engine_dir", "${ENGINE_DIR}", \
+     "--tokenizer_dir", "${MODEL_DIR}", \
+     "--host", "0.0.0.0", \
+     "--port", "8005", \
+     "--max_output_len", "2048", \
+     "--gpu_weights_percent", "100", \
+     "--kv_cache_free_gpu_memory_fraction", "0.90", \
+     "--cuda_graph_mode", \
+     "--streaming" \
+]
