@@ -1,13 +1,14 @@
 # Dockerfile for running Qwen3 30B Coder with TensorRT-LLM
 # Projected for August 2025, optimized for NVIDIA Blackwell (RTX 5090)
 
-# Use a future NVIDIA PyTorch container as the base image.
-# This image comes with CUDA, cuDNN, NCCL, and PyTorch pre-installed.
-# Version 25.08 corresponds to August 2025.
-# FROM nvcr.io/nvidia/pytorch:25.06-py3
-FROM nvcr.io/nvidia/cuda:12.9.1-devel-ubuntu24.04
+# Use the CUDA development image as the base for a clean build environment.
+# This provides the CUDA toolkit without pre-installed Python libraries that might conflict.
+# FROM nvcr.io/nvidia/cuda:12.9.1-devel-ubuntu24.04
+FROM nvcr.io/nvidia/tensorrt:25.06-py3
 
-
+# Set arguments for easy configuration of the model and architecture.
+ARG MODEL_HF_REPO="Qwen/Qwen3-30B-Coder"
+ARG MODEL_NAME="qwen3-30b-coder"
 # Placeholder for the NVIDIA Blackwell architecture compute capability.
 # Hopper is 9.0; Blackwell is projected to be 10.0. Adjust if necessary.
 ARG CUDA_ARCH="10.0"
@@ -21,41 +22,68 @@ ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 WORKDIR ${WORK_DIR}
 
 # Install system dependencies required for building TensorRT-LLM and its dependencies.
-# git-lfs is needed for downloading large model files.
+# This now includes python3 and pip, which are not guaranteed in the cuda:devel image.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    cmake \
+    # cmake \
     git \
     git-lfs \
     openmpi-bin \
     libopenmpi-dev \
+    pkg-config \  
+    libzmq3-dev \
+    librte-net-mlx5-24 \
+    # python3.12 \
+    # python3-pip \
+    # python3.12-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone the TensorRT-LLM repository from GitHub.
-# We use the main branch to ensure we have the latest features and model support.
+RUN wget -q https://github.com/Kitware/CMake/releases/download/v3.30.2/cmake-3.30.2-linux-x86_64.sh && \
+    chmod +x cmake-3.30.2-linux-x86_64.sh && \
+    ./cmake-3.30.2-linux-x86_64.sh --skip-license --prefix=/usr/local && \
+    rm cmake-3.30.2-linux-x86_64.sh && \
+    cmake --version  # Verify installation
+
+
+# Create a virtual environment to isolate Python dependencies and avoid OS conflicts.
+# RUN python3 -m venv /opt/venv
+# Activate the virtual environment for all subsequent commands.
+# ENV PATH="/opt/venv/bin:$PATH"
+
+# Clone the main branch of the TensorRT-LLM repository for the latest code.
 RUN git clone https://github.com/NVIDIA/TensorRT-LLM.git
 
 # Set the working directory to the cloned repository.
 WORKDIR ${WORK_DIR}/TensorRT-LLM
 
-# Install PyTorch, a critical dependency for TensorRT-LLM.
-# We install a version compatible with the CUDA toolkit from the base image.
-RUN pip3 install --upgrade pip && \
-    pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+# Install all Python dependencies from the requirements files.
+# We use --break-system-packages to override the OS's external environment protection.
+# We do not upgrade pip itself, as it is managed by the OS package manager.
+RUN pip3 install \
+    --upgrade \
+    --upgrade-strategy eager \
+    --ignore-installed wheel \
+    -r requirements.txt 
+    # -r examples/models/core/qwen/requirements.txt
+    # pip3 install --break-system-packages torch torchvision --index-url https://download.pytorch.org/whl/cu128
 
-# Install the required Python packages.
-# This includes dependencies for the core library, running examples, and the FastAPI server.
-RUN pip install  --upgrade-strategy eager -r requirements.txt -r examples/models/core/qwen/requirements.txt
- 
+# Set PYTHONPATH to ensure cutlass_library can be found
+ENV PYTHONPATH="${WORK_DIR}/TensorRT-LLM/3rdparty/cutlass/python:${PYTHONPATH}"
+
 # Build the TensorRT-LLM wheel from source.
 # This step compiles the library with optimizations for the target GPU architecture.
 # --cuda_arch_list is set to the projected Blackwell architecture (sm_100).
-RUN python3 scripts/build_wheel.py --build_type Release \
-                                   --cuda_arch_list ${CUDA_ARCH} \
-                                   --clean 
+RUN python3 scripts/build_wheel.py --install \
+                                   --clean \
+                                   --cuda_architectures=100-real \
+                                   --nvrtc_dynamic_linking \
+                                   --extra-cmake-vars "BUILD_DEEP_EP=OFF" \
+                                   --job_count 16
+
+
 
 # Install the compiled TensorRT-LLM wheel.
-RUN pip install build/tensorrt_llm*.whl
+RUN pip3 install build/tensorrt_llm*.whl
 
 # --- Model Preparation ---
 # Create directories to store the model weights and the compiled TensorRT engines.
@@ -66,14 +94,14 @@ ENV ENGINE_DIR="/app/models/trtllm-engine"
 
 # Convert the Hugging Face checkpoint to the TensorRT-LLM format.
 # This prepares the model weights for engine compilation. We use float16 as the base.
-RUN python3 examples/models/core/qwen/convert_checkpoint.py --model_dir ${MODEL_DIR} \
-                                                            --output_dir ${ENGINE_DIR}/trt_ckpt \
+RUN python3 examples/models/core/qwen/convert_checkpoint.py --model_dir ${MODEL_WEIGHTS} \
+                                                            --output_dir ${MODEL_WEIGHTS}/trt_ckpt \
                                                             --dtype float16
 
 # Build the optimized TensorRT engine.
 # This is the most critical step for achieving maximum performance.
 # We explicitly set the gemm/attention plugins, KV cache type, and token counts.
-RUN trtllm-build --checkpoint_dir ${ENGINE_DIR}/trt_ckpt \
+RUN trtllm-build --checkpoint_dir ${MODEL_WEIGHTS}/trt_ckpt \
                  --output_dir ${ENGINE_DIR} \
                  --gemm_plugin fp8 \
                  --use_fused_mlp \
@@ -94,7 +122,7 @@ EXPOSE 8005
 # It's configured to be accessible from outside the container.
 CMD ["python3", "examples/run.py", \
      "--engine_dir", "${ENGINE_DIR}", \
-     "--tokenizer_dir", "${MODEL_DIR}", \
+    #  "--tokenizer_dir", "${MODEL_DIR}", \
      "--host", "0.0.0.0", \
      "--port", "8005", \
      "--max_output_len", "2048", \
