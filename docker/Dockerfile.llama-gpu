@@ -13,13 +13,6 @@ ENV CUDA_ARCHITECTURES=90
 ENV CUDAFLAGS="-O3 --use_fast_math"
 ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed -L/usr/local/cuda/lib64/stubs"
 
-# Install all build-time system dependencies
-# RUN apt-get update && \
-#     apt-get install -y --no-install-recommends \
-#         gcc g++ build-essential cmake git curl ca-certificates \
-#         libssl-dev pkg-config python3 python3-pip \
-#         ninja-build ccache && \
-#     rm -rf /var/lib/apt/lists/*
 
 # Install specific CUDA components for optimal performance
 RUN apt-get update && \
@@ -89,11 +82,12 @@ RUN apt-get update && \
         libgomp1 \
         cudnn9-cuda-12-9 \
         libcublas-12-9 \
-        # libnccl2 \
         cuda-driver-dev-12-9 \
         cuda-cupti-12-9 \
         cuda-nvtx-12-9 && \
     rm -rf /var/lib/apt/lists/*
+
+
 
 # Set runtime CUDA environment
 ENV PATH=/usr/local/cuda/bin:${PATH}
@@ -115,17 +109,23 @@ ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 ENV NVIDIA_REQUIRE_CUDA="cuda>=12.8"
 
+# Create a non-root user with a dedicated group and home directory
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser
+
+# Switch to the non-root user
+USER appuser
+
 WORKDIR /app
 
 # Copy the server executable from the builder stage
-COPY --from=builder /tmp/llama.cpp/build/bin/llama-server /app/server
-COPY --from=builder /tmp/llama.cpp/build/bin/* /app/
+COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/llama-server /app/server
+COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/* /app/
 
 # Create cache directory
 RUN mkdir -p /tmp/cuda_cache
 
 # Expose the network port
-EXPOSE 8002
+EXPOSE 8004
 
 # Run the CUDA-accelerated server
 # Adjust n-gpu-layers based on model size and available VRAM (RTX 5090 has 32GB)

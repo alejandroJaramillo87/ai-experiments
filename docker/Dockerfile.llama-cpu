@@ -57,6 +57,7 @@ RUN rm -rf /tmp/llama.cpp && \
         -DGGML_CCACHE=OFF && \
     cmake --build . --config Release -j$(nproc)
 
+
 # --- Stage 2: The Final Runtime Image ---
 FROM debian:unstable-slim
 
@@ -71,11 +72,17 @@ COPY --from=builder /opt/aocl_libs /opt/aocl_libs
 # # Set the library path so the system can find the AOCL libs
 ENV LD_LIBRARY_PATH=/opt/aocl_libs
 
+# Create a non-root user with a dedicated group and home directory
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser
+
+# Switch to the non-root user
+USER appuser
+
 WORKDIR /app
 
-# Copy the server executable from the builder stage
-COPY --from=builder /tmp/llama.cpp/build/bin/llama-server /app/server
-COPY --from=builder /tmp/llama.cpp/build/bin/* /app/
+# Copy the server executable and other necessary files, setting ownership
+COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/llama-server /app/server
+COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/* /app/
 
 # Set environment variables for the model path.
 # ENV MODEL_PATH="/app/models/gguf/SmallThinker-4BA0.6B-Instruct-GGUF/SmallThinker-4B-A0.6B-Instruct.Q4_0.gguf"
@@ -84,7 +91,6 @@ COPY --from=builder /tmp/llama.cpp/build/bin/* /app/
 ENV OMP_NUM_THREADS=8
 ENV OMP_PROC_BIND=true
 ENV OMP_PLACES=cores
-# ENV GOMP_CPU_AFFINITY="8-15"
 
 # Expose the network port
 EXPOSE 8001
