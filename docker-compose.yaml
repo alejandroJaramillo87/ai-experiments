@@ -165,28 +165,24 @@ services:
       retries: 5
       start_period: 180s # Give the GPU model time to load into VRAM 
 
-  # GPU Model Service using TensorRT-LLM REST API Server
-  trt-server:
+  # vLLM GPU Service - Optimized for RTX 5090
+  vllm-gpu:
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
     build:
       context: .
-      dockerfile: docker/Dockerfile.trt-server
-      args:
-        # OPTIMIZATION: Pass the engine path as a build-time argument.
-        # This allows the Dockerfile to COPY the engine directly into the image,
-        # creating a self-contained and portable service.
-        # Change the path to point to your specific engine directory.
-        ENGINE_DIR: ./trt_engines/Mistral-7B-v0.3-int4-awq
-    container_name: trt-server
+      dockerfile: docker/Dockerfile.vllm-gpu
+    container_name: vllm-gpu
     restart: unless-stopped
-    ports:
-      # Exposing to 0.0.0.0 (all interfaces) on the host.
-      # Change to "127.0.0.1:8000:8000" to restrict access to the host machine only.
-      - "8000:8000"
-    volumes:
-      # Mount a volume for persistent logs. This is good practice.
-      - ./logs/gpu:/app/logs
-    networks:
-      - ai-network
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - CUDA_VISIBLE_DEVICES=0
     deploy:
       resources:
         reservations:
@@ -194,13 +190,26 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    ports:
+      # Exposing the vLLM API port to the host
+      - "127.0.0.1:8005:8005"
+    read_only: true
+    tmpfs:
+      - /tmp:size=2G,mode=1777  # For CUDA cache and temp files
+    volumes:
+      # Mount your models from a persistent location (read-only)
+      - /mnt/ai-data/models/:/app/models:ro
+      # Volume for logs
+      - ./logs/vllm:/app/logs:rw
+    networks:
+      - ai-network
     healthcheck:
-      # Healthcheck remains the same. It's well-configured.
-      test: ["CMD", "curl", "-f", "http://localhost:8005/v1/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 300s # Generous time for the model to load, which is good.
+      start_period: 300s # vLLM needs time to load the model
+
   
   # Open WebUI Service
   open-webui:
