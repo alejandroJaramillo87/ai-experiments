@@ -1,0 +1,174 @@
+# --- Stage 1: Builder ---
+# Using NGC container per https://github.com/vllm-project/vllm/issues/14452
+# This provides CUDA 12.8+ and PyTorch 2.6+ required for Blackwell
+FROM nvcr.io/nvidia/pytorch:25.06-py3 AS builder
+
+LABEL stage="builder"
+
+# Set build environment variables for NVIDIA RTX 5090 (Blackwell sm_120 architecture)
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV TORCH_CUDA_ARCH_LIST="12.0"
+ENV CUDA_DOCKER_ARCH=sm_120
+ENV CUDA_ARCHITECTURES=120
+# ENV MAX_JOBS=8
+ENV NVCC_THREADS=8
+ENV CUDAFLAGS="-O3 --use_fast_math"
+ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed -L/usr/local/cuda/lib64/stubs"
+
+# Set CUDA environment variables
+ENV PATH=/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+ENV CUDA_HOME=/usr/local/cuda
+ENV PKG_CONFIG_PATH=/usr/local/cuda/lib64/pkgconfig:${PKG_CONFIG_PATH}
+
+# Enable CUDA memory pooling for better performance
+ENV CUDA_MODULE_LOADING=LAZY
+ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
+
+# Install build dependencies (ccache is required per issue #14452)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ccache \
+        ninja-build \
+        git && \
+    rm -rf /var/lib/apt/lists/*
+
+# Clone vLLM repository (ensure we're at or above commit ed6ea06)
+RUN git clone https://github.com/vllm-project/vllm.git /tmp/vllm
+
+# Build vLLM following exact steps from issue #14452
+WORKDIR /tmp/vllm
+
+# Critical: Use existing torch from NGC container
+RUN python use_existing_torch.py
+
+# Install build requirements
+RUN pip install -r requirements/build.txt
+
+# Install setuptools_scm
+RUN pip install setuptools_scm && \
+        pip install --upgrade \
+        "numpy<2" \
+        "pydantic>=2.11.7" \
+        "typing-extensions>=4.10.0"
+
+# Build with ccache
+RUN mkdir -p /tmp/ccache && \
+    CCACHE_DIR=/tmp/ccache python setup.py develop
+
+# Install additional dependencies for better performance
+# RUN pip install \
+#     ray[default] \
+#     nvidia-ml-py \
+#     prometheus-client \
+#     fastapi \
+#     uvicorn[standard] 
+
+# --- Stage 2: Runtime Image ---
+FROM nvcr.io/nvidia/pytorch:25.06-py3
+
+LABEL description="Optimized vLLM inference server for RTX 5090 Blackwell"
+
+# Install runtime dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+
+# Copy requirements file from builder
+COPY --from=builder /tmp/vllm/requirements/common.txt /tmp/requirements/common.txt
+
+# Install vLLM runtime dependencies
+RUN pip install -r /tmp/requirements/common.txt
+
+# Set runtime CUDA environment
+ENV PATH=/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+ENV CUDA_MODULE_LOADING=LAZY
+ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
+ENV CUDA_VISIBLE_DEVICES=0
+
+# Performance tuning for RTX 5090 (Blackwell, 32GB VRAM)
+ENV CUDA_LAUNCH_BLOCKING=0
+ENV CUDNN_LOGINFO_DBG=0
+ENV CUDNN_LOGDEST_DBG=stderr
+ENV CUDA_CACHE_DISABLE=0
+ENV CUDA_CACHE_PATH=/tmp/cuda_cache
+ENV CUDA_FORCE_PTX_JIT=0
+ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,garbage_collection_threshold:0.9,max_split_size_mb:512
+
+# NVIDIA GPU settings
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+ENV NVIDIA_REQUIRE_CUDA="cuda>=12.8"
+
+# vLLM specific optimizations
+ENV VLLM_USE_MODELSCOPE=False
+# Flash Attention 3 doesn't work with Blackwell yet per issue #14452
+ENV VLLM_FLASH_ATTN_VERSION=2
+ENV VLLM_ATTENTION_BACKEND=FLASH_ATTN
+ENV VLLM_USE_RAY=0
+ENV VLLM_WORKER_MULTIPROC_METHOD=spawn
+ENV TOKENIZERS_PARALLELISM=false
+ENV VLLM_USAGE_SOURCE=docker
+ENV VLLM_LOGGING_LEVEL=INFO
+
+# FIX: Add the vLLM source code to the Python path.
+# This is necessary because `python setup.py develop` in the builder stage
+# creates a symbolic link, and we need to tell Python where to find the
+# source code copied into the /app/vllm directory.
+ENV PYTHONPATH "${PYTHONPATH}:/app/vllm"
+
+
+# Copy vLLM installation from builder
+COPY --from=builder /usr/local/lib/python*/site-packages /usr/local/lib/python3.10/site-packages
+COPY --from=builder /tmp/vllm /app/vllm
+
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser
+
+# Create necessary directories and set permissions
+RUN mkdir -p /tmp/cuda_cache /app/logs /app/cache && \
+    chown -R appuser:appuser /tmp/cuda_cache /app
+
+# Switch to the non-root user
+USER appuser
+WORKDIR /app
+
+# Test vLLM installation (as recommended in issue #14452)
+# RUN python -c "import vllm; print(vllm.__version__)"
+
+# Create healthcheck script
+RUN echo '#!/bin/bash\ncurl -f http://localhost:8005/health || exit 1' > /app/healthcheck.sh && \
+    chmod +x /app/healthcheck.sh
+
+EXPOSE 8005
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=5 --start-period=300s \
+    CMD ["/app/healthcheck.sh"]
+
+ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+
+CMD ["--model", "/app/models/hf/Qwen3-Coder-30B-A3B-Instruct", \
+     "--host", "0.0.0.0", \
+     "--port", "8005", \
+     "--served-model-name", "qwen3-coder", \
+     "--tensor-parallel-size", "1", \
+     "--gpu-memory-utilization", "0.95", \
+     "--max-model-len", "32768", \
+     "--max-num-seqs", "256", \
+     "--max-num-batched-tokens", "32768", \
+     "--enable-chunked-prefill", \
+     "--enable-prefix-caching", \
+     "--disable-log-stats", \
+     "--trust-remote-code", \
+     "--download-dir", "/app/cache", \
+     "--dtype", "auto", \
+     "--kv-cache-dtype", "auto", \
+     "--quantization", "None", \
+     "--enforce-eager", \
+     "--disable-custom-all-reduce", \
+     "--tokenizer-mode", "auto"]
