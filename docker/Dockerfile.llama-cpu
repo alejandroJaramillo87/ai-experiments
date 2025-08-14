@@ -51,10 +51,11 @@ RUN rm -rf /tmp/llama.cpp && \
         -DGGML_BLAS_VENDOR=Generic \
         -DGGML_SHARED_LIBS=OFF \
         -DGGML_NATIVE=ON \
+        -DGGML_LTO=ON \
         -DGGML_BUILD_TESTS=OFF \
         -DGGML_BUILD_EXAMPLES=OFF \
         -DLLAMA_CURL=OFF \
-        -DGGML_CCACHE=OFF && \
+        -DGGML_CCACHE=ON && \
     cmake --build . --config Release -j$(nproc)
 
 
