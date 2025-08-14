@@ -193,7 +193,7 @@ services:
     ports:
       # Exposing the vLLM API port to the host
       - "127.0.0.1:8005:8005"
-    read_only: true
+    # read_only: true
     tmpfs:
       - /tmp:size=2G,mode=1777  # For CUDA cache and temp files
     volumes:
