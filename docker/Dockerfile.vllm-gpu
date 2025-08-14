@@ -63,6 +63,10 @@ RUN pip3 install --no-cache-dir --break-system-packages -r requirements/common.t
     setuptools_scm 
 
 
+# TODO: Needs to be installed when it supports blackwell sm_100
+# RUN pip3 install --no-cache-dir --break-system-packages flashinfer -i https://flashinfer.ai/whl/cu121/torch2.4/
+
+
 # Build vLLM with optimizations
 RUN mkdir -p /tmp/ccache && \
     CCACHE_DIR=/tmp/ccache \
@@ -136,14 +140,6 @@ ENV VLLM_ENABLE_PREFIX_CACHING=1
 # FP8 optimization support for Blackwell
 ENV VLLM_FP8_E4M3=1
 
-# Fix Python path for vLLM
-# ENV PYTHONPATH="/app/vllm:${PYTHONPATH}"
-
-# CORRECTED: Ensure the destination path matches the runtime's Python version (3.12 from your logs)
-# The base image uses 'dist-packages' instead of 'site-packages'.
-# COPY --from=builder /usr/local/lib/python*/site-packages /usr/local/lib/python3.12/dist-packages
-# COPY --from=builder /tmp/vllm /app/vllm
-
 # Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser
 
@@ -179,20 +175,13 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=5 --start-period=300s \
 # Set entrypoint
 ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server"]
 
-# Optimized default configuration for RTX 5090 with Qwen3-Coder-30B
-# Key optimizations:
-# - Increased gpu-memory-utilization to 0.98 for better VRAM usage
-# - Optimized max-num-seqs for high throughput (512 for 32GB VRAM)
-# - Larger max-num-batched-tokens for better batching efficiency
-# - Added swap-space for handling request overflow
-# - Enable compilation for better kernel performance
-# - Optimized scheduler delay factor
+
 CMD ["--model", "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b", \
      "--host", "0.0.0.0", \
      "--port", "8005", \
      "--served-model-name", "qwen3-coder", \
      "--tensor-parallel-size", "1", \
-     "--gpu-memory-utilization", "0.98", \
+     "--gpu-memory-utilization", "0.85", \
      "--max-model-len", "32768", \
      "--max-num-seqs", "512", \
      "--max-num-batched-tokens", "65536", \

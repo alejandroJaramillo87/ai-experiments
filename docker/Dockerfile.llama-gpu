@@ -7,10 +7,10 @@ LABEL stage="builder"
 # Set build environment variables for NVIDIA RTX 5090 (Blackwell architecture)
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
-ENV CUDA_DOCKER_ARCH=sm_90
-ENV TORCH_CUDA_ARCH_LIST="9.0"
-ENV CUDA_ARCHITECTURES=90
-ENV CUDAFLAGS="-O3 --use_fast_math"
+ENV CUDA_DOCKER_ARCH=sm_120 
+ENV TORCH_CUDA_ARCH_LIST="12.0"
+ENV CUDA_ARCHITECTURES=120
+ENV CUDAFLAGS="-O3 --use_fast_math -arch=sm_120"
 ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed -L/usr/local/cuda/lib64/stubs"
 
 
@@ -45,13 +45,13 @@ RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/lib
 
 # Build llama.cpp with CUDA optimizations
 RUN rm -rf /tmp/llama.cpp && \
-    git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
+    git clone  https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
     cd /tmp/llama.cpp && \
     mkdir build && cd build && \
     cmake .. \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
-        -DCMAKE_CUDA_ARCHITECTURES=90 \
+        -DCMAKE_CUDA_ARCHITECTURES=120 \
         -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs" \
         -DGGML_CUDA=ON \
         -DGGML_CUDA_FORCE_CUBLAS=ON \
@@ -68,8 +68,10 @@ RUN rm -rf /tmp/llama.cpp && \
         -DGGML_CUDA_DMMV_X=64 \
         -DGGML_CUDA_MMV_Y=2 \
         -DGGML_CUDA_GRAPHS=ON \
-        -DGGML_CUDA_KQUANTS_ITER=2 && \
+        -DGGML_CUDA_KQUANTS_ITER=2  \
+         -DGGML_CUDA_FA_ALL_QUANTS=ON && \
      cmake --build . --target llama-server --config Release -j$(nproc)
+
 
 # --- Stage 2: The Final Runtime Image ---
 FROM nvidia/cuda:12.9.1-runtime-ubuntu24.04
@@ -106,6 +108,13 @@ ENV CUDA_CACHE_PATH=/tmp/cuda_cache
 ENV CUDA_FORCE_PTX_JIT=0
 # Enable CUDA graphs for improved performance
 ENV GGML_CUDA_GRAPHS=1
+# Optimize for single stream processing
+ENV GGML_CUDA_MAX_STREAMS=1
+# Force synchronous operations for lower latency
+ENV GGML_CUDA_FORCE_SYNC=0
+
+# PyTorch memory optimization for Blackwell's 32GB VRAMf
+# ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,garbage_collection_threshold:0.95,max_split_size_mb:1024
 
 # NVIDIA GPU settings
 ENV NVIDIA_VISIBLE_DEVICES=all
@@ -142,13 +151,14 @@ CMD ["./server", \
     "--ubatch-size", "512", \
     "--threads", "1", \
     "--threads-batch", "1", \
-    "--cont-batching", \
+    # "--cont-batching", \
     "--metrics", \
     "--no-warmup", \
     "--threads-http", "4", \
     "--flash-attn", \
     "--mlock", \
     "--no-mmap", \
-    "--tensor-split", "1.0", \
-    "--main-gpu", "0" \
+    "--main-gpu", "0", \
+    "--parallel", "1" \
+    # "--sequences", "1" \
 ]
