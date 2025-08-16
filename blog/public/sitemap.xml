@@ -2,17 +2,14 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>//localhost:1313/posts/my-first-post/</loc>
+    <loc>alejandrojaramillo87.github.io/</loc>
     <lastmod>2025-08-15T19:51:40-07:00</lastmod>
   </url><url>
-    <loc>//localhost:1313/</loc>
+    <loc>alejandrojaramillo87.github.io/posts/</loc>
     <lastmod>2025-08-15T19:51:40-07:00</lastmod>
   </url><url>
-    <loc>//localhost:1313/posts/</loc>
-    <lastmod>2025-08-15T19:51:40-07:00</lastmod>
+    <loc>alejandrojaramillo87.github.io/categories/</loc>
   </url><url>
-    <loc>//localhost:1313/categories/</loc>
-  </url><url>
-    <loc>//localhost:1313/tags/</loc>
+    <loc>alejandrojaramillo87.github.io/tags/</loc>
   </url>
 </urlset>
