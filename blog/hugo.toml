@@ -1,7 +1,7 @@
 baseURL = 'https://alejandrojaramillo87.github.io'
 languageCode = 'en-us'
 title = 'My New Hugo Site'
-theme = 'ananke'
+theme = 'PaperMod'
 
 [caches]
   [caches.images]
