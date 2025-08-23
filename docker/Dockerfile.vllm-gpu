@@ -179,7 +179,7 @@ ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server"]
 CMD ["--model", "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b", \
      "--host", "0.0.0.0", \
      "--port", "8005", \
-     "--served-model-name", "qwen3-coder", \
+    #  "--served-model-name", "qwen3-coder", \
      "--tensor-parallel-size", "1", \
      "--gpu-memory-utilization", "0.85", \
      "--max-model-len", "32768", \

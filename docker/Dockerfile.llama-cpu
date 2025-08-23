@@ -99,7 +99,7 @@ EXPOSE 8001
 # Run the native C++ server. It provides an OpenAI-compatible API.
 # All settings are controlled via these command-line flags.
 CMD ["./server", \
-    "--model", "/app/models/gguf/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-UD-Q6_K_XL.gguf", \
+    "--model", "/app/models/gguf/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf", \
     "--host", "0.0.0.0", \
     "--port", "8001", \
     "--n-gpu-layers", "0", \

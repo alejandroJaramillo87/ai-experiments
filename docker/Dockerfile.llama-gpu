@@ -142,11 +142,11 @@ EXPOSE 8004
 # Run the CUDA-accelerated server
 # Adjust n-gpu-layers based on model size and available VRAM (RTX 5090 has 32GB)
 CMD ["./server", \
-    "--model", "/app/models/gguf/DeepSeek-R1-0528-Qwen3-8B-GGUF/DeepSeek-R1-0528-Qwen3-8B-Q8_0.gguf", \
+    "--model", "/app/models/gguf/gpt-oss-20b-GGUF/gpt-oss-20b-UD-Q8_K_XL.gguf", \
     "--host", "0.0.0.0", \
     "--port", "8004", \
     "--n-gpu-layers", "999", \
-    "--ctx-size", "32768", \
+    "--ctx-size", "65536", \
     "--batch-size", "2048", \
     "--ubatch-size", "512", \
     "--threads", "1", \
