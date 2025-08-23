@@ -1,7 +1,7 @@
 # AI Engineering Workstation Setup Instructions
 
 ## System Specifications
-- **GPU:** RTX 5090 (24GB VRAM)  
+- **GPU:** RTX 5090 (32GB VRAM)  
 - **CPU:** AMD Ryzen 9950X
 - **RAM:** 128GB DDR5 EXPO
 - **Storage:** Samsung 990 Pro 2TB + 990 EVO 1TB (Ubuntu 24.04)
