@@ -1,15 +1,11 @@
 ---
 title: "Containerizing AI Workflows: Docker Architecture for Multi-Model Deployment"
-date: 2024-08-22
+date: 2024-08-22T14:30:00+00:00
 draft: false
+image: "images/docker-ai-architecture.jpg"
 description: "Advanced Docker implementation strategies for AI model deployment. Comprehensive guide to security isolation, resource management, and multi-container orchestration for GPU and CPU workloads."
-categories: ["Docker", "AI Engineering", "DevOps"]
+categories: ["AI Engineering/DevOps", "Docker"]
 tags: ["Docker", "Containerization", "AI Deployment", "GPU Acceleration", "Security", "Multi-Model"]
-cover:
-    image: "/images/docker-ai-architecture.jpg"
-    alt: "Docker AI Container Architecture"
-    caption: "Multi-container AI deployment architecture with GPU acceleration and security isolation"
-showToc: true
 ---
 
 ## Introduction
