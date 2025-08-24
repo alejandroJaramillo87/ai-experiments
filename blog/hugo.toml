@@ -1,8 +1,127 @@
 baseURL = 'https://alejandrojaramillo87.github.io'
 languageCode = 'en-us'
-title = 'My New Hugo Site'
+title = 'AI Engineering Workstation'
 theme = 'PaperMod'
 
+# Enable emoji support
+enableEmoji = true
+
+# Enable syntax highlighting
+[markup]
+  [markup.highlight]
+    style = "github"
+    lineNos = true
+    lineNumbersInTable = false
+    noClasses = false
+
+[params]
+  # Site description for SEO
+  description = "Building and optimizing AI engineering workstations for maximum performance. Deep technical insights on hardware, containerization, and AI model deployment."
+  
+  # Author information
+  author = "Alejandro"
+  
+  # Social links
+  [[params.socialIcons]]
+    name = "github"
+    url = "https://github.com/alejandroJaramillo87/ai-workstation"
+  
+  # Home info mode
+  homeInfoParams.Title = "AI Engineering Workstation"
+  homeInfoParams.Content = """
+  Welcome to my technical blog documenting the journey of building and optimizing a high-performance AI engineering workstation.
+  
+  **Focus Areas:**
+  - AMD Ryzen 9950X + RTX 5090 optimization
+  - Containerized AI model deployment
+  - Performance benchmarking and analysis
+  - Hardware configuration and tuning
+  """
+  
+  # Enable search
+  fuseOpts.includeScore = true
+  fuseOpts.minMatchCharLength = 2
+  
+  # Show reading time
+  ShowReadingTime = true
+  
+  # Show table of contents
+  ShowToc = true
+  TocOpen = false
+  
+  # Show code copy button
+  ShowCodeCopyButtons = true
+  
+  # Enable breadcrumbs
+  ShowBreadCrumbs = true
+  
+  # Show post navigation
+  ShowPostNavLinks = true
+  
+  # Date format
+  DateFormat = "January 2, 2006"
+
+# Menu configuration
+[[menu.main]]
+  identifier = "home"
+  name = "Home"
+  url = "/"
+  weight = 10
+
+[[menu.main]]
+  identifier = "posts"
+  name = "Posts"
+  url = "/posts/"
+  weight = 20
+
+[[menu.main]]
+  identifier = "categories"
+  name = "Categories"
+  url = "/categories/"
+  weight = 30
+
+[[menu.main]]
+  identifier = "tags"
+  name = "Tags"
+  url = "/tags/"
+  weight = 40
+
+[[menu.main]]
+  identifier = "about"
+  name = "About"
+  url = "/about/"
+  weight = 50
+
+[[menu.main]]
+  identifier = "search"
+  name = "Search"
+  url = "/search/"
+  weight = 60
+
+# Taxonomies
+[taxonomies]
+  category = "categories"
+  tag = "tags"
+
+# Output formats
+[outputs]
+  home = ["HTML", "RSS", "JSON"] # JSON for search
+  
+# Caching
 [caches]
   [caches.images]
     dir = ':cacheDir/images'
+  [caches.assets]
+    dir = ':cacheDir/assets'
+
+# SEO and social sharing
+[params.opengraph]
+  title = "AI Engineering Workstation"
+  description = "Deep technical insights on building high-performance AI engineering workstations"
+  images = ["/images/ai-workstation-cover.png"]
+  
+[params.twitter]
+  card = "summary_large_image"
+  title = "AI Engineering Workstation"
+  description = "Technical blog on AI workstation optimization and containerized model deployment"
+  images = ["/images/ai-workstation-cover.png"]
