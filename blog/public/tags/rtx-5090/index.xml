@@ -6,19 +6,19 @@
     <description>Recent content in RTX 5090 on AI Engineering Workstation</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 24 Aug 2024 00:00:00 -0400</lastBuildDate>
+    <lastBuildDate>Sat, 24 Aug 2024 16:15:00 +0000</lastBuildDate>
     <atom:link href="http://localhost:1313/tags/rtx-5090/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Performance Benchmarking Results: Real-World AI Workstation Analysis</title>
       <link>http://localhost:1313/posts/performance-benchmarking-results-real-world-ai-workstation-analysis/</link>
-      <pubDate>Sat, 24 Aug 2024 00:00:00 -0400</pubDate>
+      <pubDate>Sat, 24 Aug 2024 16:15:00 +0000</pubDate>
       <guid>http://localhost:1313/posts/performance-benchmarking-results-real-world-ai-workstation-analysis/</guid>
       <description>&lt;h2 id=&#34;introduction&#34;&gt;Introduction&lt;/h2&gt;&#xA;&lt;p&gt;Lorem ipsum dolor sit amet, consectetur adipiscing elit. Performance validation is crucial when investing in high-end AI hardware. This article presents comprehensive benchmarking results from our AMD Ryzen 9950X + RTX 5090 AI engineering workstation, focusing on real-world AI inference scenarios.&lt;/p&gt;</description>
     </item>
     <item>
       <title>Building the Ultimate AI Workstation: AMD Ryzen 9950X &#43; RTX 5090</title>
       <link>http://localhost:1313/posts/building-the-ultimate-ai-workstation-amd-ryzen-9950x--rtx-5090/</link>
-      <pubDate>Tue, 20 Aug 2024 00:00:00 -0400</pubDate>
+      <pubDate>Tue, 20 Aug 2024 12:00:00 +0000</pubDate>
       <guid>http://localhost:1313/posts/building-the-ultimate-ai-workstation-amd-ryzen-9950x--rtx-5090/</guid>
       <description>&lt;h2 id=&#34;introduction&#34;&gt;Introduction&lt;/h2&gt;&#xA;&lt;p&gt;Lorem ipsum dolor sit amet, consectetur adipiscing elit. Building a high-performance AI engineering workstation requires careful consideration of both hardware architecture and software optimization. In this comprehensive guide, we explore the design decisions behind selecting AMD&amp;rsquo;s latest Zen 5 architecture paired with NVIDIA&amp;rsquo;s Blackwell-based RTX 5090.&lt;/p&gt;</description>
     </item>

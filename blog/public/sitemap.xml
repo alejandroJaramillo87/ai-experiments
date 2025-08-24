@@ -2,95 +2,95 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
+    <loc>http://localhost:1313/</loc>
+    <lastmod>2024-08-24T16:15:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/categories/ai-engineering/performance/</loc>
+    <lastmod>2024-08-24T16:15:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/tags/ai-inference/</loc>
+    <lastmod>2024-08-24T16:15:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/tags/amd-ryzen-9950x/</loc>
+    <lastmod>2024-08-24T16:15:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/categories/benchmarking/</loc>
+    <lastmod>2024-08-24T16:15:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/tags/benchmarking/</loc>
+    <lastmod>2024-08-24T16:15:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/categories/</loc>
+    <lastmod>2024-08-24T16:15:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/tags/optimization/</loc>
+    <lastmod>2024-08-24T16:15:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/tags/performance-analysis/</loc>
+    <lastmod>2024-08-24T16:15:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/posts/performance-benchmarking-results-real-world-ai-workstation-analysis/</loc>
+    <lastmod>2024-08-24T16:15:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/posts/</loc>
+    <lastmod>2024-08-24T16:15:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/tags/rtx-5090/</loc>
+    <lastmod>2024-08-24T16:15:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/tags/</loc>
+    <lastmod>2024-08-24T16:15:00+00:00</lastmod>
+  </url><url>
     <loc>http://localhost:1313/about/</loc>
     <lastmod>2024-08-24T00:00:00-04:00</lastmod>
   </url><url>
-    <loc>http://localhost:1313/categories/ai-engineering/</loc>
-    <lastmod>2024-08-24T00:00:00-04:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/</loc>
-    <lastmod>2024-08-24T00:00:00-04:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/tags/ai-inference/</loc>
-    <lastmod>2024-08-24T00:00:00-04:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/tags/amd-ryzen-9950x/</loc>
-    <lastmod>2024-08-24T00:00:00-04:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/categories/benchmarking/</loc>
-    <lastmod>2024-08-24T00:00:00-04:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/tags/benchmarking/</loc>
-    <lastmod>2024-08-24T00:00:00-04:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/categories/</loc>
-    <lastmod>2024-08-24T00:00:00-04:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/tags/optimization/</loc>
-    <lastmod>2024-08-24T00:00:00-04:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/categories/performance/</loc>
-    <lastmod>2024-08-24T00:00:00-04:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/tags/performance-analysis/</loc>
-    <lastmod>2024-08-24T00:00:00-04:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/posts/performance-benchmarking-results-real-world-ai-workstation-analysis/</loc>
-    <lastmod>2024-08-24T00:00:00-04:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/posts/</loc>
-    <lastmod>2024-08-24T00:00:00-04:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/tags/rtx-5090/</loc>
-    <lastmod>2024-08-24T00:00:00-04:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/tags/</loc>
-    <lastmod>2024-08-24T00:00:00-04:00</lastmod>
-  </url><url>
     <loc>http://localhost:1313/tags/ai-deployment/</loc>
-    <lastmod>2024-08-22T00:00:00-04:00</lastmod>
+    <lastmod>2024-08-22T14:30:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/categories/ai-engineering/devops/</loc>
+    <lastmod>2024-08-22T14:30:00+00:00</lastmod>
   </url><url>
     <loc>http://localhost:1313/tags/containerization/</loc>
-    <lastmod>2024-08-22T00:00:00-04:00</lastmod>
+    <lastmod>2024-08-22T14:30:00+00:00</lastmod>
   </url><url>
     <loc>http://localhost:1313/posts/containerizing-ai-workflows-docker-architecture-for-multi-model-deployment/</loc>
-    <lastmod>2024-08-22T00:00:00-04:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/categories/devops/</loc>
-    <lastmod>2024-08-22T00:00:00-04:00</lastmod>
+    <lastmod>2024-08-22T14:30:00+00:00</lastmod>
   </url><url>
     <loc>http://localhost:1313/categories/docker/</loc>
-    <lastmod>2024-08-22T00:00:00-04:00</lastmod>
+    <lastmod>2024-08-22T14:30:00+00:00</lastmod>
   </url><url>
     <loc>http://localhost:1313/tags/docker/</loc>
-    <lastmod>2024-08-22T00:00:00-04:00</lastmod>
+    <lastmod>2024-08-22T14:30:00+00:00</lastmod>
   </url><url>
     <loc>http://localhost:1313/tags/gpu-acceleration/</loc>
-    <lastmod>2024-08-22T00:00:00-04:00</lastmod>
+    <lastmod>2024-08-22T14:30:00+00:00</lastmod>
   </url><url>
     <loc>http://localhost:1313/tags/multi-model/</loc>
-    <lastmod>2024-08-22T00:00:00-04:00</lastmod>
+    <lastmod>2024-08-22T14:30:00+00:00</lastmod>
   </url><url>
     <loc>http://localhost:1313/tags/security/</loc>
-    <lastmod>2024-08-22T00:00:00-04:00</lastmod>
+    <lastmod>2024-08-22T14:30:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1313/categories/ai-engineering/hardware/</loc>
+    <lastmod>2024-08-20T12:00:00+00:00</lastmod>
   </url><url>
     <loc>http://localhost:1313/tags/ai-hardware/</loc>
-    <lastmod>2024-08-20T00:00:00-04:00</lastmod>
+    <lastmod>2024-08-20T12:00:00+00:00</lastmod>
   </url><url>
     <loc>http://localhost:1313/tags/blackwell/</loc>
-    <lastmod>2024-08-20T00:00:00-04:00</lastmod>
+    <lastmod>2024-08-20T12:00:00+00:00</lastmod>
   </url><url>
     <loc>http://localhost:1313/posts/building-the-ultimate-ai-workstation-amd-ryzen-9950x--rtx-5090/</loc>
-    <lastmod>2024-08-20T00:00:00-04:00</lastmod>
+    <lastmod>2024-08-20T12:00:00+00:00</lastmod>
   </url><url>
-    <loc>http://localhost:1313/categories/hardware/</loc>
-    <lastmod>2024-08-20T00:00:00-04:00</lastmod>
+    <loc>http://localhost:1313/categories/workstation-build/</loc>
+    <lastmod>2024-08-20T12:00:00+00:00</lastmod>
   </url><url>
     <loc>http://localhost:1313/tags/workstation-build/</loc>
-    <lastmod>2024-08-20T00:00:00-04:00</lastmod>
+    <lastmod>2024-08-20T12:00:00+00:00</lastmod>
   </url><url>
     <loc>http://localhost:1313/tags/zen-5/</loc>
-    <lastmod>2024-08-20T00:00:00-04:00</lastmod>
+    <lastmod>2024-08-20T12:00:00+00:00</lastmod>
   </url><url>
     <loc>http://localhost:1313/search/</loc>
   </url>

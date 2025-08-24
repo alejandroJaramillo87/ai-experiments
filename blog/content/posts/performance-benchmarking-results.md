@@ -1,15 +1,11 @@
 ---
 title: "Performance Benchmarking Results: Real-World AI Workstation Analysis"
-date: 2024-08-24
+date: 2024-08-24T16:15:00+00:00
 draft: false
+image: "images/performance-benchmarks.jpg"
 description: "Comprehensive performance analysis of the AMD Ryzen 9950X + RTX 5090 AI workstation. Real-world benchmarking results covering inference throughput, memory bandwidth, and thermal characteristics under sustained AI workloads."
-categories: ["Performance", "Benchmarking", "AI Engineering"]
+categories: ["AI Engineering/Performance", "Benchmarking"]
 tags: ["Benchmarking", "Performance Analysis", "RTX 5090", "AMD Ryzen 9950X", "AI Inference", "Optimization"]
-cover:
-    image: "/images/performance-benchmarks.jpg"
-    alt: "AI Workstation Performance Analysis"
-    caption: "Comprehensive benchmarking results showing GPU and CPU performance across different AI workloads"
-showToc: true
 ---
 
 ## Introduction

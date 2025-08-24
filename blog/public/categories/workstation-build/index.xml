@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>Zen 5 on AI Engineering Workstation</title>
-    <link>http://localhost:1313/tags/zen-5/</link>
-    <description>Recent content in Zen 5 on AI Engineering Workstation</description>
+    <title>Workstation Build on AI Engineering Workstation</title>
+    <link>http://localhost:1313/categories/workstation-build/</link>
+    <description>Recent content in Workstation Build on AI Engineering Workstation</description>
     <generator>Hugo</generator>
     <language>en-us</language>
     <lastBuildDate>Tue, 20 Aug 2024 12:00:00 +0000</lastBuildDate>
-    <atom:link href="http://localhost:1313/tags/zen-5/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="http://localhost:1313/categories/workstation-build/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Building the Ultimate AI Workstation: AMD Ryzen 9950X &#43; RTX 5090</title>
       <link>http://localhost:1313/posts/building-the-ultimate-ai-workstation-amd-ryzen-9950x--rtx-5090/</link>

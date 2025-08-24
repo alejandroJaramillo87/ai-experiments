@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>Optimization on AI Engineering Workstation</title>
-    <link>http://localhost:1313/tags/optimization/</link>
-    <description>Recent content in Optimization on AI Engineering Workstation</description>
+    <title>AI Engineering/Performance on AI Engineering Workstation</title>
+    <link>http://localhost:1313/categories/ai-engineering/performance/</link>
+    <description>Recent content in AI Engineering/Performance on AI Engineering Workstation</description>
     <generator>Hugo</generator>
     <language>en-us</language>
     <lastBuildDate>Sat, 24 Aug 2024 16:15:00 +0000</lastBuildDate>
-    <atom:link href="http://localhost:1313/tags/optimization/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="http://localhost:1313/categories/ai-engineering/performance/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Performance Benchmarking Results: Real-World AI Workstation Analysis</title>
       <link>http://localhost:1313/posts/performance-benchmarking-results-real-world-ai-workstation-analysis/</link>

@@ -1,15 +1,11 @@
 ---
 title: "Building the Ultimate AI Workstation: AMD Ryzen 9950X + RTX 5090"
-date: 2024-08-20
+date: 2024-08-20T12:00:00+00:00
 draft: false
+image: "images/ai-workstation-hero.jpg"
 description: "Comprehensive guide to selecting and configuring high-performance hardware for AI engineering workloads. Deep dive into AMD Zen 5 and NVIDIA Blackwell architecture optimization."
-categories: ["Hardware", "AI Engineering"]
+categories: ["AI Engineering/Hardware", "Workstation Build"]
 tags: ["AMD Ryzen 9950X", "RTX 5090", "Zen 5", "Blackwell", "AI Hardware", "Workstation Build"]
-cover:
-    image: "/images/ai-workstation-hero.jpg"
-    alt: "AI Engineering Workstation Build"
-    caption: "AMD Ryzen 9950X + RTX 5090 AI engineering workstation optimized for dual GPU/CPU inference patterns"
-showToc: true
 ---
 
 ## Introduction
