@@ -1,127 +1,161 @@
+######################## default configuration ####################
 baseURL = 'https://alejandrojaramillo87.github.io'
 languageCode = 'en-us'
 title = 'AI Engineering Workstation'
-theme = 'PaperMod'
-
-# Enable emoji support
+theme = 'the-article-hugo'
+# Default time zone for time stamps
+timeZone = "America/New_York"
+# post pagination
+pagination.pagerSize = 6
+# post excerpt
+summaryLength = 20
+# enable emoji support
 enableEmoji = true
 
+############################# Outputs ##############################
+[permalinks]
+posts = "/:sections/:title/"
+
+############################# Markup ###############################
+[markup.goldmark.renderer]
+unsafe = true
+
+[markup.tableOfContents]
+startLevel = 1
+endLevel = 4
+ordered = false
+
 # Enable syntax highlighting
-[markup]
-  [markup.highlight]
-    style = "github"
-    lineNos = true
-    lineNumbersInTable = false
-    noClasses = false
+[markup.highlight]
+style = "github"
+lineNos = true
+lineNumbersInTable = false
+noClasses = false
 
+########################## default parameters ############################
 [params]
-  # Site description for SEO
-  description = "Building and optimizing AI engineering workstations for maximum performance. Deep technical insights on hardware, containerization, and AI model deployment."
-  
-  # Author information
-  author = "Alejandro"
-  
-  # Social links
-  [[params.socialIcons]]
-    name = "github"
-    url = "https://github.com/alejandroJaramillo87/ai-workstation"
-  
-  # Home info mode
-  homeInfoParams.Title = "AI Engineering Workstation"
-  homeInfoParams.Content = """
-  Welcome to my technical blog documenting the journey of building and optimizing a high-performance AI engineering workstation.
-  
-  **Focus Areas:**
-  - AMD Ryzen 9950X + RTX 5090 optimization
-  - Containerized AI model deployment
-  - Performance benchmarking and analysis
-  - Hardware configuration and tuning
-  """
-  
-  # Enable search
-  fuseOpts.includeScore = true
-  fuseOpts.minMatchCharLength = 2
-  
-  # Show reading time
-  ShowReadingTime = true
-  
-  # Show table of contents
-  ShowToc = true
-  TocOpen = false
-  
-  # Show code copy button
-  ShowCodeCopyButtons = true
-  
-  # Enable breadcrumbs
-  ShowBreadCrumbs = true
-  
-  # Show post navigation
-  ShowPostNavLinks = true
-  
-  # Date format
-  DateFormat = "January 2, 2006"
+# Site branding
+logo = "images/ai-workstation-hero.jpg"
+logo_width = "150px"
+favicon = "images/favicon.png"
 
-# Menu configuration
-[[menu.main]]
-  identifier = "home"
-  name = "Home"
-  url = "/"
-  weight = 10
+# Meta data
+description = "Building and optimizing AI engineering workstations for maximum performance. Deep technical insights on hardware, containerization, and AI model deployment."
+author = "Alejandro"
+og_image = "/images/ai-workstation-cover.png"
 
-[[menu.main]]
-  identifier = "posts"
-  name = "Posts"
-  url = "/posts/"
-  weight = 20
+# Copyright
+theme_copyright = true
+copyright = "Copyright © 2024 AI Engineering Workstation"
 
-[[menu.main]]
-  identifier = "categories"
-  name = "Categories"
-  url = "/categories/"
-  weight = 30
+# Search functionality
+search = true
 
+# Sidebar widgets
+widgets = ["about", "categories", "recommended"]
+
+# Main sections
+mainSections = ["posts"]
+
+# Custom script on header (optional)
+custom_script = ""
+
+# Theme color and font variables
+[params.variables]
+# Colors
+primary_color = "#2563eb"
+text_color = "#374151"
+text_color_dark = "#111827"
+text_color_light = "#6b7280"
+body_color = "#ffffff"
+border_color = "#e5e7eb"
+black = "#000000"
+white = "#ffffff"
+light = "#f9fafb"
+dark = "#1f2937"
+
+# Fonts
+primary_font = "Inter:wght@300;400;500;600;700"
+primary_font_type = "sans-serif"
+secondary_font = "JetBrains Mono:wght@400;500"
+secondary_font_type = "monospace"
+
+# Preloader
+[params.preloader]
+enable = false
+preloader = ""
+
+# Cookies (disabled for now)
+[params.cookies]
+enable = false
+expire_days = 2
+content = "This site uses cookies. By continuing to use this website, you agree to their use."
+button = "I Accept"
+
+############################# Menu ##############################
 [[menu.main]]
-  identifier = "tags"
-  name = "Tags"
-  url = "/tags/"
-  weight = 40
+identifier = "home"
+name = "Home"
+url = "/"
+weight = 10
 
 [[menu.main]]
-  identifier = "about"
-  name = "About"
-  url = "/about/"
-  weight = 50
+identifier = "posts"
+name = "Posts"
+url = "/posts/"
+weight = 20
 
 [[menu.main]]
-  identifier = "search"
-  name = "Search"
-  url = "/search/"
-  weight = 60
+identifier = "categories"
+name = "Categories"
+url = "/categories/"
+weight = 30
 
-# Taxonomies
+[[menu.main]]
+identifier = "about"
+name = "About"
+url = "/about/"
+weight = 40
+
+[[menu.main]]
+identifier = "search"
+name = "Search"
+url = "/search/"
+weight = 50
+
+############################# Taxonomies ##############################
 [taxonomies]
-  category = "categories"
-  tag = "tags"
+category = "categories"
+tag = "tags"
 
-# Output formats
+############################# Outputs ##############################
 [outputs]
-  home = ["HTML", "RSS", "JSON"] # JSON for search
-  
-# Caching
-[caches]
-  [caches.images]
-    dir = ':cacheDir/images'
-  [caches.assets]
-    dir = ':cacheDir/assets'
+home = ["HTML", "JSON", "RSS"]
 
-# SEO and social sharing
+############################# Caches ###############################
+[caches]
+[caches.images]
+dir = ":resourceDir/_gen"
+maxAge = "720h"
+
+[caches.assets]
+dir = ":resourceDir/_gen"
+maxAge = "720h"
+
+############################# Imaging ##############################
+[imaging]
+# Default JPEG or WebP quality setting. Default is 75.
+quality = 90
+resampleFilter = "lanczos"
+
+############################ SEO and Social ######################
 [params.opengraph]
-  title = "AI Engineering Workstation"
-  description = "Deep technical insights on building high-performance AI engineering workstations"
-  images = ["/images/ai-workstation-cover.png"]
-  
+title = "AI Engineering Workstation"
+description = "Deep technical insights on building high-performance AI engineering workstations"
+images = ["/images/ai-workstation-cover.png"]
+
 [params.twitter]
-  card = "summary_large_image"
-  title = "AI Engineering Workstation"
-  description = "Technical blog on AI workstation optimization and containerized model deployment"
-  images = ["/images/ai-workstation-cover.png"]
+card = "summary_large_image"
+title = "AI Engineering Workstation"
+description = "Technical blog on AI workstation optimization and containerized model deployment"
+images = ["/images/ai-workstation-cover.png"]
