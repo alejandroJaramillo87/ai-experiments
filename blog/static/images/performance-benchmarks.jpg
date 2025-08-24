@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
+  <defs>
+    <linearGradient id="chartBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f8fafc;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e2e8f0;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="800" height="400" fill="url(#chartBg)"/>
+  
+  <!-- Chart area -->
+  <rect x="80" y="50" width="640" height="280" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  
+  <!-- Grid lines -->
+  <g stroke="#e2e8f0" stroke-width="1" opacity="0.5">
+    <line x1="80" y1="110" x2="720" y2="110"/>
+    <line x1="80" y1="170" x2="720" y2="170"/>
+    <line x1="80" y1="230" x2="720" y2="230"/>
+    <line x1="80" y1="290" x2="720" y2="290"/>
+    
+    <line x1="200" y1="50" x2="200" y2="330"/>
+    <line x1="360" y1="50" x2="360" y2="330"/>
+    <line x1="520" y1="50" x2="520" y2="330"/>
+    <line x1="680" y1="50" x2="680" y2="330"/>
+  </g>
+  
+  <!-- Bars -->
+  <rect x="120" y="80" width="60" height="250" fill="#3b82f6" opacity="0.8"/>
+  <rect x="280" y="120" width="60" height="210" fill="#10b981" opacity="0.8"/>
+  <rect x="440" y="180" width="60" height="150" fill="#f59e0b" opacity="0.8"/>
+  <rect x="600" y="220" width="60" height="110" fill="#ef4444" opacity="0.8"/>
+  
+  <!-- Labels -->
+  <text x="150" y="350" text-anchor="middle" fill="#374151" font-family="Arial, sans-serif" font-size="12">7B Model</text>
+  <text x="310" y="350" text-anchor="middle" fill="#374151" font-family="Arial, sans-serif" font-size="12">13B Model</text>
+  <text x="470" y="350" text-anchor="middle" fill="#374151" font-family="Arial, sans-serif" font-size="12">30B Model</text>
+  <text x="630" y="350" text-anchor="middle" fill="#374151" font-family="Arial, sans-serif" font-size="12">70B Model</text>
+  
+  <!-- Y-axis labels -->
+  <text x="70" y="335" text-anchor="end" fill="#6b7280" font-family="Arial, sans-serif" font-size="10">0</text>
+  <text x="70" y="295" text-anchor="end" fill="#6b7280" font-family="Arial, sans-serif" font-size="10">50</text>
+  <text x="70" y="235" text-anchor="end" fill="#6b7280" font-family="Arial, sans-serif" font-size="10">100</text>
+  <text x="70" y="175" text-anchor="end" fill="#6b7280" font-family="Arial, sans-serif" font-size="10">150</text>
+  <text x="70" y="115" text-anchor="end" fill="#6b7280" font-family="Arial, sans-serif" font-size="10">200</text>
+  <text x="70" y="55" text-anchor="end" fill="#6b7280" font-family="Arial, sans-serif" font-size="10">250</text>
+  
+  <!-- Title -->
+  <text x="400" y="25" text-anchor="middle" fill="#1f2937" font-family="Arial, sans-serif" font-size="16" font-weight="bold">GPU Inference Performance (Tokens/Second)</text>
+  
+  <!-- Y-axis title -->
+  <text x="25" y="190" text-anchor="middle" fill="#6b7280" font-family="Arial, sans-serif" font-size="12" transform="rotate(-90 25 190)">Tokens/Second</text>
+</svg>
