@@ -1,0 +1,386 @@
+
+
+<!DOCTYPE html>
+<html lang="en-us">
+
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+	<meta charset="utf-8">
+<title>Benchmarking</title>
+
+
+
+
+
+<!-- theme meta -->
+<meta name="theme-name" content="the-article-hugo" />
+
+<meta name="description" content="Building and optimizing AI engineering workstations for maximum performance. Deep technical insights on hardware, containerization, and AI model deployment.">
+<meta name="author" content="Alejandro">
+<meta name="generator" content="Hugo 0.148.2">
+
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+
+
+<meta name="theme-color" content="#2563eb">
+
+
+<meta property="og:url" content="http://localhost:1313/categories/benchmarking/">
+  <meta property="og:site_name" content="AI Engineering Workstation">
+  <meta property="og:title" content="Benchmarking">
+  <meta property="og:description" content="Building and optimizing AI engineering workstations for maximum performance. Deep technical insights on hardware, containerization, and AI model deployment.">
+  <meta property="og:locale" content="en_us">
+  <meta property="og:type" content="website">
+
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Benchmarking">
+  <meta name="twitter:description" content="Building and optimizing AI engineering workstations for maximum performance. Deep technical insights on hardware, containerization, and AI model deployment.">
+
+
+
+	
+<link rel="shortcut icon" href="http://localhost:1313/images/favicon.png" type="image/x-icon">
+<link rel="icon" href="http://localhost:1313/images/favicon.png" type="image/x-icon">
+
+
+<meta http-equiv="x-dns-prefetch-control" content="on">
+<link rel="preconnect" href="//ajax.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link rel="preconnect" href="https://use.fontawesome.com" crossorigin>
+<link rel="preconnect" href="//cdnjs.cloudflare.com">
+<link rel="preconnect" href="//www.googletagmanager.com">
+<link rel="preconnect" href="//www.google-analytics.com">
+<link rel="dns-prefetch" href="https://fonts.gstatic.com">
+<link rel="dns-prefetch" href="https://use.fontawesome.com">
+<link rel="dns-prefetch" href="//ajax.googleapis.com">
+<link rel="dns-prefetch" href="//cdnjs.cloudflare.com">
+<link rel="dns-prefetch" href="//www.googletagmanager.com">
+<link rel="dns-prefetch" href="//www.google-analytics.com">
+<link rel="dns-prefetch" href="//fonts.googleapis.com">
+<link rel="dns-prefetch" href="//connect.facebook.net">
+<link rel="dns-prefetch" href="//platform.linkedin.com">
+<link rel="dns-prefetch" href="//platform.twitter.com">
+
+
+
+
+
+
+<style crossorigin="anonymous" media="all" type="text/css" integrity="sha512-YmL3XpIywxVbT0Xbl3h/Ez7CVm9eRHc2vbf&#43;BG&#43;rxt5gv3b6iaiZBQVPb8GEtSZuUtO5wYIE02lcxGiWC8p/Lg==">body{line-height:1.6;font-family:inter,sans-serif;-webkit-font-smoothing:antialiased;font-size:16px;color:#374151}p{font-weight:400;color:#374151;font-size:16px;line-height:1.6;font-family:inter,sans-serif}h1,h2,h3,h4,h5,h6{color:#111827;font-family:jetbrains mono,monospace;font-weight:700;line-height:1.2}h1,.h1{font-size:36px}h2,.h2{font-size:24px}h3,.h3{font-size:20px}h4,.h4{font-size:16px}h5,.h5{font-size:14px}h6,.h6{font-size:12px}.btn{font-size:18px;font-family:inter,sans-serif;font-weight:700;text-transform:capitalize;padding:10px 25px;border-radius:6px;border:1px solid;position:relative;z-index:1;transition:.2s ease}.btn:hover,.btn:active,.btn.active .btn:focus,.btn.focus{outline:0;box-shadow:none !important}.btn-primary{background:#2563eb;color:#fff;border-color:#2563eb}.btn-primary:hover,.btn-primary:active,.btn-primary.active .btn-primary:focus,.btn-primary.focus{background:#2563eb !important;border-color:#2563eb !important}.btn-outline-primary{background:0 0;color:#111827;border-color:#2563eb}.btn-outline-primary:hover,.btn-outline-primary:active,.btn-outline-primary.active .btn-outline-primary:focus,.btn-outline-primary.focus{background:#2563eb !important;border-color:#2563eb !important;color:#fff}.btn-sm{font-size:14px;padding:10px 25px}body{background-color:#fff;overflow-x:hidden}::selection{background:#5484ef;color:#fff}.preloader{position:fixed;top:0;left:0;right:0;bottom:0;background-color:#fff;z-index:9999;display:flex;align-items:center;justify-content:center}img{vertical-align:middle;border:0;max-width:100%;height:auto}a,a:hover,a:focus{text-decoration:none}a,button,select{cursor:pointer;transition:.2s ease}a:focus,button:focus,select:focus{outline:0}a:hover{color:#2563eb}.slick-slide{outline:0}.section{padding-top:30px;padding-bottom:30px}.title-border span{position:relative}.title-border span::before{position:absolute;height:2px;width:40px;background-color:#e5e7eb;content:"";right:calc(100% + 10px);top:55%}.title-border span::after{position:absolute;height:2px;width:40px;background-color:#e5e7eb;content:"";left:calc(100% + 10px);top:55%}.bg-cover{background-size:cover;background-position:50%;background-repeat:no-repeat}.border-default{border-color:#e5e7eb !important}.border-primary{border-color:#2563eb !important}.font-primary{font-family:inter,sans-serif !important}.font-weight-medium{font-weight:500 !important}.breadcrumb{background-color:transparent;justify-content:center}.breadcrumb-item{font-family:inter,sans-serif;letter-spacing:2px;font-size:10px;font-weight:600}.breadcrumb-item a{color:#2563eb}.overlay{position:relative}.overlay::before{position:absolute;content:'';height:100%;width:100%;top:0;left:0;background:#000;opacity:.5}.bg-primary{background:#2563eb !important}.text-primary{color:#2563eb !important}.text-default{color:#374151 !important}.bg-dark{background-color:#1f2937 !important}.notices{margin:2rem 0;position:relative;overflow:hidden}.notices p{padding:.7rem;margin-bottom:0}.notices p::before{position:absolute;top:9px;color:#fff;height:13px;width:13px;content:"";left:.7rem;background-image:url("data:image/svg+xml,%0A%3Csvg aria-hidden='true' role='img' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='white' d='M256 8C119.043 8 8 119.083 8 256c0 136.997 111.043 248 248 248s248-111.003 248-248C504 119.083 392.957 8 256 8zm0 110c23.196 0 42 18.804 42 42s-18.804 42-42 42-42-18.804-42-42 18.804-42 42-42zm56 254c0 6.627-5.373 12-12 12h-88c-6.627 0-12-5.373-12-12v-24c0-6.627 5.373-12 12-12h12v-64h-12c-6.627 0-12-5.373-12-12v-24c0-6.627 5.373-12 12-12h64c6.627 0 12 5.373 12 12v100h12c6.627 0 12 5.373 12 12v24z'%3E%3C/path%3E%3C/svg%3E")}.notices.note p{border-top:1.9rem solid #6ab0de;background:#e3f4ff}.notices.note p::after{content:'Note';position:absolute;top:2px;color:#fff;left:2rem}.notices.tip p{border-top:1.9rem solid #78c578;background:#e2ffe2}.notices.tip p::after{content:'Tip';position:absolute;top:2px;color:#fff;left:2rem}.notices.info p{border-top:1.9rem solid #f0b37e;background:#ffedde}.notices.info p::after{content:'Info';position:absolute;top:2px;color:#fff;left:2rem}.notices.warning p{border-top:1.9rem solid #e06f6c;background:#ffdad8}.notices.warning p::after{content:'Warning';position:absolute;top:2px;color:#fff;left:2rem}.navigation{background-color:#2563eb;padding:5px 0}.navbar-nav{flex-direction:row}.nav-item{margin:0}.nav-item .nav-link{font-size:16px;font-weight:500;letter-spacing:1.5px;font-family:inter,sans-serif;text-transform:capitalize;padding:0 10px;line-height:1}.nav-item:not(:last-child) .nav-link{border-right:1px solid #e5e7eb}.navbar-dark .navbar-nav .nav-link{color:#fff}.search input{max-width:190px;border:none;font:16px helvetica neue,Arial,Helvetica,Geneva,sans-serif;padding:5px 10px 5px 35px;background:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAEt2lUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4KPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iWE1QIENvcmUgNS41LjAiPgogPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4KICA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIgogICAgeG1sbnM6dGlmZj0iaHR0cDovL25zLmFkb2JlLmNvbS90aWZmLzEuMC8iCiAgICB4bWxuczpleGlmPSJodHRwOi8vbnMuYWRvYmUuY29tL2V4aWYvMS4wLyIKICAgIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIKICAgIHhtbG5zOnhtcD0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wLyIKICAgIHhtbG5zOnhtcE1NPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvbW0vIgogICAgeG1sbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIKICAgdGlmZjpJbWFnZUxlbmd0aD0iMzYiCiAgIHRpZmY6SW1hZ2VXaWR0aD0iMzYiCiAgIHRpZmY6UmVzb2x1dGlvblVuaXQ9IjIiCiAgIHRpZmY6WFJlc29sdXRpb249IjcyLjAiCiAgIHRpZmY6WVJlc29sdXRpb249IjcyLjAiCiAgIGV4aWY6UGl4ZWxYRGltZW5zaW9uPSIzNiIKICAgZXhpZjpQaXhlbFlEaW1lbnNpb249IjM2IgogICBleGlmOkNvbG9yU3BhY2U9IjEiCiAgIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiCiAgIHBob3Rvc2hvcDpJQ0NQcm9maWxlPSJzUkdCIElFQzYxOTY2LTIuMSIKICAgeG1wOk1vZGlmeURhdGU9IjIwMjAtMDMt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)6px 5px no-repeat #fff;background-size:18px}.search input:focus{border:none;outline:0}.navbar-footer{justify-content:center;flex-wrap:wrap}.navbar-footer .nav-item{margin:10px 0}.navbar-footer .nav-item .nav-link{color:#fff}.card{border:0;background-color:transparent}.card-meta{padding-left:0}.card-meta li{list-style-type:none;margin-right:10px;display:inline-block}.card-meta li a{font-weight:500;color:#6b7280;text-transform:uppercase;letter-spacing:2px}.card-meta li a:hover{color:#2563eb}.card-footer{background-color:transparent}.card-footer span{vertical-align:middle;color:#6b7280}.card-img{height:200px;width:100%;object-fit:cover}.post-title{color:inherit}a.post-title:hover{color:#2563eb}.pagination{justify-content:center}.pagination .page-item .page-link{display:inline-block;width:40px;height:40px;border-radius:0;border:1px solid #e5e7eb;text-align:center;margin-right:6px;font-weight:600;color:#2563eb;line-height:1.5}.pagination .page-item .page-link:hover{background:#2563eb;color:#fff}.pagination .page-item:first-child .page-link,.pagination .page-item:last-child .page-link{border-radius:0}.pagination .page-item.active .page-link{background:#2563eb;color:#fff;border-color:#2563eb}.post-meta{padding-left:0}.post-meta li{list-style-type:none;display:inline-block;color:#6b7280;font-weight:500}.post-meta li a{color:inherit}.post-meta li a:hover{color:#2563eb}.post-meta li svg{display:inline-block}.image-fallback{font-size:0;height:200px;width:100%;background-color:#2563eb;text-align:center}.image-fallback::first-letter{font-size:80px;line-height:200px;font-weight:700;color:#fff}.image-fallback.post-thumb-sm::first-letter{font-size:50px;line-height:60px}.breadcrumbs{background-color:transparent;padding:15px 0}.breadcrumbs a{color:#374151}.breadcrumbs a:last-child{color:#2563eb}.content *{margin-bottom:20px}.content a{text-decoration:underline;color:inherit !important}.content h1,.content h2,.content h3,.content h4,.content h5,.content h6{margin-bottom:10px}.content ol{padding-left:20px}.content ul{padding-left:0}.content ul li{position:relative;padding-left:15px;margin-bottom:10px;list-style-type:none}.content ul li a{display:inline-block;margin-bottom:10px}.content ul li::before{position:absolute;content:"";height:10px;width:10px;border-radius:100%;left:0;top:7px;background-color:#2563eb;transition:.3s ease}.content table{text-align:left;width:100%;max-width:100%;margin-bottom:1rem;border:1px solid #dee2e6}.content table th,.content table td{padding:.75rem;vertical-align:top;border:1px solid #dee2e6}.content table thead{background:#f3f5f7}.content table tbody{background:#f9fafb}.content table tbody td{text-align:left !important}.content blockquote{border-left:1px solid #2563eb;padding:20px}.content blockquote p{margin-bottom:0;color:#374151;font-style:italic;font-size:22px;font-weight:500}.content pre{padding:10px 20px;background:#f9fafb}.widget{margin-bottom:50px}.widget-header{background-color:#2563eb;color:#fff;text-transform:uppercase;padding:15px 20px;font-family:inter,sans-serif;letter-spacing:1px;border-radius:5px 5px 0 0;margin-bottom:-1px;position:relative}.widget-header::before{position:absolute;content:"";border-left:10px solid transparent;border-right:10px solid transparent;border-top:10px solid #2563eb;left:50%;bottom:-10px;transform:translateX(-50%)}.widget-body{padding:20px;border:1px solid #e5e7eb;border-radius:0 0 5px 5px}.widget-title{margin-bottom:20px;position:relative;text-align:center}.widget-title::before{position:absolute;left:50%;bottom:-10px;height:1px;width:40px;background-color:#e5e7eb;transform:translateX(-50%);content:""}.widget-list{margin-bottom:0;padding-left:0}.widget-list li{list-style-type:none}.widget-list li a{color:#374151;padding:10px 0;font-weight:500}.widget-list li a:hover{color:#2563eb}.widget-list li:not(:last-child){border-bottom:1px solid #e5e7eb}.author-thumb-sm{height:150px;width:150px;object-fit:cover;box-shadow:0 0 0 5px #2563eb;margin-top:10px}.post-thumb-sm{height:80px;width:100px;object-fit:cover;border-radius:6px}.copyright{background-color:#1a1a1a;color:rgba(255,255,255,.6);padding:10px;font-size:14px;font-weight:500;text-align:center}</style>
+</head>
+
+<body>
+	
+	
+<header class="navigation">
+  <div class="container">
+    
+    <nav class="navbar navbar-expand-lg navbar-dark">
+      <a class="navbar-brand order-1" href="/">
+        
+        <img class="img-fluid" width="150px" src="http://localhost:1313/images/ai-workstation-hero.jpg"
+          alt="AI Engineering Workstation">
+        
+      </a>
+      
+      
+      <form action="/search" class="search order-lg-3 order-2">
+        <input id="search-query" name="s" type="search" placeholder="Search...">
+      </form>
+      
+      <button aria-label="navbar toggler" class="navbar-toggler border-0 order-3" type="button" data-toggle="collapse" data-target="#navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      
+      <div class="collapse navbar-collapse text-center order-lg-2 order-4" id="navigation">
+        <ul class="navbar-nav mx-auto  my-4 my-lg-0">
+          
+          
+          <li class="nav-item">
+            <a class="nav-link" 
+              href="/">Home</a>
+          </li>
+          
+          
+          
+          <li class="nav-item">
+            <a class="nav-link" 
+              href="/posts/">Posts</a>
+          </li>
+          
+          
+          
+          <li class="nav-item">
+            <a class="nav-link" 
+              href="/categories/">Categories</a>
+          </li>
+          
+          
+          
+          <li class="nav-item">
+            <a class="nav-link" 
+              href="/about/">About</a>
+          </li>
+          
+          
+          
+          <li class="nav-item">
+            <a class="nav-link" 
+              href="/search/">Search</a>
+          </li>
+          
+          
+        </ul>
+      </div>
+    </nav>
+  </div>
+</header>
+
+	<main>
+		
+
+
+
+
+<section class="section">
+  <div class="container">
+    <div class="row">
+      <div class="col-12">
+        <div class="breadcrumbs">
+  
+  
+  <a href="/">Home</a>
+  
+  
+  
+  » <a href="http://localhost:1313/categories/">Categories</a>
+  
+  
+  
+  
+  
+  » <a href="http://localhost:1313/categories/benchmarking/">Benchmarking</a>
+  
+  
+  
+  
+  
+  
+</div>
+        <h1 class="mb-4 border-bottom border-primary d-inline-block">Benchmarking</h1>
+      </div>
+      <div class="col-lg-8 mb-5 mb-lg-0">
+        <div class="row">
+          
+          <div class="col-md-6 mb-4">
+  <article class="card">
+    
+    <span class="image-fallback rounded">Performance Benchmarking Results: Real-World AI Workstation Analysis</span>
+    
+    <div class="card-body px-0">
+      
+      <ul class="post-meta mb-2">
+        <li class="mr-2"><svg style="margin-right:5px;" width="16" height="16" viewBox="0 0 16 16" fill="none"
+            xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M13.8486 6.39151C14.3229 5.90963 14.5883 5.27999 14.5883 4.60046C14.5883 3.18587 13.4373 2.03481 12.0236 2.03481C11.1897 2.03481 10.4283 2.44328 9.94645 3.11716C9.47492 2.97128 8.98081 2.88281 8.47069 2.84704V1.88234H9.41186V0.941162H6.58834V1.88234H7.52951V2.84704C7.01939 2.88281 6.52528 2.97128 6.05375 3.11716C5.57187 2.44234 4.81139 2.03481 3.97657 2.03481C2.56292 2.03481 1.41187 3.18587 1.41187 4.60046C1.41187 5.28093 1.67728 5.91057 2.15163 6.39151C1.68198 7.29693 1.41187 8.32281 1.41187 9.41175C1.41187 11.0183 1.99163 12.4903 2.95069 13.6348L1.74128 15.247L2.49422 15.8117L3.6161 14.3153C4.78222 15.359 6.31539 16 8.0001 16C9.68481 16 11.218 15.359 12.3841 14.3153L13.506 15.8117L14.2589 15.247L13.0495 13.6348C14.0086 12.4903 14.5883 11.0183 14.5883 9.41175C14.5883 8.32281 14.3182 7.29693 13.8486 6.39151ZM12.0236 2.97599C12.9187 2.97599 13.6472 3.70446 13.6472 4.60046C13.6472 4.95152 13.5342 5.28187 13.3319 5.55763C12.6937 4.67669 11.8439 3.96328 10.8566 3.48516C11.1596 3.1661 11.5737 2.97599 12.0236 2.97599ZM2.35304 4.60046C2.35304 3.7054 3.08151 2.97599 3.97657 2.97599C4.42645 2.97599 4.84057 3.1661 5.14363 3.48422C4.15634 3.96234 3.30739 4.67669 2.66834 5.55669C2.46598 5.28093 2.35304 4.95152 2.35304 4.60046ZM8.0001 15.0588C4.88575 15.0588 2.35304 12.5261 2.35304 9.41175C2.35304 6.2974 4.88575 3.76469 8.0001 3.76469C11.1145 3.76469 13.6472 6.2974 13.6472 9.41175C13.6472 12.5261 11.1145 15.0588 8.0001 15.0588ZM8.47069 9.41175H12.2354V10.3529H7.52951V6.58822H8.47069V9.41175Z"
+              fill="#8C8C8E" />
+          </svg>Aug 24, 2024
+        </li>
+        <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+            xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M3.35254 0.941162V15.4908L7.76289 12.4132L12.2354 15.4814V0.941162H3.35254ZM11.2942 13.695L7.75913 11.2687L4.29466 13.6856V1.88234H11.2942V13.695Z"
+              fill="#8C8C8E" />
+          </svg>
+          
+          <a href="http://localhost:1313/categories/Performance/">Performance</a>
+          
+          <a href="http://localhost:1313/categories/Performance//"></a>,
+          <a href="http://localhost:1313/categories/Benchmarking/">Benchmarking</a>
+          ,
+          <a href="http://localhost:1313/categories/Benchmarking//"></a>,
+          <a href="http://localhost:1313/categories/AI%20Engineering/">AI Engineering</a>
+          ,
+          <a href="http://localhost:1313/categories/AI%20Engineering//"></a>
+        </li>
+      </ul>
+      
+      <h2><a class="post-title" href="http://localhost:1313/posts/performance-benchmarking-results-real-world-ai-workstation-analysis/">Performance Benchmarking Results: Real-World AI Workstation Analysis</a></h2>
+      <p class="card-text"><h2 id="introduction">Introduction</h2>
+<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Performance validation is crucial when investing in high-end AI hardware. This article presents comprehensive benchmarking results from our AMD Ryzen 9950X + RTX 5090 AI engineering workstation, focusing on real-world AI inference scenarios.</p></p>
+    </div>
+  </article>
+</div>
+          
+        </div>
+      </div>
+      
+      <div class="col-lg-4">
+  
+  
+  
+  
+<div class="widget text-center">
+  
+  
+    <h2 class="widget-title">About</h2>
+    <p class="px-3">About This Blog Welcome to my technical documentation of building and optimizing a high-performance AI engineering workstation. This blog chronicles the complete journey from component selection to production deployment, focusing on maximizing …</p>
+    <a href="http://localhost:1313/about/" class="btn btn-sm btn-outline-primary">Know More</a>
+    
+  </div>
+</div>
+<div class="widget">
+  <h4 class="widget-header text-center">Category</h4>
+  <div class="widget-body">
+    
+    
+    <ul class="widget-list">
+      
+      <li>
+        <a class="d-flex align-items-center" href="/categories/ai-engineering/">
+        <span class="text-primary mr-1">#</span>ai engineering
+        <span class="ml-auto">(3)</span></a>
+      </li>
+      
+      <li>
+        <a class="d-flex align-items-center" href="/categories/benchmarking/">
+        <span class="text-primary mr-1">#</span>benchmarking
+        <span class="ml-auto">(1)</span></a>
+      </li>
+      
+      <li>
+        <a class="d-flex align-items-center" href="/categories/devops/">
+        <span class="text-primary mr-1">#</span>devops
+        <span class="ml-auto">(1)</span></a>
+      </li>
+      
+      <li>
+        <a class="d-flex align-items-center" href="/categories/docker/">
+        <span class="text-primary mr-1">#</span>docker
+        <span class="ml-auto">(1)</span></a>
+      </li>
+      
+      <li>
+        <a class="d-flex align-items-center" href="/categories/hardware/">
+        <span class="text-primary mr-1">#</span>hardware
+        <span class="ml-auto">(1)</span></a>
+      </li>
+      
+      <li>
+        <a class="d-flex align-items-center" href="/categories/performance/">
+        <span class="text-primary mr-1">#</span>performance
+        <span class="ml-auto">(1)</span></a>
+      </li>
+      
+    </ul>
+    
+    
+  </div>
+</div><div class="widget">
+  <h4 class="widget-header text-center">Recommended</h4>
+  <div class="widget-body">
+    <ul class="widget-list">
+      
+      
+      <li class="media py-3 align-items-center">
+        
+        <a href="http://localhost:1313/posts/performance-benchmarking-results-real-world-ai-workstation-analysis/" class="image-fallback post-thumb-sm">Performance Benchmarking Results: Real-World AI Workstation Analysis</a>
+        
+        <div class="media-body ml-2">
+          <h4><a class="post-title" href="http://localhost:1313/posts/performance-benchmarking-results-real-world-ai-workstation-analysis/">Performance Benchmarking Results: Real-World AI Workstation Analysis</a></h4>
+        </div>
+      </li>
+      
+      <li class="media py-3 align-items-center">
+        
+        <a href="http://localhost:1313/posts/containerizing-ai-workflows-docker-architecture-for-multi-model-deployment/" class="image-fallback post-thumb-sm">Containerizing AI Workflows: Docker Architecture for Multi-Model Deployment</a>
+        
+        <div class="media-body ml-2">
+          <h4><a class="post-title" href="http://localhost:1313/posts/containerizing-ai-workflows-docker-architecture-for-multi-model-deployment/">Containerizing AI Workflows: Docker Architecture for Multi-Model Deployment</a></h4>
+        </div>
+      </li>
+      
+      <li class="media py-3 align-items-center">
+        
+        <a href="http://localhost:1313/posts/building-the-ultimate-ai-workstation-amd-ryzen-9950x--rtx-5090/" class="image-fallback post-thumb-sm">Building the Ultimate AI Workstation: AMD Ryzen 9950X &#43; RTX 5090</a>
+        
+        <div class="media-body ml-2">
+          <h4><a class="post-title" href="http://localhost:1313/posts/building-the-ultimate-ai-workstation-amd-ryzen-9950x--rtx-5090/">Building the Ultimate AI Workstation: AMD Ryzen 9950X &#43; RTX 5090</a></h4>
+        </div>
+      </li>
+      
+    </ul>
+  </div>
+</div>
+</div>
+    </div>
+  </div>
+</section>
+
+
+
+
+
+
+	</main>
+	<footer class="bg-primary">
+	<div class="container section">
+		<div class="row">
+			<div class="col-lg-10 mx-auto text-center">
+				<a class="mb-4 d-inline-block" href="/">
+					
+					<img class="img-fluid" width="150px" src="http://localhost:1313/images/ai-workstation-hero.jpg"
+						alt="AI Engineering Workstation">
+					
+				</a>
+				<ul class="navbar-nav navbar-footer">
+					
+				</ul>
+			</div>
+		</div>
+	</div>
+	<div class="copyright content">Copyright © 2024 AI Engineering Workstation
+  
+    | Theme by
+    <a
+      target="_blank"
+      rel="noopener noreferrer"
+      href="https://gethugothemes.com/"
+      >GetHugoThemes</a
+    >
+  </div>
+</footer>
+	
+<script src="https://cdn.jsdelivr.net/gh/theprojectsomething/webfontloader@feature/google-fonts-v2/webfontloader.js"></script>
+
+
+<script type="application/javascript">
+  WebFont.load({
+    google: {
+      api: 'https://fonts.googleapis.com/css2',
+      families: ['Inter:wght@300;400;500;600;700','JetBrains Mono:wght@400;500&display=swap'],
+      version: 2
+    },
+    active: () => {
+      sessionStorage.fontsLoaded = true
+    }
+  });
+</script>
+
+
+
+
+
+
+<script crossorigin="anonymous" defer="defer" data-turbolinks-suppress-warning integrity="sha512-FXk5s3lxfgtIl6lDfOcRpUDvgPJe/ozpGROLTFO&#43;LSWGyWmD/BLyuigDYNKjVn9ICjI7JNvaYIb2MVpGIrKzTw==" type="application/javascript">jQuery.event.special.touchstart={setup:function(e,t,n){this.addEventListener("touchstart",n,{passive:!t.includes("noPreventDefault")})}},jQuery.event.special.touchmove={setup:function(e,t,n){this.addEventListener("touchmove",n,{passive:!t.includes("noPreventDefault")})}};function preloader(){$(".preloader").delay(100).fadeOut(10)}$(preloader),$(document).on("turbolinks:load",preloader),function(e){"use strict";e(".tab-content").find(".tab-pane").each(function(){var t=e(this).closest(".code-tabs").find(".nav-tabs"),n=e(this).attr("title");t.append('<li class="nav-item"><a class="nav-link" href="#">'+n+"</a></li>")}),e(".code-tabs ul.nav-tabs").each(function(){e(this).find("li:first").addClass("active")}),e(".code-tabs .tab-content").each(function(){e(this).find("div:first").addClass("active")}),e(".nav-tabs a").click(function(t){t.preventDefault();var n=e(this).parent(),o=n.index(),s=e(this).closest(".code-tabs"),i=s.find(".tab-pane").eq(o);s.find(".active").removeClass("active"),n.addClass("active"),i.addClass("active")}),e(".collapse").on("shown.bs.collapse",function(){e(this).parent().find(".ti-plus").removeClass("ti-plus").addClass("ti-minus")}).on("hidden.bs.collapse",function(){e(this).parent().find(".ti-minus").removeClass("ti-minus").addClass("ti-plus")})}(jQuery)</script>
+
+
+
+
+
+
+</body>
+
+</html>

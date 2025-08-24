@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Multi-Model on AI Engineering Workstation</title>
+    <link>http://localhost:1313/tags/multi-model/</link>
+    <description>Recent content in Multi-Model on AI Engineering Workstation</description>
+    <generator>Hugo</generator>
+    <language>en-us</language>
+    <lastBuildDate>Thu, 22 Aug 2024 00:00:00 -0400</lastBuildDate>
+    <atom:link href="http://localhost:1313/tags/multi-model/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Containerizing AI Workflows: Docker Architecture for Multi-Model Deployment</title>
+      <link>http://localhost:1313/posts/containerizing-ai-workflows-docker-architecture-for-multi-model-deployment/</link>
+      <pubDate>Thu, 22 Aug 2024 00:00:00 -0400</pubDate>
+      <guid>http://localhost:1313/posts/containerizing-ai-workflows-docker-architecture-for-multi-model-deployment/</guid>
+      <description>&lt;h2 id=&#34;introduction&#34;&gt;Introduction&lt;/h2&gt;&#xA;&lt;p&gt;Lorem ipsum dolor sit amet, consectetur adipiscing elit. Modern AI development requires sophisticated deployment strategies that balance performance, security, and resource utilization. This article explores advanced Docker containerization techniques specifically designed for AI workstation environments.&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>

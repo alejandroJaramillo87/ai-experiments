@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Workstation Build on AI Engineering Workstation</title>
+    <link>http://localhost:1313/tags/workstation-build/</link>
+    <description>Recent content in Workstation Build on AI Engineering Workstation</description>
+    <generator>Hugo</generator>
+    <language>en-us</language>
+    <lastBuildDate>Tue, 20 Aug 2024 00:00:00 -0400</lastBuildDate>
+    <atom:link href="http://localhost:1313/tags/workstation-build/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Building the Ultimate AI Workstation: AMD Ryzen 9950X &#43; RTX 5090</title>
+      <link>http://localhost:1313/posts/building-the-ultimate-ai-workstation-amd-ryzen-9950x--rtx-5090/</link>
+      <pubDate>Tue, 20 Aug 2024 00:00:00 -0400</pubDate>
+      <guid>http://localhost:1313/posts/building-the-ultimate-ai-workstation-amd-ryzen-9950x--rtx-5090/</guid>
+      <description>&lt;h2 id=&#34;introduction&#34;&gt;Introduction&lt;/h2&gt;&#xA;&lt;p&gt;Lorem ipsum dolor sit amet, consectetur adipiscing elit. Building a high-performance AI engineering workstation requires careful consideration of both hardware architecture and software optimization. In this comprehensive guide, we explore the design decisions behind selecting AMD&amp;rsquo;s latest Zen 5 architecture paired with NVIDIA&amp;rsquo;s Blackwell-based RTX 5090.&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>
