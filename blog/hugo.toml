@@ -1,161 +1,50 @@
-######################## default configuration ####################
-baseURL = 'https://alejandrojaramillo87.github.io'
-languageCode = 'en-us'
-title = 'AI Engineering Workstation'
-theme = 'the-article-hugo'
-# Default time zone for time stamps
-timeZone = "America/New_York"
-# post pagination
-pagination.pagerSize = 6
-# post excerpt
-summaryLength = 20
-# enable emoji support
-enableEmoji = true
+# This file is for render site varibles and plugins
+# don't remove this file.
+# The presence of this file is for compatibility with Blogdown and Forestry.
+#
+# The actual configuration files are stored in the `config/_default/` folder.
 
-############################# Outputs ##############################
-[permalinks]
-posts = "/:sections/:title/"
 
-############################# Markup ###############################
-[markup.goldmark.renderer]
-unsafe = true
-
-[markup.tableOfContents]
-startLevel = 1
-endLevel = 4
-ordered = false
-
-# Enable syntax highlighting
-[markup.highlight]
-style = "github"
-lineNos = true
-lineNumbersInTable = false
-noClasses = false
-
-########################## default parameters ############################
-[params]
-# Site branding
-logo = "images/ai-workstation-hero.jpg"
-logo_width = "150px"
-favicon = "images/favicon.png"
-
-# Meta data
-description = "Building and optimizing AI engineering workstations for maximum performance. Deep technical insights on hardware, containerization, and AI model deployment."
-author = "Alejandro"
-og_image = "/images/ai-workstation-cover.png"
-
-# Copyright
-theme_copyright = true
-copyright = "Copyright © 2024 AI Engineering Workstation"
-
-# Search functionality
-search = true
-
-# Sidebar widgets
-widgets = ["about", "categories", "recommended"]
-
-# Main sections
-mainSections = ["posts"]
-
-# Custom script on header (optional)
-custom_script = ""
-
-# Theme color and font variables
+######################### site variables ##############################
+# customize your color and font from here.
 [params.variables]
-# Colors
-primary_color = "#2563eb"
-text_color = "#374151"
-text_color_dark = "#111827"
-text_color_light = "#6b7280"
-body_color = "#ffffff"
-border_color = "#e5e7eb"
-black = "#000000"
-white = "#ffffff"
-light = "#f9fafb"
-dark = "#1f2937"
+primary_color = "#000"
+body_color = "#fff"
+text_color = "#333"
+text_color_dark = "#000"
+text_color_light = "#888"
+border_color = "#DEDEDE"
+black = "#000"
+white = "#fff"
+light = "#F6F6F6"
+dark = "222"
 
-# Fonts
-primary_font = "Inter:wght@300;400;500;600;700"
-primary_font_type = "sans-serif"
-secondary_font = "JetBrains Mono:wght@400;500"
-secondary_font_type = "monospace"
+# font variable
+# Give your font name from google font. add font weight using ":wght@" and separate by ";"
+# example: "Work Sans:wght@400;500;600"
+primary_font = "Work Sans"
+primary_font_type = "sans-serif" # [serif/sans-serif]
+secondary_font = "Cormorant Garamond:wght@700"
+secondary_font_type = "serif" # [serif/sans-serif]
 
-# Preloader
-[params.preloader]
-enable = false
-preloader = ""
 
-# Cookies (disabled for now)
-[params.cookies]
-enable = false
-expire_days = 2
-content = "This site uses cookies. By continuing to use this website, you agree to their use."
-button = "I Accept"
 
-############################# Menu ##############################
-[[menu.main]]
-identifier = "home"
-name = "Home"
-url = "/"
-weight = 10
+############################# Plugins ##############################
 
-[[menu.main]]
-identifier = "posts"
-name = "Posts"
-url = "/posts/"
-weight = 20
+# CSS Plugins
+[[params.plugins.css]]
+link = "plugins/bootstrap/bootstrap.min.css"
 
-[[menu.main]]
-identifier = "categories"
-name = "Categories"
-url = "/categories/"
-weight = 30
-
-[[menu.main]]
-identifier = "about"
-name = "About"
-url = "/about/"
-weight = 40
-
-[[menu.main]]
-identifier = "search"
-name = "Search"
-url = "/search/"
-weight = 50
-
-############################# Taxonomies ##############################
-[taxonomies]
-category = "categories"
-tag = "tags"
-
-############################# Outputs ##############################
-[outputs]
-home = ["HTML", "JSON", "RSS"]
-
-############################# Caches ###############################
-[caches]
-[caches.images]
-dir = ":resourceDir/_gen"
-maxAge = "720h"
-
-[caches.assets]
-dir = ":resourceDir/_gen"
-maxAge = "720h"
-
-############################# Imaging ##############################
-[imaging]
-# Default JPEG or WebP quality setting. Default is 75.
-quality = 90
-resampleFilter = "lanczos"
-
-############################ SEO and Social ######################
-[params.opengraph]
-title = "AI Engineering Workstation"
-description = "Deep technical insights on building high-performance AI engineering workstations"
-images = ["/images/ai-workstation-cover.png"]
-
-[params.twitter]
-card = "summary_large_image"
-title = "AI Engineering Workstation"
-description = "Technical blog on AI workstation optimization and containerized model deployment"
-images = ["/images/ai-workstation-cover.png"]
+# JS Plugins
+[[params.plugins.js]]
+link = "plugins/jQuery/jquery.min.js"
+[[params.plugins.js]]
+link = "plugins/bootstrap/bootstrap.min.js"
+[[params.plugins.js]]
+link = "plugins/turbolinks/turbolinks.js"
+[[params.plugins.js]]
+link = "plugins/search/fuse.min.js"
+[[params.plugins.js]]
+link = "plugins/search/mark.js"
+[[params.plugins.js]]
+link = "plugins/search/search.js"
