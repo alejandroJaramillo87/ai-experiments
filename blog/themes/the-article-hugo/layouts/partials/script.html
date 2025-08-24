@@ -21,12 +21,20 @@
 {{ if findRE "^http" .link }}
 <script src="{{ .link | absURL }}" type="application/javascript" {{.attributes | safeHTMLAttr}}></script>
 {{ else }}
-{{ $scripts = $scripts | append (resources.Get .link) }}
+{{ $script := resources.Get .link }}
+{{ if $script }}
+{{ $scripts = $scripts | append $script }}
 {{ end }}
 {{ end }}
-{{ $scripts := $scripts | append (resources.Get "js/script.js" | minify) }}
+{{ end }}
+{{ $mainScript := resources.Get "js/script.js" }}
+{{ if $mainScript }}
+{{ $scripts = $scripts | append ($mainScript | minify) }}
+{{ end }}
+{{ if $scripts }}
 {{ $scripts := $scripts | resources.Concat "/js/script.js" | minify | fingerprint "sha512" }}
 <script crossorigin="anonymous" defer="defer" data-turbolinks-suppress-warning integrity="{{ $scripts.Data.Integrity }}" type="application/javascript">{{$scripts.Content | safeJS}}</script>
+{{ end }}
 
 
 <!-- cookie -->
