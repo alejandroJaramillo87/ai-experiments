@@ -1,0 +1,42 @@
+{
+  "suite_name": "Instruct Model Test Suite",
+  "suite_id": "instruct_comprehensive_v1",
+  "description": "Comprehensive test suite for instruct models with chat API format",
+  "version": "1.0.0",
+  "created_by": "Claude Code",
+  "api_config": {
+    "endpoint": "http://127.0.0.1:8005/v1/chat/completions",
+    "model": "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "type": "chat"
+  },
+  "global_settings": {
+    "default_timeout_seconds": 600,
+    "default_retry_attempts": 3,
+    "delay_between_tests": 1,
+    "output_directory": "test_results",
+    "save_raw_responses": true,
+    "save_evaluation_results": true,
+    "include_performance_metrics": true
+  },
+  "execution_modes": {
+    "sequential": {
+      "enabled": true,
+      "description": "Run tests one after another with delays"
+    },
+    "concurrent": {
+      "enabled": true,
+      "description": "Run multiple tests simultaneously",
+      "default_workers": 3,
+      "max_workers": 10
+    }
+  },
+  "evaluation_integration": {
+    "enabled": true,
+    "evaluator_module": "reasoning_evaluator",
+    "auto_detect_reasoning_type": true,
+    "generate_summary_reports": true
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "suite_name": "Advanced Long-Context Reasoning Test Suite",
+  "suite_id": "reasoning_comprehensive_v1",
+  "description": "Comprehensive 50-test suite for evaluating long-context reasoning capabilities across multiple reasoning types and domains",
+  "version": "1.0.0",
+  "created_by": "Claude Code",
+  "api_config": {
+    "endpoint": "http://127.0.0.1:8004/v1/completions",
+    "model": "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "type": "completions"
+  },
+  "global_settings": {
+    "default_timeout_seconds": 600,
+    "default_retry_attempts": 3,
+    "delay_between_tests": 1,
+    "output_directory": "test_results",
+    "save_raw_responses": true,
+    "save_evaluation_results": true,
+    "include_performance_metrics": true
+  },
+  "execution_modes": {
+    "sequential": {
+      "enabled": true,
+      "description": "Run tests one after another with delays"
+    },
+    "concurrent": {
+      "enabled": true,
+      "description": "Run multiple tests simultaneously",
+      "default_workers": 3,
+      "max_workers": 10
+    }
+  },
+  "evaluation_integration": {
+    "enabled": true,
+    "evaluator_module": "reasoning_evaluator",
+    "auto_detect_reasoning_type": true,
+    "generate_summary_reports": true
+  }
+}

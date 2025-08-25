@@ -1,0 +1,204 @@
+{
+  "categories": {
+    "reasoning_logic": {
+      "description": "Reasoning Logic tests",
+      "test_ids": [
+        "reasoning_test_01",
+        "reasoning_test_02",
+        "reasoning_test_03",
+        "reasoning_test_15"
+      ]
+    },
+    "reasoning_general": {
+      "description": "Reasoning General tests",
+      "test_ids": [
+        "reasoning_test_04",
+        "reasoning_test_05",
+        "reasoning_test_06",
+        "reasoning_test_07",
+        "reasoning_test_08",
+        "reasoning_test_09",
+        "reasoning_test_10",
+        "reasoning_test_11",
+        "reasoning_test_12",
+        "reasoning_test_14",
+        "reasoning_test_17",
+        "reasoning_test_19",
+        "reasoning_test_20",
+        "reasoning_test_21",
+        "reasoning_test_23",
+        "reasoning_test_25",
+        "reasoning_test_26",
+        "reasoning_test_31",
+        "reasoning_test_32",
+        "reasoning_test_33",
+        "reasoning_test_34",
+        "reasoning_test_35",
+        "reasoning_test_36",
+        "reasoning_test_37",
+        "reasoning_test_38",
+        "reasoning_test_39",
+        "reasoning_test_40"
+      ]
+    },
+    "reasoning_puzzle": {
+      "description": "Reasoning Puzzle tests",
+      "test_ids": [
+        "reasoning_test_13",
+        "reasoning_test_18",
+        "reasoning_test_24",
+        "reasoning_test_30"
+      ]
+    },
+    "reasoning_causal": {
+      "description": "Reasoning Causal tests",
+      "test_ids": [
+        "reasoning_test_16",
+        "reasoning_test_22",
+        "reasoning_test_27",
+        "reasoning_test_29"
+      ]
+    },
+    "reasoning_probabilistic": {
+      "description": "Reasoning Probabilistic tests",
+      "test_ids": [
+        "reasoning_test_28"
+      ]
+    },
+    "linux_monitoring": {
+      "description": "Linux Monitoring tests",
+      "test_ids": [
+        "linux_test_01",
+        "linux_test_04",
+        "linux_test_10",
+        "linux_test_28",
+        "linux_test_72",
+        "linux_test_82",
+        "linux_test_91"
+      ]
+    },
+    "linux_containers": {
+      "description": "Linux Containers tests",
+      "test_ids": [
+        "linux_test_02",
+        "linux_test_13",
+        "linux_test_25",
+        "linux_test_51",
+        "linux_test_63"
+      ]
+    },
+    "linux_security": {
+      "description": "Linux Security tests",
+      "test_ids": [
+        "linux_test_03",
+        "linux_test_05",
+        "linux_test_39",
+        "linux_test_45",
+        "linux_test_50"
+      ]
+    },
+    "linux_database": {
+      "description": "Linux Database tests",
+      "test_ids": [
+        "linux_test_06",
+        "linux_test_11",
+        "linux_test_24",
+        "linux_test_52",
+        "linux_test_56",
+        "linux_test_80"
+      ]
+    },
+    "linux_general": {
+      "description": "Linux General tests",
+      "test_ids": [
+        "linux_test_07",
+        "linux_test_09",
+        "linux_test_12",
+        "linux_test_14",
+        "linux_test_15",
+        "linux_test_16",
+        "linux_test_17",
+        "linux_test_18",
+        "linux_test_19",
+        "linux_test_20",
+        "linux_test_21",
+        "linux_test_22",
+        "linux_test_23",
+        "linux_test_27",
+        "linux_test_29",
+        "linux_test_30",
+        "linux_test_31",
+        "linux_test_32",
+        "linux_test_33",
+        "linux_test_34",
+        "linux_test_35",
+        "linux_test_37",
+        "linux_test_38",
+        "linux_test_40",
+        "linux_test_41",
+        "linux_test_42",
+        "linux_test_43",
+        "linux_test_44",
+        "linux_test_46",
+        "linux_test_47",
+        "linux_test_48",
+        "linux_test_49",
+        "linux_test_53",
+        "linux_test_55",
+        "linux_test_57",
+        "linux_test_58",
+        "linux_test_59",
+        "linux_test_60",
+        "linux_test_61",
+        "linux_test_64",
+        "linux_test_65",
+        "linux_test_66",
+        "linux_test_67",
+        "linux_test_68",
+        "linux_test_69",
+        "linux_test_70",
+        "linux_test_71",
+        "linux_test_73",
+        "linux_test_74",
+        "linux_test_76",
+        "linux_test_77",
+        "linux_test_78",
+        "linux_test_81",
+        "linux_test_83",
+        "linux_test_84",
+        "linux_test_85",
+        "linux_test_86",
+        "linux_test_87",
+        "linux_test_88",
+        "linux_test_89",
+        "linux_test_90",
+        "linux_test_92",
+        "linux_test_93",
+        "linux_test_94",
+        "linux_test_95",
+        "linux_test_96",
+        "linux_test_97",
+        "linux_test_98",
+        "linux_test_99",
+        "linux_test_100"
+      ]
+    },
+    "linux_networking": {
+      "description": "Linux Networking tests",
+      "test_ids": [
+        "linux_test_08",
+        "linux_test_36",
+        "linux_test_54",
+        "linux_test_62",
+        "linux_test_79"
+      ]
+    },
+    "linux_automation": {
+      "description": "Linux Automation tests",
+      "test_ids": [
+        "linux_test_26",
+        "linux_test_75"
+      ]
+    }
+  }
+}
