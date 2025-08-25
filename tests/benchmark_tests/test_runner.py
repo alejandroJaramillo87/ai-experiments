@@ -21,6 +21,14 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
+# Import ReasoningEvaluator for automatic evaluation
+try:
+    from reasoning_evaluator import ReasoningEvaluator, ReasoningType, evaluate_reasoning
+    EVALUATION_AVAILABLE = True
+except ImportError:
+    EVALUATION_AVAILABLE = False
+    logger.warning("ReasoningEvaluator not available - evaluation features disabled")
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -43,6 +51,10 @@ class TestResult:
     error_message: Optional[str]
     timestamp: str
     api_response: Dict[str, Any]
+    # Evaluation results (optional)
+    evaluation_result: Optional[Dict[str, Any]] = None
+    reasoning_score: Optional[float] = None
+    reasoning_type: Optional[str] = None
 
 
 @dataclass
@@ -301,6 +313,26 @@ class TestRunner:
                     f.write(f"Prompt Tokens: {result.prompt_tokens}\n")
                     f.write(f"Completion Tokens: {result.completion_tokens}\n")
                     f.write(f"Tokens per Second: {result.tokens_per_second:.2f} T/s\n")
+                    
+                    # Add evaluation results if available
+                    if result.evaluation_result:
+                        f.write(f"\nREASONING EVALUATION:\n{'-'*20}\n")
+                        f.write(f"Overall Score: {result.reasoning_score}/100\n")
+                        f.write(f"Reasoning Type: {result.reasoning_type}\n")
+                        
+                        # Add detailed metrics
+                        metrics = result.evaluation_result.get('metrics', {})
+                        for metric_name, metric_value in metrics.items():
+                            if isinstance(metric_value, (int, float)) and metric_name != 'overall_score':
+                                display_name = metric_name.replace('_', ' ').title()
+                                f.write(f"{display_name}: {metric_value:.1f}\n")
+                        
+                        # Add recommendations if any
+                        recommendations = result.evaluation_result.get('recommendations', [])
+                        if recommendations:
+                            f.write(f"\nRecommendations:\n")
+                            for i, rec in enumerate(recommendations, 1):
+                                f.write(f"  {i}. {rec}\n")
                     
                     if not result.success and result.error_message:
                         f.write(f"Error: {result.error_message}\n")
@@ -694,6 +726,38 @@ class TestRunner:
         if completion_tokens > 0 and execution_time > 0:
             tokens_per_second = completion_tokens / execution_time
         
+        # Perform automatic reasoning evaluation if available
+        evaluation_result = None
+        reasoning_score = None
+        reasoning_type = None
+        
+        if EVALUATION_AVAILABLE and completion_text.strip():
+            try:
+                # Determine reasoning type from test metadata
+                test_reasoning_type = self._get_reasoning_type_for_test(test_case)
+                
+                # Perform evaluation
+                eval_result = evaluate_reasoning(
+                    response_text=completion_text,
+                    test_name=test_case.get('name', test_id),
+                    reasoning_type=test_reasoning_type
+                )
+                
+                evaluation_result = {
+                    'overall_score': eval_result.metrics.overall_score,
+                    'metrics': asdict(eval_result.metrics),
+                    'reasoning_type': eval_result.reasoning_type.value,
+                    'recommendations': eval_result.recommendations,
+                    'detailed_analysis': eval_result.detailed_analysis
+                }
+                reasoning_score = eval_result.metrics.overall_score
+                reasoning_type = eval_result.reasoning_type.value
+                
+                logger.info(f"Evaluation completed for {test_id}: {reasoning_score}/100")
+                
+            except Exception as e:
+                logger.warning(f"Evaluation failed for {test_id}: {e}")
+        
         return TestResult(
             test_id=test_id,
             test_name=test_case.get('name', test_id),
@@ -705,7 +769,10 @@ class TestRunner:
             tokens_per_second=tokens_per_second,
             error_message=None,
             timestamp=datetime.now().isoformat(),
-            api_response=api_response
+            api_response=api_response,
+            evaluation_result=evaluation_result,
+            reasoning_score=reasoning_score,
+            reasoning_type=reasoning_type
         )
     
     def _create_error_result(self, test_id: str, error_message: str, api_response: Dict = None) -> TestResult:
@@ -725,6 +792,112 @@ class TestRunner:
             timestamp=datetime.now().isoformat(),
             api_response=api_response or {}
         )
+    
+    def _get_reasoning_type_for_test(self, test_case: Dict) -> ReasoningType:
+        """
+        Determine the appropriate ReasoningType for a test case
+        
+        Args:
+            test_case: Test case dictionary
+            
+        Returns:
+            ReasoningType: The appropriate reasoning type for evaluation
+        """
+        if not EVALUATION_AVAILABLE:
+            return None
+            
+        # Check if test has explicit reasoning_type
+        if 'reasoning_type' in test_case:
+            reasoning_type_str = test_case['reasoning_type'].lower()
+            try:
+                return ReasoningType(reasoning_type_str)
+            except ValueError:
+                pass
+        
+        # Infer from category
+        category = test_case.get('category', '').lower()
+        category_to_reasoning_type = {
+            'chain_of_thought': ReasoningType.CHAIN_OF_THOUGHT,
+            'mathematical_reasoning': ReasoningType.MATHEMATICAL,
+            'multi_hop_inference': ReasoningType.MULTI_HOP,
+            'verification_loops': ReasoningType.VERIFICATION,
+            'backward_reasoning': ReasoningType.BACKWARD,
+            'scaffolded_reasoning': ReasoningType.SCAFFOLDED,
+            'complex_synthesis': ReasoningType.GENERAL
+        }
+        
+        return category_to_reasoning_type.get(category, ReasoningType.GENERAL)
+    
+    def generate_evaluation_summary(self, results: List[TestResult]) -> Dict[str, Any]:
+        """
+        Generate comprehensive evaluation summary from test results
+        
+        Args:
+            results: List of TestResult objects with evaluation data
+            
+        Returns:
+            Dictionary containing evaluation summary statistics
+        """
+        if not EVALUATION_AVAILABLE:
+            return {"error": "Evaluation not available"}
+        
+        # Filter results with evaluation data
+        evaluated_results = [r for r in results if r.evaluation_result is not None]
+        
+        if not evaluated_results:
+            return {"error": "No evaluation results found"}
+        
+        # Collect scores and metrics
+        scores = [r.reasoning_score for r in evaluated_results]
+        reasoning_types = [r.reasoning_type for r in evaluated_results]
+        
+        # Calculate statistics
+        summary = {
+            "total_tests": len(results),
+            "evaluated_tests": len(evaluated_results),
+            "average_score": sum(scores) / len(scores) if scores else 0,
+            "min_score": min(scores) if scores else 0,
+            "max_score": max(scores) if scores else 0,
+            "reasoning_type_distribution": {},
+            "category_performance": {},
+            "metric_averages": {}
+        }
+        
+        # Reasoning type distribution
+        for rt in reasoning_types:
+            summary["reasoning_type_distribution"][rt] = summary["reasoning_type_distribution"].get(rt, 0) + 1
+        
+        # Category performance
+        for result in evaluated_results:
+            test_case = self.tests.get(result.test_id, {})
+            category = test_case.get('category', 'unknown')
+            
+            if category not in summary["category_performance"]:
+                summary["category_performance"][category] = {"scores": [], "count": 0}
+            
+            summary["category_performance"][category]["scores"].append(result.reasoning_score)
+            summary["category_performance"][category]["count"] += 1
+        
+        # Calculate category averages
+        for category, data in summary["category_performance"].items():
+            if data["scores"]:
+                data["average_score"] = sum(data["scores"]) / len(data["scores"])
+        
+        # Metric averages across all evaluations
+        if evaluated_results:
+            all_metrics = {}
+            for result in evaluated_results:
+                metrics = result.evaluation_result.get('metrics', {})
+                for metric_name, metric_value in metrics.items():
+                    if isinstance(metric_value, (int, float)):
+                        if metric_name not in all_metrics:
+                            all_metrics[metric_name] = []
+                        all_metrics[metric_name].append(metric_value)
+            
+            for metric_name, values in all_metrics.items():
+                summary["metric_averages"][metric_name] = sum(values) / len(values)
+        
+        return summary
 
 
 # Convenience functions for quick usage
@@ -813,6 +986,10 @@ if __name__ == "__main__":
                        help="List available tests and exit")
     parser.add_argument("--dry-run", action="store_true",
                        help="Show what would be executed without running tests")
+    parser.add_argument("--evaluation", action="store_true",
+                       help="Enable automatic reasoning evaluation (requires ReasoningEvaluator)")
+    parser.add_argument("--eval-summary", action="store_true",
+                       help="Generate detailed evaluation summary report")
     
     args = parser.parse_args()
     
@@ -945,7 +1122,57 @@ if __name__ == "__main__":
             avg_tokens_per_sec = sum(r.tokens_per_second for r in results if r.success) / success_count
             print(f"Average tokens/sec: {avg_tokens_per_sec:.1f} T/s")
         
-        print(f"Results saved to: {args.output_dir}/")
+        # Evaluation summary
+        if EVALUATION_AVAILABLE and any(r.evaluation_result for r in results):
+            evaluated_results = [r for r in results if r.evaluation_result]
+            avg_reasoning_score = sum(r.reasoning_score for r in evaluated_results) / len(evaluated_results)
+            print(f"\n{'='*50}")
+            print(f"REASONING EVALUATION SUMMARY")
+            print(f"{'='*50}")
+            print(f"Evaluated tests: {len(evaluated_results)}")
+            print(f"Average reasoning score: {avg_reasoning_score:.1f}/100")
+            
+            # Show per-category scores if available
+            category_scores = {}
+            for result in evaluated_results:
+                test_case = runner.tests.get(result.test_id, {})
+                category = test_case.get('category', 'unknown')
+                if category not in category_scores:
+                    category_scores[category] = []
+                category_scores[category].append(result.reasoning_score)
+            
+            if len(category_scores) > 1:
+                print(f"\nCategory Performance:")
+                for category, scores in category_scores.items():
+                    avg_score = sum(scores) / len(scores)
+                    print(f"  {category}: {avg_score:.1f}/100 ({len(scores)} tests)")
+            
+            # Generate detailed summary if requested
+            if args.eval_summary:
+                print(f"\n{'='*50}")
+                print(f"DETAILED EVALUATION ANALYSIS")
+                print(f"{'='*50}")
+                eval_summary = runner.generate_evaluation_summary(results)
+                
+                print(f"Score Distribution:")
+                print(f"  Min: {eval_summary['min_score']:.1f}")
+                print(f"  Max: {eval_summary['max_score']:.1f}")
+                print(f"  Average: {eval_summary['average_score']:.1f}")
+                
+                print(f"\nReasoning Type Distribution:")
+                for rt, count in eval_summary['reasoning_type_distribution'].items():
+                    print(f"  {rt}: {count} tests")
+                
+                print(f"\nMetric Averages:")
+                for metric, avg in eval_summary['metric_averages'].items():
+                    if metric != 'overall_score':  # Already shown above
+                        print(f"  {metric.replace('_', ' ').title()}: {avg:.1f}")
+        elif args.evaluation and EVALUATION_AVAILABLE:
+            print(f"\n⚠️  Evaluation was enabled but no results contain evaluation data")
+        elif args.evaluation and not EVALUATION_AVAILABLE:
+            print(f"\n⚠️  Evaluation requested but ReasoningEvaluator not available")
+        
+        print(f"\nResults saved to: {args.output_dir}/")
         
     except KeyboardInterrupt:
         print("\n❌ Execution cancelled by user")
