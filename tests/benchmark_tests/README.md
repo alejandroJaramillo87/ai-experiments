@@ -175,7 +175,7 @@ Comprehensive hardware performance monitoring system optimized for AI workstatio
 
 Designed for base language models using the completions API format, focusing on text continuation and reasoning capabilities without instruction-following.
 
-**Hard Difficulty Categories:**
+**Medium Difficulty Categories:**
 - **Complex Synthesis** (15 tests): Multi-document analysis and information integration
 - **Chain of Thought** (10 tests): Step-by-step reasoning progression with explicit logical flow
 - **Verification Loops** (5 tests): Self-checking and error detection capabilities
@@ -209,7 +209,7 @@ Optimized for instruction-following models using the chat API format, emphasizin
 - **Constraint Following** (10 tests): Format compliance and structured output
 
 **Linux System Administration:**
-- **Hard Categories**: Monitoring, containers, security, database, networking, automation (100 tests total)
+- **Medium Categories**: Monitoring, containers, security, database, networking, automation (100 tests total)
 - **Easy Categories**: 15 specialized categories including log analysis, containerization, security auditing, performance monitoring, backup automation, service management, network diagnostics, troubleshooting, database optimization, and deployment automation (30 tests total)
 
 ## Directory Structure
@@ -226,7 +226,7 @@ tests/benchmark_tests/
 │   ├── extract_base_tests.py  # Test extraction utilities
 │   ├── test_definitions/       # JSON test definition files
 │   │   ├── categories.json     # Category definitions and mappings
-│   │   ├── reasoning_tests_complete.json  # Hard reasoning tests (50 tests)
+│   │   ├── reasoning_tests_medium.json    # Medium reasoning tests (50 tests)
 │   │   ├── reasoning_tests_easy.json      # Easy reasoning tests (40 tests) 
 │   │   └── test_suite_metadata.json       # Suite metadata and configuration
 │   └── test_base_model_reasoning_easy.py  # Legacy test implementation
@@ -235,11 +235,10 @@ tests/benchmark_tests/
 │   ├── extract_instruct_tests.py  # Test extraction utilities
 │   ├── test_definitions/       # JSON test definition files
 │   │   ├── categories.json     # Category definitions and mappings
-│   │   ├── reasoning_tests.json     # Hard reasoning tests (40 tests)
+│   │   ├── reasoning_tests_medium.json  # Medium reasoning tests (40 tests)
 │   │   ├── reasoning_tests_easy.json   # Easy reasoning tests (50 tests)
-│   │   ├── linux_tests.json         # Hard Linux tests (100 tests)
+│   │   ├── linux_tests_medium.json     # Medium Linux tests (100 tests)
 │   │   ├── linux_tests_easy.json    # Easy Linux tests (30 tests)
-│   │   ├── instruct_tests_complete.json  # Combined test suite
 │   │   └── test_suite_metadata.json      # Suite metadata and configuration
 │   ├── test_linux_easy.py      # Legacy Linux test implementation
 │   └── test_reasoning_easy.py  # Legacy reasoning test implementation
@@ -527,7 +526,7 @@ python test_runner.py --suite-stats reasoning_comprehensive_v1
 python test_runner.py --category-info complex_synthesis --test-type base
 
 # Filter tests by difficulty level
-python test_runner.py --filter-by difficulty=hard --test-type base --list-tests
+python test_runner.py --filter-by difficulty=medium --test-type base --list-tests
 
 # Verbose execution with detailed logging
 python test_runner.py --test-type base --mode single --test-id complex_test_01 --verbose
@@ -591,7 +590,7 @@ Test categories are defined with metadata for automated management:
       "reasoning_focus": "synthesis, integration, comparison, analysis",
       "temperature_range": [0.3, 0.6],
       "test_range": [1, 15],
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": ["complex_test_1", "complex_test_2", "..."]
     }
   }

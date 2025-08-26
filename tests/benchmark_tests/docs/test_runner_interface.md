@@ -177,7 +177,7 @@ def _update_progress(self, test_result: TestResult):
 ## Integration Points
 
 ### 1. Test Definition Interface
-- Loads from `test_definitions/reasoning_tests_complete.json`
+- Loads from `test_definitions/reasoning_tests_medium.json`
 - Uses `test_definitions/test_suite_metadata.json` for API config
 - Supports filtering by category via `test_definitions/categories.json`
 
@@ -213,7 +213,7 @@ def _update_progress(self, test_result: TestResult):
 ### Basic Sequential Execution
 ```python
 runner = TestRunner()
-runner.load_test_suite("test_definitions/reasoning_tests_complete.json")
+runner.load_test_suite("test_definitions/reasoning_tests_medium.json")
 runner.load_test_metadata("test_definitions/test_suite_metadata.json")
 
 results = runner.execute_sequential()
@@ -223,7 +223,7 @@ runner.save_results(results)
 ### Category-Specific Concurrent Execution  
 ```python
 runner = TestRunner()
-runner.load_test_suite("test_definitions/reasoning_tests_complete.json")
+runner.load_test_suite("test_definitions/reasoning_tests_medium.json")
 
 # Execute only mathematical reasoning tests
 results = runner.execute_category("mathematical_reasoning")

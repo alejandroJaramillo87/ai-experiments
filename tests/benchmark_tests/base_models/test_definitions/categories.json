@@ -5,7 +5,7 @@
       "reasoning_focus": "synthesis, integration, comparison, analysis",
       "temperature_range": [0.3, 0.6],
       "test_range": [1, 15],
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "complex_test_1", "complex_test_2", "complex_test_3", "complex_test_4", "complex_test_5",
         "complex_test_6", "complex_test_7", "complex_test_8", "complex_test_9", "complex_test_10",
@@ -17,7 +17,7 @@
       "reasoning_focus": "sequential logic, step clarity, causal reasoning",
       "temperature_range": [0.15, 0.4],
       "test_range": [16, 25],
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "complex_test_16", "complex_test_17", "complex_test_18", "complex_test_19", "complex_test_20",
         "complex_test_21", "complex_test_22", "complex_test_23", "complex_test_24", "complex_test_25"
@@ -28,7 +28,7 @@
       "reasoning_focus": "self-verification, error detection, assumption checking",
       "temperature_range": [0.1, 0.2],
       "test_range": [26, 30],
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "complex_test_26", "complex_test_27", "complex_test_28", "complex_test_29", "complex_test_30"
       ]
@@ -38,7 +38,7 @@
       "reasoning_focus": "mathematical logic, probability, optimization, constraints",
       "temperature_range": [0.05, 0.1],
       "test_range": [31, 35],
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "complex_test_31", "complex_test_32", "complex_test_33", "complex_test_34", "complex_test_35"
       ]
@@ -48,7 +48,7 @@
       "reasoning_focus": "cross-source connections, pattern recognition, evidence synthesis",
       "temperature_range": [0.2, 0.3],
       "test_range": [36, 40],
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "complex_test_36", "complex_test_37", "complex_test_38", "complex_test_39", "complex_test_40"
       ]
@@ -58,7 +58,7 @@
       "reasoning_focus": "systematic analysis, structured frameworks, methodical evaluation",
       "temperature_range": [0.1, 0.15],
       "test_range": [41, 45],
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "complex_test_41", "complex_test_42", "complex_test_43", "complex_test_44", "complex_test_45"
       ]
@@ -68,7 +68,7 @@
       "reasoning_focus": "reverse engineering, conclusion tracing, causal backtracking",
       "temperature_range": [0.15, 0.2],
       "test_range": [46, 50],
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "complex_test_46", "complex_test_47", "complex_test_48", "complex_test_49", "complex_test_50"
       ]
