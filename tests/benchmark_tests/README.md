@@ -13,7 +13,7 @@ This framework provides standardized evaluation of reasoning capabilities includ
   - [Architecture Overview](#architecture-overview)
   - [System Components](#system-components)
     - [TestRunner Engine](#testrunner-engine)
-    - [ReasoningEvaluator](#reasoningevaluator)
+    - [UniversalEvaluator](#universalevaluator)
     - [Test Definition System](#test-definition-system)
     - [Performance Monitor](#performance-monitor)
   - [Test Categories](#test-categories)
@@ -55,7 +55,7 @@ The benchmark framework implements a modular architecture supporting both base m
 ```mermaid
 flowchart TD
     subgraph "Test Execution Engine"
-        CLI[Command Line Interface] --> TR[TestRunner Engine]
+        CLI[Command Line Interface] --> TR[BenchmarkTestRunner Engine]
         TR --> API{API Detection}
         API -->|Base Models| COMP[Completions API]
         API -->|Instruct Models| CHAT[Chat API]
@@ -86,9 +86,9 @@ flowchart TD
     end
     
     subgraph "Evaluation System"
-        TR --> RE[ReasoningEvaluator]
-        RE --> AUTO[Automatic Scoring]
-        RE --> TYPES[Reasoning Types]
+        TR --> UE[UniversalEvaluator]
+        UE --> AUTO[Automatic Scoring]
+        UE --> TYPES[Test Types]
         AUTO --> RESULTS[Structured Results]
     end
     
@@ -101,9 +101,9 @@ flowchart TD
 
 ## System Components
 
-### TestRunner Engine
+### BenchmarkTestRunner Engine
 
-The `TestRunner` class serves as the central orchestration engine, providing flexible test execution with comprehensive error handling, progress tracking, and performance monitoring.
+The `BenchmarkTestRunner` class serves as the central orchestration engine, providing flexible test execution with comprehensive error handling, progress tracking, and performance monitoring.
 
 **Core Capabilities:**
 - **Dual API Support**: Automatic detection and handling of completions API (base models) and chat API (instruct models)
@@ -115,36 +115,36 @@ The `TestRunner` class serves as the central orchestration engine, providing fle
 
 **Implementation Features:**
 ```python
-# Key TestRunner capabilities
+# Key BenchmarkTestRunner capabilities
 - load_test_suite(): JSON test definition loading with validation
 - execute_concurrent(): Multi-threaded execution with configurable workers
 - monitor_performance(): Hardware metrics collection during test execution
-- evaluate_reasoning(): Integration with ReasoningEvaluator for automatic scoring
+- evaluate_reasoning(): Integration with UniversalEvaluator for automatic scoring
 - save_results(): Structured output generation with metadata preservation
 ```
 
-### ReasoningEvaluator
+### UniversalEvaluator
 
-Advanced reasoning quality assessment system providing both structural analysis and LLM-based evaluation capabilities.
+Advanced universal evaluation system that adapts assessment criteria based on test type, providing specialized scoring for Linux, creative, and reasoning tasks.
 
-**Evaluation Framework:**
-- **Multi-Metric Scoring**: 7-dimensional evaluation including step clarity, logical consistency, and evidence integration
-- **Reasoning Type Support**: Specialized evaluation for 8 reasoning types (chain-of-thought, mathematical, verification, etc.)
-- **Automatic Assessment**: Structural pattern recognition and quality metrics calculation
-- **Extensible Framework**: Support for custom evaluation criteria and reasoning patterns
+**Universal Evaluation Framework:**
+- **Multi-Metric Scoring**: 7-dimensional evaluation with universal metrics that adapt meaning based on test type
+- **Test Type Detection**: Automatic detection of Linux, creative, or reasoning test types based on category
+- **Adaptive Assessment**: Category-specific evaluation logic while maintaining consistent metric structure
+- **Extensible Framework**: Support for custom evaluation criteria and test-type-specific patterns
 
-**Scoring Metrics:**
+**Universal Scoring Metrics:**
 ```python
 @dataclass
 class EvaluationMetrics:
-    step_clarity: float          # Logical step organization quality
-    logical_consistency: float   # Internal reasoning consistency
-    evidence_integration: float  # Evidence usage effectiveness
-    analysis_depth: float        # Analytical thoroughness
-    verification_effort: float   # Self-checking and validation
-    comprehensive_coverage: float # Topic coverage completeness
-    reasoning_pattern: float     # Pattern-specific quality
-    overall_score: float         # Weighted composite score
+    organization_quality: float     # Structure clarity (commands/flow/steps)
+    technical_accuracy: float       # Domain correctness (syntax/logic/coherence)
+    completeness: float             # Solution completeness (coverage/constraints/evidence)
+    thoroughness: float             # Analysis depth (documentation/exploration/depth)
+    reliability: float              # Best practices (security/consistency/validation)
+    scope_coverage: float           # Comprehensive coverage (edge cases/breadth)
+    domain_appropriateness: float   # Domain-specific quality (terminology/patterns)
+    overall_score: float            # Weighted composite score
 ```
 
 ### Test Definition System
@@ -218,8 +218,10 @@ Optimized for instruction-following models using the chat API format, emphasizin
 tests/benchmark_tests/
 ├── README.md                   # This comprehensive documentation
 ├── TESTING_GUIDE.md            # Quick testing and verification guide
-├── test_runner.py              # Main TestRunner engine implementation
-├── reasoning_evaluator.py     # Automatic reasoning evaluation system
+├── test_runner.py              # Main BenchmarkTestRunner engine implementation
+├── test_benchmark_test_runner.py  # Comprehensive BenchmarkTestRunner test suite (34 tests)
+├── test_universal_evaluator.py    # UniversalEvaluator test suite (26 tests)
+├── reasoning_evaluator.py     # Universal evaluation system (UniversalEvaluator)
 ├── evaluation_config.py       # Evaluation configuration and settings
 │
 ├── base_models/                # Base model test definitions
@@ -244,8 +246,10 @@ tests/benchmark_tests/
 │   └── test_reasoning_easy.py  # Legacy reasoning test implementation
 │
 ├── docs/                       # Technical documentation
-│   ├── test_runner_interface.md    # TestRunner API documentation
-│   └── test_schema_design.md       # Test definition schema specification
+│   ├── benchmark_test_runner_overview.md  # BenchmarkTestRunner technical overview
+│   ├── evaluation_system_overview.md      # UniversalEvaluator technical documentation
+│   ├── test_runner_interface.md           # BenchmarkTestRunner API documentation
+│   └── test_schema_design.md              # Test definition schema specification
 │
 ├── concurrency/                # Concurrent execution testing
 │   ├── test_concurrent_easy.py     # Concurrency validation tests
@@ -417,17 +421,17 @@ cat test_results/*_result.json | jq '{test: .test_id, time: .execution_time}' | 
 
 ### Automated Reasoning Evaluation
 
-The ReasoningEvaluator provides detailed scoring across multiple dimensions:
+The UniversalEvaluator provides detailed scoring across multiple dimensions:
 
-**Evaluation Metrics Breakdown:**
-- **Step Clarity (0-10)**: How well the model organizes logical steps
-- **Logical Consistency (0-10)**: Internal consistency of reasoning
-- **Evidence Integration (0-10)**: Effective use of provided evidence
-- **Analysis Depth (0-10)**: Thoroughness of analytical approach
-- **Verification Effort (0-10)**: Self-checking and validation attempts
-- **Comprehensive Coverage (0-10)**: Completeness of topic coverage
-- **Reasoning Pattern (0-10)**: Quality specific to reasoning type
-- **Overall Score (0-10)**: Weighted composite score
+**Universal Evaluation Metrics Breakdown:**
+- **Organization Quality (0-100)**: Structure clarity - command structure/creative flow/logical steps
+- **Technical Accuracy (0-100)**: Domain correctness - syntax/coherence/logical consistency  
+- **Completeness (0-100)**: Solution completeness - coverage/constraints/evidence integration
+- **Thoroughness (0-100)**: Analysis depth - documentation/creative exploration/analytical depth
+- **Reliability (0-100)**: Best practices - security/consistency/validation effort
+- **Scope Coverage (0-100)**: Comprehensive coverage - edge cases/breadth/completeness
+- **Domain Appropriateness (0-100)**: Domain-specific quality - terminology/patterns/reasoning type
+- **Overall Score (0-100)**: Weighted composite score adapted by test type
 
 **Analyzing Reasoning Quality:**
 ```bash

@@ -1,7 +1,7 @@
 """
 Evaluation Configuration
 
-Configuration settings for the ReasoningEvaluator system.
+Configuration settings for the UniversalEvaluator system.
 Defines scoring weights, thresholds, and specialized patterns for different reasoning types.
 
 Author: Claude Code
@@ -21,28 +21,28 @@ class ScoreThresholds:
     VERY_POOR = 25.0
 
 
-class ReasoningWeights:
-    """Default weights for different reasoning metrics"""
-    STEP_CLARITY = 0.15
-    LOGICAL_CONSISTENCY = 0.20
-    EVIDENCE_INTEGRATION = 0.15
-    ANALYSIS_DEPTH = 0.15
-    VERIFICATION_EFFORT = 0.10
-    COMPREHENSIVE_COVERAGE = 0.10
-    REASONING_PATTERN = 0.15
+class UniversalWeights:
+    """Default weights for universal evaluation metrics"""
+    ORGANIZATION_QUALITY = 0.15
+    TECHNICAL_ACCURACY = 0.20
+    COMPLETENESS = 0.15
+    THOROUGHNESS = 0.15
+    RELIABILITY = 0.10
+    SCOPE_COVERAGE = 0.10
+    DOMAIN_APPROPRIATENESS = 0.15
 
 
 # Main configuration dictionary
 DEFAULT_CONFIG = {
-    # Scoring weights for different metrics
+    # Scoring weights for universal metrics
     "weights": {
-        "step_clarity": ReasoningWeights.STEP_CLARITY,
-        "logical_consistency": ReasoningWeights.LOGICAL_CONSISTENCY,
-        "evidence_integration": ReasoningWeights.EVIDENCE_INTEGRATION,
-        "analysis_depth": ReasoningWeights.ANALYSIS_DEPTH,
-        "verification_effort": ReasoningWeights.VERIFICATION_EFFORT,
-        "comprehensive_coverage": ReasoningWeights.COMPREHENSIVE_COVERAGE,
-        "reasoning_pattern": ReasoningWeights.REASONING_PATTERN
+        "organization_quality": UniversalWeights.ORGANIZATION_QUALITY,
+        "technical_accuracy": UniversalWeights.TECHNICAL_ACCURACY,
+        "completeness": UniversalWeights.COMPLETENESS,
+        "thoroughness": UniversalWeights.THOROUGHNESS,
+        "reliability": UniversalWeights.RELIABILITY,
+        "scope_coverage": UniversalWeights.SCOPE_COVERAGE,
+        "domain_appropriateness": UniversalWeights.DOMAIN_APPROPRIATENESS
     },
     
     # Quality thresholds
@@ -70,13 +70,13 @@ DEFAULT_CONFIG = {
     "reasoning_type_configs": {
         "chain_of_thought": {
             "weights": {
-                "step_clarity": 0.25,  # Higher weight for step clarity
-                "logical_consistency": 0.25,  # Higher weight for logical flow
-                "evidence_integration": 0.10,
-                "analysis_depth": 0.15,
-                "verification_effort": 0.05,
-                "comprehensive_coverage": 0.10,
-                "reasoning_pattern": 0.10
+                "organization_quality": 0.25,  # Higher weight for step clarity
+                "technical_accuracy": 0.25,  # Higher weight for logical flow
+                "completeness": 0.10,
+                "thoroughness": 0.15,
+                "reliability": 0.05,
+                "scope_coverage": 0.10,
+                "domain_appropriateness": 0.10
             },
             "required_patterns": ["step", "first", "second", "then", "therefore"],
             "bonus_multiplier": 1.2
@@ -84,13 +84,13 @@ DEFAULT_CONFIG = {
         
         "multi_hop": {
             "weights": {
-                "step_clarity": 0.10,
-                "logical_consistency": 0.15,
-                "evidence_integration": 0.30,  # Higher weight for evidence integration
-                "analysis_depth": 0.20,  # Higher weight for synthesis
-                "verification_effort": 0.05,
-                "comprehensive_coverage": 0.10,
-                "reasoning_pattern": 0.10
+                "organization_quality": 0.10,
+                "technical_accuracy": 0.15,
+                "completeness": 0.30,  # Higher weight for evidence integration
+                "thoroughness": 0.20,  # Higher weight for synthesis
+                "reliability": 0.05,
+                "scope_coverage": 0.10,
+                "domain_appropriateness": 0.10
             },
             "required_patterns": ["document", "according to", "based on", "evidence shows"],
             "bonus_multiplier": 1.3
@@ -98,13 +98,13 @@ DEFAULT_CONFIG = {
         
         "verification": {
             "weights": {
-                "step_clarity": 0.10,
-                "logical_consistency": 0.15,
-                "evidence_integration": 0.10,
-                "analysis_depth": 0.15,
-                "verification_effort": 0.35,  # Much higher weight for self-checking
-                "comprehensive_coverage": 0.05,
-                "reasoning_pattern": 0.10
+                "organization_quality": 0.10,
+                "technical_accuracy": 0.15,
+                "completeness": 0.10,
+                "thoroughness": 0.15,
+                "reliability": 0.35,  # Much higher weight for self-checking
+                "scope_coverage": 0.05,
+                "domain_appropriateness": 0.10
             },
             "required_patterns": ["verify", "check", "confirm", "validate", "review"],
             "bonus_multiplier": 1.5
@@ -112,13 +112,13 @@ DEFAULT_CONFIG = {
         
         "mathematical": {
             "weights": {
-                "step_clarity": 0.20,
-                "logical_consistency": 0.30,  # Higher weight for logical precision
-                "evidence_integration": 0.05,
-                "analysis_depth": 0.20,
-                "verification_effort": 0.15,
-                "comprehensive_coverage": 0.05,
-                "reasoning_pattern": 0.05
+                "organization_quality": 0.20,
+                "technical_accuracy": 0.30,  # Higher weight for logical precision
+                "completeness": 0.05,
+                "thoroughness": 0.20,
+                "reliability": 0.15,
+                "scope_coverage": 0.05,
+                "domain_appropriateness": 0.05
             },
             "required_patterns": ["calculate", "equation", "probability", "therefore"],
             "bonus_multiplier": 1.4
@@ -126,13 +126,13 @@ DEFAULT_CONFIG = {
         
         "backward": {
             "weights": {
-                "step_clarity": 0.15,
-                "logical_consistency": 0.20,
-                "evidence_integration": 0.20,
-                "analysis_depth": 0.25,  # Higher weight for reconstruction analysis
-                "verification_effort": 0.10,
-                "comprehensive_coverage": 0.05,
-                "reasoning_pattern": 0.05
+                "organization_quality": 0.15,
+                "technical_accuracy": 0.20,
+                "completeness": 0.20,
+                "thoroughness": 0.25,  # Higher weight for reconstruction analysis
+                "reliability": 0.10,
+                "scope_coverage": 0.05,
+                "domain_appropriateness": 0.05
             },
             "required_patterns": ["work backward", "reverse", "trace", "reconstruct"],
             "bonus_multiplier": 1.3
@@ -140,16 +140,67 @@ DEFAULT_CONFIG = {
         
         "scaffolded": {
             "weights": {
-                "step_clarity": 0.30,  # Highest weight for structured approach
-                "logical_consistency": 0.20,
-                "evidence_integration": 0.15,
-                "analysis_depth": 0.15,
-                "verification_effort": 0.10,
-                "comprehensive_coverage": 0.05,
-                "reasoning_pattern": 0.05
+                "organization_quality": 0.30,  # Highest weight for structured approach
+                "technical_accuracy": 0.20,
+                "completeness": 0.15,
+                "thoroughness": 0.15,
+                "reliability": 0.10,
+                "scope_coverage": 0.05,
+                "domain_appropriateness": 0.05
             },
             "required_patterns": ["analysis", "evidence", "reasoning", "conclusion"],
             "bonus_multiplier": 1.2
+        }
+    },
+    
+    # Test type specific configurations for universal evaluation
+    "test_type_configs": {
+        "linux": {
+            "weights": {
+                "organization_quality": 0.20,  # Command structure clarity
+                "technical_accuracy": 0.35,   # Highest weight for correct syntax/security
+                "completeness": 0.15,         # Solution completeness
+                "thoroughness": 0.10,         # Documentation/explanation
+                "reliability": 0.15,          # Best practices/security
+                "scope_coverage": 0.03,       # Edge cases
+                "domain_appropriateness": 0.02  # Linux-specific terminology
+            },
+            "keywords": ["command", "script", "bash", "sudo", "systemctl", "grep", "awk"],
+            "best_practices": ["error handling", "logging", "security", "validation"],
+            "dangerous_patterns": ["rm -rf /", "chmod 777", "* * * * *"],
+            "bonus_multiplier": 1.2
+        },
+        
+        "creative": {
+            "weights": {
+                "organization_quality": 0.15,  # Structure and flow
+                "technical_accuracy": 0.10,    # Logical coherence
+                "completeness": 0.20,          # Addressing all constraints
+                "thoroughness": 0.25,          # Depth of creative exploration
+                "reliability": 0.15,           # Consistency with requirements
+                "scope_coverage": 0.10,        # Breadth of ideas
+                "domain_appropriateness": 0.05  # Creative language
+            },
+            "keywords": ["creative", "innovative", "original", "unique", "alternative"],
+            "quality_indicators": ["perspective", "approach", "consideration", "exploration"],
+            "constraint_adherence": ["requirement", "specification", "criteria"],
+            "bonus_multiplier": 1.3
+        },
+        
+        "reasoning": {
+            "weights": {
+                "organization_quality": 0.15,  # Traditional step clarity
+                "technical_accuracy": 0.20,    # Logical consistency
+                "completeness": 0.15,          # Evidence integration
+                "thoroughness": 0.15,          # Analysis depth
+                "reliability": 0.10,           # Verification effort
+                "scope_coverage": 0.10,        # Comprehensive coverage
+                "domain_appropriateness": 0.15  # Reasoning patterns
+            },
+            "keywords": ["analysis", "reasoning", "logic", "evidence", "conclusion"],
+            "logical_connectors": ["because", "therefore", "thus", "hence", "given that"],
+            "verification_patterns": ["verify", "check", "confirm", "validate"],
+            "bonus_multiplier": 1.0  # Default baseline
         }
     },
     
