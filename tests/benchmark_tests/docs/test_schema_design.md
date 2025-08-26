@@ -141,7 +141,7 @@ test_definitions/
 ```
 test_definitions/
 ├── test_suite_metadata.json       # Suite config and API settings
-├── reasoning_tests_complete.json  # All 50 tests in structured format
+├── reasoning_tests_medium.json    # All 50 tests in structured format
 └── categories.json                # Category definitions and mappings
 ```
 - **Pros**: Balance of simplicity and organization

@@ -2,7 +2,7 @@
   "categories": {
     "reasoning_logic": {
       "description": "Reasoning Logic tests",
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "reasoning_test_01",
         "reasoning_test_02",
@@ -12,7 +12,7 @@
     },
     "reasoning_general": {
       "description": "Reasoning General tests",
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "reasoning_test_04",
         "reasoning_test_05",
@@ -45,7 +45,7 @@
     },
     "reasoning_puzzle": {
       "description": "Reasoning Puzzle tests",
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "reasoning_test_13",
         "reasoning_test_18",
@@ -55,7 +55,7 @@
     },
     "reasoning_causal": {
       "description": "Reasoning Causal tests",
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "reasoning_test_16",
         "reasoning_test_22",
@@ -65,14 +65,14 @@
     },
     "reasoning_probabilistic": {
       "description": "Reasoning Probabilistic tests",
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "reasoning_test_28"
       ]
     },
     "linux_monitoring": {
       "description": "Linux Monitoring tests",
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "linux_test_01",
         "linux_test_04",
@@ -85,7 +85,7 @@
     },
     "linux_containers": {
       "description": "Linux Containers tests",
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "linux_test_02",
         "linux_test_13",
@@ -96,7 +96,7 @@
     },
     "linux_security": {
       "description": "Linux Security tests",
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "linux_test_03",
         "linux_test_05",
@@ -107,7 +107,7 @@
     },
     "linux_database": {
       "description": "Linux Database tests",
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "linux_test_06",
         "linux_test_11",
@@ -119,7 +119,7 @@
     },
     "linux_general": {
       "description": "Linux General tests",
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "linux_test_07",
         "linux_test_09",
@@ -195,7 +195,7 @@
     },
     "linux_networking": {
       "description": "Linux Networking tests",
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "linux_test_08",
         "linux_test_36",
@@ -206,7 +206,7 @@
     },
     "linux_automation": {
       "description": "Linux Automation tests",
-      "difficulty": "hard",
+      "difficulty": "medium",
       "test_ids": [
         "linux_test_26",
         "linux_test_75"

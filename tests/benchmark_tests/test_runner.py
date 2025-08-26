@@ -1887,11 +1887,11 @@ def load_and_configure_runner(test_definitions_dir: str = "test_definitions",
     if test_type == "instruct":
         # Load instruct model tests from instruct-models directory
         base_dir = os.path.join(runner_dir, "instruct-models")
-        suite_filename = "instruct_tests_complete.json"
+        suite_filename = "reasoning_tests_medium.json"
     else:
         # Load base model tests from base_models directory  
         base_dir = os.path.join(runner_dir, "base_models")
-        suite_filename = "reasoning_tests_complete.json"
+        suite_filename = "reasoning_tests_medium.json"
     
     # Build full paths
     suite_path = os.path.join(base_dir, test_definitions_dir, suite_filename)
