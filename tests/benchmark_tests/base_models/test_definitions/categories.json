@@ -5,6 +5,7 @@
       "reasoning_focus": "synthesis, integration, comparison, analysis",
       "temperature_range": [0.3, 0.6],
       "test_range": [1, 15],
+      "difficulty": "hard",
       "test_ids": [
         "complex_test_1", "complex_test_2", "complex_test_3", "complex_test_4", "complex_test_5",
         "complex_test_6", "complex_test_7", "complex_test_8", "complex_test_9", "complex_test_10",
@@ -16,6 +17,7 @@
       "reasoning_focus": "sequential logic, step clarity, causal reasoning",
       "temperature_range": [0.15, 0.4],
       "test_range": [16, 25],
+      "difficulty": "hard",
       "test_ids": [
         "complex_test_16", "complex_test_17", "complex_test_18", "complex_test_19", "complex_test_20",
         "complex_test_21", "complex_test_22", "complex_test_23", "complex_test_24", "complex_test_25"
@@ -26,6 +28,7 @@
       "reasoning_focus": "self-verification, error detection, assumption checking",
       "temperature_range": [0.1, 0.2],
       "test_range": [26, 30],
+      "difficulty": "hard",
       "test_ids": [
         "complex_test_26", "complex_test_27", "complex_test_28", "complex_test_29", "complex_test_30"
       ]
@@ -35,6 +38,7 @@
       "reasoning_focus": "mathematical logic, probability, optimization, constraints",
       "temperature_range": [0.05, 0.1],
       "test_range": [31, 35],
+      "difficulty": "hard",
       "test_ids": [
         "complex_test_31", "complex_test_32", "complex_test_33", "complex_test_34", "complex_test_35"
       ]
@@ -44,6 +48,7 @@
       "reasoning_focus": "cross-source connections, pattern recognition, evidence synthesis",
       "temperature_range": [0.2, 0.3],
       "test_range": [36, 40],
+      "difficulty": "hard",
       "test_ids": [
         "complex_test_36", "complex_test_37", "complex_test_38", "complex_test_39", "complex_test_40"
       ]
@@ -53,6 +58,7 @@
       "reasoning_focus": "systematic analysis, structured frameworks, methodical evaluation",
       "temperature_range": [0.1, 0.15],
       "test_range": [41, 45],
+      "difficulty": "hard",
       "test_ids": [
         "complex_test_41", "complex_test_42", "complex_test_43", "complex_test_44", "complex_test_45"
       ]
@@ -62,8 +68,53 @@
       "reasoning_focus": "reverse engineering, conclusion tracing, causal backtracking",
       "temperature_range": [0.15, 0.2],
       "test_range": [46, 50],
+      "difficulty": "hard",
       "test_ids": [
         "complex_test_46", "complex_test_47", "complex_test_48", "complex_test_49", "complex_test_50"
+      ]
+    },
+    "text_continuation": {
+      "description": "Basic text continuation and completion tasks",
+      "reasoning_focus": "natural language flow, context understanding, style consistency",
+      "temperature_range": [0.3, 0.9],
+      "test_range": [1, 10],
+      "difficulty": "easy",
+      "test_ids": [
+        "text_continuation_01", "text_continuation_02", "text_continuation_03", "text_continuation_04", "text_continuation_05",
+        "text_continuation_06", "text_continuation_07", "text_continuation_08", "text_continuation_09", "text_continuation_10"
+      ]
+    },
+    "pattern_completion": {
+      "description": "Pattern recognition and completion tasks",
+      "reasoning_focus": "pattern recognition, logical sequences, structural understanding",
+      "temperature_range": [0.1, 0.5],
+      "test_range": [11, 20],
+      "difficulty": "easy",
+      "test_ids": [
+        "pattern_completion_01", "pattern_completion_02", "pattern_completion_03", "pattern_completion_04", "pattern_completion_05",
+        "pattern_completion_06", "pattern_completion_07", "pattern_completion_08", "pattern_completion_09", "pattern_completion_10"
+      ]
+    },
+    "style_mimicry": {
+      "description": "Style mimicking and adaptation across different writing formats",
+      "reasoning_focus": "style adaptation, tone matching, format consistency",
+      "temperature_range": [0.4, 0.85],
+      "test_range": [21, 30],
+      "difficulty": "easy",
+      "test_ids": [
+        "style_mimicry_01", "style_mimicry_02", "style_mimicry_03", "style_mimicry_04", "style_mimicry_05",
+        "style_mimicry_06", "style_mimicry_07", "style_mimicry_08", "style_mimicry_09", "style_mimicry_10"
+      ]
+    },
+    "context_coherence": {
+      "description": "Context maintenance and coherence over extended passages",
+      "reasoning_focus": "context tracking, consistency maintenance, detail coherence",
+      "temperature_range": [0.3, 0.7],
+      "test_range": [31, 40],
+      "difficulty": "easy",
+      "test_ids": [
+        "context_coherence_01", "context_coherence_02", "context_coherence_03", "context_coherence_04", "context_coherence_05",
+        "context_coherence_06", "context_coherence_07", "context_coherence_08", "context_coherence_09", "context_coherence_10"
       ]
     }
   },
@@ -74,6 +125,10 @@
     "mathematical_reasoning": "mathematical",
     "multi_hop_inference": "multi_hop",
     "scaffolded_reasoning": "scaffolded",
-    "backward_reasoning": "backward"
+    "backward_reasoning": "backward",
+    "text_continuation": "general",
+    "pattern_completion": "general",
+    "style_mimicry": "general",
+    "context_coherence": "general"
   }
 }

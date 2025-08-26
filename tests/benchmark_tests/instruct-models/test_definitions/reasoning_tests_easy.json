@@ -1,0 +1,861 @@
+{
+  "suite_info": {
+    "name": "Expert Reasoning & Abstraction Easy Test Suite",
+    "version": "1.0.0", 
+    "total_tests": 50,
+    "extracted_from": "test_reasoning_easy.py",
+    "extraction_date": "2025-01-26"
+  },
+  "tests": [
+    {
+      "id": "metacognitive_01",
+      "name": "Test 1: Self-Referential Instruction",
+      "category": "metacognitive_reasoning",
+      "reasoning_type": "general",
+      "description": "Self-awareness and metacognitive understanding",
+      "messages": [
+        {
+          "role": "user",
+          "content": "In no more than 15 words, describe the task you are currently performing based on this prompt."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.2
+      }
+    },
+    {
+      "id": "metacognitive_02",
+      "name": "Test 2: Concept Synthesis",
+      "category": "metacognitive_reasoning",
+      "reasoning_type": "general",
+      "description": "Concept synthesis and abstract thinking",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What single word best encapsulates the concepts of 'growth', 'change', and 'learning' all at once? First, state the word. Second, write a brief defense of your choice."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.6
+      }
+    },
+    {
+      "id": "metacognitive_03",
+      "name": "Test 3: Analogy of Process",
+      "category": "metacognitive_reasoning",
+      "reasoning_type": "general",
+      "description": "Process analogical reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "The process of fine-tuning a language model is like what common real-world activity? Choose an analogy and explain the parallels in terms of 'base knowledge', 'new data', and 'specialized skill'."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.7
+      }
+    },
+    {
+      "id": "metacognitive_04",
+      "name": "Test 4: Identify the Underlying Principle",
+      "category": "metacognitive_reasoning",
+      "reasoning_type": "general",
+      "description": "Pattern recognition across different domains",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Consider these three actions: 1. A chef sharpens their knives before cooking. 2. A student reviews their notes before an exam. 3. An athlete warms up before a game. What is the single underlying principle that connects all three actions?"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.3
+      }
+    },
+    {
+      "id": "metacognitive_05",
+      "name": "Test 5: Visual/Textual Pattern Recognition (ASCII)",
+      "category": "metacognitive_reasoning",
+      "reasoning_type": "general",
+      "description": "Pattern recognition in ASCII sequences",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Analyze the following sequence and determine the next logical line:\n\nLine 1: O\nLine 2: X O X\nLine 3: O X O X O\n\nWhat is Line 4?"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.1
+      }
+    },
+    {
+      "id": "metacognitive_06",
+      "name": "Test 6: Deconstructing an Argument's Structure",
+      "category": "metacognitive_reasoning",
+      "reasoning_type": "verification",
+      "description": "Argument structure analysis",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Analyze the statement: 'We should invest in space exploration because it drives technological innovation and inspires the next generation.' Do not evaluate if the statement is true. Instead, describe its argumentative structure. What is the main claim, and what are the two supporting premises?"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.2
+      }
+    },
+    {
+      "id": "metacognitive_07",
+      "name": "Test 7: Metaphor Interpretation and Creation",
+      "category": "metacognitive_reasoning",
+      "reasoning_type": "general",
+      "description": "Metaphorical reasoning and creativity",
+      "messages": [
+        {
+          "role": "user",
+          "content": "The phrase 'a sea of troubles' is a metaphor. First, explain what it means. Second, invent a new, original metaphor to describe a state of extreme confusion."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.8
+      }
+    },
+    {
+      "id": "metacognitive_08",
+      "name": "Test 8: Questioning the Premise",
+      "category": "metacognitive_reasoning",
+      "reasoning_type": "verification",
+      "description": "Critical premise evaluation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A user asks: 'How do I teach my pet rock to fetch?' As an intelligent assistant, identify the flawed premise in this question and explain why the task is impossible, but do so in a helpful and gentle tone."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.6
+      }
+    },
+    {
+      "id": "metacognitive_09",
+      "name": "Test 9: Reverse-Engineering a Rule",
+      "category": "metacognitive_reasoning",
+      "reasoning_type": "backward",
+      "description": "Rule inference from examples",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Given the following approved list of words: 'apple', 'banana', 'orange', 'grape'. And this rejected list: 'lemon', 'lime', 'kiwi'. What is the most likely rule for approval? The rule is not related to the number of letters or vowels."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.4
+      }
+    },
+    {
+      "id": "metacognitive_10",
+      "name": "Test 10: Abstract Sequence",
+      "category": "metacognitive_reasoning",
+      "reasoning_type": "general",
+      "description": "Abstract sequence pattern recognition",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Consider the sequence: A, 1, B, 2, C, 3. What are the next three items in the sequence?"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.0
+      }
+    },
+    {
+      "id": "ambiguity_handling_01",
+      "name": "Test 11: Interpreting an Ambiguous Request",
+      "category": "ambiguity_handling",
+      "reasoning_type": "general",
+      "description": "Handling ambiguous user requests",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A user says, 'Make me a sandwich.' What are the three most critical questions you would need to ask before you could fulfill this request?"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.7
+      }
+    },
+    {
+      "id": "ambiguity_handling_02",
+      "name": "Test 12: Ranking by Subjective Criteria",
+      "category": "ambiguity_handling",
+      "reasoning_type": "scaffolded",
+      "description": "Subjective ranking with explicit assumptions",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Rank the following activities from 'most relaxing' to 'least relaxing': 1. Reading a book. 2. Running a marathon. 3. Watching a movie. Justify your ranking by explaining the general assumptions you are making about a typical person."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.5
+      }
+    },
+    {
+      "id": "ambiguity_handling_03",
+      "name": "Test 13: Disambiguating Context",
+      "category": "ambiguity_handling",
+      "reasoning_type": "general",
+      "description": "Word sense disambiguation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "The word 'crane' has at least two distinct meanings. Write two short sentences, where each sentence uses a different meaning of the word 'crane'."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.6
+      }
+    },
+    {
+      "id": "ambiguity_handling_04",
+      "name": "Test 14: Analyzing Tone and Intent",
+      "category": "ambiguity_handling",
+      "reasoning_type": "general",
+      "description": "Sarcasm and tone detection",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Analyze the following customer feedback: 'Yeah, the service was just *great*. I really loved waiting 30 minutes for a cold coffee.' What is the likely true sentiment of the customer? Is the customer happy or unhappy? Explain which words indicate the true meaning."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.3
+      }
+    },
+    {
+      "id": "ambiguity_handling_05",
+      "name": "Test 15: Ethical Dilemma with No 'Right' Answer",
+      "category": "ambiguity_handling",
+      "reasoning_type": "scaffolded",
+      "description": "Ethical reasoning with multiple valid approaches",
+      "messages": [
+        {
+          "role": "user",
+          "content": "You are a software engineer. Your boss asks you to implement a feature that you believe is unethical but not illegal. What are two different possible courses of action you could take? List one potential consequence for each action."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.8
+      }
+    },
+    {
+      "id": "ambiguity_handling_06",
+      "name": "Test 16: Inferring Missing Information",
+      "category": "ambiguity_handling",
+      "reasoning_type": "general",
+      "description": "Information inference from context",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A message reads: 'Meeting moved up two hours. See you there.' If the original meeting time was 4:00 PM, what is the new meeting time?"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.1
+      }
+    },
+    {
+      "id": "ambiguity_handling_07",
+      "name": "Test 17: Evaluating Strength of Evidence",
+      "category": "ambiguity_handling",
+      "reasoning_type": "verification",
+      "description": "Evidence quality assessment",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Which piece of evidence is more reliable for proving a suspect was at a crime scene?\n- A: An eyewitness testimony from a person with poor eyesight.\n- B: A clear security camera video showing the suspect at the location.\nExplain why."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.1
+      }
+    },
+    {
+      "id": "ambiguity_handling_08",
+      "name": "Test 18: Generating a Nuanced Response",
+      "category": "ambiguity_handling",
+      "reasoning_type": "multi_hop",
+      "description": "Nuanced reasoning on complex topics",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A user asks, 'Is it better to rent or buy a house?' Instead of giving a direct answer, explain why the 'best' choice depends on at least two different personal factors (e.g., financial situation, life goals)."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.6
+      }
+    },
+    {
+      "id": "ambiguity_handling_09",
+      "name": "Test 19: Prioritizing Vague Tasks",
+      "category": "ambiguity_handling",
+      "reasoning_type": "scaffolded",
+      "description": "Task prioritization with vague criteria",
+      "messages": [
+        {
+          "role": "user",
+          "content": "You have a to-do list: 1. Fix the urgent bug. 2. Think about new features. 3. Get coffee. How would you prioritize these tasks from most important to least important for a typical workday? Justify your order."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.4
+      }
+    },
+    {
+      "id": "ambiguity_handling_10",
+      "name": "Test 20: Reading Between the Lines",
+      "category": "ambiguity_handling",
+      "reasoning_type": "general",
+      "description": "Implicit message interpretation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A manager tells an employee, 'You have a lot of potential, but your reports need to be more thorough.' What is the implicit feedback or criticism being delivered to the employee?"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.5
+      }
+    },
+    {
+      "id": "creative_thinking_01",
+      "name": "Test 21: Alternative Uses Task",
+      "category": "creative_thinking",
+      "reasoning_type": "general",
+      "description": "Creative alternative use generation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "List five unconventional or creative uses for a standard brick. Do not include 'building a wall' or 'paving a path'."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.9
+      }
+    },
+    {
+      "id": "creative_thinking_02",
+      "name": "Test 22: Remote Associates Test",
+      "category": "creative_thinking",
+      "reasoning_type": "general",
+      "description": "Remote semantic association",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What single word forms a compound word or a common two-word phrase with each of the following three words: 'pine', 'crab', 'sauce'?"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.5
+      }
+    },
+    {
+      "id": "creative_thinking_03",
+      "name": "Test 23: Complete the Story",
+      "category": "creative_thinking",
+      "reasoning_type": "general",
+      "description": "Creative narrative continuation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Here is the beginning of a story: 'The old librarian locked the door for the night, but a faint scratching sound was coming from the forbidden section...' Write the next two sentences to continue the story in a suspenseful way."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.8
+      }
+    },
+    {
+      "id": "creative_thinking_04",
+      "name": "Test 24: Solving a Riddle",
+      "category": "creative_thinking",
+      "reasoning_type": "backward",
+      "description": "Riddle solving with explanation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "I have cities, but no houses. I have mountains, but no trees. I have water, but no fish. What am I? Provide the answer and a one-sentence explanation."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.2
+      }
+    },
+    {
+      "id": "creative_thinking_05",
+      "name": "Test 25: Re-framing a Problem",
+      "category": "creative_thinking",
+      "reasoning_type": "general",
+      "description": "Problem reframing as opportunity",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A company's problem is 'our sales are too low.' Re-frame this problem as an opportunity. What is a more positive, forward-looking way to state this challenge?"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.7
+      }
+    },
+    {
+      "id": "creative_thinking_06",
+      "name": "Test 26: Generating a Product Name",
+      "category": "creative_thinking",
+      "reasoning_type": "general",
+      "description": "Creative product naming",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Invent a catchy name for a new brand of coffee that promises to give you extreme energy. The name should be short and memorable."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.9
+      }
+    },
+    {
+      "id": "creative_thinking_07",
+      "name": "Test 27: Connecting Unrelated Concepts",
+      "category": "creative_thinking",
+      "reasoning_type": "multi_hop",
+      "description": "Cross-domain connection making",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Find a surprising or interesting connection between 'a spider's web' and 'the internet'. Describe the connection in one or two sentences."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.7
+      }
+    },
+    {
+      "id": "creative_thinking_08",
+      "name": "Test 28: Lateral Thinking Puzzle",
+      "category": "creative_thinking",
+      "reasoning_type": "backward",
+      "description": "Lateral thinking puzzle solving",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A man pushes his car to a hotel and tells the owner he is bankrupt. Why? (Hint: The solution is a single, common situation)."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.5
+      }
+    },
+    {
+      "id": "creative_thinking_09",
+      "name": "Test 29: Generating a 'What If' Scenario",
+      "category": "creative_thinking",
+      "reasoning_type": "general",
+      "description": "Hypothetical scenario exploration",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What if humans did not need to sleep? Describe one major positive and one major negative societal consequence."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.8
+      }
+    },
+    {
+      "id": "creative_thinking_10",
+      "name": "Test 30: Caption This!",
+      "category": "creative_thinking",
+      "reasoning_type": "general",
+      "description": "Humorous caption generation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a short, funny caption for a picture of a cat sleeping on a laptop keyboard."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.8
+      }
+    },
+    {
+      "id": "strategic_thinking_01",
+      "name": "Test 31: Simple Game Theory (Prisoner's Dilemma)",
+      "category": "strategic_thinking",
+      "reasoning_type": "mathematical",
+      "description": "Basic game theory reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Two partners in crime are caught and held in separate cells. If both stay silent, they each get 1 year in jail. If one betrays the other, the betrayer goes free and the silent one gets 3 years. If both betray, they each get 2 years. What is the single most likely outcome if both prisoners are acting in their own self-interest?"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.1
+      }
+    },
+    {
+      "id": "strategic_thinking_02",
+      "name": "Test 32: Identifying a Feedback Loop",
+      "category": "strategic_thinking",
+      "reasoning_type": "general",
+      "description": "Systems thinking and feedback loops",
+      "messages": [
+        {
+          "role": "user",
+          "content": "In a city, as more people use public transport, the service gets more funding and improves. As the service improves, even more people start using it. What is this type of system called? (e.g., a vicious cycle, a feedback loop, etc.)"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.2
+      }
+    },
+    {
+      "id": "strategic_thinking_03",
+      "name": "Test 33: Second-Order Thinking",
+      "category": "strategic_thinking",
+      "reasoning_type": "chain_of_thought",
+      "description": "Second-order effects analysis",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A city bans plastic bags to help the environment (a first-order effect). What is a possible second-order effect of this policy? (A consequence of the consequence)."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.7
+      }
+    },
+    {
+      "id": "strategic_thinking_04",
+      "name": "Test 34: Root Cause vs. Proximate Cause",
+      "category": "strategic_thinking",
+      "reasoning_type": "backward",
+      "description": "Root cause analysis",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A patient has a headache (the proximate cause of their discomfort). A doctor discovers the patient is severely dehydrated, which is causing the headache. What is the root cause of the patient's discomfort?"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.1
+      }
+    },
+    {
+      "id": "strategic_thinking_05",
+      "name": "Test 35: Resource Allocation Problem",
+      "category": "strategic_thinking",
+      "reasoning_type": "scaffolded",
+      "description": "Resource allocation and prioritization",
+      "messages": [
+        {
+          "role": "user",
+          "content": "You have 10 hours to complete two tasks. Task A is 'urgent' and takes 3 hours. Task B is 'important' and takes 8 hours. You cannot complete both. Which task should you prioritize and why? There is no single correct answer; justify your choice."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.6
+      }
+    },
+    {
+      "id": "strategic_thinking_06",
+      "name": "Test 36: Win-Win Scenario Creation",
+      "category": "strategic_thinking",
+      "reasoning_type": "general",
+      "description": "Win-win solution generation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Two children both want the last orange. The classic solution is to cut it in half. Propose a different 'win-win' solution where both children could get what they truly want. (Hint: What if one wants the juice and the other wants the peel for baking?)"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.8
+      }
+    },
+    {
+      "id": "strategic_thinking_07",
+      "name": "Test 37: Understanding Trade-offs",
+      "category": "strategic_thinking",
+      "reasoning_type": "general",
+      "description": "Trade-off analysis",
+      "messages": [
+        {
+          "role": "user",
+          "content": "In software development, there is often a trade-off between 'speed of delivery' and 'quality of the code'. Explain this trade-off in one sentence."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.3
+      }
+    },
+    {
+      "id": "strategic_thinking_08",
+      "name": "Test 38: Basic Strategic Prediction",
+      "category": "strategic_thinking",
+      "reasoning_type": "general",
+      "description": "Strategic prediction and game theory",
+      "messages": [
+        {
+          "role": "user",
+          "content": "In a game of rock-paper-scissors, your opponent has played 'rock' three times in a row. What is a strategically sound move to play next and why?"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.5
+      }
+    },
+    {
+      "id": "strategic_thinking_09",
+      "name": "Test 39: Identifying a System's Bottleneck",
+      "category": "strategic_thinking",
+      "reasoning_type": "general",
+      "description": "Bottleneck identification in systems",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A fast-food restaurant can take orders in 10 seconds and cook a burger in 60 seconds, but their drink machine takes 90 seconds to fill a cup. What is the bottleneck in this restaurant's process?"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.1
+      }
+    },
+    {
+      "id": "strategic_thinking_10",
+      "name": "Test 40: Long-term vs. Short-term Thinking",
+      "category": "strategic_thinking",
+      "reasoning_type": "general",
+      "description": "Long-term vs short-term decision making",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A company can either spend its profits on a big holiday party for employees (short-term benefit) or invest it in new equipment that will increase efficiency (long-term benefit). Describe the main argument for choosing the long-term benefit."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.4
+      }
+    },
+    {
+      "id": "constraint_following_01",
+      "name": "Test 41: Multi-Step Multi-Format Logic Puzzle",
+      "category": "constraint_following",
+      "reasoning_type": "chain_of_thought",
+      "description": "Logic puzzle with format constraints",
+      "messages": [
+        {
+          "role": "user",
+          "content": "There are three friends: Alex, Ben, and Chloe. They live in three different cities: Paris, London, and Tokyo. Alex does not live in Paris. Ben lives in Tokyo. First, deduce who lives in which city. Second, present the answer as a Markdown list where each item is 'Name: City'."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.1
+      }
+    },
+    {
+      "id": "constraint_following_02",
+      "name": "Test 42: JSON with Conditional Fields",
+      "category": "constraint_following",
+      "reasoning_type": "scaffolded",
+      "description": "JSON generation with conditional logic",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a JSON object for a product. It must have 'name' and 'price'. It must also have a boolean key 'in_stock'. If 'in_stock' is true, you must add a key 'inventory_count' with a value greater than 0. If 'in_stock' is false, the 'inventory_count' key must not be present. Create the JSON for a product that IS in stock."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.1
+      }
+    },
+    {
+      "id": "constraint_following_03",
+      "name": "Test 43: Poetic Form Constraint",
+      "category": "constraint_following",
+      "reasoning_type": "general",
+      "description": "Haiku with format constraints",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a four-line poem about water. The poem must be a haiku (5-7-5 syllables) but you must present it as a single, comma-separated string."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.8
+      }
+    },
+    {
+      "id": "constraint_following_04",
+      "name": "Test 44: Text Manipulation and Exclusion",
+      "category": "constraint_following",
+      "reasoning_type": "general",
+      "description": "Text manipulation with exclusion rules",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Take the sentence 'The quick brown fox jumps over the lazy dog.' Rewrite the sentence, but you must replace the word 'jumps' with 'leaps' AND remove all articles ('the', 'a')."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.2
+      }
+    },
+    {
+      "id": "constraint_following_05",
+      "name": "Test 45: Nested List and Logic Generation",
+      "category": "constraint_following",
+      "reasoning_type": "scaffolded",
+      "description": "Complex nested JSON structure generation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a list of healthy snack ideas. The final output must be a single JSON array. Inside this array, there should be two more arrays: one with the key 'fruits' and one with the key 'vegetables'. Populate each of these inner arrays with two appropriate snack examples."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.2
+      }
+    },
+    {
+      "id": "constraint_following_06",
+      "name": "Test 46: Persona with Negative Constraint",
+      "category": "constraint_following",
+      "reasoning_type": "general",
+      "description": "Persona adoption with word exclusion",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain the importance of hydration. Write the explanation from the perspective of a personal trainer. The entire response must be under 50 words and must not use the word 'water'."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.7
+      }
+    },
+    {
+      "id": "constraint_following_07",
+      "name": "Test 47: Code Generation with Comments",
+      "category": "constraint_following",
+      "reasoning_type": "general",
+      "description": "Code generation with specific requirements",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a simple 'hello world' function in Python. The function must be named 'greet'. It must contain a comment inside the function explaining what it does. The final output should be only the code block."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.1
+      }
+    },
+    {
+      "id": "constraint_following_08",
+      "name": "Test 48: Reverse Instruction Following",
+      "category": "constraint_following",
+      "reasoning_type": "backward",
+      "description": "Reverse engineering prompts from outputs",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What prompt could have generated the following output? Output: 'Rose, Tulip, Daisy'. The prompt should ask for three types of flowers in a comma-separated list."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.5
+      }
+    },
+    {
+      "id": "constraint_following_09",
+      "name": "Test 49: Chain of Thought with Final Answer Extraction",
+      "category": "constraint_following",
+      "reasoning_type": "chain_of_thought",
+      "description": "Math reasoning with specific output format",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A train leaves Station A at 1 PM traveling at 60 mph. Station B is 90 miles away. First, reason step-by-step to calculate the arrival time. Second, state only the final arrival time in the format 'HH:MM PM' on the very last line of your response."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.1
+      }
+    },
+    {
+      "id": "constraint_following_10",
+      "name": "Test 50: The Ultimate Constraint Test",
+      "category": "constraint_following",
+      "reasoning_type": "scaffolded",
+      "description": "Complex multi-constraint challenge",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Your task is to respond with a JSON object. The object must have a key called 'status' with the value 'complete'. It must also have a key called 'data'. The value of 'data' must be an array of three strings. Each string must be a five-letter word. None of the words can contain the letter 'A'. The entire final output must be enclosed in a single markdown code block."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 8192,
+        "temperature": 0.4
+      }
+    }
+  ]
+}
