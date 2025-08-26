@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TestRunner - Flexible Test Execution Engine
+BenchmarkTestRunner - Flexible Test Execution Engine
 
 A modular test execution system that separates test definitions from execution logic,
 supporting both sequential and concurrent test execution against local LLM APIs.
@@ -30,13 +30,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Import ReasoningEvaluator for automatic evaluation
+# Import UniversalEvaluator for automatic evaluation
 try:
-    from reasoning_evaluator import ReasoningEvaluator, ReasoningType, evaluate_reasoning
+    from reasoning_evaluator import UniversalEvaluator, ReasoningType, evaluate_reasoning
     EVALUATION_AVAILABLE = True
 except ImportError:
     EVALUATION_AVAILABLE = False
-    logger.warning("ReasoningEvaluator not available - evaluation features disabled")
+    logger.warning("UniversalEvaluator not available - evaluation features disabled")
 
 # GPU monitoring for RTX 5090
 try:
@@ -891,7 +891,7 @@ class TestSuiteManager:
         return stats
 
 
-class TestRunner:
+class BenchmarkTestRunner:
     """
     Flexible test execution engine for LLM benchmarking
     
@@ -901,7 +901,7 @@ class TestRunner:
     
     def __init__(self, config_path: Optional[str] = None, api_endpoint: Optional[str] = None):
         """
-        Initialize TestRunner with optional configuration
+        Initialize BenchmarkTestRunner with optional configuration
         
         Args:
             config_path: Path to configuration JSON file
@@ -926,7 +926,7 @@ class TestRunner:
         self.performance_monitor = PerformanceMonitor()
         self._enable_performance_monitoring = False
         
-        logger.info("TestRunner initialized")
+        logger.info("BenchmarkTestRunner initialized")
     
     def load_test_suite(self, suite_path: str) -> bool:
         """
@@ -955,6 +955,22 @@ class TestRunner:
                 self.tests[test['id']] = test
             
             logger.info(f"Loaded {len(self.tests)} tests from {suite_path}")
+            
+            # Initialize progress tracking with loaded tests
+            current_time = time.time()
+            self.execution_progress = ExecutionProgress(
+                total_tests=len(self.tests),
+                completed_tests=0,
+                successful_tests=0,
+                failed_tests=0,
+                current_test=None,
+                estimated_remaining_time=0.0,
+                average_execution_time=0.0,
+                start_time=current_time,
+                elapsed_time=0.0,
+                total_tokens_generated=0
+            )
+            
             return True
             
         except FileNotFoundError:
@@ -1030,7 +1046,7 @@ class TestRunner:
             logger.error(f"Error loading categories: {e}")
             return False
     
-    def configure_api(self, endpoint: str, model: str, headers: Dict = None) -> None:
+    def configure_api(self, endpoint: str, model: str, headers: Dict = None, timeout: int = 600) -> None:
         """
         Configure API connection settings
         
@@ -1038,12 +1054,13 @@ class TestRunner:
             endpoint: Full API endpoint URL (e.g., 'http://127.0.0.1:8004/v1/completions')
             model: Model name
             headers: HTTP headers dictionary
+            timeout: Request timeout in seconds
         """
         self.api_config = APIConfiguration(
             endpoint=endpoint,
             model=model,
             headers=headers or {'Content-Type': 'application/json'},
-            timeout=600,
+            timeout=timeout,
             retry_attempts=3,
             retry_delay=1.0,
             api_type=self._detect_api_type(endpoint)
@@ -1227,6 +1244,25 @@ class TestRunner:
                 with open(json_path, "w", encoding="utf-8") as f:
                     json.dump(asdict(result), f, indent=2, ensure_ascii=False)
             
+            # Create batch results summary
+            if len(results) > 1:
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                batch_path = os.path.join(output_dir, f"batch_results_{timestamp}.json")
+                
+                batch_summary = {
+                    "execution_summary": {
+                        "total_tests": len(results),
+                        "successful_tests": len([r for r in results if r.success]),
+                        "failed_tests": len([r for r in results if not r.success]),
+                        "total_execution_time": sum(r.execution_time for r in results),
+                        "average_test_time": sum(r.execution_time for r in results) / len(results) if results else 0
+                    },
+                    "individual_results": [asdict(result) for result in results]
+                }
+                
+                with open(batch_path, "w", encoding="utf-8") as f:
+                    json.dump(batch_summary, f, indent=2, ensure_ascii=False)
+            
             logger.info(f"Saved {len(results)} results to {output_dir}")
             return True
             
@@ -1386,7 +1422,19 @@ class TestRunner:
     
     def get_progress(self) -> ExecutionProgress:
         """Get current execution progress information"""
-        return self.execution_progress or ExecutionProgress(0, 0, 0, 0, None, 0, 0)
+        import time
+        current_time = time.time()
+        return self.execution_progress or ExecutionProgress(
+            total_tests=0,
+            completed_tests=0, 
+            successful_tests=0,
+            failed_tests=0,
+            current_test=None,
+            estimated_remaining_time=0.0,
+            average_execution_time=0.0,
+            start_time=current_time,
+            elapsed_time=0.0
+        )
     
     # Private helper methods
     
@@ -1578,6 +1626,7 @@ class TestRunner:
                 eval_result = evaluate_reasoning(
                     response_text=completion_text,
                     test_name=test_case.get('name', test_id),
+                    test_category=test_case.get('category'),
                     reasoning_type=test_reasoning_type
                 )
                 
@@ -1866,9 +1915,9 @@ class TestRunner:
 
 def load_and_configure_runner(test_definitions_dir: str = "test_definitions", 
                              api_endpoint: str = None,
-                             test_type: str = "base") -> TestRunner:
+                             test_type: str = "base") -> BenchmarkTestRunner:
     """
-    Load and configure a TestRunner with default paths
+    Load and configure a BenchmarkTestRunner with default paths
     
     Args:
         test_definitions_dir: Directory containing test definition files
@@ -1876,9 +1925,9 @@ def load_and_configure_runner(test_definitions_dir: str = "test_definitions",
         test_type: Type of tests to load ("base" or "instruct")
         
     Returns:
-        Configured TestRunner instance
+        Configured BenchmarkTestRunner instance
     """
-    runner = TestRunner(api_endpoint=api_endpoint)
+    runner = BenchmarkTestRunner(api_endpoint=api_endpoint)
     
     # Get the directory where test_runner.py is located (benchmark_tests/)
     runner_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1907,11 +1956,11 @@ def load_and_configure_runner(test_definitions_dir: str = "test_definitions",
 
 
 if __name__ == "__main__":
-    """Command-line interface for TestRunner"""
+    """Command-line interface for BenchmarkTestRunner"""
     import argparse
     import sys
     
-    parser = argparse.ArgumentParser(description="TestRunner - Flexible LLM Test Execution Engine")
+    parser = argparse.ArgumentParser(description="BenchmarkTestRunner - Flexible LLM Test Execution Engine")
     parser.add_argument("--endpoint", "-e", 
                        default="http://127.0.0.1:8005/v1/completions",
                        help="API endpoint URL (default: %(default)s)")
@@ -1949,7 +1998,7 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true",
                        help="Show what would be executed without running tests")
     parser.add_argument("--evaluation", action="store_true",
-                       help="Enable automatic reasoning evaluation (requires ReasoningEvaluator)")
+                       help="Enable automatic universal evaluation (requires UniversalEvaluator)")
     parser.add_argument("--eval-summary", action="store_true",
                        help="Generate detailed evaluation summary report")
     parser.add_argument("--verbose", "-v", action="store_true",
@@ -1971,7 +2020,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    print("TestRunner - Test Execution Engine")
+    print("BenchmarkTestRunner - Test Execution Engine")
     print("=" * 50)
     
     # Handle suite management commands first (independent of test loading)
@@ -2302,7 +2351,7 @@ if __name__ == "__main__":
         elif args.evaluation and EVALUATION_AVAILABLE:
             print(f"\n⚠️  Evaluation was enabled but no results contain evaluation data")
         elif args.evaluation and not EVALUATION_AVAILABLE:
-            print(f"\n⚠️  Evaluation requested but ReasoningEvaluator not available")
+            print(f"\n⚠️  Evaluation requested but UniversalEvaluator not available")
         
         print(f"\nResults saved to: {args.output_dir}/")
         
