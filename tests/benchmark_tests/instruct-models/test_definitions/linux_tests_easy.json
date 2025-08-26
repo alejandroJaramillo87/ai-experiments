@@ -1,0 +1,551 @@
+{
+  "suite_info": {
+    "name": "Linux System Administration Easy Test Suite",
+    "version": "1.0.0",
+    "total_tests": 30,
+    "extracted_from": "test_linux_easy.py",
+    "extraction_date": "2025-01-26"
+  },
+  "tests": [
+    {
+      "id": "linux_easy_01",
+      "name": "Test 1: Multi-Source Log Analysis",
+      "category": "log_analysis",
+      "reasoning_type": "general",
+      "description": "Search and analyze log files for errors with counting and sorting",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a bash command that:\n1. Searches /var/log for .log files modified in last 24 hours\n2. Counts occurrences of \"error\" or \"fail\" (case-insensitive)\n3. Shows filename and count, sorted by highest count\n4. Excludes files with 0 matches\n\nUse grep, find, and sort. One-liner preferred."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_02",
+      "name": "Test 2: Container Stack Setup",
+      "category": "containerization",
+      "reasoning_type": "general",
+      "description": "Create production-ready docker-compose configuration",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a docker-compose.yml with:\n- nginx (port 80) as reverse proxy\n- python app (port 5000) \n- redis for caching\n- proper networking (frontend/backend)\n- healthchecks for each service\n- restart policies\n\nKeep it concise but production-ready."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_03",
+      "name": "Test 3: Firewall Security Rules",
+      "category": "security",
+      "reasoning_type": "general",
+      "description": "Create comprehensive iptables firewall rules",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write iptables rules that:\n1. Allow SSH only from 192.168.1.0/24\n2. Rate limit HTTP/HTTPS to 100 connections/minute\n3. Drop packets from IPs with >50 failed connections\n4. Log blocked attempts\n5. Allow established connections\n\nInclude comments for each rule."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_04",
+      "name": "Test 4: System Health Monitor",
+      "category": "monitoring",
+      "reasoning_type": "general",
+      "description": "Create system health monitoring script with thresholds",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a bash script that checks:\n- CPU usage (warn if >80%)\n- Memory usage (warn if >90%)\n- Disk usage for / (warn if >85%)\n- Load average (warn if >4)\n\nOutput format: \"METRIC: VALUE [WARNING]\"\nInclude proper error handling."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_05",
+      "name": "Test 5: Security Quick Scan",
+      "category": "security",
+      "reasoning_type": "general",
+      "description": "Security vulnerability scanning script",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a script that detects:\n1. SUID binaries in /tmp or /home\n2. Users with UID 0 besides root\n3. World-writable files in /etc\n4. Failed SSH attempts (last 100 lines of auth.log)\n\nShow results with severity (HIGH/MEDIUM/LOW)."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_06",
+      "name": "Test 6: Database Backup Automation",
+      "category": "backup",
+      "reasoning_type": "general",
+      "description": "PostgreSQL backup automation with rotation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a PostgreSQL backup script that:\n1. Dumps database 'production' \n2. Compresses with gzip\n3. Names file with date: backup_YYYYMMDD.sql.gz\n4. Keeps only last 7 backups\n5. Logs success/failure\n\nInclude error handling and exit codes."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_07",
+      "name": "Test 7: Service Manager Script",
+      "category": "service_management",
+      "reasoning_type": "general",
+      "description": "Automated service management and monitoring",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a script that:\n1. Checks if nginx, mysql, redis are running\n2. Restarts any stopped services\n3. Waits 5 seconds and verifies they started\n4. Sends alert if restart failed\n5. Logs all actions with timestamps\n\nUse systemctl and proper exit codes."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_08",
+      "name": "Test 8: Network Diagnostics",
+      "category": "networking",
+      "reasoning_type": "general",
+      "description": "Comprehensive network connectivity testing",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a network test script that:\n1. Pings 3 hosts (8.8.8.8, 1.1.1.1, gateway)\n2. Checks DNS resolution\n3. Tests HTTP connectivity to google.com\n4. Measures average latency\n5. Reports any failures\n\nOutput should be clear and actionable."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_09",
+      "name": "Test 9: Log Rotation Setup",
+      "category": "log_management",
+      "reasoning_type": "general",
+      "description": "Advanced logrotate configuration",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a logrotate config for:\n- /var/log/myapp/*.log\n- Rotate daily, keep 14 days\n- Compress after 1 day\n- Size limit 100M\n- Create new files as user:group 2048\n- Run post-rotate script to reload app\n\nInclude all necessary directives."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_10",
+      "name": "Test 10: Process Monitor Daemon",
+      "category": "process_management",
+      "reasoning_type": "general",
+      "description": "Process monitoring daemon with crash protection",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a monitoring script that:\n1. Checks every 30 seconds if 'myapp' process exists\n2. If not running, starts it with: /usr/bin/myapp\n3. If crashes 3 times in 5 minutes, stop trying\n4. Logs to syslog\n5. Handles SIGTERM gracefully\n\nMake it daemon-friendly."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_11",
+      "name": "Test 11: Backup Verification",
+      "category": "backup",
+      "reasoning_type": "general",
+      "description": "Backup integrity verification system",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a script that:\n1. Tests latest backup in /backup/\n2. Restores to /tmp/verify/\n3. Checks if key files exist\n4. Compares file count with original\n5. Reports integrity status\n\nClean up after verification."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_12",
+      "name": "Test 12: SSL Certificate Manager",
+      "category": "security",
+      "reasoning_type": "general",
+      "description": "SSL certificate monitoring and renewal",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a script that:\n1. Checks SSL certificates in /etc/ssl/certs/\n2. Warns if expiring within 30 days\n3. Shows: domain, expiry date, days left\n4. Optionally renews with certbot\n5. Reloads nginx after renewal\n\nFormat output as a table."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_13",
+      "name": "Test 13: Docker Cleanup Tool",
+      "category": "containerization",
+      "reasoning_type": "general",
+      "description": "Docker maintenance and cleanup automation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a Docker maintenance script:\n1. Remove stopped containers older than 7 days\n2. Remove unused images (no container)\n3. Clean build cache\n4. Remove unused volumes\n5. Show space reclaimed\n6. Keep images tagged 'latest' or 'prod'\n\nInclude dry-run option."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_14",
+      "name": "Test 14: Performance Baseline",
+      "category": "monitoring",
+      "reasoning_type": "general",
+      "description": "System performance baseline capture",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a script that captures:\n1. Current CPU, memory, disk usage\n2. Top 5 processes by CPU and memory\n3. Network throughput (last minute)\n4. Active connections count\n5. System uptime and load\n\nOutput as JSON for monitoring integration."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_15",
+      "name": "Test 15: User Audit Script",
+      "category": "security",
+      "reasoning_type": "general",
+      "description": "User account security audit",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a user audit script showing:\n1. Users who haven't logged in for 90 days\n2. Users with password expiry <7 days\n3. Users without home directories\n4. Accounts with no password set\n5. Sudo users list\n\nMark security concerns as [WARNING]."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_16",
+      "name": "Test 16: API Health Checker",
+      "category": "monitoring",
+      "reasoning_type": "general",
+      "description": "API endpoint health monitoring",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a script that monitors APIs:\n1. Check https://api.example.com/health\n2. Verify status code is 200\n3. Check response time <2 seconds\n4. Parse JSON for status: \"ok\"\n5. Alert if 3 consecutive failures\n6. Log response times\n\nUse curl with proper timeouts."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_17",
+      "name": "Test 17: Git Repository Maintenance",
+      "category": "development",
+      "reasoning_type": "general",
+      "description": "Git repository maintenance automation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a git maintenance script:\n1. Fetch all remotes\n2. Prune deleted remote branches\n3. Delete merged local branches\n4. Run garbage collection\n5. Show repository size before/after\n6. Update hooks if needed\n\nHandle bare and normal repos."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_18",
+      "name": "Test 18: System Update Manager",
+      "category": "system_management",
+      "reasoning_type": "general",
+      "description": "System update automation with safety checks",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write an update script that:\n1. Checks for security updates\n2. Lists packages to be updated\n3. Creates system snapshot/backup\n4. Applies updates with logging\n5. Reboots if kernel updated\n6. Verifies system health after\n\nSupport apt and yum."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_19",
+      "name": "Test 19: Resource Limiter",
+      "category": "process_management",
+      "reasoning_type": "general",
+      "description": "Process resource limiting with cgroups",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a script using cgroups or nice that:\n1. Limits process CPU to 50%\n2. Limits memory to 1GB\n3. Sets I/O priority to low\n4. Monitors actual usage\n5. Kills if exceeds limits for 60s\n\nAccept PID or process name as argument."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_20",
+      "name": "Test 20: Service Dependency Checker",
+      "category": "service_management",
+      "reasoning_type": "general",
+      "description": "Service dependency analysis and validation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a script that:\n1. Reads service dependencies from config\n2. Checks each service status\n3. Identifies broken dependencies  \n4. Suggests start order\n5. Detects circular dependencies\n\nConfig format: SERVICE:DEPENDS_ON1,DEPENDS_ON2"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_21",
+      "name": "Test 21: Automated Troubleshooter",
+      "category": "troubleshooting",
+      "reasoning_type": "general",
+      "description": "Web service troubleshooting automation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a troubleshooting script for web issues:\n1. Check if nginx is running\n2. Test if port 80/443 are listening\n3. Verify DNS resolution\n4. Check disk space\n5. Review last 10 error log entries\n6. Test database connectivity\n\nProvide specific fix suggestions."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_22",
+      "name": "Test 22: Compliance Checker",
+      "category": "security",
+      "reasoning_type": "general",
+      "description": "Basic security compliance checking",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a basic compliance script checking:\n1. SSH: no root login, key-only auth\n2. Firewall is enabled\n3. Passwords meet complexity requirements  \n4. Unnecessary services disabled\n5. File permissions on /etc/passwd, /etc/shadow\n\nOutput pass/fail with remediation steps."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_23",
+      "name": "Test 23: Load Balancer Health",
+      "category": "networking",
+      "reasoning_type": "general",
+      "description": "Load balancer health monitoring",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a script that tests load balancer:\n1. Check each backend server health\n2. Verify response times <500ms\n3. Test session persistence\n4. Monitor active connections\n5. Alert if any backend down\n6. Show traffic distribution\n\nOutput health percentage and details."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_24",
+      "name": "Test 24: Database Performance",
+      "category": "database",
+      "reasoning_type": "general",
+      "description": "Database performance analysis and optimization",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a MySQL/PostgreSQL script that:\n1. Shows slow queries (>1 second)\n2. Lists tables needing optimization\n3. Checks for missing indexes\n4. Shows connection pool usage\n5. Identifies lock waits\n\nFormat as actionable report."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_25",
+      "name": "Test 25: Container Security Scan",
+      "category": "security",
+      "reasoning_type": "general",
+      "description": "Container security vulnerability scanning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a container security checker:\n1. List running containers\n2. Check for containers running as root\n3. Verify resource limits are set\n4. Check for outdated base images\n5. Scan for exposed sensitive ports\n6. Review mounted volumes\n\nCategorize findings by severity."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_26",
+      "name": "Test 26: Automated Deployment",
+      "category": "deployment",
+      "reasoning_type": "general",
+      "description": "Zero-downtime deployment automation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a deployment script that:\n1. Pulls latest code from git\n2. Runs tests\n3. Builds application\n4. Creates backup of current version\n5. Deploys with zero downtime\n6. Rolls back on failure\n\nInclude pre/post deployment hooks."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_27",
+      "name": "Test 27: System Hardening Script",
+      "category": "security",
+      "reasoning_type": "general",
+      "description": "Comprehensive system hardening automation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create a hardening script that:\n1. Disables unnecessary services\n2. Configures firewall basics\n3. Sets secure kernel parameters\n4. Hardens SSH configuration\n5. Sets up fail2ban\n6. Creates audit rules\n\nShow before/after security score."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_28",
+      "name": "Test 28: Monitoring Integration",
+      "category": "monitoring",
+      "reasoning_type": "general",
+      "description": "Metrics collection and monitoring integration",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a script that sends metrics to monitoring:\n1. Collect system metrics (CPU, RAM, disk)\n2. Format for Prometheus/InfluxDB\n3. Include custom application metrics\n4. Handle connection failures\n5. Buffer data if endpoint down\n6. Rotate buffer files\n\nUse curl to POST metrics."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_29",
+      "name": "Test 29: Incident Response Helper",
+      "category": "security",
+      "reasoning_type": "general",
+      "description": "Incident response data collection automation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Create an incident response script:\n1. Captures system state (ps, netstat, etc)\n2. Preserves logs with timestamps\n3. Creates memory dump of suspicious process\n4. Isolates system (optional)\n5. Generates investigation report\n6. Notifies security team\n\nInclude evidence chain tracking."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    },
+    {
+      "id": "linux_easy_30",
+      "name": "Test 30: Infrastructure Report",
+      "category": "reporting",
+      "reasoning_type": "general",
+      "description": "Comprehensive infrastructure report generation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Build a comprehensive report generator:\n1. System inventory (HW/SW)\n2. Service status overview\n3. Resource utilization trends\n4. Security posture summary\n5. Recent changes/updates\n6. Recommendations\n\nOutput as HTML with summary dashboard."
+        }
+      ],
+      "parameters": {
+        "max_tokens": 2048,
+        "temperature": 0.1,
+        "stream": false
+      }
+    }
+  ]
+}

@@ -14,12 +14,21 @@ import time
 import logging
 import requests
 import os
+import psutil
+import subprocess
+import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
+
+# Set up logging first
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Import ReasoningEvaluator for automatic evaluation
 try:
@@ -29,12 +38,108 @@ except ImportError:
     EVALUATION_AVAILABLE = False
     logger.warning("ReasoningEvaluator not available - evaluation features disabled")
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# GPU monitoring for RTX 5090
+try:
+    import pynvml
+    NVIDIA_GPU_AVAILABLE = True
+    pynvml.nvmlInit()
+except ImportError:
+    NVIDIA_GPU_AVAILABLE = False
+    logger.warning("pynvml not available - GPU metrics disabled")
+
+
+@dataclass 
+class PerformanceMetrics:
+    """Comprehensive performance metrics for hardware monitoring"""
+    
+    # Timing metrics
+    start_time: float
+    end_time: float
+    total_duration: float
+    
+    # Request timing breakdown
+    request_start_time: float = 0.0
+    request_end_time: float = 0.0
+    request_duration: float = 0.0
+    network_latency: float = 0.0
+    
+    # CPU metrics (AMD Ryzen 9950X)
+    cpu_usage_percent: float = 0.0
+    cpu_frequency_mhz: float = 0.0
+    cpu_temp_celsius: float = 0.0
+    cpu_cores_usage: List[float] = None
+    
+    # Memory metrics (128GB DDR5)
+    memory_total_gb: float = 0.0
+    memory_used_gb: float = 0.0
+    memory_available_gb: float = 0.0
+    memory_usage_percent: float = 0.0
+    memory_swap_used_gb: float = 0.0
+    
+    # GPU metrics (RTX 5090)
+    gpu_usage_percent: float = 0.0
+    gpu_memory_total_gb: float = 0.0
+    gpu_memory_used_gb: float = 0.0
+    gpu_memory_usage_percent: float = 0.0
+    gpu_temp_celsius: float = 0.0
+    gpu_power_usage_watts: float = 0.0
+    gpu_clock_speed_mhz: float = 0.0
+    gpu_memory_clock_mhz: float = 0.0
+    
+    # Storage I/O metrics (Samsung 990 Pro/EVO)
+    disk_read_mb: float = 0.0
+    disk_write_mb: float = 0.0
+    disk_read_iops: float = 0.0
+    disk_write_iops: float = 0.0
+    disk_usage_percent: float = 0.0
+    disk_temp_celsius: float = 0.0
+    
+    # Network I/O metrics
+    network_bytes_sent: int = 0
+    network_bytes_recv: int = 0
+    network_packets_sent: int = 0
+    network_packets_recv: int = 0
+    network_rx_mb: float = 0.0
+    network_tx_mb: float = 0.0
+    
+    # Throughput analysis
+    tokens_per_second: float = 0.0
+    requests_per_second: float = 0.0
+    avg_response_size_kb: float = 0.0
+    
+    # System load
+    system_load_1min: float = 0.0
+    system_load_5min: float = 0.0
+    system_load_15min: float = 0.0
+    
+    def __post_init__(self):
+        if self.cpu_cores_usage is None:
+            self.cpu_cores_usage = []
+
+
+@dataclass
+class ResourceUtilizationReport:
+    """Summary report of resource utilization during test execution"""
+    
+    # Test execution info
+    test_id: str
+    test_duration: float
+    tokens_generated: int
+    
+    # Performance summary
+    avg_performance: PerformanceMetrics
+    peak_performance: PerformanceMetrics
+    
+    # Bottleneck analysis
+    bottlenecks_detected: List[str]
+    performance_warnings: List[str]
+    
+    # Hardware efficiency
+    gpu_utilization_efficiency: float = 0.0  # How well GPU was utilized
+    memory_pressure_score: float = 0.0       # Memory bottleneck indicator
+    cpu_efficiency_score: float = 0.0        # CPU usage optimization
+    io_throughput_score: float = 0.0         # Storage performance score
+    throughput_tokens_per_second: float = 0.0
 
 
 @dataclass
@@ -55,6 +160,9 @@ class TestResult:
     evaluation_result: Optional[Dict[str, Any]] = None
     reasoning_score: Optional[float] = None
     reasoning_type: Optional[str] = None
+    # Performance metrics (optional)
+    performance_metrics: Optional[PerformanceMetrics] = None
+    utilization_report: Optional[ResourceUtilizationReport] = None
 
 
 @dataclass
@@ -67,6 +175,34 @@ class ExecutionProgress:
     current_test: Optional[str]
     estimated_remaining_time: float
     average_execution_time: float
+    start_time: float
+    elapsed_time: float
+    current_category: Optional[str] = None
+    tests_per_second: float = 0.0
+    total_tokens_generated: int = 0
+    average_tokens_per_second: float = 0.0
+    
+    @property
+    def completion_percentage(self) -> float:
+        """Calculate completion percentage"""
+        if self.total_tests == 0:
+            return 0.0
+        return (self.completed_tests / self.total_tests) * 100
+    
+    @property
+    def success_rate(self) -> float:
+        """Calculate success rate of completed tests"""
+        if self.completed_tests == 0:
+            return 0.0
+        return (self.successful_tests / self.completed_tests) * 100
+    
+    def update_estimates(self) -> None:
+        """Update time estimates based on current progress"""
+        if self.completed_tests > 0:
+            self.average_execution_time = self.elapsed_time / self.completed_tests
+            remaining_tests = self.total_tests - self.completed_tests
+            self.estimated_remaining_time = remaining_tests * self.average_execution_time
+            self.tests_per_second = self.completed_tests / self.elapsed_time if self.elapsed_time > 0 else 0
 
 
 @dataclass
@@ -79,6 +215,680 @@ class APIConfiguration:
     retry_attempts: int
     retry_delay: float
     api_type: str  # "completions" or "chat"
+
+
+@dataclass
+class TestSuite:
+    """Container for test suite information"""
+    suite_id: str
+    name: str
+    description: str
+    version: str
+    total_tests: int
+    categories: Dict[str, int]
+    test_type: str  # "base" or "instruct"
+    created_date: str
+    last_modified: str
+
+
+@dataclass
+class CategoryInfo:
+    """Container for category information"""
+    category_id: str
+    name: str
+    description: str
+    reasoning_focus: str
+    temperature_range: Tuple[float, float]
+    test_range: Tuple[int, int]
+    test_count: int
+    test_ids: List[str]
+    difficulty_level: str = "medium"
+    estimated_time_per_test: float = 30.0
+
+
+class PerformanceMonitor:
+    """
+    Comprehensive performance monitoring system for RTX 5090, AMD Ryzen 9950X, and 128GB DDR5
+    
+    Monitors:
+    - GPU utilization, memory, temperature, power (RTX 5090)
+    - CPU usage, frequency, temperature (AMD Ryzen 9950X)  
+    - Memory usage, swap, pressure (128GB DDR5)
+    - Storage I/O, temperature (Samsung 990 Pro/EVO)
+    - Network I/O and latency
+    - System load and bottleneck detection
+    """
+    
+    def __init__(self):
+        self.monitoring_active = False
+        self.metrics_history: List[PerformanceMetrics] = []
+        self.baseline_metrics: Optional[PerformanceMetrics] = None
+        self._monitor_thread = None
+        self._stop_monitoring = threading.Event()
+        self._metrics_lock = threading.Lock()  # Thread safety for metrics_history
+        
+        # Initialize GPU monitoring
+        if NVIDIA_GPU_AVAILABLE:
+            try:
+                self.gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(0)  # RTX 5090
+            except Exception as e:
+                logger.warning(f"Failed to initialize GPU monitoring: {e}")
+                self.gpu_handle = None
+        else:
+            self.gpu_handle = None
+    
+    def start_monitoring(self, interval_seconds: float = 1.0):
+        """Start continuous performance monitoring"""
+        if self.monitoring_active:
+            return
+            
+        self.monitoring_active = True
+        self._stop_monitoring.clear()
+        
+        # Thread-safe clear of metrics history
+        with self._metrics_lock:
+            self.metrics_history.clear()
+        
+        # Capture baseline
+        self.baseline_metrics = self._capture_metrics()
+        
+        # Start monitoring thread
+        self._monitor_thread = threading.Thread(
+            target=self._monitoring_loop,
+            args=(interval_seconds,),
+            daemon=True
+        )
+        self._monitor_thread.start()
+        
+        logger.info(f"Performance monitoring started (interval: {interval_seconds}s)")
+    
+    def stop_monitoring(self) -> List[PerformanceMetrics]:
+        """Stop monitoring and return collected metrics"""
+        if not self.monitoring_active:
+            return []
+            
+        self.monitoring_active = False
+        self._stop_monitoring.set()
+        
+        if self._monitor_thread:
+            self._monitor_thread.join(timeout=2.0)
+        
+        # Thread-safe access to metrics history
+        with self._metrics_lock:
+            collected_count = len(self.metrics_history)
+            result = self.metrics_history.copy()
+            
+        logger.info(f"Performance monitoring stopped. Collected {collected_count} samples")
+        return result
+    
+    def _monitoring_loop(self, interval_seconds: float):
+        """Continuous monitoring loop"""
+        while not self._stop_monitoring.wait(interval_seconds):
+            try:
+                metrics = self._capture_metrics()
+                # Thread-safe append to metrics history
+                with self._metrics_lock:
+                    self.metrics_history.append(metrics)
+            except Exception as e:
+                logger.warning(f"Error capturing metrics: {e}")
+    
+    def _capture_metrics(self) -> PerformanceMetrics:
+        """Capture comprehensive system metrics"""
+        current_time = time.time()
+        
+        # CPU metrics (AMD Ryzen 9950X)
+        cpu_usage = psutil.cpu_percent(interval=0.1)
+        cpu_freq = psutil.cpu_freq()
+        cpu_cores = psutil.cpu_percent(percpu=True, interval=0.1)
+        cpu_temp = self._get_cpu_temperature()
+        
+        # Memory metrics (128GB DDR5)
+        memory = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        
+        # GPU metrics (RTX 5090)
+        gpu_usage, gpu_memory, gpu_temp, gpu_power, gpu_clocks = self._get_gpu_metrics()
+        
+        # Storage I/O metrics (Samsung NVMe)
+        disk_io = psutil.disk_io_counters()
+        disk_usage = psutil.disk_usage('/')
+        disk_temp = self._get_disk_temperature()
+        
+        # Network I/O metrics
+        network_io = psutil.net_io_counters()
+        
+        # System load
+        load_avg = os.getloadavg()
+        
+        return PerformanceMetrics(
+            # Timing
+            start_time=current_time,
+            end_time=current_time,
+            total_duration=0.0,
+            
+            # CPU (AMD Ryzen 9950X)
+            cpu_usage_percent=cpu_usage,
+            cpu_frequency_mhz=cpu_freq.current if cpu_freq else 0.0,
+            cpu_temp_celsius=cpu_temp,
+            cpu_cores_usage=cpu_cores,
+            
+            # Memory (128GB DDR5)
+            memory_total_gb=memory.total / (1024**3),
+            memory_used_gb=memory.used / (1024**3),
+            memory_available_gb=memory.available / (1024**3),
+            memory_usage_percent=memory.percent,
+            memory_swap_used_gb=swap.used / (1024**3),
+            
+            # GPU (RTX 5090)
+            gpu_usage_percent=gpu_usage,
+            gpu_memory_total_gb=gpu_memory[0],
+            gpu_memory_used_gb=gpu_memory[1],
+            gpu_memory_usage_percent=gpu_memory[2],
+            gpu_temp_celsius=gpu_temp,
+            gpu_power_usage_watts=gpu_power,
+            gpu_clock_speed_mhz=gpu_clocks[0],
+            gpu_memory_clock_mhz=gpu_clocks[1],
+            
+            # Storage (Samsung 990 Pro/EVO)
+            disk_read_mb=(disk_io.read_bytes / (1024**2)) if disk_io else 0.0,
+            disk_write_mb=(disk_io.write_bytes / (1024**2)) if disk_io else 0.0,
+            disk_read_iops=disk_io.read_count if disk_io else 0.0,
+            disk_write_iops=disk_io.write_count if disk_io else 0.0,
+            disk_usage_percent=(disk_usage.used / disk_usage.total) * 100,
+            disk_temp_celsius=disk_temp,
+            
+            # Network
+            network_bytes_sent=network_io.bytes_sent if network_io else 0,
+            network_bytes_recv=network_io.bytes_recv if network_io else 0,
+            network_packets_sent=network_io.packets_sent if network_io else 0,
+            network_packets_recv=network_io.packets_recv if network_io else 0,
+            
+            # System load
+            system_load_1min=load_avg[0],
+            system_load_5min=load_avg[1],
+            system_load_15min=load_avg[2]
+        )
+    
+    def _get_gpu_metrics(self) -> Tuple[float, Tuple[float, float, float], float, float, Tuple[float, float]]:
+        """Get RTX 5090 GPU metrics"""
+        if not self.gpu_handle or not NVIDIA_GPU_AVAILABLE:
+            return 0.0, (0.0, 0.0, 0.0), 0.0, 0.0, (0.0, 0.0)
+        
+        try:
+            # GPU utilization
+            util = pynvml.nvmlDeviceGetUtilizationRates(self.gpu_handle)
+            gpu_usage = util.gpu
+            
+            # GPU memory
+            mem_info = pynvml.nvmlDeviceGetMemoryInfo(self.gpu_handle)
+            gpu_mem_total = mem_info.total / (1024**3)  # GB
+            gpu_mem_used = mem_info.used / (1024**3)    # GB
+            gpu_mem_percent = (mem_info.used / mem_info.total) * 100
+            
+            # GPU temperature
+            gpu_temp = pynvml.nvmlDeviceGetTemperature(self.gpu_handle, pynvml.NVML_TEMPERATURE_GPU)
+            
+            # GPU power usage
+            try:
+                gpu_power = pynvml.nvmlDeviceGetPowerUsage(self.gpu_handle) / 1000.0  # Watts
+            except:
+                gpu_power = 0.0
+            
+            # GPU clock speeds
+            try:
+                gpu_clock = pynvml.nvmlDeviceGetClockInfo(self.gpu_handle, pynvml.NVML_CLOCK_GRAPHICS)
+                mem_clock = pynvml.nvmlDeviceGetClockInfo(self.gpu_handle, pynvml.NVML_CLOCK_MEM)
+            except:
+                gpu_clock, mem_clock = 0.0, 0.0
+            
+            return gpu_usage, (gpu_mem_total, gpu_mem_used, gpu_mem_percent), gpu_temp, gpu_power, (gpu_clock, mem_clock)
+            
+        except Exception as e:
+            logger.debug(f"Error getting GPU metrics: {e}")
+            return 0.0, (0.0, 0.0, 0.0), 0.0, 0.0, (0.0, 0.0)
+    
+    def _get_cpu_temperature(self) -> float:
+        """Get AMD Ryzen CPU temperature"""
+        try:
+            # Try different methods for AMD CPU temperature
+            sensors = psutil.sensors_temperatures()
+            
+            # AMD CPU temperature locations
+            for sensor_name in ['k10temp', 'coretemp', 'cpu_thermal']:
+                if sensor_name in sensors:
+                    temps = sensors[sensor_name]
+                    if temps:
+                        return temps[0].current
+            
+            # Fallback: try reading from sysfs
+            try:
+                with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                    temp_millicelsius = int(f.read().strip())
+                    return temp_millicelsius / 1000.0
+            except:
+                pass
+                
+            return 0.0
+        except Exception as e:
+            logger.debug(f"Error getting CPU temperature: {e}")
+            return 0.0
+    
+    def _get_disk_temperature(self) -> float:
+        """Get NVMe SSD temperature (Samsung 990 Pro/EVO)"""
+        try:
+            # Try to get NVMe temperature using smartctl
+            result = subprocess.run(
+                ['smartctl', '-A', '/dev/nvme0n1'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if 'Temperature' in line or 'temperature' in line:
+                        parts = line.split()
+                        for part in parts:
+                            if part.isdigit():
+                                return float(part)
+            
+            return 0.0
+        except Exception as e:
+            logger.debug(f"Error getting disk temperature: {e}")
+            return 0.0
+    
+    def generate_utilization_report(self, test_id: str, tokens_generated: int) -> ResourceUtilizationReport:
+        """Generate comprehensive resource utilization report"""
+        if not self.metrics_history:
+            return ResourceUtilizationReport(
+                test_id=test_id,
+                test_duration=0.0,
+                tokens_generated=tokens_generated,
+                avg_performance=PerformanceMetrics(
+                    start_time=0.0,
+                    end_time=0.0,
+                    total_duration=0.0
+                ),
+                peak_performance=PerformanceMetrics(
+                    start_time=0.0,
+                    end_time=0.0,
+                    total_duration=0.0
+                ),
+                bottlenecks_detected=[],
+                performance_warnings=[]
+            )
+        
+        # Calculate averages and peaks
+        avg_metrics = self._calculate_average_metrics()
+        peak_metrics = self._calculate_peak_metrics()
+        
+        # Detect bottlenecks
+        bottlenecks = self._detect_bottlenecks(avg_metrics, peak_metrics)
+        warnings = self._generate_performance_warnings(avg_metrics, peak_metrics)
+        
+        # Calculate efficiency scores
+        gpu_efficiency = self._calculate_gpu_efficiency(avg_metrics)
+        memory_pressure = self._calculate_memory_pressure(avg_metrics)
+        cpu_efficiency = self._calculate_cpu_efficiency(avg_metrics)
+        io_throughput = self._calculate_io_throughput(avg_metrics)
+        
+        test_duration = (self.metrics_history[-1].start_time - self.metrics_history[0].start_time)
+        
+        # Calculate throughput
+        throughput = tokens_generated / test_duration if test_duration > 0 else 0
+        
+        return ResourceUtilizationReport(
+            test_id=test_id,
+            test_duration=test_duration,
+            tokens_generated=tokens_generated,
+            avg_performance=avg_metrics,
+            peak_performance=peak_metrics,
+            bottlenecks_detected=bottlenecks,
+            performance_warnings=warnings,
+            gpu_utilization_efficiency=gpu_efficiency,
+            memory_pressure_score=memory_pressure,
+            cpu_efficiency_score=cpu_efficiency,
+            io_throughput_score=io_throughput,
+            throughput_tokens_per_second=throughput
+        )
+    
+    def _calculate_average_metrics(self) -> PerformanceMetrics:
+        """Calculate average metrics across monitoring period"""
+        if not self.metrics_history:
+            return PerformanceMetrics(
+                start_time=0.0,
+                end_time=0.0,
+                total_duration=0.0
+            )
+        
+        # Sum all metrics
+        total_count = len(self.metrics_history)
+        
+        avg_cpu = sum(m.cpu_usage_percent for m in self.metrics_history) / total_count
+        avg_memory = sum(m.memory_usage_percent for m in self.metrics_history) / total_count
+        avg_gpu = sum(m.gpu_usage_percent for m in self.metrics_history) / total_count
+        avg_gpu_temp = sum(m.gpu_temp_celsius for m in self.metrics_history) / total_count
+        avg_cpu_temp = sum(m.cpu_temp_celsius for m in self.metrics_history) / total_count
+        
+        return PerformanceMetrics(
+            start_time=self.metrics_history[0].start_time,
+            end_time=self.metrics_history[-1].start_time,
+            total_duration=self.metrics_history[-1].start_time - self.metrics_history[0].start_time,
+            cpu_usage_percent=avg_cpu,
+            cpu_temp_celsius=avg_cpu_temp,
+            memory_usage_percent=avg_memory,
+            gpu_usage_percent=avg_gpu,
+            gpu_temp_celsius=avg_gpu_temp
+        )
+    
+    def _calculate_peak_metrics(self) -> PerformanceMetrics:
+        """Calculate peak metrics across monitoring period"""
+        if not self.metrics_history:
+            return PerformanceMetrics(
+                start_time=0.0,
+                end_time=0.0,
+                total_duration=0.0
+            )
+        
+        peak_cpu = max(m.cpu_usage_percent for m in self.metrics_history)
+        peak_memory = max(m.memory_usage_percent for m in self.metrics_history)
+        peak_gpu = max(m.gpu_usage_percent for m in self.metrics_history)
+        peak_gpu_temp = max(m.gpu_temp_celsius for m in self.metrics_history)
+        peak_cpu_temp = max(m.cpu_temp_celsius for m in self.metrics_history)
+        
+        return PerformanceMetrics(
+            start_time=self.metrics_history[0].start_time,
+            end_time=self.metrics_history[-1].start_time,
+            total_duration=self.metrics_history[-1].start_time - self.metrics_history[0].start_time,
+            cpu_usage_percent=peak_cpu,
+            cpu_temp_celsius=peak_cpu_temp,
+            memory_usage_percent=peak_memory,
+            gpu_usage_percent=peak_gpu,
+            gpu_temp_celsius=peak_gpu_temp
+        )
+    
+    def _detect_bottlenecks(self, avg_metrics: PerformanceMetrics, peak_metrics: PerformanceMetrics) -> List[str]:
+        """Detect system bottlenecks based on usage patterns"""
+        bottlenecks = []
+        
+        # GPU bottlenecks (GPU usage >90% is expected and desired)
+        if avg_metrics.gpu_memory_usage_percent > 85:
+            bottlenecks.append("GPU memory usage high (>85%)")
+        if avg_metrics.gpu_temp_celsius > 80:
+            bottlenecks.append("GPU temperature high (>80°C)")
+        
+        # CPU bottlenecks
+        if avg_metrics.cpu_usage_percent > 80:
+            bottlenecks.append("CPU utilization high (>80%)")
+        if avg_metrics.cpu_temp_celsius > 75:
+            bottlenecks.append("CPU temperature high (>75°C)")
+        
+        # Memory bottlenecks
+        if avg_metrics.memory_usage_percent > 90:
+            bottlenecks.append("Memory usage critical (>90%)")
+        if avg_metrics.memory_swap_used_gb > 1.0:
+            bottlenecks.append("Swap usage detected (memory pressure)")
+        
+        return bottlenecks
+    
+    def _generate_performance_warnings(self, avg_metrics: PerformanceMetrics, peak_metrics: PerformanceMetrics) -> List[str]:
+        """Generate performance warnings"""
+        warnings = []
+        
+        # Performance warnings
+        if peak_metrics.gpu_usage_percent < 50:
+            warnings.append("GPU underutilized (peak <50%) - consider increasing batch size")
+        if avg_metrics.memory_usage_percent < 20:
+            warnings.append("Memory underutilized (<20%) - system has excess capacity")
+        if peak_metrics.cpu_usage_percent > peak_metrics.gpu_usage_percent + 20:
+            warnings.append("CPU usage significantly higher than GPU - possible CPU bottleneck")
+        
+        return warnings
+    
+    def _calculate_gpu_efficiency(self, metrics: PerformanceMetrics) -> float:
+        """Calculate GPU utilization efficiency score (0-100)"""
+        # Consider both usage and temperature efficiency
+        usage_score = min(metrics.gpu_usage_percent, 100)
+        temp_efficiency = max(0, 100 - (metrics.gpu_temp_celsius - 40) * 2) if metrics.gpu_temp_celsius > 40 else 100
+        return (usage_score + temp_efficiency) / 2
+    
+    def _calculate_memory_pressure(self, metrics: PerformanceMetrics) -> float:
+        """Calculate memory pressure score (0-100, higher = more pressure)"""
+        pressure = metrics.memory_usage_percent
+        if metrics.memory_swap_used_gb > 0:
+            pressure += 20  # Penalty for swap usage
+        return min(pressure, 100)
+    
+    def _calculate_cpu_efficiency(self, metrics: PerformanceMetrics) -> float:
+        """Calculate CPU efficiency score (0-100)"""
+        # Balance usage and temperature
+        usage_score = min(metrics.cpu_usage_percent, 100)
+        temp_efficiency = max(0, 100 - (metrics.cpu_temp_celsius - 50) * 2) if metrics.cpu_temp_celsius > 50 else 100
+        return (usage_score + temp_efficiency) / 2
+    
+    def _calculate_io_throughput(self, metrics: PerformanceMetrics) -> float:
+        """Calculate I/O throughput efficiency score (0-100)"""
+        # Simple throughput score based on disk usage
+        # For NVMe SSDs, anything above 50% usage is considered good
+        return min(metrics.disk_usage_percent * 2, 100)
+
+
+class TestSuiteManager:
+    """
+    Advanced test suite management system for organizing and filtering test categories
+    
+    Provides capabilities for:
+    - Suite discovery and loading
+    - Category filtering and selection
+    - Test organization and metadata management
+    - Advanced search and filtering
+    - Suite statistics and analysis
+    """
+    
+    def __init__(self):
+        self.available_suites: Dict[str, TestSuite] = {}
+        self.category_registry: Dict[str, CategoryInfo] = {}
+        self.test_registry: Dict[str, Dict] = {}
+        
+    def discover_test_suites(self, base_directory: str) -> List[TestSuite]:
+        """
+        Discover all available test suites in the directory structure
+        
+        Args:
+            base_directory: Base directory to search for test suites
+            
+        Returns:
+            List of discovered TestSuite objects
+        """
+        discovered_suites = []
+        
+        for suite_type in ["base_models", "instruct-models"]:
+            suite_dir = os.path.join(base_directory, suite_type)
+            if not os.path.exists(suite_dir):
+                continue
+                
+            test_def_dir = os.path.join(suite_dir, "test_definitions")
+            metadata_path = os.path.join(test_def_dir, "test_suite_metadata.json")
+            categories_path = os.path.join(test_def_dir, "categories.json")
+            
+            if os.path.exists(metadata_path) and os.path.exists(categories_path):
+                suite = self._load_suite_metadata(metadata_path, categories_path, suite_type)
+                if suite:
+                    discovered_suites.append(suite)
+                    self.available_suites[suite.suite_id] = suite
+        
+        return discovered_suites
+    
+    def _load_suite_metadata(self, metadata_path: str, categories_path: str, suite_type: str) -> Optional[TestSuite]:
+        """Load suite metadata from files"""
+        try:
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+            
+            with open(categories_path, 'r') as f:
+                categories_data = json.load(f)
+            
+            # Count tests per category
+            category_counts = {}
+            total_tests = 0
+            
+            if 'categories' in categories_data:
+                for cat_name, cat_info in categories_data['categories'].items():
+                    count = len(cat_info.get('test_ids', []))
+                    category_counts[cat_name] = count
+                    total_tests += count
+                    
+                    # Convert suite_type to standardized format
+                    suite_type_key = "base" if "base" in suite_type else "instruct"
+                    
+                    # Register category info
+                    self.category_registry[f"{suite_type_key}_{cat_name}"] = CategoryInfo(
+                        category_id=cat_name,
+                        name=cat_name.replace('_', ' ').title(),
+                        description=cat_info.get('description', ''),
+                        reasoning_focus=cat_info.get('reasoning_focus', ''),
+                        temperature_range=tuple(cat_info.get('temperature_range', [0.1, 0.5])),
+                        test_range=tuple(cat_info.get('test_range', [1, count])),
+                        test_count=count,
+                        test_ids=cat_info.get('test_ids', []),
+                        difficulty_level=cat_info.get('difficulty', 'medium')
+                    )
+            
+            # Create TestSuite object
+            suite_type_clean = "base" if "base" in suite_type else "instruct"
+            return TestSuite(
+                suite_id=metadata.get('suite_id', f'{suite_type_clean}_suite'),
+                name=metadata.get('suite_name', f'{suite_type_clean.title()} Model Test Suite'),
+                description=metadata.get('description', 'No description available'),
+                version=metadata.get('version', '1.0.0'),
+                total_tests=total_tests,
+                categories=category_counts,
+                test_type=suite_type_clean,
+                created_date=metadata.get('created_date', ''),
+                last_modified=metadata.get('last_modified', '')
+            )
+            
+        except Exception as e:
+            logger.error(f"Error loading suite metadata from {metadata_path}: {e}")
+            return None
+    
+    def get_category_info(self, category_id: str, suite_type: str = None) -> Optional[CategoryInfo]:
+        """Get detailed information about a category"""
+        if suite_type:
+            full_category_id = f"{suite_type}_{category_id}"
+            return self.category_registry.get(full_category_id)
+        
+        # Search across all suite types
+        for key, cat_info in self.category_registry.items():
+            if key.endswith(f"_{category_id}"):
+                return cat_info
+        return None
+    
+    def filter_tests_by_criteria(self, suite_type: str, **criteria) -> List[str]:
+        """
+        Filter tests based on various criteria
+        
+        Args:
+            suite_type: "base" or "instruct"
+            **criteria: Filtering criteria such as:
+                - category: Category name
+                - difficulty: "easy", "medium", "hard"
+                - max_time: Maximum estimated time per test
+                - temperature_range: Tuple of (min, max) temperature
+                - reasoning_focus: Keywords to match in reasoning focus
+                
+        Returns:
+            List of test IDs matching criteria
+        """
+        matching_tests = []
+        
+        # Get all categories for the suite type (normalize suite_type)
+        suite_type_key = "base" if suite_type in ["base", "base_models"] else "instruct"
+        suite_categories = {k: v for k, v in self.category_registry.items() 
+                          if k.startswith(f"{suite_type_key}_")}
+        
+        for cat_key, cat_info in suite_categories.items():
+            include_category = True
+            
+            # Apply filters
+            if 'category' in criteria and cat_info.category_id != criteria['category']:
+                include_category = False
+            
+            if 'difficulty' in criteria and cat_info.difficulty_level != criteria['difficulty']:
+                include_category = False
+            
+            if 'max_time' in criteria and cat_info.estimated_time_per_test > criteria['max_time']:
+                include_category = False
+            
+            if 'temperature_range' in criteria:
+                min_temp, max_temp = criteria['temperature_range']
+                cat_min, cat_max = cat_info.temperature_range
+                if cat_max < min_temp or cat_min > max_temp:
+                    include_category = False
+            
+            if 'reasoning_focus' in criteria:
+                focus_keywords = criteria['reasoning_focus'].lower().split(',')
+                if not any(keyword.strip() in cat_info.reasoning_focus.lower() 
+                          for keyword in focus_keywords):
+                    include_category = False
+            
+            if include_category:
+                matching_tests.extend(cat_info.test_ids)
+        
+        return matching_tests
+    
+    def get_suite_statistics(self, suite_id: str) -> Dict[str, Any]:
+        """Get comprehensive statistics for a test suite"""
+        suite = self.available_suites.get(suite_id)
+        if not suite:
+            return {}
+        
+        # Get categories for this suite
+        suite_categories = {k: v for k, v in self.category_registry.items() 
+                          if k.startswith(f"{suite.test_type}_")}
+        
+        stats = {
+            'suite_info': asdict(suite),
+            'category_breakdown': {},
+            'difficulty_distribution': {},
+            'temperature_distribution': {},
+            'total_estimated_time': 0,
+            'reasoning_focus_analysis': {}
+        }
+        
+        reasoning_focuses = {}
+        difficulty_counts = {'easy': 0, 'medium': 0, 'hard': 0}
+        temp_ranges = []
+        
+        for cat_info in suite_categories.values():
+            stats['category_breakdown'][cat_info.category_id] = {
+                'test_count': cat_info.test_count,
+                'description': cat_info.description,
+                'estimated_time': cat_info.test_count * cat_info.estimated_time_per_test
+            }
+            
+            stats['total_estimated_time'] += cat_info.test_count * cat_info.estimated_time_per_test
+            difficulty_counts[cat_info.difficulty_level] += cat_info.test_count
+            temp_ranges.append(cat_info.temperature_range)
+            
+            # Analyze reasoning focuses
+            focuses = cat_info.reasoning_focus.split(',')
+            for focus in focuses:
+                focus = focus.strip()
+                reasoning_focuses[focus] = reasoning_focuses.get(focus, 0) + cat_info.test_count
+        
+        stats['difficulty_distribution'] = difficulty_counts
+        stats['reasoning_focus_analysis'] = reasoning_focuses
+        
+        if temp_ranges:
+            stats['temperature_distribution'] = {
+                'min_temp': min(r[0] for r in temp_ranges),
+                'max_temp': max(r[1] for r in temp_ranges),
+                'avg_min_temp': sum(r[0] for r in temp_ranges) / len(temp_ranges),
+                'avg_max_temp': sum(r[1] for r in temp_ranges) / len(temp_ranges)
+            }
+        
+        return stats
 
 
 class TestRunner:
@@ -105,6 +915,16 @@ class TestRunner:
         self.execution_progress = None
         self._start_times = []
         self._api_endpoint_override = api_endpoint
+        self._progress_callback = None
+        self._verbose_logging = True
+        self._last_progress_update = 0
+        
+        # Initialize test suite manager
+        self.suite_manager = TestSuiteManager()
+        
+        # Initialize performance monitor
+        self.performance_monitor = PerformanceMonitor()
+        self._enable_performance_monitoring = False
         
         logger.info("TestRunner initialized")
     
@@ -230,12 +1050,13 @@ class TestRunner:
         )
         logger.info(f"API configured: {endpoint} ({self.api_config.api_type})")
     
-    def execute_single_test(self, test_id: str) -> TestResult:
+    def execute_single_test(self, test_id: str, enable_performance_monitoring: bool = False) -> TestResult:
         """
         Execute a single test case
         
         Args:
             test_id: ID of test to execute
+            enable_performance_monitoring: Enable hardware performance monitoring
             
         Returns:
             TestResult: Result of test execution
@@ -253,13 +1074,45 @@ class TestRunner:
         test_case = self.tests[test_id]
         logger.info(f"Executing test: {test_case.get('name', test_id)}")
         
-        # Build API request
-        success, api_response, error_msg = self._make_api_request(test_case)
+        # Start performance monitoring if enabled
+        if enable_performance_monitoring:
+            self.performance_monitor.start_monitoring(1.0)  # 1 second interval
         
-        if success:
-            return self._create_success_result(test_id, test_case, api_response)
-        else:
-            return self._create_error_result(test_id, error_msg, api_response)
+        performance_metrics = None
+        utilization_report = None
+        
+        try:
+            # Build API request
+            success, api_response, error_msg = self._make_api_request(test_case)
+            
+            if success:
+                result = self._create_success_result(test_id, test_case, api_response)
+            else:
+                result = self._create_error_result(test_id, error_msg, api_response)
+                
+        except Exception as e:
+            error_msg = f"Test execution failed: {str(e)}"
+            logger.error(error_msg)
+            result = self._create_error_result(test_id, error_msg)
+        finally:
+            # Always ensure monitoring is stopped and metrics are collected
+            if enable_performance_monitoring:
+                self.performance_monitor.stop_monitoring()
+                tokens_generated = 0
+                if 'api_response' in locals() and api_response:
+                    tokens_generated = api_response.get('usage', {}).get('completion_tokens', 0)
+                utilization_report = self.performance_monitor.generate_utilization_report(test_id, tokens_generated)
+                
+                # Get final metrics snapshot
+                if self.performance_monitor.metrics_history:
+                    performance_metrics = self.performance_monitor.metrics_history[-1]
+                
+                # Add performance metrics to result
+                if hasattr(locals().get('result'), 'performance_metrics'):
+                    result.performance_metrics = performance_metrics
+                    result.utilization_report = utilization_report
+        
+        return result
     
     def get_test_ids_by_category(self, category: str) -> List[str]:
         """
@@ -314,6 +1167,38 @@ class TestRunner:
                     f.write(f"Completion Tokens: {result.completion_tokens}\n")
                     f.write(f"Tokens per Second: {result.tokens_per_second:.2f} T/s\n")
                     
+                    # Add performance metrics if available
+                    if result.performance_metrics:
+                        f.write(f"\nPERFORMANCE METRICS:\n{'-'*20}\n")
+                        f.write(f"RTX 5090 GPU Usage: {result.performance_metrics.gpu_usage_percent:.1f}%\n")
+                        f.write(f"GPU Memory Usage: {result.performance_metrics.gpu_memory_used_gb:.1f}GB / {result.performance_metrics.gpu_memory_total_gb:.1f}GB\n")
+                        f.write(f"GPU Temperature: {result.performance_metrics.gpu_temp_celsius:.1f}°C\n")
+                        f.write(f"GPU Power Usage: {result.performance_metrics.gpu_power_usage_watts:.1f}W\n")
+                        f.write(f"AMD Ryzen CPU Usage: {result.performance_metrics.cpu_usage_percent:.1f}%\n")
+                        f.write(f"CPU Temperature: {result.performance_metrics.cpu_temp_celsius:.1f}°C\n")
+                        f.write(f"DDR5 Memory Usage: {result.performance_metrics.memory_usage_percent:.1f}%\n")
+                        f.write(f"Swap Usage: {result.performance_metrics.memory_swap_used_gb:.1f}GB\n")
+                        f.write(f"NVMe Read: {result.performance_metrics.disk_read_mb:.1f}MB\n")
+                        f.write(f"NVMe Write: {result.performance_metrics.disk_write_mb:.1f}MB\n")
+                        f.write(f"Storage Temperature: {result.performance_metrics.disk_temp_celsius:.1f}°C\n")
+                        f.write(f"Network RX: {result.performance_metrics.network_rx_mb:.1f}MB\n")
+                        f.write(f"Network TX: {result.performance_metrics.network_tx_mb:.1f}MB\n")
+                        
+                        # Add utilization report summary if available
+                        if result.utilization_report:
+                            f.write(f"\nUTILIZATION SUMMARY:\n{'-'*20}\n")
+                            f.write(f"Test Duration: {result.utilization_report.test_duration:.2f}s\n")
+                            f.write(f"Tokens Generated: {result.utilization_report.tokens_generated}\n")
+                            f.write(f"Throughput: {result.utilization_report.throughput_tokens_per_second:.2f} tokens/s\n")
+                            
+                            if result.utilization_report.bottlenecks_detected:
+                                f.write(f"Bottlenecks Detected: {', '.join(result.utilization_report.bottlenecks_detected)}\n")
+                            
+                            if result.utilization_report.performance_warnings:
+                                f.write(f"Performance Warnings:\n")
+                                for warning in result.utilization_report.performance_warnings:
+                                    f.write(f"  • {warning}\n")
+                    
                     # Add evaluation results if available
                     if result.evaluation_result:
                         f.write(f"\nREASONING EVALUATION:\n{'-'*20}\n")
@@ -349,13 +1234,14 @@ class TestRunner:
             logger.error(f"Error saving results: {e}")
             return False
     
-    def execute_sequential(self, test_ids: List[str] = None, delay: float = None) -> List[TestResult]:
+    def execute_sequential(self, test_ids: List[str] = None, delay: float = None, enable_performance_monitoring: bool = False) -> List[TestResult]:
         """
         Execute tests sequentially with delays between tests
         
         Args:
             test_ids: List of test IDs to execute (defaults to all tests)
             delay: Delay in seconds between tests (defaults to config setting)
+            enable_performance_monitoring: Enable hardware performance monitoring
             
         Returns:
             List of TestResult objects
@@ -368,72 +1254,48 @@ class TestRunner:
         
         results = []
         total_tests = len(test_ids)
+        start_time = time.time()
         
         # Initialize progress tracking
-        self.execution_progress = ExecutionProgress(
-            total_tests=total_tests,
-            completed_tests=0,
-            successful_tests=0,
-            failed_tests=0,
-            current_test=None,
-            estimated_remaining_time=0.0,
-            average_execution_time=0.0
-        )
+        self._initialize_progress(total_tests, start_time)
         
         logger.info(f"Starting sequential execution of {total_tests} tests (delay: {delay}s)")
+        if enable_performance_monitoring:
+            logger.info("Performance monitoring enabled for RTX 5090, AMD Ryzen 9950X, 128GB DDR5 RAM")
         
         for i, test_id in enumerate(test_ids):
-            # Update progress
-            self.execution_progress.current_test = test_id
+            # Update current test
+            self._update_progress(current_test_name=test_id)
             
-            # Execute test
-            start_time = time.time()
-            result = self.execute_single_test(test_id)
-            end_time = time.time()
-            
+            # Execute test with optional performance monitoring
+            result = self.execute_single_test(test_id, enable_performance_monitoring)
             results.append(result)
-            self._start_times.append(end_time - start_time)
             
-            # Update progress metrics
-            self.execution_progress.completed_tests = i + 1
-            if result.success:
-                self.execution_progress.successful_tests += 1
-            else:
-                self.execution_progress.failed_tests += 1
+            # Update progress with result
+            self._update_progress(test_result=result)
             
-            # Calculate timing estimates
-            if self._start_times:
-                self.execution_progress.average_execution_time = sum(self._start_times) / len(self._start_times)
-                remaining_tests = total_tests - (i + 1)
-                self.execution_progress.estimated_remaining_time = (
-                    remaining_tests * (self.execution_progress.average_execution_time + delay)
-                )
-            
-            # Log progress
-            progress_pct = ((i + 1) / total_tests) * 100
-            logger.info(f"Progress: {i + 1}/{total_tests} ({progress_pct:.1f}%) - "
-                       f"Success rate: {self.execution_progress.successful_tests}/{i + 1}")
+            # Log performance metrics if available
+            if enable_performance_monitoring and result.utilization_report and result.performance_metrics:
+                bottlenecks = ", ".join(result.utilization_report.bottlenecks_detected) if result.utilization_report.bottlenecks_detected else "None"
+                logger.info(f"Test {test_id} performance - GPU: {result.performance_metrics.gpu_usage_percent:.1f}%, CPU: {result.performance_metrics.cpu_usage_percent:.1f}%, Memory: {result.performance_metrics.memory_usage_percent:.1f}%, Bottlenecks: {bottlenecks}")
             
             # Add delay between tests (except after the last test)
             if i < len(test_ids) - 1 and delay > 0:
                 time.sleep(delay)
         
-        # Final progress update
-        self.execution_progress.current_test = None
-        
-        success_rate = (self.execution_progress.successful_tests / total_tests) * 100
-        logger.info(f"Sequential execution completed: {self.execution_progress.successful_tests}/{total_tests} "
-                   f"successful ({success_rate:.1f}%)")
+        # Final progress logging
+        self._log_final_progress()
         
         return results
     
-    def execute_concurrent(self, test_ids: List[str] = None, workers: int = 3) -> List[TestResult]:
+    def execute_concurrent(self, test_ids: List[str] = None, workers: int = 3, enable_performance_monitoring: bool = False) -> List[TestResult]:
         """
         Execute tests concurrently using thread pool
         
         Args:
             test_ids: List of test IDs to execute (defaults to all tests)
             workers: Number of concurrent worker threads
+            enable_performance_monitoring: Enable hardware performance monitoring
             
         Returns:
             List of TestResult objects
@@ -443,60 +1305,34 @@ class TestRunner:
         
         results = []
         total_tests = len(test_ids)
-        completed_count = 0
-        successful_count = 0
-        failed_count = 0
+        start_time = time.time()
         
         # Thread-safe progress tracking
         progress_lock = threading.Lock()
         
         # Initialize progress tracking
-        self.execution_progress = ExecutionProgress(
-            total_tests=total_tests,
-            completed_tests=0,
-            successful_tests=0,
-            failed_tests=0,
-            current_test=None,
-            estimated_remaining_time=0.0,
-            average_execution_time=0.0
-        )
+        self._initialize_progress(total_tests, start_time)
         
         logger.info(f"Starting concurrent execution of {total_tests} tests with {workers} workers")
+        if enable_performance_monitoring:
+            logger.info("Performance monitoring enabled for RTX 5090, AMD Ryzen 9950X, 128GB DDR5 RAM")
+            logger.warning("Note: Performance monitoring in concurrent mode may show mixed metrics across tests")
         
-        def update_progress(result: TestResult):
+        def update_progress_concurrent(result: TestResult):
             """Thread-safe progress update"""
-            nonlocal completed_count, successful_count, failed_count
-            
             with progress_lock:
-                completed_count += 1
-                if result.success:
-                    successful_count += 1
-                else:
-                    failed_count += 1
+                self._update_progress(test_result=result)
                 
-                # Update progress object
-                self.execution_progress.completed_tests = completed_count
-                self.execution_progress.successful_tests = successful_count
-                self.execution_progress.failed_tests = failed_count
-                
-                # Calculate timing estimates
-                if self._start_times:
-                    self.execution_progress.average_execution_time = sum(self._start_times) / len(self._start_times)
-                    remaining_tests = total_tests - completed_count
-                    self.execution_progress.estimated_remaining_time = (
-                        remaining_tests * self.execution_progress.average_execution_time / workers
-                    )
-                
-                # Log progress
-                progress_pct = (completed_count / total_tests) * 100
-                logger.info(f"Progress: {completed_count}/{total_tests} ({progress_pct:.1f}%) - "
-                           f"Success rate: {successful_count}/{completed_count}")
+                # Log performance metrics if available (thread-safe)
+                if enable_performance_monitoring and result.utilization_report and result.performance_metrics:
+                    bottlenecks = ", ".join(result.utilization_report.bottlenecks_detected) if result.utilization_report.bottlenecks_detected else "None"
+                    logger.info(f"Test {result.test_id} performance - GPU: {result.performance_metrics.gpu_usage_percent:.1f}%, CPU: {result.performance_metrics.cpu_usage_percent:.1f}%, Memory: {result.performance_metrics.memory_usage_percent:.1f}%, Bottlenecks: {bottlenecks}")
         
         # Execute tests concurrently
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            # Submit all tasks
+            # Submit all tasks with performance monitoring parameter
             future_to_test = {
-                executor.submit(self.execute_single_test, test_id): test_id 
+                executor.submit(self.execute_single_test, test_id, enable_performance_monitoring): test_id 
                 for test_id in test_ids
             }
             
@@ -507,21 +1343,16 @@ class TestRunner:
                 try:
                     result = future.result()
                     results.append(result)
-                    self._start_times.append(result.execution_time)
-                    update_progress(result)
+                    update_progress_concurrent(result)
                     
                 except Exception as e:
                     # Create error result if thread execution fails
                     error_result = self._create_error_result(test_id, f"Thread execution error: {e}")
                     results.append(error_result)
-                    update_progress(error_result)
+                    update_progress_concurrent(error_result)
         
-        # Final progress update
-        self.execution_progress.current_test = None
-        
-        success_rate = (successful_count / total_tests) * 100
-        logger.info(f"Concurrent execution completed: {successful_count}/{total_tests} "
-                   f"successful ({success_rate:.1f}%)")
+        # Final progress logging
+        self._log_final_progress()
         
         return results
     
@@ -532,7 +1363,7 @@ class TestRunner:
         Args:
             category: Category name
             sequential: Whether to run sequentially (True) or concurrently (False)
-            **kwargs: Additional arguments for execution method
+            **kwargs: Additional arguments for execution method (including enable_performance_monitoring)
             
         Returns:
             List of TestResult objects
@@ -550,7 +1381,8 @@ class TestRunner:
         else:
             # Use concurrent execution
             workers = kwargs.get('workers', 3)
-            return self.execute_concurrent(test_ids, workers)
+            enable_perf = kwargs.get('enable_performance_monitoring', False)
+            return self.execute_concurrent(test_ids, workers, enable_perf)
     
     def get_progress(self) -> ExecutionProgress:
         """Get current execution progress information"""
@@ -709,13 +1541,19 @@ class TestRunner:
         """Create TestResult for successful execution"""
         execution_time = api_response.get('_execution_time', 0.0)
         
-        # Extract response text based on API type
-        if self.api_config.api_type == "chat":
-            # Chat API: response in choices[0].message.content
-            completion_text = api_response.get("choices", [{}])[0].get("message", {}).get("content", "")
+        # Extract response text based on API type with proper null checks
+        completion_text = ""
+        choices = api_response.get("choices", [])
+        if choices and len(choices) > 0:
+            if self.api_config.api_type == "chat":
+                # Chat API: response in choices[0].message.content
+                message = choices[0].get("message", {})
+                completion_text = message.get("content", "") if isinstance(message, dict) else ""
+            else:
+                # Completions API: response in choices[0].text
+                completion_text = choices[0].get("text", "") if isinstance(choices[0], dict) else ""
         else:
-            # Completions API: response in choices[0].text
-            completion_text = api_response.get("choices", [{}])[0].get("text", "")
+            logger.warning(f"API response missing choices array: {api_response}")
         
         # Extract token usage
         usage = api_response.get("usage", {})
@@ -827,6 +1665,130 @@ class TestRunner:
         }
         
         return category_to_reasoning_type.get(category, ReasoningType.GENERAL)
+    
+    def set_progress_callback(self, callback):
+        """Set callback function for progress updates"""
+        self._progress_callback = callback
+    
+    def set_verbose_logging(self, verbose: bool):
+        """Enable or disable verbose logging"""
+        self._verbose_logging = verbose
+    
+    def enable_performance_monitoring(self, enable: bool = True):
+        """Enable or disable comprehensive performance monitoring"""
+        self._enable_performance_monitoring = enable
+        if enable:
+            logger.info("Performance monitoring enabled - will collect GPU, CPU, memory, and I/O metrics")
+        else:
+            logger.info("Performance monitoring disabled")
+    
+    def _initialize_progress(self, total_tests: int, start_time: float):
+        """Initialize progress tracking"""
+        self.execution_progress = ExecutionProgress(
+            total_tests=total_tests,
+            completed_tests=0,
+            successful_tests=0,
+            failed_tests=0,
+            current_test=None,
+            estimated_remaining_time=0.0,
+            average_execution_time=0.0,
+            start_time=start_time,
+            elapsed_time=0.0,
+            total_tokens_generated=0
+        )
+        logger.info(f"Initialized progress tracking for {total_tests} tests")
+    
+    def _update_progress(self, test_result: TestResult = None, current_test_name: str = None):
+        """Update progress tracking"""
+        if not self.execution_progress:
+            return
+        
+        current_time = time.time()
+        self.execution_progress.elapsed_time = current_time - self.execution_progress.start_time
+        
+        if test_result:
+            self.execution_progress.completed_tests += 1
+            if test_result.success:
+                self.execution_progress.successful_tests += 1
+                self.execution_progress.total_tokens_generated += test_result.completion_tokens
+            else:
+                self.execution_progress.failed_tests += 1
+        
+        if current_test_name:
+            self.execution_progress.current_test = current_test_name
+            # Extract category from test name if available
+            test_data = self.tests.get(current_test_name.split(':')[0], {})
+            self.execution_progress.current_category = test_data.get('category', 'unknown')
+        
+        # Update estimates
+        self.execution_progress.update_estimates()
+        
+        # Update average tokens per second
+        if self.execution_progress.total_tokens_generated > 0 and self.execution_progress.elapsed_time > 0:
+            self.execution_progress.average_tokens_per_second = (
+                self.execution_progress.total_tokens_generated / self.execution_progress.elapsed_time
+            )
+        
+        # Call progress callback if set
+        if self._progress_callback:
+            self._progress_callback(self.execution_progress)
+        
+        # Log progress periodically
+        if current_time - self._last_progress_update >= 5.0:  # Every 5 seconds
+            self._log_progress()
+            self._last_progress_update = current_time
+    
+    def _log_progress(self):
+        """Log current progress"""
+        if not self.execution_progress or not self._verbose_logging:
+            return
+        
+        progress = self.execution_progress
+        
+        # Create progress bar
+        bar_length = 40
+        filled_length = int(bar_length * progress.completion_percentage // 100)
+        bar = '█' * filled_length + '-' * (bar_length - filled_length)
+        
+        # Format time remaining
+        if progress.estimated_remaining_time > 3600:
+            time_remaining = f"{progress.estimated_remaining_time/3600:.1f}h"
+        elif progress.estimated_remaining_time > 60:
+            time_remaining = f"{progress.estimated_remaining_time/60:.1f}m"
+        else:
+            time_remaining = f"{progress.estimated_remaining_time:.1f}s"
+        
+        logger.info(
+            f"Progress: |{bar}| {progress.completed_tests}/{progress.total_tests} "
+            f"({progress.completion_percentage:.1f}%) "
+            f"Success: {progress.success_rate:.1f}% "
+            f"ETA: {time_remaining} "
+            f"Speed: {progress.tests_per_second:.2f} tests/s "
+            f"Tokens: {progress.average_tokens_per_second:.1f} T/s"
+        )
+        
+        if progress.current_test:
+            logger.info(f"Current: {progress.current_test}")
+    
+    def _log_final_progress(self):
+        """Log final progress summary"""
+        if not self.execution_progress:
+            return
+        
+        progress = self.execution_progress
+        logger.info("=" * 60)
+        logger.info("EXECUTION COMPLETE")
+        logger.info("=" * 60)
+        logger.info(f"Total Tests: {progress.total_tests}")
+        logger.info(f"Completed: {progress.completed_tests}")
+        logger.info(f"Successful: {progress.successful_tests} ({progress.success_rate:.1f}%)")
+        logger.info(f"Failed: {progress.failed_tests}")
+        logger.info(f"Total Time: {progress.elapsed_time:.1f}s")
+        logger.info(f"Average Time per Test: {progress.average_execution_time:.1f}s")
+        logger.info(f"Tests per Second: {progress.tests_per_second:.2f}")
+        logger.info(f"Total Tokens Generated: {progress.total_tokens_generated:,}")
+        logger.info(f"Average Tokens per Second: {progress.average_tokens_per_second:.1f}")
+        logger.info("=" * 60)
     
     def generate_evaluation_summary(self, results: List[TestResult]) -> Dict[str, Any]:
         """
@@ -954,7 +1916,7 @@ if __name__ == "__main__":
                        default="http://127.0.0.1:8005/v1/completions",
                        help="API endpoint URL (default: %(default)s)")
     parser.add_argument("--model", "-m", 
-                       default="your-base-model-name",
+                       default="/app/models/hf/DeepSeek-R1-0528-Qwen3-8b",
                        help="Model name (default: %(default)s)")
     parser.add_argument("--mode", 
                        choices=["single", "sequential", "concurrent", "category"],
@@ -990,11 +1952,135 @@ if __name__ == "__main__":
                        help="Enable automatic reasoning evaluation (requires ReasoningEvaluator)")
     parser.add_argument("--eval-summary", action="store_true",
                        help="Generate detailed evaluation summary report")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                       help="Enable verbose logging with progress reporting")
+    parser.add_argument("--quiet", "-q", action="store_true",
+                       help="Suppress progress logging (only show final results)")
+    parser.add_argument("--discover-suites", action="store_true",
+                       help="Discover and list all available test suites")
+    parser.add_argument("--suite-stats", 
+                       help="Show detailed statistics for a specific suite ID")
+    parser.add_argument("--filter-by", 
+                       help="Filter tests by criteria (format: key=value,key=value)")
+    parser.add_argument("--category-info", 
+                       help="Show detailed information about a specific category")
+    parser.add_argument("--reasoning-focus", 
+                       help="Filter tests by reasoning focus keywords (comma-separated)")
+    parser.add_argument("--performance-monitoring", "--perf", action="store_true",
+                       help="Enable comprehensive hardware performance monitoring (RTX 5090, AMD Ryzen 9950X, 128GB DDR5 RAM)")
     
     args = parser.parse_args()
     
     print("TestRunner - Test Execution Engine")
     print("=" * 50)
+    
+    # Handle suite management commands first (independent of test loading)
+    if args.discover_suites or args.suite_stats or args.category_info or args.filter_by or args.reasoning_focus:
+        # Initialize standalone suite manager
+        suite_manager = TestSuiteManager()
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        suite_manager.discover_test_suites(current_dir)
+        
+        if args.discover_suites:
+            print("\nDiscovered Test Suites:")
+            print("=" * 50)
+            for suite in suite_manager.available_suites.values():
+                print(f"Suite ID: {suite.suite_id}")
+                print(f"Name: {suite.name}")
+                print(f"Type: {suite.test_type}")
+                print(f"Version: {suite.version}")
+                print(f"Total Tests: {suite.total_tests}")
+                print(f"Categories: {len(suite.categories)}")
+                print(f"Description: {suite.description}")
+                print("-" * 30)
+            sys.exit(0)
+        
+        if args.suite_stats:
+            print(f"\nDetailed Statistics for Suite: {args.suite_stats}")
+            print("=" * 60)
+            stats = suite_manager.get_suite_statistics(args.suite_stats)
+            if stats:
+                suite_info = stats['suite_info']
+                print(f"Name: {suite_info['name']}")
+                print(f"Type: {suite_info['test_type']}")
+                print(f"Version: {suite_info['version']}")
+                print(f"Total Tests: {suite_info['total_tests']}")
+                print(f"Estimated Total Time: {stats['total_estimated_time']:.1f} seconds")
+                
+                print(f"\nCategory Breakdown:")
+                for cat, info in stats['category_breakdown'].items():
+                    print(f"  {cat}: {info['test_count']} tests ({info['estimated_time']:.1f}s)")
+                    print(f"    {info['description']}")
+                
+                print(f"\nReasoning Focus Analysis:")
+                for focus, count in stats['reasoning_focus_analysis'].items():
+                    print(f"  {focus}: {count} tests")
+                
+                if stats['temperature_distribution']:
+                    temp_dist = stats['temperature_distribution']
+                    print(f"\nTemperature Range Distribution:")
+                    print(f"  Min: {temp_dist['min_temp']:.3f}")
+                    print(f"  Max: {temp_dist['max_temp']:.3f}")
+                    print(f"  Avg Range: {temp_dist['avg_min_temp']:.3f} - {temp_dist['avg_max_temp']:.3f}")
+            else:
+                print(f"❌ Suite '{args.suite_stats}' not found")
+            sys.exit(0)
+        
+        if args.category_info:
+            print(f"\nCategory Information: {args.category_info}")
+            print("=" * 50)
+            cat_info = suite_manager.get_category_info(args.category_info, args.test_type)
+            if cat_info:
+                print(f"Name: {cat_info.name}")
+                print(f"Description: {cat_info.description}")
+                print(f"Test Count: {cat_info.test_count}")
+                print(f"Reasoning Focus: {cat_info.reasoning_focus}")
+                print(f"Temperature Range: {cat_info.temperature_range[0]:.3f} - {cat_info.temperature_range[1]:.3f}")
+                print(f"Test Range: {cat_info.test_range[0]} - {cat_info.test_range[1]}")
+                print(f"Difficulty Level: {cat_info.difficulty_level}")
+                print(f"Estimated Time per Test: {cat_info.estimated_time_per_test:.1f}s")
+                print(f"Test IDs: {', '.join(cat_info.test_ids[:5])}{'...' if len(cat_info.test_ids) > 5 else ''}")
+            else:
+                print(f"❌ Category '{args.category_info}' not found for test type '{args.test_type}'")
+            sys.exit(0)
+        
+        if args.filter_by or args.reasoning_focus:
+            criteria = {}
+            
+            if args.filter_by:
+                print(f"\nFiltering Tests by Criteria: {args.filter_by}")
+                # Parse filter criteria
+                for criterion in args.filter_by.split(','):
+                    if '=' in criterion:
+                        key, value = criterion.split('=', 1)
+                        key = key.strip()
+                        value = value.strip()
+                        
+                        # Convert some values to appropriate types
+                        if key == 'temperature_range' and ',' in value:
+                            min_temp, max_temp = map(float, value.split(','))
+                            criteria[key] = (min_temp, max_temp)
+                        elif key == 'max_time':
+                            criteria[key] = float(value)
+                        else:
+                            criteria[key] = value
+            
+            if args.reasoning_focus:
+                print(f"\nFiltering Tests by Reasoning Focus: {args.reasoning_focus}")
+                criteria['reasoning_focus'] = args.reasoning_focus
+            
+            print("=" * 50)
+            matching_tests = suite_manager.filter_tests_by_criteria(args.test_type, **criteria)
+            
+            print(f"Found {len(matching_tests)} tests matching criteria:")
+            for test_id in matching_tests[:20]:  # Show first 20
+                print(f"  {test_id}")
+            
+            if len(matching_tests) > 20:
+                print(f"  ... and {len(matching_tests) - 20} more")
+            
+            sys.exit(0)
+    
     print(f"API Endpoint: {args.endpoint}")
     print(f"Model: {args.model}")
     print(f"Test Type: {args.test_type}")
@@ -1007,13 +2093,21 @@ if __name__ == "__main__":
                                          test_type=args.test_type)
         runner.configure_api(args.endpoint, args.model)
         
+        # Configure logging verbosity
+        if args.quiet:
+            runner.set_verbose_logging(False)
+            logging.getLogger().setLevel(logging.WARNING)
+        elif args.verbose:
+            runner.set_verbose_logging(True)
+            logging.getLogger().setLevel(logging.INFO)
+        
         print(f"Loaded {len(runner.tests)} tests from {args.test_definitions}")
         
     except Exception as e:
         print(f"❌ Error loading test suite: {e}")
         sys.exit(1)
     
-    # Handle list commands
+    # Handle regular list commands (these need the runner loaded)
     if args.list_categories:
         print("\nAvailable Categories:")
         if runner.categories and 'categories' in runner.categories:
@@ -1073,7 +2167,8 @@ if __name__ == "__main__":
     if args.dry_run:
         print("\n[DRY RUN] Would execute:")
         for i, test_id in enumerate(test_ids_to_run[:5]):  # Show first 5
-            test_name = runner.tests[test_id].get('name', 'No name')
+            test_case = runner.tests.get(test_id, {})
+            test_name = test_case.get('name', f'Unknown test: {test_id}')
             print(f"  {i+1}. {test_id}: {test_name}")
         if len(test_ids_to_run) > 5:
             print(f"  ... and {len(test_ids_to_run) - 5} more tests")
@@ -1085,20 +2180,22 @@ if __name__ == "__main__":
     
     # Execute tests
     print(f"\n🚀 Starting execution...")
+    if args.performance_monitoring:
+        print("🔍 Hardware performance monitoring enabled (RTX 5090, AMD Ryzen 9950X, 128GB DDR5 RAM)")
     start_time = time.time()
     
     try:
         if args.mode == "single":
-            results = [runner.execute_single_test(test_ids_to_run[0])]
+            results = [runner.execute_single_test(test_ids_to_run[0], enable_performance_monitoring=args.performance_monitoring)]
         elif args.mode == "sequential":
-            results = runner.execute_sequential(test_ids_to_run, delay=args.delay)
+            results = runner.execute_sequential(test_ids_to_run, delay=args.delay, enable_performance_monitoring=args.performance_monitoring)
         elif args.mode == "concurrent":
-            results = runner.execute_concurrent(test_ids_to_run, workers=args.workers)
+            results = runner.execute_concurrent(test_ids_to_run, workers=args.workers, enable_performance_monitoring=args.performance_monitoring)
         elif args.mode == "category":
             # Use concurrent for categories by default, but allow sequential
             concurrent_mode = args.workers > 1
             results = runner.execute_category(args.category, sequential=not concurrent_mode, 
-                                            workers=args.workers, delay=args.delay)
+                                            workers=args.workers, delay=args.delay, enable_performance_monitoring=args.performance_monitoring)
         
         end_time = time.time()
         total_time = end_time - start_time
@@ -1114,13 +2211,48 @@ if __name__ == "__main__":
         print(f"Total tests: {len(results)}")
         print(f"Successful: {success_count}")
         print(f"Failed: {len(results) - success_count}")
-        print(f"Success rate: {(success_count/len(results)*100):.1f}%")
+        success_rate = (success_count/len(results)*100) if len(results) > 0 else 0
+        avg_time_per_test = total_time/len(results) if len(results) > 0 else 0
+        print(f"Success rate: {success_rate:.1f}%")
         print(f"Total time: {total_time:.1f}s")
-        print(f"Average time per test: {total_time/len(results):.1f}s")
+        print(f"Average time per test: {avg_time_per_test:.1f}s")
         
-        if results and results[0].success:
+        if results and success_count > 0:
             avg_tokens_per_sec = sum(r.tokens_per_second for r in results if r.success) / success_count
             print(f"Average tokens/sec: {avg_tokens_per_sec:.1f} T/s")
+        
+        # Performance monitoring summary
+        if args.performance_monitoring and any(r.performance_metrics for r in results):
+            perf_results = [r for r in results if r.performance_metrics]
+            print(f"\n{'='*50}")
+            print(f"HARDWARE PERFORMANCE SUMMARY")
+            print(f"{'='*50}")
+            
+            # Calculate averages
+            avg_gpu_usage = sum(r.performance_metrics.gpu_usage_percent for r in perf_results) / len(perf_results)
+            avg_cpu_usage = sum(r.performance_metrics.cpu_usage_percent for r in perf_results) / len(perf_results)
+            avg_memory_usage = sum(r.performance_metrics.memory_usage_percent for r in perf_results) / len(perf_results)
+            avg_gpu_temp = sum(r.performance_metrics.gpu_temp_celsius for r in perf_results) / len(perf_results)
+            avg_cpu_temp = sum(r.performance_metrics.cpu_temp_celsius for r in perf_results) / len(perf_results)
+            
+            print(f"RTX 5090 GPU - Average Usage: {avg_gpu_usage:.1f}%, Temperature: {avg_gpu_temp:.1f}°C")
+            print(f"AMD Ryzen CPU - Average Usage: {avg_cpu_usage:.1f}%, Temperature: {avg_cpu_temp:.1f}°C")  
+            print(f"128GB DDR5 RAM - Average Usage: {avg_memory_usage:.1f}%")
+            
+            # Count bottlenecks
+            all_bottlenecks = []
+            for r in perf_results:
+                if r.utilization_report and r.utilization_report.bottlenecks_detected:
+                    all_bottlenecks.extend(r.utilization_report.bottlenecks_detected)
+            
+            if all_bottlenecks:
+                bottleneck_counts = {}
+                for bottleneck in all_bottlenecks:
+                    bottleneck_counts[bottleneck] = bottleneck_counts.get(bottleneck, 0) + 1
+                
+                print(f"Bottlenecks detected:")
+                for bottleneck, count in sorted(bottleneck_counts.items(), key=lambda x: x[1], reverse=True):
+                    print(f"  {bottleneck}: {count} occurrences")
         
         # Evaluation summary
         if EVALUATION_AVAILABLE and any(r.evaluation_result for r in results):
