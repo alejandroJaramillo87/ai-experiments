@@ -1,8 +1,26 @@
 {
-  "suite_name": "Advanced Long-Context Reasoning Test Suite",
-  "suite_id": "reasoning_comprehensive_v1",
-  "description": "Comprehensive 50-test suite for evaluating long-context reasoning capabilities across multiple reasoning types and domains",
-  "version": "1.0.0",
+  "suite_name": "Advanced Multi-Level Reasoning Test Suite",
+  "suite_id": "reasoning_comprehensive_v2",
+  "description": "Comprehensive multi-difficulty test suite for evaluating reasoning capabilities across all reasoning types and domains",
+  "version": "2.0.0",
+  "test_files": {
+    "reasoning_tests_easy.json": {
+      "difficulty": "easy",
+      "total_tests": 40,
+      "description": "Basic reasoning tests for initial evaluation"
+    },
+    "reasoning_tests_medium.json": {
+      "difficulty": "medium", 
+      "total_tests": 50,
+      "description": "Medium complexity reasoning tests for standard evaluation"
+    },
+    "reasoning_tests_hard.json": {
+      "difficulty": "hard",
+      "total_tests": 225,
+      "description": "Advanced difficulty reasoning tests for comprehensive evaluation",
+      "target_evaluation_range": "3-6/10"
+    }
+  },
   "created_by": "Claude Code",
   "api_config": {
     "endpoint": "http://127.0.0.1:8004/v1/completions",

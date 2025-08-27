@@ -116,6 +116,70 @@
         "context_coherence_01", "context_coherence_02", "context_coherence_03", "context_coherence_04", "context_coherence_05",
         "context_coherence_06", "context_coherence_07", "context_coherence_08", "context_coherence_09", "context_coherence_10"
       ]
+    },
+    "code_reasoning": {
+      "description": "Advanced software engineering analysis including debugging, architecture evaluation, and optimization",
+      "reasoning_focus": "code comprehension, debugging logic, architectural analysis, performance optimization",
+      "temperature_range": [0.05, 0.2],
+      "test_range": [101, 108],
+      "difficulty": "hard",
+      "test_ids": []
+    },
+    "causal_reasoning": {
+      "description": "Multi-layer causation analysis with counterfactual reasoning and complex cause-effect chains",
+      "reasoning_focus": "causation analysis, counterfactual scenarios, causal chain reconstruction, intervention effects",
+      "temperature_range": [0.1, 0.25],
+      "test_range": [109, 116],
+      "difficulty": "hard",
+      "test_ids": []
+    },
+    "long_context_reasoning": {
+      "description": "Analysis and synthesis across 30K+ token contexts with cross-document reasoning",
+      "reasoning_focus": "long-range context tracking, cross-document synthesis, information integration across large texts",
+      "temperature_range": [0.15, 0.35],
+      "test_range": [117, 122],
+      "difficulty": "hard",
+      "test_ids": []
+    },
+    "strategic_reasoning": {
+      "description": "Multi-domain strategic planning with resource optimization and trade-off analysis",
+      "reasoning_focus": "strategic planning, resource allocation, multi-objective optimization, trade-off analysis",
+      "temperature_range": [0.2, 0.4],
+      "test_range": [123, 130],
+      "difficulty": "hard",
+      "test_ids": []
+    },
+    "meta_reasoning": {
+      "description": "Reasoning about reasoning processes, strategy analysis, and cognitive reflection",
+      "reasoning_focus": "metacognitive analysis, reasoning strategy evaluation, cognitive process reflection",
+      "temperature_range": [0.1, 0.3],
+      "test_range": [131, 136],
+      "difficulty": "hard",
+      "test_ids": []
+    },
+    "systems_reasoning": {
+      "description": "Complex system dynamics analysis with emergent behavior prediction and feedback loops",
+      "reasoning_focus": "systems thinking, emergent behavior analysis, feedback loop identification, dynamic systems",
+      "temperature_range": [0.15, 0.35],
+      "test_range": [137, 144],
+      "difficulty": "hard",
+      "test_ids": []
+    },
+    "scientific_reasoning": {
+      "description": "Advanced scientific methodology with hypothesis generation and experimental design",
+      "reasoning_focus": "scientific method, hypothesis formation, experimental design, data interpretation",
+      "temperature_range": [0.05, 0.2],
+      "test_range": [145, 152],
+      "difficulty": "hard",
+      "test_ids": []
+    },
+    "adversarial_reasoning": {
+      "description": "Sophisticated bias detection, argument deconstruction, and critical analysis of flawed reasoning",
+      "reasoning_focus": "bias detection, argument analysis, logical fallacy identification, critical evaluation",
+      "temperature_range": [0.1, 0.25],
+      "test_range": [153, 160],
+      "difficulty": "hard",
+      "test_ids": []
     }
   },
   "reasoning_type_mapping": {
@@ -129,6 +193,14 @@
     "text_continuation": "general",
     "pattern_completion": "general",
     "style_mimicry": "general",
-    "context_coherence": "general"
+    "context_coherence": "general",
+    "code_reasoning": "technical",
+    "causal_reasoning": "causal",
+    "long_context_reasoning": "general",
+    "strategic_reasoning": "strategic",
+    "meta_reasoning": "meta",
+    "systems_reasoning": "systems",
+    "scientific_reasoning": "scientific",
+    "adversarial_reasoning": "adversarial"
   }
 }
