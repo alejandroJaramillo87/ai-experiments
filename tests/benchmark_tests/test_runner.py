@@ -1942,10 +1942,17 @@ def load_and_configure_runner(test_definitions_dir: str = "test_definitions",
         base_dir = os.path.join(runner_dir, "base_models")
         suite_filename = "reasoning_tests_medium.json"
     
-    # Build full paths
-    suite_path = os.path.join(base_dir, test_definitions_dir, suite_filename)
-    metadata_path = os.path.join(base_dir, test_definitions_dir, "test_suite_metadata.json")
-    categories_path = os.path.join(base_dir, test_definitions_dir, "categories.json")
+    # Build full paths - handle both relative and full paths in test_definitions_dir
+    if test_definitions_dir.startswith(test_type + "_models/") or test_definitions_dir.startswith("instruct-models/"):
+        # User provided full path like "base_models/test_definitions" - use as-is from runner_dir
+        suite_path = os.path.join(runner_dir, test_definitions_dir, suite_filename)
+        metadata_path = os.path.join(runner_dir, test_definitions_dir, "test_suite_metadata.json")
+        categories_path = os.path.join(runner_dir, test_definitions_dir, "categories.json")
+    else:
+        # User provided relative path like "test_definitions" - append to base_dir
+        suite_path = os.path.join(base_dir, test_definitions_dir, suite_filename)
+        metadata_path = os.path.join(base_dir, test_definitions_dir, "test_suite_metadata.json")
+        categories_path = os.path.join(base_dir, test_definitions_dir, "categories.json")
     
     # Load test files
     runner.load_test_suite(suite_path)
@@ -2251,7 +2258,12 @@ if __name__ == "__main__":
         
         # Save results
         success_count = sum(1 for r in results if r.success)
-        runner.save_results(results, args.output_dir)
+        print(f"Attempting to save {len(results)} results to {args.output_dir}...")
+        save_success = runner.save_results(results, args.output_dir)
+        if save_success:
+            print(f"✓ Successfully saved {len(results)} results to {args.output_dir}")
+        else:
+            print(f"✗ Failed to save results to {args.output_dir}")
         
         # Summary
         print(f"\n{'='*50}")
