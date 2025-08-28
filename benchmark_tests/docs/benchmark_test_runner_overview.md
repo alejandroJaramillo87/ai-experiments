@@ -8,7 +8,7 @@
   - [System Components](#system-components)
     - [Core Architecture](#core-architecture)
     - [Key Design Principles](#key-design-principles)
-  - [test_runner.py - Benchmark Test Runner Implementation](#test_runnerpy---benchmark-test-runner-implementation)
+  - [benchmark_runner.py - Benchmark Test Runner Implementation](#benchmark_runnerpy---benchmark-test-runner-implementation)
     - [Core Data Structures](#core-data-structures)
       - [BenchmarkTestRunner Class Architecture](#benchmarktestrunnner-class-architecture)
       - [Configuration Data Structures](#configuration-data-structures)
@@ -123,7 +123,7 @@ flowchart TD
 
 ---
 
-## test_runner.py - Benchmark Test Runner Implementation
+## benchmark_runner.py - Benchmark Test Runner Implementation
 
 ### Core Data Structures
 
@@ -804,7 +804,7 @@ The testing framework deliberately avoids traditional mocking in favor of real f
 
 #### 1. Basic Test Execution Workflow
 ```python
-from test_runner import BenchmarkTestRunner
+from benchmark_runner import BenchmarkTestRunner
 
 # Initialize runner and load test suite
 runner = BenchmarkTestRunner()

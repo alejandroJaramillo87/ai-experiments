@@ -218,8 +218,8 @@ Optimized for instruction-following models using the chat API format, emphasizin
 tests/benchmark_tests/
 ├── README.md                   # This comprehensive documentation
 ├── TESTING_GUIDE.md            # Quick testing and verification guide
-├── test_runner.py              # Main BenchmarkTestRunner engine implementation
-├── test_benchmark_test_runner.py  # Comprehensive BenchmarkTestRunner test suite (34 tests)
+├── benchmark_runner.py              # Main BenchmarkTestRunner engine implementation
+├── test_benchmark_benchmark_runner.py  # Comprehensive BenchmarkTestRunner test suite (34 tests)
 ├── test_universal_evaluator.py    # UniversalEvaluator test suite (26 tests)
 ├── reasoning_evaluator.py     # Universal evaluation system (UniversalEvaluator)
 ├── evaluation_config.py       # Evaluation configuration and settings
@@ -269,16 +269,16 @@ Execute your first benchmark test to verify system functionality:
 
 ```bash
 # Verify installation and list available test suites
-python test_runner.py --discover-suites
+python benchmark_runner.py --discover-suites
 
 # List available categories for base models
-python test_runner.py --test-type base --list-categories
+python benchmark_runner.py --test-type base --list-categories
 
 # Execute a single test in dry-run mode
-python test_runner.py --test-type base --mode single --test-id complex_test_01 --dry-run
+python benchmark_runner.py --test-type base --mode single --test-id complex_test_01 --dry-run
 
 # Execute a single test with actual inference
-python test_runner.py --test-type base --mode single --test-id complex_test_01 \
+python benchmark_runner.py --test-type base --mode single --test-id complex_test_01 \
   --endpoint http://localhost:8004/v1/completions \
   --model "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b"
 ```
@@ -289,13 +289,13 @@ Enable comprehensive hardware monitoring during test execution:
 
 ```bash
 # Single test with performance monitoring
-python test_runner.py --test-type base --mode single --test-id complex_test_01 \
+python benchmark_runner.py --test-type base --mode single --test-id complex_test_01 \
   --performance-monitoring \
   --endpoint http://localhost:8004/v1/completions \
   --model "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b"
 
 # Monitor hardware during concurrent execution
-python test_runner.py --test-type base --mode concurrent --workers 4 \
+python benchmark_runner.py --test-type base --mode concurrent --workers 4 \
   --performance-monitoring \
   --category complex_synthesis
 ```
@@ -306,11 +306,11 @@ Leverage multiple CPU cores for accelerated testing:
 
 ```bash
 # Concurrent execution with 4 worker threads
-python test_runner.py --test-type base --mode concurrent --workers 4 \
+python benchmark_runner.py --test-type base --mode concurrent --workers 4 \
   --category complex_synthesis
 
 # Full test suite execution with performance monitoring
-python test_runner.py --test-type base --mode concurrent --workers 6 \
+python benchmark_runner.py --test-type base --mode concurrent --workers 6 \
   --performance-monitoring \
   --output-dir results_$(date +%Y%m%d_%H%M%S)
 ```
@@ -455,10 +455,10 @@ done
 **Model Comparison Workflow:**
 ```bash
 # Execute same test suite on different models
-python test_runner.py --test-type base --mode concurrent --workers 4 \
+python benchmark_runner.py --test-type base --mode concurrent --workers 4 \
   --model "/app/models/hf/model-a" --output-dir results_model_a
 
-python test_runner.py --test-type base --mode concurrent --workers 4 \
+python benchmark_runner.py --test-type base --mode concurrent --workers 4 \
   --model "/app/models/hf/model-b" --output-dir results_model_b
 
 # Compare performance across models
@@ -491,13 +491,13 @@ Execute tests organized by reasoning type and difficulty:
 
 ```bash
 # Mathematical reasoning tests only
-python test_runner.py --test-type base --mode category --category mathematical_reasoning
+python benchmark_runner.py --test-type base --mode category --category mathematical_reasoning
 
 # Linux security tests (instruct models)
-python test_runner.py --test-type instruct --mode category --category linux_security
+python benchmark_runner.py --test-type instruct --mode category --category linux_security
 
 # Easy reasoning tests for initial model evaluation
-python test_runner.py --test-type instruct --mode category --category metacognitive_reasoning
+python benchmark_runner.py --test-type instruct --mode category --category metacognitive_reasoning
 ```
 
 ### Custom Model Configuration
@@ -506,13 +506,13 @@ Configure different model endpoints and parameters:
 
 ```bash
 # Custom vLLM server configuration
-python test_runner.py --test-type base \
+python benchmark_runner.py --test-type base \
   --endpoint http://192.168.1.100:8004/v1/completions \
   --model "/app/models/hf/custom-model-name" \
   --mode concurrent --workers 3
 
 # Chat API configuration for instruct models
-python test_runner.py --test-type instruct \
+python benchmark_runner.py --test-type instruct \
   --endpoint http://localhost:8004/v1/chat/completions \
   --model "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b" \
   --category reasoning_general
@@ -524,16 +524,16 @@ Analyze test results and performance metrics:
 
 ```bash
 # Generate suite statistics
-python test_runner.py --suite-stats reasoning_comprehensive_v1
+python benchmark_runner.py --suite-stats reasoning_comprehensive_v1
 
 # Category-specific performance analysis
-python test_runner.py --category-info complex_synthesis --test-type base
+python benchmark_runner.py --category-info complex_synthesis --test-type base
 
 # Filter tests by difficulty level
-python test_runner.py --filter-by difficulty=medium --test-type base --list-tests
+python benchmark_runner.py --filter-by difficulty=medium --test-type base --list-tests
 
 # Verbose execution with detailed logging
-python test_runner.py --test-type base --mode single --test-id complex_test_01 --verbose
+python benchmark_runner.py --test-type base --mode single --test-id complex_test_01 --verbose
 ```
 
 ## Test Definition Format
@@ -648,7 +648,7 @@ vllm serve /app/models/hf/DeepSeek-R1-0528-Qwen3-8b \
   --max-model-len 32768
 
 # TestRunner configuration for vLLM
-python test_runner.py --test-type base \
+python benchmark_runner.py --test-type base \
   --endpoint http://localhost:8004/v1/completions \
   --model "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b"
 ```
@@ -682,10 +682,10 @@ Create new test definitions following the established JSON schema:
 
 ```bash
 # Validate new test definition
-python test_runner.py --test-type base --mode single --test-id new_test_id --dry-run
+python benchmark_runner.py --test-type base --mode single --test-id new_test_id --dry-run
 
 # Execute validation test
-python test_runner.py --test-type base --mode single --test-id new_test_id
+python benchmark_runner.py --test-type base --mode single --test-id new_test_id
 ```
 
 ### Category Management

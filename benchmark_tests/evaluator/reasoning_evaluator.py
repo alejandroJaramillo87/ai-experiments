@@ -222,11 +222,15 @@ class UniversalEvaluator:
         
         # Import default config
         try:
-            from evaluation_config import DEFAULT_CONFIG
+            from evaluator.evaluation_config import DEFAULT_CONFIG
             return DEFAULT_CONFIG
         except ImportError:
-            logger.warning("evaluation_config.py not found. Using minimal defaults.")
-            return self._get_minimal_config()
+            try:
+                from evaluation_config import DEFAULT_CONFIG
+                return DEFAULT_CONFIG
+            except ImportError:
+                logger.warning("evaluation_config.py not found. Using minimal defaults.")
+                return self._get_minimal_config()
     
     def _get_minimal_config(self) -> Dict:
         """Minimal configuration for basic operation"""

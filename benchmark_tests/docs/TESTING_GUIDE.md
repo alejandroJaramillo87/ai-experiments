@@ -6,9 +6,9 @@ This guide provides the fastest way to verify TestRunner functionality after cod
 
 ```bash
 # Single command to test core functionality
-python test_runner.py --discover-suites && \
-python test_runner.py --test-type base --list-categories && \
-python test_runner.py --test-type base --mode single --test-id complex_test_01 --performance-monitoring --dry-run && \
+python benchmark_runner.py --discover-suites && \
+python benchmark_runner.py --test-type base --list-categories && \
+python benchmark_runner.py --test-type base --mode single --test-id complex_test_01 --performance-monitoring --dry-run && \
 echo "✅ Core functionality verified"
 ```
 
@@ -17,46 +17,46 @@ echo "✅ Core functionality verified"
 ### 1. Basic CLI & Discovery
 ```bash
 # Test help system
-python test_runner.py --help
+python benchmark_runner.py --help
 
 # Test suite discovery
-python test_runner.py --discover-suites
+python benchmark_runner.py --discover-suites
 ```
 
 ### 2. Test Loading & Listing
 ```bash
 # Test category listing
-python test_runner.py --test-type base --list-categories
+python benchmark_runner.py --test-type base --list-categories
 
 # Test individual test listing (first 10)
-python test_runner.py --test-type base --list-tests | head -15
+python benchmark_runner.py --test-type base --list-tests | head -15
 ```
 
 ### 3. Execution Modes (Dry Run)
 ```bash
 # Single test
-python test_runner.py --test-type base --mode single --test-id complex_test_01 --dry-run
+python benchmark_runner.py --test-type base --mode single --test-id complex_test_01 --dry-run
 
 # Sequential mode
-python test_runner.py --test-type base --mode sequential --dry-run
+python benchmark_runner.py --test-type base --mode sequential --dry-run
 
 # Concurrent mode
-python test_runner.py --test-type base --mode concurrent --workers 2 --dry-run
+python benchmark_runner.py --test-type base --mode concurrent --workers 2 --dry-run
 
 # Category mode
-python test_runner.py --test-type base --mode category --category complex_synthesis --dry-run
+python benchmark_runner.py --test-type base --mode category --category complex_synthesis --dry-run
 ```
 
 ### 4. Performance Monitoring
 ```bash
 # Test performance flag integration
-python test_runner.py --test-type base --mode single --test-id complex_test_01 --performance-monitoring --dry-run
+python benchmark_runner.py --test-type base --mode single --test-id complex_test_01 --performance-monitoring --dry-run
 ```
 
 ### 5. Error Handling
 ```bash
 # Test graceful error handling
-python test_runner.py --test-type base --mode single --test-id invalid_test --dry-run 2>/dev/null || echo "✅ Handles errors gracefully"
+python benchmark_runner.py --test-type base --mode single --test-id invalid_test --dry-run 2>/dev/null || echo "✅ Handles errors gracefully"
 ```
 
 ## 🔧 Bug Verification Tests
@@ -65,30 +65,30 @@ Test specific bug fixes:
 
 ```bash
 # Division by zero fixes (empty results)
-python test_runner.py --test-type base --mode single --test-id invalid_test 2>/dev/null || echo "✅ No division by zero crashes"
+python benchmark_runner.py --test-type base --mode single --test-id invalid_test 2>/dev/null || echo "✅ No division by zero crashes"
 
 # Thread safety (concurrent execution)
-python test_runner.py --test-type base --mode concurrent --workers 3 --performance-monitoring --dry-run
+python benchmark_runner.py --test-type base --mode concurrent --workers 3 --performance-monitoring --dry-run
 
 # API error handling
-python test_runner.py --test-type base --mode single --test-id complex_test_01 --endpoint http://nonexistent:999/v1/completions --model "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b" 2>/dev/null || echo "✅ API errors handled"
+python benchmark_runner.py --test-type base --mode single --test-id complex_test_01 --endpoint http://nonexistent:999/v1/completions --model "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b" 2>/dev/null || echo "✅ API errors handled"
 ```
 
 ## 📊 Advanced Features
 
 ```bash
 # Suite statistics
-python test_runner.py --suite-stats reasoning_comprehensive_v1
+python benchmark_runner.py --suite-stats reasoning_comprehensive_v1
 
 # Category information
-python test_runner.py --category-info complex_synthesis --test-type base
+python benchmark_runner.py --category-info complex_synthesis --test-type base
 
 # Filtering tests
-python test_runner.py --filter-by difficulty=medium --test-type base
+python benchmark_runner.py --filter-by difficulty=medium --test-type base
 
 # Verbose/quiet modes
-python test_runner.py --test-type base --list-categories --verbose
-python test_runner.py --test-type base --list-categories --quiet
+python benchmark_runner.py --test-type base --list-categories --verbose
+python benchmark_runner.py --test-type base --list-categories --quiet
 ```
 
 ## ✅ Expected Results
