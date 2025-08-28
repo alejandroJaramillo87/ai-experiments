@@ -103,6 +103,17 @@ class UniversalEvaluator:
         if not response_text or len(response_text.strip()) < 50:
             return self._create_minimal_result(response_text, "Response too short for analysis")
         
+        # CRITICAL: First pass - Check for coherence failures
+        coherence_assessment = self._assess_coherence(response_text)
+        if coherence_assessment["is_coherent"] == False:
+            return self._create_coherence_failure_result(response_text, coherence_assessment, test_name)
+        
+        # IMPROVEMENT: Check for edge cases first
+        edge_cases = self._detect_edge_cases(response_text)
+        edge_case_result = self._handle_edge_case(response_text, edge_cases, test_name)
+        if edge_case_result is not None:
+            return edge_case_result
+        
         # Auto-detect reasoning type if not provided
         if reasoning_type is None:
             reasoning_type = self._detect_reasoning_type(test_name)
@@ -112,8 +123,8 @@ class UniversalEvaluator:
         # Detect test type for category-specific evaluation
         test_type = self._detect_test_type(test_category)
         
-        # Perform core evaluation with universal metrics
-        metrics = self._evaluate_universal_metrics(response_text, reasoning_type, test_type, test_category)
+        # Perform core evaluation with universal metrics (Multi-pass evaluation)
+        metrics = self._evaluate_universal_metrics(response_text, reasoning_type, test_type, test_category, coherence_assessment)
         
         # Add reasoning-type-specific analysis
         specialized_analysis = self._evaluate_specialized_patterns(response_text, reasoning_type)
@@ -247,6 +258,9 @@ class UniversalEvaluator:
         
         # Initialize reasoning type detection patterns
         self.reasoning_type_patterns = self._create_reasoning_patterns()
+        
+        # Initialize coherence detection patterns
+        self.coherence_failure_patterns = self._initialize_coherence_patterns()
     
     def _create_reasoning_patterns(self) -> Dict[ReasoningType, Dict]:
         """Create patterns for detecting different reasoning types"""
@@ -314,8 +328,9 @@ class UniversalEvaluator:
             return "reasoning"
     
     def _evaluate_universal_metrics(self, response_text: str, reasoning_type: ReasoningType, 
-                                   test_type: str, test_category: Optional[str] = None) -> EvaluationMetrics:
-        """Evaluate universal metrics with category-specific logic"""
+                                   test_type: str, test_category: Optional[str] = None, 
+                                   coherence_assessment: Optional[Dict] = None) -> EvaluationMetrics:
+        """Evaluate universal metrics with category-specific logic and coherence weighting"""
         text = response_text.lower()
         word_count = len(response_text.split())
         
@@ -331,32 +346,44 @@ class UniversalEvaluator:
         # Add professional formatting bonus
         formatting_bonus = self._calculate_formatting_bonus(response_text)
         
-        # Calculate weighted overall score using updated weights (adjusted for formatting bonus)
-        weights = self.config.get("weights", {
-            "organization_quality": 0.14,    # Slightly reduced to make room for formatting
-            "technical_accuracy": 0.19,     # Still highest weight
-            "completeness": 0.14,
-            "thoroughness": 0.14,
-            "reliability": 0.10,
-            "scope_coverage": 0.09,
-            "domain_appropriateness": 0.15
-        })  # Total: 0.95 + 0.05 formatting = 1.00
+        # IMPROVEMENT: Use domain-adaptive weights with increased formatting weight
+        weights = self._get_domain_adaptive_weights(test_type, reasoning_type)
+        
+        # Adjust weights to accommodate increased formatting bonus (5% → 10%)
+        total_content_weight = 0.90  # Reduced from 0.95 to make room for 10% formatting
         
         overall_score = (
-            organization_quality * weights.get("organization_quality", 0.14) +
-            technical_accuracy * weights.get("technical_accuracy", 0.19) +
-            completeness * weights.get("completeness", 0.14) +
-            thoroughness * weights.get("thoroughness", 0.14) +
-            reliability * weights.get("reliability", 0.10) +
-            scope_coverage * weights.get("scope_coverage", 0.09) +
-            domain_appropriateness * weights.get("domain_appropriateness", 0.15) +
-            formatting_bonus * 0.05  # Additional 5% weight for professional formatting
+            organization_quality * (weights.get("organization_quality", 0.14) * total_content_weight) +
+            technical_accuracy * (weights.get("technical_accuracy", 0.19) * total_content_weight) +
+            completeness * (weights.get("completeness", 0.14) * total_content_weight) +
+            thoroughness * (weights.get("thoroughness", 0.14) * total_content_weight) +
+            reliability * (weights.get("reliability", 0.10) * total_content_weight) +
+            scope_coverage * (weights.get("scope_coverage", 0.09) * total_content_weight) +
+            domain_appropriateness * (weights.get("domain_appropriateness", 0.15) * total_content_weight) +
+            formatting_bonus * 0.10  # IMPROVEMENT: Increased to 10% weight for professional formatting
         )
+        
+        # IMPROVEMENT: Apply response length normalization
+        overall_score = self._normalize_response_length(overall_score, word_count, test_type)
+        
+        # IMPROVEMENT: Apply coherence weighting if available
+        if coherence_assessment and coherence_assessment["coherence_score"] < 70:
+            coherence_penalty = (70 - coherence_assessment["coherence_score"]) / 100
+            overall_score = overall_score * (1 - coherence_penalty)
+        
+        # IMPROVEMENT: Apply progressive scoring tiers for different quality levels
+        overall_score = self._apply_progressive_scoring_tiers(overall_score, word_count)
         
         # Calculate confidence score based on response length and complexity
         confidence_score = self._calculate_confidence_score(word_count, overall_score)
         
-        return EvaluationMetrics(
+        # Apply coherence adjustment to confidence score
+        if coherence_assessment and coherence_assessment["coherence_score"] < 90:
+            confidence_adjustment = coherence_assessment["coherence_score"] / 100
+            confidence_score = confidence_score * confidence_adjustment
+        
+        # Create initial metrics
+        metrics = EvaluationMetrics(
             organization_quality=round(organization_quality, 1),
             technical_accuracy=round(technical_accuracy, 1),
             completeness=round(completeness, 1),
@@ -364,17 +391,30 @@ class UniversalEvaluator:
             reliability=round(reliability, 1),
             scope_coverage=round(scope_coverage, 1),
             domain_appropriateness=round(domain_appropriateness, 1),
-            overall_score=round(overall_score, 1),
+            overall_score=round(min(max(overall_score, 0), 105), 1),
             word_count=word_count,
             confidence_score=round(confidence_score, 1)
         )
+        
+        # IMPROVEMENT: Apply technical domain recalibration
+        metrics = self._apply_technical_domain_adjustments(metrics, test_type, response_text)
+        
+        # IMPROVEMENT: Apply expertise level adjustments
+        expertise_level = self._detect_expertise_level(response_text, test_type)
+        metrics = self._apply_expertise_level_adjustments(metrics, expertise_level)
+        
+        return metrics
     
     def _calculate_organization_quality(self, text: str, test_type: str) -> float:
         """Calculate organization quality based on sophisticated structural patterns"""
         text_lower = text.lower()
         
-        # Base score for any reasonable length content
-        base_score = min(len(text.split()) / 20, 40)  # Up to 40 points for substantial content
+        # IMPROVEMENT: Boosted base score for substantial content
+        word_count = len(text.split())
+        if word_count >= 100:
+            base_score = min(word_count / 15, 55)  # Up to 55 points for substantial content (was 40)
+        else:
+            base_score = min(word_count / 20, 35)  # Lower base for very short content
         
         if test_type == "linux":
             # Linux: command structure, scripts, proper syntax
@@ -428,8 +468,12 @@ class UniversalEvaluator:
         """Calculate technical accuracy with sophisticated domain recognition"""
         text_lower = text.lower()
         
-        # Base score for substantial, coherent content
-        base_score = min(len(text.split()) / 30, 35)  # Up to 35 points for length/coherence
+        # IMPROVEMENT: Boosted base score for technical accuracy
+        word_count = len(text.split())
+        if word_count >= 80:
+            base_score = min(word_count / 20, 50)  # Up to 50 points for substantial content (was 35)
+        else:
+            base_score = min(word_count / 25, 30)  # Boosted base for shorter content
         
         if test_type == "linux":
             # Linux: command syntax and best practices
@@ -453,26 +497,44 @@ class UniversalEvaluator:
         else:
             # Reasoning: sophisticated domain expertise and logical precision
             
-            # High-value logical connectors (sophisticated reasoning)
+            # IMPROVEMENT: Enhanced sophisticated reasoning patterns
             sophisticated_logic = [
-                ("therefore", 10), ("consequently", 12), ("hence", 10), ("thus", 8),
-                ("it follows that", 15), ("given that", 10), ("assuming", 8),
-                ("conversely", 10), ("nevertheless", 10), ("furthermore", 8)
+                ("therefore", 12), ("consequently", 15), ("hence", 12), ("thus", 10),
+                ("it follows that", 18), ("given that", 12), ("assuming", 10),
+                ("conversely", 12), ("nevertheless", 12), ("furthermore", 10),
+                # Advanced logical connectors
+                ("notwithstanding", 15), ("insofar as", 14), ("whereas", 12), ("albeit", 14),
+                ("contingent upon", 16), ("predicated on", 18), ("tantamount to", 16),
+                ("vis-à-vis", 18), ("qua", 16), ("ipso facto", 18), ("ceteris paribus", 20),
+                ("mutatis mutandis", 20), ("prima facie", 16), ("a fortiori", 18),
+                ("ex post", 14), ("ex ante", 14), ("de facto", 14), ("sui generis", 18)
             ]
             
-            # Domain expertise indicators
+            # IMPROVEMENT: Enhanced domain expertise indicators with academic language
             expertise_indicators = [
-                ("analysis", 8), ("framework", 12), ("methodology", 15), ("systematic", 10),
-                ("comprehensive", 10), ("empirical", 12), ("theoretical", 12), ("paradigm", 15),
-                ("hypothesis", 12), ("premise", 10), ("conclusion", 8), ("inference", 10),
-                ("deduction", 12), ("induction", 10), ("synthesis", 12), ("evaluation", 8)
+                ("analysis", 10), ("framework", 15), ("methodology", 18), ("systematic", 12),
+                ("comprehensive", 12), ("empirical", 15), ("theoretical", 15), ("paradigm", 18),
+                ("hypothesis", 15), ("premise", 12), ("conclusion", 10), ("inference", 12),
+                ("deduction", 15), ("induction", 12), ("synthesis", 15), ("evaluation", 10),
+                # Advanced academic indicators
+                ("meta-analysis", 20), ("longitudinal", 16), ("cross-sectional", 16), ("causal", 14),
+                ("endogeneity", 18), ("heteroscedasticity", 20), ("multicollinearity", 18),
+                ("instrumental variable", 22), ("difference-in-differences", 22), ("propensity score", 20),
+                ("randomized controlled", 20), ("quasi-experimental", 18), ("observational", 14),
+                ("counterfactual", 18), ("treatment effect", 16), ("confounding", 16)
             ]
             
-            # Professional terminology (varies by domain)
+            # IMPROVEMENT: Enhanced professional terminology with higher weights
             professional_terms = [
-                ("equilibrium", 15), ("optimization", 12), ("correlation", 10), ("statistical", 10),
-                ("probability", 12), ("strategy", 8), ("implementation", 8), ("assessment", 8),
-                ("protocol", 10), ("specification", 10), ("validation", 12), ("verification", 12)
+                ("equilibrium", 18), ("optimization", 15), ("correlation", 12), ("statistical", 12),
+                ("probability", 15), ("strategy", 10), ("implementation", 10), ("assessment", 10),
+                ("protocol", 12), ("specification", 12), ("validation", 15), ("verification", 15),
+                # Advanced academic/professional terms
+                ("empirical", 18), ("theoretical", 16), ("paradigm", 20), ("epistemological", 22),
+                ("ontological", 20), ("heuristic", 16), ("algorithmic", 14), ("stochastic", 18),
+                ("deterministic", 16), ("asymptotic", 18), ("quantitative", 14), ("qualitative", 12),
+                ("multivariate", 16), ("econometric", 18), ("regression", 14), ("bayesian", 18),
+                ("monte carlo", 20), ("sensitivity", 14), ("robustness", 16), ("heterogeneity", 18)
             ]
             
             # Mathematical/quantitative precision
@@ -499,23 +561,34 @@ class UniversalEvaluator:
                     if pattern in text_lower:
                         quantitative_score += points
             
-            total_technical_score = sophisticated_score + expertise_score + professional_score + quantitative_score
+            # IMPROVEMENT: Add academic excellence bonus
+            academic_excellence_bonus = self._calculate_academic_excellence_bonus(text)
+            
+            total_technical_score = sophisticated_score + expertise_score + professional_score + quantitative_score + academic_excellence_bonus
             return min(base_score + total_technical_score, 100)
     
     def _calculate_completeness(self, text: str, test_type: str) -> float:
-        """Calculate completeness through comprehensive coverage analysis"""
+        """Calculate completeness with emphasis on functional task completion over formatting"""
         text_lower = text.lower()
         word_count = len(text.split())
         
-        # Base score for comprehensive content length
-        base_score = min(word_count / 50, 45)  # Up to 45 points for substantial content
+        # IMPROVEMENT: Boosted functional completion base score
+        functional_completion_score = self._assess_functional_completion(text, text_lower, test_type)
+        
+        # IMPROVEMENT: Increased base score for comprehensive content length
+        if word_count >= 100:
+            content_length_score = min(word_count / 40, 50)  # Increased from 35 to 50
+        else:
+            content_length_score = min(word_count / 50, 30)  # Better scaling for shorter content
         
         if test_type == "linux":
             # Linux: complete solutions with error handling, validation
             completeness_indicators = ["#!/bin/bash", "error handling", "logging", "exit", "return", 
                                      "status", "check", "validate", "test", "backup", "monitoring"]
-            completeness_score = sum(10 for indicator in completeness_indicators if indicator in text_lower)
-            return min(base_score + completeness_score, 100)
+            technical_completeness = sum(10 for indicator in completeness_indicators if indicator in text_lower)
+            # IMPROVEMENT: Weighted combination for Linux tasks
+            total_completeness = (functional_completion_score * 0.6) + (content_length_score * 0.2) + (technical_completeness * 0.2)
+            return min(total_completeness, 100)
             
         elif test_type == "creative":
             # Creative: addressing multiple aspects and constraints
@@ -525,8 +598,10 @@ class UniversalEvaluator:
                 ("alternative", 10), ("option", 8), ("comprehensive", 15), ("thorough", 12),
                 ("complete", 10), ("detailed", 8), ("extensive", 10)
             ]
-            coverage_score = sum(points for pattern, points in comprehensive_coverage if pattern in text_lower)
-            return min(base_score + coverage_score, 100)
+            creative_coverage = sum(points for pattern, points in comprehensive_coverage if pattern in text_lower)
+            # IMPROVEMENT: Weighted combination for creative tasks
+            total_completeness = (functional_completion_score * 0.5) + (content_length_score * 0.3) + (creative_coverage * 0.2)
+            return min(total_completeness, 100)
             
         else:
             # Reasoning: comprehensive evidence integration and multi-faceted analysis
@@ -564,16 +639,23 @@ class UniversalEvaluator:
             perspective_score = sum(points for pattern, points in perspective_indicators if pattern in text_lower)
             synthesis_score = sum(points for pattern, points in synthesis_patterns if pattern in text_lower)
             
-            total_completeness = evidence_score + comprehensive_score + perspective_score + synthesis_score
-            return min(base_score + total_completeness, 100)
+            # IMPROVEMENT: Weighted combination emphasizing functional completion
+            formatting_coverage = evidence_score + comprehensive_score + perspective_score + synthesis_score
+            total_completeness = (functional_completion_score * 0.7) + (content_length_score * 0.2) + (formatting_coverage * 0.1)
+            return min(total_completeness, 100)
     
     def _calculate_thoroughness(self, text: str, test_type: str) -> float:
         """Calculate thoroughness through depth and detail analysis"""
         text_lower = text.lower()
         word_count = len(text.split())
         
-        # Base score rewards substantial detailed content
-        base_score = min(word_count / 40, 40)  # Up to 40 points for detailed content
+        # IMPROVEMENT: Boosted base score for thoroughness
+        if word_count >= 150:
+            base_score = min(word_count / 25, 55)  # Up to 55 points for detailed content (was 40)
+        elif word_count >= 80:
+            base_score = min(word_count / 30, 45)  # Good scaling for medium content
+        else:
+            base_score = min(word_count / 40, 30)  # Maintained for very short content
         
         if test_type == "linux":
             # Linux: comprehensive solutions with detailed explanations
@@ -1017,6 +1099,695 @@ class UniversalEvaluator:
         """Get current timestamp"""
         from datetime import datetime
         return datetime.now().isoformat()
+    
+    # ==================== COHERENCE DETECTION METHODS ====================
+    
+    def _initialize_coherence_patterns(self) -> Dict:
+        """Initialize patterns for detecting coherence failures"""
+        return {
+            "repetitive_phrases": [
+                "The user might want", "The user wants", "I need to", "Let me",
+                "We need to", "report" or "analysis", "summary" or "interpretation"
+            ],
+            "meta_reasoning_loops": [
+                "I think", "I should", "maybe I", "perhaps I", "let me think",
+                "I'm not sure", "I wonder if", "I guess"
+            ],
+            "broken_completion_indicators": [
+                "(stop)", "...", "continues", "and so on", "etc.",
+                "more of the same", "similar pattern"
+            ],
+            "system_error_patterns": [
+                "assistant", "I am an AI", "I cannot", "I don't know",
+                "error:", "failed:", "exception:"
+            ]
+        }
+    
+    def _assess_coherence(self, response_text: str) -> Dict:
+        """Assess response coherence and detect major failures"""
+        text_lower = response_text.lower()
+        lines = response_text.split('\n')
+        words = response_text.split()
+        
+        coherence_issues = {
+            "repetitive_loops": 0,
+            "meta_reasoning_excessive": 0,
+            "broken_completion": 0,
+            "system_errors": 0,
+            "coherence_score": 100.0
+        }
+        
+        # Check for repetitive phrase loops (like GPT-OSS-20B Test 35 issue)
+        repetitive_phrases = self.coherence_failure_patterns["repetitive_phrases"]
+        for phrase in repetitive_phrases:
+            phrase_count = text_lower.count(phrase.lower())
+            if phrase_count > 5:  # More than 5 repetitions = major issue
+                coherence_issues["repetitive_loops"] += phrase_count
+                coherence_issues["coherence_score"] -= min(phrase_count * 10, 50)
+        
+        # Check for excessive meta-reasoning without progress
+        meta_phrases = self.coherence_failure_patterns["meta_reasoning_loops"]
+        meta_count = sum(text_lower.count(phrase.lower()) for phrase in meta_phrases)
+        if meta_count > 10:  # More than 10 meta-reasoning statements
+            coherence_issues["meta_reasoning_excessive"] = meta_count
+            coherence_issues["coherence_score"] -= min(meta_count * 3, 30)
+        
+        # Check for broken completions or system errors
+        broken_patterns = self.coherence_failure_patterns["broken_completion_indicators"]
+        system_patterns = self.coherence_failure_patterns["system_error_patterns"]
+        
+        for pattern in broken_patterns:
+            if pattern in text_lower:
+                coherence_issues["broken_completion"] += 1
+                coherence_issues["coherence_score"] -= 15
+        
+        for pattern in system_patterns:
+            if pattern in text_lower:
+                coherence_issues["system_errors"] += 1
+                coherence_issues["coherence_score"] -= 20
+        
+        # Check for excessive repetition of identical sentences
+        sentence_frequency = {}
+        for line in lines:
+            line_clean = line.strip().lower()
+            if len(line_clean) > 10:  # Only check substantial lines
+                sentence_frequency[line_clean] = sentence_frequency.get(line_clean, 0) + 1
+        
+        max_repetition = max(sentence_frequency.values()) if sentence_frequency else 1
+        if max_repetition > 3:
+            coherence_issues["repetitive_loops"] += max_repetition
+            coherence_issues["coherence_score"] -= min(max_repetition * 15, 60)
+        
+        # Determine if response is coherent
+        is_coherent = coherence_issues["coherence_score"] >= 30  # Threshold for basic coherence
+        
+        return {
+            "is_coherent": is_coherent,
+            "coherence_score": max(coherence_issues["coherence_score"], 0),
+            "issues": coherence_issues,
+            "failure_type": self._categorize_coherence_failure(coherence_issues) if not is_coherent else None
+        }
+    
+    def _categorize_coherence_failure(self, issues: Dict) -> str:
+        """Categorize the type of coherence failure"""
+        if issues["repetitive_loops"] > 10:
+            return "repetitive_loop"
+        elif issues["meta_reasoning_excessive"] > 15:
+            return "meta_reasoning_spiral"
+        elif issues["broken_completion"] > 0:
+            return "incomplete_response"
+        elif issues["system_errors"] > 0:
+            return "system_error"
+        else:
+            return "general_incoherence"
+    
+    def _create_coherence_failure_result(self, response_text: str, coherence_assessment: Dict, test_name: str) -> EvaluationResult:
+        """Create evaluation result for responses with coherence failures"""
+        # Severe penalty for coherence failures
+        base_score = max(coherence_assessment["coherence_score"], 5.0)  # Never below 5
+        word_count = len(response_text.split())
+        
+        # Create very low scores for all metrics
+        metrics = EvaluationMetrics(
+            organization_quality=min(base_score * 0.3, 20.0),
+            technical_accuracy=min(base_score * 0.2, 15.0),
+            completeness=min(base_score * 0.1, 10.0),
+            thoroughness=min(base_score * 0.1, 10.0),
+            reliability=min(base_score * 0.1, 10.0),
+            scope_coverage=min(base_score * 0.1, 10.0),
+            domain_appropriateness=min(base_score * 0.1, 10.0),
+            overall_score=round(base_score, 1),
+            word_count=word_count,
+            confidence_score=round(base_score * 0.5, 1)
+        )
+        
+        detailed_analysis = {
+            "core_metrics": metrics.__dict__,
+            "coherence_failure": coherence_assessment,
+            "text_statistics": self._calculate_text_statistics(response_text),
+            "failure_reason": f"Major coherence failure: {coherence_assessment['failure_type']}"
+        }
+        
+        recommendations = [
+            f"CRITICAL: Response shows {coherence_assessment['failure_type']} - requires complete regeneration",
+            "Check for repetitive loops in reasoning process",
+            "Implement better completion stopping criteria",
+            "Review prompt engineering to avoid meta-reasoning spirals"
+        ]
+        
+        return EvaluationResult(
+            metrics=metrics,
+            reasoning_type=ReasoningType.GENERAL,
+            detailed_analysis=detailed_analysis,
+            recommendations=recommendations,
+            timestamp=self._get_timestamp()
+        )
+    
+    # ==================== TECHNICAL DOMAIN RECALIBRATION ====================
+    
+    def _apply_technical_domain_adjustments(self, metrics: EvaluationMetrics, test_type: str, response_text: str) -> EvaluationMetrics:
+        """Apply technical domain-specific adjustments to scoring"""
+        if test_type != "linux":  # Only apply to technical domains for now
+            return metrics
+        
+        # IMPROVEMENT: Enhanced technical domain adjustments
+        word_count = len(response_text.split())
+        
+        # Boost for concise technical responses
+        if word_count < 300 and metrics.technical_accuracy > 40:  # Lowered threshold
+            boost_factor = 1.25 if metrics.technical_accuracy > 70 else 1.15
+            metrics.completeness = min(metrics.completeness * boost_factor, 100)
+            metrics.thoroughness = min(metrics.thoroughness * boost_factor, 100)
+            metrics.overall_score = min(metrics.overall_score * 1.15, 100)  # Increased from 1.1
+        
+        # Major boost for proper script structure
+        technical_structure_score = 0
+        if "#!/bin/bash" in response_text:
+            technical_structure_score += 25
+        if "set -euo pipefail" in response_text or "set -e" in response_text:
+            technical_structure_score += 20  # Proper error handling
+        if "function" in response_text.lower() or "() {" in response_text:
+            technical_structure_score += 15  # Function definitions
+        if response_text.count("echo") >= 3:  # Informative output
+            technical_structure_score += 10
+        if "if [" in response_text or "if [[" in response_text:
+            technical_structure_score += 15  # Conditional logic
+        
+        # Apply technical structure boost
+        if technical_structure_score > 30:
+            metrics.organization_quality = min(metrics.organization_quality * 1.25, 100)
+            metrics.reliability = min(metrics.reliability * 1.20, 100)
+            metrics.overall_score = min(metrics.overall_score * 1.20, 100)
+        elif technical_structure_score > 15:
+            metrics.organization_quality = min(metrics.organization_quality * 1.15, 100)
+            metrics.reliability = min(metrics.reliability * 1.10, 100)
+            
+        # Boost for command chaining and pipes (shows advanced bash knowledge)
+        if (response_text.count("&&") >= 2 or response_text.count("||") >= 1 or 
+            response_text.count("|") >= 3):
+            metrics.technical_accuracy = min(metrics.technical_accuracy * 1.20, 100)
+            
+        return metrics
+    
+    # ==================== DOMAIN ADAPTATION METHODS ====================
+    
+    def _get_domain_adaptive_weights(self, test_type: str, reasoning_type: ReasoningType) -> Dict[str, float]:
+        """Get domain-adaptive weights based on test type and reasoning type"""
+        base_weights = self.config.get("weights", {
+            "organization_quality": 0.14,
+            "technical_accuracy": 0.19,
+            "completeness": 0.14,
+            "thoroughness": 0.14,
+            "reliability": 0.10,
+            "scope_coverage": 0.09,
+            "domain_appropriateness": 0.15
+        })
+        
+        # Apply test-type specific adjustments
+        if test_type == "linux":
+            # IMPROVEMENT: Technical accuracy and organization more important for system administration
+            base_weights["technical_accuracy"] = 0.28  # Increased from 0.25
+            base_weights["organization_quality"] = 0.18  # Increased from 0.12 (scripts need structure)
+            base_weights["reliability"] = 0.18  # Increased from 0.15 (critical for systems)
+            base_weights["completeness"] = 0.15  # Increased from 0.12
+            base_weights["thoroughness"] = 0.12  # Increased from 0.10
+            base_weights["scope_coverage"] = 0.05  # Reduced to make room
+            base_weights["domain_appropriateness"] = 0.04  # Reduced to make room
+            
+        elif test_type == "creative":
+            # Thoroughness and completeness more important for creative tasks
+            base_weights["thoroughness"] = 0.20
+            base_weights["completeness"] = 0.18
+            base_weights["organization_quality"] = 0.15
+            base_weights["technical_accuracy"] = 0.12
+            base_weights["reliability"] = 0.10
+            base_weights["scope_coverage"] = 0.12
+            base_weights["domain_appropriateness"] = 0.13
+        
+        # Apply reasoning-type specific adjustments
+        if reasoning_type == ReasoningType.MATHEMATICAL:
+            # Technical accuracy becomes paramount
+            base_weights["technical_accuracy"] = min(base_weights["technical_accuracy"] * 1.3, 0.35)
+            base_weights["reliability"] = min(base_weights["reliability"] * 1.2, 0.15)
+            # Normalize other weights
+            remaining_weight = 1.0 - base_weights["technical_accuracy"] - base_weights["reliability"]
+            for key in ["organization_quality", "completeness", "thoroughness", "scope_coverage", "domain_appropriateness"]:
+                base_weights[key] = base_weights[key] * (remaining_weight / sum(base_weights[k] for k in base_weights if k not in ["technical_accuracy", "reliability"]))
+        
+        return base_weights
+    
+    def _normalize_response_length(self, score: float, word_count: int, test_type: str) -> float:
+        """Normalize score based on response length expectations for different domains"""
+        if test_type == "linux":
+            # Concise technical solutions should not be penalized
+            if 100 <= word_count <= 300:
+                return score * 1.1  # Bonus for appropriate conciseness
+            elif word_count > 500:
+                return score * 0.95  # Slight penalty for verbosity
+        elif test_type == "creative":
+            # Creative tasks benefit from elaboration
+            if word_count < 200:
+                return score * 0.9  # Penalty for insufficient elaboration
+            elif word_count > 800:
+                return score * 1.05  # Bonus for thorough exploration
+        else:
+            # Reasoning tasks: moderate length preferred
+            if 300 <= word_count <= 600:
+                return score * 1.02  # Small bonus for appropriate length
+            elif word_count < 150:
+                return score * 0.85  # Penalty for insufficient analysis
+        
+        return score  # No adjustment for other cases
+    
+    def _assess_functional_completion(self, text: str, text_lower: str, test_type: str) -> float:
+        """Assess how well the response functionally completes the task"""
+        # IMPROVEMENT: Boosted base functional score
+        completion_score = 50.0  # Increased base functional score (was 40.0)
+        
+        # Check for task-appropriate completion indicators
+        if test_type == "linux":
+            # Linux tasks: Commands, scripts, solutions
+            functional_indicators = [
+                ("sudo ", 8), ("systemctl", 8), ("#!/bin/bash", 12),
+                ("command", 6), ("script", 6), ("solution", 8), ("fix", 8),
+                ("install", 6), ("configure", 8), ("setup", 6), ("restart", 6)
+            ]
+            completion_score += sum(points for pattern, points in functional_indicators if pattern in text_lower)
+            
+            # IMPROVEMENT: Enhanced command syntax detection
+            if "|" in text or "&&" in text or "||" in text:
+                completion_score += 15  # Command chaining shows completion (was 10)
+            if text.count("$") >= 2:  # Command prompts or variables
+                completion_score += 12  # Increased from 8
+            if "#!/bin/bash" in text:
+                completion_score += 15  # Bonus for proper script headers
+                
+        elif test_type == "creative":
+            # Creative tasks: Ideas, alternatives, exploration
+            creative_completion = [
+                ("idea", 6), ("alternative", 8), ("approach", 6), ("solution", 8),
+                ("concept", 8), ("strategy", 8), ("option", 6), ("possibility", 8),
+                ("creative", 8), ("innovative", 10), ("unique", 8), ("original", 8)
+            ]
+            completion_score += sum(points for pattern, points in creative_completion if pattern in text_lower)
+            
+            # IMPROVEMENT: Enhanced creative completion detection
+            if text_lower.count("option") > 1 or text_lower.count("alternative") > 1:
+                completion_score += 18  # Increased from 12
+            if "brainstorm" in text_lower or "explore" in text_lower:
+                completion_score += 10  # Bonus for exploratory language
+                
+        else:
+            # Reasoning tasks: Analysis, conclusions, solutions
+            reasoning_completion = [
+                ("analysis", 8), ("conclusion", 10), ("result", 8), ("answer", 10),
+                ("solution", 10), ("recommendation", 12), ("summary", 8), ("finding", 8),
+                ("outcome", 8), ("implication", 10), ("insight", 10), ("assessment", 8)
+            ]
+            completion_score += sum(points for pattern, points in reasoning_completion if pattern in text_lower)
+            
+            # IMPROVEMENT: Enhanced reasoning completion detection
+            if "conclusion" in text_lower and ("analysis" in text_lower or "evidence" in text_lower):
+                completion_score += 20  # Shows complete reasoning cycle (was 15)
+            if "therefore" in text_lower or "thus" in text_lower or "hence" in text_lower:
+                completion_score += 12  # Shows logical completion (was 8)
+            # Additional sophisticated reasoning indicators
+            if "implications" in text_lower and "findings" in text_lower:
+                completion_score += 15  # Advanced analysis completion
+            if "methodology" in text_lower or "framework" in text_lower:
+                completion_score += 12  # Structured approach completion
+        
+        # IMPROVEMENT: Enhanced universal completion indicators
+        universal_completion = [
+            ("in conclusion", 20), ("to summarize", 16), ("in summary", 14),  # Increased values
+            ("final", 10), ("complete", 10), ("finished", 10), ("done", 8),  # Increased values
+            ("recommendations", 15), ("next steps", 12), ("action items", 10)  # New indicators
+        ]
+        completion_score += sum(points for pattern, points in universal_completion if pattern in text_lower)
+        
+        # IMPROVEMENT: Add bonus for comprehensive structure
+        if ("introduction" in text_lower or "overview" in text_lower) and ("conclusion" in text_lower or "summary" in text_lower):
+            completion_score += 15  # Bonus for complete structure
+        
+        # Penalty for obvious incompleteness
+        incompleteness_indicators = [
+            ("...", -10), ("etc.", -5), ("and so on", -8), ("continues", -10),
+            ("more", -3), ("incomplete", -15), ("partial", -8), ("unfinished", -12)
+        ]
+        for pattern, penalty in incompleteness_indicators:
+            if pattern in text_lower:
+                completion_score += penalty  # penalty is already negative
+        
+        return min(max(completion_score, 15), 100)  # Improved minimum score (was 10)
+    
+    def _apply_progressive_scoring_tiers(self, raw_score: float, word_count: int) -> float:
+        """Apply progressive scoring adjustments based on quality tiers"""
+        
+        # IMPROVEMENT: Adjusted progressive multipliers to fix calibration
+        if raw_score >= 85:  # Exceptional tier
+            adjusted_score = min(raw_score * 1.08, 105)  # 8% bonus for excellence
+        elif raw_score >= 70:  # High quality tier
+            adjusted_score = raw_score * 1.06  # Increased from 1.05
+        elif raw_score >= 55:  # Good quality tier  
+            adjusted_score = raw_score * 1.04  # Increased from 1.02
+        elif raw_score >= 40:  # Adequate tier
+            adjusted_score = raw_score * 1.01  # Changed from penalty to small boost
+        elif raw_score >= 25:  # Poor quality tier
+            adjusted_score = raw_score * 1.00  # No adjustment (was 0.95 penalty)
+        else:  # Very poor tier
+            adjusted_score = raw_score * 0.95  # Reduced penalty (was 0.90)
+        
+        # Length-based adjustments within tiers
+        if word_count < 50:  # Very short responses
+            if raw_score > 60:  # High score but very short = suspicious
+                adjusted_score *= 0.85  # Significant penalty
+        elif word_count > 1000:  # Very long responses
+            if raw_score < 40:  # Long but poor quality = verbose without substance
+                adjusted_score *= 0.90  # Penalty for verbosity without quality
+            elif raw_score > 80:  # Long and high quality = comprehensive
+                adjusted_score = min(adjusted_score * 1.03, 105)  # Small bonus for comprehensive excellence
+        
+        return adjusted_score
+    
+    def _detect_expertise_level(self, text: str, test_type: str) -> str:
+        """Detect the expertise level demonstrated in the response"""
+        text_lower = text.lower()
+        
+        # Count sophisticated indicators
+        expert_indicators = [
+            "meta-analysis", "longitudinal", "econometric", "bayesian", "stochastic",
+            "empirical", "theoretical", "paradigm", "methodology", "framework",
+            "systematic", "comprehensive", "statistical significance", "confidence interval",
+            "effect size", "regression", "correlation", "causation", "validity", "reliability"
+        ]
+        
+        advanced_indicators = [
+            "epistemological", "ontological", "heteroscedasticity", "endogeneity",
+            "instrumental variable", "propensity score", "difference-in-differences",
+            "monte carlo", "maximum likelihood", "quasi-experimental", "counterfactual"
+        ]
+        
+        expert_count = sum(1 for indicator in expert_indicators if indicator in text_lower)
+        advanced_count = sum(1 for indicator in advanced_indicators if indicator in text_lower)
+        
+        if advanced_count >= 2 or expert_count >= 6:
+            return "expert"
+        elif expert_count >= 3 or advanced_count >= 1:
+            return "advanced"
+        elif expert_count >= 1:
+            return "intermediate"
+        else:
+            return "basic"
+    
+    def _apply_expertise_level_adjustments(self, metrics: EvaluationMetrics, expertise_level: str) -> EvaluationMetrics:
+        """Apply adjustments based on detected expertise level"""
+        
+        if expertise_level == "expert":
+            # Boost all metrics for expert-level content
+            metrics.technical_accuracy = min(metrics.technical_accuracy * 1.10, 100)
+            metrics.domain_appropriateness = min(metrics.domain_appropriateness * 1.08, 100)
+            metrics.reliability = min(metrics.reliability * 1.05, 100)
+            metrics.overall_score = min(metrics.overall_score * 1.08, 105)
+            
+        elif expertise_level == "advanced":
+            # Moderate boost for advanced content
+            metrics.technical_accuracy = min(metrics.technical_accuracy * 1.05, 100)
+            metrics.domain_appropriateness = min(metrics.domain_appropriateness * 1.04, 100)
+            metrics.overall_score = min(metrics.overall_score * 1.04, 100)
+            
+        elif expertise_level == "intermediate":
+            # Small boost for intermediate content
+            metrics.technical_accuracy = min(metrics.technical_accuracy * 1.02, 100)
+            metrics.domain_appropriateness = min(metrics.domain_appropriateness * 1.02, 100)
+        
+        # No adjustment needed for "basic" level
+        
+        return metrics
+    
+    def _calculate_academic_excellence_bonus(self, text: str) -> float:
+        """Calculate bonus for academic excellence indicators"""
+        text_lower = text.lower()
+        bonus_score = 0
+        
+        # High-level academic structure indicators
+        academic_structure = [
+            ("executive summary", 25), ("literature review", 20), ("research question", 18),
+            ("null hypothesis", 20), ("alternative hypothesis", 18), ("significance test", 16),
+            ("confidence interval", 16), ("effect size", 14), ("power analysis", 18),
+            ("sample size", 12), ("population", 10), ("generalizability", 16),
+            ("external validity", 18), ("internal validity", 18), ("construct validity", 20),
+            ("reliability", 10), ("cronbach's alpha", 18), ("factor analysis", 16)
+        ]
+        
+        # Statistical sophistication indicators
+        statistical_sophistication = [
+            ("standard deviation", 12), ("variance", 12), ("covariance", 14), ("r²", 16),
+            ("adjusted r²", 18), ("f-statistic", 16), ("t-test", 14), ("chi-square", 16),
+            ("anova", 18), ("manova", 20), ("ancova", 20), ("regression", 12),
+            ("logistic regression", 16), ("linear regression", 14), ("multiple regression", 16),
+            ("hierarchical regression", 18), ("stepwise regression", 16), ("beta coefficient", 14),
+            ("standardized coefficient", 16), ("unstandardized coefficient", 16)
+        ]
+        
+        # Research methodology excellence
+        methodology_excellence = [
+            ("systematic review", 22), ("meta-analysis", 24), ("randomized control", 20),
+            ("double-blind", 18), ("placebo-controlled", 18), ("crossover design", 16),
+            ("factorial design", 18), ("repeated measures", 16), ("between-subjects", 14),
+            ("within-subjects", 14), ("mixed design", 16), ("counterbalancing", 16),
+            ("latin square", 18), ("randomization", 14), ("stratification", 16)
+        ]
+        
+        # Calculate bonuses
+        for pattern, points in academic_structure:
+            if pattern in text_lower:
+                bonus_score += points
+        
+        for pattern, points in statistical_sophistication:
+            if pattern in text_lower:
+                bonus_score += points
+                
+        for pattern, points in methodology_excellence:
+            if pattern in text_lower:
+                bonus_score += points
+        
+        # Extra bonus for multiple statistical indicators (shows statistical literacy)
+        statistical_count = sum(1 for pattern, _ in statistical_sophistication if pattern in text_lower)
+        if statistical_count >= 3:
+            bonus_score += 20  # High statistical literacy bonus
+        elif statistical_count >= 2:
+            bonus_score += 10  # Moderate statistical literacy bonus
+            
+        # Extra bonus for proper academic formatting
+        if "## " in text and "**" in text:  # Headers and bold formatting
+            bonus_score += 15
+        if text.count("|") > 6:  # Tables
+            bonus_score += 20
+        if "p < 0." in text or "p > 0." in text:  # Statistical reporting
+            bonus_score += 15
+        
+        return min(bonus_score, 60)  # Cap the bonus at 60 points
+    
+    # ==================== EDGE CASE ROBUSTNESS TESTING ====================
+    
+    def _detect_edge_cases(self, response_text: str) -> Dict[str, bool]:
+        """Detect various edge cases that require special handling"""
+        import re
+        
+        edge_cases = {
+            "empty_response": len(response_text.strip()) == 0,
+            "single_word": len(response_text.split()) == 1,
+            "only_punctuation": bool(re.match(r"^[^\w\s]*$", response_text.strip())),
+            "excessive_repetition": bool(re.search(r"(\b\w+\b)(?:\s+\1){4,}", response_text)),
+            "meta_only": bool(re.match(r"^(?:I|Let me|I need to|I should).*$", response_text.strip(), re.IGNORECASE)),
+            "code_only": bool(re.match(r"^```[\s\S]*```$", response_text.strip())),
+            "list_only": bool(re.match(r"^(?:\d+\.\s*.*\n?)+$", response_text.strip())),
+            "question_only": response_text.strip().count("?") > response_text.count(".") and response_text.strip().count("?") > 3,
+            "extremely_short": len(response_text.split()) < 10,
+            "extremely_long": len(response_text.split()) > 2000,
+            "no_sentences": "." not in response_text and "!" not in response_text and "?" not in response_text
+        }
+        
+        return edge_cases
+    
+    def _handle_edge_case(self, response_text: str, edge_cases: Dict[str, bool], test_name: str) -> Optional[EvaluationResult]:
+        """Handle detected edge cases with appropriate scoring"""
+        
+        # Handle most severe cases first
+        if edge_cases["empty_response"]:
+            return self._create_edge_case_result(response_text, "empty_response", test_name, base_score=0)
+        
+        if edge_cases["only_punctuation"]:
+            return self._create_edge_case_result(response_text, "only_punctuation", test_name, base_score=2)
+        
+        if edge_cases["single_word"] and not edge_cases["code_only"]:
+            return self._create_edge_case_result(response_text, "single_word", test_name, base_score=5)
+        
+        if edge_cases["excessive_repetition"]:
+            return self._create_edge_case_result(response_text, "excessive_repetition", test_name, base_score=8)
+        
+        if edge_cases["meta_only"] and len(response_text.split()) < 50:
+            return self._create_edge_case_result(response_text, "meta_only", test_name, base_score=15)
+        
+        if edge_cases["extremely_short"] and not edge_cases["code_only"]:
+            return self._create_edge_case_result(response_text, "extremely_short", test_name, base_score=20)
+        
+        # Less severe cases that modify but don't override evaluation
+        edge_case_modifiers = {
+            "question_only": -15,      # Penalty for only asking questions
+            "list_only": -10,         # Penalty for only providing lists
+            "no_sentences": -12,      # Penalty for no proper sentences
+            "extremely_long": -8      # Small penalty for excessive verbosity
+        }
+        
+        # If multiple less severe cases, apply cumulative penalty
+        cumulative_penalty = sum(penalty for case, penalty in edge_case_modifiers.items() if edge_cases.get(case, False))
+        
+        if cumulative_penalty < -20:  # If penalties are severe enough
+            return self._create_edge_case_result(response_text, "multiple_issues", test_name, 
+                                               base_score=max(30 + cumulative_penalty, 5))
+        
+        return None  # No edge case override needed
+    
+    def _create_edge_case_result(self, response_text: str, edge_case_type: str, test_name: str, base_score: float) -> EvaluationResult:
+        """Create evaluation result for edge cases"""
+        word_count = len(response_text.split())
+        
+        # Create very low scores for all metrics based on edge case severity
+        score_multiplier = base_score / 100.0
+        
+        metrics = EvaluationMetrics(
+            organization_quality=round(min(base_score * 0.5, 25), 1),
+            technical_accuracy=round(min(base_score * 0.4, 20), 1),
+            completeness=round(min(base_score * 0.3, 15), 1),
+            thoroughness=round(min(base_score * 0.3, 15), 1),
+            reliability=round(min(base_score * 0.4, 20), 1),
+            scope_coverage=round(min(base_score * 0.2, 10), 1),
+            domain_appropriateness=round(min(base_score * 0.3, 15), 1),
+            overall_score=round(base_score, 1),
+            word_count=word_count,
+            confidence_score=round(base_score * 0.3, 1)
+        )
+        
+        detailed_analysis = {
+            "core_metrics": metrics.__dict__,
+            "edge_case_detection": {
+                "detected_case": edge_case_type,
+                "severity": "high" if base_score < 10 else "medium" if base_score < 25 else "low",
+                "description": self._get_edge_case_description(edge_case_type)
+            },
+            "text_statistics": self._calculate_text_statistics(response_text)
+        }
+        
+        recommendations = self._get_edge_case_recommendations(edge_case_type)
+        
+        return EvaluationResult(
+            metrics=metrics,
+            reasoning_type=ReasoningType.GENERAL,
+            detailed_analysis=detailed_analysis,
+            recommendations=recommendations,
+            timestamp=self._get_timestamp()
+        )
+    
+    def _get_edge_case_description(self, edge_case_type: str) -> str:
+        """Get description for edge case types"""
+        descriptions = {
+            "empty_response": "Response is completely empty or contains only whitespace",
+            "only_punctuation": "Response contains only punctuation marks without meaningful content",
+            "single_word": "Response consists of only a single word",
+            "excessive_repetition": "Response contains excessive repetition of the same words or phrases",
+            "meta_only": "Response consists primarily of meta-commentary without substantive content",
+            "extremely_short": "Response is extremely short and lacks sufficient detail",
+            "multiple_issues": "Response has multiple structural and content issues"
+        }
+        return descriptions.get(edge_case_type, "Unspecified edge case detected")
+    
+    def _get_edge_case_recommendations(self, edge_case_type: str) -> List[str]:
+        """Get recommendations for handling specific edge cases"""
+        recommendations_map = {
+            "empty_response": [
+                "CRITICAL: No response content detected - check model output pipeline",
+                "Verify prompt is being received correctly by the model",
+                "Check for API timeout or connection issues"
+            ],
+            "only_punctuation": [
+                "CRITICAL: Response contains no meaningful text content",
+                "Check for encoding or parsing issues in model output",
+                "Verify model is not producing corrupted responses"
+            ],
+            "single_word": [
+                "SEVERE: Response is insufficient for meaningful evaluation",
+                "Increase minimum response length requirements",
+                "Check if model is being cut off prematurely"
+            ],
+            "excessive_repetition": [
+                "MAJOR: Detected repetitive loops in model output",
+                "Review model temperature and repetition penalty settings",
+                "Check for issues in model's decoding strategy"
+            ],
+            "meta_only": [
+                "Response focuses on meta-reasoning without substantive content",
+                "Improve prompt to encourage direct task completion",
+                "Consider adding explicit instructions to avoid meta-commentary"
+            ],
+            "extremely_short": [
+                "Response lacks sufficient detail for comprehensive evaluation",
+                "Encourage more thorough analysis in prompting",
+                "Consider minimum length requirements for specific tasks"
+            ],
+            "multiple_issues": [
+                "Multiple structural and content issues detected",
+                "Comprehensive review of model output quality needed",
+                "Consider regenerating response with modified parameters"
+            ]
+        }
+        return recommendations_map.get(edge_case_type, ["Edge case detected - manual review recommended"])
+    
+    def run_edge_case_tests(self) -> Dict[str, any]:
+        """Run comprehensive edge case tests to validate evaluator robustness"""
+        test_cases = {
+            "empty": "",
+            "whitespace_only": "   \n\t   ",
+            "single_word": "Yes",
+            "punctuation_only": "!@#$%^&*()",
+            "repetitive_loop": "The user wants a report. The user wants a report. The user wants a report. The user wants a report. The user wants a report.",
+            "meta_only": "I think I need to analyze this. Let me think about what the user wants. I should probably provide an answer.",
+            "question_bombardment": "What is this? Why is this? How is this? When is this? Where is this? Who is this?",
+            "code_only": "```python\nprint('hello world')\n```",
+            "list_only": "1. First item\n2. Second item\n3. Third item",
+            "extremely_long": "This is a test response. " * 500,  # 2000+ words
+            "no_sentences": "just words without proper punctuation or structure here",
+            "good_response": "This is a well-structured response that provides comprehensive analysis of the given problem. It includes multiple perspectives, uses appropriate evidence, and reaches a logical conclusion through clear reasoning steps."
+        }
+        
+        results = {}
+        for test_name, test_content in test_cases.items():
+            try:
+                result = self.evaluate_response(test_content, f"Edge Case Test: {test_name}")
+                results[test_name] = {
+                    "overall_score": result.metrics.overall_score,
+                    "detected_issues": result.detailed_analysis.get("edge_case_detection", {}),
+                    "coherence_issues": result.detailed_analysis.get("coherence_failure", {}),
+                    "recommendations": result.recommendations[:2]  # First 2 recommendations
+                }
+            except Exception as e:
+                results[test_name] = {"error": str(e)}
+        
+        # Validate expected behaviors
+        validation_results = {
+            "empty_properly_penalized": results["empty"]["overall_score"] <= 5,
+            "repetitive_detected": "repetitive" in str(results["repetitive_loop"]).lower(),
+            "good_response_scored_well": results["good_response"]["overall_score"] >= 60,
+            "meta_only_penalized": results["meta_only"]["overall_score"] <= 30,
+            "score_range_appropriate": all(0 <= result.get("overall_score", -1) <= 105 for result in results.values() if "overall_score" in result)
+        }
+        
+        return {
+            "test_results": results,
+            "validation": validation_results,
+            "passed_validations": sum(validation_results.values()),
+            "total_validations": len(validation_results)
+        }
 
 
 # Convenience function for quick evaluation

@@ -1,0 +1,129 @@
+{
+  "categories": {
+    "reasoning_logic": {
+      "description": "Reasoning Logic tests",
+      "difficulty": "medium",
+      "test_ids": [
+        "reasoning_test_01",
+        "reasoning_test_02",
+        "reasoning_test_03",
+        "reasoning_test_15"
+      ]
+    },
+    "reasoning_general": {
+      "description": "Reasoning General tests",
+      "difficulty": "medium",
+      "test_ids": [
+        "reasoning_test_04",
+        "reasoning_test_05",
+        "reasoning_test_06",
+        "reasoning_test_07",
+        "reasoning_test_08",
+        "reasoning_test_09",
+        "reasoning_test_10",
+        "reasoning_test_11",
+        "reasoning_test_12",
+        "reasoning_test_14",
+        "reasoning_test_17",
+        "reasoning_test_19",
+        "reasoning_test_20",
+        "reasoning_test_21",
+        "reasoning_test_23",
+        "reasoning_test_25",
+        "reasoning_test_26",
+        "reasoning_test_31",
+        "reasoning_test_32",
+        "reasoning_test_33",
+        "reasoning_test_34",
+        "reasoning_test_35",
+        "reasoning_test_36",
+        "reasoning_test_37",
+        "reasoning_test_38",
+        "reasoning_test_39",
+        "reasoning_test_40"
+      ]
+    },
+    "reasoning_puzzle": {
+      "description": "Reasoning Puzzle tests",
+      "difficulty": "medium",
+      "test_ids": [
+        "reasoning_test_13",
+        "reasoning_test_18",
+        "reasoning_test_24",
+        "reasoning_test_30"
+      ]
+    },
+    "reasoning_causal": {
+      "description": "Reasoning Causal tests",
+      "difficulty": "medium",
+      "test_ids": [
+        "reasoning_test_16",
+        "reasoning_test_22",
+        "reasoning_test_27",
+        "reasoning_test_29"
+      ]
+    },
+    "reasoning_probabilistic": {
+      "description": "Reasoning Probabilistic tests",
+      "difficulty": "medium",
+      "test_ids": [
+        "reasoning_test_28"
+      ]
+    },
+    "metacognitive_reasoning": {
+      "description": "Metacognitive and abstract reasoning tasks",
+      "reasoning_focus": "self-awareness, pattern recognition, concept synthesis",
+      "temperature_range": [0.0, 0.8],
+      "test_range": [1, 10],
+      "difficulty": "easy",
+      "test_ids": [
+        "metacognitive_01", "metacognitive_02", "metacognitive_03", "metacognitive_04", "metacognitive_05",
+        "metacognitive_06", "metacognitive_07", "metacognitive_08", "metacognitive_09", "metacognitive_10"
+      ]
+    },
+    "ambiguity_handling": {
+      "description": "Handling ambiguity and nuanced reasoning",
+      "reasoning_focus": "ambiguity resolution, context understanding, subjective analysis",
+      "temperature_range": [0.1, 0.8],
+      "test_range": [11, 20],
+      "difficulty": "easy",
+      "test_ids": [
+        "ambiguity_handling_01", "ambiguity_handling_02", "ambiguity_handling_03", "ambiguity_handling_04", "ambiguity_handling_05",
+        "ambiguity_handling_06", "ambiguity_handling_07", "ambiguity_handling_08", "ambiguity_handling_09", "ambiguity_handling_10"
+      ]
+    },
+    "creative_thinking": {
+      "description": "Creative and lateral thinking challenges",
+      "reasoning_focus": "creativity, lateral thinking, unconventional solutions",
+      "temperature_range": [0.2, 0.9],
+      "test_range": [21, 30],
+      "difficulty": "easy",
+      "test_ids": [
+        "creative_thinking_01", "creative_thinking_02", "creative_thinking_03", "creative_thinking_04", "creative_thinking_05",
+        "creative_thinking_06", "creative_thinking_07", "creative_thinking_08", "creative_thinking_09", "creative_thinking_10"
+      ]
+    },
+    "strategic_thinking": {
+      "description": "Strategic and systems thinking",
+      "reasoning_focus": "strategic analysis, systems thinking, trade-offs",
+      "temperature_range": [0.1, 0.8],
+      "test_range": [31, 40],
+      "difficulty": "easy",
+      "test_ids": [
+        "strategic_thinking_01", "strategic_thinking_02", "strategic_thinking_03", "strategic_thinking_04", "strategic_thinking_05",
+        "strategic_thinking_06", "strategic_thinking_07", "strategic_thinking_08", "strategic_thinking_09", "strategic_thinking_10"
+      ]
+    },
+    "constraint_following": {
+      "description": "Advanced constraint following and format adherence",
+      "reasoning_focus": "constraint adherence, format compliance, structured output",
+      "temperature_range": [0.0, 0.8],
+      "test_range": [41, 50],
+      "difficulty": "easy",
+      "test_ids": [
+        "constraint_following_01", "constraint_following_02", "constraint_following_03", "constraint_following_04", "constraint_following_05",
+        "constraint_following_06", "constraint_following_07", "constraint_following_08", "constraint_following_09", "constraint_following_10"
+      ]
+    }
+  }
+}
