@@ -52,7 +52,13 @@ DEFAULT_CONFIG = {
         "satisfactory_score": ScoreThresholds.SATISFACTORY,
         "poor_score": ScoreThresholds.POOR,
         "minimum_word_count": 50,
-        "confidence_threshold": 70.0
+        "confidence_threshold": 70.0,
+        "coherence_failure_threshold": 30.0,  # Below this = major coherence failure
+        "coherence_penalty_threshold": 70.0,  # Below this = apply coherence penalty
+        "repetitive_loop_threshold": 5,       # More than 5 repetitions = loop detected
+        "meta_reasoning_threshold": 10,       # More than 10 meta-statements = excessive
+        "technical_conciseness_threshold": 200, # Word count below this for technical bonus
+        "creative_elaboration_threshold": 800   # Word count above this for creative bonus
     },
     
     # Text analysis parameters
@@ -63,7 +69,10 @@ DEFAULT_CONFIG = {
         "step_indicator_weight": 10,
         "logic_connector_weight": 8,
         "evidence_indicator_weight": 12,
-        "verification_indicator_weight": 15
+        "verification_indicator_weight": 15,
+        "functional_completion_weight": 0.7,  # Weight for task completion vs formatting
+        "content_length_weight": 0.2,        # Weight for content length
+        "formatting_coverage_weight": 0.1     # Weight for formatting indicators
     },
     
     # Reasoning type specific configurations
@@ -327,6 +336,65 @@ DEFAULT_CONFIG = {
         "retry_attempts": 3
     },
     
+    # Coherence detection configuration
+    "coherence_detection": {
+        "enabled": True,
+        "repetitive_phrase_patterns": [
+            "The user might want", "The user wants", "I need to", "Let me",
+            "We need to", "report" or "analysis", "summary" or "interpretation"
+        ],
+        "meta_reasoning_patterns": [
+            "I think", "I should", "maybe I", "perhaps I", "let me think",
+            "I'm not sure", "I wonder if", "I guess", "I believe", "I suppose"
+        ],
+        "broken_completion_patterns": [
+            "(stop)", "...", "continues", "and so on", "etc.",
+            "more of the same", "similar pattern", "keeps going"
+        ],
+        "system_error_patterns": [
+            "assistant", "I am an AI", "I cannot", "I don't know",
+            "error:", "failed:", "exception:", "unable to"
+        ],
+        "coherence_failure_penalties": {
+            "repetitive_loop": 50,        # Severe penalty for loops
+            "meta_reasoning_spiral": 30,  # Moderate penalty for meta-spirals
+            "incomplete_response": 40,    # High penalty for incomplete responses
+            "system_error": 60,           # Highest penalty for system errors
+            "general_incoherence": 35     # Default penalty for other issues
+        }
+    },
+    
+    # Domain adaptation configuration
+    "domain_adaptation": {
+        "enabled": True,
+        "length_normalization_ranges": {
+            "linux": {
+                "optimal_min": 100,
+                "optimal_max": 300,
+                "penalty_threshold": 500,
+                "bonus_multiplier": 1.1
+            },
+            "creative": {
+                "penalty_threshold": 200,
+                "bonus_threshold": 800,
+                "bonus_multiplier": 1.05
+            },
+            "reasoning": {
+                "optimal_min": 300,
+                "optimal_max": 600,
+                "penalty_threshold": 150,
+                "bonus_multiplier": 1.02
+            }
+        },
+        "technical_domain_adjustments": {
+            "conciseness_bonus": 1.2,      # Bonus for concise technical responses
+            "accuracy_threshold": 70,      # Technical accuracy threshold for bonus
+            "structure_bonus": 1.15,       # Bonus for technical structure
+            "completeness_boost": 1.2,     # Boost completeness for technical content
+            "thoroughness_boost": 1.15     # Boost thoroughness for technical content
+        }
+    },
+    
     # Export and reporting settings
     "reporting": {
         "include_detailed_analysis": True,
@@ -334,7 +402,33 @@ DEFAULT_CONFIG = {
         "include_confidence_scores": True,
         "export_formats": ["json", "csv", "html"],
         "decimal_precision": 1,
-        "timestamp_format": "ISO8601"
+        "timestamp_format": "ISO8601",
+        "include_coherence_analysis": True,
+        "include_domain_adjustments": True,
+        "include_functional_completion_breakdown": True
+    },
+    
+    # Edge case detection patterns
+    "edge_case_detection": {
+        "enabled": True,
+        "test_patterns": {
+            "empty_response": r"^\s*$",
+            "single_word": r"^\w+\s*$",
+            "only_punctuation": r"^[^\w\s]*$",
+            "excessive_repetition": r"(\b\w+\b)(?:\s+\1){4,}",  # Same word repeated 5+ times
+            "meta_only": r"^(?:I|Let me|I need to|I should).*$",
+            "code_only": r"^```[\s\S]*```$",
+            "list_only": r"^(?:\d+\.\s*.*\n?)+$"
+        },
+        "handling_strategies": {
+            "empty_response": "assign_minimum_score",
+            "single_word": "severe_penalty",
+            "only_punctuation": "assign_minimum_score",
+            "excessive_repetition": "coherence_failure",
+            "meta_only": "meta_reasoning_penalty",
+            "code_only": "technical_evaluation",
+            "list_only": "structure_only_penalty"
+        }
     }
 }
 
@@ -343,36 +437,60 @@ DEFAULT_CONFIG = {
 FAST_CONFIG = {
     **DEFAULT_CONFIG,
     "weights": {
-        "step_clarity": 0.20,
-        "logical_consistency": 0.30,
-        "evidence_integration": 0.15,
-        "analysis_depth": 0.15,
-        "verification_effort": 0.10,
-        "comprehensive_coverage": 0.05,
-        "reasoning_pattern": 0.05
+        "organization_quality": 0.20,
+        "technical_accuracy": 0.30,
+        "completeness": 0.15,
+        "thoroughness": 0.15,
+        "reliability": 0.10,
+        "scope_coverage": 0.05,
+        "domain_appropriateness": 0.05
     },
     "text_analysis": {
         **DEFAULT_CONFIG["text_analysis"],
         "step_indicator_weight": 15,  # Faster computation
-        "logic_connector_weight": 12
+        "logic_connector_weight": 12,
+        "functional_completion_weight": 0.6,  # Reduced for speed
+        "content_length_weight": 0.3,
+        "formatting_coverage_weight": 0.1
+    },
+    "coherence_detection": {
+        **DEFAULT_CONFIG["coherence_detection"],
+        "enabled": True  # Keep coherence detection even in fast mode
+    },
+    "domain_adaptation": {
+        **DEFAULT_CONFIG["domain_adaptation"],
+        "enabled": False  # Disable for speed
     }
 }
 
 DETAILED_CONFIG = {
     **DEFAULT_CONFIG,
     "weights": {
-        "step_clarity": 0.12,
-        "logical_consistency": 0.18,
-        "evidence_integration": 0.18,
-        "analysis_depth": 0.18,
-        "verification_effort": 0.12,
-        "comprehensive_coverage": 0.12,
-        "reasoning_pattern": 0.10
+        "organization_quality": 0.12,
+        "technical_accuracy": 0.18,
+        "completeness": 0.18,
+        "thoroughness": 0.18,
+        "reliability": 0.12,
+        "scope_coverage": 0.12,
+        "domain_appropriateness": 0.10
     },
     "text_analysis": {
         **DEFAULT_CONFIG["text_analysis"],
         "vocabulary_diversity_threshold": 0.3,  # More detailed analysis
-        "min_sentence_length": 3
+        "min_sentence_length": 3,
+        "functional_completion_weight": 0.8,  # Higher emphasis on functional completion
+        "content_length_weight": 0.15,
+        "formatting_coverage_weight": 0.05
+    },
+    "coherence_detection": {
+        **DEFAULT_CONFIG["coherence_detection"],
+        "coherence_failure_penalties": {
+            "repetitive_loop": 60,        # Even more severe in detailed mode
+            "meta_reasoning_spiral": 40,
+            "incomplete_response": 50,
+            "system_error": 70,
+            "general_incoherence": 45
+        }
     }
 }
 
@@ -383,20 +501,21 @@ REASONING_TYPE_PRESETS = {
         "thresholds": {
             **DEFAULT_CONFIG["thresholds"],
             "excellent_score": 90.0,
-            "good_score": 80.0
+            "good_score": 80.0,
+            "coherence_failure_threshold": 25.0  # Stricter for academic
         }
     },
     
     "business_analysis": {
         **DEFAULT_CONFIG,
         "weights": {
-            "step_clarity": 0.20,
-            "logical_consistency": 0.25,
-            "evidence_integration": 0.20,
-            "analysis_depth": 0.15,
-            "verification_effort": 0.10,
-            "comprehensive_coverage": 0.05,
-            "reasoning_pattern": 0.05
+            "organization_quality": 0.20,
+            "technical_accuracy": 0.25,
+            "completeness": 0.20,
+            "thoroughness": 0.15,
+            "reliability": 0.10,
+            "scope_coverage": 0.05,
+            "domain_appropriateness": 0.05
         }
     },
     
