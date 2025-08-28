@@ -95,7 +95,7 @@ class APIConfiguration:
 
 ## Configuration System
 
-### TestRunner Configuration File (test_runner_config.json)
+### BenchmarkRunner Configuration File (benchmark_runner_config.json)
 ```json
 {
   "api_defaults": {
@@ -119,7 +119,7 @@ class APIConfiguration:
   "logging": {
     "level": "INFO",
     "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    "file": "test_runner.log"
+    "file": "benchmark_runner.log"
   }
 }
 ```

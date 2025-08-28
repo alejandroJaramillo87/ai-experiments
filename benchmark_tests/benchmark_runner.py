@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 # Import UniversalEvaluator for automatic evaluation
 try:
-    from reasoning_evaluator import UniversalEvaluator, ReasoningType, evaluate_reasoning
+    from evaluator.reasoning_evaluator import UniversalEvaluator, ReasoningType, evaluate_reasoning
     EVALUATION_AVAILABLE = True
 except ImportError:
     EVALUATION_AVAILABLE = False
@@ -692,7 +692,7 @@ class TestSuiteManager:
         
     def discover_test_suites(self, base_directory: str) -> List[TestSuite]:
         """
-        Discover all available test suites in the directory structure
+        Discover all available test suites in the new domain-based directory structure
         
         Args:
             base_directory: Base directory to search for test suites
@@ -701,21 +701,30 @@ class TestSuiteManager:
             List of discovered TestSuite objects
         """
         discovered_suites = []
+        domains_dir = os.path.join(base_directory, "domains")
         
-        for suite_type in ["base_models", "instruct-models"]:
-            suite_dir = os.path.join(base_directory, suite_type)
-            if not os.path.exists(suite_dir):
+        if not os.path.exists(domains_dir):
+            return discovered_suites
+        
+        # Discover domains (reasoning, linux, etc.)
+        for domain_name in os.listdir(domains_dir):
+            domain_path = os.path.join(domains_dir, domain_name)
+            if not os.path.isdir(domain_path):
                 continue
                 
-            test_def_dir = os.path.join(suite_dir, "test_definitions")
-            metadata_path = os.path.join(test_def_dir, "test_suite_metadata.json")
-            categories_path = os.path.join(test_def_dir, "categories.json")
-            
-            if os.path.exists(metadata_path) and os.path.exists(categories_path):
-                suite = self._load_suite_metadata(metadata_path, categories_path, suite_type)
-                if suite:
-                    discovered_suites.append(suite)
-                    self.available_suites[suite.suite_id] = suite
+            # Discover model types within each domain (base_models, instruct_models)
+            for model_type in ["base_models", "instruct_models"]:
+                model_type_dir = os.path.join(domain_path, model_type)
+                if not os.path.exists(model_type_dir):
+                    continue
+                    
+                categories_path = os.path.join(model_type_dir, "categories.json")
+                
+                if os.path.exists(categories_path):
+                    suite = self._load_domain_suite_metadata(categories_path, domain_name, model_type, model_type_dir)
+                    if suite:
+                        discovered_suites.append(suite)
+                        self.available_suites[suite.suite_id] = suite
         
         return discovered_suites
     
@@ -770,6 +779,66 @@ class TestSuiteManager:
             
         except Exception as e:
             logger.error(f"Error loading suite metadata from {metadata_path}: {e}")
+            return None
+    
+    def _load_domain_suite_metadata(self, categories_path: str, domain_name: str, model_type: str, model_type_dir: str) -> Optional[TestSuite]:
+        """Load suite metadata from domain-based structure"""
+        try:
+            with open(categories_path, 'r') as f:
+                categories_data = json.load(f)
+            
+            # Count tests per category and test files
+            category_counts = {}
+            total_tests = 0
+            test_files = []
+            
+            # Count JSON test files in the model_type_dir
+            if os.path.exists(model_type_dir):
+                for file in os.listdir(model_type_dir):
+                    if file.endswith('.json') and file != 'categories.json':
+                        test_files.append(file)
+            
+            if 'categories' in categories_data:
+                for cat_name, cat_info in categories_data['categories'].items():
+                    count = len(cat_info.get('test_ids', []))
+                    category_counts[cat_name] = count
+                    total_tests += count
+                    
+                    # Convert model_type to standardized format
+                    suite_type_key = "base" if "base" in model_type else "instruct"
+                    
+                    # Register category info with domain prefix
+                    registry_key = f"{domain_name}_{suite_type_key}_{cat_name}"
+                    self.category_registry[registry_key] = CategoryInfo(
+                        category_id=cat_name,
+                        name=cat_name.replace('_', ' ').title(),
+                        description=cat_info.get('description', ''),
+                        reasoning_focus=cat_info.get('reasoning_focus', ''),
+                        temperature_range=tuple(cat_info.get('temperature_range', [0.1, 0.5])),
+                        test_range=tuple(cat_info.get('test_range', [1, count])),
+                        test_count=count,
+                        test_ids=cat_info.get('test_ids', []),
+                        difficulty_level=cat_info.get('difficulty', 'medium')
+                    )
+            
+            # Create TestSuite object
+            suite_type_clean = "base" if "base" in model_type else "instruct"
+            suite_id = f"{domain_name}_{suite_type_clean}"
+            
+            return TestSuite(
+                suite_id=suite_id,
+                name=f"{domain_name.title()} {suite_type_clean.title()} Test Suite",
+                description=f"{domain_name.title()} domain tests for {suite_type_clean} models",
+                version="1.0.0",
+                total_tests=total_tests,
+                categories=category_counts,  # Dict[str, int] as expected
+                test_type=suite_type_clean,
+                created_date="2025-01-26",
+                last_modified="2025-01-26"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error loading domain suite metadata from {categories_path}: {e}")
             return None
     
     def get_category_info(self, category_id: str, suite_type: str = None) -> Optional[CategoryInfo]:
@@ -1915,49 +1984,103 @@ class BenchmarkTestRunner:
 
 def load_and_configure_runner(test_definitions_dir: str = "test_definitions", 
                              api_endpoint: str = None,
-                             test_type: str = "base") -> BenchmarkTestRunner:
+                             test_type: str = "base",
+                             domain: str = None) -> BenchmarkTestRunner:
     """
-    Load and configure a BenchmarkTestRunner with default paths
+    Load and configure a BenchmarkTestRunner with domain-based structure
     
     Args:
-        test_definitions_dir: Directory containing test definition files
+        test_definitions_dir: Legacy parameter (now ignored, kept for compatibility)
         api_endpoint: Optional API endpoint URL to override defaults
         test_type: Type of tests to load ("base" or "instruct")
+        domain: Specific domain to load ("reasoning", "linux", etc.). If None, loads all domains.
         
     Returns:
         Configured BenchmarkTestRunner instance
     """
     runner = BenchmarkTestRunner(api_endpoint=api_endpoint)
     
-    # Get the directory where test_runner.py is located (benchmark_tests/)
+    # Get the directory where benchmark_runner.py is located (benchmark_tests/)
     runner_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # Determine paths based on test type
-    if test_type == "instruct":
-        # Load instruct model tests from instruct-models directory
-        base_dir = os.path.join(runner_dir, "instruct-models")
-        suite_filename = "reasoning_tests_medium.json"
-    else:
-        # Load base model tests from base_models directory  
-        base_dir = os.path.join(runner_dir, "base_models")
-        suite_filename = "reasoning_tests_medium.json"
+    # Use TestSuiteManager to discover available suites
+    suite_manager = TestSuiteManager()
+    suite_manager.discover_test_suites(runner_dir)
     
-    # Build full paths - handle both relative and full paths in test_definitions_dir
-    if test_definitions_dir.startswith(test_type + "_models/") or test_definitions_dir.startswith("instruct-models/"):
-        # User provided full path like "base_models/test_definitions" - use as-is from runner_dir
-        suite_path = os.path.join(runner_dir, test_definitions_dir, suite_filename)
-        metadata_path = os.path.join(runner_dir, test_definitions_dir, "test_suite_metadata.json")
-        categories_path = os.path.join(runner_dir, test_definitions_dir, "categories.json")
-    else:
-        # User provided relative path like "test_definitions" - append to base_dir
-        suite_path = os.path.join(base_dir, test_definitions_dir, suite_filename)
-        metadata_path = os.path.join(base_dir, test_definitions_dir, "test_suite_metadata.json")
-        categories_path = os.path.join(base_dir, test_definitions_dir, "categories.json")
+    # Determine model type suffix for suite IDs
+    model_type_suffix = "base" if test_type == "base" else "instruct"
     
-    # Load test files
-    runner.load_test_suite(suite_path)
-    runner.load_test_metadata(metadata_path)
-    runner.load_categories(categories_path)
+    # Find all suites matching the test type
+    matching_suites = []
+    for suite_id, suite in suite_manager.available_suites.items():
+        if suite_id.endswith(f"_{model_type_suffix}"):
+            if domain is None or suite_id.startswith(f"{domain}_"):
+                matching_suites.append(suite)
+    
+    if not matching_suites:
+        available_domains = set()
+        for suite_id in suite_manager.available_suites.keys():
+            if suite_id.endswith(f"_{model_type_suffix}"):
+                domain_name = suite_id.replace(f"_{model_type_suffix}", "")
+                available_domains.add(domain_name)
+        
+        domain_list = ", ".join(sorted(available_domains))
+        domain_msg = f" for domain '{domain}'" if domain else ""
+        raise ValueError(f"No test suites found for test type '{test_type}'{domain_msg}. Available domains: {domain_list}")
+    
+    # Load data from all matching suites
+    all_tests = {}
+    all_categories = {"categories": {}}
+    metadata_info = {"name": "Combined Test Suite", "version": "1.0", "description": "Multiple domains combined"}
+    
+    for suite in matching_suites:
+        # Load test files from each domain
+        domain_name = suite.suite_id.replace(f"_{model_type_suffix}", "")
+        
+        # Determine correct model type directory name
+        if test_type == "instruct":
+            model_dir = "instruct_models"
+        else:
+            model_dir = "base_models"
+        
+        domain_base_dir = os.path.join(runner_dir, "domains", domain_name, model_dir)
+        
+        # Load categories from domain
+        categories_path = os.path.join(domain_base_dir, "categories.json")
+        if os.path.exists(categories_path):
+            with open(categories_path, 'r', encoding='utf-8') as f:
+                domain_categories = json.load(f)
+                if "categories" in domain_categories:
+                    all_categories["categories"].update(domain_categories["categories"])
+        
+        # Load test files from domain
+        test_files_pattern = os.path.join(domain_base_dir, "*.json")
+        import glob
+        test_files = [f for f in glob.glob(test_files_pattern) if not f.endswith("categories.json") and not f.endswith("test_suite_metadata.json")]
+        
+        for test_file in test_files:
+            try:
+                with open(test_file, 'r', encoding='utf-8') as f:
+                    file_data = json.load(f)
+                    if "tests" in file_data:
+                        # Handle both array and object formats
+                        tests_data = file_data["tests"]
+                        if isinstance(tests_data, list):
+                            # Convert array of tests to dictionary keyed by test ID
+                            for test in tests_data:
+                                if "id" in test:
+                                    all_tests[test["id"]] = test
+                        elif isinstance(tests_data, dict):
+                            all_tests.update(tests_data)
+            except Exception as e:
+                print(f"Warning: Failed to load test file {test_file}: {e}")
+    
+    # Load the combined data into runner
+    runner.tests = all_tests
+    runner.categories = all_categories
+    
+    # Set basic metadata
+    runner.test_metadata = metadata_info
     
     return runner
 
@@ -2182,7 +2305,19 @@ if __name__ == "__main__":
     
     if args.list_tests:
         print("\nAvailable Tests:")
-        for test_id, test in runner.tests.items():
+        tests_to_show = runner.tests.items()
+        
+        # If category is specified, filter tests
+        if args.category:
+            filtered_tests = [(test_id, test) for test_id, test in tests_to_show 
+                             if test.get('category', 'unknown') == args.category]
+            if not filtered_tests:
+                print(f"  No tests found for category: {args.category}")
+            else:
+                print(f"  Filtered by category '{args.category}':")
+                tests_to_show = filtered_tests
+        
+        for test_id, test in tests_to_show:
             category = test.get('category', 'unknown')
             print(f"  {test_id}: {test.get('name', 'No name')} [{category}]")
         sys.exit(0)

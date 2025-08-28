@@ -3,7 +3,14 @@
 Comprehensive Validation Test Suite for Improved Evaluation System
 """
 
-from reasoning_evaluator import UniversalEvaluator
+import sys
+import os
+
+# Add the benchmark_tests directory to Python path
+benchmark_tests_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, benchmark_tests_dir)
+
+from evaluator.reasoning_evaluator import UniversalEvaluator
 import json
 
 def run_comprehensive_validation():

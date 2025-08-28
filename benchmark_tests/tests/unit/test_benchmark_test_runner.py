@@ -28,7 +28,7 @@ from datetime import datetime
 # Add the benchmark_tests directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from test_runner import BenchmarkTestRunner
+from benchmark_runner import BenchmarkTestRunner
 
 
 class MockVLLMServer:

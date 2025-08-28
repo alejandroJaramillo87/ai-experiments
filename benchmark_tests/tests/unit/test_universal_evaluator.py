@@ -14,10 +14,11 @@ import sys
 import os
 
 # Add the benchmark_tests directory to Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+benchmark_tests_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, benchmark_tests_dir)
 
-from reasoning_evaluator import UniversalEvaluator, evaluate_reasoning, EvaluationMetrics, ReasoningType
-from evaluation_config import DEFAULT_CONFIG, UniversalWeights
+from evaluator.reasoning_evaluator import UniversalEvaluator, evaluate_reasoning, EvaluationMetrics, ReasoningType
+from evaluator.evaluation_config import DEFAULT_CONFIG, UniversalWeights
 
 
 class TestEvaluationConfig(unittest.TestCase):
@@ -389,16 +390,21 @@ class TestScoreReasonableness(TestUniversalEvaluator):
     
     def test_different_categories_different_scores(self):
         """Test that same text evaluated as different categories produces different scores"""
-        text = "systemctl restart nginx && echo 'Service restarted'"
+        text = "To monitor system resources, I use ps aux | grep nginx"
         
         linux_result = evaluate_reasoning(text, "Test", test_category="monitoring")
         creative_result = evaluate_reasoning(text, "Test", test_category="creative_thinking")
         
         # Scores should differ because evaluation logic is different
-        # Linux should score better on technical accuracy for this text
-        self.assertGreater(linux_result.metrics.technical_accuracy, 
-                          creative_result.metrics.technical_accuracy,
-                          "Same text should score differently for different test types")
+        # Linux should score better on domain appropriateness for this text
+        self.assertGreater(linux_result.metrics.domain_appropriateness, 
+                          creative_result.metrics.domain_appropriateness,
+                          "Same text should score differently for different test categories")
+        
+        # Overall scores should also differ
+        self.assertGreater(linux_result.metrics.overall_score,
+                          creative_result.metrics.overall_score,
+                          "Overall scores should differ between appropriate and inappropriate categories")
 
 
 if __name__ == "__main__":
