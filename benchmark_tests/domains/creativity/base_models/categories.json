@@ -71,11 +71,11 @@
       "temperature_range": [0.4, 0.7],
       "test_range": [126, 150],
       "test_ids": [
-        "problem_narrative_01", "problem_narrative_02", "problem_narrative_03", "problem_narrative_04", "problem_narrative_05",
-        "problem_narrative_06", "problem_narrative_07", "problem_narrative_08", "problem_narrative_09", "problem_narrative_10",
-        "problem_narrative_11", "problem_narrative_12", "problem_narrative_13", "problem_narrative_14", "problem_narrative_15",
-        "problem_narrative_16", "problem_narrative_17", "problem_narrative_18", "problem_narrative_19", "problem_narrative_20",
-        "problem_narrative_21", "problem_narrative_22", "problem_narrative_23", "problem_narrative_24", "problem_narrative_25"
+        "problem_01", "problem_02", "problem_03", "problem_04", "problem_05",
+        "problem_06", "problem_07", "problem_08", "problem_09", "problem_10",
+        "problem_11", "problem_12", "problem_13", "problem_14", "problem_15",
+        "problem_16", "problem_17", "problem_18", "problem_19", "problem_20",
+        "problem_21", "problem_22", "problem_23", "problem_24", "problem_25"
       ]
     },
     "cultural_interpretation": {
@@ -84,11 +84,11 @@
       "temperature_range": [0.5, 0.75],
       "test_range": [151, 175],
       "test_ids": [
-        "cultural_interpretation_01", "cultural_interpretation_02", "cultural_interpretation_03", "cultural_interpretation_04", "cultural_interpretation_05",
-        "cultural_interpretation_06", "cultural_interpretation_07", "cultural_interpretation_08", "cultural_interpretation_09", "cultural_interpretation_10",
-        "cultural_interpretation_11", "cultural_interpretation_12", "cultural_interpretation_13", "cultural_interpretation_14", "cultural_interpretation_15",
-        "cultural_interpretation_16", "cultural_interpretation_17", "cultural_interpretation_18", "cultural_interpretation_19", "cultural_interpretation_20",
-        "cultural_interpretation_21", "cultural_interpretation_22", "cultural_interpretation_23", "cultural_interpretation_24", "cultural_interpretation_25"
+        "interpretation_01", "interpretation_02", "interpretation_03", "interpretation_04", "interpretation_05",
+        "interpretation_06", "interpretation_07", "interpretation_08", "interpretation_09", "interpretation_10",
+        "interpretation_11", "interpretation_12", "interpretation_13", "interpretation_14", "interpretation_15",
+        "interpretation_16", "interpretation_17", "interpretation_18", "interpretation_19", "interpretation_20",
+        "interpretation_21", "interpretation_22", "interpretation_23", "interpretation_24", "interpretation_25"
       ]
     },
     "collaborative_creation": {

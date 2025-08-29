@@ -11,11 +11,40 @@ Version: 1.0.0
 import re
 import json
 import logging
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Any
 from dataclasses import dataclass
 from enum import Enum
 import numpy as np
 from collections import defaultdict
+
+# Import advanced analysis modules
+try:
+    from .entropy_calculator import EntropyCalculator
+    ENTROPY_CALCULATOR_AVAILABLE = True
+except ImportError:
+    ENTROPY_CALCULATOR_AVAILABLE = False
+    logging.warning("EntropyCalculator not available")
+
+try:
+    from .semantic_coherence import SemanticCoherenceAnalyzer
+    SEMANTIC_COHERENCE_AVAILABLE = True
+except ImportError:
+    SEMANTIC_COHERENCE_AVAILABLE = False
+    logging.warning("SemanticCoherenceAnalyzer not available")
+
+try:
+    from .context_analyzer import ContextWindowAnalyzer
+    CONTEXT_ANALYZER_AVAILABLE = True
+except ImportError:
+    CONTEXT_ANALYZER_AVAILABLE = False
+    logging.warning("ContextWindowAnalyzer not available")
+
+try:
+    from .quantization_tester import QuantizationTester
+    QUANTIZATION_TESTER_AVAILABLE = True
+except ImportError:
+    QUANTIZATION_TESTER_AVAILABLE = False
+    logging.warning("QuantizationTester not available")
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -47,6 +76,12 @@ class EvaluationMetrics:
     overall_score: float
     word_count: int
     confidence_score: float
+    # NEW: Advanced entropy metrics
+    token_entropy: float = 0.0         # Shannon entropy of tokens
+    semantic_entropy: float = 0.0      # Semantic diversity via embeddings
+    entropy_quality_ratio: float = 0.0 # Entropy relative to response quality
+    semantic_diversity: float = 0.0    # Embedding-based semantic diversity
+    embedding_variance: float = 0.0    # Variance in embedding space
 
 
 @dataclass
@@ -79,6 +114,13 @@ class UniversalEvaluator:
         """
         self.config = self._load_config(config_path)
         self._initialize_patterns()
+        
+        # Initialize advanced analysis modules
+        self._entropy_calculator = None
+        self._semantic_analyzer = None
+        self._context_analyzer = None
+        self._quantization_tester = None
+        
         logger.info("UniversalEvaluator initialized successfully")
     
     def evaluate_response(self, 
@@ -129,10 +171,17 @@ class UniversalEvaluator:
         # Add reasoning-type-specific analysis
         specialized_analysis = self._evaluate_specialized_patterns(response_text, reasoning_type)
         
+        # ENHANCEMENT: Advanced analysis using new modules
+        advanced_analysis = self._perform_advanced_analysis(response_text, test_name, reasoning_type)
+        
+        # Update metrics with advanced analysis results
+        metrics = self._integrate_advanced_metrics(metrics, advanced_analysis)
+        
         # Combine results
         detailed_analysis = {
             "core_metrics": metrics.__dict__,
             "specialized_analysis": specialized_analysis,
+            "advanced_analysis": advanced_analysis,
             "text_statistics": self._calculate_text_statistics(response_text),
             "reasoning_indicators": self._extract_reasoning_indicators(response_text, reasoning_type)
         }
@@ -408,6 +457,221 @@ class UniversalEvaluator:
         metrics = self._apply_expertise_level_adjustments(metrics, expertise_level)
         
         return metrics
+    
+    # ==================== ADVANCED ANALYSIS INTEGRATION ====================
+    
+    @property
+    def entropy_calculator(self):
+        """Lazy load entropy calculator"""
+        if self._entropy_calculator is None and ENTROPY_CALCULATOR_AVAILABLE:
+            try:
+                self._entropy_calculator = EntropyCalculator()
+            except Exception as e:
+                logger.warning(f"Failed to initialize EntropyCalculator: {e}")
+        return self._entropy_calculator
+    
+    @property
+    def semantic_analyzer(self):
+        """Lazy load semantic coherence analyzer"""
+        if self._semantic_analyzer is None and SEMANTIC_COHERENCE_AVAILABLE:
+            try:
+                self._semantic_analyzer = SemanticCoherenceAnalyzer()
+            except Exception as e:
+                logger.warning(f"Failed to initialize SemanticCoherenceAnalyzer: {e}")
+        return self._semantic_analyzer
+    
+    @property
+    def context_analyzer(self):
+        """Lazy load context window analyzer"""
+        if self._context_analyzer is None and CONTEXT_ANALYZER_AVAILABLE:
+            try:
+                self._context_analyzer = ContextWindowAnalyzer()
+            except Exception as e:
+                logger.warning(f"Failed to initialize ContextWindowAnalyzer: {e}")
+        return self._context_analyzer
+    
+    @property
+    def quantization_tester(self):
+        """Lazy load quantization tester"""
+        if self._quantization_tester is None and QUANTIZATION_TESTER_AVAILABLE:
+            try:
+                self._quantization_tester = QuantizationTester()
+            except Exception as e:
+                logger.warning(f"Failed to initialize QuantizationTester: {e}")
+        return self._quantization_tester
+    
+    def _perform_advanced_analysis(self, response_text: str, test_name: str, reasoning_type: ReasoningType) -> Dict[str, Any]:
+        """Perform advanced analysis using all new modules"""
+        advanced_analysis = {}
+        
+        # Entropy analysis
+        if self.entropy_calculator:
+            try:
+                entropy_profile = self.entropy_calculator.analyze_entropy_profile(response_text)
+                advanced_analysis["entropy_analysis"] = entropy_profile
+            except Exception as e:
+                logger.warning(f"Entropy analysis failed: {e}")
+                advanced_analysis["entropy_analysis"] = {"error": str(e)}
+        
+        # Semantic coherence analysis
+        if self.semantic_analyzer:
+            try:
+                # Extract prompt from test name if possible (simplified)
+                prompt = self._extract_prompt_from_test_name(test_name)
+                coherence_analysis = self.semantic_analyzer.comprehensive_coherence_analysis(response_text, prompt)
+                advanced_analysis["semantic_coherence"] = coherence_analysis
+            except Exception as e:
+                logger.warning(f"Semantic coherence analysis failed: {e}")
+                advanced_analysis["semantic_coherence"] = {"error": str(e)}
+        
+        # Context window analysis
+        if self.context_analyzer:
+            try:
+                context_analysis = self.context_analyzer.comprehensive_context_analysis(response_text)
+                advanced_analysis["context_analysis"] = context_analysis
+            except Exception as e:
+                logger.warning(f"Context analysis failed: {e}")
+                advanced_analysis["context_analysis"] = {"error": str(e)}
+        
+        # Quantization impact analysis
+        if self.quantization_tester:
+            try:
+                quantization_analysis = self.quantization_tester.analyze_quantization_impact(response_text)
+                advanced_analysis["quantization_analysis"] = quantization_analysis
+            except Exception as e:
+                logger.warning(f"Quantization analysis failed: {e}")
+                advanced_analysis["quantization_analysis"] = {"error": str(e)}
+        
+        return advanced_analysis
+    
+    def _integrate_advanced_metrics(self, metrics: EvaluationMetrics, advanced_analysis: Dict[str, Any]) -> EvaluationMetrics:
+        """Integrate advanced analysis results into metrics"""
+        try:
+            # Update entropy metrics
+            entropy_analysis = advanced_analysis.get("entropy_analysis", {})
+            if entropy_analysis and "error" not in entropy_analysis:
+                metrics.token_entropy = entropy_analysis.get("token_entropy", 0.0)
+                metrics.semantic_entropy = entropy_analysis.get("semantic_entropy", 0.0)
+                metrics.entropy_quality_ratio = entropy_analysis.get("entropy_quality_ratio", 0.0)
+                metrics.semantic_diversity = entropy_analysis.get("semantic_diversity", 0.0)
+                metrics.embedding_variance = entropy_analysis.get("embedding_variance", 0.0)
+            
+            # Adjust overall score based on advanced metrics
+            advanced_adjustments = self._calculate_advanced_score_adjustments(advanced_analysis)
+            metrics.overall_score = min(max(metrics.overall_score + advanced_adjustments, 0), 105)
+            
+            # Update confidence score based on advanced analysis
+            advanced_confidence = self._calculate_advanced_confidence(advanced_analysis)
+            metrics.confidence_score = (metrics.confidence_score + advanced_confidence) / 2
+            
+        except Exception as e:
+            logger.warning(f"Advanced metrics integration failed: {e}")
+        
+        return metrics
+    
+    def _extract_prompt_from_test_name(self, test_name: str) -> Optional[str]:
+        """Extract prompt from test name (simplified implementation)"""
+        # This would be enhanced based on test naming conventions
+        # For now, return None to indicate no specific prompt
+        return None
+    
+    def _calculate_advanced_score_adjustments(self, advanced_analysis: Dict[str, Any]) -> float:
+        """Calculate score adjustments based on advanced analysis"""
+        adjustment = 0.0
+        
+        try:
+            # Entropy-based adjustments
+            entropy_analysis = advanced_analysis.get("entropy_analysis", {})
+            if entropy_analysis and "error" not in entropy_analysis:
+                # Reward good entropy diversity
+                if entropy_analysis.get("semantic_diversity", 0) > 0.6:
+                    adjustment += 2.0
+                elif entropy_analysis.get("semantic_diversity", 0) < 0.3:
+                    adjustment -= 2.0
+                
+                # Penalize entropy patterns indicating issues
+                entropy_patterns = entropy_analysis.get("entropy_patterns", {})
+                if entropy_patterns.get("has_repetitive_patterns", False):
+                    adjustment -= 3.0
+            
+            # Semantic coherence adjustments
+            semantic_analysis = advanced_analysis.get("semantic_coherence", {})
+            if semantic_analysis and "error" not in semantic_analysis:
+                coherence_score = semantic_analysis.get("overall_coherence_score", 0.5)
+                if coherence_score > 0.8:
+                    adjustment += 3.0
+                elif coherence_score < 0.4:
+                    adjustment -= 4.0
+            
+            # Context analysis adjustments
+            context_analysis = advanced_analysis.get("context_analysis", {})
+            if context_analysis and "error" not in context_analysis:
+                health_score = context_analysis.get("context_health_score", 0.5)
+                if health_score > 0.8:
+                    adjustment += 2.0
+                elif health_score < 0.3:
+                    adjustment -= 5.0
+                
+                # Penalize context saturation
+                saturation = context_analysis.get("saturation_analysis", {})
+                if saturation.get("saturation_detected", False):
+                    adjustment -= 3.0
+            
+            # Quantization impact adjustments
+            quantization_analysis = advanced_analysis.get("quantization_analysis", {})
+            if quantization_analysis and "error" not in quantization_analysis:
+                impact_score = quantization_analysis.get("quantization_impact_score", 0.0)
+                if impact_score > 0.7:
+                    adjustment -= 6.0  # High quantization impact
+                elif impact_score > 0.4:
+                    adjustment -= 3.0  # Moderate impact
+                elif impact_score < 0.2:
+                    adjustment += 1.0  # Minimal impact
+        
+        except Exception as e:
+            logger.warning(f"Advanced score adjustment calculation failed: {e}")
+        
+        return max(-10.0, min(adjustment, 10.0))  # Limit adjustment range
+    
+    def _calculate_advanced_confidence(self, advanced_analysis: Dict[str, Any]) -> float:
+        """Calculate confidence based on advanced analysis"""
+        confidence_factors = []
+        
+        try:
+            # Entropy analysis confidence
+            entropy_analysis = advanced_analysis.get("entropy_analysis", {})
+            if entropy_analysis and "error" not in entropy_analysis:
+                # Higher entropy diversity generally indicates more confident generation
+                semantic_diversity = entropy_analysis.get("semantic_diversity", 0.5)
+                confidence_factors.append(semantic_diversity * 100)
+            
+            # Semantic coherence confidence
+            semantic_analysis = advanced_analysis.get("semantic_coherence", {})
+            if semantic_analysis and "error" not in semantic_analysis:
+                coherence_score = semantic_analysis.get("overall_coherence_score", 0.5)
+                confidence_factors.append(coherence_score * 100)
+            
+            # Context health confidence
+            context_analysis = advanced_analysis.get("context_analysis", {})
+            if context_analysis and "error" not in context_analysis:
+                health_score = context_analysis.get("context_health_score", 0.5)
+                confidence_factors.append(health_score * 100)
+            
+            # Quantization stability confidence
+            quantization_analysis = advanced_analysis.get("quantization_analysis", {})
+            if quantization_analysis and "error" not in quantization_analysis:
+                # Lower quantization impact = higher confidence
+                impact_score = quantization_analysis.get("quantization_impact_score", 0.0)
+                quantization_confidence = max(0, 1.0 - impact_score) * 100
+                confidence_factors.append(quantization_confidence)
+        
+        except Exception as e:
+            logger.warning(f"Advanced confidence calculation failed: {e}")
+        
+        if confidence_factors:
+            return np.mean(confidence_factors)
+        else:
+            return 75.0  # Default confidence
     
     def _calculate_organization_quality(self, text: str, test_type: str) -> float:
         """Calculate organization quality based on sophisticated structural patterns"""

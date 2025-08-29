@@ -39,17 +39,17 @@
         "multilingual_21", "multilingual_22", "multilingual_23", "multilingual_24", "multilingual_25"
       ]
     },
-    "sociolinguistic_registers": {
+    "register_systems": {
       "description": "Social language variation and register systems across global cultural contexts",
       "language_focus": "honorifics, formality levels, social dialects, age-grade communication, gender patterns",
       "temperature_range": [0.3, 0.6],
       "test_range": [76, 100],
       "test_ids": [
-        "sociolinguistic_01", "sociolinguistic_02", "sociolinguistic_03", "sociolinguistic_04", "sociolinguistic_05",
-        "sociolinguistic_06", "sociolinguistic_07", "sociolinguistic_08", "sociolinguistic_09", "sociolinguistic_10",
-        "sociolinguistic_11", "sociolinguistic_12", "sociolinguistic_13", "sociolinguistic_14", "sociolinguistic_15",
-        "sociolinguistic_16", "sociolinguistic_17", "sociolinguistic_18", "sociolinguistic_19", "sociolinguistic_20",
-        "sociolinguistic_21", "sociolinguistic_22", "sociolinguistic_23", "sociolinguistic_24", "sociolinguistic_25"
+        "register_01", "register_02", "register_03", "register_04", "register_05",
+        "register_06", "register_07", "register_08", "register_09", "register_10",
+        "register_11", "register_12", "register_13", "register_14", "register_15",
+        "register_16", "register_17", "register_18", "register_19", "register_20",
+        "register_21", "register_22", "register_23", "register_24", "register_25"
       ]
     },
     "cultural_communication": {
@@ -109,7 +109,7 @@
     "historical_linguistics": "reconstructive",
     "writing_systems": "orthographic",
     "multilingual_contact": "contact",
-    "sociolinguistic_registers": "sociolinguistic",
+    "register_systems": "sociolinguistic",
     "cultural_communication": "cultural",
     "dialectal_variation": "variational",
     "pragmatic_meaning": "pragmatic",

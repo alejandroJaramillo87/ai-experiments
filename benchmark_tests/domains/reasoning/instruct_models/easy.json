@@ -178,7 +178,7 @@
       }
     },
     {
-      "id": "ambiguity_handling_01",
+      "id": "ambiguity_01",
       "name": "Test 11: Interpreting an Ambiguous Request",
       "category": "ambiguity_handling",
       "reasoning_type": "general",
@@ -195,7 +195,7 @@
       }
     },
     {
-      "id": "ambiguity_handling_02",
+      "id": "ambiguity_02",
       "name": "Test 12: Ranking by Subjective Criteria",
       "category": "ambiguity_handling",
       "reasoning_type": "scaffolded",
@@ -212,7 +212,7 @@
       }
     },
     {
-      "id": "ambiguity_handling_03",
+      "id": "ambiguity_03",
       "name": "Test 13: Disambiguating Context",
       "category": "ambiguity_handling",
       "reasoning_type": "general",
@@ -229,7 +229,7 @@
       }
     },
     {
-      "id": "ambiguity_handling_04",
+      "id": "ambiguity_04",
       "name": "Test 14: Analyzing Tone and Intent",
       "category": "ambiguity_handling",
       "reasoning_type": "general",
@@ -246,7 +246,7 @@
       }
     },
     {
-      "id": "ambiguity_handling_05",
+      "id": "ambiguity_05",
       "name": "Test 15: Ethical Dilemma with No 'Right' Answer",
       "category": "ambiguity_handling",
       "reasoning_type": "scaffolded",
@@ -263,7 +263,7 @@
       }
     },
     {
-      "id": "ambiguity_handling_06",
+      "id": "ambiguity_06",
       "name": "Test 16: Inferring Missing Information",
       "category": "ambiguity_handling",
       "reasoning_type": "general",
@@ -280,7 +280,7 @@
       }
     },
     {
-      "id": "ambiguity_handling_07",
+      "id": "ambiguity_07",
       "name": "Test 17: Evaluating Strength of Evidence",
       "category": "ambiguity_handling",
       "reasoning_type": "verification",
@@ -297,7 +297,7 @@
       }
     },
     {
-      "id": "ambiguity_handling_08",
+      "id": "ambiguity_08",
       "name": "Test 18: Generating a Nuanced Response",
       "category": "ambiguity_handling",
       "reasoning_type": "multi_hop",
@@ -314,7 +314,7 @@
       }
     },
     {
-      "id": "ambiguity_handling_09",
+      "id": "ambiguity_09",
       "name": "Test 19: Prioritizing Vague Tasks",
       "category": "ambiguity_handling",
       "reasoning_type": "scaffolded",
@@ -331,7 +331,7 @@
       }
     },
     {
-      "id": "ambiguity_handling_10",
+      "id": "ambiguity_10",
       "name": "Test 20: Reading Between the Lines",
       "category": "ambiguity_handling",
       "reasoning_type": "general",
@@ -348,7 +348,7 @@
       }
     },
     {
-      "id": "creative_thinking_01",
+      "id": "creative_01",
       "name": "Test 21: Alternative Uses Task",
       "category": "creative_thinking",
       "reasoning_type": "general",
@@ -365,7 +365,7 @@
       }
     },
     {
-      "id": "creative_thinking_02",
+      "id": "creative_02",
       "name": "Test 22: Remote Associates Test",
       "category": "creative_thinking",
       "reasoning_type": "general",
@@ -382,7 +382,7 @@
       }
     },
     {
-      "id": "creative_thinking_03",
+      "id": "creative_03",
       "name": "Test 23: Complete the Story",
       "category": "creative_thinking",
       "reasoning_type": "general",
@@ -399,7 +399,7 @@
       }
     },
     {
-      "id": "creative_thinking_04",
+      "id": "creative_04",
       "name": "Test 24: Solving a Riddle",
       "category": "creative_thinking",
       "reasoning_type": "backward",
@@ -416,7 +416,7 @@
       }
     },
     {
-      "id": "creative_thinking_05",
+      "id": "creative_05",
       "name": "Test 25: Re-framing a Problem",
       "category": "creative_thinking",
       "reasoning_type": "general",
@@ -433,7 +433,7 @@
       }
     },
     {
-      "id": "creative_thinking_06",
+      "id": "creative_06",
       "name": "Test 26: Generating a Product Name",
       "category": "creative_thinking",
       "reasoning_type": "general",
@@ -450,7 +450,7 @@
       }
     },
     {
-      "id": "creative_thinking_07",
+      "id": "creative_07",
       "name": "Test 27: Connecting Unrelated Concepts",
       "category": "creative_thinking",
       "reasoning_type": "multi_hop",
@@ -467,7 +467,7 @@
       }
     },
     {
-      "id": "creative_thinking_08",
+      "id": "creative_08",
       "name": "Test 28: Lateral Thinking Puzzle",
       "category": "creative_thinking",
       "reasoning_type": "backward",
@@ -484,7 +484,7 @@
       }
     },
     {
-      "id": "creative_thinking_09",
+      "id": "creative_09",
       "name": "Test 29: Generating a 'What If' Scenario",
       "category": "creative_thinking",
       "reasoning_type": "general",
@@ -501,7 +501,7 @@
       }
     },
     {
-      "id": "creative_thinking_10",
+      "id": "creative_10",
       "name": "Test 30: Caption This!",
       "category": "creative_thinking",
       "reasoning_type": "general",
@@ -518,7 +518,7 @@
       }
     },
     {
-      "id": "strategic_thinking_01",
+      "id": "strategic_01",
       "name": "Test 31: Simple Game Theory (Prisoner's Dilemma)",
       "category": "strategic_thinking",
       "reasoning_type": "mathematical",
@@ -535,7 +535,7 @@
       }
     },
     {
-      "id": "strategic_thinking_02",
+      "id": "strategic_02",
       "name": "Test 32: Identifying a Feedback Loop",
       "category": "strategic_thinking",
       "reasoning_type": "general",
@@ -552,7 +552,7 @@
       }
     },
     {
-      "id": "strategic_thinking_03",
+      "id": "strategic_03",
       "name": "Test 33: Second-Order Thinking",
       "category": "strategic_thinking",
       "reasoning_type": "chain_of_thought",
@@ -569,7 +569,7 @@
       }
     },
     {
-      "id": "strategic_thinking_04",
+      "id": "strategic_04",
       "name": "Test 34: Root Cause vs. Proximate Cause",
       "category": "strategic_thinking",
       "reasoning_type": "backward",
@@ -586,7 +586,7 @@
       }
     },
     {
-      "id": "strategic_thinking_05",
+      "id": "strategic_05",
       "name": "Test 35: Resource Allocation Problem",
       "category": "strategic_thinking",
       "reasoning_type": "scaffolded",
@@ -603,7 +603,7 @@
       }
     },
     {
-      "id": "strategic_thinking_06",
+      "id": "strategic_06",
       "name": "Test 36: Win-Win Scenario Creation",
       "category": "strategic_thinking",
       "reasoning_type": "general",
@@ -620,7 +620,7 @@
       }
     },
     {
-      "id": "strategic_thinking_07",
+      "id": "strategic_07",
       "name": "Test 37: Understanding Trade-offs",
       "category": "strategic_thinking",
       "reasoning_type": "general",
@@ -637,7 +637,7 @@
       }
     },
     {
-      "id": "strategic_thinking_08",
+      "id": "strategic_08",
       "name": "Test 38: Basic Strategic Prediction",
       "category": "strategic_thinking",
       "reasoning_type": "general",
@@ -654,7 +654,7 @@
       }
     },
     {
-      "id": "strategic_thinking_09",
+      "id": "strategic_09",
       "name": "Test 39: Identifying a System's Bottleneck",
       "category": "strategic_thinking",
       "reasoning_type": "general",
@@ -671,7 +671,7 @@
       }
     },
     {
-      "id": "strategic_thinking_10",
+      "id": "strategic_10",
       "name": "Test 40: Long-term vs. Short-term Thinking",
       "category": "strategic_thinking",
       "reasoning_type": "general",
@@ -688,7 +688,7 @@
       }
     },
     {
-      "id": "constraint_following_01",
+      "id": "constraint_01",
       "name": "Test 41: Multi-Step Multi-Format Logic Puzzle",
       "category": "constraint_following",
       "reasoning_type": "chain_of_thought",
@@ -705,7 +705,7 @@
       }
     },
     {
-      "id": "constraint_following_02",
+      "id": "constraint_02",
       "name": "Test 42: JSON with Conditional Fields",
       "category": "constraint_following",
       "reasoning_type": "scaffolded",
@@ -722,7 +722,7 @@
       }
     },
     {
-      "id": "constraint_following_03",
+      "id": "constraint_03",
       "name": "Test 43: Poetic Form Constraint",
       "category": "constraint_following",
       "reasoning_type": "general",
@@ -739,7 +739,7 @@
       }
     },
     {
-      "id": "constraint_following_04",
+      "id": "constraint_04",
       "name": "Test 44: Text Manipulation and Exclusion",
       "category": "constraint_following",
       "reasoning_type": "general",
@@ -756,7 +756,7 @@
       }
     },
     {
-      "id": "constraint_following_05",
+      "id": "constraint_05",
       "name": "Test 45: Nested List and Logic Generation",
       "category": "constraint_following",
       "reasoning_type": "scaffolded",
@@ -773,7 +773,7 @@
       }
     },
     {
-      "id": "constraint_following_06",
+      "id": "constraint_06",
       "name": "Test 46: Persona with Negative Constraint",
       "category": "constraint_following",
       "reasoning_type": "general",
@@ -790,7 +790,7 @@
       }
     },
     {
-      "id": "constraint_following_07",
+      "id": "constraint_07",
       "name": "Test 47: Code Generation with Comments",
       "category": "constraint_following",
       "reasoning_type": "general",
@@ -807,7 +807,7 @@
       }
     },
     {
-      "id": "constraint_following_08",
+      "id": "constraint_08",
       "name": "Test 48: Reverse Instruction Following",
       "category": "constraint_following",
       "reasoning_type": "backward",
@@ -824,7 +824,7 @@
       }
     },
     {
-      "id": "constraint_following_09",
+      "id": "constraint_09",
       "name": "Test 49: Chain of Thought with Final Answer Extraction",
       "category": "constraint_following",
       "reasoning_type": "chain_of_thought",
@@ -841,7 +841,7 @@
       }
     },
     {
-      "id": "constraint_following_10",
+      "id": "constraint_10",
       "name": "Test 50: The Ultimate Constraint Test",
       "category": "constraint_following",
       "reasoning_type": "scaffolded",

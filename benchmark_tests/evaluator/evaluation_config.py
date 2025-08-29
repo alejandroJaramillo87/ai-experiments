@@ -309,6 +309,47 @@ DEFAULT_CONFIG = {
         ]
     },
     
+    # ENHANCEMENT: Advanced analysis configurations
+    "advanced_analysis": {
+        "entropy_analysis": {
+            "enabled": True,
+            "token_entropy_weight": 0.15,
+            "semantic_entropy_weight": 0.20,
+            "entropy_quality_ratio_weight": 0.10,
+            "semantic_diversity_threshold": 0.6,  # Above this = bonus
+            "low_entropy_penalty_threshold": 0.3,  # Below this = penalty
+            "repetitive_pattern_penalty": 5.0
+        },
+        
+        "semantic_coherence": {
+            "enabled": True,
+            "coherence_score_weight": 0.25,
+            "prompt_completion_coherence_weight": 0.15,
+            "semantic_drift_penalty_threshold": 0.3,  # High drift penalty
+            "topic_consistency_bonus_threshold": 0.8,  # High consistency bonus
+            "coherence_excellence_threshold": 0.85
+        },
+        
+        "context_analysis": {
+            "enabled": True,
+            "context_health_weight": 0.20,
+            "saturation_detection_penalty": 8.0,  # Severe penalty for saturation
+            "degradation_penalty_per_point": 2.0,
+            "quality_retention_bonus_threshold": 0.9,
+            "context_efficiency_bonus_threshold": 0.8
+        },
+        
+        "quantization_analysis": {
+            "enabled": True,
+            "numerical_stability_weight": 0.30,
+            "factual_consistency_weight": 0.25,
+            "quantization_impact_penalty_weight": 0.20,
+            "high_impact_penalty_threshold": 0.7,
+            "moderate_impact_penalty_threshold": 0.4,
+            "minimal_impact_bonus_threshold": 0.2
+        }
+    },
+    
     # LLM evaluation integration settings
     "llm_evaluation": {
         "enabled": False,  # Default to disabled
@@ -428,6 +469,97 @@ DEFAULT_CONFIG = {
             "meta_only": "meta_reasoning_penalty",
             "code_only": "technical_evaluation",
             "list_only": "structure_only_penalty"
+        }
+    },
+    
+    # ENHANCEMENT: Advanced metrics thresholds and scoring adjustments
+    "advanced_metrics_scoring": {
+        "entropy_bonuses": {
+            "high_semantic_diversity": 3.0,     # >0.6 semantic diversity
+            "excellent_entropy_ratio": 2.0,     # >0.8 entropy/quality ratio
+            "optimal_token_entropy": 1.5       # 4.0-6.0 token entropy range
+        },
+        "entropy_penalties": {
+            "low_semantic_diversity": -4.0,     # <0.3 semantic diversity
+            "repetitive_patterns": -5.0,        # Detected repetitive loops
+            "entropy_collapse": -6.0            # <2.0 token entropy (collapse)
+        },
+        "coherence_bonuses": {
+            "excellent_coherence": 4.0,         # >0.85 overall coherence
+            "strong_topic_consistency": 2.5,    # >0.8 topic consistency
+            "smooth_semantic_flow": 2.0         # >0.75 semantic flow
+        },
+        "coherence_penalties": {
+            "poor_coherence": -6.0,             # <0.4 overall coherence
+            "high_semantic_drift": -4.0,        # >0.7 drift score
+            "topic_inconsistency": -3.0         # <0.3 topic consistency
+        },
+        "context_bonuses": {
+            "excellent_context_health": 3.0,    # >0.9 context health
+            "efficient_context_usage": 2.0,     # >0.8 efficiency
+            "stable_quality_retention": 1.5     # >0.9 quality retention
+        },
+        "context_penalties": {
+            "context_saturation": -8.0,         # Saturation detected
+            "severe_degradation": -6.0,         # >3 severe degradation points
+            "poor_context_health": -4.0         # <0.3 context health
+        },
+        "quantization_bonuses": {
+            "excellent_numerical_stability": 2.0, # >0.9 numerical stability
+            "high_factual_consistency": 2.5,     # >0.9 factual consistency
+            "minimal_quantization_impact": 1.0    # <0.2 impact score
+        },
+        "quantization_penalties": {
+            "high_quantization_impact": -8.0,    # >0.7 impact score
+            "poor_numerical_stability": -5.0,    # <0.4 numerical stability
+            "low_factual_consistency": -6.0,     # <0.4 factual consistency
+            "calculation_avoidance": -4.0        # Detected avoidance patterns
+        }
+    },
+    
+    # ENHANCEMENT: Model-specific configuration profiles
+    "model_profiles": {
+        "gpt_oss_20b": {
+            "base_model_优化": True,  # Optimized for base completion tasks
+            "instruct_model_penalty": 0.9,  # 10% penalty for instruct format mismatch
+            "entropy_expectations": {
+                "token_entropy_range": [3.5, 5.5],   # Expected range for this model
+                "semantic_diversity_baseline": 0.45   # Baseline expectation
+            },
+            "context_expectations": {
+                "effective_context_limit": 4096,      # Tokens before degradation
+                "saturation_onset": 3000              # Early saturation detection
+            },
+            "quantization_profiles": {
+                "fp16": {"impact_threshold": 0.1},
+                "int8": {"impact_threshold": 0.3},
+                "int4": {"impact_threshold": 0.6}
+            }
+        },
+        
+        "claude_sonnet": {
+            "instruct_model_优化": True,
+            "base_model_penalty": 0.95,
+            "entropy_expectations": {
+                "token_entropy_range": [4.0, 6.0],
+                "semantic_diversity_baseline": 0.55
+            },
+            "context_expectations": {
+                "effective_context_limit": 8192,
+                "saturation_onset": 6000
+            }
+        },
+        
+        "llama_70b": {
+            "balanced_优化": True,
+            "entropy_expectations": {
+                "token_entropy_range": [4.2, 6.2],
+                "semantic_diversity_baseline": 0.50
+            },
+            "context_expectations": {
+                "effective_context_limit": 2048,
+                "saturation_onset": 1500
+            }
         }
     }
 }
