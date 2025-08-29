@@ -704,25 +704,30 @@ DEFAULT_CONFIG = {
             },
             "language": {
                 "evaluator_class": "LanguageEvaluator", 
-                "pattern_libraries": ["code_switching", "register_variation", "dialectal_patterns"],
+                "pattern_libraries": ["code_switching", "register_variation", "dialectal_patterns", "historical_linguistics", "narrative_structure"],
                 "dimensions": [
                     "register_appropriateness",
                     "code_switching_quality",
                     "pragmatic_competence",
                     "multilingual_patterns",
                     "dialectal_competence",
-                    "sociolinguistic_awareness"
+                    "sociolinguistic_awareness",
+                    "historical_linguistics",
+                    "narrative_structure",
+                    "semantic_sophistication"
                 ]
             },
             "social": {
                 "evaluator_class": "SocialEvaluator",
-                "pattern_libraries": ["hierarchy_patterns", "relationship_maintenance", "etiquette_systems"],
+                "pattern_libraries": ["hierarchy_patterns", "relationship_maintenance", "etiquette_systems", "conflict_resolution", "intercultural_competence"],
                 "dimensions": [
                     "social_appropriateness",
                     "hierarchy_navigation", 
                     "relationship_maintenance",
                     "community_dynamics",
-                    "cultural_etiquette"
+                    "cultural_etiquette",
+                    "conflict_resolution",
+                    "intercultural_competence"
                 ]
             },
             "reasoning": {
