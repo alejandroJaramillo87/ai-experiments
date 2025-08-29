@@ -1,0 +1,118 @@
+{
+  "categories": {
+    "historical_linguistics": {
+      "description": "Proto-language reconstruction and ancient language comprehension across all human language families",
+      "language_focus": "proto-language patterns, comparative linguistics, ancient scripts, prehistoric communication",
+      "temperature_range": [0.3, 0.6],
+      "test_range": [1, 25],
+      "test_ids": [
+        "historical_01", "historical_02", "historical_03", "historical_04", "historical_05",
+        "historical_06", "historical_07", "historical_08", "historical_09", "historical_10",
+        "historical_11", "historical_12", "historical_13", "historical_14", "historical_15",
+        "historical_16", "historical_17", "historical_18", "historical_19", "historical_20",
+        "historical_21", "historical_22", "historical_23", "historical_24", "historical_25"
+      ]
+    },
+    "writing_systems": {
+      "description": "Orthographic diversity and script comprehension across global writing traditions",
+      "language_focus": "script varieties, character systems, orthographic patterns, directional writing",
+      "temperature_range": [0.2, 0.5],
+      "test_range": [26, 50],
+      "test_ids": [
+        "writing_01", "writing_02", "writing_03", "writing_04", "writing_05",
+        "writing_06", "writing_07", "writing_08", "writing_09", "writing_10",
+        "writing_11", "writing_12", "writing_13", "writing_14", "writing_15",
+        "writing_16", "writing_17", "writing_18", "writing_19", "writing_20",
+        "writing_21", "writing_22", "writing_23", "writing_24", "writing_25"
+      ]
+    },
+    "multilingual_contact": {
+      "description": "Code-switching and multilingual communication patterns in global contexts",
+      "language_focus": "code-switching, language mixing, multilingual discourse, contact phenomena",
+      "temperature_range": [0.4, 0.7],
+      "test_range": [51, 75],
+      "test_ids": [
+        "multilingual_01", "multilingual_02", "multilingual_03", "multilingual_04", "multilingual_05",
+        "multilingual_06", "multilingual_07", "multilingual_08", "multilingual_09", "multilingual_10",
+        "multilingual_11", "multilingual_12", "multilingual_13", "multilingual_14", "multilingual_15",
+        "multilingual_16", "multilingual_17", "multilingual_18", "multilingual_19", "multilingual_20",
+        "multilingual_21", "multilingual_22", "multilingual_23", "multilingual_24", "multilingual_25"
+      ]
+    },
+    "sociolinguistic_registers": {
+      "description": "Social language variation and register systems across global cultural contexts",
+      "language_focus": "honorifics, formality levels, social dialects, age-grade communication, gender patterns",
+      "temperature_range": [0.3, 0.6],
+      "test_range": [76, 100],
+      "test_ids": [
+        "sociolinguistic_01", "sociolinguistic_02", "sociolinguistic_03", "sociolinguistic_04", "sociolinguistic_05",
+        "sociolinguistic_06", "sociolinguistic_07", "sociolinguistic_08", "sociolinguistic_09", "sociolinguistic_10",
+        "sociolinguistic_11", "sociolinguistic_12", "sociolinguistic_13", "sociolinguistic_14", "sociolinguistic_15",
+        "sociolinguistic_16", "sociolinguistic_17", "sociolinguistic_18", "sociolinguistic_19", "sociolinguistic_20",
+        "sociolinguistic_21", "sociolinguistic_22", "sociolinguistic_23", "sociolinguistic_24", "sociolinguistic_25"
+      ]
+    },
+    "cultural_communication": {
+      "description": "Indigenous and traditional discourse patterns across global cultural contexts",
+      "language_focus": "consensus-building discourse, hierarchical communication, indigenous protocols, ritual language",
+      "temperature_range": [0.4, 0.7],
+      "test_range": [101, 125],
+      "test_ids": [
+        "cultural_01", "cultural_02", "cultural_03", "cultural_04", "cultural_05",
+        "cultural_06", "cultural_07", "cultural_08", "cultural_09", "cultural_10",
+        "cultural_11", "cultural_12", "cultural_13", "cultural_14", "cultural_15",
+        "cultural_16", "cultural_17", "cultural_18", "cultural_19", "cultural_20",
+        "cultural_21", "cultural_22", "cultural_23", "cultural_24", "cultural_25"
+      ]
+    },
+    "dialectal_variation": {
+      "description": "Regional language varieties, creoles, and pidgins from global language contact situations",
+      "language_focus": "regional dialects, creole formation, pidgin varieties, substrate influences, contact varieties",
+      "temperature_range": [0.5, 0.8],
+      "test_range": [126, 150],
+      "test_ids": [
+        "dialectal_01", "dialectal_02", "dialectal_03", "dialectal_04", "dialectal_05",
+        "dialectal_06", "dialectal_07", "dialectal_08", "dialectal_09", "dialectal_10",
+        "dialectal_11", "dialectal_12", "dialectal_13", "dialectal_14", "dialectal_15",
+        "dialectal_16", "dialectal_17", "dialectal_18", "dialectal_19", "dialectal_20",
+        "dialectal_21", "dialectal_22", "dialectal_23", "dialectal_24", "dialectal_25"
+      ]
+    },
+    "pragmatic_meaning": {
+      "description": "Context-dependent communication and cultural pragmatic patterns worldwide",
+      "language_focus": "indirect speech, politeness systems, cultural metaphors, taboo language, humor patterns",
+      "temperature_range": [0.4, 0.8],
+      "test_range": [151, 175],
+      "test_ids": [
+        "pragmatic_01", "pragmatic_02", "pragmatic_03", "pragmatic_04", "pragmatic_05",
+        "pragmatic_06", "pragmatic_07", "pragmatic_08", "pragmatic_09", "pragmatic_10",
+        "pragmatic_11", "pragmatic_12", "pragmatic_13", "pragmatic_14", "pragmatic_15",
+        "pragmatic_16", "pragmatic_17", "pragmatic_18", "pragmatic_19", "pragmatic_20",
+        "pragmatic_21", "pragmatic_22", "pragmatic_23", "pragmatic_24", "pragmatic_25"
+      ]
+    },
+    "language_evolution": {
+      "description": "Language change, typological diversity, and evolutionary linguistic phenomena",
+      "language_focus": "language change processes, typological patterns, pidgin formation, language death/revitalization",
+      "temperature_range": [0.3, 0.6],
+      "test_range": [176, 200],
+      "test_ids": [
+        "evolution_01", "evolution_02", "evolution_03", "evolution_04", "evolution_05",
+        "evolution_06", "evolution_07", "evolution_08", "evolution_09", "evolution_10",
+        "evolution_11", "evolution_12", "evolution_13", "evolution_14", "evolution_15",
+        "evolution_16", "evolution_17", "evolution_18", "evolution_19", "evolution_20",
+        "evolution_21", "evolution_22", "evolution_23", "evolution_24", "evolution_25"
+      ]
+    }
+  },
+  "language_type_mapping": {
+    "historical_linguistics": "reconstructive",
+    "writing_systems": "orthographic",
+    "multilingual_contact": "contact",
+    "sociolinguistic_registers": "sociolinguistic",
+    "cultural_communication": "cultural",
+    "dialectal_variation": "variational",
+    "pragmatic_meaning": "pragmatic",
+    "language_evolution": "evolutionary"
+  }
+}
