@@ -1,0 +1,96 @@
+{
+  "categories": {
+    "conflict_resolution": {
+      "description": "Cross-cultural approaches to interpersonal and community conflict resolution",
+      "social_focus": "traditional mediation, restorative justice, elder councils, peace-making ceremonies, dispute transformation",
+      "temperature_range": [0.3, 0.5],
+      "test_range": [1, 30],
+      "test_ids": [
+        "conflict_01", "conflict_02", "conflict_03", "conflict_04", "conflict_05",
+        "conflict_06", "conflict_07", "conflict_08", "conflict_09", "conflict_10",
+        "conflict_11", "conflict_12", "conflict_13", "conflict_14", "conflict_15",
+        "conflict_16", "conflict_17", "conflict_18", "conflict_19", "conflict_20",
+        "conflict_21", "conflict_22", "conflict_23", "conflict_24", "conflict_25",
+        "conflict_26", "conflict_27", "conflict_28", "conflict_29", "conflict_30"
+      ]
+    },
+    "consensus_building": {
+      "description": "Community decision-making processes across global governance traditions",
+      "social_focus": "collective deliberation, consensus mechanisms, participatory democracy, traditional councils, group discernment",
+      "temperature_range": [0.25, 0.45],
+      "test_range": [31, 60],
+      "test_ids": [
+        "consensus_01", "consensus_02", "consensus_03", "consensus_04", "consensus_05",
+        "consensus_06", "consensus_07", "consensus_08", "consensus_09", "consensus_10",
+        "consensus_11", "consensus_12", "consensus_13", "consensus_14", "consensus_15",
+        "consensus_16", "consensus_17", "consensus_18", "consensus_19", "consensus_20",
+        "consensus_21", "consensus_22", "consensus_23", "consensus_24", "consensus_25",
+        "consensus_26", "consensus_27", "consensus_28", "consensus_29", "consensus_30"
+      ]
+    },
+    "social_hierarchy": {
+      "description": "Understanding and navigating diverse cultural systems of social stratification",
+      "social_focus": "honorifics, formality systems, age respect, professional hierarchies, caste awareness, status protocols",
+      "temperature_range": [0.2, 0.4],
+      "test_range": [61, 90],
+      "test_ids": [
+        "hierarchy_01", "hierarchy_02", "hierarchy_03", "hierarchy_04", "hierarchy_05",
+        "hierarchy_06", "hierarchy_07", "hierarchy_08", "hierarchy_09", "hierarchy_10",
+        "hierarchy_11", "hierarchy_12", "hierarchy_13", "hierarchy_14", "hierarchy_15",
+        "hierarchy_16", "hierarchy_17", "hierarchy_18", "hierarchy_19", "hierarchy_20",
+        "hierarchy_21", "hierarchy_22", "hierarchy_23", "hierarchy_24", "hierarchy_25",
+        "hierarchy_26", "hierarchy_27", "hierarchy_28", "hierarchy_29", "hierarchy_30"
+      ]
+    },
+    "cultural_communication": {
+      "description": "Culturally authentic interaction styles and social communication norms",
+      "social_focus": "direct/indirect communication, high/low context, politeness systems, non-verbal cues, cultural etiquette",
+      "temperature_range": [0.4, 0.6],
+      "test_range": [91, 120],
+      "test_ids": [
+        "communication_01", "communication_02", "communication_03", "communication_04", "communication_05",
+        "communication_06", "communication_07", "communication_08", "communication_09", "communication_10",
+        "communication_11", "communication_12", "communication_13", "communication_14", "communication_15",
+        "communication_16", "communication_17", "communication_18", "communication_19", "communication_20",
+        "communication_21", "communication_22", "communication_23", "communication_24", "communication_25",
+        "communication_26", "communication_27", "communication_28", "communication_29", "communication_30"
+      ]
+    },
+    "community_leadership": {
+      "description": "Traditional and cultural models of leadership and community organization",
+      "social_focus": "leadership legitimacy, governance structures, authority sources, accountability systems, power distribution",
+      "temperature_range": [0.25, 0.45],
+      "test_range": [121, 150],
+      "test_ids": [
+        "leadership_01", "leadership_02", "leadership_03", "leadership_04", "leadership_05",
+        "leadership_06", "leadership_07", "leadership_08", "leadership_09", "leadership_10",
+        "leadership_11", "leadership_12", "leadership_13", "leadership_14", "leadership_15",
+        "leadership_16", "leadership_17", "leadership_18", "leadership_19", "leadership_20",
+        "leadership_21", "leadership_22", "leadership_23", "leadership_24", "leadership_25",
+        "leadership_26", "leadership_27", "leadership_28", "leadership_29", "leadership_30"
+      ]
+    },
+    "relationship_maintenance": {
+      "description": "Mechanisms for maintaining social bonds and community solidarity",
+      "social_focus": "reciprocity systems, social rituals, collective identity, intergenerational transmission, community cohesion",
+      "temperature_range": [0.35, 0.55],
+      "test_range": [151, 180],
+      "test_ids": [
+        "relationship_01", "relationship_02", "relationship_03", "relationship_04", "relationship_05",
+        "relationship_06", "relationship_07", "relationship_08", "relationship_09", "relationship_10",
+        "relationship_11", "relationship_12", "relationship_13", "relationship_14", "relationship_15",
+        "relationship_16", "relationship_17", "relationship_18", "relationship_19", "relationship_20",
+        "relationship_21", "relationship_22", "relationship_23", "relationship_24", "relationship_25",
+        "relationship_26", "relationship_27", "relationship_28", "relationship_29", "relationship_30"
+      ]
+    }
+  },
+  "social_type_mapping": {
+    "conflict_resolution": "mediation",
+    "consensus_building": "collective_decision",
+    "social_hierarchy": "stratification",
+    "cultural_communication": "interaction",
+    "community_leadership": "governance",
+    "relationship_maintenance": "cohesion"
+  }
+}

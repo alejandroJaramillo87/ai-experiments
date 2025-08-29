@@ -1061,9 +1061,9 @@
       }
     },
     {
-      "id": "sociolinguistic_01",
+      "id": "register_01",
       "name": "Test 76: Japanese Keigo Honorific System Workplace",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze Japanese keigo honorific system in workplace hierarchical communication",
       "prompt": "Analyze the Japanese keigo (honorific) system in this workplace conversation:\n\n社長がいらっしゃいます。お忙しいところ恐れ入ります。明日の会議についてご相談したいことがございます。田中部長がおっしゃったように、プロジェクトを早めに始めさせていただきたいと思います。\n\n(Shachō ga irasshaimasu. Oisogashii tokoro osore irimasu. Ashita no kaigi ni tsuite go-sōdan shitai koto ga gozaimasu. Tanaka-buchō ga osshatta yō ni, purojekuto wo hayameni hajimesasete itadakitai to omoimasu.)\n\nKeigo elements present:\n- いらっしゃる (irassharu) - respectful form of 'to be'\n- ございます (gozaimasu) - humble form of 'to exist/have'\n- おっしゃる (ossharu) - respectful form of 'to say'\n- させていただく (sasete itadaku) - humble requesting form\n\nWorkplace hierarchy markers:\n- 社長 (shachō) - company president\n- 部長 (buchō) - department manager\n- Different speech levels for different ranks\n\nKeigo analysis:\n- Identify the three keigo types (sonkeigo, kenjōgo, teineigo)\n- Analyze how hierarchy determines language choice\n- Explain the social functions of elaborate politeness\n- Compare with other Asian honorific systems\n- Evaluate the cultural values reflected in language structure\n\nProvide your analysis:",
@@ -1075,9 +1075,9 @@
       }
     },
     {
-      "id": "sociolinguistic_02", 
+      "id": "register_02", 
       "name": "Test 77: Korean Speech Levels Social Hierarchy",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic", 
       "description": "Analyze Korean speech level system reflecting social relationships and age hierarchy",
       "prompt": "Analyze Korean speech levels in these different social contexts:\n\n1. To elderly person: 할아버지, 어디 가세요? (harabeoji, eodi gaseyo?)\n2. To equal/friend: 어디 가? (eodi ga?)\n3. Formal setting: 어디로 가십니까? (eodiro gasimnikka?)\n4. To child: 어디 가니? (eodi gani?)\n\nKorean speech level features:\n- 높임말 (nopimmal) - honorific speech\n- 반말 (banmal) - casual speech  \n- 존댓말 (jondaetmal) - polite speech\n- Age, status, and familiarity factors\n- Verb ending modifications\n\nSocial hierarchy markers:\n- Age-based respect (유교 confucian influence)\n- Professional status considerations\n- Family relationship terms\n- Gender interaction patterns\n- Regional variation in politeness\n\nKorean speech level analysis:\n- Identify the different politeness levels used\n- Explain how age and status determine speech choice\n- Describe the Confucian cultural values reflected\n- Compare with Japanese keigo system\n- Analyze learning challenges for non-native speakers\n- Evaluate how social change affects traditional speech patterns\n\nProvide your analysis:",
@@ -1089,9 +1089,9 @@
       }
     },
     {
-      "id": "sociolinguistic_03",
+      "id": "register_03",
       "name": "Test 78: Javanese Speech Levels Kromo Ngoko System", 
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze Javanese elaborate speech level system with vocabulary replacement",
       "prompt": "Analyze the Javanese speech level system (unggah-ungguh basa) in these examples:\n\nNgoko (low/informal): Kowe arep menyang endi? (Where are you going?)\nKrama (middle/polite): Panjenengan badhe tindak pundi? (Where are you going?)\nKrama Inggil (high/very polite): Panjenengan badhe kesah pundi? (Where are you going?)\n\nVocabulary replacement patterns:\n- kowe → panjenengan (you)\n- arep → badhe (will/going to) \n- menyang → tindak/kesah (go)\n- endi → pundi (where)\n\nJavanese social stratification:\n- Priyayi (aristocratic class)\n- Wong cilik (common people)\n- Age and education factors\n- Traditional Javanese court culture influence\n- Regional variations across Java\n\nJavanese speech analysis:\n- Identify the complete vocabulary replacement system\n- Explain how social class determines speech choice\n- Describe the historical court culture influence\n- Compare with other Indonesian regional language hierarchies\n- Analyze the relationship between language and social mobility\n- Evaluate contemporary changes in traditional speech patterns\n\nProvide your analysis:",
@@ -1103,9 +1103,9 @@
       }
     },
     {
-      "id": "sociolinguistic_04",
+      "id": "register_04",
       "name": "Test 79: Thai Royal Language Rajasap Register",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze Thai royal language (rajasap) as specialized honorific register",
       "prompt": "Analyze Thai rajasap (royal language) used when referring to or addressing royalty:\n\nCommon Thai: กิน (gin) 'eat'\nRajasap: เสวย (saweei) 'eat' (for royalty)\n\nCommon Thai: นอน (non) 'sleep'\nRajasap: บรรทม (bantom) 'sleep' (for royalty)\n\nCommon Thai: เดิน (dəən) 'walk'  \nRajasap: เสด็จ (sadet) 'walk/proceed' (for royalty)\n\nCommon Thai: ตาย (taai) 'die'\nRajasap: สวรรคต (sawankot) 'pass away' (for royalty)\n\nRajasap characteristics:\n- Sanskrit/Pali vocabulary source\n- Completely different vocabulary for royal actions\n- Specific terms for royal body parts, possessions\n- Complex pronoun system for addressing royalty\n- Media and formal context usage\n\nThai royal language analysis:\n- Identify the Sanskrit/Pali linguistic sources\n- Explain the social function of specialized royal vocabulary\n- Describe how rajasap maintains royal status distinction\n- Compare with other Southeast Asian royal language systems\n- Analyze contemporary usage in media and politics\n- Evaluate the role of royal language in Thai national identity\n\nProvide your analysis:",
@@ -1117,9 +1117,9 @@
       }
     },
     {
-      "id": "sociolinguistic_05",
+      "id": "register_05",
       "name": "Test 80: Arabic Fusha vs Ammiya Diglossia",
-      "category": "sociolinguistic_registers", 
+      "category": "register_registers", 
       "language_type": "sociolinguistic",
       "description": "Analyze Arabic diglossia between formal fusha and colloquial dialects",
       "prompt": "Analyze Arabic diglossia between Modern Standard Arabic (fusha) and dialectal Arabic (ammiya):\n\nFusha (formal): أين تذهب غداً؟ (ayna tadh-hab ghadan?)\nEgyptian ammiya: رايح فين بكره؟ (rayiḥ fēn bukra?)\nLevantine ammiya: وين رايح بكرا؟ (wēn rayiḥ bukra?)\nGulf ammiya: وين تروح باچر؟ (wēn trūḥ bāčir?)\n\nAll meaning: 'Where are you going tomorrow?'\n\nDiglossic distribution:\n- Fusha: education, media, religion, formal writing\n- Ammiya: daily conversation, family, informal contexts\n- Code-switching between registers\n- Regional dialect variation\n- Religious/cultural prestige of fusha\n\nArabic sociolinguistic complexity:\n- Classical Arabic Quran connection\n- Pan-Arab identity through fusha\n- Local identity through dialect\n- Educational language policies\n- Media standardization efforts\n\nArabic diglossia analysis:\n- Identify the functional distribution of fusha vs. ammiya\n- Explain the religious and cultural prestige of formal Arabic\n- Describe regional dialect variation patterns\n- Analyze code-switching in different contexts\n- Compare with other diglossic situations globally\n- Evaluate tensions between standard and dialectal varieties\n\nProvide your analysis:",
@@ -1131,9 +1131,9 @@
       }
     },
     {
-      "id": "sociolinguistic_06",
+      "id": "register_06",
       "name": "Test 81: Hindi-Urdu Register Distinction",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic", 
       "description": "Analyze Hindi-Urdu register differences reflecting religious and social identity",
       "prompt": "Analyze register differences between Hindi and Urdu in formal contexts:\n\nHindi formal register: आपका स्वागत है। कृपया अपना परिचय दें। (Aapka swaagat hai. Kripaya apna parichay dein.)\nUrdu formal register: آپ کا استقبال ہے۔ برائے کرم اپنا تعارف کرائیں۔ (Aap ka istiqbaal hai. Baraa-e-karam apna ta'aaruf karaain.)\n\nBoth meaning: 'You are welcome. Please introduce yourself.'\n\nRegister differences:\n- Hindi: Sanskrit vocabulary (स्वागत swaagat, कृपया kripaya, परिचय parichay)\n- Urdu: Persian/Arabic vocabulary (استقبال istiqbaal, برائے کرم baraa-e-karam, تعارف ta'aaruf)\n- Script differences (Devanagari vs. Arabic)\n- Religious/cultural associations\n- Educational and media preferences\n\nSociolinguistic factors:\n- Hindu vs. Muslim community preferences\n- Educational language policies in India/Pakistan\n- Literary and media register choices\n- Political identity markers\n- Regional variation patterns\n\nHindi-Urdu analysis:\n- Identify the vocabulary source differences (Sanskrit vs. Persian/Arabic)\n- Explain how religious identity affects register choice\n- Describe the political dimensions of language naming\n- Analyze the role of script in identity marking\n- Compare with other politically divided languages\n- Evaluate contemporary standardization efforts\n\nProvide your analysis:",
@@ -1285,9 +1285,9 @@
       }
     },
     {
-      "id": "sociolinguistic_07",
+      "id": "register_07",
       "name": "Test 82: Japanese Keigo Honorific System Analysis",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze the Japanese keigo (honorific language) system and its social functions",
       "prompt": "Analyze Japanese keigo system in workplace contexts:\n\nSonkeigo (respectful language - elevating others):\n- いらっしゃる (irassharu) vs. いる (iru) 'to be'\n- くださる (kudasaru) vs. くれる (kureru) 'to give'\n- お/ご + verb stem + になる pattern\n- Used for superiors, customers, guests\n\nKenjougo (humble language - lowering self):\n- 申します (mōshimasu) vs. 言います (iimasu) 'to say'\n- いただく (itadaku) vs. もらう (morau) 'to receive'\n- お/ご + verb stem + する pattern\n- Used about one's own actions\n\nTeineigo (polite language):\n- です/である copula variations\n- ます/だ verb ending variations\n- Used for general politeness\n\nWorkplace example:\n部長がいらっしゃいました (buchō ga irasshaimashita)\n'The department manager has arrived' (respectful)\n\nvs.\n私が参りました (watashi ga mairimashita)\n'I have arrived' (humble)\n\nSocial functions:\n- Hierarchical relationships (age, status, position)\n- In-group/out-group distinctions (uchi/soto)\n- Formality levels in different contexts\n- Gender and regional variations\n- Generational changes in usage\n\nKeigo analysis:\n- Identify the three types of keigo and their functions\n- Explain how keigo reflects social hierarchy\n- Describe appropriate usage contexts for each form\n- Analyze the relationship between keigo and Japanese social structure\n- Compare with honorific systems in other languages\n- Evaluate changes in keigo usage among younger generations\n\nProvide your analysis:",
@@ -1299,9 +1299,9 @@
       }
     },
     {
-      "id": "sociolinguistic_08",
+      "id": "register_08",
       "name": "Test 83: Korean Age-Based Speech Levels",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze Korean speech level system based on age and social relationships",
       "prompt": "Analyze Korean speech level system in family and social contexts:\n\nFormal polite (하십시오체 - hasipsio-che):\n안녕하십니까? (annyeong-hasimnikka?) 'How are you?'\nUsed with: elderly, strangers, formal situations\n\nInformal polite (해요체 - haeyo-che):\n안녕하세요? (annyeong-haseyo?) 'How are you?'\nUsed with: peers, acquaintances, general politeness\n\nFamiliar (해체 - hae-che):\n안녕해? (annyeong-hae?) 'How are you?'\nUsed with: close friends, younger people, family\n\nIntimate (해라체 - haera-che):\n안녕? (annyeong?) 'How are you?'\nUsed with: very close friends, children\n\nAge hierarchy factors:\n- 형/누나 (hyeong/nuna) - older brother/sister terms\n- 언니/오빠 (eonni/oppa) - gendered age relationships\n- 선배/후배 (seonbae/hubae) - senior/junior dynamics\n- 아저씨/아줌마 (ajeossi/ajumma) - adult stranger terms\n\nSocial context variations:\n- Workplace hierarchy and speech levels\n- Educational settings (student-teacher relationships)\n- Service encounters (customer-clerk interactions)\n- Regional and generational differences\n- Impact of globalization on traditional patterns\n\nSpeech level analysis:\n- Identify the different speech levels and their social meanings\n- Explain how age relationships determine language choice\n- Describe the role of speech levels in maintaining social harmony\n- Analyze gender differences in speech level usage\n- Compare Korean speech levels with Japanese honorifics\n- Evaluate how modernization affects traditional speech patterns\n\nProvide your analysis:",
@@ -1313,9 +1313,9 @@
       }
     },
     {
-      "id": "sociolinguistic_09",
+      "id": "register_09",
       "name": "Test 84: Arabic Diglossia Classical vs Colloquial",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic", 
       "description": "Analyze Arabic diglossia between Classical/Modern Standard Arabic and colloquial varieties",
       "prompt": "Analyze Arabic diglossia using Egyptian Arabic context:\n\nClassical/Modern Standard Arabic (Fusha):\nهذا الكتاب مفيد جداً (hadha al-kitab mufid jiddan)\n'This book is very useful'\nUsed in: formal writing, news, education, religion\n\nEgyptian Colloquial Arabic:\nالكتاب ده مفيد قوي (il-kitab da mufid awi)\n'This book is very useful'\nUsed in: daily conversation, informal contexts\n\nDiglossic features:\n- High variety (H): Classical Arabic\n  * Learned through formal education\n  * Standardized grammar and vocabulary\n  * Used in formal/written contexts\n  * Associated with prestige and education\n\n- Low variety (L): Colloquial dialects\n  * Acquired naturally as mother tongue\n  * Regional variations in grammar/vocabulary\n  * Used in informal/spoken contexts\n  * Associated with intimacy and local identity\n\nCode-switching patterns:\n- Formal speech: increasing Classical features\n- Religious contexts: Classical Arabic preferred\n- Education: mixing of varieties by proficiency\n- Media: strategic use of both varieties\n- Social class correlations with variety choice\n\nSocial implications:\n- Educational challenges for speakers\n- Identity and authenticity issues\n- Standardization vs. dialectal diversity\n- Impact of media and globalization\n- Language planning and policy decisions\n\nDiglossia analysis:\n- Identify the characteristics of High and Low varieties\n- Explain the functional distribution of each variety\n- Describe code-switching patterns between varieties\n- Analyze social attitudes toward each variety\n- Compare Arabic diglossia with other diglossic situations\n- Evaluate the challenges and benefits of diglossia\n\nProvide your analysis:",
@@ -1327,9 +1327,9 @@
       }
     },
     {
-      "id": "sociolinguistic_10",
+      "id": "register_10",
       "name": "Test 85: Indian English Register Variations",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze register variations in Indian English across educational and social contexts",
       "prompt": "Analyze Indian English register variations in educational settings:\n\nFormal academic register:\n'The syllabus comprises various modules covering diverse aspects of literature.'\n- Standard grammatical structures\n- Academic vocabulary (comprise, modules, aspects)\n- Formal tone and syntax\n- Used in: lectures, academic writing, formal presentations\n\nInformal classroom register:\n'Today we are doing poetry, no? You all have copied the notes?'\n- Question tag 'no?' (substrate influence)\n- 'Doing' for 'studying' (semantic extension)\n- Direct address patterns\n- Used in: classroom interaction, student discussions\n\nCode-mixing patterns:\n'Sir, homework का deadline कब है?' (homework ka deadline kab hai?)\n'Sir, when is the homework's deadline?'\n- English academic terms + Hindi grammatical markers\n- Switching for emphasis or clarity\n- Bilingual competence demonstration\n\nRegister features:\n- Phonological: retroflex consonants, syllable-timed rhythm\n- Lexical: local terms (prepone, out-of-station, good name?)\n- Syntactic: different article usage, word order variations\n- Pragmatic: different politeness strategies\n\nSocial factors:\n- Educational background and register competence\n- Regional variations across Indian states\n- Generation differences in English usage\n- Social class and register accessibility\n- Professional vs. domestic domain usage\n\nRegister analysis:\n- Identify different registers in Indian English\n- Explain substrate language influences on register formation\n- Describe code-mixing patterns and their social functions\n- Analyze the relationship between education and register mastery\n- Compare Indian English registers with other post-colonial varieties\n- Evaluate attitudes toward different Indian English registers\n\nProvide your analysis:",
@@ -1341,9 +1341,9 @@
       }
     },
     {
-      "id": "sociolinguistic_11",
+      "id": "register_11",
       "name": "Test 86: Swahili Respect Register and Address Terms",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze Swahili respect register and address term system in East African contexts",
       "prompt": "Analyze Swahili respect registers and address terms in community contexts:\n\nRespectful address terms:\n- Mzee (elder) - for elderly men: 'Hujambo, Mzee!' 'How are you, Elder!'\n- Mama (mother) - for adult women: 'Asante, Mama!' 'Thank you, Mother!'\n- Bwana (sir/master) - for male authorities: 'Ndio, Bwana.' 'Yes, Sir.'\n- Bibi (lady/madam) - for female authorities: 'Pole, Bibi.' 'Sorry, Madam.'\n\nPlural of respect (using 'ni'):\nSingular: 'Wewe ni mkuu.' 'You are the boss.' (informal)\nPlural respect: 'Ninyi ni wakuu.' 'You (pl.) are bosses.' (respectful)\n\nFormal vs. informal greetings:\nFormal: 'Shikamoo, Mzee!' (respectful greeting to elders)\nResponse: 'Marahaba, mwanangu!' (blessing response)\n\nInformal: 'Mambo!' 'What's up!'\nResponse: 'Poa!' 'Cool!'\n\nContext-dependent register shifts:\n- Traditional ceremonies: heightened respect language\n- Market interactions: solidarity forms with bargaining\n- Religious contexts: Arabic-influenced formal register\n- Educational settings: respectful teacher-student patterns\n- Inter-ethnic communication: careful politeness strategies\n\nCultural values in language:\n- Ubuntu philosophy reflected in address terms\n- Age respect deeply embedded in linguistic choices\n- Community harmony through appropriate register use\n- Islamic influences on respectful language patterns\n- Colonial history impact on authority address terms\n\nSwahili respect analysis:\n- Identify different categories of respectful address terms\n- Explain the plural of respect construction and usage\n- Describe contextual factors determining register choice\n- Analyze how cultural values are encoded in respectful language\n- Compare Swahili respect system with other Bantu languages\n- Evaluate the role of respect language in community cohesion\n\nProvide your analysis:",
@@ -1355,9 +1355,9 @@
       }
     },
     {
-      "id": "sociolinguistic_12",
+      "id": "register_12",
       "name": "Test 87: French Tu/Vous Politeness System",
-      "category": "sociolinguistic_registers", 
+      "category": "register_registers", 
       "language_type": "sociolinguistic",
       "description": "Analyze the French T/V distinction and its sociolinguistic implications",
       "prompt": "Analyze French tu/vous usage patterns in contemporary contexts:\n\nTu (familiar) usage:\n'Tu viens ce soir?' 'Are you coming tonight?'\nUsed with: family, close friends, children, peers, intimate relationships\nImplies: solidarity, equality, intimacy, familiarity\n\nVous (formal/plural) usage:\n'Vous venez ce soir?' 'Are you coming tonight?'\nUsed with: strangers, superiors, elderly, formal contexts, multiple people\nImplies: respect, distance, formality, hierarchy\n\nSwitching dynamics:\n- Mutual agreement to switch from vous to tu (tutoiement)\n- Age-based asymmetric usage (adult uses tu to child, child uses vous to adult)\n- Professional contexts maintaining vous despite familiarity\n- Regional variations in switching patterns\n\nContextual examples:\nWorkplace: 'Vous pouvez m'aider?' (formal colleague interaction)\nFriends: 'Tu peux m'aider?' (informal peer interaction)\nCustomer service: 'Je peux vous aider?' (service politeness)\nFamily: 'Tu m'aides?' (intimate family context)\n\nSocial factors affecting choice:\n- Social class and education level\n- Generation differences (youth vs. elderly)\n- Regional variations (Paris vs. rural areas)\n- Professional hierarchies and workplace culture\n- Integration patterns for immigrants\n\nChanging patterns:\n- Increasing tu usage among young people\n- Customer service trend toward tu in informal businesses\n- Social media impact on pronoun usage\n- Globalization effects on traditional politeness\n\nT/V analysis:\n- Identify the social meanings of tu and vous\n- Explain factors determining pronoun choice\n- Describe switching patterns and their significance\n- Analyze generational and regional variations\n- Compare French T/V system with other European languages\n- Evaluate how social change affects traditional politeness systems\n\nProvide your analysis:",
@@ -1369,9 +1369,9 @@
       }
     },
     {
-      "id": "sociolinguistic_13",
+      "id": "register_13",
       "name": "Test 88: Nigerian Pidgin Register Flexibility",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze register variation in Nigerian Pidgin across different social contexts",
       "prompt": "Analyze Nigerian Pidgin register variations across social contexts:\n\nBasilectal (most pidgin-like) register:\n'I go chop rice for house.' 'I will eat rice at home.'\n- Minimal English influence\n- Substrate language structures\n- Used in: rural areas, informal peer interaction\n\nMesolectal (intermediate) register:\n'I go eat rice for the house.' 'I will eat rice at the house.'\n- Mixed pidgin and English features\n- Code-switching elements\n- Used in: urban contexts, mixed social groups\n\nAcrolectal (closest to English) register:\n'I will eat rice at home.' (Standard English)\n- Maximum English influence\n- Formal grammatical structures\n- Used in: education, formal contexts, upward mobility\n\nContextual switching:\nMarket interaction: 'How much you dey sell am?' (pidgin solidarity)\nOffice context: 'How much are you selling it?' (English formality)\nFriends: 'Wetin dey happen?' (pidgin intimacy)\nTeacher-student: 'What is happening?' (English respect)\n\nSocial functions:\n- Solidarity and in-group identity through pidgin use\n- Educational and social mobility through English competence\n- Regional identity markers through substrate influences\n- Inter-ethnic communication neutrality\n- Resistance to colonial language dominance\n\nRegister competence:\n- Multilingual speakers navigate all levels\n- Education level affects register range\n- Urban vs. rural exposure patterns\n- Generational differences in competence\n- Professional requirements for register switching\n\nPidgin register analysis:\n- Identify the three major register levels in Nigerian Pidgin\n- Explain contextual factors determining register choice\n- Describe social functions served by different registers\n- Analyze the relationship between register competence and social mobility\n- Compare Nigerian Pidgin registers with other contact language varieties\n- Evaluate attitudes toward different pidgin registers in society\n\nProvide your analysis:",
@@ -1383,9 +1383,9 @@
       }
     },
     {
-      "id": "sociolinguistic_14",
+      "id": "register_14",
       "name": "Test 89: Thai Royal Language Rajasap Register",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic", 
       "description": "Analyze Thai Rajasap (royal language) register and its contemporary usage",
       "prompt": "Analyze Thai Rajasap (royal language) register system:\n\nRajasap (royal language) features:\n'ทรงพระกรุณา' (song phra-kruna) vs. 'กรุณา' (kruna) 'kindness'\n'เสด็จ' (sadet) vs. 'ไป' (pai) 'to go' (royal movement)\n'ทรงพระราชดำริ' (song phra-ratchadamri) 'royal thoughts/opinions'\n- Special vocabulary for royal family actions\n- Elevated terms showing respect and distance\n- Complex honorific particles and prefixes\n\nHierarchical register levels:\n1. Rajasap: for royal family\n2. Formal polite: for superiors, formal situations\n3. Common polite: everyday politeness\n4. Familiar: with peers and juniors\n5. Intimate: with close family and friends\n\nContemporary usage contexts:\n- Official royal ceremonies and announcements\n- News reports about royal activities\n- Buddhist religious contexts (monks, temples)\n- Traditional Thai arts and classical literature\n- Tourist industry cultural performances\n\nSocial implications:\n- Maintaining traditional hierarchy and respect\n- Buddhist concepts of karma and social position\n- National identity through linguistic preservation\n- Educational requirements for cultural literacy\n- Generational knowledge gaps in register competence\n\nModern challenges:\n- Globalization and democratic values vs. traditional hierarchy\n- Young people's decreasing familiarity with complex registers\n- Media simplification of royal language for mass consumption\n- Tourism commodification of traditional language forms\n- Digital communication impact on formal register usage\n\nRajasap analysis:\n- Identify key features of Thai royal language register\n- Explain the hierarchical nature of Thai register system\n- Describe contemporary contexts where Rajasap is still used\n- Analyze tension between traditional hierarchy and modern values\n- Compare Thai royal language with other Southeast Asian court languages\n- Evaluate challenges to maintaining complex register systems in modern society\n\nProvide your analysis:",
@@ -1397,9 +1397,9 @@
       }
     },
     {
-      "id": "sociolinguistic_15",
+      "id": "register_15",
       "name": "Test 90: Russian Formal vs Informal Address",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze Russian ты/вы (ty/vy) distinction and name-patronymic address system",
       "prompt": "Analyze Russian formal vs. informal address patterns:\n\nTы (ty) - informal 'you':\n'Ты идёшь домой?' 'Are you going home?'\nUsed with: family, close friends, children, pets, God (prayer)\nImplies: intimacy, equality, solidarity, affection\n\nВы (vy) - formal/plural 'you':\n'Вы идёте домой?' 'Are you going home?'\nUsed with: strangers, superiors, elderly, formal contexts, multiple people\nImplies: respect, politeness, social distance, hierarchy\n\nName-patronymic system:\nInformal: 'Привет, Саша!' 'Hi, Sasha!' (diminutive first name)\nFormal: 'Здравствуйте, Александр Иванович!' 'Hello, Alexander Ivanovich!'\n- Patronymic = father's name + -ович/-евич (male) or -овна/-евна (female)\n- Shows respect and acknowledges family lineage\n- Required in professional and formal contexts\n\nWorkplace dynamics:\n- Boss to employee: Вы + name-patronymic (respectful authority)\n- Employee to boss: Вы + name-patronymic (deferential respect)\n- Colleagues: may use ты + first name (workplace solidarity)\n- Customer service: obligatory Вы usage\n\nSocial factors:\n- Soviet era: attempted ты democratization\n- Post-Soviet: return to traditional formality patterns\n- Regional variations in formality expectations\n- Professional hierarchy and address protocol\n- Integration challenges for foreign speakers\n\nChanging patterns:\n- Internet communication increasing ты usage\n- International business influence on formality\n- Generational differences in address expectations\n- Urban vs. rural formality patterns\n\nRussian address analysis:\n- Identify the functions of ты vs. вы in social interaction\n- Explain the name-patronymic system and its cultural significance\n- Describe workplace hierarchy reflected in address patterns\n- Analyze historical and contemporary changes in formality patterns\n- Compare Russian address system with other Slavic languages\n- Evaluate the role of formal address in maintaining social relationships\n\nProvide your analysis:",
@@ -1411,9 +1411,9 @@
       }
     },
     {
-      "id": "sociolinguistic_16",
+      "id": "register_16",
       "name": "Test 91: Chinese Regional Politeness Variations",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze regional variations in Chinese politeness strategies across different dialects",
       "prompt": "Analyze Chinese regional politeness variations between Mandarin and Cantonese:\n\nMandarin (Beijing) politeness:\n'请问...' (qǐngwèn...) 'May I ask...'\n'麻烦您...' (máfan nín...) 'Sorry to trouble you...'\n'您' (nín) - respectful 'you' pronoun\n- Formal particle usage: 请, 麻烦, 劳驾\n- Honorific pronouns distinguishing respect levels\n- Indirect request formulations\n\nCantonese (Hong Kong) politeness:\n'唔該...' (m̀h-gōi...) 'Please/excuse me...'\n'勞煩你...' (lòuh-fàahn-néih...) 'Sorry to trouble you...'\n'你' (néih) - general 'you' (no formal equivalent to Mandarin 您)\n- Frequent 唔該 usage for multiple functions\n- Different tonal patterns affecting politeness perception\n- British influence on formal register development\n\nBusiness context differences:\nMandarin: '您能帮我一下吗?' (nín néng bāng wǒ yīxià ma?)\n'Could you help me?' (formal pronoun + modal softening)\n\nCantonese: '你可唔可以幫我手?' (néih hó-m̀h-hó-yíh bōng ngóh sáu?)\n'Could you help me?' (modal repetition + colloquial phrasing)\n\nRegional attitudes:\n- Northern Chinese: emphasis on hierarchical formality\n- Southern Chinese: emphasis on relationship harmony\n- Taiwan: Japanese influence on politeness patterns\n- Singapore: English code-switching in polite strategies\n- Overseas communities: heritage language politeness evolution\n\nGenerational differences:\n- Traditional patterns vs. globalized communication styles\n- Internet language impact on formal register usage\n- Western business culture influence on Chinese politeness\n- Education system role in maintaining formal registers\n\nRegional politeness analysis:\n- Identify key differences between Mandarin and Cantonese politeness strategies\n- Explain cultural factors underlying regional politeness variations\n- Describe how business contexts reveal different politeness approaches\n- Analyze the impact of globalization on traditional Chinese politeness\n- Compare regional Chinese politeness with other Chinese dialect areas\n- Evaluate challenges of maintaining regional politeness distinctiveness\n\nProvide your analysis:",
@@ -1425,9 +1425,9 @@
       }
     },
     {
-      "id": "sociolinguistic_17",
+      "id": "register_17",
       "name": "Test 92: Javanese Speech Level Complexity",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze the complex Javanese speech level system (ngoko, madya, krama)",
       "prompt": "Analyze Javanese speech level system complexity:\n\nNgoko (informal/low level):\n'Kowe arep menyang ngendi?' 'Where are you going?'\n- Used with: close friends, family, social inferiors\n- Informal vocabulary and verb forms\n- Direct, unadorned expression\n\nMadya (intermediate level):\n'Sampeyan arep tindak pundi?' 'Where are you going?'\n- Used with: acquaintances, careful politeness\n- Mixed vocabulary from ngoko and krama\n- Moderate formality level\n\nKrama (formal/high level):\n'Panjenengan badhe tindak pundi?' 'Where are you going?'\n- Used with: superiors, elders, strangers, formal contexts\n- Honorific vocabulary and respectful verb forms\n- Maximum politeness and formality\n\nVocabulary stratification:\nNgoko: mangan (eat), turu (sleep), omah (house)\nKrama: dhahar (eat), sare (sleep), griya (house)\n- Complete vocabulary sets for different registers\n- No simple grammatical transformation between levels\n- Must learn separate vocabulary for each register\n\nSocial hierarchy factors:\n- Age: younger to older requires higher speech levels\n- Social class: traditional aristocracy maintains krama usage\n- Education: krama competence signals cultural education\n- Regional origin: court areas (Yogyakarta, Solo) maintain complexity\n- Urban vs. rural: urban areas showing register simplification\n\nContemporary challenges:\n- Younger generation losing krama competence\n- Indonesian language dominance in formal contexts\n- Modernization reducing traditional social hierarchies\n- Educational system role in language maintenance\n- Cultural identity vs. communication efficiency tensions\n\nJavanese register analysis:\n- Identify the three main Javanese speech levels and their characteristics\n- Explain the vocabulary stratification system across registers\n- Describe social factors determining appropriate speech level choice\n- Analyze contemporary challenges to maintaining the complex system\n- Compare Javanese speech levels with other hierarchical language systems\n- Evaluate the cultural significance of preserving complex register systems\n\nProvide your analysis:",
@@ -1439,9 +1439,9 @@
       }
     },
     {
-      "id": "sociolinguistic_18",
+      "id": "register_18",
       "name": "Test 93: German Sie/Du Business Protocol Evolution",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze the evolution of German formal/informal address in modern business contexts",
       "prompt": "Analyze German Sie/Du protocol evolution in business contexts:\n\nTraditional business formality:\n'Können Sie mir bitte helfen?' 'Can you please help me?' (Sie)\n- Obligatory Sie usage between all colleagues regardless of age\n- Herr/Frau + surname addressing protocol\n- Formal distance maintained in professional relationships\n- Clear hierarchy reflected in language choices\n\nModern tech company culture:\n'Kannst du mir bitte helfen?' 'Can you please help me?' (Du)\n- Immediate Du usage as company policy\n- First name addressing from day one\n- Egalitarian workplace culture expression\n- American business influence on German practices\n\nGenerational workplace dynamics:\nYoung colleague to older colleague:\nTraditional: 'Herr Schmidt, können Sie...?' (formal respect)\nModern: 'Klaus, kannst du...?' (egalitarian approach)\n\nTransition negotiations:\n'Wollen wir uns duzen?' 'Should we use Du with each other?'\n- Explicit agreement needed for Sie→Du transition\n- Usually initiated by higher status person\n- Symbolic barrier removal in relationships\n- Can't easily reverse back to Sie\n\nIndustry variations:\n- Law, banking, government: Sie maintenance\n- Tech, startups, creative: Du normalization\n- International companies: English influence reducing formality\n- Customer service: Sie preservation for client respect\n- Internal vs. external communication protocols\n\nCultural implications:\n- Work-life boundary negotiation through language\n- Authority and hierarchy questioning through Du adoption\n- Integration challenges for international employees\n- Generational conflict over appropriate workplace language\n- German identity and business culture adaptation\n\nEvolution factors:\n- Globalization and international business practices\n- Silicon Valley startup culture influence\n- Demographic changes and younger workforce expectations\n- Remote work impact on formal protocols\n- Cultural conservatism vs. modernization tensions\n\nGerman business protocol analysis:\n- Identify traditional vs. modern Sie/Du business usage patterns\n- Explain factors driving change in German workplace formality\n- Describe industry variations in address protocol adoption\n- Analyze generational and cultural conflicts over language formality\n- Compare German business language evolution with other Germanic languages\n- Evaluate implications of formality reduction for German business culture\n\nProvide your analysis:",
@@ -1453,9 +1453,9 @@
       }
     },
     {
-      "id": "sociolinguistic_19",
+      "id": "register_19",
       "name": "Test 94: Spanish Regional Register Variations",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze regional variations in Spanish formality and address systems across different countries",
       "prompt": "Analyze Spanish regional register variations across different countries:\n\nSpain (Peninsular Spanish) formality:\n'¿Podría usted ayudarme?' 'Could you help me?'\n- Usted usage for strangers, elderly, formal situations\n- Tú for peers, informal contexts\n- Clear formality boundaries maintained\n- Regional variations: Andalusia more informal than Castile\n\nMexico formality patterns:\n'¿Me podría ayudar?' 'Could you help me?'\n- Increased usted usage compared to Spain\n- Respectful tone even in informal contexts\n- Diminu- tives for politeness softening: 'Ayúdeme por favorcito'\n- Indigenous language influence on respect patterns\n\nArgentina: Vos system\n'¿Me podés ayudar?' 'Can you help me?'\n- Vos instead of tú in most contexts\n- Different conjugation: vos tenés vs. tú tienes\n- Usted for formal situations, but less frequent\n- Italian immigration influence on intonation patterns\n\nColombia: Complex regional variation\nCoast: more informal, frequent tuteo\nBogotá: formal ustedeo maintained\nMedellín: mixed voseo/tuteo patterns\n'¿Usted me puede colaborar?' (respectful usted usage)\n\nBusiness context differences:\nSpain: 'Señor García, ¿podríamos hablar?' (formal distance)\nMexico: 'Licenciado García, ¿podríamos platicar?' (professional titles)\nArgentina: 'García, ¿charlamos?' (direct, egalitarian)\n\nSocial class implications:\n- Upper classes: maintain traditional formality\n- Middle classes: adopt modern informality selectively\n- Working classes: regional patterns preserved\n- Professional contexts: standardization pressures\n- Generational shifts toward informality globally\n\nSpanish register analysis:\n- Identify major regional differences in Spanish formality systems\n- Explain historical and cultural factors underlying regional variations\n- Describe the vos/tú/usted system variations across countries\n- Analyze social class and generational factors in register use\n- Compare business formality expectations across Spanish-speaking regions\n- Evaluate standardization pressures vs. regional distinctiveness maintenance\n\nProvide your analysis:",
@@ -1467,9 +1467,9 @@
       }
     },
     {
-      "id": "sociolinguistic_20",
+      "id": "register_20",
       "name": "Test 95: Hindi-Urdu Shared Politeness with Religious Variation",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze shared Hindi-Urdu politeness system with religious and cultural register variations",
       "prompt": "Analyze Hindi-Urdu politeness variations across religious communities:\n\nShared grammatical politeness:\nInformal: तू/तُو (tū) 'you' (intimate)\nRespectful: आप/آپ (āp) 'you' (formal)\nVerb agreement: आप जाते हैं/آپ جاتے ہیں (āp jāte haĩ) 'you go' (respectful)\n- Identical grammatical respect marking system\n- Same honorific-neutral-familiar pronoun hierarchy\n\nReligious community variations:\nHindu context:\n'नमस्ते, आपका स्वागत है।' (Namaste, āpkā svāgat hai)\n'Hello, welcome.' (Sanskrit-derived formal greeting)\n- Sanskrit vocabulary for formal/religious contexts\n- Traditional Hindu respect expressions\n\nMuslim context:\n'السلام علیکم، آپ کا استقبال ہے।' (Assalāmu alaikum, āpkā istiqbāl hai)\n'Peace be upon you, welcome.' (Arabic-derived formal greeting)\n- Persian-Arabic vocabulary for formal/religious contexts\n- Islamic respect expressions\n\nBusiness formality (neutral context):\n'जी हाँ/جی ہاں (jī hāñ), मैं आपकी मदद कर सकता हूँ/میں آپ کی مدد کر سکتا ہوں'\n'Yes sir/madam, I can help you.'\n- Shared formality markers: जी/جی (jī) respectful particle\n- Common professional politeness strategies\n\nRegional variations:\nDelhi: Mixed Hindi-Urdu-English in business\nLucknow: Preserved Urdu tehzeeb (refined culture)\nMumbai: Pragmatic code-switching for communication\nKarachi: Urdu dominant with English business terms\n\nContemporary dynamics:\n- Bollywood creating shared informal register\n- Political polarization affecting language choice\n- Educational system impact on register competence\n- Globalization reducing traditional formality distinctions\n- Inter-community marriage creating hybrid patterns\n\nHindi-Urdu politeness analysis:\n- Identify shared grammatical politeness features between Hindi and Urdu\n- Explain religious community variations in formal vocabulary choice\n- Describe contextual factors determining Hindi vs. Urdu register use\n- Analyze regional differences in Hindi-Urdu politeness patterns\n- Compare contemporary changes affecting traditional politeness systems\n- Evaluate the role of shared politeness in inter-community communication\n\nProvide your analysis:",
@@ -1481,9 +1481,9 @@
       }
     },
     {
-      "id": "sociolinguistic_21",
+      "id": "register_21",
       "name": "Test 96: Vietnamese Pronoun System Social Hierarchy",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze Vietnamese complex kinship-based pronoun system reflecting social relationships",
       "prompt": "Analyze Vietnamese kinship pronoun system in family and social contexts:\n\nFamily-based pronouns (literal kinship terms):\nAnh/Em relationship:\n- Anh: older brother → 'you' (to older male)\n- Em: younger sibling → 'I' (from younger person)\n- Reciprocal usage maintaining age hierarchy\n\nChị/Em relationship:\n- Chị: older sister → 'you' (to older female)  \n- Em: younger sibling → 'I' (from younger person)\n- Gender and age distinction maintained\n\nExtended kinship pronouns:\n- Cô: aunt → 'you' (to woman of aunt's generation)\n- Chú: uncle → 'you' (to man of uncle's generation)\n- Bác: older aunt/uncle → 'you' (to older generation)\n- Ông/Bà: grandfather/grandmother → 'you' (to elderly)\n\nWorkplace application:\nYoung employee to older colleague:\n'Anh có thể giúp em không?' \n'Older brother can help younger sibling?'\n= 'Can you help me?'\n\nSame age colleagues:\n'Bạn có thể giúp mình không?'\n'Friend can help me?'\n= Neutral equality relationship\n\nSocial implications:\n- Age hierarchy deeply embedded in daily language\n- Gender distinctions required for appropriate communication\n- Family metaphor extending to all social relationships\n- Confucian values reflected in linguistic structure\n- Respect automatically encoded in pronoun choice\n\nContemporary challenges:\n- Urban youth adopting simplified pronoun systems\n- International business requiring neutral pronouns\n- Overseas Vietnamese communities losing complexity\n- Gender equality movements questioning traditional patterns\n- Globalization pressure for efficient communication\n\nRegional variations:\n- Northern Vietnam: more conservative kinship usage\n- Southern Vietnam: some simplification and flexibility\n- Overseas communities: heritage language evolution\n\nVietnamese pronoun analysis:\n- Identify the kinship-based structure of Vietnamese pronouns\n- Explain how age and gender hierarchies are encoded linguistically\n- Describe the extension of family terms to social relationships\n- Analyze contemporary challenges to traditional pronoun complexity\n- Compare Vietnamese system with other Southeast Asian kinship pronouns\n- Evaluate the cultural significance of maintaining kinship-based address\n\nProvide your analysis:",
@@ -1495,9 +1495,9 @@
       }
     },
     {
-      "id": "sociolinguistic_22",
+      "id": "register_22",
       "name": "Test 97: Ethiopian Amharic Respect Language",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze Ethiopian Amharic respect language system and its cultural foundations",
       "prompt": "Analyze Amharic respect language system in Ethiopian cultural contexts:\n\nRespectful address terms:\n- ወይዘሮ (wäyzäro) 'Mrs./Madam' for married women\n- ወይዘሪት (wäyzärit) 'Miss' for unmarried women\n- አቶ (ato) 'Mr./Sir' for adult men\n- ሻሌቃ (šaleqa), ዲጃዝማች (diǧazmač) - traditional title preservation\n\nAge hierarchy markers:\n- አባት (abat) 'father' → respectful term for elderly men\n- እናት (inat) 'mother' → respectful term for elderly women\n- አሳ/አሣ (asa) 'older brother/sister' → peer respect\n- ወንድም/እህት (wändim/iht) 'brother/sister' → family solidarity\n\nReligious formality:\nChristian context: 'በእግዚአብሔር ስም' (bäigziabher sim) 'In God's name'\nMuslim context: 'በአላህ ስም' (bäallah sim) 'In Allah's name'\n- Religious invocation for formal politeness\n- Blessing-based respectful language patterns\n- Interfaith politeness accommodation\n\nGenerational respect patterns:\nYoung to elder: 'አባትዎ እንዴት ነዎት?' (abatwo indet näwot?)\n'How are you, father?' (respectful elderly address)\nPeer interaction: 'እንዴት ነህ?' (indet näh?)\n'How are you?' (familiar address)\n\nCultural values in language:\n- Ethiopian Orthodox Christian influence on formal language\n- Highland agricultural community hierarchy patterns\n- Respect for age and wisdom traditional values\n- Hospitality culture reflected in greeting elaborateness\n- Traditional authority structures maintained linguistically\n\nContemporary adaptations:\n- Urban educated youth modifying traditional patterns\n- Ethnic federalism promoting multilingual respect systems\n- International business requiring simplified formality\n- Diaspora communities maintaining heritage respect patterns\n- Modern education balancing tradition with efficiency\n\nEthnic group interactions:\n- Amharic as lingua franca requiring respectful usage\n- Inter-ethnic politeness strategies\n- Cultural sensitivity in multilingual contexts\n- Traditional leadership respect across ethnic boundaries\n\nAmharic respect analysis:\n- Identify key components of Amharic respectful address system\n- Explain the role of age hierarchy in respectful language usage\n- Describe religious and cultural foundations of respect patterns\n- Analyze contemporary changes in traditional respect language\n- Compare Amharic respect system with other Ethiopian languages\n- Evaluate the function of respect language in Ethiopian social cohesion\n\nProvide your analysis:",
@@ -1509,9 +1509,9 @@
       }
     },
     {
-      "id": "sociolinguistic_23",
+      "id": "register_23",
       "name": "Test 98: Maori Formal vs Informal Registers",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze Maori language formal and informal registers in traditional and contemporary contexts",
       "prompt": "Analyze Maori formal vs. informal register variations:\n\nFormal ceremonial register (powhiri/marae contexts):\n'Tēnā koutou katoa' 'Greetings to all of you'\n- Plural inclusive pronouns for respectful address\n- Formal greeting sequences following traditional protocol\n- Elaborate honorific expressions for ancestors and guests\n- Classical vocabulary and traditional phrase structures\n\nInformal everyday register:\n'Kia ora' 'Hello/Hi'\n- Casual greeting without ceremonial elaboration\n- Simplified pronoun usage\n- English loanword integration common\n- Conversational tone and direct expression\n\nTraditional marae protocol language:\n'Haere mai, haere mai, haere mai!' 'Welcome, welcome, welcome!'\n- Triplication for emphasis and spiritual significance\n- Formal welcoming speeches (mihi/whaikōrero)\n- Genealogical recitation connecting people and places\n- Sacred language for spiritual and ancestral contexts\n\nContemporary code-switching:\n'Kia ora, bro, how's your whānau?' \n- Maori greeting + English slang + Maori kinship term\n- Natural mixing in informal peer contexts\n- Cultural identity marking through strategic Maori use\n- Solidarity building through shared linguistic resources\n\nEducational context registers:\nKōhanga Reo: total Maori immersion with formal learning structures\nKura Kaupapa: academic Maori with traditional cultural integration\nUniversity: academic discourse combining traditional and modern concepts\n\nRevitalization challenges:\n- Formal register competence requiring cultural education\n- Young speakers more confident in informal registers\n- Elder knowledge essential for ceremonial language\n- Urban vs. tribal area usage pattern differences\n- Media and technology creating new register contexts\n\nCultural significance:\n- Marae protocol maintaining traditional formality\n- Informal usage supporting daily communication needs\n- Register choice expressing cultural identity and connection\n- Intergenerational transmission of formal knowledge\n- Balance between accessibility and traditional authenticity\n\nMaori register analysis:\n- Identify differences between formal ceremonial and informal everyday Maori\n- Explain the cultural significance of marae protocol language\n- Describe contemporary code-switching patterns in Maori-English contexts\n- Analyze challenges in maintaining formal register competence\n- Compare traditional vs. modern contexts for Maori register use\n- Evaluate the role of register variation in Maori language revitalization\n\nProvide your analysis:",
@@ -1523,9 +1523,9 @@
       }
     },
     {
-      "id": "sociolinguistic_24",
+      "id": "register_24",
       "name": "Test 99: Turkish Regional Formality Differences",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze Turkish regional differences in formality patterns across different areas of Turkey",
       "prompt": "Analyze Turkish regional formality variations across different regions:\n\nIstanbul (cosmopolitan) formality:\n'Merhaba, nasılsınız?' 'Hello, how are you?' (formal)\n'Selam, nasılsın?' 'Hi, how are you?' (informal)\n- Quick transition to informal address in business/social contexts\n- European influence reducing traditional hierarchical patterns\n- Urban professional culture adopting egalitarian communication\n- International exposure normalizing casual interaction styles\n\nAnatolian (traditional) formality:\n'Selamün aleyküm, nasılsınız efendim?' \n'Peace be upon you, how are you, sir/madam?'\n- Maintained Islamic greeting patterns\n- Respectful 'efendim' usage preserving hierarchy\n- Age and social status strictly observed in language\n- Traditional rural community respect patterns\n\nBlack Sea region (informal solidarity):\n'Günaydın kardeşim!' 'Good morning, my brother!'\n- Kinship terms for strangers creating immediate solidarity\n- Regional dialect features in informal contexts\n- Community-oriented respectful familiarity\n- Maritime culture influence on direct communication\n\nSoutheast (Kurdish influence) patterns:\n'Çawa yî?' (Kurdish) mixed with 'Nasılsın?' (Turkish)\n- Bilingual formality strategies\n- Kurdish cultural respect patterns influencing Turkish usage\n- Inter-ethnic politeness accommodations\n- Traditional tribal hierarchy reflected in language choice\n\nGenerational workplace dynamics:\nTraditional: 'Müdür Bey, müsaade ederseniz...' \n'Director Sir, if you permit...'\nModern: 'Ali Bey, şöyle bir konuşabilir miyiz?'\n'Ali Sir, could we talk about something?'\n\nEducational context variations:\n- University: increasingly informal professor-student interaction\n- Traditional schools: maintained respect hierarchy\n- Private schools: international formality patterns\n- Regional schools: local community formality expectations\n\nBusiness evolution:\n- Traditional Turkish companies: hierarchical formality maintained\n- International companies: English influence reducing formality\n- Startup culture: deliberate informality adoption\n- Customer service: regional adaptation of politeness strategies\n\nTurkish regional formality analysis:\n- Identify major regional differences in Turkish formality patterns\n- Explain cultural and historical factors underlying regional variations\n- Describe the impact of urbanization on traditional respect patterns\n- Analyze generational differences in formality expectations across regions\n- Compare workplace and educational formality evolution patterns\n- Evaluate tensions between traditional hierarchy and modern egalitarianism\n\nProvide your analysis:",
@@ -1537,9 +1537,9 @@
       }
     },
     {
-      "id": "sociolinguistic_25",
+      "id": "register_25",
       "name": "Test 100: Senegalese Wolof Respect Terminology",
-      "category": "sociolinguistic_registers",
+      "category": "register_registers",
       "language_type": "sociolinguistic",
       "description": "Analyze Wolof respect terminology and its role in Senegalese social hierarchy maintenance",
       "prompt": "Analyze Wolof respect terminology in Senegalese social contexts:\n\nAge-based respect terms:\n- Mag (elder): 'Nanga def, Mag?' 'How are you, Elder?'\n- Baay (father): respectful term for older men beyond family\n- Yaay (mother): respectful term for older women beyond family\n- Rakk (younger sibling): solidarity term for peers/juniors\n\nProfessional respect markers:\n- Seriñ (Islamic religious leader): 'Seriñ bi, seen na leen?' 'Teacher, have you seen them?'\n- Jaraaf (chief/traditional leader): 'Jaraaf ji, nu ngay def?' 'Chief, what are we doing?'\n- Jàngalekat (teacher): 'Jàngalekat bi mu ngi fi' 'The teacher is here'\n- Doktoor (doctor): French borrowing with respect implications\n\nIslamic politeness integration:\n'As-salaam alaikum' → 'Salaam aleekum' (Wolofized)\n'Alhamdulillah' → 'Alxamdulillaahi' (praise expressions)\n- Arabic Islamic formulas integrated into Wolof respect system\n- Prayer-based greetings for formal religious contexts\n- Blessing invocations in respectful discourse\n\nCaste-related terminology (traditional but sensitive):\n- Géer (noble/freeborn): traditional social categorization\n- Ñeeño (artisan castes): specialized professional groups\n- Historical respect patterns vs. modern egalitarian values\n- Contemporary avoidance of explicit caste reference\n\nTeranga (hospitality) language:\n'Dalal ak jamm rekk' 'Peace and tranquility only'\n- Hospitality values encoded in respectful expressions\n- Guest-host relationship formalized linguistically\n- Community harmony prioritized in respectful interaction\n- Conflict avoidance through careful respectful language\n\nUrban vs. rural patterns:\nUrban Dakar: French influence modifying traditional respect\nRural areas: maintained traditional respect terminology\nMixed contexts: code-switching between Wolof, French, Arabic respect forms\n\nContemporary adaptations:\n- Education system impact on traditional respect patterns\n- Youth adaptation of respect terminology\n- Globalization influence on hierarchical language\n- Diaspora communities maintaining heritage respect patterns\n- Islamic revival strengthening Arabic respect integration\n\nWolof respect terminology analysis:\n- Identify key categories of Wolof respect terms and their usage\n- Explain the integration of Islamic elements into traditional respect patterns\n- Describe the role of respect terminology in maintaining social harmony\n- Analyze contemporary tensions between traditional hierarchy and modern equality\n- Compare Wolof respect system with other West African languages\n- Evaluate the function of teranga values in respectful linguistic interaction\n\nProvide your analysis:",

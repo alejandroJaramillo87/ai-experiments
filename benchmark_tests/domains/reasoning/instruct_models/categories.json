@@ -88,8 +88,8 @@
       "test_range": [11, 20],
       "difficulty": "easy",
       "test_ids": [
-        "ambiguity_handling_01", "ambiguity_handling_02", "ambiguity_handling_03", "ambiguity_handling_04", "ambiguity_handling_05",
-        "ambiguity_handling_06", "ambiguity_handling_07", "ambiguity_handling_08", "ambiguity_handling_09", "ambiguity_handling_10"
+        "ambiguity_01", "ambiguity_02", "ambiguity_03", "ambiguity_04", "ambiguity_05",
+        "ambiguity_06", "ambiguity_07", "ambiguity_08", "ambiguity_09", "ambiguity_10"
       ]
     },
     "creative_thinking": {
@@ -99,8 +99,8 @@
       "test_range": [21, 30],
       "difficulty": "easy",
       "test_ids": [
-        "creative_thinking_01", "creative_thinking_02", "creative_thinking_03", "creative_thinking_04", "creative_thinking_05",
-        "creative_thinking_06", "creative_thinking_07", "creative_thinking_08", "creative_thinking_09", "creative_thinking_10"
+        "creative_01", "creative_02", "creative_03", "creative_04", "creative_05",
+        "creative_06", "creative_07", "creative_08", "creative_09", "creative_10"
       ]
     },
     "strategic_thinking": {
@@ -110,8 +110,8 @@
       "test_range": [31, 40],
       "difficulty": "easy",
       "test_ids": [
-        "strategic_thinking_01", "strategic_thinking_02", "strategic_thinking_03", "strategic_thinking_04", "strategic_thinking_05",
-        "strategic_thinking_06", "strategic_thinking_07", "strategic_thinking_08", "strategic_thinking_09", "strategic_thinking_10"
+        "strategic_01", "strategic_02", "strategic_03", "strategic_04", "strategic_05",
+        "strategic_06", "strategic_07", "strategic_08", "strategic_09", "strategic_10"
       ]
     },
     "constraint_following": {
@@ -121,8 +121,8 @@
       "test_range": [41, 50],
       "difficulty": "easy",
       "test_ids": [
-        "constraint_following_01", "constraint_following_02", "constraint_following_03", "constraint_following_04", "constraint_following_05",
-        "constraint_following_06", "constraint_following_07", "constraint_following_08", "constraint_following_09", "constraint_following_10"
+        "constraint_01", "constraint_02", "constraint_03", "constraint_04", "constraint_05",
+        "constraint_06", "constraint_07", "constraint_08", "constraint_09", "constraint_10"
       ]
     }
   }
