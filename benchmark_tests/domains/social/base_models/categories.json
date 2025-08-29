@@ -83,6 +83,21 @@
         "relationship_21", "relationship_22", "relationship_23", "relationship_24", "relationship_25",
         "relationship_26", "relationship_27", "relationship_28", "relationship_29", "relationship_30"
       ]
+    },
+    "intercultural_competence": {
+      "description": "Advanced cross-cultural social navigation and multicultural community building",
+      "social_focus": "cultural bridge-building, identity negotiation, multicultural facilitation, cross-cultural conflict transformation, global community formation",
+      "complexity_level": "advanced",
+      "temperature_range": [0.3, 0.6],
+      "test_range": [181, 210],
+      "test_ids": [
+        "intercultural_01", "intercultural_02", "intercultural_03", "intercultural_04", "intercultural_05",
+        "intercultural_06", "intercultural_07", "intercultural_08", "intercultural_09", "intercultural_10",
+        "intercultural_11", "intercultural_12", "intercultural_13", "intercultural_14", "intercultural_15",
+        "intercultural_16", "intercultural_17", "intercultural_18", "intercultural_19", "intercultural_20",
+        "intercultural_21", "intercultural_22", "intercultural_23", "intercultural_24", "intercultural_25",
+        "intercultural_26", "intercultural_27", "intercultural_28", "intercultural_29", "intercultural_30"
+      ]
     }
   },
   "social_type_mapping": {
@@ -91,6 +106,7 @@
     "social_hierarchy": "stratification",
     "cultural_communication": "interaction",
     "community_leadership": "governance",
-    "relationship_maintenance": "cohesion"
+    "relationship_maintenance": "cohesion",
+    "intercultural_competence": "cross_cultural_navigation"
   }
 }

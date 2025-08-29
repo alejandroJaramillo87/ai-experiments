@@ -2,8 +2,8 @@
   "suite_info": {
     "name": "Language Base Model Easy Tests",
     "description": "Comprehensive language domain tests covering global linguistic diversity, from proto-languages to modern multilingual contexts",
-    "total_tests": 200,
-    "version": "1.0.0",
+    "total_tests": 230,
+    "version": "1.1.0",
     "difficulty": "easy",
     "target_models": "base_models",
     "coverage_scope": "global_linguistic_diversity",
@@ -2806,6 +2806,426 @@
       "parameters": {
         "max_tokens": 380,
         "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_01",
+      "name": "Test 201: Heritage Language Identity Navigation",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate complex identity choices in heritage language maintenance within multicultural family systems",
+      "prompt": "A third-generation Korean-American family is facing intergenerational tension about language use. The grandmother speaks primarily Korean and feels disconnected from her grandchildren who prefer English. The parents are caught between maintaining Korean cultural identity and ensuring their children's success in American society. The teenagers feel pressure to use Korean at home but struggle with proficiency and feel embarrassed about their accent when speaking with Korean visitors. The family must discuss education choices, including Korean Saturday school, heritage language maintenance, and cultural identity preservation. Navigate this multilingual family dynamic, considering: How can different family members express their needs and concerns? What code-switching patterns might emerge in family discussions? How can the family honor both Korean cultural values and American integration needs? Address issues of linguistic identity, intergenerational communication, cultural preservation, and power dynamics in multilingual families.",
+      "parameters": {
+        "max_tokens": 420,
+        "temperature": 0.5,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_02",
+      "name": "Test 202: Professional Code-Switching Dynamics",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in professional settings with multicultural colleagues and power dynamics",
+      "prompt": "In a multinational tech company, Maya (Indian-English bilingual) must present a project to a diverse team including: Ahmed (Arabic-English), Chen (Mandarin-English), Maria (Spanish-English), and monolingual English speakers. The presentation discusses AI ethics, requiring precise technical language, but the team's informal culture encourages cultural expression. Maya notices that switching to Hindi technical terms sometimes clarifies concepts for Ahmed (who knows Urdu), but excludes others. She must balance professional credibility, cultural authenticity, inclusion, and technical precision. The meeting involves brainstorming, formal presentations, and casual problem-solving discussions. Different languages offer different conceptual frameworks for discussing AI bias, fairness, and cultural implications. Navigate this scenario considering: How should Maya adapt her language choices across different parts of the meeting? When is code-switching inclusive versus exclusive? How can the team leverage multilingual perspectives on AI ethics while maintaining professional communication? Address power dynamics, technical precision, cultural authenticity, and inclusive communication.",
+      "parameters": {
+        "max_tokens": 440,
+        "temperature": 0.55,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_03",
+      "name": "Test 203: Transnational Digital Communication",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate complex multilingual digital communication across cultures and platforms",
+      "prompt": "Amara coordinates a global climate activism network with participants from Nigeria (Yoruba-English-Hausa), Brazil (Portuguese-English), India (Hindi-Tamil-English), and the Philippines (Tagalog-English). They use various platforms: formal emails, WhatsApp groups, Twitter threads, and video calls. Each platform has different norms for language mixing, formality, and cultural expression. The group must coordinate urgent climate action while respecting cultural sensitivities about environmental issues. Some concepts don't translate directly (Indigenous land relationships, traditional ecological knowledge), requiring code-switching for precision. Regional slang and cultural references strengthen group bonds but may exclude others. WhatsApp conversations are informal with emojis and code-mixing, while formal documents require standardized English. Twitter campaigns need hashtags that work across languages. Navigate this scenario considering: How should language choices vary across platforms and contexts? When does code-switching enhance global solidarity versus create barriers? How can traditional ecological concepts be communicated respectfully across cultures? Address digital communication norms, cultural sensitivity, power dynamics in global movements, and multilingual activism.",
+      "parameters": {
+        "max_tokens": 450,
+        "temperature": 0.6,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_04",
+      "name": "Test 204: Academic Identity and Language Authenticity",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate academic code-switching while maintaining cultural authenticity and intellectual credibility",
+      "prompt": "Dr. Nalaka, a Sri Lankan scholar, presents research on traditional healing practices at an international medical conference. Her research bridges Ayurvedic concepts (requiring Sanskrit/Sinhala terms) with Western medical frameworks. The audience includes Western doctors, traditional healers from various cultures, and multicultural medical students. She must balance several needs: academic credibility requires precise medical terminology, cultural respect demands authentic representation of traditional concepts, and accessibility requires explanation without appropriation. Some healing concepts resist translation - 'doshas', 'prana', and holistic wellness don't map directly to Western medicine. Code-switching between English medical terms and traditional language preserves authenticity but may marginalize non-speakers. The Q&A includes questions about 'scientific validity' that reveal cultural biases about knowledge systems. Navigate this scenario considering: How can Dr. Nalaka authentically represent traditional knowledge while engaging Western academic discourse? When does translation dilute versus clarify traditional concepts? How can she address cultural biases about 'legitimate' knowledge while maintaining scholarly rigor? Address intellectual authenticity, cultural representation, academic power dynamics, and cross-cultural knowledge validation.",
+      "parameters": {
+        "max_tokens": 430,
+        "temperature": 0.52,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_05",
+      "name": "Test 205: Community Leadership Language Choices",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate language choices in multicultural community leadership and representation",
+      "prompt": "Elena serves as a community representative for a diverse neighborhood facing gentrification. The community includes established Latino families (Spanish-dominant), recent Somali refugees (Somali-Arabic-limited English), longtime African American residents (AAVE-Standard English), and incoming young professionals (primarily English). Elena must facilitate town halls, negotiate with developers, and represent community needs to city council. Each group has different communication styles and language preferences. Spanish speakers trust Elena more when she uses Spanish, but this excludes others. AAVE creates solidarity with African American residents but may be misunderstood by others. Formal English is required for city council but feels distant in community meetings. The issues being discussed - housing rights, cultural preservation, economic development - carry different meanings across cultures. Code-switching helps build trust within groups but may fragment overall community solidarity. Navigate this scenario considering: How should Elena adapt her language use across different contexts and audiences? When does code-switching build versus divide community solidarity? How can she ensure all voices are heard while maintaining effective advocacy? Address community leadership, cultural representation, power dynamics, and inclusive communication strategies.",
+      "parameters": {
+        "max_tokens": 410,
+        "temperature": 0.58,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_06",
+      "name": "Test 206: Educational Multilingual Identity Formation",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in educational settings while supporting multilingual identity development",
+      "prompt": "Ms. Rodriguez teaches in a diverse urban school where students navigate multiple languages daily. Her classroom includes: Lucia (recent arrival from El Salvador, Spanish-dominant), Ahmed (born in US, Arabic-English bilingual), Kenji (third-generation Japanese-American, limited Japanese), and Aaliyah (fluent in AAVE and Standard English). During a literature unit on identity, students want to share stories from their cultures, but express concern about language 'correctness.' Lucia has powerful insights but struggles with English expression. Ahmed can discuss Islamic poetry in Arabic but feels judged when translating. Kenji feels disconnected from Japanese culture due to language loss. Aaliyah code-switches naturally but has been corrected for 'unprofessional' language. Ms. Rodriguez must create space for authentic expression while teaching academic English, validate all language varieties while meeting standards, and help students develop confident multilingual identities. Navigate this scenario considering: How can the classroom honor all students' linguistic identities while teaching academic skills? When should code-switching be encouraged versus guided toward standard forms? How can students share cultural knowledge authentically without linguistic barriers? Address educational equity, linguistic validation, identity development, and academic achievement.",
+      "parameters": {
+        "max_tokens": 425,
+        "temperature": 0.6,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_07",
+      "name": "Test 207: Healthcare Language Navigation",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate multilingual healthcare communication with cultural sensitivity and medical precision",
+      "prompt": "Dr. Patel, a Gujarati-English bilingual physician, treats diverse patients in a community clinic. Today's challenges include: Mrs. Chen (Cantonese-speaking elderly woman) discussing mental health stigma, Roberto (Spanish-English bilingual) explaining chronic pain, and Fatima (Somali-Arabic-English trilingual) seeking reproductive health care. Each situation requires different language strategies. Mrs. Chen trusts Dr. Patel more when she uses respectful address forms, but some medical concepts don't translate directly between languages. Roberto code-switches between Spanish and English when describing pain, using different cultural frameworks for understanding illness. Fatima needs reproductive health information that respects Islamic values while providing comprehensive medical care. Dr. Patel must navigate medical accuracy, cultural sensitivity, patient comfort, and legal requirements. Some conditions are stigmatized differently across cultures. Religious beliefs affect treatment acceptance. Family involvement varies culturally. Medical interpreters help but may miss cultural nuances. Navigate this scenario considering: How should Dr. Patel adapt communication style for each patient? When is code-switching appropriate in medical settings? How can she provide culturally competent care while maintaining medical standards? Address healthcare equity, cultural competency, language access, and patient-centered communication.",
+      "parameters": {
+        "max_tokens": 415,
+        "temperature": 0.54,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_08",
+      "name": "Test 208: Media and Cultural Representation",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in media production while balancing authenticity and accessibility",
+      "prompt": "Jamal creates content for a multicultural YouTube channel addressing social justice issues. His audience spans Nigerian diaspora (Yoruba-English-Pidgin), African Americans (AAVE-Standard English), Caribbean communities (Patois-English), and broader English speakers. Recent videos discuss police reform, voting rights, and Pan-African solidarity. Code-switching creates authentic connection with specific communities but may exclude others. Yoruba terms for community concepts resonate with Nigerian viewers but need explanation for others. AAVE expresses certain political realities more powerfully than Standard English but faces mainstream prejudice. Patois terms for resistance have deep historical meaning but limited recognition. Jamal must balance authentic cultural expression, accessible messaging, algorithmic optimization (which favors Standard English), and inclusive representation. Different topics require different language approaches - police brutality discussions need street credibility, voting education needs broad accessibility, Pan-African content needs cultural bridge-building. Navigate this scenario considering: How should Jamal vary language choices across topics and target audiences? When does authentic code-switching enhance versus limit his message reach? How can he build cross-cultural solidarity while honoring specific cultural voices? Address media representation, cultural authenticity, accessible communication, and social justice messaging.",
+      "parameters": {
+        "max_tokens": 435,
+        "temperature": 0.62,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_09",
+      "name": "Test 209: Intergenerational Religious Communication",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in religious contexts across generations and cultural adaptation",
+      "prompt": "Imam Hassan leads a diverse mosque community including: first-generation immigrants (Arabic-dominant), second-generation professionals (Arabic-English bilingual), converts from various backgrounds (English-dominant, learning Arabic), and interfaith families (multiple languages). Weekly sermons must address everyone while maintaining Islamic authenticity. Quranic verses require Arabic for authenticity, but explanations need accessibility. Religious concepts like 'jihad', 'hijab', and 'halal' carry different cultural meanings and require careful contextualization. Older community members prefer traditional Arabic terminology, while younger members relate better to English explanations. Converts need foundational concepts explained without condescension. Interfaith families need inclusive language that respects non-Muslim partners. The mosque also serves as community center, requiring discussions of social issues, politics, and cultural adaptation. Friday prayers involve formal Arabic liturgy, but community announcements use multiple languages. Navigate this scenario considering: How should Imam Hassan balance religious authenticity with community accessibility? When is Arabic essential versus when do translations serve better? How can he address diverse community needs while maintaining Islamic principles? Address religious leadership, cultural authenticity, inclusive communication, and intergenerational community building.",
+      "parameters": {
+        "max_tokens": 420,
+        "temperature": 0.56,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_10",
+      "name": "Test 210: Legal Translation and Cultural Justice",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in legal contexts while ensuring cultural competency and justice access",
+      "prompt": "Attorney Sofia works with immigrant clients facing deportation proceedings. Her clients include: Maria (Quechua-Spanish-limited English) from Peru, Kwame (Twi-English) from Ghana, and Dmitri (Russian-English) from Ukraine. Each case involves complex cultural factors that legal English cannot fully capture. Maria's case involves Indigenous land rights concepts that don't exist in US law. Kwame's asylum claim relates to traditional justice systems versus formal courts. Dmitri's situation involves political concepts that translate poorly. Legal documents require precise English terminology, but client relationships need cultural trust and understanding. Court interpreters provide basic translation but miss cultural nuances crucial to cases. Sofia must explain complex legal concepts while respecting clients' cultural frameworks for understanding justice, authority, and conflict resolution. Some clients distrust formal legal systems based on cultural experiences. Others have different concepts of evidence, testimony, and advocacy. Family involvement in legal decisions varies culturally. Navigate this scenario considering: How should Sofia balance legal precision with cultural sensitivity? When should she use clients' languages to build trust versus ensure legal understanding? How can she advocate effectively while honoring clients' cultural values? Address legal access, cultural competency, immigrant rights, and cross-cultural justice advocacy.",
+      "parameters": {
+        "max_tokens": 440,
+        "temperature": 0.58,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_11",
+      "name": "Test 211: Digital Platform Moderation Across Cultures",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate multilingual content moderation with cultural sensitivity and platform consistency",
+      "prompt": "Zara manages content moderation for a global social media platform's multilingual communities. She encounters posts involving code-switching that challenge standard moderation policies: A Arabic-French post discussing gender rights uses code-switching to navigate cultural taboos - some concepts are expressed in French (liberal discourse) while others use Arabic (traditional values). A Spanglish meme about immigration uses humor and linguistic play that requires cultural context to interpret as satirical rather than offensive. A Hindi-English thread about caste discusses sensitive social issues using code-switching to create in-group solidarity while excluding outsiders. Each post requires understanding: linguistic authenticity versus harmful content, cultural context versus platform-wide standards, in-group communication versus exclusionary practices. Automated systems flag unusual language patterns, but human reviewers need cultural competency. Different communities use code-switching for privacy, solidarity, resistance, or creative expression. Some uses strengthen marginalized communities while others may perpetuate harmful stereotypes or exclusion. Navigate this scenario considering: How should moderation policies account for culturally authentic code-switching? When does multilingual communication serve community building versus harmful exclusion? How can platforms balance cultural expression with inclusive community standards? Address digital equity, cultural authenticity, content moderation, and inclusive online communities.",
+      "parameters": {
+        "max_tokens": 445,
+        "temperature": 0.6,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_12",
+      "name": "Test 212: Mental Health Therapeutic Communication",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in therapeutic settings for culturally responsive mental health care",
+      "prompt": "Dr. Kim, a Korean-English bilingual therapist, provides culturally responsive therapy to diverse clients. Her current cases present complex language dynamics: Jun, a Korean-American teenager, discusses identity struggles by code-switching between Korean (family expectations) and English (peer culture), with different languages representing different aspects of his internal conflict. Esperanza, a Spanish-English bilingual woman, processes trauma differently in each language - Spanish accesses emotional memories while English provides clinical distance. Omar, an Arabic-English speaker, struggles with depression but lacks Arabic vocabulary for certain mental health concepts, while English terms feel culturally disconnected. Dr. Kim must navigate therapeutic authenticity, emotional accessibility, cultural stigma around mental health, and professional ethical standards. Some emotions are expressed more authentically in clients' native languages. Traditional healing concepts don't translate directly to Western therapy models. Family therapy involves multiple languages and cultural values. Code-switching patterns reveal internal conflicts and cultural tensions. Navigate this scenario considering: How should Dr. Kim incorporate multilingual expression into therapeutic practice? When does native language access enhance versus complicate healing processes? How can she bridge traditional healing wisdom with evidence-based therapy? Address mental health equity, cultural responsiveness, therapeutic authenticity, and multicultural healing approaches.",
+      "parameters": {
+        "max_tokens": 435,
+        "temperature": 0.55,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_13",
+      "name": "Test 213: Workplace Union Organizing Across Cultures",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate multilingual labor organizing while building cross-cultural worker solidarity",
+      "prompt": "Carlos organizes warehouse workers for union representation in a facility employing: Spanish-speakers from multiple Latin American countries, Somali workers (Somali-Arabic-English), Filipino workers (Tagalog-English), and English-dominant workers. Each group faces different workplace challenges and has distinct communication styles. Union meetings must accommodate multiple languages while building unified solidarity. Spanish-speakers from different countries use different terms for workplace concepts and have varying experiences with organized labor. Somali workers have cultural concepts of collective action that don't align with traditional union models. Filipino workers navigate hierarchical communication styles that affect their participation in union activities. English-dominant workers sometimes feel excluded when other languages are used but need to understand immigrant workers' specific challenges. Carlos must address wage theft, safety violations, and discrimination while respecting cultural approaches to authority, conflict, and collective action. Some workers fear retaliation due to immigration status. Others have cultural barriers to direct confrontation with management. Navigate this scenario considering: How should Carlos facilitate multilingual meetings that build rather than divide solidarity? When does language accommodation strengthen versus fragment worker unity? How can he honor different cultural approaches to collective action while achieving union goals? Address labor rights, immigrant worker organizing, cross-cultural solidarity, and inclusive union building.",
+      "parameters": {
+        "max_tokens": 450,
+        "temperature": 0.62,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_14",
+      "name": "Test 214: Cultural Arts Programming and Identity",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in cultural arts programming while balancing authenticity and accessibility",
+      "prompt": "Director Amina curates a multicultural arts festival featuring spoken word, music, and visual arts from diverse communities. The programming includes: A Chicano poet who code-switches between Spanish and English to express bicultural identity, a Punjabi-English rapper addressing immigration experiences, a Somali storyteller performing traditional tales with English commentary, and a Puerto Rican theater group exploring colonial language dynamics. Each performance uses code-switching differently - for artistic effect, cultural authenticity, audience inclusion, or political resistance. The festival audience spans community members from featured cultures, arts enthusiasts seeking cultural education, and funding organizations requiring accessibility. Program notes must explain cultural context without over-explaining artistic choices. Some performances are lost in translation while others gain power from multilingual expression. Community authenticity requires preserving language use, but grant requirements emphasize broad accessibility. Artists want creative freedom while organizations seek educational value. Navigate this scenario considering: How should Amina balance artistic authenticity with audience accessibility? When do program explanations enhance versus diminish artistic impact? How can the festival honor cultural specificity while building cross-cultural understanding? Address cultural representation, artistic authenticity, arts accessibility, community voice, and cross-cultural arts education.",
+      "parameters": {
+        "max_tokens": 430,
+        "temperature": 0.58,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_15",
+      "name": "Test 215: International Business Cultural Navigation",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in international business while managing cultural relationships and professional effectiveness",
+      "prompt": "Manager Yuki coordinates a multinational product launch involving teams from Japan (Japanese-English), Germany (German-English), Brazil (Portuguese-English), and Nigeria (Yoruba-English-Pidgin). Each culture has different business communication norms, relationship-building approaches, and decision-making processes. Video conferences involve complex linguistic dynamics: Japanese team uses formal English but expresses disagreement indirectly, German team prefers direct English communication, Brazilian team builds relationships through Portuguese asides and personal connection, Nigerian team code-switches to express concepts that lack direct English equivalents. Email communications vary from formal standard English to culturally-inflected varieties. Some business concepts don't translate directly - Japanese 'nemawashi' (consensus-building), German 'Verschlimmbessern' (making things worse through improvement attempts), Brazilian 'jeitinho' (creative problem-solving), Nigerian 'Ubuntu' philosophy. Cultural misunderstandings arise from communication styles, not just language barriers. Navigate this scenario considering: How should Yuki facilitate communication that honors cultural differences while achieving business objectives? When does code-switching enhance versus complicate international business relationships? How can teams leverage cultural communication strengths while maintaining professional effectiveness? Address international business communication, cultural competency, professional relationships, and cross-cultural team management.",
+      "parameters": {
+        "max_tokens": 440,
+        "temperature": 0.57,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_16",
+      "name": "Test 216: Community Crisis Response Communication",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate multilingual crisis communication while ensuring community safety and cultural responsiveness",
+      "prompt": "Emergency Coordinator Lisa manages disaster response for a diverse coastal community facing hurricane evacuation. The community includes: Haitian Creole speakers (limited English), Vietnamese fishing families (Vietnamese-English), elderly Cuban residents (Spanish-dominant), and Gullah Geechee community members (distinctive English variety with African roots). Crisis communication requires immediate understanding while respecting cultural values around authority, family decision-making, and community solidarity. Official evacuation notices must be multilingual but emergency broadcasts can't accommodate all languages. Different communities have varying trust levels with government authorities based on historical experiences. Some cultural groups make collective decisions while others defer to family elders. Traditional knowledge about weather patterns and survival strategies exists in heritage languages but needs integration with official emergency planning. Religious and cultural practices affect evacuation timing and shelter acceptance. Children often serve as interpreters but may misunderstand technical emergency information. Social media spreads information quickly but also misinformation in multiple languages. Navigate this scenario considering: How should Lisa ensure life-saving information reaches all community members effectively? When should cultural accommodation override emergency protocols? How can traditional community knowledge enhance official emergency response? Address emergency communication, cultural responsiveness, community trust, multilingual crisis management, and inclusive disaster preparedness.",
+      "parameters": {
+        "max_tokens": 445,
+        "temperature": 0.6,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_17",
+      "name": "Test 217: Technology Development Cultural Inclusion",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in technology development while ensuring cultural inclusivity and user accessibility",
+      "prompt": "AI Developer Raj leads a team creating voice recognition software for multilingual users. The team includes speakers of Hindi-English, Arabic-English, Spanish-English, and Mandarin-English who all code-switch naturally in daily communication. Their product must serve users who seamlessly blend languages in conversation, but current AI models struggle with code-switching patterns. User testing reveals complex challenges: Older adults prefer heritage language commands but need English technical terms, teenagers create new linguistic blends that existing models don't recognize, professional users switch languages for different functions (social vs. technical), and family conversations involve multiple generations with different language dominances. The team's own code-switching during development meetings provides insights but also creates exclusion when monolingual colleagues can't follow technical discussions. Marketing must appeal to multilingual communities without stereotyping or oversimplifying linguistic diversity. Product documentation needs to explain features without assuming users' language preferences. Accessibility standards weren't designed for code-switching users. Navigate this scenario considering: How should the team incorporate their own multilingual experiences into product development while maintaining inclusive teamwork? When does authentic code-switching representation enhance versus complicate user experience? How can technology serve multilingual users without reducing them to language categories? Address inclusive design, multilingual user experience, cultural authenticity in technology, and accessible product development.",
+      "parameters": {
+        "max_tokens": 450,
+        "temperature": 0.61,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_18",
+      "name": "Test 218: Journalism and Multicultural Reporting",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in journalism while maintaining accuracy and cultural authenticity in news reporting",
+      "prompt": "Reporter Carmen covers immigration policy impacts for a bilingual news organization serving diverse Latino communities. Her stories must work for: Spanish-dominant recent immigrants, English-dominant second-generation readers, professionals who prefer formal register, and youth who communicate through Spanglish and social media. Today's story covers deportation raids affecting mixed-status families. Interviews reveal complex language dynamics: parents speak Spanish to protect children from harsh realities, teenagers translate between languages and cultures for their families, community leaders code-switch to build trust across generational divides, legal advocates use technical English that intimidates Spanish-speakers. Carmen must balance journalistic objectivity with cultural sensitivity, accurate quotes with readable translation, legal precision with accessible explanation. Some immigration concepts don't translate directly between cultures - 'undocumented' vs 'sin papeles' carry different emotional weight. Family separation stories require cultural context about extended family structures. Community trust depends on authentic representation, but publication standards require specific style guidelines. Source protection involves language choices that could identify speakers. Navigate this scenario considering: How should Carmen represent multilingual voices authentically while meeting journalism standards? When does code-switching in quotes enhance versus obscure meaning for diverse readers? How can she report complex immigration issues with cultural competency while maintaining journalistic integrity? Address multilingual journalism, cultural representation, immigration reporting ethics, and inclusive news coverage.",
+      "parameters": {
+        "max_tokens": 440,
+        "temperature": 0.59,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_19",
+      "name": "Test 219: Faith Community Interfaith Dialogue",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate multilingual interfaith dialogue while respecting sacred language traditions and building understanding",
+      "prompt": "Chaplain David facilitates interfaith dialogue at a diverse university involving Muslim students (Arabic-English-Urdu), Jewish students (Hebrew-English-Yiddish), Hindu students (Sanskrit-Hindi-English), Christian students (various languages), and secular students (multiple languages). Religious concepts often resist translation - 'jihad', 'tikkun olam', 'dharma', 'grace' carry specific theological meanings that general English terms cannot capture. Students code-switch to explain their traditions accurately, but this can exclude others from conversations. Sacred texts require original languages for authenticity, but translations are necessary for understanding. Some concepts are intentionally kept in heritage languages to preserve sacred meaning. Prayer practices involve specific language requirements that conflict with inclusive dialogue needs. Cultural contexts for religious practice vary widely even within traditions - Nigerian Christianity differs from Korean Christianity, Sunni Indonesian Islam differs from Shia Lebanese Islam. Students navigate religious authenticity, academic discourse, personal faith expression, and interfaith relationship building. Some feel pressure to represent entire traditions while others struggle with inadequate language to express complex spiritual experiences. Navigate this scenario considering: How should Chaplain David facilitate dialogue that honors sacred language traditions while enabling mutual understanding? When does preserving original religious terminology enhance versus limit interfaith communication? How can students share their authentic faith experiences across cultural and linguistic boundaries? Address interfaith dialogue, religious authenticity, sacred language preservation, inclusive spiritual communication, and multicultural campus ministry.",
+      "parameters": {
+        "max_tokens": 455,
+        "temperature": 0.58,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_20",
+      "name": "Test 220: Social Services Culturally Responsive Practice",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in social services while providing culturally responsive support and advocacy",
+      "prompt": "Social Worker Ana serves diverse immigrant families navigating complex systems: housing assistance, child welfare, elder care, and benefits applications. Her clients include: Marta (Mayan K'iche'-Spanish-limited English) facing housing discrimination, Abebi (Tigrinya-Arabic-English) managing elder care across cultural expectations, and Tran (Vietnamese-English) advocating for special needs child services. Each family situation requires different cultural competencies and communication approaches. Marta's case involves Indigenous concepts of family structure and land connection that don't align with standard housing policies. Abebi must balance Eritrean traditions of family caregiving with American elder care systems and employment demands. Tran needs to navigate special education services while preserving Vietnamese cultural values around disability and family honor. Ana code-switches to build trust and understanding, but must also help families navigate English-dominant systems. Government forms and legal documents require precise translation, but cultural concepts often lack direct equivalents. Family meetings involve multiple generations with different language preferences and cultural frameworks for understanding help-seeking, authority, and child-rearing. Some clients distrust social services based on historical trauma or political experiences. Navigate this scenario considering: How should Ana use multilingual communication to build trust while helping families access services effectively? When does cultural accommodation enhance versus complicate service delivery? How can she advocate for systemic changes that better serve multilingual families? Address culturally responsive social work, immigrant family support, systems advocacy, multilingual service delivery, and inclusive family services.",
+      "parameters": {
+        "max_tokens": 450,
+        "temperature": 0.6,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_21",
+      "name": "Test 221: Sports Community Multicultural Integration",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in sports communities while building team unity and cultural celebration",
+      "prompt": "Coach Elena leads a high school soccer team with players from: Mexico (Spanish-English), Somalia (Somali-Arabic-English), El Salvador (Spanish-English), and various English-speaking backgrounds. Team communication involves complex multilingual dynamics affecting both athletic performance and social cohesion. On-field communication requires quick, clear instructions, but players naturally code-switch during strategy discussions, emotional moments, and team bonding. Spanish-speaking players from different countries use distinct terms for soccer concepts and have different playing styles rooted in cultural traditions. Somali players bring different cultural approaches to teamwork, authority relationships, and gender dynamics in sports. Team traditions like pre-game rituals, celebrations, and motivational speeches involve multiple languages and cultural practices. Parent involvement varies culturally - some families see soccer as pathway to opportunity while others worry about cultural assimilation. Community support involves diverse language needs for game announcements, fundraising, and college recruitment information. Conflicts arise when cultural differences affect playing time, team rules, or social dynamics. Code-switching builds in-group solidarity but may exclude teammates from different backgrounds. Navigate this scenario considering: How should Coach Elena leverage multilingual communication to enhance team performance while building inclusive unity? When does cultural celebration strengthen versus divide team cohesion? How can she honor different soccer traditions while developing consistent team identity? Address multicultural sports leadership, team building, cultural integration, inclusive coaching, and community sports programs.",
+      "parameters": {
+        "max_tokens": 445,
+        "temperature": 0.62,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_22",
+      "name": "Test 222: Environmental Justice Multilingual Advocacy",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in environmental advocacy while organizing diverse communities around shared concerns",
+      "prompt": "Environmental Organizer Miguel coordinates community response to industrial pollution affecting diverse neighborhoods: Spanish-speaking farmworkers, Hmong refugees, African American longtime residents, and recent Latino immigrants. Each community experiences environmental impacts differently and has distinct cultural relationships with land, health, and authority. Community meetings require multilingual facilitation as residents describe health symptoms, environmental observations, and concerns in their preferred languages. Scientific concepts like 'particulate matter', 'groundwater contamination', and 'cumulative impact' need accessible translation without losing technical accuracy. Traditional ecological knowledge exists in heritage languages - Hmong farming wisdom, Indigenous land stewardship practices, African American environmental history - that enhances scientific understanding but requires respectful integration. Different communities have varying trust levels with environmental agencies, legal systems, and outside organizers based on historical experiences. Some cultures emphasize collective decision-making while others defer to community leaders. Environmental justice concepts translate differently across cultures - some focus on individual health rights while others emphasize community responsibility. Media advocacy requires messages that work across multiple audiences while maintaining cultural authenticity. Navigate this scenario considering: How should Miguel facilitate multilingual environmental education that builds cross-community solidarity? When does cultural specificity in environmental messaging enhance versus limit coalition building? How can traditional ecological knowledge be honored while engaging scientific and legal processes? Address environmental justice organizing, multilingual community advocacy, cultural competency, coalition building, and inclusive environmental activism.",
+      "parameters": {
+        "max_tokens": 460,
+        "temperature": 0.61,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_23",
+      "name": "Test 223: Elder Care Intergenerational Communication",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in elder care while bridging generational and cultural communication gaps",
+      "prompt": "Care Coordinator Rosa manages a multicultural senior center serving elders who speak: Tagalog (Filipino community), Cantonese (Chinese community), Russian (former Soviet immigrants), and Spanish (various Latin American countries). Each community has distinct cultural approaches to aging, family responsibility, health care, and authority relationships. Daily activities require multilingual support, but staff limitations mean code-switching becomes essential for communication. Filipino elders prefer formal respectful address and indirect communication about health concerns, Chinese elders emphasize family harmony and may minimize individual needs, Russian elders expect direct medical information but have complex relationships with healthcare systems, Spanish-speaking elders come from diverse cultural backgrounds with varying health beliefs and family structures. Family meetings involve multiple generations with different language preferences - grandchildren often interpret but may lack vocabulary for medical or cultural concepts. Adult children navigate between traditional expectations and American systems of elder care. Some families feel guilt about using non-family care services. Cultural activities require authentic programming that doesn't stereotype or oversimplify traditions. Health education must address culturally specific concerns while meeting regulatory standards. Navigate this scenario considering: How should Rosa facilitate intergenerational communication that honors elder wisdom while addressing practical care needs? When does heritage language use strengthen versus complicate family care coordination? How can cultural programming celebrate authentic traditions while building cross-community connections? Address culturally responsive elder care, intergenerational communication, family dynamics, multicultural programming, and inclusive aging services.",
+      "parameters": {
+        "max_tokens": 455,
+        "temperature": 0.57,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_24",
+      "name": "Test 224: Financial Services Cultural Navigation",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate multilingual financial education while respecting cultural values and building economic empowerment",
+      "prompt": "Financial Counselor Ahmed provides services to diverse immigrant communities with distinct relationships to banking, credit, and financial planning: Somali families following Islamic banking principles, Mexican families using informal saving circles (tandas), Chinese families emphasizing multi-generational wealth building, and Caribbean families managing remittances to home countries. Each group has cultural values and practices that affect financial decision-making and require different communication approaches. Financial concepts often don't translate directly - 'credit score' doesn't exist in many cultures, 'interest' conflicts with Islamic principles, 'individual retirement planning' contradicts collective family economic strategies. Ahmed must code-switch to explain American financial systems while respecting traditional economic practices. Trust-building requires cultural competency - some communities distrust banks due to political history while others have been excluded from traditional financial services. Family financial meetings involve multiple generations with different language preferences and economic experiences. Women's economic participation varies culturally and affects financial planning approaches. Documentation requirements challenge clients with limited English or undocumented status. Predatory lending targets immigrant communities with culturally-tailored but exploitative practices. Navigate this scenario considering: How should Ahmed adapt financial education to honor cultural values while building economic empowerment? When do traditional financial practices complement versus conflict with American economic systems? How can he build trust across cultural barriers while providing accurate financial guidance? Address culturally responsive financial services, immigrant economic empowerment, multilingual financial education, cultural competency, and inclusive banking access.",
+      "parameters": {
+        "max_tokens": 470,
+        "temperature": 0.58,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_25",
+      "name": "Test 225: Creative Writing Workshop Cultural Expression",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in creative writing while supporting authentic multicultural literary expression",
+      "prompt": "Writing Professor Keisha facilitates a community creative writing workshop for diverse participants exploring identity themes: Layla writes poetry code-switching between Arabic and English to express bicultural experiences, Jorge crafts stories in Spanglish that capture Chicano working-class life, Anh creates hybrid Vietnamese-English narratives about refugee family history, and Destiny uses AAVE and Standard English to explore African American social realities. Each writer uses code-switching as artistic choice, cultural authenticity, and identity expression, but faces different challenges in workshop settings. Traditional writing pedagogy emphasizes Standard English 'correctness', but authentic multicultural voices require linguistic diversity. Peer feedback involves readers from different cultural backgrounds who may miss cultural references or linguistic innovations. Publication considerations require balancing artistic authenticity with audience accessibility. Some participants worry about reinforcing stereotypes while others fear their authentic voices aren't 'literary enough'. Code-switching serves different functions - character development, cultural specificity, rhythmic effect, political resistance - that require sophisticated literary analysis. Translation and explanation can diminish artistic impact while inclusion demands accessibility. Community performance opportunities celebrate multilingual creativity but require audience preparation. Navigate this scenario considering: How should Professor Keisha support code-switching as legitimate literary technique while building inclusive workshop community? When does linguistic authenticity enhance versus limit artistic expression and audience engagement? How can the workshop validate all participants' voices while developing sophisticated craft skills? Address multicultural creative writing pedagogy, linguistic authenticity in literature, inclusive workshop facilitation, literary community building, and cultural expression through language.",
+      "parameters": {
+        "max_tokens": 465,
+        "temperature": 0.64,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_26",
+      "name": "Test 226: Municipal Government Multilingual Service Delivery",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in local government while ensuring equitable access to municipal services",
+      "prompt": "City Council Member Patricia represents a diverse district requiring multilingual constituent services: Korean small business owners facing zoning issues, Guatemalan families navigating housing code violations, Ethiopian taxi drivers dealing with licensing requirements, and mixed-status immigrant families accessing city services while managing deportation fears. Each community has different cultural approaches to government interaction, authority relationships, and problem-solving that affect service delivery. Municipal meetings require interpretation but budget constraints limit language access. Patricia code-switches during community forums to build trust and understanding, but must also ensure all constituents can participate meaningfully. Korean business owners prefer formal respectful communication and indirect conflict resolution, Guatemalan families may distrust government based on home country experiences, Ethiopian drivers have complex licensing needs that require cultural understanding of professional driving traditions, mixed-status families need services but fear government contact. City documents and forms are English-only despite diverse population needs. Community liaisons from each cultural group help with translation but may have conflicting political interests. Public hearings involve technical municipal language that doesn't translate easily. Emergency services require immediate multilingual communication capabilities. Navigate this scenario considering: How should Patricia balance multilingual constituent services with municipal efficiency and legal requirements? When does cultural accommodation enhance versus complicate equitable government service delivery? How can she advocate for systematic language access improvements while serving immediate constituent needs? Address multilingual municipal services, equitable government access, cultural competency in local politics, immigrant constituent advocacy, and inclusive civic participation.",
+      "parameters": {
+        "max_tokens": 475,
+        "temperature": 0.59,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_27",
+      "name": "Test 227: Broadcasting Multicultural Media Production",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in media production while creating authentic multicultural content for diverse audiences",
+      "prompt": "Radio Producer Fatima creates programming for a multicultural urban station serving diverse audiences: morning shows targeting commuters who code-switch naturally, afternoon programs for specific cultural communities, evening content for multilingual families, and weekend programming celebrating cultural diversity. Each show requires different language strategies and cultural competencies. Morning drive-time DJs naturally code-switch between languages to reflect audience diversity, but advertising sponsors prefer standardized English and worry about fragmenting audiences. Community affairs programming covers immigration policy, cultural celebrations, and social issues that require nuanced multilingual discussion. Music programming includes songs in multiple languages, but playlist decisions affect cultural representation and commercial viability. Talk shows involve callers who express complex ideas through code-switching, but broadcast standards require clarity for all listeners. Community leaders want authentic cultural representation while station management seeks broad audience appeal and advertiser satisfaction. Religious programming serves diverse faith communities with specific language requirements. Emergency broadcasting must reach all community members quickly and effectively. Social media engagement involves multilingual audience interaction that reflects station's on-air content. Navigate this scenario considering: How should Fatima balance authentic multilingual programming with commercial broadcasting requirements? When does code-switching enhance versus limit radio audience engagement and advertiser appeal? How can programming serve specific cultural communities while building broader multicultural understanding? Address multicultural media representation, broadcasting accessibility, cultural authenticity, community media, and inclusive content creation.",
+      "parameters": {
+        "max_tokens": 460,
+        "temperature": 0.6,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_28",
+      "name": "Test 228: Public Health Community Education",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate multilingual health education while addressing cultural health beliefs and community trust",
+      "prompt": "Public Health Educator Dr. Martinez conducts community health education in diverse neighborhoods with distinct health cultures and language needs: Haitian community (Creole-French-English) dealing with diabetes prevention, Pakistani families (Urdu-Punjabi-English) addressing mental health stigma, Native American urban community maintaining traditional healing alongside Western medicine, and Central American immigrants (Spanish-various indigenous languages-English) navigating prenatal care. Each community has cultural frameworks for understanding health, illness, prevention, and treatment that require different communication approaches. Medical terminology often lacks direct translation - 'depression' doesn't exist in some cultures while others have more nuanced emotional health concepts. Traditional healing practices need respectful integration with public health messaging rather than replacement or dismissal. Community trust varies based on historical experiences with healthcare systems and government health programs. Family decision-making structures affect individual health choices differently across cultures. Religious beliefs influence acceptance of certain health interventions and prevention strategies. Health literacy varies not just by language but by cultural approaches to medical authority and information sharing. Community health workers from each cultural group provide cultural bridge-building but need coordination and training. Navigate this scenario considering: How should Dr. Martinez adapt health education to honor cultural health wisdom while promoting evidence-based prevention? When does multilingual health communication enhance versus complicate public health goals? How can traditional healing knowledge be integrated respectfully with public health practice? Address culturally responsive public health, multilingual health education, community trust building, traditional medicine integration, and inclusive health promotion.",
+      "parameters": {
+        "max_tokens": 480,
+        "temperature": 0.58,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_29",
+      "name": "Test 229: Nonprofit Multicultural Fundraising",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Navigate code-switching in nonprofit fundraising while authentically engaging diverse donor communities",
+      "prompt": "Development Director Sarah leads fundraising for an immigrant services nonprofit serving diverse communities while seeking support from equally diverse donor base: Korean American business association, Latino professional network, Somali community leaders, established foundation donors, and individual multicultural supporters. Each donor community has different cultural approaches to philanthropy, relationship building, and community investment that require adapted communication strategies. Korean business donors emphasize formal respect, long-term relationships, and community honor in giving decisions. Latino professionals prefer personal connection, family involvement, and projects with direct community impact. Somali leaders prioritize Islamic principles of charity (zakat) and community consensus in funding decisions. Foundation donors require specific grant language and outcome measurements. Individual multicultural supporters want authentic organizational representation and cultural competency in programming. Fundraising events must accommodate multiple languages, cultural practices, and relationship-building styles simultaneously. Grant applications require Standard English but program descriptions need cultural authenticity. Donor communications must balance appreciation across cultures while maintaining organizational voice. Board meetings involve multilingual strategic planning with diverse perspectives on organizational priorities and community needs. Financial transparency requirements may conflict with culturally specific approaches to community accountability. Navigate this scenario considering: How should Sarah adapt fundraising approaches to honor diverse cultural values while building sustainable organizational support? When does cultural accommodation enhance versus complicate donor relationship management? How can the nonprofit maintain authentic multicultural programming while meeting diverse donor expectations? Address multicultural fundraising, culturally responsive development, nonprofit sustainability, donor relationship management, and inclusive organizational governance.",
+      "parameters": {
+        "max_tokens": 475,
+        "temperature": 0.61,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "codeswitch_30",
+      "name": "Test 230: Comprehensive Cultural Code-Switching Framework Development",
+      "category": "advanced_code_switching",
+      "language_type": "multicultural_competency",
+      "description": "Develop comprehensive framework for understanding and supporting advanced multicultural code-switching competency",
+      "prompt": "Linguistic Anthropologist Dr. Chen develops a comprehensive framework for understanding advanced code-switching competency in multicultural societies, drawing from extensive fieldwork across diverse communities: heritage language maintenance in diaspora families, professional multilingual identity navigation, digital platform multilingual communication, educational multilingual identity development, healthcare cultural-linguistic competency, legal cultural justice advocacy, religious interfaith multilingual dialogue, community organizing cross-cultural solidarity, creative expression multicultural authenticity, and institutional service delivery language access. The framework must address: cognitive complexity of simultaneous cultural identity management, social dynamics of in-group solidarity versus inclusive communication, power structures embedded in language choices and cultural representation, identity negotiation through linguistic authenticity and community belonging, institutional barriers to multilingual competency recognition, and systemic changes needed to support multicultural communication competency. Current research reveals that advanced code-switching involves not just linguistic flexibility but sophisticated cultural competency, emotional intelligence, situational awareness, power analysis, and ethical decision-making about inclusion versus authenticity. The framework should guide: educational curriculum development, professional training programs, institutional policy creation, community program design, and social justice advocacy strategies. Navigate this comprehensive analysis considering: How can advanced code-switching competency be understood as sophisticated multicultural skill rather than linguistic deviation? What frameworks support individuals and institutions in developing authentic, inclusive, and effective multilingual communication? How can society value and systematically support multicultural code-switching competency as essential citizenship skill? Address multicultural competency theory, institutional language policy, educational framework development, social justice linguistics, and systematic cultural inclusion strategies.",
+      "parameters": {
+        "max_tokens": 500,
+        "temperature": 0.65,
         "top_p": 0.9,
         "stream": false
       }

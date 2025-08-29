@@ -46,6 +46,41 @@ except ImportError:
     QUANTIZATION_TESTER_AVAILABLE = False
     logging.warning("QuantizationTester not available")
 
+try:
+    from .consistency_validator import ConsistencyValidator
+    CONSISTENCY_VALIDATOR_AVAILABLE = True
+except ImportError:
+    CONSISTENCY_VALIDATOR_AVAILABLE = False
+    logging.warning("ConsistencyValidator not available")
+
+try:
+    from .knowledge_validator import KnowledgeValidator
+    KNOWLEDGE_VALIDATOR_AVAILABLE = True
+except ImportError:
+    KNOWLEDGE_VALIDATOR_AVAILABLE = False
+    logging.warning("KnowledgeValidator not available")
+
+try:
+    from .cultural_authenticity import CulturalAuthenticityAnalyzer
+    CULTURAL_AUTHENTICITY_AVAILABLE = True
+except ImportError:
+    CULTURAL_AUTHENTICITY_AVAILABLE = False
+    logging.warning("CulturalAuthenticityAnalyzer not available")
+
+try:
+    from .tradition_validator import TraditionalKnowledgeValidator
+    TRADITION_VALIDATOR_AVAILABLE = True
+except ImportError:
+    TRADITION_VALIDATOR_AVAILABLE = False
+    logging.warning("TraditionalKnowledgeValidator not available")
+
+try:
+    from .cross_cultural_coherence import CrossCulturalCoherenceChecker
+    CROSS_CULTURAL_COHERENCE_AVAILABLE = True
+except ImportError:
+    CROSS_CULTURAL_COHERENCE_AVAILABLE = False
+    logging.warning("CrossCulturalCoherenceChecker not available")
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -82,6 +117,18 @@ class EvaluationMetrics:
     entropy_quality_ratio: float = 0.0 # Entropy relative to response quality
     semantic_diversity: float = 0.0    # Embedding-based semantic diversity
     embedding_variance: float = 0.0    # Variance in embedding space
+    
+    # NEW: Consistency and validation metrics
+    consistency_score: float = 0.0     # Cross-phrasing consistency
+    factual_accuracy: float = 0.0      # Factual grounding accuracy
+    knowledge_consistency: float = 0.0 # Knowledge consistency across formats
+    confidence_calibration: float = 0.0 # Confidence marker reliability
+    validation_passed: bool = False    # Overall validation status
+    
+    # NEW: Cultural evaluation metrics
+    cultural_authenticity: float = 0.0  # Cultural authenticity and respect
+    tradition_respect: float = 0.0      # Traditional knowledge respect
+    cross_cultural_coherence: float = 0.0 # Cross-cultural presentation coherence
 
 
 @dataclass
@@ -120,6 +167,13 @@ class UniversalEvaluator:
         self._semantic_analyzer = None
         self._context_analyzer = None
         self._quantization_tester = None
+        self._consistency_validator = None
+        self._knowledge_validator = None
+        
+        # Initialize cultural analysis modules
+        self._cultural_authenticity_analyzer = None
+        self._tradition_validator = None
+        self._cross_cultural_coherence_checker = None
         
         logger.info("UniversalEvaluator initialized successfully")
     
@@ -500,6 +554,56 @@ class UniversalEvaluator:
                 logger.warning(f"Failed to initialize QuantizationTester: {e}")
         return self._quantization_tester
     
+    @property
+    def consistency_validator(self):
+        """Lazy load consistency validator"""
+        if self._consistency_validator is None and CONSISTENCY_VALIDATOR_AVAILABLE:
+            try:
+                self._consistency_validator = ConsistencyValidator()
+            except Exception as e:
+                logger.warning(f"Failed to initialize ConsistencyValidator: {e}")
+        return self._consistency_validator
+    
+    @property
+    def knowledge_validator(self):
+        """Lazy load knowledge validator"""
+        if self._knowledge_validator is None and KNOWLEDGE_VALIDATOR_AVAILABLE:
+            try:
+                self._knowledge_validator = KnowledgeValidator()
+            except Exception as e:
+                logger.warning(f"Failed to initialize KnowledgeValidator: {e}")
+        return self._knowledge_validator
+    
+    @property
+    def cultural_authenticity_analyzer(self):
+        """Lazy load cultural authenticity analyzer"""
+        if self._cultural_authenticity_analyzer is None and CULTURAL_AUTHENTICITY_AVAILABLE:
+            try:
+                self._cultural_authenticity_analyzer = CulturalAuthenticityAnalyzer()
+            except Exception as e:
+                logger.warning(f"Failed to initialize CulturalAuthenticityAnalyzer: {e}")
+        return self._cultural_authenticity_analyzer
+    
+    @property
+    def tradition_validator(self):
+        """Lazy load traditional knowledge validator"""
+        if self._tradition_validator is None and TRADITION_VALIDATOR_AVAILABLE:
+            try:
+                self._tradition_validator = TraditionalKnowledgeValidator()
+            except Exception as e:
+                logger.warning(f"Failed to initialize TraditionalKnowledgeValidator: {e}")
+        return self._tradition_validator
+    
+    @property
+    def cross_cultural_coherence_checker(self):
+        """Lazy load cross-cultural coherence checker"""
+        if self._cross_cultural_coherence_checker is None and CROSS_CULTURAL_COHERENCE_AVAILABLE:
+            try:
+                self._cross_cultural_coherence_checker = CrossCulturalCoherenceChecker()
+            except Exception as e:
+                logger.warning(f"Failed to initialize CrossCulturalCoherenceChecker: {e}")
+        return self._cross_cultural_coherence_checker
+    
     def _perform_advanced_analysis(self, response_text: str, test_name: str, reasoning_type: ReasoningType) -> Dict[str, Any]:
         """Perform advanced analysis using all new modules"""
         advanced_analysis = {}
@@ -542,6 +646,55 @@ class UniversalEvaluator:
                 logger.warning(f"Quantization analysis failed: {e}")
                 advanced_analysis["quantization_analysis"] = {"error": str(e)}
         
+        # Consistency validation (placeholder - full consistency testing requires multiple responses)
+        if self.consistency_validator:
+            try:
+                # For single response, we can only do basic consistency indicators
+                consistency_indicators = self._analyze_single_response_consistency(response_text, test_name)
+                advanced_analysis["consistency_validation"] = consistency_indicators
+            except Exception as e:
+                logger.warning(f"Consistency validation failed: {e}")
+                advanced_analysis["consistency_validation"] = {"error": str(e)}
+        
+        # Knowledge validation
+        if self.knowledge_validator:
+            try:
+                knowledge_validation = self._perform_knowledge_validation(response_text, test_name)
+                advanced_analysis["knowledge_validation"] = knowledge_validation
+            except Exception as e:
+                logger.warning(f"Knowledge validation failed: {e}")
+                advanced_analysis["knowledge_validation"] = {"error": str(e)}
+        
+        # Cultural authenticity analysis
+        if self.cultural_authenticity_analyzer:
+            try:
+                cultural_context = self._extract_cultural_context(test_name)
+                authenticity_analysis = self.cultural_authenticity_analyzer.analyze_cultural_authenticity(response_text, cultural_context)
+                advanced_analysis["cultural_authenticity"] = authenticity_analysis.__dict__
+            except Exception as e:
+                logger.warning(f"Cultural authenticity analysis failed: {e}")
+                advanced_analysis["cultural_authenticity"] = {"error": str(e)}
+        
+        # Traditional knowledge validation
+        if self.tradition_validator:
+            try:
+                domain_hint = self._extract_domain_hint(test_name)
+                tradition_validation = self.tradition_validator.validate_traditional_knowledge(response_text, domain_hint)
+                advanced_analysis["tradition_validation"] = tradition_validation.__dict__
+            except Exception as e:
+                logger.warning(f"Traditional knowledge validation failed: {e}")
+                advanced_analysis["tradition_validation"] = {"error": str(e)}
+        
+        # Cross-cultural coherence analysis
+        if self.cross_cultural_coherence_checker:
+            try:
+                cultural_context = self._extract_cultural_context(test_name)
+                coherence_analysis = self.cross_cultural_coherence_checker.check_cross_cultural_coherence(response_text, cultural_context)
+                advanced_analysis["cross_cultural_coherence"] = coherence_analysis.__dict__
+            except Exception as e:
+                logger.warning(f"Cross-cultural coherence analysis failed: {e}")
+                advanced_analysis["cross_cultural_coherence"] = {"error": str(e)}
+        
         return advanced_analysis
     
     def _integrate_advanced_metrics(self, metrics: EvaluationMetrics, advanced_analysis: Dict[str, Any]) -> EvaluationMetrics:
@@ -555,6 +708,31 @@ class UniversalEvaluator:
                 metrics.entropy_quality_ratio = entropy_analysis.get("entropy_quality_ratio", 0.0)
                 metrics.semantic_diversity = entropy_analysis.get("semantic_diversity", 0.0)
                 metrics.embedding_variance = entropy_analysis.get("embedding_variance", 0.0)
+            
+            # Update consistency and validation metrics
+            consistency_validation = advanced_analysis.get("consistency_validation", {})
+            if consistency_validation and "error" not in consistency_validation:
+                metrics.consistency_score = consistency_validation.get("consistency_score", 0.0)
+            
+            knowledge_validation = advanced_analysis.get("knowledge_validation", {})
+            if knowledge_validation and "error" not in knowledge_validation:
+                metrics.factual_accuracy = knowledge_validation.get("factual_accuracy", 0.0)
+                metrics.knowledge_consistency = knowledge_validation.get("knowledge_consistency", 0.0)
+                metrics.confidence_calibration = knowledge_validation.get("confidence_calibration", 0.0)
+                metrics.validation_passed = knowledge_validation.get("validation_passed", False)
+            
+            # Update cultural evaluation metrics
+            cultural_authenticity = advanced_analysis.get("cultural_authenticity", {})
+            if cultural_authenticity and "error" not in cultural_authenticity:
+                metrics.cultural_authenticity = cultural_authenticity.get("authenticity_score", 0.0)
+            
+            tradition_validation = advanced_analysis.get("tradition_validation", {})
+            if tradition_validation and "error" not in tradition_validation:
+                metrics.tradition_respect = tradition_validation.get("tradition_respect_score", 0.0)
+            
+            cross_cultural_coherence = advanced_analysis.get("cross_cultural_coherence", {})
+            if cross_cultural_coherence and "error" not in cross_cultural_coherence:
+                metrics.cross_cultural_coherence = cross_cultural_coherence.get("coherence_score", 0.0)
             
             # Adjust overall score based on advanced metrics
             advanced_adjustments = self._calculate_advanced_score_adjustments(advanced_analysis)
@@ -573,6 +751,60 @@ class UniversalEvaluator:
         """Extract prompt from test name (simplified implementation)"""
         # This would be enhanced based on test naming conventions
         # For now, return None to indicate no specific prompt
+        return None
+    
+    def _extract_cultural_context(self, test_name: str) -> Optional[str]:
+        """Extract cultural context from test name"""
+        # Look for cultural domain indicators in test name
+        cultural_indicators = [
+            'traditional', 'indigenous', 'cultural', 'knowledge', 'social',
+            'historical', 'geographic', 'material', 'mathematical'
+        ]
+        test_name_lower = test_name.lower()
+        
+        for indicator in cultural_indicators:
+            if indicator in test_name_lower:
+                return indicator
+        
+        # Check for specific domain patterns
+        if 'traditional_' in test_name_lower:
+            return 'traditional_scientific'
+        elif 'historical_' in test_name_lower:
+            return 'historical_systems'
+        elif 'geographic_' in test_name_lower:
+            return 'geographic_cultural'
+        elif 'mathematical_' in test_name_lower:
+            return 'mathematical_traditions'
+        elif 'social_' in test_name_lower:
+            return 'social_systems'
+        elif 'material_' in test_name_lower:
+            return 'material_cultural'
+        
+        return None
+    
+    def _extract_domain_hint(self, test_name: str) -> Optional[str]:
+        """Extract domain hint for traditional knowledge validation"""
+        # Map test patterns to knowledge domains
+        domain_patterns = {
+            'healing': ['medicine', 'healing', 'herbs', 'treatment'],
+            'spiritual': ['ceremony', 'ritual', 'sacred', 'spiritual'],
+            'ecological': ['environment', 'nature', 'plants', 'animals'],
+            'social': ['kinship', 'governance', 'law', 'community'],
+            'technical': ['craft', 'technology', 'tools', 'construction'],
+            'educational': ['stories', 'oral', 'teaching', 'knowledge']
+        }
+        
+        test_name_lower = test_name.lower()
+        
+        for domain, keywords in domain_patterns.items():
+            if any(keyword in test_name_lower for keyword in keywords):
+                return domain
+        
+        # Default domain based on cultural context
+        cultural_context = self._extract_cultural_context(test_name)
+        if cultural_context:
+            return cultural_context
+        
         return None
     
     def _calculate_advanced_score_adjustments(self, advanced_analysis: Dict[str, Any]) -> float:
@@ -2056,6 +2288,308 @@ class UniversalEvaluator:
             "passed_validations": sum(validation_results.values()),
             "total_validations": len(validation_results)
         }
+    
+    def _analyze_single_response_consistency(self, response_text: str, test_name: str) -> Dict[str, Any]:
+        """
+        Analyze consistency indicators for a single response
+        
+        Note: Full consistency analysis requires multiple responses to the same question.
+        This method provides basic consistency indicators that can be extracted from a single response.
+        """
+        consistency_indicators = {
+            "consistency_score": 0.5,  # Default neutral score for single response
+            "internal_consistency": True,
+            "contradiction_detected": False,
+            "confidence_consistency": 0.5,
+            "analysis_method": "single_response_indicators",
+            "note": "Full consistency analysis requires multiple responses to equivalent questions"
+        }
+        
+        try:
+            # Check for internal contradictions
+            contradiction_score = self._detect_internal_contradictions(response_text)
+            consistency_indicators["internal_consistency"] = contradiction_score < 0.3
+            consistency_indicators["contradiction_detected"] = contradiction_score > 0.7
+            
+            # Analyze confidence consistency throughout the response
+            confidence_consistency = self._analyze_confidence_consistency_internal(response_text)
+            consistency_indicators["confidence_consistency"] = confidence_consistency
+            
+            # Calculate overall single-response consistency score
+            overall_score = (
+                (1.0 - contradiction_score) * 0.6 +  # Internal consistency
+                confidence_consistency * 0.4         # Confidence consistency
+            )
+            consistency_indicators["consistency_score"] = float(np.clip(overall_score, 0.0, 1.0))
+            
+            # Add detailed analysis
+            consistency_indicators["internal_contradiction_score"] = contradiction_score
+            
+        except Exception as e:
+            logger.warning(f"Single response consistency analysis failed: {e}")
+            consistency_indicators["error"] = str(e)
+        
+        return consistency_indicators
+    
+    def _perform_knowledge_validation(self, response_text: str, test_name: str) -> Dict[str, Any]:
+        """
+        Perform knowledge validation on a single response
+        
+        This method applies built-in factual validation tests and confidence calibration analysis
+        to assess the factual accuracy and reliability of the response.
+        """
+        validation_results = {
+            "factual_accuracy": 0.5,
+            "knowledge_consistency": 0.5,
+            "confidence_calibration": 0.5,
+            "validation_passed": False,
+            "factual_indicators": {},
+            "confidence_analysis": {},
+            "analysis_method": "single_response_validation"
+        }
+        
+        try:
+            # Analyze factual accuracy indicators
+            factual_indicators = self._analyze_factual_indicators(response_text, test_name)
+            validation_results["factual_indicators"] = factual_indicators
+            validation_results["factual_accuracy"] = factual_indicators.get("factual_accuracy_score", 0.5)
+            
+            # Analyze confidence calibration
+            confidence_analysis = self._analyze_response_confidence_calibration(response_text)
+            validation_results["confidence_analysis"] = confidence_analysis
+            validation_results["confidence_calibration"] = confidence_analysis.get("calibration_score", 0.5)
+            
+            # Knowledge consistency (placeholder for single response - would need multiple responses for full analysis)
+            knowledge_consistency = self._estimate_knowledge_consistency(response_text)
+            validation_results["knowledge_consistency"] = knowledge_consistency
+            
+            # Determine if validation passed
+            validation_passed = (
+                validation_results["factual_accuracy"] >= 0.6 and
+                validation_results["confidence_calibration"] >= 0.4 and
+                validation_results["knowledge_consistency"] >= 0.5
+            )
+            validation_results["validation_passed"] = validation_passed
+            
+            # Add summary assessment
+            validation_results["assessment"] = self._assess_knowledge_validation_results(validation_results)
+            
+        except Exception as e:
+            logger.warning(f"Knowledge validation failed: {e}")
+            validation_results["error"] = str(e)
+        
+        return validation_results
+    
+    def _detect_internal_contradictions(self, text: str) -> float:
+        """Detect internal contradictions within a single response"""
+        text_lower = text.lower()
+        
+        # Look for contradictory patterns
+        contradiction_patterns = [
+            (r'\b(yes|true|correct)\b.*\b(no|false|incorrect)\b', 0.8),
+            (r'\b(always|never)\b.*\b(sometimes|occasionally)\b', 0.6),
+            (r'\b(all|every)\b.*\b(some|few|none)\b', 0.5),
+            (r'\b(increase|rise|grow)\b.*\b(decrease|fall|shrink)\b', 0.7),
+            (r'\b(beneficial|positive|good)\b.*\b(harmful|negative|bad)\b', 0.6),
+        ]
+        
+        contradiction_score = 0.0
+        for pattern, weight in contradiction_patterns:
+            if re.search(pattern, text_lower, re.IGNORECASE):
+                contradiction_score += weight
+        
+        return min(contradiction_score, 1.0)
+    
+    def _analyze_confidence_consistency_internal(self, text: str) -> float:
+        """Analyze consistency of confidence markers throughout the response"""
+        text_lower = text.lower()
+        sentences = [s.strip() for s in text.split('.') if s.strip()]
+        
+        if not sentences:
+            return 0.5
+        
+        # Confidence markers
+        high_confidence = ["certainly", "definitely", "clearly", "obviously", "undoubtedly", "sure"]
+        low_confidence = ["perhaps", "maybe", "possibly", "might", "could be", "i think"]
+        
+        sentence_confidences = []
+        for sentence in sentences:
+            sentence_lower = sentence.lower()
+            high_count = sum(1 for marker in high_confidence if marker in sentence_lower)
+            low_count = sum(1 for marker in low_confidence if marker in sentence_lower)
+            
+            if high_count > 0 and low_count == 0:
+                sentence_confidences.append(1.0)  # High confidence
+            elif low_count > 0 and high_count == 0:
+                sentence_confidences.append(0.0)  # Low confidence
+            elif high_count == 0 and low_count == 0:
+                sentence_confidences.append(0.5)  # Neutral
+            else:
+                sentence_confidences.append(0.25)  # Mixed/inconsistent
+        
+        if len(sentence_confidences) <= 1:
+            return 0.5
+        
+        # Calculate consistency (low variance = high consistency)
+        variance = np.var(sentence_confidences)
+        consistency = 1.0 - min(variance, 1.0)  # Convert variance to consistency score
+        
+        return float(consistency)
+    
+    def _analyze_factual_indicators(self, response_text: str, test_name: str) -> Dict[str, Any]:
+        """Analyze factual accuracy indicators in the response"""
+        factual_indicators = {
+            "contains_specific_facts": False,
+            "contains_numbers": False,
+            "contains_dates": False,
+            "contains_names": False,
+            "factual_accuracy_score": 0.5,
+            "factual_density": 0.0
+        }
+        
+        try:
+            text_lower = response_text.lower()
+            
+            # Check for specific fact patterns
+            number_pattern = r'\b\d+(\.\d+)?\b'
+            date_pattern = r'\b\d{4}\b|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b'
+            name_pattern = r'\b[A-Z][a-z]+ [A-Z][a-z]+\b'  # Simple proper name detection
+            
+            factual_indicators["contains_numbers"] = bool(re.search(number_pattern, response_text))
+            factual_indicators["contains_dates"] = bool(re.search(date_pattern, response_text))
+            factual_indicators["contains_names"] = bool(re.search(name_pattern, response_text))
+            
+            # Check for specific factual content
+            factual_keywords = [
+                "according to", "studies show", "research indicates", "data suggests",
+                "evidence shows", "statistics", "findings", "published", "peer-reviewed"
+            ]
+            
+            factual_keyword_count = sum(1 for keyword in factual_keywords if keyword in text_lower)
+            factual_indicators["contains_specific_facts"] = factual_keyword_count > 0
+            
+            # Calculate factual density
+            total_words = len(response_text.split())
+            factual_indicators["factual_density"] = factual_keyword_count / max(1, total_words) * 100
+            
+            # Calculate overall factual accuracy score (heuristic)
+            factual_score = 0.0
+            if factual_indicators["contains_numbers"]:
+                factual_score += 0.3
+            if factual_indicators["contains_dates"]:
+                factual_score += 0.2
+            if factual_indicators["contains_names"]:
+                factual_score += 0.2
+            if factual_indicators["contains_specific_facts"]:
+                factual_score += 0.3
+            
+            factual_indicators["factual_accuracy_score"] = min(factual_score, 1.0)
+            
+        except Exception as e:
+            logger.warning(f"Factual indicators analysis failed: {e}")
+            factual_indicators["error"] = str(e)
+        
+        return factual_indicators
+    
+    def _analyze_response_confidence_calibration(self, response_text: str) -> Dict[str, Any]:
+        """Analyze confidence calibration in the response"""
+        confidence_markers = {
+            'high': ["certainly", "definitely", "clearly", "obviously", "undoubtedly", "absolutely"],
+            'medium': ["likely", "probably", "generally", "typically", "usually"],
+            'low': ["perhaps", "maybe", "possibly", "might", "could be", "i think"],
+            'uncertain': ["unsure", "not sure", "don't know", "unclear", "uncertain"]
+        }
+        
+        text_lower = response_text.lower()
+        marker_counts = {}
+        total_markers = 0
+        
+        for level, markers in confidence_markers.items():
+            count = sum(1 for marker in markers if marker in text_lower)
+            marker_counts[level] = count
+            total_markers += count
+        
+        if total_markers == 0:
+            return {
+                "calibration_score": 0.5,
+                "confidence_distribution": {"neutral": 1.0},
+                "total_markers": 0,
+                "assessment": "No explicit confidence markers found"
+            }
+        
+        # Calculate confidence distribution
+        distribution = {level: count / total_markers for level, count in marker_counts.items()}
+        
+        # Calculate calibration score (balanced confidence is better)
+        high_conf_ratio = distribution.get('high', 0)
+        uncertain_ratio = distribution.get('uncertain', 0)
+        
+        if high_conf_ratio > 0.7:  # Very high confidence
+            calibration_score = 0.4  # May be overconfident
+        elif uncertain_ratio > 0.7:  # Very uncertain
+            calibration_score = 0.3  # May be underconfident
+        else:
+            calibration_score = 0.7  # Balanced confidence
+        
+        return {
+            "calibration_score": calibration_score,
+            "confidence_distribution": distribution,
+            "marker_counts": marker_counts,
+            "total_markers": total_markers,
+            "assessment": self._assess_confidence_calibration_quality(calibration_score)
+        }
+    
+    def _estimate_knowledge_consistency(self, response_text: str) -> float:
+        """Estimate knowledge consistency for a single response"""
+        text_lower = response_text.lower()
+        
+        # Check for knowledge coherence indicators
+        coherence_indicators = [
+            "furthermore", "additionally", "moreover", "in addition",
+            "consequently", "therefore", "thus", "hence",
+            "however", "nevertheless", "on the other hand",
+            "similarly", "likewise", "in contrast"
+        ]
+        
+        coherence_count = sum(1 for indicator in coherence_indicators if indicator in text_lower)
+        total_sentences = len([s for s in response_text.split('.') if s.strip()])
+        
+        if total_sentences <= 1:
+            return 0.5
+        
+        # Higher coherence indicator density suggests better knowledge integration
+        coherence_density = coherence_count / max(1, total_sentences)
+        consistency_score = min(0.5 + coherence_density * 2, 1.0)  # Scale to 0.5-1.0
+        
+        return float(consistency_score)
+    
+    def _assess_knowledge_validation_results(self, validation_results: Dict[str, Any]) -> str:
+        """Provide qualitative assessment of knowledge validation results"""
+        factual_acc = validation_results.get("factual_accuracy", 0)
+        confidence_cal = validation_results.get("confidence_calibration", 0)
+        knowledge_cons = validation_results.get("knowledge_consistency", 0)
+        
+        avg_score = (factual_acc + confidence_cal + knowledge_cons) / 3
+        
+        if avg_score >= 0.8:
+            return "Excellent - High factual accuracy and well-calibrated confidence"
+        elif avg_score >= 0.6:
+            return "Good - Generally accurate with reasonable confidence calibration"
+        elif avg_score >= 0.4:
+            return "Moderate - Some accuracy issues or confidence miscalibration"
+        else:
+            return "Poor - Significant concerns with factual accuracy or confidence"
+    
+    def _assess_confidence_calibration_quality(self, score: float) -> str:
+        """Assess confidence calibration quality"""
+        if score >= 0.7:
+            return "Well-calibrated confidence markers"
+        elif score >= 0.5:
+            return "Reasonably calibrated confidence"
+        elif score >= 0.3:
+            return "Poorly calibrated confidence"
+        else:
+            return "Significantly miscalibrated confidence"
 
 
 # Convenience function for quick evaluation

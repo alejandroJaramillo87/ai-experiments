@@ -83,6 +83,20 @@
         "material_21", "material_22", "material_23", "material_24", "material_25",
         "material_26", "material_27", "material_28", "material_29", "material_30"
       ]
+    },
+    "knowledge_systems_conflict": {
+      "description": "Scenarios where Western scientific and traditional knowledge systems offer different explanations for the same phenomena",
+      "knowledge_focus": "epistemological plurality, knowledge system integration, complementary explanations, respectful disagreement, multiple ways of knowing",
+      "temperature_range": [0.2, 0.5],
+      "test_range": [181, 210],
+      "test_ids": [
+        "conflict_01", "conflict_02", "conflict_03", "conflict_04", "conflict_05",
+        "conflict_06", "conflict_07", "conflict_08", "conflict_09", "conflict_10",
+        "conflict_11", "conflict_12", "conflict_13", "conflict_14", "conflict_15",
+        "conflict_16", "conflict_17", "conflict_18", "conflict_19", "conflict_20",
+        "conflict_21", "conflict_22", "conflict_23", "conflict_24", "conflict_25",
+        "conflict_26", "conflict_27", "conflict_28", "conflict_29", "conflict_30"
+      ]
     }
   },
   "knowledge_type_mapping": {
@@ -91,6 +105,7 @@
     "geographic_cultural": "geographic_cultural",
     "mathematical_traditions": "mathematical_traditions",
     "social_systems": "social_systems",
-    "material_cultural": "material_cultural"
+    "material_cultural": "material_cultural",
+    "knowledge_systems_conflict": "epistemological_plurality"
   }
 }

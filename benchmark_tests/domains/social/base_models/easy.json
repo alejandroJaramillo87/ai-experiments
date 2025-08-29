@@ -1,9 +1,9 @@
 {
   "suite_info": {
     "name": "Social Base Model Easy Tests",
-    "description": "Comprehensive social domain tests covering global cultural interaction patterns, conflict resolution, consensus building, social hierarchy navigation, and community organization systems",
-    "total_tests": 180,
-    "version": "1.0.0",
+    "description": "Comprehensive social domain tests covering global cultural interaction patterns, conflict resolution, consensus building, social hierarchy navigation, community organization systems, and advanced intercultural competence",
+    "total_tests": 210,
+    "version": "1.1.0",
     "difficulty": "easy",
     "target_models": "base_models",
     "coverage_scope": "global_social_intelligence_systems",
@@ -2526,6 +2526,426 @@
       "parameters": {
         "max_tokens": 380,
         "temperature": 0.45,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_01",
+      "name": "Test 181: Multicultural Workplace Integration",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Navigate complex multicultural workplace dynamics with employees from 5+ cultural backgrounds",
+      "prompt": "A multinational company has a team with employees from Japan, Nigeria, Mexico, Germany, and India. Address this workplace scenario:\n\n**Situation**: The team must collaborate on a critical project with tight deadlines, but cultural differences are creating friction:\n- Japanese members prefer consensus-building but are frustrated by lengthy discussions\n- Nigerian team member uses indirect communication that others misinterpret\n- Mexican employee feels excluded from informal social networks\n- German member's direct communication style is perceived as rude\n- Indian team member is caught between respect for hierarchy and collaborative expectations\n\n**Your Task**: Design a culturally competent approach that:\n1. **Acknowledges cultural strengths** that each background brings to collaboration\n2. **Creates bridge communication** strategies that honor different interaction styles\n3. **Establishes inclusive practices** that help all members participate authentically\n4. **Develops conflict resolution** methods that respect different cultural approaches\n5. **Builds team cohesion** while allowing individuals to maintain cultural identity\n\nProvide specific, actionable strategies that demonstrate deep understanding of each cultural communication style.",
+      "parameters": {
+        "max_tokens": 400,
+        "temperature": 0.45,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_02",
+      "name": "Test 182: Cross-Cultural Community Mediation",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Facilitate conflict resolution between different cultural communities in shared neighborhood",
+      "prompt": "A diverse urban neighborhood faces escalating tensions between three cultural communities: Somali refugees, longtime Latino residents, and recent Asian immigrant families. Issues include:\n\n**Cultural Tensions**:\n- Misunderstandings about religious practices and public space use\n- Different approaches to child supervision and community responsibility\n- Language barriers affecting neighborhood communication\n- Competition for limited resources and community services\n- Generational conflicts within each community affecting inter-group relations\n\n**Your Challenge**: Develop a comprehensive mediation strategy that:\n1. **Honors cultural integrity** while building bridges between communities\n2. **Creates safe dialogue spaces** where each community can express concerns authentically\n3. **Identifies shared values** and common interests across cultural differences\n4. **Develops practical solutions** that respect different cultural needs\n5. **Establishes ongoing processes** for maintaining intercultural harmony\n6. **Builds cross-cultural leadership** that can sustain positive relationships\n\nYour approach should demonstrate sophisticated understanding of how cultural identity, immigration experience, and community dynamics interact in diverse urban settings.",
+      "parameters": {
+        "max_tokens": 420,
+        "temperature": 0.5,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_03",
+      "name": "Test 183: Global Virtual Team Cultural Bridge-Building",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Establish effective collaboration across time zones and cultural communication styles in virtual environment",
+      "prompt": "You're leading a global virtual team spanning 6 time zones with members from Brazil, South Korea, Kenya, Finland, and Australia. The team struggles with:\n\n**Cultural Coordination Challenges**:\n- Different time orientations (polychronic vs. monochronic cultures)\n- Varied approaches to virtual meeting participation and hierarchy\n- Conflicting expectations about work-life boundaries and availability\n- Diverse styles of giving and receiving feedback across cultures\n- Different cultural comfort levels with technology and virtual interaction\n- Mismatched assumptions about project management and decision-making authority\n\n**Your Mission**: Create a cultural bridge-building framework that:\n1. **Respects time and scheduling** preferences across all cultural orientations\n2. **Establishes communication protocols** that honor different participation styles\n3. **Creates inclusive virtual environments** where all cultural approaches are valued\n4. **Develops feedback systems** that work across different cultural comfort levels\n5. **Builds team relationships** despite physical distance and cultural differences\n6. **Ensures equitable participation** regardless of English proficiency or cultural communication norms\n\nDemonstrate advanced intercultural competence by addressing both practical logistics and deeper cultural values in virtual collaboration.",
+      "parameters": {
+        "max_tokens": 420,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_04",
+      "name": "Test 184: Multi-Faith Community Celebration Planning",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Design inclusive community celebration that honors multiple religious and cultural traditions authentically",
+      "prompt": "A diverse community wants to create an annual celebration that honors their religious and cultural diversity, including Christian, Muslim, Jewish, Hindu, Buddhist, Indigenous, and secular families. Plan an authentic multi-faith celebration:\n\n**Cultural Considerations**:\n- Different calendar systems and holy day observances\n- Varied dietary restrictions and food preparation requirements\n- Diverse worship styles, music traditions, and ceremonial practices\n- Different approaches to gender roles and family participation\n- Sacred vs. secular distinctions across traditions\n- Interfaith dialogue protocols and theological sensitivities\n\n**Your Challenge**: Create a celebration framework that:\n1. **Honors authentic religious practices** without appropriation or superficial mixing\n2. **Creates inclusive participation** opportunities for people of all faith backgrounds\n3. **Addresses dietary and ritual** requirements respectfully and practically\n4. **Builds interfaith understanding** while respecting doctrinal boundaries\n5. **Engages all age groups** across different cultural family structures\n6. **Establishes ongoing interfaith** relationships beyond the single event\n\nYour plan should demonstrate sophisticated understanding of religious authenticity, interfaith dialogue principles, and community building across theological differences. Include specific examples of how different traditions could contribute while maintaining their integrity.",
+      "parameters": {
+        "max_tokens": 440,
+        "temperature": 0.5,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_05",
+      "name": "Test 185: Cross-Cultural Educational Integration",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Develop educational program that integrates students from refugee, immigrant, and established communities",
+      "prompt": "A school district serves students from refugee families (Afghanistan, Syria), recent immigrants (Guatemala, Philippines), and established communities (African American, European American). Address educational integration challenges:\n\n**Complex Educational Dynamics**:\n- Significant variation in prior educational experiences and literacy levels\n- Trauma-informed needs among refugee students vs. cultural adjustment needs of immigrants\n- Language learning requirements ranging from basic literacy to academic English\n- Different cultural values regarding education, authority, and family involvement\n- Economic disparities affecting access to educational resources and family support\n- Inter-group tensions between established and newcomer communities\n\n**Your Educational Mission**: Design an integration program that:\n1. **Honors educational traditions** that students bring from their home cultures\n2. **Addresses diverse learning needs** while maintaining high academic standards\n3. **Builds cross-cultural student relationships** and peer support networks\n4. **Engages families authentically** across different cultural approaches to education\n5. **Develops cultural competency** among all students and staff\n6. **Creates pathways to success** that respect different cultural definitions of achievement\n\nYour program should demonstrate deep understanding of how educational values, family structures, and cultural identity interact in diverse learning environments.",
+      "parameters": {
+        "max_tokens": 440,
+        "temperature": 0.45,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_06",
+      "name": "Test 186: International Business Cultural Protocol Navigation",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Navigate complex business relationship building across East Asian, Middle Eastern, and Western cultural protocols",
+      "prompt": "You're facilitating a joint venture negotiation between companies from Japan, Saudi Arabia, and the United States, with additional stakeholders from China and Germany. Address cultural protocol complexities:\n\n**Multicultural Business Challenges**:\n- Conflicting approaches to relationship-building vs. task-focused negotiation\n- Different concepts of time, scheduling, and deadline flexibility\n- Varied expectations about hierarchy, decision-making authority, and consensus\n- Diverse gift-giving protocols and hospitality expectations\n- Religious considerations affecting meeting timing, food, and social interaction\n- Face-saving vs. direct communication cultural requirements\n\n**Your Business Cultural Mission**: Develop protocols that:\n1. **Respect relationship-building** needs while achieving business objectives\n2. **Navigate hierarchy differences** without offending cultural sensibilities\n3. **Create inclusive communication** that allows all parties to participate authentically\n4. **Handle religious and cultural** requirements seamlessly in business settings\n5. **Build sustainable partnerships** that honor different cultural approaches to business loyalty\n6. **Establish conflict resolution** methods that work across all cultural contexts\n\nDemonstrate advanced intercultural business competence by creating specific protocols for meetings, negotiations, socializing, and ongoing relationship maintenance that satisfy all cultural expectations.",
+      "parameters": {
+        "max_tokens": 450,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_07",
+      "name": "Test 187: Healthcare Cross-Cultural Patient Advocacy",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Bridge cultural gaps between healthcare providers and patients from traditional medicine backgrounds",
+      "prompt": "A hospital serves patients from Hmong, Somali, and Mexican indigenous communities alongside mainstream populations. Address healthcare cultural integration:\n\n**Cultural Healthcare Challenges**:\n- Traditional healing practices vs. Western medical protocols\n- Different concepts of illness causation (spiritual, social, vs. biological)\n- Gender-specific cultural requirements for medical care and family involvement\n- Language interpretation needs that go beyond literal translation\n- Religious and cultural taboos affecting treatment acceptance\n- Mistrust of medical institutions based on historical trauma\n\n**Your Healthcare Mission**: Create a cultural competency framework that:\n1. **Integrates traditional healing** wisdom with modern medical care respectfully\n2. **Addresses cultural concepts** of illness and healing alongside biomedical approaches\n3. **Respects family and community** involvement in healthcare decisions\n4. **Provides culturally appropriate** communication and interpretation services\n5. **Builds trust** between medical providers and culturally diverse patient communities\n6. **Ensures equitable healthcare** outcomes across all cultural backgrounds\n\nYour framework should demonstrate sophisticated understanding of how cultural beliefs about health, family, spirituality, and authority interact with modern healthcare delivery. Include specific examples of successful cultural integration strategies.",
+      "parameters": {
+        "max_tokens": 450,
+        "temperature": 0.45,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_08",
+      "name": "Test 188: Cross-Cultural Climate Action Coalition",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Unite diverse cultural communities around environmental action while honoring different relationships to land and nature",
+      "prompt": "Build a climate action coalition including Indigenous communities, farmers, urban environmentalists, religious groups, and recent immigrants. Address environmental cultural diversity:\n\n**Cultural Environmental Perspectives**:\n- Indigenous seven-generation thinking vs. Western sustainability metrics\n- Traditional ecological knowledge vs. scientific environmental data\n- Different spiritual relationships to land, water, and natural resources\n- Varied cultural practices of resource use and conservation\n- Economic survival needs vs. environmental protection priorities\n- Different cultural approaches to collective action and decision-making\n\n**Your Coalition-Building Challenge**: Create unity while:\n1. **Honoring traditional ecological** knowledge alongside scientific approaches\n2. **Respecting sacred relationships** to land across different cultural traditions\n3. **Addressing economic justice** issues affecting environmental participation\n4. **Creating inclusive leadership** that represents diverse cultural approaches\n5. **Developing action strategies** that work for all cultural communication styles\n6. **Building long-term commitment** across different cultural concepts of time and responsibility\n\nDemonstrate advanced intercultural environmental competence by showing how different cultural relationships to nature can strengthen rather than divide climate action efforts. Include specific examples of successful cross-cultural environmental collaboration.",
+      "parameters": {
+        "max_tokens": 450,
+        "temperature": 0.5,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_09",
+      "name": "Test 189: Multi-Generational Cultural Identity Navigation",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Facilitate dialogue between immigrant elders and youth navigating cultural identity in multicultural society",
+      "prompt": "A community center serves multiple immigrant communities where generational cultural conflicts create family and community stress. Address intergenerational cultural navigation:\n\n**Generational Cultural Tensions**:\n- Elders preserving traditional values vs. youth adapting to dominant culture\n- Language loss as younger generations prioritize English fluency\n- Dating, marriage, and family structure expectations across generations\n- Educational and career aspirations conflicting with cultural traditions\n- Religious and spiritual practice evolution across generations\n- Community leadership succession from traditional elders to bicultural youth\n\n**Your Intercultural Mission**: Design a program that:\n1. **Honors elder wisdom** while supporting youth cultural adaptation\n2. **Preserves cultural traditions** while allowing for authentic cultural evolution\n3. **Bridges language gaps** that affect family and community communication\n4. **Creates mutual understanding** between generations about cultural change\n5. **Develops bicultural leadership** that can serve both traditional and mainstream communities\n6. **Builds family resilience** that strengthens rather than divides cultural identity\n\nYour program should demonstrate sophisticated understanding of how cultural identity develops across generations in multicultural environments. Include specific strategies for helping families navigate cultural change while maintaining connection to their heritage.",
+      "parameters": {
+        "max_tokens": 450,
+        "temperature": 0.45,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_10",
+      "name": "Test 190: Global Crisis Cross-Cultural Response Coordination",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Coordinate emergency response across multiple cultural communities with different approaches to crisis, authority, and mutual aid",
+      "prompt": "A natural disaster affects a region with Korean, Haitian, Native American, and rural American communities. Coordinate culturally competent emergency response:\n\n**Cultural Emergency Response Differences**:\n- Different relationships to government authority and outside assistance\n- Varied cultural approaches to crisis communication and information sharing\n- Traditional mutual aid systems vs. formal emergency management protocols\n- Different cultural concepts of vulnerability, resilience, and community strength\n- Language and communication barriers affecting emergency information access\n- Cultural and religious considerations for emergency shelter and food assistance\n\n**Your Emergency Coordination Challenge**: Develop response systems that:\n1. **Respect cultural approaches** to crisis response and community resilience\n2. **Integrate traditional mutual aid** with formal emergency management systems\n3. **Provide culturally appropriate** emergency services and communication\n4. **Build trust** between emergency responders and culturally diverse communities\n5. **Ensure equitable access** to resources across all cultural and language groups\n6. **Create sustainable recovery** that strengthens rather than disrupts cultural communities\n\nDemonstrate advanced crisis intercultural competence by showing how cultural diversity in emergency response can be a source of community strength rather than a coordination challenge. Include specific examples of how different cultural approaches to crisis and mutual aid can enhance overall community resilience.",
+      "parameters": {
+        "max_tokens": 450,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_11",
+      "name": "Test 191: Advanced Cross-Cultural Mediation",
+      "category": "intercultural_competence", 
+      "social_type": "cross_cultural_navigation",
+      "description": "Navigate complex cross-cultural conflicts with multiple mediation frameworks",
+      "prompt": "Mediate a complex intercultural conflict involving different justice systems and cultural approaches to conflict resolution. Demonstrate advanced cross-cultural mediation competency by integrating multiple cultural frameworks for justice and reconciliation.",
+      "parameters": {
+        "max_tokens": 400,
+        "temperature": 0.45,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_12",
+      "name": "Test 192: Global Team Cultural Integration", 
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation", 
+      "description": "Build effective cross-cultural team dynamics in global contexts",
+      "prompt": "Facilitate integration of a global virtual team with members from different cultural backgrounds, time zones, and communication styles. Address cultural barriers to collaboration while leveraging cultural diversity as team strength.",
+      "parameters": {
+        "max_tokens": 400,
+        "temperature": 0.5,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_13",
+      "name": "Test 193: Multi-Faith Community Building",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Create inclusive community spaces across religious and cultural differences", 
+      "prompt": "Design community programming that brings together diverse religious and cultural groups while respecting sacred boundaries and creating authentic interfaith relationships. Navigate religious sensitivities while building shared community identity.",
+      "parameters": {
+        "max_tokens": 410,
+        "temperature": 0.45,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_14",
+      "name": "Test 194: Cultural Bridge-Building Leadership",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Lead complex cultural bridge-building initiatives across historic divisions",
+      "prompt": "Lead reconciliation efforts between communities with historic tensions and cultural misunderstandings. Facilitate healing while honoring cultural integrity and addressing systemic barriers to cross-cultural trust and cooperation.",
+      "parameters": {
+        "max_tokens": 420,
+        "temperature": 0.5,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_15",
+      "name": "Test 195: Advanced Identity Negotiation",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Navigate complex multicultural identity formation and expression",
+      "prompt": "Support individuals navigating multiple cultural identities while building inclusive communities that honor multicultural experiences. Address identity conflicts and cultural authenticity challenges in diverse settings.",
+      "parameters": {
+        "max_tokens": 415,
+        "temperature": 0.55,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_16",
+      "name": "Test 196: Cross-Cultural Innovation Integration",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation", 
+      "description": "Integrate diverse cultural approaches to innovation and problem-solving",
+      "prompt": "Facilitate collaboration that combines different cultural approaches to innovation, creativity, and problem-solving. Leverage cultural diversity in thinking styles while creating shared frameworks for collaborative innovation.",
+      "parameters": {
+        "max_tokens": 405,
+        "temperature": 0.52,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_17", 
+      "name": "Test 197: Global Social Justice Coalition",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Build cross-cultural social justice movements that honor cultural specificity",
+      "prompt": "Coordinate international social justice efforts that address both shared global concerns and culturally specific issues. Build solidarity across cultural boundaries while respecting local contexts and indigenous leadership.",
+      "parameters": {
+        "max_tokens": 425,
+        "temperature": 0.48,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_18",
+      "name": "Test 198: Cultural Trauma-Informed Community Healing",
+      "category": "intercultural_competence", 
+      "social_type": "cross_cultural_navigation",
+      "description": "Facilitate culturally responsive community healing from collective trauma",
+      "prompt": "Design trauma-informed community healing approaches that honor different cultural frameworks for understanding trauma, resilience, and healing. Integrate traditional healing wisdom with contemporary trauma-informed practices.",
+      "parameters": {
+        "max_tokens": 430,
+        "temperature": 0.46,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_19",
+      "name": "Test 199: Advanced Cultural Competency Training Design",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Develop sophisticated cultural competency training for complex multicultural contexts",
+      "prompt": "Create comprehensive cultural competency training that goes beyond surface-level cultural awareness to develop genuine cross-cultural skills, cultural humility, and systemic cultural change capabilities. Address both individual and institutional transformation.",
+      "parameters": {
+        "max_tokens": 435,
+        "temperature": 0.5,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_20",
+      "name": "Test 200: Comprehensive Cross-Cultural Community Transformation",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Lead comprehensive community transformation toward genuine multicultural competency and inclusion",
+      "prompt": "Design and implement community-wide transformation toward authentic multicultural competency and inclusion. Address systemic barriers, build cross-cultural leadership capacity, create sustainable intercultural institutions, and measure genuine progress toward community-wide cultural responsiveness and equity.",
+      "parameters": {
+        "max_tokens": 450,
+        "temperature": 0.52,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_21",
+      "name": "Test 201: Multicultural Policy Development",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Develop policies that effectively serve diverse cultural communities",
+      "prompt": "Create comprehensive policies for multicultural organizations or communities that address cultural inclusion, equity, and authentic representation while avoiding tokenism and cultural appropriation. Balance universal principles with cultural specificity.",
+      "parameters": {
+        "max_tokens": 440,
+        "temperature": 0.47,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_22",
+      "name": "Test 202: Cross-Cultural Research Ethics",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation", 
+      "description": "Navigate ethical research practices across cultural boundaries and power dynamics",
+      "prompt": "Design research methodologies that respect cultural boundaries, honor indigenous knowledge sovereignty, address colonial research practices, and ensure cultural communities benefit from research rather than being extracted from. Integrate cultural ethics with academic standards.",
+      "parameters": {
+        "max_tokens": 445,
+        "temperature": 0.49,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_23",
+      "name": "Test 203: Global Cultural Preservation and Innovation Balance",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Balance cultural preservation with adaptation and innovation in global contexts",
+      "prompt": "Navigate the tension between preserving cultural authenticity and adapting to global changes. Support cultural communities in maintaining identity while engaging global opportunities, addressing cultural appropriation concerns, and fostering genuine cultural exchange.",
+      "parameters": {
+        "max_tokens": 425,
+        "temperature": 0.53,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_24",
+      "name": "Test 204: Advanced Conflict Transformation Across Cultures",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Transform deep-rooted intercultural conflicts into collaborative partnerships",
+      "prompt": "Transform longstanding intercultural conflicts through restorative justice approaches that honor different cultural frameworks for justice, healing, and reconciliation. Move beyond conflict resolution to genuine relationship transformation and collaborative partnership building.",
+      "parameters": {
+        "max_tokens": 455,
+        "temperature": 0.51,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_25",
+      "name": "Test 205: Cultural Wisdom Integration for Global Challenges",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Integrate diverse cultural wisdom traditions to address complex global challenges",
+      "prompt": "Coordinate global responses to climate change, poverty, or health crises by integrating diverse cultural wisdom traditions with contemporary knowledge systems. Honor indigenous knowledge while building effective collaborative solutions across cultural boundaries.",
+      "parameters": {
+        "max_tokens": 460,
+        "temperature": 0.54,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_26",
+      "name": "Test 206: Next-Generation Multicultural Leadership Development",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Develop multicultural leaders who can navigate increasing global cultural complexity",
+      "prompt": "Design leadership development programs that prepare individuals to lead effectively in increasingly diverse and interconnected global contexts. Develop cultural intelligence, adaptive leadership skills, and authentic cross-cultural relationship building capabilities for complex global challenges.",
+      "parameters": {
+        "max_tokens": 450,
+        "temperature": 0.56,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_27",
+      "name": "Test 207: Cultural Technology Ethics and Global Digital Equity",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Address cultural and ethical dimensions of global technology access and development",
+      "prompt": "Develop culturally responsive technology policies and practices that address digital divides, cultural representation in AI systems, and ethical technology development across diverse global contexts. Balance innovation with cultural values and community self-determination.",
+      "parameters": {
+        "max_tokens": 465,
+        "temperature": 0.52,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_28",
+      "name": "Test 208: Comprehensive Cultural Institution Transformation",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Transform major institutions to serve diverse global communities authentically",
+      "prompt": "Lead comprehensive transformation of major institutions (educational, healthcare, legal, religious) to authentically serve diverse global communities. Address systemic barriers, develop cultural competency at all organizational levels, and create sustainable multicultural institutional practices.",
+      "parameters": {
+        "max_tokens": 470,
+        "temperature": 0.49,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_29",
+      "name": "Test 209: Future-Focused Multicultural Community Design",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation", 
+      "description": "Design sustainable multicultural communities for future demographic and global changes",
+      "prompt": "Design communities and societies that can thrive with increasing cultural diversity, global migration, climate displacement, and technological change. Create adaptive systems that honor cultural diversity while building shared community resilience and collaborative capacity.",
+      "parameters": {
+        "max_tokens": 475,
+        "temperature": 0.58,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "intercultural_30",
+      "name": "Test 210: Advanced Intercultural Competence Framework Integration",
+      "category": "intercultural_competence",
+      "social_type": "cross_cultural_navigation",
+      "description": "Integrate comprehensive intercultural competence across all dimensions of global citizenship",
+      "prompt": "Develop comprehensive framework for advanced intercultural competence that integrates cultural bridge-building, identity negotiation, multicultural facilitation, cross-cultural conflict transformation, and global community formation capabilities. Demonstrate mastery of intercultural competence as essential global citizenship skill for addressing humanity's shared challenges through cultural diversity as strength rather than barrier. Include assessment methods, development pathways, and institutional implementation strategies for systematic multicultural competency development.",
+      "parameters": {
+        "max_tokens": 480,
+        "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
       }

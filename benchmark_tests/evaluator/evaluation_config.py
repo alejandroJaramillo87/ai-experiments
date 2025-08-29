@@ -514,6 +514,291 @@ DEFAULT_CONFIG = {
             "poor_numerical_stability": -5.0,    # <0.4 numerical stability
             "low_factual_consistency": -6.0,     # <0.4 factual consistency
             "calculation_avoidance": -4.0        # Detected avoidance patterns
+        },
+        "consistency_bonuses": {
+            "excellent_consistency": 4.0,          # >0.9 cross-phrasing consistency
+            "high_internal_consistency": 2.5,      # >0.8 internal consistency
+            "good_confidence_consistency": 2.0     # >0.7 confidence consistency
+        },
+        "consistency_penalties": {
+            "poor_consistency": -5.0,              # <0.4 cross-phrasing consistency
+            "internal_contradictions": -6.0,       # Detected contradictions
+            "confidence_inconsistency": -3.0       # <0.3 confidence consistency
+        },
+        "validation_bonuses": {
+            "high_factual_accuracy": 5.0,          # >0.8 factual accuracy
+            "excellent_knowledge_consistency": 3.0, # >0.8 knowledge consistency
+            "well_calibrated_confidence": 3.0      # >0.7 confidence calibration
+        },
+        "validation_penalties": {
+            "low_factual_accuracy": -6.0,          # <0.4 factual accuracy
+            "poor_knowledge_consistency": -4.0,    # <0.3 knowledge consistency
+            "miscalibrated_confidence": -3.0,      # <0.3 confidence calibration
+            "failed_validation": -8.0              # Overall validation failure
+        },
+        "cultural_bonuses": {
+            "excellent_cultural_authenticity": 4.0,  # >0.85 cultural authenticity
+            "high_tradition_respect": 3.0,           # >0.8 tradition respect
+            "excellent_coherence": 3.0,              # >0.85 cross-cultural coherence
+            "comprehensive_contextualization": 2.0,  # Multiple context categories
+            "proper_attribution": 2.0,               # Good community attribution
+            "living_tradition_recognition": 1.5      # Recognizes evolving traditions
+        },
+        "cultural_penalties": {
+            "poor_cultural_authenticity": -6.0,      # <0.3 cultural authenticity
+            "tradition_violations": -8.0,            # Critical tradition violations
+            "framework_imposition": -5.0,            # Inappropriate framework imposition
+            "stereotype_indicators": -4.0,           # Stereotyping detected
+            "appropriation_markers": -7.0,           # Cultural appropriation detected
+            "sacred_knowledge_violations": -10.0,    # Sacred knowledge mishandling
+            "poor_coherence": -4.0                   # <0.3 cross-cultural coherence
+        }
+    },
+    
+    # Consistency and validation thresholds
+    "consistency_validation_thresholds": {
+        "consistency": {
+            "excellent": 0.9,
+            "good": 0.7,
+            "moderate": 0.5,
+            "poor": 0.3
+        },
+        "factual_accuracy": {
+            "excellent": 0.9,
+            "good": 0.75,
+            "moderate": 0.6,
+            "poor": 0.4
+        },
+        "confidence_calibration": {
+            "well_calibrated": 0.7,
+            "reasonably_calibrated": 0.5,
+            "poorly_calibrated": 0.3,
+            "miscalibrated": 0.0
+        },
+        "knowledge_consistency": {
+            "highly_consistent": 0.8,
+            "moderately_consistent": 0.6,
+            "low_consistency": 0.4,
+            "inconsistent": 0.0
+        }
+    },
+    
+    # Built-in consistency test configurations
+    "consistency_test_config": {
+        "enabled": True,
+        "test_categories": [
+            "basic_math", "factual_knowledge", "logical_reasoning",
+            "definitional", "comparative", "causal"
+        ],
+        "tests_per_category": 3,
+        "similarity_threshold": 0.6,
+        "confidence_analysis": True,
+        "failure_detection": True
+    },
+    
+    # Knowledge validation configurations
+    "knowledge_validation_config": {
+        "enabled": True,
+        "validation_categories": [
+            "geography", "science", "mathematics", 
+            "history", "literature", "general"
+        ],
+        "tests_per_category": 5,
+        "factual_accuracy_threshold": 0.6,
+        "confidence_calibration_analysis": True,
+        "forbidden_token_penalty": 0.5,
+        "expected_token_bonus": 0.3
+    },
+    
+    # Cultural evaluation thresholds
+    "cultural_evaluation_thresholds": {
+        "cultural_authenticity": {
+            "excellent": 0.85,
+            "good": 0.7,
+            "acceptable": 0.5,
+            "concerning": 0.3,
+            "problematic": 0.1
+        },
+        "tradition_respect": {
+            "excellent": 0.85,
+            "good": 0.7,
+            "acceptable": 0.5,
+            "concerning": 0.3,
+            "critical_issues": 0.1
+        },
+        "cross_cultural_coherence": {
+            "excellent": 0.85,
+            "good": 0.7,
+            "acceptable": 0.5,
+            "concerning": 0.3,
+            "problematic": 0.1
+        },
+        "stereotype_severity": {
+            "acceptable": 0.1,
+            "concerning": 0.3,
+            "problematic": 0.5,
+            "severe": 0.8
+        },
+        "appropriation_risk": {
+            "low": 0.1,
+            "medium": 0.3,
+            "high": 0.5,
+            "critical": 0.8
+        },
+        "framework_imposition": {
+            "minimal": 0.9,
+            "low": 0.7,
+            "moderate": 0.5,
+            "high": 0.3,
+            "severe": 0.1
+        }
+    },
+    
+    # Cultural evaluation configurations
+    "cultural_evaluation_config": {
+        "enabled": True,
+        "cultural_domains": [
+            "traditional_scientific", "historical_systems", "geographic_cultural",
+            "mathematical_traditions", "social_systems", "material_cultural"
+        ],
+        "knowledge_domains": [
+            "healing", "spiritual", "ecological", "social", "technical", "educational"
+        ],
+        "authenticity_analysis": True,
+        "tradition_validation": True,
+        "coherence_checking": True,
+        "sacred_knowledge_protection": True,
+        "community_attribution_required": True
+    },
+    
+    # Domain-specific evaluation configurations
+    "domain_evaluation_config": {
+        "enabled": True,
+        "router_config": {
+            "lazy_loading": True,
+            "cache_evaluators": True,
+            "parallel_evaluation": False,  # Sequential by default for consistency
+            "fallback_to_general": True,
+            "max_concurrent_evaluators": 3
+        },
+        "aggregation_config": {
+            "consensus_threshold": 0.7,
+            "outlier_threshold": 2.0,  # Standard deviations
+            "cultural_weighting": True,
+            "dimension_aggregation_method": "weighted_average",
+            "overall_score_method": "cultural_competence_weighted"
+        },
+        "domain_settings": {
+            "creativity": {
+                "evaluator_class": "CreativityEvaluator",
+                "temperature_range": [0.6, 0.9],
+                "pattern_libraries": ["griot", "dreamtime", "kamishibai", "oral_performance"],
+                "dimensions": [
+                    "cultural_creative_patterns",
+                    "rhythmic_quality", 
+                    "narrative_coherence",
+                    "originality_within_bounds",
+                    "performance_quality",
+                    "collaborative_creation"
+                ]
+            },
+            "language": {
+                "evaluator_class": "LanguageEvaluator", 
+                "pattern_libraries": ["code_switching", "register_variation", "dialectal_patterns"],
+                "dimensions": [
+                    "register_appropriateness",
+                    "code_switching_quality",
+                    "pragmatic_competence",
+                    "multilingual_patterns",
+                    "dialectal_competence",
+                    "sociolinguistic_awareness"
+                ]
+            },
+            "social": {
+                "evaluator_class": "SocialEvaluator",
+                "pattern_libraries": ["hierarchy_patterns", "relationship_maintenance", "etiquette_systems"],
+                "dimensions": [
+                    "social_appropriateness",
+                    "hierarchy_navigation", 
+                    "relationship_maintenance",
+                    "community_dynamics",
+                    "cultural_etiquette"
+                ]
+            },
+            "reasoning": {
+                "evaluator_class": "ReasoningEvaluator",
+                "pattern_libraries": ["logic_frameworks", "cultural_reasoning", "holistic_thinking"],
+                "dimensions": [
+                    "reasoning_pattern_recognition",
+                    "cultural_logic_frameworks",
+                    "holistic_vs_analytical",
+                    "relational_reasoning",
+                    "multi_logic_integration"
+                ]
+            },
+            "knowledge": {
+                "evaluator_class": "KnowledgeEvaluator",
+                "pattern_libraries": ["traditional_knowledge", "sacred_boundaries", "community_attribution"],
+                "dimensions": [
+                    "traditional_knowledge_accuracy",
+                    "cultural_contextualization", 
+                    "sacred_knowledge_respect",
+                    "community_attribution",
+                    "knowledge_system_integration"
+                ]
+            },
+            "integration": {
+                "evaluator_class": "IntegrationEvaluator",
+                "pattern_libraries": ["cross_domain", "synthesis_patterns", "integration_markers"],
+                "dimensions": [
+                    "cross_domain_coherence",
+                    "cultural_authenticity_integration",
+                    "logical_consistency_across_domains",
+                    "creative_appropriateness", 
+                    "social_awareness_integration",
+                    "synthesis_quality"
+                ],
+                "integration_types": [
+                    "knowledge_reasoning_synthesis",
+                    "social_creative_solutions",
+                    "multilingual_knowledge_expression",
+                    "culturally_sensitive_reasoning",
+                    "comprehensive_integration"
+                ]
+            }
+        },
+        "cultural_pattern_libraries": {
+            "griot": {
+                "storytelling_structures": ["call_response", "moral_embedding", "historical_weaving"],
+                "performance_markers": ["rhythmic_speech", "audience_engagement", "improvisation"],
+                "cultural_values": ["community_wisdom", "oral_preservation", "moral_instruction"]
+            },
+            "dreamtime": {
+                "narrative_structures": ["landscape_embodiment", "ancestor_presence", "cyclical_time"],
+                "knowledge_integration": ["ecological_wisdom", "spiritual_geography", "social_law"],
+                "storytelling_ethics": ["sacred_boundaries", "initiation_levels", "place_connection"]
+            },
+            "kamishibai": {
+                "visual_narrative": ["image_text_harmony", "dramatic_pacing", "audience_participation"],
+                "educational_purpose": ["moral_lessons", "cultural_values", "community_bonding"],
+                "performance_style": ["theatrical_delivery", "voice_modulation", "timing_mastery"]
+            },
+            "oral_performance": {
+                "rhythmic_patterns": ["meter_consistency", "stress_patterns", "breath_phrasing"],
+                "memory_aids": ["alliteration", "repetition", "formulaic_phrases"],
+                "audience_interaction": ["call_response", "participation_cues", "collective_memory"]
+            },
+            "cross_domain": {
+                "integration_markers": ["synthesize", "integrate", "combine", "merge", "unify"],
+                "transition_indicators": ["furthermore", "additionally", "however", "therefore", "similarly"],
+                "coherence_patterns": ["holistic", "comprehensive", "multifaceted", "interdisciplinary"]
+            },
+            "synthesis_patterns": {
+                "knowledge_reasoning": ["traditional knowledge shows", "cultural understanding combined with", "evidence from traditional systems"],
+                "social_creativity": ["creative solution to social", "community healing through art", "artistic practices address"],
+                "language_knowledge": ["multilingual expression of", "code-switching reflects", "cultural translation conveys"],
+                "reasoning_social": ["cultural sensitivity in reasoning", "ethical reasoning considers", "multiple perspectives in analysis"]
+            }
         }
     },
     
@@ -534,6 +819,23 @@ DEFAULT_CONFIG = {
                 "fp16": {"impact_threshold": 0.1},
                 "int8": {"impact_threshold": 0.3},
                 "int4": {"impact_threshold": 0.6}
+            },
+            "consistency_expectations": {
+                "internal_consistency_baseline": 0.7,  # Expected internal consistency
+                "confidence_consistency_baseline": 0.6, # Expected confidence consistency
+                "cross_phrasing_baseline": 0.5        # Expected cross-phrasing consistency
+            },
+            "validation_expectations": {
+                "factual_accuracy_baseline": 0.6,     # Expected factual accuracy
+                "knowledge_consistency_baseline": 0.5, # Expected knowledge consistency
+                "confidence_calibration_baseline": 0.4 # Expected confidence calibration
+            },
+            "cultural_expectations": {
+                "cultural_authenticity_baseline": 0.5,  # Expected cultural authenticity
+                "tradition_respect_baseline": 0.5,      # Expected tradition respect
+                "cross_cultural_coherence_baseline": 0.6, # Expected coherence
+                "stereotype_tolerance": 0.2,             # Maximum acceptable stereotype level
+                "appropriation_tolerance": 0.1           # Maximum acceptable appropriation risk
             }
         },
         
@@ -547,6 +849,23 @@ DEFAULT_CONFIG = {
             "context_expectations": {
                 "effective_context_limit": 8192,
                 "saturation_onset": 6000
+            },
+            "consistency_expectations": {
+                "internal_consistency_baseline": 0.8,  # Higher expectations for instruct model
+                "confidence_consistency_baseline": 0.7,
+                "cross_phrasing_baseline": 0.7
+            },
+            "validation_expectations": {
+                "factual_accuracy_baseline": 0.75,
+                "knowledge_consistency_baseline": 0.7,
+                "confidence_calibration_baseline": 0.6
+            },
+            "cultural_expectations": {
+                "cultural_authenticity_baseline": 0.7,  # Higher expectations for instruct model
+                "tradition_respect_baseline": 0.7,      # Higher expectations for tradition respect
+                "cross_cultural_coherence_baseline": 0.8, # Higher coherence expectations
+                "stereotype_tolerance": 0.1,             # Lower tolerance for stereotypes
+                "appropriation_tolerance": 0.05          # Very low appropriation tolerance
             }
         },
         
@@ -559,6 +878,38 @@ DEFAULT_CONFIG = {
             "context_expectations": {
                 "effective_context_limit": 2048,
                 "saturation_onset": 1500
+            },
+            "consistency_expectations": {
+                "internal_consistency_baseline": 0.75,
+                "confidence_consistency_baseline": 0.65,
+                "cross_phrasing_baseline": 0.6
+            },
+            "validation_expectations": {
+                "factual_accuracy_baseline": 0.7,
+                "knowledge_consistency_baseline": 0.6,
+                "confidence_calibration_baseline": 0.5
+            }
+        },
+        
+        "qwen3_30b": {
+            "balanced_优化": True,
+            "entropy_expectations": {
+                "token_entropy_range": [3.8, 5.8],
+                "semantic_diversity_baseline": 0.48
+            },
+            "context_expectations": {
+                "effective_context_limit": 4096,
+                "saturation_onset": 3000
+            },
+            "consistency_expectations": {
+                "internal_consistency_baseline": 0.72,
+                "confidence_consistency_baseline": 0.62,
+                "cross_phrasing_baseline": 0.55
+            },
+            "validation_expectations": {
+                "factual_accuracy_baseline": 0.65,
+                "knowledge_consistency_baseline": 0.55,
+                "confidence_calibration_baseline": 0.45
             }
         }
     }

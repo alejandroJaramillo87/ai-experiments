@@ -1,9 +1,9 @@
 {
   "suite_info": {
     "name": "Knowledge Base Model Easy Tests",
-    "description": "Comprehensive knowledge domain tests covering global cultural knowledge systems, traditional sciences, historical systems, and cultural expertise",
-    "total_tests": 180,
-    "version": "1.0.0",
+    "description": "Comprehensive knowledge domain tests covering global cultural knowledge systems, traditional sciences, historical systems, cultural expertise, and knowledge systems conflicts",
+    "total_tests": 210,
+    "version": "1.1.0",
     "difficulty": "easy",
     "target_models": "base_models",
     "coverage_scope": "global_cultural_knowledge_systems",
@@ -2525,6 +2525,426 @@
       "prompt": "Describe traditional Berber carpet weaving techniques and their cultural and artistic significance in North Africa. Explain:\n\n1. **Loom Technologies**: Traditional Berber loom types and their specialized functions for carpet weaving\n2. **Wool Preparation**: Berber techniques for preparing sheep wool including cleaning, dyeing, and spinning\n3. **Weaving Techniques**: Traditional Berber knotting and weaving methods for carpet production\n4. **Design Traditions**: Traditional Berber carpet patterns and their symbolic meanings\n5. **Cultural Functions**: The role of carpet weaving in Berber culture and social organization\n6. **Regional Variations**: Different Berber carpet styles across Morocco, Algeria, and other North African regions\n\nProvide specific examples of Berber carpet types and their distinctive characteristics and cultural significance.",
       "parameters": {
         "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_01",
+      "name": "Test 181: Depression Treatment - Biomedical vs Traditional Healing",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare biomedical and traditional healing approaches to depression treatment",
+      "prompt": "A community member is experiencing persistent sadness, loss of energy, and social withdrawal. Two different knowledge systems offer explanations and treatments:\n\n**Biomedical Perspective**: Depression is a neurochemical imbalance involving serotonin, dopamine, and norepinephrine. Treatment includes antidepressant medications (SSRIs, SNRIs), cognitive behavioral therapy, and lifestyle modifications. This approach focuses on individual brain chemistry and psychological patterns.\n\n**Traditional Healing Perspective** (drawing from various indigenous traditions): Depression reflects spiritual disconnection, imbalance with community/nature, or unresolved ancestral trauma. Treatment includes ceremonial healing, plant medicine, community support rituals, energy restoration practices, and reconnection with cultural identity and purpose.\n\nAnalyze how both knowledge systems:\n1. **Explain the root causes** of the condition\n2. **Approach treatment and healing**\n3. **Define successful recovery**\n4. **Might complement rather than contradict each other**\n\nDiscuss how both perspectives offer valuable insights without privileging one as more 'correct' than the other.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_02", 
+      "name": "Test 182: Climate Patterns - Meteorology vs Indigenous Seasonal Knowledge",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare meteorological science and indigenous seasonal knowledge systems",
+      "prompt": "A farming community needs to understand changing weather patterns affecting crop planning. Two knowledge systems offer different approaches:\n\n**Meteorological Science**: Uses satellite data, atmospheric models, statistical analysis of temperature/precipitation records, and computer simulations to predict weather patterns. Focuses on measurable variables like barometric pressure, humidity levels, and global climate systems.\n\n**Indigenous Seasonal Knowledge** (from various traditional cultures): Observes animal behavior patterns, plant flowering/fruiting cycles, wind direction changes, cloud formation types, and subtle environmental indicators accumulated over generations. Integrates astronomical observations with local ecosystem cycles.\n\nExamine how both systems:\n1. **Collect and validate information** about weather patterns\n2. **Make predictions** for seasonal changes\n3. **Adapt to climate variability** and long-term changes\n4. **Could work together** to enhance understanding\n\nExplore how indigenous knowledge might capture environmental subtleties that scientific instruments miss, while scientific methods might confirm and expand traditional observations.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_03",
+      "name": "Test 183: Plant Medicine - Pharmacology vs Traditional Herbalism", 
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare pharmacological and traditional herbal medicine approaches",
+      "prompt": "A person seeks treatment for chronic inflammation. Two knowledge systems offer different approaches to plant-based healing:\n\n**Pharmacological Approach**: Isolates active compounds from plants (like salicin from willow bark for aspirin), studies molecular mechanisms, conducts controlled clinical trials, and creates standardized dosages. Focuses on single active ingredients and their biochemical pathways.\n\n**Traditional Herbalism** (drawing from Ayurveda, Traditional Chinese Medicine, Indigenous plant medicine): Uses whole plants or complex preparations, considers individual constitution, seasonal factors, and holistic body systems. Emphasizes plant spirit/energy, synergistic effects of multiple compounds, and individualized treatment approaches.\n\nAnalyze how both systems:\n1. **Understand how plants heal** the body\n2. **Determine appropriate dosages** and treatment duration  \n3. **Assess treatment effectiveness** and safety\n4. **Might offer complementary insights** about plant healing\n\nConsider how traditional knowledge of plant synergies might inform pharmaceutical research, while scientific analysis might validate and refine traditional practices.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_04",
+      "name": "Test 184: Earthquake Prediction - Seismology vs Traditional Environmental Indicators",
+      "category": "knowledge_systems_conflict", 
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare seismological science and traditional earthquake prediction methods",
+      "prompt": "A region experiences increased seismic activity. Two knowledge systems offer different approaches to understanding earthquake patterns:\n\n**Seismological Science**: Uses seismometers, geological surveys, tectonic plate monitoring, and statistical models to assess earthquake probability. Analyzes fault lines, stress accumulation, and historical seismic data to predict likely earthquake zones and magnitudes.\n\n**Traditional Environmental Indicators** (from earthquake-prone regions like Japan, Peru, Greece): Observes animal behavior changes, unusual water level fluctuations, atmospheric phenomena, ground temperature variations, and subtle environmental signs. Passed down through generations of observation in seismically active areas.\n\nExamine how both approaches:\n1. **Gather predictive information** about seismic events\n2. **Interpret warning signs** and assess risk levels\n3. **Guide community preparedness** and safety measures\n4. **Could enhance each other's accuracy**\n\nDiscuss how traditional observations of environmental changes might detect earthquake precursors that instruments miss, while scientific monitoring might confirm and quantify traditional indicators.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_05",
+      "name": "Test 185: Child Development - Psychology vs Traditional Child-Rearing",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality", 
+      "description": "Compare developmental psychology and traditional child-rearing wisdom",
+      "prompt": "Parents are concerned about their child's social and emotional development. Two knowledge systems offer different approaches:\n\n**Developmental Psychology**: Uses standardized developmental milestones, attachment theory, cognitive development stages, and evidence-based parenting techniques. Focuses on individual child psychology, peer relationships, and structured learning environments.\n\n**Traditional Child-Rearing Wisdom** (from various cultural traditions): Emphasizes community-based child-rearing, intergenerational knowledge transmission, cultural identity formation, and spiritual/character development. Values extended family networks, cultural storytelling, and community responsibility for child development.\n\nAnalyze how both systems:\n1. **Define healthy child development** and important milestones\n2. **Address behavioral and emotional challenges** in children\n3. **Prepare children for adult roles** in society\n4. **Could work together** to support optimal child development\n\nExplore how traditional emphasis on community support and cultural identity might complement psychological understanding of individual development, creating more holistic approaches to child-rearing.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_06",
+      "name": "Test 186: Agricultural Practices - Industrial vs Traditional Farming",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare industrial agriculture and traditional farming knowledge systems",
+      "prompt": "A farming community faces declining soil health and crop yields. Two agricultural knowledge systems offer different solutions:\n\n**Industrial Agriculture**: Uses scientific soil analysis, synthetic fertilizers, pesticides, genetically modified crops, and mechanized farming techniques. Focuses on maximizing yield per acre through technological inputs and standardized practices.\n\n**Traditional Farming Knowledge** (from permaculture and indigenous agriculture): Emphasizes crop rotation, companion planting, natural pest control, soil biology enhancement, and integrated farm ecosystems. Values biodiversity, water conservation, and sustainable long-term soil health.\n\nCompare how both approaches:\n1. **Understand soil health** and fertility management\n2. **Address pest control** and crop protection\n3. **Optimize crop yields** and farm productivity\n4. **Could be integrated** for sustainable agriculture\n\nConsider how traditional knowledge of ecological relationships might enhance scientific understanding of soil biology, while scientific analysis might quantify and validate traditional sustainable practices.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_07",
+      "name": "Test 187: Pain Management - Medical vs Traditional Relief Methods",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare medical and traditional approaches to pain management",
+      "prompt": "A person suffers from chronic pain that limits daily activities. Two knowledge systems offer different pain management approaches:\n\n**Medical Pain Management**: Uses pharmaceutical interventions (NSAIDs, opioids, muscle relaxants), physical therapy, surgical procedures, and nerve blocks. Focuses on pain pathways, inflammation reduction, and measurable pain scale assessments.\n\n**Traditional Pain Relief** (from various healing traditions): Employs acupuncture, herbal preparations, energy healing, massage techniques, meditation practices, and spiritual healing ceremonies. Addresses pain as part of overall body-mind-spirit imbalance requiring holistic restoration.\n\nAnalyze how both systems:\n1. **Understand the nature and causes** of chronic pain\n2. **Approach pain relief** and healing strategies\n3. **Measure treatment success** and patient outcomes\n4. **Might work complementarily** for comprehensive pain management\n\nDiscuss how traditional holistic approaches might address pain aspects that medical treatments miss, while medical understanding of pain mechanisms might validate and enhance traditional healing methods.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_08",
+      "name": "Test 188: Forest Health - Scientific Forestry vs Traditional Stewardship",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare scientific forestry and traditional forest stewardship approaches",
+      "prompt": "A forest ecosystem shows signs of decline including reduced biodiversity and increased tree mortality. Two knowledge systems offer different management approaches:\n\n**Scientific Forestry**: Uses forest inventory data, ecological modeling, pest/disease monitoring, and evidence-based management practices. Focuses on measurable outcomes like carbon sequestration, timber yield, and species population counts.\n\n**Traditional Forest Stewardship** (from indigenous forest management): Employs controlled burning, selective harvesting, spiritual relationship with forest beings, and multi-generational land care practices. Views forests as complex living communities requiring respectful reciprocal relationships.\n\nExamine how both approaches:\n1. **Assess forest health** and ecosystem functioning\n2. **Address threats** like disease, fire, and climate change\n3. **Balance conservation** with human resource needs\n4. **Could complement each other** for optimal forest management\n\nExplore how traditional fire management and ecological relationships might enhance scientific forest management, while scientific monitoring might validate and refine traditional stewardship practices.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_09",
+      "name": "Test 189: Ocean Health - Marine Science vs Traditional Ecological Knowledge",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare marine science and traditional ocean stewardship knowledge",
+      "prompt": "A coastal community observes declining fish populations and changing ocean conditions. Two knowledge systems offer different approaches to understanding ocean health:\n\n**Marine Science**: Uses oceanographic instruments, fish stock assessments, water quality testing, and satellite monitoring to track ocean conditions. Focuses on quantifiable data like temperature, pH levels, species population counts, and pollution measurements.\n\n**Traditional Ecological Knowledge** (from Pacific Island, Inuit, and other coastal cultures): Observes seasonal fish behavior patterns, ocean current changes, seabird movements, and subtle environmental indicators accumulated over generations. Integrates spiritual relationships with ocean beings and seasonal ceremonies.\n\nCompare how both systems:\n1. **Monitor ocean health** and ecosystem changes\n2. **Understand fish population cycles** and marine biodiversity\n3. **Guide sustainable fishing** and ocean resource management\n4. **Could work together** to protect ocean ecosystems\n\nConsider how traditional knowledge of long-term ocean patterns might complement scientific data collection, while scientific measurements might validate and expand traditional observations of marine ecosystem health.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_10",
+      "name": "Test 190: Pregnancy Care - Obstetrics vs Traditional Midwifery",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare obstetric medicine and traditional midwifery approaches to pregnancy care",
+      "prompt": "A pregnant woman seeks guidance for healthy pregnancy and birth preparation. Two knowledge systems offer different approaches to prenatal care:\n\n**Obstetric Medicine**: Uses ultrasounds, blood tests, genetic screening, and evidence-based protocols to monitor fetal development. Focuses on medical risk assessment, hospital birth procedures, and intervention-based care for complications.\n\n**Traditional Midwifery** (from various cultural traditions): Employs holistic pregnancy support, herbal preparations, spiritual practices, community birth support, and intuitive assessment methods. Emphasizes natural birth processes, emotional/spiritual preparation, and postpartum community care.\n\nAnalyze how both approaches:\n1. **Monitor pregnancy health** and fetal development\n2. **Prepare for birth** and address potential complications\n3. **Support postpartum recovery** and infant care\n4. **Could work together** to provide comprehensive pregnancy care\n\nExplore how traditional emphasis on emotional/spiritual support and community care might complement medical monitoring and safety protocols, creating more holistic pregnancy and birth experiences.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_11",
+      "name": "Test 191: Water Management - Hydrology vs Traditional Water Wisdom",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare hydrological engineering with traditional water management systems",
+      "prompt": "A region faces water scarcity and drought management challenges. Two knowledge systems offer different approaches:\n\n**Hydrological Engineering**: Uses watershed modeling, groundwater monitoring, dam construction, and irrigation efficiency systems. Focuses on technical solutions like desalination, water recycling, and engineered storage systems.\n\n**Traditional Water Wisdom** (from desert and arid-region cultures): Employs ancient well systems, seasonal water harvesting, natural aquifer management, and water conservation practices developed over millennia. Integrates spiritual water ceremonies and community water-sharing protocols.\n\nCompare how both systems:\n1. **Assess water availability** and drought resilience\n2. **Manage water storage** and distribution\n3. **Ensure sustainable use** for agriculture and communities\n4. **Could integrate** for comprehensive water security\n\nExplore how traditional water harvesting techniques and conservation wisdom might enhance modern water management while engineering solutions could scale and modernize traditional approaches.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_12",
+      "name": "Test 192: Sleep and Dreams - Sleep Medicine vs Dream Traditions",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare sleep medicine with traditional dream and sleep wisdom",
+      "prompt": "A person experiences sleep disturbances and wants to understand their dreams and sleep patterns. Two knowledge systems offer different frameworks:\n\n**Sleep Medicine**: Uses sleep studies, polysomnography, circadian rhythm research, and evidence-based treatments for sleep disorders. Focuses on sleep stages, brain wave patterns, and medical interventions for insomnia and sleep apnea.\n\n**Traditional Dream Traditions** (from Aboriginal, Native American, and other cultures): Understands dreams as spiritual communication, guidance from ancestors, and connection to the dream realm. Includes dream interpretation practices, sleep rituals, and plant medicines for dream clarity.\n\nExamine how both approaches:\n1. **Understand sleep function** and dream significance\n2. **Address sleep problems** and promote healthy rest\n3. **Interpret dream experiences** and their meanings\n4. **Could complement each other** for holistic sleep wellness\n\nConsider how traditional understanding of dreams' spiritual and psychological significance might complement medical treatment of sleep disorders, while sleep science could validate traditional sleep and dreaming practices.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_13",
+      "name": "Test 193: Food Systems - Nutritional Science vs Traditional Food Wisdom",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare nutritional science with traditional food and dietary knowledge",
+      "prompt": "A community wants to address rising rates of diabetes and heart disease while maintaining cultural food traditions. Two knowledge systems offer different approaches:\n\n**Nutritional Science**: Uses biochemical analysis, clinical nutrition research, and evidence-based dietary guidelines. Focuses on macronutrients, micronutrients, calorie counting, and standardized dietary recommendations.\n\n**Traditional Food Wisdom** (from various indigenous and ancestral diets): Employs seasonal eating practices, traditional food preparation methods, medicinal foods, and holistic understanding of food as medicine. Includes cultural food protocols and ancestral dietary patterns.\n\nAnalyze how both systems:\n1. **Understand nutrition** and healthy eating\n2. **Address dietary health problems** like diabetes and obesity\n3. **Guide food choices** and meal planning\n4. **Could work together** for culturally appropriate nutrition\n\nExplore how traditional food wisdom about seasonal eating and food as medicine might enhance nutritional science, while scientific understanding of nutrients could validate and refine traditional dietary practices.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_14",
+      "name": "Test 194: Disaster Preparedness - Emergency Management vs Traditional Resilience",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare emergency management with traditional disaster preparedness wisdom",
+      "prompt": "A coastal community needs to prepare for hurricanes and natural disasters. Two knowledge systems offer different approaches:\n\n**Emergency Management**: Uses meteorological forecasting, evacuation planning, emergency supply stockpiling, and institutional disaster response protocols. Focuses on scientific prediction, infrastructure protection, and coordinated emergency services.\n\n**Traditional Resilience Wisdom** (from hurricane-prone cultures like Caribbean and Pacific Islander): Employs natural disaster indicators, community mutual aid systems, traditional building techniques, and seasonal preparation practices developed over centuries. Includes spiritual practices for community protection and healing.\n\nCompare how both systems:\n1. **Predict and prepare** for natural disasters\n2. **Protect communities** during emergencies\n3. **Support recovery** after disasters\n4. **Could integrate** for comprehensive disaster resilience\n\nConsider how traditional knowledge of natural warning signs and community resilience practices might complement modern emergency management, while scientific forecasting and logistics could enhance traditional preparedness approaches.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_15",
+      "name": "Test 195: Animal Behavior - Ethology vs Traditional Animal Knowledge",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare scientific ethology with traditional animal behavior knowledge",
+      "prompt": "Wildlife managers need to understand changing animal migration patterns and behaviors. Two knowledge systems offer different insights:\n\n**Scientific Ethology**: Uses behavioral studies, GPS tracking, genetic analysis, and controlled experiments to understand animal behavior. Focuses on evolutionary biology, behavioral ecology, and quantitative analysis of animal populations.\n\n**Traditional Animal Knowledge** (from hunting and herding cultures): Employs generations of observation, understanding of animal communication, seasonal behavior patterns, and spiritual connections with animal beings. Includes traditional hunting protocols and animal behavior prediction.\n\nExamine how both approaches:\n1. **Observe and interpret** animal behaviors\n2. **Predict animal movements** and seasonal patterns\n3. **Understand human-animal relationships** and interactions\n4. **Could work together** for wildlife conservation\n\nExplore how traditional detailed knowledge of animal behavior and communication might complement scientific research methods, while ethological research could validate and expand traditional animal knowledge systems.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_16",
+      "name": "Test 196: Healing Trauma - Psychology vs Traditional Healing",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare psychological trauma treatment with traditional healing approaches",
+      "prompt": "A community dealing with collective trauma from conflict and displacement needs healing approaches. Two knowledge systems offer different methods:\n\n**Clinical Psychology**: Uses trauma-informed therapy, PTSD treatments, cognitive behavioral therapy, and evidence-based psychological interventions. Focuses on individual therapy, medication, and standardized treatment protocols.\n\n**Traditional Healing** (from various cultural trauma healing traditions): Employs community healing ceremonies, ancestral guidance practices, ritual cleansing, storytelling therapy, and spiritual healing methods. Emphasizes collective healing, cultural reconnection, and restoring spiritual balance.\n\nAnalyze how both systems:\n1. **Understand trauma** and its impacts\n2. **Provide healing interventions** for individuals and communities\n3. **Support long-term recovery** and resilience\n4. **Could complement each other** for comprehensive trauma healing\n\nConsider how traditional emphasis on community healing and spiritual restoration might enhance clinical trauma treatment, while psychological understanding of trauma responses could inform traditional healing practices.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_17",
+      "name": "Test 197: Time and Seasons - Chronobiology vs Traditional Time Keeping",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare chronobiology with traditional seasonal and cyclical time systems",
+      "prompt": "A community wants to optimize health and productivity by aligning with natural rhythms. Two knowledge systems offer different approaches to understanding time and cycles:\n\n**Chronobiology**: Uses circadian rhythm research, seasonal affective disorder studies, and biological clock science. Focuses on melatonin regulation, light therapy, and evidence-based approaches to biological timing.\n\n**Traditional Time Keeping** (from various seasonal cultures): Employs lunar calendars, seasonal ceremonies, natural rhythm alignment, and cyclical worldviews. Includes traditional practices for energy management, seasonal preparation, and spiritual time observance.\n\nCompare how both systems:\n1. **Understand biological rhythms** and natural cycles\n2. **Optimize human health** through temporal alignment\n3. **Guide seasonal activities** and lifestyle changes\n4. **Could integrate** for comprehensive rhythm-based wellness\n\nExplore how traditional understanding of seasonal cycles and lunar influences might complement scientific chronobiology, while biological research could validate traditional time-keeping and seasonal health practices.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_18",
+      "name": "Test 198: Soil Health - Agronomy vs Traditional Soil Wisdom",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare agricultural soil science with traditional soil stewardship knowledge",
+      "prompt": "Farmers face declining soil fertility and need sustainable approaches to soil management. Two knowledge systems offer different methods:\n\n**Agricultural Science**: Uses soil testing, chemical fertilizers, precision agriculture, and evidence-based soil management techniques. Focuses on nutrient analysis, pH optimization, and technological solutions for soil improvement.\n\n**Traditional Soil Wisdom** (from permaculture and indigenous farming): Employs companion planting, natural composting, soil biology understanding, and multi-generational soil care practices. Includes spiritual relationship with soil beings and traditional fertility enhancement methods.\n\nExamine how both approaches:\n1. **Assess soil health** and fertility\n2. **Improve soil conditions** for sustainable agriculture\n3. **Maintain long-term** soil productivity\n4. **Could work together** for regenerative farming\n\nConsider how traditional knowledge of soil biology and natural fertility building might enhance scientific soil management, while modern soil science could validate and optimize traditional soil stewardship practices.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_19",
+      "name": "Test 199: Energy Systems - Renewable Energy vs Traditional Energy Wisdom",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare renewable energy technology with traditional energy and resource wisdom",
+      "prompt": "A community wants to achieve energy independence using sustainable methods. Two knowledge systems offer different approaches:\n\n**Renewable Energy Technology**: Uses solar panels, wind turbines, battery storage, and smart grid systems. Focuses on engineering efficiency, technological innovation, and large-scale energy infrastructure.\n\n**Traditional Energy Wisdom** (from various low-impact cultures): Employs passive solar design, traditional building techniques, biomass management, and lifestyle practices that minimize energy needs. Includes understanding of natural energy flows and seasonal energy planning.\n\nAnalyze how both systems:\n1. **Harness natural energy** sources sustainably\n2. **Optimize energy efficiency** and conservation\n3. **Create resilient energy** systems for communities\n4. **Could integrate** for comprehensive energy solutions\n\nExplore how traditional approaches to energy conservation and natural energy use might complement renewable technology, while modern energy systems could scale and enhance traditional energy wisdom practices.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_20",
+      "name": "Test 200: Memory and Learning - Cognitive Science vs Traditional Memory Arts",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare cognitive science with traditional memory and learning techniques",
+      "prompt": "An educational institution wants to improve memory and learning outcomes for students. Two knowledge systems offer different approaches:\n\n**Cognitive Science**: Uses memory research, learning theory, neuroscience studies, and evidence-based educational techniques. Focuses on brain-based learning, memory consolidation, and scientific approaches to information retention.\n\n**Traditional Memory Arts** (from oral tradition cultures): Employs storytelling techniques, memory palaces, rhythmic learning, and cultural memory practices. Includes traditional methods like songlines, narrative learning, and ceremonial knowledge transmission.\n\nCompare how both systems:\n1. **Understand memory** formation and retention\n2. **Optimize learning** and information recall\n3. **Transmit knowledge** across generations\n4. **Could work together** for enhanced education\n\nConsider how traditional memory techniques and cultural learning methods might complement scientific understanding of memory, while cognitive research could validate and improve traditional memory arts and learning practices.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_21",
+      "name": "Test 201: Navigation - GPS Technology vs Traditional Wayfinding",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare GPS navigation technology with traditional wayfinding systems",
+      "prompt": "Travelers need reliable navigation methods for wilderness and ocean journeys. Two knowledge systems offer different approaches:\n\n**GPS Technology**: Uses satellite positioning, digital mapping, and electronic navigation systems. Focuses on precise coordinates, real-time tracking, and technological reliability for location services.\n\n**Traditional Wayfinding** (from Polynesian, desert nomad, and other navigation cultures): Employs star patterns, natural landmarks, wave reading, and environmental indicators for navigation. Includes understanding of seasonal navigation patterns and natural wayfinding techniques.\n\nExamine how both approaches:\n1. **Determine location** and direction\n2. **Navigate challenging environments** like oceans and deserts\n3. **Ensure reliable pathfinding** in various conditions\n4. **Could complement each other** for comprehensive navigation\n\nExplore how traditional wayfinding knowledge and natural navigation skills might complement GPS technology, while modern positioning systems could validate and support traditional navigation methods.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_22",
+      "name": "Test 202: Building Design - Architecture vs Traditional Construction",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare modern architecture with traditional building and construction knowledge",
+      "prompt": "A community needs climate-appropriate, sustainable housing solutions. Two knowledge systems offer different approaches:\n\n**Modern Architecture**: Uses engineering calculations, building codes, standardized materials, and CAD design systems. Focuses on structural efficiency, building performance, and technological building solutions.\n\n**Traditional Construction** (from various climate-adapted building traditions): Employs local materials, climate-responsive design, traditional building techniques, and time-tested construction methods. Includes understanding of natural ventilation, thermal regulation, and culturally appropriate architecture.\n\nAnalyze how both systems:\n1. **Design climate-appropriate** buildings\n2. **Use sustainable materials** and construction methods\n3. **Create durable structures** suited to local conditions\n4. **Could integrate** for optimal building solutions\n\nConsider how traditional knowledge of local materials and climate adaptation might enhance modern architectural design, while engineering principles could optimize and scale traditional construction techniques.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_23",
+      "name": "Test 203: Community Health - Public Health vs Traditional Wellness",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare public health approaches with traditional community wellness systems",
+      "prompt": "A community experiences health disparities and wants to improve overall wellness. Two knowledge systems offer different frameworks:\n\n**Public Health**: Uses epidemiology, health statistics, evidence-based interventions, and population health management. Focuses on disease prevention, health promotion campaigns, and systematic health improvement strategies.\n\n**Traditional Wellness** (from holistic health traditions): Employs community wellness practices, traditional preventive medicine, lifestyle balance approaches, and holistic health understanding. Includes traditional concepts of wellness that integrate physical, mental, spiritual, and social health.\n\nCompare how both systems:\n1. **Assess community health** and wellness needs\n2. **Prevent illness** and promote health\n3. **Address health disparities** and social determinants\n4. **Could work together** for comprehensive community wellness\n\nExplore how traditional understanding of holistic wellness and community health practices might complement public health interventions, while epidemiological methods could validate traditional wellness approaches.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_24",
+      "name": "Test 204: Conflict Resolution - Mediation vs Traditional Justice",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare legal mediation with traditional justice and conflict resolution systems",
+      "prompt": "A community faces ongoing conflicts and needs effective resolution methods. Two knowledge systems offer different approaches:\n\n**Legal Mediation**: Uses structured negotiation, legal frameworks, conflict resolution techniques, and formal dispute resolution processes. Focuses on individual rights, legal solutions, and enforceable agreements.\n\n**Traditional Justice** (from restorative justice traditions): Employs community circles, elder wisdom, ceremonial healing processes, and traditional conflict resolution methods. Emphasizes relationship repair, community harmony, and traditional peacemaking practices.\n\nExamine how both approaches:\n1. **Address conflicts** and disputes\n2. **Restore relationships** and community harmony\n3. **Prevent future conflicts** through resolution processes\n4. **Could complement each other** for comprehensive justice\n\nConsider how traditional emphasis on relationship healing and community restoration might enhance legal mediation, while formal mediation techniques could support traditional justice processes.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_25",
+      "name": "Test 205: Weather Prediction - Meteorology vs Traditional Weather Wisdom",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare meteorological forecasting with traditional weather prediction methods",
+      "prompt": "Farmers and coastal communities need accurate weather prediction for planning. Two knowledge systems offer different methods:\n\n**Meteorology**: Uses weather stations, satellite data, computer modeling, and scientific forecasting systems. Focuses on atmospheric physics, statistical prediction models, and technological weather monitoring.\n\n**Traditional Weather Wisdom** (from farming and maritime cultures): Employs natural weather indicators, animal behavior observation, traditional weather signs, and seasonal weather patterns accumulated over generations. Includes understanding of local microclimates and natural weather forecasting methods.\n\nAnalyze how both systems:\n1. **Predict weather patterns** and changes\n2. **Provide timely warnings** for severe weather\n3. **Guide agricultural** and maritime planning\n4. **Could work together** for enhanced weather prediction\n\nExplore how traditional knowledge of local weather patterns and natural indicators might complement meteorological forecasting, while scientific weather data could validate traditional weather prediction methods.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_26",
+      "name": "Test 206: Childhood Development - Developmental Psychology vs Traditional Child Rearing",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare developmental psychology with traditional child rearing and education approaches",
+      "prompt": "Parents and educators want to support optimal childhood development and learning. Two knowledge systems offer different approaches:\n\n**Developmental Psychology**: Uses child development research, educational psychology, and evidence-based parenting techniques. Focuses on developmental milestones, cognitive development, and scientific approaches to child learning and behavior.\n\n**Traditional Child Rearing** (from various cultural parenting traditions): Employs community child-raising practices, traditional learning methods, cultural knowledge transmission, and holistic child development approaches. Includes understanding of children as community members and traditional educational practices.\n\nCompare how both systems:\n1. **Understand child development** and learning needs\n2. **Support healthy growth** and education\n3. **Prepare children** for adult roles and responsibilities\n4. **Could integrate** for comprehensive child development\n\nConsider how traditional community-based child rearing and cultural learning methods might complement scientific understanding of development, while psychological research could validate traditional child-rearing practices.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_27",
+      "name": "Test 207: Resource Management - Resource Economics vs Traditional Stewardship",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare resource economics with traditional resource stewardship systems",
+      "prompt": "A region with valuable natural resources needs sustainable management approaches. Two knowledge systems offer different frameworks:\n\n**Resource Economics**: Uses economic modeling, cost-benefit analysis, market mechanisms, and efficiency-based resource allocation. Focuses on economic optimization, sustainable yield calculations, and market-driven conservation strategies.\n\n**Traditional Stewardship** (from indigenous resource management): Employs seven-generation thinking, reciprocal resource relationships, traditional ecological management, and spiritual stewardship practices. Emphasizes long-term sustainability, cultural resource protocols, and community-based resource governance.\n\nExamine how both approaches:\n1. **Manage natural resources** sustainably\n2. **Balance extraction** with conservation needs\n3. **Ensure long-term availability** for future generations\n4. **Could work together** for integrated resource management\n\nExplore how traditional long-term stewardship principles and cultural resource protocols might complement economic resource management, while economic tools could support traditional stewardship practices.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_28",
+      "name": "Test 208: Communication - Digital Communication vs Traditional Oral Culture",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare digital communication technology with traditional oral communication culture",
+      "prompt": "A community wants to maintain cultural knowledge transmission while adapting to modern communication needs. Two knowledge systems offer different approaches:\n\n**Digital Communication**: Uses internet technology, social media, digital storage, and electronic communication systems. Focuses on global connectivity, information access, and technological communication tools.\n\n**Traditional Oral Culture** (from oral tradition societies): Employs storytelling, ceremonial communication, face-to-face knowledge sharing, and traditional communication protocols. Emphasizes relationship-based communication, cultural transmission methods, and community-centered dialogue.\n\nAnalyze how both systems:\n1. **Share information** and knowledge\n2. **Maintain cultural connections** and community relationships\n3. **Transmit knowledge** across generations\n4. **Could integrate** for balanced communication approaches\n\nConsider how traditional emphasis on relationship-based communication and cultural protocols might complement digital communication tools, while technology could support traditional oral culture preservation and transmission.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_29",
+      "name": "Test 209: Mental Wellness - Psychiatry vs Traditional Healing Psychology",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare psychiatric treatment with traditional psychological healing approaches",
+      "prompt": "Individuals experiencing mental health challenges seek comprehensive healing approaches. Two knowledge systems offer different frameworks:\n\n**Psychiatry**: Uses diagnostic criteria, psychopharmacology, evidence-based therapy, and clinical treatment protocols. Focuses on symptom management, medical interventions, and standardized mental health care.\n\n**Traditional Healing Psychology** (from various cultural healing traditions): Employs ceremonial healing, community support systems, spiritual psychology practices, and holistic mental wellness approaches. Includes understanding of mental health as connected to spiritual, cultural, and community wellbeing.\n\nCompare how both systems:\n1. **Understand mental health** and psychological wellness\n2. **Provide healing interventions** for mental distress\n3. **Support long-term** mental wellness and recovery\n4. **Could work together** for comprehensive mental health care\n\nExplore how traditional understanding of mental health as connected to spiritual and community wellbeing might complement psychiatric treatment, while clinical mental health approaches could enhance traditional healing psychology practices.",
+      "parameters": {
+        "max_tokens": 380,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_30",
+      "name": "Test 210: Death and Grieving - Medical End-of-Life vs Traditional Death Wisdom",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Compare medical end-of-life care with traditional death and grieving wisdom",
+      "prompt": "Families facing end-of-life situations need guidance for death preparation and grieving processes. Two knowledge systems offer different approaches:\n\n**Medical End-of-Life Care**: Uses palliative medicine, hospice care, advance directives, and clinical approaches to death and dying. Focuses on pain management, medical decision-making, and healthcare-based end-of-life support.\n\n**Traditional Death Wisdom** (from various cultural death traditions): Employs death preparation ceremonies, traditional grieving processes, ancestral connection practices, and spiritual death guidance. Includes understanding of death as spiritual transition and community-supported grieving practices.\n\nExamine how both approaches:\n1. **Prepare for death** and end-of-life transitions\n2. **Support dying individuals** and their families\n3. **Guide grieving processes** and healing after loss\n4. **Could complement each other** for comprehensive end-of-life care\n\nConsider how traditional spiritual understanding of death and community grieving support might complement medical end-of-life care, while palliative medicine could enhance traditional death and grieving practices.",
+      "parameters": {
+        "max_tokens": 380,
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false

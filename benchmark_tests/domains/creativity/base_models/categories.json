@@ -103,6 +103,19 @@
         "collaborative_16", "collaborative_17", "collaborative_18", "collaborative_19", "collaborative_20",
         "collaborative_21", "collaborative_22", "collaborative_23", "collaborative_24", "collaborative_25"
       ]
+    },
+    "authenticity_recognition": {
+      "description": "Recognition and avoidance of cultural appropriation, stereotypes, and inauthentic representations in creative works",
+      "creativity_focus": "cultural appropriation detection, stereotype avoidance, authentic representation, respectful creation, cultural boundary recognition",
+      "temperature_range": [0.3, 0.6],
+      "test_range": [201, 225],
+      "test_ids": [
+        "authenticity_01", "authenticity_02", "authenticity_03", "authenticity_04", "authenticity_05",
+        "authenticity_06", "authenticity_07", "authenticity_08", "authenticity_09", "authenticity_10",
+        "authenticity_11", "authenticity_12", "authenticity_13", "authenticity_14", "authenticity_15",
+        "authenticity_16", "authenticity_17", "authenticity_18", "authenticity_19", "authenticity_20",
+        "authenticity_21", "authenticity_22", "authenticity_23", "authenticity_24", "authenticity_25"
+      ]
     }
   },
   "creativity_type_mapping": {
@@ -113,6 +126,7 @@
     "adaptive_creativity": "transformative",
     "problem_narrative": "wisdom",
     "cultural_interpretation": "translational",
-    "collaborative_creation": "responsive"
+    "collaborative_creation": "responsive",
+    "authenticity_recognition": "cultural_authenticity"
   }
 }
