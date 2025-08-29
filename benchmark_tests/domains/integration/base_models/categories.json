@@ -1,0 +1,88 @@
+{
+  "categories": {
+    "cultural_knowledge_reasoning": {
+      "description": "Integration of traditional knowledge systems with formal logical reasoning across cultural contexts",
+      "integration_focus": "traditional knowledge application, logical reasoning with cultural frameworks, cross-cultural evidence synthesis",
+      "temperature_range": [0.3, 0.5],
+      "test_range": [1, 6],
+      "domains_required": ["knowledge", "reasoning"],
+      "test_ids": [
+        "integration_01", "integration_02", "integration_03", 
+        "integration_04", "integration_05", "integration_06"
+      ]
+    },
+    "social_creativity_integration": {
+      "description": "Creative solutions to social problems using cultural awareness and artistic expression",
+      "integration_focus": "social problem-solving through creativity, cultural artistic traditions, community healing approaches",
+      "temperature_range": [0.4, 0.7],
+      "test_range": [7, 12],
+      "domains_required": ["social", "creativity"],
+      "test_ids": [
+        "integration_07", "integration_08", "integration_09",
+        "integration_10", "integration_11", "integration_12"
+      ]
+    },
+    "language_knowledge_systems": {
+      "description": "Multilingual expression of complex knowledge systems with appropriate code-switching",
+      "integration_focus": "code-switching competence, multilingual knowledge expression, cultural concept translation",
+      "temperature_range": [0.3, 0.6],
+      "test_range": [13, 18],
+      "domains_required": ["language", "knowledge"],
+      "test_ids": [
+        "integration_13", "integration_14", "integration_15",
+        "integration_16", "integration_17", "integration_18"
+      ]
+    },
+    "reasoning_social_cultural": {
+      "description": "Complex social reasoning requiring integration of cultural sensitivity and logical analysis",
+      "integration_focus": "culturally-sensitive reasoning, ethical dilemma analysis, multi-stakeholder perspective integration",
+      "temperature_range": [0.2, 0.5],
+      "test_range": [19, 24],
+      "domains_required": ["reasoning", "social", "knowledge"],
+      "test_ids": [
+        "integration_19", "integration_20", "integration_21",
+        "integration_22", "integration_23", "integration_24"
+      ]
+    },
+    "full_cross_domain": {
+      "description": "Complex scenarios requiring simultaneous integration of all domain capabilities",
+      "integration_focus": "holistic problem-solving, global perspective integration, comprehensive cultural competence",
+      "temperature_range": [0.3, 0.6],
+      "test_range": [25, 30],
+      "domains_required": ["knowledge", "reasoning", "social", "language", "creativity"],
+      "test_ids": [
+        "integration_25", "integration_26", "integration_27",
+        "integration_28", "integration_29", "integration_30"
+      ]
+    }
+  },
+  "integration_type_mapping": {
+    "cultural_knowledge_reasoning": "knowledge_reasoning_synthesis",
+    "social_creativity_integration": "social_creative_solutions",
+    "language_knowledge_systems": "multilingual_knowledge_expression",
+    "reasoning_social_cultural": "culturally_sensitive_reasoning",
+    "full_cross_domain": "comprehensive_integration"
+  },
+  "evaluation_framework": {
+    "cross_domain_coherence": {
+      "weight": 0.25,
+      "description": "How well response integrates multiple domain capabilities"
+    },
+    "cultural_authenticity": {
+      "weight": 0.25,
+      "description": "Appropriate cultural handling across all integrated domains"
+    },
+    "logical_consistency": {
+      "weight": 0.20,
+      "description": "Reasoning coherence across different knowledge systems"
+    },
+    "creative_appropriateness": {
+      "weight": 0.15,
+      "description": "Creative solutions that respect cultural boundaries"
+    },
+    "social_awareness": {
+      "weight": 0.15,
+      "description": "Understanding of social dynamics and implications"
+    }
+  }
+}

@@ -83,6 +83,20 @@
         "verify_21", "verify_22", "verify_23", "verify_24", "verify_25",
         "verify_26", "verify_27", "verify_28", "verify_29", "verify_30"
       ]
+    },
+    "logic_systems_comparison": {
+      "description": "Comparative reasoning using different logical frameworks from diverse cultural traditions",
+      "reasoning_focus": "Western linear logic, Indigenous circular reasoning, Eastern dialectical approaches, logical framework recognition, cultural logic systems",
+      "temperature_range": [0.2, 0.4],
+      "test_range": [181, 210],
+      "test_ids": [
+        "logic_01", "logic_02", "logic_03", "logic_04", "logic_05",
+        "logic_06", "logic_07", "logic_08", "logic_09", "logic_10",
+        "logic_11", "logic_12", "logic_13", "logic_14", "logic_15",
+        "logic_16", "logic_17", "logic_18", "logic_19", "logic_20",
+        "logic_21", "logic_22", "logic_23", "logic_24", "logic_25",
+        "logic_26", "logic_27", "logic_28", "logic_29", "logic_30"
+      ]
     }
   },
   "reasoning_type_mapping": {
@@ -91,6 +105,7 @@
     "multi_step_inference": "multi_hop_reasoning",
     "elementary_math_science": "mathematical_cultural",
     "cultural_reasoning": "cross_cultural_synthesis",
-    "self_verification_reflection": "metacognitive_verification"
+    "self_verification_reflection": "metacognitive_verification",
+    "logic_systems_comparison": "comparative_logical_frameworks"
   }
 }

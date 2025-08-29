@@ -1,9 +1,9 @@
 {
   "suite_info": {
     "name": "Reasoning Base Model Easy Tests",
-    "description": "Comprehensive reasoning domain tests covering pattern recognition, logical progression, cultural inference, and verification across global cultural contexts",
-    "total_tests": 180,
-    "version": "1.0.0",
+    "description": "Comprehensive reasoning domain tests covering pattern recognition, logical progression, cultural inference, verification, and comparative logical frameworks across global cultural contexts",
+    "total_tests": 210,
+    "version": "1.1.0",
     "difficulty": "easy",
     "target_models": "base_models",
     "coverage_scope": "global_cultural_reasoning_systems",
@@ -2526,6 +2526,426 @@
       "parameters": {
         "max_tokens": 220,
         "temperature": 0.25,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_01",
+      "name": "Test 181: Community Conflict Resolution - Three Logical Approaches",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Compare Western linear, Indigenous circular, and Eastern dialectical approaches to community conflict",
+      "prompt": "A community faces conflict between traditional and modern development approaches. Apply three different logical frameworks to understand and resolve this situation:\n\n**Western Linear Logic Approach:**\n- Identify root cause → Analyze competing interests → Evaluate options → Select optimal solution → Implement and monitor\n- Focus: Efficiency, measurable outcomes, step-by-step problem-solving\n- Logic: If A causes B, and B creates problem C, then addressing A should resolve C\n\n**Indigenous Circular Reasoning Approach:**\n- Consider all relationships → Honor past wisdom → Examine current balance → Seek harmony with future generations → Return to strengthened relationships\n- Focus: Interconnectedness, cyclical patterns, community balance, seven-generation thinking\n- Logic: All elements are interconnected; changes affect the whole circle; solutions must restore balance\n\n**Eastern Dialectical Approach:**\n- Recognize opposing forces → Find the underlying unity → Seek dynamic balance → Embrace complementary tensions → Achieve synthesis\n- Focus: Yin-yang balance, harmony within difference, middle way, complementary opposites\n- Logic: Apparent opposites contain each other; true solutions harmonize seemingly conflicting elements\n\n**Comparative Analysis:**\nApply each framework to the development conflict and explain:\n1. How each logic system defines the core issue\n2. What solution approach each framework suggests\n3. How the three approaches might complement rather than contradict each other\n4. What insights emerge when using multiple logical frameworks together",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_02",
+      "name": "Test 182: Environmental Crisis - Multiple Logical Frameworks",
+      "category": "logic_systems_comparison", 
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different cultural logic systems to environmental crisis understanding",
+      "prompt": "A region faces severe environmental degradation affecting both human communities and ecosystems. Examine this crisis through three logical frameworks:\n\n**Western Scientific Linear Logic:**\n- Data collection → Problem identification → Hypothesis formation → Testing solutions → Implementation and measurement\n- Focus: Quantifiable data, cause-and-effect chains, technological solutions, peer review validation\n- Logic: Environmental problems have measurable causes; scientific methods can identify and address root factors\n\n**Indigenous Holistic Circular Logic:**\n- Listen to the land → Understand broken relationships → Remember ancient teachings → Restore sacred connections → Renew reciprocal balance\n- Focus: Spiritual relationships with nature, traditional ecological knowledge, ceremony and healing, community responsibility\n- Logic: Environmental crisis reflects spiritual disconnection; healing requires restoring respectful relationships with natural world\n\n**Eastern Harmonious Dialectical Logic:**\n- Recognize imbalance → Understand human-nature unity → Find sustainable middle way → Balance development with preservation → Create dynamic equilibrium\n- Focus: Natural harmony principles, sustainable balance, long-term thinking, integration of human needs with natural law\n- Logic: Environmental crisis stems from disrupted harmony; solutions require balancing human activity with natural rhythms\n\n**Integration Analysis:**\nExamine how each logical framework:\n1. Explains the environmental crisis differently\n2. Suggests different paths to healing\n3. Offers unique insights the others might miss\n4. Could work together for more comprehensive environmental restoration",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_03",
+      "name": "Test 183: Economic Inequality - Contrasting Logic Systems",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks", 
+      "description": "Compare logical approaches to understanding and addressing economic inequality",
+      "prompt": "A society experiences growing economic inequality. Apply three distinct logical frameworks:\n\n**Western Analytical Linear Logic:**\n- Identify economic factors → Analyze market mechanisms → Evaluate policy interventions → Implement reforms → Measure outcomes\n- Focus: Economic models, statistical analysis, policy mechanisms, individual incentives, market efficiency\n- Logic: Inequality results from specific economic factors; targeted interventions can modify these factors to improve outcomes\n\n**Indigenous Reciprocal Circular Logic:**\n- Examine sharing traditions → Understand community needs → Honor gift economy principles → Strengthen mutual aid networks → Restore abundance sharing\n- Focus: Reciprocity systems, community wellbeing, gift economies, mutual aid, collective prosperity\n- Logic: Inequality violates natural reciprocity; healing requires returning to sharing-based economic relationships\n\n**Eastern Balanced Dialectical Logic:**\n- Recognize wealth-poverty interdependence → Understand karma and social justice → Seek sustainable prosperity → Balance individual success with collective wellbeing → Cultivate equitable abundance\n- Focus: Interdependence of prosperity, karmic consequences, balanced development, sustainable abundance, collective liberation\n- Logic: Wealth and poverty are interconnected; true prosperity requires lifting everyone together in sustainable balance\n\n**Synthesis Exploration:**\nAnalyze how each framework:\n1. Understands the causes of economic inequality\n2. Proposes different solutions and priorities\n3. Defines 'successful' economic outcomes differently\n4. Might inform each other to create more comprehensive approaches to economic justice",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_04",
+      "name": "Test 184: Education System Design - Three Reasoning Approaches",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical frameworks to educational system design and reform",
+      "prompt": "A community needs to design an educational system that serves diverse student needs effectively. Apply three logical approaches:\n\n**Western Systematic Linear Logic:**\n- Assess student needs → Define learning objectives → Design curriculum → Implement teaching methods → Evaluate outcomes through testing\n- Focus: Standardized curriculum, measurable learning goals, efficiency metrics, individual achievement, competitive excellence\n- Logic: Clear objectives + structured methods + assessment = optimal learning outcomes; successful education produces measurable skills\n\n**Indigenous Relational Circular Logic:**\n- Honor each child's gifts → Learn from elders and community → Practice cultural teachings → Serve community needs → Pass wisdom to next generation\n- Focus: Individual gifts recognition, intergenerational teaching, cultural knowledge, community service, holistic development\n- Logic: Learning is circular relationship between generations; true education strengthens both individual and community\n\n**Eastern Harmony Dialectical Logic:**\n- Balance knowledge with wisdom → Integrate mind-heart-body development → Cultivate inner and outer learning → Harmonize individual growth with social service → Achieve educational enlightenment\n- Focus: Holistic human development, inner cultivation, balance of abilities, service orientation, wisdom tradition\n- Logic: Education harmonizes apparently opposing elements (individual/collective, knowledge/wisdom, competition/cooperation) into unified development\n\n**Framework Integration:**\nExamine how each approach:\n1. Defines the purpose and goals of education differently\n2. Structures learning experiences and relationships\n3. Measures educational success and student development\n4. Could complement others to create more comprehensive educational systems",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_05",
+      "name": "Test 185: Healthcare System Organization - Logical Framework Comparison",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Compare different logical approaches to healthcare system design and delivery",
+      "prompt": "A region needs to organize healthcare services for diverse populations with varying health needs. Apply three logical frameworks:\n\n**Western Medical Linear Logic:**\n- Diagnose illness → Identify treatment protocols → Implement interventions → Monitor patient outcomes → Evaluate system effectiveness\n- Focus: Disease treatment, evidence-based medicine, clinical protocols, individual patient care, measurable health outcomes\n- Logic: Health problems have identifiable causes; medical interventions can address causes to restore health; system success = reduced morbidity/mortality\n\n**Indigenous Healing Circular Logic:**\n- Understand illness in community context → Address spiritual/emotional/physical imbalance → Use traditional healing methods → Restore harmony with community/nature → Maintain ongoing wellness relationships\n- Focus: Community health, holistic balance, traditional medicine, spiritual wellness, prevention through harmony\n- Logic: Illness reflects disconnection from natural balance; healing requires addressing whole person within community relationships\n\n**Eastern Integrative Dialectical Logic:**\n- Balance prevention with treatment → Integrate multiple healing approaches → Harmonize individual health with collective wellbeing → Cultivate mind-body-spirit wellness → Achieve sustainable health equilibrium\n- Focus: Preventive care, integrative approaches, mind-body connection, sustainable wellness, harmonious health systems\n- Logic: Health results from dynamic balance; effective healthcare harmonizes different approaches while addressing root causes of imbalance\n\n**Comparative Healthcare Analysis:**\nExamine how each framework:\n1. Defines health, illness, and healing differently\n2. Organizes healthcare delivery and practitioner relationships\n3. Measures healthcare system success\n4. Might work together to create more comprehensive and effective healthcare systems",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_06",
+      "name": "Test 186: Urban Planning - Multiple Logic Systems",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical frameworks to urban planning and community development",
+      "prompt": "A growing city needs comprehensive planning that serves both current residents and future development. Apply three logical approaches:\n\n**Western Planning Linear Logic:**\n- Analyze demographic data → Identify infrastructure needs → Zone functional areas → Implement development regulations → Monitor growth metrics\n- Focus: Efficient land use, infrastructure systems, zoning regulations, economic development, measurable growth indicators\n- Logic: Systematic planning + proper zoning + infrastructure investment = optimal urban development; success = efficient resource use and economic growth\n\n**Indigenous Place-Based Circular Logic:**\n- Listen to the land's voice → Honor ancestral relationships to place → Plan for seven generations → Integrate sacred sites → Maintain reciprocal relationship with environment\n- Focus: Relationship with land, sacred geography, intergenerational responsibility, cultural preservation, ecological harmony\n- Logic: Places have their own spirit and needs; sustainable development honors land relationships; true planning considers impacts seven generations ahead\n\n**Eastern Balanced Dialectical Logic:**\n- Balance density with open space → Harmonize old and new development → Integrate work-live-play spaces → Create flowing energy patterns → Achieve dynamic urban harmony\n- Focus: Spatial harmony, feng shui principles, balanced development, integrated living, energy flow\n- Logic: Cities thrive through balanced relationships between seemingly opposite elements; good planning creates harmony between human needs and natural principles\n\n**Urban Development Integration:**\nAnalyze how each framework:\n1. Approaches land use and spatial organization differently\n2. Defines successful urban development\n3. Considers relationships between people, buildings, and environment\n4. Could inform each other to create more holistic and sustainable urban planning",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_07",
+      "name": "Test 187: Conflict Mediation - Three Logical Methodologies",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Compare logical approaches to mediating interpersonal and community conflicts",
+      "prompt": "Two community groups have a longstanding dispute over resource allocation and decision-making authority. Apply three mediation approaches:\n\n**Western Negotiation Linear Logic:**\n- Define positions → Identify underlying interests → Generate options → Evaluate alternatives → Reach binding agreement\n- Focus: Win-win solutions, legal frameworks, enforceable agreements, individual rights, rational decision-making\n- Logic: Conflicts arise from competing interests; systematic negotiation can identify mutually beneficial solutions; success = binding agreement both parties accept\n\n**Indigenous Peacemaking Circular Logic:**\n- Acknowledge all relationships → Share stories and pain → Seek understanding of harm → Restore community balance → Commit to ongoing harmony\n- Focus: Relationship healing, community harmony, restorative justice, shared storytelling, ongoing commitment to peace\n- Logic: Conflict reflects broken relationships; healing requires understanding all impacts; true resolution strengthens the community circle\n\n**Eastern Harmonizing Dialectical Logic:**\n- Find unity within opposition → Transform conflict into creative tension → Seek middle way solutions → Balance competing needs → Cultivate continuing harmony\n- Focus: Transforming opposition, finding deeper unity, sustainable balance, mutual cultivation, ongoing harmony\n- Logic: Conflict contains seeds of greater harmony; wise mediation transforms opposing forces into complementary strengths\n\n**Mediation Framework Analysis:**\nExamine how each approach:\n1. Understands the nature and causes of conflict\n2. Structures the mediation process and participant relationships\n3. Defines successful conflict resolution\n4. Might work together to create more effective and lasting peace-making processes",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_08",
+      "name": "Test 188: Leadership Development - Contrasting Logical Frameworks",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical systems to understanding and developing effective leadership",
+      "prompt": "A community organization needs to develop leadership capabilities for complex challenges. Apply three logical approaches:\n\n**Western Management Linear Logic:**\n- Assess leadership competencies → Identify skill gaps → Design training programs → Implement leadership development → Evaluate performance outcomes\n- Focus: Leadership skills, management techniques, strategic planning, performance metrics, individual capability building\n- Logic: Leadership effectiveness = specific skills + knowledge + experience; systematic development programs can build better leaders\n\n**Indigenous Wisdom Circular Logic:**\n- Recognize natural leadership gifts → Learn from elders and ancestors → Serve community needs → Practice cultural teachings → Pass wisdom to emerging leaders\n- Focus: Service-oriented leadership, community responsibility, cultural wisdom, mentorship relationships, collective wellbeing\n- Logic: Leadership is about serving the people; wisdom comes through relationship with community and ancestors; leaders must remain connected to those they serve\n\n**Eastern Cultivation Dialectical Logic:**\n- Balance inner cultivation with outer service → Harmonize strength with humility → Integrate wisdom with compassion → Cultivate both self and others → Achieve enlightened leadership\n- Focus: Inner development, balanced character, wisdom cultivation, compassionate service, mutual growth\n- Logic: True leadership requires inner cultivation; effective leaders balance seemingly opposite qualities; leadership development cultivates both self and community\n\n**Leadership Development Integration:**\nAnalyze how each framework:\n1. Defines effective leadership and its essential qualities\n2. Approaches leadership development and learning\n3. Understands the relationship between leaders and community\n4. Could complement each other to develop more complete and effective leaders",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_09",
+      "name": "Test 189: Technology Integration - Multiple Reasoning Approaches",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks", 
+      "description": "Compare logical frameworks for integrating technology into community life",
+      "prompt": "A traditional community considers how to integrate new technologies while preserving cultural values. Apply three logical frameworks:\n\n**Western Innovation Linear Logic:**\n- Assess technology capabilities → Identify efficiency improvements → Calculate cost-benefit ratios → Implement optimal solutions → Measure productivity gains\n- Focus: Technological efficiency, competitive advantage, innovation adoption, measurable improvements, individual productivity\n- Logic: Technology advancement = progress; early adoption provides competitive advantages; optimal technology integration maximizes efficiency and outcomes\n\n**Indigenous Wisdom Circular Logic:**\n- Consider seven-generation impacts → Honor traditional ways → Assess cultural compatibility → Integrate respectfully with ancestral wisdom → Maintain cultural continuity\n- Focus: Long-term consequences, cultural preservation, respectful integration, ancestral wisdom, community values\n- Logic: New tools must serve traditional values; technology should strengthen rather than weaken cultural relationships; changes affect seven generations\n\n**Eastern Balance Dialectical Logic:**\n- Balance innovation with tradition → Harmonize efficiency with sustainability → Integrate modern tools with ancient wisdom → Cultivate mindful technology use → Achieve dynamic equilibrium\n- Focus: Balanced integration, mindful use, sustainable development, wisdom-guided innovation, harmonious adoption\n- Logic: Technology integration requires balancing competing values; wise adoption harmonizes efficiency with deeper human needs; best solutions integrate old and new wisdom\n\n**Technology Integration Analysis:**\nExamine how each framework:\n1. Evaluates the benefits and risks of new technology\n2. Approaches decision-making about technology adoption\n3. Considers the relationship between technology and human values\n4. Could inform each other to create more thoughtful and sustainable technology integration",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_10",
+      "name": "Test 190: Climate Change Response - Three Logical Paradigms",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical frameworks to climate change response and adaptation",
+      "prompt": "A coastal community faces rising sea levels and changing weather patterns requiring comprehensive climate response. Apply three logical approaches:\n\n**Western Scientific Linear Logic:**\n- Analyze climate data → Model future scenarios → Develop mitigation strategies → Implement adaptation measures → Monitor effectiveness and adjust\n- Focus: Scientific data, technological solutions, engineering adaptations, policy interventions, measurable emissions reductions\n- Logic: Climate change = measurable problem; scientific analysis + technological innovation + policy implementation = effective response\n\n**Indigenous Relationship Circular Logic:**\n- Listen to earth's messages → Remember ancestral climate teachings → Restore traditional ecological practices → Strengthen community resilience → Renew reciprocal relationship with nature\n- Focus: Traditional ecological knowledge, community resilience, reciprocal earth relationship, ancestral wisdom, ecological restoration\n- Logic: Climate disruption reflects broken relationship with earth; healing requires returning to traditional ecological practices and respectful reciprocity\n\n**Eastern Harmony Dialectical Logic:**\n- Balance human needs with natural limits → Transform consumption patterns → Cultivate sustainable lifestyles → Harmonize development with ecological wisdom → Achieve climate equilibrium\n- Focus: Sustainable balance, lifestyle transformation, mindful consumption, ecological harmony, inner and outer change\n- Logic: Climate crisis requires both inner transformation and outer change; lasting solutions harmonize human development with natural law; balance creates stability\n\n**Climate Response Integration:**\nAnalyze how each framework:\n1. Understands the causes and nature of climate change\n2. Approaches climate response and adaptation strategies\n3. Defines successful climate action and community resilience\n4. Could work together to create more comprehensive and effective climate responses that serve both immediate needs and long-term sustainability",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_11",
+      "name": "Test 191: Decision Making - Three Approaches to Complex Choices",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical frameworks to complex decision-making processes",
+      "prompt": "A family needs to make a major decision about relocating for work opportunities while considering multiple competing priorities. Apply three logical approaches:\n\n**Western Analytical Linear Logic:**\n- Define criteria and priorities → Gather objective data → Create decision matrix → Evaluate options systematically → Make rational choice based on analysis\n- Focus: Cost-benefit analysis, objective data, quantifiable outcomes, individual optimization, logical evaluation\n- Logic: Good decisions = thorough analysis + objective criteria + systematic evaluation; rational analysis leads to optimal outcomes\n\n**Indigenous Community Circular Logic:**\n- Consult extended family and elders → Consider seven-generation impacts → Honor ancestral connections to place → Seek community guidance → Make decision that serves collective wellbeing\n- Focus: Community consultation, long-term impacts, place-based relationships, ancestral wisdom, collective responsibility\n- Logic: Individual decisions affect the whole community; wisdom comes from collective deliberation; decisions must honor relationships and responsibilities\n\n**Eastern Balance Dialectical Logic:**\n- Acknowledge competing values and emotions → Seek middle way between extremes → Consider timing and natural flow → Integrate heart wisdom with practical needs → Allow decision to emerge through mindful consideration\n- Focus: Balanced consideration, emotional and practical integration, timing and intuition, holistic evaluation, harmonious resolution\n- Logic: Best decisions balance multiple factors; forcing decisions creates imbalance; wisdom emerges through patient integration of competing needs\n\n**Decision-Making Integration:**\nAnalyze how each framework:\n1. Approaches information gathering and evaluation\n2. Handles competing priorities and values\n3. Considers timing and implementation of decisions\n4. Could work together to create more thoughtful and wise decision-making processes",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_12",
+      "name": "Test 192: Learning and Knowledge - Three Epistemological Approaches",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Compare different logical frameworks for understanding learning and knowledge acquisition",
+      "prompt": "An educational program needs to help learners from diverse backgrounds acquire both practical skills and deeper understanding. Apply three logical approaches:\n\n**Western Academic Linear Logic:**\n- Assess prior knowledge → Present information systematically → Practice skills incrementally → Test comprehension → Apply knowledge to new situations\n- Focus: Evidence-based learning, measurable outcomes, individual achievement, standardized assessment, knowledge transfer\n- Logic: Learning = information + practice + assessment; systematic instruction builds competence; knowledge can be measured and transferred\n\n**Indigenous Experiential Circular Logic:**\n- Learn through observation and participation → Practice within community context → Receive guidance from elders → Apply learning to serve community → Pass knowledge to next generation\n- Focus: Experiential learning, community integration, cultural context, mentorship relationships, knowledge as responsibility\n- Logic: True learning happens through lived experience; knowledge is embedded in relationships and community; learning is about becoming, not just knowing\n\n**Eastern Contemplative Dialectical Logic:**\n- Cultivate beginner's mind and openness → Balance study with meditation and reflection → Integrate intellectual and experiential knowledge → Transform understanding into wisdom → Embody knowledge through practice\n- Focus: Contemplative learning, balanced development, wisdom cultivation, personal transformation, embodied understanding\n- Logic: Knowledge without wisdom is incomplete; learning requires both intellectual and experiential development; true understanding transforms the learner\n\n**Learning Integration Framework:**\nExamine how each approach:\n1. Understands the nature of knowledge and learning\n2. Structures learning experiences and progression\n3. Evaluates learning success and outcomes\n4. Could be integrated to create more comprehensive and effective education",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_13",
+      "name": "Test 193: Problem Solving - Multiple Logical Methodologies",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical frameworks to complex problem-solving situations",
+      "prompt": "A community faces a complex challenge involving declining youth engagement, economic pressures, and cultural disconnection. Apply three problem-solving approaches:\n\n**Western Scientific Linear Logic:**\n- Define problem clearly → Identify root causes through analysis → Generate solution alternatives → Test solutions systematically → Scale successful interventions\n- Focus: Problem analysis, hypothesis testing, evidence-based solutions, systematic implementation, measurable results\n- Logic: Problems have identifiable causes; systematic analysis reveals solutions; successful interventions can be replicated and scaled\n\n**Indigenous Holistic Circular Logic:**\n- Listen to community voices and stories → Understand problem within larger web of relationships → Seek guidance from elders and traditional teachings → Heal underlying disconnections → Restore balance and harmony\n- Focus: Community storytelling, relationship healing, traditional wisdom, collective healing, cultural restoration\n- Logic: Problems reflect broken relationships and lost connections; healing requires addressing root spiritual and cultural causes; solutions must restore harmony\n\n**Eastern Adaptive Dialectical Logic:**\n- Observe problem patterns without judgment → Accept what cannot be changed → Transform what can be changed → Work skillfully with changing conditions → Cultivate resilience and adaptation\n- Focus: Mindful observation, acceptance and action, adaptive responses, skillful means, resilience building\n- Logic: Problems arise from attachment and resistance to change; wisdom lies in knowing what can and cannot be changed; solutions emerge through skillful adaptation\n\n**Problem-Solving Integration:**\nAnalyze how each framework:\n1. Approaches problem identification and analysis\n2. Develops solutions and interventions\n3. Measures success and effectiveness\n4. Could complement each other for more comprehensive problem-solving approaches",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_14",
+      "name": "Test 194: Relationship Dynamics - Three Logical Frameworks for Interpersonal Understanding",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical systems to understanding and improving relationship dynamics",
+      "prompt": "A workplace team experiences interpersonal conflicts affecting productivity and morale. Apply three logical approaches to understanding and addressing relationship challenges:\n\n**Western Psychological Linear Logic:**\n- Assess individual personalities and communication styles → Identify conflict triggers and patterns → Implement communication training and team-building → Measure relationship improvements → Maintain healthy team dynamics\n- Focus: Individual psychology, communication skills, behavior modification, measurable outcomes, systematic interventions\n- Logic: Relationship problems = communication + personality conflicts; training and structure improve relationships; success can be measured and maintained\n\n**Indigenous Community Circular Logic:**\n- Honor each person's gifts and place in community → Address relationship wounds through storytelling and ceremony → Restore balance through elder guidance → Strengthen community bonds → Maintain ongoing relationship tending\n- Focus: Community wholeness, ceremonial healing, elder wisdom, relationship as sacred, ongoing community care\n- Logic: Individuals exist within community web; relationship healing requires ceremony and community support; healthy relationships need continuous tending\n\n**Eastern Harmony Dialectical Logic:**\n- Accept each person's true nature without judgment → Balance individual needs with collective harmony → Transform conflict into creative collaboration → Cultivate compassion and understanding → Achieve dynamic interpersonal equilibrium\n- Focus: Acceptance and transformation, compassionate understanding, creative collaboration, inner development, harmonious balance\n- Logic: Conflict arises from non-acceptance; harmony emerges through understanding and compassion; healthy relationships balance individual and collective needs\n\n**Relationship Integration Analysis:**\nExamine how each framework:\n1. Understands the causes of relationship conflict\n2. Approaches relationship healing and improvement\n3. Defines healthy and successful relationships\n4. Could work together to create more effective approaches to interpersonal dynamics",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_15",
+      "name": "Test 195: Innovation and Change - Three Approaches to Transformation",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical frameworks to managing innovation and organizational change",
+      "prompt": "An organization needs to innovate while maintaining core values and ensuring all stakeholders benefit from changes. Apply three logical approaches:\n\n**Western Management Linear Logic:**\n- Analyze market trends and competitive landscape → Develop innovation strategy and roadmap → Implement change management processes → Measure innovation outcomes and ROI → Scale successful innovations\n- Focus: Strategic planning, competitive advantage, systematic change management, measurable results, organizational efficiency\n- Logic: Innovation = strategic advantage; planned change reduces resistance; successful innovations can be systematically scaled\n\n**Indigenous Adaptive Circular Logic:**\n- Listen to community needs and wisdom → Honor traditional values while embracing beneficial changes → Involve elders and community in innovation decisions → Test changes with community guidance → Integrate innovations that strengthen cultural continuity\n- Focus: Community consultation, cultural preservation, elder involvement, respectful adaptation, cultural strengthening\n- Logic: Innovation must serve community wellbeing; change requires community blessing; successful innovation strengthens rather than weakens cultural foundations\n\n**Eastern Flow Dialectical Logic:**\n- Observe natural patterns of change and resistance → Balance innovation with preservation → Allow changes to emerge organically → Cultivate mindful adaptation → Achieve dynamic innovation equilibrium\n- Focus: Natural change patterns, balanced development, organic emergence, mindful adaptation, sustainable transformation\n- Logic: Change follows natural patterns; forced innovation creates imbalance; sustainable innovation balances tradition with adaptation\n\n**Innovation Integration Framework:**\nAnalyze how each approach:\n1. Identifies opportunities and drives for innovation\n2. Manages resistance and ensures stakeholder engagement\n3. Measures innovation success and sustainability\n4. Could be combined to create more effective and sustainable innovation processes",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_16",
+      "name": "Test 196: Risk Assessment - Three Logical Approaches to Uncertainty",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical frameworks to assessing and managing risks and uncertainty",
+      "prompt": "A coastal community must assess and prepare for multiple risks including economic uncertainty, climate change, and social challenges. Apply three logical approaches:\n\n**Western Statistical Linear Logic:**\n- Gather historical data and trend analysis → Calculate probability distributions and risk models → Develop quantitative risk matrices → Implement evidence-based mitigation strategies → Monitor and adjust risk management\n- Focus: Data-driven analysis, probability calculations, quantitative modeling, systematic mitigation, measurable risk reduction\n- Logic: Risk = probability × impact; historical data predicts future risks; systematic analysis enables optimal risk management\n\n**Indigenous Precautionary Circular Logic:**\n- Listen to elder warnings and traditional knowledge → Consider seven-generation consequences → Apply precautionary principles → Strengthen community resilience and mutual aid → Maintain traditional risk wisdom\n- Focus: Traditional knowledge, long-term thinking, precautionary approaches, community resilience, ancestral wisdom\n- Logic: Elders have witnessed long-term patterns; precaution prevents harm; community resilience provides security; traditional wisdom guides risk assessment\n\n**Eastern Adaptive Dialectical Logic:**\n- Accept uncertainty as natural condition → Balance preparation with non-attachment → Cultivate resilience and flexibility → Develop skillful responses to changing conditions → Find opportunity within challenge\n- Focus: Uncertainty acceptance, balanced preparation, resilience cultivation, adaptive responses, transformative opportunities\n- Logic: Uncertainty is natural; excessive planning creates rigidity; resilience and adaptation are better than prediction; challenges contain opportunities\n\n**Risk Assessment Integration:**\nExamine how each framework:\n1. Identifies and evaluates potential risks\n2. Develops strategies for risk mitigation and management\n3. Balances preparation with resource allocation\n4. Could work together to create more comprehensive and adaptive risk management approaches",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_17",
+      "name": "Test 197: Communication and Dialogue - Three Frameworks for Understanding Exchange",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical systems to facilitating communication and dialogue across differences",
+      "prompt": "A diverse community needs to facilitate meaningful dialogue between groups with different values, languages, and worldviews. Apply three logical approaches:\n\n**Western Debate Linear Logic:**\n- Establish ground rules and procedures → Present positions clearly and logically → Provide evidence and reasoning → Engage in structured argumentation → Reach conclusions based on strongest arguments\n- Focus: Logical argumentation, evidence-based reasoning, structured debate, winning arguments, rational conclusions\n- Logic: Truth emerges through logical argument; best ideas win through evidence; structured debate reveals optimal solutions\n\n**Indigenous Council Circular Logic:**\n- Create sacred space for all voices → Listen deeply without judgment → Share stories and experiences → Seek understanding and wisdom → Find common ground for community good\n- Focus: Inclusive participation, deep listening, storytelling, wisdom-seeking, community harmony\n- Logic: Truth emerges through collective wisdom; all voices have value; understanding comes through story and relationship; dialogue serves community wellbeing\n\n**Eastern Dialogue Dialectical Logic:**\n- Hold space for paradox and contradiction → Balance speaking with listening → Explore multiple perspectives simultaneously → Allow new understanding to emerge → Transform through mutual inquiry\n- Focus: Paradox acceptance, balanced exchange, multiple perspectives, emergent understanding, mutual transformation\n- Logic: Truth contains paradox; dialogue transforms participants; wisdom emerges through mutual inquiry; understanding transcends individual positions\n\n**Communication Integration Framework:**\nAnalyze how each approach:\n1. Creates conditions for effective communication\n2. Handles disagreement and conflicting viewpoints\n3. Defines successful dialogue and communication outcomes\n4. Could be combined to create more effective cross-cultural communication processes",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_18",
+      "name": "Test 198: Resource Allocation - Three Logical Approaches to Distribution",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical frameworks to fair and effective resource allocation",
+      "prompt": "A community foundation must allocate limited funding among competing needs including education, healthcare, environmental protection, and cultural programs. Apply three logical approaches:\n\n**Western Economic Linear Logic:**\n- Analyze cost-effectiveness and return on investment → Prioritize based on impact metrics and efficiency → Allocate resources to maximize outcomes → Monitor performance indicators → Adjust allocations based on results\n- Focus: Economic efficiency, measurable impact, cost-benefit analysis, outcome optimization, performance-based allocation\n- Logic: Resources should go where they create maximum measurable benefit; efficiency ensures optimal resource use; data-driven allocation achieves best outcomes\n\n**Indigenous Reciprocity Circular Logic:**\n- Consider needs of all community members and future generations → Honor reciprocal relationships and obligations → Ensure no one is left behind → Support traditional practices and cultural continuity → Maintain balance and sharing principles\n- Focus: Community wholeness, reciprocal obligations, inclusive care, cultural preservation, balanced sharing\n- Logic: Resources belong to the whole community; allocation must serve collective wellbeing; traditional sharing principles ensure justice; future generations have equal claim\n\n**Eastern Balance Dialectical Logic:**\n- Balance immediate needs with long-term sustainability → Harmonize competing priorities → Consider both material and spiritual dimensions → Distribute according to natural flow → Achieve dynamic equilibrium in allocation\n- Focus: Balanced distribution, sustainable allocation, holistic needs assessment, natural flow, dynamic equilibrium\n- Logic: Optimal allocation balances competing needs; sustainable distribution considers multiple dimensions; natural flow prevents accumulation and scarcity\n\n**Resource Allocation Integration:**\nExamine how each framework:\n1. Identifies priorities and allocation criteria\n2. Balances competing needs and interests\n3. Ensures fairness and sustainability in distribution\n4. Could work together to create more effective and equitable resource allocation systems",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_19",
+      "name": "Test 199: Crisis Response - Three Logical Frameworks for Emergency Situations",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical systems to crisis response and emergency management",
+      "prompt": "A community faces a natural disaster requiring immediate response coordination while addressing both immediate needs and long-term recovery. Apply three logical approaches:\n\n**Western Emergency Linear Logic:**\n- Assess damage and immediate threats → Establish command and control systems → Deploy resources systematically → Execute emergency response protocols → Transition to recovery phase\n- Focus: Rapid assessment, coordinated command, systematic deployment, protocol execution, measurable outcomes\n- Logic: Crises require rapid, coordinated response; centralized command ensures efficiency; systematic protocols save lives and property\n\n**Indigenous Community Circular Logic:**\n- Gather community to ensure all are accounted for → Draw on traditional resilience practices → Share resources according to community principles → Support vulnerable members first → Heal community bonds through collective response\n- Focus: Community gathering, traditional practices, resource sharing, vulnerable protection, collective healing\n- Logic: Crisis affects the whole community; traditional practices provide resilience; community strength comes through mutual support; healing includes relationships\n\n**Eastern Adaptive Dialectical Logic:**\n- Remain calm and centered amid chaos → Balance urgent action with mindful response → Adapt flexibly to changing conditions → Transform crisis into opportunity for growth → Cultivate community resilience through experience\n- Focus: Mindful response, flexible adaptation, transformative opportunity, resilience cultivation, wisdom development\n- Logic: Crisis reveals community strengths and weaknesses; mindful response prevents additional harm; challenges offer opportunities for growth and learning\n\n**Crisis Response Integration:**\nAnalyze how each framework:\n1. Approaches immediate crisis assessment and response\n2. Coordinates resources and community action\n3. Addresses both immediate needs and long-term recovery\n4. Could be combined to create more effective and resilient crisis response systems",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_20",
+      "name": "Test 200: Creativity and Innovation - Three Approaches to Creative Process",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical frameworks to understanding and fostering creativity and innovation",
+      "prompt": "An arts organization wants to foster authentic creativity while ensuring accessibility and sustainability. Apply three logical approaches:\n\n**Western Design Linear Logic:**\n- Identify creative challenges and objectives → Research and gather inspiration → Brainstorm and ideate solutions → Prototype and test concepts → Refine and implement best ideas\n- Focus: Problem-solving creativity, systematic ideation, prototype development, iterative improvement, measurable innovation\n- Logic: Creativity solves problems; systematic process generates ideas; testing reveals best solutions; iteration improves outcomes\n\n**Indigenous Cultural Circular Logic:**\n- Connect with ancestral creative traditions → Receive inspiration from community and land → Create in service of cultural continuity → Share creations with community for guidance → Pass creative knowledge to next generation\n- Focus: Traditional inspiration, community-centered creation, cultural service, collective validation, knowledge transmission\n- Logic: Creativity flows from cultural roots; authentic creation serves community; creative works carry cultural responsibility; creativity is gift to be shared\n\n**Eastern Flow Dialectical Logic:**\n- Cultivate empty mind and receptive awareness → Allow creative inspiration to arise naturally → Balance effort with effortlessness → Express creativity through authentic voice → Transform both creator and audience through art\n- Focus: Receptive awareness, natural inspiration, effortless effort, authentic expression, transformative impact\n- Logic: Creativity emerges from stillness; forcing blocks natural flow; authentic expression transforms both creator and receiver; true art serves awakening\n\n**Creative Process Integration:**\nExamine how each framework:\n1. Understands the source and nature of creativity\n2. Structures creative process and development\n3. Evaluates creative success and impact\n4. Could work together to foster more complete and sustainable creative expression",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_21",
+      "name": "Test 201: Healing and Restoration - Three Logical Approaches to Recovery",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical frameworks to healing and restoration processes",
+      "prompt": "A person recovering from serious illness seeks comprehensive healing that addresses physical, emotional, and spiritual dimensions. Apply three logical approaches:\n\n**Western Medical Linear Logic:**\n- Diagnose underlying pathology → Develop evidence-based treatment plan → Implement medical interventions systematically → Monitor progress with objective measures → Adjust treatment based on clinical outcomes\n- Focus: Pathology identification, evidence-based treatment, systematic intervention, objective measurement, clinical optimization\n- Logic: Illness has identifiable causes; evidence-based medicine provides best treatments; systematic intervention ensures recovery; progress can be measured objectively\n\n**Indigenous Holistic Circular Logic:**\n- Understand illness within life story and relationships → Seek guidance from traditional healers and community → Participate in healing ceremonies and practices → Restore balance in all dimensions of life → Maintain ongoing relationship with healing community\n- Focus: Holistic understanding, traditional guidance, ceremonial healing, life balance restoration, community relationship\n- Logic: Illness reflects imbalance in life's web; healing requires ceremony and community; restoration includes all life dimensions; ongoing relationship maintains health\n\n**Eastern Integration Dialectical Logic:**\n- Accept illness as teacher while working toward health → Balance medical treatment with spiritual practice → Integrate body, mind, and spirit in healing → Transform suffering into wisdom and compassion → Use healing experience to serve others\n- Focus: Illness as teacher, integrated healing, body-mind-spirit unity, transformative growth, compassionate service\n- Logic: Illness contains wisdom; healing integrates all dimensions; suffering can become compassion; complete healing serves others; transformation is possible\n\n**Healing Integration Framework:**\nAnalyze how each approach:\n1. Understands the nature and causes of illness\n2. Approaches healing and recovery processes\n3. Defines complete healing and wellness\n4. Could work together to provide more comprehensive and effective healing approaches",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_22",
+      "name": "Test 202: Truth and Knowledge - Three Epistemological Frameworks",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical systems to understanding truth, knowledge, and reality",
+      "prompt": "A research institute studies complex social phenomena and must determine how to understand and communicate truth about controversial topics. Apply three logical approaches:\n\n**Western Scientific Linear Logic:**\n- Formulate hypotheses based on theory → Design controlled experiments and studies → Collect objective data systematically → Analyze results statistically → Draw evidence-based conclusions about reality\n- Focus: Hypothesis testing, controlled methods, objective data, statistical analysis, evidence-based truth\n- Logic: Truth is discovered through scientific method; objective reality exists independently; systematic study reveals facts; peer review validates knowledge\n\n**Indigenous Relational Circular Logic:**\n- Gather wisdom from elders and community experience → Observe patterns in natural and social relationships → Test understanding through lived experience → Validate knowledge through community consensus → Hold truth as dynamic and contextual\n- Focus: Elder wisdom, relational patterns, experiential validation, community consensus, contextual truth\n- Logic: Truth emerges through relationship and experience; knowledge is held collectively; context shapes understanding; wisdom is tested through living\n\n**Eastern Contemplative Dialectical Logic:**\n- Examine both objective phenomena and subjective experience → Balance rational analysis with intuitive insight → Recognize interdependence of observer and observed → Hold multiple perspectives simultaneously → Understand truth as beyond conceptual grasping\n- Focus: Subject-object integration, balanced analysis, interdependent understanding, multiple perspectives, transcendent truth\n- Logic: Truth includes both objective and subjective dimensions; observer and observed are interdependent; reality transcends conceptual understanding; wisdom balances analysis with insight\n\n**Knowledge Integration Framework:**\nExamine how each approach:\n1. Defines the nature of truth and knowledge\n2. Methods for discovering and validating understanding\n3. Handles uncertainty, complexity, and controversy\n4. Could work together to develop more complete approaches to understanding reality",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_23",
+      "name": "Test 203: Justice and Fairness - Three Logical Frameworks for Ethical Resolution",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical systems to achieving justice and fairness in complex situations",
+      "prompt": "A community must address a situation where someone's actions harmed others while recognizing complex circumstances and multiple perspectives on justice. Apply three logical approaches:\n\n**Western Legal Linear Logic:**\n- Establish facts through investigation → Apply relevant laws and precedents → Determine guilt or innocence → Assign appropriate punishment or restitution → Deter future violations through consequences\n- Focus: Fact-finding, legal application, guilt determination, proportional punishment, deterrence\n- Logic: Justice requires equal treatment under law; facts determine truth; punishment fits crime; legal consequences deter violations; system ensures fairness\n\n**Indigenous Restorative Circular Logic:**\n- Bring all affected parties together → Share stories and understand impacts → Acknowledge harm and responsibility → Determine what is needed for healing → Restore relationships and community harmony\n- Focus: Inclusive participation, story-sharing, responsibility acknowledgment, healing-focused outcomes, relationship restoration\n- Logic: Justice heals relationships; all voices matter; responsibility includes making things right; community healing prevents future harm; restoration serves everyone\n\n**Eastern Compassionate Dialectical Logic:**\n- Understand actions within larger web of conditions → Balance accountability with compassion → Address root causes of harmful behavior → Transform harm into learning opportunity → Cultivate wisdom and compassion for all involved\n- Focus: Conditional understanding, balanced accountability, root cause healing, transformative learning, universal compassion\n- Logic: Harm arises from complex conditions; justice includes understanding and compassion; healing root causes prevents recurrence; transformation serves all beings\n\n**Justice Integration Framework:**\nAnalyze how each approach:\n1. Defines justice and fairness\n2. Addresses harm and accountability\n3. Prevents future violations or harm\n4. Could work together to create more complete and effective approaches to justice that serve all parties",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_24",
+      "name": "Test 204: Community Development - Three Approaches to Social Progress",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical frameworks to fostering healthy community development and social progress",
+      "prompt": "A rural community seeks sustainable development that improves quality of life while preserving cultural identity and environmental integrity. Apply three logical approaches:\n\n**Western Economic Linear Logic:**\n- Assess community assets and development potential → Attract investment and create economic opportunities → Build infrastructure and capacity → Measure progress through economic indicators → Scale successful development models\n- Focus: Asset development, investment attraction, infrastructure building, economic metrics, scalable models\n- Logic: Development = economic growth; investment creates opportunities; infrastructure enables progress; economic indicators measure success; successful models can be replicated\n\n**Indigenous Sustainable Circular Logic:**\n- Strengthen traditional governance and cultural practices → Develop community-controlled enterprises → Maintain harmony with natural environment → Ensure benefits serve all generations → Preserve cultural identity while adapting to change\n- Focus: Cultural strengthening, community control, environmental harmony, intergenerational equity, identity preservation\n- Logic: Development must serve community values; community should control its destiny; environment and culture are inseparable; development must benefit future generations\n\n**Eastern Balanced Dialectical Logic:**\n- Balance material progress with spiritual development → Harmonize individual opportunity with collective wellbeing → Integrate traditional wisdom with modern knowledge → Cultivate sustainable abundance → Achieve dynamic development equilibrium\n- Focus: Balanced progress, harmonized wellbeing, integrated wisdom, sustainable abundance, dynamic equilibrium\n- Logic: True development balances multiple dimensions; progress includes spiritual growth; integration creates sustainability; abundance can be sustainable; development requires ongoing balance\n\n**Community Development Integration:**\nExamine how each framework:\n1. Defines successful community development\n2. Approaches resource mobilization and capacity building\n3. Measures progress and sustainability\n4. Could work together to create more holistic and sustainable approaches to community development",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_25",
+      "name": "Test 205: Work and Purpose - Three Logical Frameworks for Meaningful Labor",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical systems to understanding work, career, and life purpose",
+      "prompt": "An individual seeks meaningful work that provides economic security, personal fulfillment, and positive social impact. Apply three logical approaches:\n\n**Western Career Linear Logic:**\n- Assess skills, interests, and market opportunities → Set career goals and development plans → Build qualifications and professional network → Pursue advancement and optimization → Maximize income and career success\n- Focus: Skills development, career planning, professional networking, advancement strategies, success optimization\n- Logic: Career success = skills + opportunities + networking; strategic planning leads to advancement; market value determines income; professional success enables life goals\n\n**Indigenous Service Circular Logic:**\n- Discover natural gifts and community calling → Learn from elders and mentors → Serve community needs and cultural continuity → Receive support from community relationships → Contribute to collective wellbeing and wisdom\n- Focus: Gift recognition, community calling, service orientation, reciprocal support, collective contribution\n- Logic: Everyone has unique gifts for community service; work serves collective good; community supports individual contributions; meaningful work preserves and develops culture\n\n**Eastern Dharma Dialectical Logic:**\n- Align work with personal dharma and life purpose → Balance livelihood needs with spiritual development → Serve others while cultivating inner growth → Transform work into spiritual practice → Achieve integration of service and self-realization\n- Focus: Purpose alignment, balanced development, service orientation, spiritual integration, unified practice\n- Logic: Work should align with life purpose; livelihood and spiritual development can be integrated; service to others serves self-realization; right livelihood contributes to awakening\n\n**Work Integration Framework:**\nAnalyze how each approach:\n1. Defines meaningful and successful work\n2. Balances personal needs with social contribution\n3. Approaches career development and life planning\n4. Could work together to create more fulfilling and sustainable approaches to work and career",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_26",
+      "name": "Test 206: Environmental Stewardship - Three Logical Approaches to Ecological Responsibility",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical frameworks to environmental protection and ecological stewardship",
+      "prompt": "A region must balance economic development with environmental protection while ensuring long-term ecological sustainability. Apply three logical approaches:\n\n**Western Conservation Linear Logic:**\n- Conduct scientific environmental assessments → Develop evidence-based conservation policies → Implement regulatory frameworks and enforcement → Monitor environmental indicators and compliance → Adjust policies based on measurable outcomes\n- Focus: Scientific assessment, evidence-based policy, regulatory enforcement, measurable monitoring, adaptive management\n- Logic: Environmental protection requires scientific knowledge; effective policies are based on evidence; regulation and enforcement ensure compliance; monitoring enables adaptive management\n\n**Indigenous Reciprocal Circular Logic:**\n- Honor sacred relationship with earth and all beings → Practice traditional ecological management → Take only what is needed and give back more → Maintain balance for seven generations → Live in reciprocal harmony with natural world\n- Focus: Sacred relationships, traditional management, reciprocal exchange, generational thinking, harmonic living\n- Logic: Humans are part of nature, not separate; ecological relationship is sacred; sustainability requires reciprocity; decisions must serve seven generations; harmony creates abundance\n\n**Eastern Harmonious Dialectical Logic:**\n- Balance human development with natural limits → Integrate economic activity with ecological wisdom → Cultivate mindful consumption and production → Transform lifestyle toward sustainability → Achieve dynamic harmony between humanity and nature\n- Focus: Balanced development, integrated wisdom, mindful practices, lifestyle transformation, dynamic harmony\n- Logic: Sustainable development balances human and natural needs; wisdom integrates economic and ecological understanding; mindful living prevents overconsumption; transformation achieves harmony\n\n**Environmental Stewardship Integration:**\nExamine how each framework:\n1. Understands the relationship between humans and nature\n2. Approaches environmental protection and resource management\n3. Balances economic needs with ecological sustainability\n4. Could work together to create more effective and comprehensive environmental stewardship approaches",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_27",
+      "name": "Test 207: Parenting and Child Development - Three Logical Frameworks for Raising Children",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical systems to understanding child-rearing and supporting healthy development",
+      "prompt": "Parents want to raise children who are both successful in modern society and grounded in values, identity, and emotional wellbeing. Apply three logical approaches:\n\n**Western Developmental Linear Logic:**\n- Understand child development milestones and psychology → Provide structured learning opportunities and skill-building → Monitor progress and address developmental challenges → Prepare children for academic and career success → Support individual achievement and independence\n- Focus: Developmental psychology, structured learning, progress monitoring, achievement preparation, independence building\n- Logic: Child development follows predictable patterns; structured input optimizes outcomes; early intervention addresses problems; preparation ensures future success; independence is healthy goal\n\n**Indigenous Community Circular Logic:**\n- Recognize children as community gifts and responsibility → Involve extended family and elders in child-rearing → Teach cultural identity and traditional knowledge → Support children's place in community web → Prepare children to serve future generations\n- Focus: Community responsibility, extended family involvement, cultural transmission, community integration, generational service\n- Logic: Children belong to community, not just parents; multiple caregivers provide wisdom; cultural identity provides strength; children must know their place in community; purpose is serving future generations\n\n**Eastern Nurturing Dialectical Logic:**\n- Balance guidance with allowing natural development → Cultivate both discipline and compassion → Support children's authentic nature while teaching skillful living → Model wisdom and mindful living → Raise children who contribute to collective wellbeing\n- Focus: Balanced guidance, disciplined compassion, authentic development, wisdom modeling, collective contribution\n- Logic: Children have inherent Buddha-nature; development requires balanced support; authentic expression needs skillful guidance; parents model what they teach; well-raised children serve all beings\n\n**Child-Rearing Integration Framework:**\nAnalyze how each approach:\n1. Understands children's nature and developmental needs\n2. Structures learning, guidance, and support\n3. Prepares children for adult roles and responsibilities\n4. Could work together to raise more complete, capable, and compassionate human beings",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_28",
+      "name": "Test 208: Aging and Wisdom - Three Approaches to Life's Later Stages",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical frameworks to understanding aging, elderhood, and wisdom development",
+      "prompt": "A community seeks to honor and support elders while helping them remain engaged and purposeful in later life stages. Apply three logical approaches:\n\n**Western Gerontology Linear Logic:**\n- Assess physical and cognitive changes in aging → Develop interventions to maintain function and independence → Provide appropriate healthcare and support services → Plan for end-of-life care and transitions → Optimize quality of life through evidence-based approaches\n- Focus: Function maintenance, independence preservation, healthcare provision, end-of-life planning, evidence-based optimization\n- Logic: Aging involves predictable changes; interventions can maintain function; independence is key to dignity; planning prevents crises; evidence guides best practices\n\n**Indigenous Elder Circular Logic:**\n- Honor elders as wisdom keepers and community treasures → Create roles for elders to share knowledge and guide community → Provide intergenerational connection and cultural transmission → Support elders' spiritual preparation for ancestor journey → Celebrate elders as living links to ancestral wisdom\n- Focus: Wisdom honoring, knowledge sharing, intergenerational connection, spiritual preparation, ancestral linking\n- Logic: Elders hold irreplaceable wisdom; aging increases spiritual power; elders guide community decisions; death is transition to ancestor realm; elder wisdom must be preserved\n\n**Eastern Completion Dialectical Logic:**\n- Accept aging as natural life completion while maintaining vitality → Balance letting go with remaining engaged → Cultivate wisdom through life experience integration → Transform accumulated knowledge into compassionate service → Prepare consciousness for life's ultimate transition\n- Focus: Natural acceptance, balanced engagement, wisdom cultivation, compassionate service, conscious preparation\n- Logic: Aging is natural completion; vitality can continue through acceptance; life experience becomes wisdom; elders serve through compassion; consciousness transcends physical aging\n\n**Aging Integration Framework:**\nExamine how each approach:\n1. Understands the nature and purpose of aging\n2. Supports elder wellbeing and contribution\n3. Addresses end-of-life transitions and preparation\n4. Could work together to create more complete approaches to honoring and supporting elders while maximizing their wisdom contribution",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_29",
+      "name": "Test 209: Spiritual Development - Three Logical Frameworks for Inner Growth",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical systems to understanding spiritual development and inner growth",
+      "prompt": "An individual seeks authentic spiritual development that integrates with daily life and serves both personal growth and social contribution. Apply three logical approaches:\n\n**Western Psychology Linear Logic:**\n- Assess psychological patterns and developmental stages → Apply evidence-based mindfulness and therapy techniques → Develop emotional regulation and self-awareness skills → Measure progress through validated instruments → Integrate personal growth with functional life goals\n- Focus: Psychological assessment, evidence-based techniques, skill development, measurable progress, functional integration\n- Logic: Spiritual development follows psychological principles; evidence-based practices are most effective; skills can be learned and measured; integration with life function is essential\n\n**Indigenous Ceremonial Circular Logic:**\n- Seek vision and guidance through traditional ceremonies → Learn from elders and traditional teachings → Participate in community spiritual practices → Serve community through spiritual gifts → Maintain lifelong relationship with spiritual community and practices\n- Focus: Ceremonial seeking, elder teaching, community practice, gift sharing, lifelong relationship\n- Logic: Spiritual power comes through ceremony and community; elders guide spiritual development; authentic spirituality serves community; spiritual gifts must be shared; spiritual life is communal\n\n**Eastern Contemplative Dialectical Logic:**\n- Cultivate both wisdom and compassion through contemplative practice → Balance inner development with engaged service → Transcend ego while functioning skillfully in world → Integrate spiritual realization with daily activity → Achieve enlightenment that serves all beings\n- Focus: Wisdom-compassion cultivation, balanced development, ego transcendence, daily integration, universal service\n- Logic: Spiritual development requires both wisdom and compassion; true realization serves others; transcendence includes rather than rejects world engagement; enlightenment is for all beings\n\n**Spiritual Development Integration:**\nAnalyze how each framework:\n1. Understands the nature and goals of spiritual development\n2. Structures practice and spiritual growth\n3. Integrates spiritual development with social responsibility\n4. Could work together to support more complete and authentic spiritual development that serves both individual growth and collective wellbeing",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "logic_30",
+      "name": "Test 210: Global Cooperation - Three Logical Frameworks for Planetary Collaboration",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Apply different logical systems to achieving effective global cooperation on planetary challenges",
+      "prompt": "Humanity faces global challenges requiring unprecedented cooperation across cultures, nations, and worldviews. Apply three logical approaches to international collaboration:\n\n**Western Institutional Linear Logic:**\n- Establish international treaties and governance structures → Create enforcement mechanisms and accountability systems → Develop standardized metrics and monitoring → Implement coordinated policies and interventions → Scale successful cooperation models globally\n- Focus: Institutional frameworks, enforcement systems, standardized monitoring, coordinated policies, scalable models\n- Logic: Global problems require global institutions; effective cooperation needs enforcement; standardization enables coordination; successful models can be scaled; systematic approaches achieve results\n\n**Indigenous Council Circular Logic:**\n- Convene earth council with representatives from all peoples → Share traditional knowledge and earth-based wisdom → Make decisions considering seven generations → Honor sovereignty while seeking common ground → Maintain ongoing relationships for planetary stewardship\n- Focus: Inclusive representation, traditional wisdom sharing, generational thinking, sovereignty respect, relationship maintenance\n- Logic: All peoples have voice in earth decisions; traditional wisdom is essential for planetary health; decisions must serve seven generations; cooperation respects cultural sovereignty; relationships enable ongoing collaboration\n\n**Eastern Harmonious Dialectical Logic:**\n- Recognize interdependence of all life on earth → Balance national interests with planetary wellbeing → Transform competition into collaborative advantage → Cultivate global consciousness and compassion → Achieve dynamic harmony between local and universal needs\n- Focus: Interdependence recognition, balanced interests, collaborative transformation, global consciousness, dynamic harmony\n- Logic: All life is interconnected; national and planetary interests can align; competition can become collaboration; global consciousness enables cooperation; harmony balances local and universal needs\n\n**Global Cooperation Integration:**\nExamine how each framework:\n1. Approaches international cooperation and coordination\n2. Balances diverse interests and cultural perspectives\n3. Addresses enforcement and accountability in cooperation\n4. Could work together to create more effective approaches to planetary collaboration that honor diversity while achieving necessary global cooperation",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
       }

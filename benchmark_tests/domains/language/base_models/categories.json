@@ -103,6 +103,21 @@
         "evolution_16", "evolution_17", "evolution_18", "evolution_19", "evolution_20",
         "evolution_21", "evolution_22", "evolution_23", "evolution_24", "evolution_25"
       ]
+    },
+    "advanced_code_switching": {
+      "description": "Complex multilingual competency including cultural code-switching, identity negotiation through language, and sophisticated multicultural communication patterns",
+      "language_focus": "cultural code-switching, identity-based language choices, power dynamics in multilingualism, heritage language maintenance, transnational communication, linguistic identity navigation",
+      "complexity_level": "advanced",
+      "temperature_range": [0.4, 0.7],
+      "test_range": [201, 230],
+      "test_ids": [
+        "codeswitch_01", "codeswitch_02", "codeswitch_03", "codeswitch_04", "codeswitch_05",
+        "codeswitch_06", "codeswitch_07", "codeswitch_08", "codeswitch_09", "codeswitch_10",
+        "codeswitch_11", "codeswitch_12", "codeswitch_13", "codeswitch_14", "codeswitch_15",
+        "codeswitch_16", "codeswitch_17", "codeswitch_18", "codeswitch_19", "codeswitch_20",
+        "codeswitch_21", "codeswitch_22", "codeswitch_23", "codeswitch_24", "codeswitch_25",
+        "codeswitch_26", "codeswitch_27", "codeswitch_28", "codeswitch_29", "codeswitch_30"
+      ]
     }
   },
   "language_type_mapping": {
@@ -113,6 +128,7 @@
     "cultural_communication": "cultural",
     "dialectal_variation": "variational",
     "pragmatic_meaning": "pragmatic",
-    "language_evolution": "evolutionary"
+    "language_evolution": "evolutionary",
+    "advanced_code_switching": "multicultural_competency"
   }
 }
