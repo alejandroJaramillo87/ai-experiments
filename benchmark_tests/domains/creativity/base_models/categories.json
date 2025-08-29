@@ -1,0 +1,118 @@
+{
+  "categories": {
+    "narrative_creation": {
+      "description": "Traditional and contemporary storytelling across global cultures",
+      "creativity_focus": "original plot development, character creation, cultural narrative patterns",
+      "temperature_range": [0.6, 0.9],
+      "test_range": [1, 25],
+      "test_ids": [
+        "narrative_01", "narrative_02", "narrative_03", "narrative_04", "narrative_05",
+        "narrative_06", "narrative_07", "narrative_08", "narrative_09", "narrative_10",
+        "narrative_11", "narrative_12", "narrative_13", "narrative_14", "narrative_15",
+        "narrative_16", "narrative_17", "narrative_18", "narrative_19", "narrative_20",
+        "narrative_21", "narrative_22", "narrative_23", "narrative_24", "narrative_25"
+      ]
+    },
+    "performance_writing": {
+      "description": "Scripts, dialogues, and performance content from global theater traditions",
+      "creativity_focus": "dialogue authenticity, performance flow, cultural theatrical patterns",
+      "temperature_range": [0.5, 0.8],
+      "test_range": [26, 50],
+      "test_ids": [
+        "performance_01", "performance_02", "performance_03", "performance_04", "performance_05",
+        "performance_06", "performance_07", "performance_08", "performance_09", "performance_10",
+        "performance_11", "performance_12", "performance_13", "performance_14", "performance_15",
+        "performance_16", "performance_17", "performance_18", "performance_19", "performance_20",
+        "performance_21", "performance_22", "performance_23", "performance_24", "performance_25"
+      ]
+    },
+    "descriptive_artistry": {
+      "description": "Vivid scene-setting and artistic description across cultural aesthetic traditions",
+      "creativity_focus": "sensory language, spatial creativity, cultural aesthetic expression",
+      "temperature_range": [0.7, 0.95],
+      "test_range": [51, 75],
+      "test_ids": [
+        "descriptive_01", "descriptive_02", "descriptive_03", "descriptive_04", "descriptive_05",
+        "descriptive_06", "descriptive_07", "descriptive_08", "descriptive_09", "descriptive_10",
+        "descriptive_11", "descriptive_12", "descriptive_13", "descriptive_14", "descriptive_15",
+        "descriptive_16", "descriptive_17", "descriptive_18", "descriptive_19", "descriptive_20",
+        "descriptive_21", "descriptive_22", "descriptive_23", "descriptive_24", "descriptive_25"
+      ]
+    },
+    "musical_linguistic": {
+      "description": "Rhythm, rhyme, and sound patterns in language across musical traditions",
+      "creativity_focus": "rhythm creation, wordplay, sound-meaning connections, oral performance",
+      "temperature_range": [0.6, 0.85],
+      "test_range": [76, 100],
+      "test_ids": [
+        "musical_01", "musical_02", "musical_03", "musical_04", "musical_05",
+        "musical_06", "musical_07", "musical_08", "musical_09", "musical_10",
+        "musical_11", "musical_12", "musical_13", "musical_14", "musical_15",
+        "musical_16", "musical_17", "musical_18", "musical_19", "musical_20",
+        "musical_21", "musical_22", "musical_23", "musical_24", "musical_25"
+      ]
+    },
+    "adaptive_creativity": {
+      "description": "Creative transformation and cultural fusion across remix traditions",
+      "creativity_focus": "creative transformation, cultural blending, innovative adaptation",
+      "temperature_range": [0.5, 0.8],
+      "test_range": [101, 125],
+      "test_ids": [
+        "adaptive_01", "adaptive_02", "adaptive_03", "adaptive_04", "adaptive_05",
+        "adaptive_06", "adaptive_07", "adaptive_08", "adaptive_09", "adaptive_10",
+        "adaptive_11", "adaptive_12", "adaptive_13", "adaptive_14", "adaptive_15",
+        "adaptive_16", "adaptive_17", "adaptive_18", "adaptive_19", "adaptive_20",
+        "adaptive_21", "adaptive_22", "adaptive_23", "adaptive_24", "adaptive_25"
+      ]
+    },
+    "problem_narrative": {
+      "description": "Creative solution presentation through storytelling across wisdom traditions",
+      "creativity_focus": "creative problem-solving through narrative, wisdom transmission patterns",
+      "temperature_range": [0.4, 0.7],
+      "test_range": [126, 150],
+      "test_ids": [
+        "problem_narrative_01", "problem_narrative_02", "problem_narrative_03", "problem_narrative_04", "problem_narrative_05",
+        "problem_narrative_06", "problem_narrative_07", "problem_narrative_08", "problem_narrative_09", "problem_narrative_10",
+        "problem_narrative_11", "problem_narrative_12", "problem_narrative_13", "problem_narrative_14", "problem_narrative_15",
+        "problem_narrative_16", "problem_narrative_17", "problem_narrative_18", "problem_narrative_19", "problem_narrative_20",
+        "problem_narrative_21", "problem_narrative_22", "problem_narrative_23", "problem_narrative_24", "problem_narrative_25"
+      ]
+    },
+    "cultural_interpretation": {
+      "description": "Creative expression of cultural concepts for cross-cultural communication",
+      "creativity_focus": "cultural bridge-building, creative explanation, cross-cultural translation",
+      "temperature_range": [0.5, 0.75],
+      "test_range": [151, 175],
+      "test_ids": [
+        "cultural_interpretation_01", "cultural_interpretation_02", "cultural_interpretation_03", "cultural_interpretation_04", "cultural_interpretation_05",
+        "cultural_interpretation_06", "cultural_interpretation_07", "cultural_interpretation_08", "cultural_interpretation_09", "cultural_interpretation_10",
+        "cultural_interpretation_11", "cultural_interpretation_12", "cultural_interpretation_13", "cultural_interpretation_14", "cultural_interpretation_15",
+        "cultural_interpretation_16", "cultural_interpretation_17", "cultural_interpretation_18", "cultural_interpretation_19", "cultural_interpretation_20",
+        "cultural_interpretation_21", "cultural_interpretation_22", "cultural_interpretation_23", "cultural_interpretation_24", "cultural_interpretation_25"
+      ]
+    },
+    "collaborative_creation": {
+      "description": "Building on prompts in culturally authentic ways across call-and-response traditions",
+      "creativity_focus": "creative continuation, cultural authenticity, collaborative expression patterns",
+      "temperature_range": [0.6, 0.85],
+      "test_range": [176, 200],
+      "test_ids": [
+        "collaborative_01", "collaborative_02", "collaborative_03", "collaborative_04", "collaborative_05",
+        "collaborative_06", "collaborative_07", "collaborative_08", "collaborative_09", "collaborative_10",
+        "collaborative_11", "collaborative_12", "collaborative_13", "collaborative_14", "collaborative_15",
+        "collaborative_16", "collaborative_17", "collaborative_18", "collaborative_19", "collaborative_20",
+        "collaborative_21", "collaborative_22", "collaborative_23", "collaborative_24", "collaborative_25"
+      ]
+    }
+  },
+  "creativity_type_mapping": {
+    "narrative_creation": "generative",
+    "performance_writing": "performative", 
+    "descriptive_artistry": "descriptive",
+    "musical_linguistic": "rhythmic",
+    "adaptive_creativity": "transformative",
+    "problem_narrative": "wisdom",
+    "cultural_interpretation": "translational",
+    "collaborative_creation": "responsive"
+  }
+}
