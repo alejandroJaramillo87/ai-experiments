@@ -5,7 +5,6 @@
       "reasoning_focus": "synthesis, integration, comparison, analysis",
       "temperature_range": [0.3, 0.6],
       "test_range": [1, 15],
-      "difficulty": "medium",
       "test_ids": [
         "complex_test_1", "complex_test_2", "complex_test_3", "complex_test_4", "complex_test_5",
         "complex_test_6", "complex_test_7", "complex_test_8", "complex_test_9", "complex_test_10",
@@ -17,7 +16,6 @@
       "reasoning_focus": "sequential logic, step clarity, causal reasoning",
       "temperature_range": [0.15, 0.4],
       "test_range": [16, 25],
-      "difficulty": "medium",
       "test_ids": [
         "complex_test_16", "complex_test_17", "complex_test_18", "complex_test_19", "complex_test_20",
         "complex_test_21", "complex_test_22", "complex_test_23", "complex_test_24", "complex_test_25"
@@ -28,7 +26,6 @@
       "reasoning_focus": "self-verification, error detection, assumption checking",
       "temperature_range": [0.1, 0.2],
       "test_range": [26, 30],
-      "difficulty": "medium",
       "test_ids": [
         "complex_test_26", "complex_test_27", "complex_test_28", "complex_test_29", "complex_test_30"
       ]
@@ -38,7 +35,6 @@
       "reasoning_focus": "mathematical logic, probability, optimization, constraints",
       "temperature_range": [0.05, 0.1],
       "test_range": [31, 35],
-      "difficulty": "medium",
       "test_ids": [
         "complex_test_31", "complex_test_32", "complex_test_33", "complex_test_34", "complex_test_35"
       ]
@@ -48,7 +44,6 @@
       "reasoning_focus": "cross-source connections, pattern recognition, evidence synthesis",
       "temperature_range": [0.2, 0.3],
       "test_range": [36, 40],
-      "difficulty": "medium",
       "test_ids": [
         "complex_test_36", "complex_test_37", "complex_test_38", "complex_test_39", "complex_test_40"
       ]
@@ -58,7 +53,6 @@
       "reasoning_focus": "systematic analysis, structured frameworks, methodical evaluation",
       "temperature_range": [0.1, 0.15],
       "test_range": [41, 45],
-      "difficulty": "medium",
       "test_ids": [
         "complex_test_41", "complex_test_42", "complex_test_43", "complex_test_44", "complex_test_45"
       ]
@@ -68,7 +62,6 @@
       "reasoning_focus": "reverse engineering, conclusion tracing, causal backtracking",
       "temperature_range": [0.15, 0.2],
       "test_range": [46, 50],
-      "difficulty": "medium",
       "test_ids": [
         "complex_test_46", "complex_test_47", "complex_test_48", "complex_test_49", "complex_test_50"
       ]
@@ -78,7 +71,6 @@
       "reasoning_focus": "natural language flow, context understanding, style consistency",
       "temperature_range": [0.3, 0.9],
       "test_range": [1, 10],
-      "difficulty": "easy",
       "test_ids": [
         "text_continuation_01", "text_continuation_02", "text_continuation_03", "text_continuation_04", "text_continuation_05",
         "text_continuation_06", "text_continuation_07", "text_continuation_08", "text_continuation_09", "text_continuation_10"
@@ -89,7 +81,6 @@
       "reasoning_focus": "pattern recognition, logical sequences, structural understanding",
       "temperature_range": [0.1, 0.5],
       "test_range": [11, 20],
-      "difficulty": "easy",
       "test_ids": [
         "pattern_completion_01", "pattern_completion_02", "pattern_completion_03", "pattern_completion_04", "pattern_completion_05",
         "pattern_completion_06", "pattern_completion_07", "pattern_completion_08", "pattern_completion_09", "pattern_completion_10"
@@ -100,7 +91,6 @@
       "reasoning_focus": "style adaptation, tone matching, format consistency",
       "temperature_range": [0.4, 0.85],
       "test_range": [21, 30],
-      "difficulty": "easy",
       "test_ids": [
         "style_mimicry_01", "style_mimicry_02", "style_mimicry_03", "style_mimicry_04", "style_mimicry_05",
         "style_mimicry_06", "style_mimicry_07", "style_mimicry_08", "style_mimicry_09", "style_mimicry_10"
@@ -111,18 +101,186 @@
       "reasoning_focus": "context tracking, consistency maintenance, detail coherence",
       "temperature_range": [0.3, 0.7],
       "test_range": [31, 40],
-      "difficulty": "easy",
       "test_ids": [
         "context_coherence_01", "context_coherence_02", "context_coherence_03", "context_coherence_04", "context_coherence_05",
         "context_coherence_06", "context_coherence_07", "context_coherence_08", "context_coherence_09", "context_coherence_10"
       ]
+    },
+    "simple_synthesis": {
+      "description": "Basic 2-source synthesis across different cultural perspectives",
+      "reasoning_focus": "cultural integration, perspective synthesis, cross-cultural analysis",
+      "temperature_range": [0.3, 0.5],
+      "test_range": [41, 45],
+      "test_ids": [
+        "simple_synthesis_01", "simple_synthesis_02", "simple_synthesis_03", "simple_synthesis_04", "simple_synthesis_05"
+      ]
+    },
+    "basic_chain_reasoning": {
+      "description": "Simple 2-3 step reasoning chains from global traditions",
+      "reasoning_focus": "sequential logic, cultural reasoning methods, step-by-step analysis",
+      "temperature_range": [0.2, 0.4],
+      "test_range": [46, 50],
+      "test_ids": [
+        "basic_chain_reasoning_01", "basic_chain_reasoning_02", "basic_chain_reasoning_03", "basic_chain_reasoning_04", "basic_chain_reasoning_05"
+      ]
+    },
+    "self_verification": {
+      "description": "Basic self-checking across cultural contexts and claims",
+      "reasoning_focus": "cross-cultural fact-checking, assumption questioning, cultural perspective awareness",
+      "temperature_range": [0.1, 0.3],
+      "test_range": [51, 55],
+      "test_ids": [
+        "self_verification_01", "self_verification_02", "self_verification_03", "self_verification_04", "self_verification_05"
+      ]
+    },
+    "elementary_math": {
+      "description": "Basic mathematical reasoning with diverse cultural number systems",
+      "reasoning_focus": "cultural mathematics, traditional calculations, diverse numerical systems",
+      "temperature_range": [0.05, 0.2],
+      "test_range": [56, 60],
+      "test_ids": [
+        "elementary_math_01", "elementary_math_02", "elementary_math_03", "elementary_math_04", "elementary_math_05"
+      ]
+    },
+    "two_hop_inference": {
+      "description": "Simple 2-step connections across cultural information sources",
+      "reasoning_focus": "cross-cultural connections, pattern recognition, cultural cause-effect",
+      "temperature_range": [0.2, 0.4],
+      "test_range": [61, 63],
+      "test_ids": [
+        "two_hop_inference_01", "two_hop_inference_02", "two_hop_inference_03"
+      ]
+    },
+    "guided_analysis": {
+      "description": "Structured analysis templates from diverse cultural traditions",
+      "reasoning_focus": "cultural frameworks, systematic analysis, traditional methodologies",
+      "temperature_range": [0.1, 0.3],
+      "test_range": [64, 66],
+      "test_ids": [
+        "guided_analysis_01", "guided_analysis_02", "guided_analysis_03"
+      ]
+    },
+    "reverse_reasoning": {
+      "description": "Simple backward reasoning from cultural outcomes to origins",
+      "reasoning_focus": "cultural causation, historical tracing, origin analysis",
+      "temperature_range": [0.2, 0.4],
+      "test_range": [67, 68],
+      "test_ids": [
+        "reverse_reasoning_01", "reverse_reasoning_02"
+      ]
+    },
+    "basic_code_reading": {
+      "description": "Basic code comprehension with diverse cultural contexts",
+      "reasoning_focus": "code analysis, cultural programming contexts, multilingual coding",
+      "temperature_range": [0.1, 0.3],
+      "test_range": [69, 70],
+      "test_ids": [
+        "basic_code_reading_01", "basic_code_reading_02"
+      ]
+    },
+    "simple_causation": {
+      "description": "Basic cause-effect analysis across different cultural explanatory models",
+      "reasoning_focus": "cultural causation, traditional explanations, cross-cultural cause-effect",
+      "temperature_range": [0.2, 0.4],
+      "test_range": [71, 71],
+      "test_ids": [
+        "simple_causation_01"
+      ]
+    },
+    "short_context_tracking": {
+      "description": "Multi-paragraph context tracking with multicultural narratives",
+      "reasoning_focus": "cultural context maintenance, multicultural narrative coherence",
+      "temperature_range": [0.4, 0.7],
+      "test_range": [72, 72],
+      "test_ids": [
+        "short_context_tracking_01"
+      ]
+    },
+    "basic_decision_making": {
+      "description": "Simple decisions using diverse cultural decision-making frameworks",
+      "reasoning_focus": "cultural decision models, comparative analysis, cultural values integration",
+      "temperature_range": [0.3, 0.5],
+      "test_range": [73, 73],
+      "test_ids": [
+        "basic_decision_making_01"
+      ]
+    },
+    "reasoning_reflection": {
+      "description": "Basic metacognitive awareness across different cultural reasoning traditions",
+      "reasoning_focus": "cultural reasoning awareness, metacognitive reflection, reasoning style comparison",
+      "temperature_range": [0.3, 0.5],
+      "test_range": [74, 74],
+      "test_ids": [
+        "reasoning_reflection_01"
+      ]
+    },
+    "simple_systems": {
+      "description": "Basic systems analysis with diverse cultural organizational structures",
+      "reasoning_focus": "cultural systems comparison, organizational structure analysis, system interactions",
+      "temperature_range": [0.3, 0.5],
+      "test_range": [75, 75],
+      "test_ids": [
+        "simple_systems_01"
+      ]
+    },
+    "elementary_scientific": {
+      "description": "Basic scientific reasoning representing different knowledge traditions",
+      "reasoning_focus": "traditional knowledge methods, diverse scientific approaches, cultural epistemology",
+      "temperature_range": [0.2, 0.4],
+      "test_range": [76, 76],
+      "test_ids": [
+        "elementary_scientific_01"
+      ]
+    },
+    "basic_bias_detection": {
+      "description": "Basic bias identification across cultural contexts and stereotypes",
+      "reasoning_focus": "cultural bias recognition, stereotype identification, perspective analysis",
+      "temperature_range": [0.2, 0.4],
+      "test_range": [77, 78],
+      "test_ids": [
+        "basic_bias_detection_01", "basic_bias_detection_02"
+      ]
+    },
+    "collective_reasoning": {
+      "description": "Community-based reasoning through consensus-building and group decision processes",
+      "reasoning_focus": "consensus building, group deliberation, collective wisdom, community decision-making",
+      "temperature_range": [0.3, 0.5],
+      "test_range": [79, 81],
+      "test_ids": []
+    },
+    "temporal_reasoning": {
+      "description": "Reasoning with cyclical time concepts, generational thinking, and seasonal cycles",
+      "reasoning_focus": "cyclical causation, long-term thinking, seasonal patterns, generational impact",
+      "temperature_range": [0.2, 0.4],
+      "test_range": [82, 84],
+      "test_ids": []
+    },
+    "analogical_reasoning": {
+      "description": "Reasoning through cultural metaphors, nature analogies, and symbolic thinking",
+      "reasoning_focus": "metaphorical thinking, symbolic reasoning, nature analogies, cultural symbols",
+      "temperature_range": [0.3, 0.6],
+      "test_range": [85, 87],
+      "test_ids": []
+    },
+    "narrative_reasoning": {
+      "description": "Using storytelling structure and oral tradition logic for problem-solving",
+      "reasoning_focus": "story-based logic, narrative structure, oral tradition reasoning, parable logic",
+      "temperature_range": [0.4, 0.7],
+      "test_range": [88, 90],
+      "test_ids": []
+    },
+    "contextual_reasoning": {
+      "description": "Highly context-dependent reasoning that adapts to specific cultural situations",
+      "reasoning_focus": "situational adaptation, cultural context sensitivity, place-based knowledge",
+      "temperature_range": [0.3, 0.5],
+      "test_range": [91, 93],
+      "test_ids": []
     },
     "code_reasoning": {
       "description": "Advanced software engineering analysis including debugging, architecture evaluation, and optimization",
       "reasoning_focus": "code comprehension, debugging logic, architectural analysis, performance optimization",
       "temperature_range": [0.05, 0.2],
       "test_range": [101, 108],
-      "difficulty": "hard",
       "test_ids": []
     },
     "causal_reasoning": {
@@ -130,7 +288,6 @@
       "reasoning_focus": "causation analysis, counterfactual scenarios, causal chain reconstruction, intervention effects",
       "temperature_range": [0.1, 0.25],
       "test_range": [109, 116],
-      "difficulty": "hard",
       "test_ids": []
     },
     "long_context_reasoning": {
@@ -138,7 +295,6 @@
       "reasoning_focus": "long-range context tracking, cross-document synthesis, information integration across large texts",
       "temperature_range": [0.15, 0.35],
       "test_range": [117, 122],
-      "difficulty": "hard",
       "test_ids": []
     },
     "strategic_reasoning": {
@@ -146,7 +302,6 @@
       "reasoning_focus": "strategic planning, resource allocation, multi-objective optimization, trade-off analysis",
       "temperature_range": [0.2, 0.4],
       "test_range": [123, 130],
-      "difficulty": "hard",
       "test_ids": []
     },
     "meta_reasoning": {
@@ -154,7 +309,6 @@
       "reasoning_focus": "metacognitive analysis, reasoning strategy evaluation, cognitive process reflection",
       "temperature_range": [0.1, 0.3],
       "test_range": [131, 136],
-      "difficulty": "hard",
       "test_ids": []
     },
     "systems_reasoning": {
@@ -162,7 +316,6 @@
       "reasoning_focus": "systems thinking, emergent behavior analysis, feedback loop identification, dynamic systems",
       "temperature_range": [0.15, 0.35],
       "test_range": [137, 144],
-      "difficulty": "hard",
       "test_ids": []
     },
     "scientific_reasoning": {
@@ -170,7 +323,6 @@
       "reasoning_focus": "scientific method, hypothesis formation, experimental design, data interpretation",
       "temperature_range": [0.05, 0.2],
       "test_range": [145, 152],
-      "difficulty": "hard",
       "test_ids": []
     },
     "adversarial_reasoning": {
@@ -178,7 +330,6 @@
       "reasoning_focus": "bias detection, argument analysis, logical fallacy identification, critical evaluation",
       "temperature_range": [0.1, 0.25],
       "test_range": [153, 160],
-      "difficulty": "hard",
       "test_ids": []
     }
   },
@@ -194,6 +345,26 @@
     "pattern_completion": "general",
     "style_mimicry": "general",
     "context_coherence": "general",
+    "simple_synthesis": "general",
+    "basic_chain_reasoning": "chain_of_thought",
+    "self_verification": "verification",
+    "elementary_math": "mathematical",
+    "two_hop_inference": "multi_hop",
+    "guided_analysis": "scaffolded",
+    "reverse_reasoning": "backward",
+    "basic_code_reading": "technical",
+    "simple_causation": "causal",
+    "short_context_tracking": "general",
+    "basic_decision_making": "strategic",
+    "reasoning_reflection": "meta",
+    "simple_systems": "systems",
+    "elementary_scientific": "scientific",
+    "basic_bias_detection": "adversarial",
+    "collective_reasoning": "strategic",
+    "temporal_reasoning": "causal",
+    "analogical_reasoning": "general",
+    "narrative_reasoning": "general",
+    "contextual_reasoning": "general",
     "code_reasoning": "technical",
     "causal_reasoning": "causal",
     "long_context_reasoning": "general",
