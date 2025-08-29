@@ -56,7 +56,8 @@ class DomainMetadataExtractor:
             Domain.LANGUAGE: {
                 "keywords": [
                     "language", "linguistic", "dialect", "register", "code-switching",
-                    "multilingual", "translation", "communication", "discourse", "pragmatic"
+                    "multilingual", "translation", "communication", "discourse", "pragmatic",
+                    "intercultural", "historical linguistics", "etymology", "implicature"
                 ],
                 "patterns": [
                     r"(?:language|linguistic)\s+(?:variation|competence|ability|skill)",
@@ -64,12 +65,13 @@ class DomainMetadataExtractor:
                     r"(?:code-switching|multilingual)\s+(?:competence|ability|communication)",
                     r"(?:pragmatic|discourse)\s+(?:competence|analysis|patterns)"
                 ],
-                "file_indicators": ["language", "linguistic", "multilingual", "dialect", "pragmatic"]
+                "file_indicators": ["language", "linguistic", "multilingual", "dialect", "pragmatic", "intercultural", "historical"]
             },
             Domain.SOCIAL: {
                 "keywords": [
                     "social", "cultural", "community", "relationship", "hierarchy", 
-                    "etiquette", "politeness", "interaction", "dynamics", "appropriateness"
+                    "etiquette", "politeness", "interaction", "dynamics", "appropriateness",
+                    "conflict resolution", "mediation", "consensus", "navigation", "leadership"
                 ],
                 "patterns": [
                     r"(?:social|cultural)\s+(?:interaction|competence|appropriateness|dynamics)",
@@ -77,7 +79,7 @@ class DomainMetadataExtractor:
                     r"(?:hierarchy|power)\s+(?:navigation|dynamics|relationships|structures)",
                     r"(?:etiquette|politeness)\s+(?:patterns|rules|conventions|norms)"
                 ],
-                "file_indicators": ["social", "community", "relationship", "etiquette", "hierarchy"]
+                "file_indicators": ["social", "community", "relationship", "etiquette", "hierarchy", "conflict", "leadership"]
             },
             Domain.REASONING: {
                 "keywords": [
@@ -127,7 +129,10 @@ class DomainMetadataExtractor:
                 "griot", "dreamtime", "kamishibai", "oral tradition", "storytelling tradition",
                 "folktale", "folklore", "legend", "myth", "traditional story", "cultural story",
                 "ancestral story", "tribal story", "indigenous story", "community story",
-                "ceremonial", "ritual", "spiritual", "sacred", "traditional practice"
+                "ceremonial", "ritual", "spiritual", "sacred", "traditional practice",
+                "conflict resolution", "mediation tradition", "consensus building",
+                "traditional governance", "community leadership", "restorative justice",
+                "cultural preservation", "hierarchical organization", "ubuntu philosophy"
             ],
             "cultural_groups": [
                 "african", "west african", "aboriginal", "indigenous", "japanese", "chinese", 
@@ -140,19 +145,31 @@ class DomainMetadataExtractor:
                 "agricultural practice", "indigenous knowledge", "ancestral wisdom", "cultural knowledge",
                 "navigation system", "astronomical knowledge", "weather prediction", "seasonal cycles",
                 "spiritual practice", "ceremonial knowledge", "ritual understanding", "sacred geography",
-                "kinship system", "social organization", "governance system", "legal tradition"
+                "kinship system", "social organization", "governance system", "legal tradition",
+                "linguistic heritage", "comparative linguistics", "intercultural competence",
+                "pragmatic competence", "multilingual competence", "bilingual competence",
+                "conflict resolution", "community empowerment", "cultural intelligence",
+                "organizational hierarchy", "power dynamics", "consensus methods"
             ],
             "performance_aspects": [
                 "oral performance", "storytelling", "singing", "chanting", "recitation", "drama",
                 "dance", "gesture", "body language", "vocal technique", "rhythm", "timing",
                 "audience interaction", "call and response", "participation", "improvisation",
-                "theatrical", "dramatic", "expressive", "performative", "embodied"
+                "theatrical", "dramatic", "expressive", "performative", "embodied",
+                "mediation", "facilitation", "negotiation", "consensus building",
+                "cross-cultural communication", "intercultural dialogue", "conflict mediation",
+                "community organizing", "collaborative governance", "visionary leadership",
+                "formal communication", "academic discourse", "professional communication",
+                "politeness focus", "pragmatic communication", "multilingual discourse"
             ],
             "linguistic_varieties": [
                 "dialect", "creole", "pidgin", "vernacular", "colloquial", "formal", "informal",
                 "academic", "professional", "ceremonial", "ritual", "sacred language", "liturgical",
                 "regional variety", "social variety", "ethnic variety", "generational variety",
-                "code-switching", "multilingual", "bilingual", "polyglot", "lingua franca"
+                "code-switching", "multilingual", "bilingual", "polyglot", "lingua franca",
+                "spanish", "english", "spanglish", "french", "mandarin", "arabic", "hindi",
+                "germanic", "romance", "indo_european_languages", "standard_english",
+                "academic_english", "formal_register", "multilingual_context", "community_discourse"
             ]
         }
     
