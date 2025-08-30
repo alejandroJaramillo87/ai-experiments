@@ -19,8 +19,8 @@ benchmark_tests_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.ab
 sys.path.insert(0, benchmark_tests_dir)
 
 try:
-    from evaluator.reasoning_evaluator import UniversalEvaluator, evaluate_reasoning
-    from evaluator.evaluation_config import DEFAULT_CONFIG
+    from evaluator.subjects.reasoning_evaluator import UniversalEvaluator, evaluate_reasoning
+    from evaluator.core.evaluation_config import DEFAULT_CONFIG
     EVALUATOR_AVAILABLE = True
 except ImportError:
     EVALUATOR_AVAILABLE = False

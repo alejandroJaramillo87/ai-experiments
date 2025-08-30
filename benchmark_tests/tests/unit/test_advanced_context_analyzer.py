@@ -19,7 +19,7 @@ benchmark_tests_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.ab
 sys.path.insert(0, benchmark_tests_dir)
 
 try:
-    from evaluator.context_analyzer import (ContextWindowAnalyzer, analyze_context_quality, 
+    from evaluator.advanced.context_analyzer import (ContextWindowAnalyzer, analyze_context_quality, 
                                           detect_context_saturation, estimate_context_limit)
     CONTEXT_ANALYZER_AVAILABLE = True
 except ImportError:

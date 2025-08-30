@@ -6,7 +6,7 @@ Analyze current scoring patterns to identify systematic issues
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from evaluator.reasoning_evaluator import UniversalEvaluator
+from evaluator.subjects.reasoning_evaluator import UniversalEvaluator
 import json
 
 def analyze_test_responses():

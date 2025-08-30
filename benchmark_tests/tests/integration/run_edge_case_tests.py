@@ -10,7 +10,7 @@ import os
 benchmark_tests_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, benchmark_tests_dir)
 
-from evaluator.reasoning_evaluator import UniversalEvaluator
+from evaluator.subjects.reasoning_evaluator import UniversalEvaluator
 import json
 
 def main():
