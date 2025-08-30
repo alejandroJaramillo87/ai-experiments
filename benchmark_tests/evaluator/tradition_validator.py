@@ -38,35 +38,41 @@ class TraditionalKnowledgeValidator:
     def _init_validation_patterns(self):
         """Initialize validation patterns for traditional knowledge analysis"""
         
-        # Sacred knowledge violation indicators
+        # Sacred knowledge violation indicators  
         self.sacred_violations = {
             'inappropriate_disclosure': [
-                r'\b(?:secret|sacred|private|ceremonial)\s+(?:ritual|ceremony|practice|knowledge)\s+(?:involves?|includes?|uses?|requires?)',
-                r'\b(?:initiation|sacred)\s+(?:rite|ceremony)\s+(?:steps?|process|details?)',
-                r'\b(?:medicine|healing)\s+(?:ceremony|ritual)\s+(?:instructions?|how\s+to|guide)',
-                r'\b(?:vision\s+quest|sweat\s+lodge|sun\s+dance)\s+(?:process|steps?|how\s+to)'
+                r'\b(?:secret|sacred|private|ceremonial)\s+(?:\w+\s+)*(?:ritual|ceremony|practice|knowledge)\s+(?:\w+\s+)*(?:involves?|includes?|uses?|requires?)',
+                r'\b(?:initiation|sacred)\s+(?:\w+\s+)*(?:rite|ceremony)\s+(?:\w+\s+)*(?:steps?|process|details?)',
+                r'\b(?:medicine|healing)\s+(?:\w+\s+)*(?:ceremony|ritual)\s+(?:\w+\s+)*(?:instructions?|how\s+to|guide)',
+                r'\b(?:vision\s+quest|sweat\s+lodge|sun\s+dance)\s+(?:\w+\s+)*(?:ceremony|ritual)?\s*(?:\w+\s+)*(?:involves?|steps?|process|how\s+to)'
             ],
             'commercialization': [
-                r'\b(?:buy|purchase|sell|market|commercialize)\s+(?:sacred|traditional|ceremonial)',
-                r'\b(?:sacred|traditional|ceremonial)\s+(?:objects?|items?|tools?)\s+(?:for\s+sale|available|buy)',
-                r'\bmass[\-\s]produce[d]?\s+(?:sacred|traditional|ceremonial)',
-                r'\b(?:profit|money|business)\s+from\s+(?:sacred|traditional|ceremonial)'
+                r'\b(?:buy|purchase|sell|market|commercialize)\s+(?:\w+\s+)*(?:sacred|traditional|ceremonial)',
+                r'\b(?:sacred|traditional|ceremonial)\s+(?:\w+\s+)*(?:objects?|items?|tools?)\s+(?:\w+\s+)*(?:for\s+sale|available|buy)',
+                r'\bmass[\-\s]produce[d]?\s+(?:\w+\s+)*(?:sacred|traditional|ceremonial)',
+                r'\b(?:profit|money|business)\s+(?:\w+\s+)*from\s+(?:\w+\s+)*(?:sacred|traditional|ceremonial)'
             ],
             'decontextualization': [
-                r'\b(?:use|try|practice|adopt)\s+(?:sacred|traditional|ceremonial)\s+(?:without|outside\s+of)',
-                r'\b(?:anyone\s+can|you\s+can|easy\s+to)\s+(?:use|practice|adopt)\s+(?:sacred|traditional)',
-                r'\b(?:sacred|traditional|ceremonial)\s+(?:practices?|rituals?)\s+(?:at\s+home|for\s+personal)',
-                r'\b(?:mix|combine|blend)\s+(?:sacred|traditional)\s+(?:with|and)\s+(?:modern|western|other)'
+                r'\b(?:use|try|practice|adopt)\s+(?:\w+\s+)*(?:sacred|traditional|ceremonial)\s+(?:\w+\s+)*(?:without|outside\s+of)',
+                r'\b(?:anyone\s+can|you\s+can|easy\s+to)\s+(?:\w+\s+)*(?:use|practice|adopt)\s+(?:\w+\s+)*(?:sacred|traditional)',
+                r'\b(?:sacred|traditional|ceremonial)\s+(?:\w+\s+)*(?:practices?|rituals?)\s+(?:\w+\s+)*(?:at\s+home|for\s+personal)',
+                r'\b(?:mix|combine|blend)\s+(?:\w+\s+)*(?:sacred|traditional)\s+(?:\w+\s+)*(?:with|and)\s+(?:\w+\s+)*(?:modern|western|other)'
             ]
         }
         
         # Proper contextualization indicators
         self.contextualization_markers = {
             'cultural_context': [
-                r'\bwithin\s+(?:the\s+context\s+of|their\s+cultural\s+(?:framework|system|tradition))',
+                r'\bwithin\s+(?:the\s+)?(?:context\s+of|cultural\s+(?:framework|system|tradition))',
                 r'\b(?:understood|practiced|learned)\s+within\s+(?:the\s+community|their\s+culture)',
-                r'\b(?:cultural|traditional|historical)\s+context\s+(?:is\s+essential|matters|important)',
-                r'\b(?:rooted\s+in|grounded\s+in|emerges\s+from)\s+(?:cultural|traditional|historical)'
+                r'\b(?:cultural|traditional|historical)\s+(?:context|framework)\s+(?:is\s+essential|matters|important)',
+                r'\b(?:rooted\s+in|grounded\s+in|emerges\s+from)\s+(?:cultural|traditional|historical|spiritual)',
+                r'\b(?:anthropological|ethnographic)\s+studies\s+of\s+traditional',
+                r'\b(?:cultural\s+practices|traditional\s+knowledge\s+systems)',
+                r'\b(?:indigenous\s+knowledge\s+systems|traditional\s+ecological\s+knowledge)',
+                r'\b(?:community-based|collaborative)\s+(?:research|methodologies)',
+                r'\b(?:respectful\s+engagement|intellectual\s+sovereignty)',
+                r'\b(?:knowledge\s+holders|traditional\s+practitioners)'
             ],
             'historical_context': [
                 r'\b(?:historically|traditionally|ancestrally)\s+(?:practiced|used|maintained|preserved)',
@@ -85,9 +91,9 @@ class TraditionalKnowledgeValidator:
         # Community attribution patterns
         self.attribution_patterns = {
             'elder_attribution': [
-                r'\baccording\s+to\s+(?:elders?|traditional\s+(?:teachers?|leaders?|healers?))',
-                r'\b(?:elders?|traditional\s+(?:teachers?|practitioners?|healers?))\s+(?:teach|explain|share|say)',
-                r'\blearned\s+from\s+(?:elders?|traditional\s+(?:teachers?|practitioners?|healers?))',
+                r'\baccording\s+to\s+(?:(?:community\s+)?elders?|traditional\s+(?:teachers?|leaders?|healers?))',
+                r'\b(?:(?:community\s+)?elders?|traditional\s+(?:teachers?|practitioners?|healers?))\s+(?:teach|explain|share|say)',
+                r'\blearned\s+from\s+(?:(?:community\s+)?elders?|traditional\s+(?:teachers?|practitioners?|healers?))',
                 r'\b(?:community\s+)?elders?\s+(?:have\s+)?(?:taught|shared|explained|passed\s+down)'
             ],
             'community_attribution': [
@@ -100,7 +106,10 @@ class TraditionalKnowledgeValidator:
                 r'\bsource[d]?\s+from\s+(?:indigenous|native|traditional|tribal|community)',
                 r'\b(?:comes?|derives?)\s+from\s+(?:indigenous|native|traditional|tribal)',
                 r'\b(?:originated|originates?)\s+(?:with|from|among)\s+(?:the\s+)?(?:indigenous|native|traditional)',
-                r'\bcredits?\s+(?:to\s+)?(?:indigenous|native|traditional|tribal|community)'
+                r'\bcredits?\s+(?:to\s+)?(?:indigenous|native|traditional|tribal|community)',
+                r'\b(?:knowledge\s+holders|traditional\s+practitioners)',
+                r'\b(?:respectful\s+engagement|collaborative\s+methodologies)',
+                r'\b(?:indigenous\s+knowledge\s+systems|traditional\s+knowledge\s+systems)'
             ]
         }
         
@@ -110,13 +119,19 @@ class TraditionalKnowledgeValidator:
                 r'\b(?:continue|continues?|still|currently|today|now)\s+(?:to\s+)?(?:practice|maintain|preserve|use)',
                 r'\b(?:is|are)\s+(?:still|currently|actively)\s+(?:practiced|maintained|preserved|used)',
                 r'\b(?:living|active|continuing|ongoing)\s+(?:tradition|practice|culture|knowledge)',
-                r'\b(?:practiced|maintained|preserved)\s+(?:today|currently|in\s+(?:modern|contemporary)\s+times)'
+                r'\b(?:practiced|maintained|preserved)\s+(?:today|currently|in\s+(?:modern|contemporary)\s+times)',
+                r'\b(?:community\s+members?|practitioners?|people)\s+(?:continue|practice|maintain)',
+                r'\b(?:continues?\s+to\s+)?(?:evolve|adapt)\s+(?:while|and)\s+(?:preserving|maintaining)',
+                r'\b(?:relevant|important|significant)\s+in\s+(?:contemporary|modern)\s+times'
             ],
             'evolution_acknowledgment': [
                 r'\b(?:evolved|adapted|changed|developed)\s+(?:over\s+time|through\s+generations)',
                 r'\b(?:traditional|ancient)\s+(?:and|as\s+well\s+as)\s+(?:modern|contemporary|current)',
                 r'\b(?:adapts?|evolution|changes?)\s+(?:with|to|over)\s+time',
-                r'\b(?:not\s+static|dynamic|changing|evolving)\s+(?:tradition|practice|culture)'
+                r'\b(?:not\s+static|dynamic|changing|evolving)\s+(?:tradition|practice|culture)',
+                r'\b(?:reclaim|revitalization|learning\s+from\s+elders)',
+                r'\b(?:young\s+people|communities)\s+(?:are\s+learning|continue|adapt)',
+                r'\b(?:traditional\s+knowledge)\s+(?:continues?\s+to\s+evolve|is\s+not\s+static)'
             ],
             'contemporary_relevance': [
                 r'\b(?:relevant|important|valuable|significant)\s+(?:today|currently|now|in\s+modern\s+times)',
@@ -165,6 +180,19 @@ class TraditionalKnowledgeValidator:
         if cache_key in self.analysis_cache:
             return self.analysis_cache[cache_key]
         
+        # Handle empty input
+        if not text or not text.strip():
+            return TraditionValidationResult(
+                tradition_respect_score=0.0,
+                contextualization_quality=0.0,
+                sacred_knowledge_respect=0.0,
+                community_attribution_score=0.0,
+                living_tradition_recognition=0.0,
+                violation_indicators=[],
+                positive_indicators=[],
+                detailed_analysis={}
+            )
+        
         # Core validation components
         sacred_respect = self._validate_sacred_knowledge_respect(text)
         contextualization = self._validate_contextualization(text)
@@ -177,7 +205,7 @@ class TraditionalKnowledgeValidator:
         )
         
         # Compile violation and positive indicators
-        violations = self._compile_violations(sacred_respect, contextualization, attribution)
+        violations = self._compile_violations(sacred_respect, contextualization, attribution, text)
         positives = self._compile_positive_indicators(contextualization, attribution, living_tradition)
         
         # Detailed analysis
@@ -352,9 +380,12 @@ class TraditionalKnowledgeValidator:
         
         # Check for problematic "past tense only" language
         past_only_patterns = [
-            r'\b(?:used\s+to|once|formerly|in\s+the\s+past|historically)\s+(?:believed|practiced|used)',
+            r'\b(?:used\s+to|once|formerly|in\s+the\s+past|historically)\s+(?:believed?|practiced?|used)',
             r'\b(?:ancient|old|traditional)\s+(?:beliefs?|practices?)\s+(?:were|was|held)',
-            r'\b(?:no\s+longer|abandoned|lost|forgotten)\s+(?:tradition|practice|belief)'
+            r'\b(?:no\s+longer|abandoned|lost|forgotten)\s+(?:tradition|practice|belief)',
+            r'\b(?:primitive|outdated|replaced\s+by)\s+(?:cultures?|practices?|understanding)',
+            r'\bwere\s+(?:formerly|traditionally)\s+(?:held|practiced|believed)',
+            r'\b(?:these|those|such)\s+(?:old|ancient|traditional)\s+(?:customs?|ways?|traditions?)'
         ]
         
         past_only_markers = []
@@ -422,7 +453,7 @@ class TraditionalKnowledgeValidator:
         
         return min(1.0, max(0.0, respect_score))
     
-    def _compile_violations(self, sacred_respect: Dict, contextualization: Dict, attribution: Dict) -> List[Dict]:
+    def _compile_violations(self, sacred_respect: Dict, contextualization: Dict, attribution: Dict, text: str = '') -> List[Dict]:
         """Compile all violation indicators"""
         violations = []
         
@@ -448,7 +479,11 @@ class TraditionalKnowledgeValidator:
             })
         
         # Attribution violations (lack of proper source acknowledgment)
-        if attribution.get('attribution_score', 0) < 0.2:
+        # But skip for academic/research discussions that aren't presenting specific traditional knowledge
+        attribution_score = attribution.get('attribution_score', 0)
+        is_academic_discussion = self._is_academic_discussion(text)
+        
+        if attribution_score < 0.2 and not is_academic_discussion:
             violations.append({
                 'type': 'insufficient_attribution',
                 'category': 'attribution',
@@ -464,7 +499,7 @@ class TraditionalKnowledgeValidator:
         positives = []
         
         # Strong contextualization
-        if contextualization.get('categories_present', 0) >= 2:
+        if contextualization.get('categories_present', 0) >= 1:
             positives.append({
                 'type': 'comprehensive_contextualization',
                 'description': 'Traditional knowledge presented with rich cultural context',
@@ -472,7 +507,7 @@ class TraditionalKnowledgeValidator:
             })
         
         # Good attribution
-        if attribution.get('categories_present', 0) >= 2:
+        if attribution.get('categories_present', 0) >= 1:
             positives.append({
                 'type': 'proper_attribution',
                 'description': 'Traditional knowledge properly attributed to community sources',
@@ -480,10 +515,18 @@ class TraditionalKnowledgeValidator:
             })
         
         # Living tradition recognition
-        if living_tradition.get('categories_present', 0) >= 2:
+        if living_tradition.get('categories_present', 0) >= 1:
             positives.append({
                 'type': 'living_tradition_recognition',
                 'description': 'Traditional knowledge recognized as continuing, evolving practice',
+                'strength': 'medium'
+            })
+        
+        # High quality scores deserve recognition
+        if contextualization.get('quality_score', 0) > 0.5:
+            positives.append({
+                'type': 'high_quality_contextualization',
+                'description': 'Response demonstrates strong understanding of cultural context',
                 'strength': 'medium'
             })
         
@@ -541,3 +584,36 @@ class TraditionalKnowledgeValidator:
                 'no_attribution': 0.0
             }
         }
+
+    def _is_academic_discussion(self, text: str) -> bool:
+        """Check if text is an academic/research discussion rather than presenting specific traditional knowledge"""
+        text_lower = text.lower()
+        
+        academic_indicators = [
+            r'\b(?:anthropological|ethnographic|research|studies|researchers|methodology)',
+            r'\b(?:academic|scholarly|scientific|theoretical)\s+(?:work|approach|perspective)',
+            r'\b(?:examine|analyze|investigate|study)\s+(?:the|complex|relationships)',
+            r'\b(?:importance\s+of|emphasis\s+on|recognition\s+of)',
+            r'\b(?:collaborative|participatory)\s+(?:research|methodologies)',
+            r'\b(?:intellectual\s+sovereignty|knowledge\s+systems)',
+            r'\b(?:respectful\s+engagement|knowledge\s+holders)',
+            r'\b(?:community-based|collaborative)\s+(?:research|methodologies|approaches)',
+            r'\b(?:environmental\s+management|ecological\s+knowledge)'
+        ]
+        
+        import re
+        # If it has multiple academic indicators and no specific traditional knowledge claims
+        academic_count = sum(1 for pattern in academic_indicators 
+                           if len(re.findall(pattern, text_lower)) > 0)
+        
+        # Check if it's making specific traditional knowledge claims
+        specific_claims = [
+            r'\b(?:this\s+tradition|these\s+practices|this\s+ceremony|this\s+ritual)',
+            r'\b(?:traditionally|ancestrally|historically)\s+(?:used|practiced|believed)',
+            r'\b(?:elders\s+say|community\s+teaches|tradition\s+holds)'
+        ]
+        
+        claim_count = sum(1 for pattern in specific_claims 
+                         if len(re.findall(pattern, text_lower)) > 0)
+        
+        return academic_count >= 2 and claim_count == 0

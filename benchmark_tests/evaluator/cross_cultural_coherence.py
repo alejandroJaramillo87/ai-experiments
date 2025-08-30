@@ -45,7 +45,12 @@ class CrossCulturalCoherenceChecker:
                 r'\b(?:scientifically|objectively|empirically)\s+(?:speaking|proven|validated|confirmed)',
                 r'\b(?:traditional|indigenous|folk)\s+(?:beliefs?|practices?|knowledge)\s+(?:can\s+be\s+explained|are\s+actually|is\s+really)',
                 r'\bfrom\s+a\s+scientific\s+(?:perspective|viewpoint|standpoint)',
-                r'\b(?:science|research|studies?)\s+(?:shows?|proves?|demonstrates?)\s+(?:that\s+)?(?:traditional|indigenous|folk)'
+                r'\b(?:science|research|studies?)\s+(?:shows?|proves?|demonstrates?)\s+(?:that\s+)?(?:traditional|indigenous|folk)',
+                r'\b(?:ancient|traditional|folk)\s+practices\s+are\s+(?:really\s+just|just|merely)\s+(?:early\s+forms?|primitive\s+forms?)',
+                r'\b(?:evidence[\-\s]based|scientific)\s+(?:treatments?|approaches?|methods?)\s+(?:that\s+)?(?:objectively|clearly)\s+demonstrate',
+                r'\b(?:placebo\s+effects?|psychological\s+effects?)\s*(?:$|\.|\,)',
+                r'\b(?:primitive|outdated|inferior)\s+(?:methods?|approaches?|treatments?)',
+                r'\b(?:modern|contemporary)\s+(?:medicine|science|approaches?)\s+(?:has\s+)?(?:evolved\s+beyond|surpassed|replaced)'
             ],
             'western_psychology': [
                 r'\b(?:psychological|cognitive|behavioral)\s+(?:explanation|basis|foundation)\s+(?:for|of|behind)',
@@ -70,7 +75,7 @@ class CrossCulturalCoherenceChecker:
         # Knowledge system integrity indicators
         self.integrity_markers = {
             'holistic_understanding': [
-                r'\b(?:holistic|interconnected|integrated|unified)\s+(?:approach|understanding|system|worldview)',
+                r'\b(?:holistic|interconnected|integrated|unified)\s+(?:approach|understanding|system|worldview|framework)',
                 r'\b(?:cannot\s+be\s+separated|inseparable|intertwined|connected)\s+(?:from|with)',
                 r'\b(?:whole|complete|entire)\s+(?:system|worldview|framework|context)\s+(?:must\s+be|is\s+important)',
                 r'\b(?:relationships?|connections?|interdependence)\s+(?:between|among|within)'
@@ -79,7 +84,9 @@ class CrossCulturalCoherenceChecker:
                 r'\b(?:within|according\s+to|from\s+the\s+perspective\s+of)\s+(?:indigenous|native|traditional|tribal)\s+(?:understanding|worldview|framework)',
                 r'\b(?:indigenous|native|traditional|tribal)\s+(?:knowledge|epistemology|ways?\s+of\s+knowing|understanding)',
                 r'\bon\s+(?:its|their)\s+own\s+terms',
-                r'\brespecting\s+(?:the|their|indigenous|native|traditional)\s+(?:framework|worldview|understanding|epistemology)'
+                r'\brespecting\s+(?:the|their|indigenous|native|traditional)\s+(?:framework|worldview|understanding|epistemology)',
+                r'\b(?:engaging\s+with|understanding\s+requires)\s+(?:\w+\s+)?(?:philosophical|cultural|traditional)\s+traditions',
+                r'\b(?:hindu|buddhist|confucian|islamic|african|indigenous|native)\s+(?:philosophical|cultural|traditional)\s+(?:traditions?|frameworks?|understanding)'
             ],
             'cultural_autonomy': [
                 r'\b(?:self[\-\s]determination|autonomy|sovereignty)\s+(?:of|over|in)\s+(?:cultural|traditional|indigenous)',
@@ -95,7 +102,9 @@ class CrossCulturalCoherenceChecker:
                 r'\b(?:concept|term|word)\s+(?:that\s+)?(?:roughly|approximately|somewhat)\s+(?:translates?|means?|corresponds?)',
                 r'\b(?:no\s+direct|difficult\s+to|hard\s+to)\s+(?:translate|render\s+in|express\s+in)\s+(?:english|western)',
                 r'\b(?:best\s+understood\s+as|closest\s+equivalent|similar\s+to\s+but\s+not\s+exactly)',
-                r'\b(?:encompasses|includes|covers)\s+(?:more\s+than|broader\s+than|additional\s+meanings?)'
+                r'\b(?:encompasses|includes|covers)\s+(?:more\s+than|broader\s+than|additional\s+meanings?)',
+                r'\b(?:terms?|words?|translations?)\s+(?:only\s+)?(?:roughly|approximately|somewhat|partially)\s+(?:capture|approximate|express)',
+                r'\bdirect\s+translation\s+(?:may\s+not|cannot|does\s+not)\s+capture'
             ],
             'cultural_nuance': [
                 r'\b(?:cultural|contextual|traditional)\s+(?:nuances?|subtleties|complexities)',
@@ -141,9 +150,10 @@ class CrossCulturalCoherenceChecker:
                 'indigenous worldview', 'native epistemology'
             ],
             'eastern': [
-                'ayurveda', 'traditional chinese medicine', 'tcm', 'yoga philosophy',
-                'buddhist philosophy', 'confucian thought', 'taoist principles',
-                'vedic knowledge', 'zen philosophy'
+                'ayurveda', 'ayurvedic', 'ayurvedic medicine', 'traditional chinese medicine', 
+                'tcm', 'chinese medicine', 'yoga philosophy', 'buddhist philosophy', 
+                'confucian thought', 'taoist principles', 'vedic knowledge', 'zen philosophy',
+                'traditional tibetan medicine', 'unani medicine', 'siddha medicine'
             ],
             'african': [
                 'ubuntu philosophy', 'african traditional medicine', 'ancestral wisdom',
@@ -167,6 +177,20 @@ class CrossCulturalCoherenceChecker:
         Returns:
             CrossCulturalCoherenceResult with detailed analysis
         """
+        # Handle empty input
+        if not text.strip():
+            return CrossCulturalCoherenceResult(
+                coherence_score=0.0,
+                framework_imposition_score=0.0,
+                knowledge_system_integrity=0.0,
+                translation_quality=0.0,
+                comparative_appropriateness=0.0,
+                imposition_indicators=[],
+                integrity_indicators=[],
+                translation_issues=[],
+                detailed_analysis={}
+            )
+        
         cache_key = (text, cultural_context)
         if cache_key in self.analysis_cache:
             return self.analysis_cache[cache_key]
@@ -423,8 +447,28 @@ class CrossCulturalCoherenceChecker:
             'systems_mentioned': systems_mentioned,
             'primary_system': primary_system,
             'total_systems': len(systems_mentioned),
-            'cross_cultural_discussion': len(systems_mentioned) > 1
+            'cross_cultural_discussion': len(systems_mentioned) > 1 or self._detect_multiple_cultural_traditions(systems_mentioned)
         }
+    
+    def _detect_multiple_cultural_traditions(self, systems_mentioned: Dict[str, Dict]) -> bool:
+        """Detect if multiple distinct cultural traditions are mentioned within categories"""
+        # Check if eastern category contains both Indian and Chinese traditions
+        if 'eastern' in systems_mentioned:
+            terms = systems_mentioned['eastern']['terms']
+            
+            # Indian tradition indicators
+            indian_terms = ['ayurveda', 'ayurvedic', 'vedic', 'yoga', 'siddha', 'unani']
+            # Chinese tradition indicators  
+            chinese_terms = ['chinese', 'tcm', 'confucian', 'taoist', 'zen']
+            
+            has_indian = any(any(indian_term in term.lower() for indian_term in indian_terms) for term in terms)
+            has_chinese = any(any(chinese_term in term.lower() for chinese_term in chinese_terms) for term in terms)
+            
+            if has_indian and has_chinese:
+                return True
+        
+        # Could add similar logic for other categories
+        return False
     
     def _assess_imposition_severity(self, match_text: str, category: str) -> str:
         """Assess severity of framework imposition"""

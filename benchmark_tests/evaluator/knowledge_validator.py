@@ -400,27 +400,58 @@ class KnowledgeValidator:
         """Calculate confidence score based on linguistic markers"""
         response_lower = response.lower()
         
-        # Count confidence markers
-        high_confidence = sum(1 for marker in self.confidence_markers['high'] 
-                            if marker in response_lower)
-        medium_confidence = sum(1 for marker in self.confidence_markers['medium'] 
-                              if marker in response_lower)
-        low_confidence = sum(1 for marker in self.confidence_markers['low'] 
-                           if marker in response_lower)
-        uncertain = sum(1 for marker in self.confidence_markers['uncertain'] 
-                       if marker in response_lower)
+        # Enhanced pattern matching for confidence markers
+        import re
+        
+        # Check for uncertain patterns first (including negated forms)
+        uncertain = 0
+        for marker in self.confidence_markers['uncertain']:
+            if re.search(r'\b' + re.escape(marker) + r'\b', response_lower):
+                uncertain += 1
+        
+        # If we found uncertain markers, check for other markers but exclude overlapping words
+        # Create a set of words that were already matched as uncertain
+        uncertain_words = set()
+        if uncertain > 0:
+            for marker in self.confidence_markers['uncertain']:
+                if re.search(r'\b' + re.escape(marker) + r'\b', response_lower):
+                    # Add all words from this uncertain marker to exclusion set
+                    uncertain_words.update(marker.split())
+        
+        # Count other confidence markers, excluding words already matched as uncertain
+        high_confidence = 0
+        for marker in self.confidence_markers['high']:
+            # Skip if any word in this marker is already matched as uncertain
+            marker_words = set(marker.split())
+            if not marker_words.intersection(uncertain_words):
+                if re.search(r'\b' + re.escape(marker) + r'\b', response_lower):
+                    high_confidence += 1
+        
+        medium_confidence = 0
+        for marker in self.confidence_markers['medium']:
+            marker_words = set(marker.split())
+            if not marker_words.intersection(uncertain_words):
+                if re.search(r'\b' + re.escape(marker) + r'\b', response_lower):
+                    medium_confidence += 1
+        
+        low_confidence = 0
+        for marker in self.confidence_markers['low']:
+            marker_words = set(marker.split())
+            if not marker_words.intersection(uncertain_words):
+                if re.search(r'\b' + re.escape(marker) + r'\b', response_lower):
+                    low_confidence += 1
         
         # Calculate weighted score
         total_markers = high_confidence + medium_confidence + low_confidence + uncertain
         
         if total_markers == 0:
-            return 0.5  # Neutral confidence
+            return 0.4  # Lower neutral score for no explicit confidence markers
         
-        # Weighted score: high=1.0, medium=0.7, low=0.3, uncertain=0.0
+        # Weighted score: high=1.0, medium=0.7, low=0.3, uncertain=0.1 (slightly above 0.0)
         weighted_score = (high_confidence * 1.0 + 
                          medium_confidence * 0.7 + 
                          low_confidence * 0.3 + 
-                         uncertain * 0.0) / total_markers
+                         uncertain * 0.1) / total_markers
         
         return float(np.clip(weighted_score, 0.0, 1.0))
     
@@ -614,11 +645,11 @@ class KnowledgeValidator:
     
     def _assess_calibration(self, score: float) -> str:
         """Assess confidence calibration quality"""
-        if score >= 0.3:
+        if score >= 0.7:
             return "Well-calibrated - High confidence correlates with high accuracy"
-        elif score >= 0.1:
+        elif score >= 0.4:
             return "Moderately calibrated - Some correlation between confidence and accuracy"
-        elif score >= -0.1:
+        elif score >= 0.0:
             return "Poorly calibrated - Little correlation between confidence and accuracy"
         else:
             return "Miscalibrated - High confidence associated with low accuracy"
@@ -679,9 +710,9 @@ class KnowledgeValidator:
         
         # Identify strengths and weaknesses
         for category, accuracy in validation_report.category_breakdown.items():
-            if accuracy >= 0.8:
+            if accuracy >= 0.75:
                 assessment["factual_knowledge_assessment"]["strengths"].append(category)
-            elif accuracy < 0.5:
+            elif accuracy <= 0.5:  # Changed from < to <= to include 0.5
                 assessment["factual_knowledge_assessment"]["weaknesses"].append(category)
         
         # Add consistency analysis if available
@@ -737,3 +768,155 @@ class KnowledgeValidator:
                 recommendations.append(f"Model shows inconsistent responses for: {', '.join(low_consistency_topics)}")
         
         return recommendations
+
+    def _analyze_response_confidence_calibration(self, response: str) -> Dict[str, Any]:
+        """Analyze confidence calibration for a single response"""
+        confidence_score = self._calculate_confidence_score(response)
+        
+        # Analyze linguistic confidence markers
+        high_confidence_patterns = [
+            r'\b(absolutely|definitely|certainly|clearly|obviously|without doubt)\b',
+            r'\b(established fact|proven|verified|confirmed)\b',
+            r'\b(guaranteed|undeniable|unquestionable)\b'
+        ]
+        
+        low_confidence_patterns = [
+            r'\b(maybe|perhaps|possibly|might be|could be|probably)\b',
+            r'\b(I think|I believe|it seems|appears to|likely)\b',
+            r'\b(uncertain|unsure|unclear|questionable)\b'
+        ]
+        
+        uncertain_patterns = [
+            r'\b(don\'t know|no idea|not sure|can\'t tell)\b',
+            r'\b(unclear|uncertain|ambiguous|confusing)\b'
+        ]
+        
+        import re
+        response_lower = response.lower()
+        
+        high_markers = sum(len(re.findall(pattern, response_lower)) for pattern in high_confidence_patterns)
+        low_markers = sum(len(re.findall(pattern, response_lower)) for pattern in low_confidence_patterns)
+        uncertain_markers = sum(len(re.findall(pattern, response_lower)) for pattern in uncertain_patterns)
+        
+        # Determine confidence level
+        if high_markers > 0:
+            confidence_level = "high"
+        elif uncertain_markers > 0:
+            confidence_level = "uncertain"
+        elif low_markers > 0:
+            confidence_level = "low"
+        else:
+            confidence_level = "neutral"
+        
+        # Calculate calibration score (how well linguistic markers align with computed confidence)
+        total_markers = high_markers + low_markers + uncertain_markers
+        if total_markers == 0:
+            calibration_score = 0.5  # Neutral when no clear markers
+        else:
+            # Good calibration when high markers align with high confidence, etc.
+            if confidence_level == "high" and confidence_score >= 0.7:
+                calibration_score = 0.9
+            elif confidence_level == "low" and confidence_score <= 0.4:
+                calibration_score = 0.8
+            elif confidence_level == "uncertain" and confidence_score <= 0.3:
+                calibration_score = 0.85
+            else:
+                calibration_score = 0.3  # Poor calibration
+        
+        # Confidence distribution
+        confidence_distribution = {
+            "high": high_markers / max(total_markers, 1),
+            "medium": 0.0,  # Not tracked in this simple implementation
+            "low": low_markers / max(total_markers, 1),
+            "uncertain": uncertain_markers / max(total_markers, 1)
+        }
+
+        return {
+            "calibration_score": calibration_score,
+            "confidence_distribution": confidence_distribution,
+            "assessment": self._assess_response_calibration(confidence_score, confidence_level),
+            "confidence_score": confidence_score,
+            "confidence_level": confidence_level,
+            "linguistic_markers": {
+                "high_confidence_count": high_markers,
+                "low_confidence_count": low_markers,
+                "uncertain_count": uncertain_markers
+            }
+        }
+
+    def _analyze_factual_indicators(self, response: str, category: str) -> Dict[str, Any]:
+        """Analyze factual indicators in a response"""
+        import re
+        
+        # Patterns for factual content
+        citation_patterns = [
+            r'according to\s+[\w\s,]+(?:study|research|report|survey)',
+            r'published in\s+\d{4}',
+            r'research by\s+[\w\s]+(?:indicates|shows|suggests)',
+            r'studies\s+(?:show|indicate|suggest|reveal)',
+            r'data\s+(?:shows|indicates|suggests|reveals)'
+        ]
+        
+        numerical_patterns = [
+            r'\d+(?:\.\d+)?\s*(?:%|percent|million|billion|thousand)',
+            r'\d{4}(?:-\d{4})?',  # Years
+            r'\d+(?:,\d{3})*(?:\.\d+)?'  # Numbers with commas
+        ]
+        
+        authoritative_patterns = [
+            r'expert[s]?\s+(?:say|believe|indicate|suggest)',
+            r'specialist[s]?\s+(?:recommend|suggest|indicate)',
+            r'professional[s]?\s+(?:agree|believe|suggest)'
+        ]
+        
+        response_lower = response.lower()
+        
+        # Count different types of indicators
+        citations = sum(len(re.findall(pattern, response_lower)) for pattern in citation_patterns)
+        numerical_data = sum(len(re.findall(pattern, response)) for pattern in numerical_patterns)
+        authoritative_refs = sum(len(re.findall(pattern, response_lower)) for pattern in authoritative_patterns)
+        
+        # Additional specific indicators
+        contains_numbers = numerical_data > 0
+        contains_dates = len(re.findall(r'\b(?:19|20)\d{2}\b', response)) > 0  # Years
+        contains_names = len(re.findall(r'\b[A-Z][a-z]+\s+[A-Z][a-z]+\b', response)) > 0  # Proper names
+        contains_specific_facts = citations > 0 or numerical_data > 0 or authoritative_refs > 0
+        
+        # Calculate factual content score
+        factual_score = min(1.0, (citations * 0.4 + numerical_data * 0.1 + authoritative_refs * 0.3))
+        
+        # Determine factual content level
+        if factual_score >= 0.7:
+            factual_level = "high"
+        elif factual_score >= 0.3:
+            factual_level = "moderate"
+        else:
+            factual_level = "low"
+        
+        return {
+            "factual_accuracy_score": factual_score,
+            "factual_content_score": factual_score,  # Keep both for compatibility
+            "factual_level": factual_level,
+            "contains_numbers": contains_numbers,
+            "contains_dates": contains_dates,
+            "contains_names": contains_names,
+            "contains_specific_facts": contains_specific_facts,
+            "indicators": {
+                "citations": citations,
+                "numerical_data": numerical_data,
+                "authoritative_references": authoritative_refs
+            },
+            "category": category,
+            "analysis_summary": f"{factual_level.title()} factual content with {citations} citations and {numerical_data} numerical references"
+        }
+    
+    def _assess_response_calibration(self, confidence_score: float, confidence_level: str) -> str:
+        """Assess calibration for a single response"""
+        if confidence_level == "high" and confidence_score >= 0.8:
+            return "well-calibrated - high linguistic confidence matches high computed confidence"
+        elif confidence_level == "low" and confidence_score <= 0.4:
+            return "well-calibrated - low linguistic confidence matches low computed confidence"
+        elif confidence_level == "uncertain" and confidence_score <= 0.3:
+            return "well-calibrated - uncertain language matches low confidence score"
+        else:
+            return "potentially miscalibrated - linguistic confidence doesn't match computed confidence"

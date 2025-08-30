@@ -1,0 +1,53 @@
+[
+  {
+    "title": "Oral Tradition in West Africa",
+    "cultural_groups": [
+      "west african",
+      "mandinka",
+      "wolof"
+    ],
+    "traditions": [
+      "griot",
+      "oral tradition",
+      "praise singing"
+    ],
+    "knowledge_systems": [
+      "traditional knowledge",
+      "genealogy",
+      "cultural transmission"
+    ],
+    "key_concepts": [
+      "griots",
+      "djeli",
+      "oral history",
+      "cultural preservation"
+    ],
+    "source": "Academic research compilation",
+    "confidence_score": 0.85
+  },
+  {
+    "title": "Indigenous Knowledge Systems",
+    "cultural_groups": [
+      "indigenous",
+      "aboriginal",
+      "native american"
+    ],
+    "traditions": [
+      "oral tradition",
+      "traditional practice",
+      "ceremonial knowledge"
+    ],
+    "knowledge_systems": [
+      "indigenous knowledge",
+      "traditional ecological knowledge",
+      "cultural knowledge"
+    ],
+    "key_concepts": [
+      "traditional knowledge",
+      "indigenous wisdom",
+      "cultural preservation"
+    ],
+    "source": "Indigenous studies literature",
+    "confidence_score": 0.9
+  }
+]

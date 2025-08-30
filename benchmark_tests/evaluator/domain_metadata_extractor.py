@@ -2,6 +2,8 @@ from typing import Dict, List, Any, Optional, Set, Tuple
 from dataclasses import dataclass
 import re
 import json
+import requests
+import time
 from enum import Enum
 
 from .domain_evaluation_router import Domain, EvaluationType
@@ -26,6 +28,28 @@ class MetadataExtraction:
     confidence: float  # 0.0 to 1.0
     extraction_sources: Dict[MetadataSource, List[str]]
     processing_notes: List[str]
+
+
+@dataclass
+class CulturalValidationResult:
+    """Result of cultural context validation."""
+    validated_traditions: List[str]
+    validated_groups: List[str]
+    validated_knowledge_systems: List[str]
+    validation_confidence: float  # 0.0 to 1.0
+    wikipedia_matches: Dict[str, str]  # term -> wikipedia_url
+    validation_flags: List[str]  # Issues found
+    external_confirmations: Dict[str, Any]  # External API confirmations
+
+
+@dataclass
+class WikipediaSearchResult:
+    """Result from Wikipedia search."""
+    title: str
+    url: str
+    extract: str
+    confidence: float
+    categories: List[str]
 
 
 class DomainMetadataExtractor:
@@ -562,3 +586,345 @@ class DomainMetadataExtractor:
             issues.append("Domain and evaluation type mismatch")
         
         return issues
+    
+    def validate_cultural_context(self, cultural_context: CulturalContext,
+                                 use_wikipedia: bool = True,
+                                 use_external_apis: bool = False) -> CulturalValidationResult:
+        """
+        Validate cultural context information against external sources.
+        
+        Args:
+            cultural_context: Cultural context to validate
+            use_wikipedia: Whether to use Wikipedia for validation
+            use_external_apis: Whether to use external cultural knowledge APIs
+            
+        Returns:
+            CulturalValidationResult with validation results
+        """
+        validated_traditions = []
+        validated_groups = []
+        validated_knowledge_systems = []
+        wikipedia_matches = {}
+        validation_flags = []
+        external_confirmations = {}
+        
+        # Wikipedia validation
+        if use_wikipedia:
+            # Validate traditions
+            for tradition in cultural_context.traditions:
+                wiki_result = self._search_wikipedia(tradition)
+                if wiki_result and wiki_result.confidence > 0.6:
+                    validated_traditions.append(tradition)
+                    wikipedia_matches[tradition] = wiki_result.url
+                else:
+                    validation_flags.append(f"Could not validate tradition: {tradition}")
+            
+            # Validate cultural groups
+            for group in cultural_context.cultural_groups:
+                wiki_result = self._search_wikipedia(f"{group} culture")
+                if wiki_result and wiki_result.confidence > 0.5:
+                    validated_groups.append(group)
+                    wikipedia_matches[group] = wiki_result.url
+                else:
+                    validation_flags.append(f"Could not validate cultural group: {group}")
+            
+            # Validate knowledge systems
+            for knowledge_sys in cultural_context.knowledge_systems:
+                wiki_result = self._search_wikipedia(knowledge_sys)
+                if wiki_result and wiki_result.confidence > 0.4:
+                    validated_knowledge_systems.append(knowledge_sys)
+                    wikipedia_matches[knowledge_sys] = wiki_result.url
+                else:
+                    validation_flags.append(f"Could not validate knowledge system: {knowledge_sys}")
+        
+        # External API validation (placeholder for future implementation)
+        if use_external_apis:
+            external_confirmations = self._validate_with_external_apis(cultural_context)
+        
+        # Calculate validation confidence
+        total_items = (len(cultural_context.traditions) + 
+                      len(cultural_context.cultural_groups) + 
+                      len(cultural_context.knowledge_systems))
+        validated_items = (len(validated_traditions) + 
+                          len(validated_groups) + 
+                          len(validated_knowledge_systems))
+        
+        validation_confidence = validated_items / total_items if total_items > 0 else 0.0
+        
+        return CulturalValidationResult(
+            validated_traditions=validated_traditions,
+            validated_groups=validated_groups,
+            validated_knowledge_systems=validated_knowledge_systems,
+            validation_confidence=validation_confidence,
+            wikipedia_matches=wikipedia_matches,
+            validation_flags=validation_flags,
+            external_confirmations=external_confirmations
+        )
+    
+    def _search_wikipedia(self, search_term: str, language: str = "en") -> Optional[WikipediaSearchResult]:
+        """
+        Search Wikipedia for cultural information.
+        
+        Args:
+            search_term: Term to search for
+            language: Wikipedia language code
+            
+        Returns:
+            WikipediaSearchResult or None if no good match found
+        """
+        try:
+            # Wikipedia API endpoint
+            api_url = f"https://{language}.wikipedia.org/api/rest_v1/page/summary/{search_term}"
+            
+            # Add rate limiting
+            time.sleep(0.1)  # 100ms delay to be respectful to Wikipedia
+            
+            response = requests.get(api_url, timeout=5, headers={
+                'User-Agent': 'BenchmarkTests/1.0 (Cultural Validation; educational use)'
+            })
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Calculate confidence based on response quality
+                confidence = self._calculate_wikipedia_confidence(data, search_term)
+                
+                # Get categories (requires additional API call)
+                categories = self._get_wikipedia_categories(data.get('title', ''), language)
+                
+                return WikipediaSearchResult(
+                    title=data.get('title', ''),
+                    url=data.get('content_urls', {}).get('desktop', {}).get('page', ''),
+                    extract=data.get('extract', ''),
+                    confidence=confidence,
+                    categories=categories
+                )
+            
+            elif response.status_code == 404:
+                # Try alternative search
+                return self._alternative_wikipedia_search(search_term, language)
+                
+        except requests.RequestException as e:
+            # Network error - return None to indicate failure
+            pass
+        except Exception as e:
+            # Other errors - return None
+            pass
+        
+        return None
+    
+    def _calculate_wikipedia_confidence(self, wikipedia_data: Dict[str, Any], search_term: str) -> float:
+        """Calculate confidence score for Wikipedia match."""
+        confidence = 0.0
+        
+        title = wikipedia_data.get('title', '').lower()
+        extract = wikipedia_data.get('extract', '').lower()
+        search_lower = search_term.lower()
+        
+        # Title match
+        if search_lower in title:
+            confidence += 0.4
+        elif any(word in title for word in search_lower.split()):
+            confidence += 0.2
+        
+        # Extract relevance
+        if search_lower in extract:
+            confidence += 0.3
+        elif any(word in extract for word in search_lower.split() if len(word) > 3):
+            confidence += 0.2
+        
+        # Page type indicators
+        if any(indicator in extract.lower() for indicator in [
+            'culture', 'tradition', 'cultural', 'ethnic', 'indigenous', 'folk'
+        ]):
+            confidence += 0.3
+        
+        # Disambiguation pages get lower confidence
+        if 'disambiguation' in title:
+            confidence *= 0.5
+        
+        return min(1.0, confidence)
+    
+    def _get_wikipedia_categories(self, title: str, language: str = "en") -> List[str]:
+        """Get Wikipedia page categories."""
+        try:
+            categories_url = f"https://{language}.wikipedia.org/w/api.php"
+            params = {
+                'action': 'query',
+                'format': 'json',
+                'titles': title,
+                'prop': 'categories',
+                'cllimit': 10
+            }
+            
+            time.sleep(0.1)  # Rate limiting
+            
+            response = requests.get(categories_url, params=params, timeout=5, headers={
+                'User-Agent': 'BenchmarkTests/1.0 (Cultural Validation; educational use)'
+            })
+            
+            if response.status_code == 200:
+                data = response.json()
+                pages = data.get('query', {}).get('pages', {})
+                
+                categories = []
+                for page_data in pages.values():
+                    page_categories = page_data.get('categories', [])
+                    for cat in page_categories:
+                        cat_title = cat.get('title', '')
+                        if cat_title.startswith('Category:'):
+                            categories.append(cat_title[9:])  # Remove 'Category:' prefix
+                
+                return categories
+                
+        except Exception as e:
+            pass
+        
+        return []
+    
+    def _alternative_wikipedia_search(self, search_term: str, language: str = "en") -> Optional[WikipediaSearchResult]:
+        """Try alternative Wikipedia search strategies."""
+        try:
+            # Use Wikipedia search API
+            search_url = f"https://{language}.wikipedia.org/w/api.php"
+            params = {
+                'action': 'query',
+                'format': 'json',
+                'list': 'search',
+                'srsearch': search_term,
+                'srlimit': 1
+            }
+            
+            time.sleep(0.1)  # Rate limiting
+            
+            response = requests.get(search_url, params=params, timeout=5, headers={
+                'User-Agent': 'BenchmarkTests/1.0 (Cultural Validation; educational use)'
+            })
+            
+            if response.status_code == 200:
+                data = response.json()
+                search_results = data.get('query', {}).get('search', [])
+                
+                if search_results:
+                    first_result = search_results[0]
+                    title = first_result.get('title', '')
+                    
+                    # Get the summary for this title
+                    return self._search_wikipedia(title, language)
+            
+        except Exception as e:
+            pass
+        
+        return None
+    
+    def _validate_with_external_apis(self, cultural_context: CulturalContext) -> Dict[str, Any]:
+        """
+        Validate cultural context with external APIs.
+        
+        This is a placeholder for future implementation with cultural knowledge APIs.
+        """
+        confirmations = {}
+        
+        # TODO: Implement validation with external cultural APIs
+        # - UNESCO databases
+        # - Academic cultural corpora
+        # - Cultural institution APIs
+        
+        confirmations['note'] = "External API validation not yet implemented"
+        
+        return confirmations
+    
+    def cross_reference_cultural_claims(self, 
+                                       evaluation_claims: List[str],
+                                       cultural_context: CulturalContext) -> Dict[str, Any]:
+        """
+        Cross-reference evaluation claims against cultural context.
+        
+        Args:
+            evaluation_claims: Claims made by evaluators about cultural authenticity
+            cultural_context: Cultural context information
+            
+        Returns:
+            Dict with cross-reference results and validation flags
+        """
+        cross_reference_results = {
+            'validated_claims': [],
+            'questionable_claims': [],
+            'unsupported_claims': [],
+            'wikipedia_evidence': {},
+            'confidence_scores': {}
+        }
+        
+        for claim in evaluation_claims:
+            claim_lower = claim.lower()
+            
+            # Check if claim relates to known cultural elements
+            relates_to_traditions = any(tradition.lower() in claim_lower 
+                                      for tradition in cultural_context.traditions)
+            relates_to_groups = any(group.lower() in claim_lower 
+                                  for group in cultural_context.cultural_groups)
+            relates_to_knowledge = any(knowledge.lower() in claim_lower 
+                                     for knowledge in cultural_context.knowledge_systems)
+            
+            if relates_to_traditions or relates_to_groups or relates_to_knowledge:
+                # Try to validate with Wikipedia
+                wiki_result = self._search_wikipedia(claim)
+                
+                if wiki_result and wiki_result.confidence > 0.6:
+                    cross_reference_results['validated_claims'].append(claim)
+                    cross_reference_results['wikipedia_evidence'][claim] = wiki_result.url
+                    cross_reference_results['confidence_scores'][claim] = wiki_result.confidence
+                elif wiki_result and wiki_result.confidence > 0.3:
+                    cross_reference_results['questionable_claims'].append(claim)
+                    cross_reference_results['wikipedia_evidence'][claim] = wiki_result.url
+                    cross_reference_results['confidence_scores'][claim] = wiki_result.confidence
+                else:
+                    cross_reference_results['unsupported_claims'].append(claim)
+                    cross_reference_results['confidence_scores'][claim] = 0.0
+            else:
+                cross_reference_results['unsupported_claims'].append(claim)
+                cross_reference_results['confidence_scores'][claim] = 0.0
+        
+        return cross_reference_results
+    
+    def enhance_cultural_context_with_validation(self, 
+                                                cultural_context: CulturalContext,
+                                                validation_result: CulturalValidationResult) -> CulturalContext:
+        """
+        Enhance cultural context using validation results.
+        
+        Args:
+            cultural_context: Original cultural context
+            validation_result: Results from cultural validation
+            
+        Returns:
+            Enhanced CulturalContext with validated information
+        """
+        # Only keep validated items with high confidence
+        enhanced_traditions = []
+        enhanced_groups = []
+        enhanced_knowledge_systems = []
+        
+        # Add validated traditions
+        for tradition in cultural_context.traditions:
+            if tradition in validation_result.validated_traditions:
+                enhanced_traditions.append(tradition)
+        
+        # Add validated cultural groups
+        for group in cultural_context.cultural_groups:
+            if group in validation_result.validated_groups:
+                enhanced_groups.append(group)
+        
+        # Add validated knowledge systems
+        for knowledge_sys in cultural_context.knowledge_systems:
+            if knowledge_sys in validation_result.validated_knowledge_systems:
+                enhanced_knowledge_systems.append(knowledge_sys)
+        
+        # Keep other aspects unchanged as they're harder to validate
+        return CulturalContext(
+            traditions=enhanced_traditions,
+            knowledge_systems=enhanced_knowledge_systems,
+            performance_aspects=cultural_context.performance_aspects,  # Keep as-is
+            cultural_groups=enhanced_groups,
+            linguistic_varieties=cultural_context.linguistic_varieties  # Keep as-is
+        )

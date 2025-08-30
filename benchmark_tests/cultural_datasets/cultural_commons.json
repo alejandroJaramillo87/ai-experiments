@@ -1,0 +1,24 @@
+[
+  {
+    "name": "Traditional Storytelling Methods",
+    "description": "Various cultural approaches to storytelling",
+    "cultural_groups": [
+      "global",
+      "various"
+    ],
+    "traditions": [
+      "oral tradition",
+      "storytelling",
+      "narrative tradition"
+    ],
+    "knowledge_systems": [
+      "traditional knowledge",
+      "cultural transmission"
+    ],
+    "sources": [
+      "Wikimedia Commons",
+      "Open cultural archives"
+    ],
+    "confidence_score": 0.75
+  }
+]
