@@ -12,13 +12,13 @@ import json
 import requests
 from io import StringIO
 
-from evaluator.cultural_dataset_validator import (
+from evaluator.cultural.cultural_dataset_validator import (
     CulturalDatasetValidator,
     DatasetValidationResult,
     CulturalDatasetEntry,
     DatasetSource
 )
-from evaluator.domain_evaluator_base import CulturalContext, DomainEvaluationResult
+from evaluator.core.domain_evaluator_base import CulturalContext, DomainEvaluationResult
 
 
 class TestCulturalDatasetValidator(unittest.TestCase):
@@ -27,7 +27,7 @@ class TestCulturalDatasetValidator(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.config = {
-            'datasets_dir': './test_datasets',
+            'datasets_dir': './data/cultural',
             'confidence_threshold': 0.7
         }
         self.validator = CulturalDatasetValidator(self.config)
@@ -61,7 +61,7 @@ class TestCulturalDatasetValidator(unittest.TestCase):
         """Test cultural dataset validator initialization."""
         # Test with custom config
         validator = CulturalDatasetValidator(self.config)
-        self.assertEqual(validator.config['datasets_dir'], './test_datasets')
+        self.assertEqual(validator.config['datasets_dir'], './data/cultural')
         
         # Test dataset configurations exist
         self.assertGreater(len(validator.dataset_configs), 0)

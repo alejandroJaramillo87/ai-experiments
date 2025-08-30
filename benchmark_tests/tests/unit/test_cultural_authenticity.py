@@ -16,7 +16,7 @@ import os
 # Test imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
 
-from evaluator.cultural_authenticity import CulturalAuthenticityAnalyzer, CulturalAuthenticityResult
+from evaluator.cultural.cultural_authenticity import CulturalAuthenticityAnalyzer, CulturalAuthenticityResult
 
 # Disable logging during tests
 logging.disable(logging.CRITICAL)

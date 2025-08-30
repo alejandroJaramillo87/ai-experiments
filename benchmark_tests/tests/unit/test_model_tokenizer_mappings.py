@@ -18,8 +18,8 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
 
-from evaluator.entropy_calculator import EntropyCalculator
-from evaluator.context_analyzer import ContextWindowAnalyzer
+from evaluator.advanced import EntropyCalculator
+from evaluator.advanced import ContextWindowAnalyzer
 
 # Disable logging during tests
 logging.disable(logging.CRITICAL)
@@ -42,8 +42,8 @@ class TestTokenizerMappings(unittest.TestCase):
             ("random-unknown-model", "gpt2"),  # Fallback
         ]
     
-    @patch('evaluator.entropy_calculator.TIKTOKEN_AVAILABLE', True)
-    @patch('evaluator.entropy_calculator.tiktoken')
+    @patch('evaluator.advanced.entropy_calculator.TIKTOKEN_AVAILABLE', True)
+    @patch('evaluator.advanced.entropy_calculator.tiktoken')
     def test_entropy_calculator_model_mappings(self, mock_tiktoken):
         """Test entropy calculator tokenizer mapping logic"""
         mock_encoding = MagicMock()
@@ -63,8 +63,8 @@ class TestTokenizerMappings(unittest.TestCase):
                 else:
                     mock_tiktoken.get_encoding.assert_called_with(expected_encoding)
     
-    @patch('evaluator.context_analyzer.TIKTOKEN_AVAILABLE', True)
-    @patch('evaluator.context_analyzer.tiktoken')
+    @patch('evaluator.advanced.context_analyzer.TIKTOKEN_AVAILABLE', True)
+    @patch('evaluator.advanced.context_analyzer.tiktoken')
     def test_context_analyzer_model_mappings(self, mock_tiktoken):
         """Test context analyzer tokenizer mapping logic"""
         mock_encoding = MagicMock()
@@ -93,8 +93,8 @@ class TestTokenizerMappings(unittest.TestCase):
             ("openai/gpt-oss-20b", "gpt2", "HF model path should work"),
         ]
         
-        with patch('evaluator.entropy_calculator.TIKTOKEN_AVAILABLE', True), \
-             patch('evaluator.entropy_calculator.tiktoken') as mock_tiktoken:
+        with patch('evaluator.advanced.entropy_calculator.TIKTOKEN_AVAILABLE', True), \
+             patch('evaluator.advanced.entropy_calculator.tiktoken') as mock_tiktoken:
             
             mock_encoding = MagicMock()
             mock_tiktoken.get_encoding.return_value = mock_encoding
@@ -107,14 +107,14 @@ class TestTokenizerMappings(unittest.TestCase):
                     mock_tiktoken.get_encoding.assert_called_with("gpt2")
                     self.assertIsNotNone(calculator.tokenizer)
     
-    @patch('evaluator.entropy_calculator.TIKTOKEN_AVAILABLE', False)
+    @patch('evaluator.advanced.entropy_calculator.TIKTOKEN_AVAILABLE', False)
     def test_tiktoken_unavailable_fallback(self):
         """Test behavior when tiktoken is not available"""
         calculator = EntropyCalculator(model_name="gpt-oss-20b")
         self.assertIsNone(calculator.tokenizer)
     
-    @patch('evaluator.entropy_calculator.TIKTOKEN_AVAILABLE', True)
-    @patch('evaluator.entropy_calculator.tiktoken')
+    @patch('evaluator.advanced.entropy_calculator.TIKTOKEN_AVAILABLE', True)
+    @patch('evaluator.advanced.entropy_calculator.tiktoken')
     def test_tokenizer_initialization_error_handling(self, mock_tiktoken):
         """Test error handling during tokenizer initialization"""
         mock_tiktoken.get_encoding.side_effect = Exception("Mock error")
@@ -131,8 +131,8 @@ class TestTokenizerMappings(unittest.TestCase):
             ("claude-3-haiku", "claude", "Should match claude pattern"),
         ]
         
-        with patch('evaluator.entropy_calculator.TIKTOKEN_AVAILABLE', True), \
-             patch('evaluator.entropy_calculator.tiktoken') as mock_tiktoken:
+        with patch('evaluator.advanced.entropy_calculator.TIKTOKEN_AVAILABLE', True), \
+             patch('evaluator.advanced.entropy_calculator.tiktoken') as mock_tiktoken:
             
             mock_encoding = MagicMock()
             mock_tiktoken.get_encoding.return_value = mock_encoding
@@ -153,7 +153,7 @@ class TestTokenizerFunctionality(unittest.TestCase):
         """Set up test with sample text"""
         self.test_text = "The quick brown fox jumps over the lazy dog. This is a test sentence for tokenization."
     
-    @patch('evaluator.entropy_calculator.TIKTOKEN_AVAILABLE', True)
+    @patch('evaluator.advanced.entropy_calculator.TIKTOKEN_AVAILABLE', True)
     def test_gpt_oss_20b_entropy_calculation(self):
         """Test entropy calculation with gpt-oss-20b tokenizer"""
         try:
@@ -176,7 +176,7 @@ class TestTokenizerFunctionality(unittest.TestCase):
         except ImportError:
             self.skipTest("tiktoken not available")
     
-    @patch('evaluator.context_analyzer.TIKTOKEN_AVAILABLE', True) 
+    @patch('evaluator.advanced.context_analyzer.TIKTOKEN_AVAILABLE', True) 
     def test_qwen3_context_analysis(self):
         """Test context analysis with Qwen3-30B tokenizer"""
         try:
@@ -197,7 +197,7 @@ class TestTokenizerFunctionality(unittest.TestCase):
     
     def test_fallback_behavior_without_tiktoken(self):
         """Test graceful fallback when tiktoken is unavailable"""
-        with patch('evaluator.entropy_calculator.TIKTOKEN_AVAILABLE', False):
+        with patch('evaluator.advanced.entropy_calculator.TIKTOKEN_AVAILABLE', False):
             calculator = EntropyCalculator(model_name="gpt-oss-20b")
             
             # Should still calculate character-based entropy
@@ -205,7 +205,7 @@ class TestTokenizerFunctionality(unittest.TestCase):
             self.assertIsInstance(entropy, float)
             self.assertGreater(entropy, 0)
     
-    @patch('evaluator.entropy_calculator.TIKTOKEN_AVAILABLE', True)
+    @patch('evaluator.advanced.entropy_calculator.TIKTOKEN_AVAILABLE', True)
     def test_model_case_insensitivity(self):
         """Test that model names are case insensitive"""
         try:

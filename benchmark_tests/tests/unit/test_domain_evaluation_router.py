@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch, MagicMock
 from typing import Dict, Any
 import logging
 
-from evaluator.domain_evaluation_router import (
+from evaluator.subjects.domain_evaluation_router import (
     Domain,
     EvaluationType, 
     DomainEvaluationResult,
@@ -223,7 +223,7 @@ class TestDomainEvaluationRouter(unittest.TestCase):
         self.assertIsNone(self.router._knowledge_evaluator)
         self.assertIsNone(self.router._integration_evaluator)
     
-    @patch('evaluator.domain_evaluation_router.logger')
+    @patch('evaluator.subjects.domain_evaluation_router.logger')
     def test_get_creative_evaluator_import_error(self, mock_logger):
         """Test creative evaluator getter with import error."""
         with patch('builtins.__import__', side_effect=ImportError):
@@ -523,7 +523,7 @@ class TestDomainEvaluationRouter(unittest.TestCase):
             # Should have called the creative evaluator
             mock_evaluator.evaluate.assert_called_once()
     
-    @patch('evaluator.domain_evaluation_router.logger')
+    @patch('evaluator.subjects.domain_evaluation_router.logger')
     def test_route_evaluation_cultural_import_error(self, mock_logger):
         """Test evaluation routing with cultural analysis import error."""
         test_metadata = {

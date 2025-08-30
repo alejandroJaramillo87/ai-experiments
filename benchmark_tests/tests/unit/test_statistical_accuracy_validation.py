@@ -13,9 +13,9 @@ import math
 from scipy import stats
 from typing import List, Dict, Any
 
-from evaluator.evaluation_aggregator import EvaluationAggregator, AggregatedEvaluationResult
-from evaluator.ensemble_disagreement_detector import EnsembleDisagreementDetector
-from evaluator.domain_evaluator_base import CulturalContext
+from evaluator.core.evaluation_aggregator import EvaluationAggregator, AggregatedEvaluationResult
+from evaluator.core.ensemble_disagreement_detector import EnsembleDisagreementDetector
+from evaluator.core.domain_evaluator_base import CulturalContext
 
 
 class TestMathematicalCorrectnessValidation(unittest.TestCase):

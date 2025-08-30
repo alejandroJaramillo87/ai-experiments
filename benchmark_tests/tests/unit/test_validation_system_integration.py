@@ -12,12 +12,12 @@ import json
 import asyncio
 from datetime import datetime
 
-from evaluator.integrated_validation_system import IntegratedValidationSystem, IntegratedValidationConfig
-from evaluator.domain_evaluator_base import CulturalContext, DomainEvaluationResult
-from evaluator.validation_runner import ValidationRunner
-from evaluator.cultural_dataset_validator import CulturalDatasetValidator
-from evaluator.community_flagging_system import CommunityFlaggingSystem, FlagCategory, FlagSeverity
-from evaluator.ensemble_disagreement_detector import EnsembleDisagreementDetector
+from evaluator.validation.integrated_validation_system import IntegratedValidationSystem, IntegratedValidationConfig
+from evaluator.core.domain_evaluator_base import CulturalContext, DomainEvaluationResult
+from evaluator.validation.validation_runner import ValidationRunner
+from evaluator.cultural.cultural_dataset_validator import CulturalDatasetValidator
+from evaluator.validation.community_flagging_system import CommunityFlaggingSystem, FlagCategory, FlagSeverity
+from evaluator.core.ensemble_disagreement_detector import EnsembleDisagreementDetector
 
 
 class TestValidationSystemIntegration(unittest.TestCase):
@@ -176,7 +176,7 @@ class TestValidationSystemIntegration(unittest.TestCase):
             bias_threshold=0.25,
             cultural_authenticity_threshold=0.6,
             validation_runner_config={'timeout': 45},
-            dataset_validator_config={'datasets_dir': './test_integration_datasets'},
+            dataset_validator_config={'datasets_dir': './data/cultural'},
             community_system_config={'data_dir': './test_integration_flags'}
         )
         

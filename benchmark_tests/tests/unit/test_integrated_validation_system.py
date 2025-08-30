@@ -12,17 +12,17 @@ import json
 import asyncio
 from datetime import datetime
 
-from evaluator.integrated_validation_system import (
+from evaluator.validation.integrated_validation_system import (
     IntegratedValidationSystem,
     IntegratedValidationConfig,
     ComprehensiveValidationResult
 )
-from evaluator.validation_runner import ValidationRunner, MultiModelValidationResult
-from evaluator.ensemble_disagreement_detector import EnsembleDisagreementDetector
-from evaluator.cultural_dataset_validator import CulturalDatasetValidator, DatasetValidationResult
-from evaluator.community_flagging_system import CommunityFlaggingSystem, CommunityFlag
-from evaluator.evaluation_aggregator import EvaluationAggregator
-from evaluator.domain_evaluator_base import CulturalContext, DomainEvaluationResult
+from evaluator.validation.validation_runner import ValidationRunner, MultiModelValidationResult
+from evaluator.core.ensemble_disagreement_detector import EnsembleDisagreementDetector
+from evaluator.cultural.cultural_dataset_validator import CulturalDatasetValidator, DatasetValidationResult
+from evaluator.validation.community_flagging_system import CommunityFlaggingSystem, CommunityFlag
+from evaluator.core.evaluation_aggregator import EvaluationAggregator
+from evaluator.core.domain_evaluator_base import CulturalContext, DomainEvaluationResult
 
 
 class TestIntegratedValidationSystem(unittest.TestCase):
@@ -226,7 +226,7 @@ class TestValidationPipelineIntegration(unittest.TestCase):
             enable_cultural_datasets=True,
             confidence_threshold=0.85,
             validation_runner_config={'timeout': 45},
-            dataset_validator_config={'datasets_dir': './custom_datasets'},
+            dataset_validator_config={'datasets_dir': './data/cultural'},
             community_system_config={'data_dir': './custom_flags'}
         )
         
@@ -388,7 +388,7 @@ class TestConfigurationManagement(unittest.TestCase):
                 'max_concurrent_requests': 10
             },
             dataset_validator_config={
-                'datasets_dir': './test_datasets',
+                'datasets_dir': './data/cultural',
                 'confidence_threshold': 0.8
             },
             community_system_config={
@@ -406,7 +406,7 @@ class TestConfigurationManagement(unittest.TestCase):
         
         # Test specific values
         self.assertEqual(system.config.validation_runner_config['api_timeout'], 60)
-        self.assertEqual(system.config.dataset_validator_config['datasets_dir'], './test_datasets')
+        self.assertEqual(system.config.dataset_validator_config['datasets_dir'], './data/cultural')
         self.assertTrue(system.config.community_system_config['auto_flag_enabled'])
 
 

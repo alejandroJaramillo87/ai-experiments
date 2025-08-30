@@ -13,7 +13,7 @@ import json
 import time
 import statistics
 
-from evaluator.validation_runner import (
+from evaluator.validation.validation_runner import (
     ValidationRunner,
     ValidationRequest,
     APIValidationResult,
@@ -21,7 +21,7 @@ from evaluator.validation_runner import (
     APIProvider,
     APIConfig
 )
-from evaluator.domain_evaluator_base import (
+from evaluator.core.domain_evaluator_base import (
     DomainEvaluationResult,
     CulturalContext
 )
@@ -148,7 +148,7 @@ class TestValidationOrchestration(unittest.TestCase):
         self.assertIn("ubuntu", result.cultural_elements_validated)
         self.assertEqual(len(result.potential_issues), 0)
     
-    @patch('evaluator.validation_runner.aiohttp.ClientSession')
+    @patch('evaluator.validation.validation_runner.aiohttp.ClientSession')
     def test_single_api_validation_mock(self, mock_session):
         """Test single API validation with mocking."""
         # Mock the API response

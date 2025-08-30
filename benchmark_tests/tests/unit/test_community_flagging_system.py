@@ -14,7 +14,7 @@ import io
 import statistics
 from datetime import datetime, timedelta
 
-from evaluator.community_flagging_system import (
+from evaluator.validation.community_flagging_system import (
     CommunityFlaggingSystem,
     CommunityFlag,
     FlagCategory,
@@ -23,11 +23,11 @@ from evaluator.community_flagging_system import (
     FlagAnalytics,
     CommunityFeedback
 )
-from evaluator.domain_evaluator_base import (
+from evaluator.core.domain_evaluator_base import (
     DomainEvaluationResult,
     CulturalContext
 )
-from evaluator.evaluation_aggregator import ValidationFlag
+from evaluator.core.evaluation_aggregator import ValidationFlag
 
 
 class TestCommunityFlaggingSystem(unittest.TestCase):

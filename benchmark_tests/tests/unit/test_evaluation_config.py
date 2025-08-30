@@ -8,7 +8,7 @@ including thresholds, weights, patterns, and specialized configurations.
 import unittest
 from typing import Dict, Any
 
-from evaluator.evaluation_config import (
+from evaluator.core.evaluation_config import (
     DEFAULT_CONFIG,
     FAST_CONFIG,
     DETAILED_CONFIG,

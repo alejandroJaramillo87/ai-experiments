@@ -16,8 +16,8 @@ import os
 # Test imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
 
-from evaluator.creativity_evaluator import CreativityEvaluator
-from evaluator.domain_evaluator_base import CulturalContext, EvaluationDimension
+from evaluator.subjects.creativity_evaluator import CreativityEvaluator
+from evaluator.core.domain_evaluator_base import CulturalContext, EvaluationDimension
 
 # Disable logging during tests
 logging.disable(logging.CRITICAL)
