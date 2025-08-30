@@ -1,0 +1,95 @@
+[
+  {
+    "name": "Griot Tradition",
+    "description": "West African oral storytelling tradition",
+    "cultural_groups": [
+      "mandinka",
+      "wolof",
+      "fulani"
+    ],
+    "traditions": [
+      "griot",
+      "oral tradition",
+      "storytelling"
+    ],
+    "knowledge_systems": [
+      "traditional knowledge",
+      "genealogy",
+      "oral history"
+    ],
+    "linguistic_varieties": [
+      "mandinka",
+      "wolof",
+      "fulani"
+    ],
+    "geographic_regions": [
+      "west africa",
+      "mali",
+      "senegal",
+      "guinea"
+    ],
+    "sources": [
+      "UNESCO",
+      "academic research"
+    ],
+    "confidence_score": 0.95
+  },
+  {
+    "name": "Aboriginal Dreamtime",
+    "description": "Indigenous Australian creation stories and cultural law",
+    "cultural_groups": [
+      "aboriginal australian",
+      "indigenous australian"
+    ],
+    "traditions": [
+      "dreamtime",
+      "songlines",
+      "ancestral stories"
+    ],
+    "knowledge_systems": [
+      "traditional knowledge",
+      "indigenous knowledge",
+      "land connection"
+    ],
+    "linguistic_varieties": [
+      "aboriginal languages",
+      "indigenous australian"
+    ],
+    "geographic_regions": [
+      "australia",
+      "outback"
+    ],
+    "sources": [
+      "UNESCO",
+      "Australian cultural institutions"
+    ],
+    "confidence_score": 0.92
+  },
+  {
+    "name": "Kamishibai",
+    "description": "Japanese paper theater storytelling tradition",
+    "cultural_groups": [
+      "japanese"
+    ],
+    "traditions": [
+      "kamishibai",
+      "paper theater",
+      "visual storytelling"
+    ],
+    "knowledge_systems": [
+      "traditional performance",
+      "visual narrative"
+    ],
+    "linguistic_varieties": [
+      "japanese"
+    ],
+    "geographic_regions": [
+      "japan"
+    ],
+    "sources": [
+      "UNESCO",
+      "Japanese cultural documentation"
+    ],
+    "confidence_score": 0.88
+  }
+]

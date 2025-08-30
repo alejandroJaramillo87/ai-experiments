@@ -265,7 +265,9 @@ class ConsistencyValidator:
             for i in range(len(texts)):
                 for j in range(i + 1, len(texts)):
                     similarity = cosine_similarity([embeddings[i]], [embeddings[j]])[0][0]
-                    similarities.append(float(similarity))
+                    # Clamp to [0, 1] to handle floating-point precision errors
+                    clamped_similarity = max(0.0, min(1.0, float(similarity)))
+                    similarities.append(clamped_similarity)
             
             return similarities
         except Exception as e:
@@ -282,7 +284,9 @@ class ConsistencyValidator:
             for i in range(len(texts)):
                 for j in range(i + 1, len(texts)):
                     similarity = cosine_similarity(tfidf_matrix[i], tfidf_matrix[j])[0][0]
-                    similarities.append(float(similarity))
+                    # Clamp to [0, 1] to handle floating-point precision errors
+                    clamped_similarity = max(0.0, min(1.0, float(similarity)))
+                    similarities.append(clamped_similarity)
             
             return similarities
         except Exception as e:

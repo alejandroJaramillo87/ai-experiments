@@ -311,11 +311,11 @@ class EntropyCalculator:
             Dictionary with vocabulary entropy metrics
         """
         if not text or not text.strip():
-            return {"vocab_entropy": 0.0, "vocab_diversity": 0.0, "unique_ratio": 0.0}
+            return {"vocab_entropy": 0.0, "vocab_diversity": 0.0, "unique_ratio": 0.0, "unique_words": 0}
         
         words = self._tokenize_words(text)
         if not words:
-            return {"vocab_entropy": 0.0, "vocab_diversity": 0.0, "unique_ratio": 0.0}
+            return {"vocab_entropy": 0.0, "vocab_diversity": 0.0, "unique_ratio": 0.0, "unique_words": 0}
         
         word_counts = Counter(words)
         total_words = len(words)
@@ -412,7 +412,7 @@ class EntropyCalculator:
         for metric in key_metrics:
             val1 = profile1.get(metric, 0.0)
             val2 = profile2.get(metric, 0.0)
-            comparisons[f"{metric}_diff"] = val2 - val1
+            comparisons[f"{metric}_diff"] = val1 - val2
             comparisons[f"{metric}_ratio"] = val2 / max(val1, 0.001)
         
         # Overall entropy similarity score
@@ -495,7 +495,43 @@ class EntropyCalculator:
         try:
             # Split text into chunks and calculate local entropy
             words = text.split()
-            if len(words) < 20:  # Too short for pattern analysis
+            if len(words) < 6:  # Too short for any pattern analysis
+                return patterns
+            
+            # For very short texts, use simple repetition detection
+            if len(words) < 20:
+                # Normalize words (remove punctuation and lowercase)
+                import re
+                normalized_words = [re.sub(r'[^\w]', '', word.lower()) for word in words]
+                
+                word_counts = {}
+                for word in normalized_words:
+                    if word:  # Skip empty strings after punctuation removal
+                        word_counts[word] = word_counts.get(word, 0) + 1
+                
+                # Check if any word repeats more than 25% of the time (lowered threshold)
+                if word_counts:
+                    max_freq = max(word_counts.values())
+                    if max_freq / len(normalized_words) > 0.25:
+                        patterns["has_repetitive_patterns"] = True
+                        patterns["entropy_variance"] = 0.5  # Mark as having some variance
+                        
+                # Also check for repeated phrases (simple bigram check)
+                bigrams = []
+                for i in range(len(normalized_words) - 1):
+                    if normalized_words[i] and normalized_words[i + 1]:
+                        bigrams.append(f"{normalized_words[i]} {normalized_words[i + 1]}")
+                
+                if bigrams:
+                    bigram_counts = {}
+                    for bigram in bigrams:
+                        bigram_counts[bigram] = bigram_counts.get(bigram, 0) + 1
+                    
+                    max_bigram_freq = max(bigram_counts.values()) if bigram_counts else 0
+                    if max_bigram_freq >= 2:  # Same bigram appears at least twice
+                        patterns["has_repetitive_patterns"] = True
+                        patterns["entropy_variance"] = 0.5
+                
                 return patterns
             
             chunk_size = max(20, len(words) // 10)  # At least 20 words per chunk
@@ -528,11 +564,71 @@ class EntropyCalculator:
                     else:
                         patterns["entropy_trend"] = "stable"
                 
-                # Check for repetitive patterns
-                patterns["has_repetitive_patterns"] = (
+                # Check for repetitive patterns using multiple criteria
+                chunk_based_repetition = (
                     patterns["entropy_variance"] < 0.1 and 
                     patterns["local_entropy_drops"] >= 2
                 )
+                
+                # Also check word-level repetition for confirmation
+                import re
+                normalized_words = [re.sub(r'[^\w]', '', word.lower()) for word in words]
+                word_counts = {}
+                for word in normalized_words:
+                    if word:
+                        word_counts[word] = word_counts.get(word, 0) + 1
+                
+                word_based_repetition = False
+                if word_counts:
+                    max_freq = max(word_counts.values())
+                    word_based_repetition = max_freq / len(normalized_words) > 0.2
+                
+                # Check for repeated phrases (bigrams)
+                bigrams = []
+                for i in range(len(normalized_words) - 1):
+                    if normalized_words[i] and normalized_words[i + 1]:
+                        bigrams.append(f"{normalized_words[i]} {normalized_words[i + 1]}")
+                
+                phrase_based_repetition = False
+                if bigrams:
+                    bigram_counts = {}
+                    for bigram in bigrams:
+                        bigram_counts[bigram] = bigram_counts.get(bigram, 0) + 1
+                    max_bigram_freq = max(bigram_counts.values()) if bigram_counts else 0
+                    phrase_based_repetition = max_bigram_freq >= 3  # Higher threshold for longer texts
+                
+                # Debug: explicit boolean evaluation  
+                has_repetitive = chunk_based_repetition or word_based_repetition or phrase_based_repetition
+                patterns["has_repetitive_patterns"] = has_repetitive
+            else:
+                # Not enough chunks for entropy-based analysis, use word/phrase analysis
+                import re
+                normalized_words = [re.sub(r'[^\w]', '', word.lower()) for word in words]
+                word_counts = {}
+                for word in normalized_words:
+                    if word:
+                        word_counts[word] = word_counts.get(word, 0) + 1
+                
+                word_based_repetition = False
+                if word_counts:
+                    max_freq = max(word_counts.values())
+                    word_based_repetition = max_freq / len(normalized_words) > 0.2
+                
+                # Check for repeated phrases (bigrams)
+                bigrams = []
+                for i in range(len(normalized_words) - 1):
+                    if normalized_words[i] and normalized_words[i + 1]:
+                        bigrams.append(f"{normalized_words[i]} {normalized_words[i + 1]}")
+                
+                phrase_based_repetition = False
+                if bigrams:
+                    bigram_counts = {}
+                    for bigram in bigrams:
+                        bigram_counts[bigram] = bigram_counts.get(bigram, 0) + 1
+                    max_bigram_freq = max(bigram_counts.values()) if bigram_counts else 0
+                    phrase_based_repetition = max_bigram_freq >= 2  # Lower threshold for fewer chunks
+                
+                patterns["has_repetitive_patterns"] = word_based_repetition or phrase_based_repetition
         
         except Exception as e:
             logger.error(f"Entropy pattern analysis failed: {e}")

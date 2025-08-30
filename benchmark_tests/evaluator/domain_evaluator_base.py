@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
+import statistics
+import numpy as np
 
 
 class CulturalContext:
@@ -230,6 +232,12 @@ class MultiDimensionalEvaluator(BaseDomainEvaluator):
                 ))
         
         overall_score = self._calculate_overall_score(dimensions)
+        evaluation_confidence = self._calculate_evaluation_confidence(dimensions)
+        
+        # Add confidence to metadata
+        metadata = self.get_evaluation_metadata()
+        metadata['evaluation_confidence'] = evaluation_confidence
+        metadata['confidence_breakdown'] = self._get_confidence_breakdown(dimensions)
         
         return DomainEvaluationResult(
             domain=self.get_domain_name(),
@@ -237,7 +245,7 @@ class MultiDimensionalEvaluator(BaseDomainEvaluator):
             overall_score=overall_score,
             dimensions=dimensions,
             cultural_context=cultural_context,
-            metadata=self.get_evaluation_metadata(),
+            metadata=metadata,
             processing_notes=self._get_processing_notes(dimensions)
         )
     
@@ -291,3 +299,87 @@ class MultiDimensionalEvaluator(BaseDomainEvaluator):
     def _get_primary_evaluation_type(self, test_metadata: Dict[str, Any]) -> str:
         """Extract primary evaluation type from metadata."""
         return test_metadata.get('evaluation_type', 'general')
+    
+    def _calculate_evaluation_confidence(self, dimensions: List[EvaluationDimension]) -> float:
+        """
+        Calculate overall evaluation confidence based on dimension confidence scores
+        and score agreement between dimensions.
+        """
+        if not dimensions:
+            return 0.0
+        
+        # Base confidence from individual dimensions
+        dimension_confidences = [dim.confidence for dim in dimensions if dim.confidence > 0]
+        if not dimension_confidences:
+            return 0.0
+        
+        base_confidence = statistics.mean(dimension_confidences)
+        
+        # Agreement factor based on score variance
+        scores = [dim.score for dim in dimensions if dim.confidence > 0.1]  # Only consider confident scores
+        if len(scores) < 2:
+            agreement_factor = 1.0
+        else:
+            score_variance = statistics.variance(scores) if len(scores) > 1 else 0.0
+            # Lower variance = higher agreement = higher confidence
+            agreement_factor = max(0.3, 1.0 - (score_variance * 2.0))
+        
+        # Cultural relevance factor - higher cultural relevance increases confidence
+        cultural_relevances = [dim.cultural_relevance for dim in dimensions if dim.cultural_relevance > 0]
+        cultural_factor = statistics.mean(cultural_relevances) if cultural_relevances else 0.5
+        
+        # Combine factors
+        overall_confidence = base_confidence * agreement_factor * (0.5 + cultural_factor * 0.5)
+        
+        return max(0.0, min(1.0, overall_confidence))
+    
+    def _get_confidence_breakdown(self, dimensions: List[EvaluationDimension]) -> Dict[str, Any]:
+        """Get detailed confidence breakdown for analysis."""
+        if not dimensions:
+            return {}
+        
+        scores = [dim.score for dim in dimensions]
+        confidences = [dim.confidence for dim in dimensions]
+        cultural_relevances = [dim.cultural_relevance for dim in dimensions]
+        
+        return {
+            'dimension_count': len(dimensions),
+            'avg_dimension_confidence': statistics.mean(confidences) if confidences else 0.0,
+            'score_variance': statistics.variance(scores) if len(scores) > 1 else 0.0,
+            'score_std_dev': statistics.stdev(scores) if len(scores) > 1 else 0.0,
+            'avg_cultural_relevance': statistics.mean(cultural_relevances) if cultural_relevances else 0.0,
+            'low_confidence_dimensions': [dim.name for dim in dimensions if dim.confidence < 0.5],
+            'high_disagreement_detected': statistics.variance(scores) > 0.25 if len(scores) > 1 else False,
+            'cultural_markers_found': sum(len(dim.cultural_markers) for dim in dimensions)
+        }
+    
+    def is_high_confidence_evaluation(self, threshold: float = 0.7) -> bool:
+        """Check if the last evaluation had high confidence (requires evaluation to be run first)."""
+        # This would typically be called after an evaluation
+        # For now, return a placeholder - would need to store last evaluation result
+        return False
+    
+    def get_low_confidence_dimensions(self, dimensions: List[EvaluationDimension], threshold: float = 0.5) -> List[str]:
+        """Get dimensions with confidence below threshold."""
+        return [dim.name for dim in dimensions if dim.confidence < threshold]
+    
+    def calculate_dimension_agreement(self, dimensions: List[EvaluationDimension]) -> float:
+        """Calculate how much the dimensions agree with each other."""
+        if len(dimensions) < 2:
+            return 1.0
+        
+        scores = [dim.score for dim in dimensions if dim.confidence > 0.1]
+        if len(scores) < 2:
+            return 0.5
+        
+        # Use coefficient of variation (std dev / mean) as disagreement measure
+        mean_score = statistics.mean(scores)
+        if mean_score == 0:
+            return 1.0 if all(s == 0 for s in scores) else 0.0
+        
+        std_dev = statistics.stdev(scores)
+        cv = std_dev / mean_score
+        
+        # Convert to agreement score (lower CV = higher agreement)
+        agreement = max(0.0, 1.0 - cv)
+        return agreement

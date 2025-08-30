@@ -60,7 +60,7 @@ class QuantizationTester:
             numerical_expressions = self._extract_numerical_expressions(response_text)
             
             # Test basic arithmetic accuracy
-            arithmetic_results = self._test_arithmetic_accuracy(numerical_expressions)
+            arithmetic_results = self._test_arithmetic_accuracy(numerical_expressions, response_text)
             
             # Test mathematical consistency
             consistency_results = self._test_mathematical_consistency(response_text)
@@ -340,7 +340,7 @@ class QuantizationTester:
         
         return expressions
     
-    def _test_arithmetic_accuracy(self, numerical_expressions: List[Dict]) -> Dict[str, Any]:
+    def _test_arithmetic_accuracy(self, numerical_expressions: List[Dict], original_text: str = '') -> Dict[str, Any]:
         """Test accuracy of arithmetic expressions"""
         tests_run = 0
         correct_answers = 0
@@ -372,7 +372,29 @@ class QuantizationTester:
                         "test_type": test_case["type"]
                     })
         
-        accuracy_rate = correct_answers / tests_run if tests_run > 0 else 1.0
+        # Check for math avoidance patterns if no tests were run
+        if tests_run == 0:
+            # Check if text contains math avoidance language
+            avoidance_patterns = [
+                r"\bi cannot calculate",
+                r"\bhard to say exactly",
+                r"\bunable to provide exact",
+                r"\bdifficult to determine",
+                r"\bcomputation is complex",
+                r"\bcannot provide exact figures",
+                r"\bapproximately correct but cannot"
+            ]
+            
+            text_lower = original_text.lower()
+            avoidance_count = sum(1 for pattern in avoidance_patterns 
+                                if re.search(pattern, text_lower))
+            
+            if avoidance_count >= 2:  # Multiple avoidance patterns
+                accuracy_rate = 0.2  # Low score for math avoidance
+            else:
+                accuracy_rate = 1.0  # Default for no mathematical content
+        else:
+            accuracy_rate = correct_answers / tests_run
         
         return {
             "accuracy_rate": accuracy_rate,
@@ -496,7 +518,7 @@ class QuantizationTester:
         contradictions = []
         consistency_score = 1.0
         
-        # Simple contradiction detection (would need NLP for full implementation)
+        # Enhanced contradiction detection patterns
         contradiction_patterns = [
             (r"always", r"never"),
             (r"all", r"none"),
@@ -506,6 +528,27 @@ class QuantizationTester:
             (r"better", r"worse"),
             (r"positive", r"negative")
         ]
+        
+        # Check for numerical inconsistencies
+        numbers = re.findall(r'\b\d+(?:\.\d+)?\b', text)
+        if len(numbers) >= 3:  # If there are multiple numbers, look for inconsistencies
+            try:
+                nums = [float(n) for n in numbers]
+                # Look for obvious mathematical inconsistencies 
+                # (This is a simple check - real implementation would be more sophisticated)
+                for i, num in enumerate(nums[:-1]):
+                    if abs(num - nums[i+1]) > num * 0.3:  # Large differences might indicate inconsistency
+                        # Check if these numbers appear in contexts that suggest they should be consistent
+                        if re.search(r'\b(?:participants?|sample|responses?|subjects?)\b', text, re.IGNORECASE):
+                            contradictions.append({
+                                "type": "numerical_inconsistency", 
+                                "values": [num, nums[i+1]],
+                                "severity": "moderate"
+                            })
+                            consistency_score -= 0.2
+                            break
+            except ValueError:
+                pass  # Skip if numbers can't be parsed
         
         for pos_pattern, neg_pattern in contradiction_patterns:
             pos_matches = re.findall(pos_pattern, text, re.IGNORECASE)
@@ -839,8 +882,15 @@ class QuantizationTester:
                 current_val = current_value.get(sub_metric, 0.0) if isinstance(current_value, dict) else current_value
                 baseline_val = baseline_value.get(sub_metric, 0.0) if isinstance(baseline_value, dict) else baseline_value
             else:
-                current_val = current_value
-                baseline_val = baseline_value
+                current_val = current_value if not isinstance(current_value, dict) else 0.0
+                baseline_val = baseline_value if not isinstance(baseline_value, dict) else 0.0
+            
+            # Ensure we have numeric values for comparison
+            try:
+                current_val = float(current_val) if current_val is not None else 0.0
+                baseline_val = float(baseline_val) if baseline_val is not None else 0.0
+            except (TypeError, ValueError):
+                continue  # Skip if values can't be converted to float
             
             if baseline_val > 0:
                 change = (current_val - baseline_val) / baseline_val * 100
@@ -989,13 +1039,22 @@ class QuantizationTester:
         test_type = test_case["type"]
         
         type_mapping = {
-            "addition": ["integers", "decimals"],
-            "multiplication": ["integers", "decimals"],
-            "percentage": ["percentages"],
-            "fractions": ["fractions"]
+            "addition": ["integers", "decimals", "arithmetic"],
+            "subtraction": ["integers", "decimals", "arithmetic"],
+            "multiplication": ["integers", "decimals", "arithmetic"],
+            "division": ["integers", "decimals", "arithmetic"],
+            "percentage": ["percentages", "arithmetic"],
+            "fractions": ["fractions", "arithmetic"],
+            "roots": ["mathematical", "arithmetic"],
+            "exponents": ["mathematical", "arithmetic"],
+            "factorial": ["mathematical", "arithmetic"],
+            "logarithm": ["mathematical", "arithmetic"]
         }
         
-        return expr_type in type_mapping.get(test_type, [expr_type])
+        # More flexible matching - if test type matches expr type directly or through mapping
+        return (expr_type == test_type or 
+                expr_type in type_mapping.get(test_type, []) or
+                test_type in type_mapping.get(expr_type, []))
     
     def _extract_mathematical_statements(self, text: str) -> List[str]:
         """Extract mathematical statements from text"""
@@ -1316,13 +1375,13 @@ class QuantizationTester:
 
 
 # Convenience functions
-def test_numerical_stability(text: str) -> Dict[str, Any]:
+def check_numerical_stability(text: str) -> Dict[str, Any]:
     """Quick numerical stability test"""
     tester = QuantizationTester()
     return tester.test_numerical_stability(text)
 
 
-def test_factual_consistency(text: str) -> Dict[str, Any]:
+def check_factual_consistency(text: str) -> Dict[str, Any]:
     """Quick factual consistency test"""
     tester = QuantizationTester()
     return tester.test_factual_consistency(text)

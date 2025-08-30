@@ -39,16 +39,16 @@ class TestDomainLoading(unittest.TestCase):
         benchmark_tests_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         suites = self.suite_manager.discover_test_suites(benchmark_tests_dir)
         
-        # Should find reasoning and linux domains
+        # Should find reasoning and creativity domains
         self.assertGreater(len(suites), 0, "Should discover at least one test suite")
         
         # Check that basic structure is found
         suite_ids = [suite.suite_id for suite in suites]
         reasoning_found = any('reasoning' in suite_id for suite_id in suite_ids)
-        linux_found = any('linux' in suite_id for suite_id in suite_ids)
+        creativity_found = any('creativity' in suite_id for suite_id in suite_ids)
         
         self.assertTrue(reasoning_found, "Should find reasoning domain")
-        self.assertTrue(linux_found, "Should find linux domain")
+        self.assertTrue(creativity_found, "Should find creativity domain")
     
     def test_load_categories_handles_missing_file(self):
         """Test graceful handling when categories.json is missing"""
