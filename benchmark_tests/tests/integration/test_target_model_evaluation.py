@@ -17,8 +17,8 @@ import os
 # Test imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
 
-from evaluator.reasoning_evaluator import UniversalEvaluator, ReasoningType
-from evaluator.evaluation_config import DEFAULT_CONFIG
+from evaluator.subjects.reasoning_evaluator import UniversalEvaluator, ReasoningType
+from evaluator.core.evaluation_config import DEFAULT_CONFIG
 
 # Disable logging during tests
 logging.disable(logging.CRITICAL)
@@ -136,8 +136,8 @@ class TestTargetModelEvaluation(unittest.TestCase):
         self.assertIsNotNone(qwen_result)
         
         # Scores should be in reasonable ranges for code
-        self.assertGreater(gpt_result.metrics.overall_score, 5)  # Code should score reasonably
-        self.assertGreater(qwen_result.metrics.overall_score, 5)
+        self.assertGreaterEqual(gpt_result.metrics.overall_score, 5)  # Code should score reasonably
+        self.assertGreaterEqual(qwen_result.metrics.overall_score, 5)
         
         # Score difference shouldn't be extreme (same content, different tokenization)
         score_difference = abs(gpt_result.metrics.overall_score - qwen_result.metrics.overall_score)

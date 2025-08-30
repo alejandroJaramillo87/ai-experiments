@@ -13,13 +13,13 @@ import numpy as np
 import math
 from scipy import stats
 
-from evaluator.evaluation_aggregator import (
+from evaluator.core.evaluation_aggregator import (
     EvaluationAggregator,
     AggregatedEvaluationResult,
     EvaluationConsensus,
     BiasAnalysis
 )
-from evaluator.domain_evaluator_base import (
+from evaluator.core.domain_evaluator_base import (
     DomainEvaluationResult,
     EvaluationDimension,
     CulturalContext

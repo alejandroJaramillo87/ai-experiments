@@ -15,10 +15,10 @@ import os
 import statistics
 import numpy as np
 
-from evaluator.evaluation_aggregator import EvaluationAggregator, AggregatedEvaluationResult, BiasAnalysis
-from evaluator.ensemble_disagreement_detector import EnsembleDisagreementDetector
-from evaluator.cultural_dataset_validator import CulturalDatasetValidator  
-from evaluator.domain_evaluator_base import DomainEvaluationResult, EvaluationDimension, CulturalContext
+from evaluator.core.evaluation_aggregator import EvaluationAggregator, AggregatedEvaluationResult, BiasAnalysis
+from evaluator.core.ensemble_disagreement_detector import EnsembleDisagreementDetector
+from evaluator.cultural.cultural_dataset_validator import CulturalDatasetValidator  
+from evaluator.core.domain_evaluator_base import DomainEvaluationResult, EvaluationDimension, CulturalContext
 
 
 class DomainDataLoader:

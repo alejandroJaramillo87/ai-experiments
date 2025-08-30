@@ -18,7 +18,7 @@ import os
 # Test imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
 
-from evaluator.knowledge_validator import (
+from evaluator.validation.knowledge_validator import (
     KnowledgeValidator, FactualTest, ValidationResult, KnowledgeValidationReport
 )
 
@@ -392,8 +392,8 @@ class TestKnowledgeValidator(unittest.TestCase):
         
         self.assertGreater(full_match.factual_accuracy, partial_match.factual_accuracy)
     
-    @patch('evaluator.knowledge_validator.SENTENCE_TRANSFORMERS_AVAILABLE', False)
-    @patch('evaluator.knowledge_validator.SKLEARN_AVAILABLE', False)
+    @patch('evaluator.validation.knowledge_validator.SENTENCE_TRANSFORMERS_AVAILABLE', False)
+    @patch('evaluator.validation.knowledge_validator.SKLEARN_AVAILABLE', False)
     def test_fallback_methods(self):
         """Test fallback methods when ML libraries unavailable"""
         validator = KnowledgeValidator()

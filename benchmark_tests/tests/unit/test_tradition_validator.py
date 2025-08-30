@@ -16,7 +16,7 @@ import os
 # Test imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
 
-from evaluator.tradition_validator import TraditionalKnowledgeValidator, TraditionValidationResult
+from evaluator.cultural.tradition_validator import TraditionalKnowledgeValidator, TraditionValidationResult
 
 # Disable logging during tests
 logging.disable(logging.CRITICAL)

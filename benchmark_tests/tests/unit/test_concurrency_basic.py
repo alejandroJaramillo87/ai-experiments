@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 benchmark_tests_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, benchmark_tests_dir)
 
-from evaluator.reasoning_evaluator import UniversalEvaluator, evaluate_reasoning
+from evaluator.subjects.reasoning_evaluator import UniversalEvaluator, evaluate_reasoning
 
 
 class TestConcurrencyBasic(unittest.TestCase):

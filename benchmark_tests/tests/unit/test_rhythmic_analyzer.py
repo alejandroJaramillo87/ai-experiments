@@ -9,12 +9,12 @@ breath phrasing, and cultural tradition-specific patterns.
 import unittest
 from typing import List
 
-from evaluator.rhythmic_analyzer import (
+from evaluator.linguistics.rhythmic_analyzer import (
     RhythmicQualityAnalyzer,
     RhythmicAnalysis,
     SyllablePattern
 )
-from evaluator.domain_evaluator_base import CulturalContext
+from evaluator.core.domain_evaluator_base import CulturalContext
 
 
 class TestRhythmicQualityAnalyzer(unittest.TestCase):

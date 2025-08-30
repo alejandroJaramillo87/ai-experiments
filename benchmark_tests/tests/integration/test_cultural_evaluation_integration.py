@@ -19,8 +19,8 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
 
 try:
-    from evaluator.reasoning_evaluator import UniversalEvaluator, EvaluationResult
-    from evaluator.evaluation_config import DEFAULT_CONFIG
+    from evaluator.subjects.reasoning_evaluator import UniversalEvaluator, EvaluationResult
+    from evaluator.core.evaluation_config import DEFAULT_CONFIG
     EVALUATOR_AVAILABLE = True
 except ImportError:
     EVALUATOR_AVAILABLE = False

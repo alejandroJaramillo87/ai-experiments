@@ -10,7 +10,7 @@ import unittest
 from typing import List
 from unittest.mock import patch
 
-from evaluator.cultural_pattern_library import (
+from evaluator.cultural.cultural_pattern_library import (
     CulturalPatternLibrary,
     CulturalPattern,
     PatternLibraryEntry,

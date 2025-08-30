@@ -17,10 +17,10 @@ from dataclasses import dataclass
 # Test imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
 
-from evaluator.integration_evaluator import (
+from evaluator.subjects.integration_evaluator import (
     IntegrationEvaluator, IntegrationType, CrossDomainCoherence
 )
-from evaluator.domain_evaluator_base import CulturalContext, EvaluationDimension
+from evaluator.core.domain_evaluator_base import CulturalContext, EvaluationDimension
 
 # Disable logging during tests
 logging.disable(logging.CRITICAL)

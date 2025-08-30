@@ -18,7 +18,7 @@ import os
 # Test imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
 
-from evaluator.consistency_validator import (
+from evaluator.advanced.consistency_validator import (
     ConsistencyValidator, ConsistencyTestResult, CrossPhrasingResult
 )
 
@@ -216,8 +216,8 @@ class TestConsistencyValidator(unittest.TestCase):
         self.assertGreater(len(failures), 0)
         # Test that failures were detected - the specific assertion for len(failures) > 0 already exists above
     
-    @patch('evaluator.consistency_validator.SENTENCE_TRANSFORMERS_AVAILABLE', False)
-    @patch('evaluator.consistency_validator.SKLEARN_AVAILABLE', False)
+    @patch('evaluator.advanced.consistency_validator.SENTENCE_TRANSFORMERS_AVAILABLE', False)
+    @patch('evaluator.advanced.consistency_validator.SKLEARN_AVAILABLE', False)
     def test_fallback_methods(self):
         """Test fallback methods when ML libraries unavailable"""
         validator = ConsistencyValidator()

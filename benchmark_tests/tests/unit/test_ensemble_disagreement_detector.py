@@ -12,7 +12,7 @@ import statistics
 import numpy as np
 import math
 
-from evaluator.ensemble_disagreement_detector import (
+from evaluator.core.ensemble_disagreement_detector import (
     EnsembleDisagreementDetector,
     EvaluationStrategy,
     EvaluationConfiguration,
@@ -20,13 +20,13 @@ from evaluator.ensemble_disagreement_detector import (
     DisagreementAnalysis,
     EnsembleDisagreementResult
 )
-from evaluator.domain_evaluator_base import (
+from evaluator.core.domain_evaluator_base import (
     DomainEvaluationResult,
     EvaluationDimension,
     CulturalContext,
     MultiDimensionalEvaluator
 )
-from evaluator.evaluation_aggregator import ValidationFlag
+from evaluator.core.evaluation_aggregator import ValidationFlag
 
 
 class TestEnsembleDisagreementDetector(unittest.TestCase):

@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 # Import UniversalEvaluator for automatic evaluation
 try:
-    from evaluator.reasoning_evaluator import UniversalEvaluator, ReasoningType, evaluate_reasoning
+    from evaluator.subjects import UniversalEvaluator, ReasoningType, evaluate_reasoning
     EVALUATION_AVAILABLE = True
 except ImportError:
     EVALUATION_AVAILABLE = False

@@ -17,8 +17,8 @@ import os
 benchmark_tests_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, benchmark_tests_dir)
 
-from evaluator.reasoning_evaluator import UniversalEvaluator, evaluate_reasoning, EvaluationMetrics, ReasoningType
-from evaluator.evaluation_config import DEFAULT_CONFIG, UniversalWeights
+from evaluator.subjects.reasoning_evaluator import UniversalEvaluator, evaluate_reasoning, EvaluationMetrics, ReasoningType
+from evaluator.core.evaluation_config import UniversalWeights, DEFAULT_CONFIG
 
 
 class TestEvaluationConfig(unittest.TestCase):
