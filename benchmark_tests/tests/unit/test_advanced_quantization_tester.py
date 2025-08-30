@@ -19,7 +19,7 @@ benchmark_tests_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.ab
 sys.path.insert(0, benchmark_tests_dir)
 
 try:
-    from evaluator.quantization_tester import (QuantizationTester, check_numerical_stability, 
+    from evaluator.advanced.quantization_tester import (QuantizationTester, check_numerical_stability, 
                                              check_factual_consistency, analyze_quantization_impact)
     QUANTIZATION_TESTER_AVAILABLE = True
 except ImportError:

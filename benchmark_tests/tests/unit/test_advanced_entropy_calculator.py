@@ -20,7 +20,7 @@ benchmark_tests_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.ab
 sys.path.insert(0, benchmark_tests_dir)
 
 try:
-    from evaluator.entropy_calculator import EntropyCalculator, calculate_shannon_entropy, analyze_text_entropy
+    from evaluator.advanced.entropy_calculator import EntropyCalculator, calculate_shannon_entropy, analyze_text_entropy
     ENTROPY_CALCULATOR_AVAILABLE = True
 except ImportError:
     ENTROPY_CALCULATOR_AVAILABLE = False

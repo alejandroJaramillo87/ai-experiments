@@ -19,7 +19,7 @@ benchmark_tests_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.ab
 sys.path.insert(0, benchmark_tests_dir)
 
 try:
-    from evaluator.semantic_coherence import (SemanticCoherenceAnalyzer, analyze_semantic_coherence, 
+    from evaluator.advanced.semantic_coherence import (SemanticCoherenceAnalyzer, analyze_semantic_coherence, 
                                             measure_prompt_completion_coherence)
     SEMANTIC_COHERENCE_AVAILABLE = True
 except ImportError:
