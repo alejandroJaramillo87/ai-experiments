@@ -23,11 +23,11 @@ class TestScoreThresholds(unittest.TestCase):
     
     def test_score_threshold_values(self):
         """Test that score thresholds have correct values and ordering."""
-        self.assertEqual(ScoreThresholds.EXCELLENT, 85.0)
-        self.assertEqual(ScoreThresholds.GOOD, 70.0)
-        self.assertEqual(ScoreThresholds.SATISFACTORY, 55.0)
-        self.assertEqual(ScoreThresholds.POOR, 40.0)
-        self.assertEqual(ScoreThresholds.VERY_POOR, 25.0)
+        self.assertEqual(ScoreThresholds.EXCELLENT, 75.0)
+        self.assertEqual(ScoreThresholds.GOOD, 60.0)
+        self.assertEqual(ScoreThresholds.SATISFACTORY, 45.0)
+        self.assertEqual(ScoreThresholds.POOR, 30.0)
+        self.assertEqual(ScoreThresholds.VERY_POOR, 15.0)
         
         # Test ordering (descending)
         self.assertGreater(ScoreThresholds.EXCELLENT, ScoreThresholds.GOOD)

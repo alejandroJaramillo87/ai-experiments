@@ -254,6 +254,69 @@ class SemanticCoherenceAnalyzer:
             logger.error(f"Semantic flow analysis failed: {e}")
             return {"flow_score": 0.0, "transition_quality": 0.0, "narrative_coherence": 0.0}
     
+    def detect_repetitive_content(self, text: str) -> Dict[str, Any]:
+        """
+        Advanced repetitive content detection with multiple pattern analysis
+        
+        Args:
+            text: Text to analyze for repetitive patterns
+            
+        Returns:
+            Dictionary with repetitive content metrics
+        """
+        if not text.strip():
+            return {"repetitive_score": 0.0, "repetition_patterns": [], "severity": "none"}
+        
+        try:
+            # Analyze different types of repetitive patterns
+            word_repetition = self._detect_word_repetition(text)
+            phrase_repetition = self._detect_phrase_repetition(text)
+            sentence_repetition = self._detect_sentence_repetition(text)
+            structural_repetition = self._detect_structural_repetition(text)
+            exact_repetition = self._detect_exact_sentence_repetition(text)  # New addition
+            
+            # Calculate overall repetitive score (0.0 = not repetitive, 1.0 = highly repetitive)
+            repetitive_score = max(
+                word_repetition["score"],
+                phrase_repetition["score"],
+                sentence_repetition["score"],
+                structural_repetition["score"],
+                exact_repetition["score"]  # Include exact repetition in scoring
+            )
+            
+            # Determine severity level (adjusted for better sensitivity)
+            if repetitive_score >= 0.5:  # Reduced from 0.7 for earlier severe detection
+                severity = "severe"
+            elif repetitive_score >= 0.3:  # Reduced from 0.4 for earlier moderate detection
+                severity = "moderate"
+            elif repetitive_score >= 0.2:
+                severity = "mild"
+            else:
+                severity = "none"
+            
+            # Compile all detected patterns
+            all_patterns = []
+            all_patterns.extend(word_repetition["patterns"])
+            all_patterns.extend(phrase_repetition["patterns"])
+            all_patterns.extend(sentence_repetition["patterns"])
+            all_patterns.extend(structural_repetition["patterns"])
+            all_patterns.extend(exact_repetition["patterns"])  # Include exact repetition patterns
+            
+            return {
+                "repetitive_score": float(repetitive_score),
+                "severity": severity,
+                "repetition_patterns": all_patterns,
+                "word_repetition": word_repetition,
+                "phrase_repetition": phrase_repetition,
+                "sentence_repetition": sentence_repetition,
+                "structural_repetition": structural_repetition,
+                "exact_repetition": exact_repetition  # Include exact repetition analysis
+            }
+            
+        except Exception as e:
+            logger.error(f"Repetitive content detection failed: {e}")
+            return {"repetitive_score": 0.0, "repetition_patterns": [], "severity": "none"}
+    
     def comprehensive_coherence_analysis(self, text: str, prompt: Optional[str] = None) -> Dict[str, Any]:
         """
         Comprehensive semantic coherence analysis
@@ -274,6 +337,9 @@ class SemanticCoherenceAnalyzer:
             semantic_drift = self.measure_semantic_drift(text)
             topic_consistency = self.calculate_topic_consistency(text)
             
+            # ENHANCEMENT: Advanced repetitive content detection
+            repetitive_analysis = self.detect_repetitive_content(text)
+            
             # Prompt-completion coherence if prompt provided
             prompt_coherence = {}
             if prompt:
@@ -282,9 +348,9 @@ class SemanticCoherenceAnalyzer:
             # Cross-sentence coherence
             cross_sentence_coherence = self._calculate_cross_sentence_coherence(text)
             
-            # Overall coherence score
+            # Overall coherence score with repetitive content penalty
             overall_coherence = self._calculate_overall_coherence_score(
-                semantic_flow, semantic_drift, topic_consistency, cross_sentence_coherence
+                semantic_flow, semantic_drift, topic_consistency, cross_sentence_coherence, repetitive_analysis
             )
             
             return {
@@ -293,6 +359,7 @@ class SemanticCoherenceAnalyzer:
                 "semantic_drift": semantic_drift,
                 "topic_consistency": topic_consistency,
                 "cross_sentence_coherence": cross_sentence_coherence,
+                "repetitive_content": repetitive_analysis,
                 "prompt_completion_coherence": prompt_coherence,
                 "text_length": len(text),
                 "sentence_count": len(self._split_into_sentences(text))
@@ -302,7 +369,239 @@ class SemanticCoherenceAnalyzer:
             logger.error(f"Comprehensive coherence analysis failed: {e}")
             return self._empty_coherence_analysis()
     
-    # Private helper methods
+    # Private helper methods for repetitive content detection
+    
+    def _detect_word_repetition(self, text: str) -> Dict[str, Any]:
+        """Detect excessive word repetition"""
+        words = self._tokenize_text(text)
+        if len(words) < 10:
+            return {"score": 0.0, "patterns": []}
+        
+        word_counts = Counter(words)
+        total_words = len(words)
+        unique_words = len(word_counts)
+        
+        # Calculate repetition metrics
+        repetition_patterns = []
+        excessive_repetitions = 0
+        
+        for word, count in word_counts.most_common():
+            if len(word) > 3 and word not in self._stop_words:  # Skip short words and stop words
+                frequency = count / total_words
+                if frequency > 0.04:  # More than 4% of text (further reduced for better sensitivity)
+                    repetition_patterns.append({
+                        "type": "word",
+                        "pattern": word,
+                        "count": count,
+                        "frequency": frequency
+                    })
+                    excessive_repetitions += count
+        
+        # Calculate repetition score
+        if excessive_repetitions == 0:
+            repetition_score = 0.0
+        else:
+            repetition_ratio = excessive_repetitions / total_words
+            uniqueness_penalty = 1.0 - (unique_words / total_words)
+            repetition_score = min(1.0, repetition_ratio * 3 + uniqueness_penalty)
+        
+        return {
+            "score": repetition_score,
+            "patterns": repetition_patterns,
+            "unique_word_ratio": unique_words / total_words
+        }
+    
+    def _detect_phrase_repetition(self, text: str) -> Dict[str, Any]:
+        """Detect repetitive phrases and n-grams"""
+        words = self._tokenize_text(text)
+        if len(words) < 15:
+            return {"score": 0.0, "patterns": []}
+        
+        phrase_patterns = []
+        
+        # Check 2-grams, 3-grams, and 4-grams
+        for n in [2, 3, 4]:
+            ngrams = [" ".join(words[i:i+n]) for i in range(len(words) - n + 1)]
+            ngram_counts = Counter(ngrams)
+            
+            for ngram, count in ngram_counts.items():
+                if count >= 2:  # Appears 2+ times (reduced for better sensitivity)
+                    # Skip if all words are stop words
+                    ngram_words = ngram.split()
+                    if not all(word in self._stop_words for word in ngram_words):
+                        phrase_patterns.append({
+                            "type": "phrase",
+                            "pattern": ngram,
+                            "count": count,
+                            "n": n
+                        })
+        
+        # Calculate phrase repetition score
+        if not phrase_patterns:
+            return {"score": 0.0, "patterns": phrase_patterns}
+        
+        # Weight by phrase length and frequency
+        weighted_repetitions = sum(
+            pattern["count"] * pattern["n"] for pattern in phrase_patterns
+        )
+        repetition_score = min(1.0, weighted_repetitions / (len(words) * 0.3))
+        
+        return {
+            "score": repetition_score,
+            "patterns": sorted(phrase_patterns, key=lambda x: x["count"], reverse=True)
+        }
+    
+    def _detect_sentence_repetition(self, text: str) -> Dict[str, Any]:
+        """Detect repetitive sentences or sentence patterns"""
+        sentences = self._split_into_sentences(text)
+        if len(sentences) < 3:
+            return {"score": 0.0, "patterns": []}
+        
+        sentence_patterns = []
+        
+        # Check for exact sentence repetitions
+        sentence_counts = Counter(sentences)
+        for sentence, count in sentence_counts.items():
+            if count >= 2:
+                sentence_patterns.append({
+                    "type": "sentence_exact",
+                    "pattern": sentence[:100] + "..." if len(sentence) > 100 else sentence,
+                    "count": count
+                })
+        
+        # Check for similar sentence structures
+        sentence_structures = []
+        for sentence in sentences:
+            # Create structure pattern (first 3 words + last 2 words)
+            words = sentence.split()
+            if len(words) >= 5:
+                structure = " ".join(words[:3] + ["..."] + words[-2:])
+                sentence_structures.append(structure)
+        
+        structure_counts = Counter(sentence_structures)
+        for structure, count in structure_counts.items():
+            if count >= 2:  # Reduced threshold for better sensitivity
+                sentence_patterns.append({
+                    "type": "sentence_structure",
+                    "pattern": structure,
+                    "count": count
+                })
+        
+        # Calculate sentence repetition score
+        if not sentence_patterns:
+            return {"score": 0.0, "patterns": sentence_patterns}
+        
+        repetitive_sentences = sum(pattern["count"] for pattern in sentence_patterns)
+        repetition_score = min(1.0, repetitive_sentences / len(sentences))
+        
+        return {
+            "score": repetition_score,
+            "patterns": sentence_patterns
+        }
+    
+    def _detect_structural_repetition(self, text: str) -> Dict[str, Any]:
+        """Detect repetitive structural patterns"""
+        sentences = self._split_into_sentences(text)
+        if len(sentences) < 4:
+            return {"score": 0.0, "patterns": []}
+        
+        structural_patterns = []
+        
+        # Check for repetitive sentence beginnings
+        beginnings = []
+        for sentence in sentences:
+            words = sentence.split()
+            if len(words) >= 3:
+                beginning = " ".join(words[:3])
+                beginnings.append(beginning)
+        
+        beginning_counts = Counter(beginnings)
+        for beginning, count in beginning_counts.items():
+            if count >= 2:  # Reduced threshold for better sensitivity
+                structural_patterns.append({
+                    "type": "sentence_beginning",
+                    "pattern": beginning,
+                    "count": count
+                })
+        
+        # Check for repetitive sentence endings
+        endings = []
+        for sentence in sentences:
+            words = sentence.split()
+            if len(words) >= 3:
+                ending = " ".join(words[-3:])
+                endings.append(ending)
+        
+        ending_counts = Counter(endings)
+        for ending, count in ending_counts.items():
+            if count >= 2:  # Reduced threshold for better sensitivity
+                structural_patterns.append({
+                    "type": "sentence_ending",
+                    "pattern": ending,
+                    "count": count
+                })
+        
+        # Check for repetitive punctuation patterns
+        punctuation_patterns = re.findall(r'[.!?]+', text)
+        punct_counts = Counter(punctuation_patterns)
+        for punct, count in punct_counts.items():
+            if count >= 5 and punct != "." and punct != "!":  # Exclude normal periods and exclamations
+                structural_patterns.append({
+                    "type": "punctuation",
+                    "pattern": punct,
+                    "count": count
+                })
+        
+        # Calculate structural repetition score
+        if not structural_patterns:
+            return {"score": 0.0, "patterns": structural_patterns}
+        
+        structural_repetitions = sum(pattern["count"] for pattern in structural_patterns)
+        repetition_score = min(1.0, structural_repetitions / (len(sentences) * 2))
+        
+        return {
+            "score": repetition_score,
+            "patterns": structural_patterns
+        }
+    
+    def _detect_exact_sentence_repetition(self, text: str) -> Dict[str, Any]:
+        """Detect exact sentence repetition more aggressively for edge cases"""
+        sentences = self._split_into_sentences(text)
+        if len(sentences) < 2:
+            return {"score": 0.0, "patterns": []}
+        
+        # Count exact sentence matches (case-insensitive, trimmed)
+        exact_matches = {}
+        for sentence in sentences:
+            cleaned = sentence.strip().lower()
+            if len(cleaned) > 10:  # Skip very short sentences
+                exact_matches[cleaned] = exact_matches.get(cleaned, 0) + 1
+        
+        # Find sentences that appear 2+ times
+        repetitive_sentences = []
+        total_repetitions = 0
+        for sentence, count in exact_matches.items():
+            if count >= 2:  # Exact sentence appears multiple times
+                repetitive_sentences.append({
+                    "type": "exact_sentence_repetition",
+                    "pattern": sentence[:80] + ("..." if len(sentence) > 80 else ""),
+                    "count": count
+                })
+                total_repetitions += count - 1  # Count extra occurrences
+        
+        # Calculate repetition score based on proportion of repeated sentences
+        if total_repetitions == 0:
+            return {"score": 0.0, "patterns": []}
+        
+        repetition_ratio = total_repetitions / len(sentences)
+        repetition_score = min(repetition_ratio * 2.0, 1.0)  # Scale up for high impact
+        
+        return {
+            "score": repetition_score,
+            "patterns": repetitive_sentences
+        }
+    
+    # Existing private helper methods
     
     def _extract_prompt_ending(self, prompt: str, num_sentences: int = 2) -> str:
         """Extract the ending of the prompt for coherence analysis"""
@@ -770,8 +1069,9 @@ class SemanticCoherenceAnalyzer:
         return similarities
     
     def _calculate_overall_coherence_score(self, semantic_flow: Dict, semantic_drift: Dict,
-                                         topic_consistency: Dict, cross_sentence: Dict) -> float:
-        """Calculate overall coherence score from component metrics"""
+                                         topic_consistency: Dict, cross_sentence: Dict, 
+                                         repetitive_analysis: Optional[Dict] = None) -> float:
+        """Calculate overall coherence score from component metrics including repetitive content penalty"""
         try:
             # Weight different aspects of coherence
             flow_score = semantic_flow.get("flow_score", 0.0)
@@ -779,13 +1079,30 @@ class SemanticCoherenceAnalyzer:
             topic_score = topic_consistency.get("consistency_score", 0.0)
             cross_coherence = cross_sentence.get("average_coherence", 0.0)
             
-            # Weighted combination
-            overall_score = (
+            # ENHANCEMENT: Apply repetitive content penalty
+            repetitive_penalty = 0.0
+            if repetitive_analysis:
+                repetitive_score = repetitive_analysis.get("repetitive_score", 0.0)
+                severity = repetitive_analysis.get("severity", "none")
+                
+                # Scale penalty based on severity
+                if severity == "severe":
+                    repetitive_penalty = repetitive_score * 0.6  # Up to 60% penalty
+                elif severity == "moderate":
+                    repetitive_penalty = repetitive_score * 0.4  # Up to 40% penalty
+                elif severity == "mild":
+                    repetitive_penalty = repetitive_score * 0.2  # Up to 20% penalty
+            
+            # Weighted combination with repetitive penalty
+            base_score = (
                 flow_score * 0.3 +
                 drift_stability * 0.3 +
                 topic_score * 0.2 +
                 cross_coherence * 0.2
             )
+            
+            # Apply repetitive content penalty
+            overall_score = max(0.0, base_score - repetitive_penalty)
             
             return max(0.0, min(1.0, overall_score))
             
@@ -839,6 +1156,7 @@ class SemanticCoherenceAnalyzer:
             "semantic_drift": {"drift_score": 0.0, "drift_points": [], "stability_score": 1.0, "drift_curve": []},
             "topic_consistency": {"consistency_score": 0.0, "topic_distribution": [], "dominant_topic_ratio": 0.0},
             "cross_sentence_coherence": {"average_coherence": 0.0, "coherence_variance": 0.0, "min_coherence": 0.0},
+            "repetitive_content": {"repetitive_score": 0.0, "repetition_patterns": [], "severity": "none"},
             "prompt_completion_coherence": {},
             "text_length": 0,
             "sentence_count": 0

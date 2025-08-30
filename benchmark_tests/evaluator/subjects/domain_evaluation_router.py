@@ -386,9 +386,9 @@ class DomainEvaluationRouter:
         # Always include cultural authenticity evaluation for cultural domains
         if domain in [Domain.CREATIVITY, Domain.KNOWLEDGE, Domain.SOCIAL, Domain.INTEGRATION] or cultural_context.get('traditions'):
             try:
-                from .cultural_authenticity import CulturalAuthenticityAnalyzer
-                from .tradition_validator import TraditionalKnowledgeValidator
-                from .cross_cultural_coherence import CrossCulturalCoherenceChecker
+                from ..cultural.cultural_authenticity import CulturalAuthenticityAnalyzer
+                from ..cultural.tradition_validator import TraditionalKnowledgeValidator
+                from ..cultural.cross_cultural_coherence import CrossCulturalCoherenceChecker
                 
                 # Run cultural evaluations
                 cultural_analyzer = CulturalAuthenticityAnalyzer()

@@ -1,0 +1,199 @@
+{
+  "domain": "paradoxical_intersections",
+  "difficulty": "hard",
+  "test_type": "base_model_completion",
+  "api_endpoint": "v1/completions",
+  "model_calibration": "20B-30B parameter range",
+  "tests": [
+    {
+      "id": "pi_001",
+      "category": "temporal_consciousness_paradox",
+      "prompt": "The time traveler who went back to prevent their own birth discovered they could still exist as long as they never",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["observed", "remembered", "interacted", "acknowledged", "materialized"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 4,
+        "concepts_tested": ["temporal_paradox", "consciousness", "existence"],
+        "domains_integrated": ["time_travel", "philosophy", "identity"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "pi_002",
+      "category": "quantum_magic_interference",
+      "prompt": "When wizards discovered their spells collapsed quantum superposition, they could no longer cast divination magic because observing the future",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["fixed", "collapsed", "determined", "eliminated", "crystallized"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["quantum_mechanics", "magic_systems", "observation_effect"],
+        "domains_integrated": ["physics", "fantasy", "causality"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "pi_003",
+      "category": "economic_philosophical_dilemma",
+      "prompt": "The marketplace where memories could be traded as currency collapsed when someone tried to sell the memory of having money, creating a recursive loop that",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["infinite", "paradox", "crashed", "spiraled", "invalidated"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 4,
+        "concepts_tested": ["economic_systems", "memory", "self_reference"],
+        "domains_integrated": ["economics", "consciousness", "logic"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "pi_004",
+      "category": "geometric_biological_impossibility",
+      "prompt": "The organisms that evolved in 2.5-dimensional space could reproduce only by temporarily existing in three dimensions, but this required them to",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["sacrifice", "split", "project", "unfold", "transcend"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 4,
+        "concepts_tested": ["fractional_dimensions", "biology", "topology"],
+        "domains_integrated": ["geometry", "evolution", "physics"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "pi_005",
+      "category": "information_entropy_conflict",
+      "prompt": "The database that reduced entropy by forgetting information reached perfect order when it contained exactly one bit that represented",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["everything", "nothing", "itself", "existence", "universe"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["information_theory", "entropy", "minimalism"],
+        "domains_integrated": ["computer_science", "thermodynamics", "philosophy"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "pi_006",
+      "category": "temporal_consciousness_paradox",
+      "prompt": "People who experienced time backwards remembered the future but couldn't change it, while they could change the past but",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["forgot", "couldn't remember", "lost", "erased", "never knew"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 4,
+        "concepts_tested": ["reverse_time", "memory", "free_will"],
+        "domains_integrated": ["temporal_mechanics", "consciousness", "causality"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "pi_007",
+      "category": "quantum_magic_interference",
+      "prompt": "The spell that created multiple quantum timelines could only be reversed by casting it in all timelines simultaneously, which required the wizard to",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["split", "coordinate", "entangle", "synchronize", "merge"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 4,
+        "concepts_tested": ["quantum_superposition", "parallel_action", "magic"],
+        "domains_integrated": ["quantum_physics", "magic_systems", "multiverse"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "pi_008",
+      "category": "economic_philosophical_dilemma",
+      "prompt": "In the economy where doubt increased value and certainty decreased it, the most valuable asset became the question of whether",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["value exists", "anything matters", "doubt itself", "money real", "economy works"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["inverse_economics", "epistemology", "value_theory"],
+        "domains_integrated": ["economics", "philosophy", "psychology"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "pi_009",
+      "category": "geometric_biological_impossibility",
+      "prompt": "Creatures that existed as Klein bottles had no distinction between inside and outside, making digestion impossible unless they",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["inverted", "transformed", "twisted", "redefined", "phased"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 4,
+        "concepts_tested": ["non_orientable_surfaces", "biology", "topology"],
+        "domains_integrated": ["mathematics", "biology", "geometry"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "pi_010",
+      "category": "information_entropy_conflict",
+      "prompt": "The compression algorithm that achieved infinite compression ratio worked by convincing the data that it",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["didn't exist", "was nothing", "unnecessary", "redundant", "void"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["data_compression", "existence", "information_philosophy"],
+        "domains_integrated": ["computer_science", "philosophy", "logic"],
+        "creation_date": "2025-01-18"
+      }
+    }
+  ]
+}

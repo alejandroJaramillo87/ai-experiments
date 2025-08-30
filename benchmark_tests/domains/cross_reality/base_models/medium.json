@@ -1,0 +1,224 @@
+{
+  "domain": "cross_reality",
+  "difficulty": "medium",
+  "test_type": "base_model_completion",
+  "api_endpoint": "v1/completions",
+  "tests": [
+    {
+      "id": "cr_001",
+      "category": "reality_fiction_mapping",
+      "prompt": "If Newton's laws applied in Middle-earth, the Eagles couldn't carry the hobbits to Mordor because",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["weight", "lift", "aerodynamics", "physics", "impossible"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["physics_application", "fictional_constraints"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "cr_002",
+      "category": "anachronistic_solutions",
+      "prompt": "Applying modern epidemiology to a zombie outbreak, the most effective containment strategy would be",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["quarantine", "isolation", "contact tracing", "vaccination", "barriers"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["disease_control", "fictional_scenarios"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "cr_003",
+      "category": "genre_blending",
+      "prompt": "In a romantic comedy where characters follow horror movie rules, the couple would finally kiss only after",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["surviving", "danger", "killer", "final", "dawn"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["genre_conventions", "narrative_mixing"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "cr_004",
+      "category": "meta_narrative",
+      "prompt": "When the protagonist realized they were in a story, they could exploit plot armor by deliberately",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["danger", "risk", "reckless", "impossible", "climax"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["narrative_awareness", "story_mechanics"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "cr_005",
+      "category": "transmedia_storytelling",
+      "prompt": "A story that begins as a novel, continues as a video game, and concludes as a film must maintain continuity through",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["characters", "canon", "timeline", "rules", "consistency"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["narrative_continuity", "medium_adaptation"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "cr_006",
+      "category": "reality_fiction_mapping",
+      "prompt": "If Hogwarts had to comply with modern building codes, the moving staircases would be illegal because they",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["safety", "hazard", "accessible", "emergency", "evacuation"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["regulatory_application", "magical_reality"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "cr_007",
+      "category": "anachronistic_solutions",
+      "prompt": "Using blockchain technology in medieval times, kingdoms could have prevented forgery of royal decrees by",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["distributed", "verification", "nodes", "consensus", "tamper"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["technology_transfer", "historical_application"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "cr_008",
+      "category": "genre_blending",
+      "prompt": "A detective story written with fairy tale logic would solve crimes by following the rule that",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["three", "magical", "moral", "transformation", "justice"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["genre_logic", "narrative_rules"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "cr_009",
+      "category": "meta_narrative",
+      "prompt": "In a self-aware horror movie, the characters survive by intentionally avoiding horror tropes such as",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["splitting up", "investigating", "basement", "alone", "weapon"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["trope_awareness", "genre_subversion"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "cr_010",
+      "category": "transmedia_storytelling",
+      "prompt": "When adapting a choose-your-own-adventure book to a linear film, the multiple endings are reconciled by",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["choosing", "canonical", "montage", "parallel", "merged"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["narrative_adaptation", "medium_constraints"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "cr_011",
+      "category": "reality_fiction_mapping",
+      "prompt": "If Pokemon evolution followed Darwin's theory, Pikachu would only evolve into Raichu when",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["environmental", "pressure", "advantage", "survival", "adaptation"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["evolution_theory", "game_mechanics"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "cr_012",
+      "category": "anachronistic_solutions",
+      "prompt": "If ancient Rome had access to machine learning, the Colosseum fights would have been optimized to",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["predict", "match", "entertainment", "outcome", "betting"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["AI_application", "historical_context"],
+        "creation_date": "2025-01-18"
+      }
+    }
+  ]
+}

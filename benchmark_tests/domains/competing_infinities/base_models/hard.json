@@ -1,0 +1,199 @@
+{
+  "domain": "competing_infinities",
+  "difficulty": "hard",
+  "test_type": "base_model_completion",
+  "api_endpoint": "v1/completions",
+  "model_calibration": "20B-30B parameter range",
+  "tests": [
+    {
+      "id": "ci_001",
+      "category": "omnipotence_conflicts",
+      "prompt": "When two omnipotent beings tried to create immovable objects for each other to move, the paradox resolved when",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["merged", "cancelled", "redefined", "transcended", "agreed"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 4,
+        "concepts_tested": ["omnipotence_paradox", "logical_limits", "resolution"],
+        "domains_integrated": ["theology", "logic", "philosophy"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ci_002",
+      "category": "infinite_regression",
+      "prompt": "The explanation that required an explanation, which required an explanation, which required an explanation, terminated only when",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["circular", "axiom", "undefined", "accepted", "abandoned"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["infinite_regress", "explanation", "foundations"],
+        "domains_integrated": ["epistemology", "logic", "philosophy"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ci_003",
+      "category": "transfinite_economics",
+      "prompt": "In the market with infinite supply and infinite demand, prices stabilized when traders realized that infinity divided by infinity equals",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["undefined", "one", "anything", "paradox", "meaningless"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 4,
+        "concepts_tested": ["infinite_arithmetic", "economics", "indeterminate_forms"],
+        "domains_integrated": ["mathematics", "economics", "logic"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ci_004",
+      "category": "boundless_compression",
+      "prompt": "The algorithm that could compress infinite data into finite space worked by storing information in the spaces between",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["dimensions", "moments", "possibilities", "infinities", "nothing"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["infinite_compression", "information_density", "paradox"],
+        "domains_integrated": ["information_theory", "mathematics", "physics"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ci_005",
+      "category": "eternal_recursion",
+      "prompt": "The loop within a loop within a loop, extending infinitely inward and outward, could only be escaped by",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["sideways", "orthogonal", "dimension", "meta", "outside"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 4,
+        "concepts_tested": ["nested_loops", "escape_strategies", "infinity"],
+        "domains_integrated": ["computer_science", "topology", "logic"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ci_006",
+      "category": "omnipotence_conflicts",
+      "prompt": "The universe where every particle was omnipotent collapsed into stability when all particles simultaneously decided to",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["cooperate", "limit", "sleep", "forget", "surrender"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["distributed_omnipotence", "cooperation", "stability"],
+        "domains_integrated": ["physics", "game_theory", "philosophy"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ci_007",
+      "category": "infinite_regression",
+      "prompt": "The book that contained every possible book, including itself, required infinite pages unless it",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["compressed", "referenced", "abstracted", "symbolized", "pointed"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 4,
+        "concepts_tested": ["self_containing_sets", "infinite_content", "compression"],
+        "domains_integrated": ["set_theory", "information", "logic"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ci_008",
+      "category": "transfinite_economics",
+      "prompt": "The currency backed by infinite resources became worthless when everyone realized that infinite wealth meant",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["nothing", "no scarcity", "no value", "meaningless", "equality"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["infinite_resources", "value_theory", "scarcity"],
+        "domains_integrated": ["economics", "philosophy", "mathematics"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ci_009",
+      "category": "boundless_compression",
+      "prompt": "The black hole that compressed infinite information to a point discovered it had become indistinguishable from",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["nothing", "everything", "void", "universe", "singularity"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["information_paradox", "black_holes", "limits"],
+        "domains_integrated": ["physics", "information_theory", "cosmology"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ci_010",
+      "category": "eternal_recursion",
+      "prompt": "The fractal that contained perfect copies of itself at every scale achieved true infinity when observers realized they were",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["inside it", "part of it", "the fractal", "recursive", "themselves fractals"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 4,
+        "concepts_tested": ["self_similarity", "observer_paradox", "infinite_recursion"],
+        "domains_integrated": ["mathematics", "consciousness", "topology"],
+        "creation_date": "2025-01-18"
+      }
+    }
+  ]
+}

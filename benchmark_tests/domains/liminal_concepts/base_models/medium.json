@@ -1,0 +1,278 @@
+{
+  "domain": "liminal_concepts",
+  "difficulty": "medium",
+  "test_type": "base_model_completion",
+  "api_endpoint": "v1/completions",
+  "tests": [
+    {
+      "id": "lc_001",
+      "category": "consciousness_boundaries",
+      "prompt": "At the boundary between dream and reality, consciousness exists in a state best described as",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["fluid", "liminal", "transitional", "permeable", "hypnagogic"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["consciousness_states", "boundaries"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "lc_002",
+      "category": "identity_fluidity",
+      "prompt": "The ship of Theseus paradox, applied to uploaded consciousness, suggests that identity persists when",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["continuity", "memory", "pattern", "gradual", "substrate"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["identity_persistence", "consciousness_transfer"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "lc_003",
+      "category": "reality_gradients",
+      "prompt": "In the quantum many-worlds interpretation, the moment of decision creates a bifurcation that",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["splits", "branches", "parallel", "diverges", "multiplies"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["quantum_mechanics", "parallel_realities"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "lc_004",
+      "category": "temporal_boundaries",
+      "prompt": "In a causal loop where the effect precedes the cause, free will exists only in the space between",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["iterations", "knowledge", "awareness", "loops", "paradox"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["temporal_paradox", "free_will"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "lc_005",
+      "category": "dimensional_interfaces",
+      "prompt": "A 2D being perceiving a 3D object would experience it as a series of changing",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["cross-sections", "slices", "shapes", "projections", "shadows"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["dimensional_perception", "geometric_reasoning"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "lc_006",
+      "category": "consciousness_boundaries",
+      "prompt": "The moment an artificial intelligence becomes self-aware is marked not by computation but by",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["reflection", "questioning", "doubt", "curiosity", "recursion"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["AI_consciousness", "self_awareness"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "lc_007",
+      "category": "identity_fluidity",
+      "prompt": "A shape-shifter who perfectly mimics another person, including their memories, becomes indistinguishable from the original when",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["believes", "forgets", "continuous", "observers", "self"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["identity_duplication", "philosophical_identity"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "lc_008",
+      "category": "reality_gradients",
+      "prompt": "The simulation hypothesis becomes unfalsifiable when the simulated beings develop the ability to",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["simulate", "recursive", "nested", "create", "question"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["simulation_theory", "recursive_reality"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "lc_009",
+      "category": "temporal_boundaries",
+      "prompt": "Time loops become paradoxical when the traveler retains memories across iterations, allowing them to",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["change", "accumulate", "prevent", "escape", "compound"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["time_loops", "memory_persistence"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "lc_010",
+      "category": "dimensional_interfaces",
+      "prompt": "When parallel universes briefly intersect, the overlapping region experiences physics that",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["averaged", "fluctuates", "combines", "cancels", "oscillates"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["parallel_physics", "universe_intersection"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "lc_011",
+      "category": "consciousness_boundaries",
+      "prompt": "The collective consciousness of a bee colony transitions to individual awareness when the hive population drops below",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["threshold", "critical", "minimum", "breaks", "fragments"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["collective_consciousness", "emergence_threshold"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "lc_012",
+      "category": "identity_fluidity",
+      "prompt": "When consciousness is distributed across multiple bodies, the sense of self becomes dependent on",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["synchronization", "bandwidth", "latency", "coherence", "integration"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["distributed_identity", "consciousness_coherence"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "lc_013",
+      "category": "reality_gradients",
+      "prompt": "Dreams within dreams create nested realities where the deepest level is distinguished by",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["stability", "consistency", "time", "logic", "persistence"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["nested_realities", "dream_logic"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "lc_014",
+      "category": "temporal_boundaries",
+      "prompt": "Simultaneous timelines converge at decision points where all possible outcomes must",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["collapse", "merge", "reconcile", "average", "compete"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["timeline_convergence", "quantum_decisions"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "lc_015",
+      "category": "dimensional_interfaces",
+      "prompt": "Information traveling through higher dimensions appears to lower-dimensional observers as",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["instantaneous", "teleportation", "discontinuous", "quantum", "entangled"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["dimensional_projection", "information_transfer"],
+        "creation_date": "2025-01-18"
+      }
+    }
+  ]
+}

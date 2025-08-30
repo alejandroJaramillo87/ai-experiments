@@ -12,6 +12,8 @@ from .knowledge_validator import *
 from .integrated_validation_system import *
 from .validation_runner import *
 from .community_flagging_system import *
+from .wikipedia_fact_checker import *
+from .multi_source_fact_validator import *
 
 __all__ = [
     # Knowledge validation
@@ -37,4 +39,19 @@ __all__ = [
     'CommunityFlag',
     'FlagType',
     'FlagSeverity',
+    
+    # Wikipedia fact checking
+    'WikipediaFactChecker',
+    'FactualClaim',
+    'WikipediaValidationResult', 
+    'FactCheckingResult',
+    'ClaimType',
+    'integrate_with_ensemble_evaluation',
+    
+    # Multi-source fact validation
+    'MultiSourceFactValidator',
+    'SourceValidationResult',
+    'EnsembleFactValidationResult',
+    'ValidationSource',
+    'integrate_multi_source_validation',
 ]
