@@ -35,11 +35,11 @@ __all__ = [
     'ValidationResult',
     
     # Cross-cultural coherence
-    'CrossCulturalCoherenceAnalyzer',
+    'CrossCulturalCoherenceChecker',
     'CoherenceMetrics',
     
     # Tradition validation
-    'TraditionValidator',
+    'TraditionalKnowledgeValidator',
     'TraditionMetrics',
     
     # Intercultural competence

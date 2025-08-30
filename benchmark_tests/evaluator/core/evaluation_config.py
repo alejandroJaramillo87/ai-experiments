@@ -14,11 +14,11 @@ from typing import Dict, List
 
 class ScoreThresholds:
     """Score threshold definitions for evaluation categories"""
-    EXCELLENT = 85.0
-    GOOD = 70.0
-    SATISFACTORY = 55.0
-    POOR = 40.0
-    VERY_POOR = 25.0
+    EXCELLENT = 75.0    # Reduced from 85.0 to address conservative scoring (-15 gap)
+    GOOD = 60.0         # Reduced from 70.0 to better align with mid-range responses  
+    SATISFACTORY = 45.0 # Reduced from 55.0 to properly score adequate responses
+    POOR = 30.0         # Reduced from 40.0 to maintain proportional spacing
+    VERY_POOR = 15.0    # Reduced from 25.0 to maintain proportional spacing
 
 
 class UniversalWeights:

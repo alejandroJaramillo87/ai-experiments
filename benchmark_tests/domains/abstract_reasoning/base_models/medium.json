@@ -1,0 +1,224 @@
+{
+  "domain": "abstract_reasoning",
+  "difficulty": "medium",
+  "test_type": "base_model_completion",
+  "api_endpoint": "v1/completions",
+  "tests": [
+    {
+      "id": "ar_001",
+      "category": "game_theory",
+      "prompt": "In a game where moves backward in time undo future moves, but moves forward lock past moves permanently, the optimal strategy is to",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["start", "end", "middle", "alternate", "commit"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["temporal_strategy", "game_theory"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ar_002",
+      "category": "paradox_resolution",
+      "prompt": "The paradox states: 'This sentence becomes false when observed.' The resolution requires understanding that observation itself",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["changes", "collapses", "creates", "defines", "determines"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["self_reference", "observation_effects"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ar_003",
+      "category": "pattern_recognition",
+      "prompt": "If every truth creates two lies, and every lie reveals half a truth, then a statement containing three truths would ultimately generate",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["six lies", "three truths", "infinite", "cycle", "equilibrium"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["recursive_logic", "mathematical_patterns"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ar_004",
+      "category": "constraint_satisfaction",
+      "prompt": "In a logic puzzle where every solution eliminates two problems but creates one new problem, the system reaches equilibrium when",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["one problem", "no problems", "cycles", "converges", "stabilizes"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["system_dynamics", "equilibrium"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ar_005",
+      "category": "meta_reasoning",
+      "prompt": "A thought that thinks about itself thinking creates a recursive loop that can only be broken by",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["stopping", "external", "interrupt", "different", "meta"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["recursion", "self_reference"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ar_006",
+      "category": "game_theory",
+      "prompt": "In the Prisoner's Trilemma, where three prisoners can cooperate, defect, or abstain, the Nash equilibrium occurs when all three players choose to",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["abstain", "defect", "mixed", "randomize", "cooperate"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["game_theory", "equilibrium"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ar_007",
+      "category": "paradox_resolution",
+      "prompt": "If a set contains all sets that don't contain themselves, the logical contradiction is resolved by recognizing that",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["levels", "types", "hierarchy", "impossible", "undefined"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["set_theory", "Russell_paradox"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ar_008",
+      "category": "pattern_recognition",
+      "prompt": "In a sequence where each element is the sum of its position and the product of the previous two elements, the pattern stabilizes when",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["zero", "infinity", "oscillates", "fibonacci", "converges"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["sequences", "mathematical_patterns"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ar_009",
+      "category": "constraint_satisfaction",
+      "prompt": "A puzzle where each move must satisfy three conditions: it must be unique, reversible, and improve the state. The maximum number of moves possible is",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["finite", "limited", "bounded", "factorial", "exponential"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 3,
+        "concepts_tested": ["constraint_logic", "optimization"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ar_010",
+      "category": "meta_reasoning",
+      "prompt": "An algorithm that modifies itself based on its own output will eventually",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["converge", "diverge", "oscillate", "stabilize", "crash"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["self_modification", "system_dynamics"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ar_011",
+      "category": "game_theory",
+      "prompt": "In a voting paradox where A beats B, B beats C, and C beats A, the fairest resolution method is to",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["randomize", "rank", "eliminate", "score", "iterate"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["voting_theory", "cyclic_preferences"],
+        "creation_date": "2025-01-18"
+      }
+    },
+    {
+      "id": "ar_012",
+      "category": "paradox_resolution",
+      "prompt": "The statement 'All rules have exceptions' is itself a rule, which means it must",
+      "max_tokens": 50,
+      "temperature": 0.0,
+      "expected_patterns": ["have exceptions", "contradict", "self-refute", "be false", "paradox"],
+      "scoring": {
+        "exact_match": 1.0,
+        "partial_match": 0.5,
+        "semantic_similarity": 0.3
+      },
+      "metadata": {
+        "reasoning_steps": 2,
+        "concepts_tested": ["self_reference", "logical_consistency"],
+        "creation_date": "2025-01-18"
+      }
+    }
+  ]
+}
