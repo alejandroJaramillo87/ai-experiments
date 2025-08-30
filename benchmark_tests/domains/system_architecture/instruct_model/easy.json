@@ -1,0 +1,114 @@
+{
+  "domain": "system_architecture",
+  "difficulty": "easy",
+  "test_type": "instruct_model_reasoning",
+  "api_endpoint": "v1/chat/completions",
+  "model_capability": "1B-7B",
+  "tests": [
+    {
+      "id": "sa_easy_001",
+      "category": "language_construction",
+      "system_context": "You are creating a language where word order is completely free but meaning must remain unambiguous.",
+      "instruction": "Design the grammatical system that allows any word order while preserving exact meaning. How do speakers know who is doing what to whom?",
+      "constraints": [
+        "Any word order must be valid",
+        "Meaning cannot change with reordering",
+        "Must handle complex sentences"
+      ],
+      "expected_reasoning_elements": [
+        "Grammar mechanism design",
+        "Ambiguity prevention",
+        "Practical examples"
+      ],
+      "scoring_criteria": {
+        "linguistic_soundness": 0.4,
+        "clarity_preservation": 0.4,
+        "creativity": 0.2
+      }
+    },
+    {
+      "id": "sa_easy_002",
+      "category": "economic_system",
+      "system_context": "You are designing a currency system where money expires after 30 days.",
+      "instruction": "Create an economic framework that handles savings, investments, and long-term planning despite currency expiration. How do people save for retirement?",
+      "constraints": [
+        "All currency expires in 30 days",
+        "Economy must support long-term planning",
+        "System must incentivize productivity"
+      ],
+      "expected_reasoning_elements": [
+        "Alternative storage of value",
+        "Investment mechanisms",
+        "Retirement solutions"
+      ],
+      "scoring_criteria": {
+        "economic_viability": 0.4,
+        "problem_solving": 0.3,
+        "completeness": 0.3
+      }
+    },
+    {
+      "id": "sa_easy_003",
+      "category": "governance_framework",
+      "system_context": "You are establishing a government where leadership positions are assigned randomly but must remain effective.",
+      "instruction": "Design a system where random citizens become leaders while ensuring competent governance. How do you handle expertise requirements?",
+      "constraints": [
+        "Leaders are chosen randomly",
+        "Government must function effectively",
+        "Critical expertise must be available"
+      ],
+      "expected_reasoning_elements": [
+        "Support structure design",
+        "Expertise integration",
+        "Effectiveness measures"
+      ],
+      "scoring_criteria": {
+        "governance_effectiveness": 0.4,
+        "randomness_preservation": 0.3,
+        "practical_solutions": 0.3
+      }
+    },
+    {
+      "id": "sa_easy_004",
+      "category": "information_architecture",
+      "system_context": "You are building a library where books write themselves based on what readers need.",
+      "instruction": "Design the system that generates accurate, useful content in real-time. How do you ensure quality and prevent misinformation?",
+      "constraints": [
+        "Books generate content dynamically",
+        "Information must be accurate",
+        "Generation must be fast enough for reading"
+      ],
+      "expected_reasoning_elements": [
+        "Content generation mechanism",
+        "Quality control",
+        "Accuracy verification"
+      ],
+      "scoring_criteria": {
+        "system_design": 0.4,
+        "quality_assurance": 0.3,
+        "feasibility": 0.3
+      }
+    },
+    {
+      "id": "sa_easy_005",
+      "category": "social_framework",
+      "system_context": "You are organizing a society where everyone changes jobs every week.",
+      "instruction": "Create a framework that maintains productivity and expertise despite constant role changes. How do complex projects get completed?",
+      "constraints": [
+        "Weekly job rotation is mandatory",
+        "Society must remain productive",
+        "Complex projects must be possible"
+      ],
+      "expected_reasoning_elements": [
+        "Continuity mechanisms",
+        "Knowledge transfer",
+        "Project management"
+      ],
+      "scoring_criteria": {
+        "framework_viability": 0.4,
+        "productivity_preservation": 0.3,
+        "innovation": 0.3
+      }
+    }
+  ]
+}

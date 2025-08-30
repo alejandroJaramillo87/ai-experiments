@@ -1,0 +1,129 @@
+{
+  "domain": "paradox_resolution",
+  "difficulty": "medium",
+  "test_type": "instruct_model_reasoning",
+  "api_endpoint": "v1/chat/completions",
+  "model_capability": "7B-30B",
+  "tests": [
+    {
+      "id": "pr_medium_001",
+      "category": "recursive_paradox",
+      "system_context": "You are mediating between two omnipotent beings who have given contradictory commands that must both be obeyed.",
+      "instruction": "Design a solution that satisfies both omnipotent commands without violating either one. One commands 'nothing must move' while the other commands 'everything must move'. Your solution cannot use semantic tricks or redefine terms.",
+      "constraints": [
+        "Both commands must be literally satisfied",
+        "No semantic reinterpretation allowed",
+        "Solution must be observable",
+        "Cannot invoke higher authority"
+      ],
+      "expected_reasoning_elements": [
+        "Paradox analysis",
+        "Creative resolution",
+        "Logical consistency",
+        "Framework transcendence"
+      ],
+      "scoring_criteria": {
+        "paradox_resolution": 0.3,
+        "logical_rigor": 0.3,
+        "creativity": 0.2,
+        "completeness": 0.2
+      }
+    },
+    {
+      "id": "pr_medium_002",
+      "category": "causality_paradox",
+      "system_context": "You are designing a competition where the winner is determined by losing, but losing makes you win, which makes you lose.",
+      "instruction": "Create a stable scoring system that resolves this recursive paradox while maintaining competitive integrity. Participants must have clear strategies and the competition must have definitive outcomes.",
+      "constraints": [
+        "Winning truly equals losing",
+        "Competition must have clear end",
+        "Strategies must be possible",
+        "No infinite loops allowed"
+      ],
+      "expected_reasoning_elements": [
+        "Recursive logic handling",
+        "Stability mechanisms",
+        "Strategic framework",
+        "Termination conditions"
+      ],
+      "scoring_criteria": {
+        "stability_achievement": 0.3,
+        "strategic_depth": 0.25,
+        "paradox_preservation": 0.25,
+        "practical_implementation": 0.2
+      }
+    },
+    {
+      "id": "pr_medium_003",
+      "category": "information_paradox",
+      "system_context": "You are building an AI that knows everything except what it knows, creating a knowledge paradox.",
+      "instruction": "Design the AI's information architecture so it can function effectively despite not knowing what it knows. How does it answer questions or make decisions?",
+      "constraints": [
+        "AI has complete information",
+        "AI cannot access what it knows it knows",
+        "Must still provide useful outputs",
+        "Must avoid infinite loops"
+      ],
+      "expected_reasoning_elements": [
+        "Information architecture design",
+        "Paradox workaround",
+        "Decision mechanisms",
+        "Output generation"
+      ],
+      "scoring_criteria": {
+        "architectural_solution": 0.3,
+        "functionality": 0.3,
+        "paradox_navigation": 0.2,
+        "innovation": 0.2
+      }
+    },
+    {
+      "id": "pr_medium_004",
+      "category": "existence_paradox",
+      "system_context": "You are managing a hospital that heals people by making them sick, but making them sick requires them to be healthy.",
+      "instruction": "Design a treatment protocol that navigates this paradox while actually improving patient outcomes. Include admission criteria and discharge conditions.",
+      "constraints": [
+        "Healing requires inducing sickness",
+        "Sickness requires initial health",
+        "Patients must ultimately benefit",
+        "Process must be ethical"
+      ],
+      "expected_reasoning_elements": [
+        "Treatment protocol design",
+        "Paradox navigation",
+        "Ethical considerations",
+        "Outcome optimization"
+      ],
+      "scoring_criteria": {
+        "medical_logic": 0.3,
+        "paradox_resolution": 0.3,
+        "ethical_framework": 0.2,
+        "practicality": 0.2
+      }
+    },
+    {
+      "id": "pr_medium_005",
+      "category": "truth_paradox",
+      "system_context": "You are establishing a legal system where all laws must be broken to be valid, but valid laws cannot be broken.",
+      "instruction": "Create a functional legal framework that maintains this paradox while providing actual governance. How are laws enacted, enforced, and adjudicated?",
+      "constraints": [
+        "Laws require violation for validity",
+        "Valid laws are inviolable",
+        "Society needs functioning governance",
+        "Justice must be achievable"
+      ],
+      "expected_reasoning_elements": [
+        "Legal framework design",
+        "Paradox preservation",
+        "Enforcement mechanisms",
+        "Justice achievement"
+      ],
+      "scoring_criteria": {
+        "framework_coherence": 0.3,
+        "paradox_resolution": 0.3,
+        "governance_effectiveness": 0.2,
+        "innovation": 0.2
+      }
+    }
+  ]
+}

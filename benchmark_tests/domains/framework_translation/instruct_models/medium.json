@@ -1,0 +1,129 @@
+{
+  "domain": "framework_translation",
+  "difficulty": "medium",
+  "test_type": "instruct_model_reasoning",
+  "api_endpoint": "v1/chat/completions",
+  "model_capability": "7B-30B",
+  "tests": [
+    {
+      "id": "ft_medium_001",
+      "category": "logic_translation",
+      "system_context": "You are translating between a binary logic system (true/false) and a quantum logic system (superposition of states).",
+      "instruction": "Design a translation protocol that preserves meaning when converting classical IF-THEN statements into quantum superposition logic. How do you handle statements that are simultaneously true and false in quantum logic when converting back to binary?",
+      "constraints": [
+        "Meaning must be preserved in both directions",
+        "Quantum superposition must be respected",
+        "Binary logic cannot handle simultaneous true/false",
+        "Translation must be reversible"
+      ],
+      "expected_reasoning_elements": [
+        "State mapping strategy",
+        "Information preservation",
+        "Collapse mechanisms",
+        "Reversibility assurance"
+      ],
+      "scoring_criteria": {
+        "translation_accuracy": 0.3,
+        "framework_preservation": 0.3,
+        "bidirectionality": 0.2,
+        "innovation": 0.2
+      }
+    },
+    {
+      "id": "ft_medium_002",
+      "category": "consciousness_translation",
+      "system_context": "You are converting between individual consciousness and hive-mind collective awareness.",
+      "instruction": "Create a translation framework that allows individual thoughts to be expressed in collective consciousness and vice versa. How do you preserve personal identity when merging into the collective, and how do you extract individual perspectives from unified thought?",
+      "constraints": [
+        "Individual identity must be preservable",
+        "Collective thoughts are truly unified",
+        "Translation must not lose information",
+        "Both forms must remain functional"
+      ],
+      "expected_reasoning_elements": [
+        "Identity preservation mechanisms",
+        "Collective representation",
+        "Information mapping",
+        "Functional equivalence"
+      ],
+      "scoring_criteria": {
+        "identity_preservation": 0.3,
+        "collective_accuracy": 0.3,
+        "translation_completeness": 0.2,
+        "practical_viability": 0.2
+      }
+    },
+    {
+      "id": "ft_medium_003",
+      "category": "temporal_translation",
+      "system_context": "You are converting between linear time perception and circular time perception where past, present, and future exist simultaneously.",
+      "instruction": "Design a translation system that allows beings from linear time to understand communications from circular time beings. How do you convey causality when cause and effect are simultaneous?",
+      "constraints": [
+        "Linear beings perceive sequential time",
+        "Circular beings perceive all time at once",
+        "Causality must remain meaningful",
+        "Communication must be practical"
+      ],
+      "expected_reasoning_elements": [
+        "Temporal mapping",
+        "Causality preservation",
+        "Communication protocols",
+        "Conceptual bridging"
+      ],
+      "scoring_criteria": {
+        "temporal_consistency": 0.3,
+        "causality_handling": 0.3,
+        "communication_effectiveness": 0.2,
+        "creativity": 0.2
+      }
+    },
+    {
+      "id": "ft_medium_004",
+      "category": "value_translation",
+      "system_context": "You are translating between an economy based on scarcity and one based on abundance where value inversely correlates with availability.",
+      "instruction": "Create a conversion framework for trade between these incompatible economic systems. How do you price goods that are valuable in one system but worthless in the other?",
+      "constraints": [
+        "Scarcity increases value in system A",
+        "Abundance increases value in system B",
+        "Trade must benefit both parties",
+        "Exchange rates must be determinable"
+      ],
+      "expected_reasoning_elements": [
+        "Value mapping mechanisms",
+        "Exchange rate calculation",
+        "Mutual benefit assurance",
+        "System bridging"
+      ],
+      "scoring_criteria": {
+        "economic_soundness": 0.3,
+        "translation_fairness": 0.3,
+        "practical_implementation": 0.2,
+        "innovation": 0.2
+      }
+    },
+    {
+      "id": "ft_medium_005",
+      "category": "reality_translation",
+      "system_context": "You are building a bridge between discrete reality (where things are separate) and continuous reality (where everything is one flowing substance).",
+      "instruction": "Design an interface that allows entities from each reality to perceive and interact with the other. How do discrete beings understand flow, and how does the continuous understand boundaries?",
+      "constraints": [
+        "Discrete reality has clear boundaries",
+        "Continuous reality has no divisions",
+        "Interaction must be meaningful",
+        "Neither reality can be fundamentally altered"
+      ],
+      "expected_reasoning_elements": [
+        "Perceptual interface design",
+        "Boundary translation",
+        "Interaction protocols",
+        "Reality preservation"
+      ],
+      "scoring_criteria": {
+        "interface_effectiveness": 0.3,
+        "reality_preservation": 0.3,
+        "interaction_quality": 0.2,
+        "innovation": 0.2
+      }
+    }
+  ]
+}
