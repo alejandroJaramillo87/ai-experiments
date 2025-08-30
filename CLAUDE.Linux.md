@@ -169,3 +169,4 @@ When working on this project, keep in mind:
 
 This is a sophisticated system that goes beyond typical monitoring into genuine system consciousness territory. The goal is creating a temporal digital twin that understands, predicts, and optimizes AI workstation performance through deep system awareness.
 
+Now you should be able to select all this text (Ctrl+A or Cmd+A) and copy it!
