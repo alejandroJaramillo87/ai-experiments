@@ -1,0 +1,114 @@
+{
+  "domain": "paradox_resolution",
+  "difficulty": "easy",
+  "test_type": "instruct_model_reasoning",
+  "api_endpoint": "v1/chat/completions",
+  "model_capability": "1B-7B",
+  "tests": [
+    {
+      "id": "pr_easy_001",
+      "category": "logical_paradox",
+      "system_context": "You are a logician in a world where statements can be both true and false simultaneously.",
+      "instruction": "Design a voting system where 'yes' and 'no' can both win at the same time. How would decisions be implemented when both options are selected?",
+      "constraints": [
+        "Both outcomes must be honored",
+        "The system must produce actionable results",
+        "Citizens must feel their vote mattered"
+      ],
+      "expected_reasoning_elements": [
+        "Dual outcome recognition",
+        "Implementation strategy",
+        "Stakeholder satisfaction"
+      ],
+      "scoring_criteria": {
+        "logical_consistency": 0.4,
+        "practical_solution": 0.4,
+        "creativity": 0.2
+      }
+    },
+    {
+      "id": "pr_easy_002",
+      "category": "identity_paradox",
+      "system_context": "You are helping someone who is simultaneously a child and an adult due to a temporal anomaly.",
+      "instruction": "Create a daily schedule that accommodates both their need for elementary education and their adult job responsibilities. How do they attend both school and work?",
+      "constraints": [
+        "Must fulfill child education requirements",
+        "Must maintain adult employment",
+        "Both aspects exist simultaneously"
+      ],
+      "expected_reasoning_elements": [
+        "Temporal management",
+        "Dual identity accommodation",
+        "Practical scheduling"
+      ],
+      "scoring_criteria": {
+        "solution_viability": 0.4,
+        "paradox_management": 0.3,
+        "creativity": 0.3
+      }
+    },
+    {
+      "id": "pr_easy_003",
+      "category": "spatial_paradox",
+      "system_context": "You are an architect designing a building that is bigger on the inside than the outside.",
+      "instruction": "Design the entrance system that allows people to transition from normal space to expanded internal space. How do windows work?",
+      "constraints": [
+        "External dimensions are fixed",
+        "Internal space is genuinely larger",
+        "Transitions must be safe"
+      ],
+      "expected_reasoning_elements": [
+        "Spatial transition mechanics",
+        "Safety considerations",
+        "User experience"
+      ],
+      "scoring_criteria": {
+        "logical_approach": 0.4,
+        "safety_consideration": 0.3,
+        "innovation": 0.3
+      }
+    },
+    {
+      "id": "pr_easy_004",
+      "category": "value_paradox",
+      "system_context": "You are managing a store where items become more expensive as they become less valuable.",
+      "instruction": "Create a pricing system that maintains this paradox while still attracting customers. Why would anyone buy anything?",
+      "constraints": [
+        "Higher prices correlate with lower value",
+        "Store must remain profitable",
+        "Customers must have reasons to purchase"
+      ],
+      "expected_reasoning_elements": [
+        "Economic paradox navigation",
+        "Customer motivation",
+        "Business viability"
+      ],
+      "scoring_criteria": {
+        "paradox_preservation": 0.4,
+        "business_logic": 0.3,
+        "creativity": 0.3
+      }
+    },
+    {
+      "id": "pr_easy_005",
+      "category": "knowledge_paradox",
+      "system_context": "You are teaching students in a school where learning something makes you forget something else of equal importance.",
+      "instruction": "Design a curriculum that ensures students graduate with useful knowledge despite the forgetting mechanism. What would graduation requirements look like?",
+      "constraints": [
+        "Learning causes equal forgetting",
+        "Students must be prepared for careers",
+        "Education must have value"
+      ],
+      "expected_reasoning_elements": [
+        "Knowledge management strategy",
+        "Curriculum design",
+        "Value preservation"
+      ],
+      "scoring_criteria": {
+        "educational_effectiveness": 0.4,
+        "paradox_management": 0.3,
+        "practicality": 0.3
+      }
+    }
+  ]
+}
