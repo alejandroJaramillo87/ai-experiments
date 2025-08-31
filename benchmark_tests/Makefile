@@ -23,11 +23,29 @@ PHASE2_TEST_DIR := tests/unit/modular/phase2
 DEBUG_DIR := tests/debug
 EXAMPLES_DIR := examples
 
-# Common pytest arguments
+# Common pytest arguments and test patterns
 PYTEST_BASE_ARGS := --tb=short --strict-markers --disable-warnings
 PYTEST_VERBOSE_ARGS := $(PYTEST_BASE_ARGS) -v -s
 PYTEST_QUIET_ARGS := $(PYTEST_BASE_ARGS) -q
 PYTEST_COVERAGE_ARGS := $(PYTEST_BASE_ARGS) --cov=evaluator --cov-report=term-missing --cov-fail-under=$(COVERAGE_MIN)
+
+# Test execution patterns
+define run_test_suite
+	@echo "$(BOLD)$(BLUE)$(1)$(RESET)"
+	@echo "$(shell printf '=%.0s' {1..50})"
+	@$(PYTEST) $(2) $(3) $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+endef
+
+# Prerequisite check pattern
+define check_prerequisite
+	@if $(1) >/dev/null 2>&1; then \
+		echo "$(GREEN)✅ $(2): $(3)$(RESET)"; \
+	else \
+		echo "$(RED)❌ $(2): $(4)$(RESET)"; \
+		exit 1; \
+	fi
+endef
 
 # Color output
 BOLD := \033[1m
@@ -39,78 +57,48 @@ MAGENTA := \033[35m
 CYAN := \033[36m
 RESET := \033[0m
 
-# Phony targets
-.PHONY: help test test-unit test-integration test-calibration test-modular test-phase2 test-analysis test-quick test-verbose test-coverage test-specific test-watch clean clean-all check-env setup debug-registry debug-help calibration-demo examples check-prerequisites check-docker check-server check-model check-calibration check-system calibration-status calibration-validate
+# Phony targets (consolidated)
+.PHONY: help test test-unit test-integration test-calibration test-modular test-analysis test-specific test-watch clean clean-all setup debug-help calibration-demo examples check-prerequisites calibration-status calibration-validate test-domain-loading test-enhanced-evaluator test-semantic-analyzer test-api-suite debug-calibration-framework convert-creativity-tests test-creativity-conversion convert-core-domains test-core-domains-conversion
 
 # Default target
 help:
 	@echo "$(BOLD)$(BLUE)🧪 AI Workstation Benchmark Tests$(RESET)"
 	@echo "$(BOLD)================================$(RESET)"
 	@echo ""
-	@echo "$(BOLD)Core Test Commands:$(RESET)"
-	@echo "  $(GREEN)make test$(RESET)              - Run all tests (unit + integration + modular)"
-	@echo "  $(GREEN)make test-unit$(RESET)         - Run unit tests only"
-	@echo "  $(GREEN)make test-integration$(RESET)  - Run integration tests only"
-	@echo "  $(GREEN)make test-calibration$(RESET)  - Run calibration validation framework tests"
-	@echo "  $(GREEN)make test-modular$(RESET)      - Run modular evaluator tests only"
-	@echo "  $(GREEN)make test-phase2$(RESET)       - Run Phase 2 core functionality tests only"
-	@echo "  $(GREEN)make test-analysis$(RESET)     - Run analysis and validation scripts"
+	@echo "$(BOLD)Core Commands:$(RESET)"
+	@echo "  $(GREEN)make test [MODE=quick|verbose|coverage] [SUITE=unit|integration|all]$(RESET)"
+	@echo "    - Unified test runner with flexible options"
+	@echo "  $(GREEN)make test-calibration$(RESET)     - Calibration validation framework tests"
+	@echo "  $(GREEN)make test-analysis$(RESET)        - Analysis and validation scripts"
+	@echo "  $(GREEN)make test-specific FILE=path$(RESET) - Run specific test file/method"
 	@echo ""
-	@echo "$(BOLD)Debug Tools:$(RESET)"
-	@echo "  $(GREEN)make debug-registry$(RESET)    - Debug evaluator registry issues"
-	@echo "  $(GREEN)make debug-help$(RESET)        - Show available debug utilities"
+	@echo "$(BOLD)Quality Assurance:$(RESET)"
+	@echo "  $(GREEN)make check-prerequisites$(RESET)  - Complete system readiness check"
+	@echo "  $(GREEN)make calibration-validate$(RESET) - Live LLM calibration validation"
+	@echo "  $(GREEN)make test-api-suite$(RESET)       - Complete API connectivity test"
+	@echo "  $(GREEN)make test-enhanced-evaluator$(RESET) - Enhanced evaluator import test"
 	@echo ""
-	@echo "$(BOLD)Analysis Tools:$(RESET)"
-	@echo "  $(GREEN)make domain-audit$(RESET)      - Show comprehensive domain coverage analysis"
+	@echo "$(BOLD)Domain Coverage:$(RESET)"
+	@echo "  $(GREEN)make convert-creativity-tests$(RESET)    - Convert creativity base→instruct tests"
+	@echo "  $(GREEN)make convert-core-domains$(RESET)        - Convert all core domains to instruct"
+	@echo "  $(GREEN)make test-creativity-conversion$(RESET)  - Test creativity conversion results"
+	@echo "  $(GREEN)make test-core-domains-conversion$(RESET) - Test core domain conversion"
 	@echo ""
-	@echo "$(BOLD)Calibration & Quality Assurance:$(RESET)"
-	@echo "  $(GREEN)make calibration-validate$(RESET)        - Run live calibration validation (requires LLM server)"
-	@echo "  $(GREEN)make calibration-demo$(RESET)            - Run calibration framework demo"
-	@echo "  $(GREEN)make examples$(RESET)                    - Run example scripts and demos"
+	@echo "$(BOLD)Maintenance & Debug:$(RESET)"
+	@echo "  $(GREEN)make clean$(RESET) / $(GREEN)clean-all$(RESET)  - Clean test artifacts"
+	@echo "  $(GREEN)make setup$(RESET)                - Install test dependencies"
+	@echo "  $(GREEN)make debug-help$(RESET)           - Show debug utilities"
+	@echo "  $(GREEN)make calibration-demo$(RESET)     - Run calibration demo"
 	@echo ""
-	@echo "$(BOLD)Enhancement Testing:$(RESET)"
-	@echo "  $(GREEN)make test-enhanced-evaluator$(RESET)     - Test Phase 1 enhanced universal evaluator"
-	@echo "  $(GREEN)make test-phase1-quality$(RESET)         - Test Phase 1 quality fixes validation"
-	@echo "  $(GREEN)make convert-creativity-tests$(RESET)    - Convert creativity base tests to instruct format"
-	@echo "  $(GREEN)make test-creativity-conversion$(RESET)  - Test enhanced evaluator with converted creativity tests"
-	@echo "  $(GREEN)make convert-core-domains$(RESET)        - Convert core domains to instruct format (680 tests)"
-	@echo "  $(GREEN)make test-core-domains-conversion$(RESET) - Test enhanced evaluator with converted core domain tests"
-	@echo ""
-	@echo "$(BOLD)Development Commands:$(RESET)"
-	@echo "  $(GREEN)make test-quick$(RESET)        - Run essential test subset for quick validation"
-	@echo "  $(GREEN)make test-verbose$(RESET)      - Run all tests with verbose output"
-	@echo "  $(GREEN)make test-coverage$(RESET)     - Run tests with coverage reporting"
-	@echo "  $(GREEN)make test-watch$(RESET)        - Continuously run tests on file changes"
-	@echo ""
-	@echo "$(BOLD)Specific Testing:$(RESET)"
-	@echo "  $(GREEN)make test-specific FILE=path/to/test.py$(RESET)  - Run specific test file"
-	@echo "  $(GREEN)make test-specific FILE=path::TestClass::test_method$(RESET)  - Run specific test method"
-	@echo ""
-	@echo "$(BOLD)Maintenance:$(RESET)"
-	@echo "  $(GREEN)make clean$(RESET)             - Clean test artifacts and cache"
-	@echo "  $(GREEN)make clean-all$(RESET)         - Deep clean including coverage reports"
-	@echo "  $(GREEN)make check-env$(RESET)         - Verify test environment setup"
-	@echo "  $(GREEN)make setup$(RESET)             - Install test dependencies"
-	@echo ""
-	@echo "$(BOLD)Prerequisite Checking:$(RESET)"
-	@echo "  $(GREEN)make check-prerequisites$(RESET)  - Comprehensive calibration readiness check"
-	@echo "  $(GREEN)make check-docker$(RESET)         - Check Docker container status"
-	@echo "  $(GREEN)make check-server$(RESET)         - Test LLM server connectivity"
-	@echo "  $(GREEN)make check-model$(RESET)          - Verify model loading and response"
-	@echo "  $(GREEN)make check-calibration$(RESET)    - Check calibration framework readiness"
-	@echo "  $(GREEN)make check-system$(RESET)         - System resources and GPU status"
-	@echo "  $(GREEN)make calibration-status$(RESET)   - Complete status dashboard"
-	@echo ""
-	@echo "$(BOLD)Examples:$(RESET)"
-	@echo "  $(CYAN)make test ARGS='-k test_evaluator'$(RESET)        # Run tests matching pattern"
-	@echo "  $(CYAN)make test-unit ARGS='--maxfail=1'$(RESET)         # Stop after first failure"
-	@echo "  $(CYAN)make test-specific FILE=tests/unit/test_universal_evaluator.py$(RESET)"
-	@echo "  $(CYAN)make test-coverage ARGS='--cov-report=html'$(RESET)  # Generate HTML coverage"
+	@echo "$(BOLD)Usage Examples:$(RESET)"
+	@echo "  $(CYAN)make test MODE=quick SUITE=unit$(RESET)           # Fast unit tests"
+	@echo "  $(CYAN)make test MODE=coverage$(RESET)                   # All tests with coverage"
+	@echo "  $(CYAN)make test ARGS='-k evaluator'$(RESET)             # Tests matching pattern"
+	@echo "  $(CYAN)make test-specific FILE=tests/unit/test_foo.py$(RESET)"
 	@echo ""
 	@echo "$(BOLD)Environment Variables:$(RESET)"
-	@echo "  $(YELLOW)ARGS$(RESET)     - Additional pytest arguments"
-	@echo "  $(YELLOW)FILE$(RESET)     - Specific test file/method for test-specific"
-	@echo "  $(YELLOW)TIMEOUT$(RESET)  - Test timeout in seconds (default: $(TEST_TIMEOUT))"
+	@echo "  $(YELLOW)MODE$(RESET): quick|verbose|coverage|standard  $(YELLOW)SUITE$(RESET): unit|integration|modular|all"
+	@echo "  $(YELLOW)ARGS$(RESET): Additional pytest arguments       $(YELLOW)FILE$(RESET): Specific test file for test-specific"
 
 # Environment check
 check-env:
@@ -145,42 +133,21 @@ post-test:
 	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	@echo "$(GREEN)✅ Cleanup complete!$(RESET)"
 
-# Run all tests
+# Consolidated test command with mode parameter
+# Usage: make test [MODE=quick|verbose|coverage] [SUITE=unit|integration|modular|analysis|all]
 test: pre-test
-	@echo "$(BOLD)$(BLUE)🧪 Running All Tests$(RESET)"
-	@echo "====================="
-	@$(PYTEST) $(PYTEST_BASE_ARGS) $(UNIT_TEST_DIR) $(INTEGRATION_TEST_DIR) $(ARGS) && \
-	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+	@$(eval TEST_MODE := $(or $(MODE), standard))
+	@$(eval TEST_SUITE := $(or $(SUITE), all))
+	@$(eval PYTEST_ARGS := $(call get_pytest_args,$(TEST_MODE)))
+	@$(eval TEST_DIRS := $(call get_test_dirs,$(TEST_SUITE)))
+	@$(call run_test_suite,🧪 Running $(TEST_SUITE) Tests ($(TEST_MODE) mode),$(PYTEST_ARGS),$(TEST_DIRS))
 
-# Run unit tests only
-test-unit: pre-test
-	@echo "$(BOLD)$(BLUE)🔬 Running Unit Tests$(RESET)"
-	@echo "======================"
-	@$(PYTEST) $(PYTEST_QUIET_ARGS) $(UNIT_TEST_DIR) $(ARGS) && \
-	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+# Legacy aliases for backwards compatibility
+test-unit: ; @$(MAKE) test SUITE=unit
+test-integration: ; @$(MAKE) test SUITE=integration  
+test-modular: ; @$(MAKE) test SUITE=modular
 
-# Run integration tests only
-test-integration: pre-test
-	@echo "$(BOLD)$(BLUE)🔗 Running Integration Tests$(RESET)"
-	@echo "============================="
-	@$(PYTEST) $(PYTEST_QUIET_ARGS) $(INTEGRATION_TEST_DIR) $(ARGS) && \
-	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
-
-# Run modular evaluator tests
-test-modular: pre-test
-	@echo "$(BOLD)$(BLUE)🧩 Running Modular Evaluator Tests$(RESET)"
-	@echo "==================================="
-	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) $(MODULAR_TEST_DIR) $(ARGS) && \
-	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
-
-# Run Phase 2 core functionality tests
-test-phase2: pre-test
-	@echo "$(BOLD)$(BLUE)⚡ Running Phase 2 Core Functionality Tests$(RESET)"
-	@echo "============================================="
-	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) $(PHASE2_TEST_DIR) $(ARGS) && \
-	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
-
-# Run analysis scripts
+# Analysis tests (special case)
 test-analysis: pre-test
 	@echo "$(BOLD)$(BLUE)🔍 Running Analysis Scripts$(RESET)"
 	@echo "============================"
@@ -195,29 +162,20 @@ test-analysis: pre-test
 	fi
 	@$(MAKE) post-test
 
-# Quick test subset for development
-test-quick: pre-test
-	@echo "$(BOLD)$(BLUE)⚡ Running Quick Test Subset$(RESET)"
-	@echo "============================="
-	@$(PYTEST) $(PYTEST_QUIET_ARGS) \
-		$(UNIT_TEST_DIR)/test_universal_evaluator.py \
-		$(UNIT_TEST_DIR)/test_evaluation_config.py \
-		$(ARGS) && \
-	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+# Helper functions for test command
+define get_pytest_args
+$(if $(filter quick,$(1)),$(PYTEST_QUIET_ARGS),\
+$(if $(filter verbose,$(1)),$(PYTEST_VERBOSE_ARGS),\
+$(if $(filter coverage,$(1)),$(PYTEST_COVERAGE_ARGS),\
+$(PYTEST_BASE_ARGS))))
+endef
 
-# Verbose test run
-test-verbose: pre-test
-	@echo "$(BOLD)$(BLUE)📢 Running Tests (Verbose)$(RESET)"
-	@echo "==========================="
-	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) $(UNIT_TEST_DIR) $(INTEGRATION_TEST_DIR) $(ARGS) && \
-	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
-
-# Test with coverage
-test-coverage: pre-test
-	@echo "$(BOLD)$(BLUE)📊 Running Tests with Coverage$(RESET)"
-	@echo "==============================="
-	@$(PYTEST) $(PYTEST_COVERAGE_ARGS) $(UNIT_TEST_DIR) $(INTEGRATION_TEST_DIR) $(ARGS) && \
-	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+define get_test_dirs
+$(if $(filter unit,$(1)),$(UNIT_TEST_DIR),\
+$(if $(filter integration,$(1)),$(INTEGRATION_TEST_DIR),\
+$(if $(filter modular,$(1)),$(MODULAR_TEST_DIR),\
+$(UNIT_TEST_DIR) $(INTEGRATION_TEST_DIR))))
+endef
 
 # Test specific file or method
 test-specific: pre-test
@@ -342,12 +300,6 @@ domain-audit:
 	@echo "  2. $(CYAN)Develop specialized evaluators$(RESET) for research domains"
 	@echo "  3. $(CYAN)Implement advanced scoring$(RESET) for quantum philosophy content"
 
-# Test enhanced universal evaluator
-test-enhanced-evaluator: pre-test
-	@echo "$(BOLD)$(BLUE)🔬 Testing Enhanced Universal Evaluator$(RESET)"
-	@echo "=========================================="
-	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/validation/test_enhanced_universal_evaluator.py $(ARGS) && \
-	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
 
 # Test Phase 1 quality fixes
 test-phase1-quality: pre-test
@@ -380,31 +332,6 @@ test-core-domains-conversion:
 	@echo "======================================================================"
 	@$(PYTHON) $(DEBUG_DIR)/test_core_domains_conversion.py
 
-# Run calibration validation framework tests  
-test-calibration: pre-test
-	@echo "$(BOLD)$(BLUE)🎯 Running Calibration Validation Framework Tests$(RESET)"
-	@echo "==================================================="
-	@echo "$(CYAN)🧪 Running calibration unit tests directly...$(RESET)"
-	@cd $(CALIBRATION_TEST_DIR) && $(PYTHON) test_calibration_suite.py
-	@$(MAKE) post-test
-
-# Run live calibration validation (requires LLM server)
-calibration-validate:
-	@echo "$(BOLD)$(BLUE)🎯 Running Live Calibration Validation$(RESET)"
-	@echo "========================================"
-	@echo "$(YELLOW)⚠️  This requires a running LLM server at http://localhost:8004$(RESET)"
-	@echo ""
-	@cd $(CALIBRATION_TEST_DIR) && $(PYTHON) calibration_validator.py
-
-# Run calibration framework demo
-calibration-demo:
-	@echo "$(BOLD)$(BLUE)🎯 Calibration Framework Demo$(RESET)"
-	@echo "=============================="
-	@echo "$(CYAN)📋 Validating reference test cases...$(RESET)"
-	@cd $(CALIBRATION_TEST_DIR) && $(PYTHON) reference_test_cases.py
-	@echo ""
-	@echo "$(CYAN)🧪 Running calibration unit tests...$(RESET)"
-	@cd $(CALIBRATION_TEST_DIR) && $(PYTHON) test_calibration_suite.py
 
 # Run example scripts and demos  
 examples:
@@ -437,246 +364,123 @@ test-enhanced-integration: pre-test
 # PREREQUISITE CHECKING COMMANDS
 # ========================================================================
 
-# Docker container status check
-check-docker:
-	@echo "$(BOLD)$(BLUE)🐳 Docker Container Status Check$(RESET)"
-	@echo "=================================="
-	@echo ""
-	@echo "$(CYAN)🔍 Checking Docker service status:$(RESET)"
-	@if ! command -v docker >/dev/null 2>&1; then \
-		echo "$(RED)❌ Docker command not found$(RESET)"; \
-		echo "$(YELLOW)💡 Install Docker first$(RESET)"; \
-		exit 1; \
-	fi
-	@if ! docker info >/dev/null 2>&1; then \
-		echo "$(RED)❌ Docker daemon not running$(RESET)"; \
-		echo "$(YELLOW)💡 Start Docker service: sudo systemctl start docker$(RESET)"; \
-		exit 1; \
-	fi
-	@echo "$(GREEN)✅ Docker service running$(RESET)"
-	@echo ""
-	@echo "$(CYAN)🔍 Checking for llama-gpu containers:$(RESET)"
-	@if docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(llama|gpu)" >/dev/null 2>&1; then \
-		echo "$(GREEN)✅ LLM containers found:$(RESET)"; \
-		docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | head -1; \
-		docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(llama|gpu)" | sed 's/^/  /'; \
-	else \
-		echo "$(YELLOW)🟡 No llama/gpu containers running$(RESET)"; \
-		echo "$(CYAN)📋 All running containers:$(RESET)"; \
-		docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | sed 's/^/  /'; \
-	fi
-	@echo ""
-	@echo "$(CYAN)🔍 Checking port 8004 mapping:$(RESET)"
-	@if docker ps --format "{{.Ports}}" | grep ":8004" >/dev/null 2>&1; then \
-		echo "$(GREEN)✅ Port 8004 is mapped$(RESET)"; \
-		docker ps --format "{{.Names}}: {{.Ports}}" | grep ":8004" | sed 's/^/  /'; \
-	else \
-		echo "$(YELLOW)🟡 Port 8004 not found in container mappings$(RESET)"; \
-		echo "$(YELLOW)💡 Check if your LLM container exposes port 8004$(RESET)"; \
-	fi
-
-# LLM server connectivity check
-check-server:
-	@echo "$(BOLD)$(BLUE)🌐 LLM Server Connectivity Check$(RESET)"
-	@echo "================================="
-	@echo ""
-	@echo "$(CYAN)🔍 Testing port 8004 connectivity:$(RESET)"
-	@if command -v nc >/dev/null 2>&1; then \
-		if nc -z localhost 8004 2>/dev/null; then \
-			echo "$(GREEN)✅ Port 8004 is reachable$(RESET)"; \
-		else \
-			echo "$(RED)❌ Port 8004 not reachable$(RESET)"; \
-			echo "$(YELLOW)💡 Ensure LLM container is running and port is mapped$(RESET)"; \
-			exit 1; \
-		fi; \
-	else \
-		echo "$(YELLOW)🟡 netcat not available, skipping port test$(RESET)"; \
-	fi
-	@echo ""
-	@echo "$(CYAN)🔍 Testing HTTP endpoint connectivity:$(RESET)"
-	@if command -v curl >/dev/null 2>&1; then \
-		echo "$(CYAN)  Testing http://localhost:8004/health...$(RESET)"; \
-		if curl -s --connect-timeout 5 "http://localhost:8004/health" >/dev/null 2>&1; then \
-			echo "$(GREEN)✅ Health endpoint responding$(RESET)"; \
-		else \
-			echo "$(YELLOW)🟡 Health endpoint not available$(RESET)"; \
-			echo "$(CYAN)  Testing http://localhost:8004/...$(RESET)"; \
-			if curl -s --connect-timeout 5 "http://localhost:8004/" >/dev/null 2>&1; then \
-				echo "$(GREEN)✅ Base endpoint responding$(RESET)"; \
-			else \
-				echo "$(RED)❌ Server not responding to HTTP requests$(RESET)"; \
-				echo "$(YELLOW)💡 Check if LLM server is fully started$(RESET)"; \
-				exit 1; \
-			fi; \
-		fi; \
-	else \
-		echo "$(YELLOW)🟡 curl not available, skipping HTTP test$(RESET)"; \
-	fi
-	@echo "$(GREEN)✅ Server connectivity check complete$(RESET)"
-
-# Model loading and response test
-check-model:
-	@echo "$(BOLD)$(BLUE)🤖 Model Loading and Response Test$(RESET)"
-	@echo "===================================="
-	@echo ""
-	@echo "$(CYAN)🔍 Testing model inference capability:$(RESET)"
-	@if command -v curl >/dev/null 2>&1; then \
-		echo "$(CYAN)  Sending test completion request...$(RESET)"; \
-		response=$$(curl -s --connect-timeout 10 -X POST \
-			-H "Content-Type: application/json" \
-			-d '{"prompt":"Test","max_tokens":5,"temperature":0.1}' \
-			"http://localhost:8004/v1/completions" 2>/dev/null || \
-			curl -s --connect-timeout 10 -X POST \
-			-H "Content-Type: application/json" \
-			-d '{"prompt":"Test","n_predict":5,"temperature":0.1}' \
-			"http://localhost:8004/completion" 2>/dev/null); \
-		if [ -n "$$response" ] && echo "$$response" | grep -E "(choices|content)" >/dev/null 2>&1; then \
-			echo "$(GREEN)✅ Model responding with valid completions$(RESET)"; \
-			echo "$(CYAN)  Sample response length: $$(echo "$$response" | wc -c) chars$(RESET)"; \
-		elif [ -n "$$response" ]; then \
-			echo "$(YELLOW)🟡 Server responding but format unclear$(RESET)"; \
-			echo "$(CYAN)  Response preview: $$(echo "$$response" | head -c 100)...$(RESET)"; \
-		else \
-			echo "$(RED)❌ No response from model endpoint$(RESET)"; \
-			echo "$(YELLOW)💡 Check if model is loaded and server is ready$(RESET)"; \
-			exit 1; \
-		fi; \
-	else \
-		echo "$(YELLOW)🟡 curl not available, skipping model test$(RESET)"; \
-	fi
-	@echo "$(GREEN)✅ Model test complete$(RESET)"
-
-# Calibration framework readiness check
-check-calibration:
-	@echo "$(BOLD)$(BLUE)🎯 Calibration Framework Readiness Check$(RESET)"
+# Comprehensive prerequisite check (master command)
+check-prerequisites:
+	@echo "$(BOLD)$(BLUE)🔍 Comprehensive Prerequisites Check$(RESET)"
 	@echo "============================================="
-	@echo ""
-	@echo "$(CYAN)🔍 Checking calibration framework files:$(RESET)"
-	@calibration_files="$(CALIBRATION_TEST_DIR)/calibration_validator.py $(CALIBRATION_TEST_DIR)/reference_test_cases.py $(CALIBRATION_TEST_DIR)/calibration_reporter.py $(CALIBRATION_TEST_DIR)/test_calibration_suite.py"; \
-	all_present=true; \
-	for file in $$calibration_files; do \
-		if [ -f "$$file" ]; then \
-			echo "$(GREEN)✅ $$file$(RESET)"; \
-		else \
-			echo "$(RED)❌ Missing: $$file$(RESET)"; \
-			all_present=false; \
-		fi; \
-	done; \
-	if [ "$$all_present" = "false" ]; then \
-		echo "$(RED)❌ Some calibration files missing$(RESET)"; \
-		exit 1; \
-	fi
-	@echo ""
-	@echo "$(CYAN)🔍 Testing Python imports:$(RESET)"
-	@cd $(CALIBRATION_TEST_DIR) && \
-	if $(PYTHON) -c "import calibration_validator, reference_test_cases, calibration_reporter" 2>/dev/null; then \
-		echo "$(GREEN)✅ All calibration modules importable$(RESET)"; \
-	else \
-		echo "$(RED)❌ Import errors in calibration modules$(RESET)"; \
-		echo "$(YELLOW)💡 Check Python path and dependencies$(RESET)"; \
-		exit 1; \
-	fi
-	@echo ""
-	@echo "$(CYAN)🔍 Checking benchmark runner integration:$(RESET)"
-	@if [ -f "benchmark_runner.py" ]; then \
-		echo "$(GREEN)✅ benchmark_runner.py found$(RESET)"; \
-		if $(PYTHON) -c "from benchmark_runner import BenchmarkTestRunner" 2>/dev/null; then \
-			echo "$(GREEN)✅ BenchmarkTestRunner importable$(RESET)"; \
-		else \
-			echo "$(YELLOW)🟡 BenchmarkTestRunner import issues$(RESET)"; \
-		fi; \
-	else \
-		echo "$(RED)❌ benchmark_runner.py not found$(RESET)"; \
-		exit 1; \
-	fi
-	@echo "$(GREEN)✅ Calibration framework ready$(RESET)"
-
-# System resources and GPU status check
-check-system:
-	@echo "$(BOLD)$(BLUE)💻 System Resources and GPU Status$(RESET)"
-	@echo "===================================="
-	@echo ""
-	@echo "$(CYAN)🔍 GPU Status:$(RESET)"
-	@if command -v nvidia-smi >/dev/null 2>&1; then \
-		echo "$(GREEN)✅ NVIDIA GPU detected$(RESET)"; \
-		nvidia-smi --query-gpu=name,memory.total,memory.free,utilization.gpu --format=csv,noheader,nounits | \
-		awk -F',' '{printf "  GPU: %s | VRAM: %s/%s GB | Util: %s%%\n", $$1, int($$3/1024), int($$2/1024), $$4}'; \
-	else \
-		echo "$(YELLOW)🟡 No NVIDIA GPU or nvidia-smi not available$(RESET)"; \
-	fi
-	@echo ""
-	@echo "$(CYAN)🔍 System Memory:$(RESET)"
-	@if command -v free >/dev/null 2>&1; then \
-		free -h | grep -E "(Mem|Swap)" | sed 's/^/  /' || true; \
-	fi
-	@echo ""
-	@echo "$(CYAN)🔍 Disk Space:$(RESET)"
-	@df -h . | sed 's/^/  /' 2>/dev/null || echo "  $(YELLOW)Disk info unavailable$(RESET)"
-	@echo ""
-	@echo "$(CYAN)🔍 Docker Resources:$(RESET)"
-	@if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then \
-		echo "  $(GREEN)Docker System Info:$(RESET)"; \
-		docker system df 2>/dev/null | sed 's/^/    /' || echo "    $(YELLOW)Docker stats unavailable$(RESET)"; \
-	fi
-	@echo "$(GREEN)✅ System check complete$(RESET)"
-
-# Complete status dashboard
-calibration-status:
-	@echo "$(BOLD)$(BLUE)📊 Calibration Framework Status Dashboard$(RESET)"
-	@echo "=============================================="
-	@echo ""
 	@overall_status=0; \
-	echo "$(BOLD)Running comprehensive status check...$(RESET)"; \
 	echo ""; \
-	if $(MAKE) check-docker >/dev/null 2>&1; then \
-		echo "$(GREEN)✅ Docker Status:      READY$(RESET)"; \
-	else \
-		echo "$(RED)❌ Docker Status:      NOT READY$(RESET)"; \
-		overall_status=1; \
-	fi; \
-	if $(MAKE) check-server >/dev/null 2>&1; then \
-		echo "$(GREEN)✅ Server Status:      RESPONDING$(RESET)"; \
-	else \
-		echo "$(RED)❌ Server Status:      NOT RESPONDING$(RESET)"; \
-		overall_status=1; \
-	fi; \
-	if $(MAKE) check-model >/dev/null 2>&1; then \
-		echo "$(GREEN)✅ Model Status:       LOADED$(RESET)"; \
-	else \
-		echo "$(RED)❌ Model Status:       NOT LOADED$(RESET)"; \
-		overall_status=1; \
-	fi; \
-	if $(MAKE) check-calibration >/dev/null 2>&1; then \
-		echo "$(GREEN)✅ Calibration:        READY$(RESET)"; \
-	else \
-		echo "$(RED)❌ Calibration:        NOT READY$(RESET)"; \
-		overall_status=1; \
-	fi; \
-	if $(MAKE) check-system >/dev/null 2>&1; then \
-		echo "$(GREEN)✅ System Resources:   AVAILABLE$(RESET)"; \
-	else \
-		echo "$(YELLOW)🟡 System Resources:   LIMITED$(RESET)"; \
-	fi; \
+	echo "$(BOLD)1. Docker Status Check$(RESET)"; \
+	$(call check_prerequisite,$(MAKE) check-docker-internal,Docker Status,READY,NOT READY) || overall_status=1; \
+	echo ""; \
+	echo "$(BOLD)2. Server Connectivity Check$(RESET)"; \
+	$(call check_prerequisite,$(MAKE) check-server-internal,Server Status,RESPONDING,NOT RESPONDING) || overall_status=1; \
+	echo ""; \
+	echo "$(BOLD)3. Model Loading Check$(RESET)"; \
+	$(call check_prerequisite,$(MAKE) check-model-internal,Model Status,LOADED,NOT LOADED) || overall_status=1; \
+	echo ""; \
+	echo "$(BOLD)4. Calibration Framework Check$(RESET)"; \
+	$(call check_prerequisite,$(MAKE) check-calibration-internal,Calibration,READY,NOT READY) || overall_status=1; \
+	echo ""; \
+	echo "$(BOLD)5. System Resources Check$(RESET)"; \
+	$(call check_prerequisite,$(MAKE) check-system-internal,System Resources,AVAILABLE,LIMITED) || true; \
 	echo ""; \
 	if [ $$overall_status -eq 0 ]; then \
 		echo "$(BOLD)$(GREEN)🎯 STATUS: READY FOR CALIBRATION$(RESET)"; \
 		echo "$(CYAN)▶️  Next step: make calibration-validate$(RESET)"; \
 	else \
 		echo "$(BOLD)$(RED)🚫 STATUS: NOT READY$(RESET)"; \
-		echo "$(YELLOW)💡 Run individual checks for details:$(RESET)"; \
-		echo "   $(CYAN)make check-docker$(RESET)"; \
-		echo "   $(CYAN)make check-server$(RESET)"; \
-		echo "   $(CYAN)make check-model$(RESET)"; \
-		echo "   $(CYAN)make check-calibration$(RESET)"; \
+		echo "$(YELLOW)💡 Fix the issues above before proceeding$(RESET)"; \
+		exit 1; \
 	fi
 
-# Comprehensive prerequisite check (master command)
-check-prerequisites: check-docker check-server check-model check-calibration check-system
+# Internal check functions (silent)
+check-docker-internal:
+	@command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 && docker ps --format "{{.Ports}}" | grep ":8004" >/dev/null 2>&1
+
+check-server-internal:
+	@command -v nc >/dev/null 2>&1 && nc -z localhost 8004 2>/dev/null && curl -s --connect-timeout 5 "http://localhost:8004/health" >/dev/null 2>&1
+
+check-model-internal:
+	@command -v curl >/dev/null 2>&1 && response=$$(curl -s --connect-timeout 10 -X POST -H "Content-Type: application/json" -d '{"prompt":"Test","max_tokens":5}' "http://localhost:8004/v1/completions" 2>/dev/null) && echo "$$response" | grep -E "(choices|content)" >/dev/null 2>&1
+
+check-calibration-internal:
+	@[ -f "$(CALIBRATION_TEST_DIR)/calibration_validator.py" ] && cd $(CALIBRATION_TEST_DIR) && $(PYTHON) -c "import calibration_validator, reference_test_cases, calibration_reporter" 2>/dev/null
+
+check-system-internal:
+	@command -v nvidia-smi >/dev/null 2>&1 && command -v free >/dev/null 2>&1
+
+# ========================================================================
+# AUTOMATED TESTING AND DEBUGGING COMMANDS
+# ========================================================================
+
+# Consolidated API testing suite
+test-api-suite:
+	@echo "$(BOLD)$(BLUE)🧪 Complete API Testing Suite$(RESET)"
+	@echo "=============================="
 	@echo ""
-	@echo "$(BOLD)$(GREEN)🎯 CALIBRATION PREREQUISITES CHECK COMPLETE$(RESET)"
-	@echo "$(CYAN)▶️  All systems ready - you can now run:$(RESET)"
-	@echo "   $(GREEN)make calibration-validate$(RESET)  - Run live calibration validation"
-	@echo "   $(GREEN)make calibration-demo$(RESET)       - Run calibration framework demo"
+	@echo "$(CYAN)1. Server Health Check:$(RESET)"
+	@curl -s http://localhost:8004/health | jq . 2>/dev/null && echo "$(GREEN)✅ Health endpoint OK$(RESET)" || echo "$(RED)❌ Health endpoint failed$(RESET)"
+	@echo ""
+	@echo "$(CYAN)2. Basic Completion Test:$(RESET)"
+	@curl -s -X POST \
+		-H "Content-Type: application/json" \
+		-d '{"prompt":"Hello","n_predict":5,"temperature":0.1}' \
+		http://localhost:8004/completion | jq . 2>/dev/null && echo "$(GREEN)✅ Completion endpoint OK$(RESET)" || echo "$(RED)❌ Completion endpoint failed$(RESET)"
+	@echo ""
+	@echo "$(CYAN)3. Haiku Completion Test:$(RESET)"
+	@echo "   Input: Complete traditional Japanese haiku (5-7-5 pattern)"
+	@echo "   Cherry blossoms fall / Gentle spring breeze carries them / ..."
+	@response=$$(curl -s -X POST \
+		-H "Content-Type: application/json" \
+		-d '{"prompt":"Complete this traditional Japanese haiku following the 5-7-5 syllable pattern:\\n\\nCherry blossoms fall\\nGentle spring breeze carries them\\n","n_predict":20,"temperature":0.6}' \
+		http://localhost:8004/completion 2>/dev/null | jq -r '.content' 2>/dev/null | head -1 | sed 's/^/   Response: /'); \
+	if [ -n "$$response" ]; then \
+		echo "$$response"; \
+		echo "$(GREEN)✅ Haiku completion OK$(RESET)"; \
+	else \
+		echo "$(RED)❌ Haiku completion failed$(RESET)"; \
+	fi
+	@echo ""
+	@echo "$(GREEN)✅ API testing suite complete$(RESET)"
+
+# Individual component tests (kept for specific debugging)
+test-domain-loading:
+	@echo "$(BOLD)$(BLUE)📂 Testing Domain File Loading$(RESET)"
+	@echo "================================"
+	@python3 -c "import json; data = json.load(open('domains/reasoning/base_models/easy.json')); print(f'✅ Loaded {len(data[\"tests\"])} tests from easy.json'); print(f'📝 First test ID: {data[\"tests\"][0][\"id\"]}'); print(f'🎯 Test name: {data[\"tests\"][0][\"name\"]}')"
+
+test-enhanced-evaluator:
+	@echo "$(BOLD)$(BLUE)🧠 Testing Enhanced Evaluator Import$(RESET)"
+	@echo "====================================="
+	@python3 -c "from evaluator.subjects.enhanced_universal_evaluator import EnhancedUniversalEvaluator; print('✅ Enhanced evaluator import successful'); evaluator = EnhancedUniversalEvaluator(); print('✅ Enhanced evaluator instantiation successful')" || echo "❌ Enhanced evaluator error"
+
+test-semantic-analyzer:
+	@echo "$(BOLD)$(BLUE)🔍 Testing Semantic Analyzer Logging Fix$(RESET)"
+	@echo "=============================================="
+	@echo "$(CYAN)Testing semantic analyzer error message fix$(RESET)"
+	@cd $(CALIBRATION_TEST_DIR) && timeout 30 python calibration_validator.py 2>&1 | grep -E "(semantic|embedding|ERROR|fallback)" || echo "$(GREEN)✅ No semantic analyzer errors found$(RESET)"
+
+# Debug calibration framework step by step
+debug-calibration-framework:
+	@echo "$(BOLD)$(BLUE)🔧 Debug Calibration Framework$(RESET)"
+	@echo "==============================="
+	@echo "$(CYAN)Step 1: Domain file loading$(RESET)"
+	@$(MAKE) test-domain-loading
+	@echo ""
+	@echo "$(CYAN)Step 2: Enhanced evaluator$(RESET)"
+	@$(MAKE) test-enhanced-evaluator
+	@echo ""
+	@echo "$(CYAN)Step 3: Benchmark runner$(RESET)"
+	@$(MAKE) test-benchmark-endpoint
+	@echo ""
+	@echo "$(CYAN)Step 4: API connectivity$(RESET)"
+	@$(MAKE) test-server-health
+	@echo ""
+	@echo "$(GREEN)✅ Debug framework complete$(RESET)"
+
+# Legacy calibration status (now just calls check-prerequisites)
+calibration-status: check-prerequisites
 
 # ========================================================================
 # CALIBRATION COMMANDS (Re-implemented)

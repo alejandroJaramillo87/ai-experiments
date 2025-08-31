@@ -4,6 +4,8 @@ Base Functional Test Infrastructure
 
 Simple foundation for end-to-end functional testing of the benchmark system
 using real API calls and actual domain test files.
+
+Updated to use shared test infrastructure.
 """
 
 import unittest
@@ -14,6 +16,10 @@ import os
 import json
 import sys
 from typing import List, Tuple, Dict, Any, Optional
+
+# Import shared test infrastructure
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from shared import TestSetupHelper, PathHelper, configure_functional_logging
 
 
 class BaseFunctionalTest(unittest.TestCase):
