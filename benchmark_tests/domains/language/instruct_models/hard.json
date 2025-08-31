@@ -1,0 +1,45 @@
+{
+  "suite_info": {
+    "name": "Instruct Model Hard Language Test Suite",
+    "version": "1.0.0",
+    "total_tests": 115,
+    "description": "Maximum complexity language domain instruction-following tests requiring expert-level linguistic analysis with sophisticated constraint compliance and cultural mastery",
+    "difficulty": "hard",
+    "target_models": "instruct_models", 
+    "coverage_scope": "expert_linguistic_instruction_mastery",
+    "cultural_authenticity": "master_level_cross_linguistic_cultural_integration",
+    "extraction_date": "2025-08-31"
+  },
+  "tests": [
+    {
+      "id": "ling_analysis_01",
+      "name": "Test 1: Multi-Dimensional Areal Linguistics Analysis with Contact Theory",
+      "category": "linguistic_analysis_tasks",
+      "language_type": "instructed_reconstructive",
+      "description": "Perform complex areal linguistics analysis with multiple theoretical frameworks",
+      "messages": [
+        {
+          "role": "system", 
+          "content": "You are a master historical and areal linguist with expertise in contact linguistics, sociolinguistic theory, and deep respect for indigenous and minority language communities. You excel at complex multi-framework analysis while maintaining cultural sensitivity and theoretical rigor."
+        },
+        {
+          "role": "user",
+          "content": "Conduct comprehensive areal linguistics analysis with these complex requirements:\n\nCOMPLEX LINGUISTIC DATA:\nCAUCASIAN CONTACT ZONE - 'mountain' terms:\n- Georgian მთა (mta), Armenian լեռ (ler), Azerbaijani dağ\n- Ossetian хох (khokh), Chechen лам (lam), Avar рукъ (ruq')\n- Russian гора (gora), Turkish dağ, Persian کوه (kuh)\n\nTHEORETICAL FRAMEWORKS TO APPLY:\n1. Historical-comparative method for genetic relationships\n2. Contact linguistics theory (Thomason & Kaufman model)\n3. Areal typology analysis (structural convergence)\n4. Sociolinguistic borrowing hierarchy (Haugen's scale)\n5. Cultural-ecological linguistics (landscape terminology)\n\nCOMPLEX CONSTRAINTS:\n• Integrate genetic, areal, and social factors systematically\n• Address power dynamics in contact situations (Persian, Russian, Turkish dominance)\n• Consider topographical and cultural ecology factors\n• Apply multiple chronological layers of contact\n• Integrate archaeological and historical evidence\n• Address endangered language preservation implications\n\nDELIVERABLE SPECIFICATIONS:\n1. Multi-family proto-form reconstruction with confidence levels\n2. Layered contact analysis (chronological borrowing waves) \n3. Structural convergence patterns beyond lexicon\n4. Sociolinguistic contact hierarchy application\n5. Cultural-ecological interpretation of mountain terminology\n6. Endangered language preservation recommendations\n\nProvide master-level areal linguistics analysis:"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 500,
+        "temperature": 0.15,
+        "top_p": 0.9,
+        "stream": false
+      },
+      "evaluation_criteria": {
+        "theoretical_sophistication": 0.30,
+        "methodological_rigor": 0.25,
+        "cultural_sensitivity": 0.20,
+        "analytical_depth": 0.15,
+        "preservation_awareness": 0.10
+      }
+    }
+  ]
+}

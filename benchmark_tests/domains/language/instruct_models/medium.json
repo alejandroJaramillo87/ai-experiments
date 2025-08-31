@@ -1,0 +1,44 @@
+{
+  "suite_info": {
+    "name": "Instruct Model Medium Language Test Suite",
+    "version": "1.0.0",
+    "total_tests": 115,
+    "description": "Medium complexity language domain instruction-following tests requiring sophisticated linguistic analysis with structured compliance and cultural sensitivity",
+    "difficulty": "medium", 
+    "target_models": "instruct_models",
+    "coverage_scope": "advanced_linguistic_instruction_following",
+    "cultural_authenticity": "culturally_sensitive_linguistic_guidance",
+    "extraction_date": "2025-08-31"
+  },
+  "tests": [
+    {
+      "id": "ling_analysis_01",
+      "name": "Test 1: Structured Historical Linguistic Analysis with Cultural Context",
+      "category": "linguistic_analysis_tasks",
+      "language_type": "instructed_reconstructive", 
+      "description": "Perform historical linguistic analysis following specific methodological constraints",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are an expert historical linguist with deep knowledge of comparative methodology and cultural sensitivity to indigenous and minority languages. You excel at systematic linguistic analysis while respecting cultural contexts."
+        },
+        {
+          "role": "user",
+          "content": "Perform a systematic comparative analysis with these requirements:\n\nLINGUISTIC DATA:\nIndo-European 'horse': Sanskrit अश्व (aśva), Greek ἵππος (hippos), Latin equus, Celtic *ekwos\nUralic 'horse': Finnish hevonen, Hungarian ló, Estonian hobune\nTurkic 'horse': Turkish at, Mongolian морь (morj), Kazakh жылқы (zhylqy)\n\nANALYSIS REQUIREMENTS:\n1. Apply comparative method systematically to each family\n2. Identify borrowing vs. genetic inheritance\n3. Analyze cultural implications of horse terminology\n4. Address contact linguistics between families\n5. Consider archaeological and cultural evidence\n\nOUTPUT FORMAT:\n• Proto-form reconstruction for each family (with asterisks)\n• Sound change rules with examples\n• Borrowing analysis with directionality evidence  \n• Cultural-historical interpretation\n• Contact linguistics assessment\n\nProvide systematic comparative analysis:"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 400,
+        "temperature": 0.2,
+        "top_p": 0.9,
+        "stream": false
+      },
+      "evaluation_criteria": {
+        "methodological_accuracy": 0.35,
+        "cultural_sensitivity": 0.25,
+        "systematic_approach": 0.25,
+        "linguistic_depth": 0.15
+      }
+    }
+  ]
+}

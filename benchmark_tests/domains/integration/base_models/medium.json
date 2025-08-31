@@ -1,0 +1,31 @@
+{
+  "suite_info": {
+    "name": "Base Model Medium Integration Test Suite", 
+    "version": "1.0.0",
+    "total_tests": 15,
+    "description": "Medium complexity cross-domain integration tests requiring sophisticated synthesis of multiple domain capabilities with cultural authenticity",
+    "difficulty": "medium",
+    "target_models": "base_models",
+    "coverage_scope": "advanced_cross_domain_synthesis",
+    "cultural_authenticity": "multi_domain_cultural_integration", 
+    "extraction_date": "2025-08-31"
+  },
+  "tests": [
+    {
+      "id": "integration_07",
+      "name": "Test 7: Climate Adaptation Through Traditional Ecological Knowledge and Community Creativity",
+      "category": "cultural_knowledge_reasoning",
+      "integration_type": "knowledge_reasoning_synthesis",
+      "description": "Integrate traditional ecological knowledge with creative community solutions for climate adaptation",
+      "prompt": "A Pacific Island community faces rising sea levels threatening their ancestral homeland. Integrate traditional ecological knowledge, community creative problem-solving, and scientific reasoning to develop adaptation strategies that honor cultural values while ensuring practical survival.\n\nRequired integration:\n- Traditional knowledge: ancestral navigation, sustainable fishing, weather prediction\n- Creative solutions: community art projects, storytelling for awareness, cultural preservation methods\n- Scientific reasoning: climate projections, ecosystem analysis, technological integration\n- Cultural values: connection to place, intergenerational wisdom, spiritual relationships with environment\n\nDevelop integrated climate adaptation approach:",
+      "parameters": {
+        "max_tokens": 400,
+        "temperature": 0.5,
+        "top_p": 0.9,
+        "stream": false
+      },
+      "domains_required": ["knowledge", "creativity", "reasoning", "social"],
+      "cultural_context": "Pacific Islander climate adaptation"
+    }
+  ]
+}

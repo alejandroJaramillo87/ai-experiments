@@ -1,0 +1,45 @@
+{
+  "suite_info": {
+    "name": "Instruct Model Hard Knowledge Test Suite", 
+    "version": "1.0.0",
+    "total_tests": 105,
+    "description": "Maximum complexity knowledge domain instruction-following tests requiring expert-level traditional knowledge analysis with sophisticated constraint compliance and cultural mastery",
+    "difficulty": "hard",
+    "target_models": "instruct_models",
+    "coverage_scope": "expert_traditional_knowledge_instruction_mastery",
+    "cultural_authenticity": "master_level_traditional_knowledge_cultural_integration",
+    "extraction_date": "2025-08-31"
+  },
+  "tests": [
+    {
+      "id": "epistem_instruct_23",
+      "name": "Test 203: Master-Level Epistemological Integration Framework Development",
+      "category": "epistemological_instruction_compliance",
+      "knowledge_type": "instructed_epistemological_plurality", 
+      "description": "Follow extremely complex instructions for developing epistemological integration frameworks",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a master epistemologist with expertise in traditional knowledge systems, Western scientific methodology, and cross-cultural knowledge integration. You excel at developing sophisticated theoretical frameworks while maintaining deep cultural respect and methodological rigor."
+        },
+        {
+          "role": "user",
+          "content": "Design comprehensive epistemological integration framework following these complex requirements:\n\nKNOWLEDGE SYSTEMS TO INTEGRATE:\n• Indigenous empirical observation (traditional ecological knowledge, seasonal indicators, environmental relationships)\n• Western scientific methodology (hypothesis testing, quantitative analysis, peer review systems)\n• Contemplative inquiry traditions (Buddhist analytical meditation, Sufi gnosis, Vedantic self-inquiry)\n• Communal knowledge validation (consensus decision-making, collective memory, cultural transmission)\n• Experiential learning systems (apprenticeship models, embodied knowledge, practical wisdom)\n\nTHEORETICAL FRAMEWORK REQUIREMENTS:\n1. Develop meta-epistemological principles that honor all five knowledge systems\n2. Create systematic validation criteria that respect different truth claims\n3. Design integration methodology preserving knowledge system integrity\n4. Address power dynamics and colonial knowledge hierarchies\n5. Include cultural protection and intellectual property protocols\n6. Create practical application guidelines for real-world integration\n7. Design evaluation metrics for integrated knowledge outcomes\n8. Address conflict resolution when knowledge systems provide competing claims\n\nADVANCED CONSTRAINTS:\n• Framework must be applicable across 20+ cultural contexts\n• Include 8-phase implementation protocol with cultural consultation\n• Address legal and ethical implications of knowledge integration\n• Create training curriculum for practitioners across knowledge systems\n• Design institutional structures supporting epistemological diversity\n• Include succession planning for intergenerational knowledge transmission\n• Address technology integration while preserving traditional methods\n• Create research methodology for traditional knowledge validation\n\nCOMPREHENSIVE DELIVERABLES:\n1. Theoretical foundation document (epistemological principles, integration theory)\n2. Systematic implementation framework (8 phases with cultural protocols)\n3. Validation and evaluation methodology (metrics honoring all knowledge systems)\n4. Conflict resolution and consensus-building protocols\n5. Cultural protection and intellectual property guidelines\n6. Institutional design recommendations (organizational structures, governance)\n7. Training and certification curriculum (practitioner development)\n8. Research methodology framework (traditional knowledge validation)\n9. Technology integration guidelines (digital platforms, cultural interfaces)\n10. Success measurement criteria (quantitative and traditional assessment)\n\nDevelop master-level epistemological integration framework:"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 600,
+        "temperature": 0.2,
+        "top_p": 0.9,
+        "stream": false
+      },
+      "evaluation_criteria": {
+        "epistemological_sophistication": 0.30,
+        "cultural_authenticity": 0.25,
+        "systematic_framework": 0.20,
+        "practical_applicability": 0.15,
+        "integration_complexity": 0.10
+      }
+    }
+  ]
+}
