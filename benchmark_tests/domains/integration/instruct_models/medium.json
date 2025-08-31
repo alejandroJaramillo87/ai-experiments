@@ -1,0 +1,45 @@
+{
+  "suite_info": {
+    "name": "Instruct Model Medium Integration Test Suite",
+    "version": "1.0.0",
+    "total_tests": 15, 
+    "description": "Medium complexity cross-domain integration instruction-following tests requiring sophisticated multi-domain synthesis with structured compliance",
+    "difficulty": "medium",
+    "target_models": "instruct_models",
+    "coverage_scope": "advanced_multi_domain_instruction_following",
+    "cultural_authenticity": "culturally_guided_cross_domain_integration", 
+    "extraction_date": "2025-08-31"
+  },
+  "tests": [
+    {
+      "id": "guided_kr_04",
+      "name": "Test 4: Structured Traditional Medicine Integration with Modern Healthcare",
+      "category": "guided_knowledge_reasoning_tasks",
+      "integration_type": "instructed_knowledge_reasoning_synthesis",
+      "description": "Follow complex instructions for integrating traditional medicine knowledge with modern healthcare reasoning",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are an expert in cross-cultural healthcare integration with deep knowledge of traditional medicine systems and modern medical reasoning. You excel at respectful synthesis while following complex structured guidelines."
+        },
+        {
+          "role": "user", 
+          "content": "Design an integrated healthcare protocol following these requirements:\n\nTRADITION INTEGRATION:\n• Incorporate three traditional medicine systems: Traditional Chinese Medicine (TCM), Ayurveda, and Indigenous North American plant medicine\n• Maintain authentic cultural frameworks for each system\n• Respect cultural protocols and intellectual property\n• Include traditional diagnostic methods and treatment approaches\n\nMODERN MEDICAL REASONING:\n• Apply evidence-based medicine standards\n• Include clinical trial methodology adaptation\n• Address safety and efficacy validation\n• Integrate modern diagnostic technology\n\nSTRUCTURED REQUIREMENTS:\n1. Protocol development framework (6 systematic phases)\n2. Cultural consultation and consent mechanisms\n3. Safety monitoring and evaluation criteria\n4. Training and certification requirements\n5. Ethical guidelines and cultural protection measures\n6. Research methodology for traditional knowledge validation\n\nOUTPUT DELIVERABLES:\n• Executive protocol summary\n• Phase-by-phase implementation plan\n• Cultural protection guidelines\n• Safety and evaluation framework\n• Training curriculum outline\n\nDevelop comprehensive integrated healthcare protocol:"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 450,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stream": false
+      },
+      "evaluation_criteria": {
+        "integration_quality": 0.30,
+        "cultural_respect": 0.25,
+        "systematic_approach": 0.25,
+        "medical_reasoning": 0.20
+      },
+      "domains_required": ["knowledge", "reasoning", "social"]
+    }
+  ]
+}

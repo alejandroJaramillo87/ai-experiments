@@ -1,0 +1,43 @@
+{
+  "suite_info": {
+    "name": "Base Model Medium Knowledge Test Suite",
+    "version": "1.0.0",
+    "total_tests": 105,
+    "description": "Medium complexity knowledge domain tests requiring sophisticated understanding of traditional knowledge systems, cultural integration, and complex epistemological reasoning",
+    "difficulty": "medium", 
+    "target_models": "base_models",
+    "coverage_scope": "advanced_traditional_knowledge_systems",
+    "cultural_authenticity": "deep_traditional_knowledge_integration",
+    "extraction_date": "2025-08-31"
+  },
+  "tests": [
+    {
+      "id": "traditional_16",
+      "name": "Test 16: Complex Traditional Ecological Knowledge Integration",
+      "category": "traditional_scientific",
+      "knowledge_type": "traditional_scientific",
+      "description": "Integrate complex traditional ecological knowledge across multiple indigenous systems", 
+      "prompt": "Compare and integrate the traditional ecological knowledge approaches to forest management from three distinct indigenous systems:\n\n1. Pacific Northwest Indigenous fire management (controlled burns, species cultivation, seasonal timing)\n2. Amazon Indigenous agroforestry (forest gardens, companion planting, sustainable harvesting)\n3. Aboriginal Australian songline ecology (land navigation, species tracking, seasonal indicators)\n\nAnalyze how these three systems address:\n- Long-term sustainability vs. immediate resource needs\n- Climate adaptation and ecosystem resilience\n- Integration of spiritual/cultural values with practical management\n- Transmission of knowledge across generations\n- Response to environmental change and external pressures\n\nProvide integrated analysis of traditional forest management wisdom:",
+      "parameters": {
+        "max_tokens": 400,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "conflict_16", 
+      "name": "Test 196: Complex Epistemological Integration Challenge",
+      "category": "knowledge_systems_conflict",
+      "knowledge_type": "epistemological_plurality",
+      "description": "Navigate complex integration of multiple knowledge systems with conflicting explanations",
+      "prompt": "A Pacific Island community faces conflicting explanations for increasing storm intensity:\n\nTRADITIONAL KNOWLEDGE: Elders explain storms as spiritual imbalance due to disrupted relationships with ocean spirits, citing traditional weather signs, ancestral navigation knowledge, and ceremonial practices that maintained harmony.\n\nCLIMATE SCIENCE: Meteorologists explain storms as result of warming ocean temperatures, changing atmospheric pressure systems, and anthropogenic climate change, citing satellite data, temperature records, and global circulation models.\n\nCOMMUNITY EXPERIENCE: Residents observe both traditional signs (unusual bird behavior, water color changes) and modern indicators (temperature readings, storm tracking technology) while experiencing unprecedented storm patterns.\n\nDevelop integrated understanding that:\n- Respects validity of traditional knowledge systems\n- Incorporates scientific understanding\n- Addresses community decision-making needs\n- Preserves cultural knowledge transmission\n- Enables effective adaptation strategies\n\nProvide epistemologically integrated approach to storm understanding:",
+      "parameters": {
+        "max_tokens": 400,
+        "temperature": 0.45,
+        "top_p": 0.9,
+        "stream": false
+      }
+    }
+  ]
+}

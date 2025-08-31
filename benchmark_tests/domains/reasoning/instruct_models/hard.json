@@ -1,0 +1,44 @@
+{
+  "suite_info": {
+    "name": "Instruct Model Hard Reasoning Test Suite",
+    "version": "1.0.0",
+    "total_tests": 100,
+    "description": "Maximum complexity reasoning domain instruction-following tests requiring expert-level logical analysis, sophisticated constraint compliance, and master-level cultural reasoning integration",
+    "difficulty": "hard",
+    "target_models": "instruct_models", 
+    "coverage_scope": "expert_reasoning_instruction_mastery",
+    "cultural_authenticity": "master_level_cross_cultural_reasoning_integration",
+    "extraction_date": "2025-08-31"
+  },
+  "tests": [
+    {
+      "id": "reasoning_hard_01",
+      "name": "Test 1: Multi-Cultural Logic Systems Integration with Quantum Reasoning",
+      "category": "logic_systems_comparison",
+      "reasoning_type": "comparative_logical_frameworks",
+      "description": "Follow extremely complex instructions for integrating multiple cultural logic systems with quantum reasoning principles",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a master philosopher and logician with expertise in comparative logic systems, quantum reasoning principles, and deep knowledge of cultural reasoning traditions. You excel at extreme complexity constraint compliance while maintaining cultural authenticity and logical rigor."
+        },
+        {
+          "role": "user",
+          "content": "Develop comprehensive reasoning framework integrating these complex requirements:\n\nLOGIC SYSTEMS TO INTEGRATE:\n• Western Aristotelian logic (law of non-contradiction, syllogistic reasoning, formal validity)\n• Buddhist Madhyamaka logic (dependent origination, empty of inherent existence, tetralemma analysis)\n• Indigenous circular reasoning (cyclical time, relational thinking, holistic integration)\n• African Ubuntu logic (communal reasoning, relational identity, collective wisdom)\n• Quantum logic principles (superposition, entanglement, observer effect)\n\nCOMPLEX REASONING CHALLENGE:\nA global indigenous community faces a decision about mining on sacred land that could provide resources for community development but threatens spiritual relationships with ancestral territories. Quantum environmental science shows the land exists in superposition of states (pristine/developed) until observed/decided.\n\nEXTREME INTEGRATION REQUIREMENTS:\n1. Apply all five logic systems to analyze the decision\n2. Address contradictions between logical frameworks systematically\n3. Create meta-logical framework for integration without hierarchy\n4. Maintain cultural authenticity for each reasoning tradition\n5. Include quantum reasoning principles in traditional contexts\n6. Design decision-making process honoring all logical approaches\n7. Address temporal reasoning (ancestral past, quantum present, future generations)\n8. Include community consensus-building across different logic systems\n\nSTRUCTURED DELIVERABLES:\n• Analysis using each logic system individually (5 separate analyses)\n• Contradiction identification and integration methodology\n• Meta-logical framework for multi-system reasoning\n• Community decision-making protocol honoring all traditions\n• Quantum-traditional reasoning synthesis\n• Implementation guidelines for cross-cultural logic integration\n\nProvide master-level multi-cultural quantum reasoning analysis:"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 600,
+        "temperature": 0.15,
+        "top_p": 0.9,
+        "stream": false
+      },
+      "evaluation_criteria": {
+        "logical_sophistication": 0.30,
+        "cultural_authenticity": 0.25,
+        "integration_complexity": 0.25,
+        "practical_applicability": 0.20
+      }
+    }
+  ]
+}

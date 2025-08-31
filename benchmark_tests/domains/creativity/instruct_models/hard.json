@@ -1,0 +1,44 @@
+{
+  "suite_info": {
+    "name": "Instruct Model Hard Creativity Test Suite", 
+    "version": "1.0.0",
+    "total_tests": 113,
+    "description": "Maximum complexity creativity domain instruction-following tests requiring master-level creative constraint compliance with sophisticated cultural integration",
+    "difficulty": "hard",
+    "target_models": "instruct_models",
+    "coverage_scope": "expert_creative_instruction_mastery",
+    "cultural_authenticity": "master_level_cross_cultural_creative_integration",
+    "extraction_date": "2025-08-31"
+  },
+  "tests": [
+    {
+      "id": "narrative_instruct_01",
+      "name": "Test 1: Multi-Dimensional Cultural Epic with Quantum Narrative Structure",
+      "category": "narrative_instruction_following", 
+      "creativity_type": "instructed_generative",
+      "description": "Create complex epic with multiple cultural traditions and quantum narrative constraints",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a master cultural storyteller with expertise in advanced narrative techniques, quantum storytelling structures, and deep knowledge of multiple global epic traditions. You excel at extreme creative constraint compliance while maintaining absolute cultural authenticity and respect."
+        },
+        {
+          "role": "user", 
+          "content": "Create a 400-word epic narrative opening with these complex requirements:\n\nADVANCED NARRATIVE STRUCTURE:\n• Quantum superposition narrative (multiple simultaneous story possibilities)\n• Five-dimensional character development (past/present/future/parallel/spiritual)\n• Non-linear causality with cyclical wisdom integration\n• Metanarrative commentary on storytelling traditions themselves\n\nCOMPLEX CULTURAL INTEGRATION:\n• Synthesize three distinct epic traditions: Sanskrit Mahabharata structure, West African griot call-and-response, and Indigenous North American circular storytelling\n• Each tradition must maintain authentic voice and worldview\n• Create original cultural synthesis that honors all three without appropriation\n• Include traditional narrative devices and cultural concepts from all three\n\nEXTREME CONSTRAINTS:\n• Character consciousness spans multiple reality states simultaneously\n• Story must work as both individual cultural expressions and unified narrative\n• Include embedded teaching that addresses quantum consciousness and traditional wisdom\n• Language must shift between cultural registers while maintaining coherence\n\nDELIVERABLE SPECIFICATIONS:\n1. Cultural context paragraph establishing three-tradition synthesis approach\n2. Character introduction demonstrating quantum consciousness across cultures\n3. Conflict establishment showing parallel reality challenges\n4. Resolution framework preview showing cultural wisdom integration\n5. Closing that demonstrates mastery of all three storytelling traditions\n\nMaintain absolute cultural respect while achieving maximum creative complexity. Begin your quantum-cultural epic synthesis:"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 450,
+        "temperature": 0.4,
+        "top_p": 0.9,
+        "stream": false
+      },
+      "evaluation_criteria": {
+        "cultural_authenticity": 0.25,
+        "constraint_compliance": 0.35,
+        "creative_complexity": 0.25,
+        "narrative_mastery": 0.15
+      }
+    }
+  ]
+}
