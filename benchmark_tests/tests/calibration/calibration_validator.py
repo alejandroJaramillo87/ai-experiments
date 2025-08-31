@@ -19,10 +19,11 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 
-# Add the project root to Python path
+# Add the project root to Python path  
 sys.path.append('.')
 sys.path.append('..')
 sys.path.append('../..')
+sys.path.append('../../..')  # Added for new calibration directory location
 
 from benchmark_runner import BenchmarkTestRunner
 from reference_test_cases import REFERENCE_TEST_CASES
@@ -74,15 +75,17 @@ class CalibrationValidator:
             True if setup successful, False otherwise
         """
         try:
-            # Initialize benchmark runner with sequential configuration
-            self.benchmark_runner = BenchmarkTestRunner()
+            # Initialize benchmark runner with llama.cpp endpoint configuration
+            # llama.cpp uses /completion instead of OpenAI's /v1/completions
+            llama_cpp_endpoint = "http://127.0.0.1:8004/completion"
+            self.benchmark_runner = BenchmarkTestRunner(api_endpoint=llama_cpp_endpoint)
             
             # Disable concurrency for llama.cpp single request limitation
             if hasattr(self.benchmark_runner, 'max_concurrent_requests'):
                 self.benchmark_runner.max_concurrent_requests = 1
                 logger.info("Disabled concurrent requests for llama.cpp compatibility")
             
-            logger.info("Benchmark runner setup successful")
+            logger.info(f"Benchmark runner setup successful with endpoint: {llama_cpp_endpoint}")
             return True
             
         except Exception as e:
@@ -107,6 +110,18 @@ class CalibrationValidator:
             if not domain_path or not test_id:
                 logger.error(f"Missing domain_path or test_id in test case: {test_case['name']}")
                 return None
+            
+            # Fix path resolution - adjust for running from tests/calibration/
+            import os
+            current_dir = os.getcwd()
+            if current_dir.endswith('tests/calibration'):
+                # We're running from tests/calibration, need to go up to benchmark_tests root
+                domain_path = f"../../{domain_path}"
+            elif current_dir.endswith('calibration'):
+                # We're running from calibration directory  
+                domain_path = f"../../{domain_path}"
+            
+            logger.debug(f"Resolved domain path: {domain_path} from {current_dir}")
             
             # Run single test through benchmark runner
             # Use enhanced evaluation mode

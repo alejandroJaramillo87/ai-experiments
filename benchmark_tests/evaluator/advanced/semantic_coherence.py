@@ -80,10 +80,14 @@ class SemanticCoherenceAnalyzer:
         if self._embedding_model is None and SENTENCE_TRANSFORMERS_AVAILABLE:
             try:
                 # Use robust initialization to handle meta tensors
-                self._embedding_model = self._initialize_embedding_model_robust()
-                if self._embedding_model:
+                model_instance, status = self._initialize_embedding_model_robust()
+                self._embedding_model = model_instance
+                
+                if status == 'success':
                     logger.info(f"Loaded embedding model: {self.embedding_model_name}")
-                else:
+                elif status == 'fallback':
+                    logger.info(f"Using fallback methods for semantic analysis (embedding model intentionally disabled)")
+                else:  # status == 'error'
                     logger.error(f"Failed to initialize embedding model: {self.embedding_model_name}")
             except Exception as e:
                 logger.error(f"Failed to load embedding model {self.embedding_model_name}: {e}")
@@ -120,18 +124,34 @@ class SemanticCoherenceAnalyzer:
     
     def _initialize_embedding_model_robust(self):
         """
-        Initialize SentenceTransformer with robust meta tensor handling
+        Initialize SentenceTransformer with unified loading strategy
         
-        For now, skip embedding model initialization entirely to avoid meta tensor issues.
-        The semantic analyzer will use keyword-based fallback methods which are reliable.
+        Uses the unified model loader for consistent behavior across modules.
+        Currently defaults to fallback mode for stability, but can be configured.
         
         Returns:
-            None (forces use of fallback methods)
+            tuple: (model_instance, status) where status is 'success', 'fallback', or 'error'
         """
-        logger.info("Temporarily skipping embedding model initialization to avoid PyTorch meta tensor issues")
-        logger.info("✅ Semantic analyzer will use keyword-based fallback methods (TF-IDF, lexical analysis)")
-        logger.info("This ensures stable operation while maintaining evaluation functionality")
-        return None
+        try:
+            from .model_loader import UnifiedModelLoader, EvaluatorConfig
+            
+            # Get configuration from environment (allows user override)
+            strategy = EvaluatorConfig.semantic_analyzer_strategy()
+            force_cpu = EvaluatorConfig.force_cpu_mode()
+            
+            result = UnifiedModelLoader.load_embedding_model(
+                model_name=self.embedding_model_name,
+                strategy=strategy,
+                force_cpu=force_cpu
+            )
+            
+            return result.model, result.status
+            
+        except ImportError as e:
+            # Fallback to old behavior if model_loader isn't available
+            logger.warning(f"Unified model loader not available: {e}")
+            logger.info("Using fallback methods for semantic analysis")
+            return None, 'fallback'
     
     def _safe_tensor_to_numpy(self, embeddings):
         """

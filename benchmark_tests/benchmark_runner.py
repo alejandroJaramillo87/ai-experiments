@@ -1719,6 +1719,9 @@ class BenchmarkTestRunner:
             else:
                 # Completions API: response in choices[0].text
                 completion_text = choices[0].get("text", "") if isinstance(choices[0], dict) else ""
+        elif "content" in api_response:
+            # llama.cpp format: response directly in content field
+            completion_text = api_response.get("content", "")
         else:
             logger.warning(f"API response missing choices array: {api_response}")
         
@@ -1726,6 +1729,11 @@ class BenchmarkTestRunner:
         usage = api_response.get("usage", {})
         completion_tokens = usage.get("completion_tokens", 0)
         prompt_tokens = usage.get("prompt_tokens", 0)
+        
+        # Handle llama.cpp token counts if OpenAI format not available
+        if completion_tokens == 0 and prompt_tokens == 0:
+            completion_tokens = api_response.get("tokens_predicted", 0)
+            prompt_tokens = api_response.get("tokens_evaluated", 0)
         
         tokens_per_second = 0.0
         if completion_tokens > 0 and execution_time > 0:
@@ -2144,9 +2152,10 @@ class BenchmarkTestRunner:
                     logger.error(f"Failed to load test suite from {domain_path}")
                     return None
             
-            # Configure API if not configured (use defaults)
+            # Configure API if not configured (use override endpoint or defaults)
             if not self.api_config:
-                self.configure_api("http://localhost:8004", "llama-cpp-server")
+                endpoint = self._api_endpoint_override or "http://localhost:8004"
+                self.configure_api(endpoint, "llama-cpp-server")
             
             # Execute test
             result = self.execute_single_test(test_id, enable_performance_monitoring=False)

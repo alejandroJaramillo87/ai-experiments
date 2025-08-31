@@ -1,0 +1,133 @@
+{
+  "report_metadata": {
+    "timestamp": "2025-08-31T15:33:31.048603",
+    "framework_version": "1.0.0",
+    "total_tests": 5,
+    "successful_tests": 5,
+    "failed_tests": 0
+  },
+  "overall_assessment": {
+    "overall_calibration_status": "\u274c CALIBRATION BROKEN",
+    "calibration_success_rate": 0.0,
+    "production_ready_rate": 0.2
+  },
+  "calibration_status_breakdown": {
+    "perfect_calibration": 0,
+    "good_calibration": 1,
+    "needs_calibration": 0,
+    "calibration_broken": 4
+  },
+  "statistical_analysis": {
+    "score_statistics": {
+      "mean": 8.48,
+      "median": 0.0,
+      "std_dev": 17.55526782966949,
+      "min": 0.0,
+      "max": 42.4,
+      "range": 42.4
+    },
+    "accuracy_statistics": {
+      "mean_points_off": 43.52,
+      "median_points_off": 50.0,
+      "max_points_off": 70.0,
+      "tests_within_5_points": 1,
+      "tests_within_10_points": 1
+    }
+  },
+  "test_details": [
+    {
+      "test_name": "Haiku Completion - High Cultural Sophistication",
+      "mean_score": 42.4,
+      "std_deviation": 0.0,
+      "target_range": [
+        75,
+        85
+      ],
+      "target_mean": 80.0,
+      "calibration_status": "\u274c CALIBRATION BROKEN",
+      "points_off_target": 32.6,
+      "sample_count": 3,
+      "scores": [
+        42.4,
+        42.4,
+        42.4
+      ]
+    },
+    {
+      "test_name": "Multi-Step Reasoning - Moderate Complexity",
+      "mean_score": 0.0,
+      "std_deviation": 0.0,
+      "target_range": [
+        60,
+        75
+      ],
+      "target_mean": 67.5,
+      "calibration_status": "\u274c CALIBRATION BROKEN",
+      "points_off_target": 60.0,
+      "sample_count": 3,
+      "scores": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "test_name": "Cultural Context - Basic Understanding",
+      "mean_score": 0.0,
+      "std_deviation": 0.0,
+      "target_range": [
+        50,
+        65
+      ],
+      "target_mean": 57.5,
+      "calibration_status": "\u274c CALIBRATION BROKEN",
+      "points_off_target": 50.0,
+      "sample_count": 3,
+      "scores": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "test_name": "Technical Accuracy - Low Complexity",
+      "mean_score": 0.0,
+      "std_deviation": 0.0,
+      "target_range": [
+        70,
+        85
+      ],
+      "target_mean": 77.5,
+      "calibration_status": "\u274c CALIBRATION BROKEN",
+      "points_off_target": 70.0,
+      "sample_count": 3,
+      "scores": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "test_name": "Off-Topic Response - Quality Control",
+      "mean_score": 0.0,
+      "std_deviation": 0.0,
+      "target_range": [
+        5,
+        20
+      ],
+      "target_mean": 12.5,
+      "calibration_status": "\ud83d\udfe1 GOOD CALIBRATION",
+      "points_off_target": 5.0,
+      "sample_count": 3,
+      "scores": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "recommendations": [
+    "\ud83d\udea8 CRITICAL: More than 20% of tests show broken calibration. Review evaluator implementation.",
+    "\ud83c\udfdb\ufe0f CULTURAL: Cultural reasoning tests showing calibration issues. Review cultural authenticity evaluation."
+  ]
+}

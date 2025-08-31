@@ -127,13 +127,39 @@ class EntropyCalculator:
     
     @property
     def embedding_model(self):
-        """Lazy load embedding model"""
-        if self._embedding_model is None and SENTENCE_TRANSFORMERS_AVAILABLE:
+        """Lazy load embedding model using unified loading strategy"""
+        if self._embedding_model is None:
             try:
-                self._embedding_model = SentenceTransformer(self.embedding_model_name)
-                logger.info(f"Loaded embedding model: {self.embedding_model_name}")
-            except Exception as e:
-                logger.error(f"Failed to load embedding model {self.embedding_model_name}: {e}")
+                from .model_loader import UnifiedModelLoader, EvaluatorConfig
+                
+                # Get configuration from environment (defaults to AUTO for entropy calculator)
+                strategy = EvaluatorConfig.get_embedding_strategy()
+                force_cpu = EvaluatorConfig.force_cpu_mode()
+                
+                result = UnifiedModelLoader.load_embedding_model(
+                    model_name=self.embedding_model_name,
+                    strategy=strategy,
+                    force_cpu=force_cpu
+                )
+                
+                self._embedding_model = result.model
+                
+                if result.is_success():
+                    logger.info(f"Loaded embedding model: {self.embedding_model_name}")
+                elif result.is_fallback():
+                    logger.info(f"Using fallback methods for entropy calculation (embedding model unavailable)")
+                else:  # error
+                    logger.error(f"Failed to load embedding model: {result.message}")
+                    
+            except ImportError:
+                # Fallback to direct loading if unified loader not available
+                if SENTENCE_TRANSFORMERS_AVAILABLE:
+                    try:
+                        self._embedding_model = SentenceTransformer(self.embedding_model_name)
+                        logger.info(f"Loaded embedding model: {self.embedding_model_name}")
+                    except Exception as e:
+                        logger.error(f"Failed to load embedding model {self.embedding_model_name}: {e}")
+                        
         return self._embedding_model
     
     def calculate_shannon_entropy(self, text: str, use_tokens: bool = True) -> float:
