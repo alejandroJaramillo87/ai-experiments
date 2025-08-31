@@ -34,6 +34,65 @@ def print_subsection(title: str):
     """Print a formatted subsection header"""
     print(f"\n--- {title} ---")
 
+
+def test_quality_fixes():
+    """Test Phase 1 quality fixes specifically"""
+    print_section_header("Phase 1 Quality Fixes Validation")
+    
+    try:
+        enhanced_evaluator = EnhancedUniversalEvaluator()
+        
+        # Test case for quality validation
+        test_response = """Cherry blossoms fall softly to the ground, carried by the gentle spring breeze. This traditional Japanese haiku follows the 5-7-5 syllable pattern and captures the essence of spring's fleeting beauty."""
+        
+        test_definition = {
+            "id": "quality_test",
+            "name": "Quality Validation Test",
+            "category": "cultural_reasoning",
+            "description": "Test quality fixes",
+            "expected_patterns": ["softly", "ground", "spring", "gentle"],
+            "metadata": {
+                "concepts_tested": ["haiku_structure", "cultural_authenticity"],
+                "domains_integrated": ["language", "creativity"]
+            }
+        }
+        
+        print("Testing enhanced evaluation with quality fixes...")
+        result = enhanced_evaluator.evaluate_response_enhanced(
+            response_text=test_response,
+            test_definition=test_definition
+        )
+        
+        print(f"Enhanced Metrics:")
+        print(f"  Exact Match: {result.enhanced_metrics.exact_match_score:.3f}")
+        print(f"  Partial Match: {result.enhanced_metrics.partial_match_score:.3f}")
+        print(f"  Semantic Similarity: {result.enhanced_metrics.semantic_similarity_score:.3f}")
+        
+        # Test JSON serialization
+        try:
+            result_dict = {
+                'enhanced_metrics': result.enhanced_metrics.__dict__,
+                'integration_analysis': result.integration_analysis,
+                'scoring_breakdown': result.scoring_breakdown
+            }
+            json_str = json.dumps(result_dict, indent=2)
+            print("✅ JSON serialization successful")
+        except Exception as e:
+            print(f"❌ JSON serialization failed: {e}")
+        
+        # Check for PyTorch issues
+        if result.enhanced_metrics.semantic_similarity_score > 0.0:
+            print("✅ Semantic similarity functional")
+        else:
+            print("⚠️  Semantic similarity may be using fallback")
+        
+        print("✅ Quality fixes validation completed")
+        
+    except Exception as e:
+        print(f"❌ Quality fixes validation failed: {e}")
+        import traceback
+        traceback.print_exc()
+
 def print_results(result_dict: dict, indent: int = 0):
     """Print results dictionary with proper formatting"""
     spaces = "  " * indent
@@ -318,6 +377,9 @@ def main():
     print("=" * 60)
     
     try:
+        # Run Phase 1 quality fixes test first
+        test_quality_fixes()
+        
         # Run all debug tests
         test_basic_functionality()
         test_multi_tier_scoring()

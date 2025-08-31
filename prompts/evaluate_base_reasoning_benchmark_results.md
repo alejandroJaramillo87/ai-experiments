@@ -95,6 +95,28 @@
   - Evaluate cost-effectiveness vs performance trade-offs
   - Suggest deployment strategies and optimization approaches
 
+### 8. **Enhanced Universal Evaluator Calibration Assessment**
+- **Phase 1 Scoring Calibration Validation**: Evaluate whether Enhanced Universal Evaluator scores accurately reflect response quality using established calibration criteria
+- **Statistical Calibration Framework**: Apply multi-sample validation methodology to account for LLM non-deterministic behavior and assess scoring consistency
+- **Response Pattern Analysis**: Examine how well the evaluator handles different response formats (Direct Completion, Analytical Response, Multiple Options, Failure Cases)
+- **Task-Specific Evaluation Quality**: Assess specialized evaluation effectiveness for haiku completion, cultural reasoning, and domain-specific content
+- **Calibration Status Assessment**: Apply calibration status levels:
+  - ✅ **Perfect Calibration**: ±2 points from mean target (within statistical variance)
+  - 🟡 **Good Calibration**: ±5 points from mean target (acceptable for production)  
+  - 🟠 **Needs Calibration**: ±10 points from mean target (requires adjustment)
+  - ❌ **Calibration Broken**: >10 points from mean target (evaluation system failure)
+- **Multi-Sample Statistical Validation**: When possible, run 3-5 evaluations per test case to establish mean ± standard deviation and validate calibration against statistical ranges rather than individual runs
+- **Cross-Domain Calibration**: Evaluate calibration consistency across reasoning, creativity, language, social, integration, and knowledge domains
+- **Baseline Establishment**: Document expected score ranges for different content sophistication levels and reasoning complexity
+
+**Calibration Validation Requirements:**
+- Compare Enhanced Universal Evaluator scores against qualitative assessment of response quality
+- Identify cases where scores significantly deviate from expected ranges (>±10 points)
+- Document response extraction effectiveness for verbose or analytical model outputs  
+- Assess whether task detection and routing is working correctly for specialized content (haiku, cultural, technical)
+- Validate that multi-component scoring (exact_match, partial_match, semantic_similarity) provides realistic differentiation
+- Provide recommendations for scoring formula adjustments if calibration issues are identified
+
   ---
 
   **Please provide detailed analysis with specific examples from the test results, quantitative 

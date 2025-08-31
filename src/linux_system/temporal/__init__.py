@@ -28,7 +28,7 @@ from .types import (
 
 from .collector import TemporalSystemCollector, CollectionConfig, CollectionStats, create_temporal_collector
 from .change_detection import ChangeDetectionEngine
-from .event_extraction import EventExtractionEngine
+from .event_extraction_engine import EventExtractionEngine
 from .storage import TemporalStorage
 
 __all__ = [
