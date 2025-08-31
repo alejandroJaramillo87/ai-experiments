@@ -38,6 +38,14 @@ except ImportError:
     EVALUATION_AVAILABLE = False
     logger.warning("UniversalEvaluator not available - evaluation features disabled")
 
+# Import EnhancedUniversalEvaluator for Phase 1 enhanced evaluation
+try:
+    from evaluator.subjects.enhanced_universal_evaluator import EnhancedUniversalEvaluator
+    ENHANCED_EVALUATION_AVAILABLE = True
+except ImportError:
+    ENHANCED_EVALUATION_AVAILABLE = False
+    logger.warning("EnhancedUniversalEvaluator not available - enhanced evaluation features disabled")
+
 # GPU monitoring for RTX 5090
 try:
     import pynvml
@@ -1686,30 +1694,31 @@ class BenchmarkTestRunner:
         reasoning_score = None
         reasoning_type = None
         
-        if EVALUATION_AVAILABLE and completion_text.strip():
+        # Perform automatic reasoning evaluation if available
+        if (EVALUATION_AVAILABLE or ENHANCED_EVALUATION_AVAILABLE) and completion_text.strip():
             try:
                 # Determine reasoning type from test metadata
                 test_reasoning_type = self._get_reasoning_type_for_test(test_case)
                 
-                # Perform evaluation
-                eval_result = evaluate_reasoning(
-                    response_text=completion_text,
-                    test_name=test_case.get('name', test_id),
-                    test_category=test_case.get('category'),
-                    reasoning_type=test_reasoning_type
+                # Choose evaluation approach based on configuration
+                eval_result = self._perform_evaluation(
+                    completion_text, test_case, test_id, test_reasoning_type
                 )
                 
-                evaluation_result = {
-                    'overall_score': eval_result.metrics.overall_score,
-                    'metrics': asdict(eval_result.metrics),
-                    'reasoning_type': eval_result.reasoning_type.value,
-                    'recommendations': eval_result.recommendations,
-                    'detailed_analysis': eval_result.detailed_analysis
-                }
-                reasoning_score = eval_result.metrics.overall_score
-                reasoning_type = eval_result.reasoning_type.value
-                
-                logger.info(f"Evaluation completed for {test_id}: {reasoning_score}/100")
+                if eval_result:
+                    # Extract results (supports both basic and enhanced evaluation results)
+                    evaluation_result = self._extract_evaluation_result(eval_result)
+                    reasoning_score = evaluation_result.get('overall_score', 0)
+                    reasoning_type = evaluation_result.get('reasoning_type', 'unknown')
+                    
+                    # Enhanced logging for enhanced evaluation
+                    if hasattr(eval_result, 'enhanced_metrics') and eval_result.enhanced_metrics:
+                        logger.info(f"Enhanced evaluation completed for {test_id}: {reasoning_score}/100 "
+                                  f"(exact: {eval_result.enhanced_metrics.exact_match_score:.2f}, "
+                                  f"partial: {eval_result.enhanced_metrics.partial_match_score:.2f}, "
+                                  f"semantic: {eval_result.enhanced_metrics.semantic_similarity_score:.2f})")
+                    else:
+                        logger.info(f"Evaluation completed for {test_id}: {reasoning_score}/100")
                 
             except Exception as e:
                 logger.warning(f"Evaluation failed for {test_id}: {e}")
@@ -1783,6 +1792,88 @@ class BenchmarkTestRunner:
         }
         
         return category_to_reasoning_type.get(category, ReasoningType.GENERAL)
+
+    def _perform_evaluation(self, response_text: str, test_case: Dict, test_id: str, reasoning_type) -> Optional[Any]:
+        """
+        Perform evaluation using appropriate evaluator based on configuration
+        
+        Args:
+            response_text: The model's response
+            test_case: Test case dictionary
+            test_id: Test identifier
+            reasoning_type: Determined reasoning type
+            
+        Returns:
+            Evaluation result (basic or enhanced)
+        """
+        # Check if enhanced evaluation is requested and available
+        if (hasattr(self, 'enhanced_evaluation') and self.enhanced_evaluation and 
+            ENHANCED_EVALUATION_AVAILABLE):
+            return self._perform_enhanced_evaluation(response_text, test_case, test_id, reasoning_type)
+        
+        # Check evaluation mode configuration
+        elif (hasattr(self, 'evaluation_mode') and self.evaluation_mode in ['enhanced', 'full'] and 
+              ENHANCED_EVALUATION_AVAILABLE):
+            return self._perform_enhanced_evaluation(response_text, test_case, test_id, reasoning_type)
+        
+        # Fallback to basic evaluation
+        elif EVALUATION_AVAILABLE:
+            return self._perform_basic_evaluation(response_text, test_case, test_id, reasoning_type)
+        
+        return None
+    
+    def _perform_basic_evaluation(self, response_text: str, test_case: Dict, test_id: str, reasoning_type) -> Any:
+        """Perform basic evaluation using standard UniversalEvaluator"""
+        return evaluate_reasoning(
+            response_text=response_text,
+            test_name=test_case.get('name', test_id),
+            test_category=test_case.get('category'),
+            reasoning_type=reasoning_type
+        )
+    
+    def _perform_enhanced_evaluation(self, response_text: str, test_case: Dict, test_id: str, reasoning_type) -> Any:
+        """Perform enhanced evaluation with multi-tier scoring"""
+        enhanced_evaluator = EnhancedUniversalEvaluator()
+        
+        # Check if we should use full enhanced evaluation with test definitions
+        if (hasattr(self, 'evaluation_mode') and self.evaluation_mode == 'full'):
+            # Use the full enhanced evaluation with test definitions
+            return enhanced_evaluator.evaluate_response_enhanced(
+                response_text=response_text,
+                test_definition=test_case,
+                test_name=test_case.get('name', test_id),
+                reasoning_type=reasoning_type
+            )
+        else:
+            # Use basic enhanced evaluation (backward compatible)
+            return enhanced_evaluator.evaluate_response(
+                response_text=response_text,
+                test_name=test_case.get('name', test_id),
+                reasoning_type=reasoning_type,
+                test_category=test_case.get('category')
+            )
+    
+    def _extract_evaluation_result(self, eval_result) -> Dict[str, Any]:
+        """Extract evaluation result dictionary supporting both basic and enhanced results"""
+        base_result = {
+            'overall_score': eval_result.metrics.overall_score,
+            'metrics': asdict(eval_result.metrics),
+            'reasoning_type': eval_result.reasoning_type.value,
+            'recommendations': eval_result.recommendations,
+            'detailed_analysis': eval_result.detailed_analysis
+        }
+        
+        # Add enhanced metrics if available
+        if hasattr(eval_result, 'enhanced_metrics') and eval_result.enhanced_metrics:
+            base_result['enhanced_metrics'] = asdict(eval_result.enhanced_metrics)
+        
+        if hasattr(eval_result, 'scoring_breakdown') and eval_result.scoring_breakdown:
+            base_result['scoring_breakdown'] = eval_result.scoring_breakdown
+            
+        if hasattr(eval_result, 'integration_analysis') and eval_result.integration_analysis:
+            base_result['integration_analysis'] = eval_result.integration_analysis
+            
+        return base_result
     
     def set_progress_callback(self, callback):
         """Set callback function for progress updates"""
@@ -2129,6 +2220,16 @@ if __name__ == "__main__":
                        help="Show what would be executed without running tests")
     parser.add_argument("--evaluation", action="store_true",
                        help="Enable automatic universal evaluation (requires UniversalEvaluator)")
+    parser.add_argument("--enhanced-evaluation", action="store_true",
+                       help="Enable enhanced evaluation with multi-tier scoring (Phase 1)")
+    parser.add_argument("--evaluation-mode", 
+                       choices=["basic", "enhanced", "full"],
+                       default="basic",
+                       help="Evaluation mode: basic (standard), enhanced (multi-tier), full (with test definitions)")
+    parser.add_argument("--domain-focus",
+                       choices=["reasoning", "creativity", "language", "social", "integration", "knowledge", "auto"],
+                       default="auto", 
+                       help="Focus evaluation on specific domain (for Phase 1 testing)")
     parser.add_argument("--eval-summary", action="store_true",
                        help="Generate detailed evaluation summary report")
     parser.add_argument("--verbose", "-v", action="store_true",
@@ -2265,6 +2366,24 @@ if __name__ == "__main__":
     print(f"Test Type: {args.test_type}")
     print(f"Mode: {args.mode}")
     
+    # Display evaluation configuration
+    if args.evaluation or args.enhanced_evaluation:
+        eval_info = []
+        if args.evaluation:
+            eval_info.append("basic")
+        if args.enhanced_evaluation and ENHANCED_EVALUATION_AVAILABLE:
+            eval_info.append(f"enhanced ({args.evaluation_mode})")
+        elif args.enhanced_evaluation and not ENHANCED_EVALUATION_AVAILABLE:
+            eval_info.append("enhanced (unavailable)")
+        
+        print(f"Evaluation: {', '.join(eval_info)}")
+        
+        if args.domain_focus != "auto":
+            print(f"Domain Focus: {args.domain_focus}")
+    
+    if args.enhanced_evaluation and not ENHANCED_EVALUATION_AVAILABLE:
+        print("⚠️  Enhanced evaluation requested but EnhancedUniversalEvaluator not available")
+    
     # Load and configure runner
     try:
         runner = load_and_configure_runner(test_definitions_dir=args.test_definitions, 
@@ -2279,6 +2398,14 @@ if __name__ == "__main__":
         elif args.verbose:
             runner.set_verbose_logging(True)
             logging.getLogger().setLevel(logging.INFO)
+        
+        # Configure enhanced evaluation options
+        if hasattr(args, 'enhanced_evaluation'):
+            runner.enhanced_evaluation = args.enhanced_evaluation
+        if hasattr(args, 'evaluation_mode'):
+            runner.evaluation_mode = args.evaluation_mode
+        if hasattr(args, 'domain_focus'):
+            runner.domain_focus = args.domain_focus
         
         print(f"Loaded {len(runner.tests)} tests from {args.test_definitions}")
         
