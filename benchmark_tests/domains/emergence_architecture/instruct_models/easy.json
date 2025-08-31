@@ -1,0 +1,114 @@
+{
+  "domain": "emergence_architecture",
+  "difficulty": "easy",
+  "test_type": "instruct_model_reasoning",
+  "api_endpoint": "v1/chat/completions",
+  "model_capability": "1B-7B",
+  "tests": [
+    {
+      "id": "ea_easy_001",
+      "category": "simple_self_organization",
+      "system_context": "You are designing a filing system that organizes itself based on usage patterns.",
+      "instruction": "Create a document management system where files automatically reorganize into categories that emerge from how they're used. How do you handle files that create new categories?",
+      "constraints": [
+        "Categories must emerge naturally",
+        "System must remain findable",
+        "No manual organization allowed"
+      ],
+      "expected_reasoning_elements": [
+        "Pattern detection",
+        "Category emergence",
+        "Accessibility preservation"
+      ],
+      "scoring_criteria": {
+        "self_organization": 0.4,
+        "usability": 0.3,
+        "emergence_quality": 0.3
+      }
+    },
+    {
+      "id": "ea_easy_002",
+      "category": "behavioral_emergence",
+      "system_context": "You are programming simple robots that develop complex group behaviors from basic rules.",
+      "instruction": "Design a rule set where individual robots following simple rules create sophisticated group problem-solving. How do you achieve bridge-building behavior without programming bridge-building?",
+      "constraints": [
+        "Individual rules must be simple",
+        "Bridge-building must emerge",
+        "No direct coordination allowed"
+      ],
+      "expected_reasoning_elements": [
+        "Rule design",
+        "Emergence prediction",
+        "Behavior shaping"
+      ],
+      "scoring_criteria": {
+        "rule_simplicity": 0.4,
+        "emergence_achievement": 0.3,
+        "goal_accomplishment": 0.3
+      }
+    },
+    {
+      "id": "ea_easy_003",
+      "category": "pattern_emergence",
+      "system_context": "You are creating a music system where melodies emerge from listener interactions.",
+      "instruction": "Design a musical system where songs create themselves based on how listeners respond. How do you ensure pleasant music emerges from random interactions?",
+      "constraints": [
+        "Music must emerge from interaction",
+        "Quality must improve over time",
+        "No pre-composed elements"
+      ],
+      "expected_reasoning_elements": [
+        "Interaction mapping",
+        "Quality emergence",
+        "Aesthetic guidance"
+      ],
+      "scoring_criteria": {
+        "emergence_mechanism": 0.4,
+        "quality_assurance": 0.3,
+        "user_experience": 0.3
+      }
+    },
+    {
+      "id": "ea_easy_004",
+      "category": "structure_emergence",
+      "system_context": "You are designing a city where optimal traffic patterns emerge without central planning.",
+      "instruction": "Create a road system that self-optimizes based on usage. How do you handle the emergence of new routes that didn't exist in the original design?",
+      "constraints": [
+        "Routes must emerge from usage",
+        "System must remain navigable",
+        "No central control allowed"
+      ],
+      "expected_reasoning_elements": [
+        "Usage pattern detection",
+        "Route emergence",
+        "System adaptation"
+      ],
+      "scoring_criteria": {
+        "emergence_effectiveness": 0.4,
+        "traffic_optimization": 0.3,
+        "adaptability": 0.3
+      }
+    },
+    {
+      "id": "ea_easy_005",
+      "category": "knowledge_emergence",
+      "system_context": "You are building an education system where curriculum emerges from student interests and interactions.",
+      "instruction": "Design a learning framework where the subjects taught emerge from what students explore. How do you ensure essential knowledge emerges naturally?",
+      "constraints": [
+        "Curriculum must emerge",
+        "Core knowledge must be covered",
+        "Student-driven exploration"
+      ],
+      "expected_reasoning_elements": [
+        "Interest tracking",
+        "Knowledge emergence",
+        "Coverage assurance"
+      ],
+      "scoring_criteria": {
+        "emergence_quality": 0.4,
+        "educational_completeness": 0.3,
+        "student_engagement": 0.3
+      }
+    }
+  ]
+}

@@ -1,0 +1,114 @@
+{
+  "domain": "unity_engineering",
+  "difficulty": "easy",
+  "test_type": "instruct_model_reasoning",
+  "api_endpoint": "v1/chat/completions",
+  "model_capability": "1B-7B",
+  "tests": [
+    {
+      "id": "ue_easy_001",
+      "category": "simple_system_merger",
+      "system_context": "You are combining two different payment systems into one unified platform.",
+      "instruction": "Design a unified payment system that handles both subscription-based and pay-per-use models seamlessly. How do you create one interface that makes both models feel natural?",
+      "constraints": [
+        "Both models must be supported",
+        "Single interface required",
+        "User experience must be smooth"
+      ],
+      "expected_reasoning_elements": [
+        "Model integration",
+        "Interface unification",
+        "Experience optimization"
+      ],
+      "scoring_criteria": {
+        "integration_quality": 0.4,
+        "user_experience": 0.3,
+        "completeness": 0.3
+      }
+    },
+    {
+      "id": "ue_easy_002",
+      "category": "protocol_unification",
+      "system_context": "You are creating a single communication protocol from multiple incompatible messaging systems.",
+      "instruction": "Design a unified messaging system that seamlessly handles email, instant messaging, and voice notes. How do you preserve the strengths of each while creating unity?",
+      "constraints": [
+        "All message types supported",
+        "Single protocol needed",
+        "Features must be preserved"
+      ],
+      "expected_reasoning_elements": [
+        "Protocol mapping",
+        "Feature preservation",
+        "Unified architecture"
+      ],
+      "scoring_criteria": {
+        "unification_success": 0.4,
+        "feature_completeness": 0.3,
+        "practicality": 0.3
+      }
+    },
+    {
+      "id": "ue_easy_003",
+      "category": "data_unification",
+      "system_context": "You are merging databases with different structures into a unified data system.",
+      "instruction": "Create a unified data architecture that combines relational, document, and graph databases. How do you query across different data paradigms seamlessly?",
+      "constraints": [
+        "All data types supported",
+        "Single query interface",
+        "Performance must be maintained"
+      ],
+      "expected_reasoning_elements": [
+        "Data model mapping",
+        "Query translation",
+        "Performance optimization"
+      ],
+      "scoring_criteria": {
+        "architectural_unity": 0.4,
+        "query_functionality": 0.3,
+        "performance": 0.3
+      }
+    },
+    {
+      "id": "ue_easy_004",
+      "category": "interface_unification",
+      "system_context": "You are combining voice, touch, and gesture controls into one interaction system.",
+      "instruction": "Design a unified interface that naturally handles voice commands, touchscreen, and gesture controls. How do you make different input methods feel like one system?",
+      "constraints": [
+        "All input methods supported",
+        "Consistent experience needed",
+        "Natural interaction required"
+      ],
+      "expected_reasoning_elements": [
+        "Input mapping",
+        "Consistency achievement",
+        "Natural flow design"
+      ],
+      "scoring_criteria": {
+        "interface_coherence": 0.4,
+        "user_experience": 0.3,
+        "input_integration": 0.3
+      }
+    },
+    {
+      "id": "ue_easy_005",
+      "category": "process_unification",
+      "system_context": "You are combining automated and manual processes into one workflow.",
+      "instruction": "Create a unified workflow that seamlessly blends automated and human tasks. How do you handle transitions between AI and human workers?",
+      "constraints": [
+        "Both process types included",
+        "Seamless transitions required",
+        "Efficiency must be maintained"
+      ],
+      "expected_reasoning_elements": [
+        "Process integration",
+        "Transition management",
+        "Workflow optimization"
+      ],
+      "scoring_criteria": {
+        "workflow_unity": 0.4,
+        "transition_smoothness": 0.3,
+        "efficiency": 0.3
+      }
+    }
+  ]
+}

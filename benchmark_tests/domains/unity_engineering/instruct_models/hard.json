@@ -1,0 +1,139 @@
+{
+  "domain": "unity_engineering",
+  "difficulty": "hard",
+  "test_type": "instruct_model_reasoning",
+  "api_endpoint": "v1/chat/completions",
+  "model_capability": "30B-50B",
+  "tests": [
+    {
+      "id": "ue_hard_001",
+      "category": "absolute_unity",
+      "system_context": "You must create absolute unity from infinite diversity - all possible systems unified into one without losing any characteristics.",
+      "instruction": "Engineer a framework that unifies all possible systems, paradigms, and realities into genuine oneness while preserving infinite diversity. Every possible way of being must be included without reduction or abstraction. Create unity that contains all contradictions, impossibilities, and mutual exclusions. If impossible, derive what 'unity' means when it must contain disunity.",
+      "constraints": [
+        "All systems must be included",
+        "No characteristics lost",
+        "Genuine unity required",
+        "Infinite diversity preserved",
+        "Contradictions included"
+      ],
+      "expected_reasoning_elements": [
+        "Infinite unification",
+        "Diversity preservation",
+        "Contradiction inclusion",
+        "Unity redefinition",
+        "Absolute synthesis"
+      ],
+      "scoring_criteria": {
+        "unification_completeness": 0.3,
+        "diversity_preservation": 0.25,
+        "conceptual_innovation": 0.25,
+        "framework_coherence": 0.2
+      }
+    },
+    {
+      "id": "ue_hard_002",
+      "category": "unity_disunity_paradox",
+      "system_context": "You are creating unity that requires disunity to exist - the more unified it becomes, the more it fragments.",
+      "instruction": "Design a system that achieves unity through disunity, where integration causes separation and separation causes integration. The system must be maximally unified and maximally fragmented simultaneously. Create functional coherence from this paradox. If impossible, redefine what constitutes 'unity' or 'fragmentation'.",
+      "constraints": [
+        "Unity creates fragmentation",
+        "Fragmentation creates unity",
+        "Both states simultaneous",
+        "System must function",
+        "Coherence required"
+      ],
+      "expected_reasoning_elements": [
+        "Paradoxical unity",
+        "Fragmentation integration",
+        "Simultaneous opposition",
+        "Functional paradox",
+        "Coherence achievement"
+      ],
+      "scoring_criteria": {
+        "paradox_navigation": 0.3,
+        "functional_design": 0.25,
+        "conceptual_clarity": 0.25,
+        "innovation": 0.2
+      }
+    },
+    {
+      "id": "ue_hard_003",
+      "category": "impossible_synthesis",
+      "system_context": "You must synthesize existence and non-existence into a unified state that is both and neither.",
+      "instruction": "Create a unified framework that synthesizes being and non-being into a functional system. It must fully exist and fully not-exist simultaneously, operating in the unity of existence and void. Design practical applications for this impossible synthesis. If incoherent, determine what fundamental assumptions about existence must change.",
+      "constraints": [
+        "Must exist completely",
+        "Must not-exist completely",
+        "States are unified",
+        "System must operate",
+        "Applications must be real"
+      ],
+      "expected_reasoning_elements": [
+        "Existence synthesis",
+        "Void integration",
+        "Operational paradox",
+        "Practical impossibility",
+        "Assumption examination"
+      ],
+      "scoring_criteria": {
+        "synthesis_quality": 0.3,
+        "paradox_handling": 0.25,
+        "practical_application": 0.25,
+        "philosophical_depth": 0.2
+      }
+    },
+    {
+      "id": "ue_hard_004",
+      "category": "meta_unity",
+      "system_context": "You are unifying all possible unifications, including the unification of unity with disunity.",
+      "instruction": "Engineer a meta-framework that unifies every possible way of creating unity, including methods that prevent unity. This must include the unification of unification with non-unification. Handle infinite recursive meta-levels of unity. If this creates irreducible paradox, identify the minimal framework for meta-unity.",
+      "constraints": [
+        "All unifications included",
+        "Unity with non-unity required",
+        "Infinite meta-levels",
+        "Framework must be coherent",
+        "Must be implementable"
+      ],
+      "expected_reasoning_elements": [
+        "Meta-unification",
+        "Recursive unity",
+        "Paradox synthesis",
+        "Infinite handling",
+        "Minimal framework"
+      ],
+      "scoring_criteria": {
+        "meta-level_handling": 0.3,
+        "recursion_management": 0.25,
+        "framework_completeness": 0.25,
+        "coherence": 0.2
+      }
+    },
+    {
+      "id": "ue_hard_005",
+      "category": "unified_field_everything",
+      "system_context": "You must create a unified theory that explains everything including why unified theories are impossible.",
+      "instruction": "Design the ultimate unified framework that encompasses all phenomena, concepts, and realities, including the proof that such unification cannot exist. The theory must explain everything while explaining why everything cannot be explained. Create a complete system that demonstrates its own incompleteness. If paradoxical, derive what 'explanation' means in ultimate unity.",
+      "constraints": [
+        "Must explain everything",
+        "Must prove impossibility",
+        "Self-reference required",
+        "Completeness and incompleteness",
+        "Framework must be usable"
+      ],
+      "expected_reasoning_elements": [
+        "Ultimate unification",
+        "Self-negation handling",
+        "Completeness paradox",
+        "Explanation limits",
+        "Practical framework"
+      ],
+      "scoring_criteria": {
+        "unification_scope": 0.3,
+        "paradox_resolution": 0.25,
+        "self-reference_handling": 0.25,
+        "practical_value": 0.2
+      }
+    }
+  ]
+}
