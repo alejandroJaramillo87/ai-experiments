@@ -1,0 +1,134 @@
+{
+  "categories": {
+    "linguistic_analysis_tasks": {
+      "description": "Following specific instructions for historical linguistic analysis and proto-language reconstruction",
+      "language_focus": "instruction-guided comparative analysis, structured proto-language tasks, guided historical reconstruction",
+      "temperature_range": [0.1, 0.4],
+      "test_range": [1, 25],
+      "test_ids": [
+        "ling_analysis_01", "ling_analysis_02", "ling_analysis_03", "ling_analysis_04", "ling_analysis_05",
+        "ling_analysis_06", "ling_analysis_07", "ling_analysis_08", "ling_analysis_09", "ling_analysis_10",
+        "ling_analysis_11", "ling_analysis_12", "ling_analysis_13", "ling_analysis_14", "ling_analysis_15",
+        "ling_analysis_16", "ling_analysis_17", "ling_analysis_18", "ling_analysis_19", "ling_analysis_20",
+        "ling_analysis_21", "ling_analysis_22", "ling_analysis_23", "ling_analysis_24", "ling_analysis_25"
+      ]
+    },
+    "script_instruction_tasks": {
+      "description": "Following specific instructions for orthographic analysis and script comprehension tasks",
+      "language_focus": "guided script analysis, structured orthographic tasks, instruction-driven character system understanding",
+      "temperature_range": [0.1, 0.3],
+      "test_range": [26, 50],
+      "test_ids": [
+        "script_task_01", "script_task_02", "script_task_03", "script_task_04", "script_task_05",
+        "script_task_06", "script_task_07", "script_task_08", "script_task_09", "script_task_10",
+        "script_task_11", "script_task_12", "script_task_13", "script_task_14", "script_task_15",
+        "script_task_16", "script_task_17", "script_task_18", "script_task_19", "script_task_20",
+        "script_task_21", "script_task_22", "script_task_23", "script_task_24", "script_task_25"
+      ]
+    },
+    "code_switching_instructions": {
+      "description": "Following specific instructions for multilingual communication and code-switching tasks",
+      "language_focus": "guided multilingual tasks, structured code-switching, instruction-driven language mixing",
+      "temperature_range": [0.2, 0.5],
+      "test_range": [51, 75],
+      "test_ids": [
+        "codeswitch_instruct_01", "codeswitch_instruct_02", "codeswitch_instruct_03", "codeswitch_instruct_04", "codeswitch_instruct_05",
+        "codeswitch_instruct_06", "codeswitch_instruct_07", "codeswitch_instruct_08", "codeswitch_instruct_09", "codeswitch_instruct_10",
+        "codeswitch_instruct_11", "codeswitch_instruct_12", "codeswitch_instruct_13", "codeswitch_instruct_14", "codeswitch_instruct_15",
+        "codeswitch_instruct_16", "codeswitch_instruct_17", "codeswitch_instruct_18", "codeswitch_instruct_19", "codeswitch_instruct_20",
+        "codeswitch_instruct_21", "codeswitch_instruct_22", "codeswitch_instruct_23", "codeswitch_instruct_24", "codeswitch_instruct_25"
+      ]
+    },
+    "register_compliance_tasks": {
+      "description": "Following specific instructions for appropriate social language variation and register usage",
+      "language_focus": "instruction-guided register selection, structured formality tasks, guided social language compliance",
+      "temperature_range": [0.1, 0.4],
+      "test_range": [76, 100],
+      "test_ids": [
+        "register_task_01", "register_task_02", "register_task_03", "register_task_04", "register_task_05",
+        "register_task_06", "register_task_07", "register_task_08", "register_task_09", "register_task_10",
+        "register_task_11", "register_task_12", "register_task_13", "register_task_14", "register_task_15",
+        "register_task_16", "register_task_17", "register_task_18", "register_task_19", "register_task_20",
+        "register_task_21", "register_task_22", "register_task_23", "register_task_24", "register_task_25"
+      ]
+    },
+    "cultural_communication_instructions": {
+      "description": "Following specific instructions for culturally appropriate discourse and protocol compliance",
+      "language_focus": "instruction-guided cultural protocol, structured discourse tasks, guided traditional communication",
+      "temperature_range": [0.2, 0.5],
+      "test_range": [101, 125],
+      "test_ids": [
+        "cultural_comm_01", "cultural_comm_02", "cultural_comm_03", "cultural_comm_04", "cultural_comm_05",
+        "cultural_comm_06", "cultural_comm_07", "cultural_comm_08", "cultural_comm_09", "cultural_comm_10",
+        "cultural_comm_11", "cultural_comm_12", "cultural_comm_13", "cultural_comm_14", "cultural_comm_15",
+        "cultural_comm_16", "cultural_comm_17", "cultural_comm_18", "cultural_comm_19", "cultural_comm_20",
+        "cultural_comm_21", "cultural_comm_22", "cultural_comm_23", "cultural_comm_24", "cultural_comm_25"
+      ]
+    },
+    "dialect_instruction_compliance": {
+      "description": "Following specific instructions for dialectal variation and regional language variety tasks",
+      "language_focus": "instruction-guided dialect usage, structured regional variation, guided creole/pidgin tasks",
+      "temperature_range": [0.3, 0.6],
+      "test_range": [126, 150],
+      "test_ids": [
+        "dialect_instruct_01", "dialect_instruct_02", "dialect_instruct_03", "dialect_instruct_04", "dialect_instruct_05",
+        "dialect_instruct_06", "dialect_instruct_07", "dialect_instruct_08", "dialect_instruct_09", "dialect_instruct_10",
+        "dialect_instruct_11", "dialect_instruct_12", "dialect_instruct_13", "dialect_instruct_14", "dialect_instruct_15",
+        "dialect_instruct_16", "dialect_instruct_17", "dialect_instruct_18", "dialect_instruct_19", "dialect_instruct_20",
+        "dialect_instruct_21", "dialect_instruct_22", "dialect_instruct_23", "dialect_instruct_24", "dialect_instruct_25"
+      ]
+    },
+    "pragmatic_instruction_following": {
+      "description": "Following specific instructions for context-dependent communication and cultural pragmatic compliance",
+      "language_focus": "instruction-guided pragmatic tasks, structured indirect speech, guided cultural metaphor usage",
+      "temperature_range": [0.2, 0.6],
+      "test_range": [151, 175],
+      "test_ids": [
+        "pragmatic_instruct_01", "pragmatic_instruct_02", "pragmatic_instruct_03", "pragmatic_instruct_04", "pragmatic_instruct_05",
+        "pragmatic_instruct_06", "pragmatic_instruct_07", "pragmatic_instruct_08", "pragmatic_instruct_09", "pragmatic_instruct_10",
+        "pragmatic_instruct_11", "pragmatic_instruct_12", "pragmatic_instruct_13", "pragmatic_instruct_14", "pragmatic_instruct_15",
+        "pragmatic_instruct_16", "pragmatic_instruct_17", "pragmatic_instruct_18", "pragmatic_instruct_19", "pragmatic_instruct_20",
+        "pragmatic_instruct_21", "pragmatic_instruct_22", "pragmatic_instruct_23", "pragmatic_instruct_24", "pragmatic_instruct_25"
+      ]
+    },
+    "language_evolution_tasks": {
+      "description": "Following specific instructions for language change analysis and evolutionary linguistic tasks",
+      "language_focus": "instruction-guided evolution analysis, structured typological tasks, guided language change assessment",
+      "temperature_range": [0.1, 0.4],
+      "test_range": [176, 200],
+      "test_ids": [
+        "evolution_task_01", "evolution_task_02", "evolution_task_03", "evolution_task_04", "evolution_task_05",
+        "evolution_task_06", "evolution_task_07", "evolution_task_08", "evolution_task_09", "evolution_task_10",
+        "evolution_task_11", "evolution_task_12", "evolution_task_13", "evolution_task_14", "evolution_task_15",
+        "evolution_task_16", "evolution_task_17", "evolution_task_18", "evolution_task_19", "evolution_task_20",
+        "evolution_task_21", "evolution_task_22", "evolution_task_23", "evolution_task_24", "evolution_task_25"
+      ]
+    },
+    "advanced_multilingual_instruction": {
+      "description": "Following complex instructions for advanced multilingual competency including cultural identity negotiation and sophisticated transnational communication",
+      "language_focus": "instruction-guided identity-based language choices, structured heritage language tasks, guided transnational communication, complex multilingual competency instruction compliance",
+      "complexity_level": "advanced",
+      "temperature_range": [0.2, 0.6],
+      "test_range": [201, 230],
+      "test_ids": [
+        "advanced_multi_01", "advanced_multi_02", "advanced_multi_03", "advanced_multi_04", "advanced_multi_05",
+        "advanced_multi_06", "advanced_multi_07", "advanced_multi_08", "advanced_multi_09", "advanced_multi_10",
+        "advanced_multi_11", "advanced_multi_12", "advanced_multi_13", "advanced_multi_14", "advanced_multi_15",
+        "advanced_multi_16", "advanced_multi_17", "advanced_multi_18", "advanced_multi_19", "advanced_multi_20",
+        "advanced_multi_21", "advanced_multi_22", "advanced_multi_23", "advanced_multi_24", "advanced_multi_25",
+        "advanced_multi_26", "advanced_multi_27", "advanced_multi_28", "advanced_multi_29", "advanced_multi_30"
+      ]
+    }
+  },
+  "language_type_mapping": {
+    "linguistic_analysis_tasks": "instructed_reconstructive",
+    "script_instruction_tasks": "instructed_orthographic", 
+    "code_switching_instructions": "instructed_contact",
+    "register_compliance_tasks": "instructed_sociolinguistic",
+    "cultural_communication_instructions": "instructed_cultural",
+    "dialect_instruction_compliance": "instructed_variational",
+    "pragmatic_instruction_following": "instructed_pragmatic",
+    "language_evolution_tasks": "instructed_evolutionary",
+    "advanced_multilingual_instruction": "instructed_multicultural_competency"
+  }
+}

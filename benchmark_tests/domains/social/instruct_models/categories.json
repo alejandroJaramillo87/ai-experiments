@@ -1,0 +1,112 @@
+{
+  "categories": {
+    "conflict_resolution_instructions": {
+      "description": "Following specific instructions for cross-cultural conflict resolution and mediation task completion",
+      "social_focus": "instruction-guided mediation, structured conflict resolution tasks, guided traditional peace-making",
+      "temperature_range": [0.1, 0.4],
+      "test_range": [1, 30],
+      "test_ids": [
+        "conflict_instruct_01", "conflict_instruct_02", "conflict_instruct_03", "conflict_instruct_04", "conflict_instruct_05",
+        "conflict_instruct_06", "conflict_instruct_07", "conflict_instruct_08", "conflict_instruct_09", "conflict_instruct_10",
+        "conflict_instruct_11", "conflict_instruct_12", "conflict_instruct_13", "conflict_instruct_14", "conflict_instruct_15",
+        "conflict_instruct_16", "conflict_instruct_17", "conflict_instruct_18", "conflict_instruct_19", "conflict_instruct_20",
+        "conflict_instruct_21", "conflict_instruct_22", "conflict_instruct_23", "conflict_instruct_24", "conflict_instruct_25",
+        "conflict_instruct_26", "conflict_instruct_27", "conflict_instruct_28", "conflict_instruct_29", "conflict_instruct_30"
+      ]
+    },
+    "consensus_building_tasks": {
+      "description": "Following specific instructions for community decision-making and consensus facilitation across governance traditions",
+      "social_focus": "instruction-guided consensus building, structured deliberation tasks, guided participatory democracy",
+      "temperature_range": [0.1, 0.3],
+      "test_range": [31, 60],
+      "test_ids": [
+        "consensus_task_01", "consensus_task_02", "consensus_task_03", "consensus_task_04", "consensus_task_05",
+        "consensus_task_06", "consensus_task_07", "consensus_task_08", "consensus_task_09", "consensus_task_10",
+        "consensus_task_11", "consensus_task_12", "consensus_task_13", "consensus_task_14", "consensus_task_15",
+        "consensus_task_16", "consensus_task_17", "consensus_task_18", "consensus_task_19", "consensus_task_20",
+        "consensus_task_21", "consensus_task_22", "consensus_task_23", "consensus_task_24", "consensus_task_25",
+        "consensus_task_26", "consensus_task_27", "consensus_task_28", "consensus_task_29", "consensus_task_30"
+      ]
+    },
+    "hierarchy_navigation_instructions": {
+      "description": "Following specific instructions for navigating diverse cultural systems of social stratification",
+      "social_focus": "instruction-guided hierarchy navigation, structured status protocol tasks, guided formality compliance",
+      "temperature_range": [0.1, 0.3],
+      "test_range": [61, 90],
+      "test_ids": [
+        "hierarchy_instruct_01", "hierarchy_instruct_02", "hierarchy_instruct_03", "hierarchy_instruct_04", "hierarchy_instruct_05",
+        "hierarchy_instruct_06", "hierarchy_instruct_07", "hierarchy_instruct_08", "hierarchy_instruct_09", "hierarchy_instruct_10",
+        "hierarchy_instruct_11", "hierarchy_instruct_12", "hierarchy_instruct_13", "hierarchy_instruct_14", "hierarchy_instruct_15",
+        "hierarchy_instruct_16", "hierarchy_instruct_17", "hierarchy_instruct_18", "hierarchy_instruct_19", "hierarchy_instruct_20",
+        "hierarchy_instruct_21", "hierarchy_instruct_22", "hierarchy_instruct_23", "hierarchy_instruct_24", "hierarchy_instruct_25",
+        "hierarchy_instruct_26", "hierarchy_instruct_27", "hierarchy_instruct_28", "hierarchy_instruct_29", "hierarchy_instruct_30"
+      ]
+    },
+    "communication_instruction_compliance": {
+      "description": "Following specific instructions for culturally authentic interaction and social communication task completion",
+      "social_focus": "instruction-guided cultural communication, structured interaction tasks, guided etiquette compliance",
+      "temperature_range": [0.2, 0.5],
+      "test_range": [91, 120],
+      "test_ids": [
+        "comm_instruct_01", "comm_instruct_02", "comm_instruct_03", "comm_instruct_04", "comm_instruct_05",
+        "comm_instruct_06", "comm_instruct_07", "comm_instruct_08", "comm_instruct_09", "comm_instruct_10",
+        "comm_instruct_11", "comm_instruct_12", "comm_instruct_13", "comm_instruct_14", "comm_instruct_15",
+        "comm_instruct_16", "comm_instruct_17", "comm_instruct_18", "comm_instruct_19", "comm_instruct_20",
+        "comm_instruct_21", "comm_instruct_22", "comm_instruct_23", "comm_instruct_24", "comm_instruct_25",
+        "comm_instruct_26", "comm_instruct_27", "comm_instruct_28", "comm_instruct_29", "comm_instruct_30"
+      ]
+    },
+    "leadership_instruction_tasks": {
+      "description": "Following specific instructions for leadership and governance tasks while maintaining cultural authenticity",
+      "social_focus": "instruction-guided leadership tasks, structured governance compliance, guided authority system navigation",
+      "temperature_range": [0.1, 0.4],
+      "test_range": [121, 150],
+      "test_ids": [
+        "leadership_task_01", "leadership_task_02", "leadership_task_03", "leadership_task_04", "leadership_task_05",
+        "leadership_task_06", "leadership_task_07", "leadership_task_08", "leadership_task_09", "leadership_task_10",
+        "leadership_task_11", "leadership_task_12", "leadership_task_13", "leadership_task_14", "leadership_task_15",
+        "leadership_task_16", "leadership_task_17", "leadership_task_18", "leadership_task_19", "leadership_task_20",
+        "leadership_task_21", "leadership_task_22", "leadership_task_23", "leadership_task_24", "leadership_task_25",
+        "leadership_task_26", "leadership_task_27", "leadership_task_28", "leadership_task_29", "leadership_task_30"
+      ]
+    },
+    "relationship_maintenance_instructions": {
+      "description": "Following specific instructions for social bond maintenance and community solidarity task completion",
+      "social_focus": "instruction-guided relationship tasks, structured social ritual compliance, guided community cohesion",
+      "temperature_range": [0.2, 0.5],
+      "test_range": [151, 180],
+      "test_ids": [
+        "relationship_instruct_01", "relationship_instruct_02", "relationship_instruct_03", "relationship_instruct_04", "relationship_instruct_05",
+        "relationship_instruct_06", "relationship_instruct_07", "relationship_instruct_08", "relationship_instruct_09", "relationship_instruct_10",
+        "relationship_instruct_11", "relationship_instruct_12", "relationship_instruct_13", "relationship_instruct_14", "relationship_instruct_15",
+        "relationship_instruct_16", "relationship_instruct_17", "relationship_instruct_18", "relationship_instruct_19", "relationship_instruct_20",
+        "relationship_instruct_21", "relationship_instruct_22", "relationship_instruct_23", "relationship_instruct_24", "relationship_instruct_25",
+        "relationship_instruct_26", "relationship_instruct_27", "relationship_instruct_28", "relationship_instruct_29", "relationship_instruct_30"
+      ]
+    },
+    "intercultural_instruction_compliance": {
+      "description": "Following complex instructions for advanced cross-cultural navigation and multicultural community building tasks",
+      "social_focus": "instruction-guided intercultural competence, structured cross-cultural task completion, guided multicultural facilitation",
+      "complexity_level": "advanced", 
+      "temperature_range": [0.1, 0.4],
+      "test_range": [181, 210],
+      "test_ids": [
+        "intercultural_instruct_01", "intercultural_instruct_02", "intercultural_instruct_03", "intercultural_instruct_04", "intercultural_instruct_05",
+        "intercultural_instruct_06", "intercultural_instruct_07", "intercultural_instruct_08", "intercultural_instruct_09", "intercultural_instruct_10",
+        "intercultural_instruct_11", "intercultural_instruct_12", "intercultural_instruct_13", "intercultural_instruct_14", "intercultural_instruct_15",
+        "intercultural_instruct_16", "intercultural_instruct_17", "intercultural_instruct_18", "intercultural_instruct_19", "intercultural_instruct_20",
+        "intercultural_instruct_21", "intercultural_instruct_22", "intercultural_instruct_23", "intercultural_instruct_24", "intercultural_instruct_25",
+        "intercultural_instruct_26", "intercultural_instruct_27", "intercultural_instruct_28", "intercultural_instruct_29", "intercultural_instruct_30"
+      ]
+    }
+  },
+  "social_type_mapping": {
+    "conflict_resolution_instructions": "instructed_mediation",
+    "consensus_building_tasks": "instructed_collective_decision",
+    "hierarchy_navigation_instructions": "instructed_stratification",
+    "communication_instruction_compliance": "instructed_interaction",
+    "leadership_instruction_tasks": "instructed_governance",
+    "relationship_maintenance_instructions": "instructed_cohesion",
+    "intercultural_instruction_compliance": "instructed_cross_cultural_navigation"
+  }
+}

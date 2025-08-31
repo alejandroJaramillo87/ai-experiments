@@ -96,6 +96,8 @@ class ReasoningType(Enum):
     SCAFFOLDED = "scaffolded"
     BACKWARD = "backward"
     GENERAL = "general"
+    ANALYTICAL = "analytical"
+    CREATIVE = "creative"
 
 
 @dataclass

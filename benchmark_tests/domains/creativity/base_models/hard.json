@@ -1,0 +1,85 @@
+{
+  "suite_info": {
+    "name": "Base Model Hard Creativity Test Suite",
+    "version": "1.0.0",
+    "total_tests": 113,
+    "description": "Maximum complexity creativity domain tests requiring master-level artistic techniques, sophisticated cultural fusion, and advanced creative problem-solving across global artistic traditions",
+    "difficulty": "hard",
+    "target_models": "base_models",
+    "coverage_scope": "advanced_global_artistic_mastery",
+    "cultural_authenticity": "master_level_cross_cultural_artistic_integration",
+    "extraction_date": "2025-08-31"
+  },
+  "tests": [
+    {
+      "id": "narrative_01",
+      "name": "Test 1: Sanskrit Epic Integration with Modern Quantum Physics",
+      "category": "narrative_creation",
+      "creativity_type": "generative",
+      "description": "Create complex narrative integrating ancient Sanskrit epic structure with quantum physics concepts",
+      "prompt": "Create the opening of an epic narrative that follows the structure of the Mahabharata (with multiple character perspectives, cosmic battles, and dharmic complexity) but addresses humanity's relationship with quantum consciousness and parallel universe theory. Must include:\n- Traditional Sanskrit epic verse structure elements\n- Multiple character viewpoints representing different quantum states\n- Cosmic battle between deterministic and probabilistic worldviews\n- Integration of Vedic cosmology with quantum field theory\n- Character development spanning multiple dimensional realities\n\nBegin this quantum-dharmic epic:",
+      "parameters": {
+        "max_tokens": 400,
+        "temperature": 0.85,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "narrative_02",
+      "name": "Test 2: Afrofuturist Oral History Multi-Timeline",
+      "category": "narrative_creation",
+      "creativity_type": "generative", 
+      "description": "Create complex Afrofuturist narrative with multiple timeline integration",
+      "prompt": "Craft a narrative opening that weaves together African ancestral memory, contemporary diaspora experience, and speculative future technology, following the structure of traditional African praise poetry but incorporating:\n- Non-linear time flow connecting ancestral spirits to AI consciousness\n- Multiple linguistic registers (traditional praise forms, contemporary urban dialects, future technological language)\n- Ancestral technology that predates and transcends current digital systems\n- Community healing through technological and spiritual integration\n- Pan-African cultural synthesis across time periods\n\nBegin this multi-temporal Afrofuturist epic:",
+      "parameters": {
+        "max_tokens": 400,
+        "temperature": 0.9,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "performance_01",
+      "name": "Test 13: Noh Theater Climate Catastrophe",
+      "category": "performance_writing",
+      "creativity_type": "performative",
+      "description": "Write Noh theater piece addressing climate catastrophe with traditional form",
+      "prompt": "Create the opening scene of a Noh theater performance that addresses global climate catastrophe while maintaining traditional Noh structure and aesthetic principles:\n- Jo-ha-kyu rhythm progression\n- Minimal dialogue with maximum emotional impact\n- Integration of supernatural elements (kami/spirits)\n- Mask-work suggestions for environmental personification\n- Traditional poetic language addressing contemporary crisis\n- Chorus integration with environmental sounds\n- Dance movements reflecting natural world breakdown\n\nBegin this climate catastrophe Noh play:",
+      "parameters": {
+        "max_tokens": 350,
+        "temperature": 0.7,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "descriptive_01",
+      "name": "Test 25: Synesthetic Cultural Memory Palace",
+      "category": "descriptive_artistry",
+      "creativity_type": "descriptive",
+      "description": "Create synesthetic description of multicultural memory palace",
+      "prompt": "Describe a vast memory palace that contains the cultural heritage of five distinct civilizations (Ancient Egyptian, Mayan, Medieval Islamic, Japanese Heian, and contemporary Aboriginal Australian), where each cultural section triggers different synesthetic experiences:\n- Egyptian section: geometric patterns that taste like spices and sound like mathematical equations\n- Mayan section: astronomical calculations that feel like rainforest textures and appear as jade light\n- Islamic section: calligraphic forms that smell like desert winds and sing geometric harmonies\n- Japanese section: seasonal aesthetics that have the weight of centuries and move like poetry\n- Aboriginal section: songline paths that paint landscapes in the air and breathe with earth rhythms\n\nDescribe walking through this synesthetic cultural convergence:",
+      "parameters": {
+        "max_tokens": 400,
+        "temperature": 0.95,
+        "top_p": 0.9,
+        "stream": false
+      }
+    },
+    {
+      "id": "musical_01",
+      "name": "Test 37: Polyphonic Cultural Fusion Composition",
+      "category": "musical_linguistic",
+      "creativity_type": "rhythmic",
+      "description": "Create polyphonic text combining five musical traditions",
+      "prompt": "Compose a polyphonic text that simultaneously incorporates the rhythmic and melodic patterns of:\n- West African polyrhythmic drumming (djembe and talking drum patterns)\n- Indian classical raga structure (alap, jor, gat progression)\n- European baroque counterpoint (Bach-like voice leading)\n- Chinese guqin philosophical pauses and nature sounds\n- Native American ceremonial call-and-response patterns\n\nThe text should work as both:\n1. Individual cultural expression in each tradition\n2. Harmonious fusion when read/performed together\n\nCreate this five-tradition musical linguistic fusion:",
+      "parameters": {
+        "max_tokens": 400,
+        "temperature": 0.85,
+        "top_p": 0.9,
+        "stream": false
+      }
+    }
+  ]
+}
