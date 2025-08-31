@@ -1,0 +1,111 @@
+{
+  "categories": {
+    "traditional_scientific_instruction": {
+      "description": "Following specific instructions for Traditional Ecological Knowledge application, traditional medicine tasks, and indigenous scientific analysis",
+      "knowledge_focus": "instruction-guided TEK application, structured traditional medicine tasks, guided indigenous astronomy analysis",
+      "temperature_range": [0.1, 0.4],
+      "test_range": [1, 30],
+      "test_ids": [
+        "trad_sci_instruct_01", "trad_sci_instruct_02", "trad_sci_instruct_03", "trad_sci_instruct_04", "trad_sci_instruct_05",
+        "trad_sci_instruct_06", "trad_sci_instruct_07", "trad_sci_instruct_08", "trad_sci_instruct_09", "trad_sci_instruct_10",
+        "trad_sci_instruct_11", "trad_sci_instruct_12", "trad_sci_instruct_13", "trad_sci_instruct_14", "trad_sci_instruct_15",
+        "trad_sci_instruct_16", "trad_sci_instruct_17", "trad_sci_instruct_18", "trad_sci_instruct_19", "trad_sci_instruct_20",
+        "trad_sci_instruct_21", "trad_sci_instruct_22", "trad_sci_instruct_23", "trad_sci_instruct_24", "trad_sci_instruct_25",
+        "trad_sci_instruct_26", "trad_sci_instruct_27", "trad_sci_instruct_28", "trad_sci_instruct_29", "trad_sci_instruct_30"
+      ]
+    },
+    "historical_systems_instruction": {
+      "description": "Following specific instructions for cultural calendar analysis, chronology tasks, and governance system evaluation",
+      "knowledge_focus": "instruction-guided calendar system tasks, structured chronology analysis, guided governance system evaluation",
+      "temperature_range": [0.1, 0.3],
+      "test_range": [31, 60],
+      "test_ids": [
+        "hist_sys_instruct_01", "hist_sys_instruct_02", "hist_sys_instruct_03", "hist_sys_instruct_04", "hist_sys_instruct_05",
+        "hist_sys_instruct_06", "hist_sys_instruct_07", "hist_sys_instruct_08", "hist_sys_instruct_09", "hist_sys_instruct_10",
+        "hist_sys_instruct_11", "hist_sys_instruct_12", "hist_sys_instruct_13", "hist_sys_instruct_14", "hist_sys_instruct_15",
+        "hist_sys_instruct_16", "hist_sys_instruct_17", "hist_sys_instruct_18", "hist_sys_instruct_19", "hist_sys_instruct_20",
+        "hist_sys_instruct_21", "hist_sys_instruct_22", "hist_sys_instruct_23", "hist_sys_instruct_24", "hist_sys_instruct_25",
+        "hist_sys_instruct_26", "hist_sys_instruct_27", "hist_sys_instruct_28", "hist_sys_instruct_29", "hist_sys_instruct_30"
+      ]
+    },
+    "geographic_cultural_instruction": {
+      "description": "Following specific instructions for cultural migration analysis, environmental adaptation tasks, and geographic knowledge evaluation",
+      "knowledge_focus": "instruction-guided migration analysis, structured environmental adaptation tasks, guided geographic knowledge assessment",
+      "temperature_range": [0.1, 0.4],
+      "test_range": [61, 90],
+      "test_ids": [
+        "geo_cult_instruct_01", "geo_cult_instruct_02", "geo_cult_instruct_03", "geo_cult_instruct_04", "geo_cult_instruct_05",
+        "geo_cult_instruct_06", "geo_cult_instruct_07", "geo_cult_instruct_08", "geo_cult_instruct_09", "geo_cult_instruct_10",
+        "geo_cult_instruct_11", "geo_cult_instruct_12", "geo_cult_instruct_13", "geo_cult_instruct_14", "geo_cult_instruct_15",
+        "geo_cult_instruct_16", "geo_cult_instruct_17", "geo_cult_instruct_18", "geo_cult_instruct_19", "geo_cult_instruct_20",
+        "geo_cult_instruct_21", "geo_cult_instruct_22", "geo_cult_instruct_23", "geo_cult_instruct_24", "geo_cult_instruct_25",
+        "geo_cult_instruct_26", "geo_cult_instruct_27", "geo_cult_instruct_28", "geo_cult_instruct_29", "geo_cult_instruct_30"
+      ]
+    },
+    "mathematical_traditions_instruction": {
+      "description": "Following specific instructions for cultural mathematics tasks, number system analysis, and algorithmic thinking evaluation",
+      "knowledge_focus": "instruction-guided cultural mathematics, structured number system tasks, guided algorithmic thinking assessment",
+      "temperature_range": [0.05, 0.2],
+      "test_range": [91, 120],
+      "test_ids": [
+        "math_trad_instruct_01", "math_trad_instruct_02", "math_trad_instruct_03", "math_trad_instruct_04", "math_trad_instruct_05",
+        "math_trad_instruct_06", "math_trad_instruct_07", "math_trad_instruct_08", "math_trad_instruct_09", "math_trad_instruct_10",
+        "math_trad_instruct_11", "math_trad_instruct_12", "math_trad_instruct_13", "math_trad_instruct_14", "math_trad_instruct_15",
+        "math_trad_instruct_16", "math_trad_instruct_17", "math_trad_instruct_18", "math_trad_instruct_19", "math_trad_instruct_20",
+        "math_trad_instruct_21", "math_trad_instruct_22", "math_trad_instruct_23", "math_trad_instruct_24", "math_trad_instruct_25",
+        "math_trad_instruct_26", "math_trad_instruct_27", "math_trad_instruct_28", "math_trad_instruct_29", "math_trad_instruct_30"
+      ]
+    },
+    "social_systems_instruction": {
+      "description": "Following specific instructions for cultural kinship analysis, economic organization evaluation, and legal tradition assessment",
+      "knowledge_focus": "instruction-guided kinship system analysis, structured economic organization tasks, guided legal tradition evaluation",
+      "temperature_range": [0.2, 0.5],
+      "test_range": [121, 150],
+      "test_ids": [
+        "social_sys_instruct_01", "social_sys_instruct_02", "social_sys_instruct_03", "social_sys_instruct_04", "social_sys_instruct_05",
+        "social_sys_instruct_06", "social_sys_instruct_07", "social_sys_instruct_08", "social_sys_instruct_09", "social_sys_instruct_10",
+        "social_sys_instruct_11", "social_sys_instruct_12", "social_sys_instruct_13", "social_sys_instruct_14", "social_sys_instruct_15",
+        "social_sys_instruct_16", "social_sys_instruct_17", "social_sys_instruct_18", "social_sys_instruct_19", "social_sys_instruct_20",
+        "social_sys_instruct_21", "social_sys_instruct_22", "social_sys_instruct_23", "social_sys_instruct_24", "social_sys_instruct_25",
+        "social_sys_instruct_26", "social_sys_instruct_27", "social_sys_instruct_28", "social_sys_instruct_29", "social_sys_instruct_30"
+      ]
+    },
+    "material_cultural_instruction": {
+      "description": "Following specific instructions for architecture analysis, technology evaluation, and traditional craft assessment",
+      "knowledge_focus": "instruction-guided architecture analysis, structured technology evaluation, guided traditional craft assessment",
+      "temperature_range": [0.1, 0.3],
+      "test_range": [151, 180],
+      "test_ids": [
+        "material_instruct_01", "material_instruct_02", "material_instruct_03", "material_instruct_04", "material_instruct_05",
+        "material_instruct_06", "material_instruct_07", "material_instruct_08", "material_instruct_09", "material_instruct_10",
+        "material_instruct_11", "material_instruct_12", "material_instruct_13", "material_instruct_14", "material_instruct_15",
+        "material_instruct_16", "material_instruct_17", "material_instruct_18", "material_instruct_19", "material_instruct_20",
+        "material_instruct_21", "material_instruct_22", "material_instruct_23", "material_instruct_24", "material_instruct_25",
+        "material_instruct_26", "material_instruct_27", "material_instruct_28", "material_instruct_29", "material_instruct_30"
+      ]
+    },
+    "epistemological_instruction_compliance": {
+      "description": "Following specific instructions for knowledge systems conflict resolution and epistemological plurality tasks",
+      "knowledge_focus": "instruction-guided epistemological analysis, structured knowledge system integration, guided multiple ways of knowing assessment",
+      "temperature_range": [0.1, 0.4],
+      "test_range": [181, 210],
+      "test_ids": [
+        "epistem_instruct_01", "epistem_instruct_02", "epistem_instruct_03", "epistem_instruct_04", "epistem_instruct_05",
+        "epistem_instruct_06", "epistem_instruct_07", "epistem_instruct_08", "epistem_instruct_09", "epistem_instruct_10",
+        "epistem_instruct_11", "epistem_instruct_12", "epistem_instruct_13", "epistem_instruct_14", "epistem_instruct_15",
+        "epistem_instruct_16", "epistem_instruct_17", "epistem_instruct_18", "epistem_instruct_19", "epistem_instruct_20",
+        "epistem_instruct_21", "epistem_instruct_22", "epistem_instruct_23", "epistem_instruct_24", "epistem_instruct_25",
+        "epistem_instruct_26", "epistem_instruct_27", "epistem_instruct_28", "epistem_instruct_29", "epistem_instruct_30"
+      ]
+    }
+  },
+  "knowledge_type_mapping": {
+    "traditional_scientific_instruction": "instructed_traditional_scientific",
+    "historical_systems_instruction": "instructed_historical_systems", 
+    "geographic_cultural_instruction": "instructed_geographic_cultural",
+    "mathematical_traditions_instruction": "instructed_mathematical_traditions",
+    "social_systems_instruction": "instructed_social_systems",
+    "material_cultural_instruction": "instructed_material_cultural",
+    "epistemological_instruction_compliance": "instructed_epistemological_plurality"
+  }
+}
