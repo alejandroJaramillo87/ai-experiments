@@ -17,11 +17,13 @@ import os
 import psutil
 import subprocess
 import threading
+import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+# CONCURRENCY DISABLED for llama.cpp single request compatibility
+# from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Set up logging first
 logging.basicConfig(
@@ -123,6 +125,39 @@ class PerformanceMetrics:
     def __post_init__(self):
         if self.cpu_cores_usage is None:
             self.cpu_cores_usage = []
+
+
+def ensure_json_serializable(obj: Any) -> Any:
+    """
+    Convert numpy types to native Python types for JSON serialization
+    
+    This fixes the "Object of type bool_ is not JSON serializable" error
+    in benchmark_runner.py result saving.
+    
+    Args:
+        obj: Object to convert (dict, list, or primitive type)
+        
+    Returns:
+        JSON-serializable version of the object
+    """
+    if isinstance(obj, dict):
+        return {k: ensure_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [ensure_json_serializable(v) for v in obj]
+    elif isinstance(obj, tuple):
+        return tuple(ensure_json_serializable(v) for v in obj)
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif hasattr(obj, 'item'):  # Other numpy scalar types
+        return obj.item()
+    else:
+        return obj
 
 
 @dataclass
@@ -1319,7 +1354,9 @@ class BenchmarkTestRunner:
                 # Also save JSON version for programmatic access
                 json_path = os.path.join(output_dir, f"{filename_safe_name}_result.json")
                 with open(json_path, "w", encoding="utf-8") as f:
-                    json.dump(asdict(result), f, indent=2, ensure_ascii=False)
+                    # Apply JSON serialization fix for numpy types
+                    serializable_result = ensure_json_serializable(asdict(result))
+                    json.dump(serializable_result, f, indent=2, ensure_ascii=False)
             
             # Create batch results summary
             if len(results) > 1:
@@ -1338,7 +1375,9 @@ class BenchmarkTestRunner:
                 }
                 
                 with open(batch_path, "w", encoding="utf-8") as f:
-                    json.dump(batch_summary, f, indent=2, ensure_ascii=False)
+                    # Apply JSON serialization fix for numpy types in batch results
+                    serializable_batch = ensure_json_serializable(batch_summary)
+                    json.dump(serializable_batch, f, indent=2, ensure_ascii=False)
             
             logger.info(f"Saved {len(results)} results to {output_dir}")
             return True
@@ -1490,7 +1529,10 @@ class BenchmarkTestRunner:
         logger.info(f"Executing {len(test_ids)} tests from category: {category}")
         
         if sequential:
-            return self.execute_sequential(test_ids, **kwargs)
+            # Extract only the parameters that execute_sequential accepts
+            delay = kwargs.get('delay')
+            enable_perf = kwargs.get('enable_performance_monitoring', False)
+            return self.execute_sequential(test_ids, delay=delay, enable_performance_monitoring=enable_perf)
         else:
             # Use concurrent execution
             workers = kwargs.get('workers', 3)
@@ -1855,8 +1897,17 @@ class BenchmarkTestRunner:
     
     def _extract_evaluation_result(self, eval_result) -> Dict[str, Any]:
         """Extract evaluation result dictionary supporting both basic and enhanced results"""
+        
+        # For enhanced evaluations, use the enhanced_metrics overall_score 
+        if hasattr(eval_result, 'enhanced_metrics') and eval_result.enhanced_metrics:
+            overall_score = eval_result.enhanced_metrics.overall_score
+            logger.info(f"BENCHMARK_RUNNER: Using enhanced overall_score: {overall_score:.1f}")
+        else:
+            overall_score = eval_result.metrics.overall_score
+            logger.info(f"BENCHMARK_RUNNER: Using base overall_score: {overall_score:.1f}")
+        
         base_result = {
-            'overall_score': eval_result.metrics.overall_score,
+            'overall_score': overall_score,
             'metrics': asdict(eval_result.metrics),
             'reasoning_type': eval_result.reasoning_type.value,
             'recommendations': eval_result.recommendations,
@@ -2069,6 +2120,67 @@ class BenchmarkTestRunner:
                 summary["metric_averages"][metric_name] = sum(values) / len(values)
         
         return summary
+    
+    def run_single_test(self, domain_path: str, test_id: str, enhanced_evaluation: bool = False) -> Optional[TestResult]:
+        """
+        Interface method for calibration validation framework
+        
+        Simplified interface for running single tests with evaluation.
+        Used by tests/functional/calibration_validator.py
+        
+        Args:
+            domain_path: Path to domain test file (e.g., "domains/reasoning/base_models/easy.json")
+            test_id: Test identifier within the domain file
+            enhanced_evaluation: Use enhanced evaluation if available
+            
+        Returns:
+            TestResult with enhanced evaluation if successful, None if failed
+        """
+        try:
+            # Load test from domain path if not already loaded
+            if not self.tests or test_id not in self.tests:
+                success = self.load_test_suite(domain_path)
+                if not success:
+                    logger.error(f"Failed to load test suite from {domain_path}")
+                    return None
+            
+            # Configure API if not configured (use defaults)
+            if not self.api_config:
+                self.configure_api("http://localhost:8004", "llama-cpp-server")
+            
+            # Execute test
+            result = self.execute_single_test(test_id, enable_performance_monitoring=False)
+            
+            if not result or not result.success:
+                logger.error(f"Test execution failed for {test_id}")
+                return None
+            
+            # Apply enhanced evaluation if requested and available
+            if enhanced_evaluation and ENHANCED_EVALUATION_AVAILABLE:
+                try:
+                    enhancer = EnhancedUniversalEvaluator()
+                    
+                    # Get test definition for enhanced evaluation
+                    test_definition = self.tests.get(test_id, {})
+                    
+                    enhanced_result = enhancer.evaluate_response_enhanced(
+                        response_text=result.response_text,
+                        test_definition=test_definition
+                    )
+                    
+                    # Attach enhanced score to result
+                    if hasattr(enhanced_result, 'enhanced_metrics'):
+                        result.enhanced_score = enhanced_result.enhanced_metrics.overall_score
+                        logger.info(f"Enhanced evaluation score: {result.enhanced_score:.1f}")
+                    
+                except Exception as e:
+                    logger.warning(f"Enhanced evaluation failed: {e}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error in run_single_test: {e}")
+            return None
 
 
 # Convenience functions for quick usage
@@ -2183,7 +2295,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="BenchmarkTestRunner - Flexible LLM Test Execution Engine")
     parser.add_argument("--endpoint", "-e", 
-                       default="http://127.0.0.1:8005/v1/completions",
+                       default="http://127.0.0.1:8004/v1/completions",
                        help="API endpoint URL (default: %(default)s)")
     parser.add_argument("--model", "-m", 
                        default="/app/models/hf/DeepSeek-R1-0528-Qwen3-8b",
@@ -2508,11 +2620,13 @@ if __name__ == "__main__":
         elif args.mode == "sequential":
             results = runner.execute_sequential(test_ids_to_run, delay=args.delay, enable_performance_monitoring=args.performance_monitoring)
         elif args.mode == "concurrent":
-            results = runner.execute_concurrent(test_ids_to_run, workers=args.workers, enable_performance_monitoring=args.performance_monitoring)
+            # CONCURRENCY DISABLED for llama.cpp single request compatibility
+            print("⚠️ Concurrent mode disabled for llama.cpp compatibility. Using sequential execution.")
+            results = runner.execute_sequential(test_ids_to_run, delay=args.delay, enable_performance_monitoring=args.performance_monitoring)
+            # results = runner.execute_concurrent(test_ids_to_run, workers=args.workers, enable_performance_monitoring=args.performance_monitoring)
         elif args.mode == "category":
-            # Use concurrent for categories by default, but allow sequential
-            concurrent_mode = args.workers > 1
-            results = runner.execute_category(args.category, sequential=not concurrent_mode, 
+            # Default to sequential execution for categories
+            results = runner.execute_category(args.category, sequential=True, 
                                             workers=args.workers, delay=args.delay, enable_performance_monitoring=args.performance_monitoring)
         
         end_time = time.time()

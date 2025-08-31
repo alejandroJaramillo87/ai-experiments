@@ -62,6 +62,7 @@ help:
 	@echo ""
 	@echo "$(BOLD)Enhancement Testing:$(RESET)"
 	@echo "  $(GREEN)make test-enhanced-evaluator$(RESET)     - Test Phase 1 enhanced universal evaluator"
+	@echo "  $(GREEN)make test-phase1-quality$(RESET)         - Test Phase 1 quality fixes validation"
 	@echo "  $(GREEN)make convert-creativity-tests$(RESET)    - Convert creativity base tests to instruct format"
 	@echo "  $(GREEN)make test-creativity-conversion$(RESET)  - Test enhanced evaluator with converted creativity tests"
 	@echo "  $(GREEN)make convert-core-domains$(RESET)        - Convert core domains to instruct format (680 tests)"
@@ -276,12 +277,14 @@ debug-help:
 	@echo "=================="
 	@echo ""
 	@echo "$(BOLD)Available Debug Scripts:$(RESET)"
-	@echo "  $(GREEN)make debug-enhanced-system$(RESET)    - Debug enhanced universal evaluator system (comprehensive)"
-	@echo "  $(GREEN)make debug-enhanced-evaluator$(RESET) - Debug Phase 1 enhanced universal evaluator (detailed)"
+	@echo "  $(GREEN)make debug-enhanced-system$(RESET)      - Debug enhanced universal evaluator system (comprehensive)"
+	@echo "  $(GREEN)make debug-enhanced-evaluator$(RESET)   - Debug Phase 1 enhanced universal evaluator (detailed)"
+	@echo "  $(GREEN)make debug-scoring-calibration$(RESET)  - Debug Phase 1 scoring calibration fixes"
 	@echo ""
 	@echo "$(BOLD)Usage:$(RESET)"
-	@echo "  $(CYAN)make debug-enhanced-system$(RESET)     # Run comprehensive enhanced system debug"
-	@echo "  $(CYAN)make debug-enhanced-evaluator$(RESET)  # Run enhanced evaluator debug with multi-tier scoring"
+	@echo "  $(CYAN)make debug-enhanced-system$(RESET)       # Run comprehensive enhanced system debug"
+	@echo "  $(CYAN)make debug-enhanced-evaluator$(RESET)     # Run enhanced evaluator debug with multi-tier scoring"
+	@echo "  $(CYAN)make debug-scoring-calibration$(RESET)    # Test and validate Phase 1 scoring calibration fixes"
 
 # Debug enhanced universal evaluator system (comprehensive)
 debug-enhanced-system:
@@ -294,6 +297,12 @@ debug-enhanced-evaluator:
 	@echo "$(BOLD)$(BLUE)🔧 Debugging Enhanced Universal Evaluator$(RESET)"
 	@echo "============================================"
 	@$(PYTHON) $(DEBUG_DIR)/debug_enhanced_evaluator.py
+
+# Debug scoring calibration fixes
+debug-scoring-calibration:
+	@echo "$(BOLD)$(BLUE)🎯 Debugging Scoring Calibration Fixes$(RESET)"
+	@echo "========================================="
+	@$(PYTHON) $(DEBUG_DIR)/debug_scoring_calibration.py
 
 # Domain coverage analysis
 domain-audit:
@@ -321,6 +330,13 @@ test-enhanced-evaluator: pre-test
 	@echo "$(BOLD)$(BLUE)🔬 Testing Enhanced Universal Evaluator$(RESET)"
 	@echo "=========================================="
 	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/validation/test_enhanced_universal_evaluator.py $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+
+# Test Phase 1 quality fixes
+test-phase1-quality: pre-test
+	@echo "$(BOLD)$(BLUE)🔧 Testing Phase 1 Quality Fixes$(RESET)"
+	@echo "=================================="
+	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/validation/test_phase1_quality_fixes.py $(ARGS) && \
 	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
 
 # Convert creativity base models to instruct models  

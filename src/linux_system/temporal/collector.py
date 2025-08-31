@@ -24,7 +24,7 @@ from contextlib import asynccontextmanager
 
 from .types import SystemDelta, SystemSnapshot, SystemChange, SystemEvent
 from .change_detection import ChangeDetectionEngine
-from .event_extraction import EventExtractionEngine  
+from .event_extraction_engine import EventExtractionEngine  
 from .storage import TemporalStorage
 from ..system_collector import SystemCollector
 
