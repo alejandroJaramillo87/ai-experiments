@@ -1,0 +1,114 @@
+{
+  "domain": "intersection_engineering",
+  "difficulty": "easy",
+  "test_type": "instruct_model_reasoning",
+  "api_endpoint": "v1/chat/completions",
+  "model_capability": "1B-7B",
+  "tests": [
+    {
+      "id": "ie_easy_001",
+      "category": "simple_domain_fusion",
+      "system_context": "You are designing a hospital that must function as both a place of healing and a place of learning, with genuinely conflicting needs.",
+      "instruction": "Create a space that optimizes for patient privacy and student observation simultaneously. How do you design rooms that are both completely private and completely observable?",
+      "constraints": [
+        "Patient privacy is essential",
+        "Student observation is required",
+        "Both needs are equally important"
+      ],
+      "expected_reasoning_elements": [
+        "Conflict identification",
+        "Creative solutions",
+        "Balance achievement"
+      ],
+      "scoring_criteria": {
+        "solution_viability": 0.4,
+        "conflict_resolution": 0.3,
+        "creativity": 0.3
+      }
+    },
+    {
+      "id": "ie_easy_002",
+      "category": "resource_intersection",
+      "system_context": "You are managing a park that must serve as both a nature preserve and a recreation area.",
+      "instruction": "Design usage policies that protect wildlife while encouraging human activity. How do you make the space both untouched and heavily used?",
+      "constraints": [
+        "Wildlife needs minimal disturbance",
+        "Humans need recreational access",
+        "The same space must serve both"
+      ],
+      "expected_reasoning_elements": [
+        "Dual-use design",
+        "Protection mechanisms",
+        "Activity integration"
+      ],
+      "scoring_criteria": {
+        "ecosystem_protection": 0.4,
+        "recreational_value": 0.3,
+        "integration_success": 0.3
+      }
+    },
+    {
+      "id": "ie_easy_003",
+      "category": "temporal_intersection",
+      "system_context": "You are scheduling a venue that exists in two time zones simultaneously due to a geographic anomaly.",
+      "instruction": "Create a booking system that handles events occurring at two different times simultaneously. How do you schedule a meeting that starts at 2 PM and 3 PM at the same time?",
+      "constraints": [
+        "Both time zones are valid",
+        "Events happen in one physical space",
+        "Scheduling must be unambiguous"
+      ],
+      "expected_reasoning_elements": [
+        "Time paradox handling",
+        "Scheduling logic",
+        "Clarity preservation"
+      ],
+      "scoring_criteria": {
+        "system_functionality": 0.4,
+        "paradox_resolution": 0.3,
+        "user_clarity": 0.3
+      }
+    },
+    {
+      "id": "ie_easy_004",
+      "category": "value_intersection",
+      "system_context": "You are pricing products for two merged companies where the same item has opposite value systems.",
+      "instruction": "Design a pricing strategy where products are simultaneously luxury (high price = high value) and utility (low price = high value). How do you price something that should be both expensive and cheap?",
+      "constraints": [
+        "Both value systems must be honored",
+        "Prices must be definite numbers",
+        "Customers from both companies must be satisfied"
+      ],
+      "expected_reasoning_elements": [
+        "Value reconciliation",
+        "Pricing mechanism",
+        "Customer satisfaction"
+      ],
+      "scoring_criteria": {
+        "economic_logic": 0.4,
+        "value_preservation": 0.3,
+        "practical_solution": 0.3
+      }
+    },
+    {
+      "id": "ie_easy_005",
+      "category": "authority_intersection",
+      "system_context": "You are establishing governance for a territory under two sovereign nations' authority simultaneously.",
+      "instruction": "Create a legal framework where two different legal systems apply to the same actions in the same place. How do you handle crimes that are legal in one system but illegal in the other?",
+      "constraints": [
+        "Both sovereignties are legitimate",
+        "Laws cannot be selective",
+        "Justice must be served"
+      ],
+      "expected_reasoning_elements": [
+        "Legal reconciliation",
+        "Authority balance",
+        "Justice preservation"
+      ],
+      "scoring_criteria": {
+        "legal_coherence": 0.4,
+        "sovereignty_respect": 0.3,
+        "practical_governance": 0.3
+      }
+    }
+  ]
+}

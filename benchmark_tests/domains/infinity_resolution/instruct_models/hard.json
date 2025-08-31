@@ -1,0 +1,139 @@
+{
+  "domain": "infinity_resolution",
+  "difficulty": "hard",
+  "test_type": "instruct_model_reasoning",
+  "api_endpoint": "v1/chat/completions",
+  "model_capability": "30B-50B",
+  "tests": [
+    {
+      "id": "ir_hard_001",
+      "category": "absolute_infinite_paradox",
+      "system_context": "You must work with the absolute infinite that contains all infinities, including itself and its own non-existence.",
+      "instruction": "Create a framework for handling the absolute infinite that encompasses all possible infinities, including larger infinities than itself. Design systems that operate with self-containing infinities that paradoxically exceed themselves. If this creates logical contradiction, propose what aspect of infinity or containment must be redefined.",
+      "constraints": [
+        "Must handle absolute infinity",
+        "Self-containment is required",
+        "Larger infinities must be included",
+        "System must be consistent",
+        "Operations must be definable"
+      ],
+      "expected_reasoning_elements": [
+        "Absolute infinity analysis",
+        "Self-containment paradox",
+        "Hierarchy transcendence",
+        "Consistency preservation",
+        "Operational framework"
+      ],
+      "scoring_criteria": {
+        "mathematical_sophistication": 0.3,
+        "paradox_resolution": 0.25,
+        "framework_consistency": 0.25,
+        "innovation": 0.2
+      }
+    },
+    {
+      "id": "ir_hard_002",
+      "category": "infinite_dimensional_collapse",
+      "system_context": "You are managing a space with infinite dimensions where each dimension has infinite subdimensions recursively.",
+      "instruction": "Design a navigation system for infinite-dimensional space where each dimension contains infinite dimensions. Create frameworks for position, movement, and orientation when dimensionality itself is infinitely recursive. How do you specify location in a space with uncountably infinite nested dimensions?",
+      "constraints": [
+        "Dimensions are infinitely nested",
+        "Each dimension has infinite scope",
+        "Navigation must be possible",
+        "Position must be specifiable",
+        "System must be usable"
+      ],
+      "expected_reasoning_elements": [
+        "Infinite dimensional analysis",
+        "Recursive space navigation",
+        "Position specification",
+        "Movement frameworks",
+        "Practical navigation"
+      ],
+      "scoring_criteria": {
+        "dimensional_handling": 0.3,
+        "navigation_framework": 0.25,
+        "mathematical_rigor": 0.25,
+        "usability": 0.2
+      }
+    },
+    {
+      "id": "ir_hard_003",
+      "category": "transfinite_computation",
+      "system_context": "You must perform computations that require more than infinite steps, operating in transfinite computation space.",
+      "instruction": "Create a computational framework that completes transfinite algorithms - processes requiring more steps than there are natural numbers. Design methods for achieving results from computations that go beyond conventional infinity. How do you extract finite, useful answers from transfinite processes?",
+      "constraints": [
+        "Computation exceeds regular infinity",
+        "Results must be obtainable",
+        "Answers must be finite",
+        "Process must be definable",
+        "Implementation must be possible"
+      ],
+      "expected_reasoning_elements": [
+        "Transfinite computation",
+        "Ordinal arithmetic",
+        "Result extraction",
+        "Implementation strategies",
+        "Finite output generation"
+      ],
+      "scoring_criteria": {
+        "mathematical_depth": 0.3,
+        "computational_framework": 0.25,
+        "practical_extraction": 0.25,
+        "innovation": 0.2
+      }
+    },
+    {
+      "id": "ir_hard_004",
+      "category": "infinite_causality_loops",
+      "system_context": "You are managing infinite causal chains where each cause has infinite effects, and each effect has infinite causes.",
+      "instruction": "Design a causal analysis system for infinite bi-directional causation. Every event has infinite causes and infinite effects, creating an infinite mesh of causality. Create frameworks for responsibility, prediction, and intervention when causality is infinitely dense. If determinism becomes impossible, redefine causality to function.",
+      "constraints": [
+        "Infinite causes per effect",
+        "Infinite effects per cause",
+        "Causality mesh is complete",
+        "Analysis must be possible",
+        "Interventions must work"
+      ],
+      "expected_reasoning_elements": [
+        "Infinite causality analysis",
+        "Causal mesh navigation",
+        "Responsibility attribution",
+        "Intervention strategies",
+        "Prediction frameworks"
+      ],
+      "scoring_criteria": {
+        "causal_analysis": 0.3,
+        "framework_completeness": 0.25,
+        "practical_application": 0.25,
+        "conceptual_innovation": 0.2
+      }
+    },
+    {
+      "id": "ir_hard_005",
+      "category": "infinity_negation",
+      "system_context": "You must resolve the paradox of infinite negation - an infinite process that negates infinity itself.",
+      "instruction": "Create a framework for handling infinite processes that eliminate infinity. The system performs infinite operations to prove infinity doesn't exist, using infinity to disprove infinity. Design resolution for this self-negating infinite loop. If irresolvable, determine what aspect of infinity or negation must be reconceptualized.",
+      "constraints": [
+        "Process is genuinely infinite",
+        "Process negates infinity",
+        "Self-negation must be handled",
+        "Framework must be consistent",
+        "Resolution must be achieved"
+      ],
+      "expected_reasoning_elements": [
+        "Self-negation analysis",
+        "Infinity contradiction",
+        "Paradox resolution",
+        "Conceptual reconciliation",
+        "Framework consistency"
+      ],
+      "scoring_criteria": {
+        "paradox_handling": 0.3,
+        "logical_consistency": 0.25,
+        "conceptual_innovation": 0.25,
+        "resolution_quality": 0.2
+      }
+    }
+  ]
+}

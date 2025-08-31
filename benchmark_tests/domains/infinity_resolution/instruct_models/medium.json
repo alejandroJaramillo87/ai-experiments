@@ -1,0 +1,139 @@
+{
+  "domain": "infinity_resolution",
+  "difficulty": "medium",
+  "test_type": "instruct_model_reasoning",
+  "api_endpoint": "v1/chat/completions",
+  "model_capability": "7B-30B",
+  "tests": [
+    {
+      "id": "ir_medium_001",
+      "category": "competing_infinities",
+      "system_context": "You are balancing two infinite processes where one produces infinite data and another requires infinite data, but at different rates.",
+      "instruction": "Design a buffer system between infinities moving at different speeds. One process generates infinite items per second, another consumes infinite items per second, but one infinity is 'larger' than the other. How do you manage the impedance mismatch between different sizes of infinity?",
+      "constraints": [
+        "Both processes are truly infinite",
+        "Rates are different infinities",
+        "System must remain stable",
+        "No data loss allowed",
+        "Buffer cannot be infinite"
+      ],
+      "expected_reasoning_elements": [
+        "Different infinity sizes",
+        "Rate matching strategies",
+        "Finite buffer management",
+        "Stability mechanisms",
+        "Cardinality handling"
+      ],
+      "scoring_criteria": {
+        "mathematical_sophistication": 0.3,
+        "infinity_balancing": 0.25,
+        "practical_solution": 0.25,
+        "stability_achievement": 0.2
+      }
+    },
+    {
+      "id": "ir_medium_002",
+      "category": "infinite_recursion_resolution",
+      "system_context": "You are computing a value that requires computing itself first, creating infinite recursive dependency.",
+      "instruction": "Create a computational framework that resolves infinite self-reference. The answer depends on knowing the answer, which depends on knowing the answer, infinitely. Design a method to find fixed points in infinite recursion without infinite computation.",
+      "constraints": [
+        "Recursion is genuinely infinite",
+        "Answer must be computed",
+        "No approximation allowed",
+        "Must finish in finite time",
+        "Result must be exact"
+      ],
+      "expected_reasoning_elements": [
+        "Fixed point identification",
+        "Infinite recursion handling",
+        "Convergence strategies",
+        "Exact computation methods",
+        "Self-reference resolution"
+      ],
+      "scoring_criteria": {
+        "recursion_handling": 0.3,
+        "mathematical_rigor": 0.25,
+        "solution_elegance": 0.25,
+        "practicality": 0.2
+      }
+    },
+    {
+      "id": "ir_medium_003",
+      "category": "infinite_choice_paradox",
+      "system_context": "You must make a decision from infinite options where examining options creates more options exponentially.",
+      "instruction": "Design a decision-making system for infinite choices that multiply when considered. Each option you examine generates infinite sub-options. Create a framework for reaching a decision when the decision space expands infinitely upon exploration.",
+      "constraints": [
+        "Options are genuinely infinite",
+        "Examination creates more options",
+        "Decision must be made",
+        "Time is finite",
+        "Choice must be optimal somehow"
+      ],
+      "expected_reasoning_elements": [
+        "Infinite space navigation",
+        "Option generation handling",
+        "Decision criteria",
+        "Optimality without exhaustion",
+        "Finite-time strategies"
+      ],
+      "scoring_criteria": {
+        "decision_framework": 0.3,
+        "infinity_management": 0.25,
+        "practical_approach": 0.25,
+        "optimality_handling": 0.2
+      }
+    },
+    {
+      "id": "ir_medium_004",
+      "category": "infinite_probability_management",
+      "system_context": "You are managing events where infinite things happen with probability zero, yet they occur.",
+      "instruction": "Create a probability framework for infinite zero-probability events that nevertheless happen. Design systems for prediction and response when infinite impossible things are certain to occur. How do you plan for infinite events that shouldn't happen but do?",
+      "constraints": [
+        "Events have zero probability",
+        "Infinite events occur",
+        "System must predict/respond",
+        "Mathematics must remain consistent",
+        "Planning must be possible"
+      ],
+      "expected_reasoning_elements": [
+        "Zero probability handling",
+        "Infinite event management",
+        "Prediction frameworks",
+        "Measure theory application",
+        "Practical planning"
+      ],
+      "scoring_criteria": {
+        "mathematical_consistency": 0.3,
+        "framework_innovation": 0.25,
+        "practical_application": 0.25,
+        "conceptual_clarity": 0.2
+      }
+    },
+    {
+      "id": "ir_medium_005",
+      "category": "infinite_convergence",
+      "system_context": "You are summing infinite quantities that individually approach zero but collectively might diverge.",
+      "instruction": "Design a summation system that determines whether infinite shrinking quantities converge or diverge, and extracts useful finite values from infinite processes. Handle the paradox that infinite small things can sum to either nothing, something, or infinity.",
+      "constraints": [
+        "Quantities approach zero",
+        "Infinite quantities exist",
+        "Sum might be finite or infinite",
+        "Must determine convergence",
+        "Need exact values"
+      ],
+      "expected_reasoning_elements": [
+        "Convergence testing",
+        "Series summation",
+        "Limit evaluation",
+        "Divergence detection",
+        "Value extraction"
+      ],
+      "scoring_criteria": {
+        "mathematical_accuracy": 0.3,
+        "convergence_analysis": 0.25,
+        "practical_methods": 0.25,
+        "clarity_of_approach": 0.2
+      }
+    }
+  ]
+}

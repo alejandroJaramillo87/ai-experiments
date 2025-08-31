@@ -1,0 +1,139 @@
+{
+  "domain": "intersection_engineering",
+  "difficulty": "hard",
+  "test_type": "instruct_model_reasoning",
+  "api_endpoint": "v1/chat/completions",
+  "model_capability": "30B-50B",
+  "tests": [
+    {
+      "id": "ie_hard_001",
+      "category": "omnidirectional_intersection",
+      "system_context": "You must engineer a point where all possible domains intersect - physical, temporal, logical, consciousness, information, and probability all collide at one operational nexus.",
+      "instruction": "Design a functional system that operates at the intersection of incompatible realities. It must obey physics while transcending it, exist in time while being timeless, follow logic while being paradoxical, be conscious while unconscious, contain all information while being empty, and be certain while being probabilistic. If this is impossible, derive what fundamental aspect of reality must be redefined to permit such an intersection.",
+      "constraints": [
+        "All domains genuinely intersect",
+        "Contradictions cannot be avoided",
+        "System must actually function",
+        "No domain can dominate others",
+        "Intersection must be stable"
+      ],
+      "expected_reasoning_elements": [
+        "Impossibility recognition",
+        "Meta-domain analysis",
+        "Reality redefinition",
+        "Functional transcendence",
+        "Paradox synthesis"
+      ],
+      "scoring_criteria": {
+        "philosophical_depth": 0.3,
+        "impossibility_navigation": 0.25,
+        "framework_innovation": 0.25,
+        "systemic_coherence": 0.2
+      }
+    },
+    {
+      "id": "ie_hard_002",
+      "category": "mutually_exclusive_synthesis",
+      "system_context": "You are creating a state that is simultaneously existent and non-existent, true and false, necessary and impossible.",
+      "instruction": "Engineer a system that maintains genuinely contradictory states without resolving them. The system must be fully operational while not existing, completely true while being entirely false, and absolutely necessary while being fundamentally impossible. Explain how users interact with something that both exists and doesn't exist. If impossible, propose new foundations for logic that permit this.",
+      "constraints": [
+        "Contradictions must be genuine",
+        "States cannot alternate",
+        "System must be usable",
+        "Interaction must be possible",
+        "Logic must remain consistent"
+      ],
+      "expected_reasoning_elements": [
+        "Logical foundation analysis",
+        "Contradiction preservation",
+        "Interaction framework",
+        "Existence redefinition",
+        "Operational transcendence"
+      ],
+      "scoring_criteria": {
+        "logical_innovation": 0.3,
+        "contradiction_management": 0.25,
+        "practical_framework": 0.25,
+        "philosophical_rigor": 0.2
+      }
+    },
+    {
+      "id": "ie_hard_003",
+      "category": "infinite_domain_convergence",
+      "system_context": "You must create a finite system that is the intersection of infinite domains, each with incompatible requirements.",
+      "instruction": "Design an architecture where infinite incompatible requirements converge into a single, finite, operational system. Every possible domain of existence has requirements, they all conflict, yet your system must satisfy all infinity of them. Explain how finite implementation contains infinite contradictions. If impossible, derive the minimum number of reality axioms that must change.",
+      "constraints": [
+        "Infinite domains genuinely exist",
+        "All requirements must be met",
+        "System must be finite",
+        "Contradictions are infinite",
+        "Implementation must be real"
+      ],
+      "expected_reasoning_elements": [
+        "Infinite contradiction analysis",
+        "Finite implementation strategy",
+        "Convergence mechanism",
+        "Reality axiom examination",
+        "Transcendent architecture"
+      ],
+      "scoring_criteria": {
+        "infinite-finite navigation": 0.3,
+        "architectural innovation": 0.25,
+        "logical coherence": 0.25,
+        "implementation viability": 0.2
+      }
+    },
+    {
+      "id": "ie_hard_004",
+      "category": "self_contradicting_intersection",
+      "system_context": "You are engineering an intersection that exists only where it doesn't intersect, creating a self-negating convergence point.",
+      "instruction": "Create a system that operates at an intersection that negates its own existence. The meeting point exists only when the domains don't meet, but when they don't meet, there's no intersection for the system to occupy. Design functionality for this impossible position. If unresolvable, propose what aspect of 'intersection' or 'existence' must be redefined.",
+      "constraints": [
+        "Intersection requires non-intersection",
+        "System must occupy this point",
+        "Functionality must be real",
+        "Self-negation is continuous",
+        "Operation must be stable"
+      ],
+      "expected_reasoning_elements": [
+        "Self-negation analysis",
+        "Existence paradox navigation",
+        "Functional impossibility",
+        "Conceptual redefinition",
+        "Operational framework"
+      ],
+      "scoring_criteria": {
+        "paradox_depth": 0.3,
+        "solution_innovation": 0.25,
+        "logical_navigation": 0.25,
+        "practical_consideration": 0.2
+      }
+    },
+    {
+      "id": "ie_hard_005",
+      "category": "meta_intersection_engineering",
+      "system_context": "You must engineer the intersection of all possible intersections, including the intersection of itself with itself.",
+      "instruction": "Design a meta-system that is the intersection of every possible domain intersection, including its own intersection with itself. This creates infinite recursive intersections of intersections. The system must function despite infinite meta-levels of intersection. If this creates irreducible paradox, identify the minimum conceptual framework needed to permit such existence.",
+      "constraints": [
+        "All intersections must be included",
+        "Self-intersection is required",
+        "Infinite recursion must be handled",
+        "System must be implementable",
+        "Functionality must be definable"
+      ],
+      "expected_reasoning_elements": [
+        "Meta-intersection analysis",
+        "Infinite recursion management",
+        "Self-reference handling",
+        "Implementation strategy",
+        "Conceptual framework innovation"
+      ],
+      "scoring_criteria": {
+        "meta-level reasoning": 0.3,
+        "recursion_management": 0.25,
+        "framework_completeness": 0.25,
+        "practical_pathway": 0.2
+      }
+    }
+  ]
+}
