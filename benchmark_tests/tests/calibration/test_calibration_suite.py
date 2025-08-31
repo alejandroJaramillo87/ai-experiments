@@ -21,6 +21,7 @@ from typing import List, Dict, Any
 import sys
 sys.path.append('.')
 sys.path.append('..')
+sys.path.append('../..')  # Added for new calibration directory location
 
 from calibration_validator import CalibrationValidator, CalibrationResult
 from calibration_reporter import CalibrationReporter
