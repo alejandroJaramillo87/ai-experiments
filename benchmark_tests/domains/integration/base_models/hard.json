@@ -1,7 +1,7 @@
 {
   "suite_info": {
     "name": "Base Model Hard Integration Test Suite",
-    "version": "1.0.0", 
+    "version": "1.0.0",
     "total_tests": 15,
     "description": "Maximum complexity cross-domain integration tests requiring expert-level synthesis of all domain capabilities with master-level cultural authenticity",
     "difficulty": "hard",
@@ -24,8 +24,15 @@
         "top_p": 0.9,
         "stream": false
       },
-      "domains_required": ["knowledge", "language", "social", "creativity", "reasoning"],
-      "cultural_context": "Global indigenous knowledge preservation"
+      "domains_required": [
+        "knowledge",
+        "language",
+        "social",
+        "creativity",
+        "reasoning"
+      ],
+      "cultural_context": "Global indigenous knowledge preservation",
+      "max_tokens": 600
     }
   ]
 }

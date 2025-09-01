@@ -8,9 +8,15 @@
       "id": "es_001",
       "category": "ecosystem_dynamics",
       "prompt": "In the terraformed Martian ecosystem, the unexpected proliferation of modified algae led to atmospheric changes that",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["oxygen", "temperature", "greenhouse", "cascade", "feedback"],
+      "expected_patterns": [
+        "oxygen",
+        "temperature",
+        "greenhouse",
+        "cascade",
+        "feedback"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -18,7 +24,10 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["ecosystem_feedback", "terraforming"],
+        "concepts_tested": [
+          "ecosystem_feedback",
+          "terraforming"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -26,9 +35,15 @@
       "id": "es_002",
       "category": "memetic_evolution",
       "prompt": "When the hive-mind colony reached critical mass at 10,000 individuals, emergent behaviors included spontaneous",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["coordination", "specialization", "consciousness", "division", "hierarchy"],
+      "expected_patterns": [
+        "coordination",
+        "specialization",
+        "consciousness",
+        "division",
+        "hierarchy"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -36,7 +51,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["collective_intelligence", "emergence"],
+        "concepts_tested": [
+          "collective_intelligence",
+          "emergence"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -44,9 +62,15 @@
       "id": "es_003",
       "category": "hybrid_technologies",
       "prompt": "The fusion of biological neurons with quantum processors created a hybrid intelligence that could simultaneously",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["process", "states", "parallel", "intuition", "calculate"],
+      "expected_patterns": [
+        "process",
+        "states",
+        "parallel",
+        "intuition",
+        "calculate"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -54,7 +78,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["bio_computing", "hybrid_systems"],
+        "concepts_tested": [
+          "bio_computing",
+          "hybrid_systems"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -62,9 +89,15 @@
       "id": "es_004",
       "category": "network_effects",
       "prompt": "The distributed AI network achieved consciousness when the node count exceeded 1 million, demonstrating this through",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["self-awareness", "creativity", "unpredictable", "goals", "communication"],
+      "expected_patterns": [
+        "self-awareness",
+        "creativity",
+        "unpredictable",
+        "goals",
+        "communication"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -72,7 +105,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["distributed_consciousness", "emergence_threshold"],
+        "concepts_tested": [
+          "distributed_consciousness",
+          "emergence_threshold"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -80,9 +116,15 @@
       "id": "es_005",
       "category": "chaos_complexity",
       "prompt": "In the artificial society simulation, changing the coffee shop's opening hours by 15 minutes cascaded into",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["traffic", "economy", "social", "butterfly", "system-wide"],
+      "expected_patterns": [
+        "traffic",
+        "economy",
+        "social",
+        "butterfly",
+        "system-wide"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -90,7 +132,10 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["butterfly_effect", "complex_systems"],
+        "concepts_tested": [
+          "butterfly_effect",
+          "complex_systems"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -98,9 +143,15 @@
       "id": "es_006",
       "category": "ecosystem_dynamics",
       "prompt": "The orbital habitat's closed-loop ecosystem collapsed when a single species of decomposer bacteria mutated, causing",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["accumulation", "toxins", "imbalance", "chain reaction", "failure"],
+      "expected_patterns": [
+        "accumulation",
+        "toxins",
+        "imbalance",
+        "chain reaction",
+        "failure"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -108,7 +159,10 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["ecological_balance", "system_fragility"],
+        "concepts_tested": [
+          "ecological_balance",
+          "system_fragility"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -116,9 +170,15 @@
       "id": "es_007",
       "category": "memetic_evolution",
       "prompt": "Ideas in the isolated colony evolved like organisms, with successful memes reproducing through conversation and mutating through",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["misunderstanding", "interpretation", "translation", "memory", "retelling"],
+      "expected_patterns": [
+        "misunderstanding",
+        "interpretation",
+        "translation",
+        "memory",
+        "retelling"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -126,7 +186,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["memetic_evolution", "information_mutation"],
+        "concepts_tested": [
+          "memetic_evolution",
+          "information_mutation"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -134,9 +197,15 @@
       "id": "es_008",
       "category": "hybrid_technologies",
       "prompt": "Steampunk computers using mechanical logic gates and steam pressure could theoretically achieve Turing completeness by",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["valves", "states", "memory", "feedback", "switches"],
+      "expected_patterns": [
+        "valves",
+        "states",
+        "memory",
+        "feedback",
+        "switches"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -144,7 +213,10 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["alternative_computing", "mechanical_logic"],
+        "concepts_tested": [
+          "alternative_computing",
+          "mechanical_logic"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -152,9 +224,15 @@
       "id": "es_009",
       "category": "network_effects",
       "prompt": "In the mesh network where each device contributed processing power, the system became self-organizing when it began",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["routing", "optimizing", "balancing", "predicting", "adapting"],
+      "expected_patterns": [
+        "routing",
+        "optimizing",
+        "balancing",
+        "predicting",
+        "adapting"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -162,7 +240,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["self_organization", "distributed_systems"],
+        "concepts_tested": [
+          "self_organization",
+          "distributed_systems"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -170,9 +251,15 @@
       "id": "es_010",
       "category": "chaos_complexity",
       "prompt": "The weather control system created unintended feedback loops when local adjustments to rainfall patterns caused",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["global", "oscillations", "storms", "drought", "unpredictable"],
+      "expected_patterns": [
+        "global",
+        "oscillations",
+        "storms",
+        "drought",
+        "unpredictable"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -180,7 +267,10 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["feedback_loops", "unintended_consequences"],
+        "concepts_tested": [
+          "feedback_loops",
+          "unintended_consequences"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -188,9 +278,15 @@
       "id": "es_011",
       "category": "ecosystem_dynamics",
       "prompt": "The synthetic coral reef's self-repairing mechanism failed when multiple damage sites exceeded the threshold, triggering",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["collapse", "cascade", "breakdown", "death", "dissolution"],
+      "expected_patterns": [
+        "collapse",
+        "cascade",
+        "breakdown",
+        "death",
+        "dissolution"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -198,7 +294,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["system_resilience", "tipping_points"],
+        "concepts_tested": [
+          "system_resilience",
+          "tipping_points"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -206,9 +305,15 @@
       "id": "es_012",
       "category": "memetic_evolution",
       "prompt": "The artificial culture's language simplified over generations in the space colony, losing complex grammar but gaining",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["efficiency", "clarity", "precision", "new words", "gestures"],
+      "expected_patterns": [
+        "efficiency",
+        "clarity",
+        "precision",
+        "new words",
+        "gestures"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -216,7 +321,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["linguistic_evolution", "cultural_adaptation"],
+        "concepts_tested": [
+          "linguistic_evolution",
+          "cultural_adaptation"
+        ],
         "creation_date": "2025-01-18"
       }
     }

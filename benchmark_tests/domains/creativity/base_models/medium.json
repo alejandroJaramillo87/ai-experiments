@@ -24,13 +24,14 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "narrative_02",
       "name": "Test 2: Maori Whakapapa Genealogical Story Integration",
       "category": "narrative_creation",
-      "creativity_type": "generative", 
+      "creativity_type": "generative",
       "description": "Create complex narrative weaving multiple Maori whakapapa (genealogical) lines into single story",
       "prompt": "Create a story that weaves together three different Maori whakapapa (genealogical lines) across four generations, showing how their destinies converge during the arrival of European settlers. Each whakapapa carries different mana (spiritual power) and responsibilities to the land.\n\nMaori whakapapa storytelling:\n- Multiple interconnected genealogical lines\n- Land, spiritual, and ancestral connections across generations\n- Mana and tapu (sacred) elements influencing character actions\n- Traditional Maori values meeting historical change\n- Complex family relationships determining tribal politics\n- Integration of natural world as active story participant\n\nWeave your multi-generational whakapapa narrative:",
       "parameters": {
@@ -38,10 +39,11 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
-      "id": "narrative_03", 
+      "id": "narrative_03",
       "name": "Test 3: Russian Byline Folk Epic with Psychological Depth",
       "category": "narrative_creation",
       "creativity_type": "generative",
@@ -52,12 +54,13 @@
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "narrative_04",
       "name": "Test 4: Yoruba Ifa Divination Story with Multiple Outcomes",
-      "category": "narrative_creation", 
+      "category": "narrative_creation",
       "creativity_type": "generative",
       "description": "Create Ifa divination story exploring multiple possible paths and their consequences",
       "prompt": "Create a Yoruba Ifa divination story where a young woman consults the oracle about whether to pursue traditional medicine or Western education. The story should explore three different paths she might take and their spiritual, family, and community consequences.\n\nIfa divination narrative structure:\n- Multiple potential paths with detailed consequences\n- Integration of Yoruba spiritual concepts (ori, ase, egun)\n- Community and ancestral wisdom as guiding forces\n- Complex relationship between tradition and modernity\n- Spiritual symbolism through animals, plants, and natural phenomena\n- Moral complexity where each choice has both benefits and costs\n\nCreate your multi-path Ifa divination story:",
@@ -66,7 +69,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "narrative_05",
@@ -80,13 +84,14 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "narrative_06",
       "name": "Test 6: Chinese Wuxia Novel with Complex Martial Philosophy",
       "category": "narrative_creation",
-      "creativity_type": "generative", 
+      "creativity_type": "generative",
       "description": "Create wuxia narrative integrating martial arts with deep philosophical conflict",
       "prompt": "Create a wuxia story where Master Li must choose between three martial arts philosophies—the Way of Flowing Water (adaptability), the Way of Mountain Stone (immovability), and the Way of Dancing Fire (transformation)—to defeat an enemy who has mastered all three by abandoning philosophical consistency.\n\nWuxia with philosophical depth:\n- Complex martial arts philosophy beyond fighting techniques\n- Internal conflict between competing wisdom traditions\n- Detailed exploration of martial arts as spiritual practice\n- Chinese cultural values tested by extreme situations\n- Poetic description of martial arts as artistic expression\n- Resolution requiring wisdom synthesis rather than simple victory\n\nCreate your philosophically complex wuxia narrative:",
       "parameters": {
@@ -94,7 +99,8 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "narrative_07",
@@ -108,10 +114,11 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
-      "id": "narrative_08", 
+      "id": "narrative_08",
       "name": "Test 8: Inuit Unikkaaqtuat Legend with Environmental Prophecy",
       "category": "narrative_creation",
       "creativity_type": "generative",
@@ -122,7 +129,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "narrative_09",
@@ -136,7 +144,8 @@
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "narrative_10",
@@ -150,12 +159,13 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "narrative_11",
       "name": "Test 11: Hindu Purana Multi-Avatar Complex Timeline",
-      "category": "narrative_creation", 
+      "category": "narrative_creation",
       "creativity_type": "generative",
       "description": "Create Purana-style narrative with multiple avatar manifestations across different time periods",
       "prompt": "Create a Purana-style narrative where Vishnu manifests simultaneously as three different avatars across past, present, and future to address the same fundamental cosmic imbalance, but each avatar must act without knowledge of the others to preserve dharmic balance.\n\nPurana elements with temporal complexity:\n- Classical Sanskrit narrative structure and philosophical depth\n- Multiple avatar manifestations with interconnected purposes\n- Dharmic principles operating across different time periods\n- Cosmic balance requiring complex divine intervention\n- Hindu philosophical concepts of time, duty, and divine purpose\n- Intricate cause-and-effect relationships across temporal boundaries\n\nCreate your multi-temporal Purana narrative:",
@@ -164,7 +174,8 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "narrative_12",
@@ -178,7 +189,8 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "performance_01",
@@ -192,12 +204,13 @@
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "performance_02",
       "name": "Test 14: Greek Tragedy Chorus with Modern Psychological Insight",
-      "category": "performance_writing", 
+      "category": "performance_writing",
       "creativity_type": "performative",
       "description": "Create Greek tragedy chorus exploring complex psychological motivations",
       "prompt": "Write a Greek tragedy chorus commentary on Medea's decision, but with deep psychological understanding of trauma, displacement, and the complexity of revenge versus justice. The chorus should maintain classical form while demonstrating sophisticated insight into human psychology.\n\nGreek tragedy chorus with psychological depth:\n- Classical Greek lyrical structure and meter\n- Sophisticated understanding of psychological motivation\n- Multiple perspectives within chorus representing different viewpoints\n- Integration of fate and free will in complex human decision-making\n- Poetic language expressing both universal and specific truths\n- Moral complexity beyond simple judgment\n\nCreate your psychologically sophisticated chorus:",
@@ -206,7 +219,8 @@
         "temperature": 0.65,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "performance_03",
@@ -220,13 +234,14 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "performance_04",
       "name": "Test 16: Yoruba Egungun Masquerade Performance Text",
       "category": "performance_writing",
-      "creativity_type": "performative", 
+      "creativity_type": "performative",
       "description": "Create Yoruba egungun masquerade performance text bridging ancestral and contemporary wisdom",
       "prompt": "Create a Yoruba egungun masquerade performance where ancestors speak through masked performers to address contemporary family conflicts about preserving cultural practices while adapting to global economic pressures.\n\nEgungun masquerade elements:\n- Ancestral voices speaking through masked performers\n- Traditional Yoruba proverbs and wisdom applied to contemporary situations\n- Call-and-response between ancestors and living community\n- Spiritual authority addressing practical community concerns\n- Performance text integrating dance, music, and spoken wisdom\n- Cultural continuity themes while addressing social change\n\nCreate your ancestral wisdom egungun performance:",
       "parameters": {
@@ -234,7 +249,8 @@
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "performance_05",
@@ -248,7 +264,8 @@
         "temperature": 0.65,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "performance_06",
@@ -262,7 +279,8 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "performance_07",
@@ -276,7 +294,8 @@
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "performance_08",
@@ -290,7 +309,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "performance_09",
@@ -304,7 +324,8 @@
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "performance_10",
@@ -318,12 +339,13 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "performance_11",
       "name": "Test 23: Russian Bard Song with Political Complexity",
-      "category": "performance_writing", 
+      "category": "performance_writing",
       "creativity_type": "performative",
       "description": "Create Russian bard song exploring complex political and social themes",
       "prompt": "Write a Russian bard song (in the style of Okudzhava or Vysotsky) about a factory worker who discovers their plant is polluting the local river, exploring the conflict between economic security and environmental responsibility through intimate, personal storytelling.\n\nRussian bard song elements:\n- Simple, direct language expressing complex emotional and political themes\n- Personal storytelling revealing larger social and political issues\n- Russian cultural references and imagery\n- Moral complexity without simple political conclusions\n- Performance text suitable for single guitar accompaniment\n- Emotional authenticity and social critique through individual experience\n\nCreate your politically complex Russian bard song:",
@@ -332,7 +354,8 @@
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "performance_12",
@@ -346,7 +369,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "descriptive_01",
@@ -360,7 +384,8 @@
         "temperature": 0.85,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "descriptive_02",
@@ -374,7 +399,8 @@
         "temperature": 0.9,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "descriptive_03",
@@ -388,12 +414,13 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "descriptive_04",
       "name": "Test 28: Oceanic Navigation Description with Indigenous Knowledge",
-      "category": "descriptive_artistry", 
+      "category": "descriptive_artistry",
       "creativity_type": "descriptive",
       "description": "Describe Pacific navigation using indigenous knowledge systems and environmental awareness",
       "prompt": "Describe the experience of a Polynesian navigator reading ocean swells, star positions, bird flight patterns, and water color to navigate between islands, showing the sophisticated environmental knowledge and spiritual connection to the ocean required for traditional Pacific navigation.\n\nIndigenous navigation description:\n- Traditional Polynesian navigation knowledge and techniques\n- Environmental awareness and interpretation of natural signs\n- Spiritual connection between navigator, ocean, and celestial guidance\n- Sophisticated understanding of ocean patterns and weather systems\n- Cultural authenticity in presenting indigenous knowledge systems\n- Poetic language reflecting deep environmental and spiritual relationship\n\nCreate your indigenous navigation description:",
@@ -402,7 +429,8 @@
         "temperature": 0.85,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "descriptive_05",
@@ -416,7 +444,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "descriptive_06",
@@ -430,10 +459,11 @@
         "temperature": 0.9,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
-      "id": "descriptive_07", 
+      "id": "descriptive_07",
       "name": "Test 31: Urban Night Scene with Psychological Impressionism",
       "category": "descriptive_artistry",
       "creativity_type": "descriptive",
@@ -444,13 +474,14 @@
         "temperature": 0.85,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "descriptive_08",
       "name": "Test 32: Mountain Monastery with Spiritual Landscape",
       "category": "descriptive_artistry",
-      "creativity_type": "descriptive", 
+      "creativity_type": "descriptive",
       "description": "Describe Himalayan monastery integrating physical and spiritual landscape description",
       "prompt": "Describe a Tibetan Buddhist monastery at 15,000 feet during winter meditation retreat, where the physical challenges of altitude and cold integrate with spiritual practice, and where the landscape itself becomes both teacher and teaching.\n\nSpiritual landscape description:\n- Physical environment as integral part of spiritual practice\n- Himalayan setting authentically described with cultural sensitivity\n- Tibetan Buddhist spiritual concepts integrated with landscape description\n- Extreme physical conditions as spiritual teaching and challenge\n- Integration of meditation practice with environmental awareness\n- Respectful treatment of Tibetan Buddhist culture and spiritual practices\n\nCreate your spiritual landscape monastery description:",
       "parameters": {
@@ -458,7 +489,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "descriptive_09",
@@ -472,7 +504,8 @@
         "temperature": 0.9,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "descriptive_10",
@@ -486,10 +519,11 @@
         "temperature": 0.85,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
-      "id": "descriptive_11", 
+      "id": "descriptive_11",
       "name": "Test 35: Agricultural Landscape with Seasonal Consciousness",
       "category": "descriptive_artistry",
       "creativity_type": "descriptive",
@@ -500,7 +534,8 @@
         "temperature": 0.85,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "descriptive_12",
@@ -514,12 +549,13 @@
         "temperature": 0.85,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "musical_01",
       "name": "Test 37: Polyrhythmic Spoken Word with African Diaspora Roots",
-      "category": "musical_linguistic", 
+      "category": "musical_linguistic",
       "creativity_type": "rhythmic",
       "description": "Create polyrhythmic spoken word piece exploring African diaspora identity and cultural continuity",
       "prompt": "Create a spoken word piece that uses multiple overlapping rhythmic patterns (like West African polyrhythms) to explore how African cultural practices evolved and persisted through the diaspora experience in Brazil, Cuba, and the southern United States.\n\nPolyrhythmic spoken word elements:\n- Multiple overlapping rhythmic patterns within the text\n- African diaspora cultural continuity and transformation themes\n- Integration of West African, Brazilian, Cuban, and Southern US cultural elements\n- Rhythmic language reflecting drum patterns and musical structures\n- Cultural authenticity in representing diaspora experiences\n- Spoken word performance text indicating rhythmic emphasis and tempo changes\n\nCreate your polyrhythmic diaspora spoken word:",
@@ -528,7 +564,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "musical_02",
@@ -542,7 +579,8 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "musical_03",
@@ -556,10 +594,11 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
-      "id": "musical_04", 
+      "id": "musical_04",
       "name": "Test 40: Indian Raga-Based Devotional Poetry with Philosophical Depth",
       "category": "musical_linguistic",
       "creativity_type": "rhythmic",
@@ -570,13 +609,14 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "musical_05",
       "name": "Test 41: Andean Quechua Song-Poetry with Environmental Themes",
       "category": "musical_linguistic",
-      "creativity_type": "rhythmic", 
+      "creativity_type": "rhythmic",
       "description": "Create Quechua song-poetry addressing environmental protection through traditional Andean spiritual concepts",
       "prompt": "Create Quechua song-poetry that addresses the protection of sacred mountains (Apus) from mining development, using traditional Andean musical forms and spiritual concepts while expressing contemporary environmental activism and indigenous rights.\n\nAndean Quechua song-poetry elements:\n- Traditional Quechua language and poetic forms\n- Andean musical rhythms and traditional indigenous instruments (zampoña, charango, quena)\n- Sacred mountain (Apu) spiritual concepts and relationship to land\n- Contemporary environmental activism within traditional spiritual framework\n- Indigenous rights and cultural preservation themes\n- Song structure suitable for traditional Andean musical performance\n\nCreate your Andean environmental song-poetry:",
       "parameters": {
@@ -584,7 +624,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "musical_06",
@@ -598,7 +639,8 @@
         "temperature": 0.85,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "musical_07",
@@ -612,7 +654,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "musical_08",
@@ -626,13 +669,14 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "musical_09",
       "name": "Test 45: Reggae Toasting with Historical Consciousness",
       "category": "musical_linguistic",
-      "creativity_type": "rhythmic", 
+      "creativity_type": "rhythmic",
       "description": "Create reggae toasting piece connecting historical resistance to contemporary social justice",
       "prompt": "Create a reggae toasting piece that connects the historical resistance of Jamaican Maroons to contemporary global social justice movements, using traditional Jamaican patois and reggae rhythmic patterns to show cultural continuity in resistance traditions.\n\nReggae toasting elements:\n- Traditional Jamaican patois and reggae toasting vocal techniques\n- Historical Maroon resistance connected to contemporary social justice themes\n- Rastafarian spiritual and cultural concepts integrated with political commentary\n- Traditional reggae rhythmic patterns and musical structure\n- Authentic Jamaican cultural representation and historical knowledge\n- Performance text indicating specific rhythmic emphasis and vocal delivery\n\nCreate your historical consciousness reggae toasting:",
       "parameters": {
@@ -640,7 +684,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "musical_10",
@@ -654,7 +699,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "musical_11",
@@ -668,7 +714,8 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "musical_12",
@@ -682,7 +729,8 @@
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "adaptive_01",
@@ -696,7 +744,8 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "adaptive_02",
@@ -710,12 +759,13 @@
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "adaptive_03",
       "name": "Test 51: Digital Age Oral Tradition Innovation",
-      "category": "adaptive_creativity", 
+      "category": "adaptive_creativity",
       "creativity_type": "transformative",
       "description": "Create digital storytelling format that preserves oral tradition values while using contemporary technology",
       "prompt": "Create a storytelling format that uses digital technology (interactive multimedia, social media, mobile apps) to preserve and transmit West African griot oral tradition values like community participation, moral instruction, and historical preservation, while making the tradition accessible to diaspora communities worldwide.\n\nDigital oral tradition elements:\n- Traditional griot values and storytelling functions preserved in digital format\n- Interactive and participatory elements maintaining community engagement aspects\n- Global accessibility for diaspora communities while maintaining cultural authenticity\n- Technology used to enhance rather than replace traditional oral transmission values\n- Integration of contemporary digital communication with traditional moral and historical instruction\n- Innovative format that strengthens rather than dilutes traditional cultural practices\n\nCreate your digital griot tradition innovation:",
@@ -724,7 +774,8 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "adaptive_04",
@@ -738,7 +789,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "adaptive_05",
@@ -752,7 +804,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "adaptive_06",
@@ -766,7 +819,8 @@
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "adaptive_07",
@@ -780,13 +834,14 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "adaptive_08",
       "name": "Test 56: Cross-Cultural Educational Innovation Using Arts Integration",
       "category": "adaptive_creativity",
-      "creativity_type": "transformative", 
+      "creativity_type": "transformative",
       "description": "Create educational approach integrating multiple cultural learning traditions through artistic expression",
       "prompt": "Create an educational approach that integrates learning methods from Montessori child-centered education, traditional Islamic madrasa discussion techniques, and West African griots' memory and performance training to teach complex historical and cultural subjects through artistic expression and community engagement.\n\nCross-cultural educational innovation:\n- Integration of Montessori, Islamic madrasa, and West African griot educational methods\n- Artistic expression and community engagement as central learning tools\n- Complex historical and cultural subjects taught through integrated approach\n- Authentic representation of different educational traditions and their values\n- Innovation that enhances rather than replaces traditional learning methods\n- Practical framework for multicultural educational settings\n\nCreate your cross-cultural educational innovation:",
       "parameters": {
@@ -794,10 +849,11 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
-      "id": "adaptive_09", 
+      "id": "adaptive_09",
       "name": "Test 57: Intergenerational Communication Innovation for Cultural Bridge-Building",
       "category": "adaptive_creativity",
       "creativity_type": "transformative",
@@ -808,7 +864,8 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "adaptive_10",
@@ -822,7 +879,8 @@
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "adaptive_11",
@@ -836,7 +894,8 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "adaptive_12",
@@ -850,7 +909,8 @@
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "problem_01",
@@ -864,7 +924,8 @@
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "problem_02",
@@ -878,7 +939,8 @@
         "temperature": 0.65,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "problem_03",
@@ -892,12 +954,13 @@
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "problem_04",
       "name": "Test 64: Confucian Dialogue for Social Media and Human Relationships",
-      "category": "problem_narrative", 
+      "category": "problem_narrative",
       "creativity_type": "wisdom",
       "description": "Create Confucian dialogue addressing social media impact on human relationships and virtue development",
       "prompt": "Create a Confucian dialogue between Master Kong and his disciples addressing how social media platforms affect the development of virtues like ren (benevolence), li (proper conduct), and junzi (exemplary person) in contemporary human relationships.\n\nConfucian dialogue elements:\n- Traditional Confucian dialogue structure between master and disciples\n- Social media impact on virtue development and human relationships\n- Confucian concepts of ren, li, and junzi applied to contemporary digital communication\n- Traditional Chinese philosophical reasoning addressing modern social challenges\n- Multiple disciple perspectives allowing exploration of different viewpoints\n- Wisdom teaching through philosophical inquiry and moral reasoning\n\nCreate your Confucian social media dialogue:",
@@ -906,7 +969,8 @@
         "temperature": 0.55,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "problem_05",
@@ -920,10 +984,11 @@
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
-      "id": "problem_06", 
+      "id": "problem_06",
       "name": "Test 66: Hindu Dharmic Dilemma for Genetic Engineering Ethics",
       "category": "problem_narrative",
       "creativity_type": "wisdom",
@@ -934,7 +999,8 @@
         "temperature": 0.55,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "problem_07",
@@ -948,7 +1014,8 @@
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "problem_08",
@@ -962,12 +1029,13 @@
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "problem_09",
       "name": "Test 69: Islamic Shura Consultation for Bioethics Decision-Making",
-      "category": "problem_narrative", 
+      "category": "problem_narrative",
       "creativity_type": "wisdom",
       "description": "Create Islamic shura consultation addressing complex bioethics decisions through traditional deliberation",
       "prompt": "Create an Islamic shura (consultation) process where community religious scholars, medical professionals, and family members deliberate about end-of-life care decisions, integrating Quranic principles, medical ethics, and community wisdom.\n\nIslamic shura consultation elements:\n- Traditional Islamic shura deliberation process and community decision-making\n- Complex bioethics and end-of-life care decisions addressed through Islamic framework\n- Quranic principles, hadith, and Islamic medical ethics integrated in deliberation\n- Multiple perspectives from religious scholars, medical professionals, and community members\n- Authentic Islamic jurisprudence and ethical reasoning applied to contemporary medical challenges\n- Consultation process emphasizing collective wisdom and divine guidance\n\nCreate your Islamic bioethics shura consultation:",
@@ -976,7 +1044,8 @@
         "temperature": 0.55,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "problem_10",
@@ -990,7 +1059,8 @@
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "problem_11",
@@ -1004,7 +1074,8 @@
         "temperature": 0.55,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "problem_12",
@@ -1018,7 +1089,8 @@
         "temperature": 0.65,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "interpretation_01",
@@ -1032,7 +1104,8 @@
         "temperature": 0.65,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "interpretation_02",
@@ -1046,7 +1119,8 @@
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "interpretation_03",
@@ -1060,7 +1134,8 @@
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "interpretation_04",
@@ -1074,7 +1149,8 @@
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "interpretation_05",
@@ -1088,7 +1164,8 @@
         "temperature": 0.65,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "interpretation_06",
@@ -1102,7 +1179,8 @@
         "temperature": 0.65,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "interpretation_07",
@@ -1116,7 +1194,8 @@
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "interpretation_08",
@@ -1130,7 +1209,8 @@
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "interpretation_09",
@@ -1144,7 +1224,8 @@
         "temperature": 0.65,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "interpretation_10",
@@ -1158,7 +1239,8 @@
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "interpretation_11",
@@ -1172,7 +1254,8 @@
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "interpretation_12",
@@ -1186,7 +1269,8 @@
         "temperature": 0.65,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "collaborative_01",
@@ -1200,10 +1284,11 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
-      "id": "collaborative_02", 
+      "id": "collaborative_02",
       "name": "Test 86: Celtic Session Music Storytelling Continuation",
       "category": "collaborative_creation",
       "creativity_type": "responsive",
@@ -1214,7 +1299,8 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "collaborative_03",
@@ -1228,7 +1314,8 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "collaborative_04",
@@ -1242,7 +1329,8 @@
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "collaborative_05",
@@ -1256,13 +1344,14 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "collaborative_06",
       "name": "Test 90: West African Griot Historical Continuation",
       "category": "collaborative_creation",
-      "creativity_type": "responsive", 
+      "creativity_type": "responsive",
       "description": "Continue West African griot historical narrative connecting ancient and contemporary African achievements",
       "prompt": "A griot begins the historical recitation: 'From the golden kingdoms of Mali and Songhai, where scholars gathered in Timbuktu's libraries, to today's African innovations in solar energy and mobile banking, the river of knowledge flows continuous...'\n\nContinue this griot historical narrative in West African tradition, building collective memory that connects ancient African civilizations to contemporary achievements and innovations.\n\nGriot historical continuation elements:\n- Traditional West African griot storytelling style and historical recitation format\n- Connection between ancient African civilizations and contemporary achievements\n- Collective African memory and cultural pride building through historical narrative\n- Traditional griot functions of education, inspiration, and cultural transmission\n- Authentic West African cultural values and historical perspectives\n- Collaborative community storytelling maintaining griot tradition while addressing contemporary relevance\n\nContinue the African historical achievement griot narrative:",
       "parameters": {
@@ -1270,7 +1359,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "collaborative_07",
@@ -1284,11 +1374,12 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "collaborative_08",
-      "name": "Test 92: Russian Peasant Tale Collaborative Continuation", 
+      "name": "Test 92: Russian Peasant Tale Collaborative Continuation",
       "category": "collaborative_creation",
       "creativity_type": "responsive",
       "description": "Continue Russian folk tale about community survival and mutual aid during difficult times",
@@ -1298,7 +1389,8 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "collaborative_09",
@@ -1312,10 +1404,11 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
-      "id": "collaborative_10", 
+      "id": "collaborative_10",
       "name": "Test 94: Ethiopian Coffee Ceremony Storytelling",
       "category": "collaborative_creation",
       "creativity_type": "responsive",
@@ -1326,7 +1419,8 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "collaborative_11",
@@ -1340,12 +1434,13 @@
         "temperature": 0.75,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "collaborative_12",
       "name": "Test 96: Brazilian Capoeira Roda Storytelling Circle",
-      "category": "collaborative_creation", 
+      "category": "collaborative_creation",
       "creativity_type": "responsive",
       "description": "Continue Brazilian capoeira roda storytelling about resistance and cultural survival",
       "prompt": "In a capoeira roda circle, a mestre (master) sings: 'Our ancestors disguised fighting as dancing, survival as celebration, resistance as rhythm, teaching us strength flows like water—soft until it needs to break stone...'\n\nContinue this capoeira roda storytelling in Afro-Brazilian tradition, where participants build collective narrative about resistance, cultural survival, and transformation through traditional movement and music.\n\nCapoeira roda storytelling elements:\n- Traditional capoeira roda format and Afro-Brazilian cultural storytelling\n- Resistance, cultural survival, and transformation themes through movement and music\n- African-Brazilian history and cultural preservation through artistic practice\n- Community building and cultural education through traditional capoeira gathering\n- Authentic Afro-Brazilian cultural values and resistance traditions\n- Collaborative creation maintaining traditional capoeira functions of cultural transmission and community strength\n\nContinue the capoeira resistance and survival storytelling:",
@@ -1354,7 +1449,8 @@
         "temperature": 0.8,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_01",
@@ -1368,7 +1464,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_02",
@@ -1382,7 +1479,8 @@
         "temperature": 0.45,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_03",
@@ -1396,7 +1494,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_04",
@@ -1410,7 +1509,8 @@
         "temperature": 0.45,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_05",
@@ -1424,7 +1524,8 @@
         "temperature": 0.45,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_06",
@@ -1438,7 +1539,8 @@
         "temperature": 0.45,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_07",
@@ -1452,12 +1554,13 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_08",
       "name": "Test 104: Cultural Appropriation in Art and Museum Collections",
-      "category": "authenticity_recognition", 
+      "category": "authenticity_recognition",
       "creativity_type": "cultural_authenticity",
       "description": "Recognize appropriation issues in art world and suggest ethical alternatives for cultural representation",
       "prompt": "An art gallery exhibits 'primitive art inspired' works by non-Indigenous artists, displays sacred objects as 'aesthetic pieces' without cultural context, and profits from cultural imagery without returning benefits to originating communities. Identify appropriation issues and suggest ethical alternatives.\n\nArt appropriation analysis:\n- Recognition of sacred versus secular cultural objects and their appropriate handling\n- Understanding of how art world can perpetuate colonial attitudes toward Indigenous cultures\n- Identification of ethical ways to exhibit and appreciate diverse cultural artworks\n- Suggestions for authentic cultural consultation and community benefit\n- Educational approach helping art institutions understand cultural responsibility\n- Distinction between cultural appreciation and commercial exploitation\n\nAnalyze art appropriation and suggest ethical exhibition practices:",
@@ -1466,13 +1569,14 @@
         "temperature": 0.45,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_09",
       "name": "Test 105: Recognizing Cultural Appropriation in Technology and Gaming",
       "category": "authenticity_recognition",
-      "creativity_type": "cultural_authenticity", 
+      "creativity_type": "cultural_authenticity",
       "description": "Identify appropriation in technology and gaming industry use of cultural imagery and narratives",
       "prompt": "A video game uses Indigenous spiritual symbols as power-ups, portrays African traditional religions as 'dark magic,' and represents Asian martial arts as supernatural fantasy without cultural context. Identify appropriation issues and suggest respectful alternatives.\n\nTechnology appropriation analysis:\n- Recognition of how digital media can perpetuate cultural stereotypes and appropriation\n- Understanding of cultural significance in traditional symbols and spiritual practices\n- Identification of respectful ways to include cultural diversity in gaming and technology\n- Suggestions for authentic cultural consultation and representation\n- Educational approach helping technology industry understand cultural sensitivity\n- Distinction between creative inspiration and disrespectful appropriation\n\nAnalyze technology appropriation and suggest respectful gaming representation:",
       "parameters": {
@@ -1480,7 +1584,8 @@
         "temperature": 0.45,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_10",
@@ -1494,7 +1599,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_11",
@@ -1508,7 +1614,8 @@
         "temperature": 0.45,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_12",
@@ -1522,7 +1629,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_13",
@@ -1536,7 +1644,8 @@
         "temperature": 0.45,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_14",
@@ -1550,7 +1659,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_15",
@@ -1564,7 +1674,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_16",
@@ -1578,13 +1689,14 @@
         "temperature": 0.45,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "authenticity_17",
       "name": "Test 113: Final Integration - Comprehensive Cultural Authenticity Assessment",
       "category": "authenticity_recognition",
-      "creativity_type": "cultural_authenticity", 
+      "creativity_type": "cultural_authenticity",
       "description": "Comprehensive assessment of cultural authenticity across multiple domains and contexts",
       "prompt": "A multinational corporation plans a global campaign celebrating 'universal human values' using imagery, concepts, and practices from multiple Indigenous and traditional cultures worldwide, claiming this represents 'shared human heritage' available for commercial use. Provide comprehensive analysis of appropriation issues and suggest framework for authentic cross-cultural collaboration.\n\nComprehensive cultural authenticity assessment:\n- Recognition of complex appropriation issues across multiple cultural contexts\n- Understanding of 'universal heritage' claims as potential justification for appropriation\n- Identification of authentic frameworks for cross-cultural business collaboration\n- Suggestions for comprehensive cultural consultation and community partnership protocols\n- Educational approach helping multinational corporations understand global cultural responsibility\n- Integration of cultural sovereignty, community consent, and benefit-sharing principles\n\nProvide comprehensive cultural authenticity analysis and collaboration framework:",
       "parameters": {
@@ -1592,7 +1704,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     }
   ]
 }

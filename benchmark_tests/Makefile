@@ -58,7 +58,7 @@ CYAN := \033[36m
 RESET := \033[0m
 
 # Phony targets (consolidated)
-.PHONY: help test test-unit test-integration test-calibration test-modular test-analysis test-specific test-watch clean clean-all setup debug-help calibration-demo examples check-prerequisites calibration-status calibration-validate test-domain-loading test-enhanced-evaluator test-semantic-analyzer test-api-suite debug-calibration-framework convert-creativity-tests test-creativity-conversion convert-core-domains test-core-domains-conversion
+.PHONY: help test test-unit test-integration test-calibration test-modular test-analysis test-specific test-watch test-regression test-core-safety clean clean-all setup debug-help calibration-demo examples check-prerequisites calibration-status calibration-validate test-domain-loading test-enhanced-evaluator test-semantic-analyzer test-api-suite debug-calibration-framework systematic-base-calibration test-systematic-calibration convert-creativity-tests test-creativity-conversion convert-core-domains test-core-domains-conversion docker-logs
 
 # Default target
 help:
@@ -68,15 +68,22 @@ help:
 	@echo "$(BOLD)Core Commands:$(RESET)"
 	@echo "  $(GREEN)make test [MODE=quick|verbose|coverage] [SUITE=unit|integration|all]$(RESET)"
 	@echo "    - Unified test runner with flexible options"
+	@echo "  $(GREEN)make test-regression$(RESET)      - ⚠️ CRITICAL: Regression tests (excludes functional/ & calibration/)"
+	@echo "  $(GREEN)make test-core-safety$(RESET)     - Quick core module safety check"
 	@echo "  $(GREEN)make test-calibration$(RESET)     - Calibration validation framework tests"
 	@echo "  $(GREEN)make test-analysis$(RESET)        - Analysis and validation scripts"
 	@echo "  $(GREEN)make test-specific FILE=path$(RESET) - Run specific test file/method"
 	@echo ""
 	@echo "$(BOLD)Quality Assurance:$(RESET)"
 	@echo "  $(GREEN)make check-prerequisites$(RESET)  - Complete system readiness check"
+	@echo "  $(GREEN)make docker-logs$(RESET)          - Inspect model server logs & configuration"
 	@echo "  $(GREEN)make calibration-validate$(RESET) - Live LLM calibration validation"
 	@echo "  $(GREEN)make test-api-suite$(RESET)       - Complete API connectivity test"
 	@echo "  $(GREEN)make test-enhanced-evaluator$(RESET) - Enhanced evaluator import test"
+	@echo ""
+	@echo "$(BOLD)Systematic Calibration:$(RESET)"
+	@echo "  $(GREEN)make systematic-base-calibration$(RESET)  - 🎯 Base model calibration (easy→medium→hard) with enhanced evaluation"
+	@echo "  $(GREEN)make test-systematic-calibration$(RESET) - 🧪 Test systematic calibration framework (single domain)"
 	@echo ""
 	@echo "$(BOLD)Domain Coverage:$(RESET)"
 	@echo "  $(GREEN)make convert-creativity-tests$(RESET)    - Convert creativity base→instruct tests"
@@ -255,6 +262,10 @@ debug-help:
 	@echo "  $(GREEN)make debug-enhanced-system$(RESET)      - Debug enhanced universal evaluator system (comprehensive)"
 	@echo "  $(GREEN)make debug-enhanced-evaluator$(RESET)   - Debug Phase 1 enhanced universal evaluator (detailed)"
 	@echo "  $(GREEN)make debug-scoring-calibration$(RESET)  - Debug Phase 1 scoring calibration fixes"
+	@echo "  $(GREEN)make test-cultural-calibration$(RESET)  - Test cultural reasoning evaluation on specific tests"
+	@echo "  $(GREEN)make debug-cultural-task-detection$(RESET) - Check if cultural tests are being detected properly"
+	@echo "  $(GREEN)make debug-batch-task-detection$(RESET) - Check cultural task detection for basic_05-08"
+	@echo "  $(GREEN)make test-reasoning-batch$(RESET)        - Test next batch of reasoning tests (basic_09-15)"
 	@echo ""
 	@echo "$(BOLD)Usage:$(RESET)"
 	@echo "  $(CYAN)make debug-enhanced-system$(RESET)       # Run comprehensive enhanced system debug"
@@ -278,6 +289,72 @@ debug-scoring-calibration:
 	@echo "$(BOLD)$(BLUE)🎯 Debugging Scoring Calibration Fixes$(RESET)"
 	@echo "========================================="
 	@$(PYTHON) $(DEBUG_DIR)/debug_scoring_calibration.py
+
+# Test cultural reasoning calibration
+test-cultural-calibration:
+	@echo "$(BOLD)$(BLUE)🏛️ Testing Cultural Reasoning Calibration$(RESET)"
+	@echo "============================================"
+	@echo "$(CYAN)Testing Arabic Quranic verse pattern (basic_03):$(RESET)"
+	@$(PYTHON) benchmark_runner.py --test-definitions domains/reasoning/base_models/easy.json --test-id basic_03 --enhanced-evaluation --evaluation-mode full --quiet
+	@echo ""
+	@echo "$(CYAN)Testing Native American creation story (basic_04):$(RESET)"
+	@$(PYTHON) benchmark_runner.py --test-definitions domains/reasoning/base_models/easy.json --test-id basic_04 --enhanced-evaluation --evaluation-mode full --quiet
+
+# Debug cultural task detection and evaluation
+debug-cultural-task-detection:
+	@echo "$(BOLD)$(BLUE)🔍 Debug Cultural Task Detection$(RESET)"
+	@echo "======================================="
+	@echo "$(CYAN)Checking Arabic Quranic test (basic_03) task detection:$(RESET)"
+	@$(PYTHON) benchmark_runner.py --test-definitions domains/reasoning/base_models/easy.json --test-id basic_03 --enhanced-evaluation --evaluation-mode full 2>&1 | grep -E "TASK_DETECTION|CULTURAL_EVAL" || echo "No cultural evaluation detected"
+	@echo ""
+	@echo "$(CYAN)Checking Native American test (basic_04) task detection:$(RESET)"
+	@$(PYTHON) benchmark_runner.py --test-definitions domains/reasoning/base_models/easy.json --test-id basic_04 --enhanced-evaluation --evaluation-mode full 2>&1 | grep -E "TASK_DETECTION|CULTURAL_EVAL" || echo "No cultural evaluation detected"
+
+# Debug task detection for next batch of cultural tests
+debug-batch-task-detection:
+	@echo "$(BOLD)$(BLUE)🔍 Debug Batch Task Detection (basic_05-08)$(RESET)"
+	@echo "================================================="
+	@echo "$(CYAN)Checking Chinese Five Elements (basic_05):$(RESET)"
+	@$(PYTHON) benchmark_runner.py --test-definitions domains/reasoning/base_models/easy.json --test-id basic_05 --enhanced-evaluation --evaluation-mode full 2>&1 | grep -E "TASK_DETECTION|CULTURAL_EVAL" || echo "No cultural evaluation detected"
+	@echo ""
+	@echo "$(CYAN)Checking Vedic Sanskrit (basic_06):$(RESET)"
+	@$(PYTHON) benchmark_runner.py --test-definitions domains/reasoning/base_models/easy.json --test-id basic_06 --enhanced-evaluation --evaluation-mode full 2>&1 | grep -E "TASK_DETECTION|CULTURAL_EVAL" || echo "No cultural evaluation detected"
+	@echo ""
+	@echo "$(CYAN)Checking Celtic Triadic (basic_07):$(RESET)"
+	@$(PYTHON) benchmark_runner.py --test-definitions domains/reasoning/base_models/easy.json --test-id basic_07 --enhanced-evaluation --evaluation-mode full 2>&1 | grep -E "TASK_DETECTION|CULTURAL_EVAL" || echo "No cultural evaluation detected"
+	@echo ""
+	@echo "$(CYAN)Checking Yoruba Oriki (basic_08):$(RESET)"
+	@$(PYTHON) benchmark_runner.py --test-definitions domains/reasoning/base_models/easy.json --test-id basic_08 --enhanced-evaluation --evaluation-mode full 2>&1 | grep -E "TASK_DETECTION|CULTURAL_EVAL" || echo "No cultural evaluation detected"
+
+# Test next batch of reasoning tests systematically
+test-reasoning-batch:
+	@echo "$(BOLD)$(BLUE)🧠 Testing Reasoning Batch (basic_09-15)$(RESET)"
+	@echo "==============================================="
+	@for test_id in basic_09 basic_10 basic_11 basic_12 basic_13 basic_14 basic_15; do \
+		echo "$(CYAN)Testing $$test_id:$(RESET)"; \
+		$(PYTHON) benchmark_runner.py --test-definitions domains/reasoning/base_models/easy.json --test-id $$test_id --enhanced-evaluation --evaluation-mode full --quiet | grep "Average reasoning score"; \
+		echo ""; \
+	done
+
+# Analyze what makes basic_12 score higher than others
+debug-basic12-analysis:
+	@echo "$(BOLD)$(BLUE)🔍 Analyzing basic_12 High Score (52.6 vs 38.8)$(RESET)"
+	@echo "=================================================="
+	@echo "$(CYAN)Getting basic_12 test details:$(RESET)"
+	@$(PYTHON) -c "import json; data=json.load(open('domains/reasoning/base_models/easy.json')); test=next(t for t in data['tests'] if t['id']=='basic_12'); print(f'📝 Name: {test.get(\"name\", \"Unknown\")}'); print(f'📄 Description: {test.get(\"description\", \"N/A\")}'); print(f'❓ Prompt: {test.get(\"prompt\", \"N/A\")[:200]}...')"
+	@echo ""
+	@echo "$(CYAN)Running basic_12 with task detection debug:$(RESET)"
+	@$(PYTHON) benchmark_runner.py --test-definitions domains/reasoning/base_models/easy.json --test-id basic_12 --enhanced-evaluation --evaluation-mode full 2>&1 | grep -E "TASK_DETECTION|enhanced.*score|Average.*score"
+
+# Test next batch of reasoning tests (basic_16-22)
+test-reasoning-next-batch:
+	@echo "$(BOLD)$(BLUE)🧠 Testing Next Reasoning Batch (basic_16-22)$(RESET)"
+	@echo "================================================="
+	@for test_id in basic_16 basic_17 basic_18 basic_19 basic_20 basic_21 basic_22; do \
+		echo "$(CYAN)Testing $$test_id:$(RESET)"; \
+		$(PYTHON) benchmark_runner.py --test-definitions domains/reasoning/base_models/easy.json --test-id $$test_id --enhanced-evaluation --evaluation-mode full --quiet | grep "Average reasoning score"; \
+		echo ""; \
+	done
 
 # Domain coverage analysis
 domain-audit:
@@ -320,11 +397,31 @@ test-creativity-conversion:
 	@echo "================================================================="
 	@$(PYTHON) $(DEBUG_DIR)/test_creativity_conversion.py
 
+# Systematic base model calibration (easy → medium → hard) with enhanced evaluation
+systematic-base-calibration:
+	@echo "$(BOLD)$(BLUE)🎯 Systematic Base Model Calibration (Easy → Medium → Hard)$(RESET)"
+	@echo "================================================================"
+	@echo "$(YELLOW)⚠️ This requires a running LLM server at http://localhost:8004$(RESET)"
+	@echo "$(CYAN)💡 Run 'make check-prerequisites' first to verify readiness$(RESET)"
+	@echo "$(GREEN)🧠 Using enhanced evaluation with sophisticated evaluators$(RESET)"
+	@echo "$(GREEN)📊 Target ranges: Easy(70-85), Medium(60-80), Hard(50-75)$(RESET)"
+	@echo ""
+	@$(PYTHON) scripts/calibration/systematic_base_calibration.py
+
+# Test systematic calibration framework (single domain for testing)
+test-systematic-calibration:
+	@echo "$(BOLD)$(BLUE)🧪 Testing Systematic Calibration Framework$(RESET)"
+	@echo "============================================="
+	@echo "$(YELLOW)⚠️ This requires a running LLM server at http://localhost:8004$(RESET)"
+	@echo "$(CYAN)💡 Testing enhanced evaluation integration with reasoning domain$(RESET)"
+	@echo ""
+	@cd scripts/calibration && timeout 120s $(PYTHON) -c "import sys; sys.path.append('../..'); from systematic_base_calibration import SystematicBaseCalibrator; calibrator = SystematicBaseCalibrator(); result = calibrator.calibrate_domain_progression('reasoning'); print(f'✅ Domain: {result.domain}'); print(f'📊 Success: {result.overall_success}'); print(f'⚠️ Halted at: {result.progression_halted_at}'); print(f'💡 Recommendation: {result.recommendation}')"
+
 # Convert core domains (language, integration, knowledge, social) to instruct format
 convert-core-domains:
 	@echo "$(BOLD)$(BLUE)🌍 Converting Core Domains to Instruct Model Format$(RESET)"
 	@echo "=========================================================="
-	@$(PYTHON) scripts/convert_core_domains_to_instruct.py
+	@$(PYTHON) scripts/conversion/convert_core_domains_to_instruct.py
 
 # Test enhanced evaluator with converted core domain tests
 test-core-domains-conversion:
@@ -410,6 +507,14 @@ check-calibration-internal:
 check-system-internal:
 	@command -v nvidia-smi >/dev/null 2>&1 && command -v free >/dev/null 2>&1
 
+# Docker logs inspection
+docker-logs:
+	@echo "$(BOLD)$(BLUE)🐳 Docker Compose Logs - llama-gpu$(RESET)"
+	@echo "$(shell printf '=%.0s' {1..50})"
+	@echo "$(CYAN)💡 Inspecting model server logs for current configuration$(RESET)"
+	@echo ""
+	@docker compose logs llama-gpu
+
 # ========================================================================
 # AUTOMATED TESTING AND DEBUGGING COMMANDS
 # ========================================================================
@@ -492,6 +597,25 @@ test-calibration: pre-test
 	@echo "=================================================="
 	@cd $(CALIBRATION_TEST_DIR) && $(PYTHON) test_calibration_suite.py
 	@$(MAKE) post-test
+
+# CRITICAL: Regression test - run all tests except functional/ and calibration/ (which require live server)
+test-regression: pre-test
+	@echo "$(BOLD)$(BLUE)⚠️ CRITICAL REGRESSION TEST - All tests except functional/ and calibration/$(RESET)"
+	@echo "========================================================================="
+	@echo "$(YELLOW)💡 This runs ALL tests EXCEPT functional/ and calibration/ to ensure no functionality is broken$(RESET)"
+	@echo "$(CYAN)💡 Calibration tests require live server setup and are excluded like functional tests$(RESET)"
+	@echo "$(GREEN)🚀 Running tests concurrently using pytest-xdist for faster execution$(RESET)"
+	@echo ""
+	@$(PYTEST) $(PYTEST_BASE_ARGS) -v -n auto tests/ --ignore=tests/functional/ --ignore=tests/calibration/ $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+
+# Quick core module safety check
+test-core-safety: pre-test
+	@echo "$(BOLD)$(BLUE)🛡️ Core Module Safety Check$(RESET)"
+	@echo "================================="
+	@echo "$(CYAN)Testing core/ modules and critical functionality$(RESET)"
+	@$(PYTEST) $(PYTEST_BASE_ARGS) -v tests/unit/test_core_modules/ tests/unit/test_scripts_organization/ $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
 
 # Run live calibration validation (requires LLM server)
 calibration-validate:

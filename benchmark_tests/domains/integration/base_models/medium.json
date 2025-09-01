@@ -1,13 +1,13 @@
 {
   "suite_info": {
-    "name": "Base Model Medium Integration Test Suite", 
+    "name": "Base Model Medium Integration Test Suite",
     "version": "1.0.0",
     "total_tests": 15,
     "description": "Medium complexity cross-domain integration tests requiring sophisticated synthesis of multiple domain capabilities with cultural authenticity",
     "difficulty": "medium",
     "target_models": "base_models",
     "coverage_scope": "advanced_cross_domain_synthesis",
-    "cultural_authenticity": "multi_domain_cultural_integration", 
+    "cultural_authenticity": "multi_domain_cultural_integration",
     "extraction_date": "2025-08-31"
   },
   "tests": [
@@ -24,8 +24,14 @@
         "top_p": 0.9,
         "stream": false
       },
-      "domains_required": ["knowledge", "creativity", "reasoning", "social"],
-      "cultural_context": "Pacific Islander climate adaptation"
+      "domains_required": [
+        "knowledge",
+        "creativity",
+        "reasoning",
+        "social"
+      ],
+      "cultural_context": "Pacific Islander climate adaptation",
+      "max_tokens": 500
     }
   ]
 }

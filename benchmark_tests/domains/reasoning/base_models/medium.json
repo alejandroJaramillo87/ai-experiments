@@ -45,7 +45,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_02",
@@ -82,7 +83,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_03",
@@ -122,7 +124,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_04",
@@ -162,7 +165,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_05",
@@ -202,7 +206,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_06",
@@ -242,7 +247,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_07",
@@ -282,7 +288,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_08",
@@ -322,7 +329,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_09",
@@ -362,7 +370,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_10",
@@ -402,7 +411,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_11",
@@ -442,7 +452,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_12",
@@ -482,7 +493,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_13",
@@ -522,7 +534,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_14",
@@ -562,7 +575,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_15",
@@ -602,7 +616,8 @@
           "in contrast",
           "synthesis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_16",
@@ -642,7 +657,8 @@
           "therefore",
           "step"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_17",
@@ -679,7 +695,8 @@
           "therefore",
           "step"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_18",
@@ -716,7 +733,8 @@
           "therefore",
           "step"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_19",
@@ -753,7 +771,8 @@
           "therefore",
           "step"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_20",
@@ -790,7 +809,8 @@
           "therefore",
           "step"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_21",
@@ -827,7 +847,8 @@
           "therefore",
           "step"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_22",
@@ -864,7 +885,8 @@
           "therefore",
           "step"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_23",
@@ -901,7 +923,8 @@
           "therefore",
           "step"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_24",
@@ -938,7 +961,8 @@
           "therefore",
           "step"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_25",
@@ -975,7 +999,8 @@
           "therefore",
           "step"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_26",
@@ -1011,7 +1036,8 @@
           "confirm",
           "review"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_27",
@@ -1047,7 +1073,8 @@
           "confirm",
           "review"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_28",
@@ -1083,7 +1110,8 @@
           "confirm",
           "review"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_29",
@@ -1119,7 +1147,8 @@
           "confirm",
           "review"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_30",
@@ -1155,7 +1184,8 @@
           "confirm",
           "review"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_31",
@@ -1191,7 +1221,8 @@
           "equation",
           "result"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_32",
@@ -1227,7 +1258,8 @@
           "equation",
           "result"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_33",
@@ -1263,7 +1295,8 @@
           "equation",
           "result"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_34",
@@ -1299,7 +1332,8 @@
           "equation",
           "result"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_35",
@@ -1335,7 +1369,8 @@
           "equation",
           "result"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_36",
@@ -1371,7 +1406,8 @@
           "evidence",
           "connection"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_37",
@@ -1407,7 +1443,8 @@
           "evidence",
           "connection"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_38",
@@ -1443,7 +1480,8 @@
           "evidence",
           "connection"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_39",
@@ -1479,7 +1517,8 @@
           "evidence",
           "connection"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_40",
@@ -1515,7 +1554,8 @@
           "evidence",
           "connection"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_41",
@@ -1551,7 +1591,8 @@
           "structure",
           "analysis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_42",
@@ -1587,7 +1628,8 @@
           "structure",
           "analysis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_43",
@@ -1623,7 +1665,8 @@
           "structure",
           "analysis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_44",
@@ -1659,7 +1702,8 @@
           "structure",
           "analysis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_45",
@@ -1695,7 +1739,8 @@
           "structure",
           "analysis"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_46",
@@ -1731,7 +1776,8 @@
           "conclusion",
           "working backwards"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_47",
@@ -1767,7 +1813,8 @@
           "conclusion",
           "working backwards"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_48",
@@ -1803,7 +1850,8 @@
           "conclusion",
           "working backwards"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_49",
@@ -1839,7 +1887,8 @@
           "conclusion",
           "working backwards"
         ]
-      }
+      },
+      "max_tokens": 500
     },
     {
       "id": "complex_test_50",
@@ -1875,7 +1924,8 @@
           "conclusion",
           "working backwards"
         ]
-      }
+      },
+      "max_tokens": 500
     }
   ]
 }

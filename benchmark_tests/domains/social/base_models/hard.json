@@ -22,7 +22,8 @@
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "conflict_02",
@@ -36,7 +37,8 @@
         "temperature": 0.45,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "conflict_03",
@@ -50,7 +52,8 @@
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "consensus_01",
@@ -64,7 +67,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "consensus_02",
@@ -78,7 +82,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "hierarchy_01",
@@ -92,7 +97,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "hierarchy_02",
@@ -106,7 +112,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "communication_01",
@@ -120,7 +127,8 @@
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "communication_02",
@@ -134,7 +142,8 @@
         "temperature": 0.45,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "leadership_01",
@@ -148,7 +157,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "relationship_01",
@@ -162,7 +172,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "intercultural_01",
@@ -176,7 +187,8 @@
         "temperature": 0.45,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     }
   ]
 }

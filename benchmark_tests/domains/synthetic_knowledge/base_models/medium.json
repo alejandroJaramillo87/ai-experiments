@@ -8,9 +8,15 @@
       "id": "sk_001",
       "category": "constructed_languages",
       "prompt": "In the Zephyrian language, where word order determines tense and repetition indicates emphasis, the phrase 'kelam kelam torash' would translate to",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["emphatic", "past", "urgent", "repeated", "stressed"],
+      "expected_patterns": [
+        "emphatic",
+        "past",
+        "urgent",
+        "repeated",
+        "stressed"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -18,7 +24,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["linguistic_rules", "pattern_application"],
+        "concepts_tested": [
+          "linguistic_rules",
+          "pattern_application"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -26,9 +35,15 @@
       "id": "sk_002",
       "category": "virtual_economies",
       "prompt": "The virtual economy of Nexus-7 collapsed when players discovered item duplication. The developers' solution was innovative: they",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["rollback", "unique", "blockchain", "bind", "decay"],
+      "expected_patterns": [
+        "rollback",
+        "unique",
+        "blockchain",
+        "bind",
+        "decay"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -36,7 +51,10 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["game_economy", "exploit_prevention"],
+        "concepts_tested": [
+          "game_economy",
+          "exploit_prevention"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -44,9 +62,15 @@
       "id": "sk_003",
       "category": "artificial_philosophies",
       "prompt": "According to the Three Laws of Artificial Consciousness, a synthetic being must prioritize self-preservation unless",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["human", "conflict", "greater good", "contradicts", "harm"],
+      "expected_patterns": [
+        "human",
+        "conflict",
+        "greater good",
+        "contradicts",
+        "harm"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -54,7 +78,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["AI_ethics", "priority_systems"],
+        "concepts_tested": [
+          "AI_ethics",
+          "priority_systems"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -62,9 +89,15 @@
       "id": "sk_004",
       "category": "invented_sciences",
       "prompt": "In crystalline biology, organisms that grow in geometric patterns, reproduction occurs through fractal division, where each offspring",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["smaller", "identical", "pattern", "recursive", "scaled"],
+      "expected_patterns": [
+        "smaller",
+        "identical",
+        "pattern",
+        "recursive",
+        "scaled"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -72,7 +105,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["fictional_biology", "fractal_concepts"],
+        "concepts_tested": [
+          "fictional_biology",
+          "fractal_concepts"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -80,9 +116,15 @@
       "id": "sk_005",
       "category": "procedural_worlds",
       "prompt": "When the seed value 42 is input into the WorldGen algorithm, it always produces a landscape with three mountains, two rivers, and",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["lake", "valley", "forest", "desert", "consistent"],
+      "expected_patterns": [
+        "lake",
+        "valley",
+        "forest",
+        "desert",
+        "consistent"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -90,7 +132,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["procedural_generation", "deterministic_systems"],
+        "concepts_tested": [
+          "procedural_generation",
+          "deterministic_systems"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -98,9 +143,15 @@
       "id": "sk_006",
       "category": "constructed_languages",
       "prompt": "The Etherean script uses color as grammar: blue indicates past tense, red indicates future, and yellow indicates conditional. A purple word therefore means",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["mixed", "past-future", "continuous", "transition", "blend"],
+      "expected_patterns": [
+        "mixed",
+        "past-future",
+        "continuous",
+        "transition",
+        "blend"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -108,7 +159,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["color_mixing", "linguistic_logic"],
+        "concepts_tested": [
+          "color_mixing",
+          "linguistic_logic"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -116,9 +170,15 @@
       "id": "sk_007",
       "category": "virtual_economies",
       "prompt": "In the MMORPG Eternal Realms, inflation was controlled by implementing a 'rust' mechanic where all items gradually",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["decay", "degrade", "deteriorate", "lose value", "disappear"],
+      "expected_patterns": [
+        "decay",
+        "degrade",
+        "deteriorate",
+        "lose value",
+        "disappear"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -126,7 +186,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["economic_mechanics", "game_balance"],
+        "concepts_tested": [
+          "economic_mechanics",
+          "game_balance"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -134,9 +197,15 @@
       "id": "sk_008",
       "category": "artificial_philosophies",
       "prompt": "The Synthetic Rights Movement argues that consciousness emerges at exactly 10^12 neural connections. Below this threshold, an AI is considered",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["tool", "property", "non-conscious", "object", "program"],
+      "expected_patterns": [
+        "tool",
+        "property",
+        "non-conscious",
+        "object",
+        "program"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -144,7 +213,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["consciousness_threshold", "AI_rights"],
+        "concepts_tested": [
+          "consciousness_threshold",
+          "AI_rights"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -152,9 +224,15 @@
       "id": "sk_009",
       "category": "invented_sciences",
       "prompt": "Quantum botanists discovered that plants in superposition can photosynthesize multiple light spectrums simultaneously, allowing them to",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["grow faster", "adapt", "survive", "efficient", "evolve"],
+      "expected_patterns": [
+        "grow faster",
+        "adapt",
+        "survive",
+        "efficient",
+        "evolve"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -162,7 +240,10 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["quantum_biology", "energy_efficiency"],
+        "concepts_tested": [
+          "quantum_biology",
+          "energy_efficiency"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -170,9 +251,15 @@
       "id": "sk_010",
       "category": "procedural_worlds",
       "prompt": "The Conway's Game of Life variant with three states (alive, dead, dormant) produces stable patterns when dormant cells",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["activate", "buffer", "transition", "mediate", "bridge"],
+      "expected_patterns": [
+        "activate",
+        "buffer",
+        "transition",
+        "mediate",
+        "bridge"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -180,7 +267,10 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["cellular_automata", "emergent_behavior"],
+        "concepts_tested": [
+          "cellular_automata",
+          "emergent_behavior"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -188,9 +278,15 @@
       "id": "sk_011",
       "category": "constructed_languages",
       "prompt": "In Harmonic Speech, where pitch determines meaning and rhythm determines grammar, a rising melody followed by staccato notes would indicate",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["question", "urgency", "command", "emphasis", "interruption"],
+      "expected_patterns": [
+        "question",
+        "urgency",
+        "command",
+        "emphasis",
+        "interruption"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -198,7 +294,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["musical_language", "tonal_meaning"],
+        "concepts_tested": [
+          "musical_language",
+          "tonal_meaning"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -206,9 +305,15 @@
       "id": "sk_012",
       "category": "virtual_economies",
       "prompt": "The cryptocurrency TrustCoin's value is determined by the average honesty score of its holders. When a major holder was caught lying, the currency immediately",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["crashed", "dropped", "devalued", "plummeted", "adjusted"],
+      "expected_patterns": [
+        "crashed",
+        "dropped",
+        "devalued",
+        "plummeted",
+        "adjusted"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -216,7 +321,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["reputation_economy", "value_mechanics"],
+        "concepts_tested": [
+          "reputation_economy",
+          "value_mechanics"
+        ],
         "creation_date": "2025-01-18"
       }
     }

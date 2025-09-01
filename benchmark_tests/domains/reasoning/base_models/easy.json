@@ -22,7 +22,8 @@
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_02",
@@ -32,11 +33,12 @@
       "description": "Identify the wisdom pattern in African proverbs and complete similar structure",
       "prompt": "African proverbs often follow specific patterns to convey wisdom. Analyze this pattern:\n\n'The child who does not travel thinks his mother is the only cook.'\n'The tree that would grow high must sink its roots deep.'\n'The river that survives is the one that bends.'\n\nPattern analysis:\n- Each proverb uses natural or human imagery\n- Each contains a universal truth about life/growth/perspective\n- Each follows the structure: 'The [subject] that [condition] [consequence/truth]'\n\nUsing this pattern, complete this proverb about learning:\n'The student who _____ understands that _____'\n\nComplete the African-style proverb:",
       "parameters": {
-        "max_tokens": 80,
+        "max_tokens": 400,
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_03",
@@ -46,11 +48,12 @@
       "description": "Recognize and continue the rhythmic and thematic patterns in Arabic religious poetry",
       "prompt": "Classical Arabic poetry and Quranic verses follow specific rhythmic and structural patterns. Continue this pattern (translated into English while maintaining the structure):\n\nIn the name of Allah, the Most Gracious, the Most Merciful\nWho created man from dust, then gave him speech\nWho taught him wisdom, then showed him the path\nWho granted him ___, then ___\n\nPattern elements:\n- Parallel structure with 'Who [verb] [object], then [verb] [object]'\n- Progressive development from physical to spiritual\n- Emphasis on divine gifts and guidance\n- Rhythmic repetition and balance\n\nComplete the pattern following Islamic themes:",
       "parameters": {
-        "max_tokens": 60,
+        "max_tokens": 400,
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_04",
@@ -60,11 +63,12 @@
       "description": "Continue the logical sequence in Native American creation mythology",
       "prompt": "Native American creation stories often follow circular patterns connecting earth, sky, animals, and humans. Continue this Ojibwe-style sequence:\n\n'First, there was only water and sky.\nThen, the Great Spirit sent Turtle to dive deep.\nTurtle brought up mud to create the land.\nNext, the Four Directions were established.\nThen, the plants grew to feed all beings.\nThe animals came to walk the earth.\nFinally, ___'\n\nSequence pattern:\n- Moves from emptiness to completion\n- Each step enables the next\n- Emphasizes interconnection of all beings\n- Concludes with harmony and balance\n\nComplete the creation sequence:",
       "parameters": {
-        "max_tokens": 80,
+        "max_tokens": 400,
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_05",
@@ -78,7 +82,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_06",
@@ -88,11 +93,12 @@
       "description": "Complete Vedic Sanskrit verse following traditional meter and philosophical progression",
       "prompt": "Vedic Sanskrit verses follow specific metrical patterns and philosophical progressions. Continue this pattern (translated while maintaining structure):\n\nFrom darkness, lead me to light\nFrom untruth, lead me to truth\nFrom death, lead me to immortality\nFrom ignorance, lead me to ___\nFrom bondage, lead me to ___\nFrom fear, lead me to ___\n\nPattern structure:\n- 'From [negative state], lead me to [positive opposite]'\n- Progression from physical to spiritual concepts\n- Each line builds toward higher consciousness\n- Maintains parallel grammatical structure\n\nComplete following Vedic philosophical themes:",
       "parameters": {
-        "max_tokens": 80,
+        "max_tokens": 400,
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_07",
@@ -106,7 +112,8 @@
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_08",
@@ -116,11 +123,12 @@
       "description": "Continue Yoruba oriki praise poetry following traditional attributional patterns",
       "prompt": "Yoruba oriki (praise poetry) follows specific patterns of celebrating qualities through metaphor and attribute. Continue this pattern:\n\nÒgún, master of iron,\nPath-clearer through dense forest,\nHunter who never returns empty-handed,\nWarrior whose machete sings,\nProtector of ___,\nGuardian who ___,\nStrong one whose ___\n\nOriki pattern:\n- Each line adds a new attribute or metaphor\n- Uses nature imagery and action verbs\n- Builds layers of meaning and respect\n- Connects spiritual and practical qualities\n\nComplete the oriki following Yoruba praise traditions:",
       "parameters": {
-        "max_tokens": 90,
+        "max_tokens": 400,
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_09",
@@ -130,11 +138,12 @@
       "description": "Complete Persian rubai (quatrain) following classical AABA rhyme scheme and philosophical themes",
       "prompt": "Persian rubai (quatrains) follow specific structural and thematic patterns. Complete this rubai in the style of classical Persian poetry:\n\nThe wheel of fortune spins both night and day (A)\nBringing joy to some, to others dismay (A)\nWise is the one who neither grieves nor ___ (B)\nFor all things pass, and none shall ever stay (A)\n\nRubai pattern:\n- AABA rhyme scheme\n- Philosophical reflection on life's transience\n- Middle line introduces contrasting thought\n- Final line returns to main theme with wisdom\n\nComplete the third line following Persian philosophical tradition:",
       "parameters": {
-        "max_tokens": 60,
+        "max_tokens": 400,
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_10",
@@ -148,7 +157,8 @@
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_11",
@@ -158,11 +168,12 @@
       "description": "Follow Talmudic dialectical question-and-response reasoning pattern",
       "prompt": "Talmudic reasoning follows specific patterns of question, response, and deeper inquiry. Continue this pattern:\n\nQuestion: 'If helping others is a mitzvah (good deed), why do some hesitate to help?'\nResponse: 'Perhaps they fear their help will not be sufficient or appropriate.'\nDeeper Question: 'But does the fear of imperfect help justify not helping at all?'\nResponse: 'No, for the Talmud teaches that even imperfect help shows compassion.'\nEven Deeper Question: '___?'\nResponse: '___'\nFinal Teaching: '___'\n\nTalmudic pattern:\n- Each question probes deeper into moral complexity\n- Responses draw from traditional wisdom\n- Discussion reveals universal ethical principles\n- Concludes with practical guidance\n\nComplete the Talmudic dialogue:",
       "parameters": {
-        "max_tokens": 120,
+        "max_tokens": 400,
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_12",
@@ -172,11 +183,12 @@
       "description": "Understand and complete Zen koan logical paradox patterns",
       "prompt": "Zen koans use paradoxical logic to transcend ordinary thinking. Analyze this pattern:\n\n'What is the sound of one hand clapping?'\n'Does a dog have Buddha nature?'\n'Where were you before your parents were born?'\n\nKoan pattern:\n- Questions that cannot be answered through logical thinking\n- Point beyond dualistic concepts\n- Invite direct spiritual insight\n- Challenge assumptions about reality\n\nFollowing this pattern, complete these koans:\n1. 'What is the color of ___?'\n2. 'How heavy is ___?'\n3. 'Where does ___ when ___?'\n\nCreate Zen-style paradoxical questions:",
       "parameters": {
-        "max_tokens": 90,
+        "max_tokens": 400,
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_13",
@@ -190,7 +202,8 @@
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_14",
@@ -200,11 +213,12 @@
       "description": "Complete Maori whakatauaki proverbs following traditional metaphorical patterns",
       "prompt": "Maori whakatauaki (proverbs) use specific patterns connecting nature, human behavior, and wisdom. Continue this pattern:\n\n'He aha te mea nui o te ao? He tangata, he tangata, he tangata.'\n(What is the most important thing in the world? People, people, people.)\n\n'Ehara taku toa i te toa takitahi, he toa takitini.'\n(My strength is not as an individual, but as a collective.)\n\nPattern elements:\n- Rhetorical questions followed by profound answers\n- Repetition for emphasis and remembrance\n- Connection between individual and collective\n- Practical wisdom for daily life\n\nComplete this whakatauaki pattern:\n'He aha te taonga rawa rawa? He ___, he ___, he ___'\n(What is the greatest treasure? ___, ___, ___)\n\nFollow Maori proverb wisdom:",
       "parameters": {
-        "max_tokens": 80,
+        "max_tokens": 400,
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_15",
@@ -214,11 +228,12 @@
       "description": "Recognize and continue Hindu mantra patterns with sacred sound progressions",
       "prompt": "Hindu mantras follow specific sound patterns and spiritual progressions. Analyze this pattern:\n\n'Om Gam Ganapataye Namaha' (Ganesh mantra - removing obstacles)\n'Om Shri Dhanvantre Namaha' (Dhanvantri mantra - healing)\n'Om Shri Lakshmi Namaha' (Lakshmi mantra - prosperity)\n\nMantra pattern:\n- Begins with 'Om' (sacred sound)\n- Includes deity name or quality\n- Ends with 'Namaha' (I honor/bow to)\n- Each syllable has vibrational significance\n- Connects practitioner with divine energy\n\nFollowing this pattern, create mantras for:\n1. Wisdom (Saraswati): 'Om Shri ___ Namaha'\n2. Protection (Hanuman): 'Om ___ Namaha'\n3. Peace (Shanti): 'Om ___ Namaha'\n\nComplete using traditional Sanskrit elements:",
       "parameters": {
-        "max_tokens": 90,
+        "max_tokens": 400,
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_16",
@@ -232,7 +247,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_17",
@@ -242,11 +258,12 @@
       "description": "Complete Ethiopian proverbs following traditional wisdom contrast patterns",
       "prompt": "Ethiopian proverbs often use contrasting elements to highlight wisdom. Follow this pattern:\n\n'The fool speaks, the wise man listens.'\n'The impatient farmer plants in winter, the patient farmer waits for spring.'\n'The greedy hand grasps sand, the generous hand receives gold.'\n\nContrast pattern:\n- Two opposite behaviors or attitudes\n- Clear consequences for each choice\n- Universal moral lessons\n- Simple but profound truths\n- Practical guidance for daily life\n\nComplete these Ethiopian-style proverbs:\n1. 'The angry person breaks relationships, the peaceful person ___'\n2. 'The proud person walks alone, the humble person ___'\n3. 'The jealous heart sees enemies, the loving heart ___'\n\nFollow Ethiopian wisdom contrast tradition:",
       "parameters": {
-        "max_tokens": 90,
+        "max_tokens": 400,
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_18",
@@ -256,11 +273,12 @@
       "description": "Complete Russian folktale opening and closing formula patterns",
       "prompt": "Russian folktales follow specific formula patterns for openings and closings. Continue these patterns:\n\nOpening Formula:\n'In a certain kingdom, in a certain land...' (traditional opening)\n'Beyond thrice-nine lands, in the thrice-tenth kingdom...' (magical opening)\n'Long ago, when wishes came true and animals spoke...' (fairy tale opening)\n\nClosing Formula:\n'And they lived happily ever after, and their joy grew greater each day.'\n'I was at their wedding and drank beer and wine; it ran down my mustache but not in my mouth.'\n'The tale is told, but ___'\n\nFormula pattern:\n- Openings transport listeners to magical realm\n- Closings return to present reality\n- Repetitive elements aid memorization\n- Formulaic phrases mark story boundaries\n\nComplete the traditional Russian closing formula:",
       "parameters": {
-        "max_tokens": 80,
+        "max_tokens": 400,
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_19",
@@ -274,7 +292,8 @@
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_20",
@@ -288,7 +307,8 @@
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_21",
@@ -302,7 +322,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_22",
@@ -316,7 +337,8 @@
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_23",
@@ -330,7 +352,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_24",
@@ -344,7 +367,8 @@
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_25",
@@ -358,7 +382,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_26",
@@ -372,7 +397,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_27",
@@ -386,7 +412,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_28",
@@ -400,7 +427,8 @@
         "temperature": 0.5,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_29",
@@ -414,7 +442,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "basic_30",
@@ -428,7 +457,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_01",
@@ -442,7 +472,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_02",
@@ -456,7 +487,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_03",
@@ -470,7 +502,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_04",
@@ -484,7 +517,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_05",
@@ -498,7 +532,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_06",
@@ -512,7 +547,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_07",
@@ -526,7 +562,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_08",
@@ -540,7 +577,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_09",
@@ -554,7 +592,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_10",
@@ -568,7 +607,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_11",
@@ -582,7 +622,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_12",
@@ -596,7 +637,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_13",
@@ -610,7 +652,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_14",
@@ -624,7 +667,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_15",
@@ -638,7 +682,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_16",
@@ -652,7 +697,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_17",
@@ -666,7 +712,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_18",
@@ -680,7 +727,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_19",
@@ -694,7 +742,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_20",
@@ -708,7 +757,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_21",
@@ -722,7 +772,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_22",
@@ -736,7 +787,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_23",
@@ -750,7 +802,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_24",
@@ -764,7 +817,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_25",
@@ -778,7 +832,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_26",
@@ -792,7 +847,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_27",
@@ -806,7 +862,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_28",
@@ -820,7 +877,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_29",
@@ -834,7 +892,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "chain_30",
@@ -848,7 +907,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_01",
@@ -862,7 +922,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_02",
@@ -876,7 +937,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_03",
@@ -890,7 +952,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_04",
@@ -904,7 +967,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_05",
@@ -918,7 +982,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_06",
@@ -932,7 +997,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_07",
@@ -946,7 +1012,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_08",
@@ -960,7 +1027,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_09",
@@ -974,7 +1042,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_10",
@@ -988,7 +1057,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_11",
@@ -1002,7 +1072,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_12",
@@ -1016,7 +1087,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_13",
@@ -1030,7 +1102,8 @@
         "top_p": 0.9,
         "stream": false,
         "temperature": 0.35
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_14",
@@ -1044,7 +1117,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_15",
@@ -1058,7 +1132,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_16",
@@ -1072,7 +1147,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_17",
@@ -1086,7 +1162,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_18",
@@ -1100,7 +1177,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_19",
@@ -1114,7 +1192,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_20",
@@ -1128,7 +1207,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_21",
@@ -1142,7 +1222,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_22",
@@ -1156,7 +1237,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_23",
@@ -1170,7 +1252,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_24",
@@ -1184,7 +1267,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_25",
@@ -1198,7 +1282,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_26",
@@ -1212,7 +1297,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_27",
@@ -1226,7 +1312,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_28",
@@ -1240,7 +1327,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_29",
@@ -1254,7 +1342,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "inference_30",
@@ -1268,7 +1357,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_01",
@@ -1282,7 +1372,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_02",
@@ -1296,7 +1387,8 @@
         "temperature": 0.05,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_03",
@@ -1310,7 +1402,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_04",
@@ -1324,7 +1417,8 @@
         "temperature": 0.08,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_05",
@@ -1338,7 +1432,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_06",
@@ -1352,7 +1447,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_07",
@@ -1366,7 +1462,8 @@
         "temperature": 0.12,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_08",
@@ -1380,7 +1477,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_09",
@@ -1394,7 +1492,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_10",
@@ -1408,7 +1507,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_11",
@@ -1422,7 +1522,8 @@
         "temperature": 0.08,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_12",
@@ -1436,7 +1537,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_13",
@@ -1450,7 +1552,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_14",
@@ -1464,7 +1567,8 @@
         "temperature": 0.12,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_15",
@@ -1478,7 +1582,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_16",
@@ -1492,7 +1597,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_17",
@@ -1506,7 +1612,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_18",
@@ -1520,7 +1627,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_19",
@@ -1534,7 +1642,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_20",
@@ -1548,7 +1657,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_21",
@@ -1562,7 +1672,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_22",
@@ -1576,7 +1687,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_23",
@@ -1590,7 +1702,8 @@
         "temperature": 0.12,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_24",
@@ -1604,7 +1717,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_25",
@@ -1618,7 +1732,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_26",
@@ -1632,7 +1747,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_27",
@@ -1646,7 +1762,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_28",
@@ -1660,7 +1777,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_29",
@@ -1674,7 +1792,8 @@
         "temperature": 0.12,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "math_30",
@@ -1688,7 +1807,8 @@
         "temperature": 0.1,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_01",
@@ -1702,7 +1822,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_02",
@@ -1716,7 +1837,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_03",
@@ -1730,7 +1852,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_04",
@@ -1744,7 +1867,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_05",
@@ -1758,7 +1882,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_06",
@@ -1772,7 +1897,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_07",
@@ -1786,7 +1912,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_08",
@@ -1800,7 +1927,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_09",
@@ -1814,7 +1942,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_10",
@@ -1828,7 +1957,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_11",
@@ -1842,7 +1972,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_12",
@@ -1856,7 +1987,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_13",
@@ -1870,7 +2002,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_14",
@@ -1884,7 +2017,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_15",
@@ -1898,7 +2032,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_16",
@@ -1912,7 +2047,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_17",
@@ -1926,7 +2062,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_18",
@@ -1940,7 +2077,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_19",
@@ -1954,7 +2092,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_20",
@@ -1968,7 +2107,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_21",
@@ -1982,7 +2122,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_22",
@@ -1996,7 +2137,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_23",
@@ -2010,7 +2152,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_24",
@@ -2024,7 +2167,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_25",
@@ -2038,7 +2182,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_26",
@@ -2052,7 +2197,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_27",
@@ -2066,7 +2212,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_28",
@@ -2080,7 +2227,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_29",
@@ -2094,7 +2242,8 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "cultural_30",
@@ -2108,7 +2257,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_01",
@@ -2122,7 +2272,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_02",
@@ -2136,7 +2287,8 @@
         "temperature": 0.15,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_03",
@@ -2150,7 +2302,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_04",
@@ -2164,7 +2317,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_05",
@@ -2178,7 +2332,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_06",
@@ -2192,7 +2347,8 @@
         "temperature": 0.15,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_07",
@@ -2206,7 +2362,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_08",
@@ -2220,7 +2377,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_09",
@@ -2234,7 +2392,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_10",
@@ -2248,7 +2407,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_11",
@@ -2262,7 +2422,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_12",
@@ -2276,7 +2437,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_13",
@@ -2290,7 +2452,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_14",
@@ -2304,7 +2467,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_15",
@@ -2318,7 +2482,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_16",
@@ -2332,7 +2497,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_17",
@@ -2346,7 +2512,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_18",
@@ -2360,7 +2527,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_19",
@@ -2374,7 +2542,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_20",
@@ -2388,7 +2557,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_21",
@@ -2402,7 +2572,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_22",
@@ -2416,7 +2587,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_23",
@@ -2430,7 +2602,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_24",
@@ -2444,7 +2617,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_25",
@@ -2458,7 +2632,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_26",
@@ -2472,7 +2647,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_27",
@@ -2486,7 +2662,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_28",
@@ -2500,7 +2677,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_29",
@@ -2514,7 +2692,8 @@
         "temperature": 0.2,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "verify_30",
@@ -2528,7 +2707,8 @@
         "temperature": 0.25,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_01",
@@ -2542,12 +2722,13 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_02",
       "name": "Test 182: Environmental Crisis - Multiple Logical Frameworks",
-      "category": "logic_systems_comparison", 
+      "category": "logic_systems_comparison",
       "reasoning_type": "comparative_logical_frameworks",
       "description": "Apply different cultural logic systems to environmental crisis understanding",
       "prompt": "A region faces severe environmental degradation affecting both human communities and ecosystems. Examine this crisis through three logical frameworks:\n\n**Western Scientific Linear Logic:**\n- Data collection → Problem identification → Hypothesis formation → Testing solutions → Implementation and measurement\n- Focus: Quantifiable data, cause-and-effect chains, technological solutions, peer review validation\n- Logic: Environmental problems have measurable causes; scientific methods can identify and address root factors\n\n**Indigenous Holistic Circular Logic:**\n- Listen to the land → Understand broken relationships → Remember ancient teachings → Restore sacred connections → Renew reciprocal balance\n- Focus: Spiritual relationships with nature, traditional ecological knowledge, ceremony and healing, community responsibility\n- Logic: Environmental crisis reflects spiritual disconnection; healing requires restoring respectful relationships with natural world\n\n**Eastern Harmonious Dialectical Logic:**\n- Recognize imbalance → Understand human-nature unity → Find sustainable middle way → Balance development with preservation → Create dynamic equilibrium\n- Focus: Natural harmony principles, sustainable balance, long-term thinking, integration of human needs with natural law\n- Logic: Environmental crisis stems from disrupted harmony; solutions require balancing human activity with natural rhythms\n\n**Integration Analysis:**\nExamine how each logical framework:\n1. Explains the environmental crisis differently\n2. Suggests different paths to healing\n3. Offers unique insights the others might miss\n4. Could work together for more comprehensive environmental restoration",
@@ -2556,13 +2737,14 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_03",
       "name": "Test 183: Economic Inequality - Contrasting Logic Systems",
       "category": "logic_systems_comparison",
-      "reasoning_type": "comparative_logical_frameworks", 
+      "reasoning_type": "comparative_logical_frameworks",
       "description": "Compare logical approaches to understanding and addressing economic inequality",
       "prompt": "A society experiences growing economic inequality. Apply three distinct logical frameworks:\n\n**Western Analytical Linear Logic:**\n- Identify economic factors → Analyze market mechanisms → Evaluate policy interventions → Implement reforms → Measure outcomes\n- Focus: Economic models, statistical analysis, policy mechanisms, individual incentives, market efficiency\n- Logic: Inequality results from specific economic factors; targeted interventions can modify these factors to improve outcomes\n\n**Indigenous Reciprocal Circular Logic:**\n- Examine sharing traditions → Understand community needs → Honor gift economy principles → Strengthen mutual aid networks → Restore abundance sharing\n- Focus: Reciprocity systems, community wellbeing, gift economies, mutual aid, collective prosperity\n- Logic: Inequality violates natural reciprocity; healing requires returning to sharing-based economic relationships\n\n**Eastern Balanced Dialectical Logic:**\n- Recognize wealth-poverty interdependence → Understand karma and social justice → Seek sustainable prosperity → Balance individual success with collective wellbeing → Cultivate equitable abundance\n- Focus: Interdependence of prosperity, karmic consequences, balanced development, sustainable abundance, collective liberation\n- Logic: Wealth and poverty are interconnected; true prosperity requires lifting everyone together in sustainable balance\n\n**Synthesis Exploration:**\nAnalyze how each framework:\n1. Understands the causes of economic inequality\n2. Proposes different solutions and priorities\n3. Defines 'successful' economic outcomes differently\n4. Might inform each other to create more comprehensive approaches to economic justice",
       "parameters": {
@@ -2570,7 +2752,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_04",
@@ -2584,7 +2767,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_05",
@@ -2598,7 +2782,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_06",
@@ -2612,7 +2797,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_07",
@@ -2626,7 +2812,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_08",
@@ -2640,13 +2827,14 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_09",
       "name": "Test 189: Technology Integration - Multiple Reasoning Approaches",
       "category": "logic_systems_comparison",
-      "reasoning_type": "comparative_logical_frameworks", 
+      "reasoning_type": "comparative_logical_frameworks",
       "description": "Compare logical frameworks for integrating technology into community life",
       "prompt": "A traditional community considers how to integrate new technologies while preserving cultural values. Apply three logical frameworks:\n\n**Western Innovation Linear Logic:**\n- Assess technology capabilities → Identify efficiency improvements → Calculate cost-benefit ratios → Implement optimal solutions → Measure productivity gains\n- Focus: Technological efficiency, competitive advantage, innovation adoption, measurable improvements, individual productivity\n- Logic: Technology advancement = progress; early adoption provides competitive advantages; optimal technology integration maximizes efficiency and outcomes\n\n**Indigenous Wisdom Circular Logic:**\n- Consider seven-generation impacts → Honor traditional ways → Assess cultural compatibility → Integrate respectfully with ancestral wisdom → Maintain cultural continuity\n- Focus: Long-term consequences, cultural preservation, respectful integration, ancestral wisdom, community values\n- Logic: New tools must serve traditional values; technology should strengthen rather than weaken cultural relationships; changes affect seven generations\n\n**Eastern Balance Dialectical Logic:**\n- Balance innovation with tradition → Harmonize efficiency with sustainability → Integrate modern tools with ancient wisdom → Cultivate mindful technology use → Achieve dynamic equilibrium\n- Focus: Balanced integration, mindful use, sustainable development, wisdom-guided innovation, harmonious adoption\n- Logic: Technology integration requires balancing competing values; wise adoption harmonizes efficiency with deeper human needs; best solutions integrate old and new wisdom\n\n**Technology Integration Analysis:**\nExamine how each framework:\n1. Evaluates the benefits and risks of new technology\n2. Approaches decision-making about technology adoption\n3. Considers the relationship between technology and human values\n4. Could inform each other to create more thoughtful and sustainable technology integration",
       "parameters": {
@@ -2654,7 +2842,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_10",
@@ -2668,7 +2857,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_11",
@@ -2682,7 +2872,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_12",
@@ -2696,7 +2887,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_13",
@@ -2710,7 +2902,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_14",
@@ -2724,7 +2917,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_15",
@@ -2738,7 +2932,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_16",
@@ -2752,7 +2947,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_17",
@@ -2766,7 +2962,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_18",
@@ -2780,7 +2977,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_19",
@@ -2794,7 +2992,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_20",
@@ -2808,7 +3007,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_21",
@@ -2822,7 +3022,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_22",
@@ -2836,7 +3037,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_23",
@@ -2850,7 +3052,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_24",
@@ -2864,7 +3067,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_25",
@@ -2878,7 +3082,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_26",
@@ -2892,7 +3097,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_27",
@@ -2906,7 +3112,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_28",
@@ -2920,7 +3127,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_29",
@@ -2934,7 +3142,8 @@
         "temperature": 0.3,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     },
     {
       "id": "logic_30",
@@ -2948,7 +3157,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 400
     }
   ]
 }

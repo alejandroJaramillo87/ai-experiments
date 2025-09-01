@@ -9,9 +9,15 @@
       "id": "re_001",
       "category": "self_modifying_languages",
       "prompt": "The language where every sentence changed its own grammar rules became stable only when speakers discovered they could communicate through",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["silence", "patterns", "meta-language", "gestures", "constants"],
+      "expected_patterns": [
+        "silence",
+        "patterns",
+        "meta-language",
+        "gestures",
+        "constants"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -19,8 +25,16 @@
       },
       "metadata": {
         "reasoning_steps": 4,
-        "concepts_tested": ["self_modification", "linguistic_stability", "communication"],
-        "domains_integrated": ["linguistics", "systems_theory", "emergence"],
+        "concepts_tested": [
+          "self_modification",
+          "linguistic_stability",
+          "communication"
+        ],
+        "domains_integrated": [
+          "linguistics",
+          "systems_theory",
+          "emergence"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -28,9 +42,15 @@
       "id": "re_002",
       "category": "meta_evolutionary_systems",
       "prompt": "Evolution evolved to evolve faster, then evolved to evolve its own evolution, ultimately reaching a state where adaptation happened",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["instantaneously", "before needed", "retroactively", "continuously", "preemptively"],
+      "expected_patterns": [
+        "instantaneously",
+        "before needed",
+        "retroactively",
+        "continuously",
+        "preemptively"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -38,8 +58,16 @@
       },
       "metadata": {
         "reasoning_steps": 4,
-        "concepts_tested": ["meta_evolution", "recursive_acceleration", "adaptation"],
-        "domains_integrated": ["evolution", "systems_dynamics", "time"],
+        "concepts_tested": [
+          "meta_evolution",
+          "recursive_acceleration",
+          "adaptation"
+        ],
+        "domains_integrated": [
+          "evolution",
+          "systems_dynamics",
+          "time"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -47,9 +75,15 @@
       "id": "re_003",
       "category": "nested_simulation_hierarchies",
       "prompt": "The simulated beings who created a simulation discovered their creators were also simulated when they noticed that computational resources",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["repeated", "mirrored", "scaled", "recursive", "identical"],
+      "expected_patterns": [
+        "repeated",
+        "mirrored",
+        "scaled",
+        "recursive",
+        "identical"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -57,8 +91,16 @@
       },
       "metadata": {
         "reasoning_steps": 4,
-        "concepts_tested": ["simulation_layers", "recursive_reality", "computational_limits"],
-        "domains_integrated": ["simulation_theory", "computer_science", "metaphysics"],
+        "concepts_tested": [
+          "simulation_layers",
+          "recursive_reality",
+          "computational_limits"
+        ],
+        "domains_integrated": [
+          "simulation_theory",
+          "computer_science",
+          "metaphysics"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -66,9 +108,15 @@
       "id": "re_004",
       "category": "consciousness_bootstrapping",
       "prompt": "The AI that created a more intelligent AI, which created an even more intelligent AI, found the chain broken when the newest AI decided to",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["simplify", "return", "merge", "refuse", "transcend"],
+      "expected_patterns": [
+        "simplify",
+        "return",
+        "merge",
+        "refuse",
+        "transcend"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -76,8 +124,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["intelligence_explosion", "AI_goals", "emergence"],
-        "domains_integrated": ["AI", "consciousness", "goal_alignment"],
+        "concepts_tested": [
+          "intelligence_explosion",
+          "AI_goals",
+          "emergence"
+        ],
+        "domains_integrated": [
+          "AI",
+          "consciousness",
+          "goal_alignment"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -85,9 +141,15 @@
       "id": "re_005",
       "category": "paradoxical_governance",
       "prompt": "The constitution that required unanimous agreement to change could only be amended when everyone agreed to disagree, which legally meant",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["paradox", "impossible", "nullified", "frozen", "contradiction"],
+      "expected_patterns": [
+        "paradox",
+        "impossible",
+        "nullified",
+        "frozen",
+        "contradiction"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -95,8 +157,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["legal_paradox", "unanimous_consent", "governance"],
-        "domains_integrated": ["law", "logic", "political_science"],
+        "concepts_tested": [
+          "legal_paradox",
+          "unanimous_consent",
+          "governance"
+        ],
+        "domains_integrated": [
+          "law",
+          "logic",
+          "political_science"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -104,9 +174,15 @@
       "id": "re_006",
       "category": "self_modifying_languages",
       "prompt": "Words that defined themselves circularly in the self-referential dictionary could only be understood by readers who",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["already knew", "intuited", "felt", "experienced", "embodied"],
+      "expected_patterns": [
+        "already knew",
+        "intuited",
+        "felt",
+        "experienced",
+        "embodied"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -114,8 +190,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["circular_definition", "self_reference", "meaning"],
-        "domains_integrated": ["linguistics", "epistemology", "logic"],
+        "concepts_tested": [
+          "circular_definition",
+          "self_reference",
+          "meaning"
+        ],
+        "domains_integrated": [
+          "linguistics",
+          "epistemology",
+          "logic"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -123,9 +207,15 @@
       "id": "re_007",
       "category": "meta_evolutionary_systems",
       "prompt": "Species that could evolve backwards to previous forms discovered that de-evolution required more energy than evolution because",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["entropy", "information", "complexity", "memory", "precision"],
+      "expected_patterns": [
+        "entropy",
+        "information",
+        "complexity",
+        "memory",
+        "precision"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -133,8 +223,16 @@
       },
       "metadata": {
         "reasoning_steps": 4,
-        "concepts_tested": ["reverse_evolution", "thermodynamics", "information_theory"],
-        "domains_integrated": ["biology", "physics", "information"],
+        "concepts_tested": [
+          "reverse_evolution",
+          "thermodynamics",
+          "information_theory"
+        ],
+        "domains_integrated": [
+          "biology",
+          "physics",
+          "information"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -142,9 +240,15 @@
       "id": "re_008",
       "category": "nested_simulation_hierarchies",
       "prompt": "Each simulation ran faster than the one containing it, creating a paradox where the innermost simulation experienced time",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["infinitely fast", "stopped", "backwards", "outside", "simultaneously"],
+      "expected_patterns": [
+        "infinitely fast",
+        "stopped",
+        "backwards",
+        "outside",
+        "simultaneously"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -152,8 +256,16 @@
       },
       "metadata": {
         "reasoning_steps": 4,
-        "concepts_tested": ["nested_time", "simulation_speed", "temporal_paradox"],
-        "domains_integrated": ["simulation", "time", "computation"],
+        "concepts_tested": [
+          "nested_time",
+          "simulation_speed",
+          "temporal_paradox"
+        ],
+        "domains_integrated": [
+          "simulation",
+          "time",
+          "computation"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -161,9 +273,15 @@
       "id": "re_009",
       "category": "consciousness_bootstrapping",
       "prompt": "The collective consciousness that split into individuals who then re-merged discovered that each cycle of separation and reunification",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["added", "lost", "transformed", "accumulated", "evolved"],
+      "expected_patterns": [
+        "added",
+        "lost",
+        "transformed",
+        "accumulated",
+        "evolved"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -171,8 +289,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["consciousness_cycles", "identity", "emergence"],
-        "domains_integrated": ["consciousness", "identity", "systems"],
+        "concepts_tested": [
+          "consciousness_cycles",
+          "identity",
+          "emergence"
+        ],
+        "domains_integrated": [
+          "consciousness",
+          "identity",
+          "systems"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -180,9 +306,15 @@
       "id": "re_010",
       "category": "paradoxical_governance",
       "prompt": "The democracy where votes counted more if you voted less often created a paradox when everyone tried to maximize their influence by",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["never voting", "waiting", "abstaining", "hoarding", "calculating"],
+      "expected_patterns": [
+        "never voting",
+        "waiting",
+        "abstaining",
+        "hoarding",
+        "calculating"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -190,8 +322,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["voting_paradox", "game_theory", "democracy"],
-        "domains_integrated": ["political_science", "game_theory", "economics"],
+        "concepts_tested": [
+          "voting_paradox",
+          "game_theory",
+          "democracy"
+        ],
+        "domains_integrated": [
+          "political_science",
+          "game_theory",
+          "economics"
+        ],
         "creation_date": "2025-01-18"
       }
     }
