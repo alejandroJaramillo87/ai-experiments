@@ -1,226 +1,104 @@
 # AI Model Evaluation Framework
 
-A practical, engineer-friendly framework for evaluating Large Language Model (LLM) performance across diverse reasoning tasks. Built for software engineers who want reliable model benchmarking without needing a math PhD.
+A systematic framework for evaluating Large Language Model performance across cognitive domains.
 
-## ✨ **What This Does**
+## Overview
 
-Think of this as **automated code review for AI models** - it runs your models through standardized tests and gives you detailed reports on how well they perform across different types of thinking tasks.
+This framework provides automated evaluation of AI models through structured tests covering reasoning, creativity, language, social understanding, and domain integration. The system produces quantitative assessments suitable for model comparison and validation.
 
-**Perfect for:**
-- 🔧 **Engineering teams** evaluating models for production use
-- 🚀 **AI engineers** comparing model performance objectively  
-- 🏗️ **DevOps teams** setting up automated model testing pipelines
-- 📊 **Technical leads** making data-driven model selection decisions
+## Quick Start
 
-## 🚀 **Quick Start** (5 minutes)
-
-### 1. Run Your First Test
-
+Verify framework functionality:
 ```bash
-# Test that everything works (no API calls)
-make test-quick
-
-# Run a real evaluation (requires running model)
-python run_tests_with_cleanup.py tests/integration/test_validation_integration.py
+make test
 ```
 
-### 2. Evaluate a Model
-
+Evaluate a model:
 ```bash
-# Point to your model API and run basic evaluation
-python benchmark_runner.py --test-type base --mode single --test-id easy_reasoning_01 \
-  --endpoint http://localhost:8004/v1/completions \
+python benchmark_runner.py --test-type base --mode single \
+  --endpoint http://localhost:8004/completion \
   --model "your-model-name"
 ```
 
-### 3. View Results
+## Core Components
 
-Check the generated `test_results/` directory for detailed JSON reports and plain text responses.
+The framework consists of four main components:
 
-## 📋 **Core Concepts** (Software Engineer Perspective)
+### Test Runner
+`benchmark_runner.py` orchestrates test execution, API calls, and result aggregation.
 
-### **What is "Evaluation"?**
-Like unit testing, but for AI reasoning ability:
-- **Input**: A reasoning task (prompt)  
-- **Process**: Model generates response
-- **Output**: Structured score report (0-100 scale)
+### Domain Tests  
+`domains/` contains JSON test definitions organized by cognitive domain (reasoning, creativity, language, social, integration, knowledge).
 
-### **What are "Domains"?**
-Different types of thinking tasks, like different microservices:
-- **Reasoning**: Logic problems, analysis, deduction
-- **Creativity**: Original content, storytelling, artistic tasks  
-- **Language**: Grammar, translation, linguistic analysis
-- **Social**: Cultural understanding, interpersonal situations
-- **Integration**: Complex multi-domain problems
+### Evaluation System
+`evaluator/` provides modular scoring algorithms for different assessment types.
 
-### **What are "Dimensions"?**
-Think of them as **quality metrics** - like code review criteria:
-- **Organization**: Is the response well-structured?
-- **Accuracy**: Are the facts and logic correct? 
-- **Completeness**: Does it address all requirements?
-- **Reliability**: Would you trust this in production?
+### Test Framework
+`tests/` contains unit, integration, and validation tests for the framework itself.
 
-**No calculus required** - the system handles all scoring automatically.
-
-## 🏗️ **System Architecture**
+## Architecture
 
 ```
 benchmark_tests/
-├── 📁 data/              # Test datasets and cultural references  
-├── 📁 domains/           # Test definitions organized by thinking type
-├── 📁 evaluator/         # The evaluation engine (modular components)
-├── 📁 tests/            # Framework tests (unit, integration, analysis)
-├── 🎯 Makefile          # Convenient commands (make test, make clean)
-├── 🤖 benchmark_runner.py        # Main test execution engine
-└── 📚 docs/             # Detailed documentation
+├── domains/           # Test definitions by cognitive domain
+├── evaluator/         # Scoring and assessment modules  
+├── tests/            # Framework validation tests
+├── benchmark_runner.py    # Main execution engine
+└── Makefile          # Command automation
 ```
 
-### **Key Components**
+## Available Commands
 
-- **📝 Test Definitions**: JSON files defining what to test (`domains/`)
-- **🧠 Evaluators**: Pluggable modules that score different types of thinking (`evaluator/`)  
-- **🚀 Test Runner**: Orchestrates execution, handles APIs, manages results (`benchmark_runner.py`)
-- **🧹 Automation**: Built-in cleanup, convenient commands (`Makefile`)
-
-## 📊 **Understanding Results**
-
-### **Scores Explained**
-All scores are **0-100** (like percentages):
-- **90-100**: Exceptional - production ready for complex tasks
-- **80-89**: Very good - reliable for most use cases
-- **70-79**: Good - adequate with some limitations  
-- **60-69**: Fair - needs improvement for critical tasks
-- **Below 60**: Poor - significant issues detected
-
-### **Sample Result File**
-```json
-{
-  "test_id": "reasoning_logic_01",
-  "overall_score": 85.4,
-  "dimensions": {
-    "organization_quality": 92,    // Well-structured response
-    "technical_accuracy": 88,     // Facts and logic correct
-    "completeness": 81,           // Addressed all requirements
-    "reliability": 87             // Trustworthy for production
-  },
-  "execution_time": 3.2,
-  "model_used": "your-model-name"
-}
-```
-
-## 🛠️ **Common Workflows**
-
-### **Development Testing**
+Framework testing:
 ```bash
-# Quick check during development
-make test-quick
-
-# Test specific functionality  
-make test-unit
-make test-integration
+make test              # Full test suite
+make test MODE=quick   # Fast development tests
+make clean             # Remove artifacts
 ```
 
-### **Model Comparison** 
+Prerequisites and debugging:
 ```bash
-# Test Model A
-python benchmark_runner.py --test-type base --mode category \
-  --category reasoning_general --model "model-a" --output-dir results_a
-
-# Test Model B  
-python benchmark_runner.py --test-type base --mode category \
-  --category reasoning_general --model "model-b" --output-dir results_b
-
-# Compare results
-python analyze_results.py results_a results_b
+make check-prerequisites  # Verify system readiness
+make test-api-suite      # Test LLM connectivity
+make debug-help          # Show debug options
 ```
 
-### **Production Pipeline**
+Domain conversion:
 ```bash
-# Full evaluation suite with cleanup
-make test
-
-# Custom evaluation with performance monitoring
-python benchmark_runner.py --test-type instruct --mode concurrent \
-  --workers 4 --performance-monitoring --category reasoning_comprehensive
+make convert-core-domains      # Convert domains to instruct format
+make test-enhanced-evaluator   # Test enhanced evaluation system
 ```
 
-## 📚 **Documentation**
+## Configuration
 
-### **For Users**
-- **[Getting Started Guide](docs/GETTING_STARTED.md)** - Detailed setup and first steps
-- **[Configuration Guide](docs/CONFIGURATION.md)** - All settings explained
-- **[Interpreting Results](docs/INTERPRETING_RESULTS.md)** - Understanding scores and reports
-
-### **For Developers**
-- **[Architecture Overview](docs/ARCHITECTURE.md)** - How the system works
-- **[Extension Guide](docs/EXTENDING.md)** - Adding new evaluators and domains  
-- **[API Reference](docs/API_REFERENCE.md)** - Classes and methods
-- **[Contributing Guide](docs/CONTRIBUTING.md)** - Development workflow
-
-### **Operations**
-- **[Deployment Guide](docs/DEPLOYMENT.md)** - Running in production
-- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
-- **[Cleanup Guide](CLEANUP_GUIDE.md)** - Managing test artifacts
-
-## 🎛️ **Available Commands**
+Basic setup requires no configuration. For model evaluation, specify your API endpoint:
 
 ```bash
-# Testing (automatic cleanup included)
-make test                 # Run all tests
-make test-unit           # Unit tests only  
-make test-integration    # Integration tests only
-make test-quick          # Quick development test
-make clean               # Clean up artifacts only
-
-# Custom test execution
-python run_tests_with_cleanup.py [pytest-args]    # Tests with auto-cleanup
-python benchmark_runner.py [options]              # Direct model evaluation
-python cleanup_test_artifacts.py                  # Manual cleanup
+export MODEL_ENDPOINT="http://localhost:8004/completion"
 ```
 
-## ⚙️ **Configuration**
+## Documentation
 
-### **Basic Setup**
-No configuration needed for testing the framework itself.
+### Engineering Documentation
+- [Installation](docs/engineering/installation.md) - Setup and prerequisites
+- [Basic Usage](docs/engineering/basic-usage.md) - Common commands and workflows
+- [Architecture](docs/engineering/architecture.md) - System design overview
+- [API Reference](docs/engineering/api-reference.md) - Key interfaces and classes
+- [Troubleshooting](docs/engineering/troubleshooting.md) - Common issues and solutions
 
-### **Model Evaluation Setup**  
-Point to your model API:
-```bash
-export MODEL_ENDPOINT="http://localhost:8004/v1/completions"
-export MODEL_NAME="your-model-name"
-```
+### Domain Documentation  
+- [Domain Overview](docs/domains/overview.md) - Cognitive domains and test structure
+- [Production Domains](docs/domains/production-domains.md) - Core domain descriptions
+- [Base vs Instruct](docs/domains/base-vs-instruct.md) - Model type differences
 
-### **Advanced Configuration**
-See [Configuration Guide](docs/CONFIGURATION.md) for:
-- Custom evaluation criteria
-- Domain-specific settings  
-- Performance tuning
-- Cultural evaluation settings
+### Research Documentation
+- [Theoretical Foundations](docs/research/theoretical-foundations.md) - Mathematical basis
+- [Evaluation Algorithms](docs/research/evaluation-algorithms.md) - Assessment methodologies
 
-## 🤝 **Contributing**
+### Operations Documentation
+- [Deployment](docs/operations/deployment.md) - Production setup
+- [Monitoring](docs/operations/monitoring.md) - System health and performance
 
-We welcome contributions! This project follows standard open source practices:
+## License
 
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Test** your changes (`make test`)  
-4. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-5. **Push** to the branch (`git push origin feature/amazing-feature`)
-6. **Open** a Pull Request
-
-See [Contributing Guide](docs/CONTRIBUTING.md) for detailed development workflow.
-
-## 📄 **License**
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 **Support**
-
-- **Issues**: [GitHub Issues](https://github.com/your-repo/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-repo/discussions)  
-- **Documentation**: Check [docs/](docs/) directory
-- **Troubleshooting**: See [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
-
----
-
-**Made for software engineers, by software engineers.** No PhD required. 🚀
+MIT License - see LICENSE file for details.
