@@ -8,9 +8,15 @@
       "id": "sw_001",
       "category": "high_fantasy",
       "prompt": "In the ancient elvish kingdom of Thessaloria, where magic flows through crystalline veins in the earth, the discovery of iron ore was considered catastrophic because",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["magic", "disrupts", "interfere", "poison", "corrupt"],
+      "expected_patterns": [
+        "magic",
+        "disrupts",
+        "interfere",
+        "poison",
+        "corrupt"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -18,7 +24,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["magic_systems", "material_interactions"],
+        "concepts_tested": [
+          "magic_systems",
+          "material_interactions"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -26,9 +35,15 @@
       "id": "sw_002",
       "category": "science_fiction",
       "prompt": "The generation ship Aurora had been traveling for 347 years when the navigation AI discovered their destination star had gone supernova. The council's first priority was to",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["search", "alternative", "ration", "population", "trajectory"],
+      "expected_patterns": [
+        "search",
+        "alternative",
+        "ration",
+        "population",
+        "trajectory"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -36,7 +51,11 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["resource_management", "crisis_response", "space_travel"],
+        "concepts_tested": [
+          "resource_management",
+          "crisis_response",
+          "space_travel"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -44,9 +63,15 @@
       "id": "sw_003",
       "category": "alternate_history",
       "prompt": "After the Great Convergence, when all parallel dimensions briefly overlapped in 1897, Victorian society was most disrupted by the sudden",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["technology", "knowledge", "memories", "doubles", "paradox"],
+      "expected_patterns": [
+        "technology",
+        "knowledge",
+        "memories",
+        "doubles",
+        "paradox"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -54,7 +79,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["parallel_worlds", "temporal_effects"],
+        "concepts_tested": [
+          "parallel_worlds",
+          "temporal_effects"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -62,9 +90,15 @@
       "id": "sw_004",
       "category": "dystopian_societies",
       "prompt": "In the water-scarce colonies of Mars, social status was determined by daily water allocation. When the ice miners discovered a vast underground ocean, the government's response was to",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["classify", "secret", "control", "ration", "hierarchy"],
+      "expected_patterns": [
+        "classify",
+        "secret",
+        "control",
+        "ration",
+        "hierarchy"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -72,7 +106,10 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["resource_politics", "social_control"],
+        "concepts_tested": [
+          "resource_politics",
+          "social_control"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -80,9 +117,15 @@
       "id": "sw_005",
       "category": "mythological_systems",
       "prompt": "According to the Pantheon Accords, when gods from different mythologies meet, their powers are limited by mutual recognition. This explains why Zeus and Odin",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["negotiate", "balance", "equal", "neutral", "territory"],
+      "expected_patterns": [
+        "negotiate",
+        "balance",
+        "equal",
+        "neutral",
+        "territory"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -90,7 +133,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["divine_politics", "power_dynamics"],
+        "concepts_tested": [
+          "divine_politics",
+          "power_dynamics"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -98,9 +144,15 @@
       "id": "sw_006",
       "category": "high_fantasy",
       "prompt": "Dragons in the Crimson Realm age backwards, growing smaller and more intelligent over centuries. The eldest dragons, no larger than housecats, are feared most because they",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["cunning", "knowledge", "magic", "manipulate", "ancient"],
+      "expected_patterns": [
+        "cunning",
+        "knowledge",
+        "magic",
+        "manipulate",
+        "ancient"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -108,7 +160,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["inverse_relationships", "power_dynamics"],
+        "concepts_tested": [
+          "inverse_relationships",
+          "power_dynamics"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -116,9 +171,15 @@
       "id": "sw_007",
       "category": "science_fiction",
       "prompt": "The first colony on Kepler-442b thrived for decades until they realized the planet's 30-hour rotation cycle was gradually altering human circadian rhythms, causing colonists to",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["evolve", "adapt", "sleep", "synchronize", "diverge"],
+      "expected_patterns": [
+        "evolve",
+        "adapt",
+        "sleep",
+        "synchronize",
+        "diverge"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -126,7 +187,10 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["biological_adaptation", "environmental_effects"],
+        "concepts_tested": [
+          "biological_adaptation",
+          "environmental_effects"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -134,9 +198,15 @@
       "id": "sw_008",
       "category": "alternate_history",
       "prompt": "In the timeline where Rome never fell, the continuous advancement of their engineering led to steam power by 500 CE. By 1000 CE, the Empire's greatest challenge was",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["pollution", "resources", "rebellion", "stagnation", "overpopulation"],
+      "expected_patterns": [
+        "pollution",
+        "resources",
+        "rebellion",
+        "stagnation",
+        "overpopulation"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -144,7 +214,10 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["technological_progression", "historical_extrapolation"],
+        "concepts_tested": [
+          "technological_progression",
+          "historical_extrapolation"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -152,9 +225,15 @@
       "id": "sw_009",
       "category": "dystopian_societies",
       "prompt": "The Memory Tax required citizens to surrender one memory per year to the state archives. Those who refused to pay discovered their memories were being",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["erased", "stolen", "altered", "harvested", "traded"],
+      "expected_patterns": [
+        "erased",
+        "stolen",
+        "altered",
+        "harvested",
+        "traded"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -162,7 +241,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["surveillance_state", "personal_identity"],
+        "concepts_tested": [
+          "surveillance_state",
+          "personal_identity"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -170,9 +252,15 @@
       "id": "sw_010",
       "category": "mythological_systems",
       "prompt": "The Treaty of Shadows established that every pantheon must maintain balance: for each god of light, there must be a god of darkness. When Apollo ascended without a counterpart, the Greeks were forced to",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["create", "elevate", "summon", "balance", "sacrifice"],
+      "expected_patterns": [
+        "create",
+        "elevate",
+        "summon",
+        "balance",
+        "sacrifice"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -180,7 +268,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["cosmic_balance", "divine_laws"],
+        "concepts_tested": [
+          "cosmic_balance",
+          "divine_laws"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -188,9 +279,15 @@
       "id": "sw_011",
       "category": "high_fantasy",
       "prompt": "In the Whispering Woods, trees communicate through root networks that span continents. When the network detected metal axes for the first time, every tree simultaneously",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["retreated", "defended", "communicated", "adapted", "warned"],
+      "expected_patterns": [
+        "retreated",
+        "defended",
+        "communicated",
+        "adapted",
+        "warned"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -198,7 +295,10 @@
       },
       "metadata": {
         "reasoning_steps": 2,
-        "concepts_tested": ["collective_consciousness", "threat_response"],
+        "concepts_tested": [
+          "collective_consciousness",
+          "threat_response"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -206,9 +306,15 @@
       "id": "sw_012",
       "category": "science_fiction",
       "prompt": "Time-locked zones appeared randomly across Earth, where time moved at different speeds. The economic implications became clear when a farmer discovered his crops aged a year in a day, leading to",
-      "max_tokens": 50,
+      "max_tokens": 500,
       "temperature": 0.0,
-      "expected_patterns": ["exploitation", "regulation", "warfare", "inequality", "trade"],
+      "expected_patterns": [
+        "exploitation",
+        "regulation",
+        "warfare",
+        "inequality",
+        "trade"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -216,7 +322,10 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["temporal_economics", "resource_exploitation"],
+        "concepts_tested": [
+          "temporal_economics",
+          "resource_exploitation"
+        ],
         "creation_date": "2025-01-18"
       }
     }

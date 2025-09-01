@@ -23,13 +23,14 @@
         "temperature": 0.85,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "narrative_02",
       "name": "Test 2: Afrofuturist Oral History Multi-Timeline",
       "category": "narrative_creation",
-      "creativity_type": "generative", 
+      "creativity_type": "generative",
       "description": "Create complex Afrofuturist narrative with multiple timeline integration",
       "prompt": "Craft a narrative opening that weaves together African ancestral memory, contemporary diaspora experience, and speculative future technology, following the structure of traditional African praise poetry but incorporating:\n- Non-linear time flow connecting ancestral spirits to AI consciousness\n- Multiple linguistic registers (traditional praise forms, contemporary urban dialects, future technological language)\n- Ancestral technology that predates and transcends current digital systems\n- Community healing through technological and spiritual integration\n- Pan-African cultural synthesis across time periods\n\nBegin this multi-temporal Afrofuturist epic:",
       "parameters": {
@@ -37,7 +38,8 @@
         "temperature": 0.9,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "performance_01",
@@ -51,7 +53,8 @@
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "descriptive_01",
@@ -65,7 +68,8 @@
         "temperature": 0.95,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     },
     {
       "id": "musical_01",
@@ -79,7 +83,8 @@
         "temperature": 0.85,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     }
   ]
 }

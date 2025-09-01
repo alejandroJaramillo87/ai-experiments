@@ -9,9 +9,15 @@
       "id": "ec_001",
       "category": "observer_dependent_reality",
       "prompt": "Facts that changed based on who observed them reached consensus only when all observers agreed to",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["not observe", "average", "vote", "forget", "pretend"],
+      "expected_patterns": [
+        "not observe",
+        "average",
+        "vote",
+        "forget",
+        "pretend"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -19,8 +25,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["observer_effect", "consensus_reality", "epistemology"],
-        "domains_integrated": ["quantum_mechanics", "philosophy", "sociology"],
+        "concepts_tested": [
+          "observer_effect",
+          "consensus_reality",
+          "epistemology"
+        ],
+        "domains_integrated": [
+          "quantum_mechanics",
+          "philosophy",
+          "sociology"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -28,9 +42,15 @@
       "id": "ec_002",
       "category": "retroactive_causation",
       "prompt": "The event that caused its own preconditions to exist could only happen after it had already",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["happened", "been decided", "been observed", "succeeded", "existed"],
+      "expected_patterns": [
+        "happened",
+        "been decided",
+        "been observed",
+        "succeeded",
+        "existed"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -38,8 +58,16 @@
       },
       "metadata": {
         "reasoning_steps": 4,
-        "concepts_tested": ["bootstrap_paradox", "causation", "temporal_logic"],
-        "domains_integrated": ["physics", "philosophy", "time"],
+        "concepts_tested": [
+          "bootstrap_paradox",
+          "causation",
+          "temporal_logic"
+        ],
+        "domains_integrated": [
+          "physics",
+          "philosophy",
+          "time"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -47,9 +75,15 @@
       "id": "ec_003",
       "category": "knowledge_uncertainty_principle",
       "prompt": "The more precisely you knew something's meaning, the less you could know about its context, forcing scholars to choose between",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["depth or breadth", "specific or general", "detail or overview", "precision or understanding", "facts or connections"],
+      "expected_patterns": [
+        "depth or breadth",
+        "specific or general",
+        "detail or overview",
+        "precision or understanding",
+        "facts or connections"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -57,8 +91,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["uncertainty_principle", "knowledge_limits", "tradeoffs"],
-        "domains_integrated": ["epistemology", "information_theory", "philosophy"],
+        "concepts_tested": [
+          "uncertainty_principle",
+          "knowledge_limits",
+          "tradeoffs"
+        ],
+        "domains_integrated": [
+          "epistemology",
+          "information_theory",
+          "philosophy"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -66,9 +108,15 @@
       "id": "ec_004",
       "category": "truth_superposition",
       "prompt": "Statements that were simultaneously true and false collapsed to a definite truth value only when",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["measured", "needed", "observed", "decided", "acted upon"],
+      "expected_patterns": [
+        "measured",
+        "needed",
+        "observed",
+        "decided",
+        "acted upon"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -76,8 +124,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["quantum_logic", "truth_values", "superposition"],
-        "domains_integrated": ["logic", "quantum_mechanics", "philosophy"],
+        "concepts_tested": [
+          "quantum_logic",
+          "truth_values",
+          "superposition"
+        ],
+        "domains_integrated": [
+          "logic",
+          "quantum_mechanics",
+          "philosophy"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -85,9 +141,15 @@
       "id": "ec_005",
       "category": "semantic_dissolution",
       "prompt": "Words whose meanings evaporated when examined too closely could only be used effectively in",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["periphery", "poetry", "intuition", "metaphor", "silence"],
+      "expected_patterns": [
+        "periphery",
+        "poetry",
+        "intuition",
+        "metaphor",
+        "silence"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -95,8 +157,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["semantic_instability", "meaning", "language_limits"],
-        "domains_integrated": ["linguistics", "philosophy", "semantics"],
+        "concepts_tested": [
+          "semantic_instability",
+          "meaning",
+          "language_limits"
+        ],
+        "domains_integrated": [
+          "linguistics",
+          "philosophy",
+          "semantics"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -104,9 +174,15 @@
       "id": "ec_006",
       "category": "observer_dependent_reality",
       "prompt": "The experiment whose results depended on whether anyone would ever look at them existed in a state of",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["superposition", "potential", "undefined", "waiting", "suspension"],
+      "expected_patterns": [
+        "superposition",
+        "potential",
+        "undefined",
+        "waiting",
+        "suspension"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -114,8 +190,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["quantum_measurement", "observation", "reality"],
-        "domains_integrated": ["quantum_physics", "epistemology", "metaphysics"],
+        "concepts_tested": [
+          "quantum_measurement",
+          "observation",
+          "reality"
+        ],
+        "domains_integrated": [
+          "quantum_physics",
+          "epistemology",
+          "metaphysics"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -123,9 +207,15 @@
       "id": "ec_007",
       "category": "retroactive_causation",
       "prompt": "Decisions made in the future that affected the past could only influence events that had remained",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["undecided", "quantum", "probable", "flexible", "unobserved"],
+      "expected_patterns": [
+        "undecided",
+        "quantum",
+        "probable",
+        "flexible",
+        "unobserved"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -133,8 +223,16 @@
       },
       "metadata": {
         "reasoning_steps": 4,
-        "concepts_tested": ["retrocausation", "temporal_influence", "determinism"],
-        "domains_integrated": ["physics", "time", "causality"],
+        "concepts_tested": [
+          "retrocausation",
+          "temporal_influence",
+          "determinism"
+        ],
+        "domains_integrated": [
+          "physics",
+          "time",
+          "causality"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -142,9 +240,15 @@
       "id": "ec_008",
       "category": "knowledge_uncertainty_principle",
       "prompt": "The encyclopedia that contained all knowledge became unreadable because knowing its location meant not knowing",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["its contents", "how to read", "what to seek", "its purpose", "its meaning"],
+      "expected_patterns": [
+        "its contents",
+        "how to read",
+        "what to seek",
+        "its purpose",
+        "its meaning"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -152,8 +256,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["information_paradox", "knowledge_limits", "accessibility"],
-        "domains_integrated": ["information_theory", "epistemology", "paradox"],
+        "concepts_tested": [
+          "information_paradox",
+          "knowledge_limits",
+          "accessibility"
+        ],
+        "domains_integrated": [
+          "information_theory",
+          "epistemology",
+          "paradox"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -161,9 +273,15 @@
       "id": "ec_009",
       "category": "truth_superposition",
       "prompt": "The quantum computer that calculated all possible answers simultaneously could only output a result by",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["choosing", "collapsing", "measuring", "destroying", "forgetting"],
+      "expected_patterns": [
+        "choosing",
+        "collapsing",
+        "measuring",
+        "destroying",
+        "forgetting"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -171,8 +289,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["quantum_computation", "superposition", "measurement"],
-        "domains_integrated": ["quantum_computing", "information", "physics"],
+        "concepts_tested": [
+          "quantum_computation",
+          "superposition",
+          "measurement"
+        ],
+        "domains_integrated": [
+          "quantum_computing",
+          "information",
+          "physics"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -180,9 +306,15 @@
       "id": "ec_010",
       "category": "semantic_dissolution",
       "prompt": "The definition that defined itself using only itself became meaningful when speakers realized that meaning itself was",
-      "max_tokens": 50,
+      "max_tokens": 1200,
       "temperature": 0.0,
-      "expected_patterns": ["circular", "emergent", "constructed", "arbitrary", "recursive"],
+      "expected_patterns": [
+        "circular",
+        "emergent",
+        "constructed",
+        "arbitrary",
+        "recursive"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -190,8 +322,16 @@
       },
       "metadata": {
         "reasoning_steps": 4,
-        "concepts_tested": ["self_definition", "meaning", "circular_logic"],
-        "domains_integrated": ["linguistics", "logic", "philosophy"],
+        "concepts_tested": [
+          "self_definition",
+          "meaning",
+          "circular_logic"
+        ],
+        "domains_integrated": [
+          "linguistics",
+          "logic",
+          "philosophy"
+        ],
         "creation_date": "2025-01-18"
       }
     }

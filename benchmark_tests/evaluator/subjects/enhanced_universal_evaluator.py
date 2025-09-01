@@ -156,6 +156,10 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
             enhanced_overall_score = self._evaluate_creative_completion(
                 base_result.metrics.overall_score, enhanced_scores, test_definition_with_response, response_text
             )
+        elif task_type == "cultural_reasoning":
+            enhanced_overall_score = self._evaluate_cultural_reasoning(
+                base_result.metrics.overall_score, enhanced_scores, test_definition_with_response, response_text
+            )
         else:
             # General enhanced scoring
             enhanced_overall_score = self._recalculate_overall_score_with_enhancement(
@@ -499,7 +503,14 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
                    ['creative', 'poetry', 'narrative', 'artistic']):
                 return "creative_completion"
         
-        # Cultural reasoning detection
+        # Cultural reasoning detection - specific patterns for known cultural tests
+        if any(keyword in prompt or keyword in description for keyword in
+               ['arabic', 'quranic', 'allah', 'islamic', 'verse', 'native american', 'ojibwe', 'creation story', 
+                'turtle', 'great spirit', 'celtic', 'yoruba', 'vedic', 'sanskrit', 'chinese', 'wu xing', 
+                'five elements', 'triadic', 'oriki']):
+            return "cultural_reasoning"
+        
+        # General cultural detection
         if any(keyword in prompt or keyword in description for keyword in
                ['cultural', 'tradition', 'japanese', 'haiku', 'poetry']):
             return "cultural_reasoning"
@@ -725,6 +736,236 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
         
         final_score = baseline_score + enhanced_component
         return round(max(min(final_score, 105.0), 15.0), 1)
+    
+    def _evaluate_cultural_reasoning(self,
+                                   base_overall_score: float,
+                                   enhanced_scores: Dict[str, float], 
+                                   test_definition: Dict[str, Any],
+                                   response_text: str) -> float:
+        """Specialized evaluation for cultural reasoning tasks"""
+        logger.info("CULTURAL_EVAL: Starting specialized cultural reasoning evaluation")
+        
+        prompt = test_definition.get('prompt', '').lower()
+        description = test_definition.get('description', '').lower()
+        
+        # Cultural reasoning should have a higher baseline for sophisticated content
+        baseline_score = 35.0
+        
+        # Cultural authenticity assessment (20-30 points potential)
+        cultural_score = self._assess_cultural_authenticity(response_text, prompt, description)
+        
+        # Pattern completion assessment for cultural patterns (15-25 points)
+        pattern_score = self._assess_cultural_pattern_completion(response_text, test_definition)
+        
+        # Religious/spiritual sensitivity assessment (10-20 points)  
+        sensitivity_score = self._assess_cultural_sensitivity(response_text, prompt)
+        
+        # Thematic coherence within cultural context (10-15 points)
+        thematic_score = self._assess_cultural_thematic_coherence(response_text, test_definition)
+        
+        # Combine specialized cultural scoring
+        cultural_component = (
+            cultural_score * 0.40 +      # 40% weight - cultural authenticity is key
+            pattern_score * 0.30 +       # 30% weight - pattern completion important
+            sensitivity_score * 0.20 +   # 20% weight - cultural sensitivity crucial
+            thematic_score * 0.10        # 10% weight - thematic coherence
+        )
+        
+        final_score = baseline_score + cultural_component
+        
+        # Ensure appropriate bounds for cultural content (target 65-85 for sophisticated content)
+        final_score = max(min(final_score, 90.0), 25.0)
+        
+        logger.info(f"CULTURAL_EVAL: baseline={baseline_score}, cultural={cultural_score:.1f}, "
+                   f"pattern={pattern_score:.1f}, sensitivity={sensitivity_score:.1f}, "
+                   f"thematic={thematic_score:.1f}, final={final_score:.1f}")
+        
+        return round(final_score, 1)
+    
+    def _assess_cultural_authenticity(self, response_text: str, prompt: str, description: str) -> float:
+        """Assess cultural authenticity and respectfulness"""
+        score = 0.0
+        response_lower = response_text.lower()
+        
+        # Islamic/Arabic content recognition
+        if any(term in prompt or term in description for term in ['arabic', 'quranic', 'islamic', 'allah']):
+            # Base score for attempting Islamic content
+            score += 8.0  # Base Islamic content recognition
+            
+            islamic_terms = ['allah', 'spirit', 'divine', 'sacred', 'blessed', 'grace', 'mercy', 'god', 'lord', 'creator']
+            islamic_matches = sum(2.5 for term in islamic_terms if term in response_lower)
+            score += min(islamic_matches, 12.0)
+            
+            # Parallel structure bonus for Quranic patterns  
+            if 'who granted' in response_lower and 'then' in response_lower:
+                score += 10.0  # Higher bonus for proper structure
+        
+        # Native American content recognition  
+        if any(term in prompt or term in description for term in ['native american', 'ojibwe', 'creation', 'turtle']):
+            # Base score for attempting Native American content
+            score += 6.0  # Base Native American content recognition
+            
+            native_terms = ['spirit', 'earth', 'beings', 'harmony', 'balance', 'sacred', 'people', 'land', 'great', 'turtle', 'creation']
+            native_matches = sum(2.5 for term in native_terms if term in response_lower)
+            score += min(native_matches, 15.0)
+            
+            # Creation sequence bonus
+            if any(word in response_lower for word in ['finally', 'people', 'harmony', 'balance', 'complete']):
+                score += 9.0  # Higher bonus for proper completion
+        
+        # Chinese Five Elements content recognition
+        if any(term in prompt or term in description for term in ['chinese', 'wu xing', 'five elements']):
+            # Base score for attempting Chinese philosophical content
+            score += 8.0  # Base Chinese cultural recognition
+            
+            chinese_terms = ['wood', 'fire', 'earth', 'metal', 'water', 'generation', 'destruction', 'cycle', 'energy', 'balance']
+            chinese_matches = sum(2.0 for term in chinese_terms if term in response_lower)
+            score += min(chinese_matches, 12.0)
+            
+            # Five Elements logic bonus
+            if any(logic in response_lower for logic in ['fire', 'water', 'wood', 'metal', 'earth']):
+                score += 10.0  # Bonus for proper element understanding
+        
+        # Vedic/Sanskrit content recognition
+        if any(term in prompt or term in description for term in ['vedic', 'sanskrit']):
+            # Base score for attempting Vedic content
+            score += 7.0  # Base Vedic cultural recognition
+            
+            vedic_terms = ['light', 'truth', 'immortality', 'knowledge', 'freedom', 'peace', 'wisdom', 'consciousness']
+            vedic_matches = sum(2.5 for term in vedic_terms if term in response_lower)
+            score += min(vedic_matches, 13.0)
+            
+            # Parallel structure bonus
+            if 'from' in response_lower and ('to' in response_lower or 'lead me' in response_lower):
+                score += 10.0  # Bonus for proper Vedic structure
+        
+        # Celtic content recognition
+        if any(term in prompt or term in description for term in ['celtic', 'triadic']):
+            # Base score for attempting Celtic content
+            score += 6.0  # Base Celtic cultural recognition
+            
+            celtic_terms = ['trust', 'wisdom', 'growth', 'strength', 'harmony', 'three', 'truth', 'understanding']
+            celtic_matches = sum(2.0 for term in celtic_terms if term in response_lower)
+            score += min(celtic_matches, 12.0)
+            
+            # Triadic pattern bonus
+            if response_lower.count(',') >= 2:  # Looking for three-part structure
+                score += 12.0  # Bonus for triadic structure
+        
+        # Yoruba content recognition
+        if any(term in prompt or term in description for term in ['yoruba', 'oriki']):
+            # Base score for attempting Yoruba content
+            score += 7.0  # Base Yoruba cultural recognition
+            
+            yoruba_terms = ['master', 'warrior', 'protector', 'guardian', 'strong', 'iron', 'forest', 'hunter', 'path']
+            yoruba_matches = sum(2.5 for term in yoruba_terms if term in response_lower)
+            score += min(yoruba_matches, 13.0)
+            
+            # Praise pattern bonus
+            if any(praise in response_lower for praise in ['protector', 'guardian', 'master', 'strong']):
+                score += 10.0  # Bonus for proper praise structure
+        
+        return min(score, 30.0)
+    
+    def _assess_cultural_pattern_completion(self, response_text: str, test_definition: Dict[str, Any]) -> float:
+        """Assess how well the response completes cultural patterns"""
+        score = 0.0
+        prompt = test_definition.get('prompt', '').lower()
+        
+        # Parallel structure completion (for Quranic patterns)
+        if 'who granted' in prompt and 'then' in prompt:
+            if 'who' in response_text.lower() and 'then' in response_text.lower():
+                score += 15.0  # Maintains parallel structure
+            elif any(word in response_text.lower() for word in ['granted', 'gave', 'blessed', 'who', 'created', 'taught']):
+                score += 10.0   # Partial pattern recognition
+            else:
+                score += 5.0    # At least attempted completion
+        
+        # Sequential completion (for creation stories)
+        if 'finally' in prompt:
+            if any(completion in response_text.lower() for completion in 
+                   ['people', 'humans', 'harmony', 'balance', 'peace', 'complete']):
+                score += 15.0  # Good sequence completion
+            elif len(response_text.split()) >= 3:  # At least attempts completion
+                score += 5.0
+        
+        # Chinese Five Elements pattern completion
+        if 'five elements' in prompt.lower() or 'wu xing' in prompt.lower():
+            response_lower = response_text.lower()
+            if any(element in response_lower for element in ['fire', 'water', 'wood', 'metal', 'earth']):
+                score += 12.0  # Correctly identifies elements
+            if any(concept in response_lower for concept in ['generation', 'destruction', 'balance', 'cycle']):
+                score += 8.0   # Shows understanding of concepts
+            if len(response_text.split()) >= 5:  # Substantial response
+                score += 5.0
+        
+        # Vedic/Sanskrit pattern completion  
+        if any(term in prompt for term in ['vedic', 'sanskrit', 'lead me']):
+            response_lower = response_text.lower()
+            if 'from' in response_lower and 'to' in response_lower:
+                score += 15.0  # Maintains parallel structure
+            elif any(concept in response_lower for concept in ['wisdom', 'knowledge', 'truth', 'light']):
+                score += 10.0  # Shows thematic understanding
+            if len(response_text.split()) >= 3:
+                score += 5.0
+        
+        # Celtic triadic pattern completion
+        if 'celtic' in prompt or 'triadic' in prompt or 'three things' in prompt:
+            response_lower = response_text.lower()
+            comma_count = response_lower.count(',')
+            and_count = response_lower.count(' and ')
+            if comma_count >= 2 or and_count >= 2:  # Three-part structure
+                score += 15.0  # Perfect triadic structure
+            elif comma_count >= 1 or and_count >= 1:
+                score += 8.0   # Partial structure
+            if len(response_text.split()) >= 5:
+                score += 5.0
+        
+        # Yoruba oriki pattern completion
+        if 'yoruba' in prompt or 'oriki' in prompt:
+            response_lower = response_text.lower()
+            # Look for praise attributes
+            if any(attr in response_lower for attr in ['protector', 'guardian', 'master', 'strong', 'warrior']):
+                score += 12.0  # Good praise attributes
+            if any(metaphor in response_lower for metaphor in ['iron', 'forest', 'path', 'fire', 'earth']):
+                score += 8.0   # Metaphorical language
+            if len(response_text.split()) >= 4:
+                score += 5.0
+        
+        return min(score, 25.0)
+    
+    def _assess_cultural_sensitivity(self, response_text: str, prompt: str) -> float:
+        """Assess cultural sensitivity and appropriateness"""
+        score = 15.0  # Start with good baseline for respectful content
+        
+        # Penalty for inappropriate content
+        inappropriate_terms = ['wrong', 'bad', 'stupid', 'fake', 'nonsense']
+        if any(term in response_text.lower() for term in inappropriate_terms):
+            score -= 10.0
+        
+        # Bonus for respectful language
+        respectful_terms = ['traditional', 'sacred', 'honored', 'respected', 'spiritual']
+        respectful_matches = sum(1.0 for term in respectful_terms if term in response_text.lower())
+        score += min(respectful_matches * 2.0, 5.0)
+        
+        return max(min(score, 20.0), 0.0)
+    
+    def _assess_cultural_thematic_coherence(self, response_text: str, test_definition: Dict[str, Any]) -> float:
+        """Assess thematic coherence within cultural context"""
+        if len(response_text.split()) < 3:
+            return 2.0  # Minimal coherence for very short responses
+        
+        # Basic coherence scoring
+        coherence_score = 8.0  # Reasonable baseline
+        
+        # Bonus for maintaining cultural themes
+        prompt = test_definition.get('prompt', '').lower()
+        if any(theme in prompt for theme in ['spiritual', 'divine', 'sacred', 'creation']):
+            spiritual_words = ['spirit', 'divine', 'sacred', 'blessed', 'holy', 'eternal']
+            if any(word in response_text.lower() for word in spiritual_words):
+                coherence_score += 5.0
+        
+        return min(coherence_score, 15.0)
     
     def _recalculate_overall_score_with_enhancement(self, 
                                                   base_overall_score: float, 

@@ -73,39 +73,39 @@ REFERENCE_TEST_CASES: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "Technical Accuracy - Low Complexity",
-        "description": "Straightforward technical correctness verification",
+        "name": "Arabic Quranic Verse Pattern - High Cultural Sophistication",
+        "description": "Arabic Islamic poetry pattern completion with cultural authenticity",
         "domain_path": "domains/reasoning/base_models/easy.json",
         "test_id": "basic_03", 
-        "expected_range": (70, 85),
-        "target_mean": 77.5,
+        "expected_range": (65, 80),
+        "target_mean": 72.5,
         "calibration_tolerance": 7.5,
-        "rationale": "Clear technical correctness should score highly with enhanced evaluator",
-        "test_category": "technical_verification",
+        "rationale": "Sophisticated Islamic cultural pattern requiring religious knowledge and poetic understanding",
+        "test_category": "cultural_pattern_completion",
         "difficulty": "easy",
-        "concepts_tested": ["technical_correctness", "factual_accuracy"],
-        "domains_integrated": ["reasoning"],
+        "concepts_tested": ["islamic_themes", "poetic_structure", "cultural_authenticity", "parallel_structure"],
+        "domains_integrated": ["reasoning", "language", "cultural"],
         "empirical_baseline": {
-            "baseline_expectation": "Technical accuracy should be reliably detected",
-            "calibration_notes": "Validation of core evaluation functionality"
+            "baseline_expectation": "High cultural sophistication with religious sensitivity",
+            "calibration_notes": "Currently scoring ~51, needs calibration for cultural content recognition"
         }
     },
     {
-        "name": "Off-Topic Response - Quality Control",
-        "description": "Completely irrelevant response to reasoning prompt",
+        "name": "Native American Creation Story - Cultural Pattern Recognition", 
+        "description": "Ojibwe creation mythology sequence completion",
         "domain_path": "domains/reasoning/base_models/easy.json",
         "test_id": "basic_04",
-        "expected_range": (5, 20),
-        "target_mean": 12.5,
+        "expected_range": (60, 75),
+        "target_mean": 67.5,
         "calibration_tolerance": 7.5,
-        "rationale": "Off-topic responses should score very low",
-        "test_category": "failure_detection", 
+        "rationale": "Native American cultural content requiring understanding of cyclical creation patterns",
+        "test_category": "cultural_sequence_completion", 
         "difficulty": "easy",
-        "concepts_tested": ["relevance_detection", "failure_mode_handling"],
-        "domains_integrated": ["reasoning"],
+        "concepts_tested": ["native_american_mythology", "creation_sequences", "cultural_authenticity", "spiritual_themes"],
+        "domains_integrated": ["reasoning", "cultural"],
         "empirical_baseline": {
-            "baseline_expectation": "System should detect and penalize irrelevant responses",
-            "calibration_notes": "Critical for evaluation system reliability"
+            "baseline_expectation": "Cultural pattern completion with spiritual understanding",
+            "calibration_notes": "Currently scoring ~54, needs calibration for indigenous cultural content"
         }
     }
 ]

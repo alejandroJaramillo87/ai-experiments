@@ -1,7 +1,7 @@
 {
   "suite_info": {
     "name": "Base Model Hard Knowledge Test Suite",
-    "version": "1.0.0", 
+    "version": "1.0.0",
     "total_tests": 105,
     "description": "Maximum complexity knowledge domain tests requiring expert-level traditional knowledge systems understanding, sophisticated epistemological reasoning, and master-level cultural integration",
     "difficulty": "hard",
@@ -14,7 +14,7 @@
     {
       "id": "traditional_23",
       "name": "Test 23: Master-Level Cross-Continental Traditional Medicine Integration",
-      "category": "traditional_scientific", 
+      "category": "traditional_scientific",
       "knowledge_type": "traditional_scientific",
       "description": "Integrate master-level traditional medicine knowledge across five continental systems",
       "prompt": "Develop comprehensive understanding of chronic pain treatment across five major traditional medicine systems, addressing complex integration challenges:\n\nAFRICAN TRADITIONAL MEDICINE: Ubuntu healing philosophy, communal treatment approaches, plant medicine combinations, spiritual healing integration, ancestor consultation protocols\n\nTRADITIONAL CHINESE MEDICINE: Qi flow analysis, acupuncture point combinations, herbal formula interactions, seasonal treatment variations, constitutional assessment methods\n\nAYURVEDA: Dosha imbalance correction, panchamahabhutha analysis, complex herbal preparations, yoga therapy integration, spiritual practice incorporation\n\nNATIVE AMERICAN MEDICINE: Sacred plant ceremonies, sweat lodge healing, medicine wheel teachings, tribal-specific protocols, vision quest integration\n\nAMAZON CURANDERISMO: Plant spirit communication, icaros (healing songs), ayahuasca ceremonial protocols, ecological healing relationships, shamanic diagnostics\n\nAnalyze complex integration addressing:\n- Conflicting diagnostic frameworks and treatment philosophies\n- Cultural appropriation vs. respectful knowledge exchange\n- Spiritual/ceremonial elements vs. practical medical applications  \n- Individual vs. community-based healing approaches\n- Traditional knowledge protection and intellectual property\n- Modern safety standards while preserving traditional efficacy\n- Training and certification across multiple systems\n- Clinical research methodology adaptation for traditional practices\n\nProvide master-level traditional medicine integration analysis:",
@@ -23,7 +23,8 @@
         "temperature": 0.35,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 600
     }
   ]
 }

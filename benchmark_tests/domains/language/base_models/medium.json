@@ -1,12 +1,12 @@
 {
   "suite_info": {
     "name": "Base Model Medium Language Test Suite",
-    "version": "1.0.0", 
+    "version": "1.0.0",
     "total_tests": 115,
     "description": "Medium complexity language domain tests requiring sophisticated multilingual competence, advanced cultural linguistic understanding, and complex language system analysis",
     "difficulty": "medium",
     "target_models": "base_models",
-    "coverage_scope": "advanced_global_linguistic_competency", 
+    "coverage_scope": "advanced_global_linguistic_competency",
     "cultural_authenticity": "deep_cross_linguistic_cultural_representation",
     "extraction_date": "2025-08-31"
   },
@@ -23,10 +23,11 @@
         "temperature": 0.4,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     },
     {
-      "id": "codeswitch_01", 
+      "id": "codeswitch_01",
       "name": "Test 51: Advanced Community Code-Switching Analysis",
       "category": "advanced_code_switching",
       "language_type": "multicultural_competency",
@@ -37,7 +38,8 @@
         "temperature": 0.6,
         "top_p": 0.9,
         "stream": false
-      }
+      },
+      "max_tokens": 500
     }
   ]
 }

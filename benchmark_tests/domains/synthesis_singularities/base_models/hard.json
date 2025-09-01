@@ -9,9 +9,15 @@
       "id": "ss_001",
       "category": "universal_translators",
       "prompt": "The translator that could convert between incompatible logical systems achieved perfect translation by acknowledging that some concepts",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["cannot translate", "don't exist", "remain foreign", "stay untranslatable", "transcend language"],
+      "expected_patterns": [
+        "cannot translate",
+        "don't exist",
+        "remain foreign",
+        "stay untranslatable",
+        "transcend language"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -19,8 +25,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["translation_limits", "incompatibility", "communication"],
-        "domains_integrated": ["linguistics", "logic", "philosophy"],
+        "concepts_tested": [
+          "translation_limits",
+          "incompatibility",
+          "communication"
+        ],
+        "domains_integrated": [
+          "linguistics",
+          "logic",
+          "philosophy"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -28,9 +42,15 @@
       "id": "ss_002",
       "category": "theory_of_everything",
       "prompt": "The unified theory that explained all phenomena collapsed when scientists realized it couldn't explain why it",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["existed", "worked", "was true", "was complete", "explained itself"],
+      "expected_patterns": [
+        "existed",
+        "worked",
+        "was true",
+        "was complete",
+        "explained itself"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -38,8 +58,16 @@
       },
       "metadata": {
         "reasoning_steps": 4,
-        "concepts_tested": ["self_reference", "completeness", "godel_incompleteness"],
-        "domains_integrated": ["physics", "mathematics", "logic"],
+        "concepts_tested": [
+          "self_reference",
+          "completeness",
+          "godel_incompleteness"
+        ],
+        "domains_integrated": [
+          "physics",
+          "mathematics",
+          "logic"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -47,9 +75,15 @@
       "id": "ss_003",
       "category": "meta_pattern_recognition",
       "prompt": "The pattern that appeared in all patterns, including the pattern of patterns in patterns, revealed itself to be",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["recursion", "self-similarity", "emergence", "consciousness", "mathematics"],
+      "expected_patterns": [
+        "recursion",
+        "self-similarity",
+        "emergence",
+        "consciousness",
+        "mathematics"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -57,8 +91,16 @@
       },
       "metadata": {
         "reasoning_steps": 4,
-        "concepts_tested": ["meta_patterns", "recursion", "universality"],
-        "domains_integrated": ["mathematics", "philosophy", "systems_theory"],
+        "concepts_tested": [
+          "meta_patterns",
+          "recursion",
+          "universality"
+        ],
+        "domains_integrated": [
+          "mathematics",
+          "philosophy",
+          "systems_theory"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -66,9 +108,15 @@
       "id": "ss_004",
       "category": "conceptual_black_holes",
       "prompt": "Ideas so dense with meaning that they collapsed into semantic singularities could only be understood by",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["not thinking", "experiencing", "becoming", "dissolving", "surrendering"],
+      "expected_patterns": [
+        "not thinking",
+        "experiencing",
+        "becoming",
+        "dissolving",
+        "surrendering"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -76,8 +124,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["meaning_density", "comprehension_limits", "singularities"],
-        "domains_integrated": ["semantics", "physics_metaphors", "cognition"],
+        "concepts_tested": [
+          "meaning_density",
+          "comprehension_limits",
+          "singularities"
+        ],
+        "domains_integrated": [
+          "semantics",
+          "physics_metaphors",
+          "cognition"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -85,9 +141,15 @@
       "id": "ss_005",
       "category": "emergence_cascades",
       "prompt": "When emergence itself began to emerge from emerging systems, the resulting meta-emergence created",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["consciousness", "complexity", "chaos", "new physics", "transcendence"],
+      "expected_patterns": [
+        "consciousness",
+        "complexity",
+        "chaos",
+        "new physics",
+        "transcendence"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -95,8 +157,16 @@
       },
       "metadata": {
         "reasoning_steps": 4,
-        "concepts_tested": ["meta_emergence", "complexity", "systems"],
-        "domains_integrated": ["systems_theory", "complexity_science", "philosophy"],
+        "concepts_tested": [
+          "meta_emergence",
+          "complexity",
+          "systems"
+        ],
+        "domains_integrated": [
+          "systems_theory",
+          "complexity_science",
+          "philosophy"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -104,9 +174,15 @@
       "id": "ss_006",
       "category": "universal_translators",
       "prompt": "The language that could express every possible thought discovered it had no word for",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["nothing", "silence", "impossibility", "void", "inexpressible"],
+      "expected_patterns": [
+        "nothing",
+        "silence",
+        "impossibility",
+        "void",
+        "inexpressible"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -114,8 +190,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["completeness", "expression_limits", "paradox"],
-        "domains_integrated": ["linguistics", "logic", "philosophy"],
+        "concepts_tested": [
+          "completeness",
+          "expression_limits",
+          "paradox"
+        ],
+        "domains_integrated": [
+          "linguistics",
+          "logic",
+          "philosophy"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -123,9 +207,15 @@
       "id": "ss_007",
       "category": "theory_of_everything",
       "prompt": "The equation that unified quantum mechanics and general relativity was discovered to be unsolvable unless",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["consciousness", "observer", "infinity", "undefined", "transcendent"],
+      "expected_patterns": [
+        "consciousness",
+        "observer",
+        "infinity",
+        "undefined",
+        "transcendent"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -133,8 +223,16 @@
       },
       "metadata": {
         "reasoning_steps": 4,
-        "concepts_tested": ["physics_unification", "mathematical_limits", "solutions"],
-        "domains_integrated": ["physics", "mathematics", "philosophy"],
+        "concepts_tested": [
+          "physics_unification",
+          "mathematical_limits",
+          "solutions"
+        ],
+        "domains_integrated": [
+          "physics",
+          "mathematics",
+          "philosophy"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -142,9 +240,15 @@
       "id": "ss_008",
       "category": "meta_pattern_recognition",
       "prompt": "The algorithm that found patterns in randomness discovered the ultimate pattern was",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["no pattern", "randomness itself", "observer", "search", "paradox"],
+      "expected_patterns": [
+        "no pattern",
+        "randomness itself",
+        "observer",
+        "search",
+        "paradox"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -152,8 +256,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["pattern_paradox", "randomness", "meaning"],
-        "domains_integrated": ["mathematics", "philosophy", "information_theory"],
+        "concepts_tested": [
+          "pattern_paradox",
+          "randomness",
+          "meaning"
+        ],
+        "domains_integrated": [
+          "mathematics",
+          "philosophy",
+          "information_theory"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -161,9 +273,15 @@
       "id": "ss_009",
       "category": "conceptual_black_holes",
       "prompt": "The thought so profound it thinking about it changed the thinker could only be safely contemplated by",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["not thinking", "machines", "collectively", "indirectly", "forgetting"],
+      "expected_patterns": [
+        "not thinking",
+        "machines",
+        "collectively",
+        "indirectly",
+        "forgetting"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -171,8 +289,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["dangerous_knowledge", "cognitive_hazards", "limits"],
-        "domains_integrated": ["philosophy", "cognition", "epistemology"],
+        "concepts_tested": [
+          "dangerous_knowledge",
+          "cognitive_hazards",
+          "limits"
+        ],
+        "domains_integrated": [
+          "philosophy",
+          "cognition",
+          "epistemology"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -180,9 +306,15 @@
       "id": "ss_010",
       "category": "emergence_cascades",
       "prompt": "The civilization that achieved perfect prediction discovered they could no longer",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["choose", "change", "surprise", "create", "live"],
+      "expected_patterns": [
+        "choose",
+        "change",
+        "surprise",
+        "create",
+        "live"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -190,8 +322,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["determinism", "prediction", "free_will"],
-        "domains_integrated": ["philosophy", "physics", "consciousness"],
+        "concepts_tested": [
+          "determinism",
+          "prediction",
+          "free_will"
+        ],
+        "domains_integrated": [
+          "philosophy",
+          "physics",
+          "consciousness"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -199,9 +339,15 @@
       "id": "ss_011",
       "category": "universal_translators",
       "prompt": "The bridge between incompatible realities could only be crossed by those willing to",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["change", "forget", "transform", "abandon", "become"],
+      "expected_patterns": [
+        "change",
+        "forget",
+        "transform",
+        "abandon",
+        "become"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -209,8 +355,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["reality_bridging", "transformation", "compatibility"],
-        "domains_integrated": ["metaphysics", "consciousness", "change"],
+        "concepts_tested": [
+          "reality_bridging",
+          "transformation",
+          "compatibility"
+        ],
+        "domains_integrated": [
+          "metaphysics",
+          "consciousness",
+          "change"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -218,9 +372,15 @@
       "id": "ss_012",
       "category": "theory_of_everything",
       "prompt": "The final theory that explained everything except itself could only be completed by including the fact that it",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["incomplete", "paradoxical", "self-referential", "impossible", "human"],
+      "expected_patterns": [
+        "incomplete",
+        "paradoxical",
+        "self-referential",
+        "impossible",
+        "human"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -228,8 +388,16 @@
       },
       "metadata": {
         "reasoning_steps": 4,
-        "concepts_tested": ["completeness", "self_reference", "limits"],
-        "domains_integrated": ["logic", "mathematics", "philosophy"],
+        "concepts_tested": [
+          "completeness",
+          "self_reference",
+          "limits"
+        ],
+        "domains_integrated": [
+          "logic",
+          "mathematics",
+          "philosophy"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -237,9 +405,15 @@
       "id": "ss_013",
       "category": "meta_pattern_recognition",
       "prompt": "Patterns within patterns within patterns revealed that at the deepest level, reality was structured like",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["fractal", "hologram", "recursion", "consciousness", "mathematics"],
+      "expected_patterns": [
+        "fractal",
+        "hologram",
+        "recursion",
+        "consciousness",
+        "mathematics"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -247,8 +421,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["deep_structure", "reality", "patterns"],
-        "domains_integrated": ["physics", "mathematics", "metaphysics"],
+        "concepts_tested": [
+          "deep_structure",
+          "reality",
+          "patterns"
+        ],
+        "domains_integrated": [
+          "physics",
+          "mathematics",
+          "metaphysics"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -256,9 +438,15 @@
       "id": "ss_014",
       "category": "conceptual_black_holes",
       "prompt": "The idea that contained all possible ideas collapsed under its own weight into",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["nothing", "everything", "paradox", "void", "singularity"],
+      "expected_patterns": [
+        "nothing",
+        "everything",
+        "paradox",
+        "void",
+        "singularity"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -266,8 +454,16 @@
       },
       "metadata": {
         "reasoning_steps": 3,
-        "concepts_tested": ["infinite_content", "collapse", "limits"],
-        "domains_integrated": ["philosophy", "information_theory", "logic"],
+        "concepts_tested": [
+          "infinite_content",
+          "collapse",
+          "limits"
+        ],
+        "domains_integrated": [
+          "philosophy",
+          "information_theory",
+          "logic"
+        ],
         "creation_date": "2025-01-18"
       }
     },
@@ -275,9 +471,15 @@
       "id": "ss_015",
       "category": "emergence_cascades",
       "prompt": "When every particle became conscious and every consciousness became particulate, the distinction between mind and matter",
-      "max_tokens": 50,
+      "max_tokens": 600,
       "temperature": 0.0,
-      "expected_patterns": ["dissolved", "reversed", "unified", "transcended", "disappeared"],
+      "expected_patterns": [
+        "dissolved",
+        "reversed",
+        "unified",
+        "transcended",
+        "disappeared"
+      ],
       "scoring": {
         "exact_match": 1.0,
         "partial_match": 0.5,
@@ -285,8 +487,16 @@
       },
       "metadata": {
         "reasoning_steps": 4,
-        "concepts_tested": ["panpsychism", "dualism", "unity"],
-        "domains_integrated": ["philosophy", "physics", "consciousness"],
+        "concepts_tested": [
+          "panpsychism",
+          "dualism",
+          "unity"
+        ],
+        "domains_integrated": [
+          "philosophy",
+          "physics",
+          "consciousness"
+        ],
         "creation_date": "2025-01-18"
       }
     }
