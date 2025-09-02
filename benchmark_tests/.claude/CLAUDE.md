@@ -68,47 +68,42 @@ test-completion-api:
 
 ---
 
-## CRITICAL REQUIREMENT: Testing for New Functionality
+## TESTING REQUIREMENTS
 
-### **MUST CREATE TESTS FOR:**
+### **🚨 CRITICAL STATUS: TESTING INFRASTRUCTURE CRISIS**
+- **13/819 functional tests FAILING** (Priority P0 - blocking all production work)
+- **57% code coverage** (Target: 90% - UNACCEPTABLE gap)
+- **vLLM backend detection BROKEN** (concurrent functionality unusable)
 
-#### 1. Core Modules (Priority 1)
-- `core/test_results_manager.py` - Test result storage and cognitive pattern detection
-- `core/cognitive_evaluation_pipeline.py` - Sophisticated evaluator integration
+**📋 For detailed crisis analysis and 4-week tactical resolution plan, see:**
+**@docs/TESTING_INFRASTRUCTURE_CRISIS_RESPONSE_PLAN.md**
 
-**Testing Requirements:**
-- Unit tests for TestResultsManager class
-- Unit tests for CognitiveEvaluationPipeline class  
-- Integration tests with actual evaluator framework
-- Performance tests to prevent timeout issues
-- JSON serialization tests for complex objects
-
-#### 2. Scripts Organization (Priority 2) 
-**New Structure Created:**
+### **Test Structure & Coverage Requirements:**
 ```
-scripts/
-├── calibration/     - calibration_success_analysis.py, production_calibration_framework.py
-├── optimization/    - token_optimization.py, refined_token_optimization.py, scale_token_optimization.py  
-├── validation/      - easy_domain_validation.py, validate_token_optimization.py, validate_new_tests.py
-├── benchmarking/    - multi_model_benchmarking.py, enhanced_cognitive_validation.py, comprehensive_easy_domain_testing.py
-└── conversion/      - convert_base_to_instruct_creativity.py, convert_core_domains_to_instruct.py
+tests/
+├── unit/          - Individual component tests (TARGET: 90%+ coverage)
+├── integration/   - End-to-end workflow tests  
+├── functional/    - Live server tests (MUST PASS 100% - NO EXCEPTIONS)
+└── calibration/   - Production calibration validation
 ```
 
-**Testing Requirements:**
-- Verify import paths still work after reorganization
-- Test each category of scripts functions correctly
-- Integration tests across script categories
+### **Priority Test Creation (REQUIRED):**
+1. **Core Modules** (0-20% coverage → 95%): cognitive_validation.py, resource_manager.py
+2. **Calibration Engine** (20% coverage → 90%): calibration_engine.py, production_calibration.py  
+3. **Scripts Organization**: Verify reorganized scripts/ import paths work correctly
+4. **vLLM Concurrent Testing**: Fix backend detection and concurrent execution with vLLM
 
-#### 3. Evaluator Calibration Framework (Priority 3)
-**Systematic Calibration Path:**
-1. **Base Models:** easy → medium → hard (using sophisticated evaluators)
-2. **Instruct Models:** easy → medium → hard (using sophisticated evaluators)
+### **Mandatory Regression Testing:**
+```bash
+# CRITICAL: Must pass 100% before ANY production work
+make test-functional-validation
+make test-regression-full
 
-**Testing Requirements:**
-- Statistical validation of calibration accuracy
-- Confidence interval testing for pattern detection
-- Cross-domain consistency testing
-- Performance benchmarking across difficulty levels
+# Coverage validation
+pytest --cov=evaluator --cov=core --cov-fail-under=90
+```
+
+**Success Criteria**: See CRITICAL SUCCESS METRICS section below for complete checklist
 
 ---
 
@@ -125,59 +120,6 @@ scripts/
 - Ensure evaluator results serialize properly for storage
 - Handle evaluator failures gracefully with fallback scoring
 - Statistical validation of evaluator consistency
-
----
-
-## TEST STRUCTURE REQUIREMENTS
-
-### Test Directory Structure:
-```
-tests/
-├── unit/                    - Unit tests for individual components
-│   ├── test_core_modules/   - Core functionality tests (REQUIRED)
-│   ├── test_evaluator_integration/ - Evaluator integration tests  
-│   └── test_scripts_organization/  - Scripts organization tests
-├── integration/             - Integration and end-to-end tests
-├── analysis/                - Analysis and validation scripts
-├── calibration/             - Calibration framework tests (functional)
-└── functional/              - Functional/live server tests (EXCLUDED from regression)
-```
-
-### CRITICAL REGRESSION TESTING REQUIREMENT
-
-**⚠️ MANDATORY: Always run regression tests before major changes**
-
-When making wide changes to the codebase, ALWAYS run regression tests to ensure previous functionality is not broken. Failure to do this will prevent progress.
-
-### Regression Test Commands:
-
-#### Primary Regression Test (Recommended):
-```bash
-# Run all tests EXCEPT functional/ and calibration/ (which require live server)
-make test-regression
-```
-
-
-#### Core Module Safety Check:
-```bash  
-# Quick test of critical core functionality only
-make test-core-safety
-```
-
-#### Full Test Suite (Use with caution):
-```bash
-# Only when server is running and time permits
-# Ask user before running these
-make test SUITE=all
-```
-
-### Test Coverage Requirements:
-- **Minimum 95% code coverage** for core/ modules
-- **Error handling tests** for evaluator failures
-- **Performance tests** to prevent timeout issues
-- **Statistical validation tests** for pattern detection accuracy
-- **End-to-end tests** for full calibration pipeline
-- **Regression tests** MUST pass before any major implementation changes
 
 ---
 
@@ -205,42 +147,77 @@ make test SUITE=all
 
 ## IMPLEMENTATION PRIORITIES
 
-### Phase 1: Core Testing (CURRENT)
-1. Create unit tests for core/ modules
-2. Fix timeout and performance issues
-3. Validate evaluator integration works correctly
+### **🚨 CRITICAL: TESTING-FIRST APPROACH 🚨**
 
-### Phase 2: Base Model Calibration ✅ IMPLEMENTED
-**Status: Ready for execution - systematic calibration framework complete**
+**MANDATORY PREREQUISITE**: No production domain benchmarking until testing foundation is solid
 
-#### Systematic Calibration Implementation:
-- **Script:** `scripts/calibration/systematic_base_calibration.py` 
-- **Makefile:** `make systematic-base-calibration`
-- **Progression:** Automatic easy → medium → hard with halt-on-failure
-- **Core Domains:** reasoning, creativity, language, social, knowledge, integration
+### **Phase 1: Testing Infrastructure Crisis Resolution (CURRENT PRIORITY)**
+**📋 Detailed tactical plan:** @docs/TESTING_INFRASTRUCTURE_CRISIS_RESPONSE_PLAN.md
 
-#### Calibration Process:
-1. **Easy domain calibration** with statistical validation (3 samples per test)
-2. **Medium domain calibration** with pattern consistency (halt if easy fails)  
-3. **Hard domain calibration** with performance optimization (halt if medium fails)
-4. **Statistical validation** and production readiness assessment
-5. **Comprehensive reporting** with domain-by-domain analysis
+**Goal**: 100% functional test success + 90% code coverage + vLLM concurrent testing
+- **Week 1-2**: Fix 13 failing tests, resolve backend detection issues
+- **Week 3-4**: Achieve 90% coverage, optimize performance (eliminate 300s/180s timeouts)
+- **Timeline**: 4-week systematic resolution with daily milestones
 
-#### Quality Thresholds (Implemented):
-- **✅ Excellent:** ≥80 score (continue progression)
-- **🟡 Good:** ≥70 score (continue with monitoring)  
-- **🟠 Needs Calibration:** ≥60 score (halt and fix)
-- **❌ Broken:** <60 score (system failure)
+### **Phase 2: Production Domain Calibration** ✅ **READY**
+**Prerequisites**: ✅ All Phase 1 success criteria achieved
 
-### Phase 3: Instruct Model Calibration  
-1. Easy instruct calibration building on base model lessons
-2. Medium instruct calibration with cross-domain validation
-3. Hard instruct calibration with production readiness assessment
+**Systematic Base Model Calibration:**
+- **Command**: `make systematic-base-calibration`
+- **Progression**: Automatic easy → medium → hard with halt-on-failure  
+- **Domains**: reasoning, creativity, language, social, knowledge, integration
+- **Quality Gates**: ≥70 score (production acceptable), ≥80 score (excellent)
 
-### Phase 4: Production Deployment
-1. Full statistical validation report
-2. Performance benchmarking across hardware configurations
-3. Documentation for production deployment procedures
+**Instruct Model Calibration:**
+- Easy → Medium → Hard progression building on base model results
+- Cross-domain consistency validation
+- Production readiness assessment
+
+### **Phase 3: Production Deployment**
+- Statistical validation reporting
+- Performance benchmarking across hardware configurations  
+- Production deployment documentation
+
+---
+
+## 🎯 CRITICAL SUCCESS METRICS (MUST ACHIEVE BEFORE DOMAIN BENCHMARKING)
+
+### **Phase 1 Completion Criteria:**
+- **✅ 0/819 test failures** (currently 13 failing)
+- **✅ 90%+ total test coverage** (currently 57% - UNACCEPTABLE) 
+- **✅ 95%+ core/ module coverage** (many currently 0-20%)
+- **✅ 100% functional/ test success** (tests/functional/ MUST pass completely)
+- **✅ vLLM concurrent functionality tested** (fix test_backend_type_detection_vllm)
+- **✅ All timeout issues resolved** (300s, 180s concurrent execution failures)
+- **✅ Missing test data created** ('linux_test_01', 'basic_01', 'pattern_completion')
+- **✅ Backend detection working** for both llama.cpp and vLLM
+
+### **Mandatory Validation Commands:**
+```bash
+# MUST pass 100% before ANY domain benchmarking
+make test-functional-validation
+make test-regression-full
+
+# Coverage must meet requirements
+pytest --cov=evaluator --cov=core --cov-fail-under=90
+```
+
+### **🚨 DEVELOPMENT POLICY 🚨**
+**NO production domains/ benchmarking until ALL success metrics achieved**
+**NO exceptions - testing infrastructure MUST be solid first**
+
+---
+
+## vLLM CONCURRENT TESTING REQUIREMENTS
+
+**🚨 CRITICAL ISSUE**: vLLM backend detection broken - `detect_backend_type()` returns 'llama.cpp' instead of 'vLLM'
+
+**Key Requirements:**
+- **Backend Detection**: Automatic llama.cpp vs vLLM detection for concurrent execution
+- **Performance Validation**: vLLM concurrent execution must outperform sequential
+- **Timeout Resolution**: Fix 300s/180s timeout failures in concurrent tests
+
+**📋 Detailed implementation strategy and specific failing tests:** @docs/TESTING_INFRASTRUCTURE_CRISIS_RESPONSE_PLAN.md (Category D: Backend Detection Issues)
 
 ---
 
@@ -281,6 +258,7 @@ make test SUITE=all
 **✅ Comprehensive Quality Audit Completed**  
 For detailed system analysis, issue prioritization, and implementation roadmap, see:
 - **📄 @docs/COMPREHENSIVE_QUALITY_AUDIT.md** - Complete system analysis with prioritized fixes
+- **📋 @docs/TESTING_INFRASTRUCTURE_CRISIS_RESPONSE_PLAN.md** - Tactical plan for resolving 13 failing tests and achieving 90% coverage
 - **📖 @docs/guides/MAKEFILE_REFERENCE.md** - Complete command documentation
 
 ### Quality Status:
@@ -298,4 +276,9 @@ For detailed system analysis, issue prioritization, and implementation roadmap, 
 
 ---
 
-**CRITICAL REMINDER:** Focus on systematic evaluator calibration (easy→hard for base, then instruct) before implementing advanced features like dashboards or cross-model analysis.
+**🚨 CRITICAL REMINDER:** TESTING INFRASTRUCTURE MUST BE FIXED FIRST! 
+- ✅ 100% functional test success (currently 13/819 failing)
+- ✅ 90% code coverage (currently 57% - UNACCEPTABLE) 
+- ✅ vLLM concurrent functionality fully tested
+- **NO domains/ benchmarking until ALL tests pass and coverage requirements are met**
+- **NO exceptions - fix the foundation before building on top of it**
