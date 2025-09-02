@@ -3,8 +3,6 @@
 Quick validation script for new knowledge systems conflict and logic systems comparison tests.
 Tests that new tests trigger appropriate cultural evaluation metrics.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import sys

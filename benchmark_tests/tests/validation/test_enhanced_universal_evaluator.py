@@ -4,8 +4,6 @@ Validation Tests for Enhanced Universal Evaluator
 Tests the Phase 1 enhancements while ensuring backward compatibility
 and improved evaluation quality.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

@@ -1,7 +1,6 @@
 # Domain-Evaluator Capability Analysis Report
 
 **Analysis Date**: 2025-01-31  
-**Analyst**: Claude Code  
 **Framework Version**: 1.0.0  
 
 ## Executive Summary

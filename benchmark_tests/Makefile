@@ -4,8 +4,6 @@
 # This Makefile provides comprehensive test automation for the AI workstation
 # benchmark testing suite with automatic cleanup and professional reporting.
 #
-# Author: Claude Code
-# Version: 2.0.0
 
 # Configuration
 PYTHON := python3
@@ -58,7 +56,19 @@ CYAN := \033[36m
 RESET := \033[0m
 
 # Phony targets (consolidated)
-.PHONY: help test test-unit test-integration test-calibration test-modular test-analysis test-specific test-watch test-regression test-core-safety clean clean-all setup debug-help calibration-demo examples check-prerequisites calibration-status calibration-validate test-domain-loading test-enhanced-evaluator test-semantic-analyzer test-api-suite debug-calibration-framework systematic-base-calibration test-systematic-calibration convert-creativity-tests test-creativity-conversion convert-core-domains test-core-domains-conversion docker-logs
+.PHONY: help test test-unit test-integration test-calibration test-modular test-analysis test-specific test-watch \
+        test-regression test-core-safety clean clean-all setup debug-help calibration-demo examples \
+        check-prerequisites calibration-status calibration-validate test-domain-loading test-enhanced-evaluator \
+        test-semantic-analyzer test-api-suite debug-calibration-framework systematic-base-calibration \
+        test-systematic-calibration convert-creativity-tests test-creativity-conversion convert-core-domains \
+        test-core-domains-conversion docker-logs debug-test-components detect-backend get-backend-mode \
+        test-scripts-organization-only test-domain-loading-only test-core-modules-debug \
+        debug-enhanced-system debug-enhanced-evaluator debug-scoring-calibration test-cultural-calibration \
+        debug-cultural-task-detection debug-batch-task-detection test-reasoning-batch debug-basic12-analysis \
+        test-reasoning-next-batch domain-audit test-phase1-quality test-evaluator-integration test-network-failure \
+        test-functional-enhanced test-quality-audit validate-evaluator-framework test-server-resilience \
+        docs-evaluator docs-api-reference docs-integration-guide test-production test-development test-debug \
+        test-mode-config show-test-config test-server-dependent
 
 # Default target
 help:
@@ -74,6 +84,15 @@ help:
 	@echo "  $(GREEN)make test-analysis$(RESET)        - Analysis and validation scripts"
 	@echo "  $(GREEN)make test-specific FILE=path$(RESET) - Run specific test file/method"
 	@echo ""
+	@echo "$(BOLD)Production vs Development Modes:$(RESET)"
+	@echo "  $(GREEN)make test-production$(RESET)      - 🏭 Production mode: Fast CI/CD with unit and integration tests"
+	@echo "  $(GREEN)make test-production-full$(RESET) - 🚀 Full production: ALL tests including server-dependent"
+	@echo "  $(GREEN)make test-development$(RESET)     - 🔧 Development mode: Fast iteration with focused tests"
+	@echo "  $(GREEN)make test-debug$(RESET)           - 🐛 Debug mode: Verbose logging and detailed analysis"
+	@echo "  $(GREEN)make show-test-config$(RESET)     - 📊 Display current test mode configuration"
+	@echo "  $(GREEN)make test-mode-config$(RESET)     - 🔧 Test the test mode configuration system"
+	@echo "  $(GREEN)make test-server-dependent$(RESET) - 🌐 Test functional and calibration suites (requires LLM server)"
+	@echo ""
 	@echo "$(BOLD)Quality Assurance:$(RESET)"
 	@echo "  $(GREEN)make check-prerequisites$(RESET)  - Complete system readiness check"
 	@echo "  $(GREEN)make docker-logs$(RESET)          - Inspect model server logs & configuration"
@@ -85,11 +104,23 @@ help:
 	@echo "  $(GREEN)make systematic-base-calibration$(RESET)  - 🎯 Base model calibration (easy→medium→hard) with enhanced evaluation"
 	@echo "  $(GREEN)make test-systematic-calibration$(RESET) - 🧪 Test systematic calibration framework (single domain)"
 	@echo ""
+	@echo "$(BOLD)Quality Audit & Advanced Testing:$(RESET)"
+	@echo "  $(GREEN)make test-quality-audit$(RESET)          - 🎯 Run all quality audit tests (evaluator + network + functional)"
+	@echo "  $(GREEN)make test-evaluator-integration$(RESET)  - 🧠 Comprehensive evaluator framework integration tests"
+	@echo "  $(GREEN)make test-network-failure$(RESET)        - 🌐 Network failure scenarios & server dependency tests"
+	@echo "  $(GREEN)make test-server-resilience$(RESET)      - 🛡️ Server resilience & dependency management validation"
+	@echo "  $(GREEN)make validate-evaluator-framework$(RESET) - ✅ Complete evaluator framework validation suite"
+	@echo ""
 	@echo "$(BOLD)Domain Coverage:$(RESET)"
 	@echo "  $(GREEN)make convert-creativity-tests$(RESET)    - Convert creativity base→instruct tests"
 	@echo "  $(GREEN)make convert-core-domains$(RESET)        - Convert all core domains to instruct"
 	@echo "  $(GREEN)make test-creativity-conversion$(RESET)  - Test creativity conversion results"
 	@echo "  $(GREEN)make test-core-domains-conversion$(RESET) - Test core domain conversion"
+	@echo ""
+	@echo "$(BOLD)Documentation & API Reference:$(RESET)"
+	@echo "  $(GREEN)make docs-evaluator$(RESET)       - 📚 Open evaluator capability matrix & API documentation"
+	@echo "  $(GREEN)make docs-api-reference$(RESET)   - 📖 Open evaluator API reference documentation"
+	@echo "  $(GREEN)make docs-integration-guide$(RESET) - 🔧 Open developer integration guide"
 	@echo ""
 	@echo "$(BOLD)Maintenance & Debug:$(RESET)"
 	@echo "  $(GREEN)make clean$(RESET) / $(GREEN)clean-all$(RESET)  - Clean test artifacts"
@@ -138,7 +169,27 @@ post-test:
 	@echo "$(BOLD)$(YELLOW)🧹 Post-test Cleanup$(RESET)"
 	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
-	@echo "$(GREEN)✅ Cleanup complete!$(RESET)"
+
+# Backend Detection Functions
+# Detects whether docker container is running llama.cpp (sequential) or vLLM (concurrent)
+detect-backend:
+	@echo "$(BOLD)$(BLUE)🔍 Detecting LLM Backend Type$(RESET)"
+	@echo "=============================="
+	@if docker compose logs llama-gpu 2>/dev/null | grep -i "llama.cpp\|llama-server\|gguf\|llamacpp" >/dev/null 2>&1; then \
+		echo "$(GREEN)✅ Detected: llama.cpp backend (sequential mode required)$(RESET)"; \
+		echo "BACKEND=llamacpp"; \
+	elif docker compose logs llama-gpu 2>/dev/null | grep -i "vllm\|ray\|asyncio" >/dev/null 2>&1; then \
+		echo "$(GREEN)✅ Detected: vLLM backend (concurrent mode enabled)$(RESET)"; \
+		echo "BACKEND=vllm"; \
+	else \
+		echo "$(YELLOW)⚠️ Unable to detect backend type from logs$(RESET)"; \
+		echo "$(CYAN)Defaulting to sequential mode for safety$(RESET)"; \
+		echo "BACKEND=unknown"; \
+	fi
+
+# Get backend type for use in other commands
+get-backend-mode:
+	@BACKEND_TYPE=$$(if docker compose logs llama-gpu 2>/dev/null | grep -i "llama.cpp\|llama-server\|gguf\|llamacpp" >/dev/null 2>&1; then echo "sequential"; elif docker compose logs llama-gpu 2>/dev/null | grep -i "vllm\|ray\|asyncio" >/dev/null 2>&1; then echo "concurrent"; else echo "sequential"; fi); echo $$BACKEND_TYPE
 
 # Consolidated test command with mode parameter
 # Usage: make test [MODE=quick|verbose|coverage] [SUITE=unit|integration|modular|analysis|all]
@@ -406,7 +457,16 @@ systematic-base-calibration:
 	@echo "$(GREEN)🧠 Using enhanced evaluation with sophisticated evaluators$(RESET)"
 	@echo "$(GREEN)📊 Target ranges: Easy(70-85), Medium(60-80), Hard(50-75)$(RESET)"
 	@echo ""
-	@$(PYTHON) scripts/calibration/systematic_base_calibration.py
+	@echo "$(BOLD)$(MAGENTA)🔍 Detecting Backend Type...$(RESET)"
+	@BACKEND_MODE=$$($(MAKE) get-backend-mode); \
+	if [ "$$BACKEND_MODE" = "concurrent" ]; then \
+		echo "$(GREEN)✅ vLLM backend detected - enabling concurrent processing$(RESET)"; \
+		export CONCURRENCY_MODE=concurrent; \
+	else \
+		echo "$(YELLOW)⚠️ llama.cpp backend detected - using sequential processing$(RESET)"; \
+		export CONCURRENCY_MODE=sequential; \
+	fi; \
+	$(PYTHON) scripts/calibration/systematic_base_calibration.py
 
 # Test systematic calibration framework (single domain for testing)
 test-systematic-calibration:
@@ -456,6 +516,135 @@ test-enhanced-integration: pre-test
 		echo ""; \
 	fi
 	@$(MAKE) post-test
+
+# ========================================================================
+# QUALITY AUDIT & ADVANCED TESTING COMMANDS  
+# ========================================================================
+
+# Comprehensive quality audit test suite (all medium priority issues)
+test-quality-audit: pre-test
+	@echo "$(BOLD)$(BLUE)🎯 Quality Audit Comprehensive Test Suite$(RESET)"
+	@echo "=================================================="
+	@echo "$(CYAN)💡 Running all quality audit tests: evaluator integration + network failure + enhanced functional$(RESET)"
+	@echo ""
+	@$(MAKE) test-evaluator-integration
+	@echo ""
+	@$(MAKE) test-network-failure  
+	@echo ""
+	@$(MAKE) test-functional-enhanced
+	@echo ""
+	@echo "$(GREEN)✅ Quality audit test suite complete!$(RESET)"
+	@$(MAKE) post-test
+
+# Comprehensive evaluator framework integration tests
+test-evaluator-integration: pre-test
+	@echo "$(BOLD)$(BLUE)🧠 Evaluator Framework Integration Tests$(RESET)"
+	@echo "==========================================="
+	@echo "$(CYAN)Testing multi-evaluator orchestration, fallback behavior, and performance$(RESET)"
+	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/integration/test_evaluator_framework_integration.py $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+
+# Network failure scenarios and server dependency management tests  
+test-network-failure: pre-test
+	@echo "$(BOLD)$(BLUE)🌐 Network Failure Scenarios Tests$(RESET)"
+	@echo "====================================" 
+	@echo "$(CYAN)Testing timeout handling, invalid endpoints, resilient retry logic$(RESET)"
+	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/functional/test_network_failure_scenarios.py $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+
+# Enhanced functional tests with server dependency management
+test-functional-enhanced: pre-test
+	@echo "$(BOLD)$(BLUE)🚀 Enhanced Functional Tests$(RESET)"
+	@echo "============================="
+	@echo "$(CYAN)Testing enhanced server dependency management and graceful degradation$(RESET)"
+	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/functional/ --ignore=tests/functional/test_network_failure_scenarios.py $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+
+# Complete evaluator framework validation
+validate-evaluator-framework: pre-test
+	@echo "$(BOLD)$(BLUE)✅ Complete Evaluator Framework Validation$(RESET)"
+	@echo "=============================================="
+	@echo "$(CYAN)Comprehensive validation: initialization, integration, fallbacks, performance$(RESET)"
+	@echo ""
+	@echo "$(BOLD)1. Testing Evaluator Integration:$(RESET)"
+	@$(MAKE) test-evaluator-integration
+	@echo ""
+	@echo "$(BOLD)2. Testing Enhanced Evaluator Import:$(RESET)"
+	@$(MAKE) test-enhanced-evaluator
+	@echo ""
+	@echo "$(BOLD)3. Running Core Safety Check:$(RESET)"
+	@$(MAKE) test-core-safety
+	@echo ""
+	@echo "$(GREEN)✅ Evaluator framework validation complete!$(RESET)"
+	@$(MAKE) post-test
+
+# Server resilience and dependency management validation
+test-server-resilience: pre-test
+	@echo "$(BOLD)$(BLUE)🛡️ Server Resilience & Dependency Management$(RESET)"
+	@echo "==============================================" 
+	@echo "$(CYAN)Testing server health checking, backend detection, network failure handling$(RESET)"
+	@echo ""
+	@echo "$(BOLD)1. Network Failure Scenarios:$(RESET)"
+	@$(MAKE) test-network-failure
+	@echo ""
+	@echo "$(BOLD)2. Server Health & API Connectivity:$(RESET)"
+	@$(MAKE) test-api-suite || echo "$(YELLOW)⚠️ API tests require live server$(RESET)"
+	@echo ""
+	@echo "$(BOLD)3. Backend Detection:$(RESET)"
+	@$(MAKE) detect-backend || echo "$(YELLOW)⚠️ Backend detection requires Docker$(RESET)"
+	@echo ""
+	@echo "$(GREEN)✅ Server resilience validation complete!$(RESET)"
+	@$(MAKE) post-test
+
+# ========================================================================
+# DOCUMENTATION COMMANDS
+# ========================================================================
+
+# Open evaluator capability matrix and API documentation  
+docs-evaluator:
+	@echo "$(BOLD)$(BLUE)📚 Evaluator Documentation$(RESET)"
+	@echo "============================"
+	@echo "$(CYAN)Opening evaluator capability matrix and API documentation...$(RESET)"
+	@if command -v xdg-open >/dev/null 2>&1; then \
+		xdg-open docs/evaluator/EVALUATOR_CAPABILITY_MATRIX.md; \
+		sleep 1; \
+		xdg-open docs/evaluator/EVALUATOR_API_REFERENCE.md; \
+	elif command -v open >/dev/null 2>&1; then \
+		open docs/evaluator/EVALUATOR_CAPABILITY_MATRIX.md; \
+		sleep 1; \
+		open docs/evaluator/EVALUATOR_API_REFERENCE.md; \
+	else \
+		echo "$(GREEN)📖 Evaluator Capability Matrix:$(RESET) docs/evaluator/EVALUATOR_CAPABILITY_MATRIX.md"; \
+		echo "$(GREEN)📖 API Reference:$(RESET) docs/evaluator/EVALUATOR_API_REFERENCE.md"; \
+	fi
+
+# Open evaluator API reference documentation
+docs-api-reference:
+	@echo "$(BOLD)$(BLUE)📖 Evaluator API Reference$(RESET)"
+	@echo "=============================="
+	@echo "$(CYAN)Opening API reference documentation...$(RESET)"
+	@if command -v xdg-open >/dev/null 2>&1; then \
+		xdg-open docs/evaluator/EVALUATOR_API_REFERENCE.md; \
+	elif command -v open >/dev/null 2>&1; then \
+		open docs/evaluator/EVALUATOR_API_REFERENCE.md; \
+	else \
+		echo "$(GREEN)📖 API Reference:$(RESET) docs/evaluator/EVALUATOR_API_REFERENCE.md"; \
+		echo "$(CYAN)💡 Use your preferred editor or browser to view the documentation$(RESET)"; \
+	fi
+
+# Open developer integration guide
+docs-integration-guide:
+	@echo "$(BOLD)$(BLUE)🔧 Developer Integration Guide$(RESET)"
+	@echo "=================================="
+	@echo "$(CYAN)Opening integration guide...$(RESET)"
+	@if command -v xdg-open >/dev/null 2>&1; then \
+		xdg-open docs/evaluator/INTEGRATION_GUIDE.md; \
+	elif command -v open >/dev/null 2>&1; then \
+		open docs/evaluator/INTEGRATION_GUIDE.md; \
+	else \
+		echo "$(GREEN)📖 Integration Guide:$(RESET) docs/evaluator/INTEGRATION_GUIDE.md"; \
+		echo "$(CYAN)💡 Use your preferred editor or browser to view the documentation$(RESET)"; \
+	fi
 
 # ========================================================================
 # PREREQUISITE CHECKING COMMANDS
@@ -553,12 +742,12 @@ test-api-suite:
 test-domain-loading:
 	@echo "$(BOLD)$(BLUE)📂 Testing Domain File Loading$(RESET)"
 	@echo "================================"
-	@python3 -c "import json; data = json.load(open('domains/reasoning/base_models/easy.json')); print(f'✅ Loaded {len(data[\"tests\"])} tests from easy.json'); print(f'📝 First test ID: {data[\"tests\"][0][\"id\"]}'); print(f'🎯 Test name: {data[\"tests\"][0][\"name\"]}')"
+	@$(PYTHON) -c "import json; data = json.load(open('domains/reasoning/base_models/easy.json')); print(f'✅ Loaded {len(data[\"tests\"])} tests from easy.json'); print(f'📝 First test ID: {data[\"tests\"][0][\"id\"]}'); print(f'🎯 Test name: {data[\"tests\"][0][\"name\"]}')"
 
 test-enhanced-evaluator:
 	@echo "$(BOLD)$(BLUE)🧠 Testing Enhanced Evaluator Import$(RESET)"
 	@echo "====================================="
-	@python3 -c "from evaluator.subjects.enhanced_universal_evaluator import EnhancedUniversalEvaluator; print('✅ Enhanced evaluator import successful'); evaluator = EnhancedUniversalEvaluator(); print('✅ Enhanced evaluator instantiation successful')" || echo "❌ Enhanced evaluator error"
+	@$(PYTHON) -c "from evaluator.subjects.enhanced_universal_evaluator import EnhancedUniversalEvaluator; print('✅ Enhanced evaluator import successful'); evaluator = EnhancedUniversalEvaluator(); print('✅ Enhanced evaluator instantiation successful')" || echo "❌ Enhanced evaluator error"
 
 test-semantic-analyzer:
 	@echo "$(BOLD)$(BLUE)🔍 Testing Semantic Analyzer Logging Fix$(RESET)"
@@ -635,3 +824,124 @@ calibration-demo:
 	@echo ""
 	@echo "$(CYAN)🧪 Running calibration unit tests...$(RESET)"
 	@cd $(CALIBRATION_TEST_DIR) && $(PYTHON) test_calibration_suite.py
+
+# Debug specific test components (consolidated)
+debug-test-components:
+	@echo "$(BOLD)$(BLUE)🧪 Debug: Test Components Status$(RESET)"
+	@echo "======================================="
+	@echo "$(CYAN)📁 Project structure:$(RESET)"
+	@echo "  Current dir: $(PWD)"
+	@echo "  Scripts dir: $$(test -d scripts && echo '✅ EXISTS' || echo '❌ MISSING')"
+	@echo "  Core dir: $$(test -d core && echo '✅ EXISTS' || echo '❌ MISSING')" 
+	@echo "  Domains dir: $$(test -d domains && echo '✅ EXISTS' || echo '❌ MISSING')"
+	@echo "$(CYAN)🔧 Core modules:$(RESET)"
+	@echo "  calibration_engine.py: $$(test -f core/calibration_engine.py && echo '✅ EXISTS' || echo '❌ MISSING')"
+	@echo "  production_calibration.py: $$(test -f core/production_calibration.py && echo '✅ EXISTS' || echo '❌ MISSING')"
+	@echo "  benchmarking_engine.py: $$(test -f core/benchmarking_engine.py && echo '✅ EXISTS' || echo '❌ MISSING')"
+	@echo "  cognitive_validation.py: $$(test -f core/cognitive_validation.py && echo '✅ EXISTS' || echo '❌ MISSING')"
+	@echo "$(CYAN)📊 Domain test files: $$(find domains/ -name '*.json' | wc -l) files$(RESET)"
+
+# Test specific test suites individually
+test-scripts-organization-only:
+	@echo "$(BOLD)$(BLUE)📁 Testing Scripts Organization Only$(RESET)"
+	@echo "====================================="
+	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/unit/test_scripts_organization/ --tb=long
+
+test-domain-loading-only:
+	@echo "$(BOLD)$(BLUE)📂 Testing Domain Loading Only$(RESET)"
+	@echo "==============================="
+	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/unit/test_core_system/test_domain_loading.py --tb=long
+
+test-core-modules-debug:
+	@echo "$(BOLD)$(BLUE)🔧 Testing Core Modules with Debug Info$(RESET)"
+	@echo "=============================================="
+	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/unit/test_core_modules/ --tb=long -s
+
+# ========================================================================
+# PRODUCTION VS DEVELOPMENT TEST MODES
+# ========================================================================
+
+# Production test mode - Fast CI/CD with unit and integration tests
+test-production: pre-test
+	@echo "$(BOLD)$(BLUE)🏭 Production Test Mode$(RESET)"
+	@echo "=========================="
+	@echo "$(GREEN)⚡ Fast CI/CD with unit and integration test coverage$(RESET)"
+	@echo "$(CYAN)💡 Optimized for production deployment validation without server dependencies$(RESET)"
+	@echo ""
+	@BENCHMARK_TEST_MODE=production $(PYTHON) scripts/test_mode_runner.py production $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+
+# Full production test mode - ALL tests including server-dependent
+test-production-full: pre-test
+	@echo "$(BOLD)$(BLUE)🚀 Full Production Test Mode$(RESET)"
+	@echo "============================"
+	@echo "$(GREEN)🎯 Comprehensive testing: ALL tests including functional and calibration$(RESET)"
+	@echo "$(CYAN)💡 Requires LLM server at http://localhost:8004$(RESET)"
+	@echo "$(YELLOW)⚠️  Server availability will be checked before execution$(RESET)"
+	@echo ""
+	@BENCHMARK_TEST_MODE=production_full $(PYTHON) scripts/test_mode_runner.py production_full $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+
+# Development test mode - Fast iteration with focused tests
+test-development: pre-test
+	@echo "$(BOLD)$(BLUE)🔧 Development Test Mode$(RESET)"
+	@echo "========================="
+	@echo "$(GREEN)⚡ Fast iteration with focused test execution$(RESET)"
+	@echo "$(CYAN)💡 Optimized for rapid development cycles$(RESET)"
+	@echo ""
+	@BENCHMARK_TEST_MODE=development $(PYTHON) scripts/test_mode_runner.py development $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+
+# Debug test mode - Verbose logging and detailed analysis  
+test-debug: pre-test
+	@echo "$(BOLD)$(BLUE)🐛 Debug Test Mode$(RESET)"
+	@echo "=================="
+	@echo "$(GREEN)🔍 Comprehensive debugging with verbose logging$(RESET)"
+	@echo "$(CYAN)💡 Optimized for troubleshooting and analysis$(RESET)"
+	@echo ""
+	@BENCHMARK_TEST_MODE=debug $(PYTHON) scripts/test_mode_runner.py debug $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+
+# Display current test mode configuration
+show-test-config:
+	@echo "$(BOLD)$(BLUE)📊 Current Test Mode Configuration$(RESET)"
+	@echo "===================================="
+	@$(PYTHON) -c "\
+from core.test_mode_config import initialize_test_mode; \
+config = initialize_test_mode(); \
+print(f'$(GREEN)Mode:$(RESET) {config.mode.value}'); \
+print(f'$(GREEN)Description:$(RESET) {config.description}'); \
+print(f'$(GREEN)Chunk Size:$(RESET) {config.chunk_size}'); \
+print(f'$(GREEN)Max Concurrent:$(RESET) {config.max_concurrent}'); \
+print(f'$(GREEN)Timeout Per Test:$(RESET) {config.timeout_per_test}s'); \
+print(f'$(GREEN)Memory Limit:$(RESET) {config.memory_limit_mb}MB'); \
+print(f'$(GREEN)Coverage Enabled:$(RESET) {config.enable_coverage}'); \
+print(f'$(GREEN)Verbose Output:$(RESET) {config.verbose_output}'); \
+print(f'$(GREEN)Include Functional:$(RESET) {config.include_functional_tests}'); \
+print(f'$(GREEN)Include Calibration:$(RESET) {config.include_calibration_tests}'); \
+print(f'$(GREEN)Success Rate Threshold:$(RESET) {config.min_success_rate}'); \
+print(f'$(GREEN)Calibration Threshold:$(RESET) {config.calibration_threshold}'); \
+"
+
+# Test the test mode configuration system
+test-mode-config: pre-test
+	@echo "$(BOLD)$(BLUE)🔧 Testing Test Mode Configuration System$(RESET)"
+	@echo "=============================================="
+	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/unit/test_core_modules/test_test_mode_config.py $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+
+# Test server-dependent tests (functional and calibration) with timeout management
+test-server-dependent: pre-test
+	@echo "$(BOLD)$(BLUE)🌐 Testing Server-Dependent Test Suites$(RESET)"
+	@echo "============================================="
+	@echo "$(YELLOW)⚠️  This requires a running LLM server at http://localhost:8004$(RESET)"
+	@echo "$(CYAN)💡 Testing functional/ and calibration/ directories with intelligent chunking$(RESET)"
+	@echo ""
+	@echo "$(BOLD)1. Testing Calibration Framework:$(RESET)"
+	@timeout 60s $(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/calibration/ $(ARGS) || echo "$(YELLOW)⚠️ Calibration tests timed out or failed$(RESET)"
+	@echo ""
+	@echo "$(BOLD)2. Testing Functional Tests:$(RESET)" 
+	@timeout 300s $(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/functional/ $(ARGS) || echo "$(YELLOW)⚠️ Functional tests timed out or failed$(RESET)"
+	@echo ""
+	@echo "$(GREEN)✅ Server-dependent test validation complete$(RESET)"
+	@$(MAKE) post-test

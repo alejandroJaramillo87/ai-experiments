@@ -5,8 +5,6 @@ BenchmarkTestRunner - Flexible Test Execution Engine
 A modular test execution system that separates test definitions from execution logic,
 supporting both sequential and concurrent test execution against local LLM APIs.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import json
@@ -22,8 +20,8 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
 from pathlib import Path
-# CONCURRENCY DISABLED for llama.cpp single request compatibility
-# from concurrent.futures import ThreadPoolExecutor, as_completed
+# Smart concurrency detection based on backend type
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Set up logging first
 logging.basicConfig(
@@ -56,6 +54,49 @@ try:
 except ImportError:
     NVIDIA_GPU_AVAILABLE = False
     logger.warning("pynvml not available - GPU metrics disabled")
+
+
+def detect_backend_type() -> str:
+    """
+    Detect LLM backend type from environment or docker logs
+    
+    Returns:
+        'concurrent' for vLLM backends that support concurrency
+        'sequential' for llama.cpp backends that require sequential processing
+    """
+    
+    # Check environment variable first (set by Makefile)
+    concurrency_mode = os.environ.get('CONCURRENCY_MODE', '').lower()
+    if concurrency_mode in ['concurrent', 'sequential']:
+        logger.info(f"Backend mode detected from environment: {concurrency_mode}")
+        return concurrency_mode
+    
+    # Try to detect from docker logs
+    try:
+        result = subprocess.run(
+            ['docker', 'compose', 'logs', 'llama-gpu'], 
+            capture_output=True, text=True, timeout=5
+        )
+        
+        if result.returncode == 0:
+            logs = result.stdout.lower()
+            
+            # Check for llama.cpp indicators
+            if any(term in logs for term in ['llama.cpp', 'llama-server', 'gguf', 'llamacpp']):
+                logger.info("Detected llama.cpp backend - using sequential mode")
+                return 'sequential'
+            
+            # Check for vLLM indicators  
+            elif any(term in logs for term in ['vllm', 'ray', 'asyncio']):
+                logger.info("Detected vLLM backend - enabling concurrent mode")
+                return 'concurrent'
+        
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+        logger.debug("Could not detect backend from docker logs")
+    
+    # Default to sequential for safety
+    logger.info("Unable to detect backend type - defaulting to sequential mode for safety")
+    return 'sequential'
 
 
 @dataclass 
@@ -2629,14 +2670,25 @@ if __name__ == "__main__":
         elif args.mode == "sequential":
             results = runner.execute_sequential(test_ids_to_run, delay=args.delay, enable_performance_monitoring=args.performance_monitoring)
         elif args.mode == "concurrent":
-            # CONCURRENCY DISABLED for llama.cpp single request compatibility
-            print("⚠️ Concurrent mode disabled for llama.cpp compatibility. Using sequential execution.")
-            results = runner.execute_sequential(test_ids_to_run, delay=args.delay, enable_performance_monitoring=args.performance_monitoring)
-            # results = runner.execute_concurrent(test_ids_to_run, workers=args.workers, enable_performance_monitoring=args.performance_monitoring)
+            # Smart backend detection for concurrency support
+            backend_mode = detect_backend_type()
+            if backend_mode == 'concurrent':
+                print("✅ vLLM backend detected - using concurrent execution")
+                results = runner.execute_concurrent(test_ids_to_run, workers=args.workers, enable_performance_monitoring=args.performance_monitoring)
+            else:
+                print("⚠️ llama.cpp backend detected - using sequential execution for compatibility")
+                results = runner.execute_sequential(test_ids_to_run, delay=args.delay, enable_performance_monitoring=args.performance_monitoring)
         elif args.mode == "category":
-            # Default to sequential execution for categories
-            results = runner.execute_category(args.category, sequential=True, 
-                                            workers=args.workers, delay=args.delay, enable_performance_monitoring=args.performance_monitoring)
+            # Smart backend detection for category execution
+            backend_mode = detect_backend_type()
+            if backend_mode == 'concurrent':
+                print("✅ vLLM backend detected - using concurrent execution for category")
+                results = runner.execute_category(args.category, sequential=False,
+                                                workers=args.workers, enable_performance_monitoring=args.performance_monitoring)
+            else:
+                print("⚠️ llama.cpp backend detected - using sequential execution for category")
+                results = runner.execute_category(args.category, sequential=True,
+                                                workers=args.workers, delay=args.delay, enable_performance_monitoring=args.performance_monitoring)
         
         end_time = time.time()
         total_time = end_time - start_time

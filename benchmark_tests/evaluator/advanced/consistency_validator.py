@@ -11,8 +11,6 @@ This module implements:
 - Response reliability measurement
 - Built-in test question variations
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import re

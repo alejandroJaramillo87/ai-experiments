@@ -16,8 +16,6 @@ Features:
 - Confidence calibration using multiple validation strategies
 - Graceful degradation when sources are unavailable
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import logging

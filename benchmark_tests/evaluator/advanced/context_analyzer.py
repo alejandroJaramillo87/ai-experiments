@@ -7,8 +7,6 @@ token-position quality tracking, context saturation detection, and degradation a
 This module addresses the critique's key point about missing context window
 analysis and quality degradation detection.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import re

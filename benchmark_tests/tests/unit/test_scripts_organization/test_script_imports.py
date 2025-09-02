@@ -17,18 +17,18 @@ sys.path.append(str(project_root))
 class TestScriptImports(unittest.TestCase):
     """Test that reorganized scripts can be imported"""
     
-    def test_calibration_scripts_exist(self):
-        """Test calibration scripts exist in new location"""
-        calibration_dir = project_root / "scripts" / "calibration"
+    def test_core_calibration_modules_exist(self):
+        """Test calibration modules moved to core"""
+        core_dir = project_root / "core"
         
         expected_files = [
-            "calibration_success_analysis.py",
-            "production_calibration_framework.py"
+            "calibration_engine.py",  # was systematic_base_calibration.py
+            "production_calibration.py"  # was production_calibration_framework.py
         ]
         
         for filename in expected_files:
-            file_path = calibration_dir / filename
-            self.assertTrue(file_path.exists(), f"Missing {filename} in calibration/")
+            file_path = core_dir / filename
+            self.assertTrue(file_path.exists(), f"Missing {filename} in core/")
     
     def test_optimization_scripts_exist(self):
         """Test optimization scripts exist in new location"""
@@ -58,19 +58,18 @@ class TestScriptImports(unittest.TestCase):
             file_path = validation_dir / filename
             self.assertTrue(file_path.exists(), f"Missing {filename} in validation/")
     
-    def test_benchmarking_scripts_exist(self):
-        """Test benchmarking scripts exist in new location"""
-        benchmarking_dir = project_root / "scripts" / "benchmarking"
+    def test_core_benchmarking_modules_exist(self):
+        """Test benchmarking modules moved to core"""
+        core_dir = project_root / "core"
         
         expected_files = [
-            "multi_model_benchmarking.py",
-            "enhanced_cognitive_validation.py",
-            "comprehensive_easy_domain_testing.py"
+            "benchmarking_engine.py",  # was multi_model_benchmarking.py
+            "cognitive_validation.py"  # was enhanced_cognitive_validation.py
         ]
         
         for filename in expected_files:
-            file_path = benchmarking_dir / filename
-            self.assertTrue(file_path.exists(), f"Missing {filename} in benchmarking/")
+            file_path = core_dir / filename
+            self.assertTrue(file_path.exists(), f"Missing {filename} in core/")
     
     def test_conversion_scripts_exist(self):
         """Test conversion scripts exist in new location"""
@@ -89,22 +88,22 @@ class TestScriptImports(unittest.TestCase):
         """Test that no scripts were left in main scripts directory"""
         scripts_dir = project_root / "scripts"
         
-        # Get all python files in main scripts directory (excluding __init__.py)
-        python_files = [f for f in scripts_dir.glob("*.py") if f.name != "__init__.py"]
+        # Get all python files in main scripts directory (excluding __init__.py and approved utility scripts)
+        approved_scripts = {"__init__.py", "test_mode_runner.py"}  # test_mode_runner.py is a utility script
+        python_files = [f for f in scripts_dir.glob("*.py") if f.name not in approved_scripts]
         
-        # Should be empty except for __init__.py
+        # Should be empty except for approved scripts
         self.assertEqual(len(python_files), 0, 
                         f"Found unorganized scripts: {[f.name for f in python_files]}")
     
     def test_script_directory_structure(self):
-        """Test that all expected subdirectories exist"""
+        """Test that remaining script subdirectories exist"""
         scripts_dir = project_root / "scripts"
         
+        # After moving calibration and benchmarking to core, only these remain
         expected_subdirs = [
-            "calibration",
             "optimization", 
             "validation",
-            "benchmarking",
             "conversion"
         ]
         

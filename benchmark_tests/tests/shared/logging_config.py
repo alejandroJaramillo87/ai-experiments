@@ -4,8 +4,6 @@ Standardized Logging Configuration for Tests
 Provides consistent logging setup across all test suites with appropriate
 levels and formatting for different test contexts.
 
-Author: Claude Code  
-Version: 1.0.0
 """
 
 import logging

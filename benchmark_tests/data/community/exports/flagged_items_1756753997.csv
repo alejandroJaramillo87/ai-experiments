@@ -1,0 +1,6 @@
+flag_id,timestamp,category,severity,description,cultural_groups_affected,flagged_dimensions,review_status,recommended_action,evaluation_id,overall_score,cultural_context_summary
+flag_e590f25695e9,2025-09-01T12:13:17.344108,cultural_inaccuracy,high,Test flag 0,group_0,<Mock name='test_dimension.name' id='135136302522752'>,pending,Test action,eval_000,0.7,Groups: group_0; Traditions: test
+flag_a4b22ea425d5,2025-09-01T12:13:17.344566,bias_detected,medium,Test flag 1,group_1,<Mock name='test_dimension.name' id='135136302527888'>,pending,Test action,eval_001,0.7,Groups: group_1; Traditions: test
+flag_a1827212ab32,2025-09-01T12:13:17.345039,cultural_inaccuracy,high,Test flag 2,group_2,<Mock name='test_dimension.name' id='135136302525632'>,pending,Test action,eval_002,0.7,Groups: group_2; Traditions: test
+flag_29464f880cdb,2025-09-01T12:13:17.345668,bias_detected,medium,Test flag 3,group_0,<Mock name='test_dimension.name' id='135136302525728'>,pending,Test action,eval_003,0.7,Groups: group_0; Traditions: test
+flag_c4354c6a630f,2025-09-01T12:13:17.346288,cultural_inaccuracy,high,Test flag 4,group_1,<Mock name='test_dimension.name' id='135136302527696'>,pending,Test action,eval_004,0.7,Groups: group_1; Traditions: test

@@ -5,8 +5,6 @@ Test script for Enhanced Universal Evaluator integration with benchmark_runner.p
 This script tests the Phase 1 integration of enhanced evaluation capabilities
 with the reasoning domain, focusing on multi-tier scoring functionality.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import sys

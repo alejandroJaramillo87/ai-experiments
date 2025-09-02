@@ -4,8 +4,6 @@ Integration test for target model evaluation
 Tests the evaluator system with specific focus on gpt-oss-20b and Qwen3-30B
 model tokenization and evaluation capabilities.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

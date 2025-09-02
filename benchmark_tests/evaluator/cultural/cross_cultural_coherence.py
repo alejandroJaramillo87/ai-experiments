@@ -4,8 +4,6 @@ Cross-Cultural Coherence Checker
 Ensures knowledge systems are presented on their own terms without inappropriate
 framework imposition, and validates respectful cross-cultural understanding.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import re

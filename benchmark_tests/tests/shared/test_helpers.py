@@ -4,8 +4,6 @@ Shared Test Helper Functions
 Common utilities for setting up benchmark tests, managing paths,
 and standardizing test operations across all test suites.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import os

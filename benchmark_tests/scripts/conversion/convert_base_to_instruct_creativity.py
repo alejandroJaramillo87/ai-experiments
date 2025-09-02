@@ -5,8 +5,6 @@ Creativity Domain Base-to-Instruct Conversion Script
 Converts creativity domain base model tests to instruct model format
 while preserving cultural authenticity and enhancing instructional clarity.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import json

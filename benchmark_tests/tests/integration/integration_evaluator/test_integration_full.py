@@ -5,8 +5,6 @@ Full Integration Test for Enhanced Evaluation with benchmark_runner.py
 Tests the complete integration of enhanced evaluation capabilities
 with the benchmark runner system, validating performance and usability.
 
-Author: Claude Code  
-Version: 1.0.0
 """
 
 import subprocess

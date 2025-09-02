@@ -5,8 +5,6 @@ Debug Enhanced Universal Evaluator
 Comprehensive debugging tool for the Phase 1 enhanced universal evaluator.
 Tests all enhancement features with detailed output for development and debugging.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import sys

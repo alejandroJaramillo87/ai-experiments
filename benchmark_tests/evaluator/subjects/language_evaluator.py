@@ -6,8 +6,6 @@ register appropriateness, code-switching quality, pragmatic competence, multilin
 dialectal competence, sociolinguistic awareness, historical linguistics, narrative structure,
 and semantic sophistication.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 from typing import Dict, List, Any, Optional, Tuple

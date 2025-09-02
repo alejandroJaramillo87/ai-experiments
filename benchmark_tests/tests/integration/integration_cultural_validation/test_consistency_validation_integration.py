@@ -5,8 +5,6 @@ Tests the complete integration of consistency validation and knowledge validatio
 frameworks with the main UniversalEvaluator system, ensuring proper metrics
 integration and evaluation flow.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

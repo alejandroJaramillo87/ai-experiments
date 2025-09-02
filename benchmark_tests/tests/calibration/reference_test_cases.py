@@ -8,8 +8,6 @@ Enhanced Universal Evaluator calibration across domains.
 Based on @docker/Dockerfile.llama-gpu model configuration and empirical
 calibration testing from Phase 1 development.
 
-Author: Claude Code
-Version: 1.0.0 - Sequential Architecture
 """
 
 from typing import List, Dict, Any

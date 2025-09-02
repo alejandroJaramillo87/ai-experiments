@@ -6,8 +6,6 @@ External client that validates Enhanced Universal Evaluator calibration using
 statistical multi-sample testing. Implements KISS principles with clean separation
 from evaluator logic.
 
-Author: Claude Code
-Version: 1.0.0 - Sequential Architecture for llama.cpp
 """
 
 import sys
@@ -20,14 +18,26 @@ from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 
 # Add the project root to Python path  
-sys.path.append('.')
-sys.path.append('..')
-sys.path.append('../..')
-sys.path.append('../../..')  # Added for new calibration directory location
+project_root = Path(__file__).parent.parent.parent
+calibration_dir = Path(__file__).parent
 
-from benchmark_runner import BenchmarkTestRunner
-from reference_test_cases import REFERENCE_TEST_CASES
-from calibration_reporter import CalibrationReporter
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(calibration_dir))
+
+try:
+    from benchmark_runner import BenchmarkTestRunner
+    from tests.calibration.reference_test_cases import REFERENCE_TEST_CASES
+    from tests.calibration.calibration_reporter import CalibrationReporter
+except ImportError:
+    # Fallback for when running from within calibration directory
+    try:
+        import sys
+        sys.path.append('../../')
+        from benchmark_runner import BenchmarkTestRunner
+        from reference_test_cases import REFERENCE_TEST_CASES
+        from calibration_reporter import CalibrationReporter
+    except ImportError as e:
+        raise ImportError(f"Failed to import required modules: {e}")
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

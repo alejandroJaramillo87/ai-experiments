@@ -7,8 +7,6 @@ numerical stability testing, factual consistency validation, and quantization-sp
 This module addresses the critique's key point about missing quantization impact
 measurements and numerical stability analysis.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import re

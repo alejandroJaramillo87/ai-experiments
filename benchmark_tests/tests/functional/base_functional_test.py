@@ -19,7 +19,16 @@ from typing import List, Tuple, Dict, Any, Optional
 
 # Import shared test infrastructure
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from shared import TestSetupHelper, PathHelper, configure_functional_logging
+try:
+    from shared import TestSetupHelper, PathHelper, configure_functional_logging
+except ImportError:
+    # Fallback if shared module not available
+    TestSetupHelper = None
+    PathHelper = None
+    configure_functional_logging = lambda: None
+
+# Import enhanced server dependency management
+from .server_dependency_manager import FunctionalTestHelper, ServerStatus
 
 
 class BaseFunctionalTest(unittest.TestCase):
@@ -39,19 +48,28 @@ class BaseFunctionalTest(unittest.TestCase):
     DEFAULT_MODEL = "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b"
     
     def setUp(self):
-        """Set up test fixtures - create temporary output directory"""
+        """Set up test fixtures - create temporary output directory and check server status"""
         self.temp_output_dir = tempfile.mkdtemp(prefix="benchmark_test_")
+        
         # Change to benchmark_tests directory for CLI execution
         self.original_cwd = os.getcwd()
         benchmark_tests_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         os.chdir(benchmark_tests_dir)
+        
+        # Initialize enhanced server dependency management
+        self.test_helper = FunctionalTestHelper(self.LOCALHOST_ENDPOINT.split('/v1')[0])
+        self.server_available, self.server_message = self.test_helper.setup_test_environment()
+        
+        # Configure functional logging if available
+        if configure_functional_logging:
+            configure_functional_logging()
     
     def tearDown(self):
         """Clean up test fixtures - remove temporary directories"""
         os.chdir(self.original_cwd)
         shutil.rmtree(self.temp_output_dir, ignore_errors=True)
     
-    def run_cli_command(self, args: List[str], timeout: int = 120) -> Tuple[str, str, int]:
+    def run_cli_command(self, args: List[str], timeout: int = 180) -> Tuple[str, str, int]:
         """
         Run CLI command using subprocess and return results.
         
@@ -115,13 +133,18 @@ class BaseFunctionalTest(unittest.TestCase):
         self.assertTrue(os.path.exists(file_path), msg)
     
     def assert_command_success(self, stdout: str, stderr: str, exit_code: int, cmd_description: str = ""):
-        """Assert that a CLI command executed successfully"""
+        """Assert that a CLI command executed successfully with enhanced error information"""
         msg = f"Command should succeed"
         if cmd_description:
             msg = f"{cmd_description} should succeed"
         
         if exit_code != 0:
             error_info = f"Exit code: {exit_code}\\nStdout: {stdout}\\nStderr: {stderr}"
+            
+            # Add server status information if available
+            if hasattr(self, 'test_helper'):
+                error_info += f"\\nServer status: {self.server_message}"
+            
             self.fail(f"{msg}\\n{error_info}")
     
     def assert_command_failure(self, stdout: str, stderr: str, exit_code: int, cmd_description: str = ""):
@@ -179,3 +202,21 @@ class BaseFunctionalTest(unittest.TestCase):
         if not result:
             result = self.find_file_by_pattern(f"*_completion.txt")
         return result
+    
+    # Enhanced server dependency management methods
+    def skip_if_server_unavailable(self, require_real_server: bool = True):
+        """Skip test if server is unavailable and real server is required"""
+        if hasattr(self, 'test_helper'):
+            should_skip, skip_reason = self.test_helper.should_skip_test(require_real_server)
+            if should_skip:
+                self.skipTest(skip_reason)
+    
+    def get_resilient_endpoint(self) -> str:
+        """Get endpoint that works with current server status"""
+        if hasattr(self, 'test_helper'):
+            return self.test_helper.get_test_endpoint()
+        return self.LOCALHOST_ENDPOINT
+    
+    def is_mock_mode(self) -> bool:
+        """Check if running in mock mode due to server unavailability"""
+        return getattr(self.test_helper, 'mock_mode', False) if hasattr(self, 'test_helper') else False

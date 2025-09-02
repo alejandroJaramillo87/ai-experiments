@@ -11,8 +11,6 @@ Comprehensive validation of all Phase 1 Enhanced Universal Evaluator quality fix
 This test suite validates that all critical technical issues have been resolved
 and the enhanced evaluation system is production-ready.
 
-Author: Claude Code
-Version: 1.0.0 - Phase 1 Quality Fixes
 """
 
 import unittest

@@ -8,8 +8,6 @@ Converts base model tests to instruct model format for the core domains:
 - Knowledge (200+ tests) - factual accuracy and reasoning over information
 - Social (200+ tests) - cultural communication and social understanding
 
-Author: Claude Code
-Version: 2.0.0
 """
 
 import json

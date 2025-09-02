@@ -8,8 +8,6 @@ Tests the complete domain-aware evaluation pipeline including:
 - Cultural pattern detection
 - Cross-domain synthesis
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

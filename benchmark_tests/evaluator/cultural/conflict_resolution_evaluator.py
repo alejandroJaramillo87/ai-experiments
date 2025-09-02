@@ -4,8 +4,6 @@ Conflict Resolution and Consensus Evaluator
 Specialized evaluator for assessing conflict resolution skills, mediation competence,
 consensus-building abilities, and de-escalation techniques across cultural contexts.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 from typing import Dict, List, Any, Optional, Tuple

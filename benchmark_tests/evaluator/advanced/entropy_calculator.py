@@ -7,8 +7,6 @@ and semantic entropy measurements to assess response diversity and predictabilit
 This module addresses the critique's key point about missing true entropy measurements
 beyond simple vocabulary diversity.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import re

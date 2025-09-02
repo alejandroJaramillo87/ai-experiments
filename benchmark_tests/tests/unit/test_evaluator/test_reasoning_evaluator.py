@@ -4,8 +4,6 @@ Test suite for Reasoning Evaluator
 Tests for reasoning evaluation including universal metrics, reasoning type detection,
 batch evaluation, and various reasoning patterns.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

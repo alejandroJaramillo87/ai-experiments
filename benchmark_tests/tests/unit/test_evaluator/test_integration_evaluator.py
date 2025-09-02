@@ -4,8 +4,6 @@ Test suite for Integration Evaluator
 Tests for integration evaluation including cross-domain coherence, cultural authenticity,
 logical consistency, creative appropriateness, social awareness, and synthesis quality.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

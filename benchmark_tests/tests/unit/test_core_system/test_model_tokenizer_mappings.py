@@ -4,8 +4,6 @@ Test suite for model-specific tokenizer mappings
 Tests the new tokenizer initialization logic for gpt-oss-20b, Qwen3-30B,
 and other models to ensure proper mapping and fallback behavior.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

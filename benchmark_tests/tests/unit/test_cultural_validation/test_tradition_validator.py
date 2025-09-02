@@ -4,8 +4,6 @@ Test suite for Traditional Knowledge Validator
 Tests for traditional knowledge validation including contextualization,
 sacred knowledge respect, community attribution, and living tradition recognition.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

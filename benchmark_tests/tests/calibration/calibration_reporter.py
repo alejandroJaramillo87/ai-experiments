@@ -5,8 +5,6 @@ Calibration Reporting System
 Generates comprehensive reports for calibration validation results with
 ✅🟡🟠❌ status indicators and statistical analysis.
 
-Author: Claude Code  
-Version: 1.0.0 - Sequential Architecture
 """
 
 import json

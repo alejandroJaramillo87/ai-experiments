@@ -35,8 +35,8 @@ class TestDomainLoading(unittest.TestCase):
     
     def test_discover_test_suites_finds_existing_domains(self):
         """Test that discover_test_suites finds the actual domain directories"""
-        # Get the benchmark_tests directory
-        benchmark_tests_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # Get the benchmark_tests directory (need to go up 4 levels: test_core_system -> unit -> tests -> benchmark_tests)
+        benchmark_tests_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         suites = self.suite_manager.discover_test_suites(benchmark_tests_dir)
         
         # Should find reasoning and creativity domains

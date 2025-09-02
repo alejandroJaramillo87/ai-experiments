@@ -5,8 +5,6 @@ Specialized evaluator for assessing community leadership competence across cultu
 including visionary leadership, collective mobilization, consensus building, cultural preservation,
 community empowerment, collaborative governance, and sustainable development.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 from typing import Dict, List, Any, Optional, Tuple

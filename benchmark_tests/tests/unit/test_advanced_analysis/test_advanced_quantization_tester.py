@@ -5,8 +5,6 @@ Comprehensive Test Suite for Advanced Quantization Tester
 Tests the QuantizationTester with numerical stability, factual consistency,
 and quantization impact analysis capabilities.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

@@ -11,8 +11,6 @@ Features:
 - Uncertainty quantification
 - Integration with existing confidence calibration
 
-Author: Claude Code  
-Version: 1.0.0
 """
 
 import re
