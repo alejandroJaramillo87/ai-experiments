@@ -5,8 +5,6 @@ Specialized evaluator for assessing historical linguistics competence including
 diachronic analysis, etymology, sound changes, grammaticalization, language families,
 comparative method, and reconstruction skills.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 from typing import Dict, List, Any, Optional, Tuple

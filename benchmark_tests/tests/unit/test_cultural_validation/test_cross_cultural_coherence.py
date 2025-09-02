@@ -4,8 +4,6 @@ Test suite for Cross-Cultural Coherence Checker
 Tests for cross-cultural coherence including framework imposition detection,
 knowledge system integrity assessment, translation quality, and comparative appropriateness.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

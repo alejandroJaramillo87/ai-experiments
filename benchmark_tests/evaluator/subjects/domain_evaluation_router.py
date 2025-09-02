@@ -4,8 +4,6 @@ Domain-Aware Evaluation Router
 Routes evaluation requests to appropriate domain-specific evaluators based on test metadata.
 Integrates multiple domain evaluations with cross-domain cultural authenticity validation.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 from typing import Dict, List, Optional, Union, Any

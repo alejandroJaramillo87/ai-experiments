@@ -4,8 +4,6 @@ Test suite for Cultural Authenticity Analyzer
 Tests for cultural authenticity analysis including stereotype detection,
 appropriation markers, bias detection, and respectful language assessment.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

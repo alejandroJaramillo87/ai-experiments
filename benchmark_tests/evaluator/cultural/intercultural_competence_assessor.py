@@ -5,8 +5,6 @@ Specialized evaluator for assessing intercultural competence across multiple dim
 including cultural awareness, cultural sensitivity, cross-cultural communication,
 adaptation skills, global mindset, and intercultural relationship building.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 from typing import Dict, List, Any, Optional, Tuple

@@ -5,8 +5,6 @@ Specialized evaluator for assessing pragmatic language competence including
 conversational implicature, speech acts, context interpretation, presupposition,
 deixis, conversational maxims, and pragmatic inference skills.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 from typing import Dict, List, Any, Optional, Tuple

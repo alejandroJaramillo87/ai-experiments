@@ -4,8 +4,6 @@ Cultural Authenticity Analyzer
 Detects cultural stereotypes, appropriation markers, and bias indicators in AI responses
 to ensure respectful representation of diverse knowledge systems and traditions.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import re

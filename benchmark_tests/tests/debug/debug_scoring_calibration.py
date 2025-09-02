@@ -5,8 +5,6 @@ Debug Scoring Calibration for Enhanced Universal Evaluator
 Tests and validates the Phase 1 scoring calibration fixes to ensure quality responses
 receive appropriate scores in the 40-60/100 range while maintaining differentiation.
 
-Author: Claude Code
-Version: 1.0.0 - Phase 1 Scoring Calibration
 """
 
 import sys

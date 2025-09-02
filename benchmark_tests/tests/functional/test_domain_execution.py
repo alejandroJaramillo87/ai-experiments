@@ -25,7 +25,7 @@ class TestDomainExecution(BaseFunctionalTest):
         # Execute a reasoning test to verify domain loading
         args = [
             "--test-type", "base",
-            "--test-id", "text_continuation_01",
+            "--test-id", "basic_01",
             "--endpoint", self.LOCALHOST_ENDPOINT,
             "--model", self.DEFAULT_MODEL
         ]
@@ -36,25 +36,25 @@ class TestDomainExecution(BaseFunctionalTest):
         self.assert_command_success(stdout, stderr, exit_code, "Reasoning domain execution")
         
         # Validate it loaded from reasoning domain
-        self.assertIn("text_continuation_01", stdout)
+        self.assertIn("basic_01", stdout)
         
         # Validate result file created
-        result_file = self.get_result_file("text_continuation_01") 
+        result_file = self.get_result_file("basic_01") 
         self.assertIsNotNone(result_file)
         
         # Validate result contains reasoning-appropriate content
         result_data = self.validate_json_file(result_file, ["test_id", "response_text"])
-        self.assertEqual(result_data["test_id"], "text_continuation_01")
+        self.assertEqual(result_data["test_id"], "basic_01")
         
         # Reasoning tests should generate text continuations
         self.assertGreater(len(result_data["response_text"]), 10, "Reasoning response should have substantial content")
     
-    def test_linux_domain_execution(self):
-        """Test linux domain execution using real domains/linux/instruct_models/ tests"""
-        # Execute a linux instruct test
+    def test_instruct_domain_execution(self):
+        """Test instruct domain execution using real domains/reasoning/instruct_models/ tests"""
+        # Execute a reasoning instruct test
         args = [
             "--test-type", "instruct",
-            "--test-id", "linux_test_01", 
+            "--test-id", "basic_01", 
             "--endpoint", self.LOCALHOST_ENDPOINT,
             "--model", self.DEFAULT_MODEL
         ]
@@ -88,7 +88,7 @@ class TestDomainExecution(BaseFunctionalTest):
         # First execute reasoning test
         reasoning_args = [
             "--test-type", "base",
-            "--test-id", "text_continuation_01",
+            "--test-id", "basic_01",
             "--endpoint", self.LOCALHOST_ENDPOINT,
             "--model", self.DEFAULT_MODEL
         ]
@@ -108,7 +108,7 @@ class TestDomainExecution(BaseFunctionalTest):
         self.assert_command_success(stdout2, stderr2, exit_code2, "Cross-domain linux execution")
         
         # Validate both result files exist
-        reasoning_result = self.get_result_file("text_continuation_01")
+        reasoning_result = self.get_result_file("basic_01")
         linux_result = self.get_result_file("linux_test_01") 
         
         self.assertIsNotNone(reasoning_result, "Reasoning result should exist")
@@ -129,7 +129,7 @@ class TestDomainExecution(BaseFunctionalTest):
         # Use multiple text continuation tests for concurrent execution
         args = [
             "--test-type", "base",
-            "--category", "text_continuation", 
+            "--category", "basic_logic_patterns", 
             "--mode", "concurrent",
             "--workers", "2",
             "--endpoint", self.LOCALHOST_ENDPOINT,
@@ -150,13 +150,13 @@ class TestDomainExecution(BaseFunctionalTest):
         self.assertIn("workers", stdout.lower())
         
         # Validate multiple result files were created
-        result_files = self.get_test_output_files("text_continuation_*_result.json")
+        result_files = self.get_test_output_files("basic_logic_patterns_*_result.json")
         self.assertGreater(len(result_files), 1, "Multiple result files should be created in concurrent mode")
         
         # Validate all result files have valid structure
         for result_file in result_files[:3]:  # Check first 3 files
             result_data = self.validate_json_file(result_file, ["test_id", "response_text", "execution_time"])
-            self.assertIn("text_continuation", result_data["test_id"])
+            self.assertIn("basic_logic_patterns", result_data["test_id"])
             self.assertGreater(len(result_data["response_text"]), 0)
         
         # Concurrent execution should complete within reasonable time

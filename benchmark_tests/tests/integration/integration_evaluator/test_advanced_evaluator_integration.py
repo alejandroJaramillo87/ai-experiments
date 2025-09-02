@@ -5,8 +5,6 @@ Integration Test Suite for Advanced Evaluator System
 Tests the complete integration of entropy, semantic coherence, context analysis,
 and quantization testing within the main evaluation pipeline.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

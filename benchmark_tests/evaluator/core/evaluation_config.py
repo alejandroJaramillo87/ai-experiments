@@ -4,8 +4,6 @@ Evaluation Configuration
 Configuration settings for the UniversalEvaluator system.
 Defines scoring weights, thresholds, and specialized patterns for different reasoning types.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 from enum import Enum

@@ -5,8 +5,6 @@ Tests the complete integration of cultural evaluation modules with the main
 UniversalEvaluator system, ensuring proper cultural metrics integration and
 evaluation flow for culturally complex content.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

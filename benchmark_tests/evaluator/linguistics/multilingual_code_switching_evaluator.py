@@ -5,8 +5,6 @@ Specialized evaluator for assessing multilingual code-switching competence,
 including intrasentential switching, intersentential switching, tag-switching,
 and cultural appropriateness of language mixing across diverse linguistic contexts.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 from typing import Dict, List, Any, Optional, Tuple, Set

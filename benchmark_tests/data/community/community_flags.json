@@ -1,24 +1,39 @@
 {
-  "flag_8f6c209b4ad2": {
-    "flag_id": "flag_8f6c209b4ad2",
-    "timestamp": 1756751290.3120825,
+  "flag_bef3ee2a3ebe": {
+    "flag_id": "flag_bef3ee2a3ebe",
+    "timestamp": 1756796595.8112843,
     "category": "cultural_inaccuracy",
-    "severity": "high",
-    "description": "Test flag 0",
+    "severity": "medium",
+    "description": "Testing Ubuntu cultural accuracy",
     "cultural_context": {
       "traditions": [
-        "test"
+        "ubuntu",
+        "ubuntu_philosophy",
+        "restorative_justice"
       ],
       "knowledge_systems": [
-        "test"
+        "african_traditional_knowledge",
+        "ubuntu_ethics"
       ],
-      "performance_aspects": [],
+      "performance_aspects": [
+        "community_healing",
+        "consensus_building",
+        "conflict_resolution"
+      ],
       "cultural_groups": [
-        "group_0"
+        "bantu_peoples",
+        "zulu",
+        "xhosa",
+        "ndebele"
       ],
-      "linguistic_varieties": []
+      "linguistic_varieties": [
+        "isizulu",
+        "isixhosa",
+        "isindebele",
+        "setswana"
+      ]
     },
-    "affected_content": "",
-    "evaluation_id": "eval_000",
+    "affected_content": "Ubuntu philosophy emphasizing community interconnectedness",
+    "evaluation_id": "ubuntu_integration_001",
     "flagged_dimensions": [
       

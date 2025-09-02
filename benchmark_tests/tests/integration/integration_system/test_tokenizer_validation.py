@@ -4,8 +4,6 @@ Direct validation of tokenizer improvements for target models
 Tests that the updated tokenizer mappings work correctly for gpt-oss-20b
 and Qwen3-30B without complex integration dependencies.
 
-Author: Claude Code  
-Version: 1.0.0
 """
 
 import unittest

@@ -5,8 +5,6 @@ Enhanced Evaluation Demo Script - Phase 1
 Demonstrates the enhanced evaluation capabilities with actual reasoning domain tests.
 Shows before/after comparison and multi-tier scoring functionality.
 
-Author: Claude Code
-Version: 1.0.0  
 """
 
 import sys

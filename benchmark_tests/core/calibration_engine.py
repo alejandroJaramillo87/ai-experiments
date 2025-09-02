@@ -99,7 +99,9 @@ class SystematicBaseCalibrator:
         
     def get_available_domain_files(self, domain: str) -> Dict[str, Path]:
         """Get available difficulty level files for a domain"""
-        domain_dir = Path('domains') / domain / 'base_models'
+        # Fix path resolution - use absolute path from project root
+        project_root = Path(__file__).parent.parent  # Go up from core/ to project root
+        domain_dir = project_root / 'domains' / domain / 'base_models'
         
         files = {}
         for difficulty in ['easy', 'medium', 'hard']:

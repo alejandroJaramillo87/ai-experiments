@@ -51,7 +51,7 @@ def test_core_domains_conversion():
         print(f"   📊 Loaded {len(tests)} {domain} tests")
         
         # Test samples from different categories
-        domain_results = test_domain_samples(evaluator, tests, domain)
+        domain_results = validate_domain_samples(evaluator, tests, domain)
         all_results.extend(domain_results)
         
         # Domain summary
@@ -84,7 +84,7 @@ def test_core_domains_conversion():
         
         return False
 
-def test_domain_samples(evaluator, tests, domain):
+def validate_domain_samples(evaluator, tests, domain):
     """Test sample tests from a domain"""
     
     # Select diverse samples based on domain size

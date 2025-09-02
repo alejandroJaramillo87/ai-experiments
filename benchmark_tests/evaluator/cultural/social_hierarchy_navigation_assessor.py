@@ -5,8 +5,6 @@ Specialized evaluator for assessing competence in navigating social hierarchies,
 including power distance awareness, authority recognition, status sensitivity,
 deference patterns, hierarchy adaptation, and cross-cultural hierarchy navigation.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 from typing import Dict, List, Any, Optional, Tuple

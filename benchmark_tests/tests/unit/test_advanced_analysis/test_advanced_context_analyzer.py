@@ -5,8 +5,6 @@ Comprehensive Test Suite for Advanced Context Window Analyzer
 Tests the ContextWindowAnalyzer with quality tracking, saturation detection,
 and context limit estimation capabilities.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

@@ -10,8 +10,6 @@ Evaluates social competence across 7 comprehensive categories:
 6. Conflict Resolution - Managing disputes and tensions constructively
 7. Intercultural Competence - Navigating cross-cultural social situations
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 from typing import Dict, List, Any

@@ -4,8 +4,6 @@ Reasoning Evaluator Module
 A comprehensive system for evaluating reasoning quality in language model responses.
 Provides both Python-based structural metrics and integration framework for LLM evaluation.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import re

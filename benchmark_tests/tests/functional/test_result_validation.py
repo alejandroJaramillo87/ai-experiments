@@ -26,7 +26,7 @@ class TestResultValidation(BaseFunctionalTest):
         # Execute a single test to generate result file
         args = [
             "--test-type", "base",
-            "--test-id", "text_continuation_01",
+            "--test-id", "basic_01",
             "--endpoint", self.LOCALHOST_ENDPOINT,
             "--model", self.DEFAULT_MODEL
         ]
@@ -35,7 +35,7 @@ class TestResultValidation(BaseFunctionalTest):
         self.assert_command_success(stdout, stderr, exit_code, "Result file creation test")
         
         # Validate result file exists
-        result_file = self.get_result_file("text_continuation_01")
+        result_file = self.get_result_file("basic_01")
         self.assertIsNotNone(result_file, "Result JSON file should be created")
         
         # Validate JSON structure with required fields
@@ -44,7 +44,7 @@ class TestResultValidation(BaseFunctionalTest):
         ])
         
         # Validate field contents
-        self.assertEqual(result_data["test_id"], "text_continuation_01")
+        self.assertEqual(result_data["test_id"], "basic_01")
         self.assertIsInstance(result_data["response_text"], str, "Response should be string")
         self.assertGreater(len(result_data["response_text"]), 0, "Response should not be empty")
         self.assertIsInstance(result_data["execution_time"], (int, float), "Execution time should be numeric")
@@ -64,7 +64,7 @@ class TestResultValidation(BaseFunctionalTest):
         # Execute test with evaluation enabled
         args = [
             "--test-type", "base", 
-            "--test-id", "text_continuation_01",
+            "--test-id", "basic_01",
             "--evaluation",
             "--endpoint", self.LOCALHOST_ENDPOINT,
             "--model", self.DEFAULT_MODEL
@@ -74,7 +74,7 @@ class TestResultValidation(BaseFunctionalTest):
         self.assert_command_success(stdout, stderr, exit_code, "Evaluation scores test")
         
         # Check for evaluation data in result file or separate evaluation file
-        result_file = self.get_result_file("text_continuation_01")
+        result_file = self.get_result_file("basic_01")
         self.assertIsNotNone(result_file)
         
         result_data = self.validate_json_file(result_file)
@@ -84,7 +84,7 @@ class TestResultValidation(BaseFunctionalTest):
             "evaluation", "score", "overall_score", "evaluation_metrics"
         ])
         
-        eval_file = self.get_evaluation_file("text_continuation_01")
+        eval_file = self.get_evaluation_file("basic_01")
         has_separate_eval = eval_file is not None
         
         self.assertTrue(
@@ -149,7 +149,7 @@ class TestResultValidation(BaseFunctionalTest):
         # Execute test with evaluation to generate comprehensive outputs
         args = [
             "--test-type", "base",
-            "--test-id", "text_continuation_02",
+            "--test-id", "basic_02",
             "--evaluation", 
             "--endpoint", self.LOCALHOST_ENDPOINT,
             "--model", self.DEFAULT_MODEL
@@ -159,11 +159,11 @@ class TestResultValidation(BaseFunctionalTest):
         self.assert_command_success(stdout, stderr, exit_code, "Output file structure test")
         
         # Validate primary result file
-        result_file = self.get_result_file("text_continuation_02")
+        result_file = self.get_result_file("basic_02")
         self.assert_file_exists(result_file, "Primary result JSON file")
         
         # Validate completion text file (raw response)
-        completion_file = self.get_completion_file("text_continuation_02")
+        completion_file = self.get_completion_file("basic_02")
         if completion_file:  # Not all configurations create completion files
             self.assert_file_exists(completion_file, "Completion text file")
             
@@ -187,7 +187,7 @@ class TestResultValidation(BaseFunctionalTest):
         # Execute concurrent tests
         args = [
             "--test-type", "base",
-            "--category", "text_continuation",
+            "--category", "basic_logic_patterns",
             "--mode", "concurrent", 
             "--workers", "2",
             "--endpoint", self.LOCALHOST_ENDPOINT,
@@ -198,7 +198,7 @@ class TestResultValidation(BaseFunctionalTest):
         self.assert_command_success(stdout, stderr, exit_code, "Concurrent results integrity test")
         
         # Validate result files were created
-        result_files = self.get_test_output_files("text_continuation_*_result.json")
+        result_files = self.get_test_output_files("basic_logic_patterns_*_result.json")
         self.assertGreater(len(result_files), 1, "Multiple result files should exist from concurrent execution")
         
         # Validate each result file has complete, valid structure

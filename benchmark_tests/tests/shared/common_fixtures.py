@@ -4,8 +4,6 @@ Common Test Fixtures
 Shared pytest fixtures for use across all test suites.
 Provides consistent setup and teardown for benchmark tests.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import pytest

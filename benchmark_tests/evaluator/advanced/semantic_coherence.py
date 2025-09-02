@@ -7,8 +7,6 @@ prompt-completion coherence, semantic drift detection, and topic consistency mea
 This module addresses the critique's key point about missing semantic coherence
 measurements beyond simple pattern matching.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import re

@@ -4,8 +4,6 @@ Test suite for Creativity Evaluator
 Tests for creativity evaluation including cultural creative patterns, rhythmic quality,
 narrative coherence, originality within bounds, performance quality, and collaborative creation.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

@@ -5,8 +5,6 @@ Comprehensive Test Suite for Advanced Entropy Calculator
 Tests the EntropyCalculator system with rigorous validation of Shannon entropy,
 semantic entropy, and entropy pattern analysis capabilities.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

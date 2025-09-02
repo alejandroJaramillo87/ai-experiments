@@ -4,8 +4,6 @@ Unified Model Loading Utility
 Provides consistent embedding model loading across all evaluator modules
 with proper error handling and fallback strategies.
 
-Author: Claude Code
-Version: 1.0.0 - Unified Model Loading Strategy
 """
 
 import os

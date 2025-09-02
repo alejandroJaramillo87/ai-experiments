@@ -5,8 +5,6 @@ Comprehensive tests for the knowledge validation framework including
 factual grounding tests, knowledge consistency validation, and confidence
 calibration measurement.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest

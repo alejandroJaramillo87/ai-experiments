@@ -11,8 +11,6 @@ This module implements:
 - Confidence calibration measurement and analysis
 - Comprehensive built-in factual test database
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import re

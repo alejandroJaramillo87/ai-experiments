@@ -20,8 +20,6 @@ Features:
 - Error recovery and fallback strategies
 - Integration with existing evaluation pipeline
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import logging

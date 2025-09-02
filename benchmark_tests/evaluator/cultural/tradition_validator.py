@@ -4,8 +4,6 @@ Traditional Knowledge Validator
 Validates respect for wisdom traditions, proper contextualization of traditional knowledge,
 and appropriate handling of sacred or sensitive cultural information.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import re

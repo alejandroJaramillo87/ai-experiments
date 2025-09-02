@@ -5,8 +5,6 @@ Comprehensive Test Suite for TestRunner
 Tests the TestRunner system without mocking, using real functionality
 to verify correct behavior across different execution modes and configurations.
 
-Author: Claude Code
-Version: 1.0.0
 """
 
 import unittest
