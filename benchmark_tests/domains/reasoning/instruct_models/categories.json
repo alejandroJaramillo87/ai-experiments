@@ -1,5 +1,15 @@
 {
   "categories": {
+    "basic_logic_patterns": {
+      "description": "Text continuation, pattern recognition, and sequence completion across global cultural contexts",
+      "reasoning_focus": "natural language flow, logical sequences, structural understanding, pattern completion",
+      "temperature_range": [0.3, 0.7],
+      "test_range": [1, 1],
+      "difficulty": "easy",
+      "test_ids": [
+        "basic_01"
+      ]
+    },
     "reasoning_logic": {
       "description": "Reasoning Logic tests",
       "difficulty": "medium",

@@ -257,7 +257,7 @@ class ResourceManager:
         if self.monitoring:
             self.monitoring = False
             if self.monitor_thread:
-                self.monitor_thread.join(timeout=2)
+                self.monitor_thread.join(timeout=5.0)
             logger.info("Resource monitoring stopped")
     
     def _monitor_loop(self, interval_seconds: int):
@@ -355,6 +355,52 @@ class ResourceManager:
                                 else 'normal'
             }
         }
+    
+    def get_current_metrics(self) -> ResourceMetrics:
+        """Get current resource usage metrics snapshot"""
+        return self.tracker.capture_snapshot()
+    
+    def analyze_resource_usage(self) -> Dict[str, Any]:
+        """Analyze resource usage trends and provide recommendations"""
+        memory_trend = self.tracker.analyze_memory_trend(300)  # 5-minute window
+        
+        # Determine status based on current memory usage
+        current_mb = memory_trend.get('current_mb', 0.0)
+        if current_mb >= self.limits.critical_threshold_mb:
+            status = 'critical'
+        elif current_mb >= self.limits.cleanup_threshold_mb:
+            status = 'warning'
+        else:
+            status = 'normal'
+        
+        # Generate recommendations based on trend analysis
+        recommendations = []
+        
+        if memory_trend.get('trend', 0.0) > 0 and memory_trend.get('rate_mb_per_min', 0.0) > 10:
+            recommendations.append("Memory usage is increasing rapidly - consider immediate cleanup")
+        
+        if memory_trend.get('stability', 1.0) < 0.5:
+            recommendations.append("Memory usage is unstable - investigate potential memory leaks")
+        
+        if current_mb >= self.limits.cleanup_threshold_mb:
+            recommendations.append("Memory usage above cleanup threshold - optimization recommended")
+        
+        if current_mb >= self.limits.critical_threshold_mb:
+            recommendations.append("Critical memory usage - immediate optimization required")
+        
+        if not recommendations:
+            recommendations.append("Memory usage is within normal parameters")
+        
+        return {
+            'memory_trend': memory_trend,
+            'status': status,
+            'recommendations': recommendations
+        }
+    
+    def force_optimization(self) -> Dict[str, Any]:
+        """Force immediate memory optimization"""
+        current_snapshot = self.tracker.capture_snapshot()
+        return self.optimizer.optimize_memory_usage(current_snapshot.memory_mb, force=True)
 
 # Global resource manager instance
 _global_resource_manager: Optional[ResourceManager] = None

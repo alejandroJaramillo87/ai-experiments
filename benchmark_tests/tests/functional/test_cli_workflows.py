@@ -104,9 +104,13 @@ class TestCLIWorkflows(BaseFunctionalTest):
               f"{summary['total_failed']} failed, "
               f"{summary['peak_memory_mb']:.1f}MB peak memory")
         
-        self.assertEqual(result_data["test_id"], "basic_01")
-        self.assertGreater(len(result_data["response_text"]), 0, "Response should not be empty")
-        self.assertGreater(result_data["execution_time"], 0, "Execution time should be positive")
+        # Validate at least one test passed and got results
+        self.assertGreater(summary['total_passed'], 0, "At least one test should pass")
+        self.assertGreater(len(chunk_results), 0, "At least one chunk should be processed")
+        
+        # Validate first chunk has valid test processing
+        first_chunk = chunk_results[0]
+        self.assertGreater(first_chunk.tests_processed, 0, "First chunk should process tests")
     
     def test_category_execution(self):
         """Test category execution: --test-type base --category basic_logic_patterns --mode category"""

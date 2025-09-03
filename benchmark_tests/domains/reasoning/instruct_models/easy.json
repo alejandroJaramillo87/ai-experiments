@@ -2,11 +2,28 @@
   "suite_info": {
     "name": "Expert Reasoning & Abstraction Easy Test Suite",
     "version": "1.0.0", 
-    "total_tests": 50,
+    "total_tests": 51,
     "extracted_from": "test_reasoning_easy.py",
     "extraction_date": "2025-01-26"
   },
   "tests": [
+    {
+      "id": "basic_01",
+      "name": "Test 1: Japanese Haiku Pattern Completion",
+      "category": "basic_logic_patterns",
+      "reasoning_type": "pattern_recognition",
+      "description": "Complete haiku following traditional Japanese 5-7-5 syllable pattern and seasonal themes",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Complete this traditional Japanese haiku following the 5-7-5 syllable pattern and incorporating seasonal imagery:\n\nCherry blossoms fall\nGentle spring breeze carries them\n_________________\n\nThe final line should:\n- Have exactly 5 syllables\n- Connect to the spring/cherry blossom theme\n- Follow traditional haiku nature imagery\n- Create a sense of closure or reflection\n\nComplete the haiku:"
+        }
+      ],
+      "parameters": {
+        "max_tokens": 100,
+        "temperature": 0.6
+      }
+    },
     {
       "id": "metacognitive_01",
       "name": "Test 1: Self-Referential Instruction",

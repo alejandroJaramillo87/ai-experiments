@@ -42,7 +42,10 @@ class TestNetworkFailureScenarios(BaseFunctionalTest):
             
             # Should handle timeout gracefully
             self.assertIn(health.status, [ServerStatus.TIMEOUT, ServerStatus.NETWORK_ERROR, ServerStatus.UNAVAILABLE])
-            self.assertIn("timeout", health.error_message.lower())
+            self.assertTrue(
+                any(term in health.error_message.lower() for term in ['timeout', 'timed out']),
+                f"Error message should contain timeout info: {health.error_message}"
+            )
     
     def test_invalid_endpoint_handling(self):
         """Test behavior with invalid server endpoints"""

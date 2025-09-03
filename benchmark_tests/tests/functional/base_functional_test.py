@@ -49,6 +49,9 @@ class BaseFunctionalTest(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures - create temporary output directory and check server status"""
+        # Set functional test mode for shorter API timeouts (30s instead of 600s)
+        os.environ['FUNCTIONAL_TEST_MODE'] = 'true'
+        
         self.temp_output_dir = tempfile.mkdtemp(prefix="benchmark_test_")
         
         # Change to benchmark_tests directory for CLI execution
@@ -68,6 +71,10 @@ class BaseFunctionalTest(unittest.TestCase):
         """Clean up test fixtures - remove temporary directories"""
         os.chdir(self.original_cwd)
         shutil.rmtree(self.temp_output_dir, ignore_errors=True)
+        
+        # Clean up environment variable
+        if 'FUNCTIONAL_TEST_MODE' in os.environ:
+            del os.environ['FUNCTIONAL_TEST_MODE']
     
     def run_cli_command(self, args: List[str], timeout: int = 180) -> Tuple[str, str, int]:
         """

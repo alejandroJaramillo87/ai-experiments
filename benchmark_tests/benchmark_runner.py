@@ -12,6 +12,7 @@ import time
 import logging
 import requests
 import os
+import sys
 import psutil
 import subprocess
 import threading
@@ -21,7 +22,7 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
 from pathlib import Path
 # Smart concurrency detection based on backend type
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 
 # Set up logging first
 logging.basicConfig(
@@ -1199,7 +1200,7 @@ class BenchmarkTestRunner:
             logger.error(f"Error loading categories: {e}")
             return False
     
-    def configure_api(self, endpoint: str, model: str, headers: Dict = None, timeout: int = 600) -> None:
+    def configure_api(self, endpoint: str, model: str, headers: Dict = None, timeout: int = None) -> None:
         """
         Configure API connection settings
         
@@ -1207,8 +1208,16 @@ class BenchmarkTestRunner:
             endpoint: Full API endpoint URL (e.g., 'http://127.0.0.1:8004/v1/completions')
             model: Model name
             headers: HTTP headers dictionary
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds (defaults to 30s for functional tests, 600s for production)
         """
+        # Smart timeout detection - use shorter timeouts for functional tests
+        if timeout is None:
+            if os.environ.get('FUNCTIONAL_TEST_MODE', '').lower() == 'true' or 'functional' in os.getcwd().lower():
+                timeout = 30  # 30 second timeout for functional tests
+                logger.info("Functional test environment detected - using 30s API timeout")
+            else:
+                timeout = 600  # 10 minute timeout for production benchmarking
+                logger.info("Production environment detected - using 600s API timeout")
         self.api_config = APIConfiguration(
             endpoint=endpoint,
             model=model,
@@ -1232,8 +1241,9 @@ class BenchmarkTestRunner:
             TestResult: Result of test execution
         """
         if test_id not in self.tests:
-            error_msg = f"Test {test_id} not found"
+            error_msg = f"❌ Test ID '{test_id}' not found"
             logger.error(error_msg)
+            print(error_msg, file=sys.stderr)  # Ensure error appears in stderr for functional tests
             return self._create_error_result(test_id, error_msg)
         
         if not self.api_config:
@@ -1320,8 +1330,8 @@ class BenchmarkTestRunner:
         
         try:
             for result in results:
-                # Create filename compatible with existing format
-                filename_safe_name = result.test_name.lower().replace(":", "").replace(" ", "_")
+                # Create filename compatible with existing format using unique test_id to prevent race conditions
+                filename_safe_name = result.test_id.lower().replace(":", "").replace(" ", "_")
                 output_path = os.path.join(output_dir, f"{filename_safe_name}_completion.txt")
                 
                 # Save in same format as monolithic version
@@ -1521,7 +1531,7 @@ class BenchmarkTestRunner:
                     bottlenecks = ", ".join(result.utilization_report.bottlenecks_detected) if result.utilization_report.bottlenecks_detected else "None"
                     logger.info(f"Test {result.test_id} performance - GPU: {result.performance_metrics.gpu_usage_percent:.1f}%, CPU: {result.performance_metrics.cpu_usage_percent:.1f}%, Memory: {result.performance_metrics.memory_usage_percent:.1f}%, Bottlenecks: {bottlenecks}")
         
-        # Execute tests concurrently
+        # Execute tests concurrently with timeout handling
         with ThreadPoolExecutor(max_workers=workers) as executor:
             # Submit all tasks with performance monitoring parameter
             future_to_test = {
@@ -1529,20 +1539,31 @@ class BenchmarkTestRunner:
                 for test_id in test_ids
             }
             
-            # Collect results as they complete
-            for future in as_completed(future_to_test):
-                test_id = future_to_test[future]
-                
-                try:
-                    result = future.result()
-                    results.append(result)
-                    update_progress_concurrent(result)
+            # Collect results as they complete with timeout protection
+            try:
+                for future in as_completed(future_to_test, timeout=120):  # 2-minute timeout per batch
+                    test_id = future_to_test[future]
                     
-                except Exception as e:
-                    # Create error result if thread execution fails
-                    error_result = self._create_error_result(test_id, f"Thread execution error: {e}")
-                    results.append(error_result)
-                    update_progress_concurrent(error_result)
+                    try:
+                        result = future.result(timeout=60)  # 1-minute timeout per individual test
+                        results.append(result)
+                        update_progress_concurrent(result)
+                        
+                    except Exception as e:
+                        # Create error result if thread execution fails
+                        error_result = self._create_error_result(test_id, f"Thread execution error: {e}")
+                        results.append(error_result)
+                        update_progress_concurrent(error_result)
+            
+            except concurrent.futures.TimeoutError:
+                # Handle overall timeout - cancel remaining futures and create error results
+                logger.error("Concurrent execution timed out - cancelling remaining tasks")
+                for future, test_id in future_to_test.items():
+                    if not future.done():
+                        future.cancel()
+                        error_result = self._create_error_result(test_id, "Execution timed out")
+                        results.append(error_result)
+                        update_progress_concurrent(error_result)
         
         # Final progress logging
         self._log_final_progress()
@@ -1708,9 +1729,27 @@ class BenchmarkTestRunner:
     
     def _build_completions_payload(self, test_case: Dict) -> Dict:
         """Build payload for completions API"""
+        # Handle instruct tests with messages format
+        if 'messages' in test_case:
+            # Convert messages array to single prompt string
+            prompt_parts = []
+            for message in test_case['messages']:
+                role = message.get('role', 'user')
+                content = message.get('content', '')
+                if role == 'user':
+                    prompt_parts.append(content)
+                elif role == 'assistant':
+                    prompt_parts.append(f"Assistant: {content}")
+                elif role == 'system':
+                    prompt_parts.append(f"System: {content}")
+            prompt = '\n'.join(prompt_parts)
+        else:
+            # Standard base model format
+            prompt = test_case.get('prompt', '')
+            
         return {
             "model": self.api_config.model,
-            "prompt": test_case.get('prompt', ''),
+            "prompt": prompt,
             **test_case.get('parameters', {})
         }
     
@@ -1907,7 +1946,11 @@ class BenchmarkTestRunner:
               ENHANCED_EVALUATION_AVAILABLE):
             return self._perform_enhanced_evaluation(response_text, test_case, test_id, reasoning_type)
         
-        # Fallback to basic evaluation
+        # Check basic evaluation flag
+        elif (hasattr(self, 'evaluation') and self.evaluation and EVALUATION_AVAILABLE):
+            return self._perform_basic_evaluation(response_text, test_case, test_id, reasoning_type)
+        
+        # Fallback to basic evaluation if available
         elif EVALUATION_AVAILABLE:
             return self._perform_basic_evaluation(response_text, test_case, test_id, reasoning_type)
         
@@ -2561,7 +2604,9 @@ if __name__ == "__main__":
             runner.set_verbose_logging(True)
             logging.getLogger().setLevel(logging.INFO)
         
-        # Configure enhanced evaluation options
+        # Configure evaluation options
+        if hasattr(args, 'evaluation') and args.evaluation:
+            runner.evaluation = args.evaluation
         if hasattr(args, 'enhanced_evaluation'):
             runner.enhanced_evaluation = args.enhanced_evaluation
         if hasattr(args, 'evaluation_mode'):
@@ -2639,8 +2684,27 @@ if __name__ == "__main__":
         execution_description = f"category '{args.category}': {len(test_ids_to_run)} tests"
     
     elif args.mode in ["sequential", "concurrent"]:
-        test_ids_to_run = list(runner.tests.keys())
-        execution_description = f"all {len(test_ids_to_run)} tests ({args.mode})"
+        if args.test_id:
+            # Parse comma-separated test IDs for specific tests in sequential/concurrent mode
+            requested_ids = [tid.strip() for tid in args.test_id.split(',')]
+            test_ids_to_run = []
+            missing_ids = []
+            
+            for test_id in requested_ids:
+                if test_id in runner.tests:
+                    test_ids_to_run.append(test_id)
+                else:
+                    missing_ids.append(test_id)
+            
+            if missing_ids:
+                print(f"❌ Test IDs not found: {', '.join(missing_ids)}")
+                sys.exit(1)
+                
+            execution_description = f"{len(test_ids_to_run)} specific tests ({args.mode}): {', '.join(test_ids_to_run)}"
+        else:
+            # No specific test IDs provided - run all tests
+            test_ids_to_run = list(runner.tests.keys())
+            execution_description = f"all {len(test_ids_to_run)} tests ({args.mode})"
     
     print(f"\nPlanned execution: {execution_description}")
     
@@ -2803,6 +2867,11 @@ if __name__ == "__main__":
             print(f"\n⚠️  Evaluation requested but UniversalEvaluator not available")
         
         print(f"\nResults saved to: {args.output_dir}/")
+        
+        # Exit with error code if all tests failed (indicates server unavailability)
+        if len(results) > 0 and success_count == 0:
+            print(f"\n❌ All tests failed - server may be unavailable")
+            sys.exit(1)
         
     except KeyboardInterrupt:
         print("\n❌ Execution cancelled by user")

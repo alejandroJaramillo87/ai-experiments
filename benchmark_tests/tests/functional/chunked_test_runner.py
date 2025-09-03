@@ -206,8 +206,7 @@ class ChunkedTestRunner:
         # Build test-specific command
         test_args = base_args.copy()
         test_args.extend([
-            "--test-id", test_data.get('id', 'unknown'),
-            "--timeout", str(self.config.timeout_per_test)
+            "--test-id", test_data.get('id', 'unknown')
         ])
         
         try:
