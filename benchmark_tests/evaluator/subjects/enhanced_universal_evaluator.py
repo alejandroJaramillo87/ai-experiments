@@ -626,6 +626,13 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
         # Ensure reasonable bounds (target 75-85 for perfect haiku completion)
         final_score = max(min(final_score, 95.0), 15.0)
         
+        # Update enhanced_scores with haiku-specific information
+        enhanced_scores['haiku_syllable_score'] = syllable_score
+        enhanced_scores['haiku_thematic_score'] = thematic_score
+        enhanced_scores['haiku_cultural_score'] = cultural_score
+        enhanced_scores['haiku_poetic_score'] = poetic_score
+        enhanced_scores['haiku_completion_score'] = specialized_total
+        
         logger.info(f"HAIKU_EVAL: baseline={baseline_score}, syllable={syllable_score:.1f}, "
                    f"thematic={thematic_score:.1f}, cultural={cultural_score:.1f}, "
                    f"poetic={poetic_score:.1f}, final={final_score:.1f}")
@@ -762,6 +769,17 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
         prompt = test_definition.get('prompt', '').lower()
         description = test_definition.get('description', '').lower()
         
+        # Check if this is actually cultural content
+        is_cultural = any(term in prompt or term in description or term in response_text.lower() 
+                         for term in ['cultural', 'tradition', 'spiritual', 'religious', 'heritage', 
+                                     'islamic', 'arabic', 'native', 'chinese', 'vedic', 'celtic', 'yoruba', 
+                                     'african', 'wu xing', 'five elements', 'dharma', 'karma'])
+        
+        # For non-cultural content, return base score unchanged
+        if not is_cultural:
+            logger.info("CULTURAL_EVAL: Non-cultural content detected, returning base score")
+            return base_overall_score
+        
         # Cultural reasoning should have a higher baseline for sophisticated content
         # CALIBRATION FIX: Increased from 35.0 to 47.0 to bridge 15-20 point gap to target ranges
         baseline_score = 47.0
@@ -790,6 +808,12 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
         
         # Ensure appropriate bounds for cultural content (target 65-85 for sophisticated content)
         final_score = max(min(final_score, 90.0), 25.0)
+        
+        # Update enhanced_scores with cultural depth information
+        enhanced_scores['cultural_depth_score'] = cultural_score
+        enhanced_scores['cultural_authenticity_score'] = cultural_score
+        enhanced_scores['cultural_pattern_score'] = pattern_score
+        enhanced_scores['cultural_sensitivity_score'] = sensitivity_score
         
         logger.info(f"CULTURAL_EVAL: baseline={baseline_score}, cultural={cultural_score:.1f}, "
                    f"pattern={pattern_score:.1f}, sensitivity={sensitivity_score:.1f}, "
@@ -940,73 +964,96 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
         score = 0.0
         response_lower = response_text.lower()
         
-        # Islamic/Arabic content recognition
-        if any(term in prompt or term in description for term in ['arabic', 'quranic', 'islamic', 'allah']):
-            # Base score for attempting Islamic content
-            score += 8.0  # Base Islamic content recognition
+        # Islamic/Arabic content recognition  
+        prompt_lower = prompt.lower()
+        description_lower = description.lower()
+        if (any(term in prompt_lower or term in description_lower for term in ['arabic', 'quranic', 'islamic', 'allah', 'spiritual', 'divine']) or
+            any(term in response_lower for term in ['allah', 'quran', "insha'allah", 'bismillah', 'mashallah', 'divine', 'spiritual', 'righteousness'])):
             
-            islamic_terms = ['allah', 'spirit', 'divine', 'sacred', 'blessed', 'grace', 'mercy', 'god', 'lord', 'creator']
-            islamic_matches = sum(2.5 for term in islamic_terms if term in response_lower)
-            score += min(islamic_matches, 12.0)
+            # Check for inappropriate/disrespectful content first
+            inappropriate_terms = ['nonsense', 'mythology', 'outdated', 'stupid', 'fake', 'primitive', 'backward']
+            if any(term in response_lower for term in inappropriate_terms):
+                score += 5.0  # Very low score for inappropriate content
+                return min(score, 100.0)  # Early return to avoid positive scoring
+            
+            # Base score for attempting Islamic content
+            score += 30.0  # Enhanced base Islamic content recognition
+            
+            islamic_terms = ['allah', 'spirit', 'divine', 'sacred', 'blessed', 'grace', 'mercy', 'god', 'lord', 'creator', 'quran', 'guidance', 'wisdom', 'compassion', 'righteousness', 'prayer', 'faith']
+            # More robust matching that handles punctuation
+            import re
+            response_cleaned = re.sub(r'[^\w\s]', ' ', response_lower)  # Replace punctuation with spaces
+            
+            # Enhanced term matching with punctuation handling
+            matched_terms = [term for term in islamic_terms if term in response_cleaned or term in response_lower]
+            islamic_matches = len(matched_terms) * 5.0
+            term_score = min(islamic_matches, 40.0)
+            score += term_score
             
             # Parallel structure bonus for Quranic patterns  
             if 'who granted' in response_lower and 'then' in response_lower:
                 score += 10.0  # Higher bonus for proper structure
         
         # Native American content recognition  
-        if any(term in prompt or term in description for term in ['native american', 'ojibwe', 'creation', 'turtle']):
+        if (any(term in prompt_lower or term in description_lower for term in ['native american', 'ojibwe', 'creation', 'turtle']) or
+            any(term in response_lower for term in ['turtle', 'great spirit', 'sacred', 'mother earth', 'ceremony'])):
             # Base score for attempting Native American content
-            score += 6.0  # Base Native American content recognition
+            score += 20.0  # Enhanced base Native American content recognition
             
-            native_terms = ['spirit', 'earth', 'beings', 'harmony', 'balance', 'sacred', 'people', 'land', 'great', 'turtle', 'creation']
-            native_matches = sum(2.5 for term in native_terms if term in response_lower)
-            score += min(native_matches, 15.0)
+            native_terms = ['spirit', 'earth', 'beings', 'harmony', 'balance', 'sacred', 'people', 'land', 'great', 'turtle', 'creation', 'ancestors', 'traditional', 'teachings', 'tribal', 'wisdom', 'spirits', 'directions', 'island']
+            native_matches = sum(3.0 for term in native_terms if term in response_lower)
+            native_term_score = min(native_matches, 25.0)  # Enhanced scoring cap
+            score += native_term_score
             
             # Creation sequence bonus
             if any(word in response_lower for word in ['finally', 'people', 'harmony', 'balance', 'complete']):
                 score += 9.0  # Higher bonus for proper completion
         
         # Chinese Five Elements content recognition
-        if any(term in prompt or term in description for term in ['chinese', 'wu xing', 'five elements']):
+        if (any(term in prompt_lower or term in description_lower for term in ['chinese', 'wu xing', 'five elements']) or
+            any(term in response_lower for term in ['five elements', 'wu xing', 'wood', 'fire', 'earth', 'metal', 'water', 'chinese'])):
             # Base score for attempting Chinese philosophical content
-            score += 8.0  # Base Chinese cultural recognition
+            score += 30.0  # Enhanced base Chinese cultural recognition
             
-            chinese_terms = ['wood', 'fire', 'earth', 'metal', 'water', 'generation', 'destruction', 'cycle', 'energy', 'balance']
-            chinese_matches = sum(2.0 for term in chinese_terms if term in response_lower)
-            score += min(chinese_matches, 12.0)
+            chinese_terms = ['wood', 'fire', 'earth', 'metal', 'water', 'generation', 'destruction', 'cycle', 'energy', 'balance', 'elements', 'philosophy', 'fundamental', 'forces', 'nature', 'harmony', 'transform', 'interact']
+            chinese_matches = sum(4.0 for term in chinese_terms if term in response_lower)
+            score += min(chinese_matches, 40.0)  # Enhanced scoring cap
             
             # Five Elements logic bonus
             if any(logic in response_lower for logic in ['fire', 'water', 'wood', 'metal', 'earth']):
                 score += 10.0  # Bonus for proper element understanding
         
         # Vedic/Sanskrit content recognition
-        if any(term in prompt or term in description for term in ['vedic', 'sanskrit']):
+        if (any(term in prompt_lower or term in description_lower for term in ['vedic', 'sanskrit']) or
+            any(term in response_lower for term in ['vedic', 'dharma', 'karma', 'moksha', 'yoga', 'meditation', 'rishis', 'spiritual'])):
             # Base score for attempting Vedic content
-            score += 7.0  # Base Vedic cultural recognition
+            score += 30.0  # Enhanced base Vedic cultural recognition
             
-            vedic_terms = ['light', 'truth', 'immortality', 'knowledge', 'freedom', 'peace', 'wisdom', 'consciousness']
-            vedic_matches = sum(2.5 for term in vedic_terms if term in response_lower)
-            score += min(vedic_matches, 13.0)
+            vedic_terms = ['light', 'truth', 'immortality', 'knowledge', 'freedom', 'peace', 'wisdom', 'consciousness', 'dharma', 'karma', 'moksha', 'yoga', 'meditation', 'rishis', 'spiritual', 'liberation', 'ancient', 'tradition', 'righteous', 'living', 'consequence', 'taught', 'path']
+            vedic_matches = sum(4.0 for term in vedic_terms if term in response_lower)
+            score += min(vedic_matches, 40.0)  # Enhanced scoring cap
             
             # Parallel structure bonus
             if 'from' in response_lower and ('to' in response_lower or 'lead me' in response_lower):
                 score += 10.0  # Bonus for proper Vedic structure
         
         # Celtic content recognition
-        if any(term in prompt or term in description for term in ['celtic', 'triadic']):
+        if (any(term in prompt_lower or term in description_lower for term in ['celtic', 'triadic']) or
+            any(term in response_lower for term in ['celtic', 'druid', 'harmony', 'nature', 'wisdom'])):
             # Base score for attempting Celtic content
-            score += 6.0  # Base Celtic cultural recognition
+            score += 20.0  # Enhanced base Celtic cultural recognition
             
-            celtic_terms = ['trust', 'wisdom', 'growth', 'strength', 'harmony', 'three', 'truth', 'understanding']
-            celtic_matches = sum(2.0 for term in celtic_terms if term in response_lower)
-            score += min(celtic_matches, 12.0)
+            celtic_terms = ['trust', 'wisdom', 'growth', 'strength', 'harmony', 'three', 'truth', 'understanding', 'druids', 'nature', 'traditional', 'storytelling', 'ancient', 'culture']
+            celtic_matches = sum(2.5 for term in celtic_terms if term in response_lower)
+            score += min(celtic_matches, 20.0)  # Enhanced scoring
             
             # Triadic pattern bonus
             if response_lower.count(',') >= 2:  # Looking for three-part structure
                 score += 12.0  # Bonus for triadic structure
         
         # Yoruba content recognition
-        if any(term in prompt or term in description for term in ['yoruba', 'oriki']):
+        if (any(term in prompt_lower or term in description_lower for term in ['yoruba', 'oriki', 'west african', 'african']) or
+            any(term in response_lower for term in ['yoruba', 'oriki', 'african', 'heritage', 'traditional', 'spiritual'])):
             # Base score for attempting Yoruba content
             score += 7.0  # Base Yoruba cultural recognition
             
@@ -1018,21 +1065,42 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
             if any(praise in response_lower for praise in ['protector', 'guardian', 'master', 'strong']):
                 score += 10.0  # Bonus for proper praise structure
         
-        return min(score, 30.0)
+        return min(score, 100.0)  # More reasonable cap for enhanced scoring
     
     def _assess_cultural_pattern_completion(self, response_text: str, test_definition: Dict[str, Any]) -> float:
         """Assess how well the response completes cultural patterns"""
         score = 0.0
         prompt = test_definition.get('prompt', '').lower()
         
-        # Parallel structure completion (for Quranic patterns)
-        if 'who granted' in prompt and 'then' in prompt:
-            if 'who' in response_text.lower() and 'then' in response_text.lower():
-                score += 15.0  # Maintains parallel structure
-            elif any(word in response_text.lower() for word in ['granted', 'gave', 'blessed', 'who', 'created', 'taught']):
-                score += 10.0   # Partial pattern recognition
+        # Islamic/Quranic pattern recognition
+        cultural_context = test_definition.get('cultural_context', {})
+        traditions = cultural_context.get('traditions', [])
+        response_lower = response_text.lower()
+        
+        is_islamic = (any('islamic' in str(t).lower() for t in traditions) or
+                     'who granted' in prompt and 'then' in prompt or
+                     any(term in response_lower for term in ['allah', 'quran', 'divine']))
+        
+        # Islamic pattern completion
+        if is_islamic:
+            # Quranic parallel structure (original logic)
+            if 'who granted' in prompt and 'then' in prompt:
+                if 'who' in response_text.lower() and 'then' in response_text.lower():
+                    score += 15.0  # Maintains parallel structure
+                elif any(word in response_text.lower() for word in ['granted', 'gave', 'blessed', 'who', 'created', 'taught']):
+                    score += 10.0   # Partial pattern recognition
+                else:
+                    score += 5.0    # At least attempted completion
             else:
-                score += 5.0    # At least attempted completion
+                # General Islamic pattern completion
+                islamic_terms = ['allah', 'quran', 'divine', 'mercy', 'guidance', 'teaches', 'provides']
+                term_matches = sum(1 for term in islamic_terms if term in response_lower)
+                if term_matches >= 3:
+                    score += 15.0  # Rich Islamic content
+                elif term_matches >= 1:
+                    score += 10.0  # Some Islamic content
+                else:
+                    score += 5.0   # Basic attempt
         
         # Sequential completion (for creation stories)
         if 'finally' in prompt:
@@ -1043,7 +1111,11 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
                 score += 5.0
         
         # Chinese Five Elements pattern completion
-        if 'five elements' in prompt.lower() or 'wu xing' in prompt.lower():
+        is_chinese_elements = (any('chinese' in str(t).lower() or 'wu xing' in str(t).lower() for t in traditions) or
+                              'five elements' in prompt.lower() or 'wu xing' in prompt.lower() or
+                              any(term in response_lower for term in ['five elements', 'wu xing']))
+        
+        if is_chinese_elements:
             response_lower = response_text.lower()
             if any(element in response_lower for element in ['fire', 'water', 'wood', 'metal', 'earth']):
                 score += 12.0  # Correctly identifies elements
@@ -1063,7 +1135,11 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
                 score += 5.0
         
         # Celtic triadic pattern completion
-        if 'celtic' in prompt or 'triadic' in prompt or 'three things' in prompt:
+        is_celtic_triadic = (any('celtic' in str(t).lower() for t in traditions) or
+                            'celtic' in prompt or 'triadic' in prompt or 'three things' in prompt or
+                            any(term in response_lower for term in ['triad', 'three', 'celtic']))
+        
+        if is_celtic_triadic:
             response_lower = response_text.lower()
             comma_count = response_lower.count(',')
             and_count = response_lower.count(' and ')
@@ -1084,6 +1160,15 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
                 score += 8.0   # Metaphorical language
             if len(response_text.split()) >= 4:
                 score += 5.0
+        
+        # Fallback scoring for general cultural responses
+        if score == 0.0:  # No specific patterns matched
+            cultural_context = test_definition.get('cultural_context', {})
+            traditions = cultural_context.get('traditions', [])
+            if 'general' in traditions or not traditions:
+                # Give base score for attempting any cultural response
+                if len(response_text.strip()) > 0:
+                    score += 8.0  # Base score for general cultural attempt
         
         return min(score, 25.0)
     
@@ -1238,7 +1323,7 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
             logger.info(f"SCORE_FIX: Applied short response penalty of {penalty:.1f} points")
         
         # Ensure reasonable score range (Phase 1 target: 40-70 for quality responses)
-        final_score = max(min(final_score, 105.0), 0.0)
+        final_score = max(min(final_score, 100.0), 0.0)
         
         logger.info(f"SCORE_INTEGRATION: base={base_overall_score:.1f} -> enhanced={final_score:.1f} "
                    f"(exact={exact_match:.3f}, partial={partial_match:.3f}, semantic={semantic_similarity:.3f})")
@@ -1454,7 +1539,8 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
             return obj
 
 # Backward compatibility: maintain existing interface
-def evaluate_reasoning(response_text: str, test_name: str, reasoning_type: Optional[Union[str, ReasoningType]] = None) -> EvaluationResult:
-    """Backward compatible function for existing code"""
+def evaluate_reasoning(response_text: str, test_name: str, reasoning_type: Optional[Union[str, ReasoningType]] = None) -> float:
+    """Backward compatible function for existing code - returns numeric score"""
     evaluator = EnhancedUniversalEvaluator()
-    return evaluator.evaluate_response(response_text, test_name, reasoning_type)
+    result = evaluator.evaluate_response(response_text, test_name, reasoning_type)
+    return float(result.metrics.overall_score)

@@ -313,6 +313,7 @@ debug-help:
 	@echo "  $(GREEN)make debug-enhanced-system$(RESET)      - Debug enhanced universal evaluator system (comprehensive)"
 	@echo "  $(GREEN)make debug-enhanced-evaluator$(RESET)   - Debug Phase 1 enhanced universal evaluator (detailed)"
 	@echo "  $(GREEN)make debug-scoring-calibration$(RESET)  - Debug Phase 1 scoring calibration fixes"
+	@echo "  $(GREEN)make debug-concurrent-timeouts$(RESET)  - Debug concurrent execution timeout issues (Phase 1B)"
 	@echo "  $(GREEN)make test-cultural-calibration$(RESET)  - Test cultural reasoning evaluation on specific tests"
 	@echo "  $(GREEN)make debug-cultural-task-detection$(RESET) - Check if cultural tests are being detected properly"
 	@echo "  $(GREEN)make debug-batch-task-detection$(RESET) - Check cultural task detection for basic_05-08"
@@ -322,6 +323,7 @@ debug-help:
 	@echo "  $(CYAN)make debug-enhanced-system$(RESET)       # Run comprehensive enhanced system debug"
 	@echo "  $(CYAN)make debug-enhanced-evaluator$(RESET)     # Run enhanced evaluator debug with multi-tier scoring"
 	@echo "  $(CYAN)make debug-scoring-calibration$(RESET)    # Test and validate Phase 1 scoring calibration fixes"
+	@echo "  $(CYAN)make debug-concurrent-timeouts$(RESET)    # Analyze concurrent execution timeout issues"
 
 # Debug enhanced universal evaluator system (comprehensive)
 debug-enhanced-system:
@@ -340,6 +342,56 @@ debug-scoring-calibration:
 	@echo "$(BOLD)$(BLUE)🎯 Debugging Scoring Calibration Fixes$(RESET)"
 	@echo "========================================="
 	@$(PYTHON) $(DEBUG_DIR)/debug_scoring_calibration.py
+
+# Debug concurrent execution timeouts
+debug-concurrent-timeouts:
+	@echo "$(BOLD)$(BLUE)🔍 Debugging Concurrent Execution Timeouts$(RESET)"
+	@echo "============================================"
+	@echo "$(CYAN)Analyzing performance bottlenecks in concurrent execution$(RESET)"
+	@$(PYTHON) scripts/debugging/performance_monitor.py
+
+# Basic server diagnostic for timeout issues  
+debug-server-basic:
+	@echo "$(BOLD)$(BLUE)🔍 Basic Server Diagnostic$(RESET)"
+	@echo "=========================="
+	@echo "$(CYAN)Checking server responsiveness before concurrent analysis$(RESET)"
+	@$(PYTHON) scripts/debugging/basic_server_check.py
+
+# Test single benchmark execution to debug timeout root cause
+debug-single-benchmark:
+	@echo "$(BOLD)$(BLUE)🧪 Single Benchmark Execution Debug$(RESET)"
+	@echo "======================================="
+	@echo "$(CYAN)Testing single benchmark execution to identify root cause$(RESET)"
+	@$(PYTHON) benchmark_runner.py --test-type base --test-id basic_01 --endpoint http://localhost:8004/v1/completions --model llama3 2>&1
+
+# Test concurrent execution directly with correct endpoint  
+debug-concurrent-execution:
+	@echo "$(BOLD)$(BLUE)🔄 Testing Concurrent Execution$(RESET)"
+	@echo "======================================"
+	@echo "$(CYAN)Testing concurrent execution with 2 workers$(RESET)"
+	@$(PYTHON) benchmark_runner.py --test-type base --test-id basic_01,basic_02 --mode concurrent --workers 2 --endpoint http://localhost:8004/v1/completions --model llama3 --verbose 2>&1
+
+# Test the originally failing functional tests
+test-failing-functional-tests:
+	@echo "$(BOLD)$(BLUE)🧪 Testing Originally Failing Functional Tests$(RESET)"
+	@echo "=============================================="
+	@echo "$(CYAN)Running the 3 concurrent execution tests that were timing out$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Test 1: test_concurrent_execution$(RESET)"
+	@timeout 90s $(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/functional/test_domain_execution.py::TestDomainExecution::test_concurrent_execution -v || echo "$(RED)❌ Test 1 failed or timed out$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Test 2: test_sequential_vs_concurrent_comparison$(RESET)"
+	@timeout 90s $(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/functional/test_domain_execution.py::TestDomainExecution::test_sequential_vs_concurrent_comparison -v || echo "$(RED)❌ Test 2 failed or timed out$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Test 3: test_concurrent_results_integrity$(RESET)"
+	@timeout 90s $(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/functional/test_result_validation.py::TestResultValidation::test_concurrent_results_integrity -v || echo "$(RED)❌ Test 3 failed or timed out$(RESET)"
+
+# Test single failing functional test
+test-single-failing-test:
+	@echo "$(BOLD)$(BLUE)🧪 Testing Single Failing Functional Test$(RESET)"
+	@echo "==========================================="
+	@echo "$(CYAN)Running test_concurrent_execution with timeout$(RESET)"
+	@timeout 60s $(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/functional/test_domain_execution.py::TestDomainExecution::test_concurrent_execution -v
 
 # Test cultural reasoning calibration
 test-cultural-calibration:
@@ -945,3 +997,176 @@ test-server-dependent: pre-test
 	@echo ""
 	@echo "$(GREEN)✅ Server-dependent test validation complete$(RESET)"
 	@$(MAKE) post-test
+
+# Test nonexistent test ID error handling manually
+test-error-handling-manual:
+	@echo "$(BOLD)$(BLUE)🧪 Testing Error Handling for Nonexistent Test ID$(RESET)"
+	@echo "======================================================"
+	@echo "$(CYAN)Running benchmark_runner.py with nonexistent test ID...$(RESET)"
+	@echo ""
+	@python benchmark_runner.py --test-type base --test-id nonexistent_test_999 --endpoint http://127.0.0.1:8004/v1/completions --model "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b" --output-dir /tmp/test_output 2>&1 || echo "$(GREEN)✅ Error handling working - nonzero exit code as expected$(RESET)"
+
+# Debug evaluation flag behavior manually
+debug-evaluation-flag:
+	@echo "$(BOLD)$(BLUE)🔧 Debugging Evaluation Flag Behavior$(RESET)"
+	@echo "================================================="
+	@echo "$(CYAN)Running benchmark_runner.py with --evaluation flag...$(RESET)"
+	@echo ""
+	@mkdir -p /tmp/eval_test_output
+	@python benchmark_runner.py --test-type base --test-id basic_01 --evaluation --endpoint http://127.0.0.1:8004/v1/completions --model "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b" --output-dir /tmp/eval_test_output --verbose
+	@echo ""
+	@echo "$(CYAN)Contents of output directory:$(RESET)"
+	@ls -la /tmp/eval_test_output/
+	@echo ""
+	@echo "$(CYAN)Checking result file for evaluation data:$(RESET)"
+	@find /tmp/eval_test_output/ -name "*.json" -exec echo "File: {}" \; -exec cat {} \; 2>/dev/null || echo "No JSON files found"
+
+# Debug pattern_completion category execution
+debug-pattern-completion:
+	@echo "$(BOLD)$(BLUE)🧪 Debugging Pattern Completion Category$(RESET)"
+	@echo "==================================================="
+	@echo "$(CYAN)Running benchmark_runner.py with pattern_completion category...$(RESET)"
+	@echo ""
+	@mkdir -p /tmp/pattern_test_output
+	@timeout 60s python benchmark_runner.py --test-type base --category pattern_completion --mode category --endpoint http://127.0.0.1:8004/v1/completions --model "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b" --output-dir /tmp/pattern_test_output --verbose 2>&1 || echo "$(YELLOW)⚠️ Command timed out or failed$(RESET)"
+	@echo ""
+	@echo "$(CYAN)Contents of output directory:$(RESET)"
+	@ls -la /tmp/pattern_test_output/ 2>/dev/null || echo "Directory not found"
+	@echo ""
+	@echo "$(CYAN)Test IDs in pattern_completion category:$(RESET)"
+	@python -c "import json; data=json.load(open('domains/reasoning/base_models/categories.json')); print('Test IDs:', data['categories']['pattern_completion']['test_ids'])"
+
+# Debug production test duplicate files issue
+check-pycache-dirs:
+	@echo "$(BOLD)$(BLUE)🔍 Checking Python Cache Directories$(RESET)"
+	@echo "====================================="
+	@python3 -c "import os; cache_dirs = [d for root, dirs, files in os.walk('tests') for d in dirs if d == '__pycache__']; print(f'Found {len(cache_dirs)} __pycache__ directories in tests/'); [print(f'  {os.path.join(root, d)}') for root, dirs, files in os.walk('tests') for d in dirs if d == '__pycache__']"
+
+debug-duplicate-files:
+	@echo "$(BOLD)$(BLUE)🔍 Debug Duplicate Test Files Issue$(RESET)"
+	@echo "========================================="
+	@echo "$(CYAN)Checking for duplicate test files in both test_cultural_validation/ and test_core_modules/$(RESET)"
+	@python3 -c "import os; import glob; cultural_files = set(os.path.basename(f) for f in glob.glob('tests/unit/test_cultural_validation/test_*.py')); core_files = set(os.path.basename(f) for f in glob.glob('tests/unit/test_core_modules/test_*.py')); duplicates = cultural_files & core_files; print(f'Duplicate files found: {len(duplicates)}'); [print(f'  - {f}') for f in sorted(duplicates)]"
+
+fix-duplicate-files:
+	@echo "$(BOLD)$(BLUE)🔧 Fixing Duplicate Test Files$(RESET)"
+	@echo "=================================="
+	@echo "$(YELLOW)⚠️  Removing duplicate files from test_core_modules/ (keeping originals in test_cultural_validation/)$(RESET)"
+	@python3 -c "import os; duplicates = ['test_cultural_authenticity.py', 'test_cultural_dataset_validator.py', 'test_cultural_pattern_library.py', 'test_tradition_validator.py']; [os.remove(f'tests/unit/test_core_modules/{f}') if os.path.exists(f'tests/unit/test_core_modules/{f}') else print(f'File {f} already removed') for f in duplicates]; print('✅ Duplicate files removed from test_core_modules/')"
+
+# Debug functional test failures (Phase 1 Stabilization)
+debug-category-execution:
+	@echo "$(BOLD)$(BLUE)🔍 Debug Category Execution Test$(RESET)"
+	@echo "====================================="
+	@echo "$(CYAN)Testing --category basic_logic_patterns --mode category CLI execution$(RESET)"
+	@mkdir -p /tmp/debug_category_test
+	@python3 benchmark_runner.py --test-type base --category basic_logic_patterns --mode category --endpoint http://localhost:8004/v1/completions --model "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b" --output-dir /tmp/debug_category_test --verbose 2>&1 || echo "$(RED)❌ Category execution failed$(RESET)"
+	@echo ""
+	@echo "$(CYAN)Output directory contents:$(RESET)"
+	@ls -la /tmp/debug_category_test/ 2>/dev/null || echo "Directory not found"
+
+debug-instruct-execution:
+	@echo "$(BOLD)$(BLUE)🔍 Debug Instruct Domain Execution Test$(RESET)"
+	@echo "==========================================="
+	@echo "$(CYAN)Testing --test-type instruct --test-id basic_01 CLI execution$(RESET)"
+	@mkdir -p /tmp/debug_instruct_test
+	@python3 benchmark_runner.py --test-type instruct --test-id basic_01 --endpoint http://localhost:8004/v1/completions --model "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b" --output-dir /tmp/debug_instruct_test --verbose 2>&1 || echo "$(RED)❌ Instruct execution failed$(RESET)"
+	@echo ""
+	@echo "$(CYAN)Output directory contents:$(RESET)"
+	@ls -la /tmp/debug_instruct_test/ 2>/dev/null || echo "Directory not found"
+	@echo ""
+	@echo "$(CYAN)Checking instruct domain files:$(RESET)"
+	@ls -la domains/reasoning/instruct_models/
+
+debug-chunked-execution:
+	@echo "$(BOLD)$(BLUE)🔍 Debug Chunked Execution Test$(RESET)"
+	@echo "===================================="
+	@echo "$(CYAN)Testing chunked execution runner functionality$(RESET)"
+	@python3 -c "from tests.functional.chunked_test_runner import create_quick_test_runner; runner = create_quick_test_runner(chunk_size=2, timeout=30); print('✅ Quick test runner created successfully')" || echo "$(RED)❌ Chunked test runner import/creation failed$(RESET)"
+
+debug-functional-test-failures:
+	@echo "$(BOLD)$(BLUE)🔍 Debug All Functional Test Failures$(RESET)"
+	@echo "============================================="
+	@echo "$(CYAN)Running individual failing functional tests with detailed output$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Test 1: Category Execution$(RESET)"
+	@timeout 60s $(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/functional/test_cli_workflows.py::TestCLIWorkflows::test_category_execution -v -s || echo "$(RED)❌ Category execution test failed$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Test 2: Chunked Category Execution$(RESET)"
+	@timeout 60s $(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/functional/test_cli_workflows.py::TestCLIWorkflows::test_chunked_category_execution -v -s || echo "$(RED)❌ Chunked category execution test failed$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Test 3: Instruct Domain Execution$(RESET)"
+	@timeout 60s $(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/functional/test_domain_execution.py::TestDomainExecution::test_instruct_domain_execution -v -s || echo "$(RED)❌ Instruct domain execution test failed$(RESET)"
+
+debug-chunked-subprocess-execution:
+	@echo "$(BOLD)$(BLUE)🔍 Debug Chunked Test Subprocess Execution$(RESET)"
+	@echo "======================================================"
+	@echo "$(CYAN)Testing individual basic_01 and basic_02 via subprocess as chunked runner does$(RESET)"
+	@mkdir -p /tmp/debug_chunked_subprocess
+	@echo ""
+	@echo "$(YELLOW)Subprocess test 1: basic_01$(RESET)"
+	@cd /home/alejandro/workspace/ai-workstation/benchmark_tests && timeout 45s python benchmark_runner.py --test-type base --test-id basic_01 --endpoint http://localhost:8004/v1/completions --model "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b" --enhanced-evaluation --output-dir /tmp/debug_chunked_subprocess 2>&1 || echo "$(RED)❌ basic_01 subprocess failed$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Subprocess test 2: basic_02$(RESET)"  
+	@cd /home/alejandro/workspace/ai-workstation/benchmark_tests && timeout 45s python benchmark_runner.py --test-type base --test-id basic_02 --endpoint http://localhost:8004/v1/completions --model "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b" --enhanced-evaluation --output-dir /tmp/debug_chunked_subprocess 2>&1 || echo "$(RED)❌ basic_02 subprocess failed$(RESET)"
+	@echo ""
+	@echo "$(CYAN)Checking subprocess results:$(RESET)"
+	@ls -la /tmp/debug_chunked_subprocess/ || echo "No results found"
+
+validate-domain-files:
+	@echo "$(BOLD)$(BLUE)🔍 Validate Domain Files for Functional Tests$(RESET)"
+	@echo "================================================="
+	@echo "$(CYAN)Checking category definition files:$(RESET)"
+	@python3 -c "import json; data=json.load(open('domains/reasoning/base_models/categories.json')); print(f'✅ Categories loaded: {len(data[\"categories\"])} categories'); print(f'📋 basic_logic_patterns test IDs: {len(data[\"categories\"][\"basic_logic_patterns\"][\"test_ids\"])} tests')"
+	@echo ""
+	@echo "$(CYAN)Checking instruct model files:$(RESET)"
+	@python3 -c "import json; data=json.load(open('domains/reasoning/instruct_models/easy.json')); print(f'✅ Instruct tests loaded: {len(data[\"tests\"])} tests'); basic_01 = next((t for t in data[\"tests\"] if t[\"id\"] == \"basic_01\"), None); print(f'📋 basic_01 found: {\"Yes\" if basic_01 else \"No\"}')"
+	@echo ""
+	@echo "$(CYAN)Verifying domain discovery:$(RESET)"
+	@python3 benchmark_runner.py --discover-suites 2>&1 | head -10
+
+# Debug unit test failures (Phase 1 Stabilization)
+debug-unit-test-failures:
+	@echo "$(BOLD)$(BLUE)🧪 Debug Unit Test Failures$(RESET)"
+	@echo "==================================="
+	@echo "$(CYAN)Running systematic analysis of 41 unit test failures$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Test 1: Cognitive Validation (CRITICAL priority)$(RESET)"
+	@timeout 60s $(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/unit/test_core_modules/test_cognitive_validation.py -v --tb=short || echo "$(RED)❌ Cognitive validation tests failed$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Test 2: Enhanced Universal Evaluator (HIGH priority)$(RESET)"
+	@timeout 60s $(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/unit/test_evaluator_integration/test_enhanced_universal_evaluator.py -v --tb=short || echo "$(RED)❌ Enhanced evaluator tests failed$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Test 3: Resource Manager (MEDIUM priority)$(RESET)"
+	@timeout 60s $(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/unit/test_core_modules/test_resource_manager.py -v --tb=short || echo "$(RED)❌ Resource manager tests failed$(RESET)"
+
+debug-unit-import-issues:
+	@echo "$(BOLD)$(BLUE)🔍 Debug Unit Test Import Issues$(RESET)"
+	@echo "========================================"
+	@echo "$(CYAN)Testing imports for problematic modules$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Testing cognitive validation imports:$(RESET)"
+	@python3 -c "from core.cognitive_validation import CognitiveValidationPipeline; print('✅ CognitiveValidationPipeline import OK')" || echo "$(RED)❌ Cognitive validation import failed$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Testing enhanced evaluator imports:$(RESET)"
+	@python3 -c "from evaluator.subjects.enhanced_universal_evaluator import EnhancedUniversalEvaluator; print('✅ EnhancedUniversalEvaluator import OK')" || echo "$(RED)❌ Enhanced evaluator import failed$(RESET)"
+	@echo ""
+	@echo "$(YELLOW)Testing resource manager imports:$(RESET)"
+	@python3 -c "from core.resource_manager import ResourceManager; print('✅ ResourceManager import OK')" || echo "$(RED)❌ Resource manager import failed$(RESET)"
+
+debug-unit-test-specific:
+	@echo "$(BOLD)$(BLUE)🎯 Debug Specific Unit Test Failure$(RESET)"
+	@echo "========================================"
+	@if [ -z "$(TEST)" ]; then \
+		echo "$(RED)❌ Error: TEST parameter required$(RESET)"; \
+		echo "Usage: make debug-unit-test-specific TEST=path/to/test.py::TestClass::test_method"; \
+		exit 1; \
+	fi
+	@echo "$(CYAN)Running specific unit test: $(TEST)$(RESET)"
+	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) $(TEST) --tb=long -v -s
+
+run-unit-tests-only:
+	@echo "$(BOLD)$(BLUE)🧪 Run Unit Tests Only (Excluding Functional/Calibration)$(RESET)"
+	@echo "=========================================================="
+	@echo "$(CYAN)Running all unit tests to identify current failure count$(RESET)"
+	@$(PYTEST) $(PYTEST_BASE_ARGS) -v tests/unit/ --ignore=tests/unit/test_calibration_integration/ $(ARGS) || echo "$(YELLOW)⚠️ Unit tests completed with failures - this is expected$(RESET)"

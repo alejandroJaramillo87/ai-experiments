@@ -84,6 +84,16 @@
         "verify_26", "verify_27", "verify_28", "verify_29", "verify_30"
       ]
     },
+    "pattern_completion": {
+      "description": "Pattern completion and sequence recognition tests across cultural contexts",
+      "reasoning_focus": "pattern completion, sequence recognition, structural continuation",
+      "temperature_range": [0.3, 0.7],
+      "test_range": [1, 10],
+      "test_ids": [
+        "basic_01", "basic_02", "basic_03", "basic_04", "basic_05",
+        "basic_06", "basic_07", "basic_08", "basic_09", "basic_10"
+      ]
+    },
     "logic_systems_comparison": {
       "description": "Comparative reasoning using different logical frameworks from diverse cultural traditions",
       "reasoning_focus": "Western linear logic, Indigenous circular reasoning, Eastern dialectical approaches, logical framework recognition, cultural logic systems",
@@ -106,6 +116,7 @@
     "elementary_math_science": "mathematical_cultural",
     "cultural_reasoning": "cross_cultural_synthesis",
     "self_verification_reflection": "metacognitive_verification",
+    "pattern_completion": "pattern_recognition",
     "logic_systems_comparison": "comparative_logical_frameworks"
   }
 }

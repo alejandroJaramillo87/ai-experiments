@@ -160,6 +160,11 @@ class ServerDependencyManager:
             "temperature": 0.0
         }
         
+        timeout_count = 0
+        network_error_count = 0
+        first_timeout_error = None
+        first_network_error = None
+        
         # Try different endpoint formats
         for endpoint in self.fallback_endpoints:
             try:
@@ -183,26 +188,59 @@ class ServerDependencyManager:
                     except ValueError:
                         continue  # Try next endpoint
                         
-            except requests.exceptions.Timeout:
+            except requests.exceptions.Timeout as e:
+                timeout_count += 1
+                if first_timeout_error is None:
+                    first_timeout_error = str(e)
                 continue
-            except requests.exceptions.RequestException:
+            except requests.exceptions.RequestException as e:
+                network_error_count += 1
+                if first_network_error is None:
+                    first_network_error = str(e)
                 continue
         
-        # All endpoints failed
-        return ServerHealth(
-            status=ServerStatus.UNAVAILABLE,
-            error_message="All completion endpoints failed"
-        )
+        # Determine failure type based on error patterns
+        if timeout_count > 0:
+            error_msg = f"All completion endpoints timed out ({timeout_count} timeouts)"
+            if first_timeout_error:
+                error_msg += f": {first_timeout_error}"
+            return ServerHealth(
+                status=ServerStatus.TIMEOUT,
+                error_message=error_msg
+            )
+        elif network_error_count > 0:
+            error_msg = f"All completion endpoints failed with network errors"
+            if first_network_error:
+                error_msg += f": {first_network_error}"
+            return ServerHealth(
+                status=ServerStatus.NETWORK_ERROR,
+                error_message=error_msg
+            )
+        else:
+            return ServerHealth(
+                status=ServerStatus.UNAVAILABLE,
+                error_message="All completion endpoints failed"
+            )
     
     def _detect_backend_type(self, health_data: Dict[str, Any]) -> Optional[str]:
         """Detect backend type from health data"""
-        # Check for llama.cpp indicators
-        if any(key in str(health_data).lower() for key in ['llama', 'gguf', 'llamacpp']):
+        health_str = str(health_data).lower()
+        
+        # Check for vLLM indicators first (more specific)
+        if any(key in health_str for key in ['vllm', 'ray']):
+            return "vLLM"
+        
+        # Check for explicit vLLM status indicators
+        if any(key in health_data for key in ['vllm', 'asyncio']):
+            return "vLLM"
+        
+        # Check for llama.cpp specific indicators (excluding model names)
+        if any(key in health_str for key in ['gguf', 'llamacpp', 'llama.cpp']):
             return "llama.cpp"
         
-        # Check for vLLM indicators
-        if any(key in str(health_data).lower() for key in ['vllm', 'ray', 'asyncio']):
-            return "vLLM"
+        # Check for llama.cpp server indicators
+        if 'slots' in health_data and isinstance(health_data.get('slots'), list):
+            return "llama.cpp"
         
         return "unknown"
     
