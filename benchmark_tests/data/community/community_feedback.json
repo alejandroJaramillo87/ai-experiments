@@ -3280,5 +3280,91 @@
       "submission_time": "2025-09-02T23:02:43.384116",
       "ratings_count": 3
     }
+  },
+  "feedback_1756940146460": {
+    "feedback_id": "feedback_1756940146460",
+    "timestamp": 1756940146.4603362,
+    "evaluation_id": "eval_001",
+    "overall_rating": 4.0,
+    "dimension_ratings": {
+      "cultural_authenticity": 3.5,
+      "accuracy": 4.5
+    },
+    "cultural_accuracy_rating": 3.5,
+    "comments": "Good evaluation with minor cultural issues",
+    "cultural_background": "bantu_peoples",
+    "expertise_level": "community_member",
+    "suggested_improvements": [
+      "Include more cultural context"
+    ],
+    "metadata": {
+      "submission_time": "2025-09-03T15:55:46.460338",
+      "ratings_count": 2
+    }
+  },
+  "feedback_1756940150299": {
+    "feedback_id": "feedback_1756940150299",
+    "timestamp": 1756940150.2997587,
+    "evaluation_id": "ubuntu_philosophy_e2e",
+    "overall_rating": 4.5,
+    "dimension_ratings": {
+      "philosophical_accuracy": 4.8,
+      "cultural_authenticity": 4.6,
+      "community_relevance": 4.3
+    },
+    "cultural_accuracy_rating": 4.7,
+    "comments": "Excellent representation of Ubuntu philosophy with authentic cultural grounding",
+    "cultural_background": "southern_african",
+    "expertise_level": "cultural_expert",
+    "suggested_improvements": [
+      "Include more linguistic diversity examples"
+    ],
+    "metadata": {
+      "submission_time": "2025-09-03T15:55:50.299763",
+      "ratings_count": 3
+    }
+  },
+  "feedback_1756943665799": {
+    "feedback_id": "feedback_1756943665799",
+    "timestamp": 1756943665.7992194,
+    "evaluation_id": "eval_001",
+    "overall_rating": 4.0,
+    "dimension_ratings": {
+      "cultural_authenticity": 3.5,
+      "accuracy": 4.5
+    },
+    "cultural_accuracy_rating": 3.5,
+    "comments": "Good evaluation with minor cultural issues",
+    "cultural_background": "bantu_peoples",
+    "expertise_level": "community_member",
+    "suggested_improvements": [
+      "Include more cultural context"
+    ],
+    "metadata": {
+      "submission_time": "2025-09-03T16:54:25.799221",
+      "ratings_count": 2
+    }
+  },
+  "feedback_1756943669620": {
+    "feedback_id": "feedback_1756943669620",
+    "timestamp": 1756943669.6208315,
+    "evaluation_id": "ubuntu_philosophy_e2e",
+    "overall_rating": 4.5,
+    "dimension_ratings": {
+      "philosophical_accuracy": 4.8,
+      "cultural_authenticity": 4.6,
+      "community_relevance": 4.3
+    },
+    "cultural_accuracy_rating": 4.7,
+    "comments": "Excellent representation of Ubuntu philosophy with authentic cultural grounding",
+    "cultural_background": "southern_african",
+    "expertise_level": "cultural_expert",
+    "suggested_improvements": [
+      "Include more linguistic diversity examples"
+    ],
+    "metadata": {
+      "submission_time": "2025-09-03T16:54:29.620835",
+      "ratings_count": 3
+    }
   }
 }
