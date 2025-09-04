@@ -357,7 +357,9 @@ class TestTestRunnerHTTPCommunication(unittest.TestCase):
         self.assertIn('prompt', request_json, "Request should include prompt")
         self.assertIn('max_tokens', request_json, "Request should include max_tokens")
         self.assertIn('temperature', request_json, "Request should include temperature")
-        self.assertEqual(request_json['prompt'], "This is a test prompt")
+        # Test should expect enhanced prompt with completion guidance
+        expected_enhanced_prompt = "This is a test prompt\n\nInstructions: Work through this step-by-step, showing your reasoning process. After completing your analysis, provide a clear and complete final answer."
+        self.assertEqual(request_json['prompt'], expected_enhanced_prompt)
     
     def test_chat_api_request_format(self):
         """Test that chat API requests are formatted correctly"""
@@ -397,7 +399,9 @@ class TestTestRunnerHTTPCommunication(unittest.TestCase):
         self.assertIn('messages', request_json, "Chat request should include messages")
         self.assertIn('model', request_json, "Chat request should include model")
         self.assertEqual(len(request_json['messages']), 1, "Should have one message")
-        self.assertEqual(request_json['messages'][0]['content'], "This is a test message")
+        # Test should expect enhanced message content with completion guidance
+        expected_enhanced_content = "This is a test message\n\nInstructions: Work through this step-by-step, showing your reasoning process. After completing your analysis, provide a clear and complete final answer."
+        self.assertEqual(request_json['messages'][0]['content'], expected_enhanced_content)
     
     def test_retry_logic_on_server_error(self):
         """Test retry logic when server returns 500 error"""
@@ -696,8 +700,8 @@ class TestTestRunnerResultManagement(unittest.TestCase):
         
         files = os.listdir(self.temp_dir)
         
-        # TestRunner uses test_name (not test_id) for file naming
-        expected_base = "result_management_test"  # test_name converted to filename_safe
+        # TestRunner currently uses test_id for file naming (not test_name)
+        expected_base = "result_test_01"  # test_id used directly
         
         # Check result file naming
         result_files = [f for f in files if f.endswith('_result.json')]

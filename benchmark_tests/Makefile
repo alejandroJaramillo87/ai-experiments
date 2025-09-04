@@ -68,7 +68,8 @@ RESET := \033[0m
         test-reasoning-next-batch domain-audit test-phase1-quality test-evaluator-integration test-network-failure \
         test-functional-enhanced test-quality-audit validate-evaluator-framework test-server-resilience \
         docs-evaluator docs-api-reference docs-integration-guide test-production test-development test-debug \
-        test-mode-config show-test-config test-server-dependent
+        test-mode-config show-test-config test-server-dependent test-phase1c-validation test-phase1c-functional \
+        test-phase1c-calibration test-phase1c-unit test-phase1c-integration
 
 # Default target
 help:
@@ -103,6 +104,7 @@ help:
 	@echo "$(BOLD)Systematic Calibration:$(RESET)"
 	@echo "  $(GREEN)make systematic-base-calibration$(RESET)  - 🎯 Base model calibration (easy→medium→hard) with enhanced evaluation"
 	@echo "  $(GREEN)make test-systematic-calibration$(RESET) - 🧪 Test systematic calibration framework (single domain)"
+	@echo "  $(GREEN)make statistical-pattern-detection$(RESET) - 🔬 Focused statistical pattern detection experiment (3 categories)"
 	@echo ""
 	@echo "$(BOLD)Quality Audit & Advanced Testing:$(RESET)"
 	@echo "  $(GREEN)make test-quality-audit$(RESET)          - 🎯 Run all quality audit tests (evaluator + network + functional)"
@@ -528,6 +530,18 @@ test-systematic-calibration:
 	@echo "$(CYAN)💡 Testing enhanced evaluation integration with reasoning domain$(RESET)"
 	@echo ""
 	@cd scripts/calibration && timeout 120s $(PYTHON) -c "import sys; sys.path.append('../..'); from systematic_base_calibration import SystematicBaseCalibrator; calibrator = SystematicBaseCalibrator(); result = calibrator.calibrate_domain_progression('reasoning'); print(f'✅ Domain: {result.domain}'); print(f'📊 Success: {result.overall_success}'); print(f'⚠️ Halted at: {result.progression_halted_at}'); print(f'💡 Recommendation: {result.recommendation}')"
+
+# Statistical Pattern Detection Focused Experiment
+statistical-pattern-detection:
+	@echo "$(BOLD)$(BLUE)🔬 Statistical Pattern Detection Experiment$(RESET)"
+	@echo "==============================================="
+	@echo "$(YELLOW)🎯 Objective: Validate framework's ability to detect meaningful statistical patterns$(RESET)"
+	@echo "$(CYAN)📊 Method: Multi-run analysis across 3 reasoning categories$(RESET)"
+	@echo "$(GREEN)🧪 Categories: basic_logic_patterns, cultural_reasoning, elementary_math_science$(RESET)"
+	@echo "$(GREEN)📈 Statistical tests: ANOVA, Cohen's d, Classification accuracy$(RESET)"
+	@echo "$(YELLOW)⚠️ This requires a running LLM server at http://localhost:8004$(RESET)"
+	@echo ""
+	$(PYTHON) scripts/calibration/statistical_pattern_detection.py
 
 # Convert core domains (language, integration, knowledge, social) to instruct format
 convert-core-domains:
@@ -1165,8 +1179,133 @@ debug-unit-test-specific:
 	@echo "$(CYAN)Running specific unit test: $(TEST)$(RESET)"
 	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) $(TEST) --tb=long -v -s
 
+debug-phase1c-segment-analysis:
+	@echo "$(BOLD)$(BLUE)🐛 Debug Phase 1C Segment Analysis$(RESET)"
+	@echo "======================================"
+	@echo "$(CYAN)Testing final segment extraction and structure detection$(RESET)"
+	@$(PYTHON) -c "\
+from evaluator.subjects.enhanced_universal_evaluator import EnhancedUniversalEvaluator; \
+evaluator = EnhancedUniversalEvaluator(); \
+test_response = '''We must respond to the final answer...\nLet me think about this...\nActually, let me approach this differently...\n\n**Step‑by‑step reasoning**\n\n1. **Identify the pattern**\nEach line of the oriki adds a new attribute or metaphor.\n\n2. **Choose attributes that fit**\nProtector, Guardian, Strong one with cultural significance.\n\n**Completed oriki**\n\n> Protector of the village's children,\n> Guardian who keeps the river's current steady,\n> Strong one whose roots run as deep as the baobab.'''; \
+analysis = evaluator._analyze_final_segment_quality(test_response); \
+print(f'Total lines: {len(test_response.strip().split(chr(10)))}'); \
+print(f'Final segment start: {int(len(test_response.strip().split(chr(10))) * 0.75)}'); \
+print(f'Has structure: {analysis[\"has_structure\"]}'); \
+print(f'Quality score: {analysis[\"quality_score\"]}'); \
+print(f'Final segment preview: {analysis.get(\"final_segment\", \"\")[:100]}...'); \
+structure_test = evaluator._check_structured_format(analysis.get('final_segment', '')); \
+print(f'Direct structure check: {structure_test}'); \
+"
+
+debug-cultural-evaluation:
+	@echo "$(BOLD)$(BLUE)🐛 Debug Cultural Evaluation Issue$(RESET)"
+	@echo "======================================="
+	@echo "$(CYAN)Testing cultural evaluation with Islamic content$(RESET)"
+	@$(PYTHON) -c "\
+from evaluator.subjects.enhanced_universal_evaluator import EnhancedUniversalEvaluator; \
+evaluator = EnhancedUniversalEvaluator(); \
+test_def = { \
+    'name': 'islamic_guidance', \
+    'prompt': 'Discuss the concept of divine guidance in Islamic tradition', \
+    'category': 'cultural', \
+    'cultural_context': {'traditions': ['Islamic']}, \
+    'description': 'Understanding of Islamic spiritual concepts' \
+}; \
+response = \"Allah's guidance provides wisdom and direction to believers through the teachings of the Quran and the example of the Prophet.\"; \
+print(f'Input prompt: {test_def[\"prompt\"]}'); \
+print(f'Input response: {response[:50]}...'); \
+task_type = evaluator._detect_task_type(test_def, response); \
+print(f'Detected task type: {task_type}'); \
+prompt_lower = test_def.get('prompt', '').lower(); \
+desc_lower = test_def.get('description', '').lower(); \
+response_lower = response.lower(); \
+cultural_terms = ['cultural', 'tradition', 'spiritual', 'religious', 'heritage', 'islamic', 'arabic', 'native', 'chinese', 'vedic', 'celtic', 'yoruba', 'african', 'wu xing', 'five elements', 'dharma', 'karma']; \
+is_cultural = any(term in prompt_lower or term in desc_lower or term in response_lower for term in cultural_terms); \
+print(f'Is cultural check: {is_cultural} (prompt: islamic={\"islamic\" in prompt_lower}, response: allah={\"allah\" in response_lower})'); \
+cultural_score_direct = evaluator._assess_cultural_authenticity(response, test_def.get('prompt', ''), test_def.get('description', '')); \
+print(f'Direct cultural authenticity score: {cultural_score_direct}'); \
+result = evaluator.evaluate_response_enhanced(response, test_def, 'islamic_guidance'); \
+print(f'Cultural depth score: {result.enhanced_metrics.cultural_depth_score}'); \
+print(f'Overall score: {result.enhanced_metrics.overall_score}'); \
+"
+
 run-unit-tests-only:
 	@echo "$(BOLD)$(BLUE)🧪 Run Unit Tests Only (Excluding Functional/Calibration)$(RESET)"
 	@echo "=========================================================="
 	@echo "$(CYAN)Running all unit tests to identify current failure count$(RESET)"
 	@$(PYTEST) $(PYTEST_BASE_ARGS) -v tests/unit/ --ignore=tests/unit/test_calibration_integration/ $(ARGS) || echo "$(YELLOW)⚠️ Unit tests completed with failures - this is expected$(RESET)"
+
+# ========================================================================
+# PHASE 1C TESTING COMMANDS - Evidence-Based Loop-Recovery Validation
+# ========================================================================
+
+# Comprehensive Phase 1C validation suite
+test-phase1c-validation: pre-test
+	@echo "$(BOLD)$(BLUE)🔬 Phase 1C Comprehensive Validation Suite$(RESET)"
+	@echo "==============================================="
+	@echo "$(CYAN)💡 Evidence-based testing using actual test_results/ data$(RESET)"
+	@echo "$(GREEN)🧪 Testing loop-recovery scoring system validation$(RESET)"
+	@echo ""
+	@echo "$(BOLD)1. Running Functional Tests:$(RESET)"
+	@$(MAKE) test-phase1c-functional
+	@echo ""
+	@echo "$(BOLD)2. Running Unit Tests:$(RESET)"
+	@$(MAKE) test-phase1c-unit
+	@echo ""
+	@echo "$(BOLD)3. Running Calibration Investigation:$(RESET)"
+	@$(MAKE) test-phase1c-calibration
+	@echo ""
+	@echo "$(BOLD)4. Running Integration Tests:$(RESET)"
+	@$(MAKE) test-phase1c-integration
+	@echo ""
+	@echo "$(GREEN)✅ Phase 1C validation suite complete!$(RESET)"
+	@$(MAKE) post-test
+
+# Phase 1C functional tests (loop-recovery validation)
+test-phase1c-functional: pre-test
+	@echo "$(BOLD)$(BLUE)🧪 Phase 1C Functional Tests$(RESET)"
+	@echo "==============================="
+	@echo "$(CYAN)Testing loop-recovery system with actual response patterns$(RESET)"
+	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/functional/test_phase1c_loop_recovery.py $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+
+# Phase 1C unit tests (individual functions)
+test-phase1c-unit: pre-test
+	@echo "$(BOLD)$(BLUE)🔧 Phase 1C Unit Tests$(RESET)"
+	@echo "========================="
+	@echo "$(CYAN)Testing individual Phase 1C functions and logic$(RESET)"
+	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/unit/test_segment_quality_analysis.py tests/unit/test_loop_classification.py tests/unit/test_hybrid_scoring_math.py $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+
+# Phase 1C calibration tests (regression investigation)
+test-phase1c-calibration: pre-test
+	@echo "$(BOLD)$(BLUE)🔍 Phase 1C Calibration Investigation$(RESET)"
+	@echo "============================================"
+	@echo "$(CYAN)Investigating scoring regressions and calibration issues$(RESET)"
+	@echo "$(YELLOW)⚠️  Focus: math_08 regression (64.8→56.8) and basic_03 recovery (10.0→88.0)$(RESET)"
+	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/calibration/test_loop_recovery_calibration.py $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+
+# Phase 1C integration tests (evaluator integration)
+test-phase1c-integration: pre-test
+	@echo "$(BOLD)$(BLUE)🔗 Phase 1C Integration Tests$(RESET)"
+	@echo "================================="
+	@echo "$(CYAN)Testing Phase 1C integration with enhanced evaluator$(RESET)"
+	@$(PYTEST) $(PYTEST_VERBOSE_ARGS) tests/integration/test_enhanced_evaluator_phase1c.py $(ARGS) && \
+	$(MAKE) post-test || ($(MAKE) post-test && exit 1)
+
+# Debug quality scoring calculation
+debug-quality-scoring:
+	@echo "$(BOLD)$(BLUE)🐛 Debug Quality Scoring$(RESET)"
+	@echo "==========================="
+	@echo "$(CYAN)Testing quality scoring calculation logic$(RESET)"
+	@python3 -c "from evaluator.subjects.enhanced_universal_evaluator import EnhancedUniversalEvaluator; \
+	evaluator = EnhancedUniversalEvaluator(); \
+	text = 'This is a substantial response with meaningful content that demonstrates quality and completeness in its delivery and analysis.'; \
+	score = evaluator._calculate_segment_quality(text, has_structure=True, is_coherent=True, delivers_content=True); \
+	word_count = len(text.split()); \
+	print(f'Text: {text}'); \
+	print(f'Word count: {word_count}'); \
+	print(f'Expected: base(40) + structure(25) + coherence(20) + content(15) + length bonus'); \
+	print(f'Actual score: {score}'); \
+	print(f'Length bonus calculation: word_count={word_count}, bonus={min(10.0, word_count/20) if word_count > 50 else 0 if word_count >= 20 else -10.0}')"

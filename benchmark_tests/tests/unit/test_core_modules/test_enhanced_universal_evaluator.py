@@ -1185,7 +1185,7 @@ class TestIslamicCulturalAuthenticity(unittest.TestCase):
         
         # Should get moderate score for respectful content
         self.assertGreaterEqual(score, 40.0)
-        self.assertLessEqual(score, 70.0)
+        self.assertLessEqual(score, 65.0)
     
     def test_assess_cultural_authenticity_islamic_inappropriate(self):
         """Test Islamic authenticity for inappropriate content"""
@@ -1237,7 +1237,7 @@ class TestNativeAmericanCulturalAuthenticity(unittest.TestCase):
         
         # Should get good score for respectful approach
         self.assertGreaterEqual(score, 45.0)
-        self.assertLessEqual(score, 75.0)
+        self.assertLessEqual(score, 65.0)
 
 
 class TestChineseCulturalAuthenticity(unittest.TestCase):

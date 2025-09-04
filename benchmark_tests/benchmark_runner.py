@@ -47,6 +47,15 @@ except ImportError:
     ENHANCED_EVALUATION_AVAILABLE = False
     logger.warning("EnhancedUniversalEvaluator not available - enhanced evaluation features disabled")
 
+# Import centralized token limit configuration
+try:
+    from domains.token_limits import override_test_parameters
+    TOKEN_LIMITS_AVAILABLE = True
+    logger.info("Centralized token limit configuration enabled")
+except ImportError:
+    TOKEN_LIMITS_AVAILABLE = False
+    logger.warning("Token limits configuration not available - using test-defined limits")
+
 # GPU monitoring for RTX 5090
 try:
     import pynvml
@@ -1678,6 +1687,10 @@ class BenchmarkTestRunner:
         Returns:
             Tuple of (success, response_data, error_message)
         """
+        # Apply centralized token limit overrides if available
+        if TOKEN_LIMITS_AVAILABLE:
+            test_case = override_test_parameters(test_case)
+        
         # Build request payload based on API type
         if self.api_config.api_type == "chat":
             payload = self._build_chat_payload(test_case)
@@ -1727,6 +1740,11 @@ class BenchmarkTestRunner:
         
         return False, {}, "Max retries exceeded"
     
+    def _enhance_prompt_with_completion_guidance(self, prompt: str) -> str:
+        """Add universal instructions to encourage complete reasoning and clear final answers"""
+        guidance = "\n\nInstructions: Work through this step-by-step, showing your reasoning process. After completing your analysis, provide a clear and complete final answer."
+        return prompt + guidance
+
     def _build_completions_payload(self, test_case: Dict) -> Dict:
         """Build payload for completions API"""
         # Handle instruct tests with messages format
@@ -1746,6 +1764,9 @@ class BenchmarkTestRunner:
         else:
             # Standard base model format
             prompt = test_case.get('prompt', '')
+        
+        # Enhance prompt with completion guidance
+        prompt = self._enhance_prompt_with_completion_guidance(prompt)
             
         return {
             "model": self.api_config.model,
@@ -1760,10 +1781,16 @@ class BenchmarkTestRunner:
         
         # Check if test case already has messages format (from instruct tests)
         if 'messages' in test_case:
-            messages = test_case['messages']
+            messages = test_case['messages'].copy()
         else:
             # Convert prompt-based test to chat format (from base model tests)
             messages = [{"role": "user", "content": test_case.get('prompt', '')}]
+        
+        # Enhance the last user message with completion guidance
+        if messages and messages[-1].get('role') == 'user':
+            last_content = messages[-1].get('content', '')
+            enhanced_content = self._enhance_prompt_with_completion_guidance(last_content)
+            messages[-1]['content'] = enhanced_content
         
         # Convert parameters for chat API
         params = self._convert_params_for_chat(test_case.get('parameters', {}))

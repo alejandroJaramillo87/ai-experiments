@@ -156,7 +156,7 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
             )
         elif task_type == "cultural_reasoning":
             enhanced_overall_score = self._evaluate_cultural_reasoning(
-                base_result.metrics.overall_score, enhanced_scores, test_definition_with_response, response_text
+                base_result.metrics.overall_score, enhanced_scores, test_definition_with_response, response_text, base_result
             )
         elif task_type == "logical_reasoning":
             enhanced_overall_score = self._evaluate_logical_reasoning(
@@ -168,6 +168,42 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
                 base_result.metrics.overall_score, enhanced_scores, test_definition_with_response
             )
         enhanced_metrics.overall_score = enhanced_overall_score
+        
+        # Phase 1C: Loop-Recovery Scoring System
+        coherence_failure = base_result.detailed_analysis.get("coherence_failure")
+        
+        # Analyze final segment for recovery detection
+        final_segment_analysis = self._analyze_final_segment_quality(response_text, base_result)
+        
+        # Classify loop response type (clean, recovery, or pure failure)
+        loop_type = self._classify_loop_response_type(coherence_failure, final_segment_analysis)
+        
+        # Apply appropriate scoring based on classification
+        self._apply_loop_recovery_scoring(enhanced_metrics, loop_type, final_segment_analysis, test_name)
+        
+        # Critical alert system for pure cognitive failures scoring >10 (safety check)
+        if loop_type == "pure_cognitive_failure" and enhanced_metrics.overall_score > 10:
+            logger.critical(f"SCORING ERROR [{test_name}]: Pure cognitive failure scored {enhanced_metrics.overall_score:.1f} (should be ≤10) - forcing correction")
+            enhanced_metrics.overall_score = 10.0
+        
+        # Phase 1B: High-score quality gates with completion bonuses
+        # Check for natural completion and quality metrics for bonuses
+        finish_reason = getattr(response_text, 'finish_reason', None)
+        if hasattr(base_result, 'api_response') and base_result.api_response:
+            # Extract finish_reason from API response if available
+            api_response = getattr(base_result, 'api_response', {})
+            if isinstance(api_response, dict):
+                choices = api_response.get('choices', [])
+                if choices and isinstance(choices[0], dict):
+                    finish_reason = choices[0].get('finish_reason', None)
+        
+        # Apply completion quality bonuses for high-quality, naturally completed responses
+        if (finish_reason == "stop" and enhanced_metrics.overall_score > 70 and 
+            not (coherence_failure and coherence_failure.get("failure_type"))):
+            original_score = enhanced_metrics.overall_score
+            completion_bonus = 3.0  # Small bonus for natural completion
+            enhanced_metrics.overall_score = min(100.0, enhanced_metrics.overall_score + completion_bonus)
+            logger.info(f"COMPLETION_BONUS [{test_name}]: Applied +{completion_bonus} bonus for natural completion (finish_reason=stop): {original_score:.1f} → {enhanced_metrics.overall_score:.1f}")
         
         # Create scoring breakdown for transparency
         scoring_breakdown = self._create_scoring_breakdown(
@@ -478,11 +514,11 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
         
         enhanced_metrics = EnhancedEvaluationMetrics(
             **base_dict,
-            **enhanced_scores,
+            **cultural_enhancement,
             integration_quality=integration_analysis.get('integration_quality', 0.0),
             domain_coverage=integration_analysis.get('domain_coverage', 0),
             synthesis_coherence=integration_analysis.get('synthesis_coherence', 0.0),
-            **cultural_enhancement
+            **enhanced_scores
         )
         
         return enhanced_metrics
@@ -762,7 +798,8 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
                                    base_overall_score: float,
                                    enhanced_scores: Dict[str, float], 
                                    test_definition: Dict[str, Any],
-                                   response_text: str) -> float:
+                                   response_text: str,
+                                   base_result: Any = None) -> float:
         """Specialized evaluation for cultural reasoning tasks"""
         logger.info("CULTURAL_EVAL: Starting specialized cultural reasoning evaluation")
         
@@ -804,10 +841,37 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
             thematic_score * 0.10        # 10% weight - thematic coherence
         )
         
+        # Apply cultural bonus quality gates (Task 3: Critical Scoring Fix)
+        # Check for quality failures that should limit cultural bonuses
+        has_quality_failures = False
+        quality_failure_reasons = []
+        
+        # Check for repetitive loops (severe quality failure)
+        coherence_failure = None
+        if base_result:
+            coherence_failure = base_result.detailed_analysis.get("coherence_failure")
+        
+        if coherence_failure:
+            if coherence_failure.get("failure_type") == "repetitive_loop":
+                has_quality_failures = True
+                quality_failure_reasons.append("repetitive_loop_detected")
+            
+            # Check for low coherence score (quality failure)
+            if coherence_failure.get("coherence_score", 100) < 30:
+                has_quality_failures = True
+                quality_failure_reasons.append(f"low_coherence: {coherence_failure.get('coherence_score', 0)}")
+        
+        # Apply quality gates to cultural bonuses
+        if has_quality_failures:
+            # Severely limit bonuses for quality failures - max 5 points
+            limited_cultural_component = min(5.0, cultural_component)
+            logger.warning(f"CULTURAL_QUALITY_GATE: Limited cultural bonus from {cultural_component:.1f} to {limited_cultural_component:.1f} due to: {', '.join(quality_failure_reasons)}")
+            cultural_component = limited_cultural_component
+        
         final_score = baseline_score + cultural_component
         
-        # Ensure appropriate bounds for cultural content (target 65-85 for sophisticated content)
-        final_score = max(min(final_score, 90.0), 25.0)
+        # Ensure appropriate bounds for cultural content - allow full scoring range
+        final_score = max(min(final_score, 100.0), 0.0)
         
         # Update enhanced_scores with cultural depth information
         enhanced_scores['cultural_depth_score'] = cultural_score
@@ -1065,7 +1129,19 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
             if any(praise in response_lower for praise in ['protector', 'guardian', 'master', 'strong']):
                 score += 10.0  # Bonus for proper praise structure
         
-        return min(score, 100.0)  # More reasonable cap for enhanced scoring
+        # Apply reasonable scoring cap based on content specificity
+        # Generic spiritual content shouldn't get maximum cultural bonuses
+        generic_spiritual_terms = ['divine', 'spiritual', 'wisdom', 'guidance', 'righteous', 'path', 'harmony', 'balance', 'sacred', 'traditional', 'teachings', 'natural', 'forces', 'cyclical', 'philosophy', 'ancient']
+        specific_cultural_terms = ['allah', 'quran', 'dharma', 'karma', 'moksha', 'wu xing', 'turtle island', 'oriki', 'great spirit', 'mother earth']
+        
+        generic_matches = sum(1 for term in generic_spiritual_terms if term in response_lower)
+        specific_matches = sum(1 for term in specific_cultural_terms if term in response_lower)
+        
+        # If mostly generic terms with little specific cultural content, apply moderate cap
+        if generic_matches >= 3 and specific_matches <= 1:
+            score = min(score, 65.0)  # Cap for generic spiritual content
+        
+        return min(score, 100.0)  # Final absolute cap
     
     def _assess_cultural_pattern_completion(self, response_text: str, test_definition: Dict[str, Any]) -> float:
         """Assess how well the response completes cultural patterns"""
@@ -1537,6 +1613,275 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
             return obj.item()
         else:
             return obj
+    
+    # Phase 1C: Loop-Recovery Scoring Methods
+    
+    def _analyze_final_segment_quality(self, response_text: str, base_result: Any = None) -> Dict:
+        """
+        Analyze final segment of response for recovery detection in loop responses.
+        
+        This function extracts the final 25% of the response and evaluates its quality
+        independently to detect cases where initial meta-reasoning loops are followed
+        by high-quality final output.
+        
+        Args:
+            response_text: Full response text to analyze
+            base_result: Base evaluation result for context
+            
+        Returns:
+            Dict containing quality analysis of final segment
+        """
+        lines = response_text.strip().split('\n')
+        total_lines = len(lines)
+        
+        if total_lines < 4:  # Too short for meaningful segment analysis
+            return {
+                'quality_score': 0.0,
+                'has_structure': False,
+                'is_coherent': False,
+                'delivers_content': False,
+                'recovery_detected': False,
+                'final_segment': response_text
+            }
+        
+        # Extract final 25% of response (minimum 3 lines)
+        final_segment_start = max(0, int(total_lines * 0.75))
+        final_segment = '\n'.join(lines[final_segment_start:]).strip()
+        
+        # Quality indicators for final segment
+        has_structure = self._check_structured_format(final_segment)
+        is_coherent = self._check_coherence_final_segment(final_segment)  
+        delivers_content = self._check_content_delivery(final_segment)
+        
+        # Calculate quality score for final segment only
+        segment_quality_score = self._calculate_segment_quality(
+            final_segment, has_structure, is_coherent, delivers_content
+        )
+        
+        # Recovery detection: high quality + structure + content delivery
+        recovery_detected = (segment_quality_score > 70 and 
+                           has_structure and 
+                           delivers_content)
+        
+        logger.debug(f"SEGMENT_ANALYSIS: Quality={segment_quality_score:.1f}, "
+                    f"Structure={has_structure}, Coherent={is_coherent}, "
+                    f"Content={delivers_content}, Recovery={recovery_detected}")
+        
+        return {
+            'quality_score': segment_quality_score,
+            'has_structure': has_structure,
+            'is_coherent': is_coherent,
+            'delivers_content': delivers_content,
+            'recovery_detected': recovery_detected,
+            'final_segment': final_segment
+        }
+    
+    def _check_structured_format(self, text: str) -> bool:
+        """Check if text shows structured formatting indicating organized output"""
+        structure_count = 0
+        
+        # Bold formatting (but not just asterisks in math expressions)
+        if '**' in text:
+            structure_count += 1
+        
+        # Headers (count multiple header instances)
+        header_lines = [line.strip() for line in text.split('\n') if line.strip().startswith('##')]
+        if len(header_lines) >= 2:
+            structure_count += 2  # Multiple headers = strong structure
+        elif len(header_lines) == 1 or '##' in text:
+            structure_count += 1
+        
+        # Numbered lists (actual list formatting)
+        numbered_patterns = ['1.', '2.', '3.', '4.', '5.']
+        numbered_items = sum(1 for pattern in numbered_patterns if pattern in text)
+        if numbered_items >= 2:
+            structure_count += 2  # Multiple numbered items = strong structure
+        elif numbered_items == 1:
+            structure_count += 1
+        
+        # Bullet points
+        bullet_lines = [line for line in text.split('\n') if line.strip().startswith('- ')]
+        if len(bullet_lines) >= 2:
+            structure_count += 2  # Multiple bullet points = strong structure
+        elif len(bullet_lines) == 1:
+            structure_count += 1
+        
+        # Separators
+        separator_count = text.count('---')
+        if separator_count >= 2:
+            structure_count += 2  # Multiple separators = strong structure
+        elif separator_count == 1:
+            structure_count += 1
+        
+        # Step-by-step indicators (in context, not just the word)
+        step_patterns = ['Step 1', 'step 1', 'Step 2', 'step 2', 'Step-by-step', 'step-by-step']
+        step_matches = sum(1 for pattern in step_patterns if pattern.lower() in text.lower())
+        if step_matches >= 2:
+            structure_count += 2  # Multiple steps = strong structure
+        elif step_matches == 1:
+            structure_count += 1
+        
+        # Quote/formatted output indicators (substantial formatted content)
+        formatted_lines = [line for line in text.split('\n') if line.strip().startswith('>')]
+        if len(formatted_lines) >= 2:
+            structure_count += 1
+        
+        # Code formatting
+        if '`' in text:
+            structure_count += 1
+        
+        # Special case: if we have ** (bold) and substantial formatted content,
+        # that's enough structure for recovery detection
+        has_bold = '**' in text
+        has_formatted_lines = len(formatted_lines) >= 1
+        
+        if has_bold and has_formatted_lines:
+            return True
+            
+        return structure_count >= 2  # At least 2 formatting types
+    
+    def _check_coherence_final_segment(self, text: str) -> bool:
+        """Check coherence specifically for final segment"""
+        if len(text.strip()) < 50:  # Too short to be meaningfully coherent
+            return False
+            
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        if len(lines) < 3:  # Need at least 3 substantial lines
+            return False
+            
+        # Check for completion indicators (not loops)
+        completion_indicators = [
+            'therefore', 'thus', 'final', 'complete', 'answer', 'result',
+            'conclusion', 'solution', 'translation', 'summary'
+        ]
+        
+        text_lower = text.lower()
+        has_completion = any(indicator in text_lower for indicator in completion_indicators)
+        
+        # Check against loop indicators (should be minimal in final segment)
+        loop_indicators = ['maybe', "i'm not sure", "let's think", "wait", "actually"]
+        loop_count = sum(text_lower.count(indicator) for indicator in loop_indicators)
+        
+        return has_completion and loop_count < 3  # Some completion language, minimal loops
+    
+    def _check_content_delivery(self, text: str) -> bool:
+        """Check if final segment actually delivers requested content"""
+        if len(text.strip()) < 30:  # Too short to deliver content
+            return False
+            
+        # Look for substantive content indicators
+        content_indicators = [
+            # Cultural content
+            'oriki', 'praise', 'yoruba', 'ogun', 'guardian', 'protector',
+            # Mathematical content  
+            'calculate', 'solve', 'equation', 'answer', 'result', '=',
+            # General substantive content
+            'explanation', 'analysis', 'description', 'example', 'translation'
+        ]
+        
+        text_lower = text.lower()
+        content_matches = sum(1 for indicator in content_indicators if indicator in text_lower)
+        
+        # Also check for actual answers/solutions (not just meta-discussion)
+        has_concrete_output = any([
+            '"' in text,  # Quoted content
+            ':' in text and len([line for line in text.split('\n') if ':' in line]) >= 2,  # Multiple definitions/items
+            text.count('\n') >= 3,  # Multi-line structured output
+        ])
+        
+        return content_matches >= 2 or has_concrete_output
+    
+    def _calculate_segment_quality(self, text: str, has_structure: bool, 
+                                 is_coherent: bool, delivers_content: bool) -> float:
+        """Calculate overall quality score for final segment"""
+        base_score = 40.0  # Starting point
+        
+        # Structure bonus (up to 25 points)
+        if has_structure:
+            base_score += 25.0
+        
+        # Coherence bonus (up to 20 points)  
+        if is_coherent:
+            base_score += 20.0
+            
+        # Content delivery bonus (up to 15 points)
+        if delivers_content:
+            base_score += 15.0
+            
+        # Length and completeness assessment (bonus/penalty)
+        word_count = len(text.split())
+        if word_count > 50:  # Substantial content
+            base_score += min(10.0, word_count / 20)  # Up to 10 bonus points
+        elif word_count < 20:  # Very brief
+            base_score -= 10.0
+            
+        return max(0.0, min(100.0, base_score))
+    
+    def _classify_loop_response_type(self, coherence_failure: Dict, final_segment_analysis: Dict) -> str:
+        """
+        Classify response type for appropriate scoring based on loop presence and recovery.
+        
+        Three categories:
+        1. clean_response: No significant loops detected
+        2. loop_with_recovery: Has loops but shows quality recovery in final segment  
+        3. pure_cognitive_failure: Has loops with no meaningful recovery
+        
+        Args:
+            coherence_failure: Coherence failure analysis from base result
+            final_segment_analysis: Final segment quality analysis
+            
+        Returns:
+            String classification for scoring logic
+        """
+        # No loops detected - clean response
+        if not (coherence_failure and coherence_failure.get("failure_type") == "repetitive_loop"):
+            return "clean_response"
+        
+        # Has loops - check for recovery in final segment
+        if final_segment_analysis.get('recovery_detected', False):
+            return "loop_with_recovery"  # basic_08 case
+        else:
+            return "pure_cognitive_failure"  # math_04 case
+    
+    def _apply_loop_recovery_scoring(self, enhanced_metrics, loop_type: str, 
+                                   final_segment_analysis: Dict, test_name: str) -> None:
+        """
+        Apply appropriate scoring based on loop type classification.
+        
+        Scoring strategy:
+        - pure_cognitive_failure: Harsh penalty ≤10 (preserves math_04 behavior)
+        - loop_with_recovery: Base score from final segment minus efficiency penalty  
+        - clean_response: Normal scoring + completion bonuses (unchanged)
+        
+        Args:
+            enhanced_metrics: Metrics object to modify
+            loop_type: Classification from _classify_loop_response_type
+            final_segment_analysis: Final segment quality analysis
+            test_name: Test name for logging
+        """
+        original_score = enhanced_metrics.overall_score
+        
+        if loop_type == "pure_cognitive_failure":
+            # Harsh penalty as before (math_04 case)
+            enhanced_metrics.overall_score = min(10.0, enhanced_metrics.overall_score)
+            logger.warning(f"PURE_LOOP_PENALTY [{test_name}]: Cognitive failure capped at 10.0 (was {original_score:.1f})")
+            
+        elif loop_type == "loop_with_recovery":
+            # Use final segment quality with efficiency penalty (basic_08 case)
+            recovery_base_score = final_segment_analysis.get('quality_score', 0.0)
+            efficiency_penalty = 12.0  # Penalty for inefficient processing loops
+            
+            # Calculate final score with floor of 15.0 to recognize recovery effort
+            recovery_score = max(recovery_base_score - efficiency_penalty, 15.0)
+            enhanced_metrics.overall_score = min(recovery_score, 100.0)
+            
+            logger.info(f"RECOVERY_SCORING [{test_name}]: Segment quality {recovery_base_score:.1f} "
+                       f"- efficiency penalty {efficiency_penalty} = {enhanced_metrics.overall_score:.1f} "
+                       f"(was {original_score:.1f})")
+            
+        # clean_response: No changes - gets normal scoring + completion bonuses
+        elif loop_type == "clean_response":
+            logger.debug(f"CLEAN_RESPONSE [{test_name}]: No loop penalties applied, score={enhanced_metrics.overall_score:.1f}")
 
 # Backward compatibility: maintain existing interface
 def evaluate_reasoning(response_text: str, test_name: str, reasoning_type: Optional[Union[str, ReasoningType]] = None) -> float:

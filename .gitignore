@@ -15,3 +15,5 @@ blog/yarn-error.log*
 blog/.env
 blog/.env.local
 blog/.env.production
+
+**/__pycache__/** 

@@ -1790,7 +1790,11 @@ class UniversalEvaluator:
             ],
             "meta_reasoning_loops": [
                 "I think", "I should", "maybe I", "perhaps I", "let me think",
-                "I'm not sure", "I wonder if", "I guess"
+                "I'm not sure", "I wonder if", "I guess",
+                # Phase 1B: Added specific doubt patterns from math_04 analysis
+                "let's recall", "wait, i'm repeating", "let's step back", 
+                "i'm repeating again", "this is going nowhere", "wait, there is",
+                "actually there is", "let's search memory", "wait, i'm not sure"
             ],
             "broken_completion_indicators": [
                 "(stop)", "...", "continues", "and so on", "etc.",
@@ -1869,7 +1873,7 @@ class UniversalEvaluator:
     
     def _categorize_coherence_failure(self, issues: Dict) -> str:
         """Categorize the type of coherence failure"""
-        if issues["repetitive_loops"] > 10:
+        if issues["repetitive_loops"] > 4:  # Phase 1B: Lowered from 10 to 4 for better detection
             return "repetitive_loop"
         elif issues["meta_reasoning_excessive"] > 15:
             return "meta_reasoning_spiral"
