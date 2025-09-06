@@ -17,3 +17,6 @@ blog/.env.local
 blog/.env.production
 
 **/__pycache__/** 
+
+
+**/claude**

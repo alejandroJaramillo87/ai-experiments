@@ -1,0 +1,176 @@
+{
+  "pattern_summary": "COGNITIVE PATTERN ANALYSIS SUMMARY\n==================================================\n\n\u2705 PATTERNS DETECTED: 3 metrics show significant differences\nSignificant metrics: context_awareness, mathematical_reasoning, overall_score\n\nCATEGORY PERFORMANCE RANKING:\n1. logic_systems_comparison: 77.1/100\n2. cultural_reasoning: 67.0/100\n3. multi_step_inference: 65.9/100\n4. chain_of_thought: 59.2/100\n5. self_verification_reflection: 58.2/100\n6. elementary_math_science: 54.8/100\n7. basic_logic_patterns: 26.7/100\n\nCOGNITIVE STRENGTHS BY CATEGORY:\n\u2022 logic_systems_comparison: cultural_sensitivity: 18.00, depth_score: 0.90, instruction_following: 0.70\n\u2022 cultural_reasoning: cultural_sensitivity: 19.00, task_understanding: 0.70, instruction_following: 0.70\n\u2022 multi_step_inference: cultural_sensitivity: 17.00, instruction_following: 0.70, coherence_score: 0.70\n\u2022 chain_of_thought: cultural_sensitivity: 17.00, instruction_following: 0.70, evidence_integration: 0.70\n\u2022 self_verification_reflection: cultural_sensitivity: 16.00, evidence_integration: 0.90, coherence_score: 0.80\n\u2022 elementary_math_science: cultural_sensitivity: 16.00, task_understanding: 0.90, mathematical_reasoning: 0.80\n\u2022 basic_logic_patterns: cultural_sensitivity: 15.67, relevance_score: 0.77, coherence_score: 0.63",
+  "statistical_significance": {
+    "task_understanding": 0.13815966755470127,
+    "instruction_following": 0.6929834983767551,
+    "context_awareness": 0.026845586321893735,
+    "logical_structure": 0.19080971653199216,
+    "evidence_integration": 0.25854413933264087,
+    "inference_quality": 0.17676230496880022,
+    "relevance_score": 0.07237194390603797,
+    "depth_score": 0.08672158375805611,
+    "coherence_score": 0.2665085320230028,
+    "mathematical_reasoning": 0.00027494799218355075,
+    "cultural_sensitivity": 0.28307770742699634,
+    "creative_synthesis": NaN,
+    "analytical_decomposition": NaN,
+    "overall_score": 0.029549758126922947
+  },
+  "effect_sizes": {
+    "task_understanding": 7.000000000000001,
+    "logical_structure": 6.999999999999997,
+    "overall_score": 3.095717220347128
+  },
+  "classification_accuracy": 0.4666666666666667,
+  "recommendations": [
+    "\u2705 Strong cognitive discrimination detected in 3 metrics",
+    "Continue with full-scale pattern analysis across all domains",
+    "\ud83c\udfaf Large effect sizes detected in: task_understanding, logical_structure, overall_score",
+    "These metrics show strong practical significance for model evaluation",
+    "\ud83d\udcca Strongest performance: logic_systems_comparison (77.1/100)",
+    "\ud83d\udcc9 Weakest performance: basic_logic_patterns (26.7/100)",
+    "\ud83d\udd27 Focus improvement areas: task_understanding, logical_structure"
+  ],
+  "categories": [
+    {
+      "category": "logic_systems_comparison",
+      "test_count": 2,
+      "overall_score_mean": 77.12,
+      "cognitive_metrics": {
+        "task_understanding": 0.1,
+        "instruction_following": 0.7,
+        "context_awareness": 0.3,
+        "logical_structure": 0.0,
+        "evidence_integration": 0.5,
+        "inference_quality": 0.1,
+        "relevance_score": 0.4,
+        "depth_score": 0.9,
+        "coherence_score": 0.7,
+        "mathematical_reasoning": 0.0,
+        "cultural_sensitivity": 18.0,
+        "creative_synthesis": 0.0,
+        "analytical_decomposition": 0.0
+      }
+    },
+    {
+      "category": "cultural_reasoning",
+      "test_count": 2,
+      "overall_score_mean": 67.0,
+      "cognitive_metrics": {
+        "task_understanding": 0.7000000000000001,
+        "instruction_following": 0.7,
+        "context_awareness": 0.6,
+        "logical_structure": 0.175,
+        "evidence_integration": 0.4,
+        "inference_quality": 0.0,
+        "relevance_score": 0.5,
+        "depth_score": 0.7,
+        "coherence_score": 0.7,
+        "mathematical_reasoning": 0.0,
+        "cultural_sensitivity": 19.0,
+        "creative_synthesis": 0.0,
+        "analytical_decomposition": 0.0
+      }
+    },
+    {
+      "category": "multi_step_inference",
+      "test_count": 2,
+      "overall_score_mean": 65.9,
+      "cognitive_metrics": {
+        "task_understanding": 0.30000000000000004,
+        "instruction_following": 0.7,
+        "context_awareness": 0.3,
+        "logical_structure": 0.44999999999999996,
+        "evidence_integration": 0.5,
+        "inference_quality": 0.3,
+        "relevance_score": 0.4,
+        "depth_score": 0.6,
+        "coherence_score": 0.7,
+        "mathematical_reasoning": 0.0,
+        "cultural_sensitivity": 17.0,
+        "creative_synthesis": 0.0,
+        "analytical_decomposition": 0.0
+      }
+    },
+    {
+      "category": "basic_logic_patterns",
+      "test_count": 3,
+      "overall_score_mean": 26.7,
+      "cognitive_metrics": {
+        "task_understanding": 0.3,
+        "instruction_following": 0.5666666666666667,
+        "context_awareness": 0.19999999999999998,
+        "logical_structure": 0.049999999999999996,
+        "evidence_integration": 0.33333333333333337,
+        "inference_quality": 0.0,
+        "relevance_score": 0.7666666666666667,
+        "depth_score": 0.3,
+        "coherence_score": 0.6333333333333333,
+        "mathematical_reasoning": 0.0,
+        "cultural_sensitivity": 15.666666666666666,
+        "creative_synthesis": 0.0,
+        "analytical_decomposition": 0.0
+      }
+    },
+    {
+      "category": "chain_of_thought",
+      "test_count": 2,
+      "overall_score_mean": 59.150000000000006,
+      "cognitive_metrics": {
+        "task_understanding": 0.2,
+        "instruction_following": 0.7,
+        "context_awareness": 0.3,
+        "logical_structure": 0.0,
+        "evidence_integration": 0.7,
+        "inference_quality": 0.5,
+        "relevance_score": 0.4,
+        "depth_score": 0.6,
+        "coherence_score": 0.7,
+        "mathematical_reasoning": 0.0,
+        "cultural_sensitivity": 17.0,
+        "creative_synthesis": 0.0,
+        "analytical_decomposition": 0.0
+      }
+    },
+    {
+      "category": "elementary_math_science",
+      "test_count": 2,
+      "overall_score_mean": 54.8,
+      "cognitive_metrics": {
+        "task_understanding": 0.9,
+        "instruction_following": 0.7,
+        "context_awareness": 0.3,
+        "logical_structure": 0.25,
+        "evidence_integration": 0.4,
+        "inference_quality": 0.0,
+        "relevance_score": 0.3,
+        "depth_score": 0.6,
+        "coherence_score": 0.75,
+        "mathematical_reasoning": 0.8,
+        "cultural_sensitivity": 16.0,
+        "creative_synthesis": 0.0,
+        "analytical_decomposition": 0.0
+      }
+    },
+    {
+      "category": "self_verification_reflection",
+      "test_count": 2,
+      "overall_score_mean": 58.150000000000006,
+      "cognitive_metrics": {
+        "task_understanding": 0.2,
+        "instruction_following": 0.5,
+        "context_awareness": 0.3,
+        "logical_structure": 0.175,
+        "evidence_integration": 0.9,
+        "inference_quality": 0.1,
+        "relevance_score": 0.7,
+        "depth_score": 0.6,
+        "coherence_score": 0.8,
+        "mathematical_reasoning": 0.0,
+        "cultural_sensitivity": 16.0,
+        "creative_synthesis": 0.0,
+        "analytical_decomposition": 0.0
+      }
+    }
+  ]
+}

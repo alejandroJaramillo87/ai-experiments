@@ -1,1 +1,0 @@
-# Functional tests for benchmark test system - real end-to-end testing

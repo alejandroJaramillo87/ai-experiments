@@ -1,0 +1,124 @@
+PROMPT:
+--------------------
+Apply Socratic self-examination to test the validity of your reasoning:
+
+Claim: 'Democracy is the best form of government for all societies.'
+
+Socratic Self-Questioning:
+
+Round 1: Definition Clarity
+- What exactly do I mean by 'democracy'?
+- Are there different types of democratic systems?
+- How do I define 'best' in this context?
+
+Round 2: Evidence Examination
+- What evidence supports this claim?
+- Can I think of counter-examples where democracy struggled?
+- How do I know my evidence is reliable and complete?
+
+Round 3: Assumption Identification
+- What am I assuming about human nature and political participation?
+- Am I assuming all societies have similar values and structures?
+- What cultural biases might influence my judgment?
+
+Round 4: Alternative Consideration
+- What other governance systems might work well for certain societies?
+- Under what conditions might democracy be inappropriate or harmful?
+- How might my own cultural background limit my perspective?
+
+Round 5: Intellectual Humility
+- What don't I know about governance and society?
+- Where are the gaps in my understanding?
+- How might I be wrong about this claim?
+
+Verification: Reformulate your position with appropriate nuance and acknowledged limitations.
+
+COMPLETION:
+--------------------
+ If you cannot reach a conclusion, state that clearly.
+</think>
+
+**Step-by-Step Analysis:**
+
+**Round 1: Definition Clarity**  
+- **Democracy**: I define it as a system where citizens participate in decision-making, typically through elected representatives. However, there are variations (e.g., direct vs. representative democracy, liberal vs. illiberal democracy).  
+- **Best**: This is subjective. "Best" could mean effectiveness, fairness, stability, or adaptability. Without a clear metric, the claim lacks precision.  
+
+**Round 2: Evidence Examination**  
+- **Supporting Evidence**: Democracies often correlate with higher human rights, economic development, and innovation. Examples include post-WWII Europe and India’s democratic resilience.  
+- **Counter-Examples**: Some democracies struggle with corruption (e.g., Brazil), instability (e.g., Iraq), or majority tyranny (e.g., historical U.S. segregation). Non-democratic systems like Singapore’s meritocracy or Nordic social democracies (hybrid models) also show success.  
+- **Reliability**: Evidence is mixed and context-dependent. Cultural, historical, and economic factors influence outcomes.  
+
+**Round 3: Assumption Identification**  
+- **Assumptions**:  
+  1. All societies value individual participation equally.  
+  2. Democratic institutions can function universally without adaptation.  
+  3. "Best" is universally defined by Western liberal ideals.  
+- **Biases**: My perspective may undervalue collectivist cultures or non-Western governance models.  
+
+**Round 4: Alternative Consideration**  
+- **Alternatives**:  
+  - **Authoritarianism**: Effective in crises (e.g., China’s pandemic response) but risks oppression.  
+  - **Hybrid Systems**: Singapore blends democracy with technocratic efficiency.  
+  - **Cultural Context**: Tribal or religious systems may suit societies prioritizing tradition over individualism.  
+
+**Round 5: Intellectual Humility**  
+- **Gaps in Knowledge**: I lack expertise in non-Western political systems and long-term democratic sustainability.  
+- **Potential Errors**: Overgeneralizing from limited examples; conflating democracy with specific outcomes (e.g., economic growth).  
+
+**Verification:**  
+The claim requires nuance. Democracy’s success depends on cultural, historical, and institutional contexts. While it has strengths, it is not universally optimal.  
+
+**Final Answer:**  
+The assertion that "Democracy is the best form of government for all societies" is overly absolute. While democracy has demonstrated effectiveness in promoting rights and development in many contexts, its suitability varies based on cultural, historical, and structural factors. Hybrid or alternative systems may be more appropriate in certain societies. Thus, the claim lacks universal validity and requires contextual qualification.
+
+
+METRICS:
+--------------------
+Duration: 5.83s
+Prompt Tokens: 280
+Completion Tokens: 606
+Tokens per Second: 103.95 T/s
+
+REASONING EVALUATION:
+--------------------
+Overall Score: 67.9/100
+Reasoning Type: general
+Organization Quality: 91.8
+Technical Accuracy: 100.0
+Completeness: 76.1
+Thoroughness: 13.7
+Reliability: 45.7
+Scope Coverage: 8.6
+Domain Appropriateness: 28.9
+Word Count: 342.0
+Confidence Score: 60.6
+Token Entropy: 7.5
+Semantic Entropy: 2.4
+Entropy Quality Ratio: 0.9
+Semantic Diversity: 0.8
+Embedding Variance: 0.0
+Consistency Score: 1.0
+Factual Accuracy: 0.0
+Knowledge Consistency: 0.0
+Confidence Calibration: 0.0
+Validation Passed: 1.0
+Cultural Authenticity: 0.7
+Tradition Respect: 0.0
+Cross Cultural Coherence: 0.0
+Task Understanding: 0.2
+Instruction Following: 0.7
+Context Awareness: 0.3
+Logical Structure: 0.2
+Evidence Integration: 0.8
+Inference Quality: 0.0
+Mathematical Reasoning: 0.0
+Cultural Sensitivity: 15.0
+Creative Synthesis: 0.0
+Analytical Decomposition: 0.0
+Relevance Score: 0.7
+Depth Score: 0.6
+Coherence Score: 0.8
+
+Recommendations:
+  1. Add verification steps with self-checking language (verify, confirm, review)

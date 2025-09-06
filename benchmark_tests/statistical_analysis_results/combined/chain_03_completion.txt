@@ -1,0 +1,92 @@
+PROMPT:
+--------------------
+Aboriginal Australians navigate vast distances using layered knowledge systems. Follow this reasoning chain:
+
+Observation 1: Stars
+- Southern Cross points toward south
+- Emu in the Sky (dark nebula) indicates seasonal timing
+- What does this tell the navigator about direction and time?
+
+Observation 2: Wind Patterns
+- Morning wind comes from the east
+- Afternoon wind shifts toward the coast
+- How does this information refine the navigation?
+
+Observation 3: Animal Behavior
+- Honey ants emerge only near underground water
+- Bird flight patterns indicate water direction
+- What does wildlife activity reveal about the landscape?
+
+Observation 4: Plant Indicators
+- Certain root vegetables grow only in specific soil types
+- Flowering patterns indicate seasonal water availability
+- How do plants provide navigation confirmation?
+
+Synthesis: Combining all four types of evidence, explain how an Aboriginal navigator would determine: 1) Current exact location, 2) Best route to water source, 3) Optimal travel timing.
+
+COMPLETION:
+--------------------
+ Avoid copying the question or repeating phrases verbatim.
+</think>
+
+Aboriginal navigators integrate celestial, atmospheric, biological, and botanical cues to determine location, route, and timing. 
+
+1. **Current Location**: By observing the Southern Cross (fixed directional reference) and the Emu in the Sky (seasonal marker), they establish their latitude and approximate time of year. Wind patterns (eastern morning winds, coastal afternoon shifts) confirm proximity to coastal regions or inland areas. Animal behavior (honey ants near water, bird flight paths) pinpoints micro-landforms like water sources. Plants (root vegetables in specific soils, flowering cycles) validate soil type and seasonal water presence. Together, these layers triangulate precise location.
+
+2. **Best Route to Water**: Honey ants and bird activity directly indicate water sources. Plant indicators confirm reliable water availability through seasonal flowering. Wind patterns suggest coastal proximity, guiding movement toward known water gradients. Celestial cues ensure travel aligns with optimal daylight or seasonal conditions.
+
+3. **Optimal Timing**: The Emu in the Sky signals seasonal transitions, while flowering plants and honey ant emergence confirm resource availability. Morning/afternoon winds dictate safe travel windows (e.g., avoiding coastal afternoon shifts). Celestial positioning ensures journeys occur during stable weather periods.
+
+Final Answer: By synthesizing star patterns for direction/time, wind for terrain context, wildlife for immediate water clues, and plants for seasonal validation, an Aboriginal navigator determines their exact location, selects the most reliable water route, and times travel to coincide with environmental stability and resource availability.
+
+
+METRICS:
+--------------------
+Duration: 3.10s
+Prompt Tokens: 236
+Completion Tokens: 321
+Tokens per Second: 103.70 T/s
+
+REASONING EVALUATION:
+--------------------
+Overall Score: 41.0/100
+Reasoning Type: chain_of_thought
+Organization Quality: 40.7
+Technical Accuracy: 26.8
+Completeness: 73.2
+Thoroughness: 19.4
+Reliability: 78.9
+Scope Coverage: 5.9
+Domain Appropriateness: 10.9
+Word Count: 235.0
+Confidence Score: 48.6
+Token Entropy: 7.2
+Semantic Entropy: 2.7
+Entropy Quality Ratio: 0.9
+Semantic Diversity: 0.7
+Embedding Variance: 0.0
+Consistency Score: 1.1
+Factual Accuracy: 0.0
+Knowledge Consistency: 0.0
+Confidence Calibration: 0.0
+Validation Passed: 1.0
+Cultural Authenticity: 0.7
+Tradition Respect: 0.0
+Cross Cultural Coherence: 0.0
+Task Understanding: 0.0
+Instruction Following: 0.7
+Context Awareness: 0.3
+Logical Structure: 0.0
+Evidence Integration: 0.4
+Inference Quality: 0.0
+Mathematical Reasoning: 0.0
+Cultural Sensitivity: 15.0
+Creative Synthesis: 0.0
+Analytical Decomposition: 0.0
+Relevance Score: 0.7
+Depth Score: 0.6
+Coherence Score: 0.7
+
+Recommendations:
+  1. Improve step-by-step clarity by using explicit step indicators (first, second, then, etc.)
+  2. Strengthen logical flow with more connecting words (therefore, because, consequently)

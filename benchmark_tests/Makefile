@@ -461,6 +461,52 @@ test-reasoning-next-batch:
 		echo ""; \
 	done
 
+# Run all tests from domains/reasoning/base_models/easy.json (210 tests)
+test-easy-reasoning-all:
+	@echo "$(BOLD)$(BLUE)🧠 Running All Easy Reasoning Tests (210 tests)$(RESET)"
+	@echo "=================================================="
+	@echo "$(CYAN)Loading test suite from easy.json...$(RESET)"
+	@$(PYTHON) -c "import json; data=json.load(open('domains/reasoning/base_models/easy.json')); print(f'✅ Found {len(data[\"tests\"])} tests in easy.json')"
+	@echo ""
+	@echo "$(YELLOW)⚠️ This will run all 210 tests sequentially with enhanced evaluation$(RESET)"
+	@echo "$(YELLOW)⚠️ Estimated time: ~105 minutes (30 seconds per test)$(RESET)"
+	@echo "$(CYAN)🚀 Starting test execution...$(RESET)"
+	@echo ""
+	@test_ids=$$($(PYTHON) -c "import json; data=json.load(open('domains/reasoning/base_models/easy.json')); print(' '.join([t['id'] for t in data['tests']]))"); \
+	total=$$(echo $$test_ids | wc -w); \
+	counter=1; \
+	for test_id in $$test_ids; do \
+		echo "$(CYAN)[$$counter/$$total] Testing $$test_id...$(RESET)"; \
+		$(PYTHON) benchmark_runner.py --test-definitions domains/reasoning/base_models/easy.json --test-id $$test_id --enhanced-evaluation --evaluation-mode full --quiet | grep "Average reasoning score" || echo "  ❌ Test failed or no score found"; \
+		counter=$$((counter + 1)); \
+		echo ""; \
+	done; \
+	echo "$(GREEN)✅ All easy reasoning tests completed!$(RESET)"
+
+# Statistical Pattern Analysis Commands
+statistical-pattern-analysis:
+	@echo "$(BOLD)$(BLUE)📊 Running Statistical Pattern Analysis$(RESET)"
+	@echo "======================================"
+	@echo "$(CYAN)Analyzing cognitive patterns in test_results/...$(RESET)"
+	@$(PYTHON) -c "import os; from evaluator.analysis.statistical_pattern_detector import run_pattern_analysis; analysis = run_pattern_analysis('test_results/', 'cognitive_pattern_analysis.json') if os.path.exists('test_results/') else print('❌ Error: test_results/ directory not found'); print(analysis.pattern_summary if 'analysis' in locals() else ''); print('\\n📄 Detailed results saved to: cognitive_pattern_analysis.json' if 'analysis' in locals() else '')"
+
+pattern-analysis-detailed:
+	@echo "$(BOLD)$(BLUE)📊 Running Detailed Statistical Pattern Analysis$(RESET)"
+	@echo "================================================="
+	@echo "$(CYAN)Performing comprehensive analysis with significance testing...$(RESET)"
+	@$(PYTHON) ./run_pattern_analysis.py test_results/ --detailed --output detailed_pattern_analysis.json
+
+pattern-analysis-custom:
+	@if [ -z "$(DIR)" ]; then \
+		echo "$(RED)❌ Error: DIR parameter required$(RESET)"; \
+		echo "Usage: make pattern-analysis-custom DIR=path/to/results"; \
+		exit 1; \
+	fi
+	@echo "$(BOLD)$(BLUE)📊 Running Custom Statistical Pattern Analysis$(RESET)"
+	@echo "=============================================="
+	@echo "$(CYAN)Analyzing cognitive patterns in $(DIR)...$(RESET)"
+	@$(PYTHON) ./run_pattern_analysis.py "$(DIR)"
+
 # Domain coverage analysis
 domain-audit:
 	@echo "$(BOLD)$(BLUE)📊 Domain Coverage Analysis$(RESET)"
@@ -1309,3 +1355,74 @@ debug-quality-scoring:
 	print(f'Expected: base(40) + structure(25) + coherence(20) + content(15) + length bonus'); \
 	print(f'Actual score: {score}'); \
 	print(f'Length bonus calculation: word_count={word_count}, bonus={min(10.0, word_count/20) if word_count > 50 else 0 if word_count >= 20 else -10.0}')"
+
+# Test entropy calculator functionality
+test-entropy-calculator:
+	@echo "$(BOLD)$(BLUE)🧮 Testing Entropy Calculator$(RESET)"
+	@echo "==============================="
+	@echo "$(CYAN)Testing entropy calculations and fallback systems$(RESET)"
+	@python3 -c "from evaluator.advanced.entropy_calculator import run_entropy_tests; results = run_entropy_tests(); print('Entropy Test Results:'); import json; print(json.dumps(results, indent=2))"
+
+# Debug semantic entropy integration in reasoning evaluator
+debug-semantic-entropy:
+	@echo "$(BOLD)$(BLUE)🔍 Debug Semantic Entropy Negative Zero$(RESET)"
+	@echo "==============================================="
+	@echo "$(CYAN)Investigating why semantic_entropy returns -0.0$(RESET)"
+	@python3 -c "from evaluator.advanced.entropy_calculator import EntropyCalculator; \
+	calc = EntropyCalculator(); \
+	test_text = 'Make sure to maintain the parallel structure. Ensure the final answer is clear and follows all instructions.'; \
+	print(f'Test text: {test_text}'); \
+	result = calc.calculate_semantic_entropy(test_text); \
+	print(f'Direct semantic entropy calculation: {result}'); \
+	basic_result = calc._calculate_basic_semantic_entropy(test_text); \
+	print(f'Basic semantic entropy calculation: {basic_result}'); \
+	profile = calc.analyze_entropy_profile(test_text); \
+	print(f'Full profile semantic_entropy: {profile[\"semantic_entropy\"]}'); \
+	print(f'Type of result: {type(profile[\"semantic_entropy\"])}'); \
+	print(f'Is negative zero: {profile[\"semantic_entropy\"] == -0.0}');"
+
+# Test fresh orchestrator integration
+test-final-integration:
+	@echo "$(BOLD)$(BLUE)🎉 Final Integration Test$(RESET)"
+	@echo "================================="
+	@echo "$(CYAN)Testing complete evaluation pipeline with all fixes$(RESET)"
+	@python -Bc "import sys; sys.dont_write_bytecode = True; \
+	from evaluator.core.advanced_analysis_orchestrator import AdvancedAnalysisOrchestrator; \
+	orchestrator = AdvancedAnalysisOrchestrator(); \
+	print('=== TESTING NORMAL TEXT ==='); \
+	normal_text = 'The African proverb follows a specific pattern. The student who learns from failure becomes wise.'; \
+	result1 = orchestrator.run_advanced_analysis(normal_text, domain_context='reasoning'); \
+	entropy1 = result1.analysis_data.get('entropy_analysis', {}); \
+	print(f'Normal text - Semantic entropy: {entropy1.get(\"semantic_entropy\", \"MISSING\")}'); \
+	print(f'Normal text - Embedding variance: {entropy1.get(\"embedding_variance\", \"MISSING\")}'); \
+	print(f'Normal text - Repetitive patterns: {entropy1.get(\"entropy_patterns\", {}).get(\"has_repetitive_patterns\", \"MISSING\")}'); \
+	print(''); \
+	print('=== TESTING REPETITIVE TEXT ==='); \
+	loop_text = 'Ensure the final answer follows instructions. Make sure the answer is complete. Ensure the final answer follows instructions. Make sure the answer is complete. Ensure the final answer follows instructions.'; \
+	result2 = orchestrator.run_advanced_analysis(loop_text, domain_context='reasoning'); \
+	entropy2 = result2.analysis_data.get('entropy_analysis', {}); \
+	print(f'Loop text - Semantic entropy: {entropy2.get(\"semantic_entropy\", \"MISSING\")}'); \
+	print(f'Loop text - Embedding variance: {entropy2.get(\"embedding_variance\", \"MISSING\")}'); \
+	print(f'Loop text - Repetitive patterns: {entropy2.get(\"entropy_patterns\", {}).get(\"has_repetitive_patterns\", \"MISSING\")}'); \
+	print(''); \
+	print('=== SUMMARY OF FIXES ==='); \
+	print(f'✅ Semantic entropy working: {\"YES\" if entropy1.get(\"semantic_entropy\", 0) > 0 and entropy2.get(\"semantic_entropy\", 0) > 0 else \"NO\"}'); \
+	print(f'✅ Embedding variance working: {\"YES\" if entropy1.get(\"embedding_variance\", 0) > 0 and entropy2.get(\"embedding_variance\", 0) > 0 else \"NO\"}'); \
+	print(f'✅ Loop detection working: {\"YES\" if entropy2.get(\"entropy_patterns\", {}).get(\"has_repetitive_patterns\") == True else \"NO\"}');"
+
+# Debug repetitive text detection  
+debug-repetitive-detection:
+	@echo "$(BOLD)$(BLUE)🔄 Debug Basic_03 Massive Loop Pattern$(RESET)"
+	@echo "=============================================="
+	@echo "$(CYAN)Testing loop detection on basic_03 massive repetitive pattern$(RESET)"
+	@python3 -c "from evaluator.advanced.entropy_calculator import EntropyCalculator; \
+	calc = EntropyCalculator(); \
+	massive_loop = '''- Ensure the final answer is clear, complete, and follows all instructions - Provide a concise explanation of your reasoning process - Make sure the final answer is presented in a boxed format - Avoid any markdown formatting in the final answer - Keep the final answer within the specified format - Ensure the final answer is accurate and follows all given instructions - Confirm that the final answer is complete and addresses all parts of the query - Verify that the final answer is presented in the correct format and meets all requirements - Double-check that the final answer is free from any errors or inconsistencies - Ensure the final answer is well-structured and easy to understand - Confirm that the final answer is comprehensive and addresses all aspects of the query - Verify that the final answer is presented in a clear and concise manner - Ensure the final answer is accurate and follows all given instructions - Confirm that the final answer is complete and meets all specified requirements - Double-check that the final answer is presented in the correct format and adheres to all guidelines - Ensure the final answer is well-organized and easy to follow - Verify that the final answer is accurate and complete - Confirm that the final answer is presented in the correct format and meets all specified criteria - Ensure the final answer is clear, concise, and follows all instructions - Double-check that the final answer is accurate and complete - Verify that the final answer is presented in the correct format and adheres to all guidelines - Ensure the final answer is well-structured and easy to understand'''; \
+	print(f'Testing massive loop pattern (length: {len(massive_loop)} chars)'); \
+	profile = calc.analyze_entropy_profile(massive_loop); \
+	print(f'Semantic entropy: {profile[\"semantic_entropy\"]}'); \
+	print(f'Semantic diversity: {profile[\"semantic_diversity\"]}'); \
+	print(f'Embedding variance: {profile[\"embedding_variance\"]}'); \
+	print(f'Has repetitive patterns: {profile[\"entropy_patterns\"].get(\"has_repetitive_patterns\", \"MISSING\")}'); \
+	print(f'Entropy variance: {profile[\"entropy_patterns\"].get(\"entropy_variance\", \"MISSING\")}'); \
+	print(f'Entropy trend: {profile[\"entropy_patterns\"].get(\"entropy_trend\", \"MISSING\")}');"

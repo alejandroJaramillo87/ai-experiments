@@ -1,0 +1,69 @@
+PROMPT:
+--------------------
+Explain the traditional Polynesian wayfinding navigation system used for Pacific Ocean voyages. Describe how navigators (palu) use the following techniques: 
+
+1. **Star Compass Navigation**: How specific stars and constellations are used for directional guidance, including the concept of star lines and rising/setting positions
+2. **Wave Pattern Reading**: How ocean swells, wave interference patterns, and wave refraction around islands provide navigation information
+3. **Natural Indicators**: Use of bird behavior, cloud formations, water color changes, floating debris, and wind patterns
+4. **Mental Mapping**: The conceptual framework navigators use to maintain spatial orientation during multi-day voyages
+5. **Cultural Knowledge Transmission**: How this specialized knowledge is passed from master navigators to apprentices through oral tradition
+
+Provide specific examples of navigation techniques used in actual Pacific Island cultures such as the Marshallese, Caroline Islanders, or Hawaiian navigators.
+
+COMPLETION:
+--------------------
+ Make sure to include all five components in your response.
+
+
+METRICS:
+--------------------
+Duration: 0.17s
+Prompt Tokens: 219
+Completion Tokens: 12
+Tokens per Second: 70.42 T/s
+
+REASONING EVALUATION:
+--------------------
+Overall Score: 22.0/100
+Reasoning Type: general
+Organization Quality: 0.5
+Technical Accuracy: 0.4
+Completeness: 12.8
+Thoroughness: 0.2
+Reliability: 6.2
+Scope Coverage: 0.2
+Domain Appropriateness: 0.1
+Word Count: 10.0
+Confidence Score: 37.4
+Token Entropy: 3.5
+Semantic Entropy: 3.8
+Entropy Quality Ratio: 1.0
+Semantic Diversity: 0.5
+Embedding Variance: 0.4
+Consistency Score: 1.0
+Factual Accuracy: 0.0
+Knowledge Consistency: 0.0
+Confidence Calibration: 0.0
+Validation Passed: 1.0
+Cultural Authenticity: 0.9
+Tradition Respect: 0.0
+Cross Cultural Coherence: 0.0
+Task Understanding: 0.0
+Instruction Following: 0.3
+Context Awareness: 0.0
+Logical Structure: 0.0
+Evidence Integration: 0.0
+Inference Quality: 0.0
+Mathematical Reasoning: 0.0
+Cultural Sensitivity: 0.0
+Creative Synthesis: 0.0
+Analytical Decomposition: 0.0
+Relevance Score: 1.0
+Depth Score: 0.0
+Coherence Score: 0.5
+
+Recommendations:
+  1. Improve step-by-step clarity by using explicit step indicators (first, second, then, etc.)
+  2. Strengthen logical flow with more connecting words (therefore, because, consequently)
+  3. Better integrate evidence with phrases like 'based on', 'according to', 'data shows'
+  4. Add verification steps with self-checking language (verify, confirm, review)

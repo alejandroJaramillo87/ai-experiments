@@ -1996,23 +1996,14 @@ class BenchmarkTestRunner:
         """Perform enhanced evaluation with multi-tier scoring"""
         enhanced_evaluator = EnhancedUniversalEvaluator()
         
-        # Check if we should use full enhanced evaluation with test definitions
-        if (hasattr(self, 'evaluation_mode') and self.evaluation_mode == 'full'):
-            # Use the full enhanced evaluation with test definitions
-            return enhanced_evaluator.evaluate_response_enhanced(
-                response_text=response_text,
-                test_definition=test_case,
-                test_name=test_case.get('name', test_id),
-                reasoning_type=reasoning_type
-            )
-        else:
-            # Use basic enhanced evaluation (backward compatible)
-            return enhanced_evaluator.evaluate_response(
-                response_text=response_text,
-                test_name=test_case.get('name', test_id),
-                reasoning_type=reasoning_type,
-                test_category=test_case.get('category')
-            )
+        # Always use full enhanced evaluation with test definitions for best results
+        # This ensures task-specific scoring (haiku, cultural, logical) is applied correctly
+        return enhanced_evaluator.evaluate_response_enhanced(
+            response_text=response_text,
+            test_definition=test_case,
+            test_name=test_case.get('name', test_id),
+            reasoning_type=reasoning_type
+        )
     
     def _extract_evaluation_result(self, eval_result) -> Dict[str, Any]:
         """Extract evaluation result dictionary supporting both basic and enhanced results"""
@@ -2305,6 +2296,60 @@ class BenchmarkTestRunner:
 
 # Convenience functions for quick usage
 
+def _load_specific_test_file(runner: 'BenchmarkTestRunner', test_file_path: str) -> 'BenchmarkTestRunner':
+    """
+    Load tests from a specific test file (e.g., easy.json, medium.json)
+    
+    Args:
+        runner: BenchmarkTestRunner instance to configure
+        test_file_path: Path to the specific test file to load
+        
+    Returns:
+        Configured BenchmarkTestRunner instance
+    """
+    try:
+        with open(test_file_path, 'r', encoding='utf-8') as f:
+            file_data = json.load(f)
+        
+        # Extract tests from the file
+        all_tests = {}
+        if "tests" in file_data:
+            tests_data = file_data["tests"]
+            if isinstance(tests_data, list):
+                # Convert array of tests to dictionary keyed by test ID
+                for test in tests_data:
+                    if "id" in test:
+                        all_tests[test["id"]] = test
+            elif isinstance(tests_data, dict):
+                all_tests.update(tests_data)
+        
+        # Create empty categories structure (will be populated if needed)
+        all_categories = {"categories": {}}
+        
+        # Try to load categories from the same directory
+        test_dir = os.path.dirname(test_file_path)
+        categories_path = os.path.join(test_dir, "categories.json")
+        if os.path.exists(categories_path):
+            with open(categories_path, 'r', encoding='utf-8') as f:
+                domain_categories = json.load(f)
+                if "categories" in domain_categories:
+                    all_categories["categories"].update(domain_categories["categories"])
+        
+        # Configure runner with loaded data
+        runner.tests = all_tests
+        runner.categories = all_categories
+        runner.metadata = file_data.get("suite_info", {
+            "name": f"Test Suite from {os.path.basename(test_file_path)}",
+            "description": f"Tests loaded from {test_file_path}",
+            "total_tests": len(all_tests)
+        })
+        
+        return runner
+        
+    except Exception as e:
+        raise ValueError(f"Failed to load test file {test_file_path}: {e}")
+
+
 def load_and_configure_runner(test_definitions_dir: str = "test_definitions", 
                              api_endpoint: str = None,
                              test_type: str = "base",
@@ -2313,7 +2358,7 @@ def load_and_configure_runner(test_definitions_dir: str = "test_definitions",
     Load and configure a BenchmarkTestRunner with domain-based structure
     
     Args:
-        test_definitions_dir: Legacy parameter (now ignored, kept for compatibility)
+        test_definitions_dir: Path to test definitions directory OR specific test file (e.g., "domains/reasoning/base_models/easy.json")
         api_endpoint: Optional API endpoint URL to override defaults
         test_type: Type of tests to load ("base" or "instruct")
         domain: Specific domain to load ("reasoning", "linux", etc.). If None, loads all domains.
@@ -2325,6 +2370,13 @@ def load_and_configure_runner(test_definitions_dir: str = "test_definitions",
     
     # Get the directory where benchmark_runner.py is located (benchmark_tests/)
     runner_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Check if test_definitions_dir is a specific file (e.g., easy.json)
+    test_definitions_path = os.path.join(runner_dir, test_definitions_dir) if not os.path.isabs(test_definitions_dir) else test_definitions_dir
+    
+    if os.path.isfile(test_definitions_path) and test_definitions_path.endswith('.json'):
+        # Load specific test file directly
+        return _load_specific_test_file(runner, test_definitions_path)
     
     # Use TestSuiteManager to discover available suites
     suite_manager = TestSuiteManager()

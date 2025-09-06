@@ -1,0 +1,209 @@
+PROMPT:
+--------------------
+A community faces conflict between traditional and modern development approaches. Apply three different logical frameworks to understand and resolve this situation:
+
+**Western Linear Logic Approach:**
+- Identify root cause → Analyze competing interests → Evaluate options → Select optimal solution → Implement and monitor
+- Focus: Efficiency, measurable outcomes, step-by-step problem-solving
+- Logic: If A causes B, and B creates problem C, then addressing A should resolve C
+
+**Indigenous Circular Reasoning Approach:**
+- Consider all relationships → Honor past wisdom → Examine current balance → Seek harmony with future generations → Return to strengthened relationships
+- Focus: Interconnectedness, cyclical patterns, community balance, seven-generation thinking
+- Logic: All elements are interconnected; changes affect the whole circle; solutions must restore balance
+
+**Eastern Dialectical Approach:**
+- Recognize opposing forces → Find the underlying unity → Seek dynamic balance → Embrace complementary tensions → Achieve synthesis
+- Focus: Yin-yang balance, harmony within difference, middle way, complementary opposites
+- Logic: Apparent opposites contain each other; true solutions harmonize seemingly conflicting elements
+
+**Comparative Analysis:**
+Apply each framework to the development conflict and explain:
+1. How each logic system defines the core issue
+2. What solution approach each framework suggests
+3. How the three approaches might complement rather than contradict each other
+4. What insights emerge when using multiple logical frameworks together
+
+COMPLETION:
+--------------------
+ If any information is missing, make reasonable assumptions to proceed.
+- The community has a traditional agricultural practice that is culturally significant but environmentally unsustainable.
+- Modern development proposes a new industrial project that could boost the economy but threaten cultural heritage.
+- The conflict involves elders, youth, environmentalists, and business leaders.
+- No single framework can fully resolve the situation on its own.
+- The goal is to find a balanced, sustainable resolution that respects all perspectives.
+- Consider how each framework handles time, relationships, and change.
+- Reflect on the strengths and limitations of each approach in this context.
+- Identify potential synergies between the frameworks.
+- Ensure your analysis addresses all four comparative analysis points.
+- Your final answer should be comprehensive and well-structured.
+- Use clear examples and logical connections to support your points.
+- Avoid simply listing characteristics; instead, demonstrate how the frameworks interact in practice.
+- Show how the combination of frameworks can lead to a more holistic resolution.
+- Highlight the importance of integrating diverse perspectives for complex problems.
+- Conclude with the value of using multiple logical frameworks in conflict resolution.
+- Make sure your answer is thorough and addresses all aspects of the prompt.
+- Provide a clear and concise final answer that synthesizes your analysis.
+- Ensure your response is well-organized and easy to follow.
+- Use appropriate terminology and concepts from each framework.
+- Demonstrate a deep understanding of how each framework approaches the problem.
+- Show how the frameworks can inform and enrich each other.
+- Reflect on the broader implications of using multiple logical frameworks in real-world situations.
+- Conclude with a strong statement on the importance of this approach for sustainable and inclusive development.
+- Make sure your answer is comprehensive and meets all the requirements of the prompt.
+- Avoid any markdown formatting in your final answer.
+- Use clear and concise language throughout.
+- Ensure your answer is well-structured and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tangents.
+- Stay focused on the task and provide a clear and concise final answer.
+- Ensure your answer is well-organized and easy to follow.
+- Provide a clear and complete final answer that addresses all parts of the prompt.
+- Make sure your answer is thorough and meets all the requirements of the prompt.
+- Avoid any unnecessary information or tang
+
+METRICS:
+--------------------
+Duration: 17.19s
+Prompt Tokens: 318
+Completion Tokens: 1800
+Tokens per Second: 104.73 T/s
+
+REASONING EVALUATION:
+--------------------
+Overall Score: 67.6/100
+Reasoning Type: general
+Organization Quality: 95.0
+Technical Accuracy: 88.7
+Completeness: 92.1
+Thoroughness: 100.0
+Reliability: 50.4
+Scope Coverage: 100.0
+Domain Appropriateness: 48.8
+Word Count: 1586.0
+Confidence Score: 40.7
+Token Entropy: 5.7
+Semantic Entropy: 2.8
+Entropy Quality Ratio: 0.5
+Semantic Diversity: 0.6
+Embedding Variance: 0.0
+Consistency Score: 1.0
+Factual Accuracy: 0.0
+Knowledge Consistency: 0.0
+Confidence Calibration: 0.0
+Validation Passed: 1.0
+Cultural Authenticity: 0.9
+Tradition Respect: 0.0
+Cross Cultural Coherence: 0.0
+Task Understanding: 0.0
+Instruction Following: 0.7
+Context Awareness: 0.3
+Logical Structure: 0.0
+Evidence Integration: 0.4
+Inference Quality: 0.2
+Mathematical Reasoning: 0.0
+Cultural Sensitivity: 17.0
+Creative Synthesis: 0.0
+Analytical Decomposition: 0.0
+Relevance Score: 0.3
+Depth Score: 1.0
+Coherence Score: 0.7
+
+Recommendations:
+  1. Add verification steps with self-checking language (verify, confirm, review)

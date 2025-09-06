@@ -1,0 +1,112 @@
+PROMPT:
+--------------------
+In Japanese tea ceremony (chado), each action follows purposeful sequence. Analyze this preparation:
+
+Step 1: Purification
+- Host cleans all utensils with specific movements
+- Why is this the essential first step?
+
+Step 2: Water Temperature
+- Water heated to exactly 70°C for matcha
+- Why not boiling water like other teas?
+
+Step 3: Tea Measurement
+- Precisely two scoops of matcha powder
+- Why is exact measurement critical?
+
+Step 4: Whisking Technique
+- Whisk in M-shaped motions, not circular
+- Why does motion pattern matter?
+
+Step 5: Presentation
+- Bowl turned so design faces guest
+- Guest receives with two hands, bows
+- What does this final exchange represent?
+
+Trace the logical connection: How does each step build toward the ceremony's ultimate purpose of creating wa (harmony)?
+
+COMPLETION:
+--------------------
+ Your answer should be in English and no longer than 200 words.
+- Step 1: Purification
+- Step 2: Water Temperature
+- Step 3: Tea Measurement
+- Step 4: Whisking Technique
+- Step 5: Presentation
+- Logical Connection
+- Final Answer
+- </think>
+
+**Step 1: Purification**  
+Purification establishes ritual cleanliness, symbolizing respect for the tea and guests. It sets a mindful tone, ensuring physical and spiritual readiness for the ceremony.  
+
+**Step 2: Water Temperature**  
+Matcha requires 70°C water to avoid bitterness and preserve flavor. Boiling water would scald the powder, disrupting the balance of taste and texture essential for harmony.  
+
+**Step 3: Tea Measurement**  
+Exact measurement (two scoops) ensures consistency in flavor and strength. Variability would undermine the precision needed to create a unified experience.  
+
+**Step 4: Whisking Technique**  
+M-shaped motions blend matcha into a smooth, frothy consistency. Circular motions would create clumps, disrupting the visual and tactile harmony of the tea.  
+
+**Step 5: Presentation**  
+Turning the bowl to face the guest and the two-handed reception with a bow emphasize mutual respect. This exchange embodies *wa* (harmony) through shared mindfulness and cultural connection.  
+
+**Logical Connection**  
+Each step builds sequentially: purification prepares the space, precise temperature and measurement ensure quality, whisking refines the tea’s form, and presentation solidifies the human connection. Together, they create a unified, harmonious experience.  
+
+**Final Answer**  
+Each step in the tea ceremony—purification, precise water temperature, exact measurement, deliberate whisking, and respectful presentation—builds toward *wa* (harmony) by fostering mindfulness, precision, and mutual respect, creating a unified, intentional experience.
+
+
+METRICS:
+--------------------
+Duration: 3.96s
+Prompt Tokens: 214
+Completion Tokens: 413
+Tokens per Second: 104.25 T/s
+
+REASONING EVALUATION:
+--------------------
+Overall Score: 57.1/100
+Reasoning Type: chain_of_thought
+Organization Quality: 32.7
+Technical Accuracy: 28.5
+Completeness: 72.5
+Thoroughness: 20.0
+Reliability: 44.2
+Scope Coverage: 6.2
+Domain Appropriateness: 51.1
+Word Count: 250.0
+Confidence Score: 53.1
+Token Entropy: 6.9
+Semantic Entropy: 2.5
+Entropy Quality Ratio: 0.9
+Semantic Diversity: 0.7
+Embedding Variance: 0.0
+Consistency Score: 1.0
+Factual Accuracy: 0.0
+Knowledge Consistency: 0.0
+Confidence Calibration: 0.0
+Validation Passed: 1.0
+Cultural Authenticity: 0.7
+Tradition Respect: 0.0
+Cross Cultural Coherence: 0.0
+Task Understanding: 0.2
+Instruction Following: 0.7
+Context Awareness: 0.3
+Logical Structure: 0.0
+Evidence Integration: 0.4
+Inference Quality: 0.3
+Mathematical Reasoning: 0.0
+Cultural Sensitivity: 17.0
+Creative Synthesis: 0.0
+Analytical Decomposition: 0.0
+Relevance Score: 0.5
+Depth Score: 0.6
+Coherence Score: 0.7
+
+Recommendations:
+  1. Improve step-by-step clarity by using explicit step indicators (first, second, then, etc.)
+  2. Strengthen logical flow with more connecting words (therefore, because, consequently)
+  3. Add verification steps with self-checking language (verify, confirm, review)

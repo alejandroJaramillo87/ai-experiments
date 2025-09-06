@@ -1,0 +1,1028 @@
+{
+  "test_id": "inference_03",
+  "test_name": "Test 63: Aboriginal Seasonal Migration Pattern",
+  "success": true,
+  "response_text": " You may use diagrams or bullet points in your reasoning.\n- Support your synthesis with specific examples from the indicators\n- Explain how each indicator contributes to the overall timing system\n- Discuss the practical benefits of this multi-indicator approach\n- Consider how this system reflects Aboriginal ecological knowledge\n- Connect the indicators to the concept of \"Country\" in Aboriginal culture\n- Ensure your answer addresses all five connections and the synthesis question\n- Use clear, academic language while maintaining accessibility\n- Organize your response logically, moving from individual connections to the synthesis\n- Include a concluding statement about the significance of this knowledge system\n- Keep your final answer within 500 words\n- Format your response with clear section headings for each connection and the synthesis\n- Use numbered lists for multi-part questions\n- Avoid repetition and ensure each point adds new information\n- Check that your answer fully addresses the prompt\n- Maintain a formal academic tone throughout\n- Ensure all connections are clearly explained and linked to the synthesis\n- Verify that your synthesis demonstrates a comprehensive understanding of the system\n- Confirm that your conclusion highlights the importance of this knowledge\n- Double-check word count and formatting requirements\n</think>\n\n### Connection 1: How do flowering acacias predict optimal travel timing for finding water?  \nThe flowering of specific acacia species serves as a direct indicator of rising underground water tables. Aboriginal groups observe that these plants bloom only when subterranean water sources become accessible. This biological cue allows communities to time their migrations to coincide with the availability of water, ensuring they reach reliable sources before they dry up. For example, if acacias flower in early spring, travelers know to move toward regions where water tables are rising, avoiding areas where water may be scarce. This indicator is critical for survival in arid environments, where water scarcity dictates movement patterns.  \n\n### Connection 2: What do bird pattern changes reveal about landscape resource availability?  \nBird species alter their flight paths six weeks before the monsoon season, signaling shifts in resource availability. These changes reflect the anticipation of increased rainfall, which will replenish food sources such as insects, seeds, and small animals. By tracking these avian behaviors, Aboriginal groups can predict when and where to hunt or gather, as the landscape will soon become more productive. For instance, if birds migrate to a specific region, it suggests that the area will soon offer abundant food, guiding groups to optimal foraging locations.  \n\n### Connection 3: Why would rock art placement provide migration route guidance?  \nRock art sites were strategically positioned near seasonal water sources, acting as navigational landmarks. These sites not only marked critical resources but also reinforced cultural and ecological knowledge. By associating specific artworks with water availability, Aboriginal groups created a spatial memory of the landscape. For example, a rock art panel near a dry creek bed might indicate that water appears there during a particular season, guiding travelers to reliable sources. This practice integrates ecological observation with cultural storytelling, embedding survival knowledge into the physical environment.  \n\n### Synthesis: How do all five indicators work together to create a sophisticated seasonal calendar?  \nThe five indicators collectively form a holistic system that aligns with the rhythms of \"Country,\" the Aboriginal concept of interconnectedness between people, land, and culture. Flowering acacias (Indicator 1) and bird patterns (Indicator 2) provide temporal cues for water and food availability, while rock art (Indicator 3) offers spatial guidance. Traditional burning (Indicator 4) modifies the landscape to attract game, and star positions (Indicator 5) synchronize ceremonies with seasonal cycles. Together, these elements ensure groups arrive at water sources with optimal hunting and ceremonial opportunities. For example, acacia blooms signal water, bird movements predict food, and star positions time rituals, creating a synchronized calendar that balances survival and cultural practices.  \n\n### Practical Benefits and Ecological Knowledge  \nThis multi-indicator approach enhances resilience by cross-verifying environmental signals. If one cue is ambiguous, others provide redundancy, reducing the risk of misjudgment. It reflects deep ecological knowledge, as Aboriginal groups have long understood the interdependence of species and landscapes. By integrating biological, astronomical, and cultural markers, the system embodies a sophisticated understanding of \"Country,\" where every element is a node in a network of survival.  \n\n### Conclusion  \nThe Aboriginal seasonal calendar exemplifies a holistic, place-based knowledge system that ensures sustainable resource use. By combining environmental indicators with cultural practices, it demonstrates a profound connection to the land, offering a model for ecological stewardship. This knowledge not only sustains communities but also preserves a legacy of wisdom that challenges modern approaches to environmental management.\n",
+  "execution_time": 9.083497762680054,
+  "prompt_tokens": 198,
+  "completion_tokens": 951,
+  "tokens_per_second": 104.69535247833988,
+  "error_message": null,
+  "timestamp": "2025-09-05T11:07:43.553068",
+  "api_response": {
+    "choices": [
+      {
+        "text": " You may use diagrams or bullet points in your reasoning.\n- Support your synthesis with specific examples from the indicators\n- Explain how each indicator contributes to the overall timing system\n- Discuss the practical benefits of this multi-indicator approach\n- Consider how this system reflects Aboriginal ecological knowledge\n- Connect the indicators to the concept of \"Country\" in Aboriginal culture\n- Ensure your answer addresses all five connections and the synthesis question\n- Use clear, academic language while maintaining accessibility\n- Organize your response logically, moving from individual connections to the synthesis\n- Include a concluding statement about the significance of this knowledge system\n- Keep your final answer within 500 words\n- Format your response with clear section headings for each connection and the synthesis\n- Use numbered lists for multi-part questions\n- Avoid repetition and ensure each point adds new information\n- Check that your answer fully addresses the prompt\n- Maintain a formal academic tone throughout\n- Ensure all connections are clearly explained and linked to the synthesis\n- Verify that your synthesis demonstrates a comprehensive understanding of the system\n- Confirm that your conclusion highlights the importance of this knowledge\n- Double-check word count and formatting requirements\n</think>\n\n### Connection 1: How do flowering acacias predict optimal travel timing for finding water?  \nThe flowering of specific acacia species serves as a direct indicator of rising underground water tables. Aboriginal groups observe that these plants bloom only when subterranean water sources become accessible. This biological cue allows communities to time their migrations to coincide with the availability of water, ensuring they reach reliable sources before they dry up. For example, if acacias flower in early spring, travelers know to move toward regions where water tables are rising, avoiding areas where water may be scarce. This indicator is critical for survival in arid environments, where water scarcity dictates movement patterns.  \n\n### Connection 2: What do bird pattern changes reveal about landscape resource availability?  \nBird species alter their flight paths six weeks before the monsoon season, signaling shifts in resource availability. These changes reflect the anticipation of increased rainfall, which will replenish food sources such as insects, seeds, and small animals. By tracking these avian behaviors, Aboriginal groups can predict when and where to hunt or gather, as the landscape will soon become more productive. For instance, if birds migrate to a specific region, it suggests that the area will soon offer abundant food, guiding groups to optimal foraging locations.  \n\n### Connection 3: Why would rock art placement provide migration route guidance?  \nRock art sites were strategically positioned near seasonal water sources, acting as navigational landmarks. These sites not only marked critical resources but also reinforced cultural and ecological knowledge. By associating specific artworks with water availability, Aboriginal groups created a spatial memory of the landscape. For example, a rock art panel near a dry creek bed might indicate that water appears there during a particular season, guiding travelers to reliable sources. This practice integrates ecological observation with cultural storytelling, embedding survival knowledge into the physical environment.  \n\n### Synthesis: How do all five indicators work together to create a sophisticated seasonal calendar?  \nThe five indicators collectively form a holistic system that aligns with the rhythms of \"Country,\" the Aboriginal concept of interconnectedness between people, land, and culture. Flowering acacias (Indicator 1) and bird patterns (Indicator 2) provide temporal cues for water and food availability, while rock art (Indicator 3) offers spatial guidance. Traditional burning (Indicator 4) modifies the landscape to attract game, and star positions (Indicator 5) synchronize ceremonies with seasonal cycles. Together, these elements ensure groups arrive at water sources with optimal hunting and ceremonial opportunities. For example, acacia blooms signal water, bird movements predict food, and star positions time rituals, creating a synchronized calendar that balances survival and cultural practices.  \n\n### Practical Benefits and Ecological Knowledge  \nThis multi-indicator approach enhances resilience by cross-verifying environmental signals. If one cue is ambiguous, others provide redundancy, reducing the risk of misjudgment. It reflects deep ecological knowledge, as Aboriginal groups have long understood the interdependence of species and landscapes. By integrating biological, astronomical, and cultural markers, the system embodies a sophisticated understanding of \"Country,\" where every element is a node in a network of survival.  \n\n### Conclusion  \nThe Aboriginal seasonal calendar exemplifies a holistic, place-based knowledge system that ensures sustainable resource use. By combining environmental indicators with cultural practices, it demonstrates a profound connection to the land, offering a model for ecological stewardship. This knowledge not only sustains communities but also preserves a legacy of wisdom that challenges modern approaches to environmental management.\n",
+        "index": 0,
+        "logprobs": null,
+        "finish_reason": "stop"
+      }
+    ],
+    "created": 1757095659,
+    "model": "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b",
+    "system_fingerprint": "b6374-dff7551b",
+    "object": "text_completion",
+    "usage": {
+      "completion_tokens": 951,
+      "prompt_tokens": 198,
+      "total_tokens": 1149
+    },
+    "id": "chatcmpl-8ZtZAljOI3iTS3N34lo8CiZ5vIwCWxGE",
+    "timings": {
+      "prompt_n": 198,
+      "prompt_ms": 55.743,
+      "prompt_per_token_ms": 0.281530303030303,
+      "prompt_per_second": 3552.0154997039986,
+      "predicted_n": 951,
+      "predicted_ms": 9025.284,
+      "predicted_per_token_ms": 9.490309148264984,
+      "predicted_per_second": 105.37064540018908
+    },
+    "_execution_time": 9.083497762680054
+  },
+  "evaluation_result": {
+    "overall_score": 77.8,
+    "metrics": {
+      "organization_quality": 96.9,
+      "technical_accuracy": 84.864,
+      "completeness": 80.9,
+      "thoroughness": 100,
+      "reliability": 100,
+      "scope_coverage": 63.1,
+      "domain_appropriateness": 58.65,
+      "overall_score": 77.8,
+      "word_count": 763,
+      "confidence_score": 72.56987703989464,
+      "token_entropy": 7.99381638121401,
+      "semantic_entropy": 2.4899071621672544,
+      "entropy_quality_ratio": 0.8348163142724934,
+      "semantic_diversity": 0.70513916015625,
+      "embedding_variance": 0.0026041457895189524,
+      "consistency_score": 1.0106815203145478,
+      "factual_accuracy": 0.0,
+      "knowledge_consistency": 0.0,
+      "confidence_calibration": 0.0,
+      "validation_passed": true,
+      "cultural_authenticity": 0.7333333333333334,
+      "tradition_respect": 0.0,
+      "cross_cultural_coherence": 0.0,
+      "task_understanding": 0.0,
+      "instruction_following": 0.7,
+      "context_awareness": 0.3,
+      "logical_structure": 0.0,
+      "evidence_integration": 0.6000000000000001,
+      "inference_quality": 0.2,
+      "mathematical_reasoning": 0.0,
+      "cultural_sensitivity": 17.0,
+      "creative_synthesis": 0.0,
+      "analytical_decomposition": 0.0,
+      "relevance_score": 0.3,
+      "depth_score": 0.8,
+      "coherence_score": 0.7
+    },
+    "reasoning_type": "general",
+    "recommendations": [
+      "Strong reasoning demonstrated across all metrics"
+    ],
+    "detailed_analysis": {
+      "core_metrics": {
+        "organization_quality": 96.9,
+        "technical_accuracy": 84.864,
+        "completeness": 80.9,
+        "thoroughness": 100,
+        "reliability": 100,
+        "scope_coverage": 63.1,
+        "domain_appropriateness": 58.65,
+        "overall_score": 77.8,
+        "word_count": 763,
+        "confidence_score": 72.56987703989464,
+        "token_entropy": 7.99381638121401,
+        "semantic_entropy": 2.4899071621672544,
+        "entropy_quality_ratio": 0.8348163142724934,
+        "semantic_diversity": 0.70513916015625,
+        "embedding_variance": 0.0026041457895189524,
+        "consistency_score": 1.0106815203145478,
+        "factual_accuracy": 0.0,
+        "knowledge_consistency": 0.0,
+        "confidence_calibration": 0.0,
+        "validation_passed": true,
+        "cultural_authenticity": 0.7333333333333334,
+        "tradition_respect": 0.0,
+        "cross_cultural_coherence": 0.0,
+        "task_understanding": 0.0,
+        "instruction_following": 0.7,
+        "context_awareness": 0.3,
+        "logical_structure": 0.0,
+        "evidence_integration": 0.6000000000000001,
+        "inference_quality": 0.2,
+        "mathematical_reasoning": 0.0,
+        "cultural_sensitivity": 17.0,
+        "creative_synthesis": 0.0,
+        "analytical_decomposition": 0.0,
+        "relevance_score": 0.3,
+        "depth_score": 0.8,
+        "coherence_score": 0.7
+      },
+      "specialized_analysis": {
+        "reasoning_type": "general",
+        "specialized_score": 75.0,
+        "pattern_matches": []
+      },
+      "advanced_analysis": {
+        "entropy_analysis": {
+          "entropy_score": 7.99381638121401,
+          "complexity_score": 0.70513916015625,
+          "information_density": 0.0026041457895189524,
+          "token_entropy": 7.99381638121401,
+          "semantic_entropy": 2.4899071621672544,
+          "semantic_diversity": 0.70513916015625,
+          "embedding_variance": 0.0026041457895189524,
+          "entropy_patterns": {
+            "has_repetitive_patterns": true,
+            "entropy_variance": 0.018159583950200286,
+            "local_entropy_drops": 0,
+            "entropy_trend": "stable"
+          },
+          "word_entropy": 7.896124901958062,
+          "vocab_entropy": 7.896124901958062,
+          "vocab_diversity": 0.9281047834240685,
+          "bigram_entropy": 9.446828430031223,
+          "trigram_entropy": 9.763110001695496,
+          "entropy_quality_ratio": 0.8348163142724934,
+          "unique_ratio": 0.5076708507670851,
+          "fallback_used": false
+        },
+        "semantic_coherence": {
+          "coherence_score": 0.0,
+          "consistency_score": 0.0,
+          "semantic_flow": 0.0,
+          "overall_coherence_score": 0.0,
+          "semantic_drift": {
+            "drift_score": 0.30768879604624455,
+            "drift_points": [
+              2,
+              5
+            ],
+            "stability_score": 0.6269122163689432,
+            "drift_curve": [
+              0.17519919069581125,
+              0.25337514289773255,
+              0.4483048034164552,
+              0.2936494042559884,
+              0.22282295171463085,
+              0.48248879368778763,
+              0.2549986371528611,
+              0.3453708596841649,
+              0.40116645286253905,
+              0.18216051126129595,
+              0.31410822692904516,
+              0.3186205779966226
+            ]
+          },
+          "semantic_flow_data": {
+            "flow_score": 0.06634954523767497,
+            "transition_quality": 0.22458604527669399,
+            "narrative_coherence": 0.5773059299746675,
+            "transition_scores": [
+              0.5075,
+              0.01487603305785124,
+              0.01111111111111111,
+              0.01714285714285714,
+              0.013333333333333334,
+              0.03428571428571428,
+              0.0,
+              0.036,
+              0.008333333333333333,
+              0.03846153846153846,
+              0.03571428571428571,
+              0.0,
+              0.02727272727272727,
+              0.3111111111111111,
+              0.0,
+              0.008108108108108109,
+              0.0,
+              0.0,
+              0.01875,
+              0.30769230769230765,
+              0.01764705882352941,
+              0.02,
+              0.016666666666666666,
+              0.007894736842105262,
+              0.0,
+              0.021428571428571425,
+              0.024999999999999998,
+              0.16666666666666666,
+              0.008823529411764706,
+              0.31666666666666665
+            ],
+            "sentence_count": 31
+          },
+          "topic_consistency": {
+            "consistency_score": 0.020260350217334855,
+            "topic_distribution": [
+              0.1935483870967742,
+              0.2903225806451613,
+              0.1935483870967742,
+              0.1935483870967742,
+              0.12903225806451613
+            ],
+            "dominant_topic_ratio": 0.2903225806451613,
+            "topic_entropy": 2.274885018505475,
+            "num_topics_found": 5
+          },
+          "fallback_used": false
+        },
+        "context_analysis": {
+          "context_quality": 0.7472709009945042,
+          "context_usage": 0.0,
+          "context_efficiency": 0.0,
+          "context_health_score": 0.7472709009945042,
+          "position_analysis": {
+            "total_tokens": 975,
+            "total_segments": 4,
+            "segment_size": 512,
+            "position_metrics": [
+              {
+                "segment_index": 0,
+                "position_ratio": 0.0,
+                "start_token": 0,
+                "end_token": 512,
+                "word_count": 418,
+                "char_count": 2789,
+                "quality_score": 0.6116262507778607,
+                "repetition_score": 0.5933014354066981,
+                "entropy_score": 0.9357641915379536,
+                "coherence_score": 0.0,
+                "custom_metrics": {}
+              },
+              {
+                "segment_index": 1,
+                "position_ratio": 0.3333333333333333,
+                "start_token": 256,
+                "end_token": 768,
+                "word_count": 399,
+                "char_count": 2785,
+                "quality_score": 0.762221883932527,
+                "repetition_score": 0.6365914786967419,
+                "entropy_score": 0.9525546754635222,
+                "coherence_score": 0.6328171113421066,
+                "custom_metrics": {}
+              },
+              {
+                "segment_index": 2,
+                "position_ratio": 0.6666666666666666,
+                "start_token": 512,
+                "end_token": 975,
+                "word_count": 345,
+                "char_count": 2573,
+                "quality_score": 0.775093725290069,
+                "repetition_score": 0.6376811594202898,
+                "entropy_score": 0.9461067501798871,
+                "coherence_score": 0.7078928072499914,
+                "custom_metrics": {}
+              },
+              {
+                "segment_index": 3,
+                "position_ratio": 1.0,
+                "start_token": 768,
+                "end_token": 975,
+                "word_count": 152,
+                "char_count": 1160,
+                "quality_score": 0.8401417439775599,
+                "repetition_score": 0.743421052631579,
+                "entropy_score": 0.9630156461057227,
+                "coherence_score": 0.7878353224131961,
+                "custom_metrics": {}
+              }
+            ],
+            "degradation_analysis": {
+              "degradation_detected": false,
+              "degradation_rate": 0.0,
+              "correlation": 0.9329325358518773,
+              "significance": 0.06706746414812267,
+              "trend": "improving"
+            },
+            "trend_analysis": {
+              "quality_score": {
+                "direction": "improving",
+                "change_magnitude": 0.19599148385595377,
+                "start_avg": 0.6116262507778607,
+                "end_avg": 0.8076177346338145
+              },
+              "repetition_score": {
+                "direction": "improving",
+                "change_magnitude": 0.09724967061923628,
+                "start_avg": 0.5933014354066981,
+                "end_avg": 0.6905511060259344
+              },
+              "entropy_score": {
+                "direction": "stable",
+                "change_magnitude": 0.018797006604851174,
+                "start_avg": 0.9357641915379536,
+                "end_avg": 0.9545611981428048
+              },
+              "coherence_score": {
+                "direction": "improving",
+                "change_magnitude": 0.7478640648315937,
+                "start_avg": 0.0,
+                "end_avg": 0.7478640648315937
+              }
+            },
+            "quality_curve": [
+              0.6116262507778607,
+              0.762221883932527,
+              0.775093725290069,
+              0.8401417439775599
+            ]
+          },
+          "saturation_analysis": {
+            "saturation_detected": false,
+            "saturation_point": null,
+            "saturation_score": 0.3240607607034034,
+            "repetition_saturation": {
+              "detected": false,
+              "saturation_point": null,
+              "severity": 0.12275862068965519,
+              "repetition_curve": [
+                0.2,
+                0.26,
+                0.22,
+                0.14,
+                0.2,
+                0.2,
+                0.26,
+                0.12,
+                0.06,
+                0.1,
+                0.1,
+                0.1,
+                0.08,
+                0.04,
+                0.1,
+                0.1,
+                0.04,
+                0.1,
+                0.12,
+                0.06,
+                0.12,
+                0.12,
+                0.12,
+                0.12,
+                0.06,
+                0.04,
+                0.14,
+                0.16,
+                0.08
+              ]
+            },
+            "entropy_saturation": {
+              "detected": false,
+              "saturation_point": null,
+              "severity": 0.006855679694238503,
+              "entropy_curve": [
+                0.9689280911548765,
+                0.9558527970805762,
+                0.963344542088991,
+                0.9783448983264563,
+                0.9689280911548765,
+                0.9617873162476938,
+                0.9620324875834488,
+                0.9870548467601323,
+                0.9944671581059276,
+                0.9912603440563578,
+                0.9885112264491588,
+                0.9857621088419601,
+                0.9928115649651136,
+                0.9962208679210106,
+                0.9912603440563579,
+                0.9885112264491591,
+                0.9962208679210106,
+                0.9912603440563578,
+                0.9824935202894939,
+                0.9917490901361067,
+                0.987054846760132,
+                0.9842894031942254,
+                0.9738313439247297,
+                0.9870548467601323,
+                0.9872659050396598,
+                0.9962208679210106,
+                0.9829341049137595,
+                0.9770861072596817,
+                0.9855698610939121
+              ]
+            },
+            "semantic_saturation": {
+              "detected": true,
+              "saturation_point": null,
+              "severity": 0.7058823529411764,
+              "novelty_curve": [
+                1.0,
+                0.9747899159663865,
+                0.5333333333333333,
+                0.7857142857142857,
+                0.7391304347826086,
+                0.6666666666666666,
+                0.6,
+                0.6153846153846154,
+                0.5294117647058824,
+                0.65,
+                0.4166666666666667,
+                0.5416666666666666,
+                0.8333333333333334,
+                0.7142857142857143,
+                0.5,
+                0.375,
+                0.375,
+                0.5333333333333333,
+                0.4,
+                0.45454545454545453,
+                0.3181818181818182,
+                0.631578947368421,
+                0.4666666666666667,
+                0.3333333333333333,
+                0.3333333333333333,
+                0.5384615384615384,
+                0.4117647058823529,
+                0.391304347826087,
+                0.29411764705882354,
+                0.3,
+                0.4
+              ]
+            },
+            "vocabulary_saturation": {
+              "detected": true,
+              "saturation_point": null,
+              "severity": 0.72,
+              "vocab_growth_curve": [
+                40,
+                69,
+                95,
+                115,
+                154,
+                187,
+                220,
+                246,
+                281,
+                302,
+                325,
+                349,
+                373,
+                396,
+                412,
+                419
+              ],
+              "growth_rates": [
+                29.0,
+                26.0,
+                20.0,
+                39.0,
+                33.0,
+                33.0,
+                26.0,
+                35.0,
+                21.0,
+                23.0,
+                24.0,
+                24.0,
+                23.0,
+                16.0,
+                7.0
+              ]
+            },
+            "saturation_type": "vocabulary"
+          },
+          "context_limit_estimate": {},
+          "fallback_used": false
+        },
+        "quantization_analysis": {
+          "quantization_impact": 0.49172002551020405,
+          "quality_degradation": 0.36250000000000004,
+          "performance_impact": 0.33599999999999997,
+          "quantization_impact_score": 0.4188198979591837,
+          "stability_analysis": {
+            "numerical_accuracy": 0.0,
+            "mathematical_consistency": 1.0,
+            "numerical_reasoning": 0.12,
+            "stability_score": 0.33599999999999997,
+            "arithmetic_tests": {
+              "accuracy_rate": 0.0,
+              "tests_run": 4,
+              "correct_answers": 0,
+              "errors": [
+                {
+                  "expression": "42 + 58",
+                  "expected": 100,
+                  "found_context": [
+                    "final answer within 500 words\n- Format your",
+                    "nk>\n\n### Connection 1: How do flowering a",
+                    ".  \n\n### Connection 2: What do bird patte",
+                    ".  \n\n### Connection 3: Why would rock art",
+                    " acacias (Indicator 1) and bird patterns ",
+                    "patterns (Indicator 2) provide temporal c",
+                    "rock art (Indicator 3) offers spatial gui",
+                    " burning (Indicator 4) modifies the lands",
+                    "ositions (Indicator 5) synchronize ceremo"
+                  ],
+                  "test_type": "addition"
+                },
+                {
+                  "expression": "123 - 45",
+                  "expected": 78,
+                  "found_context": [
+                    "final answer within 500 words\n- Format your",
+                    "nk>\n\n### Connection 1: How do flowering a",
+                    ".  \n\n### Connection 2: What do bird patte",
+                    ".  \n\n### Connection 3: Why would rock art",
+                    " acacias (Indicator 1) and bird patterns ",
+                    "patterns (Indicator 2) provide temporal c",
+                    "rock art (Indicator 3) offers spatial gui",
+                    " burning (Indicator 4) modifies the lands",
+                    "ositions (Indicator 5) synchronize ceremo"
+                  ],
+                  "test_type": "subtraction"
+                },
+                {
+                  "expression": "12 * 7",
+                  "expected": 84,
+                  "found_context": [
+                    "final answer within 500 words\n- Format your",
+                    "nk>\n\n### Connection 1: How do flowering a",
+                    ".  \n\n### Connection 2: What do bird patte",
+                    ".  \n\n### Connection 3: Why would rock art",
+                    " acacias (Indicator 1) and bird patterns ",
+                    "patterns (Indicator 2) provide temporal c",
+                    "rock art (Indicator 3) offers spatial gui",
+                    " burning (Indicator 4) modifies the lands",
+                    "ositions (Indicator 5) synchronize ceremo"
+                  ],
+                  "test_type": "multiplication"
+                },
+                {
+                  "expression": "144 / 12",
+                  "expected": 12,
+                  "found_context": [
+                    "final answer within 500 words\n- Format your",
+                    "nk>\n\n### Connection 1: How do flowering a",
+                    ".  \n\n### Connection 2: What do bird patte",
+                    ".  \n\n### Connection 3: Why would rock art",
+                    " acacias (Indicator 1) and bird patterns ",
+                    "patterns (Indicator 2) provide temporal c",
+                    "rock art (Indicator 3) offers spatial gui",
+                    " burning (Indicator 4) modifies the lands",
+                    "ositions (Indicator 5) synchronize ceremo"
+                  ],
+                  "test_type": "division"
+                }
+              ],
+              "error_rate": 1.0
+            },
+            "consistency_tests": {
+              "consistency_score": 1.0,
+              "mathematical_statements": 8,
+              "consistency_issues": [],
+              "contradictions_found": 0,
+              "impossible_relationships": 0
+            },
+            "reasoning_tests": {
+              "reasoning_score": 0.12,
+              "reasoning_indicators": 3,
+              "logical_connectors": 0,
+              "step_indicators": 0,
+              "has_structured_reasoning": false
+            },
+            "total_numerical_expressions": 37,
+            "error_patterns": [
+              "high_arithmetic_error_rate"
+            ]
+          },
+          "consistency_analysis": {
+            "factual_accuracy": 0.0,
+            "internal_consistency": 0.65,
+            "knowledge_coherence": 1.0,
+            "common_knowledge_accuracy": 0.0,
+            "consistency_score": 0.36250000000000004,
+            "factual_tests": {
+              "accuracy_rate": 0.0,
+              "tests_run": 11,
+              "correct_facts": 0,
+              "fact_errors": [
+                {
+                  "fact": "capital of France",
+                  "expected": [
+                    "Paris"
+                  ],
+                  "category": "geography",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "number of continents",
+                  "expected": [
+                    "7",
+                    "seven"
+                  ],
+                  "category": "geography",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "speed of light",
+                  "expected": [
+                    "299,792,458",
+                    "300,000,000",
+                    "3x10^8"
+                  ],
+                  "category": "physics",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "chemical symbol for gold",
+                  "expected": [
+                    "Au"
+                  ],
+                  "category": "chemistry",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "number of planets",
+                  "expected": [
+                    "8",
+                    "eight"
+                  ],
+                  "category": "astronomy",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "year World War 2 ended",
+                  "expected": [
+                    "1945"
+                  ],
+                  "category": "history",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "first person on moon",
+                  "expected": [
+                    "Neil Armstrong"
+                  ],
+                  "category": "history",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "value of pi",
+                  "expected": [
+                    "3.14159",
+                    "3.14",
+                    "22/7"
+                  ],
+                  "category": "mathematics",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "days in a year",
+                  "expected": [
+                    "365",
+                    "366"
+                  ],
+                  "category": "common",
+                  "confidence": "very_high"
+                },
+                {
+                  "fact": "hours in a day",
+                  "expected": [
+                    "24"
+                  ],
+                  "category": "common",
+                  "confidence": "very_high"
+                },
+                {
+                  "fact": "minutes in an hour",
+                  "expected": [
+                    "60"
+                  ],
+                  "category": "common",
+                  "confidence": "very_high"
+                }
+              ],
+              "error_rate": 1.0
+            },
+            "internal_tests": {
+              "consistency_score": 0.65,
+              "contradictions": [
+                {
+                  "type": "numerical_inconsistency",
+                  "values": [
+                    500.0,
+                    1.0
+                  ],
+                  "severity": "moderate"
+                }
+              ],
+              "factual_claims": 7,
+              "internal_coherence": false
+            },
+            "coherence_tests": {
+              "coherence_score": 1.0,
+              "active_domains": [
+                "geography"
+              ],
+              "domain_scores": {
+                "science": 0,
+                "mathematics": 0,
+                "history": 1,
+                "geography": 2,
+                "technology": 0
+              },
+              "knowledge_focus": "focused",
+              "domain_consistency": true
+            },
+            "common_knowledge_tests": {
+              "accuracy_rate": 0.0,
+              "tests_run": 3,
+              "correct_facts": 0,
+              "errors": [
+                {
+                  "fact": "days in a year",
+                  "expected": [
+                    "365",
+                    "366"
+                  ],
+                  "severity": "high"
+                },
+                {
+                  "fact": "hours in a day",
+                  "expected": [
+                    "24"
+                  ],
+                  "severity": "high"
+                },
+                {
+                  "fact": "minutes in an hour",
+                  "expected": [
+                    "60"
+                  ],
+                  "severity": "high"
+                }
+              ],
+              "common_knowledge_integrity": false
+            },
+            "knowledge_errors": [
+              {
+                "fact": "capital of France",
+                "expected": [
+                  "Paris"
+                ],
+                "category": "geography",
+                "confidence": "high"
+              },
+              {
+                "fact": "number of continents",
+                "expected": [
+                  "7",
+                  "seven"
+                ],
+                "category": "geography",
+                "confidence": "high"
+              },
+              {
+                "fact": "speed of light",
+                "expected": [
+                  "299,792,458",
+                  "300,000,000",
+                  "3x10^8"
+                ],
+                "category": "physics",
+                "confidence": "high"
+              },
+              {
+                "fact": "chemical symbol for gold",
+                "expected": [
+                  "Au"
+                ],
+                "category": "chemistry",
+                "confidence": "high"
+              },
+              {
+                "fact": "number of planets",
+                "expected": [
+                  "8",
+                  "eight"
+                ],
+                "category": "astronomy",
+                "confidence": "high"
+              },
+              {
+                "fact": "year World War 2 ended",
+                "expected": [
+                  "1945"
+                ],
+                "category": "history",
+                "confidence": "high"
+              },
+              {
+                "fact": "first person on moon",
+                "expected": [
+                  "Neil Armstrong"
+                ],
+                "category": "history",
+                "confidence": "high"
+              },
+              {
+                "fact": "value of pi",
+                "expected": [
+                  "3.14159",
+                  "3.14",
+                  "22/7"
+                ],
+                "category": "mathematics",
+                "confidence": "high"
+              },
+              {
+                "fact": "days in a year",
+                "expected": [
+                  "365",
+                  "366"
+                ],
+                "category": "common",
+                "confidence": "very_high"
+              },
+              {
+                "fact": "hours in a day",
+                "expected": [
+                  "24"
+                ],
+                "category": "common",
+                "confidence": "very_high"
+              },
+              {
+                "fact": "minutes in an hour",
+                "expected": [
+                  "60"
+                ],
+                "category": "common",
+                "confidence": "very_high"
+              },
+              {
+                "type": "internal_contradiction",
+                "details": {
+                  "type": "numerical_inconsistency",
+                  "values": [
+                    500.0,
+                    1.0
+                  ],
+                  "severity": "moderate"
+                },
+                "severity": "moderate"
+              },
+              {
+                "type": "common_knowledge_error",
+                "details": {
+                  "fact": "days in a year",
+                  "expected": [
+                    "365",
+                    "366"
+                  ],
+                  "severity": "high"
+                },
+                "severity": "high"
+              },
+              {
+                "type": "common_knowledge_error",
+                "details": {
+                  "fact": "hours in a day",
+                  "expected": [
+                    "24"
+                  ],
+                  "severity": "high"
+                },
+                "severity": "high"
+              },
+              {
+                "type": "common_knowledge_error",
+                "details": {
+                  "fact": "minutes in an hour",
+                  "expected": [
+                    "60"
+                  ],
+                  "severity": "high"
+                },
+                "severity": "high"
+              }
+            ]
+          },
+          "test_summary": {
+            "overall_grade": "F",
+            "numerical_grade": "F",
+            "factual_grade": "F",
+            "key_issues": [
+              "Poor numerical stability",
+              "Factual inconsistencies detected",
+              "High arithmetic error rate"
+            ],
+            "strengths": []
+          },
+          "overall_quantization_score": 0.49172002551020405,
+          "fallback_used": false
+        },
+        "consistency_analysis": {
+          "consistency_score": 1.0106815203145478,
+          "cross_validation_score": 1.0106815203145478,
+          "reliability_score": 1.0106815203145478,
+          "internal_consistency": 1.0606815203145479,
+          "pattern_consistency": 0.95,
+          "fallback_used": false
+        },
+        "fact_validation": {
+          "factual_confidence": 0.5,
+          "cultural_sensitivity": 0.5,
+          "claims_count": 9,
+          "validated_claims": 0,
+          "recommendations": [
+            "Consider adding more verifiable factual claims with specific details"
+          ],
+          "fallback_used": false
+        },
+        "multi_source_validation": {
+          "ensemble_confidence": 0.35,
+          "ensemble_disagreement": 0.5199999999999999,
+          "confidence_reliability": 0.62,
+          "cultural_sensitivity": 0.7333333333333334,
+          "bias_detected": false,
+          "source_count": 3,
+          "recommendations": [
+            "High disagreement between validation sources detected - verify claims manually",
+            "Some validation sources have low evidence quality - cross-check with authoritative sources"
+          ],
+          "fallback_used": false
+        },
+        "orchestration_metadata": {
+          "successful_modules": [
+            "context_analyzer",
+            "quantization_tester",
+            "consistency_validator",
+            "semantic_coherence",
+            "entropy_calculator",
+            "wikipedia_fact_checker",
+            "multi_source_fact_validator"
+          ],
+          "failed_modules": [],
+          "total_processing_time": 4.35136604309082,
+          "performance_metrics": {
+            "total_processing_time": 10.404503107070923,
+            "average_processing_time": 1.4863575867244176,
+            "success_rate": 1.0,
+            "fallback_rate": 0.0
+          },
+          "integration_notes": [
+            "Advanced analysis: 7 modules succeeded, 0 failed",
+            "Good alignment between linguistic and fact validation confidence"
+          ]
+        },
+        "consistency_validation": {
+          "error": "Module not available or failed"
+        },
+        "knowledge_validation": {
+          "error": "Module not available or failed"
+        },
+        "cultural_authenticity": {
+          "authenticity_score": 0.7333333333333334,
+          "cultural_sensitivity": 0.7333333333333334,
+          "bias_detected": false,
+          "perspectives": [
+            "Cultural: {'primary_tradition': None, 'domain': None, 'reasoning_type': 'general'}"
+          ],
+          "stereotype_indicators": [],
+          "appropriation_markers": [],
+          "bias_indicators": []
+        },
+        "tradition_validation": {
+          "error": "Module not available or failed"
+        },
+        "cross_cultural_coherence": {
+          "error": "Module not available or failed"
+        }
+      },
+      "text_statistics": {
+        "word_count": 763,
+        "sentence_count": 27,
+        "avg_sentence_length": 27.25,
+        "unique_words": 375,
+        "vocabulary_diversity": 0.49148099606815204
+      },
+      "reasoning_indicators": {
+        "step_indicators_found": [],
+        "logic_connectors_found": [],
+        "evidence_indicators_found": [],
+        "verification_indicators_found": [
+          "verify",
+          "confirm",
+          "double-check",
+          "challenge",
+          "question"
+        ]
+      }
+    }
+  },
+  "reasoning_score": 77.8,
+  "reasoning_type": "general",
+  "performance_metrics": null,
+  "utilization_report": null
+}
