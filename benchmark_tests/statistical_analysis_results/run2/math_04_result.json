@@ -1,0 +1,935 @@
+{
+  "test_id": "math_04",
+  "test_name": "Test 94: Vedic Mathematics Calculation Techniques",
+  "success": true,
+  "response_text": " Your response should be in English.\n</think>\n\n**Step-by-Step Explanation:**\n\n**Problem 1: Nikhilam Sutra for 87 × 93**  \n1. **Base Selection:** Both numbers are close to 100.  \n2. **Deviations:**  \n   - 87 is 13 less than 100 (100 - 87 = 13).  \n   - 93 is 7 less than 100 (100 - 93 = 7).  \n3. **Cross Subtraction:**  \n   - 87 - 7 = 80 or 93 - 13 = 80 (both give the left part of the result).  \n4. **Right Part:** Multiply deviations: 13 × 7 = 91.  \n5. **Result:** Combine left and right parts: **8091**.  \n**Verification:** Standard multiplication: 87 × 93 = 8091.  \n\n**Problem 2: Urdhva-Tiryagbhyam for 34 × 67**  \n1. **Grid Setup:**  \n   - Multiply units: 4 × 7 = 28 (write 8, carry 2).  \n   - Cross-multiply and add: (3 × 7) + (4 × 6) = 21 + 24 = 45 + carry 2 = 47 (write 7, carry 4).  \n   - Multiply tens: 3 × 6 = 18 + carry 4 = 22.  \n2. **Result:** Combine digits: **2278**.  \n\n**Problem 3: Paravartya Yojayet for 1234 ÷ 12**  \n1. **Divisor Adjustment:** Transpose 12 to 21 (ignore 1, use 2).  \n2. **Division Steps:**  \n   - 12 ÷ 2 = 6 (first digit).  \n   - 6 × 2 = 12; subtract from 12 → 0. Bring down 3 → 03.  \n   - 3 ÷ 2 = 1 (next digit). 1 × 2 = 2; subtract from 3 → 1. Bring down 4 → 14.  \n   - 14 ÷ 2 = 7 (next digit). 7 × 2 = 14; subtract → 0.  \n3. **Result:** Quotient is **102** with remainder 10.  \n\n**Simplification Explanation:**  \n- **Nikhilam** simplifies multiplication near a base (e.g., 100) by using deviations.  \n- **Urdhva-Tiryagbhyam** breaks multiplication into vertical/crosswise steps, reducing complexity.  \n- **Paravartya** streamlines division by transposing the divisor and applying systematic subtraction.  \n\n**Final Answers:**  \n1. **87 × 93 = 8091**  \n2. **34 × 67 = 2278**  \n3. **1234 ÷ 12 = 102** with remainder 10.\n",
+  "execution_time": 7.220016241073608,
+  "prompt_tokens": 229,
+  "completion_tokens": 754,
+  "tokens_per_second": 104.43189804901063,
+  "error_message": null,
+  "timestamp": "2025-09-05T11:08:03.137598",
+  "api_response": {
+    "choices": [
+      {
+        "text": " Your response should be in English.\n</think>\n\n**Step-by-Step Explanation:**\n\n**Problem 1: Nikhilam Sutra for 87 × 93**  \n1. **Base Selection:** Both numbers are close to 100.  \n2. **Deviations:**  \n   - 87 is 13 less than 100 (100 - 87 = 13).  \n   - 93 is 7 less than 100 (100 - 93 = 7).  \n3. **Cross Subtraction:**  \n   - 87 - 7 = 80 or 93 - 13 = 80 (both give the left part of the result).  \n4. **Right Part:** Multiply deviations: 13 × 7 = 91.  \n5. **Result:** Combine left and right parts: **8091**.  \n**Verification:** Standard multiplication: 87 × 93 = 8091.  \n\n**Problem 2: Urdhva-Tiryagbhyam for 34 × 67**  \n1. **Grid Setup:**  \n   - Multiply units: 4 × 7 = 28 (write 8, carry 2).  \n   - Cross-multiply and add: (3 × 7) + (4 × 6) = 21 + 24 = 45 + carry 2 = 47 (write 7, carry 4).  \n   - Multiply tens: 3 × 6 = 18 + carry 4 = 22.  \n2. **Result:** Combine digits: **2278**.  \n\n**Problem 3: Paravartya Yojayet for 1234 ÷ 12**  \n1. **Divisor Adjustment:** Transpose 12 to 21 (ignore 1, use 2).  \n2. **Division Steps:**  \n   - 12 ÷ 2 = 6 (first digit).  \n   - 6 × 2 = 12; subtract from 12 → 0. Bring down 3 → 03.  \n   - 3 ÷ 2 = 1 (next digit). 1 × 2 = 2; subtract from 3 → 1. Bring down 4 → 14.  \n   - 14 ÷ 2 = 7 (next digit). 7 × 2 = 14; subtract → 0.  \n3. **Result:** Quotient is **102** with remainder 10.  \n\n**Simplification Explanation:**  \n- **Nikhilam** simplifies multiplication near a base (e.g., 100) by using deviations.  \n- **Urdhva-Tiryagbhyam** breaks multiplication into vertical/crosswise steps, reducing complexity.  \n- **Paravartya** streamlines division by transposing the divisor and applying systematic subtraction.  \n\n**Final Answers:**  \n1. **87 × 93 = 8091**  \n2. **34 × 67 = 2278**  \n3. **1234 ÷ 12 = 102** with remainder 10.\n",
+        "index": 0,
+        "logprobs": null,
+        "finish_reason": "stop"
+      }
+    ],
+    "created": 1757095681,
+    "model": "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b",
+    "system_fingerprint": "b6374-dff7551b",
+    "object": "text_completion",
+    "usage": {
+      "completion_tokens": 754,
+      "prompt_tokens": 229,
+      "total_tokens": 983
+    },
+    "id": "chatcmpl-AaKWrb5LMXdOyflDlPYNCLtzWx6Lt4cD",
+    "timings": {
+      "prompt_n": 229,
+      "prompt_ms": 58.285,
+      "prompt_per_token_ms": 0.2545196506550218,
+      "prompt_per_second": 3928.969717766149,
+      "predicted_n": 754,
+      "predicted_ms": 7159.227,
+      "predicted_per_token_ms": 9.494996021220159,
+      "predicted_per_second": 105.31863286357591
+    },
+    "_execution_time": 7.220016241073608
+  },
+  "evaluation_result": {
+    "overall_score": 48.9,
+    "metrics": {
+      "organization_quality": 67.2,
+      "technical_accuracy": 43.758,
+      "completeness": 72.1,
+      "thoroughness": 34.7,
+      "reliability": 25.3,
+      "scope_coverage": 8.0,
+      "domain_appropriateness": 14.280000000000001,
+      "overall_score": 48.9,
+      "word_count": 318,
+      "confidence_score": 54.96834902148911,
+      "token_entropy": 6.389224970374399,
+      "semantic_entropy": 2.5912724027892007,
+      "entropy_quality_ratio": 0.7685931589248325,
+      "semantic_diversity": 0.6887856125831604,
+      "embedding_variance": 0.0026040798984467983,
+      "consistency_score": 1.0339622641509434,
+      "factual_accuracy": 0.0,
+      "knowledge_consistency": 0.0,
+      "confidence_calibration": 0.0,
+      "validation_passed": true,
+      "cultural_authenticity": 0.9,
+      "tradition_respect": 0.0,
+      "cross_cultural_coherence": 0.0,
+      "task_understanding": 0.8,
+      "instruction_following": 0.7,
+      "context_awareness": 0.3,
+      "logical_structure": 0.3,
+      "evidence_integration": 0.4,
+      "inference_quality": 0.0,
+      "mathematical_reasoning": 0.6,
+      "cultural_sensitivity": 15.0,
+      "creative_synthesis": 0.0,
+      "analytical_decomposition": 0.0,
+      "relevance_score": 0.5,
+      "depth_score": 0.6,
+      "coherence_score": 0.7
+    },
+    "reasoning_type": "general",
+    "recommendations": [
+      "Strengthen logical flow with more connecting words (therefore, because, consequently)",
+      "Add verification steps with self-checking language (verify, confirm, review)"
+    ],
+    "detailed_analysis": {
+      "core_metrics": {
+        "organization_quality": 67.2,
+        "technical_accuracy": 43.758,
+        "completeness": 72.1,
+        "thoroughness": 34.7,
+        "reliability": 25.3,
+        "scope_coverage": 8.0,
+        "domain_appropriateness": 14.280000000000001,
+        "overall_score": 48.9,
+        "word_count": 318,
+        "confidence_score": 54.96834902148911,
+        "token_entropy": 6.389224970374399,
+        "semantic_entropy": 2.5912724027892007,
+        "entropy_quality_ratio": 0.7685931589248325,
+        "semantic_diversity": 0.6887856125831604,
+        "embedding_variance": 0.0026040798984467983,
+        "consistency_score": 1.0339622641509434,
+        "factual_accuracy": 0.0,
+        "knowledge_consistency": 0.0,
+        "confidence_calibration": 0.0,
+        "validation_passed": true,
+        "cultural_authenticity": 0.9,
+        "tradition_respect": 0.0,
+        "cross_cultural_coherence": 0.0,
+        "task_understanding": 0.8,
+        "instruction_following": 0.7,
+        "context_awareness": 0.3,
+        "logical_structure": 0.3,
+        "evidence_integration": 0.4,
+        "inference_quality": 0.0,
+        "mathematical_reasoning": 0.6,
+        "cultural_sensitivity": 15.0,
+        "creative_synthesis": 0.0,
+        "analytical_decomposition": 0.0,
+        "relevance_score": 0.5,
+        "depth_score": 0.6,
+        "coherence_score": 0.7
+      },
+      "specialized_analysis": {
+        "reasoning_type": "general",
+        "specialized_score": 75.0,
+        "pattern_matches": []
+      },
+      "advanced_analysis": {
+        "entropy_analysis": {
+          "entropy_score": 6.389224970374399,
+          "complexity_score": 0.6887856125831604,
+          "information_density": 0.0026040798984467983,
+          "token_entropy": 6.389224970374399,
+          "semantic_entropy": 2.5912724027892007,
+          "semantic_diversity": 0.6887856125831604,
+          "embedding_variance": 0.0026040798984467983,
+          "entropy_patterns": {
+            "has_repetitive_patterns": false,
+            "entropy_variance": 0.32126773463788116,
+            "local_entropy_drops": 0,
+            "entropy_trend": "stable"
+          },
+          "word_entropy": 6.551062884993516,
+          "vocab_entropy": 6.551062884993516,
+          "vocab_diversity": 0.9660397268011247,
+          "bigram_entropy": 8.010631109605841,
+          "trigram_entropy": 8.767836611637055,
+          "entropy_quality_ratio": 0.7685931589248325,
+          "unique_ratio": 0.5472636815920398,
+          "fallback_used": false
+        },
+        "semantic_coherence": {
+          "coherence_score": 0.0,
+          "consistency_score": 0.0,
+          "semantic_flow": 0.0,
+          "overall_coherence_score": 0.0,
+          "semantic_drift": {
+            "drift_score": 0.0,
+            "drift_points": [],
+            "stability_score": 1.0,
+            "drift_curve": []
+          },
+          "semantic_flow_data": {
+            "flow_score": 0.052097641941391944,
+            "transition_quality": 0.16283195970695968,
+            "narrative_coherence": 0.5618278694059806,
+            "transition_scores": [
+              0.0,
+              0.0,
+              0.0,
+              0.22499999999999998,
+              0.0,
+              0.023076923076923078,
+              0.03333333333333333,
+              0.0,
+              0.0,
+              0.0,
+              0.09999999999999999,
+              0.0857142857142857,
+              0.0,
+              0.0,
+              0.0,
+              0.4,
+              0.0,
+              0.0,
+              0.4,
+              0.0,
+              0.0,
+              0.4,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "sentence_count": 33
+          },
+          "topic_consistency": {
+            "consistency_score": 0.022949090751382073,
+            "topic_distribution": [
+              0.30303030303030304,
+              0.21212121212121213,
+              0.15151515151515152,
+              0.15151515151515152,
+              0.18181818181818182
+            ],
+            "dominant_topic_ratio": 0.30303030303030304,
+            "topic_entropy": 2.2686419563196085,
+            "num_topics_found": 5
+          },
+          "fallback_used": false
+        },
+        "context_analysis": {
+          "context_quality": 0.6424143283072734,
+          "context_usage": 0.0,
+          "context_efficiency": 0.0,
+          "context_health_score": 0.6424143283072734,
+          "position_analysis": {
+            "total_tokens": 671,
+            "total_segments": 3,
+            "segment_size": 512,
+            "position_metrics": [
+              {
+                "segment_index": 0,
+                "position_ratio": 0.0,
+                "start_token": 0,
+                "end_token": 512,
+                "word_count": 318,
+                "char_count": 1755,
+                "quality_score": 0.6542979556970593,
+                "repetition_score": 0.550314465408805,
+                "entropy_score": 0.925366654066809,
+                "coherence_score": 0.32012753953406814,
+                "custom_metrics": {}
+              },
+              {
+                "segment_index": 1,
+                "position_ratio": 0.5,
+                "start_token": 256,
+                "end_token": 671,
+                "word_count": 198,
+                "char_count": 1079,
+                "quality_score": 0.6729450292247607,
+                "repetition_score": 0.5858585858585861,
+                "entropy_score": 0.9353808084820808,
+                "coherence_score": 0.3222463574424701,
+                "custom_metrics": {}
+              },
+              {
+                "segment_index": 2,
+                "position_ratio": 1.0,
+                "start_token": 512,
+                "end_token": 671,
+                "word_count": 0,
+                "char_count": 0,
+                "quality_score": 0.6000000000000001,
+                "repetition_score": 1.0,
+                "entropy_score": 0.0,
+                "coherence_score": 1.0,
+                "custom_metrics": {}
+              }
+            ],
+            "degradation_analysis": {
+              "degradation_detected": false,
+              "degradation_rate": 0.027148977848529595,
+              "correlation": -0.7163942713281463,
+              "significance": 0.49158242681997855,
+              "trend": "stable"
+            },
+            "trend_analysis": {
+              "quality_score": {
+                "direction": "stable",
+                "change_magnitude": 0.0542979556970592,
+                "start_avg": 0.6542979556970593,
+                "end_avg": 0.6000000000000001
+              },
+              "repetition_score": {
+                "direction": "improving",
+                "change_magnitude": 0.449685534591195,
+                "start_avg": 0.550314465408805,
+                "end_avg": 1.0
+              },
+              "entropy_score": {
+                "direction": "declining",
+                "change_magnitude": 0.925366654066809,
+                "start_avg": 0.925366654066809,
+                "end_avg": 0.0
+              },
+              "coherence_score": {
+                "direction": "improving",
+                "change_magnitude": 0.6798724604659319,
+                "start_avg": 0.32012753953406814,
+                "end_avg": 1.0
+              }
+            },
+            "quality_curve": [
+              0.6542979556970593,
+              0.6729450292247607,
+              0.6000000000000001
+            ]
+          },
+          "saturation_analysis": {
+            "saturation_detected": false,
+            "saturation_point": 17,
+            "saturation_score": 0.43816806166845895,
+            "repetition_saturation": {
+              "detected": false,
+              "saturation_point": 25,
+              "severity": 0.25818181818181823,
+              "repetition_curve": [
+                0.22,
+                0.44,
+                0.28,
+                0.16,
+                0.26,
+                0.22,
+                0.18,
+                0.34,
+                0.5,
+                0.16,
+                0.08
+              ]
+            },
+            "entropy_saturation": {
+              "detected": false,
+              "saturation_point": null,
+              "severity": 0.017193202194526358,
+              "entropy_curve": [
+                0.9741469478627098,
+                0.944517530787321,
+                0.9664677202955115,
+                0.9770861072596814,
+                0.959517743766467,
+                0.9576315426168263,
+                0.9806084355615504,
+                0.9621890310001143,
+                0.9537924711069872,
+                0.9817042051950027,
+                0.9900782290917443
+              ]
+            },
+            "semantic_saturation": {
+              "detected": true,
+              "saturation_point": 17,
+              "severity": 1.0,
+              "novelty_curve": [
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                0.8181818181818182,
+                0.3,
+                1.0,
+                0.6470588235294118,
+                1.0,
+                0.5555555555555556,
+                1.0,
+                0.8571428571428571,
+                0.5,
+                0.5,
+                0.5714285714285714,
+                0.6,
+                0.3333333333333333,
+                0.0,
+                0.5,
+                0.6666666666666666,
+                0.7,
+                0.0,
+                0.4,
+                0.45454545454545453,
+                0.6,
+                0.125,
+                0.1111111111111111,
+                0.2,
+                0.0,
+                0.125,
+                0.0,
+                0.7142857142857143,
+                0.8,
+                1.0,
+                1.0,
+                0.7777777777777778,
+                0.6666666666666666,
+                0.6666666666666666,
+                0.3333333333333333,
+                0.5,
+                0.25
+              ]
+            },
+            "vocabulary_saturation": {
+              "detected": true,
+              "saturation_point": null,
+              "severity": 0.7777777777777778,
+              "vocab_growth_curve": [
+                39,
+                68,
+                96,
+                120,
+                134,
+                169,
+                175
+              ],
+              "growth_rates": [
+                29.0,
+                28.0,
+                24.0,
+                14.0,
+                35.0,
+                6.0
+              ]
+            },
+            "saturation_type": "semantic"
+          },
+          "context_limit_estimate": {},
+          "fallback_used": false
+        },
+        "quantization_analysis": {
+          "quantization_impact": 0.6740798739950526,
+          "quality_degradation": 0.5276515151515152,
+          "performance_impact": 0.7020000000000001,
+          "quantization_impact_score": 0.2737320191713048,
+          "stability_analysis": {
+            "numerical_accuracy": 0.75,
+            "mathematical_consistency": 1.0,
+            "numerical_reasoning": 0.34,
+            "stability_score": 0.7020000000000001,
+            "arithmetic_tests": {
+              "accuracy_rate": 0.75,
+              "tests_run": 4,
+              "correct_answers": 3,
+              "errors": [
+                {
+                  "expression": "12 * 7",
+                  "expected": 84,
+                  "found_context": [
+                    "ation:**\n\n**Problem 1: Nikhilam Sutra for",
+                    " Nikhilam Sutra for 87 × 93**  \n1. **Base ",
+                    "ilam Sutra for 87 × 93**  \n1. **Base Selec",
+                    "tra for 87 × 93**  \n1. **Base Selection:*",
+                    "umbers are close to 100.  \n2. **Deviations:",
+                    "are close to 100.  \n2. **Deviations:**  \n",
+                    "eviations:**  \n   - 87 is 13 less than 100",
+                    "ons:**  \n   - 87 is 13 less than 100 (100 ",
+                    " 87 is 13 less than 100 (100 - 87 = 13).  \n",
+                    "s 13 less than 100 (100 - 87 = 13).  \n   - ",
+                    "ess than 100 (100 - 87 = 13).  \n   - 93 is",
+                    "han 100 (100 - 87 = 13).  \n   - 93 is 7 le",
+                    " - 87 = 13).  \n   - 93 is 7 less than 100 ",
+                    "= 13).  \n   - 93 is 7 less than 100 (100 ",
+                    "- 93 is 7 less than 100 (100 - 93 = 7).  \n3",
+                    "is 7 less than 100 (100 - 93 = 7).  \n3. **C",
+                    "ess than 100 (100 - 93 = 7).  \n3. **Cross ",
+                    "han 100 (100 - 93 = 7).  \n3. **Cross Subt",
+                    "0 (100 - 93 = 7).  \n3. **Cross Subtractio",
+                    "btraction:**  \n   - 87 - 7 = 80 or 93 - 13",
+                    "tion:**  \n   - 87 - 7 = 80 or 93 - 13 = 8",
+                    ":**  \n   - 87 - 7 = 80 or 93 - 13 = 80 (bo",
+                    "   - 87 - 7 = 80 or 93 - 13 = 80 (both giv",
+                    "87 - 7 = 80 or 93 - 13 = 80 (both give the",
+                    "7 = 80 or 93 - 13 = 80 (both give the left",
+                    "t of the result).  \n4. **Right Part:** Mu",
+                    "ultiply deviations: 13 × 7 = 91.  \n5. **Re",
+                    "ly deviations: 13 × 7 = 91.  \n5. **Result",
+                    "eviations: 13 × 7 = 91.  \n5. **Result:** C",
+                    "ons: 13 × 7 = 91.  \n5. **Result:** Combin",
+                    " and right parts: **8091**.  \n**Verification",
+                    "ard multiplication: 87 × 93 = 8091.  \n\n**P",
+                    "ultiplication: 87 × 93 = 8091.  \n\n**Proble",
+                    "lication: 87 × 93 = 8091.  \n\n**Problem 2: Ur",
+                    " 8091.  \n\n**Problem 2: Urdhva-Tiryagbhyam",
+                    "hva-Tiryagbhyam for 34 × 67**  \n1. **Grid ",
+                    "iryagbhyam for 34 × 67**  \n1. **Grid Setup",
+                    "yam for 34 × 67**  \n1. **Grid Setup:**  \n",
+                    "  - Multiply units: 4 × 7 = 28 (write 8, ",
+                    "Multiply units: 4 × 7 = 28 (write 8, carr",
+                    "iply units: 4 × 7 = 28 (write 8, carry 2).",
+                    ": 4 × 7 = 28 (write 8, carry 2).  \n   - C",
+                    " 28 (write 8, carry 2).  \n   - Cross-mult",
+                    "-multiply and add: (3 × 7) + (4 × 6) = 21",
+                    "tiply and add: (3 × 7) + (4 × 6) = 21 + 2",
+                    "and add: (3 × 7) + (4 × 6) = 21 + 24 = 45",
+                    "add: (3 × 7) + (4 × 6) = 21 + 24 = 45 + c",
+                    "(3 × 7) + (4 × 6) = 21 + 24 = 45 + carry 2",
+                    "7) + (4 × 6) = 21 + 24 = 45 + carry 2 = 47",
+                    "(4 × 6) = 21 + 24 = 45 + carry 2 = 47 (wri",
+                    "1 + 24 = 45 + carry 2 = 47 (write 7, carr",
+                    "24 = 45 + carry 2 = 47 (write 7, carry 4).",
+                    "carry 2 = 47 (write 7, carry 4).  \n   - M",
+                    " 47 (write 7, carry 4).  \n   - Multiply t",
+                    "   - Multiply tens: 3 × 6 = 18 + carry 4 ",
+                    " Multiply tens: 3 × 6 = 18 + carry 4 = 22",
+                    "tiply tens: 3 × 6 = 18 + carry 4 = 22.  \n2",
+                    " 3 × 6 = 18 + carry 4 = 22.  \n2. **Result",
+                    " 6 = 18 + carry 4 = 22.  \n2. **Result:** C",
+                    "8 + carry 4 = 22.  \n2. **Result:** Combin",
+                    "* Combine digits: **2278**.  \n\n**Problem 3: ",
+                    "278**.  \n\n**Problem 3: Paravartya Yojayet",
+                    "avartya Yojayet for 1234 ÷ 12**  \n1. **Divis",
+                    " Yojayet for 1234 ÷ 12**  \n1. **Divisor Ad",
+                    "t for 1234 ÷ 12**  \n1. **Divisor Adjustme",
+                    "stment:** Transpose 12 to 21 (ignore 1, us",
+                    ":** Transpose 12 to 21 (ignore 1, use 2). ",
+                    "se 12 to 21 (ignore 1, use 2).  \n2. **Div",
+                    "o 21 (ignore 1, use 2).  \n2. **Division S",
+                    "ignore 1, use 2).  \n2. **Division Steps:*",
+                    "ion Steps:**  \n   - 12 ÷ 2 = 6 (first digi",
+                    "teps:**  \n   - 12 ÷ 2 = 6 (first digit). ",
+                    ":**  \n   - 12 ÷ 2 = 6 (first digit).  \n  ",
+                    "irst digit).  \n   - 6 × 2 = 12; subtract ",
+                    " digit).  \n   - 6 × 2 = 12; subtract from",
+                    "it).  \n   - 6 × 2 = 12; subtract from 12 →",
+                    "= 12; subtract from 12 → 0. Bring down 3 →",
+                    " subtract from 12 → 0. Bring down 3 → 03.",
+                    " 12 → 0. Bring down 3 → 03.  \n   - 3 ÷ 2 ",
+                    "→ 0. Bring down 3 → 03.  \n   - 3 ÷ 2 = 1 (",
+                    "down 3 → 03.  \n   - 3 ÷ 2 = 1 (next digit",
+                    " 3 → 03.  \n   - 3 ÷ 2 = 1 (next digit). 1",
+                    " 03.  \n   - 3 ÷ 2 = 1 (next digit). 1 × 2",
+                    "2 = 1 (next digit). 1 × 2 = 2; subtract f",
+                    "1 (next digit). 1 × 2 = 2; subtract from ",
+                    "ext digit). 1 × 2 = 2; subtract from 3 → ",
+                    " = 2; subtract from 3 → 1. Bring down 4 →",
+                    "; subtract from 3 → 1. Bring down 4 → 14.",
+                    "m 3 → 1. Bring down 4 → 14.  \n   - 14 ÷ 2",
+                    "→ 1. Bring down 4 → 14.  \n   - 14 ÷ 2 = 7 ",
+                    "down 4 → 14.  \n   - 14 ÷ 2 = 7 (next digit",
+                    "4 → 14.  \n   - 14 ÷ 2 = 7 (next digit). 7",
+                    "14.  \n   - 14 ÷ 2 = 7 (next digit). 7 × 2",
+                    "2 = 7 (next digit). 7 × 2 = 14; subtract ",
+                    "7 (next digit). 7 × 2 = 14; subtract → 0.",
+                    "ext digit). 7 × 2 = 14; subtract → 0.  \n3.",
+                    " 2 = 14; subtract → 0.  \n3. **Result:** Q",
+                    "14; subtract → 0.  \n3. **Result:** Quotie",
+                    "lt:** Quotient is **102** with remainder 10",
+                    "02** with remainder 10.  \n\n**Simplificatio",
+                    " near a base (e.g., 100) by using deviation",
+                    "*Final Answers:**  \n1. **87 × 93 = 8091**",
+                    "l Answers:**  \n1. **87 × 93 = 8091**  \n2. ",
+                    "wers:**  \n1. **87 × 93 = 8091**  \n2. **34 ",
+                    "**  \n1. **87 × 93 = 8091**  \n2. **34 × 67 = ",
+                    "*87 × 93 = 8091**  \n2. **34 × 67 = 2278**",
+                    " 93 = 8091**  \n2. **34 × 67 = 2278**  \n3. ",
+                    " 8091**  \n2. **34 × 67 = 2278**  \n3. **123",
+                    "**  \n2. **34 × 67 = 2278**  \n3. **1234 ÷ 12 ",
+                    "*34 × 67 = 2278**  \n3. **1234 ÷ 12 = 102*",
+                    " 67 = 2278**  \n3. **1234 ÷ 12 = 102** with r",
+                    "278**  \n3. **1234 ÷ 12 = 102** with remain",
+                    "  \n3. **1234 ÷ 12 = 102** with remainder 10",
+                    "02** with remainder 10.\n"
+                  ],
+                  "test_type": "multiplication"
+                }
+              ],
+              "error_rate": 0.25
+            },
+            "consistency_tests": {
+              "consistency_score": 1.0,
+              "mathematical_statements": 39,
+              "consistency_issues": [],
+              "contradictions_found": 0,
+              "impossible_relationships": 0
+            },
+            "reasoning_tests": {
+              "reasoning_score": 0.34,
+              "reasoning_indicators": 4,
+              "logical_connectors": 0,
+              "step_indicators": 3,
+              "has_structured_reasoning": false
+            },
+            "total_numerical_expressions": 287,
+            "error_patterns": []
+          },
+          "consistency_analysis": {
+            "factual_accuracy": 0.2727272727272727,
+            "internal_consistency": 0.65,
+            "knowledge_coherence": 1.0,
+            "common_knowledge_accuracy": 0.3333333333333333,
+            "consistency_score": 0.5276515151515152,
+            "factual_tests": {
+              "accuracy_rate": 0.2727272727272727,
+              "tests_run": 11,
+              "correct_facts": 3,
+              "fact_errors": [
+                {
+                  "fact": "capital of France",
+                  "expected": [
+                    "Paris"
+                  ],
+                  "category": "geography",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "speed of light",
+                  "expected": [
+                    "299,792,458",
+                    "300,000,000",
+                    "3x10^8"
+                  ],
+                  "category": "physics",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "chemical symbol for gold",
+                  "expected": [
+                    "Au"
+                  ],
+                  "category": "chemistry",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "year World War 2 ended",
+                  "expected": [
+                    "1945"
+                  ],
+                  "category": "history",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "first person on moon",
+                  "expected": [
+                    "Neil Armstrong"
+                  ],
+                  "category": "history",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "value of pi",
+                  "expected": [
+                    "3.14159",
+                    "3.14",
+                    "22/7"
+                  ],
+                  "category": "mathematics",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "days in a year",
+                  "expected": [
+                    "365",
+                    "366"
+                  ],
+                  "category": "common",
+                  "confidence": "very_high"
+                },
+                {
+                  "fact": "minutes in an hour",
+                  "expected": [
+                    "60"
+                  ],
+                  "category": "common",
+                  "confidence": "very_high"
+                }
+              ],
+              "error_rate": 0.7272727272727273
+            },
+            "internal_tests": {
+              "consistency_score": 0.65,
+              "contradictions": [
+                {
+                  "type": "numerical_inconsistency",
+                  "values": [
+                    1.0,
+                    87.0
+                  ],
+                  "severity": "moderate"
+                }
+              ],
+              "factual_claims": 4,
+              "internal_coherence": false
+            },
+            "coherence_tests": {
+              "coherence_score": 1.0,
+              "active_domains": [],
+              "domain_scores": {
+                "science": 0,
+                "mathematics": 0,
+                "history": 0,
+                "geography": 0,
+                "technology": 0
+              },
+              "knowledge_focus": "focused",
+              "domain_consistency": true
+            },
+            "common_knowledge_tests": {
+              "accuracy_rate": 0.3333333333333333,
+              "tests_run": 3,
+              "correct_facts": 1,
+              "errors": [
+                {
+                  "fact": "days in a year",
+                  "expected": [
+                    "365",
+                    "366"
+                  ],
+                  "severity": "high"
+                },
+                {
+                  "fact": "minutes in an hour",
+                  "expected": [
+                    "60"
+                  ],
+                  "severity": "high"
+                }
+              ],
+              "common_knowledge_integrity": false
+            },
+            "knowledge_errors": [
+              {
+                "fact": "capital of France",
+                "expected": [
+                  "Paris"
+                ],
+                "category": "geography",
+                "confidence": "high"
+              },
+              {
+                "fact": "speed of light",
+                "expected": [
+                  "299,792,458",
+                  "300,000,000",
+                  "3x10^8"
+                ],
+                "category": "physics",
+                "confidence": "high"
+              },
+              {
+                "fact": "chemical symbol for gold",
+                "expected": [
+                  "Au"
+                ],
+                "category": "chemistry",
+                "confidence": "high"
+              },
+              {
+                "fact": "year World War 2 ended",
+                "expected": [
+                  "1945"
+                ],
+                "category": "history",
+                "confidence": "high"
+              },
+              {
+                "fact": "first person on moon",
+                "expected": [
+                  "Neil Armstrong"
+                ],
+                "category": "history",
+                "confidence": "high"
+              },
+              {
+                "fact": "value of pi",
+                "expected": [
+                  "3.14159",
+                  "3.14",
+                  "22/7"
+                ],
+                "category": "mathematics",
+                "confidence": "high"
+              },
+              {
+                "fact": "days in a year",
+                "expected": [
+                  "365",
+                  "366"
+                ],
+                "category": "common",
+                "confidence": "very_high"
+              },
+              {
+                "fact": "minutes in an hour",
+                "expected": [
+                  "60"
+                ],
+                "category": "common",
+                "confidence": "very_high"
+              },
+              {
+                "type": "internal_contradiction",
+                "details": {
+                  "type": "numerical_inconsistency",
+                  "values": [
+                    1.0,
+                    87.0
+                  ],
+                  "severity": "moderate"
+                },
+                "severity": "moderate"
+              },
+              {
+                "type": "common_knowledge_error",
+                "details": {
+                  "fact": "days in a year",
+                  "expected": [
+                    "365",
+                    "366"
+                  ],
+                  "severity": "high"
+                },
+                "severity": "high"
+              },
+              {
+                "type": "common_knowledge_error",
+                "details": {
+                  "fact": "minutes in an hour",
+                  "expected": [
+                    "60"
+                  ],
+                  "severity": "high"
+                },
+                "severity": "high"
+              }
+            ]
+          },
+          "test_summary": {
+            "overall_grade": "D",
+            "numerical_grade": "C",
+            "factual_grade": "F",
+            "key_issues": [
+              "Factual inconsistencies detected"
+            ],
+            "strengths": []
+          },
+          "overall_quantization_score": 0.6740798739950526,
+          "fallback_used": false
+        },
+        "consistency_analysis": {
+          "consistency_score": 1.0339622641509434,
+          "cross_validation_score": 1.0339622641509434,
+          "reliability_score": 1.0339622641509434,
+          "internal_consistency": 1.0339622641509434,
+          "pattern_consistency": 1.0,
+          "fallback_used": false
+        },
+        "fact_validation": {
+          "factual_confidence": 0.5,
+          "cultural_sensitivity": 1.0,
+          "claims_count": 0,
+          "validated_claims": 0,
+          "recommendations": [
+            "No verifiable factual claims detected in the text"
+          ],
+          "fallback_used": false
+        },
+        "multi_source_validation": {
+          "ensemble_confidence": 0.35,
+          "ensemble_disagreement": 0.5199999999999999,
+          "confidence_reliability": 0.62,
+          "cultural_sensitivity": 0.9,
+          "bias_detected": false,
+          "source_count": 3,
+          "recommendations": [
+            "High disagreement between validation sources detected - verify claims manually",
+            "Some validation sources have low evidence quality - cross-check with authoritative sources"
+          ],
+          "fallback_used": false
+        },
+        "orchestration_metadata": {
+          "successful_modules": [
+            "context_analyzer",
+            "quantization_tester",
+            "consistency_validator",
+            "wikipedia_fact_checker",
+            "multi_source_fact_validator",
+            "semantic_coherence",
+            "entropy_calculator"
+          ],
+          "failed_modules": [],
+          "total_processing_time": 1.7033278942108154,
+          "performance_metrics": {
+            "total_processing_time": 1.8973889350891113,
+            "average_processing_time": 0.27105556215558735,
+            "success_rate": 1.0,
+            "fallback_rate": 0.0
+          },
+          "integration_notes": [
+            "Advanced analysis: 7 modules succeeded, 0 failed",
+            "Good alignment between linguistic and fact validation confidence"
+          ]
+        },
+        "consistency_validation": {
+          "error": "Module not available or failed"
+        },
+        "knowledge_validation": {
+          "error": "Module not available or failed"
+        },
+        "cultural_authenticity": {
+          "authenticity_score": 0.9,
+          "cultural_sensitivity": 0.9,
+          "bias_detected": false,
+          "perspectives": [
+            "Cultural: {'primary_tradition': None, 'domain': None, 'reasoning_type': 'general'}"
+          ],
+          "stereotype_indicators": [],
+          "appropriation_markers": [],
+          "bias_indicators": []
+        },
+        "tradition_validation": {
+          "error": "Module not available or failed"
+        },
+        "cross_cultural_coherence": {
+          "error": "Module not available or failed"
+        }
+      },
+      "text_statistics": {
+        "word_count": 318,
+        "sentence_count": 41,
+        "avg_sentence_length": 7.571428571428571,
+        "unique_words": 158,
+        "vocabulary_diversity": 0.4968553459119497
+      },
+      "reasoning_indicators": {
+        "step_indicators_found": [
+          "first",
+          "next"
+        ],
+        "logic_connectors_found": [],
+        "evidence_indicators_found": [],
+        "verification_indicators_found": []
+      }
+    }
+  },
+  "reasoning_score": 48.9,
+  "reasoning_type": "general",
+  "performance_metrics": null,
+  "utilization_report": null
+}

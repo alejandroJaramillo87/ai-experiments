@@ -418,7 +418,9 @@ class AdvancedAnalysisOrchestrator:
                     'information_density': result.result.get('embedding_variance', 0.0),
                     # Add expected test fields - direct from entropy calculator
                     'token_entropy': result.result.get('token_entropy', 0.0),
+                    'semantic_entropy': result.result.get('semantic_entropy', 0.0),
                     'semantic_diversity': result.result.get('semantic_diversity', 0.0),
+                    'embedding_variance': result.result.get('embedding_variance', 0.0),
                     'entropy_patterns': result.result.get('entropy_patterns', {}),
                     'word_entropy': result.result.get('word_entropy', 0.0),
                     'vocab_entropy': result.result.get('vocab_entropy', 0.0),

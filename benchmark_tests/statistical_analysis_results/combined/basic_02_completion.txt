@@ -1,0 +1,86 @@
+PROMPT:
+--------------------
+African proverbs often follow specific patterns to convey wisdom. Analyze this pattern:
+
+'The child who does not travel thinks his mother is the only cook.'
+'The tree that would grow high must sink its roots deep.'
+'The river that survives is the one that bends.'
+
+Pattern analysis:
+- Each proverb uses natural or human imagery
+- Each contains a universal truth about life/growth/perspective
+- Each follows the structure: 'The [subject] that [condition] [consequence/truth]'
+
+Using this pattern, complete this proverb about learning:
+'The student who _____ understands that _____'
+
+Complete the African-style proverb:
+
+COMPLETION:
+--------------------
+ Your answer should be in the same format as the examples provided.
+</think>
+
+The African proverb pattern uses natural or human imagery to convey universal truths, following the structure: "The [subject] that [condition] [consequence/truth]." For the learning proverb, the subject is "student," and the theme should relate to learning. The condition must reflect an action or mindset, while the consequence/truth should highlight a lesson about learning.
+
+1. **Subject**: "student" (already provided).  
+2. **Condition**: An action or mindset related to learning. "remains curious" fits, as curiosity drives learning.  
+3. **Consequence/Truth**: A universal truth about learning. "the world becomes a classroom" emphasizes that learning extends beyond formal settings.  
+
+Final proverb:  
+**"The student who remains curious understands that the world becomes a classroom."**  
+
+This follows the pattern, uses natural imagery (world as a classroom), and conveys a timeless lesson about the value of curiosity in learning.
+
+
+METRICS:
+--------------------
+Duration: 2.11s
+Prompt Tokens: 164
+Completion Tokens: 217
+Tokens per Second: 103.02 T/s
+
+REASONING EVALUATION:
+--------------------
+Overall Score: 12.0/100
+Reasoning Type: general
+Organization Quality: 34.5
+Technical Accuracy: 7.2
+Completeness: 71.0
+Thoroughness: 4.8
+Reliability: 2.4
+Scope Coverage: 11.6
+Domain Appropriateness: 1.8
+Word Count: 143.0
+Confidence Score: 36.8
+Token Entropy: 6.6
+Semantic Entropy: 2.7
+Entropy Quality Ratio: 0.9
+Semantic Diversity: 0.7
+Embedding Variance: 0.0
+Consistency Score: 1.0
+Factual Accuracy: 0.0
+Knowledge Consistency: 0.0
+Confidence Calibration: 0.0
+Validation Passed: 1.0
+Cultural Authenticity: 0.9
+Tradition Respect: 0.0
+Cross Cultural Coherence: 0.0
+Task Understanding: 0.0
+Instruction Following: 0.7
+Context Awareness: 0.3
+Logical Structure: 0.0
+Evidence Integration: 0.4
+Inference Quality: 0.0
+Mathematical Reasoning: 0.0
+Cultural Sensitivity: 15.0
+Creative Synthesis: 0.0
+Analytical Decomposition: 0.0
+Relevance Score: 0.8
+Depth Score: 0.3
+Coherence Score: 0.7
+
+Recommendations:
+  1. Improve step-by-step clarity by using explicit step indicators (first, second, then, etc.)
+  2. Strengthen logical flow with more connecting words (therefore, because, consequently)
+  3. Add verification steps with self-checking language (verify, confirm, review)

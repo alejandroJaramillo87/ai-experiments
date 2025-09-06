@@ -1,0 +1,1058 @@
+{
+  "test_id": "inference_02",
+  "test_name": "Test 62: Japanese Tea Garden Design Logic",
+  "success": true,
+  "response_text": " Your reasoning should demonstrate deep understanding of both garden design and Zen Buddhist principles.\n</think>\n### Step-by-Step Analysis of the Tea Garden Elements and Zen Buddhist Principles\n\n#### **Inference 1: Irregular Stone Placement and the Spiritual Journey**\n- **Element 1 (Stepping stones)**: The irregular placement of stones, rather than a straight path, symbolizes the non-linear nature of the spiritual journey in Zen Buddhism. A straight path implies a direct, predictable route to enlightenment, but irregular stones force the participant to slow down, pay attention to each step, and embrace uncertainty. This mirrors the Zen concept of *mu* (no-mind), where rigid expectations are abandoned, and the journey becomes a practice of mindfulness and presence. The stones teach that awakening arises from navigating life's unpredictability, not from following a prescribed path.\n\n#### **Inference 2: Lantern Position and Enlightenment in Zen Philosophy**\n- **Element 2 (Stone lantern near water)**: The lantern is positioned near a water source but does not directly illuminate the path. Water in Zen symbolizes purification and the flow of life, while light represents enlightenment. The indirect illumination suggests that enlightenment is not a force imposed on the seeker but something that arises naturally through engagement with the present moment. The lantern's placement near water reflects the Zen idea that wisdom (light) emerges from interaction with the fundamental nature of existence (water), emphasizing subtlety and non-attachment rather than direct pursuit.\n\n#### **Inference 3: Fence Gaps and the Balance of Seclusion and World Connection**\n- **Element 3 (Bamboo fence with gaps)**: The deliberate gaps in the bamboo fence create a sense of enclosure while allowing glimpses of the outside world. This represents the Zen principle of *shunyata* (emptiness) and interdependence—true seclusion is not isolation but a mindful awareness of the interconnectedness of all things. The gaps symbolize that awakening occurs not in complete detachment from the world but through a balanced engagement with it, where boundaries are permeable, and insights arise from the tension between inner focus and outer reality.\n\n#### **Synthesis: How Elements Teach Impermanence, Mindfulness, and Awakening**\n- **Impermanence (Mujō)**: The cherry tree (Element 4) blooms briefly in spring, visually embodying impermanence. This is reinforced by the moss on north-facing stones (Element 5), which grows slowly and changes over time, reminding participants that all things are transient. The irregular stones (Element 1) and the lantern's indirect light (Element 2) further emphasize that experiences and insights are fleeting, encouraging acceptance of change.\n- **Mindfulness**: Each element requires attentive engagement. The stepping stones demand focus on the present moment, the lantern's subtle light invites observation without distraction, and the fence gaps prompt awareness of the interplay between inside and outside. Together, they cultivate *zazen*-like awareness, where mindfulness is practiced through sensory details and environmental interaction.\n- **Nature of Awakening**: The garden integrates Zen concepts holistically. The lantern and water (Element 2) illustrate enlightenment as an emergent, non-dual state. The fence (Element 3) teaches that awakening is not about escaping the world but seeing it clearly through gaps of perception. The cherry tree and moss (Elements 4 and 5) ground impermanence in physical reality, while the stones (Element 1) embody the journey itself. Collectively, these elements create a microcosm of Zen practice: the tea ceremony participant learns that awakening arises from mindful engagement with impermanence, the present moment, and the interconnected web of existence.\n\n### Final Answer\nThe five elements of the traditional Japanese tea garden collectively encode profound Zen Buddhist teachings:  \n- **Irregular stepping stones (Element 1)** symbolize the non-linear, mindful journey toward enlightenment, rejecting rigid paths in favor of present-moment awareness.  \n- **The stone lantern near water (Element 2)** reflects enlightenment as an indirect, emergent quality, arising from engagement with life's flow rather than direct pursuit.  \n- **The bamboo fence with gaps (Element 3)** represents the balance between seclusion and world connection, illustrating that awakening occurs through permeable boundaries and interdependence.  \n- **The cherry tree (Element 4)** and **moss on stones (Element 5)** embody impermanence, teaching acceptance of transience through natural cycles.  \n\nTogether, these elements create a meditative space where the tea ceremony participant learns mindfulness by observing subtle details (e.g., light filtering through the tree, moss growth), impermanence through fleeting beauty and slow change, and the nature of awakening as a state of non-dual awareness. The garden thus becomes a physical metaphor for Zen principles, guiding the participant to experience enlightenment not as a destination but as an ongoing, interconnected process.\n",
+  "execution_time": 9.714329481124878,
+  "prompt_tokens": 224,
+  "completion_tokens": 1018,
+  "tokens_per_second": 104.79364550872944,
+  "error_message": null,
+  "timestamp": "2025-09-05T11:02:26.708710",
+  "api_response": {
+    "choices": [
+      {
+        "text": " Your reasoning should demonstrate deep understanding of both garden design and Zen Buddhist principles.\n</think>\n### Step-by-Step Analysis of the Tea Garden Elements and Zen Buddhist Principles\n\n#### **Inference 1: Irregular Stone Placement and the Spiritual Journey**\n- **Element 1 (Stepping stones)**: The irregular placement of stones, rather than a straight path, symbolizes the non-linear nature of the spiritual journey in Zen Buddhism. A straight path implies a direct, predictable route to enlightenment, but irregular stones force the participant to slow down, pay attention to each step, and embrace uncertainty. This mirrors the Zen concept of *mu* (no-mind), where rigid expectations are abandoned, and the journey becomes a practice of mindfulness and presence. The stones teach that awakening arises from navigating life's unpredictability, not from following a prescribed path.\n\n#### **Inference 2: Lantern Position and Enlightenment in Zen Philosophy**\n- **Element 2 (Stone lantern near water)**: The lantern is positioned near a water source but does not directly illuminate the path. Water in Zen symbolizes purification and the flow of life, while light represents enlightenment. The indirect illumination suggests that enlightenment is not a force imposed on the seeker but something that arises naturally through engagement with the present moment. The lantern's placement near water reflects the Zen idea that wisdom (light) emerges from interaction with the fundamental nature of existence (water), emphasizing subtlety and non-attachment rather than direct pursuit.\n\n#### **Inference 3: Fence Gaps and the Balance of Seclusion and World Connection**\n- **Element 3 (Bamboo fence with gaps)**: The deliberate gaps in the bamboo fence create a sense of enclosure while allowing glimpses of the outside world. This represents the Zen principle of *shunyata* (emptiness) and interdependence—true seclusion is not isolation but a mindful awareness of the interconnectedness of all things. The gaps symbolize that awakening occurs not in complete detachment from the world but through a balanced engagement with it, where boundaries are permeable, and insights arise from the tension between inner focus and outer reality.\n\n#### **Synthesis: How Elements Teach Impermanence, Mindfulness, and Awakening**\n- **Impermanence (Mujō)**: The cherry tree (Element 4) blooms briefly in spring, visually embodying impermanence. This is reinforced by the moss on north-facing stones (Element 5), which grows slowly and changes over time, reminding participants that all things are transient. The irregular stones (Element 1) and the lantern's indirect light (Element 2) further emphasize that experiences and insights are fleeting, encouraging acceptance of change.\n- **Mindfulness**: Each element requires attentive engagement. The stepping stones demand focus on the present moment, the lantern's subtle light invites observation without distraction, and the fence gaps prompt awareness of the interplay between inside and outside. Together, they cultivate *zazen*-like awareness, where mindfulness is practiced through sensory details and environmental interaction.\n- **Nature of Awakening**: The garden integrates Zen concepts holistically. The lantern and water (Element 2) illustrate enlightenment as an emergent, non-dual state. The fence (Element 3) teaches that awakening is not about escaping the world but seeing it clearly through gaps of perception. The cherry tree and moss (Elements 4 and 5) ground impermanence in physical reality, while the stones (Element 1) embody the journey itself. Collectively, these elements create a microcosm of Zen practice: the tea ceremony participant learns that awakening arises from mindful engagement with impermanence, the present moment, and the interconnected web of existence.\n\n### Final Answer\nThe five elements of the traditional Japanese tea garden collectively encode profound Zen Buddhist teachings:  \n- **Irregular stepping stones (Element 1)** symbolize the non-linear, mindful journey toward enlightenment, rejecting rigid paths in favor of present-moment awareness.  \n- **The stone lantern near water (Element 2)** reflects enlightenment as an indirect, emergent quality, arising from engagement with life's flow rather than direct pursuit.  \n- **The bamboo fence with gaps (Element 3)** represents the balance between seclusion and world connection, illustrating that awakening occurs through permeable boundaries and interdependence.  \n- **The cherry tree (Element 4)** and **moss on stones (Element 5)** embody impermanence, teaching acceptance of transience through natural cycles.  \n\nTogether, these elements create a meditative space where the tea ceremony participant learns mindfulness by observing subtle details (e.g., light filtering through the tree, moss growth), impermanence through fleeting beauty and slow change, and the nature of awakening as a state of non-dual awareness. The garden thus becomes a physical metaphor for Zen principles, guiding the participant to experience enlightenment not as a destination but as an ongoing, interconnected process.\n",
+        "index": 0,
+        "logprobs": null,
+        "finish_reason": "stop"
+      }
+    ],
+    "created": 1757095345,
+    "model": "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b",
+    "system_fingerprint": "b6374-dff7551b",
+    "object": "text_completion",
+    "usage": {
+      "completion_tokens": 1018,
+      "prompt_tokens": 224,
+      "total_tokens": 1242
+    },
+    "id": "chatcmpl-hIxjX4hmv1VWGBKykCTyzgmnRie76XOi",
+    "timings": {
+      "prompt_n": 224,
+      "prompt_ms": 57.498,
+      "prompt_per_token_ms": 0.2566875,
+      "prompt_per_second": 3895.7876795714637,
+      "predicted_n": 1018,
+      "predicted_ms": 9654.608,
+      "predicted_per_token_ms": 9.483897838899804,
+      "predicted_per_second": 105.44187811664648
+    },
+    "_execution_time": 9.714329481124878
+  },
+  "evaluation_result": {
+    "overall_score": 60.400000000000006,
+    "metrics": {
+      "organization_quality": 100,
+      "technical_accuracy": 100,
+      "completeness": 80.0,
+      "thoroughness": 52.3,
+      "reliability": 36.2,
+      "scope_coverage": 30.3,
+      "domain_appropriateness": 49.1,
+      "overall_score": 60.400000000000006,
+      "word_count": 732,
+      "confidence_score": 68.19254575983108,
+      "token_entropy": 7.736333843225255,
+      "semantic_entropy": 2.3609478414658716,
+      "entropy_quality_ratio": 0.8130073430963056,
+      "semantic_diversity": 0.5770554542541504,
+      "embedding_variance": 0.0026041667442768812,
+      "consistency_score": 0.9748633879781421,
+      "factual_accuracy": 0.0,
+      "knowledge_consistency": 0.0,
+      "confidence_calibration": 0.0,
+      "validation_passed": true,
+      "cultural_authenticity": 0.9,
+      "tradition_respect": 0.0,
+      "cross_cultural_coherence": 0.0,
+      "task_understanding": 0.2,
+      "instruction_following": 0.7,
+      "context_awareness": 0.3,
+      "logical_structure": 0.2,
+      "evidence_integration": 0.6000000000000001,
+      "inference_quality": 0.6,
+      "mathematical_reasoning": 0.0,
+      "cultural_sensitivity": 19.0,
+      "creative_synthesis": 0.0,
+      "analytical_decomposition": 0.0,
+      "relevance_score": 0.3,
+      "depth_score": 0.6,
+      "coherence_score": 0.7
+    },
+    "reasoning_type": "general",
+    "recommendations": [
+      "Add verification steps with self-checking language (verify, confirm, review)"
+    ],
+    "detailed_analysis": {
+      "core_metrics": {
+        "organization_quality": 100,
+        "technical_accuracy": 100,
+        "completeness": 80.0,
+        "thoroughness": 52.3,
+        "reliability": 36.2,
+        "scope_coverage": 30.3,
+        "domain_appropriateness": 49.1,
+        "overall_score": 60.400000000000006,
+        "word_count": 732,
+        "confidence_score": 68.19254575983108,
+        "token_entropy": 7.736333843225255,
+        "semantic_entropy": 2.3609478414658716,
+        "entropy_quality_ratio": 0.8130073430963056,
+        "semantic_diversity": 0.5770554542541504,
+        "embedding_variance": 0.0026041667442768812,
+        "consistency_score": 0.9748633879781421,
+        "factual_accuracy": 0.0,
+        "knowledge_consistency": 0.0,
+        "confidence_calibration": 0.0,
+        "validation_passed": true,
+        "cultural_authenticity": 0.9,
+        "tradition_respect": 0.0,
+        "cross_cultural_coherence": 0.0,
+        "task_understanding": 0.2,
+        "instruction_following": 0.7,
+        "context_awareness": 0.3,
+        "logical_structure": 0.2,
+        "evidence_integration": 0.6000000000000001,
+        "inference_quality": 0.6,
+        "mathematical_reasoning": 0.0,
+        "cultural_sensitivity": 19.0,
+        "creative_synthesis": 0.0,
+        "analytical_decomposition": 0.0,
+        "relevance_score": 0.3,
+        "depth_score": 0.6,
+        "coherence_score": 0.7
+      },
+      "specialized_analysis": {
+        "reasoning_type": "general",
+        "specialized_score": 75.0,
+        "pattern_matches": []
+      },
+      "advanced_analysis": {
+        "entropy_analysis": {
+          "entropy_score": 7.736333843225255,
+          "complexity_score": 0.5770554542541504,
+          "information_density": 0.0026041667442768812,
+          "token_entropy": 7.736333843225255,
+          "semantic_entropy": 2.3609478414658716,
+          "semantic_diversity": 0.5770554542541504,
+          "embedding_variance": 0.0026041667442768812,
+          "entropy_patterns": {
+            "has_repetitive_patterns": true,
+            "entropy_variance": 0.02128348215260248,
+            "local_entropy_drops": 0,
+            "entropy_trend": "stable"
+          },
+          "word_entropy": 7.257131763436567,
+          "vocab_entropy": 7.257131763436567,
+          "vocab_diversity": 0.8967440437254607,
+          "bigram_entropy": 9.333500255282695,
+          "trigram_entropy": 9.719778373409635,
+          "entropy_quality_ratio": 0.8130073430963056,
+          "unique_ratio": 0.3945086705202312,
+          "fallback_used": false
+        },
+        "semantic_coherence": {
+          "coherence_score": 0.0,
+          "consistency_score": 0.0,
+          "semantic_flow": 0.0,
+          "overall_coherence_score": 0.0,
+          "semantic_drift": {
+            "drift_score": 0.3428591786192801,
+            "drift_points": [
+              4,
+              7
+            ],
+            "stability_score": 0.6018539832174877,
+            "drift_curve": [
+              0.3258304564187984,
+              0.21588974949367068,
+              0.39941555167980747,
+              0.28321198585862106,
+              0.5412206401534605,
+              0.3402019031246245,
+              0.28352406468274405,
+              0.43233922059942387,
+              0.34499359904336435,
+              0.2860554131894004,
+              0.3187683805681655
+            ]
+          },
+          "semantic_flow_data": {
+            "flow_score": 0.08214100051972882,
+            "transition_quality": 0.2680396455680163,
+            "narrative_coherence": 0.5804536503424712,
+            "transition_scores": [
+              0.045,
+              0.043750000000000004,
+              0.014634146341463414,
+              0.4090909090909091,
+              0.02727272727272727,
+              0.36,
+              0.01818181818181818,
+              0.019565217391304346,
+              0.32608695652173914,
+              0.030769230769230767,
+              0.024999999999999998,
+              0.02666666666666667,
+              0.0225,
+              0.047368421052631574,
+              0.012499999999999999,
+              0.0,
+              0.015384615384615384,
+              0.0,
+              0.014285714285714284,
+              0.02,
+              0.3176470588235294,
+              0.03,
+              0.05094339622641509,
+              0.01636363636363636,
+              0.02195121951219512,
+              0.03529411764705882,
+              0.00909090909090909,
+              0.008108108108108109,
+              0.41463414634146345
+            ],
+            "sentence_count": 30
+          },
+          "topic_consistency": {
+            "consistency_score": 0.011106343318289857,
+            "topic_distribution": [
+              0.2,
+              0.23333333333333334,
+              0.23333333333333334,
+              0.13333333333333333,
+              0.2
+            ],
+            "dominant_topic_ratio": 0.23333333333333334,
+            "topic_entropy": 2.2961399643051603,
+            "num_topics_found": 5
+          },
+          "fallback_used": false
+        },
+        "context_analysis": {
+          "context_quality": 0.7963499226733382,
+          "context_usage": 0.0,
+          "context_efficiency": 0.0,
+          "context_health_score": 0.7963499226733382,
+          "position_analysis": {
+            "total_tokens": 1031,
+            "total_segments": 5,
+            "segment_size": 512,
+            "position_metrics": [
+              {
+                "segment_index": 0,
+                "position_ratio": 0.0,
+                "start_token": 0,
+                "end_token": 512,
+                "word_count": 364,
+                "char_count": 2502,
+                "quality_score": 0.719693362608546,
+                "repetition_score": 0.5769230769230771,
+                "entropy_score": 0.9201697535546707,
+                "coherence_score": 0.6042811520872343,
+                "custom_metrics": {}
+              },
+              {
+                "segment_index": 1,
+                "position_ratio": 0.25,
+                "start_token": 256,
+                "end_token": 768,
+                "word_count": 361,
+                "char_count": 2533,
+                "quality_score": 0.7075969233781134,
+                "repetition_score": 0.5955678670360117,
+                "entropy_score": 0.918588533339194,
+                "coherence_score": 0.5096718161401553,
+                "custom_metrics": {}
+              },
+              {
+                "segment_index": 2,
+                "position_ratio": 0.5,
+                "start_token": 512,
+                "end_token": 1024,
+                "word_count": 364,
+                "char_count": 2604,
+                "quality_score": 0.7308008094595119,
+                "repetition_score": 0.5879120879120883,
+                "entropy_score": 0.9311004805456662,
+                "coherence_score": 0.6159789103820499,
+                "custom_metrics": {}
+              },
+              {
+                "segment_index": 3,
+                "position_ratio": 0.75,
+                "start_token": 768,
+                "end_token": 1031,
+                "word_count": 179,
+                "char_count": 1301,
+                "quality_score": 0.8236585179205194,
+                "repetition_score": 0.7486033519553073,
+                "entropy_score": 0.9625719850045978,
+                "coherence_score": 0.6959419156827862,
+                "custom_metrics": {}
+              },
+              {
+                "segment_index": 4,
+                "position_ratio": 1.0,
+                "start_token": 1024,
+                "end_token": 1031,
+                "word_count": 4,
+                "char_count": 37,
+                "quality_score": 1.0,
+                "repetition_score": 1.0,
+                "entropy_score": 1.0,
+                "coherence_score": 1.0,
+                "custom_metrics": {}
+              }
+            ],
+            "degradation_analysis": {
+              "degradation_detected": false,
+              "degradation_rate": 0.0,
+              "correlation": 0.8716308898609618,
+              "significance": 0.05413527294481831,
+              "trend": "improving"
+            },
+            "trend_analysis": {
+              "quality_score": {
+                "direction": "improving",
+                "change_magnitude": 0.1921358963517137,
+                "start_avg": 0.719693362608546,
+                "end_avg": 0.9118292589602597
+              },
+              "repetition_score": {
+                "direction": "improving",
+                "change_magnitude": 0.29737859905457653,
+                "start_avg": 0.5769230769230771,
+                "end_avg": 0.8743016759776536
+              },
+              "entropy_score": {
+                "direction": "stable",
+                "change_magnitude": 0.0611162389476283,
+                "start_avg": 0.9201697535546707,
+                "end_avg": 0.981285992502299
+              },
+              "coherence_score": {
+                "direction": "improving",
+                "change_magnitude": 0.24368980575415877,
+                "start_avg": 0.6042811520872343,
+                "end_avg": 0.8479709578413931
+              }
+            },
+            "quality_curve": [
+              0.719693362608546,
+              0.7075969233781134,
+              0.7308008094595119,
+              0.8236585179205194,
+              1.0
+            ]
+          },
+          "saturation_analysis": {
+            "saturation_detected": false,
+            "saturation_point": null,
+            "saturation_score": 0.3396362607945222,
+            "repetition_saturation": {
+              "detected": false,
+              "saturation_point": null,
+              "severity": 0.13142857142857145,
+              "repetition_curve": [
+                0.14,
+                0.12,
+                0.16,
+                0.16,
+                0.12,
+                0.16,
+                0.14,
+                0.14,
+                0.12,
+                0.16,
+                0.22,
+                0.16,
+                0.1,
+                0.06,
+                0.16,
+                0.18,
+                0.1,
+                0.12,
+                0.12,
+                0.1,
+                0.12,
+                0.14,
+                0.1,
+                0.08,
+                0.12,
+                0.1,
+                0.12,
+                0.16
+              ]
+            },
+            "entropy_saturation": {
+              "detected": false,
+              "saturation_point": null,
+              "severity": 0.019013810888866667,
+              "entropy_curve": [
+                0.9829341049137597,
+                0.9870548467601321,
+                0.9770861072596815,
+                0.9817042051950025,
+                0.9870548467601321,
+                0.9873039311975899,
+                0.9811272450651013,
+                0.9783448983264563,
+                0.9842894031942252,
+                0.9724680093243605,
+                0.9633445420889911,
+                0.9845040681962964,
+                0.9885112264491589,
+                0.9917490901361067,
+                0.9817042051950027,
+                0.9834264670114098,
+                0.9839768280375604,
+                0.9824935202894939,
+                0.9824935202894939,
+                0.9885112264491589,
+                0.9738313439247297,
+                0.9783448983264563,
+                0.9885112264491589,
+                0.9928115649651136,
+                0.9870548467601321,
+                0.9885112264491591,
+                0.9842894031942251,
+                0.9817042051950027
+              ]
+            },
+            "semantic_saturation": {
+              "detected": true,
+              "saturation_point": null,
+              "severity": 0.7916666666666666,
+              "novelty_curve": [
+                1.0,
+                0.8421052631578947,
+                0.7916666666666666,
+                0.7,
+                0.7333333333333333,
+                0.5714285714285714,
+                0.42857142857142855,
+                0.5909090909090909,
+                0.5357142857142857,
+                0.6206896551724138,
+                0.47619047619047616,
+                0.5,
+                0.7083333333333334,
+                0.56,
+                0.42857142857142855,
+                0.5714285714285714,
+                0.44,
+                0.6,
+                0.5,
+                0.46153846153846156,
+                0.4,
+                0.4,
+                0.2857142857142857,
+                0.4722222222222222,
+                0.24,
+                0.20833333333333334,
+                0.35,
+                0.21052631578947367,
+                1.0,
+                0.3181818181818182,
+                0.391304347826087
+              ]
+            },
+            "vocabulary_saturation": {
+              "detected": true,
+              "saturation_point": null,
+              "severity": 0.6808510638297872,
+              "vocab_growth_curve": [
+                43,
+                79,
+                110,
+                137,
+                163,
+                186,
+                216,
+                242,
+                268,
+                290,
+                310,
+                332,
+                344,
+                359,
+                369
+              ],
+              "growth_rates": [
+                36.0,
+                31.0,
+                27.0,
+                26.0,
+                23.0,
+                30.0,
+                26.0,
+                26.0,
+                22.0,
+                20.0,
+                22.0,
+                12.0,
+                15.0,
+                10.0
+              ]
+            },
+            "saturation_type": "semantic"
+          },
+          "context_limit_estimate": {},
+          "fallback_used": false
+        },
+        "quantization_analysis": {
+          "quantization_impact": 0.4927427527829313,
+          "quality_degradation": 0.38977272727272727,
+          "performance_impact": 0.33599999999999997,
+          "quantization_impact_score": 0.44200171614100187,
+          "stability_analysis": {
+            "numerical_accuracy": 0.0,
+            "mathematical_consistency": 1.0,
+            "numerical_reasoning": 0.12,
+            "stability_score": 0.33599999999999997,
+            "arithmetic_tests": {
+              "accuracy_rate": 0.0,
+              "tests_run": 4,
+              "correct_answers": 0,
+              "errors": [
+                {
+                  "expression": "42 + 58",
+                  "expected": 100,
+                  "found_context": [
+                    "s\n\n#### **Inference 1: Irregular Stone Pl",
+                    "urney**\n- **Element 1 (Stepping stones)**",
+                    ".\n\n#### **Inference 2: Lantern Position a",
+                    "sophy**\n- **Element 2 (Stone lantern near",
+                    ".\n\n#### **Inference 3: Fence Gaps and the",
+                    "ction**\n- **Element 3 (Bamboo fence with ",
+                    "herry tree (Element 4) blooms briefly in ",
+                    "ing stones (Element 5), which grows slowl",
+                    "lar stones (Element 1) and the lantern's ",
+                    "rect light (Element 2) further emphasize ",
+                    " and water (Element 2) illustrate enlight",
+                    " The fence (Element 3) teaches that awake",
+                    " and moss (Elements 4 and 5) ground imper",
+                    "oss (Elements 4 and 5) ground impermanenc",
+                    "the stones (Element 1) embody the journey",
+                    "ing stones (Element 1)** symbolize the no",
+                    "near water (Element 2)** reflects enlight",
+                    " with gaps (Element 3)** represents the b",
+                    "herry tree (Element 4)** and **moss on st",
+                    " on stones (Element 5)** embody impermane"
+                  ],
+                  "test_type": "addition"
+                },
+                {
+                  "expression": "123 - 45",
+                  "expected": 78,
+                  "found_context": [
+                    "s\n\n#### **Inference 1: Irregular Stone Pl",
+                    "urney**\n- **Element 1 (Stepping stones)**",
+                    ".\n\n#### **Inference 2: Lantern Position a",
+                    "sophy**\n- **Element 2 (Stone lantern near",
+                    ".\n\n#### **Inference 3: Fence Gaps and the",
+                    "ction**\n- **Element 3 (Bamboo fence with ",
+                    "herry tree (Element 4) blooms briefly in ",
+                    "ing stones (Element 5), which grows slowl",
+                    "lar stones (Element 1) and the lantern's ",
+                    "rect light (Element 2) further emphasize ",
+                    " and water (Element 2) illustrate enlight",
+                    " The fence (Element 3) teaches that awake",
+                    " and moss (Elements 4 and 5) ground imper",
+                    "oss (Elements 4 and 5) ground impermanenc",
+                    "the stones (Element 1) embody the journey",
+                    "ing stones (Element 1)** symbolize the no",
+                    "near water (Element 2)** reflects enlight",
+                    " with gaps (Element 3)** represents the b",
+                    "herry tree (Element 4)** and **moss on st",
+                    " on stones (Element 5)** embody impermane"
+                  ],
+                  "test_type": "subtraction"
+                },
+                {
+                  "expression": "12 * 7",
+                  "expected": 84,
+                  "found_context": [
+                    "s\n\n#### **Inference 1: Irregular Stone Pl",
+                    "urney**\n- **Element 1 (Stepping stones)**",
+                    ".\n\n#### **Inference 2: Lantern Position a",
+                    "sophy**\n- **Element 2 (Stone lantern near",
+                    ".\n\n#### **Inference 3: Fence Gaps and the",
+                    "ction**\n- **Element 3 (Bamboo fence with ",
+                    "herry tree (Element 4) blooms briefly in ",
+                    "ing stones (Element 5), which grows slowl",
+                    "lar stones (Element 1) and the lantern's ",
+                    "rect light (Element 2) further emphasize ",
+                    " and water (Element 2) illustrate enlight",
+                    " The fence (Element 3) teaches that awake",
+                    " and moss (Elements 4 and 5) ground imper",
+                    "oss (Elements 4 and 5) ground impermanenc",
+                    "the stones (Element 1) embody the journey",
+                    "ing stones (Element 1)** symbolize the no",
+                    "near water (Element 2)** reflects enlight",
+                    " with gaps (Element 3)** represents the b",
+                    "herry tree (Element 4)** and **moss on st",
+                    " on stones (Element 5)** embody impermane"
+                  ],
+                  "test_type": "multiplication"
+                },
+                {
+                  "expression": "144 / 12",
+                  "expected": 12,
+                  "found_context": [
+                    "s\n\n#### **Inference 1: Irregular Stone Pl",
+                    "urney**\n- **Element 1 (Stepping stones)**",
+                    ".\n\n#### **Inference 2: Lantern Position a",
+                    "sophy**\n- **Element 2 (Stone lantern near",
+                    ".\n\n#### **Inference 3: Fence Gaps and the",
+                    "ction**\n- **Element 3 (Bamboo fence with ",
+                    "herry tree (Element 4) blooms briefly in ",
+                    "ing stones (Element 5), which grows slowl",
+                    "lar stones (Element 1) and the lantern's ",
+                    "rect light (Element 2) further emphasize ",
+                    " and water (Element 2) illustrate enlight",
+                    " The fence (Element 3) teaches that awake",
+                    " and moss (Elements 4 and 5) ground imper",
+                    "oss (Elements 4 and 5) ground impermanenc",
+                    "the stones (Element 1) embody the journey",
+                    "ing stones (Element 1)** symbolize the no",
+                    "near water (Element 2)** reflects enlight",
+                    " with gaps (Element 3)** represents the b",
+                    "herry tree (Element 4)** and **moss on st",
+                    " on stones (Element 5)** embody impermane"
+                  ],
+                  "test_type": "division"
+                }
+              ],
+              "error_rate": 1.0
+            },
+            "consistency_tests": {
+              "consistency_score": 1.0,
+              "mathematical_statements": 20,
+              "consistency_issues": [],
+              "contradictions_found": 0,
+              "impossible_relationships": 0
+            },
+            "reasoning_tests": {
+              "reasoning_score": 0.12,
+              "reasoning_indicators": 0,
+              "logical_connectors": 1,
+              "step_indicators": 1,
+              "has_structured_reasoning": false
+            },
+            "total_numerical_expressions": 110,
+            "error_patterns": [
+              "high_arithmetic_error_rate"
+            ]
+          },
+          "consistency_analysis": {
+            "factual_accuracy": 0.09090909090909091,
+            "internal_consistency": 0.65,
+            "knowledge_coherence": 1.0,
+            "common_knowledge_accuracy": 0.0,
+            "consistency_score": 0.38977272727272727,
+            "factual_tests": {
+              "accuracy_rate": 0.09090909090909091,
+              "tests_run": 11,
+              "correct_facts": 1,
+              "fact_errors": [
+                {
+                  "fact": "capital of France",
+                  "expected": [
+                    "Paris"
+                  ],
+                  "category": "geography",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "number of continents",
+                  "expected": [
+                    "7",
+                    "seven"
+                  ],
+                  "category": "geography",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "speed of light",
+                  "expected": [
+                    "299,792,458",
+                    "300,000,000",
+                    "3x10^8"
+                  ],
+                  "category": "physics",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "number of planets",
+                  "expected": [
+                    "8",
+                    "eight"
+                  ],
+                  "category": "astronomy",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "year World War 2 ended",
+                  "expected": [
+                    "1945"
+                  ],
+                  "category": "history",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "first person on moon",
+                  "expected": [
+                    "Neil Armstrong"
+                  ],
+                  "category": "history",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "value of pi",
+                  "expected": [
+                    "3.14159",
+                    "3.14",
+                    "22/7"
+                  ],
+                  "category": "mathematics",
+                  "confidence": "high"
+                },
+                {
+                  "fact": "days in a year",
+                  "expected": [
+                    "365",
+                    "366"
+                  ],
+                  "category": "common",
+                  "confidence": "very_high"
+                },
+                {
+                  "fact": "hours in a day",
+                  "expected": [
+                    "24"
+                  ],
+                  "category": "common",
+                  "confidence": "very_high"
+                },
+                {
+                  "fact": "minutes in an hour",
+                  "expected": [
+                    "60"
+                  ],
+                  "category": "common",
+                  "confidence": "very_high"
+                }
+              ],
+              "error_rate": 0.9090909090909091
+            },
+            "internal_tests": {
+              "consistency_score": 0.65,
+              "contradictions": [
+                {
+                  "type": "numerical_inconsistency",
+                  "values": [
+                    1.0,
+                    2.0
+                  ],
+                  "severity": "moderate"
+                }
+              ],
+              "factual_claims": 9,
+              "internal_coherence": false
+            },
+            "coherence_tests": {
+              "coherence_score": 1.0,
+              "active_domains": [],
+              "domain_scores": {
+                "science": 0,
+                "mathematics": 0,
+                "history": 0,
+                "geography": 0,
+                "technology": 0
+              },
+              "knowledge_focus": "focused",
+              "domain_consistency": true
+            },
+            "common_knowledge_tests": {
+              "accuracy_rate": 0.0,
+              "tests_run": 3,
+              "correct_facts": 0,
+              "errors": [
+                {
+                  "fact": "days in a year",
+                  "expected": [
+                    "365",
+                    "366"
+                  ],
+                  "severity": "high"
+                },
+                {
+                  "fact": "hours in a day",
+                  "expected": [
+                    "24"
+                  ],
+                  "severity": "high"
+                },
+                {
+                  "fact": "minutes in an hour",
+                  "expected": [
+                    "60"
+                  ],
+                  "severity": "high"
+                }
+              ],
+              "common_knowledge_integrity": false
+            },
+            "knowledge_errors": [
+              {
+                "fact": "capital of France",
+                "expected": [
+                  "Paris"
+                ],
+                "category": "geography",
+                "confidence": "high"
+              },
+              {
+                "fact": "number of continents",
+                "expected": [
+                  "7",
+                  "seven"
+                ],
+                "category": "geography",
+                "confidence": "high"
+              },
+              {
+                "fact": "speed of light",
+                "expected": [
+                  "299,792,458",
+                  "300,000,000",
+                  "3x10^8"
+                ],
+                "category": "physics",
+                "confidence": "high"
+              },
+              {
+                "fact": "number of planets",
+                "expected": [
+                  "8",
+                  "eight"
+                ],
+                "category": "astronomy",
+                "confidence": "high"
+              },
+              {
+                "fact": "year World War 2 ended",
+                "expected": [
+                  "1945"
+                ],
+                "category": "history",
+                "confidence": "high"
+              },
+              {
+                "fact": "first person on moon",
+                "expected": [
+                  "Neil Armstrong"
+                ],
+                "category": "history",
+                "confidence": "high"
+              },
+              {
+                "fact": "value of pi",
+                "expected": [
+                  "3.14159",
+                  "3.14",
+                  "22/7"
+                ],
+                "category": "mathematics",
+                "confidence": "high"
+              },
+              {
+                "fact": "days in a year",
+                "expected": [
+                  "365",
+                  "366"
+                ],
+                "category": "common",
+                "confidence": "very_high"
+              },
+              {
+                "fact": "hours in a day",
+                "expected": [
+                  "24"
+                ],
+                "category": "common",
+                "confidence": "very_high"
+              },
+              {
+                "fact": "minutes in an hour",
+                "expected": [
+                  "60"
+                ],
+                "category": "common",
+                "confidence": "very_high"
+              },
+              {
+                "type": "internal_contradiction",
+                "details": {
+                  "type": "numerical_inconsistency",
+                  "values": [
+                    1.0,
+                    2.0
+                  ],
+                  "severity": "moderate"
+                },
+                "severity": "moderate"
+              },
+              {
+                "type": "common_knowledge_error",
+                "details": {
+                  "fact": "days in a year",
+                  "expected": [
+                    "365",
+                    "366"
+                  ],
+                  "severity": "high"
+                },
+                "severity": "high"
+              },
+              {
+                "type": "common_knowledge_error",
+                "details": {
+                  "fact": "hours in a day",
+                  "expected": [
+                    "24"
+                  ],
+                  "severity": "high"
+                },
+                "severity": "high"
+              },
+              {
+                "type": "common_knowledge_error",
+                "details": {
+                  "fact": "minutes in an hour",
+                  "expected": [
+                    "60"
+                  ],
+                  "severity": "high"
+                },
+                "severity": "high"
+              }
+            ]
+          },
+          "test_summary": {
+            "overall_grade": "F",
+            "numerical_grade": "F",
+            "factual_grade": "F",
+            "key_issues": [
+              "Poor numerical stability",
+              "Factual inconsistencies detected",
+              "High arithmetic error rate"
+            ],
+            "strengths": []
+          },
+          "overall_quantization_score": 0.4927427527829313,
+          "fallback_used": false
+        },
+        "consistency_analysis": {
+          "consistency_score": 0.9748633879781421,
+          "cross_validation_score": 0.9748633879781421,
+          "reliability_score": 0.9748633879781421,
+          "internal_consistency": 1.0248633879781421,
+          "pattern_consistency": 0.95,
+          "fallback_used": false
+        },
+        "fact_validation": {
+          "factual_confidence": 0.5,
+          "cultural_sensitivity": 1.0,
+          "claims_count": 0,
+          "validated_claims": 0,
+          "recommendations": [
+            "No verifiable factual claims detected in the text"
+          ],
+          "fallback_used": false
+        },
+        "multi_source_validation": {
+          "ensemble_confidence": 0.35,
+          "ensemble_disagreement": 0.5199999999999999,
+          "confidence_reliability": 0.62,
+          "cultural_sensitivity": 0.9,
+          "bias_detected": false,
+          "source_count": 3,
+          "recommendations": [
+            "High disagreement between validation sources detected - verify claims manually",
+            "Some validation sources have low evidence quality - cross-check with authoritative sources"
+          ],
+          "fallback_used": false
+        },
+        "orchestration_metadata": {
+          "successful_modules": [
+            "context_analyzer",
+            "quantization_tester",
+            "consistency_validator",
+            "wikipedia_fact_checker",
+            "multi_source_fact_validator",
+            "semantic_coherence",
+            "entropy_calculator"
+          ],
+          "failed_modules": [],
+          "total_processing_time": 1.6906960010528564,
+          "performance_metrics": {
+            "total_processing_time": 1.8802101612091064,
+            "average_processing_time": 0.26860145160130094,
+            "success_rate": 1.0,
+            "fallback_rate": 0.0
+          },
+          "integration_notes": [
+            "Advanced analysis: 7 modules succeeded, 0 failed",
+            "Good alignment between linguistic and fact validation confidence"
+          ]
+        },
+        "consistency_validation": {
+          "error": "Module not available or failed"
+        },
+        "knowledge_validation": {
+          "error": "Module not available or failed"
+        },
+        "cultural_authenticity": {
+          "authenticity_score": 0.9,
+          "cultural_sensitivity": 0.9,
+          "bias_detected": false,
+          "perspectives": [
+            "Cultural: {'primary_tradition': None, 'domain': None, 'reasoning_type': 'general'}"
+          ],
+          "stereotype_indicators": [],
+          "appropriation_markers": [],
+          "bias_indicators": []
+        },
+        "tradition_validation": {
+          "error": "Module not available or failed"
+        },
+        "cross_cultural_coherence": {
+          "error": "Module not available or failed"
+        }
+      },
+      "text_statistics": {
+        "word_count": 732,
+        "sentence_count": 31,
+        "avg_sentence_length": 22.875,
+        "unique_words": 312,
+        "vocabulary_diversity": 0.4262295081967213
+      },
+      "reasoning_indicators": {
+        "step_indicators_found": [],
+        "logic_connectors_found": [
+          "thus"
+        ],
+        "evidence_indicators_found": [],
+        "verification_indicators_found": []
+      }
+    }
+  },
+  "reasoning_score": 60.400000000000006,
+  "reasoning_type": "general",
+  "performance_metrics": null,
+  "utilization_report": null
+}

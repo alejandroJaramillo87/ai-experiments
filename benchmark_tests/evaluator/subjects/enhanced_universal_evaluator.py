@@ -1347,56 +1347,9 @@ class EnhancedUniversalEvaluator(UniversalEvaluator):
             enhanced_component_scaled * enhanced_weight
         )
         
-        # Apply content quality adjustments for responses that show sophistication
-        content_adjustment = 0
-        response_text = test_definition.get('_debug_response_text', '')
-        word_count = len(response_text.split())
-        
-        # Base content score - all responses get some minimum points for existing
-        if word_count >= 1:
-            content_adjustment += 8  # Minimum for any response
-            
-        # Length-based adjustments  
-        if word_count >= 5:
-            content_adjustment += 7  # Substantial response
-        if word_count >= 15:
-            content_adjustment += 6  # Comprehensive response
-        if word_count >= 30:
-            content_adjustment += 4  # Very detailed response
-            
-        # Cultural sophistication bonus (expanded to catch more cultural relevance)
-        sophisticated_words = ['traditional', 'cultural', 'authentic', 'beauty', 'essence', 'contemplative', 
-                               'petals', 'whisper', 'cherry', 'blossom', 'spring', 'gentle', 'soft']
-        cultural_matches = sum(1 for word in sophisticated_words if word in response_text.lower())
-        cultural_bonus = min(cultural_matches * 2, 12)  # Max 12 points for cultural sophistication
-        content_adjustment += cultural_bonus
-        
-        # Thematic relevance bonus (even without exact matches)
-        haiku_themes = ['nature', 'seasonal', 'poetic', 'imagery', 'contemplative', 'zen']
-        theme_indicators = ['fall', 'spring', 'soft', 'gentle', 'whisper', 'petals', 'ground', 'breeze']
-        theme_matches = sum(1 for word in theme_indicators if word in response_text.lower())
-        thematic_bonus = min(theme_matches * 2, 10)  # Max 10 points for thematic relevance
-        content_adjustment += thematic_bonus
-        
-        # Pattern matching success (reduced impact to avoid over-scoring)
-        if exact_match > 0.8:
-            content_adjustment += 4  # Strong exact match
-        elif exact_match > 0.5:
-            content_adjustment += 2  # Good exact match
-        elif partial_match > 0.7:
-            content_adjustment += 3  # Strong partial match
-        elif partial_match > 0.4:
-            content_adjustment += 1  # Decent partial match
-            
-        # Apply the adjustment
-        final_score += content_adjustment
-        logger.info(f"SCORE_FIX: Applied content adjustment of {content_adjustment} points (words={word_count}, cultural={cultural_matches}, thematic={theme_matches}, exact={exact_match:.3f}, partial={partial_match:.3f})")
-        
-        # Quality differentiation - prevent over-scoring of medium responses
-        if word_count < 15 and content_adjustment > 18:  # Short response getting too high score
-            penalty = (content_adjustment - 18) * 0.5
-            final_score -= penalty  
-            logger.info(f"SCORE_FIX: Applied short response penalty of {penalty:.1f} points")
+        # SCORING FIX: Remove arbitrary content adjustments that disconnect from component scores
+        # The base evaluation already accounts for content quality through its sophisticated metrics
+        logger.info(f"SCORING_ALIGNMENT: Base score ({base_overall_score:.1f}) properly weighted with enhanced scoring")
         
         # Ensure reasonable score range (Phase 1 target: 40-70 for quality responses)
         final_score = max(min(final_score, 100.0), 0.0)

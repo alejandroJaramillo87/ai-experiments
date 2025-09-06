@@ -1,0 +1,81 @@
+PROMPT:
+--------------------
+A society experiences growing economic inequality. Apply three distinct logical frameworks:
+
+**Western Analytical Linear Logic:**
+- Identify economic factors → Analyze market mechanisms → Evaluate policy interventions → Implement reforms → Measure outcomes
+- Focus: Economic models, statistical analysis, policy mechanisms, individual incentives, market efficiency
+- Logic: Inequality results from specific economic factors; targeted interventions can modify these factors to improve outcomes
+
+**Indigenous Reciprocal Circular Logic:**
+- Examine sharing traditions → Understand community needs → Honor gift economy principles → Strengthen mutual aid networks → Restore abundance sharing
+- Focus: Reciprocity systems, community wellbeing, gift economies, mutual aid, collective prosperity
+- Logic: Inequality violates natural reciprocity; healing requires returning to sharing-based economic relationships
+
+**Eastern Balanced Dialectical Logic:**
+- Recognize wealth-poverty interdependence → Understand karma and social justice → Seek sustainable prosperity → Balance individual success with collective wellbeing → Cultivate equitable abundance
+- Focus: Interdependence of prosperity, karmic consequences, balanced development, sustainable abundance, collective liberation
+- Logic: Wealth and poverty are interconnected; true prosperity requires lifting everyone together in sustainable balance
+
+**Synthesis Exploration:**
+Analyze how each framework:
+1. Understands the causes of economic inequality
+2. Proposes different solutions and priorities
+3. Defines 'successful' economic outcomes differently
+4. Might inform each other to create more comprehensive approaches to economic justice
+
+COMPLETION:
+--------------------
+ If you cannot complete the task, explain why.
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+METRICS:
+--------------------
+Duration: 17.20s
+Prompt Tokens: 335
+Completion Tokens: 1800
+Tokens per Second: 104.68 T/s
+
+REASONING EVALUATION:
+--------------------
+Overall Score: 63.8/100
+Reasoning Type: general
+Organization Quality: 60.0
+Technical Accuracy: 50.0
+Completeness: 75.1
+Thoroughness: 55.0
+Reliability: 30.0
+Scope Coverage: 45.0
+Domain Appropriateness: 22.5
+Word Count: 1798.0
+Confidence Score: 74.8
+Token Entropy: 0.1
+Semantic Entropy: 0.0
+Entropy Quality Ratio: 0.0
+Semantic Diversity: 1.0
+Embedding Variance: 0.0
+Consistency Score: 0.5
+Factual Accuracy: 0.0
+Knowledge Consistency: 0.0
+Confidence Calibration: 0.0
+Validation Passed: 1.0
+Cultural Authenticity: 0.9
+Tradition Respect: 0.0
+Cross Cultural Coherence: 0.0
+Task Understanding: 0.0
+Instruction Following: 0.7
+Context Awareness: 0.3
+Logical Structure: 0.0
+Evidence Integration: 0.4
+Inference Quality: 0.0
+Mathematical Reasoning: 0.0
+Cultural Sensitivity: 15.0
+Creative Synthesis: 0.0
+Analytical Decomposition: 0.0
+Relevance Score: 0.3
+Depth Score: 0.6
+Coherence Score: 0.5
+
+Recommendations:
+  1. Strengthen logical flow with more connecting words (therefore, because, consequently)
+  2. Add verification steps with self-checking language (verify, confirm, review)

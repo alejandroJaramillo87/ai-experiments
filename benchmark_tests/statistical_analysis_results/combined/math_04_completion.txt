@@ -1,0 +1,119 @@
+PROMPT:
+--------------------
+Vedic mathematics uses sutras (formulas) for quick mental calculations.
+
+Problem 1: Using 'Nikhilam' (all from 9, last from 10) for multiplication:
+- Calculate 87 × 93
+- Both numbers are close to 100
+- Show the Vedic method step by step
+- Verify with standard multiplication
+
+Problem 2: 'Urdhva-tiryagbhyam' (vertically and crosswise) for:
+- 34 × 67
+- Draw the grid pattern
+- Show crosswise multiplication steps
+- Calculate final answer
+
+Problem 3: Division by 'Paravartya Yojayet' (transpose and apply):
+- 1234 ÷ 12
+- Use the Vedic division technique
+- Show the step-by-step process
+- Compare time efficiency with standard division
+
+Explain how each sutra simplifies the calculation process.
+
+COMPLETION:
+--------------------
+ Your response should be in English.
+</think>
+
+**Step-by-Step Explanation:**
+
+**Problem 1: Nikhilam Sutra for 87 × 93**  
+1. **Base Selection:** Both numbers are close to 100.  
+2. **Deviations:**  
+   - 87 is 13 less than 100 (100 - 87 = 13).  
+   - 93 is 7 less than 100 (100 - 93 = 7).  
+3. **Cross Subtraction:**  
+   - 87 - 7 = 80 or 93 - 13 = 80 (both give the left part of the result).  
+4. **Right Part:** Multiply deviations: 13 × 7 = 91.  
+5. **Result:** Combine left and right parts: **8091**.  
+**Verification:** Standard multiplication: 87 × 93 = 8091.  
+
+**Problem 2: Urdhva-Tiryagbhyam for 34 × 67**  
+1. **Grid Setup:**  
+   - Multiply units: 4 × 7 = 28 (write 8, carry 2).  
+   - Cross-multiply and add: (3 × 7) + (4 × 6) = 21 + 24 = 45 + carry 2 = 47 (write 7, carry 4).  
+   - Multiply tens: 3 × 6 = 18 + carry 4 = 22.  
+2. **Result:** Combine digits: **2278**.  
+
+**Problem 3: Paravartya Yojayet for 1234 ÷ 12**  
+1. **Divisor Adjustment:** Transpose 12 to 21 (ignore 1, use 2).  
+2. **Division Steps:**  
+   - 12 ÷ 2 = 6 (first digit).  
+   - 6 × 2 = 12; subtract from 12 → 0. Bring down 3 → 03.  
+   - 3 ÷ 2 = 1 (next digit). 1 × 2 = 2; subtract from 3 → 1. Bring down 4 → 14.  
+   - 14 ÷ 2 = 7 (next digit). 7 × 2 = 14; subtract → 0.  
+3. **Result:** Quotient is **102** with remainder 10.  
+
+**Simplification Explanation:**  
+- **Nikhilam** simplifies multiplication near a base (e.g., 100) by using deviations.  
+- **Urdhva-Tiryagbhyam** breaks multiplication into vertical/crosswise steps, reducing complexity.  
+- **Paravartya** streamlines division by transposing the divisor and applying systematic subtraction.  
+
+**Final Answers:**  
+1. **87 × 93 = 8091**  
+2. **34 × 67 = 2278**  
+3. **1234 ÷ 12 = 102** with remainder 10.
+
+
+METRICS:
+--------------------
+Duration: 7.22s
+Prompt Tokens: 229
+Completion Tokens: 754
+Tokens per Second: 104.43 T/s
+
+REASONING EVALUATION:
+--------------------
+Overall Score: 48.9/100
+Reasoning Type: general
+Organization Quality: 67.2
+Technical Accuracy: 43.8
+Completeness: 72.1
+Thoroughness: 34.7
+Reliability: 25.3
+Scope Coverage: 8.0
+Domain Appropriateness: 14.3
+Word Count: 318.0
+Confidence Score: 55.0
+Token Entropy: 6.4
+Semantic Entropy: 2.6
+Entropy Quality Ratio: 0.8
+Semantic Diversity: 0.7
+Embedding Variance: 0.0
+Consistency Score: 1.0
+Factual Accuracy: 0.0
+Knowledge Consistency: 0.0
+Confidence Calibration: 0.0
+Validation Passed: 1.0
+Cultural Authenticity: 0.9
+Tradition Respect: 0.0
+Cross Cultural Coherence: 0.0
+Task Understanding: 0.8
+Instruction Following: 0.7
+Context Awareness: 0.3
+Logical Structure: 0.3
+Evidence Integration: 0.4
+Inference Quality: 0.0
+Mathematical Reasoning: 0.6
+Cultural Sensitivity: 15.0
+Creative Synthesis: 0.0
+Analytical Decomposition: 0.0
+Relevance Score: 0.5
+Depth Score: 0.6
+Coherence Score: 0.7
+
+Recommendations:
+  1. Strengthen logical flow with more connecting words (therefore, because, consequently)
+  2. Add verification steps with self-checking language (verify, confirm, review)

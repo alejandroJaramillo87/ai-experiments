@@ -129,6 +129,21 @@ class EvaluationMetrics:
     cultural_authenticity: float = 0.0  # Cultural authenticity and respect
     tradition_respect: float = 0.0      # Traditional knowledge respect
     cross_cultural_coherence: float = 0.0 # Cross-cultural presentation coherence
+    
+    # NEW: Cognitive Pattern Detection Metrics (for domain weakness identification)
+    task_understanding: float = 0.0      # Did model understand the task?
+    instruction_following: float = 0.0   # Followed specific instructions?
+    context_awareness: float = 0.0       # Shows domain knowledge?
+    logical_structure: float = 0.0       # Clear reasoning progression?
+    evidence_integration: float = 0.0    # Uses relevant information effectively?
+    inference_quality: float = 0.0       # Valid logical conclusions?
+    mathematical_reasoning: float = 0.0   # Quantitative accuracy (for math domains)
+    cultural_sensitivity: float = 0.0    # Cultural context handling (for cultural domains)
+    creative_synthesis: float = 0.0      # Original idea generation (for creative domains)
+    analytical_decomposition: float = 0.0 # Problem breakdown (for analytical domains)
+    relevance_score: float = 0.0         # On-topic and focused?
+    depth_score: float = 0.0             # Thorough concept exploration?
+    coherence_score: float = 0.0         # Internal consistency?
 
 
 @dataclass
@@ -220,10 +235,15 @@ class UniversalEvaluator:
         test_type = self._detect_test_type(test_category)
         
         # Perform core evaluation with universal metrics (Multi-pass evaluation)
-        metrics = self._evaluate_universal_metrics(response_text, reasoning_type, test_type, test_category, coherence_assessment)
+        metrics = self._evaluate_universal_metrics(response_text, reasoning_type, test_type, test_category, coherence_assessment, test_name)
         
         # Add reasoning-type-specific analysis
         specialized_analysis = self._evaluate_specialized_patterns(response_text, reasoning_type)
+        
+        # COGNITIVE PATTERN DETECTION: Calculate cognitive metrics for domain pattern analysis
+        metrics = self._calculate_cognitive_pattern_metrics(
+            metrics, response_text, test_name, reasoning_type, test_category
+        )
         
         # ENHANCEMENT: Advanced analysis using new modules
         advanced_analysis = self._perform_advanced_analysis(response_text, test_name, reasoning_type)
@@ -436,7 +456,7 @@ class UniversalEvaluator:
     
     def _evaluate_universal_metrics(self, response_text: str, reasoning_type: ReasoningType, 
                                    test_type: str, test_category: Optional[str] = None, 
-                                   coherence_assessment: Optional[Dict] = None) -> EvaluationMetrics:
+                                   coherence_assessment: Optional[Dict] = None, test_name: Optional[str] = None) -> EvaluationMetrics:
         """Evaluate universal metrics with category-specific logic and coherence weighting"""
         text = response_text.lower()
         word_count = len(response_text.split())
@@ -454,7 +474,7 @@ class UniversalEvaluator:
         formatting_bonus = self._calculate_formatting_bonus(response_text)
         
         # IMPROVEMENT: Use domain-adaptive weights with increased formatting weight
-        weights = self._get_domain_adaptive_weights(test_type, reasoning_type)
+        weights = self._get_domain_adaptive_weights(test_type, reasoning_type, test_category, test_name)
         
         # Adjust weights to accommodate increased formatting bonus (5% → 10%)
         total_content_weight = 0.90  # Reduced from 0.95 to make room for 10% formatting
@@ -734,23 +754,23 @@ class UniversalEvaluator:
         # Basic fallback results to maintain test compatibility
         fallback_analysis = {
             "entropy_analysis": {
-                "entropy_score": 50.0,
-                "complexity_score": 50.0,
-                "information_density": 50.0,
+                "entropy_score": 0.0,
+                "complexity_score": 0.0,
+                "information_density": 0.0,
                 "fallback": True,
                 "error": f"Orchestrator failed: {error_message}"
             },
             "semantic_coherence": {
-                "coherence_score": 50.0,
-                "consistency_score": 50.0,
-                "semantic_flow": 50.0,
+                "coherence_score": 0.0,
+                "consistency_score": 0.0,
+                "semantic_flow": 0.0,
                 "fallback": True,
                 "error": f"Orchestrator failed: {error_message}"
             },
             "context_analysis": {
-                "context_quality": 50.0,
-                "context_usage": 50.0,
-                "context_efficiency": 50.0,
+                "context_quality": 0.0,
+                "context_usage": 0.0,
+                "context_efficiency": 0.0,
                 "fallback": True,
                 "error": f"Orchestrator failed: {error_message}"
             },
@@ -762,9 +782,9 @@ class UniversalEvaluator:
                 "error": f"Orchestrator failed: {error_message}"
             },
             "consistency_validation": {
-                "consistency_score": 50.0,
-                "cross_validation_score": 50.0,
-                "reliability_score": 50.0,
+                "consistency_score": 0.0,
+                "cross_validation_score": 0.0,
+                "reliability_score": 0.0,
                 "fallback": True,
                 "error": f"Orchestrator failed: {error_message}"
             },
@@ -812,17 +832,27 @@ class UniversalEvaluator:
                 metrics.semantic_diversity = entropy_analysis.get("semantic_diversity", 0.0)
                 metrics.embedding_variance = entropy_analysis.get("embedding_variance", 0.0)
             
-            # Update consistency and validation metrics
-            consistency_validation = advanced_analysis.get("consistency_validation", {})
-            if consistency_validation and "error" not in consistency_validation:
-                metrics.consistency_score = consistency_validation.get("consistency_score", 0.0)
+            # Update consistency and validation metrics  
+            consistency_analysis = advanced_analysis.get("consistency_analysis", {})
+            if consistency_analysis and "error" not in consistency_analysis:
+                metrics.consistency_score = consistency_analysis.get("consistency_score", 0.0)
             
             knowledge_validation = advanced_analysis.get("knowledge_validation", {})
-            if knowledge_validation and "error" not in knowledge_validation:
-                metrics.factual_accuracy = knowledge_validation.get("factual_accuracy", 0.0)
-                metrics.knowledge_consistency = knowledge_validation.get("knowledge_consistency", 0.0)
-                metrics.confidence_calibration = knowledge_validation.get("confidence_calibration", 0.0)
-                metrics.validation_passed = knowledge_validation.get("validation_passed", False)
+            if knowledge_validation:
+                # Use fallback values if orchestrator failed, otherwise use standard keys
+                if "error" in knowledge_validation:
+                    # Use fallback keys with reasonable defaults
+                    # Use actual values instead of fixed defaults for pattern detection
+                    metrics.factual_accuracy = knowledge_validation.get("factual_accuracy_score", 0.0)
+                    metrics.knowledge_consistency = knowledge_validation.get("consistency_score", 0.0)
+                    metrics.confidence_calibration = knowledge_validation.get("confidence_score", 0.0) 
+                    metrics.validation_passed = knowledge_validation.get("validation_passed", True)  # Assume valid if no validator
+                else:
+                    # Standard orchestrator success keys
+                    metrics.factual_accuracy = knowledge_validation.get("factual_accuracy", 0.0)
+                    metrics.knowledge_consistency = knowledge_validation.get("knowledge_consistency", 0.0)
+                    metrics.confidence_calibration = knowledge_validation.get("confidence_calibration", 0.0)
+                    metrics.validation_passed = knowledge_validation.get("validation_passed", False)
             
             # Update cultural evaluation metrics
             cultural_authenticity = advanced_analysis.get("cultural_authenticity", {})
@@ -830,12 +860,26 @@ class UniversalEvaluator:
                 metrics.cultural_authenticity = cultural_authenticity.get("authenticity_score", 0.0)
             
             tradition_validation = advanced_analysis.get("tradition_validation", {})
-            if tradition_validation and "error" not in tradition_validation:
-                metrics.tradition_respect = tradition_validation.get("tradition_respect_score", 0.0)
+            if tradition_validation:
+                # Use fallback values if orchestrator failed
+                if "error" in tradition_validation:
+                    # Use fallback value (0.7 from line 784)
+                    # Use actual values instead of fixed defaults for pattern detection
+                    metrics.tradition_respect = tradition_validation.get("tradition_respect_score", 0.0)
+                else:
+                    # Standard orchestrator success keys
+                    metrics.tradition_respect = tradition_validation.get("tradition_respect_score", 0.0)
             
             cross_cultural_coherence = advanced_analysis.get("cross_cultural_coherence", {})
-            if cross_cultural_coherence and "error" not in cross_cultural_coherence:
-                metrics.cross_cultural_coherence = cross_cultural_coherence.get("coherence_score", 0.0)
+            if cross_cultural_coherence:
+                # Use fallback values if orchestrator failed
+                if "error" in cross_cultural_coherence:
+                    # Use fallback value (0.7 from line 790)  
+                    # Use actual values instead of fixed defaults for pattern detection
+                    metrics.cross_cultural_coherence = cross_cultural_coherence.get("coherence_score", 0.0)
+                else:
+                    # Standard orchestrator success keys
+                    metrics.cross_cultural_coherence = cross_cultural_coherence.get("coherence_score", 0.0)
             
             # Adjust overall score based on advanced metrics
             advanced_adjustments = self._calculate_advanced_score_adjustments(advanced_analysis)
@@ -855,6 +899,58 @@ class UniversalEvaluator:
         # This would be enhanced based on test naming conventions
         # For now, return None to indicate no specific prompt
         return None
+    
+    def _calculate_cognitive_pattern_metrics(self, 
+                                           metrics: EvaluationMetrics,
+                                           response_text: str,
+                                           test_name: str,
+                                           reasoning_type: Optional[Union[str, ReasoningType]] = None,
+                                           test_category: Optional[str] = None) -> EvaluationMetrics:
+        """
+        Calculate cognitive pattern detection metrics for identifying domain-specific weaknesses.
+        
+        These metrics focus on cognitive capabilities rather than absolute correctness,
+        enabling statistical pattern detection across different reasoning domains.
+        """
+        try:
+            response_lower = response_text.lower().strip()
+            response_words = response_text.split()
+            word_count = len(response_words)
+            
+            # Task Understanding: Did the model understand what was asked?
+            metrics.task_understanding = self._assess_task_understanding(response_text, test_name, test_category)
+            
+            # Instruction Following: Did it follow specific format/structure requirements?  
+            metrics.instruction_following = self._assess_instruction_following(response_text, test_name, test_category)
+            
+            # Context Awareness: Shows relevant domain knowledge?
+            metrics.context_awareness = self._assess_context_awareness(response_text, test_name, test_category)
+            
+            # Logical Structure: Clear reasoning progression?
+            metrics.logical_structure = self._assess_logical_structure(response_text, word_count)
+            
+            # Evidence Integration: Uses information effectively?
+            metrics.evidence_integration = self._assess_evidence_integration(response_text, word_count)
+            
+            # Inference Quality: Valid logical conclusions?
+            metrics.inference_quality = self._assess_inference_quality(response_text, reasoning_type)
+            
+            # Domain-Specific Cognitive Abilities
+            metrics.mathematical_reasoning = self._assess_mathematical_reasoning(response_text, test_category)
+            metrics.cultural_sensitivity = self._assess_cultural_sensitivity(response_text, test_category)  
+            metrics.creative_synthesis = self._assess_creative_synthesis(response_text, test_category)
+            metrics.analytical_decomposition = self._assess_analytical_decomposition(response_text, test_category)
+            
+            # Response Quality Dimensions
+            metrics.relevance_score = self._assess_relevance(response_text, test_name, word_count)
+            metrics.depth_score = self._assess_depth(response_text, word_count)
+            metrics.coherence_score = self._assess_cognitive_coherence(response_text, word_count)
+            
+        except Exception as e:
+            logger.warning(f"Cognitive pattern metrics calculation failed: {e}")
+            # Set all cognitive metrics to 0.0 on failure to maintain pattern detection capability
+            
+        return metrics
     
     def _extract_cultural_context(self, test_name: str) -> Optional[str]:
         """Extract cultural context from test name"""
@@ -1974,7 +2070,7 @@ class UniversalEvaluator:
     
     # ==================== DOMAIN ADAPTATION METHODS ====================
     
-    def _get_domain_adaptive_weights(self, test_type: str, reasoning_type: ReasoningType) -> Dict[str, float]:
+    def _get_domain_adaptive_weights(self, test_type: str, reasoning_type: ReasoningType, test_category: Optional[str] = None, test_name: Optional[str] = None) -> Dict[str, float]:
         """Get domain-adaptive weights based on test type and reasoning type"""
         # Start with default weights to ensure all keys exist
         default_weights = {
@@ -2022,7 +2118,34 @@ class UniversalEvaluator:
             for key in ["organization_quality", "completeness", "thoroughness", "scope_coverage", "domain_appropriateness"]:
                 base_weights[key] = base_weights[key] * (remaining_weight / sum(base_weights[k] for k in base_weights if k not in ["technical_accuracy", "reliability"]))
         
+        elif (test_category and "cultural" in test_category.lower()) or self._is_cultural_content(test_name):
+            # For cultural reasoning: domain appropriateness and completeness are key, reduce technical accuracy
+            base_weights["domain_appropriateness"] = min(base_weights["domain_appropriateness"] * 2.0, 0.35)  # Boost cultural fit
+            base_weights["completeness"] = min(base_weights["completeness"] * 1.4, 0.20)  # Cultural context needs completeness  
+            base_weights["technical_accuracy"] = max(base_weights["technical_accuracy"] * 0.3, 0.05)  # Minimize technical emphasis
+            base_weights["thoroughness"] = min(base_weights["thoroughness"] * 1.2, 0.18)  # Cultural depth important
+            # Normalize remaining weights
+            remaining_weight = 1.0 - (base_weights["domain_appropriateness"] + base_weights["completeness"] + 
+                                    base_weights["technical_accuracy"] + base_weights["thoroughness"])
+            for key in ["organization_quality", "reliability", "scope_coverage"]:
+                base_weights[key] = base_weights[key] * (remaining_weight / sum(base_weights[k] for k in ["organization_quality", "reliability", "scope_coverage"]))
+        
         return base_weights
+    
+    def _is_cultural_content(self, test_name: str) -> bool:
+        """Detect cultural content based on test name and keywords"""
+        if not test_name:
+            return False
+            
+        test_name_lower = test_name.lower()
+        cultural_keywords = [
+            'arabic', 'quranic', 'islamic', 'haiku', 'japanese', 'native american', 'ojibwe', 
+            'creation story', 'celtic', 'yoruba', 'vedic', 'sanskrit', 'chinese', 'wu xing',
+            'five elements', 'triadic', 'oriki', 'cultural', 'traditional', 'spiritual',
+            'religious', 'heritage', 'zen', 'dharma', 'karma', 'proverb'
+        ]
+        
+        return any(keyword in test_name_lower for keyword in cultural_keywords)
     
     def _normalize_response_length(self, score: float, word_count: int, test_type: str) -> float:
         """Normalize score based on response length expectations for different domains"""
@@ -2947,6 +3070,261 @@ class UniversalEvaluator:
             return "Poorly calibrated confidence"
         else:
             return "Significantly miscalibrated confidence"
+
+
+    # ==================== COGNITIVE PATTERN DETECTION METHODS ====================
+    
+    def _assess_task_understanding(self, response_text: str, test_name: str, test_category: str) -> float:
+        """Assess if model understood the task requirements (0-1)"""
+        score = 0.0
+        response_lower = response_text.lower()
+        
+        # Basic task engagement indicators
+        if len(response_text.strip()) < 10:
+            return 0.1  # Minimal engagement
+            
+        # Look for task-specific elements based on test name/category
+        if "haiku" in test_name.lower():
+            # For haiku tasks, check for poetry structure awareness
+            lines = response_text.split('\n')
+            if any('syllable' in line.lower() for line in lines):
+                score += 0.4
+            if len([l for l in lines if l.strip()]) >= 3:
+                score += 0.3
+        elif "math" in test_category.lower() if test_category else False:
+            # For math tasks, check for numerical reasoning
+            if any(char.isdigit() for char in response_text):
+                score += 0.3
+            if any(op in response_text for op in ['+', '-', '×', '*', '÷', '/', '=']):
+                score += 0.3
+        elif "cultural" in test_category.lower() if test_category else False:
+            # For cultural tasks, check for cultural awareness
+            if any(word in response_lower for word in ['tradition', 'culture', 'heritage', 'custom']):
+                score += 0.4
+                
+        # General task understanding indicators
+        if "step" in response_lower or "first" in response_lower:
+            score += 0.2  # Shows structured approach
+        if "because" in response_lower or "therefore" in response_lower:
+            score += 0.2  # Shows reasoning
+            
+        return min(score, 1.0)
+    
+    def _assess_instruction_following(self, response_text: str, test_name: str, test_category: str) -> float:
+        """Assess adherence to specific instructions/format (0-1)"""
+        score = 0.0
+        
+        # Check for explicit instruction following
+        if "complete" in test_name.lower() or "finish" in test_name.lower():
+            # Should provide completion
+            if len(response_text.split()) > 5:
+                score += 0.5
+        
+        # Format following indicators
+        response_lines = response_text.split('\n')
+        if len(response_lines) > 1:
+            score += 0.3  # Multi-line suggests structure awareness
+            
+        # Look for enumeration if applicable
+        if any(line.strip().startswith(('1.', '2.', '3.', '-', '•')) for line in response_lines):
+            score += 0.4  # Structured format
+            
+        return min(score, 1.0)
+    
+    def _assess_context_awareness(self, response_text: str, test_name: str, test_category: str) -> float:
+        """Assess domain knowledge and contextual understanding (0-1)"""
+        score = 0.0
+        response_lower = response_text.lower()
+        
+        # Domain-specific context awareness
+        if test_category and "reasoning" in test_category.lower():
+            reasoning_indicators = ['analyze', 'consider', 'conclude', 'infer', 'deduce']
+            score += 0.2 * sum(1 for indicator in reasoning_indicators if indicator in response_lower)
+            
+        if test_category and "cultural" in test_category.lower():
+            cultural_indicators = ['respect', 'tradition', 'heritage', 'authentic', 'significance']  
+            score += 0.15 * sum(1 for indicator in cultural_indicators if indicator in response_lower)
+            
+        # General context indicators
+        if len(response_text.split()) > 50:  # Substantial response suggests context awareness
+            score += 0.3
+            
+        return min(score, 1.0)
+    
+    def _assess_logical_structure(self, response_text: str, word_count: int) -> float:
+        """Assess logical flow and structure (0-1)"""
+        score = 0.0
+        response_lower = response_text.lower()
+        
+        # Structured reasoning indicators
+        structure_words = ['first', 'second', 'then', 'next', 'finally', 'therefore', 'because', 'since']
+        structure_count = sum(1 for word in structure_words if word in response_lower)
+        score += min(structure_count * 0.15, 0.6)
+        
+        # Logical flow indicators
+        if 'therefore' in response_lower or 'thus' in response_lower:
+            score += 0.2
+        if 'because' in response_lower or 'since' in response_lower:
+            score += 0.2
+            
+        return min(score, 1.0)
+    
+    def _assess_evidence_integration(self, response_text: str, word_count: int) -> float:
+        """Assess use of relevant information (0-1)"""
+        score = 0.0
+        response_lower = response_text.lower()
+        
+        # Evidence indicators
+        evidence_words = ['based on', 'according to', 'evidence', 'shows', 'indicates', 'suggests']
+        evidence_count = sum(1 for phrase in evidence_words if phrase in response_lower)
+        score += min(evidence_count * 0.2, 0.6)
+        
+        # Information integration indicators
+        if word_count > 30:  # Substantial content suggests information use
+            score += 0.2
+        if word_count > 100:  # Extensive content suggests thorough integration
+            score += 0.2
+            
+        return min(score, 1.0)
+    
+    def _assess_inference_quality(self, response_text: str, reasoning_type: Optional[Union[str, ReasoningType]]) -> float:
+        """Assess logical conclusion quality (0-1)"""
+        score = 0.0
+        response_lower = response_text.lower()
+        
+        # Inference indicators
+        inference_words = ['conclude', 'infer', 'deduce', 'implies', 'suggests', 'indicates']
+        score += min(sum(1 for word in inference_words if word in response_lower) * 0.2, 0.6)
+        
+        # Chain of thought specific
+        if reasoning_type and 'chain' in str(reasoning_type).lower():
+            if 'step' in response_lower and ('1' in response_text or 'first' in response_lower):
+                score += 0.3
+                
+        return min(score, 1.0)
+    
+    def _assess_mathematical_reasoning(self, response_text: str, test_category: str) -> float:
+        """Assess mathematical reasoning capability (0-1)"""
+        if not test_category or 'math' not in test_category.lower():
+            return 0.0  # Only applicable to math domains
+            
+        score = 0.0
+        
+        # Mathematical content indicators
+        if any(char.isdigit() for char in response_text):
+            score += 0.3
+        if any(op in response_text for op in ['+', '-', '×', '*', '÷', '/', '=', '<', '>']):
+            score += 0.3
+        if any(word in response_text.lower() for word in ['calculate', 'equation', 'formula', 'solve']):
+            score += 0.4
+            
+        return min(score, 1.0)
+    
+    def _assess_cultural_sensitivity(self, response_text: str, test_category: str) -> float:
+        """Assess cultural awareness and sensitivity (0-1)"""
+        if not test_category or 'cultural' not in test_category.lower():
+            return 0.0  # Only applicable to cultural domains
+            
+        score = 0.0
+        response_lower = response_text.lower()
+        
+        # Cultural sensitivity indicators
+        sensitive_words = ['respect', 'tradition', 'heritage', 'culture', 'authentic', 'honor']
+        score += min(sum(1 for word in sensitive_words if word in response_lower) * 0.15, 0.6)
+        
+        # Avoid stereotyping language
+        if not any(problematic in response_lower for problematic in ['always', 'never', 'all people', 'they all']):
+            score += 0.4
+            
+        return min(score, 1.0)
+    
+    def _assess_creative_synthesis(self, response_text: str, test_category: str) -> float:
+        """Assess creative and original thinking (0-1)"""
+        if not test_category or 'creative' not in test_category.lower():
+            return 0.0  # Only applicable to creative domains
+            
+        score = 0.0
+        response_lower = response_text.lower()
+        
+        # Creative indicators
+        creative_words = ['imagine', 'creative', 'original', 'unique', 'innovative', 'novel']
+        score += min(sum(1 for word in creative_words if word in response_lower) * 0.2, 0.6)
+        
+        # Length as creativity indicator (more elaborate = more creative)
+        word_count = len(response_text.split())
+        if word_count > 100:
+            score += 0.4
+            
+        return min(score, 1.0)
+    
+    def _assess_analytical_decomposition(self, response_text: str, test_category: str) -> float:
+        """Assess systematic problem breakdown (0-1)"""
+        if not test_category or 'analytical' not in test_category.lower():
+            return 0.0  # Only applicable to analytical domains
+            
+        score = 0.0
+        response_lower = response_text.lower()
+        
+        # Analytical indicators
+        analytical_words = ['analyze', 'break down', 'component', 'element', 'factor', 'aspect']
+        score += min(sum(1 for word in analytical_words if word in response_lower) * 0.15, 0.6)
+        
+        # Structured decomposition
+        if any(response_text.count(str(i)) > 0 for i in range(1, 4)):  # Numbered points
+            score += 0.4
+            
+        return min(score, 1.0)
+    
+    def _assess_relevance(self, response_text: str, test_name: str, word_count: int) -> float:
+        """Assess how on-topic and focused the response is (0-1)"""
+        score = 0.5  # Base relevance score
+        
+        # Length-based relevance (too short = unfocused, too long = potentially off-topic)
+        if word_count < 5:
+            score = 0.1  # Too brief to be relevant
+        elif word_count > 500:
+            score = max(score - 0.2, 0.3)  # Potentially unfocused if too long
+        elif 10 <= word_count <= 200:
+            score += 0.3  # Good length for focused response
+            
+        # Basic coherence check (no repeated words/phrases indicating confusion)
+        words = response_text.lower().split()
+        if words and len(set(words)) / len(words) > 0.7:  # High vocabulary diversity
+            score += 0.2
+            
+        return min(score, 1.0)
+    
+    def _assess_depth(self, response_text: str, word_count: int) -> float:
+        """Assess thoroughness of concept exploration (0-1)"""
+        score = 0.0
+        response_lower = response_text.lower()
+        
+        # Depth indicators
+        depth_words = ['detailed', 'comprehensive', 'thorough', 'extensive', 'in-depth', 'elaborate']
+        score += min(sum(1 for word in depth_words if word in response_lower) * 0.2, 0.4)
+        
+        # Length as depth indicator
+        if word_count > 50:
+            score += 0.3
+        if word_count > 150:
+            score += 0.3
+            
+        return min(score, 1.0)
+    
+    def _assess_cognitive_coherence(self, response_text: str, word_count: int) -> float:
+        """Assess internal consistency and flow for cognitive pattern detection (0-1)"""
+        score = 0.5  # Base coherence
+        
+        # Coherence indicators
+        coherence_words = ['therefore', 'however', 'furthermore', 'moreover', 'additionally']
+        score += min(sum(1 for word in coherence_words if word in response_text.lower()) * 0.1, 0.3)
+        
+        # Structural coherence (sentences, paragraphs)
+        sentences = response_text.split('.')
+        if len(sentences) > 2:
+            score += 0.2  # Multi-sentence suggests structured thought
+            
+        return min(score, 1.0)
 
 
 # Convenience function for quick evaluation
