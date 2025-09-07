@@ -1,9 +1,10 @@
-# AI Engineering Workstation Guide
-A comprehensive guide for building a high-performance local AI engineering workstation optimized for running large language models and agentic workloads on modern hardware platforms.
+# AI Engineering Expirements Base Infrastructure
+A base infrastructure repository for AI engineering expirements, providing a consistent hardware-optimized environment via git submodules. This repo contains the foundation for building high-performance local AI engineering setups optimized for running large language models and agentic workloads on modern hardware platforms.
 
 ## Table of Contents
-- [AI Engineering Workstation Guide](#ai-engineering-workstation-guide)
+- [AI Engineering Expirements Base Infrastructure](#ai-engineering-expirements-base-infrastructure)
   - [Table of Contents](#table-of-contents)
+  - [Repository Architecture](#repository-architecture)
   - [Overview](#overview)
   - [Reference Hardware Configuration](#reference-hardware-configuration)
   - [Project Structure](#project-structure)
@@ -18,11 +19,34 @@ A comprehensive guide for building a high-performance local AI engineering works
   - [Key Features](#key-features)
   - [Performance Benchmarks](#performance-benchmarks)
   - [Contributing](#contributing)
+  - [Usage as Base Repository](#usage-as-base-repository)
   - [Community \& Support](#community--support)
   - [License](#license)
 
+## Repository Architecture
+
+This repository follows the **Unix philosophy**: do one thing well and compose with other programs. It serves as a **base infrastructure repository** that other AI engineering projects consume via **git submodules**.
+
+### Design Pattern
+- **This repo**: Contains hardware-optimized infrastructure (Docker configs, Python environment, RTX 5090 setup)
+- **Project repos**: Include this as a submodule to inherit infrastructure, focus on their specific AI tasks
+- **Benefits**: Centralized infrastructure management, consistent environments, easy hardware updates
+
+### Git Submodule Integration
+```bash
+# In your AI project repo
+git submodule add https://github.com/user/ai-expirements base-infrastructure
+git submodule update --init --recursive
+
+# Your project now has access to:
+# - Docker services on ports 8001-8005  
+# - RTX 5090 optimized configurations
+# - Poetry environment with AI packages
+# - Makefile commands for infrastructure management
+```
+
 ## Overview
-This guide documents the complete process of building a professional AI workstation capable of:
+This base infrastructure repository provides the foundation for AI expirements capable of:
 
 - **Simultaneous GPU + CPU inference** - Run one model on GPU while serving multiple models from CPU/RAM
 - **Large model support** - Handle 30-34B quantized parameter models locally with KV cache + context on GPU
@@ -35,9 +59,10 @@ This guide documents the complete process of building a professional AI workstat
 - **Optimized storage** - Store data/models on Gen 5 SSD with direct access to CPU while running OS on separate SSD
 - **Full Ubuntu setup** - A full suite of docs and scripts outlining setting up Ubuntu for AI Engineering
 - **Benchmarking** - Outlined strategy and tooling for benchmarking models on GPU and CPU/RAM
+- **Base infrastructure pattern** - Designed for consumption via git submodules by AI project repositories
 
 ## Reference Hardware Configuration
-This guide is optimized for and tested on the following hardware configuration:
+This base infrastructure is optimized for and tested on the following hardware configuration:
 
 | Component | Specification | Purpose |
 |-----------|---------------|---------|
@@ -47,18 +72,27 @@ This guide is optimized for and tested on the following hardware configuration:
 | Storage | Samsung 990 PRO 2TB (models)<br>Samsung 990 EVO 1TB (Ubuntu 24.04) | High-speed model storage + OS separation |
 | Motherboard | Gigabyte X870E Aorus Elite WiFi | PCIe 5.0 support + robust power delivery |
 
-**Note:** This configuration represents a mid-2025 high-performance setup. The guide supports scaling up/down based on requirements and budget.
+**Note:** This configuration represents a mid-2025 high-performance setup. The base infrastructure supports scaling up/down based on requirements and budget.
 
 ## Project Structure
 ```
-ai-workstation/
-├── hardware/                  # Hardware selection and assembly
-├── bios/                      # BIOS configuration and trouble shooting
-├── operating-system/          # OS installation, security and tooling
-├── sandbox/                   # Docker sandbox environment 
-├── inference/                 # Inference Configuration for GPU and CPU/RAM
-├── optimization/              # Optimizations for increasing inference speeds
-└── README.md                  # This overview document
+ai-expirements/                # Base Infrastructure Repository
+├── .claude/                   # Claude Code configuration
+│   └── CLAUDE.md             # Project context and service documentation
+├── docker/                    # Container definitions and Dockerfiles
+├── docs/                      # Infrastructure documentation
+├── scripts/                   # Automation and maintenance scripts
+├── docker-compose.yaml        # Multi-service AI inference orchestration
+├── pyproject.toml            # Poetry Python environment (CUDA optimized)
+├── Makefile                  # Infrastructure management commands
+└── README.md                 # This overview document
+
+# Consumed by project repositories via git submodules:
+project-repo/
+├── base-infrastructure/      # This repository as submodule
+├── src/                      # Project-specific code
+├── tests/                    # Project-specific tests
+└── README.md                # Project-specific documentation
 ```
 
 ## Documentation Sections
@@ -94,15 +128,15 @@ Dual GPU + CPU inference setup for maximum hardware utilization documented in th
 Optimizations at each level of the workstation aimed at improving overall model inference performance.
 
 ## Target Audience
-This guide is designed for:
+This base infrastructure is designed for:
 
 - AI Engineers building local development environments
 - ML Researchers needing high-performance local inference
 - Software Engineers interested in self-hosted AI capabilities
-- Tech Enthusiasts building professional-grade AI workstations
+- Tech Enthusiasts building professional-grade AI expirements setups
 
 ## Key Features
-This guide focuses on:
+This base infrastructure focuses on:
 
 - **Dual inference architecture** - Maximize hardware utilization across GPU and CPU
 - **Real-world performance data** - Actual benchmarks, not theoretical specifications
@@ -121,8 +155,42 @@ Based on the reference hardware configuration:
 
 Detailed benchmarks available in docs/inference/benchmarking.md
 
+## Usage as Base Repository
+
+### For AI Project Repositories
+When consuming this base infrastructure via git submodule:
+
+1. **Add as submodule**:
+   ```bash
+   git submodule add https://github.com/user/ai-expirements base-infrastructure
+   cd base-infrastructure && make up  # Start all AI services
+   ```
+
+2. **Access infrastructure services**:
+   - **GPU inference**: `http://localhost:8004/v1` (llama-gpu)
+   - **High-performance GPU**: `http://localhost:8005/v1` (vllm-gpu)  
+   - **Load-balanced CPU**: `http://localhost:8001-8003/v1` (llama-cpu services)
+   - **Web interface**: `http://localhost:3000` (open-webui)
+
+3. **Use infrastructure commands**:
+   ```bash
+   cd base-infrastructure
+   make status      # Check service health
+   make logs-gpu    # Monitor GPU services
+   make demo        # Quick start GPU + UI
+   ```
+
+### Infrastructure Updates
+When hardware or service configurations change:
+```bash
+# In your project repo
+cd base-infrastructure
+git pull origin main
+cd .. && git add base-infrastructure && git commit -m "Update infrastructure"
+```
+
 ## Contributing
-This is a living document based on real-world AI workstation experience. Contributions welcome:
+This is a living base infrastructure repository based on real-world AI expirements experience. Contributions welcome:
 
 - Performance benchmarks on similar hardware configurations
 - Alternative optimization strategies
