@@ -1,0 +1,15 @@
+[Unit]
+Description=Hugepages Model Manager for AI Containers
+After=multi-user.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/home/alejandro/workspace/ai-expirements/scripts/optimizations/manage-hugepages-models.sh load Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf
+ExecStop=/home/alejandro/workspace/ai-expirements/scripts/optimizations/manage-hugepages-models.sh clear
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
