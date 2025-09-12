@@ -95,11 +95,11 @@ Enables 2MB huge pages for model loading to reduce memory management overhead.
 
 **Allocation:**
 ```bash
-# Allocate huge pages (for 30GB model)
-sudo sysctl vm.nr_hugepages=15360  # 15360 * 2MB = 30GB
+# Allocate huge pages for 3x 30GB models (90GB total)
+sudo sysctl vm.nr_hugepages=46080  # 46080 * 2MB = 90GB
 
-# Make persistent
-echo "vm.nr_hugepages=15360" | sudo tee -a /etc/sysctl.conf
+# Make persistent in /etc/sysctl.conf
+echo "vm.nr_hugepages=46080" | sudo tee -a /etc/sysctl.conf
 ```
 
 **Mount hugetlbfs:**
@@ -129,8 +129,8 @@ sudo /scripts/optimizations/manage-hugepages-models.sh status
 grep "^HugePages" /proc/meminfo
 
 # Expected output:
-# HugePages_Total:   15360
-# HugePages_Free:    <available>
+# HugePages_Total:   46080  # 90GB total
+# HugePages_Free:    38267  # Available (varies based on usage)
 # HugePages_Rsvd:    0
 # HugePages_Surp:    0
 # Hugepagesize:      2048 kB
@@ -140,6 +140,33 @@ grep "^HugePages" /proc/meminfo
 - Uses custom `hugepage_mmap_wrapper.so` via LD_PRELOAD
 - Automatically activated when MODEL_PATH points to `/hugepages/*`
 - Transparently loads hugetlbfs files into anonymous huge page memory
+
+## Complete sysctl.conf Configuration
+
+**Full /etc/sysctl.conf settings for AI workloads:**
+
+```bash
+# AI Workstation Optimizations
+# AMD Ryzen 9950X + 128GB RAM
+
+# Huge Pages: 90GB for 3x 30GB models
+vm.nr_hugepages = 46080
+
+# Memory Management
+vm.swappiness = 0              # Disable swapping (swap is off)
+vm.zone_reclaim_mode = 0       # Single NUMA node optimization
+vm.overcommit_memory = 1       # Allow memory overcommit
+
+# Cache and I/O Tuning
+vm.vfs_cache_pressure = 50     # Favor application memory
+vm.dirty_ratio = 5              # Aggressive writeback
+vm.dirty_background_ratio = 2  # Background writeback
+```
+
+**Apply settings:**
+```bash
+sudo sysctl -p
+```
 
 ## Container Resource Allocation
 
