@@ -27,7 +27,7 @@ Host operating system optimizations for containerized workloads.
 
 ### hugepages-setup.md
 Huge pages configuration and model management.
-- 2MB huge pages allocation
+- 2MB huge pages allocation (90GB total for 3 models)
 - Model loading into hugetlbfs
 - Container integration via mmap wrapper
 
@@ -41,7 +41,7 @@ Huge pages configuration and model management.
 | CPU governor | DONE | `cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor` |
 | Memory locking | DONE | `docker exec <container> ulimit -l` |
 | CPU pinning | DONE | `docker inspect <container> | grep CpusetCpus` |
-| Huge pages 2MB | DONE | `grep ^HugePages /proc/meminfo` |
+| Huge pages (90GB) | DONE | `grep ^HugePages_Total /proc/meminfo` shows 46080 |
 | THP disabled | DONE | `cat /sys/kernel/mm/transparent_hugepage/enabled` |
 
 ## Quick Verification
@@ -84,6 +84,19 @@ Optimizations are applied to containers via:
 3. Management scripts (`scripts/optimizations/`)
    - manage-hugepages-models.sh for model loading
    - benchmark_hugepages.sh for performance testing
+
+## System Configuration
+
+Complete `/etc/sysctl.conf` settings:
+```bash
+vm.nr_hugepages = 46080         # 90GB huge pages
+vm.swappiness = 0               # Disable swapping
+vm.zone_reclaim_mode = 0        # Single NUMA optimization
+vm.overcommit_memory = 1        # Allow overcommit
+vm.vfs_cache_pressure = 50      # Favor app memory
+vm.dirty_ratio = 5              # Aggressive writeback
+vm.dirty_background_ratio = 2   # Background writeback
+```
 
 ## Performance Impact
 
