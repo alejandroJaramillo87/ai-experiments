@@ -6,6 +6,8 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - IPC_LOCK
     deploy:
       resources:
         limits:
@@ -21,6 +23,11 @@ services:
     container_name: llama-cpu-0 # A more descriptive name
     restart: unless-stopped
     cpuset: "0-7"
+    environment:
+      - SERVER_PORT=8001
+      # Model must be loaded first: sudo /scripts/optimizations/manage-hugepages-models.sh load <model.gguf>
+      - MODEL_PATH=/hugepages/Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf
+      - THREADS=8
     ports:
       # Exposing the API port to the host for direct access/testing
       - "127.0.0.1:8001:8001"
@@ -30,6 +37,8 @@ services:
       - /mnt/ai-data/models/:/app/models:ro
       # Volume for logs, matching the GPU service pattern
       - ./logs/cpu:/app/logs
+      # Mount hugetlbfs for model loading via manage-hugepages-models.sh
+      - /mnt/models-hugepages:/hugepages:rw
     networks:
       - ai-network
     # The command to start the server, reading the model from the mounted volume
@@ -46,6 +55,8 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - IPC_LOCK
     deploy:
       resources:
         limits:
@@ -61,6 +72,11 @@ services:
     container_name: llama-cpu-1 # A more descriptive name
     restart: unless-stopped
     cpuset: "8-15"
+    environment:
+      - SERVER_PORT=8002
+      # Using regular model path (not hugepages)
+      - MODEL_PATH=/app/models/gguf/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf
+      - THREADS=8
     ports:
       # Exposing the API port to the host for direct access/testing
       - "127.0.0.1:8002:8002"
@@ -70,12 +86,14 @@ services:
       - /mnt/ai-data/models/:/app/models:ro
       # Volume for logs, matching the GPU service pattern
       - ./logs/cpu:/app/logs
+      # Mount hugetlbfs for model loading via manage-hugepages-models.sh
+      - /mnt/models-hugepages:/hugepages:rw
     networks:
       - ai-network
     # The command to start the server, reading the model from the mounted volume
     healthcheck:
       # Healthcheck defined at the service level, just like the GPU service
-      test: ["CMD", "curl", "-f", "http://localhost:8001/v1/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8002/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -86,6 +104,8 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - IPC_LOCK
     deploy:
       resources:
         limits:
@@ -101,6 +121,11 @@ services:
     container_name: llama-cpu-2 # A more descriptive name
     restart: unless-stopped
     cpuset: "16-23"
+    environment:
+      - SERVER_PORT=8003
+      # Using regular model path (not hugepages)
+      - MODEL_PATH=/app/models/gguf/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf
+      - THREADS=8
     ports:
       # Exposing the API port to the host for direct access/testing
       - "127.0.0.1:8003:8003"
@@ -110,12 +135,14 @@ services:
       - /mnt/ai-data/models/:/app/models:ro
       # Volume for logs, matching the GPU service pattern
       - ./logs/cpu:/app/logs
+      # Mount hugetlbfs for model loading via manage-hugepages-models.sh
+      - /mnt/models-hugepages:/hugepages:rw
     networks:
       - ai-network
     # The command to start the server, reading the model from the mounted volume
     healthcheck:
       # Healthcheck defined at the service level, just like the GPU service
-      test: ["CMD", "curl", "-f", "http://localhost:8001/v1/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8003/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 5

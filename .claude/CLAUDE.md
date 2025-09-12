@@ -156,11 +156,37 @@ Changes to this base repo (hardware upgrades, service configurations, etc.) prop
 ├── docker/                   # Container definitions
 ├── docker-compose.yaml       # Service orchestration
 ├── docs/                     # Infrastructure documentation
-├── scripts/                  # Automation and maintenance scripts  
+│   └── optimizations/        # System performance tuning
+│       ├── README.md         # Optimization overview and status
+│       ├── bios-optimizations.md    # BIOS/firmware settings
+│       ├── os-optimizations.md      # OS-level configuration
+│       └── hugepages-setup.md       # Huge pages management
+├── scripts/                  # Automation and maintenance scripts
+│   └── optimizations/        # Performance management tools
+│       └── manage-hugepages-models.sh  # Dynamic model loading
 ├── pyproject.toml           # Python environment definition
 ├── Makefile                 # Common commands
 └── README.md                # Project overview
 ```
+
+## System Optimizations
+
+The following performance optimizations have been implemented:
+
+### BIOS Level
+- CPU C-states disabled for consistent inference latency
+- Precision Boost Overdrive enabled for maximum throughput
+- DDR5-6000 EXPO profiles with optimized timings
+
+### OS Level  
+- Swap disabled to prevent model data paging
+- CPU governor set to performance mode
+- Memory locking enabled for containers
+- CPU pinning via Docker cpuset (cores 0-7, 8-15, 16-23)
+- Huge pages (2MB) configured for model loading
+- THP (Transparent Huge Pages) disabled
+
+See `docs/optimizations/README.md` for verification commands and full details.
 
 ## Hardware Upgrade Path
 This configuration is optimized for RTX 5090 but designed to be adaptable:
@@ -168,3 +194,13 @@ This configuration is optimized for RTX 5090 but designed to be adaptable:
 - **CPU scaling**: Adjust cpuset configurations and add more CPU services
 - **Memory expansion**: Update service memory limits
 - **Multi-GPU**: Add additional GPU services with different device assignments
+
+## Documentation Standards
+
+### Linux Philosophy
+All documentation in this repository follows Linux/Unix conventions:
+- **Plain text focus**: Clear, concise technical writing without decorative elements
+- **No emojis**: Professional documentation uses standard ASCII characters only
+- **Command-line oriented**: Examples use shell commands and standard Unix tools
+- **Minimalist approach**: Include only essential information, avoid redundancy
+- **Man page style**: Structure similar to traditional Unix manual pages when appropriate

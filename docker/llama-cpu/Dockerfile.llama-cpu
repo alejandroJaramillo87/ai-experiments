@@ -39,9 +39,23 @@ ENV LD_LIBRARY_PATH=${AOCL_ROOT}:${LD_LIBRARY_PATH}
 # This "tricks" the linker into using AOCL while satisfying the standard BLAS name.
 RUN ln -s /opt/aocl_libs/libblis.so /opt/aocl_libs/libblas.so.3
 
-# Build llama.cpp with optimizations
+# Huge Pages Support:
+# llama.cpp cannot directly mmap files from hugetlbfs filesystem.
+# This wrapper intercepts mmap() calls and when it detects a hugetlbfs file:
+# 1. Allocates anonymous memory with MAP_HUGETLB
+# 2. Reads the file contents into that memory
+# 3. Returns the anonymous memory pointer to llama.cpp
+# This allows models on hugetlbfs to benefit from huge pages (reduced TLB pressure)
+
+# Build the hugepage mmap wrapper for hugetlbfs support
+# The && operator ensures build fails if compilation errors occur
+COPY docker/hugepage_mmap_wrapper.cpp /tmp/
+RUN g++-14 -shared -fPIC -O3 -Wall -o /tmp/hugepage_mmap_wrapper.so /tmp/hugepage_mmap_wrapper.cpp -ldl && \
+    echo "Built hugepage_mmap_wrapper.so"
+
+# Build llama.cpp with optimizations (no patches needed)
 RUN rm -rf /tmp/llama.cpp && \
-    git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
+    git clone --depth 1  https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
     cd /tmp/llama.cpp && \
     mkdir build && cd build && \
     cmake .. \
@@ -65,7 +79,10 @@ FROM debian:unstable-slim
 LABEL description="Container for running the native llama.cpp REST API server."
 
 # Install only the necessary RUNTIME system libraries
-RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 python3  && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the compiled AOCL libraries from the builder stage
 COPY --from=builder /opt/aocl_libs /opt/aocl_libs
@@ -84,35 +101,25 @@ WORKDIR /app
 # Copy the server executable and other necessary files, setting ownership
 COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/llama-server /app/server
 COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/* /app/
-
-# Set environment variables for the model path.
-# ENV MODEL_PATH="/app/models/gguf/SmallThinker-4BA0.6B-Instruct-GGUF/SmallThinker-4B-A0.6B-Instruct.Q4_0.gguf"
+# Copy the hugepage wrapper library
+COPY --from=builder --chown=appuser:appuser /tmp/hugepage_mmap_wrapper.so /app/
+# Copy entrypoint script
+COPY --chown=appuser:appuser docker/entrypoint.sh /app/entrypoint.sh
 
 # Optimal settings
 ENV OMP_NUM_THREADS=8
 ENV OMP_PROC_BIND=true
 ENV OMP_PLACES=cores
 
-# Expose the network port
+# Make entrypoint executable
+USER root
+RUN chmod +x /app/entrypoint.sh
+USER appuser
+
+# Expose the network port (dynamic based on environment)
 EXPOSE 8001
 
-# Run the native C++ server. It provides an OpenAI-compatible API.
-# All settings are controlled via these command-line flags.
-CMD ["./server", \
-    "--model", "/app/models/gguf/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf", \
-    "--host", "0.0.0.0", \
-    "--port", "8001", \
-    "--n-gpu-layers", "0", \
-    "--ctx-size", "32768", \
-    "--batch-size", "2048", \
-    "--ubatch-size", "2048", \
-    "--threads", "8", \
-    "--threads-batch", "8", \
-    "--cont-batching", \
-    "--metrics", \
-    "--no-warmup", \
-    "--threads-http", "2", \
-    "--mlock" \
-]
+# Use entrypoint script for parameterized server configuration
+ENTRYPOINT ["/app/entrypoint.sh"]
 
 
