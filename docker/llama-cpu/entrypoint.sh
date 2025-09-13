@@ -21,17 +21,15 @@ echo "  Threads: $THREADS"
 # Verify model file exists
 if [[ ! -f "$MODEL_PATH" ]]; then
     echo "ERROR: Model file not found: $MODEL_PATH"
-    echo "For hugepages models, run on host: sudo <workspace>/scripts/optimizations/manage-hugepages-models.sh load <model>"
-    echo "For regular models, ensure file exists at: $MODEL_PATH"
+    echo "Please ensure the model file exists at the specified path."
     exit 1
 fi
 
-# Check if model is on hugetlbfs and enable wrapper if needed
-if [[ "$MODEL_PATH" == /hugepages/* ]]; then
-    echo "Model is on hugetlbfs, enabling hugepage_mmap_wrapper"
-    export LD_PRELOAD=/app/hugepage_mmap_wrapper.so
-    echo "  LD_PRELOAD set to: $LD_PRELOAD"
-fi
+# Enable hugepage wrapper for explicit huge page support on large models
+# The wrapper will automatically use huge pages for models > 1GB
+export LD_PRELOAD=/app/hugepage_mmap_wrapper.so
+echo "Hugepage wrapper enabled for explicit huge page support (MAP_HUGETLB)"
+echo "  LD_PRELOAD set to: $LD_PRELOAD"
 
 # Memory status before loading
 echo "Memory status before model load:"

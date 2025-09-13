@@ -23,7 +23,7 @@ RUN echo "deb http://deb.debian.org/debian unstable main" > /etc/apt/sources.lis
     rm -rf /var/lib/apt/lists/*
 
 # Install AMD Optimized CPU Libraries (AOCL)
-COPY docker/aocl-linux-gcc-5.1.0_1_amd64.deb /tmp/aocl.deb
+COPY docker/llama-cpu/aocl-linux-gcc-5.1.0_1_amd64.deb /tmp/aocl.deb
 RUN PKG_NAME=$(dpkg-deb -f /tmp/aocl.deb Package) && \
     dpkg -i /tmp/aocl.deb || apt-get install -f -y && \
     AOCL_LIB_PATH=$(dpkg -L ${PKG_NAME} | grep 'libblis.so$' | xargs dirname | head -n 1) && \
@@ -49,7 +49,7 @@ RUN ln -s /opt/aocl_libs/libblis.so /opt/aocl_libs/libblas.so.3
 
 # Build the hugepage mmap wrapper for hugetlbfs support
 # The && operator ensures build fails if compilation errors occur
-COPY docker/hugepage_mmap_wrapper.cpp /tmp/
+COPY docker/llama-cpu/hugepage_mmap_wrapper.cpp /tmp/
 RUN g++-14 -shared -fPIC -O3 -Wall -o /tmp/hugepage_mmap_wrapper.so /tmp/hugepage_mmap_wrapper.cpp -ldl && \
     echo "Built hugepage_mmap_wrapper.so"
 
@@ -104,7 +104,7 @@ COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/* /app/
 # Copy the hugepage wrapper library
 COPY --from=builder --chown=appuser:appuser /tmp/hugepage_mmap_wrapper.so /app/
 # Copy entrypoint script
-COPY --chown=appuser:appuser docker/entrypoint.sh /app/entrypoint.sh
+COPY --chown=appuser:appuser docker/llama-cpu/entrypoint.sh /app/entrypoint.sh
 
 # Optimal settings
 ENV OMP_NUM_THREADS=8

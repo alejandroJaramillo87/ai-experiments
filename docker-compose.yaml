@@ -19,14 +19,14 @@ services:
         hard: -1
     build:
       context: .
-      dockerfile: docker/Dockerfile.llama-cpu
+      dockerfile: docker/llama-cpu/Dockerfile.llama-cpu
     container_name: llama-cpu-0 # A more descriptive name
     restart: unless-stopped
     cpuset: "0-7"
     environment:
       - SERVER_PORT=8001
-      # Model must be loaded first: sudo /scripts/optimizations/manage-hugepages-models.sh load <model.gguf>
-      - MODEL_PATH=/hugepages/Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf
+      # Model path - wrapper will transparently use huge pages for models > 1GB
+      - MODEL_PATH=${LLAMA_CPU0_MODEL}
       - THREADS=8
     ports:
       # Exposing the API port to the host for direct access/testing
@@ -37,8 +37,6 @@ services:
       - /mnt/ai-data/models/:/app/models:ro
       # Volume for logs, matching the GPU service pattern
       - ./logs/cpu:/app/logs
-      # Mount hugetlbfs for model loading via manage-hugepages-models.sh
-      - /mnt/models-hugepages:/hugepages:rw
     networks:
       - ai-network
     # The command to start the server, reading the model from the mounted volume
@@ -68,14 +66,14 @@ services:
         hard: -1
     build:
       context: .
-      dockerfile: docker/Dockerfile.llama-cpu
+      dockerfile: docker/llama-cpu/Dockerfile.llama-cpu
     container_name: llama-cpu-1 # A more descriptive name
     restart: unless-stopped
     cpuset: "8-15"
     environment:
       - SERVER_PORT=8002
-      # Using regular model path (not hugepages)
-      - MODEL_PATH=/app/models/gguf/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf
+      # Model path - wrapper will transparently use huge pages for models > 1GB
+      - MODEL_PATH=${LLAMA_CPU1_MODEL}
       - THREADS=8
     ports:
       # Exposing the API port to the host for direct access/testing
@@ -86,8 +84,6 @@ services:
       - /mnt/ai-data/models/:/app/models:ro
       # Volume for logs, matching the GPU service pattern
       - ./logs/cpu:/app/logs
-      # Mount hugetlbfs for model loading via manage-hugepages-models.sh
-      - /mnt/models-hugepages:/hugepages:rw
     networks:
       - ai-network
     # The command to start the server, reading the model from the mounted volume
@@ -117,14 +113,14 @@ services:
         hard: -1
     build:
       context: .
-      dockerfile: docker/Dockerfile.llama-cpu
+      dockerfile: docker/llama-cpu/Dockerfile.llama-cpu
     container_name: llama-cpu-2 # A more descriptive name
     restart: unless-stopped
     cpuset: "16-23"
     environment:
       - SERVER_PORT=8003
-      # Using regular model path (not hugepages)
-      - MODEL_PATH=/app/models/gguf/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf
+      # Model path - wrapper will transparently use huge pages for models > 1GB
+      - MODEL_PATH=${LLAMA_CPU2_MODEL}
       - THREADS=8
     ports:
       # Exposing the API port to the host for direct access/testing
@@ -135,8 +131,6 @@ services:
       - /mnt/ai-data/models/:/app/models:ro
       # Volume for logs, matching the GPU service pattern
       - ./logs/cpu:/app/logs
-      # Mount hugetlbfs for model loading via manage-hugepages-models.sh
-      - /mnt/models-hugepages:/hugepages:rw
     networks:
       - ai-network
     # The command to start the server, reading the model from the mounted volume
@@ -166,6 +160,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=0
       - CUDA_VISIBLE_DEVICES=0
+      - MODEL_PATH=${LLAMA_GPU_MODEL}
     deploy:
       resources:
         reservations:
@@ -210,6 +205,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=0
       - CUDA_VISIBLE_DEVICES=0
+      - MODEL_PATH=${VLLM_GPU_MODEL}
     deploy:
       resources:
         reservations:
