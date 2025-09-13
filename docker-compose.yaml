@@ -1,7 +1,7 @@
 version: '3.9'
 
 services:
-  llama-cpu-0:
+  llama-cpu:
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -11,8 +11,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '8.0' # Corresponds to the cpuset
-          memory: 32G # Adjust based on model size and RAM
+          cpus: '12.0' # 12 physical cores with SMT disabled
+          memory: 96G # Increased for single high-performance instance
     ulimits:
       memlock:
         soft: -1
@@ -20,14 +20,14 @@ services:
     build:
       context: .
       dockerfile: docker/llama-cpu/Dockerfile.llama-cpu
-    container_name: llama-cpu-0 # A more descriptive name
+    container_name: llama-cpu # Single latency-optimized CPU inference
     restart: unless-stopped
-    cpuset: "0-7"
+    cpuset: "0-11" # 12 dedicated cores for LLM
     environment:
       - SERVER_PORT=8001
       # Model path - wrapper will transparently use huge pages for models > 1GB
-      - MODEL_PATH=${LLAMA_CPU0_MODEL}
-      - THREADS=8
+      - MODEL_PATH=${LLAMA_CPU_MODEL}
+      - THREADS=12 # Match physical core count with SMT disabled
     ports:
       # Exposing the API port to the host for direct access/testing
       - "127.0.0.1:8001:8001"
@@ -43,100 +43,6 @@ services:
     healthcheck:
       # Healthcheck defined at the service level, just like the GPU service
       test: ["CMD", "curl", "-f", "http://localhost:8001/v1/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 180s # Give the CPU model time to load into RAM
-
-  llama-cpu-1:
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - IPC_LOCK
-    deploy:
-      resources:
-        limits:
-          cpus: '8.0' # Corresponds to the cpuset
-          memory: 32G # Adjust based on model size and RAM
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    build:
-      context: .
-      dockerfile: docker/llama-cpu/Dockerfile.llama-cpu
-    container_name: llama-cpu-1 # A more descriptive name
-    restart: unless-stopped
-    cpuset: "8-15"
-    environment:
-      - SERVER_PORT=8002
-      # Model path - wrapper will transparently use huge pages for models > 1GB
-      - MODEL_PATH=${LLAMA_CPU1_MODEL}
-      - THREADS=8
-    ports:
-      # Exposing the API port to the host for direct access/testing
-      - "127.0.0.1:8002:8002"
-    read_only: true 
-    volumes:
-      # Mount your GGUF models from a persistent location (read-only)
-      - /mnt/ai-data/models/:/app/models:ro
-      # Volume for logs, matching the GPU service pattern
-      - ./logs/cpu:/app/logs
-    networks:
-      - ai-network
-    # The command to start the server, reading the model from the mounted volume
-    healthcheck:
-      # Healthcheck defined at the service level, just like the GPU service
-      test: ["CMD", "curl", "-f", "http://localhost:8002/v1/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 180s # Give the CPU model time to load into RAM
-
-  llama-cpu-2:
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - IPC_LOCK
-    deploy:
-      resources:
-        limits:
-          cpus: '8.0' # Corresponds to the cpuset
-          memory: 32G # Adjust based on model size and RAM
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    build:
-      context: .
-      dockerfile: docker/llama-cpu/Dockerfile.llama-cpu
-    container_name: llama-cpu-2 # A more descriptive name
-    restart: unless-stopped
-    cpuset: "16-23"
-    environment:
-      - SERVER_PORT=8003
-      # Model path - wrapper will transparently use huge pages for models > 1GB
-      - MODEL_PATH=${LLAMA_CPU2_MODEL}
-      - THREADS=8
-    ports:
-      # Exposing the API port to the host for direct access/testing
-      - "127.0.0.1:8003:8003"
-    read_only: true 
-    volumes:
-      # Mount your GGUF models from a persistent location (read-only)
-      - /mnt/ai-data/models/:/app/models:ro
-      # Volume for logs, matching the GPU service pattern
-      - ./logs/cpu:/app/logs
-    networks:
-      - ai-network
-    # The command to start the server, reading the model from the mounted volume
-    healthcheck:
-      # Healthcheck defined at the service level, just like the GPU service
-      test: ["CMD", "curl", "-f", "http://localhost:8003/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 5
