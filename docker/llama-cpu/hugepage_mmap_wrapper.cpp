@@ -1,29 +1,26 @@
 /*
  * hugepage_mmap_wrapper.cpp
  * 
- * LD_PRELOAD library to intercept mmap() calls and handle hugetlbfs files
- * by loading them into anonymous huge page memory instead of file-backed mmap.
+ * LD_PRELOAD library to transparently use huge pages for large file mmaps.
  * 
- * This solves the problem where llama.cpp cannot directly mmap files from hugetlbfs.
+ * When an application mmaps a large file (>1GB), this wrapper:
+ * 1. Allocates anonymous memory with MAP_HUGETLB
+ * 2. Reads the file contents into that memory
+ * 3. Returns the huge page memory to the application
+ * 
+ * This provides huge page benefits without requiring special filesystems.
  */
 
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <sys/statfs.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <linux/magic.h>
-
-// Magic number for hugetlbfs
-#ifndef HUGETLBFS_MAGIC
-#define HUGETLBFS_MAGIC 0x958458f6
-#endif
 
 // Function pointer to the real mmap
 typedef void* (*mmap_fn)(void*, size_t, int, int, int, off_t);
@@ -59,13 +56,11 @@ static void init_functions() {
     }
 }
 
-// Check if a file descriptor points to a hugetlbfs file
-static bool is_hugetlbfs_fd(int fd) {
-    struct statfs fs_info;
-    if (fstatfs(fd, &fs_info) == 0) {
-        return fs_info.f_type == HUGETLBFS_MAGIC;
-    }
-    return false;
+// Check if we should use huge pages for this file
+static bool should_use_hugepages(int fd, size_t length) {
+    // Use huge pages for any large file (> 1GB)
+    const size_t MIN_SIZE_FOR_HUGEPAGES = 1ULL * 1024 * 1024 * 1024; // 1GB
+    return length >= MIN_SIZE_FOR_HUGEPAGES;
 }
 
 // Track an allocation so we can handle munmap properly
@@ -99,18 +94,18 @@ static size_t untrack_allocation(void* addr) {
 extern "C" void* mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset) {
     init_functions();
     
-    // Check if this is a file-backed mmap on hugetlbfs
-    if (fd >= 0 && is_hugetlbfs_fd(fd)) {
-        // Get file size
+    // Check if this is a file-backed mmap that could benefit from huge pages
+    if (fd >= 0 && should_use_hugepages(fd, length)) {
+        // Get file size to verify we're mapping the whole file
         struct stat st;
         if (fstat(fd, &st) != 0) {
             fprintf(stderr, "WARNING: hugepage_wrapper: Failed to stat fd %d: %s\n", fd, strerror(errno));
             return real_mmap(addr, length, prot, flags, fd, offset);
         }
         
-        // Verify we're mapping the whole file from offset 0 (typical for model loading)
+        // Only intercept if mapping the whole file from offset 0 (typical for model loading)
         if (offset == 0 && length == (size_t)st.st_size) {
-            fprintf(stderr, "INFO: hugepage_wrapper: Intercepting hugetlbfs mmap for %.2f GB file\n", 
+            fprintf(stderr, "INFO: hugepage_wrapper: Intercepting mmap for %.2f GB file (using huge pages)\n", 
                     length / (1024.0 * 1024.0 * 1024.0));
             
             // Allocate anonymous huge pages memory
@@ -136,52 +131,48 @@ extern "C" void* mmap(void* addr, size_t length, int prot, int flags, int fd, of
                         length / (1024.0 * 1024.0 * 1024.0));
             }
             
-            // Read the file contents into our anonymous memory
-            ssize_t total_read = 0;
-            char* dest = (char*)huge_mem;
+            // Read the file contents into huge pages memory
+            // Use pread to read from the file descriptor
+            fprintf(stderr, "hugepage_wrapper: Loading file contents into huge pages memory...\n");
             
-            // Reset file position to beginning
-            if (lseek(fd, 0, SEEK_SET) != 0) {
-                fprintf(stderr, "ERROR: hugepage_wrapper: Failed to seek: %s\n", strerror(errno));
-                real_munmap(huge_mem, length);
-                return MAP_FAILED;
-            }
+            size_t total_read = 0;
+            const size_t chunk_size = 256 * 1024 * 1024; // 256MB chunks
             
-            // Read in chunks
-            const size_t chunk_size = 64 * 1024 * 1024; // 64MB chunks
-            while (total_read < (ssize_t)length) {
-                size_t to_read = ((size_t)(length - total_read) < chunk_size) ? 
-                                (length - total_read) : chunk_size;
+            while (total_read < length) {
+                size_t to_read = (length - total_read < chunk_size) ? (length - total_read) : chunk_size;
+                ssize_t bytes_read = pread(fd, (char*)huge_mem + total_read, to_read, offset + total_read);
                 
-                ssize_t bytes_read = read(fd, dest + total_read, to_read);
-                if (bytes_read <= 0) {
-                    if (bytes_read < 0) {
-                        fprintf(stderr, "ERROR: hugepage_wrapper: Read failed at offset %zd: %s\n", 
-                                total_read, strerror(errno));
-                    } else {
-                        fprintf(stderr, "ERROR: hugepage_wrapper: Unexpected EOF at offset %zd\n", total_read);
-                    }
+                if (bytes_read < 0) {
+                    fprintf(stderr, "ERROR: hugepage_wrapper: Failed to read file: %s\n", strerror(errno));
                     real_munmap(huge_mem, length);
                     return MAP_FAILED;
                 }
+                
+                if (bytes_read == 0) {
+                    fprintf(stderr, "ERROR: hugepage_wrapper: Unexpected EOF at offset %zu\n", total_read);
+                    real_munmap(huge_mem, length);
+                    return MAP_FAILED;
+                }
+                
                 total_read += bytes_read;
                 
-                // Progress indicator every 1GB
+                // Progress indicator for large files
                 if (total_read % (1024 * 1024 * 1024) == 0) {
-                    fprintf(stderr, "   ... loaded %.1f GB / %.1f GB\n",
+                    fprintf(stderr, "hugepage_wrapper: Loaded %.1f GB / %.1f GB\n",
                             total_read / (1024.0 * 1024.0 * 1024.0),
                             length / (1024.0 * 1024.0 * 1024.0));
                 }
             }
             
-            fprintf(stderr, "hugepage_wrapper: Successfully loaded %.2f GB model into huge pages memory\n",
-                    total_read / (1024.0 * 1024.0 * 1024.0));
+            fprintf(stderr, "hugepage_wrapper: Successfully loaded %.2f GB file into huge pages memory\n",
+                    length / (1024.0 * 1024.0 * 1024.0));
             
             // Set memory protection to match requested (usually PROT_READ for model files)
+            // Note: mprotect on huge pages often fails with EINVAL, but this is non-fatal
             if (!(prot & PROT_WRITE)) {
                 if (mprotect(huge_mem, length, prot) != 0) {
-                    fprintf(stderr, "WARNING: hugepage_wrapper: mprotect failed: %s\n", strerror(errno));
-                    // Non-fatal, continue anyway
+                    // Silently ignore - this is expected with huge pages
+                    // fprintf(stderr, "WARNING: hugepage_wrapper: mprotect failed: %s\n", strerror(errno));
                 }
             }
             
@@ -192,7 +183,7 @@ extern "C" void* mmap(void* addr, size_t length, int prot, int flags, int fd, of
         }
     }
     
-    // Not a hugetlbfs file or not a full file mapping, use regular mmap
+    // Not a candidate for huge pages, use regular mmap
     return real_mmap(addr, length, prot, flags, fd, offset);
 }
 

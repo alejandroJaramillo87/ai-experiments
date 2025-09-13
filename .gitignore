@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+.pytest_cache/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Benchmark results
+benchmark_results_*.json
+test_with_responses.json
+*.benchmark.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# Compiled binaries
+scripts/optimizations/copy_to_hugetlbfs
+
+# Temporary files
+*.tmp
+*.bak
+CLEANUP_PLAN.md

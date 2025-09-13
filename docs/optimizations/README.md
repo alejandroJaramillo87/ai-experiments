@@ -25,11 +25,17 @@ Host operating system optimizations for containerized workloads.
 - Memory locking configuration
 - CPU pinning via Docker cpuset
 
-### hugepages-setup.md
-Huge pages configuration and model management.
-- 2MB huge pages allocation (90GB total for 3 models)
-- Model loading into hugetlbfs
-- Container integration via mmap wrapper
+### hugepages-explicit.md
+Explicit huge pages implementation using MAP_HUGETLB.
+- Automatic huge page allocation for models > 1GB via wrapper
+- No special filesystem required
+- ~32 tokens/sec baseline performance with Qwen3-30B
+
+### benchmark-guide.md
+Performance benchmarking tool for optimization validation.
+- Measures tokens per second
+- Multiple test prompts for different workloads
+- JSON and human-readable output
 
 ## Implementation Status
 
@@ -75,15 +81,16 @@ Optimizations are applied to containers via:
 1. Docker Compose configuration (`docker-compose.yaml`)
    - CPU pinning via cpuset (cores 0-7, 8-15, 16-23)
    - Memory limits (32GB per container) and ulimits
-   - Volume mounts for huge pages (/mnt/models-hugepages)
+   - Environment variables from .env file
 
-2. Custom components (`docker/llama-cpu/`)
-   - hugepage_mmap_wrapper.so for hugetlbfs support
-   - entrypoint.sh for model verification
+2. Explicit huge pages (`docker/llama-cpu/`)
+   - hugepage_mmap_wrapper.so uses MAP_HUGETLB for models > 1GB
+   - No special filesystem or model copying required
+   - Direct huge page allocation, not THP
 
-3. Management scripts (`scripts/optimizations/`)
-   - manage-hugepages-models.sh for model loading
-   - benchmark_hugepages.sh for performance testing
+3. Performance testing (`scripts/`)
+   - benchmark.py for measuring tokens/second
+   - Consistent ~32 tok/s baseline with optimizations
 
 ## System Configuration
 
