@@ -2,15 +2,22 @@
 
 # nvidia_driver_updater_simple.sh
 # This script automatically checks for and applies updates for the
-# nvidia-driver-570-server-open package, then reboots the system.
+# nvidia-driver-570-server-open package.
 #
 # IMPORTANT:
-# - This script will REBOOT your system automatically if an update is found and installed.
 # - It is highly recommended to run this script from a TTY (text-only terminal, Ctrl+Alt+F2)
 #   to minimize potential conflicts during driver updates.
 
-# Make driver version configurable via environment variable
-DRIVER_PACKAGE="${NVIDIA_DRIVER_VERSION:-nvidia-driver-570-server-open}"
+# Auto-detect installed NVIDIA driver if not specified
+if [ -z "$NVIDIA_DRIVER_VERSION" ]; then
+    DRIVER_PACKAGE=$(dpkg -l | grep "^ii.*nvidia-driver-[0-9].*-open" | awk '{print $2}' | sort -V | tail -1)
+    if [ -z "$DRIVER_PACKAGE" ]; then
+        echo "ERROR: No NVIDIA driver found. Please install a driver first."
+        exit 1
+    fi
+else
+    DRIVER_PACKAGE="$NVIDIA_DRIVER_VERSION"
+fi
 
 echo "==================================================="
 echo " NVIDIA Driver Updater for ${DRIVER_PACKAGE}"
@@ -18,11 +25,11 @@ echo "==================================================="
 echo
 
 # Check for running GUI sessions unless forced
-if pgrep -x "Xorg|Xwayland" > /dev/null && [ "${FORCE_UPDATE:-}" != "yes" ]; then
-    echo "ERROR: GUI session detected. Please switch to TTY (Ctrl+Alt+F2)"
-    echo "       or set FORCE_UPDATE=yes to proceed anyway (not recommended)"
-    exit 1
-fi
+# if pgrep -x "Xorg|Xwayland" > /dev/null && [ "${FORCE_UPDATE:-}" != "yes" ]; then
+#     echo "ERROR: GUI session detected. Please switch to TTY (Ctrl+Alt+F2)"
+#     echo "       or set FORCE_UPDATE=yes to proceed anyway (not recommended)"
+#     exit 1
+# fi
 
 echo "--- 1. Updating APT Package Lists ---"
 sudo apt update || { echo "Error: Failed to update APT package lists. Exiting."; exit 1; }
@@ -58,14 +65,7 @@ if [ -n "$UPGRADABLE_INFO" ]; then
     echo "Update applied successfully."
     echo
 
-    echo "==================================================="
-    echo " REBOOTING SYSTEM IN 5 SECONDS..."
-    echo "==================================================="
-    echo "The system needs to reboot for the new NVIDIA driver to take full effect."
-    echo "If issues occur, boot with previous kernel and run:"
-    echo "  sudo apt install --reinstall ${CURRENT_VERSION}"
-    sleep 5
-    sudo reboot
+
 else
     echo "No updates found for ${DRIVER_PACKAGE}. You are already on the latest version."
     echo "Script finished without rebooting."

@@ -1,15 +1,26 @@
 #!/bin/bash
 
 # install_cudnn_simple.sh
-# This script installs the cuDNN library (cudnn9-cuda-12) using apt-get,
-# based on the provided sequence of commands.
+# This script installs the cuDNN library matching your installed CUDA version,
+# automatically detecting the CUDA version from nvcc.
 #
 # IMPORTANT:
 # - This script does NOT reboot your system.
-# - Ensure your NVIDIA GPU driver and CUDA Toolkit (e.g., 12.8) are already installed and working.
+# - Ensure your NVIDIA GPU driver and CUDA Toolkit are already installed and working.
 # - The 'cuda-keyring' DEB is assumed to correctly add the necessary repository for cuDNN packages.
 
-CUDNN_PACKAGE="cudnn9-cuda-12" # Specific cuDNN package name for CUDA 12, as identified by apt
+# Auto-detect current CUDA version from nvcc if available
+if command -v nvcc &> /dev/null; then
+    CUDA_VERSION_FULL=$(nvcc --version | grep "release" | sed -n 's/.*release \([0-9]*\.[0-9]*\).*/\1/p')
+    if [ -n "$CUDA_VERSION_FULL" ]; then
+        CUDA_MAJOR=$(echo "$CUDA_VERSION_FULL" | cut -d. -f1)
+        DETECTED_PACKAGE="cudnn9-cuda-${CUDA_MAJOR}"
+        echo "Detected CUDA version: ${CUDA_VERSION_FULL} (cuDNN package: ${DETECTED_PACKAGE})"
+    fi
+fi
+
+# Allow override via environment variable or use detected version
+CUDNN_PACKAGE="${CUDNN_VERSION:-${DETECTED_PACKAGE:-cudnn9-cuda-13}}"
 
 echo "==================================================="
 echo " Simple cuDNN Installation Script"

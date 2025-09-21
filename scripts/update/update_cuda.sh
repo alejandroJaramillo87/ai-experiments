@@ -2,7 +2,7 @@
 
 # cuda_toolkit_updater_simple.sh
 # This script automatically checks for and applies updates for the
-# cuda-toolkit-12-8 package.
+# currently installed CUDA toolkit package.
 #
 # IMPORTANT:
 # - This script does NOT reboot your system automatically, as CUDA Toolkit updates
@@ -10,8 +10,19 @@
 # - It is recommended to run this script from a TTY (text-only terminal, Ctrl+Alt+F2)
 #   if you are also updating NVIDIA drivers alongside this.
 
-# Make CUDA version configurable via environment variable
-CUDA_PACKAGE="${CUDA_VERSION:-cuda-toolkit-12-8}"
+# Auto-detect current CUDA version from nvcc if available
+if command -v nvcc &> /dev/null; then
+    CUDA_VERSION_FULL=$(nvcc --version | grep "release" | sed -n 's/.*release \([0-9]*\.[0-9]*\).*/\1/p')
+    if [ -n "$CUDA_VERSION_FULL" ]; then
+        CUDA_MAJOR=$(echo "$CUDA_VERSION_FULL" | cut -d. -f1)
+        CUDA_MINOR=$(echo "$CUDA_VERSION_FULL" | cut -d. -f2)
+        DETECTED_PACKAGE="cuda-toolkit-${CUDA_MAJOR}-${CUDA_MINOR}"
+        echo "Detected CUDA version: ${CUDA_VERSION_FULL} (package: ${DETECTED_PACKAGE})"
+    fi
+fi
+
+# Make CUDA package configurable via environment variable or use detected version
+CUDA_PACKAGE="${CUDA_VERSION:-${DETECTED_PACKAGE:-cuda-toolkit-13-0}}"
 
 # Detect Ubuntu version for repository URLs
 UBUNTU_VERSION=$(lsb_release -rs | tr -d '.')
