@@ -1,6 +1,6 @@
 # --- Stage 1: The Builder ---
 # This stage compiles the CUDA-optimized C++ server executable.
-FROM nvidia/cuda:12.9.1-devel-ubuntu24.04 AS builder
+FROM nvidia/cuda:13.0.1-devel-ubuntu24.04 AS builder
 
 LABEL stage="builder"
 
@@ -20,13 +20,13 @@ RUN apt-get update && \
         gcc g++ build-essential cmake git curl ca-certificates \
         libssl-dev pkg-config python3 python3-pip \
         ninja-build ccache \
-        cuda-driver-dev-12-9 \
-        cuda-cudart-dev-12-9 \
-        cuda-cupti-dev-12-9 \
-        cuda-nvml-dev-12-9 \
-        cuda-nvtx-12-9 \
-        cudnn9-cuda-12-9 \
-        libcublas-dev-12-9 && \
+        cuda-driver-dev-13-0 \
+        cuda-cudart-dev-13-0 \
+        cuda-cupti-dev-13-0 \
+        cuda-nvml-dev-13-0 \
+        cuda-nvtx-13-0 \
+        cudnn9-cuda-13-0 \
+        libcublas-dev-13-0 && \
     rm -rf /var/lib/apt/lists/*
 
 # Set CUDA environment variables
@@ -74,7 +74,7 @@ RUN rm -rf /tmp/llama.cpp && \
 
 
 # --- Stage 2: The Final Runtime Image ---
-FROM nvidia/cuda:12.9.1-runtime-ubuntu24.04
+FROM nvidia/cuda:13.0.1-runtime-ubuntu24.04
 
 LABEL description="Container for running the CUDA-accelerated llama.cpp REST API server."
 
@@ -83,11 +83,11 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends --allow-change-held-packages \
         ca-certificates \
         libgomp1 \
-        cudnn9-cuda-12-9 \
-        libcublas-12-9 \
-        cuda-driver-dev-12-9 \
-        cuda-cupti-12-9 \
-        cuda-nvtx-12-9 && \
+        cudnn9-cuda-13-0 \
+        libcublas-13-0 \
+        cuda-driver-dev-13-0 \
+        cuda-cupti-13-0 \
+        cuda-nvtx-13-0 && \
     rm -rf /var/lib/apt/lists/*
 
 
@@ -119,7 +119,7 @@ ENV GGML_CUDA_FORCE_SYNC=0
 # NVIDIA GPU settings
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
-ENV NVIDIA_REQUIRE_CUDA="cuda>=12.8"
+ENV NVIDIA_REQUIRE_CUDA="cuda>=13.0"
 
 # Create a non-root user with a dedicated group and home directory
 RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser

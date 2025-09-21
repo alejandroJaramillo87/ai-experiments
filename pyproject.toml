@@ -13,9 +13,9 @@ package-mode = false
 python = ">=3.12,<3.13" # Ensure you have Python 3.12 installed via pyenv
 
 # Core AI/ML Frameworks and Utilities
-torch = {version = ">=2.3.0,<3.0.0", source = "pytorch_cuda_cu128"} # Add this line for torch
-torchvision = {version = ">=0.18.0,<1.0.0", source = "pytorch_cuda_cu128"} # Add this line for torchvision
-torchaudio = {version = ">=2.3.0,<3.0.0", source = "pytorch_cuda_cu128"} # Add this line for torchaudio
+torch = {version = ">=2.3.0,<3.0.0", source = "pytorch_cuda_cu129"} # Add this line for torch
+torchvision = {version = ">=0.18.0,<1.0.0", source = "pytorch_cuda_cu129"} # Add this line for torchvision
+torchaudio = {version = ">=2.3.0,<3.0.0", source = "pytorch_cuda_cu129"} # Add this line for torchaudio
 transformers = ">=4.51.1,<4.52.0"
 datasets = ">=3.1.0,<4.0.0"
 accelerate = ">=1.8.1,<2.0.0"
@@ -56,15 +56,15 @@ pytest-xdist = ">=3.7.0,<=3.8.0"
 pytest-cov = ">=6.2.0,<=6.2.1"
 
 # TensorRT-LLM Quantization Dependencies
-tensorrt-llm = "0.20.0"
-nemo-toolkit = ">=2.0.0,<2.3.2"
-rouge-score = "^0.1.2"
-transformers-stream-generator = "^0.0.5"
-tiktoken = "^0.9.0"
-mpmath = "^1.3.0"
-requests = "^2.32.4"
-llama-cpp-python = "^0.3.14"
-sseclient = "^0.0.27"
+# tensorrt-llm = "0.20.0"
+# nemo-toolkit = ">=2.0.0,<2.3.2"
+# rouge-score = "^0.1.2"
+# transformers-stream-generator = "^0.0.5"
+# tiktoken = "^0.9.0"
+# mpmath = "^1.3.0"
+# requests = "^2.32.4"
+# llama-cpp-python = "^0.3.14"
+# sseclient = "^0.0.27"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
@@ -72,8 +72,8 @@ build-backend = "poetry.core.masonry.api"
 
 # Define the custom source for PyTorch
 [[tool.poetry.source]]
-name = "pytorch_cuda_cu128" # Give it a descriptive name
-url = "https://download.pytorch.org/whl/cu128"
+name = "pytorch_cuda_cu129" # Give it a descriptive name
+url = "https://download.pytorch.org/whl/cu129"
 priority = "explicit" 
 
 # Add NVIDIA PyPI source

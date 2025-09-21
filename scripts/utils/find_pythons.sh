@@ -6,9 +6,17 @@ echo "You may see 'Permission denied' errors; these are normal for system direct
 echo "------------------------------------------------------------------"
 echo ""
 
+# 0. Show currently active Python
+echo "0. Currently active Python:"
+echo "  Python3: $(which python3 2>/dev/null || echo 'not found')"
+if command -v python3 &> /dev/null; then
+    echo "  Version: $(python3 --version)"
+fi
+echo ""
+
 # 1. Search common PATH directories
 echo "1. Python executables in your system's PATH:"
-which -a python python2 python3 python3.? || echo "  No Python executables found directly in PATH."
+which -a python python2 python3 python3.? 2>/dev/null || echo "  No Python executables found directly in PATH."
 echo ""
 
 # 2. Search for pyenv-managed Python versions (if pyenv is installed)
@@ -45,6 +53,32 @@ find "$HOME" -maxdepth 4 -type d \( -name ".venv" -o -name "venv" -o -name ".env
 done
 if ! $FOUND_VENV; then
     echo "  No common virtual environments (.venv, venv, .env) found in your home directory."
+fi
+echo ""
+
+# 4. Check for Poetry environment
+echo "4. Poetry environment:"
+if command -v poetry &> /dev/null; then
+    echo "  Poetry executable: $(which poetry)"
+    echo "  Poetry version: $(poetry --version)"
+    # Check if we're in a Poetry project
+    if [ -f "pyproject.toml" ]; then
+        echo "  Poetry project detected in current directory"
+        poetry_env_path=$(poetry env info --path 2>/dev/null)
+        if [ -n "$poetry_env_path" ]; then
+            echo "  Poetry environment: $poetry_env_path"
+            if [ -f "$poetry_env_path/bin/python" ]; then
+                echo "  Poetry Python: $poetry_env_path/bin/python"
+                "$poetry_env_path/bin/python" --version 2>/dev/null
+            fi
+        else
+            echo "  No Poetry environment activated (run 'poetry install' to create)"
+        fi
+    else
+        echo "  No pyproject.toml found in current directory"
+    fi
+else
+    echo "  Poetry not installed"
 fi
 echo ""
 
