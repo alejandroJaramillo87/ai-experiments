@@ -1,3 +1,11 @@
+# NOTE: As of September 2025, vLLM v0.10.2 does not support CUDA 13.0 due to breaking changes
+# in the CUB library API (cub::Sum removed in CCCL v3). This Dockerfile is configured for
+# CUDA 13.0 but will not build until vLLM adds support.
+#
+# Tracking: https://github.com/vllm-project/vllm/pull/23976
+# Issue: The build fails with "namespace 'cub' has no member 'Sum'" errors in layernorm_kernels.cu
+# Workaround: Use CUDA 12.6-12.8 base images until official CUDA 13 support is added
+#
 # --- Stage 1: Builder ---
 # Using NGC container per https://github.com/vllm-project/vllm/issues/14452
 # This provides CUDA 12.8+ and PyTorch 2.6+ required for Blackwell
@@ -50,7 +58,7 @@ ENV CCACHE_DIR=/tmp/ccache
 ENV PATH=/usr/lib/ccache:${PATH}
 
 # Clone a specific tagged release without the entire git history for a faster, smaller build
-RUN git clone --depth 1 --branch v0.10.0 https://github.com/vllm-project/vllm.git /tmp/vllm
+RUN git clone --depth 1 --branch v0.10.2 https://github.com/vllm-project/vllm.git /tmp/vllm
 
 # Build vLLM following exact steps from issue #14452
 WORKDIR /tmp/vllm

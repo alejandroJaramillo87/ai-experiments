@@ -224,9 +224,46 @@ Zen 5's revolutionary native 512-bit AVX-512 implementation provides massive AI 
 
 **Latency-Focused Memory Benefits:**
 - **Model Loading**: Fast initial model load for quick first response
-- **Parameter Streaming**: Optimized bandwidth for sequential token generation  
+- **Parameter Streaming**: Optimized bandwidth for sequential token generation
 - **Cache Utilization**: Better L3 cache efficiency without SMT contention
 - **Memory Allocation**: Single container gets full memory bandwidth
+
+### GPU Performance Configuration
+
+**RTX 5090 PCIe 5.0 Optimization**
+Firmware-level GPU configuration for maximum AI inference throughput with RTX 5090 Blackwell architecture.
+
+**GPU BIOS Settings:**
+- **PCIe x16 Slot Link**: `Gen5`
+  - **Purpose**: Enable full PCIe 5.0 bandwidth for RTX 5090
+  - **Benefit**: Maximum 128 GB/s bidirectional throughput
+  - **Impact**: Critical for large model parameter transfers
+
+- **PCIe Slot Link Speed**: `Gen5`
+  - **Purpose**: Ensures PCIe 5.0 operation at full speed
+  - **Benefit**: No bandwidth bottlenecks for GPU-CPU communication
+  - **Verification**: Confirm Gen5 x16 in nvidia-smi after boot
+
+- **Above 4G Decoding**: `Enabled`
+  - **Purpose**: Allows addressing of RTX 5090's 32GB VRAM
+  - **Requirement**: Essential for large BAR support
+  - **Impact**: Full GPU memory accessible to CPU
+
+- **Resizable BAR**: `Enabled`
+  - **Purpose**: CPU can access entire GPU VRAM as single block
+  - **Benefit**: Improved data transfer efficiency
+  - **Impact**: Up to 15% performance gain in AI workloads
+
+- **Initial Display Output**: `IGD Video`
+  - **Purpose**: Routes display through integrated graphics
+  - **Benefit**: RTX 5090 dedicated exclusively to compute
+  - **Configuration**: Preserves GPU resources for AI inference
+
+**GPU Performance Benefits:**
+- **Maximum Bandwidth**: Full PCIe 5.0 x16 bandwidth utilized
+- **VRAM Access**: Complete 32GB VRAM addressable by CPU
+- **Compute Dedication**: GPU resources preserved for AI workloads
+- **Transfer Efficiency**: Resizable BAR improves model loading speed
 
 ### Advanced System Configuration
 
