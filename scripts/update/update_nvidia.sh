@@ -9,12 +9,20 @@
 # - It is highly recommended to run this script from a TTY (text-only terminal, Ctrl+Alt+F2)
 #   to minimize potential conflicts during driver updates.
 
-DRIVER_PACKAGE="nvidia-driver-570-server-open"
+# Make driver version configurable via environment variable
+DRIVER_PACKAGE="${NVIDIA_DRIVER_VERSION:-nvidia-driver-570-server-open}"
 
 echo "==================================================="
-echo " Simple NVIDIA Driver Updater for ${DRIVER_PACKAGE}"
+echo " NVIDIA Driver Updater for ${DRIVER_PACKAGE}"
 echo "==================================================="
 echo
+
+# Check for running GUI sessions unless forced
+if pgrep -x "Xorg|Xwayland" > /dev/null && [ "${FORCE_UPDATE:-}" != "yes" ]; then
+    echo "ERROR: GUI session detected. Please switch to TTY (Ctrl+Alt+F2)"
+    echo "       or set FORCE_UPDATE=yes to proceed anyway (not recommended)"
+    exit 1
+fi
 
 echo "--- 1. Updating APT Package Lists ---"
 sudo apt update || { echo "Error: Failed to update APT package lists. Exiting."; exit 1; }
@@ -37,7 +45,7 @@ if [ -n "$UPGRADABLE_INFO" ]; then
     CURRENT_VERSION=$(echo "$UPGRADABLE_INFO" | awk -F' ' '{print $2}' | sed 's/.*from: \(.*\)]/\1/')
     NEW_VERSION=$(echo "$UPGRADABLE_INFO" | awk -F' ' '{print $2}' | sed 's/\/.*//')
     
-    echo "An update is available for ${DRIVER_PACKAGE}!"
+    echo "An update is available for ${DRIVER_PACKAGE}"
     echo "  Current Version: ${CURRENT_VERSION}"
     echo "  New Version:     ${NEW_VERSION}"
     echo
@@ -54,7 +62,9 @@ if [ -n "$UPGRADABLE_INFO" ]; then
     echo " REBOOTING SYSTEM IN 5 SECONDS..."
     echo "==================================================="
     echo "The system needs to reboot for the new NVIDIA driver to take full effect."
-    sleep 5 # Give a few seconds for the user to see the message
+    echo "If issues occur, boot with previous kernel and run:"
+    echo "  sudo apt install --reinstall ${CURRENT_VERSION}"
+    sleep 5
     sudo reboot
 else
     echo "No updates found for ${DRIVER_PACKAGE}. You are already on the latest version."

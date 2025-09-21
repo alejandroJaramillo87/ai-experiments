@@ -10,22 +10,31 @@
 # - It is recommended to run this script from a TTY (text-only terminal, Ctrl+Alt+F2)
 #   if you are also updating NVIDIA drivers alongside this.
 
-CUDA_PACKAGE="cuda-toolkit-12-8"
+# Make CUDA version configurable via environment variable
+CUDA_PACKAGE="${CUDA_VERSION:-cuda-toolkit-12-8}"
+
+# Detect Ubuntu version for repository URLs
+UBUNTU_VERSION=$(lsb_release -rs | tr -d '.')
+if [ -z "$UBUNTU_VERSION" ]; then
+    echo "ERROR: Could not detect Ubuntu version"
+    exit 1
+fi
 
 echo "==================================================="
-echo " Simple CUDA Toolkit Updater for ${CUDA_PACKAGE}"
+echo " CUDA Toolkit Updater for ${CUDA_PACKAGE}"
+echo " Ubuntu version: ${UBUNTU_VERSION}"
 echo "==================================================="
 echo
 
 echo "--- 1. Ensuring NVIDIA CUDA Network Repository is Configured ---"
-# These steps are idempotent and ensure the official NVIDIA CUDA network repository
-# is added and trusted by your system's APT. This is crucial for finding updates.
+
+CUDA_REPO_URL="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${UBUNTU_VERSION}/x86_64"
 
 # Add the repository pin file (if not already there)
 if [ ! -f "/etc/apt/preferences.d/cuda-repository-pin-600" ]; then
     echo "Adding CUDA repository pin file..."
-    wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-ubuntu2404.pin -O /tmp/cuda-ubuntu2404.pin
-    sudo mv /tmp/cuda-ubuntu2404.pin /etc/apt/preferences.d/cuda-repository-pin-600 || { echo "Error moving pin file. Exiting."; exit 1; }
+    wget -q "${CUDA_REPO_URL}/cuda-ubuntu${UBUNTU_VERSION}.pin" -O /tmp/cuda-ubuntu.pin
+    sudo mv /tmp/cuda-ubuntu.pin /etc/apt/preferences.d/cuda-repository-pin-600 || { echo "Error moving pin file. Exiting."; exit 1; }
 else
     echo "CUDA repository pin file already exists."
 fi
@@ -33,9 +42,9 @@ fi
 # Install the CUDA GPG keyring (if not already installed)
 if ! dpkg -s cuda-keyring &> /dev/null; then
     echo "Installing CUDA GPG keyring..."
-    wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb -O /tmp/cuda-keyring_1.1-1_all.deb
-    sudo dpkg -i /tmp/cuda-keyring_1.1-1_all.deb || { echo "Error installing cuda-keyring. Exiting."; exit 1; }
-    rm /tmp/cuda-keyring_1.1-1_all.deb # Clean up downloaded deb
+    wget -q "${CUDA_REPO_URL}/cuda-keyring_1.1-1_all.deb" -O /tmp/cuda-keyring.deb
+    sudo dpkg -i /tmp/cuda-keyring.deb || { echo "Error installing cuda-keyring. Exiting."; exit 1; }
+    rm /tmp/cuda-keyring.deb
 else
     echo "CUDA GPG keyring already installed."
 fi
@@ -76,11 +85,26 @@ if [ -n "$UPGRADABLE_INFO" ]; then
     echo " CUDA Toolkit Update Completed"
     echo "==================================================="
     echo "The CUDA Toolkit has been updated."
-    echo "Remember to re-source your ~/.zshrc (or open a new terminal) to ensure"
-    echo "your environment variables point to the correct CUDA installation path."
-    echo "You might also need to re-check PyTorch/TensorFlow compatibility."
+
+    # Verify CUDA installation
+    if command -v nvcc &> /dev/null; then
+        echo "CUDA compiler verified at: $(which nvcc)"
+        nvcc --version | grep release
+    else
+        echo "WARNING: nvcc not found in PATH. You may need to update your environment variables."
+    fi
+
+    echo "Remember to verify PyTorch/TensorFlow compatibility:"
+    echo "  python3 -c 'import torch; print(torch.cuda.is_available())'"
 else
     echo "No updates found for ${CUDA_PACKAGE}. You are already on the latest version."
+
+    # Still verify CUDA installation
+    if command -v nvcc &> /dev/null; then
+        echo "Current CUDA version:"
+        nvcc --version | grep release
+    fi
+
     echo "Script finished."
 fi
 
