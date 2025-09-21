@@ -107,7 +107,7 @@ COPY --from=builder --chown=appuser:appuser /tmp/hugepage_mmap_wrapper.so /app/
 COPY --chown=appuser:appuser docker/llama-cpu/entrypoint.sh /app/entrypoint.sh
 
 # Optimal settings
-ENV OMP_NUM_THREADS=8
+ENV OMP_NUM_THREADS=12
 ENV OMP_PROC_BIND=true
 ENV OMP_PLACES=cores
 

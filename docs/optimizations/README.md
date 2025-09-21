@@ -6,40 +6,45 @@ Latency-focused optimizations for interactive LLM inference (AMD Ryzen 9950X + R
 
 These optimizations prioritize **inference latency** over throughput for chatbot-style applications:
 
-- **SMT Disabled**: 16 physical cores provide exclusive L1/L2 cache access
 - **Single Model Focus**: 12 cores dedicated to one LLM instance for minimum response time
-- **Core Allocation**: Cores 0-11 for LLM, cores 12-15 for system tasks
-- **Research-Based**: 20-30% latency improvement over SMT-enabled configuration
+- **Core Allocation**: Cores 0-11 for LLM, remaining cores for system tasks
+- **Research-Based**: 26% validated latency improvement with optimizations
 
 ## Synopsis
 
-System optimizations are divided into three categories:
+System optimizations are organized by component:
 
-- BIOS firmware settings
-- Operating system configuration  
-- Memory management with huge pages
+- **bios/** - BIOS firmware settings and benchmark results
+- **cpu-ram/** - Operating system and memory optimizations
+- **gpu/** - GPU-specific performance tuning
+- **expirements/** - Experimental and testing configurations
 
 ## Files
 
-### bios-optimizations.md
-BIOS/UEFI settings for Gigabyte X870E Aorus Elite WiFi motherboard optimized for latency.
-- **SMT Disabled** (CRITICAL): Exclusive cache access per core
-- CPU performance (C-states disabled, PBO Level 2)
-- Memory performance (DDR5-6000 with power-down disabled)
-- Single-model optimization focus
+### bios/
+- **bios-optimizations.md** - BIOS/UEFI settings for Gigabyte X870E Aorus Elite WiFi
+  - CPU performance (C-states disabled, PBO configured)
+  - Memory performance (DDR5-6000 with power-down disabled)
+  - FCLK 2100MHz for interconnect optimization
+  - Single-model optimization focus
+- **benchmark_results_*.json** - Production benchmark data showing 26% improvement
 
-### os-optimizations.md
-Host operating system optimizations for containerized workloads.
-- Swap disabled
-- CPU governor (performance mode)
-- Memory locking configuration
-- CPU pinning via Docker cpuset (SMT-aware allocation)
+### cpu-ram/
+- **os-optimizations.md** - Host operating system optimizations for containerized workloads
+  - Swap disabled
+  - CPU governor (performance mode)
+  - Memory locking configuration
+  - CPU pinning via Docker cpuset
+- **hugepages-explicit.md** - Explicit huge pages implementation using MAP_HUGETLB
+  - Automatic huge page allocation for models > 1GB via wrapper
+  - No special filesystem required
+  - ~35 tokens/sec performance with optimizations
 
-### hugepages-explicit.md
-Explicit huge pages implementation using MAP_HUGETLB.
-- Automatic huge page allocation for models > 1GB via wrapper
-- No special filesystem required
-- ~32 tokens/sec baseline performance with Qwen3-30B
+### gpu/
+- **gpu-optimizations.md** - RTX 5090 specific optimizations
+  - CUDA configuration and tuning
+  - GPU memory management
+  - Multi-GPU scaling considerations
 
 ### benchmark-guide.md
 Performance benchmarking tool for optimization validation.
@@ -52,7 +57,6 @@ Performance benchmarking tool for optimization validation.
 | Optimization | Status | Verification |
 |--------------|--------|--------------|
 | BIOS CPU settings | DONE | Check boost frequencies in CPU-Z |
-| SMT disabled | PENDING | Verify 16 threads (not 32) in htop |
 | BIOS memory settings | DONE | Verify DDR5-6000 in BIOS |
 | Swap disabled | DONE | `free -h` shows Swap: 0 |
 | CPU governor | DONE | `cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor` |
@@ -75,7 +79,7 @@ swapon --show || echo "  Disabled"
 echo -e "\nCPU Governor:"
 cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 
-echo -e "\nSMT Status (should show 16 CPUs, not 32):"
+echo -e "\nCPU Count:"
 nproc
 
 echo -e "\nHuge Pages:"
@@ -95,7 +99,6 @@ Optimizations are applied to containers via:
 1. Docker Compose configuration (`docker-compose.yaml`)
    - Single CPU service with 12 dedicated cores (cpuset: "0-11")
    - Optimized memory allocation (96GB for single high-performance instance)
-   - SMT-disabled architecture (12 physical cores = 12 threads)
    - Environment variables from .env file
 
 2. Explicit huge pages (`docker/llama-cpu/`)
@@ -106,7 +109,7 @@ Optimizations are applied to containers via:
 3. Performance testing (`scripts/`)
    - benchmark.py for measuring latency and tokens/second
    - Focus on first-token latency and response time consistency
-   - Expected 20-30% latency improvement with SMT disabled
+   - Validated 26% performance improvement with optimizations
 
 ## System Configuration
 
@@ -121,18 +124,37 @@ vm.dirty_ratio = 5              # Aggressive writeback
 vm.dirty_background_ratio = 2   # Background writeback
 ```
 
+## Validated Performance Results
+
+Production system benchmarking with BIOS optimizations enabled:
+
+### Benchmark Summary
+- **Before optimizations**: 28.09 tokens/second average
+- **After optimizations**: 35.44 tokens/second average
+- **Performance gain**: +26.2%
+- **Consistency improvement**: 59% reduction in standard deviation
+
+### Key Validated Settings Impact
+- **FCLK 2100MHz**: Successfully stable, major contributor to performance
+- **Conservative Curve Optimizer (-15)**: Achieved excellent results with stability
+- **CPU Boost +200MHz**: Stable at maximum recommended setting
+- **Power optimizations**: C-states disabled, power down disabled for consistency
+
 ## Performance Impact
 
-Measured improvements with optimizations enabled:
+Validated improvements with optimizations enabled:
 
-- **Latency**: 20-30% reduction in first-token response time
-- **Cache Efficiency**: Exclusive L1/L2 access eliminates SMT contention
+- **Latency**: 26% improvement in tokens per second (validated via benchmarking)
+- **Cache Efficiency**: Optimized cache access patterns
 - **Memory Access**: Reduced TLB misses with explicit huge pages
-- **Threading**: Simplified 1:1 physical-to-logical core mapping
-- **Consistency**: Predictable token generation timing
+- **Consistency**: Predictable token generation timing (0.08-0.28 stdev vs 0.08-0.84)
 
 ## See Also
 
+- bios/bios-optimizations.md - Detailed BIOS configuration guide
+- cpu-ram/os-optimizations.md - Operating system tuning
+- cpu-ram/hugepages-explicit.md - Memory optimization details
+- gpu/gpu-optimizations.md - GPU performance tuning
 - docker-compose.yaml - Container orchestration
 - docker/llama-cpu/Dockerfile.llama-cpu - Latency-optimized CPU container
 - scripts/benchmark.py - Latency measurement tool
