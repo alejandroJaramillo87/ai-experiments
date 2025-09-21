@@ -4,7 +4,7 @@ Host OS optimizations for containerized AI workloads on AMD Ryzen 9950X + RTX 50
 
 ## Implemented Optimizations
 
-### 1. Swap Disabled ✅
+### 1. Swap Disabled [IMPLEMENTED]
 
 **Status:** IMPLEMENTED
 
@@ -21,7 +21,7 @@ sudo sed -i '/swap/d' /etc/fstab
 free -h  # Swap should show 0
 ```
 
-### 2. CPU Governor - Performance Mode ✅
+### 2. CPU Governor - Performance Mode [IMPLEMENTED]
 
 **Status:** IMPLEMENTED
 
@@ -52,7 +52,7 @@ sudo systemctl enable --now cpufreq-performance.service
 cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor | uniq
 ```
 
-### 3. Memory Locking ✅
+### 3. Memory Locking [IMPLEMENTED]
 
 **Status:** CONFIGURED IN CONTAINERS
 
@@ -87,7 +87,7 @@ watch -n 2 "cat /proc/meminfo | grep MemLocked"
 docker exec llama-cpu-0 cat /proc/1/status | grep VmLck
 ```
 
-### 4. Huge Pages ✅
+### 4. Huge Pages [IMPLEMENTED]
 
 **Status:** IMPLEMENTED WITH CUSTOM WRAPPER
 
@@ -222,9 +222,9 @@ grep "^HugePages" /proc/meminfo
 
 ## GPU Optimizations
 
-### 5. NVIDIA Driver Persistence Mode ✅
+### 5. NVIDIA Driver Persistence Mode [TODO]
 
-**Status:** TO BE IMPLEMENTED
+**Status:** TODO
 
 Keeps NVIDIA driver loaded in memory, reducing CUDA initialization time.
 
@@ -255,9 +255,9 @@ sudo systemctl enable --now nvidia-persistenced.service
 nvidia-smi -q | grep "Persistence Mode"
 ```
 
-### 6. GPU Power and Clock Management ✅
+### 6. GPU Power and Clock Management [TODO]
 
-**Status:** TO BE IMPLEMENTED
+**Status:** TODO
 
 Locks GPU in maximum performance state for consistent inference.
 
@@ -291,9 +291,9 @@ EOF
 sudo systemctl enable --now gpu-clocks.service
 ```
 
-### 7. GPU Compute Mode ✅
+### 7. GPU Compute Mode [TODO]
 
-**Status:** TO BE IMPLEMENTED
+**Status:** TODO
 
 Configure GPU for optimal multi-container usage.
 
@@ -308,9 +308,9 @@ sudo nvidia-smi -c EXCLUSIVE_PROCESS
 nvidia-smi --query-gpu=compute_mode --format=csv
 ```
 
-### 8. NVIDIA Kernel Module Parameters
+### 8. NVIDIA Kernel Module Parameters [TODO]
 
-**Status:** TO BE IMPLEMENTED
+**Status:** TODO
 
 Optimize NVIDIA driver behavior at kernel level.
 
@@ -334,9 +334,9 @@ sudo modprobe -r nvidia_drm nvidia_modeset nvidia
 sudo modprobe nvidia
 ```
 
-### 9. GPU IRQ Affinity
+### 9. GPU IRQ Affinity [TODO]
 
-**Status:** TO BE IMPLEMENTED
+**Status:** TODO
 
 Pin GPU interrupts to dedicated CPU cores for reduced latency.
 
@@ -363,9 +363,9 @@ sudo chmod +x /usr/local/bin/set-gpu-irq-affinity.sh
 # Add to rc.local or systemd service
 ```
 
-### 10. CUDA System Environment
+### 10. CUDA System Environment [TODO]
 
-**Status:** TO BE IMPLEMENTED
+**Status:** TODO
 
 System-wide CUDA optimization variables.
 
@@ -386,7 +386,7 @@ sudo mkdir -p /tmp/cuda_cache
 sudo chmod 1777 /tmp/cuda_cache
 ```
 
-### 11. NVIDIA Multi-Process Service (MPS)
+### 11. NVIDIA Multi-Process Service (MPS) [OPTIONAL]
 
 **Status:** OPTIONAL
 
@@ -418,9 +418,9 @@ EOF
 # sudo systemctl enable --now nvidia-mps.service
 ```
 
-### 12. Kernel Boot Parameters
+### 12. Kernel Boot Parameters [TODO]
 
-**Status:** TO BE IMPLEMENTED
+**Status:** TODO
 
 Optimize kernel for GPU workloads.
 
