@@ -11,7 +11,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '12.0' # 12 physical cores with SMT disabled
+          cpus: '12' 
           memory: 96G # Increased for single high-performance instance
     ulimits:
       memlock:
@@ -22,12 +22,13 @@ services:
       dockerfile: docker/llama-cpu/Dockerfile.llama-cpu
     container_name: llama-cpu # Single latency-optimized CPU inference
     restart: unless-stopped
-    cpuset: "0-11" # 12 dedicated cores for LLM
+    cpuset: "0-12" 
     environment:
       - SERVER_PORT=8001
       # Model path - wrapper will transparently use huge pages for models > 1GB
       - MODEL_PATH=${LLAMA_CPU_MODEL}
       - THREADS=12 # Match physical core count with SMT disabled
+      - THREADS_BATCH=12
     ports:
       # Exposing the API port to the host for direct access/testing
       - "127.0.0.1:8001:8001"
