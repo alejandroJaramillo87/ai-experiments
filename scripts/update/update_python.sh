@@ -78,14 +78,28 @@ else
     poetry install --no-root
 fi
 
-# Quick GPU check
+# GPU and CUDA check
 echo
 echo "Checking GPU configuration..."
+
+# Check system CUDA version
+if command -v nvcc &> /dev/null; then
+    SYSTEM_CUDA=$(nvcc --version | grep "release" | awk '{print $5}' | sed 's/,//')
+    echo "System CUDA (nvcc): $SYSTEM_CUDA"
+else
+    echo "System CUDA (nvcc): Not found"
+fi
+
+# Check PyTorch and its CUDA version
 poetry run python -c "
 import sys
 try:
     import torch
     print(f'PyTorch version: {torch.__version__}')
+    if hasattr(torch.version, 'cuda') and torch.version.cuda:
+        print(f'PyTorch CUDA: {torch.version.cuda}')
+    else:
+        print('PyTorch CUDA: CPU-only build')
     print(f'CUDA available: {torch.cuda.is_available()}')
     if torch.cuda.is_available():
         print(f'GPU: {torch.cuda.get_device_name(0)}')
@@ -176,13 +190,21 @@ if failed:
 
 # Final GPU check
 echo
+
+# Show system CUDA version again for comparison
+if command -v nvcc &> /dev/null; then
+    SYSTEM_CUDA=$(nvcc --version | grep "release" | awk '{print $5}' | sed 's/,//')
+    echo "System CUDA: $SYSTEM_CUDA"
+fi
+
 poetry run python -c "
 import torch
 print(f'PyTorch: {torch.__version__}')
+if hasattr(torch.version, 'cuda') and torch.version.cuda:
+    print(f'PyTorch CUDA: {torch.version.cuda}')
 print(f'CUDA Available: {torch.cuda.is_available()}')
 if torch.cuda.is_available():
     print(f'GPU: {torch.cuda.get_device_name(0)}')
-    print(f'CUDA Version: {torch.version.cuda}')
 "
 
 echo
