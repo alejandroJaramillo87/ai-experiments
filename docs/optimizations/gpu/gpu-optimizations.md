@@ -11,94 +11,34 @@ GPU optimizations focus on three key areas:
 
 ## Host System GPU Configuration
 
-### 1. NVIDIA Driver Persistence Mode
+For comprehensive OS-level GPU optimizations including:
+- NVIDIA driver persistence mode
+- GPU power and clock management
+- Compute mode configuration
+- Kernel module parameters
+- IRQ affinity tuning
+- CUDA system environment
+- Multi-Process Service (MPS)
 
-Enable persistence mode to keep driver loaded in memory, reducing CUDA initialization time.
+**See: [`docs/optimizations/os/os-optimizations.md`](../os/os-optimizations.md#gpu-optimizations)**
 
-```bash
-# Enable persistence mode
-sudo nvidia-smi -pm 1
+### Quick Verification
 
-# Create systemd service for persistence
-sudo tee /etc/systemd/system/nvidia-persistenced.service << 'EOF'
-[Unit]
-Description=NVIDIA Persistence Daemon
-After=multi-user.target
-
-[Service]
-Type=forking
-ExecStart=/usr/bin/nvidia-persistenced --user nvidia-persistenced
-ExecStopPost=/bin/rm -rf /var/run/nvidia-persistenced
-Restart=on-failure
-RestartSec=5s
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl enable --now nvidia-persistenced.service
-```
-
-### 2. GPU Power Management
-
-Lock GPU in maximum performance state (P0) for consistent inference performance.
+Verify GPU configuration after applying OS optimizations:
 
 ```bash
-# Set power limit to maximum (600W for RTX 5090)
-sudo nvidia-smi -pl 600
+# Check all GPU settings
+nvidia-smi -q | grep -E "Persistence Mode|Power Limit|Compute Mode|PCIe Generation"
 
-# Set GPU to maximum performance mode
-sudo nvidia-smi -pm 1
-sudo nvidia-smi -ac 3002,2550  # Memory: 3002MHz, GPU: 2550MHz (adjust for your card)
-
-# Disable GPU boost variability for consistent clocks
-sudo nvidia-smi -lgc 2400,2550  # Lock GPU clock range (min,max)
-sudo nvidia-smi -lmc 3002       # Lock memory clock
-```
-
-### 3. Compute Mode Configuration
-
-Set GPU compute mode for optimal multi-container usage.
-
-```bash
-# Set to EXCLUSIVE_PROCESS mode (one process per GPU)
-sudo nvidia-smi -c EXCLUSIVE_PROCESS
-
-# Alternative: DEFAULT mode for shared access
-# sudo nvidia-smi -c DEFAULT
-```
-
-### 4. PCIe Optimization
-
-Ensure BIOS settings support full GPU bandwidth.
-
-**Required BIOS Settings:**
-- PCIe Generation: Gen 5.0
-- Above 4G Decoding: Enabled
-- Resizable BAR: Enabled
-- PCIe Link Speed: 16x
-
-**Verification:**
-```bash
-# Check PCIe link speed and width
+# Verify PCIe bandwidth
 nvidia-smi -q | grep -A 4 "GPU Link Info"
+# Should show: PCIe Generation: 5, Link Width: x16
 
-# Should show:
-# PCIe Generation: 5
-# Link Width: x16
+# Check memory and clocks
+nvidia-smi --query-gpu=clocks.gr,clocks.mem,power.draw --format=csv
 ```
 
-### 5. NUMA Optimization
-
-For single-socket systems, optimize memory access patterns.
-
-```bash
-# Disable NUMA balancing for single-socket systems
-echo 0 | sudo tee /proc/sys/kernel/numa_balancing
-
-# Make persistent
-echo "kernel.numa_balancing = 0" | sudo tee -a /etc/sysctl.conf
-```
+**Note:** BIOS PCIe settings required - see [`docs/optimizations/bios/bios-optimizations.md`](../bios/bios-optimizations.md#gpu-performance-configuration)
 
 ## Container Runtime Optimizations
 

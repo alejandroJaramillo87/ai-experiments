@@ -1,0 +1,432 @@
+{
+  "system_info": {
+    "timestamp": "2025-09-19T22:02:43.946265",
+    "api_url": "http://localhost:8001",
+    "model": "/app/models/gguf/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf",
+    "hugepages_total": 46080,
+    "hugepages_free": 38267,
+    "hugepage_size_kb": 2048
+  },
+  "prompts": {
+    "memory_sequential": {
+      "prompt_text": "Count from 1 to 20, writing each number on a new line:",
+      "description": "Sequential memory access pattern",
+      "results": [
+        {
+          "prompt": "memory_sequential",
+          "run": 1,
+          "success": true,
+          "total_time": 1.801,
+          "prompt_tokens": 25,
+          "completion_tokens": 51,
+          "tokens_per_second": 28.32,
+          "response_length": 50,
+          "response": "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20"
+        },
+        {
+          "prompt": "memory_sequential",
+          "run": 2,
+          "success": true,
+          "total_time": 1.806,
+          "prompt_tokens": 25,
+          "completion_tokens": 51,
+          "tokens_per_second": 28.24,
+          "response_length": 50,
+          "response": "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20"
+        },
+        {
+          "prompt": "memory_sequential",
+          "run": 3,
+          "success": true,
+          "total_time": 1.834,
+          "prompt_tokens": 25,
+          "completion_tokens": 51,
+          "tokens_per_second": 27.81,
+          "response_length": 50,
+          "response": "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20"
+        },
+        {
+          "prompt": "memory_sequential",
+          "run": 4,
+          "success": true,
+          "total_time": 1.807,
+          "prompt_tokens": 25,
+          "completion_tokens": 51,
+          "tokens_per_second": 28.23,
+          "response_length": 50,
+          "response": "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20"
+        },
+        {
+          "prompt": "memory_sequential",
+          "run": 5,
+          "success": true,
+          "total_time": 1.798,
+          "prompt_tokens": 25,
+          "completion_tokens": 51,
+          "tokens_per_second": 28.36,
+          "response_length": 50,
+          "response": "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20"
+        }
+      ],
+      "stats": {
+        "success_rate": 1.0,
+        "avg_tokens_per_second": 28.19,
+        "median_tokens_per_second": 28.24,
+        "min_tokens_per_second": 27.81,
+        "max_tokens_per_second": 28.36,
+        "stdev_tokens_per_second": 0.22
+      }
+    },
+    "cache_loops": {
+      "prompt_text": "Write the word 'test' exactly 15 times separated by spaces:",
+      "description": "CPU cache efficiency with repetitive patterns",
+      "results": [
+        {
+          "prompt": "cache_loops",
+          "run": 1,
+          "success": true,
+          "total_time": 0.559,
+          "prompt_tokens": 23,
+          "completion_tokens": 16,
+          "tokens_per_second": 28.62,
+          "response_length": 74,
+          "response": "test test test test test test test test test test test test test test test"
+        },
+        {
+          "prompt": "cache_loops",
+          "run": 2,
+          "success": true,
+          "total_time": 0.566,
+          "prompt_tokens": 23,
+          "completion_tokens": 16,
+          "tokens_per_second": 28.26,
+          "response_length": 74,
+          "response": "test test test test test test test test test test test test test test test"
+        },
+        {
+          "prompt": "cache_loops",
+          "run": 3,
+          "success": true,
+          "total_time": 0.567,
+          "prompt_tokens": 23,
+          "completion_tokens": 16,
+          "tokens_per_second": 28.24,
+          "response_length": 74,
+          "response": "test test test test test test test test test test test test test test test"
+        },
+        {
+          "prompt": "cache_loops",
+          "run": 4,
+          "success": true,
+          "total_time": 0.566,
+          "prompt_tokens": 23,
+          "completion_tokens": 16,
+          "tokens_per_second": 28.26,
+          "response_length": 74,
+          "response": "test test test test test test test test test test test test test test test"
+        },
+        {
+          "prompt": "cache_loops",
+          "run": 5,
+          "success": true,
+          "total_time": 0.567,
+          "prompt_tokens": 23,
+          "completion_tokens": 16,
+          "tokens_per_second": 28.22,
+          "response_length": 74,
+          "response": "test test test test test test test test test test test test test test test"
+        }
+      ],
+      "stats": {
+        "success_rate": 1.0,
+        "avg_tokens_per_second": 28.32,
+        "median_tokens_per_second": 28.26,
+        "min_tokens_per_second": 28.22,
+        "max_tokens_per_second": 28.62,
+        "stdev_tokens_per_second": 0.17
+      }
+    },
+    "compute_arithmetic": {
+      "prompt_text": "Calculate: 2+2=, 5+5=, 10+10=, 20+20=, 50+50=",
+      "description": "Basic compute operations",
+      "results": [
+        {
+          "prompt": "compute_arithmetic",
+          "run": 1,
+          "success": true,
+          "total_time": 1.758,
+          "prompt_tokens": 45,
+          "completion_tokens": 50,
+          "tokens_per_second": 28.44,
+          "response_length": 82,
+          "response": "Here are the calculations:\n\n2 + 2 = 4\n5 + 5 = 10\n10 + 10 = 20\n20 + 20 = 40\n50 + 50"
+        },
+        {
+          "prompt": "compute_arithmetic",
+          "run": 2,
+          "success": true,
+          "total_time": 1.799,
+          "prompt_tokens": 45,
+          "completion_tokens": 50,
+          "tokens_per_second": 27.8,
+          "response_length": 82,
+          "response": "Here are the calculations:\n\n2 + 2 = 4\n5 + 5 = 10\n10 + 10 = 20\n20 + 20 = 40\n50 + 50"
+        },
+        {
+          "prompt": "compute_arithmetic",
+          "run": 3,
+          "success": true,
+          "total_time": 1.898,
+          "prompt_tokens": 45,
+          "completion_tokens": 50,
+          "tokens_per_second": 26.34,
+          "response_length": 82,
+          "response": "Here are the calculations:\n\n2 + 2 = 4\n5 + 5 = 10\n10 + 10 = 20\n20 + 20 = 40\n50 + 50"
+        },
+        {
+          "prompt": "compute_arithmetic",
+          "run": 4,
+          "success": true,
+          "total_time": 1.872,
+          "prompt_tokens": 45,
+          "completion_tokens": 50,
+          "tokens_per_second": 26.71,
+          "response_length": 82,
+          "response": "Here are the calculations:\n\n2 + 2 = 4\n5 + 5 = 10\n10 + 10 = 20\n20 + 20 = 40\n50 + 50"
+        },
+        {
+          "prompt": "compute_arithmetic",
+          "run": 5,
+          "success": true,
+          "total_time": 1.842,
+          "prompt_tokens": 45,
+          "completion_tokens": 50,
+          "tokens_per_second": 27.15,
+          "response_length": 82,
+          "response": "Here are the calculations:\n\n2 + 2 = 4\n5 + 5 = 10\n10 + 10 = 20\n20 + 20 = 40\n50 + 50"
+        }
+      ],
+      "stats": {
+        "success_rate": 1.0,
+        "avg_tokens_per_second": 27.29,
+        "median_tokens_per_second": 27.15,
+        "min_tokens_per_second": 26.34,
+        "max_tokens_per_second": 28.44,
+        "stdev_tokens_per_second": 0.84
+      }
+    },
+    "memory_structured": {
+      "prompt_text": "Create a JSON object with three fields: name (string), age (number), active (boolean). Use simple values:",
+      "description": "Structured data generation for memory allocation",
+      "results": [
+        {
+          "prompt": "memory_structured",
+          "run": 1,
+          "success": true,
+          "total_time": 0.986,
+          "prompt_tokens": 32,
+          "completion_tokens": 28,
+          "tokens_per_second": 28.4,
+          "response_length": 63,
+          "response": "```json\n{\n  \"name\": \"John\",\n  \"age\": 30,\n  \"active\": true\n}\n```"
+        },
+        {
+          "prompt": "memory_structured",
+          "run": 2,
+          "success": true,
+          "total_time": 0.994,
+          "prompt_tokens": 32,
+          "completion_tokens": 28,
+          "tokens_per_second": 28.16,
+          "response_length": 63,
+          "response": "```json\n{\n  \"name\": \"John\",\n  \"age\": 30,\n  \"active\": true\n}\n```"
+        },
+        {
+          "prompt": "memory_structured",
+          "run": 3,
+          "success": true,
+          "total_time": 0.994,
+          "prompt_tokens": 32,
+          "completion_tokens": 28,
+          "tokens_per_second": 28.16,
+          "response_length": 63,
+          "response": "```json\n{\n  \"name\": \"John\",\n  \"age\": 30,\n  \"active\": true\n}\n```"
+        },
+        {
+          "prompt": "memory_structured",
+          "run": 4,
+          "success": true,
+          "total_time": 0.995,
+          "prompt_tokens": 32,
+          "completion_tokens": 28,
+          "tokens_per_second": 28.15,
+          "response_length": 63,
+          "response": "```json\n{\n  \"name\": \"John\",\n  \"age\": 30,\n  \"active\": true\n}\n```"
+        },
+        {
+          "prompt": "memory_structured",
+          "run": 5,
+          "success": true,
+          "total_time": 0.991,
+          "prompt_tokens": 32,
+          "completion_tokens": 28,
+          "tokens_per_second": 28.25,
+          "response_length": 63,
+          "response": "```json\n{\n  \"name\": \"John\",\n  \"age\": 30,\n  \"active\": true\n}\n```"
+        }
+      ],
+      "stats": {
+        "success_rate": 1.0,
+        "avg_tokens_per_second": 28.22,
+        "median_tokens_per_second": 28.16,
+        "min_tokens_per_second": 28.15,
+        "max_tokens_per_second": 28.4,
+        "stdev_tokens_per_second": 0.11
+      }
+    },
+    "throughput_sustained": {
+      "prompt_text": "List 10 common programming languages, one per line:",
+      "description": "Sustained generation for throughput testing",
+      "results": [
+        {
+          "prompt": "throughput_sustained",
+          "run": 1,
+          "success": true,
+          "total_time": 1.441,
+          "prompt_tokens": 20,
+          "completion_tokens": 41,
+          "tokens_per_second": 28.46,
+          "response_length": 89,
+          "response": "1. Python\n2. JavaScript\n3. Java\n4. C++\n5. C#\n6. PHP\n7. Ruby\n8. Go\n9. Swift\n10. TypeScript"
+        },
+        {
+          "prompt": "throughput_sustained",
+          "run": 2,
+          "success": true,
+          "total_time": 1.45,
+          "prompt_tokens": 20,
+          "completion_tokens": 41,
+          "tokens_per_second": 28.28,
+          "response_length": 89,
+          "response": "1. Python\n2. JavaScript\n3. Java\n4. C++\n5. C#\n6. PHP\n7. Ruby\n8. Go\n9. Swift\n10. TypeScript"
+        },
+        {
+          "prompt": "throughput_sustained",
+          "run": 3,
+          "success": true,
+          "total_time": 1.452,
+          "prompt_tokens": 20,
+          "completion_tokens": 41,
+          "tokens_per_second": 28.24,
+          "response_length": 89,
+          "response": "1. Python\n2. JavaScript\n3. Java\n4. C++\n5. C#\n6. PHP\n7. Ruby\n8. Go\n9. Swift\n10. TypeScript"
+        },
+        {
+          "prompt": "throughput_sustained",
+          "run": 4,
+          "success": true,
+          "total_time": 1.454,
+          "prompt_tokens": 20,
+          "completion_tokens": 41,
+          "tokens_per_second": 28.21,
+          "response_length": 89,
+          "response": "1. Python\n2. JavaScript\n3. Java\n4. C++\n5. C#\n6. PHP\n7. Ruby\n8. Go\n9. Swift\n10. TypeScript"
+        },
+        {
+          "prompt": "throughput_sustained",
+          "run": 5,
+          "success": true,
+          "total_time": 1.45,
+          "prompt_tokens": 20,
+          "completion_tokens": 41,
+          "tokens_per_second": 28.28,
+          "response_length": 89,
+          "response": "1. Python\n2. JavaScript\n3. Java\n4. C++\n5. C#\n6. PHP\n7. Ruby\n8. Go\n9. Swift\n10. TypeScript"
+        }
+      ],
+      "stats": {
+        "success_rate": 1.0,
+        "avg_tokens_per_second": 28.29,
+        "median_tokens_per_second": 28.28,
+        "min_tokens_per_second": 28.21,
+        "max_tokens_per_second": 28.46,
+        "stdev_tokens_per_second": 0.1
+      }
+    },
+    "memory_bandwidth": {
+      "prompt_text": "Generate a comma-separated list of the first 30 even numbers:",
+      "description": "Large memory bandwidth test",
+      "results": [
+        {
+          "prompt": "memory_bandwidth",
+          "run": 1,
+          "success": true,
+          "total_time": 4.069,
+          "prompt_tokens": 22,
+          "completion_tokens": 115,
+          "tokens_per_second": 28.26,
+          "response_length": 114,
+          "response": "2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60"
+        },
+        {
+          "prompt": "memory_bandwidth",
+          "run": 2,
+          "success": true,
+          "total_time": 4.077,
+          "prompt_tokens": 22,
+          "completion_tokens": 115,
+          "tokens_per_second": 28.21,
+          "response_length": 114,
+          "response": "2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60"
+        },
+        {
+          "prompt": "memory_bandwidth",
+          "run": 3,
+          "success": true,
+          "total_time": 4.077,
+          "prompt_tokens": 22,
+          "completion_tokens": 115,
+          "tokens_per_second": 28.2,
+          "response_length": 114,
+          "response": "2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60"
+        },
+        {
+          "prompt": "memory_bandwidth",
+          "run": 4,
+          "success": true,
+          "total_time": 4.067,
+          "prompt_tokens": 22,
+          "completion_tokens": 115,
+          "tokens_per_second": 28.27,
+          "response_length": 114,
+          "response": "2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60"
+        },
+        {
+          "prompt": "memory_bandwidth",
+          "run": 5,
+          "success": true,
+          "total_time": 4.095,
+          "prompt_tokens": 22,
+          "completion_tokens": 115,
+          "tokens_per_second": 28.08,
+          "response_length": 114,
+          "response": "2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60"
+        }
+      ],
+      "stats": {
+        "success_rate": 1.0,
+        "avg_tokens_per_second": 28.2,
+        "median_tokens_per_second": 28.21,
+        "min_tokens_per_second": 28.08,
+        "max_tokens_per_second": 28.27,
+        "stdev_tokens_per_second": 0.08
+      }
+    }
+  },
+  "summary": {
+    "overall_avg_tokens_per_second": 28.09,
+    "overall_median_tokens_per_second": 28.21,
+    "overall_min_tokens_per_second": 27.29,
+    "overall_max_tokens_per_second": 28.32
+  }
+}

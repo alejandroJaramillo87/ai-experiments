@@ -56,11 +56,60 @@ BENCHMARK_PROMPTS = {
 
 
 class LlamaBenchmark:
-    def __init__(self, host: str = "localhost", port: int = 8001, timeout: int = 30):
+    def __init__(self, host: str = "localhost", port: int = 8001, timeout: int = 30, label: str = None):
         self.base_url = f"http://{host}:{port}"
         self.timeout = timeout
         self.results = []
+        self.label = label
         
+    def get_gpu_config(self) -> Dict[str, Any]:
+        """Collect GPU configuration to verify optimizations."""
+        config = {}
+        try:
+            result = subprocess.run([
+                "nvidia-smi",
+                "--query-gpu=persistence_mode,compute_mode,power.limit,clocks.applications.graphics,clocks.applications.memory,pcie.link.gen.current,pcie.link.width.current",
+                "--format=csv,noheader,nounits"
+            ], capture_output=True, text=True, timeout=5)
+
+            if result.returncode == 0:
+                values = result.stdout.strip().split(", ")
+                config = {
+                    "persistence_mode": values[0] if len(values) > 0 else None,
+                    "compute_mode": values[1] if len(values) > 1 else None,
+                    "power_limit_w": float(values[2]) if len(values) > 2 and values[2] != "[N/A]" else None,
+                    "gpu_clock_mhz": float(values[3]) if len(values) > 3 and values[3] != "[N/A]" else None,
+                    "mem_clock_mhz": float(values[4]) if len(values) > 4 and values[4] != "[N/A]" else None,
+                    "pcie_gen": int(values[5]) if len(values) > 5 and values[5] != "[N/A]" else None,
+                    "pcie_width": int(values[6]) if len(values) > 6 and values[6] != "[N/A]" else None
+                }
+        except Exception as e:
+            config["error"] = str(e)
+        return config
+
+    def get_gpu_runtime_metrics(self) -> Dict[str, Any]:
+        """Get current GPU runtime metrics."""
+        metrics = {}
+        try:
+            result = subprocess.run([
+                "nvidia-smi",
+                "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw",
+                "--format=csv,noheader,nounits"
+            ], capture_output=True, text=True, timeout=5)
+
+            if result.returncode == 0:
+                values = result.stdout.strip().split(", ")
+                metrics = {
+                    "gpu_utilization_percent": float(values[0]) if len(values) > 0 else None,
+                    "vram_used_mb": float(values[1]) if len(values) > 1 else None,
+                    "vram_total_mb": float(values[2]) if len(values) > 2 else None,
+                    "temperature_c": float(values[3]) if len(values) > 3 else None,
+                    "power_draw_w": float(values[4]) if len(values) > 4 else None
+                }
+        except Exception as e:
+            metrics["error"] = str(e)
+        return metrics
+
     def wait_for_api(self, max_attempts: int = 30) -> bool:
         """Wait for API to be ready."""
         print(f"Waiting for API at {self.base_url}...", end="")
@@ -81,6 +130,7 @@ class LlamaBenchmark:
         """Collect system information."""
         info = {
             "timestamp": datetime.now().isoformat(),
+            "label": self.label,
             "api_url": self.base_url
         }
         
@@ -92,7 +142,12 @@ class LlamaBenchmark:
                 info["model"] = data.get("data", [{}])[0].get("id", "unknown")
         except:
             info["model"] = "unknown"
-        
+
+        # Get GPU configuration
+        gpu_config = self.get_gpu_config()
+        if gpu_config:
+            info["gpu_config"] = gpu_config
+
         # Get memory info
         try:
             with open("/proc/meminfo", "r") as f:
@@ -265,6 +320,11 @@ class LlamaBenchmark:
                 "overall_min_tokens_per_second": round(min(all_tokens_per_sec), 2),
                 "overall_max_tokens_per_second": round(max(all_tokens_per_sec), 2)
             }
+
+            # Add GPU runtime metrics
+            gpu_metrics = self.get_gpu_runtime_metrics()
+            if gpu_metrics:
+                all_results["summary"]["gpu_runtime"] = gpu_metrics
         
         return all_results
     
@@ -273,6 +333,10 @@ class LlamaBenchmark:
         print("\n" + "="*60)
         print("  RESULTS SUMMARY")
         print("="*60)
+
+        # Print label if present
+        if "system_info" in results and results["system_info"].get("label"):
+            print(f"\nLabel: {results['system_info']['label']}")
         
         # Per-prompt results
         print("\nPer-Prompt Performance:")
@@ -294,6 +358,37 @@ class LlamaBenchmark:
             print(f"  Median:  {results['summary']['overall_median_tokens_per_second']:.2f} tokens/sec")
             print(f"  Min:     {results['summary']['overall_min_tokens_per_second']:.2f} tokens/sec")
             print(f"  Max:     {results['summary']['overall_max_tokens_per_second']:.2f} tokens/sec")
+
+            # GPU runtime metrics
+            if "gpu_runtime" in results["summary"]:
+                gpu = results["summary"]["gpu_runtime"]
+                print("\nGPU Runtime Metrics:")
+                if "gpu_utilization_percent" in gpu:
+                    print(f"  GPU Utilization: {gpu['gpu_utilization_percent']:.1f}%")
+                if "vram_used_mb" in gpu and "vram_total_mb" in gpu:
+                    print(f"  VRAM Usage: {gpu['vram_used_mb']:.0f}/{gpu['vram_total_mb']:.0f} MB")
+                if "temperature_c" in gpu:
+                    print(f"  Temperature: {gpu['temperature_c']:.0f}°C")
+                if "power_draw_w" in gpu:
+                    print(f"  Power Draw: {gpu['power_draw_w']:.0f}W")
+
+        # GPU configuration
+        if "system_info" in results and "gpu_config" in results["system_info"]:
+            gpu_cfg = results["system_info"]["gpu_config"]
+            if gpu_cfg and not gpu_cfg.get("error"):
+                print("\nGPU Configuration:")
+                if "persistence_mode" in gpu_cfg:
+                    print(f"  Persistence Mode: {gpu_cfg['persistence_mode']}")
+                if "compute_mode" in gpu_cfg:
+                    print(f"  Compute Mode: {gpu_cfg['compute_mode']}")
+                if "power_limit_w" in gpu_cfg:
+                    print(f"  Power Limit: {gpu_cfg['power_limit_w']:.0f}W")
+                if "gpu_clock_mhz" in gpu_cfg and gpu_cfg["gpu_clock_mhz"]:
+                    print(f"  GPU Clock: {gpu_cfg['gpu_clock_mhz']:.0f} MHz")
+                if "mem_clock_mhz" in gpu_cfg and gpu_cfg["mem_clock_mhz"]:
+                    print(f"  Memory Clock: {gpu_cfg['mem_clock_mhz']:.0f} MHz")
+                if "pcie_gen" in gpu_cfg and "pcie_width" in gpu_cfg:
+                    print(f"  PCIe Link: Gen{gpu_cfg['pcie_gen']} x{gpu_cfg['pcie_width']}")
         
         print("="*60)
     
@@ -318,6 +413,7 @@ def main():
     parser.add_argument("--prompts", help="Comma-separated list of prompts to test")
     parser.add_argument("--output", help="Output JSON filename")
     parser.add_argument("--timeout", type=int, default=30, help="Request timeout in seconds")
+    parser.add_argument("--label", help="Label for this benchmark run (e.g., 'baseline', 'optimized')")
     
     args = parser.parse_args()
     
@@ -327,7 +423,7 @@ def main():
         prompts = args.prompts.split(",")
     
     # Create benchmark instance
-    benchmark = LlamaBenchmark(host=args.host, port=args.port, timeout=args.timeout)
+    benchmark = LlamaBenchmark(host=args.host, port=args.port, timeout=args.timeout, label=args.label)
     
     # Wait for API
     if not benchmark.wait_for_api():
