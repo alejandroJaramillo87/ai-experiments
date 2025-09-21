@@ -1,0 +1,449 @@
+{
+  "system_info": {
+    "timestamp": "2025-09-21T12:32:12.674582",
+    "label": "baseline",
+    "api_url": "http://localhost:8004",
+    "model": "/app/models/gguf/gpt-oss-20b-GGUF/gpt-oss-20b-UD-Q8_K_XL.gguf",
+    "gpu_config": {
+      "persistence_mode": "Disabled",
+      "compute_mode": "Default",
+      "power_limit_w": 600.0,
+      "gpu_clock_mhz": null,
+      "mem_clock_mhz": null,
+      "pcie_gen": 1,
+      "pcie_width": 16
+    },
+    "hugepages_total": 46080,
+    "hugepages_free": 46080,
+    "hugepage_size_kb": 2048
+  },
+  "prompts": {
+    "memory_sequential": {
+      "prompt_text": "Count from 1 to 20, writing each number on a new line:",
+      "description": "Sequential memory access pattern",
+      "results": [
+        {
+          "prompt": "memory_sequential",
+          "run": 1,
+          "success": true,
+          "total_time": 0.237,
+          "prompt_tokens": 22,
+          "completion_tokens": 68,
+          "tokens_per_second": 286.6,
+          "response_length": 200,
+          "response": "<|channel|>analysis<|message|>We need to output numbers 1 to 20 each on new line. Just plain text.<|end|><|start|>assistant<|channel|>final<|message|>1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20"
+        },
+        {
+          "prompt": "memory_sequential",
+          "run": 2,
+          "success": true,
+          "total_time": 0.317,
+          "prompt_tokens": 22,
+          "completion_tokens": 91,
+          "tokens_per_second": 286.82,
+          "response_length": 285,
+          "response": "<|channel|>analysis<|message|>The user says: \"Count from 1 to 20, writing each number on a new line:\" So we need to output numbers 1 to 20 each on a new line. That is straightforward.<|end|><|start|>assistant<|channel|>final<|message|>1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20"
+        },
+        {
+          "prompt": "memory_sequential",
+          "run": 3,
+          "success": true,
+          "total_time": 0.241,
+          "prompt_tokens": 22,
+          "completion_tokens": 69,
+          "tokens_per_second": 286.69,
+          "response_length": 239,
+          "response": "<|channel|>analysis<|message|>We need to output numbers 1 to 20 each on a new line. Just list them.<|end|><|start|>assistant<|channel|>final<|message|>1  \n2  \n3  \n4  \n5  \n6  \n7  \n8  \n9  \n10  \n11  \n12  \n13  \n14  \n15  \n16  \n17  \n18  \n19  \n20"
+        },
+        {
+          "prompt": "memory_sequential",
+          "run": 4,
+          "success": true,
+          "total_time": 0.238,
+          "prompt_tokens": 22,
+          "completion_tokens": 68,
+          "tokens_per_second": 286.13,
+          "response_length": 200,
+          "response": "<|channel|>analysis<|message|>We need to output numbers 1 to 20 each on new line. Just plain text.<|end|><|start|>assistant<|channel|>final<|message|>1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20"
+        },
+        {
+          "prompt": "memory_sequential",
+          "run": 5,
+          "success": true,
+          "total_time": 0.237,
+          "prompt_tokens": 22,
+          "completion_tokens": 68,
+          "tokens_per_second": 286.4,
+          "response_length": 200,
+          "response": "<|channel|>analysis<|message|>We need to output numbers 1 to 20 each on new line. Just plain text.<|end|><|start|>assistant<|channel|>final<|message|>1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20"
+        }
+      ],
+      "stats": {
+        "success_rate": 1.0,
+        "avg_tokens_per_second": 286.53,
+        "median_tokens_per_second": 286.6,
+        "min_tokens_per_second": 286.13,
+        "max_tokens_per_second": 286.82,
+        "stdev_tokens_per_second": 0.27
+      }
+    },
+    "cache_loops": {
+      "prompt_text": "Write the word 'test' exactly 15 times separated by spaces:",
+      "description": "CPU cache efficiency with repetitive patterns",
+      "results": [
+        {
+          "prompt": "cache_loops",
+          "run": 1,
+          "success": true,
+          "total_time": 0.279,
+          "prompt_tokens": 20,
+          "completion_tokens": 80,
+          "tokens_per_second": 287.08,
+          "response_length": 272,
+          "response": "<|channel|>analysis<|message|>We need to output the word 'test' exactly 15 times separated by spaces. So \"test test test test test test test test test test test test test test test\". Count: 15. Let's count: 1 test, 2 test, 3 test, 4 test, 5 test, 6 test, 7 test, 8 test, 9"
+        },
+        {
+          "prompt": "cache_loops",
+          "run": 2,
+          "success": true,
+          "total_time": 0.279,
+          "prompt_tokens": 20,
+          "completion_tokens": 80,
+          "tokens_per_second": 286.55,
+          "response_length": 291,
+          "response": "<|channel|>analysis<|message|>We need to output the word 'test' exactly 15 times separated by spaces. So we need to produce a string: \"test test test test test test test test test test test test test test test\". Count: 15 times. Let's count: 1 test, 2 test, 3 test, 4 test, 5 test, 6 test, 7"
+        },
+        {
+          "prompt": "cache_loops",
+          "run": 3,
+          "success": true,
+          "total_time": 0.279,
+          "prompt_tokens": 20,
+          "completion_tokens": 80,
+          "tokens_per_second": 286.55,
+          "response_length": 272,
+          "response": "<|channel|>analysis<|message|>We need to output the word 'test' exactly 15 times separated by spaces. So \"test test test test test test test test test test test test test test test\". Count: 15. Let's count: 1 test, 2 test, 3 test, 4 test, 5 test, 6 test, 7 test, 8 test, 9"
+        },
+        {
+          "prompt": "cache_loops",
+          "run": 4,
+          "success": true,
+          "total_time": 0.279,
+          "prompt_tokens": 20,
+          "completion_tokens": 80,
+          "tokens_per_second": 286.67,
+          "response_length": 272,
+          "response": "<|channel|>analysis<|message|>We need to output the word 'test' exactly 15 times separated by spaces. So \"test test test test test test test test test test test test test test test\". Count: 15. Let's count: 1 test, 2 test, 3 test, 4 test, 5 test, 6 test, 7 test, 8 test, 9"
+        },
+        {
+          "prompt": "cache_loops",
+          "run": 5,
+          "success": true,
+          "total_time": 0.279,
+          "prompt_tokens": 20,
+          "completion_tokens": 80,
+          "tokens_per_second": 286.79,
+          "response_length": 272,
+          "response": "<|channel|>analysis<|message|>We need to output the word 'test' exactly 15 times separated by spaces. So \"test test test test test test test test test test test test test test test\". Count: 15. Let's count: 1 test, 2 test, 3 test, 4 test, 5 test, 6 test, 7 test, 8 test, 9"
+        }
+      ],
+      "stats": {
+        "success_rate": 1.0,
+        "avg_tokens_per_second": 286.73,
+        "median_tokens_per_second": 286.67,
+        "min_tokens_per_second": 286.55,
+        "max_tokens_per_second": 287.08,
+        "stdev_tokens_per_second": 0.22
+      }
+    },
+    "compute_arithmetic": {
+      "prompt_text": "Calculate: 2+2=, 5+5=, 10+10=, 20+20=, 50+50=",
+      "description": "Basic compute operations",
+      "results": [
+        {
+          "prompt": "compute_arithmetic",
+          "run": 1,
+          "success": true,
+          "total_time": 0.175,
+          "prompt_tokens": 37,
+          "completion_tokens": 50,
+          "tokens_per_second": 285.19,
+          "response_length": 140,
+          "response": "<|channel|>analysis<|message|>We need to answer the question: \"Calculate: 2+2=, 5+5=, 10+10=, 20+20=, 50+50=\".\n\nWe need to provide the sums."
+        },
+        {
+          "prompt": "compute_arithmetic",
+          "run": 2,
+          "success": true,
+          "total_time": 0.175,
+          "prompt_tokens": 37,
+          "completion_tokens": 50,
+          "tokens_per_second": 284.97,
+          "response_length": 140,
+          "response": "<|channel|>analysis<|message|>We need to answer the question: \"Calculate: 2+2=, 5+5=, 10+10=, 20+20=, 50+50=\".\n\nWe need to provide the sums."
+        },
+        {
+          "prompt": "compute_arithmetic",
+          "run": 3,
+          "success": true,
+          "total_time": 0.176,
+          "prompt_tokens": 37,
+          "completion_tokens": 50,
+          "tokens_per_second": 284.73,
+          "response_length": 149,
+          "response": "<|channel|>analysis<|message|>We need to answer the question: \"Calculate: 2+2=, 5+5=, 10+10=, 20+20=, 50+50=\".\n\nThis is straightforward arithmetic: 2"
+        },
+        {
+          "prompt": "compute_arithmetic",
+          "run": 4,
+          "success": true,
+          "total_time": 0.176,
+          "prompt_tokens": 37,
+          "completion_tokens": 50,
+          "tokens_per_second": 284.28,
+          "response_length": 149,
+          "response": "<|channel|>analysis<|message|>We need to answer the question: \"Calculate: 2+2=, 5+5=, 10+10=, 20+20=, 50+50=\".\n\nThis is straightforward arithmetic: 2"
+        },
+        {
+          "prompt": "compute_arithmetic",
+          "run": 5,
+          "success": true,
+          "total_time": 0.175,
+          "prompt_tokens": 37,
+          "completion_tokens": 50,
+          "tokens_per_second": 285.94,
+          "response_length": 140,
+          "response": "<|channel|>analysis<|message|>We need to answer the question: \"Calculate: 2+2=, 5+5=, 10+10=, 20+20=, 50+50=\".\n\nWe need to provide the sums."
+        }
+      ],
+      "stats": {
+        "success_rate": 1.0,
+        "avg_tokens_per_second": 285.02,
+        "median_tokens_per_second": 284.97,
+        "min_tokens_per_second": 284.28,
+        "max_tokens_per_second": 285.94,
+        "stdev_tokens_per_second": 0.61
+      }
+    },
+    "memory_structured": {
+      "prompt_text": "Create a JSON object with three fields: name (string), age (number), active (boolean). Use simple values:",
+      "description": "Structured data generation for memory allocation",
+      "results": [
+        {
+          "prompt": "memory_structured",
+          "run": 1,
+          "success": true,
+          "total_time": 0.289,
+          "prompt_tokens": 30,
+          "completion_tokens": 83,
+          "tokens_per_second": 286.98,
+          "response_length": 337,
+          "response": "<|channel|>analysis<|message|>We need to produce a JSON object with three fields: name (string), age (number), active (boolean). Use simple values. So something like {\"name\":\"Alice\",\"age\":30,\"active\":true}. Provide JSON.<|end|><|start|>assistant<|channel|>final<|message|>```json\n{\n  \"name\": \"Alice\",\n  \"age\": 30,\n  \"active\": true\n}\n```\n"
+        },
+        {
+          "prompt": "memory_structured",
+          "run": 2,
+          "success": true,
+          "total_time": 0.29,
+          "prompt_tokens": 30,
+          "completion_tokens": 83,
+          "tokens_per_second": 286.3,
+          "response_length": 337,
+          "response": "<|channel|>analysis<|message|>We need to produce a JSON object with three fields: name (string), age (number), active (boolean). Use simple values. So something like {\"name\":\"Alice\",\"age\":30,\"active\":true}. Provide JSON.<|end|><|start|>assistant<|channel|>final<|message|>```json\n{\n  \"name\": \"Alice\",\n  \"age\": 30,\n  \"active\": true\n}\n```\n"
+        },
+        {
+          "prompt": "memory_structured",
+          "run": 3,
+          "success": true,
+          "total_time": 0.29,
+          "prompt_tokens": 30,
+          "completion_tokens": 83,
+          "tokens_per_second": 286.36,
+          "response_length": 337,
+          "response": "<|channel|>analysis<|message|>We need to produce a JSON object with three fields: name (string), age (number), active (boolean). Use simple values. So something like {\"name\":\"Alice\",\"age\":30,\"active\":true}. Provide JSON.<|end|><|start|>assistant<|channel|>final<|message|>```json\n{\n  \"name\": \"Alice\",\n  \"age\": 30,\n  \"active\": true\n}\n```\n"
+        },
+        {
+          "prompt": "memory_structured",
+          "run": 4,
+          "success": true,
+          "total_time": 0.349,
+          "prompt_tokens": 30,
+          "completion_tokens": 100,
+          "tokens_per_second": 286.41,
+          "response_length": 424,
+          "response": "<|channel|>analysis<|message|>We need to produce a JSON object with three fields: name (string), age (number), active (boolean). Use simple values. So something like:\n\n{\n  \"name\": \"Alice\",\n  \"age\": 30,\n  \"active\": true\n}\n\nWe should output JSON. The user didn't specify formatting, but we can output a JSON object. Probably just the JSON.<|end|><|start|>assistant<|channel|>final<|message|>```json\n{\n  \"name\": \"Alice\",\n  \"age"
+        },
+        {
+          "prompt": "memory_structured",
+          "run": 5,
+          "success": true,
+          "total_time": 0.348,
+          "prompt_tokens": 30,
+          "completion_tokens": 100,
+          "tokens_per_second": 287.05,
+          "response_length": 392,
+          "response": "<|channel|>analysis<|message|>We need to produce a JSON object with three fields: name (string), age (number), active (boolean). Use simple values. So something like:\n\n{\n  \"name\": \"Alice\",\n  \"age\": 30,\n  \"active\": true\n}\n\nWe need to output JSON. Probably just the JSON object.<|end|><|start|>assistant<|channel|>final<|message|>```json\n{\n  \"name\": \"Alice\",\n  \"age\": 30,\n  \"active\": true\n}\n```"
+        }
+      ],
+      "stats": {
+        "success_rate": 1.0,
+        "avg_tokens_per_second": 286.62,
+        "median_tokens_per_second": 286.41,
+        "min_tokens_per_second": 286.3,
+        "max_tokens_per_second": 287.05,
+        "stdev_tokens_per_second": 0.36
+      }
+    },
+    "throughput_sustained": {
+      "prompt_text": "List 10 common programming languages, one per line:",
+      "description": "Sustained generation for throughput testing",
+      "results": [
+        {
+          "prompt": "throughput_sustained",
+          "run": 1,
+          "success": true,
+          "total_time": 0.314,
+          "prompt_tokens": 17,
+          "completion_tokens": 90,
+          "tokens_per_second": 286.52,
+          "response_length": 382,
+          "response": "<|channel|>analysis<|message|>We need to list 10 common programming languages, one per line. Just list them. Probably something like Python, Java, C++, JavaScript, C#, Ruby, Go, PHP, Swift, Kotlin. Or maybe others. Just list 10. Ensure each on separate line.<|end|><|start|>assistant<|channel|>final<|message|>Python  \nJava  \nC++  \nJavaScript  \nC#  \nRuby  \nGo  \nPHP  \nSwift  \nKotlin"
+        },
+        {
+          "prompt": "throughput_sustained",
+          "run": 2,
+          "success": true,
+          "total_time": 0.313,
+          "prompt_tokens": 17,
+          "completion_tokens": 90,
+          "tokens_per_second": 287.09,
+          "response_length": 382,
+          "response": "<|channel|>analysis<|message|>We need to list 10 common programming languages, one per line. Just list them. Probably something like Python, Java, C++, JavaScript, C#, Ruby, Go, Swift, Kotlin, PHP. Or maybe others. Just list 10. Ensure each on separate line.<|end|><|start|>assistant<|channel|>final<|message|>Python  \nJava  \nC++  \nJavaScript  \nC#  \nRuby  \nGo  \nSwift  \nKotlin  \nPHP"
+        },
+        {
+          "prompt": "throughput_sustained",
+          "run": 3,
+          "success": true,
+          "total_time": 0.314,
+          "prompt_tokens": 17,
+          "completion_tokens": 90,
+          "tokens_per_second": 286.84,
+          "response_length": 382,
+          "response": "<|channel|>analysis<|message|>We need to list 10 common programming languages, one per line. Just list them. Probably languages like Python, Java, C++, JavaScript, C#, Ruby, Go, PHP, Swift, Kotlin. Or maybe others. Just list 10. Ensure each on separate line.<|end|><|start|>assistant<|channel|>final<|message|>Python  \nJava  \nC++  \nJavaScript  \nC#  \nRuby  \nGo  \nPHP  \nSwift  \nKotlin"
+        },
+        {
+          "prompt": "throughput_sustained",
+          "run": 4,
+          "success": true,
+          "total_time": 0.314,
+          "prompt_tokens": 17,
+          "completion_tokens": 90,
+          "tokens_per_second": 287.07,
+          "response_length": 382,
+          "response": "<|channel|>analysis<|message|>We need to list 10 common programming languages, one per line. Just list them. Probably something like Python, Java, C++, JavaScript, C#, Ruby, Go, Swift, PHP, Kotlin. Or maybe others. Just list 10. Ensure each on separate line.<|end|><|start|>assistant<|channel|>final<|message|>Python  \nJava  \nC++  \nJavaScript  \nC#  \nRuby  \nGo  \nSwift  \nPHP  \nKotlin"
+        },
+        {
+          "prompt": "throughput_sustained",
+          "run": 5,
+          "success": true,
+          "total_time": 0.28,
+          "prompt_tokens": 17,
+          "completion_tokens": 80,
+          "tokens_per_second": 286.09,
+          "response_length": 341,
+          "response": "<|channel|>analysis<|message|>We need to list 10 common programming languages, one per line. Just list them. Probably like Python, Java, C++, JavaScript, C#, Ruby, Go, PHP, Swift, Kotlin. Ensure each on separate line.<|end|><|start|>assistant<|channel|>final<|message|>Python  \nJava  \nC++  \nJavaScript  \nC#  \nRuby  \nGo  \nPHP  \nSwift  \nKotlin"
+        }
+      ],
+      "stats": {
+        "success_rate": 1.0,
+        "avg_tokens_per_second": 286.72,
+        "median_tokens_per_second": 286.84,
+        "min_tokens_per_second": 286.09,
+        "max_tokens_per_second": 287.09,
+        "stdev_tokens_per_second": 0.42
+      }
+    },
+    "memory_bandwidth": {
+      "prompt_text": "Generate a comma-separated list of the first 30 even numbers:",
+      "description": "Large memory bandwidth test",
+      "results": [
+        {
+          "prompt": "memory_bandwidth",
+          "run": 1,
+          "success": true,
+          "total_time": 0.693,
+          "prompt_tokens": 19,
+          "completion_tokens": 200,
+          "tokens_per_second": 288.53,
+          "response_length": 518,
+          "response": "<|channel|>analysis<|message|>We need to produce a comma-separated list of the first 30 even numbers. The first 30 even numbers are: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60. So we need to output them separated by commas. The user says \"Generate a comma-separated list of the first 30 even numbers\". So we should output them as a single line, separated by commas. Probably no trailing comma. So answer: \"2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, "
+        },
+        {
+          "prompt": "memory_bandwidth",
+          "run": 2,
+          "success": true,
+          "total_time": 0.631,
+          "prompt_tokens": 19,
+          "completion_tokens": 182,
+          "tokens_per_second": 288.35,
+          "response_length": 452,
+          "response": "<|channel|>analysis<|message|>We need to produce a comma-separated list of the first 30 even numbers. Even numbers start from 2, then 4, 6, ... up to 60. So list: 2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60. Ensure comma separated, no trailing comma. Provide as plain text.<|end|><|start|>assistant<|channel|>final<|message|>2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60"
+        },
+        {
+          "prompt": "memory_bandwidth",
+          "run": 3,
+          "success": true,
+          "total_time": 0.629,
+          "prompt_tokens": 19,
+          "completion_tokens": 181,
+          "tokens_per_second": 287.86,
+          "response_length": 448,
+          "response": "<|channel|>analysis<|message|>We need to produce a comma-separated list of the first 30 even numbers. Even numbers start from 2, then 4, 6, ... up to 60. So list: 2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60. Ensure comma separated, no trailing comma. Provide as answer.<|end|><|start|>assistant<|channel|>final<|message|>2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60"
+        },
+        {
+          "prompt": "memory_bandwidth",
+          "run": 4,
+          "success": true,
+          "total_time": 0.693,
+          "prompt_tokens": 19,
+          "completion_tokens": 200,
+          "tokens_per_second": 288.62,
+          "response_length": 545,
+          "response": "<|channel|>analysis<|message|>We need to produce a comma-separated list of the first 30 even numbers. The first 30 even numbers are: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60. So we need to output them separated by commas. The user says \"Generate a comma-separated list of the first 30 even numbers:\" So we should output the list. Probably no extra text. Just the list. Let's do that.<|end|><|start|>assistant<|channel|>final<|message|>2, 4, 6, 8, 10, 12, 14, 16, 18, 20, "
+        },
+        {
+          "prompt": "memory_bandwidth",
+          "run": 5,
+          "success": true,
+          "total_time": 0.629,
+          "prompt_tokens": 19,
+          "completion_tokens": 181,
+          "tokens_per_second": 287.83,
+          "response_length": 448,
+          "response": "<|channel|>analysis<|message|>We need to produce a comma-separated list of the first 30 even numbers. Even numbers start from 2, then 4, 6, ... up to 60. So list: 2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60. Ensure comma separated, no trailing comma. Provide as answer.<|end|><|start|>assistant<|channel|>final<|message|>2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60"
+        }
+      ],
+      "stats": {
+        "success_rate": 1.0,
+        "avg_tokens_per_second": 288.24,
+        "median_tokens_per_second": 288.35,
+        "min_tokens_per_second": 287.83,
+        "max_tokens_per_second": 288.62,
+        "stdev_tokens_per_second": 0.37
+      }
+    }
+  },
+  "summary": {
+    "overall_avg_tokens_per_second": 286.64,
+    "overall_median_tokens_per_second": 286.67,
+    "overall_min_tokens_per_second": 285.02,
+    "overall_max_tokens_per_second": 288.24,
+    "gpu_runtime": {
+      "gpu_utilization_percent": 95.0,
+      "vram_used_mb": 14043.0,
+      "vram_total_mb": 32607.0,
+      "temperature_c": 47.0,
+      "power_draw_w": 438.7
+    }
+  }
+}
