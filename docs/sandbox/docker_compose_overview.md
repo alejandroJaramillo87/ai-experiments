@@ -1,6 +1,6 @@
 # Docker Compose Security Orchestration
 
-Comprehensive explanation of the multi-service AI inference orchestration implemented in docker-compose.yaml, detailing security sandboxing, resource isolation, and defense-in-depth strategies for the AMD Ryzen 9950X + RTX 5090 AI workstation.
+Comprehensive explanation of the multi-service AI inference orchestration implemented in docker-compose.yaml, detailing security sandboxing, resource isolation, and defense-in-depth strategies for the AMD Ryzen 9950X + RTX 5090 AI experiments.
 
 > Note: This document explains the actual implementation in `docker-compose.yaml`. The configuration orchestrates multiple containerized AI services with comprehensive security controls, resource constraints, and network isolation.
 
