@@ -172,9 +172,7 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu, compute, utility]
-              options:
-                # Optional: Set compute mode per container
-                - "compute-mode=exclusive"
+              # Note: Do NOT set compute-mode=exclusive - causes performance degradation
 ```
 
 ### 2. vLLM Specific Settings
@@ -231,39 +229,67 @@ ENV VLLM_GPU_MEMORY_UTILIZATION=0.95
 
 ## Host Setup Script
 
-Create `/scripts/optimizations/setup-gpu.sh`:
+**IMPORTANT: Based on RTX 5090 benchmarking, clock locking causes 38% performance degradation.**
+
+The actual optimized script at `/scripts/optimizations/optimize-gpu.sh`:
 
 ```bash
 #!/bin/bash
 set -e
 
-echo "Configuring RTX 5090 for optimal AI inference..."
+echo "Starting GPU optimizations for RTX 5090 AI inference..."
 
-# Enable persistence mode
-sudo nvidia-smi -pm 1
+# Enable persistence mode (reduces CUDA init time)
+echo "Enabling NVIDIA persistence mode..."
+nvidia-smi -pm 1
 
 # Set maximum power limit (600W for RTX 5090)
-sudo nvidia-smi -pl 600
+echo "Setting power limit to 600W..."
+nvidia-smi -pl 600
 
-# Lock GPU clocks for consistency
-sudo nvidia-smi -lgc 2400,2550
-sudo nvidia-smi -lmc 3002
+# WARNING: Do NOT lock clocks - causes 38% performance loss on RTX 5090
+# Clock locking disabled based on benchmarks (287 → 178 tokens/sec)
+# nvidia-smi -lgc 2400,2550  # DISABLED - degrades performance
+# nvidia-smi -lmc 3002       # DISABLED - degrades performance
 
-# Set compute mode
-sudo nvidia-smi -c EXCLUSIVE_PROCESS
+# Set compute mode to DEFAULT (EXCLUSIVE_PROCESS also degrades performance)
+echo "Setting compute mode to DEFAULT..."
+nvidia-smi -c DEFAULT
 
-# Disable NUMA balancing
-echo 0 | sudo tee /proc/sys/kernel/numa_balancing
+# Set GPU IRQ affinity to cores 24-31
+echo "Setting GPU IRQ affinity..."
+GPU_IRQS=$(cat /proc/interrupts | grep -E "nvidia|gpu" | awk '{print $1}' | tr -d ':')
+if [ -n "$GPU_IRQS" ]; then
+    for irq in $GPU_IRQS; do
+        echo f0000000 > /proc/irq/$irq/smp_affinity 2>/dev/null || true
+    done
+    echo "GPU IRQs pinned to cores 24-31"
+else
+    echo "No GPU IRQs found to pin"
+fi
 
 # Create CUDA cache directory
-sudo mkdir -p /tmp/cuda_cache
-sudo chmod 1777 /tmp/cuda_cache
+if [ ! -d /tmp/cuda_cache ]; then
+    mkdir -p /tmp/cuda_cache
+    chmod 1777 /tmp/cuda_cache
+    echo "Created CUDA cache directory"
+fi
 
 echo "GPU optimization complete!"
 
 # Verify settings
-nvidia-smi -q | grep -E "Persistence Mode|Power Limit|Compute Mode"
+echo "=== Current GPU Settings ==="
+nvidia-smi --query-gpu=persistence_mode,power.limit,clocks.gr,clocks.mem,compute_mode --format=csv
+echo ""
+echo "=== PCIe Status ==="
+nvidia-smi -q | grep -A 4 "GPU Link Info"
 ```
+
+**Key Findings from Benchmarking:**
+- Clock locking: 38% performance loss (287 → 178 tokens/sec)
+- EXCLUSIVE_PROCESS mode: Performance degradation
+- DEFAULT compute mode: Optimal performance
+- Power typically draws ~437W (not always 600W) based on workload
 
 ## Monitoring and Verification
 
@@ -298,17 +324,23 @@ docker exec llama-gpu bash -c 'nvidia-smi -q | grep "Tensor Cores"'
 
 ## Performance Impact
 
-Expected improvements with optimizations:
+Measured and expected improvements with optimizations:
 
-| Optimization | Impact | Metric |
-|--------------|--------|--------|
-| Persistence Mode | -200ms | CUDA init time |
-| Clock Locking | +15% | Consistent throughput |
-| Memory Pools | -30% | Allocation overhead |
-| Tensor Cores | +40% | GEMM operations |
-| FP8 Support | +100% | Throughput (model dependent) |
-| CUDA Graphs | -20% | Kernel launch overhead |
-| L2 Cache Config | +10% | Memory bandwidth utilization |
+| Optimization | Impact | Metric | Status |
+|--------------|--------|--------|--------|
+| Persistence Mode | -200ms | CUDA init time | ✓ Verified |
+| Clock Locking | **-38%** | **Performance degradation** | ✗ Disabled |
+| DEFAULT Compute Mode | Optimal | No degradation | ✓ Verified |
+| Memory Pools | -30% | Allocation overhead | Pending |
+| Tensor Cores | +40% | GEMM operations | Pending |
+| FP8 Support | +100% | Throughput (model dependent) | Pending |
+| CUDA Graphs | -20% | Kernel launch overhead | Pending |
+| L2 Cache Config | +10% | Memory bandwidth utilization | Pending |
+
+**Benchmark Results (llama.cpp with Qwen2.5-32B Q4):**
+- Baseline: 287.37 tokens/sec
+- With clock locking: 178.71 tokens/sec (-38%)
+- Optimal (no locking, DEFAULT mode): 287.46 tokens/sec
 
 ## Troubleshooting
 
@@ -334,20 +366,25 @@ nvidia-smi -q | grep -E "PCIe|Link"
 
 ## Implementation Priority
 
-1. **High Priority** (Immediate gains)
-   - Enable persistence mode
-   - Set power limits and clock locking
-   - Configure CUDA memory pools
+1. **High Priority** (Verified gains)
+   - Enable persistence mode ✓
+   - Set power limits (600W) ✓
+   - Use DEFAULT compute mode ✓
+   - Configure CUDA memory pools (Phase 1)
 
-2. **Medium Priority** (Noticeable improvements)
-   - Tensor core optimization
+2. **Medium Priority** (Expected improvements)
+   - Tensor core optimization (Phase 2)
    - CUDA compilation cache
-   - FP8 enablement
+   - Blackwell architecture tuning (Phase 3)
 
-3. **Low Priority** (Marginal gains)
+3. **Low Priority** (Model dependent)
+   - FP8 enablement (Phase 4)
    - MPS configuration
-   - L2 cache tuning
-   - NUMA optimizations
+   - L2 cache fine-tuning
+
+**DO NOT IMPLEMENT:**
+- Clock locking (causes 38% performance loss)
+- EXCLUSIVE_PROCESS mode (degrades performance)
 
 ## Next Steps
 

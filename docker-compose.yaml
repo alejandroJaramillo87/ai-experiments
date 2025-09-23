@@ -74,11 +74,13 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [gpu, compute, utility]
     ports:
       # Exposing the GPU API port to the host for direct access/testing
       - "127.0.0.1:8004:8004"
-    read_only: true 
+    read_only: true
+    tmpfs:
+      - /tmp:size=4G,mode=1777  # CUDA cache and temp files
     volumes:
       # Mount your GGUF models from a persistent location (read-only)
       - /mnt/ai-data/models/:/app/models:ro
@@ -119,13 +121,13 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [gpu, compute, utility]
     ports:
       # Exposing the vLLM API port to the host
       - "127.0.0.1:8005:8005"
     # read_only: true
     tmpfs:
-      - /tmp:size=2G,mode=1777  # For CUDA cache and temp files
+      - /tmp:size=4G,mode=1777  # For CUDA cache and temp files
     volumes:
       # Mount your models from a persistent location (read-only)
       - /mnt/ai-data/models/:/app/models:ro
