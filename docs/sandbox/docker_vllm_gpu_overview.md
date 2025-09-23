@@ -1,8 +1,10 @@
 # AI Engineering vLLM GPU Docker Implementation
 
-Comprehensive explanation of the RTX 5090 Blackwell optimized vLLM Dockerfile for high-performance GPU-accelerated AI model inference on the AI workstation, detailing the multi-stage build process, vLLM v0.10.0 integration, and Blackwell architecture optimizations.
+Comprehensive explanation of the RTX 5090 Blackwell optimized vLLM Dockerfile for high-performance GPU-accelerated AI model inference on the AI workstation, detailing the multi-stage build process, vLLM v0.10.2 integration, and Blackwell architecture optimizations.
 
-> Note: This document explains the actual implementation in `docker/Dockerfile.vllm-gpu`. The Dockerfile uses vLLM v0.10.0 with CUDA 12.9.1, Blackwell sm_120 architecture targeting, and comprehensive GPU performance optimizations for transformer model serving.
+> **IMPORTANT STATUS**: As of September 2025, vLLM v0.10.2 does not support CUDA 13.0 due to breaking changes in the CUB library API. The Dockerfile is configured for CUDA 13.0.1 but will not build until vLLM adds support. Tracking: https://github.com/vllm-project/vllm/pull/23976
+
+> Note: This document explains the actual implementation in `docker/Dockerfile.vllm-gpu`. The Dockerfile uses vLLM v0.10.2 with CUDA 13.0.1, Blackwell sm_120 architecture targeting, and GPU performance optimizations for transformer model serving (many currently commented out pending CUDA 13 support).
 
 ## Table of Contents
 
@@ -31,13 +33,13 @@ Comprehensive explanation of the RTX 5090 Blackwell optimized vLLM Dockerfile fo
 
 ## Implementation Overview
 
-The vLLM GPU Docker implementation leverages a multi-stage build strategy specifically optimized for the RTX 5090 Blackwell architecture. The implementation utilizes vLLM v0.10.0 with CUDA 12.9.1 for maximum compatibility and performance, providing state-of-the-art transformer model serving capabilities.
+The vLLM GPU Docker implementation leverages a multi-stage build strategy specifically optimized for the RTX 5090 Blackwell architecture. The implementation utilizes vLLM v0.10.2 with CUDA 13.0.1 (pending vLLM support) for maximum compatibility and performance, providing state-of-the-art transformer model serving capabilities.
 
 **Key Implementation Features:**
 - **Multi-stage build**: Separates vLLM compilation environment from runtime deployment
-- **vLLM v0.10.0**: Latest vLLM release with Blackwell support and advanced optimizations
+- **vLLM v0.10.2**: Latest vLLM release (awaiting CUDA 13 support for Blackwell)
 - **Blackwell optimization**: sm_120 architecture targeting for RTX 5090 maximum performance
-- **CUDA 12.9.1**: Latest CUDA toolkit with comprehensive Blackwell support
+- **CUDA 13.0.1**: Latest CUDA toolkit with comprehensive Blackwell support
 - **Performance tuning**: Comprehensive vLLM engine and GPU memory optimizations
 - **Security hardening**: Non-root user execution with controlled cache management
 
@@ -47,11 +49,11 @@ The vLLM GPU Docker implementation leverages a multi-stage build strategy specif
 
 **NVIDIA CUDA Development Foundation**
 ```dockerfile
-FROM nvidia/cuda:12.9.1-devel-ubuntu24.04 AS builder
+FROM nvidia/cuda:13.0.1-devel-ubuntu24.04 AS builder
 ```
 - **Purpose**: Provides complete CUDA development environment optimized for Blackwell
 - **NGC container**: Recommended base per vLLM issue #14452 for optimal compatibility
-- **CUDA 12.9.1**: Ensures RTX 5090 Blackwell architecture support and PyTorch 2.6+ compatibility
+- **CUDA 13.0.1**: Ensures RTX 5090 Blackwell architecture support (pending vLLM compatibility)
 - **Ubuntu 24.04**: Latest LTS foundation with modern development libraries
 
 ### RTX 5090 Blackwell Configuration
@@ -111,7 +113,7 @@ ENV PATH=/usr/lib/ccache:${PATH}
 
 **vLLM Source and Build Process**
 ```dockerfile
-RUN git clone --depth 1 --branch v0.10.0 https://github.com/vllm-project/vllm.git /tmp/vllm
+RUN git clone --depth 1 --branch v0.10.2 https://github.com/vllm-project/vllm.git /tmp/vllm
 
 WORKDIR /tmp/vllm
 
@@ -130,7 +132,8 @@ RUN mkdir -p /tmp/ccache && \
 ```
 
 **vLLM Build Configuration**
-- **Specific version**: v0.10.0 tagged release for stability and Blackwell compatibility
+- **Specific version**: v0.10.2 tagged release (awaiting CUDA 13 support)
+- **Build Status**: Currently fails with "namespace 'cub' has no member 'Sum'" due to CUB library API changes in CUDA 13
 - **Shallow clone**: `--depth 1` reduces download time and build context size
 - **PyTorch integration**: `use_existing_torch.py` leverages optimized NGC container PyTorch
 - **Build isolation disabled**: `--no-build-isolation` allows custom CUDA flags and optimization
@@ -148,10 +151,10 @@ RUN mkdir -p /tmp/ccache && \
 
 **Optimized Runtime Foundation**
 ```dockerfile
-FROM nvidia/cuda:12.9.1-devel-ubuntu24.04 
+FROM nvidia/cuda:13.0.1-devel-ubuntu24.04
 ```
 - **Runtime focus**: Includes development libraries for vLLM runtime requirements
-- **Version consistency**: Matching CUDA 12.9.1 for binary compatibility
+- **Version consistency**: Matching CUDA 13.0.1 for binary compatibility
 - **vLLM requirements**: Development environment needed for vLLM Python extensions
 
 ### Runtime Dependencies
@@ -287,6 +290,16 @@ CMD ["--model", "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b", \
      "--tokenizer-mode", "auto"]
 ```
 
+## Pending Optimizations
+
+**Note**: The following GPU runtime optimizations are currently commented out in the Dockerfile pending CUDA 13 support in vLLM:
+- **Memory Pool Optimizations**: CUDA_CACHE_MAXSIZE, CUDA_ALLOCATOR_BACKEND, CUDA_MALLOC_ASYNC_POOLS
+- **Tensor Core Settings**: CUDA_TENSOR_CORES, CUBLAS_WORKSPACE_CONFIG, CUDNN_TENSOR_OPS
+- **Blackwell Architecture Settings**: CUDA_L2_PERSISTING_SIZE, CUDA_DEVICE_MAX_CONNECTIONS, CUDA_COPY_SPLIT_THRESHOLD
+- **Additional vLLM Settings**: VLLM_GPU_MEMORY_UTILIZATION=0.95, VLLM_CUDA_GRAPHS, VLLM_PREEMPTION_MODE
+
+These optimizations are expected to provide significant performance improvements once vLLM supports CUDA 13.
+
 ## vLLM Performance Optimization Strategy
 
 ### Blackwell Architecture Targeting
@@ -296,7 +309,7 @@ The implementation targets specific RTX 5090 Blackwell capabilities:
 - **sm_120 architecture**: Maximizes utilization of Blackwell streaming multiprocessors
 - **Advanced tensor operations**: Leverages fourth-generation RT cores and third-generation Tensor cores
 - **Memory bandwidth**: Optimized for 896 GB/s memory bandwidth with GDDR7
-- **24GB VRAM**: Configured for large transformer model inference with intelligent memory management
+- **32GB VRAM**: Configured for large transformer model inference with intelligent memory management
 
 **vLLM Compilation Pipeline**
 1. **Architecture targeting**: `TORCH_CUDA_ARCH_LIST="12.0"` generates Blackwell-specific PyTorch operations
@@ -320,7 +333,7 @@ The implementation targets specific RTX 5090 Blackwell capabilities:
 ### Memory Management
 
 **VRAM Optimization Strategy**
-- **GPU memory utilization**: `--gpu-memory-utilization=0.85` reserves 85% of 24GB VRAM for models
+- **GPU memory utilization**: `--gpu-memory-utilization=0.85` reserves 85% of 32GB VRAM for models
 - **Intelligent batching**: `--max-num-batched-tokens=65536` optimizes throughput for Blackwell memory hierarchy
 - **Sequence management**: `--max-num-seqs=512` balances concurrent request handling with memory efficiency
 - **Context optimization**: `--max-model-len=32768` provides large context support within memory constraints
@@ -379,8 +392,8 @@ This vLLM implementation works in conjunction with:
 - **Performance monitoring**: vLLM metrics integration for optimization analysis
 
 **Hardware Requirements**
-- **GPU**: RTX 5090 24GB (Blackwell architecture)
-- **CUDA**: Version 12.8 or higher driver support
+- **GPU**: RTX 5090 32GB (Blackwell architecture)
+- **CUDA**: Version 13.0 or higher driver support
 - **System Memory**: Sufficient for container overhead and model preprocessing
 - **Storage**: Fast storage for model loading and cache operations
 

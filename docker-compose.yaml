@@ -22,12 +22,12 @@ services:
       dockerfile: docker/llama-cpu/Dockerfile.llama-cpu
     container_name: llama-cpu # Single latency-optimized CPU inference
     restart: unless-stopped
-    cpuset: "0-12" 
+    cpuset: "0-11" 
     environment:
       - SERVER_PORT=8001
       # Model path - wrapper will transparently use huge pages for models > 1GB
       - MODEL_PATH=${LLAMA_CPU_MODEL}
-      - THREADS=12 # Match physical core count with SMT disabled
+      - THREADS=12 # 12 threads for optimal performance
       - THREADS_BATCH=12
     ports:
       # Exposing the API port to the host for direct access/testing
@@ -125,18 +125,18 @@ services:
     ports:
       # Exposing the vLLM API port to the host
       - "127.0.0.1:8005:8005"
-    # read_only: true
+    read_only: true
     tmpfs:
       - /tmp:size=4G,mode=1777  # For CUDA cache and temp files
     volumes:
       # Mount your models from a persistent location (read-only)
       - /mnt/ai-data/models/:/app/models:ro
       # Volume for logs
-      - ./logs/vllm:/app/logs:rw
+      - ./logs/vllm:/app/logs
     networks:
       - ai-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
       interval: 30s
       timeout: 10s
       retries: 5
