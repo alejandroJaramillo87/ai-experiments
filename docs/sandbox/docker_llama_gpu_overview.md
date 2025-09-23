@@ -1,8 +1,8 @@
 # AI Engineering GPU Docker Implementation
 
-Comprehensive explanation of the RTX 5090 Blackwell optimized Dockerfile for GPU-accelerated AI model inference on the AI workstation, detailing the multi-stage build process, CUDA 12.9.1 integration, and Blackwell architecture optimizations.
+Comprehensive explanation of the RTX 5090 Blackwell optimized Dockerfile for GPU-accelerated AI model inference on the AI workstation, detailing the multi-stage build process, CUDA 13.0.1 integration, and Blackwell architecture compilation.
 
-> Note: This document explains the actual implementation in `docker/Dockerfile.llama-gpu`. The Dockerfile uses CUDA 12.9.1 with Blackwell sm_120 architecture targeting and comprehensive GPU performance optimizations.
+> Note: This document explains the actual implementation in `docker/Dockerfile.llama-gpu`. The Dockerfile uses CUDA 13.0.1 with Blackwell sm_120 architecture targeting for RTX 5090 GPU acceleration.
 
 ## Table of Contents
 
@@ -31,12 +31,12 @@ Comprehensive explanation of the RTX 5090 Blackwell optimized Dockerfile for GPU
 
 ## Implementation Overview
 
-The GPU Docker implementation leverages a multi-stage build strategy specifically optimized for the RTX 5090 Blackwell architecture. The implementation utilizes CUDA 12.9.1 for maximum compatibility with the latest GPU features and provides comprehensive performance tuning for AI inference workloads.
+The GPU Docker implementation leverages a multi-stage build strategy specifically optimized for the RTX 5090 Blackwell architecture. The implementation utilizes CUDA 13.0.1 for maximum compatibility with the latest GPU features and provides AI inference capabilities.
 
 **Key Implementation Features:**
 - **Multi-stage build**: Separates CUDA development tools from runtime environment
 - **Blackwell optimization**: sm_120 architecture targeting for RTX 5090 maximum performance
-- **CUDA 12.9.1**: Latest CUDA toolkit with Blackwell support and optimizations
+- **CUDA 13.0.1**: Latest CUDA toolkit with Blackwell support
 - **CMake build system**: Modern build configuration for llama.cpp CUDA compilation
 - **Performance tuning**: Comprehensive GPU memory and compute optimizations
 - **Security hardening**: Non-root user execution with minimal runtime dependencies
@@ -47,10 +47,10 @@ The GPU Docker implementation leverages a multi-stage build strategy specificall
 
 **NVIDIA CUDA Development Foundation**
 ```dockerfile
-FROM nvidia/cuda:12.9.1-devel-ubuntu24.04 AS builder
+FROM nvidia/cuda:13.0.1-devel-ubuntu24.04 AS builder
 ```
 - **Purpose**: Provides complete CUDA development environment with compiler tools
-- **Version**: CUDA 12.9.1 ensures RTX 5090 Blackwell architecture compatibility
+- **Version**: CUDA 13.0.1 ensures RTX 5090 Blackwell architecture compatibility
 - **Base OS**: Ubuntu 24.04 LTS provides stable foundation with modern libraries
 
 ### RTX 5090 Blackwell Configuration
@@ -82,23 +82,23 @@ RUN apt-get update && \
         gcc g++ build-essential cmake git curl ca-certificates \
         libssl-dev pkg-config python3 python3-pip \
         ninja-build ccache \
-        cuda-driver-dev-12-9 \
-        cuda-cudart-dev-12-9 \
-        cuda-cupti-dev-12-9 \
-        cuda-nvml-dev-12-9 \
-        cuda-nvtx-12-9 \
-        cudnn9-cuda-12-9 \
-        libcublas-dev-12-9
+        cuda-driver-dev-13-0 \
+        cuda-cudart-dev-13-0 \
+        cuda-cupti-dev-13-0 \
+        cuda-nvml-dev-13-0 \
+        cuda-nvtx-13-0 \
+        cudnn9-cuda-13-0 \
+        libcublas-dev-13-0
 ```
 
 **CUDA Component Selection**
-- **cuda-driver-dev-12-9**: CUDA driver development headers
-- **cuda-cudart-dev-12-9**: CUDA runtime API development libraries
-- **cuda-cupti-dev-12-9**: CUDA Profiling Tools Interface for performance analysis
-- **cuda-nvml-dev-12-9**: NVIDIA Management Library for GPU monitoring
-- **cuda-nvtx-12-9**: NVIDIA Tools Extension for profiling and debugging
-- **cudnn9-cuda-12-9**: Deep Neural Network library optimized for Blackwell
-- **libcublas-dev-12-9**: CUDA Basic Linear Algebra Subroutines for matrix operations
+- **cuda-driver-dev-13-0**: CUDA driver development headers
+- **cuda-cudart-dev-13-0**: CUDA runtime API development libraries
+- **cuda-cupti-dev-13-0**: CUDA Profiling Tools Interface for performance analysis
+- **cuda-nvml-dev-13-0**: NVIDIA Management Library for GPU monitoring
+- **cuda-nvtx-13-0**: NVIDIA Tools Extension for profiling and debugging
+- **cudnn9-cuda-13-0**: Deep Neural Network library optimized for Blackwell
+- **libcublas-dev-13-0**: CUDA Basic Linear Algebra Subroutines for matrix operations
 
 ### CUDA Environment Setup
 
@@ -174,10 +174,10 @@ RUN rm -rf /tmp/llama.cpp && \
 
 **Optimized Runtime Foundation**
 ```dockerfile
-FROM nvidia/cuda:12.9.1-runtime-ubuntu24.04
+FROM nvidia/cuda:13.0.1-runtime-ubuntu24.04
 ```
 - **Runtime focus**: Minimal CUDA runtime without development overhead
-- **Version consistency**: Matching CUDA 12.9.1 for binary compatibility
+- **Version consistency**: Matching CUDA 13.0.1 for binary compatibility
 - **Size optimization**: Excludes development tools and headers
 
 ### Runtime Dependencies
@@ -188,18 +188,18 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends --allow-change-held-packages \
         ca-certificates \
         libgomp1 \
-        cudnn9-cuda-12-9 \
-        libcublas-12-9 \
-        cuda-driver-dev-12-9 \
-        cuda-cupti-12-9 \
-        cuda-nvtx-12-9
+        cudnn9-cuda-13-0 \
+        libcublas-13-0 \
+        cuda-driver-dev-13-0 \
+        cuda-cupti-13-0 \
+        cuda-nvtx-13-0
 ```
 
 **Runtime Components**
-- **cudnn9-cuda-12-9**: Deep learning primitive library runtime
-- **libcublas-12-9**: CUDA Basic Linear Algebra Subroutines runtime
-- **cuda-cupti-12-9**: Performance monitoring and profiling capabilities
-- **cuda-nvtx-12-9**: NVIDIA Tools Extension for runtime analysis
+- **cudnn9-cuda-13-0**: Deep learning primitive library runtime
+- **libcublas-13-0**: CUDA Basic Linear Algebra Subroutines runtime
+- **cuda-cupti-13-0**: Performance monitoring and profiling capabilities
+- **cuda-nvtx-13-0**: NVIDIA Tools Extension for runtime analysis
 
 ### GPU Performance Tuning
 
@@ -211,7 +211,7 @@ ENV CUDA_MODULE_LOADING=LAZY
 ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
 ENV CUDA_VISIBLE_DEVICES=0
 
-# Performance tuning for RTX 5090 (Blackwell, 24GB VRAM)
+# Performance tuning for RTX 5090 (Blackwell, 32GB VRAM)
 ENV CUDA_LAUNCH_BLOCKING=0
 ENV CUDNN_LOGINFO_DBG=0
 ENV CUDNN_LOGDEST_DBG=stderr
@@ -238,7 +238,7 @@ ENV GGML_CUDA_FORCE_SYNC=0
 ```dockerfile
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
-ENV NVIDIA_REQUIRE_CUDA="cuda>=12.8"
+ENV NVIDIA_REQUIRE_CUDA="cuda>=13.0"
 ```
 
 ### Security Configuration
@@ -298,7 +298,7 @@ The implementation targets specific RTX 5090 Blackwell capabilities:
 - **sm_120 architecture**: Maximizes utilization of Blackwell compute units
 - **Advanced tensor operations**: Leverages fourth-generation RT cores and third-generation Tensor cores
 - **Memory bandwidth**: Optimized for 896 GB/s memory bandwidth with GDDR7
-- **24GB VRAM**: Configured for large model inference with full GPU memory utilization
+- **32GB VRAM**: Configured for large model inference with full GPU memory utilization
 
 **Compiler Optimization Pipeline**
 1. **Architecture targeting**: `-arch=sm_120` generates Blackwell-specific CUDA code
@@ -309,7 +309,7 @@ The implementation targets specific RTX 5090 Blackwell capabilities:
 ### CUDA Memory Management
 
 **VRAM Optimization Strategy**
-- **24GB VRAM utilization**: Full model loading with `--n-gpu-layers=999`
+- **32GB VRAM utilization**: Full model loading with `--n-gpu-layers=999`
 - **Memory locking**: `--mlock` prevents model swapping and ensures GPU residence
 - **No memory mapping**: `--no-mmap` forces direct GPU memory allocation
 - **Batch optimization**: Asymmetric batching (2048/512) optimizes for Blackwell memory hierarchy
@@ -363,6 +363,21 @@ When deployed via docker-compose, additional security measures include:
 - **Memory constraints**: Unlimited memlock for CUDA operations with system oversight
 - **Read-only containers**: Filesystem mounted read-only except for designated cache areas
 
+## Tested But Ineffective Optimizations
+
+**Runtime Environment Variables**
+The following runtime environment variable optimizations were tested but provided no performance improvement for llama.cpp inference (baseline: ~287 tokens/sec):
+
+- **Memory Pool Optimizations**: CUDA_CACHE_MAXSIZE, CUDA_ALLOCATOR_BACKEND, CUDA_MALLOC_ASYNC_POOLS, PYTORCH_CUDA_ALLOC_CONF
+- **Tensor Core Settings**: CUDA_TENSOR_CORES, CUBLAS_WORKSPACE_CONFIG, CUDNN_TENSOR_OPS
+- **Blackwell Architecture Settings**: CUDA_L2_PERSISTING_SIZE, CUDA_DEVICE_MAX_CONNECTIONS, CUDA_COPY_SPLIT_THRESHOLD
+- **Clock Management**: CUDA_AUTO_BOOST
+
+These optimizations primarily benefit PyTorch and Python-based inference frameworks. The llama.cpp implementation is already highly optimized at compile time through CMAKE flags, making runtime environment variables largely ineffective.
+
+**Important Performance Warning**
+GPU clock locking (nvidia-smi -lgc/-lmc) causes a 38% performance degradation on RTX 5090 and should never be enabled.
+
 ## Reference Implementation
 
 **File Structure**
@@ -377,8 +392,8 @@ This GPU implementation works in conjunction with:
 - **Performance monitoring**: CUDA profiling integration for optimization analysis
 
 **Hardware Requirements**
-- **GPU**: RTX 5090 24GB (Blackwell architecture)
-- **CUDA**: Version 12.8 or higher driver support
+- **GPU**: RTX 5090 32GB (Blackwell architecture)
+- **CUDA**: Version 13.0 or higher driver support
 - **System Memory**: Sufficient for container and CUDA context overhead
 - **Storage**: Fast storage for model loading and CUDA cache operations
 

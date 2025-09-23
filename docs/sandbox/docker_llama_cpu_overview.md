@@ -121,8 +121,9 @@ RUN ln -s /opt/aocl_libs/libblis.so /opt/aocl_libs/libblas.so.3
 **Memory Mapping Wrapper Implementation**
 ```dockerfile
 # Build the hugepage mmap wrapper
-COPY docker/hugepage_mmap_wrapper.cpp /tmp/
-RUN g++-14 -shared -fPIC -O3 -Wall -o /tmp/hugepage_mmap_wrapper.so /tmp/hugepage_mmap_wrapper.cpp -ldl
+COPY docker/llama-cpu/hugepage_mmap_wrapper.cpp /tmp/
+RUN g++-14 -shared -fPIC -O3 -Wall -o /tmp/hugepage_mmap_wrapper.so /tmp/hugepage_mmap_wrapper.cpp -ldl && \
+    echo "Built hugepage_mmap_wrapper.so"
 ```
 
 **Huge Pages Problem & Solution**
@@ -147,7 +148,7 @@ The wrapper is activated via LD_PRELOAD in the entrypoint script when models are
 **CMake-Based Build Process**
 ```dockerfile
 RUN rm -rf /tmp/llama.cpp && \
-    git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
+    git clone --depth 1 https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
     cd /tmp/llama.cpp && \
     mkdir build && cd build && \
     cmake .. \
@@ -221,35 +222,48 @@ WORKDIR /app
 ```dockerfile
 COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/llama-server /app/server
 COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/* /app/
+# Copy the hugepage wrapper library
+COPY --from=builder --chown=appuser:appuser /tmp/hugepage_mmap_wrapper.so /app/
+# Copy entrypoint script
+COPY --chown=appuser:appuser docker/llama-cpu/entrypoint.sh /app/entrypoint.sh
 ```
 
 **Runtime Configuration**
 ```dockerfile
-ENV OMP_NUM_THREADS=8
+ENV OMP_NUM_THREADS=12
 ENV OMP_PROC_BIND=true
 ENV OMP_PLACES=cores
+
+# Make entrypoint executable
+USER root
+RUN chmod +x /app/entrypoint.sh
+USER appuser
+
 EXPOSE 8001
 ```
 
-**Server Launch Parameters**
+**Entrypoint Configuration**
 ```dockerfile
-CMD ["./server", \
-    "--model", "/app/models/gguf/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf", \
-    "--host", "0.0.0.0", \
-    "--port", "8001", \
-    "--n-gpu-layers", "0", \
-    "--ctx-size", "32768", \
-    "--batch-size", "2048", \
-    "--ubatch-size", "2048", \
-    "--threads", "8", \
-    "--threads-batch", "8", \
-    "--cont-batching", \
-    "--metrics", \
-    "--no-warmup", \
-    "--threads-http", "2", \
-    "--mlock" \
-]
+# Use entrypoint script for parameterized server configuration
+ENTRYPOINT ["/app/entrypoint.sh"]
 ```
+
+**Entrypoint Script Parameters**
+The entrypoint script (`entrypoint.sh`) provides parameterized configuration with the following defaults:
+- **SERVER_PORT**: 8001
+- **MODEL_PATH**: `/app/models/gguf/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf`
+- **THREADS**: 12
+- **THREADS_BATCH**: 12
+- **CTX_SIZE**: 32768
+- **BATCH_SIZE**: 2048
+- **UBATCH_SIZE**: 2048
+- **THREADS_HTTP**: 2
+
+The entrypoint script also:
+- Enables the hugepage wrapper via `LD_PRELOAD`
+- Verifies model file existence before starting
+- Reports memory status before model loading
+- Executes the server with `--cont-batching`, `--metrics`, `--no-warmup`, and `--mlock` flags
 
 ## Performance Optimization Strategy
 
@@ -278,7 +292,7 @@ The implementation targets specific AMD Zen 5 capabilities:
 ### Threading Configuration
 
 **Parallel Processing Setup**
-- **OpenMP threads**: 8 threads configured for container resource allocation
+- **OpenMP threads**: 12 threads configured for container resource allocation
 - **Core binding**: `OMP_PROC_BIND=true` ensures thread-to-core affinity
 - **NUMA awareness**: `OMP_PLACES=cores` optimizes memory access patterns
 - **HTTP threading**: 2 dedicated threads for API request handling
@@ -308,8 +322,10 @@ When deployed via docker-compose, additional security measures include:
 ## Reference Implementation
 
 **File Structure**
-- **docker/Dockerfile.llama-cpu**: Complete multi-stage Dockerfile implementation
-- **docker/aocl-linux-gcc-5.1.0_1_amd64.deb**: AMD Optimized CPU Libraries package
+- **docker/llama-cpu/Dockerfile.llama-cpu**: Complete multi-stage Dockerfile implementation
+- **docker/llama-cpu/aocl-linux-gcc-5.1.0_1_amd64.deb**: AMD Optimized CPU Libraries package
+- **docker/llama-cpu/hugepage_mmap_wrapper.cpp**: Huge page memory wrapper source code
+- **docker/llama-cpu/entrypoint.sh**: Parameterized server startup script
 - **docker-compose.yaml**: Container orchestration with security hardening
 
 **Integration with AI Workstation**

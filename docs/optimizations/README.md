@@ -15,7 +15,7 @@ These optimizations prioritize **inference latency** over throughput for chatbot
 System optimizations are organized by component:
 
 - **bios/** - BIOS firmware settings and benchmark results
-- **cpu-ram/** - Operating system and memory optimizations
+- **os/** - Operating system and memory optimizations
 - **gpu/** - GPU-specific performance tuning
 - **expirements/** - Experimental and testing configurations
 
@@ -29,7 +29,7 @@ System optimizations are organized by component:
   - Single-model optimization focus
 - **benchmark_results_*.json** - Production benchmark data showing 26% improvement
 
-### cpu-ram/
+### os/
 - **os-optimizations.md** - Host operating system optimizations for containerized workloads
   - Swap disabled
   - CPU governor (performance mode)
@@ -45,6 +45,7 @@ System optimizations are organized by component:
   - CUDA configuration and tuning
   - GPU memory management
   - Multi-GPU scaling considerations
+  - **Important**: Clock locking causes 38% performance degradation on RTX 5090
 
 ### benchmark-guide.md
 Performance benchmarking tool for optimization validation.
@@ -152,8 +153,8 @@ Validated improvements with optimizations enabled:
 ## See Also
 
 - bios/bios-optimizations.md - Detailed BIOS configuration guide
-- cpu-ram/os-optimizations.md - Operating system tuning
-- cpu-ram/hugepages-explicit.md - Memory optimization details
+- os/os-optimizations.md - Operating system tuning
+- os/hugepages-explicit.md - Memory optimization details
 - gpu/gpu-optimizations.md - GPU performance tuning
 - docker-compose.yaml - Container orchestration
 - docker/llama-cpu/Dockerfile.llama-cpu - Latency-optimized CPU container
