@@ -39,8 +39,8 @@ CMD ["--model", "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b", \
 - **Note**: Single RTX 5090 setup, no parallelism needed
 
 **`--gpu-memory-utilization`**
-- **Current**: 0.85 (85% of 32GB VRAM)
-- **Recommended**: 0.99 (99% utilization for maximum performance)
+- **Current**: 0.85 (85 percent of 32GB VRAM)
+- **Recommended**: 0.99 (99 percent utilization for maximum performance)
 - **Purpose**: Control VRAM allocation for KV cache
 - **Improvement needed**: Increase to 0.99 for better throughput
 
@@ -88,7 +88,7 @@ CMD ["--model", "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b", \
 **`--quantization`**
 - **Current**: "fp8"
 - **Purpose**: FP8 quantization for memory efficiency
-- **Benefit**: ~2x memory savings with minimal quality loss on RTX 5090
+- **Benefit**: Approximately 2x memory savings with minimal quality loss on RTX 5090
 
 **`--trust-remote-code`**
 - **Status**: Enabled
@@ -190,8 +190,8 @@ ENV CUDA_COPY_SPLIT_THRESHOLD=256
 ```
 
 ### Expected Improvements with CUDA 13
-- **Memory allocation**: 30% reduction in overhead
-- **Tensor cores**: 40% improvement in GEMM operations
+- **Memory allocation**: 30 percent reduction in overhead
+- **Tensor cores**: 40 percent improvement in GEMM operations
 - **FP8 support**: Up to 2x throughput for compatible models
 - **L2 cache**: 10% memory bandwidth improvement
 
@@ -241,4 +241,4 @@ ENV CUDA_COPY_SPLIT_THRESHOLD=256
 
 ---
 
-*vLLM parameter optimization for the RTX 5090 workstation. Focus on high-throughput concurrent request handling for API server workloads. Configuration ready for CUDA 13.0 deployment.*
+*Last Updated: 2025-09-23*

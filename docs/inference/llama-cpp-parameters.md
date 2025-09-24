@@ -70,8 +70,8 @@ BATCH_SIZE=1024 UBATCH_SIZE=1024 docker-compose up llama-gpu
 - **Trade-off**: More threads = higher throughput but potential latency variance
 
 **`--threads-http`**
-- **CPU**: 2 (minimal overhead for API handling)
-- **GPU**: 4 (can handle more HTTP load due to GPU offload)
+- **CPU**: two (minimal overhead for API handling)
+- **GPU**: four (can handle more HTTP load due to GPU offload)
 - **Purpose**: Separate HTTP processing from inference threads
 
 ### Memory Parameters
@@ -205,7 +205,7 @@ The following parameters were tested but found to **not exist** in the current l
 - **Optimal configuration** (batch 2048, ubatch 512) - 286.85 tokens/sec ✓
 - **Various batch/ubatch combinations tested** - 2048/512 performs best
 - **Environment variables** - Now easily configurable without rebuilding
-- **GPU utilization** - 95% with 15.3GB VRAM usage
+- **GPU utilization** - 95 percent with 15.3GB VRAM usage
 
 ### Metrics to Track
 - **First-token latency** (ms)
@@ -230,4 +230,4 @@ The following parameters were tested but found to **not exist** in the current l
 
 ---
 
-*llama.cpp parameter optimization for the AMD Ryzen 9950X + RTX 5090 workstation. Focus on low-latency single-request inference for interactive AI applications.*
+*Last Updated: 2025-09-23*

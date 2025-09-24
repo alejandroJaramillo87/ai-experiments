@@ -383,7 +383,7 @@ nvidia-smi -q | grep -E "PCIe|Link"
    - L2 cache fine-tuning
 
 **DO NOT IMPLEMENT:**
-- Clock locking (causes 38% performance loss)
+- Clock locking (causes 38 percent performance loss)
 - EXCLUSIVE_PROCESS mode (degrades performance)
 
 ## Next Steps
@@ -400,3 +400,7 @@ nvidia-smi -q | grep -E "PCIe|Link"
 - [CUDA Toolkit Documentation](https://docs.nvidia.com/cuda/)
 - [vLLM Performance Tuning Guide](https://docs.vllm.ai/en/latest/serving/performance.html)
 - [llama.cpp CUDA Backend](https://github.com/ggerganov/llama.cpp/blob/master/docs/backend/CUDA.md)
+
+---
+
+*Last Updated: 2025-09-23*
