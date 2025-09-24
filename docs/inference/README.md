@@ -24,16 +24,25 @@ The project implements two distinct optimization strategies based on inference e
 
 ## Current Implementation Status
 
-| Service | Engine | Port | Status | Optimization Target |
-|---------|--------|------|--------|-------------------|
-| llama-cpu | llama.cpp | 8001 | Production | Latency (CPU) |
-| llama-gpu | llama.cpp | 8004 | Production | Latency (GPU) |
-| vllm-gpu | vLLM | 8005 | Waiting CUDA 13 | Throughput (GPU) |
+| Service | Engine | Port | Status | Performance | Notes |
+|---------|--------|------|--------|-------------|-------|
+| llama-cpu | llama.cpp | 8001 | Optimized | 35.44 tok/s | Batch 2048 optimal |
+| llama-gpu | llama.cpp | 8004 | Production | TBD | Pending testing |
+| vllm-gpu | vLLM | 8005 | Waiting CUDA 13 | N/A | Not operational |
 
 ## Version Status (September 23, 2025)
 
 - **llama.cpp**: Latest release b6556 (September 23, 2025) - Current
 - **vLLM**: Latest stable v0.10.2 (September 2025) - Awaiting CUDA 13.0 support
+
+## Benchmarking Results (September 2025)
+
+### llama-cpu Service Findings
+- **Optimal batch size**: 2048 (35.44 tokens/sec)
+- **Small batch (512)**: 34.79 tokens/sec (-2% performance)
+- **Large batch (4096)**: 34.95 tokens/sec (-1.4% performance)
+- **Invalid parameters discovered**: `--kv-split`, `--cache-reuse`, `--parallel` (for server)
+- **Key insight**: Original configuration was already well-optimized
 
 ## Key Parameter Categories
 
@@ -70,9 +79,9 @@ The project implements two distinct optimization strategies based on inference e
 
 ## Documentation Structure
 
-- **llama-cpp-parameters.md** - Current and missing parameters for latency optimization
+- **llama-cpp-parameters.md** - Tested parameters and optimization findings (UPDATED)
 - **vllm-parameters.md** - Throughput optimization and CUDA 13 considerations
-- **parameter-optimization-guide.md** - Benchmarking and testing methodology
+- **parameter-optimization-guide.md** - Benchmarking methodology with actual results (UPDATED)
 
 ## Hardware Configuration
 
