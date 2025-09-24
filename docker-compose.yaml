@@ -67,6 +67,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=0
       - CUDA_VISIBLE_DEVICES=0
+      - SERVER_PORT=8004
       - MODEL_PATH=${LLAMA_GPU_MODEL}
     deploy:
       resources:

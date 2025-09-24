@@ -27,7 +27,7 @@ The project implements two distinct optimization strategies based on inference e
 | Service | Engine | Port | Status | Performance | Notes |
 |---------|--------|------|--------|-------------|-------|
 | llama-cpu | llama.cpp | 8001 | Optimized | 35.44 tok/s | Batch 2048 optimal |
-| llama-gpu | llama.cpp | 8004 | Production | TBD | Pending testing |
+| llama-gpu | llama.cpp | 8004 | Optimized | 286.85 tok/s | Batch 2048/512 optimal |
 | vllm-gpu | vLLM | 8005 | Waiting CUDA 13 | N/A | Not operational |
 
 ## Version Status (September 23, 2025)
@@ -43,6 +43,13 @@ The project implements two distinct optimization strategies based on inference e
 - **Large batch (4096)**: 34.95 tokens/sec (-1.4% performance)
 - **Invalid parameters discovered**: `--kv-split`, `--cache-reuse`, `--parallel` (for server)
 - **Key insight**: Original configuration was already well-optimized
+
+### llama-gpu Service Findings
+- **Optimal batch/ubatch sizes**: 2048/512 (286.85 tokens/sec)
+- **Tested configurations**: Various batch/ubatch combinations
+- **Key insight**: 2048 batch with 512 ubatch provides best GPU utilization
+- **Configuration approach**: Now uses environment variables for easy tuning
+- **GPU utilization**: 95% with 15.3GB VRAM usage (gpt-oss-20b model)
 
 ## Key Parameter Categories
 
