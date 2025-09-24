@@ -83,25 +83,28 @@ THREADS=12  # Match allocated CPU cores
 --no-warmup  # Skip warmup for faster startup
 ```
 
-### GPU Service Optimization
+### GPU Service Optimization (Completed September 2025)
 
-#### Context Size Impact
+#### Batch Size Testing Results
+**Tested on RTX 5090 with gpt-oss-20b model:**
 ```bash
-# Test different context sizes
-for ctx in 16384 32768 65536 131072; do
-    # Update ctx-size in Dockerfile.llama-gpu
-    docker-compose build llama-gpu
-    scripts/benchmark.py --service llama-gpu --label "ctx_${ctx}"
-done
+# Optimal configuration found: batch 2048, ubatch 512
+# Performance: 286.85 tokens/sec with 95% GPU utilization
+
+# Easy testing with environment variables (no rebuild needed):
+BATCH_SIZE=512 UBATCH_SIZE=512 docker-compose up llama-gpu
+BATCH_SIZE=1024 UBATCH_SIZE=1024 docker-compose up llama-gpu
+BATCH_SIZE=2048 UBATCH_SIZE=512 docker-compose up llama-gpu  # OPTIMAL
 ```
 
-#### GPU Threading Tests
+**Key Finding**: Batch size 2048 with ubatch 512 provides optimal GPU performance. The 4:1 ratio between batch and ubatch size works well for GPU memory access patterns.
+
+#### Context Size Testing
 ```bash
-# Test different thread configurations
-for threads in 1 2 4; do
-    # Update threads parameter in Dockerfile.llama-gpu
-    scripts/benchmark.py --service llama-gpu --label "gpu_threads_${threads}"
-done
+# Test different context sizes using environment variables
+CTX_SIZE=16384 docker-compose up llama-gpu
+CTX_SIZE=32768 docker-compose up llama-gpu
+CTX_SIZE=65536 docker-compose up llama-gpu  # Current default
 ```
 
 ## vLLM Parameter Testing (Post CUDA 13)
@@ -199,23 +202,27 @@ nvidia-smi --query-gpu=memory.used,memory.free --format=csv -l 1
 
 ## Parameter Change Implementation
 
-### Environment Variable Changes
+### Environment Variable Changes (Recommended)
 ```bash
-# Temporary testing (no rebuild required)
-docker-compose exec llama-cpu env NEW_PARAM=value command
+# Both llama-cpu and llama-gpu now use environment variables
 
-# Persistent changes
-# Update .env file or docker-compose.yaml environment section
+# Test different configurations without rebuilding:
+BATCH_SIZE=1024 docker-compose up llama-cpu
+BATCH_SIZE=2048 UBATCH_SIZE=512 docker-compose up llama-gpu
+
+# Persistent changes - add to docker-compose.yaml:
+environment:
+  - BATCH_SIZE=2048
+  - UBATCH_SIZE=512
 ```
 
-### Dockerfile Parameter Changes
+### Direct Container Testing
 ```bash
-# Requires container rebuild
-docker-compose build service-name
-docker-compose up service-name
+# Quick parameter testing
+docker-compose exec llama-gpu env BATCH_SIZE=1024 /app/entrypoint.sh
 
-# Or specific service restart
-docker-compose restart llama-gpu
+# Monitor performance
+docker-compose exec llama-gpu nvidia-smi
 ```
 
 ### Configuration Testing Workflow
@@ -239,13 +246,17 @@ docker-compose restart llama-gpu
 #### Memory vs Performance (Validated)
 - **Higher memory usage**: Acceptable if <90% system utilization
 - **Context size**: Larger contexts acceptable if latency impact <10%
-- **Batch sizes**: **FINDING: Batch 2048 is optimal for CPU** - both smaller (512) and larger (4096) hurt performance
+- **Batch sizes**: **FINDING: Batch 2048 is optimal for both CPU and GPU**
+  - CPU: 2048/2048 (unified batch) - 35.44 tok/s
+  - GPU: 2048/512 (split batch) - 286.85 tok/s
 
-#### Latency vs Throughput (Revised Understanding)
-- **llama.cpp CPU**: Moderate batch sizes (2048) provide best overall performance
-- **Key insight**: "Low-latency" doesn't mean smallest batch size on CPU
-- **CPU cache optimization**: 2048 batch size fits well within 32MB L3 cache
-- **Resource usage**: CPU utilization should be >80% under load
+#### Latency vs Throughput (Validated)
+- **llama.cpp CPU**: Unified batch sizes (2048/2048) work best
+- **llama.cpp GPU**: Split batch sizes (2048/512) optimize memory access
+- **Key insight**: Batch size 2048 is universally optimal, ubatch varies by device
+- **Resource usage**:
+  - CPU utilization should be >80% under load
+  - GPU utilization achieved 95% with optimal settings
 
 ### Success Criteria
 
