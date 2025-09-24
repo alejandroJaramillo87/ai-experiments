@@ -36,6 +36,10 @@ echo "Memory status before model load:"
 grep -E "MemTotal|MemFree|AnonHugePages|HugePages_Total|HugePages_Free|HugePages_Rsvd" /proc/meminfo | sed 's/^/  /'
 
 # Execute the server with all parameters
+# Configuration validated through benchmarking (September 2025):
+# - Batch size 2048 is optimal (tested 512, 2048, 4096)
+# - --cont-batching improves request handling
+# - --mlock prevents swapping for consistent performance
 exec ./server \
     --model "$MODEL_PATH" \
     --host "$SERVER_HOST" \
