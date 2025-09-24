@@ -8,7 +8,7 @@
 
 A novel LD_PRELOAD wrapper to accelerate llama.cpp's quantized inference using AMD Zen 5's AVX-512 VNNI (Vector Neural Network Instructions). This wrapper intercepts BLAS operations and rewrites them to use native INT8 computation, potentially achieving 2-4x speedup for quantized models.
 
-**Expected Impact**: 2-4x speedup for INT8/INT4 quantized models
+**Expected Impact**: 2-4 times speedup for INT8/INT4 quantized models
 **Engineering Effort**: 2-3 weeks
 **Risk Level**: High
 **Innovation Level**: First implementation for llama.cpp on Zen 5
@@ -39,7 +39,7 @@ Current approach requires:
 - FP32 multiplication (4 cycles)  
 - FP32 accumulation (3 cycles)
 
-Theoretical speedup: 10-12 cycles → 2-3 cycles
+Theoretical speedup: 10-12 cycles to 2-3 cycles
 
 ## Architecture Design
 
@@ -231,8 +231,8 @@ ENABLE_VNNI=true time ./server --model q8_0_model.gguf --prompt "..." --n-predic
 ## Success Criteria
 
 1. **Functional**: Bit-exact results with original implementation
-2. **Performance**: Minimum 2x speedup for Q8_0 models
-3. **Stability**: No crashes or memory leaks after 24h testing
+2. **Performance**: Minimum 2 times speedup for Q8_0 models
+3. **Stability**: No crashes or memory leaks after 24 hour testing
 4. **Compatibility**: Works with all common quantization formats
 
 ## Open Questions
@@ -258,3 +258,5 @@ ENABLE_VNNI=true time ./server --model q8_0_model.gguf --prompt "..." --n-predic
 ---
 
 **Note**: This is experimental research. Results may vary significantly from projections. The complexity of implementation may reveal unforeseen challenges.
+
+*Last Updated: 2025-09-23*

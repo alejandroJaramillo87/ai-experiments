@@ -4,7 +4,7 @@ Comprehensive BIOS optimization guide for the AMD Ryzen 9950X + RTX 5090 AI engi
 
 This documentation provides detailed BIOS/UEFI firmware configuration settings specifically tuned for single-model LLM inference with an emphasis on first-token latency and consistent token generation timing on the Gigabyte X870E Aorus Elite WiFi motherboard platform.
 
-> Note: These optimizations build upon the foundational BIOS configuration in `docs/bios/README.md` and provide advanced performance tuning for AI workloads. Review base configuration requirements before implementing these performance optimizations.
+**Note**: These optimizations build upon the foundational BIOS configuration in `docs/bios/README.md` and provide advanced performance tuning for AI workloads. Review base configuration requirements before implementing these performance optimizations.
 
 ## Table of Contents
 
@@ -28,14 +28,14 @@ CPU-based LLM inference presents a fundamental choice between optimizing for:
 - **Throughput**: Processing many requests simultaneously (batch processing, API servers)
 - **Latency**: Minimizing response time for individual requests (chatbots, interactive assistants)
 
-This guide optimizes for **latency**, with validated benchmarks showing 26% performance improvement for interactive workloads.
+This guide optimizes for **latency**, with validated benchmarks showing 26 percent performance improvement for interactive workloads.
 
 **Key Optimization Features:**
 - **12-Core Dedication**: Allocates 12 cores to single LLM instance (cores 0-11)
 - **Memory Performance**: Advanced DDR5-6000 optimization for model parameter access
 - **Power Management**: Disable power-saving features that introduce latency variance
 - **Single-Model Focus**: All optimizations target one high-performance model instance
-- **FCLK Optimization**: 2100MHz interconnect for maximum bandwidth
+- **FCLK Optimization**: 2100 MHz interconnect for maximum bandwidth
 
 **Hardware Configuration:**
 - **Motherboard**: Gigabyte X870E Aorus Elite WiFi (AMD X870E chipset)
@@ -51,12 +51,12 @@ This guide optimizes for **latency**, with validated benchmarks showing 26% perf
 
 ## Production-Validated Configuration
 
-The following settings have been validated in production with a **26.2% performance improvement**:
+The following settings have been validated in production with a **26.2 percent performance improvement**:
 
 ### Validated CPU Settings
 - **PBO Limits**: Motherboard
 - **PBO Scalar**: 1X
-- **CPU Boost Clock Override**: +200MHz (maximum recommended)
+- **CPU Boost Clock Override**: 200 MHz increase (maximum recommended)
 - **Curve Optimizer**: -15 (conservative, stable)
 - **Curve Shaper**:
   - Med Frequency - Med Temperature: -20
@@ -70,7 +70,7 @@ The following settings have been validated in production with a **26.2% performa
 ### Validated Memory Settings
 - **XMP/EXPO High Bandwidth Support**: Enabled
 - **Core Tuning Config**: Auto
-- **Infinity Fabric Frequency**: 2100MHz (critical for performance)
+- **Infinity Fabric Frequency**: 2100 MHz (critical for performance)
 - **UCLK DIV1 MODE**: UCLK=MEMCLK
 - **Power Down Enable**: Disabled
 - **Memory Context Restore**: Disabled (more aggressive than Auto)
@@ -79,8 +79,8 @@ The following settings have been validated in production with a **26.2% performa
 ### Benchmark Validation Results
 - **Before optimizations**: 28.09 tokens/second average
 - **After optimizations**: 35.44 tokens/second average
-- **Performance gain**: +26.2%
-- **Consistency improvement**: 59% reduction in standard deviation
+- **Performance gain**: 26.2 percent increase
+- **Consistency improvement**: 59 percent reduction in standard deviation
 
 ## BIOS Performance Optimizations
 
@@ -111,10 +111,10 @@ Advanced CPU configuration for optimal AI inference performance, maximizing proc
   - **Benefit**: Eliminates power-related latency variations
   - **Impact**: Maintains peak performance for single-model inference
 
-- **CPU Boost Clock Override**: `+100MHz to +200MHz`
+- **CPU Boost Clock Override**: `100 to 200 MHz increase`
   - **Purpose**: Extends maximum boost frequency ceiling for token generation
   - **Benefit**: Higher peak performance for single-threaded operations
-  - **Configuration**: Start with +100MHz, test stability before +200MHz
+  - **Configuration**: Start with 100 MHz increase, test stability before 200 MHz increase
   - **Safety**: CPU's internal FIT monitoring prevents dangerous voltages
 
 - **Curve Optimizer**: `Negative -15 to -25` ⚠️ **PERFORMANCE CRITICAL**
@@ -126,7 +126,7 @@ Advanced CPU configuration for optimal AI inference performance, maximizing proc
     - **Maximum**: `-20 to -25` (potential for additional gains with extensive testing)
     - **Method**: Start conservative, increase incrementally, validate with CoreCycler
   - **Benefit**: Reduces power consumption (P∝V²), creates headroom for higher sustained frequencies
-  - **Impact**: Validated 26% improvement with conservative -15 setting
+  - **Impact**: Validated 26 percent improvement with conservative -15 setting
 
 - **Curve Shaper**: `Frequency-Specific Optimization` (Zen 5 Feature)
   - **Purpose**: Granular voltage control for different frequency bands
@@ -146,7 +146,7 @@ Advanced CPU configuration for optimal AI inference performance, maximizing proc
 
 **Latency Optimization Benefits:**
 - **Optimized Cache Access**: Enhanced cache utilization patterns
-- **Reduced First-Token Latency**: 26% validated improvement in tokens/second
+- **Reduced First-Token Latency**: 26 percent validated improvement in tokens/second
 - **Consistent Token Timing**: Reduced variance provides predictable generation
 - **Single-Model Performance**: 12 cores dedicated to one LLM for maximum speed
 
@@ -167,13 +167,13 @@ Enhanced memory configuration building upon EXPO profile activation to maximize 
   - **Benefit**: Optimal balance of bandwidth and latency for Zen 5
   - **Configuration**: Enable highest stable EXPO profile for DDR5-6000 kit
 
-- **Infinity Fabric Clock (FCLK)**: `2100MHz` ⚠️ **BANDWIDTH CRITICAL**
+- **Infinity Fabric Clock (FCLK)**: `2100 MHz` **BANDWIDTH CRITICAL**
   - **Purpose**: Eliminates interconnect bottleneck for 12-core AI workload
   - **Configuration**:
-    - **FCLK**: `2100MHz` (up from 1800MHz default)
+    - **FCLK**: `2100 MHz` (up from 1800 MHz default)
     - **Ratio**: Maintain 1:1:1 with UCLK/MCLK where possible
     - **AI Cache Boost**: `Enabled` (ASUS boards - automates FCLK optimization)
-  - **Benefit**: Research shows 15% performance uplift in LLM workloads
+  - **Benefit**: Research shows 15 percent performance uplift in LLM workloads
   - **Validation**: Monitor stability, may require SoC voltage adjustment
 
 - **Memory Timing Optimization**: `Enhanced Beyond EXPO`
@@ -194,7 +194,7 @@ Enhanced memory configuration building upon EXPO profile activation to maximize 
   - **Benefit**: Disabled setting provides slightly better performance when stable
 
 **Memory Architecture Optimization:**
-- **Bandwidth Maximization**: FCLK 2100MHz feeds 12 cores without bottleneck
+- **Bandwidth Maximization**: FCLK 2100 MHz feeds 12 cores without bottleneck
 - **Latency Minimization**: Tighter sub-timings reduce parameter access delays
 - **Synchronous Operation**: 1:1:1 ratio prevents async penalty
 - **Cache Efficiency**: Optimized FCLK improves cache hit rates
@@ -378,16 +378,18 @@ Rigorous testing protocol for stability validation:
 ### Production Validation Notes
 
 **Key Findings from Production Testing:**
-1. **Conservative settings work**: Curve Optimizer at -15 achieved excellent 26% gains
-2. **FCLK 2100MHz stable**: No SoC voltage adjustment required on test system
+1. **Conservative settings work**: Curve Optimizer at -15 achieved excellent 26 percent gains
+2. **FCLK 2100 MHz stable**: No SoC voltage adjustment required on test system
 3. **Memory Context Restore disabled**: More aggressive than Auto, but stable
 4. **Consistency matters**: Reduced variance is as valuable as raw performance
 
 **Potential for Further Optimization:**
 - After extended stability testing, Curve Optimizer could be pushed to -20
 - Curve Shaper Medium Frequency could potentially reach -30
-- These adjustments may yield additional 3-5% improvement
+- These adjustments may yield additional 3-5 percent improvement
 
 ---
 
-*This hardware optimization guide minimizes inference latency on the AMD Ryzen 9950X + RTX 5090 AI engineering workstation. Validated Zen 5 optimizations including Curve Optimizer (-15), Curve Shaper, and FCLK 2100MHz achieved 26.2% performance improvement in production testing. Settings prioritize stability and consistency for interactive chatbot applications.*
+*This hardware optimization guide minimizes inference latency on the AMD Ryzen 9950X + RTX 5090 AI engineering workstation. Validated Zen 5 optimizations including Curve Optimizer (-15), Curve Shaper, and FCLK 2100 MHz achieved 26.2 percent performance improvement in production testing. Settings prioritize stability and consistency for interactive chatbot applications.*
+
+*Last Updated: 2025-09-23*

@@ -4,7 +4,7 @@ Comprehensive hardware specification and configuration guide for the AMD Ryzen 9
 
 This documentation provides detailed component analysis, installation guidance, and optimization strategies for sustained AI development workloads, including large language model inference, computer vision processing, and multi-container AI deployment scenarios.
 
-> Note: This build serves as a reference implementation for high-performance AI engineering workstations. Component selections prioritize AI workload performance, system stability, and thermal efficiency. Adapt specifications based on your specific requirements, budget, and regional availability.
+**Note**: This build serves as a reference implementation for high-performance AI engineering workstations. Component selections prioritize AI workload performance, system stability, and thermal efficiency. Adapt specifications based on your specific requirements, budget, and regional availability.
 
 ## Table of Contents
 
@@ -14,12 +14,12 @@ This documentation provides detailed component analysis, installation guidance, 
   - [Performance Specifications](#performance-specifications)
   - [Component Details](#component-details)
     - [Motherboard](#motherboard)
-    - [CPU \& Cooling](#cpu--cooling)
+    - [CPU and Cooling](#cpu-and-cooling)
     - [Graphics Card](#graphics-card)
     - [Memory Configuration](#memory-configuration)
     - [Storage Layout](#storage-layout)
     - [Power Supply](#power-supply)
-    - [Case \& Cooling](#case--cooling)
+    - [Case and Cooling](#case-and-cooling)
     - [Networking](#networking)
   - [AI Workload Optimization](#ai-workload-optimization)
     - [GPU Configuration](#gpu-configuration)
@@ -35,8 +35,8 @@ This documentation provides detailed component analysis, installation guidance, 
 The AI engineering workstation leverages a dual-processing architecture specifically designed to maximize AI development productivity through parallel GPU and CPU model execution strategies.
 
 **Dual Processing Architecture:**
-- **GPU-accelerated inference**: Large models (30B+ parameters) loaded into 32GB GDDR7 VRAM for maximum throughput
-- **CPU-based inference**: Multiple smaller models (7B-13B parameters) running concurrently across 128GB DDR5 system memory
+- **GPU-accelerated inference**: Large models (30B or larger parameters) loaded into 32GB GDDR7 VRAM for maximum throughput
+- **CPU-based inference**: Multiple smaller models (7B to 13B parameters) running concurrently across 128GB DDR5 system memory
 - **Hybrid workloads**: Simultaneous GPU and CPU model execution enabling complex AI pipelines and multi-modal workflows
 - **Container optimization**: Hardware foundation supporting Docker-based AI model isolation and deployment
 
@@ -50,8 +50,8 @@ The AI engineering workstation leverages a dual-processing architecture specific
 
 | Component | Model | Power Consumption | Notes |
 |-----------|-------|------------------|-------|
-| **Total System** | - | ~800W under load | Estimated peak consumption |
-| **GPU** | RTX 5090 32GB | ~575W max load | Primary AI inference engine |
+| **Total System** | - | Approximately 800W under load | Estimated peak consumption |
+| **GPU** | RTX 5090 32GB | Approximately 575W max load | Primary AI inference engine |
 | **CPU** | AMD Ryzen 9 9950X | 170W TDP | 16-core Zen 5 for parallel processing |
 | **Cooling** | Dark Rock Pro 5 | - | 270W TDP capacity with dual fans |
 
@@ -75,7 +75,7 @@ The X870E chipset provides comprehensive support for AMD Zen 5 architecture with
 - **Storage Flexibility**: Multiple NVMe M.2 slots for model storage and system separation
 - **Diagnostic Capabilities**: Onboard POST code display for efficient hardware troubleshooting
 
-### CPU & Cooling
+### CPU and Cooling
 
 **AMD Ryzen 9 9950X Processing Foundation**
 The Zen 5 architecture delivers exceptional parallel processing capabilities essential for CPU-based AI model inference and multi-container AI deployment scenarios.
@@ -88,7 +88,7 @@ The Zen 5 architecture delivers exceptional parallel processing capabilities ess
 - **Memory Controller**: Native DDR5-6000 support with optimized memory bandwidth for large models
 
 **AI Processing Optimizations:**
-- **Parallel Inference**: 32 threads support concurrent execution of multiple 7B-13B parameter models
+- **Parallel Inference**: 32 threads support concurrent execution of multiple 7B to 13B parameter models
 - **Memory Bandwidth**: Zen 5 memory controller optimized for high-capacity DDR5 configurations
 - **Instruction Set**: Enhanced AI/ML instruction support for accelerated mathematical operations
 - **Container Performance**: Optimal CPU resource allocation for Docker-based AI model deployment
@@ -111,11 +111,11 @@ The RTX 5090 represents the pinnacle of AI inference acceleration, featuring Bla
 - **VRAM Configuration**: 32GB GDDR7 with 896 GB/s memory bandwidth for large model residence
 - **Compute Capability**: sm_120 architecture with advanced tensor processing units
 - **Interface**: PCIe 5.0 x16 ensuring maximum data transfer rates for model loading
-- **Power Consumption**: ~575W maximum load with intelligent power management
+- **Power Consumption**: Approximately 575W maximum load with intelligent power management
 - **Cooling**: Triple-fan open-air design optimized for sustained AI inference workloads
 
 **AI Workload Optimization:**
-- **Large Language Models**: Native support for 30B+ parameter models in VRAM
+- **Large Language Models**: Native support for 30B or larger parameter models in VRAM
 - **Computer Vision**: Hardware-accelerated image processing and neural network inference
 - **Generative AI**: Optimized for stable diffusion, image generation, and multimodal AI
 - **Mixed Precision**: FP32, FP16, and experimental FP8 support for memory efficiency
@@ -139,7 +139,7 @@ High-density DDR5 memory configuration specifically selected for multi-model AI 
 - **Voltage**: 1.35V EXPO specification with stable operation under sustained loads
 
 **AI Workload Benefits:**
-- **Multi-Model Hosting**: Concurrent execution of multiple 7B-13B parameter models
+- **Multi-Model Hosting**: Concurrent execution of multiple 7B to 13B parameter models
 - **Container Memory**: Extensive memory allocation for Docker-based AI model isolation
 - **Data Processing**: Large dataset loading and preprocessing capabilities
 - **Development Flexibility**: Memory headroom for experimental model configurations
@@ -150,7 +150,7 @@ High-density DDR5 memory configuration specifically selected for multi-model AI 
 - **Stability**: Validated memory configuration for sustained AI development workloads
 - **Bandwidth**: Maximized memory throughput for large model parameter access
 
-> **Critical Configuration**: Install memory modules exclusively in slots A1 and B1 to maintain DDR5-6000 EXPO speeds. Adding additional modules significantly reduces memory frequency on current AM5 platforms, impacting AI workload performance.
+**Critical Configuration**: Install memory modules exclusively in slots A1 and B1 to maintain DDR5-6000 EXPO speeds. Adding additional modules significantly reduces memory frequency on current AM5 platforms, impacting AI workload performance.
 
 ### Storage Layout
 
@@ -182,7 +182,7 @@ Reliable system storage providing fast boot times and application performance.
 - **Backup Strategy**: Independent backup schedules for system and data partitions
 - **Container Integration**: Dedicated AI storage mount points for Docker container access
 
-> **PCIe Lane Management**: This dual-SSD configuration preserves all PCIe 5.0 x16 lanes for RTX 5090 maximum bandwidth. Additional M.2 installations would reduce GPU performance by sharing PCIe lanes, impacting AI inference throughput.
+**PCIe Lane Management**: This dual-SSD configuration preserves all PCIe 5.0 x16 lanes for RTX 5090 maximum bandwidth. Additional M.2 installations would reduce GPU performance by sharing PCIe lanes, impacting AI inference throughput.
 
 ### Power Supply
 
@@ -207,7 +207,7 @@ High-efficiency, fully modular power supply designed for sustained high-performa
 - **Power Efficiency**: High efficiency reduces heat generation and operating costs
 - **Modular Connectivity**: Custom cable configuration optimized for AI workstation requirements
 
-### Case & Cooling
+### Case and Cooling
 
 **Corsair iCUE 5000D RGB Airflow Thermal Management System**
 Professional-grade case design optimized for high-airflow thermal management supporting sustained AI workloads with comprehensive cooling infrastructure.
@@ -235,7 +235,7 @@ Professional-grade case design optimized for high-airflow thermal management sup
 - **Monitoring**: Real-time temperature and fan speed monitoring capabilities
 - **Customization**: Programmable fan curves optimized for AI workload thermal profiles
 
-> **Linux Compatibility Consideration**: Corsair iCUE software lacks native Linux support. Fan control and RGB customization require alternative solutions such as OpenRGB, liquidctl, or manual BIOS-based configuration for Ubuntu 24.04 environments.
+**Linux Compatibility Consideration**: Corsair iCUE software lacks native Linux support. Fan control and RGB customization require alternative solutions such as OpenRGB, liquidctl, or manual BIOS-based configuration for Ubuntu 24.04 environments.
 
 ### Networking
 
@@ -265,7 +265,7 @@ Advanced WiFi 6E adapter providing reliable high-bandwidth connectivity for AI d
 ### GPU Configuration
 
 **RTX 5090 AI Acceleration Optimization**
-- **VRAM Utilization**: 32GB GDDR7 capacity supports large models (30B+ parameters) with full model residence
+- **VRAM Utilization**: 32GB GDDR7 capacity supports large models (30B or larger parameters) with full model residence
 - **Compute Capability**: Blackwell sm_120 architecture optimized for transformer and attention mechanisms
 - **Model Deployment**: Single large model deployment or multiple smaller models with dynamic memory allocation
 - **Memory Bandwidth**: 896 GB/s throughput ensuring rapid model parameter access and processing
@@ -277,7 +277,7 @@ Advanced WiFi 6E adapter providing reliable high-bandwidth connectivity for AI d
 **AMD Zen 5 Multi-Model Processing Architecture**
 - **Memory Bandwidth**: 128GB DDR5-6000 configuration enables concurrent hosting of multiple AI models
 - **Thread Distribution**: 32 threads across 16 cores providing massive parallel inference capability
-- **Model Capacity**: Optimal performance for 7B-13B parameter models with efficient CPU-based inference
+- **Model Capacity**: Optimal performance for 7B to 13B parameter models with efficient CPU-based inference
 - **Container Allocation**: CPU pinning and memory allocation for isolated Docker-based model deployment
 - **NUMA Optimization**: Memory controller configuration optimized for large model parameter access
 - **Instruction Set**: Zen 5 AI/ML instruction enhancements for accelerated mathematical operations
@@ -322,4 +322,6 @@ Advanced WiFi 6E adapter providing reliable high-bandwidth connectivity for AI d
 5. **Performance Validation**: Test GPU performance under AI workloads to confirm optimal PCIe utilization
 ---
 
-*This hardware configuration is optimized for AI engineering workflows as of mid-2025. Component selection prioritizes AI inference performance, memory capacity, and thermal management for sustained workloads.*
+---
+
+*Last Updated: 2025-09-23*

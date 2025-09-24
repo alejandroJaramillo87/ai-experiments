@@ -588,3 +588,7 @@ All optimizations maintain container isolation:
 - No privileged access required for containers
 - Read-only container filesystems
 - GPU access controlled via device cgroups
+
+---
+
+*Last Updated: 2025-09-23*

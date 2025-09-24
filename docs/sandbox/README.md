@@ -4,7 +4,7 @@ Comprehensive guide for secure AI model deployment using containerized sandboxin
 
 This documentation covers the specific Docker implementation deployed in this project, including three specialized Dockerfiles (`Dockerfile.llama-cpu`, `Dockerfile.llama-gpu`, `Dockerfile.vllm-gpu`) and the docker-compose orchestration that enables concurrent model hosting across CPU and GPU resources.
 
-> Note: This guide focuses on defensive security measures for AI model deployment. All recommendations prioritize system security and stability over performance optimization.
+**Note**: This guide focuses on defensive security measures for AI model deployment. All recommendations prioritize system security and stability over performance optimization.
 
 ## Table of Contents
 
@@ -455,4 +455,6 @@ Separates read-only model access from writable log directories.
 
 ---
 
-*This sandboxing architecture provides comprehensive security for AI model deployment on the AMD Ryzen 9950X + RTX 5090 workstation as of mid-2025. Security configurations prioritize protection over performance and reflect the actual implementation in the Docker containers and compose orchestration.*
+*This sandboxing architecture provides comprehensive security for AI model deployment on the AMD Ryzen 9950X + RTX 5090 workstation. Security configurations prioritize protection over performance and reflect the actual implementation in the Docker containers and compose orchestration.*
+
+*Last Updated: 2025-09-23*

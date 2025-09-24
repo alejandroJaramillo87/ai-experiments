@@ -10,21 +10,21 @@ This optimization implements explicit huge pages support for llama.cpp CPU infer
 
 ### The Problem
 Large language models (10GB+) suffer from TLB (Translation Lookaside Buffer) pressure when using standard 4KB pages:
-- 15GB model = ~4 million 4KB pages
+- 15GB model = approximately 4 million 4KB pages
 - Each memory access requires virtual-to-physical address translation
 - TLB cache misses cause significant performance degradation
 
 ### The Solution
 Our `hugepage_mmap_wrapper.cpp` intercepts mmap() system calls and explicitly allocates 2MB huge pages using MAP_HUGETLB:
-- 15GB model = ~7,800 2MB pages (500x fewer pages)
+- 15GB model = approximately 7,800 2MB pages (500x fewer pages)
 - Dramatically reduces TLB misses
-- Works automatically with any model > 1GB
+- Works automatically with any model larger than 1GB
 
 ### Implementation Details
 
 1. **LD_PRELOAD Interception**: The wrapper library is loaded before llama.cpp starts
 2. **mmap() Detection**: When llama.cpp tries to memory-map a model file
-3. **Size Check**: If file > 1GB, the wrapper activates
+3. **Size Check**: If file larger than 1GB, the wrapper activates
 4. **Explicit Huge Page Allocation**: Allocates anonymous memory with MAP_HUGETLB flag
 5. **File Loading**: Reads model data into huge page memory using pread()
 6. **Transparent Return**: Returns huge page pointer to llama.cpp
@@ -38,9 +38,9 @@ The key difference from hugetlbfs:
 ## Performance Impact
 
 Benchmark results with Qwen3-30B model (15.3GB):
-- **Baseline**: ~32 tokens/second
+- **Baseline**: Approximately 32 tokens/second
 - **Memory Usage**: 7,813 huge pages (15.3GB)
-- **Consistency**: < 1% variance between runs
+- **Consistency**: Less than 1 percent variance between runs
 - **TLB Efficiency**: Significantly reduced miss rate
 
 ## Configuration
@@ -207,3 +207,7 @@ void* mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)
 - **Container Build**: `docker/llama-cpu/Dockerfile.llama-cpu`
 - **Benchmark Tool**: `scripts/benchmark.py`
 - **Configuration**: `.env` and `docker-compose.yaml`
+
+---
+
+*Last Updated: 2025-09-23*

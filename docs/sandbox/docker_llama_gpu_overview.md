@@ -399,4 +399,6 @@ This GPU implementation works in conjunction with:
 
 ---
 
-*This GPU Docker implementation provides maximum performance AI model inference on the RTX 5090 Blackwell architecture as of mid-2025. The multi-stage build process ensures optimal CUDA integration while maintaining security and operational efficiency for high-throughput AI workloads.*
+*This GPU Docker implementation provides maximum performance AI model inference on the RTX 5090 Blackwell architecture. The multi-stage build process ensures optimal CUDA integration while maintaining security and operational efficiency for high-throughput AI workloads.*
+
+*Last Updated: 2025-09-23*

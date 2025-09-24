@@ -96,12 +96,12 @@ cache_loops                 31.94       100%
    - Affected by: CPU speed, memory bandwidth, optimizations
 
 2. **Success Rate**: Completion percentage
-   - Should be 100% for healthy system
-   - < 100% indicates timeout or error issues
+   - Should be 100 percent for healthy system
+   - Less than 100 percent indicates timeout or error issues
 
 3. **Standard Deviation**: Consistency measure
-   - < 5% is excellent
-   - > 10% suggests system instability
+   - Less than 5 percent is excellent
+   - Greater than 10 percent suggests system instability
 
 ### Performance Baselines
 
@@ -167,3 +167,7 @@ print(f"Performance improvement: {improvement:.1f}%")
 - Increase `--timeout` parameter
 - Reduce prompt complexity
 - Check model size vs available RAM
+
+---
+
+*Last Updated: 2025-09-23*

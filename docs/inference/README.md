@@ -6,7 +6,7 @@ Comprehensive guide to runtime parameter optimization for llama.cpp and vLLM inf
 
 The project implements two distinct optimization strategies based on inference engine capabilities:
 
-### llama.cpp (CPU & GPU) - Latency Optimization
+### llama.cpp (CPU and GPU) - Latency Optimization
 **Goal**: Minimize response time for single requests (interactive chatbot experience)
 
 - **Single request focus**: Optimize for fastest first-token and total response time
@@ -39,8 +39,8 @@ The project implements two distinct optimization strategies based on inference e
 
 ### llama-cpu Service Findings
 - **Optimal batch size**: 2048 (35.44 tokens/sec)
-- **Small batch (512)**: 34.79 tokens/sec (-2% performance)
-- **Large batch (4096)**: 34.95 tokens/sec (-1.4% performance)
+- **Small batch (512)**: 34.79 tokens/sec (2 percent performance decrease)
+- **Large batch (4096)**: 34.95 tokens/sec (1.4 percent performance decrease)
 - **Invalid parameters discovered**: `--kv-split`, `--cache-reuse`, `--parallel` (for server)
 - **Key insight**: Original configuration was already well-optimized
 
@@ -49,7 +49,7 @@ The project implements two distinct optimization strategies based on inference e
 - **Tested configurations**: Various batch/ubatch combinations
 - **Key insight**: 2048 batch with 512 ubatch provides best GPU utilization
 - **Configuration approach**: Now uses environment variables for easy tuning
-- **GPU utilization**: 95% with 15.3GB VRAM usage (gpt-oss-20b model)
+- **GPU utilization**: 95 percent with 15.3GB VRAM usage (gpt-oss-20b model)
 
 ## Key Parameter Categories
 
@@ -94,9 +94,9 @@ The project implements two distinct optimization strategies based on inference e
 
 - **CPU**: AMD Ryzen 9950X (cores 0-11 allocated to inference)
 - **GPU**: RTX 5090 32GB (CUDA 13.0.1, Blackwell architecture)
-- **Memory**: 128GB+ system RAM with huge pages enabled
+- **Memory**: 128GB or more system RAM with huge pages enabled
 - **Storage**: Fast NVMe for model loading
 
 ---
 
-*Parameter optimization documentation for the AMD Ryzen 9950X + RTX 5090 AI workstation as of September 2025. Focus on production performance for both interactive and batch inference workloads.*
+*Last Updated: 2025-09-23*

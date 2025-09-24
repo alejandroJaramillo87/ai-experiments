@@ -405,4 +405,6 @@ This vLLM implementation works in conjunction with:
 
 ---
 
-*This vLLM GPU Docker implementation provides state-of-the-art transformer model serving on the RTX 5090 Blackwell architecture as of mid-2025. The multi-stage build process ensures optimal vLLM integration while maintaining security and operational efficiency for high-throughput AI inference workloads.*
+*This vLLM GPU Docker implementation provides state-of-the-art transformer model serving on the RTX 5090 Blackwell architecture. The multi-stage build process ensures optimal vLLM integration while maintaining security and operational efficiency for high-throughput AI inference workloads.*
+
+*Last Updated: 2025-09-23*

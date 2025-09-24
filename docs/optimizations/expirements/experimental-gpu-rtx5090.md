@@ -62,7 +62,7 @@ def benchmark_attention(seq_len, batch_size, n_heads, d_head):
 
 **Expected Results**:
 - 2-4x speedup for long sequences
-- 10-20x memory reduction for attention layers
+- 10-20 times memory reduction for attention layers
 - Better scaling with sequence length
 
 #### Experiment 1.2: VRAM Fragmentation Analysis
@@ -168,9 +168,9 @@ def compare_quantization_methods(model_name="meta-llama/Llama-2-7b-hf"):
 ```
 
 **Expected Results**:
-- FP8: ~1.5-2x faster than FP16 with minimal quality loss
-- INT8: ~2-3x faster but potential quality degradation
-- Memory savings: FP8 (50%), INT8 (50-75%)
+- FP8: Approximately 1.5-2 times faster than FP16 with minimal quality loss
+- INT8: Approximately 2-3 times faster but potential quality degradation
+- Memory savings: FP8 (50 percent), INT8 (50-75 percent)
 
 ### 3. Inference Acceleration
 
@@ -507,10 +507,10 @@ nvidia-smi pmon -i 0
 
 Based on RTX 5090 capabilities:
 
-- **Memory Efficiency**: 50-70% reduction with Flash Attention + Quantization
-- **Inference Speed**: 2-4x improvement with FP8 + CUDA optimizations
-- **Power Efficiency**: 20-30% better performance per watt with tuning
-- **Throughput**: 3-5x improvement with proper batching and streaming
+- **Memory Efficiency**: 50-70 percent reduction with Flash Attention and Quantization
+- **Inference Speed**: 2-4 times improvement with FP8 and CUDA optimizations
+- **Power Efficiency**: 20-30 percent better performance per watt with tuning
+- **Throughput**: 3-5 times improvement with proper batching and streaming
 
 ## Next Steps
 
@@ -526,3 +526,7 @@ Based on RTX 5090 capabilities:
 - FP8 support is native and should be prioritized over INT8 where quality matters
 - The 32GB VRAM allows for larger batch sizes - experiment with dynamic batching
 - CUDA 13.0 features are still emerging - check for updates regularly
+
+---
+
+*Last Updated: 2025-09-23*

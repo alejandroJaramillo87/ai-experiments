@@ -4,7 +4,7 @@ Comprehensive guide for configuring Ubuntu 24.04 LTS as a high-performance local
 
 This documentation covers the complete system setup process, from initial OS installation through advanced GPU acceleration, containerization, and Python environment configuration. The setup supports both GPU-accelerated inference (keeping models loaded in VRAM) and CPU-based model execution for running multiple models simultaneously.
 
-> Note: This guide references a comprehensive suite of automation scripts in `scripts/` and configuration files. Review all scripts before execution and adapt them to your specific requirements and security policies.
+**Note**: This guide references a comprehensive suite of automation scripts in `scripts/` and configuration files. Review all scripts before execution and adapt them to your specific requirements and security policies.
 
 ## Table of Contents
 
@@ -48,7 +48,7 @@ The AI engineering workstation implementation leverages a comprehensive automati
 
 **Hardware Configuration:**
 - **CPU**: AMD Ryzen 9950X (16 cores, 32 threads, Zen 5 architecture)
-- **GPU**: RTX 5090 24GB VRAM (Blackwell architecture, sm_120 compute capability)
+- **GPU**: RTX 5090 32GB VRAM (Blackwell architecture, sm_120 compute capability)
 - **RAM**: 128GB DDR5 EXPO for large model loading and multi-model deployment
 - **Storage**: Samsung 990 Pro 2TB (OS) + Samsung 990 EVO 1TB (data) NVMe SSDs
 
@@ -171,7 +171,7 @@ Advanced terminal environment optimized for AI development workflows, model mana
 ```
 - Install and configure Zsh shell with AI-focused customizations and themes
 - Set up Tilix terminal emulator with multi-pane and session management
-- Install essential development packages: git, curl, wget, htop, nvtop, and build tools
+- Install essential development packages: git, curl, wget, htop, nvtop, build tools
 - Create custom aliases for Docker commands, model management, and GPU monitoring
 - Configure environment variables for CUDA, Python, and development tools
 
@@ -201,7 +201,7 @@ Comprehensive security implementation protects AI models, data, and development 
 - **Intrusion Prevention**: Fail2Ban deployment with AI development server protection rules
 - **System Auditing**: Comprehensive logging for file access, authentication events, and system changes
 - **Kernel Security Hardening**: 20+ security parameters including ASLR, SYN flood protection, IP spoofing prevention, and memory protection
-- **AI Resource Limits**: System limits optimized for large model loading (unlimited memory lock, 65K file descriptors, 32K processes)
+- **AI Resource Limits**: System limits optimized for large model loading (unlimited memory lock, 65,000 file descriptors, 32,000 processes)
 - **Daily Security Scanning**: Automated rootkit detection, security audits, and system integrity verification
 - **Container Security**: Docker networking security with AI application development flexibility
 - **AppArmor Integration**: Ubuntu mandatory access controls for additional process isolation
@@ -296,14 +296,14 @@ The RTX 5090 requires the latest NVIDIA drivers for optimal AI workload performa
 ```
 - Install NVIDIA drivers (version 570+) with RTX 5090 Blackwell architecture support
 - Configure driver persistence and power management for AI workloads
-- Verify GPU detection, compute capability (sm_120), and VRAM accessibility (24GB)
+- Verify GPU detection, compute capability (sm_120), and VRAM accessibility (32GB)
 - Set up automated driver update monitoring and installation
 - Configure X11/Wayland integration for development environment compatibility
 
 **Driver Verification:**
 - GPU detection: `nvidia-smi` output validation
 - Compute capability: CUDA device query verification
-- Memory access: Full 24GB VRAM availability confirmation
+- Memory access: Full 32GB VRAM availability confirmation
 - Performance: GPU boost clock and thermal management validation
 
 **Reference Files:**
@@ -362,7 +362,7 @@ cuDNN provides hardware-accelerated deep neural network primitives essential for
 
 **cuDNN Optimization Features:**
 - **Blackwell Optimization**: Native RTX 5090 architecture support
-- **Memory Management**: Optimized for 24GB VRAM utilization
+- **Memory Management**: Optimized for 32GB VRAM utilization
 - **Algorithm Selection**: Automatic optimization for transformer architectures
 - **Precision Support**: FP32, FP16, and experimental FP8 support
 - **Batch Processing**: Optimized batch sizes for inference workloads
@@ -527,5 +527,7 @@ This OS setup works in conjunction with:
 - **Performance Optimization**: System tuning in `docs/optimizations/`
 
 ---
+
+*Last Updated: 2025-09-23*
 
 *This AI engineering workstation OS setup provides a complete foundation for high-performance AI development on the AMD Ryzen 9950X + RTX 5090 platform as of mid-2025. All automation scripts and configurations are optimized for AI workloads while maintaining system security and development flexibility.*

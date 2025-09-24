@@ -8,7 +8,7 @@ These optimizations prioritize **inference latency** over throughput for chatbot
 
 - **Single Model Focus**: 12 cores dedicated to one LLM instance for minimum response time
 - **Core Allocation**: Cores 0-11 for LLM, remaining cores for system tasks
-- **Research-Based**: 26% validated latency improvement with optimizations
+- **Research-Based**: 26 percent validated latency improvement with optimizations
 
 ## Synopsis
 
@@ -25,9 +25,9 @@ System optimizations are organized by component:
 - **bios-optimizations.md** - BIOS/UEFI settings for Gigabyte X870E Aorus Elite WiFi
   - CPU performance (C-states disabled, PBO configured)
   - Memory performance (DDR5-6000 with power-down disabled)
-  - FCLK 2100MHz for interconnect optimization
+  - FCLK 2100 MHz for interconnect optimization
   - Single-model optimization focus
-- **benchmark_results_*.json** - Production benchmark data showing 26% improvement
+- **benchmark_results_*.json** - Production benchmark data showing 26 percent improvement
 
 ### os/
 - **os-optimizations.md** - Host operating system optimizations for containerized workloads
@@ -36,16 +36,16 @@ System optimizations are organized by component:
   - Memory locking configuration
   - CPU pinning via Docker cpuset
 - **hugepages-explicit.md** - Explicit huge pages implementation using MAP_HUGETLB
-  - Automatic huge page allocation for models > 1GB via wrapper
+  - Automatic huge page allocation for models larger than 1GB via wrapper
   - No special filesystem required
-  - ~35 tokens/sec performance with optimizations
+  - Approximately 35 tokens/sec performance with optimizations
 
 ### gpu/
 - **gpu-optimizations.md** - RTX 5090 specific optimizations
   - CUDA configuration and tuning
   - GPU memory management
   - Multi-GPU scaling considerations
-  - **Important**: Clock locking causes 38% performance degradation on RTX 5090
+  - **Important**: Clock locking causes 38 percent performance degradation on RTX 5090
 
 ### benchmark-guide.md
 Performance benchmarking tool for optimization validation.
@@ -103,14 +103,14 @@ Optimizations are applied to containers via:
    - Environment variables from .env file
 
 2. Explicit huge pages (`docker/llama-cpu/`)
-   - hugepage_mmap_wrapper.so uses MAP_HUGETLB for models > 1GB
+   - hugepage_mmap_wrapper.so uses MAP_HUGETLB for models larger than 1GB
    - No special filesystem or model copying required
    - Direct huge page allocation, not THP
 
 3. Performance testing (`scripts/`)
    - benchmark.py for measuring latency and tokens/second
    - Focus on first-token latency and response time consistency
-   - Validated 26% performance improvement with optimizations
+   - Validated 26 percent performance improvement with optimizations
 
 ## System Configuration
 
@@ -132,20 +132,20 @@ Production system benchmarking with BIOS optimizations enabled:
 ### Benchmark Summary
 - **Before optimizations**: 28.09 tokens/second average
 - **After optimizations**: 35.44 tokens/second average
-- **Performance gain**: +26.2%
-- **Consistency improvement**: 59% reduction in standard deviation
+- **Performance gain**: 26.2 percent increase
+- **Consistency improvement**: 59 percent reduction in standard deviation
 
 ### Key Validated Settings Impact
-- **FCLK 2100MHz**: Successfully stable, major contributor to performance
+- **FCLK 2100 MHz**: Successfully stable, major contributor to performance
 - **Conservative Curve Optimizer (-15)**: Achieved excellent results with stability
-- **CPU Boost +200MHz**: Stable at maximum recommended setting
+- **CPU Boost 200 MHz increase**: Stable at maximum recommended setting
 - **Power optimizations**: C-states disabled, power down disabled for consistency
 
 ## Performance Impact
 
 Validated improvements with optimizations enabled:
 
-- **Latency**: 26% improvement in tokens per second (validated via benchmarking)
+- **Latency**: 26 percent improvement in tokens per second (validated via benchmarking)
 - **Cache Efficiency**: Optimized cache access patterns
 - **Memory Access**: Reduced TLB misses with explicit huge pages
 - **Consistency**: Predictable token generation timing (0.08-0.28 stdev vs 0.08-0.84)
@@ -159,3 +159,7 @@ Validated improvements with optimizations enabled:
 - docker-compose.yaml - Container orchestration
 - docker/llama-cpu/Dockerfile.llama-cpu - Latency-optimized CPU container
 - scripts/benchmark.py - Latency measurement tool
+
+---
+
+*Last Updated: 2025-09-23*

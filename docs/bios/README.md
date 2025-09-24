@@ -4,7 +4,7 @@ Comprehensive BIOS setup and configuration guide for the AMD Ryzen 9950X + RTX 5
 
 This documentation covers essential UEFI/BIOS configuration required for optimal AI development environment stability, including memory profile activation, POST code diagnostics, and system reliability optimization for large model inference and training workloads.
 
-> Note: This guide covers fundamental BIOS configuration required for system stability and memory optimization. Advanced performance tuning for AI inference acceleration is addressed in `docs/optimizations/README.md` and `docs/inference/README.md`.
+**Note**: This guide covers fundamental BIOS configuration required for system stability and memory optimization. Advanced performance tuning for AI inference acceleration is addressed in `docs/optimizations/README.md` and `docs/inference/README.md`.
 
 ## Table of Contents
 
@@ -67,7 +67,7 @@ BIOS firmware updates provide essential stability improvements, hardware compati
 - **Security Updates**: Include latest microcode and security patches
 - **AI Workload Optimization**: Review release notes for performance improvements
 
-> **Critical Security**: Always download BIOS files exclusively from Gigabyte's official website. Third-party sources may contain modified firmware, backdoors, or corrupted images that compromise system security and stability.
+**Critical Security**: Always download BIOS files exclusively from official Gigabyte website. Third-party sources may contain modified firmware, backdoors, or corrupted images that compromise system security and stability.
 
 ### Q-Flash Plus (No CPU Required)
 
@@ -95,7 +95,7 @@ Q-Flash Plus enables BIOS updates without CPU, memory, or graphics card installa
 - **Motherboard Preparation**: Pre-installation BIOS updates for optimal component compatibility
 - **Troubleshooting**: BIOS corruption recovery without complete system disassembly
 
-> **Critical Use Cases**: Q-Flash Plus is essential for initial BIOS updates before component installation and provides crucial recovery capability when AI workstation systems experience POST failures or BIOS corruption.
+**Critical Use Cases**: Q-Flash Plus is essential for initial BIOS updates before component installation and provides crucial recovery capability when AI workstation systems experience POST failures or BIOS corruption.
 
 ### Standard BIOS Flash
 
@@ -168,7 +168,7 @@ The POST process executes a systematic hardware verification sequence, with each
 POST codes are particularly valuable for AI development environments where:
 - High-capacity memory configurations may require extended training periods
 - Multiple PCIe devices (GPU, NVMe, network cards) increase complexity
-- 24/7 operation demands rapid diagnosis of hardware issues
+- Continuous operation demands rapid diagnosis of hardware issues
 - Container workloads require consistent hardware state verification
 
 ### Common POST Code Scenarios
@@ -263,7 +263,7 @@ EXPO (Extended Profiles for Overclocking) activation enables the G.SKILL Flare X
 
 **UEFI Navigation Process:**
 1. **BIOS Entry**: Enter UEFI setup using Delete key during POST sequence
-2. **Memory Configuration**: Navigate to **Tweaker** → **Advanced Memory Settings** → **Extreme Memory Profile (X.M.P.)**
+2. **Memory Configuration**: Navigate to **Tweaker** > **Advanced Memory Settings** > **Extreme Memory Profile (X.M.P.)**
 3. **EXPO Selection**: Locate **EXPO** or **Extended Profiles for Overclocking** option
 4. **Profile Activation**: Select appropriate EXPO profile (typically Profile 1 for DDR5-6000)
 
@@ -355,7 +355,7 @@ python -c "import torch; print(torch.cuda.memory_summary() if torch.cuda.is_avai
 python -c "import torch; x = torch.randn(10000, 10000, device='cpu'); print('Memory test completed')"
 ```
 
-> **Critical Performance Requirement**: The G.SKILL Flare X5 128GB (2 x 64GB) DDR5-6000 kit requires EXPO activation to achieve advertised performance. Without EXPO, memory defaults to JEDEC standard DDR5-4800, significantly impacting AI workload performance and model loading times.
+**Critical Performance Requirement**: The G.SKILL Flare X5 128GB (2 x 64GB) DDR5-6000 kit requires EXPO activation to achieve advertised performance. Without EXPO, memory defaults to JEDEC standard DDR5-4800, significantly impacting AI workload performance and model loading times.
 
 
 ## Reference Implementation
@@ -386,5 +386,7 @@ All BIOS settings prioritize system stability and compatibility over maximum per
 
 ---
 
-*This BIOS configuration ensures stable, reliable operation of the AMD Ryzen 9950X + RTX 5090 AI engineering workstation as of mid-2025. Settings provide the essential foundation for AI development workflows while maintaining system integrity and hardware longevity.*
+---
+
+*Last Updated: 2025-09-23*
 

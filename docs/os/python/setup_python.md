@@ -59,7 +59,7 @@ Install pyenv (Python version manager) which allows you to install and switch be
 curl https://pyenv.run | bash
 ```
 
-### ⚠️ Important Post-Installation Steps:
+### Important Post-Installation Steps:
 
 After running the installation command, you need to:
 
@@ -85,7 +85,7 @@ Compile and install Python 3.13 from source using pyenv:
 pyenv install 3.13
 ```
 
-> **Note**: This process may take several minutes as it compiles Python from source.
+**Note**: This process may take several minutes as it compiles Python from source.
 
 **Optional**: Set Python 3.13 as the global default:
 
@@ -250,4 +250,6 @@ deactivate
 
 ---
 
-> **Note**: This setup provides a robust Python development environment suitable for AI engineering workloads with proper dependency isolation and version management.
+**Note**: This setup provides a robust Python development environment suitable for AI engineering workloads with proper dependency isolation and version management.
+
+*Last Updated: 2025-09-23*
