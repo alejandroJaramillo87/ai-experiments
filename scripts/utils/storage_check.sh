@@ -4,9 +4,7 @@
 # Comprehensive storage analysis for AI workstation with dual SSDs
 # Tracks models, datasets, Docker, caches, and identifies problem areas
 
-echo "==================================================="
-echo " Storage Analysis Report"
-echo "==================================================="
+echo "=== Storage Analysis Report ==="
 echo "Date: $(date '+%Y-%m-%d %H:%M:%S')"
 echo
 
@@ -29,8 +27,8 @@ get_size() {
 WARNING_COUNT=0
 CRITICAL_COUNT=0
 
-# --- 1. Overall Storage Summary ---
-echo "--- Overall Storage Summary ---"
+# Overall Storage Summary
+echo "Overall storage summary:"
 echo
 
 # Check all mounted filesystems
@@ -53,13 +51,13 @@ df -h | grep -E "^/dev/" | while read -r line; do
 
     # Status indicator
     if [ "$USE_PERCENT" -ge 90 ]; then
-        STATUS="✗"
+        STATUS="ERROR"
         ((CRITICAL_COUNT++))
     elif [ "$USE_PERCENT" -ge 80 ]; then
-        STATUS="⚠"
+        STATUS="WARN"
         ((WARNING_COUNT++))
     else
-        STATUS="✓"
+        STATUS="OK"
     fi
 
     echo "$STATUS $LABEL ($MOUNT): $USED / $SIZE ($USE_PERCENT% used, $AVAIL free)"
@@ -67,9 +65,9 @@ done
 
 echo
 
-# --- 2. AI Data SSD Breakdown ---
+# AI Data SSD Breakdown
 if [ -d "/mnt/ai-data" ]; then
-    echo "--- AI Data SSD Breakdown (/mnt/ai-data) ---"
+    echo "AI Data SSD breakdown (/mnt/ai-data):"
     echo
 
     # Models directory
@@ -144,23 +142,23 @@ if [ -d "/mnt/ai-data" ]; then
                 DUPLICATES_FOUND=true
                 SIZE_BYTES=$(echo "$line" | awk '{print $1}')
                 SIZE_HUMAN=$(numfmt --to=iec-i --suffix=B "$SIZE_BYTES" 2>/dev/null || echo "${SIZE_BYTES}B")
-                echo "  ⚠ Multiple files with size $SIZE_HUMAN - possible duplicates"
+                echo "  WARN: Multiple files with size $SIZE_HUMAN - possible duplicates"
                 break
             fi
         done
 
     if [ "$DUPLICATES_FOUND" = false ]; then
-        echo "  ✓ No obvious duplicates found"
+        echo "  OK: No obvious duplicates found"
     fi
 else
-    echo "⚠ /mnt/ai-data not found"
+    echo "WARN: /mnt/ai-data not found"
     ((WARNING_COUNT++))
 fi
 
 echo
 
-# --- 3. Docker Storage Analysis ---
-echo "--- Docker Storage Analysis ---"
+# Docker Storage Analysis
+echo "Docker storage analysis:"
 echo
 
 if command -v docker &> /dev/null; then
@@ -179,7 +177,7 @@ if command -v docker &> /dev/null; then
         # Check for dangling images
         DANGLING_COUNT=$(docker images -f "dangling=true" -q 2>/dev/null | wc -l)
         if [ "$DANGLING_COUNT" -gt 0 ]; then
-            echo "⚠ Dangling images: $DANGLING_COUNT"
+            echo "WARN: Dangling images: $DANGLING_COUNT"
             ((WARNING_COUNT++))
         fi
 
@@ -198,8 +196,8 @@ fi
 
 echo
 
-# --- 4. System Caches ---
-echo "--- System Caches & Temporary Files ---"
+# System Caches and Temporary Files
+echo "System caches and temporary files:"
 echo
 
 # APT cache
@@ -242,8 +240,8 @@ fi
 
 echo
 
-# --- 5. System Logs ---
-echo "--- System Logs & Journal ---"
+# System Logs and Journal
+echo "System logs and journal:"
 echo
 
 # Systemd journal
@@ -261,21 +259,21 @@ echo "/var/log total: $VAR_LOG_SIZE"
 # Find large log files
 echo "Large log files (>100MB):"
 sudo find /var/log -type f -size +100M -exec du -h {} \; 2>/dev/null | sort -rh | head -5 | while read -r size file; do
-    echo "  ⚠ $size $(basename "$file")"
+    echo "  WARN: $size $(basename "$file")"
     ((WARNING_COUNT++))
 done
 
 # Old kernels
 OLD_KERNELS=$(dpkg -l 'linux-*' | sed '/^ii/!d;/'"$(uname -r | sed "s/\(.*\)-\([^0-9]\+\)/\1/")"'/d;s/^[^ ]* [^ ]* \([^ ]*\).*/\1/;/[0-9]/!d' | wc -l)
 if [ "$OLD_KERNELS" -gt 2 ]; then
-    echo "⚠ Old kernels installed: $OLD_KERNELS (can be removed)"
+    echo "WARN: Old kernels installed: $OLD_KERNELS (can be removed)"
     ((WARNING_COUNT++))
 fi
 
 echo
 
-# --- 6. Home Directory Analysis ---
-echo "--- Home Directory Analysis ---"
+# Home Directory Analysis
+echo "Home directory analysis:"
 echo
 
 echo "Top 10 directories in $HOME (excluding symlinks):"
@@ -284,7 +282,7 @@ find "$HOME" -maxdepth 1 -type d ! -name "." -exec du -sh {} \; 2>/dev/null | so
     # Check if it's a cache that should be on data SSD
     if [[ "$DIR_NAME" == ".cache" ]]; then
         if [ ! -L "$HOME/.cache" ]; then
-            echo "  ⚠ $size $DIR_NAME (should be symlinked to /mnt/ai-data/cache)"
+            echo "  WARN: $size $DIR_NAME (should be symlinked to /mnt/ai-data/cache)"
             ((WARNING_COUNT++))
         else
             LINK_TARGET=$(readlink -f "$HOME/.cache")
@@ -331,8 +329,8 @@ done
 
 echo
 
-# --- 7. Cleanup Suggestions ---
-echo "--- Cleanup Suggestions ---"
+# Cleanup Suggestions
+echo "Cleanup suggestions:"
 echo
 
 SUGGESTIONS=0
@@ -386,27 +384,24 @@ if [ "$OLD_KERNELS" -gt 2 ] 2>/dev/null; then
 fi
 
 if [ $SUGGESTIONS -eq 0 ]; then
-    echo "✓ No significant cleanup opportunities found"
+    echo "OK: No significant cleanup opportunities found"
 fi
 
 echo
 
-# --- 8. Summary ---
-echo "==================================================="
-echo " Storage Summary"
-echo "==================================================="
+# Storage Summary
+echo "=== Storage Summary ==="
 
 # Count status
 if [ $CRITICAL_COUNT -gt 0 ]; then
-    echo "✗ Critical: $CRITICAL_COUNT disk(s) >90% full"
+    echo "ERROR: Critical: $CRITICAL_COUNT disk(s) >90% full"
 fi
 if [ $WARNING_COUNT -gt 0 ]; then
-    echo "⚠ Warnings: $WARNING_COUNT potential issues found"
+    echo "WARN: $WARNING_COUNT potential issues found"
 fi
 if [ $CRITICAL_COUNT -eq 0 ] && [ $WARNING_COUNT -eq 0 ]; then
-    echo "✓ All storage checks passed"
+    echo "OK: All storage checks passed"
 fi
 
 echo
 echo "Report complete: $(date '+%Y-%m-%d %H:%M:%S')"
-echo "==================================================="

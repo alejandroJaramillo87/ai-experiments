@@ -4,13 +4,11 @@
 # Checks and reports on AI engineering dependencies and repository-defined optimizations
 # Designed for Ubuntu 24.04 with AMD Ryzen 9950X + RTX 5090
 
-echo "==================================================="
-echo " AI Engineering Dependency & Optimization Report"
-echo "==================================================="
+echo "=== AI Engineering Dependency & Optimization Report ==="
 echo
 
 # --- 1. System Information ---
-echo "--- System Information ---"
+echo "System information:"
 echo "OS: $(lsb_release -ds 2>/dev/null || cat /etc/*release 2>/dev/null | head -n 1)"
 echo "Kernel: $(uname -r)"
 echo "CPU: $(lscpu | grep 'Model name' | cut -d: -f2 | xargs)"
@@ -19,7 +17,7 @@ echo "Date: $(date '+%Y-%m-%d %H:%M:%S')"
 echo
 
 # --- 2. Repository Optimizations Status ---
-echo "--- Repository Optimizations Status ---"
+echo "Repository optimizations status:"
 echo "Checking optimizations from docs/optimizations/cpu-ram/os-optimizations.md"
 echo
 
@@ -34,10 +32,10 @@ check_status() {
     local actual="$3"
 
     if [ "$expected" = "$actual" ]; then
-        echo "✓ $name: $actual"
+        echo "$name: OK ($actual)"
         ((PASS_COUNT++))
     else
-        echo "✗ $name: Expected '$expected', Got '$actual'"
+        echo "$name: ERROR (expected $expected, got $actual)"
         ((FAIL_COUNT++))
     fi
 }
@@ -58,10 +56,10 @@ check_status "CPU Governor" "performance" "$CPU_GOV"
 # Memory Locking
 MEMLOCK=$(ulimit -l)
 if [ "$MEMLOCK" = "unlimited" ]; then
-    echo "✓ Memory Locking: unlimited"
+    echo "Memory locking: OK (unlimited)"
     ((PASS_COUNT++))
 else
-    echo "✗ Memory Locking: Expected 'unlimited', Got '$MEMLOCK'"
+    echo "Memory locking: ERROR (expected unlimited, got $MEMLOCK)"
     ((FAIL_COUNT++))
 fi
 
@@ -105,21 +103,21 @@ check_status "  vm.dirty_background_ratio" "2" "$DIRTY_BG_RATIO"
 echo
 if command -v docker &> /dev/null; then
     if systemctl is-active --quiet docker; then
-        echo "✓ Docker: running"
+        echo "Docker: OK (running)"
         ((PASS_COUNT++))
     else
-        echo "✗ Docker: not running"
+        echo "Docker: ERROR (not running)"
         ((FAIL_COUNT++))
     fi
 else
-    echo "✗ Docker: not installed"
+    echo "Docker: ERROR (not installed)"
     ((FAIL_COUNT++))
 fi
 
 echo
 
 # --- 3. NVIDIA GPU & CUDA Information ---
-echo "--- NVIDIA GPU & CUDA Information ---"
+echo "NVIDIA GPU and CUDA information:"
 
 if command -v nvidia-smi &> /dev/null; then
     DRIVER_VERSION=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1)
@@ -150,7 +148,7 @@ if command -v nvidia-smi &> /dev/null; then
         echo "  GPU Clocks: $GPU_CLOCKS MHz (locked - WARNING: degrades performance)"
         ((FAIL_COUNT++))
     else
-        echo "  ✓ GPU Clocks: Not locked (optimal)"
+        echo "  GPU clocks: OK (not locked - optimal)"
         ((PASS_COUNT++))
     fi
 
@@ -160,7 +158,7 @@ if command -v nvidia-smi &> /dev/null; then
         echo "  Memory Clocks: $MEM_CLOCKS MHz (locked - WARNING: degrades performance)"
         ((FAIL_COUNT++))
     else
-        echo "  ✓ Memory Clocks: Not locked (optimal)"
+        echo "  Memory clocks: OK (not locked - optimal)"
         ((PASS_COUNT++))
     fi
 
@@ -186,7 +184,7 @@ if command -v nvidia-smi &> /dev/null; then
             fi
         done
         if [ $IRQ_TOTAL -eq $IRQ_CORRECT ] && [ $IRQ_TOTAL -gt 0 ]; then
-            echo "  ✓ GPU IRQ Affinity: Correct (cores 24-31)"
+            echo "  GPU IRQ affinity: OK (cores 24-31)"
             ((PASS_COUNT++))
         else
             echo "  GPU IRQ Affinity: Not optimized"
@@ -232,7 +230,7 @@ for var in CUDA_CACHE_DISABLE CUDA_CACHE_PATH CUDA_CACHE_MAXSIZE CUDA_DEVICE_ORD
 done
 
 if [ $CUDA_ENV_CORRECT -eq $CUDA_ENV_COUNT ]; then
-    echo "  ✓ System CUDA variables: Configured"
+    echo "  System CUDA variables: OK (configured)"
     ((PASS_COUNT++))
 else
     echo "  System CUDA variables: $CUDA_ENV_CORRECT/$CUDA_ENV_COUNT configured"
@@ -241,7 +239,7 @@ fi
 
 # Kernel Module Parameters
 if [ -f /etc/modprobe.d/nvidia-optimizations.conf ]; then
-    echo "  ✓ Kernel modules: nvidia-optimizations.conf present"
+    echo "  Kernel modules: OK (nvidia-optimizations.conf present)"
     ((PASS_COUNT++))
 else
     echo "  Kernel modules: nvidia-optimizations.conf missing"
@@ -251,7 +249,7 @@ fi
 echo
 
 # --- 4. Python & PyTorch Environment ---
-echo "--- Python & PyTorch Environment ---"
+echo "Python and PyTorch environment:"
 
 # Python version
 if command -v python3 &> /dev/null; then
@@ -293,9 +291,9 @@ except ImportError:
     echo "Key AI Packages:"
     for pkg in transformers accelerate datasets huggingface-hub bitsandbytes deepspeed; do
         if poetry run python -c "import $pkg" 2>/dev/null; then
-            echo "  ✓ $pkg"
+            echo "  $pkg: OK"
         else
-            echo "  ✗ $pkg"
+            echo "  $pkg: ERROR (not found)"
         fi
     done
 else
@@ -305,7 +303,7 @@ fi
 echo
 
 # --- 5. Disk Usage ---
-echo "--- Disk Usage ---"
+echo "Disk usage:"
 
 # Root partition
 ROOT_USAGE=$(df -h / | awk 'NR==2 {print $3 " / " $2 " (" $5 " used)"}')
@@ -326,7 +324,7 @@ echo "Home directory: $HOME_SIZE"
 echo
 
 # --- 6. Additional System Checks ---
-echo "--- Additional System Checks ---"
+echo "Additional system checks:"
 
 # Transparent Huge Pages
 THP_ENABLED=$(cat /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null | grep -oP '\[\K[^\]]+')
@@ -368,9 +366,7 @@ fi
 echo
 
 # --- 7. Summary ---
-echo "==================================================="
-echo " Optimization Summary"
-echo "==================================================="
+echo "=== Optimization Summary ==="
 echo "Total Checks: $PASS_COUNT passed, $FAIL_COUNT failed"
 
 if [ $FAIL_COUNT -gt 0 ]; then
@@ -384,4 +380,3 @@ fi
 
 echo
 echo "Report complete: $(date '+%Y-%m-%d %H:%M:%S')"
-echo "==================================================="

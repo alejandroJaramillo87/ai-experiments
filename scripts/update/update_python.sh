@@ -4,9 +4,7 @@
 # Updates Poetry, Python packages, and handles PyTorch CUDA dependencies
 # Simplified version focusing on what actually works
 
-echo "==================================================="
-echo " Python/AI Package Updater"
-echo "==================================================="
+echo "=== Python/AI Package Updater ==="
 echo
 
 # Parse command line arguments
@@ -57,7 +55,7 @@ fi
 
 cd "$PROJECT_ROOT" || exit 1
 
-echo "--- 1. Environment Check ---"
+echo "Step 1 - Environment check:"
 
 # Check Poetry installation
 if ! command -v poetry &> /dev/null; then
@@ -115,7 +113,7 @@ if $CHECK_ONLY; then
 fi
 
 echo
-echo "--- 2. Updating Poetry and Tools ---"
+echo "Step 2 - Updating Poetry and tools:"
 
 # Update Poetry itself
 echo "Checking for Poetry updates..."
@@ -126,7 +124,7 @@ echo "Updating pip, setuptools, wheel..."
 poetry run pip install --upgrade pip setuptools wheel -q
 
 echo
-echo "--- 3. Updating Packages ---"
+echo "Step 3 - Updating packages:"
 
 # Backup poetry.lock
 if [ -f "poetry.lock" ]; then
@@ -168,7 +166,7 @@ else
 fi
 
 echo
-echo "--- 4. Verification ---"
+echo "Step 4 - Verification:"
 
 # Test key imports
 echo "Testing key package imports..."
@@ -179,9 +177,9 @@ failed = []
 for pkg in packages:
     try:
         __import__(pkg)
-        print(f'✓ {pkg}')
+        print(f'{pkg}: OK')
     except ImportError as e:
-        print(f'✗ {pkg}: {e}')
+        print(f'{pkg}: ERROR ({e})')
         failed.append(pkg)
 if failed:
     print(f'\\nFailed to import: {', '.join(failed)}')
@@ -208,9 +206,8 @@ if torch.cuda.is_available():
 "
 
 echo
-echo "==================================================="
-echo " Update Complete"
-echo "==================================================="
+echo "=== Update Complete ==="
+echo
 
 # Get PyTorch source info
 PYTORCH_SOURCE=$(grep -o 'pytorch_cuda_cu[0-9]*' "$PROJECT_ROOT/pyproject.toml" | head -1)

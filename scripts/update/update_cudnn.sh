@@ -28,12 +28,10 @@ if [ -z "$UBUNTU_VERSION" ]; then
     exit 1
 fi
 
-echo "==================================================="
-echo " cuDNN Updater for ${CUDNN_PACKAGE}"
-echo "==================================================="
+echo "=== cuDNN Updater for ${CUDNN_PACKAGE} ==="
 echo
 
-echo "--- 1. Ensuring CUDA Keyring is in Place ---"
+echo "Step 1 - Ensuring CUDA keyring is in place:"
 
 # Only download and install if not already present
 if ! dpkg -s cuda-keyring &> /dev/null; then
@@ -47,12 +45,12 @@ else
 fi
 echo
 
-echo "--- 2. Updating APT Package Lists ---"
+echo "Step 2 - Updating APT package lists:"
 sudo apt-get update || { echo "Error: Failed to update APT package lists. Check internet connection."; exit 1; }
 echo "APT package lists updated."
 echo
 
-echo "--- 3. Checking and Applying cuDNN Update ---"
+echo "Step 3 - Checking and applying cuDNN update:"
 sudo apt-get -y install "${CUDNN_PACKAGE}" || { echo "Error: Failed to install or update ${CUDNN_PACKAGE}. Exiting."; exit 1; }
 echo "cuDNN update process completed."
 echo
@@ -61,7 +59,6 @@ echo
 echo "Installed cuDNN version:"
 dpkg -l | grep cudnn | head -1 || echo "WARNING: Could not verify cuDNN installation"
 
-echo "==================================================="
-echo " Script Finished"
-echo "==================================================="
+echo "=== Script Finished ==="
+echo
 echo "No reboot is typically required after cuDNN updates."

@@ -4,9 +4,7 @@
 # This script updates security tools and runs basic security checks
 # Designed to complement the initial security setup
 
-echo "==================================================="
-echo " Security Tools Updater"
-echo "==================================================="
+echo "=== Security Tools Updater ==="
 echo
 
 # Check if running as root
@@ -15,7 +13,7 @@ if [[ $EUID -eq 0 ]]; then
    exit 1
 fi
 
-echo "--- 1. Updating Security Tool Databases ---"
+echo "Step 1 - Updating security tool databases:"
 
 # Update rkhunter database
 if command -v rkhunter &> /dev/null; then
@@ -38,7 +36,7 @@ fi
 
 echo
 
-echo "--- 2. Applying Security Updates ---"
+echo "Step 2 - Applying security updates:"
 
 # Check for and apply security updates
 echo "Checking for security updates..."
@@ -64,7 +62,7 @@ fi
 
 echo
 
-echo "--- 3. Running Security Checks ---"
+echo "Step 3 - Running security checks:"
 
 # Check for failed login attempts (last 24 hours)
 echo "Checking failed login attempts..."
@@ -107,7 +105,7 @@ fi
 
 echo
 
-echo "--- 4. System Security Summary ---"
+echo "Step 4 - System security summary:"
 
 # Display kernel version (for tracking security patches)
 KERNEL_VERSION=$(uname -r)
@@ -130,9 +128,8 @@ if [ -f /var/run/reboot-required ]; then
 fi
 
 echo
-echo "==================================================="
-echo " Security Update Complete"
-echo "==================================================="
+echo "=== Security Update Complete ==="
+echo
 
 # Log the update
 LOG_DIR="$HOME/.local/share/logs"
