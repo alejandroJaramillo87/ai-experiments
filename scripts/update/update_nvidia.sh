@@ -19,9 +19,7 @@ else
     DRIVER_PACKAGE="$NVIDIA_DRIVER_VERSION"
 fi
 
-echo "==================================================="
-echo " NVIDIA Driver Updater for ${DRIVER_PACKAGE}"
-echo "==================================================="
+echo "=== NVIDIA Driver Updater for ${DRIVER_PACKAGE} ==="
 echo
 
 # Check for running GUI sessions unless forced
@@ -31,12 +29,12 @@ echo
 #     exit 1
 # fi
 
-echo "--- 1. Updating APT Package Lists ---"
+echo "Step 1 - Updating APT package lists:"
 sudo apt update || { echo "Error: Failed to update APT package lists. Exiting."; exit 1; }
 echo "APT package lists updated."
 echo
 
-echo "--- 2. Checking for Available Driver Updates ---"
+echo "Step 2 - Checking for available driver updates:"
 # Check if the driver package is installed
 if ! dpkg -s "${DRIVER_PACKAGE}" &> /dev/null; then
     echo "Error: Package '${DRIVER_PACKAGE}' is not installed. Cannot check for updates."
@@ -72,6 +70,4 @@ else
 fi
 
 echo
-echo "==================================================="
-echo " Script Completed"
-echo "==================================================="
+echo "=== Script Completed ==="

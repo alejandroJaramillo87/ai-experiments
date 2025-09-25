@@ -4,9 +4,7 @@
 # This script updates Docker CE, Docker Compose, and NVIDIA Container Toolkit
 # It also updates Dockerfiles to match the host CUDA version
 
-echo "==================================================="
-echo " Docker Infrastructure Updater"
-echo "==================================================="
+echo "=== Docker Infrastructure Updater ==="
 echo
 
 # Auto-detect current CUDA version from nvcc if available
@@ -25,7 +23,7 @@ CUDA_VERSION="${CUDA_VERSION:-${DETECTED_CUDA:-13.0}}"
 echo "Using CUDA version: ${CUDA_VERSION}"
 echo
 
-echo "--- 1. Updating Docker CE ---"
+echo "Step 1 - Updating Docker CE:"
 # Check current Docker version
 CURRENT_DOCKER_VERSION=$(docker --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 echo "Current Docker version: ${CURRENT_DOCKER_VERSION:-not installed}"
@@ -38,7 +36,7 @@ NEW_DOCKER_VERSION=$(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head
 echo "Docker CE updated to: ${NEW_DOCKER_VERSION}"
 echo
 
-echo "--- 2. Updating Docker Compose ---"
+echo "Step 2 - Updating Docker Compose:"
 # Check current Docker Compose version
 CURRENT_COMPOSE_VERSION=$(docker compose version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 echo "Current Docker Compose version: ${CURRENT_COMPOSE_VERSION:-not installed}"
@@ -58,7 +56,7 @@ NEW_COMPOSE_VERSION=$(docker compose version 2>/dev/null | grep -oE 'v[0-9]+\.[0
 echo "Docker Compose updated to: ${NEW_COMPOSE_VERSION}"
 echo
 
-echo "--- 3. Updating NVIDIA Container Toolkit ---"
+echo "Step 3 - Updating NVIDIA Container Toolkit:"
 # Check current NVIDIA Container Toolkit version
 CURRENT_NCT_VERSION=$(dpkg -l | grep nvidia-container-toolkit | awk '{print $3}' | head -1)
 echo "Current NVIDIA Container Toolkit version: ${CURRENT_NCT_VERSION:-not installed}"
@@ -75,7 +73,7 @@ sudo systemctl restart docker
 echo "Docker service restarted"
 echo
 
-echo "--- 4. Updating Dockerfiles to CUDA ${CUDA_VERSION} ---"
+echo "Step 4 - Updating Dockerfiles to CUDA ${CUDA_VERSION}:"
 # Find the latest CUDA image tag for the detected version
 # Using the .1 patch version as that's the pattern (e.g., 12.9.1, 13.0.1)
 CUDA_IMAGE_TAG="${CUDA_VERSION}.1"
@@ -98,9 +96,8 @@ if [ -f "$DOCKERFILE_VLLM" ]; then
 fi
 
 echo
-echo "==================================================="
-echo " Docker Infrastructure Update Complete"
-echo "==================================================="
+echo "=== Docker Infrastructure Update Complete ==="
+echo
 echo "Docker CE: ${NEW_DOCKER_VERSION}"
 echo "Docker Compose: ${NEW_COMPOSE_VERSION}"
 echo "NVIDIA Container Toolkit: ${NEW_NCT_VERSION}"

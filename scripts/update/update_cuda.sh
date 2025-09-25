@@ -31,13 +31,11 @@ if [ -z "$UBUNTU_VERSION" ]; then
     exit 1
 fi
 
-echo "==================================================="
-echo " CUDA Toolkit Updater for ${CUDA_PACKAGE}"
-echo " Ubuntu version: ${UBUNTU_VERSION}"
-echo "==================================================="
+echo "=== CUDA Toolkit Updater for ${CUDA_PACKAGE} ==="
+echo "Ubuntu version: ${UBUNTU_VERSION}"
 echo
 
-echo "--- 1. Ensuring NVIDIA CUDA Network Repository is Configured ---"
+echo "Step 1 - Ensuring NVIDIA CUDA network repository is configured:"
 
 CUDA_REPO_URL="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${UBUNTU_VERSION}/x86_64"
 
@@ -60,12 +58,12 @@ else
     echo "CUDA GPG keyring already installed."
 fi
 
-echo "--- 2. Updating APT Package Lists ---"
+echo "Step 2 - Updating APT package lists:"
 sudo apt update || { echo "Error: Failed to update APT package lists. Check internet connection."; exit 1; }
 echo "APT package lists updated."
 echo
 
-echo "--- 3. Checking for Available CUDA Toolkit Updates ---"
+echo "Step 3 - Checking for available CUDA toolkit updates:"
 # Check if the CUDA Toolkit package is installed
 if ! dpkg -s "${CUDA_PACKAGE}" &> /dev/null; then
     echo "Error: Package '${CUDA_PACKAGE}' is not installed. Cannot check for updates."
@@ -92,9 +90,7 @@ if [ -n "$UPGRADABLE_INFO" ]; then
     echo "Update applied successfully."
     echo
 
-    echo "==================================================="
-    echo " CUDA Toolkit Update Completed"
-    echo "==================================================="
+    echo "=== CUDA Toolkit Update Completed ==="
     echo "The CUDA Toolkit has been updated."
 
     # Verify CUDA installation
@@ -120,6 +116,4 @@ else
 fi
 
 echo
-echo "==================================================="
-echo " Script Completed"
-echo "==================================================="
+echo "=== Script Completed ==="

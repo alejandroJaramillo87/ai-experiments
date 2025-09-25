@@ -17,7 +17,7 @@ MAIN_GPU=${MAIN_GPU:-0}
 FLASH_ATTN=${FLASH_ATTN:-"on"}
 CONT_BATCHING=${CONT_BATCHING:-false}
 
-echo "Starting llama.cpp GPU server with:"
+echo "=== Starting llama.cpp GPU Server ==="
 echo "  Port: $SERVER_PORT"
 echo "  Model: $MODEL_PATH"
 echo "  GPU layers: $N_GPU_LAYERS"

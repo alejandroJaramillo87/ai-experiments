@@ -13,7 +13,7 @@ THREADS=${THREADS:-12}
 THREADS_BATCH=${THREADS_BATCH:-12}
 THREADS_HTTP=${THREADS_HTTP:-2}
 
-echo "Starting llama.cpp server with:"
+echo "=== Starting llama.cpp CPU Server ==="
 echo "  Port: $SERVER_PORT"
 echo "  Model: $MODEL_PATH"
 echo "  Threads: $THREADS"

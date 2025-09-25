@@ -6,9 +6,7 @@
 
 set -euo pipefail
 
-echo "==================================================="
-echo " Ubuntu System Update"
-echo "==================================================="
+echo "=== Ubuntu System Update ==="
 echo
 
 # Parse command line arguments
@@ -35,13 +33,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Pre-update checks
-echo "--- Pre-Update Checks ---"
+echo "Pre-update checks:"
 
 # Check available disk space
 ROOT_USAGE=$(df / | awk 'NR==2 {print int($5)}')
 ROOT_FREE=$(df -h / | awk 'NR==2 {print $4}')
 if [ "$ROOT_USAGE" -gt 80 ]; then
-    echo "⚠ WARNING: Root partition is ${ROOT_USAGE}% full (${ROOT_FREE} free)"
+    echo "WARN: Root partition ${ROOT_USAGE}% full (${ROOT_FREE} free)"
     echo "  Consider running: ./scripts/utils/storage_check.sh"
     read -p "Continue anyway? (y/N) " -n 1 -r
     echo
@@ -50,27 +48,27 @@ if [ "$ROOT_USAGE" -gt 80 ]; then
         exit 1
     fi
 else
-    echo "✓ Disk space: ${ROOT_USAGE}% used (${ROOT_FREE} free)"
+    echo "Disk space: OK (${ROOT_USAGE}% used, ${ROOT_FREE} free)"
 fi
 
 # Check kernel count for safety
 KERNEL_COUNT=$(dpkg -l | grep -c "linux-image-[0-9]" || true)
 if [ "$KERNEL_COUNT" -lt 2 ]; then
-    echo "⚠ WARNING: Only $KERNEL_COUNT kernel(s) installed. No fallback kernel available."
+    echo "WARN: Only $KERNEL_COUNT kernel(s) installed (no fallback available)"
 else
-    echo "✓ Kernels installed: $KERNEL_COUNT"
+    echo "Kernels installed: OK ($KERNEL_COUNT available)"
 fi
 
 echo
 
 # Main update process
 if $SECURITY_ONLY; then
-    echo "--- Installing Security Updates Only ---"
+    echo "Installing security updates only:"
     sudo apt update
     sudo apt install -y unattended-upgrades
     sudo unattended-upgrade -d
 else
-    echo "--- Updating System Packages ---"
+    echo "Updating system packages:"
 
     # Standard updates
     echo "Updating package lists..."
@@ -95,7 +93,7 @@ else
     if dpkg -l | grep nvidia-container-toolkit &> /dev/null; then
         sudo apt -y install nvidia-docker2 nvidia-container-toolkit
         sudo systemctl restart docker
-        echo "✓ NVIDIA container runtime updated"
+        echo "NVIDIA container runtime: OK (updated)"
     fi
 fi
 
@@ -103,7 +101,7 @@ echo
 
 # Snap package updates
 if command -v snap &> /dev/null; then
-    echo "--- Updating Snap Packages ---"
+    echo "Updating snap packages:"
     sudo snap refresh
 
     # Remove old snap revisions (keeps only 2 versions per snap)
@@ -115,14 +113,14 @@ fi
 
 # Flatpak updates (if installed)
 if command -v flatpak &> /dev/null; then
-    echo "--- Updating Flatpak Applications ---"
+    echo "Updating flatpak applications:"
     flatpak update -y
 fi
 
 echo
 
 # Cleanup
-echo "--- System Cleanup ---"
+echo "System cleanup:"
 
 # Clean package cache
 echo "Cleaning package cache..."
@@ -145,7 +143,7 @@ echo
 
 # Docker maintenance (if installed)
 if command -v docker &> /dev/null && systemctl is-active --quiet docker; then
-    echo "--- Docker Maintenance ---"
+    echo "Docker maintenance:"
 
     # Update base images for AI containers
     echo "Updating Docker base images..."
@@ -167,32 +165,32 @@ fi
 echo
 
 # Verify system optimizations are still in place
-echo "--- Verifying System Optimizations ---"
+echo "Verifying system optimizations:"
 
 # Check CPU governor
 CPU_GOV=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "unknown")
 if [ "$CPU_GOV" = "performance" ]; then
-    echo "✓ CPU Governor: performance"
+    echo "CPU governor: OK (performance mode)"
 else
-    echo "⚠ CPU Governor: $CPU_GOV (expected: performance)"
+    echo "CPU governor: WARN ($CPU_GOV - expected performance)"
 fi
 
 # Check swap status
 SWAP_STATUS=$(swapon --show 2>/dev/null | wc -l)
 if [ "$SWAP_STATUS" -eq 0 ]; then
-    echo "✓ Swap: disabled"
+    echo "Swap: OK (disabled)"
 else
-    echo "⚠ Swap: enabled (should be disabled for AI workloads)"
+    echo "Swap: WARN (enabled - should be disabled for AI workloads)"
 fi
 
 # Check huge pages
 HUGEPAGES=$(grep "^HugePages_Total:" /proc/meminfo | awk '{print $2}')
 if [ "$HUGEPAGES" = "46080" ]; then
-    echo "✓ Huge Pages: 46080 (90GB)"
+    echo "Huge pages: OK (46080 pages, 90GB)"
 elif [ "$HUGEPAGES" -gt 0 ]; then
-    echo "⚠ Huge Pages: $HUGEPAGES (expected: 46080)"
+    echo "Huge pages: WARN ($HUGEPAGES pages - expected 46080)"
 else
-    echo "⚠ Huge Pages: not configured"
+    echo "Huge pages: WARN (not configured)"
 fi
 
 # Verify critical services
@@ -200,18 +198,16 @@ echo
 echo "Checking critical services..."
 for service in docker nvidia-persistenced; do
     if systemctl is-active --quiet "$service" 2>/dev/null; then
-        echo "✓ $service: running"
+        echo "$service: OK (running)"
     else
-        echo "⚠ $service: not running"
+        echo "$service: WARN (not running)"
     fi
 done
 
 echo
 
 # Summary
-echo "==================================================="
-echo " Update Summary"
-echo "==================================================="
+echo "=== Update Summary ==="
 echo "Kernel: $(uname -r)"
 echo "NVIDIA Driver: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null || echo 'Not detected')"
 echo "Docker: $(docker --version 2>/dev/null | awk '{print $3}' | sed 's/,$//' || echo 'Not installed')"
@@ -221,16 +217,14 @@ echo "Free Space: $(df -h / | awk 'NR==2 {print $4}')"
 # Check if reboot is required
 if [ -f /var/run/reboot-required ]; then
     echo
-    echo "⚠ REBOOT REQUIRED"
+    echo "Reboot required: YES"
     echo "  Packages requiring reboot:"
     if [ -f /var/run/reboot-required.pkgs ]; then
         cat /var/run/reboot-required.pkgs | sed 's/^/    - /'
     fi
 else
     echo
-    echo "✓ No reboot required"
+    echo "Reboot required: NO"
 fi
 
-echo "==================================================="
 echo "Update completed: $(date '+%Y-%m-%d %H:%M:%S')"
-echo "==================================================="
