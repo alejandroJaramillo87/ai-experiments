@@ -1,6 +1,6 @@
 # AI Engineering vLLM GPU Docker Implementation
 
-Comprehensive explanation of the RTX 5090 Blackwell optimized vLLM Dockerfile for high-performance GPU-accelerated AI model inference on the AI workstation, detailing the multi-stage build process, vLLM v0.10.2 integration, and Blackwell architecture optimizations.
+Explanation of the RTX 5090 Blackwell optimized vLLM Dockerfile for high-performance GPU-accelerated AI model inference on the AI workstation, detailing the multi-stage build process, vLLM v0.10.2 integration, and Blackwell architecture optimizations.
 
 > **IMPORTANT STATUS**: As of September 2025, vLLM v0.10.2 does not support CUDA 13.0 due to breaking changes in the CUB library API. The Dockerfile is configured for CUDA 13.0.1 but will not build until vLLM adds support. Tracking: https://github.com/vllm-project/vllm/pull/23976
 
@@ -40,7 +40,7 @@ The vLLM GPU Docker implementation leverages a multi-stage build strategy specif
 - **vLLM v0.10.2**: Latest vLLM release (awaiting CUDA 13 support for Blackwell)
 - **Blackwell optimization**: sm_120 architecture targeting for RTX 5090 maximum performance
 - **CUDA 13.0.1**: Latest CUDA toolkit with comprehensive Blackwell support
-- **Performance tuning**: Comprehensive vLLM engine and GPU memory optimizations
+- **Performance tuning**: vLLM engine and GPU memory optimizations
 - **Security hardening**: Non-root user execution with controlled cache management
 
 ## Stage 1: Builder Environment
@@ -369,7 +369,7 @@ The implementation targets specific RTX 5090 Blackwell capabilities:
 - **HTTP health checks**: Automated container health monitoring via OpenAI-compatible API
 - **Startup period**: 300-second grace period for large model loading
 - **Failure detection**: Automatic container restart on health check failures
-- **Performance monitoring**: Optional metrics collection for production deployments
+- **Performance monitoring**: Optional metrics collection
 
 **Docker Compose Integration**
 When deployed via docker-compose, additional security measures include:
@@ -405,6 +405,6 @@ This vLLM implementation works in conjunction with:
 
 ---
 
-*This vLLM GPU Docker implementation provides state-of-the-art transformer model serving on the RTX 5090 Blackwell architecture. The multi-stage build process ensures optimal vLLM integration while maintaining security and operational efficiency for high-throughput AI inference workloads.*
+*This vLLM GPU Docker implementation provides transformer model serving on the RTX 5090 Blackwell architecture. The multi-stage build process integrates vLLM while maintaining security and operational efficiency for high-throughput AI inference workloads.*
 
 *Last Updated: 2025-09-23*

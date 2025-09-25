@@ -1,6 +1,6 @@
 # AI Model Sandboxing and Security Architecture
 
-Comprehensive guide for secure AI model deployment using containerized sandboxing environments, addressing security risks inherent in local AI model execution and providing isolation strategies for the AMD Ryzen 9950X + RTX 5090 AI workstation.
+Guide for secure AI model deployment using containerized sandboxing environments, addressing security risks in local AI model execution and providing isolation strategies for the AMD Ryzen 9950X + RTX 5090 AI workstation.
 
 This documentation covers the specific Docker implementation deployed in this project, including three specialized Dockerfiles (`Dockerfile.llama-cpu`, `Dockerfile.llama-gpu`, `Dockerfile.vllm-gpu`) and the docker-compose orchestration that enables concurrent model hosting across CPU and GPU resources.
 
@@ -34,15 +34,15 @@ This documentation covers the specific Docker implementation deployed in this pr
   - [Security Best Practices](#security-best-practices)
     - [Principle of Least Privilege](#principle-of-least-privilege)
   - [Implementation Guidelines](#implementation-guidelines)
-    - [Current Deployment Architecture](#current-deployment-architecture)
-    - [Production Deployment](#production-deployment)
+    - [Local Deployment Architecture](#local-deployment-architecture)
+    - [Local Deployment Configuration](#local-deployment-configuration)
   - [Reference Files](#reference-files)
     - [Docker Configuration Files](#docker-configuration-files)
     - [Security Features Implemented](#security-features-implemented)
 
 ## Overview
 
-AI model sandboxing provides essential security isolation for local AI workloads, protecting both the host system and sensitive data from potential threats inherent in AI model execution. This architecture uses Docker containers as the primary sandboxing mechanism, combined with HTTP server security patterns to create a robust defense framework.
+AI model sandboxing provides security isolation for local AI workloads, protecting both the host system and sensitive data from potential threats in AI model execution. This architecture uses Docker containers as the primary sandboxing mechanism.
 
 The implementation consists of:
 - **Three CPU inference containers** (`llama-cpu-0`, `llama-cpu-1`, `llama-cpu-2`) utilizing AMD Zen 5 optimization with AOCL libraries
@@ -59,7 +59,7 @@ The sandboxing approach addresses three critical security domains:
 ## Why Sandboxing is Required
 
 **Untrusted Code Execution**
-AI models, particularly those from third-party sources, execute complex computational graphs that may contain malicious or unintended behaviors. Without proper isolation, these models can access system resources, file systems, and network interfaces beyond their intended scope.
+AI models from third-party sources execute computational graphs that may contain malicious or unintended behaviors. Without isolation, these models can access system resources, file systems, and network interfaces beyond their intended scope.
 
 **Resource Management**
 Large AI models can consume substantial system resources (CPU, memory, GPU), potentially causing system instability or denial of service. Sandboxing provides resource limits and prevents resource exhaustion attacks.
@@ -256,37 +256,17 @@ Internal Docker networking eliminates need for external authentication keys.
 
 ### Authentication and Authorization
 
-**Token-Based Authentication**
-- Stateless authentication mechanisms prevent session hijacking and enable scalable security across multiple model instances
-- JWT token validation and refresh mechanisms
-- Session timeout and automatic token expiration
-
-**Role-Based Access Control (RBAC)**
-- Granular permissions systems ensure users only access authorized model functionality and data
-- User role definitions and access matrices
-- Dynamic permission evaluation
-
-**API Key Management**
-- Secure API key generation, distribution, and rotation prevent unauthorized model access
-- Key lifecycle management and revocation
-- Rate limiting per API key
+**Local Access Control**
+- Localhost-only binding prevents external access
+- No authentication required for local inference
+- Docker network isolation between containers
 
 ### Request Validation
 
-**Input Sanitization**
-- Comprehensive input validation prevents prompt injection attacks and malformed request exploitation
-- Content filtering and payload size limits
-- Character encoding validation
-
-**Schema Enforcement**
-- Strict API schema validation ensures requests conform to expected patterns and prevent bypass attempts
-- JSON schema validation
-- Request structure verification
-
-**Content Security**
-- Request content filtering prevents malicious payload delivery through model inputs
-- Malware scanning for uploaded content
-- Content type validation
+**Input Validation**
+- Basic input validation for malformed requests
+- Payload size limits to prevent memory exhaustion
+- JSON schema validation for API compatibility
 
 ### Health Monitoring and DoS Protection
 
@@ -356,10 +336,9 @@ Required for large model loading while maintaining security boundaries.
 
 ### Network Security
 
-**Firewall Integration**
-- Container-aware firewall rules provide additional network security layers beyond Docker networking
-- Host-level firewall configuration
-- Network policy enforcement
+**Network Isolation**
+- Docker bridge network provides container isolation
+- Localhost-only port binding for external interfaces
 
 ## Security Best Practices
 
@@ -382,7 +361,7 @@ Required for large model loading while maintaining security boundaries.
 
 ## Implementation Guidelines
 
-### Current Deployment Architecture
+### Local Deployment Architecture
 
 **Multi-Container CPU Strategy**
 Three dedicated CPU containers leverage the 16-core AMD Ryzen 9950X:
@@ -396,25 +375,22 @@ Two GPU containers optimize RTX 5090 utilization:
 - **vllm-gpu**: vLLM engine for high-throughput transformer serving
 - **Blackwell architecture**: CUDA 12.9.1 with sm_120 targeting
 
-**Development to Production**
-Docker Compose configuration supports:
+**Local Deployment Configuration**
+Docker Compose configuration for local workstation:
 ```yaml
 networks:
   ai-network:
-    internal: false  # Set to true in production for complete isolation
+    internal: false  # Allows Docker image pulling
 ```
-Allows image pulling during development while supporting production hardening.
-
-### Production Deployment
 
 **Container Build Process**
-Multi-stage Dockerfiles optimize security and performance:
-- **Builder stage**: Compiles optimized binaries with security hardening
+Multi-stage Dockerfiles optimize local performance:
+- **Builder stage**: Compiles optimized binaries
 - **Runtime stage**: Minimal runtime environment with non-root users
-- **AMD AOCL integration**: Specialized CPU container uses pre-installed AOCL libraries
+- **AMD AOCL integration**: CPU container uses pre-installed AOCL libraries
 
-**Security Validation**
-Docker Compose implements defense-in-depth:
+**Security for Local Use**
+Docker Compose implements security layers:
 ```yaml
 security_opt:
   - no-new-privileges:true
@@ -422,10 +398,10 @@ cap_drop:
   - ALL
 read_only: true
 ```
-Multiple security layers prevent privilege escalation and system compromise.
+Prevents privilege escalation on local system.
 
-**Volume Security**
-Read-only model mounts prevent tampering:
+**Volume Configuration**
+Read-only model mounts:
 ```yaml
 volumes:
   - /mnt/ai-data/models/:/app/models:ro
@@ -454,7 +430,5 @@ Separates read-only model access from writable log directories.
 - **Health monitoring**: Comprehensive health checks, automatic restarts, failure recovery
 
 ---
-
-*This sandboxing architecture provides comprehensive security for AI model deployment on the AMD Ryzen 9950X + RTX 5090 workstation. Security configurations prioritize protection over performance and reflect the actual implementation in the Docker containers and compose orchestration.*
 
 *Last Updated: 2025-09-23*

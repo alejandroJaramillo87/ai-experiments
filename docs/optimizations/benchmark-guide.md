@@ -96,12 +96,12 @@ cache_loops                 31.94       100%
    - Affected by: CPU speed, memory bandwidth, optimizations
 
 2. **Success Rate**: Completion percentage
-   - Should be 100 percent for healthy system
-   - Less than 100 percent indicates timeout or error issues
+   - Should be 100% for healthy system
+   - Less than 100% indicates timeout or error issues
 
 3. **Standard Deviation**: Consistency measure
-   - Less than 5 percent is excellent
-   - Greater than 10 percent suggests system instability
+   - Less than 5% is excellent
+   - Greater than 10% suggests system instability
 
 ### Performance Baselines
 

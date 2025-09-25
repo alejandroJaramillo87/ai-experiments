@@ -1,101 +1,99 @@
-# AI Inference Parameter Optimization
+# AI Inference Documentation
 
-Comprehensive guide to runtime parameter optimization for llama.cpp and vLLM inference engines on the AMD Ryzen 9950X + RTX 5090 AI workstation.
+Technical documentation for AI inference engines and their optimization on the AMD Ryzen 9950X + RTX 5090 workstation.
 
-## Optimization Philosophy
+## Overview
 
-The project implements two distinct optimization strategies based on inference engine capabilities:
+This directory contains comprehensive documentation for understanding and optimizing AI inference engines used in local LLM deployment. The documentation covers both theoretical foundations and practical implementation details.
 
-### llama.cpp (CPU and GPU) - Latency Optimization
-**Goal**: Minimize response time for single requests (interactive chatbot experience)
+## Inference Engines
 
-- **Single request focus**: Optimize for fastest first-token and total response time
-- **Memory efficiency**: Aggressive memory locking and GPU memory usage
-- **Thread allocation**: Match physical core count for maximum single-thread performance
-- **Cache optimization**: Direct memory access patterns, no memory mapping
+### Core Documentation
+- **[engines/inference-engines.md](engines/inference-engines.md)** - Understanding what inference engines are and why they're needed
+- **[engines/llama-cpp.md](engines/llama-cpp.md)** - Deep technical dive into llama.cpp architecture and optimizations
+- **[engines/vllm.md](engines/vllm.md)** - High-throughput GPU inference with vLLM (pending CUDA 13 support)
 
-### vLLM (GPU) - Throughput Optimization
-**Goal**: Maximize concurrent request handling (API server workload)
+### Parameter Tuning
+- **[parameters/llama-cpp-parameters.md](parameters/llama-cpp-parameters.md)** - Tested llama.cpp parameters and findings
+- **[parameters/vllm-parameters.md](parameters/vllm-parameters.md)** - vLLM configuration and throughput optimization
+- **[parameters/optimization-guide.md](parameters/optimization-guide.md)** - Benchmarking methodology and results
 
-- **Concurrent requests**: Handle multiple simultaneous inference requests
-- **Batch processing**: Large batch sizes for GPU utilization efficiency
-- **Memory pooling**: Intelligent memory allocation for multiple sequences
-- **Scheduling**: Advanced request scheduling for optimal resource usage
+### Performance Results
+- **[benchmarks/performance-results.md](benchmarks/performance-results.md)** - Comprehensive benchmark results (pending)
 
 ## Current Implementation Status
 
 | Service | Engine | Port | Status | Performance | Notes |
 |---------|--------|------|--------|-------------|-------|
-| llama-cpu | llama.cpp | 8001 | Optimized | 35.44 tok/s | Batch 2048 optimal |
-| llama-gpu | llama.cpp | 8004 | Optimized | 286.85 tok/s | Batch 2048/512 optimal |
-| vllm-gpu | vLLM | 8005 | Waiting CUDA 13 | N/A | Not operational |
+| llama-cpu | llama.cpp | 8001 | Active | 35.44 tok/s | Latency-optimized |
+| llama-gpu | llama.cpp | 8004 | Active | 286.85 tok/s | GPU-accelerated |
+| vllm-gpu | vLLM | 8005 | Pending | N/A | Waiting CUDA 13 |
 
-## Version Status (September 23, 2025)
+## Architecture Summary
 
-- **llama.cpp**: Latest release b6556 (September 23, 2025) - Current
-- **vLLM**: Latest stable v0.10.2 (September 2025) - Awaiting CUDA 13.0 support
+### Inference vs Training
+Inference engines are specialized runtimes optimized for executing trained models, unlike training frameworks:
+- No gradient computation or backpropagation
+- Read-only weights with aggressive quantization
+- Optimized for single/small batch processing
+- Memory-efficient through techniques like paging
 
-## Benchmarking Results (September 2025)
+### Key Technologies
 
-### llama-cpu Service Findings
-- **Optimal batch size**: 2048 (35.44 tokens/sec)
-- **Small batch (512)**: 34.79 tokens/sec (2 percent performance decrease)
-- **Large batch (4096)**: 34.95 tokens/sec (1.4 percent performance decrease)
-- **Invalid parameters discovered**: `--kv-split`, `--cache-reuse`, `--parallel` (for server)
-- **Key insight**: Original configuration was already well-optimized
+**Memory Management**:
+- Memory mapping (mmap) for efficient model loading
+- Memory locking (mlock) to prevent swapping
+- Huge pages (2MB) for reduced TLB misses
+- PagedAttention (vLLM) for dynamic KV cache allocation
 
-### llama-gpu Service Findings
-- **Optimal batch/ubatch sizes**: 2048/512 (286.85 tokens/sec)
-- **Tested configurations**: Various batch/ubatch combinations
-- **Key insight**: 2048 batch with 512 ubatch provides best GPU utilization
-- **Configuration approach**: Now uses environment variables for easy tuning
-- **GPU utilization**: 95 percent with 15.3GB VRAM usage (gpt-oss-20b model)
+**Hardware Acceleration**:
+- CPU: AVX-512 VNNI for INT8 operations (Zen 5)
+- GPU: CUDA kernels, tensor cores, Flash Attention
+- Quantization: INT4/INT8 (llama.cpp), FP8 (vLLM)
 
-## Key Parameter Categories
+**Scheduling Strategies**:
+- Static batching (llama.cpp default)
+- Continuous batching (vLLM) for dynamic request handling
+- Chunked prefill for large context processing
 
-### Memory Management
-- **Context size**: Balance between capability and memory usage
-- **Batch sizes**: Optimize for target workload (latency vs throughput)
-- **Memory locking**: Prevent swapping for consistent performance
-- **GPU memory utilization**: Maximize VRAM usage without OOM
+## Quick Reference
 
-### Threading and Parallelism
-- **CPU threads**: Match hardware capabilities (12 cores available)
-- **GPU layers**: Full offload vs hybrid CPU/GPU processing
-- **HTTP threads**: Balance API responsiveness with compute resources
-- **Parallel sequences**: Single vs multiple concurrent requests
+### Choosing an Inference Engine
 
-### Hardware-Specific Optimizations
-- **RTX 5090 features**: FlashAttention, FP8 quantization, tensor cores
-- **AMD Zen 5 features**: AVX-512, cache locality, NUMA awareness
-- **Memory hierarchy**: L1/L2/L3 cache optimization strategies
+**Use llama.cpp when**:
+- Single-user or few concurrent users
+- Lowest latency is critical
+- Running on CPU or edge devices
+- Need aggressive quantization (GGUF)
+- Memory constraints are tight
 
-## Performance Metrics
+**Use vLLM when**:
+- Serving many concurrent users
+- Throughput more important than latency
+- Have powerful datacenter GPUs
+- Need dynamic batching
+- Using standard HuggingFace models
 
-### Latency Optimization (llama.cpp)
-- **First-token latency**: Time to first response token
-- **Tokens per second**: Single-request throughput
-- **Response consistency**: Latency variance across requests
-- **Memory efficiency**: RAM/VRAM usage per request
+### Performance Characteristics
 
-### Throughput Optimization (vLLM)
-- **Concurrent requests**: Maximum simultaneous requests
-- **Total throughput**: Aggregate tokens per second across all requests
-- **Queue management**: Request scheduling efficiency
-- **Resource utilization**: GPU/memory usage under load
+**llama.cpp**:
+- First token: 50-200ms
+- Generation: 35 tok/s (CPU), 287 tok/s (GPU)
+- Memory efficiency: 1.1x model size
+- Quantization: Native GGUF support
 
-## Documentation Structure
-
-- **llama-cpp-parameters.md** - Tested parameters and optimization findings (UPDATED)
-- **vllm-parameters.md** - Throughput optimization and CUDA 13 considerations
-- **parameter-optimization-guide.md** - Benchmarking methodology with actual results (UPDATED)
+**vLLM** (projected with CUDA 13):
+- First token: 50-100ms
+- Generation: 300-500 tok/s
+- Memory efficiency: 1.3x model size
+- Quantization: FP8, GPTQ, AWQ
 
 ## Hardware Configuration
 
-- **CPU**: AMD Ryzen 9950X (cores 0-11 allocated to inference)
-- **GPU**: RTX 5090 32GB (CUDA 13.0.1, Blackwell architecture)
-- **Memory**: 128GB or more system RAM with huge pages enabled
-- **Storage**: Fast NVMe for model loading
+- **CPU**: AMD Ryzen 9950X (32 cores, 12 dedicated to inference)
+- **GPU**: RTX 5090 32GB VRAM (Blackwell architecture)
+- **Memory**: 128GB DDR5-6000 with huge pages enabled
+- **Storage**: NVMe SSD for model storage
 
 ---
 

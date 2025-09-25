@@ -1,255 +1,280 @@
-# Python Environment Setup Guide
+# Python Environment Setup
 
-This guide sets up a complete Python development environment with pyenv and Poetry. Execute each section step by step, not all at once.
+Configuration guide for Python development environment using pyenv and Poetry on Ubuntu 24.04 for AI experiments.
 
 ## Table of Contents
 
-1. [Update System Packages](#step-1-update-system-packages)
-2. [Install Python Build Dependencies](#step-2-install-python-build-dependencies)
-3. [Install pyenv](#step-3-install-pyenv)
-4. [Install Python 3.13](#step-4-install-python-313)
-5. [Install pipx](#step-5-install-pipx)
-6. [Configure pipx PATH](#step-6-configure-pipx-path)
-7. [Install Poetry](#step-7-install-poetry)
-8. [Configure Poetry](#step-8-configure-poetry)
-9. [Usage Instructions](#usage-after-installation)
+- [Prerequisites](#prerequisites)
+- [Install Build Dependencies](#install-build-dependencies)
+- [Install pyenv](#install-pyenv)
+- [Configure Shell](#configure-shell)
+- [Install Python](#install-python)
+- [Create Virtual Environment](#create-virtual-environment)
+- [Install Poetry](#install-poetry)
+- [Configure Project](#configure-project)
+- [Install AI Dependencies](#install-ai-dependencies)
+- [Verify Installation](#verify-installation)
+- [Common Commands](#common-commands)
+- [Troubleshooting](#troubleshooting)
 
-## Step 1: Update System Packages
+## Prerequisites
 
-Update system package lists to ensure you have the latest package information:
+System requirements:
+- Ubuntu 24.04 LTS
+- Internet connection for package downloads
+- sudo privileges for system package installation
+
+## Install Build Dependencies
+
+Install packages required for compiling Python from source:
 
 ```bash
 sudo apt update
+sudo apt install -y build-essential libssl-dev zlib1g-dev \
+  libbz2-dev libreadline-dev libsqlite3-dev \
+  libncurses5-dev libxml2-dev libxmlsec1-dev \
+  libffi-dev liblzma-dev
 ```
 
-## Step 2: Install Python Build Dependencies
-
-Install packages required to compile Python from source via pyenv:
-
+Additional development tools:
 ```bash
-sudo apt install -y make build-essential libssl-dev zlib1g-dev \
-libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
-libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev \
-libffi-dev liblzma-dev
+sudo apt install -y wget curl llvm xz-utils tk-dev
 ```
 
-### Package Explanations:
+## Install pyenv
 
-- **make**: Build automation tool
-- **build-essential**: Essential compilation tools (gcc, g++, etc.)
-- **libssl-dev**: SSL/TLS library development files
-- **zlib1g-dev**: Compression library
-- **libbz2-dev**: Bzip2 compression library
-- **libreadline-dev**: Command line editing library
-- **libsqlite3-dev**: SQLite database library
-- **wget, curl**: Download utilities
-- **llvm**: Compiler infrastructure
-- **libncursesw5-dev**: Terminal handling library
-- **xz-utils**: XZ compression utilities
-- **tk-dev**: Tkinter GUI toolkit
-- **libxml2-dev, libxmlsec1-dev**: XML processing libraries
-- **libffi-dev**: Foreign function interface library
-- **liblzma-dev**: LZMA compression library
-
-## Step 3: Install pyenv
-
-Install pyenv (Python version manager) which allows you to install and switch between multiple Python versions:
+Clone pyenv repository and plugins:
 
 ```bash
-curl https://pyenv.run | bash
+# Clone pyenv
+git clone https://github.com/pyenv/pyenv.git ~/.pyenv
+
+# Clone pyenv-virtualenv plugin
+git clone https://github.com/pyenv/pyenv-virtualenv.git ~/.pyenv/plugins/pyenv-virtualenv
+
+# Clone pyenv-update plugin
+git clone https://github.com/pyenv/pyenv-update.git ~/.pyenv/plugins/pyenv-update
+
+# Clone pyenv-doctor plugin
+git clone https://github.com/pyenv/pyenv-doctor.git ~/.pyenv/plugins/pyenv-doctor
 ```
 
-### Important Post-Installation Steps:
+## Configure Shell
 
-After running the installation command, you need to:
-
-1. **Add pyenv to your shell PATH** by adding these lines to `~/.bashrc` or `~/.zshrc`:
+Add pyenv to shell configuration. For Zsh:
 
 ```bash
-export PYENV_ROOT="$HOME/.pyenv"
-[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init -)"
+echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc
+echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc
+echo 'eval "$(pyenv init -)"' >> ~/.zshrc
+echo 'eval "$(pyenv virtualenv-init -)"' >> ~/.zshrc
 ```
 
-2. **Restart your terminal** or run:
+For Bash:
 
 ```bash
+echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
+echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
+echo 'eval "$(pyenv init -)"' >> ~/.bashrc
+echo 'eval "$(pyenv virtualenv-init -)"' >> ~/.bashrc
+```
+
+Reload shell configuration:
+
+```bash
+# For Zsh
+source ~/.zshrc
+
+# For Bash
 source ~/.bashrc
 ```
 
-## Step 4: Install Python 3.13
+## Install Python
 
-Compile and install Python 3.13 from source using pyenv:
-
-```bash
-pyenv install 3.13
-```
-
-**Note**: This process may take several minutes as it compiles Python from source.
-
-**Optional**: Set Python 3.13 as the global default:
+Install Python 3.12.11:
 
 ```bash
-pyenv global 3.13
+pyenv install 3.12.11
 ```
 
-## Step 5: Install pipx
-
-Install pipx, which installs Python applications in isolated environments to prevent conflicts:
+Verify installation:
 
 ```bash
-sudo apt install pipx
+pyenv versions
 ```
 
-## Step 6: Configure pipx PATH
+## Create Virtual Environment
 
-Ensure pipx-installed applications are available in your shell PATH:
+Create dedicated environment for AI tools:
 
 ```bash
-pipx ensurepath
+pyenv virtualenv 3.12.11 ai-tools
 ```
 
-> **Note**: You may need to restart your terminal after this step.
+## Install Poetry
 
-## Step 7: Install Poetry
-
-Install Poetry using pipx to keep it isolated from your projects:
+Install Poetry via system package manager:
 
 ```bash
-pipx install poetry
+sudo apt install python3-poetry
 ```
 
-Poetry is a dependency management and packaging tool for Python that provides better dependency resolution and project isolation.
+Verify installation:
 
-## Step 8: Configure Poetry
+```bash
+poetry --version
+# Expected: Poetry (version 1.8.2)
+```
 
-Configure Poetry to create virtual environments inside project directories:
+## Configure Project
+
+Navigate to project directory:
+
+```bash
+cd ~/workspace/ai-experiments
+```
+
+Set Python version for project:
+
+```bash
+echo "ai-tools" > .python-version
+```
+
+Configure Poetry to use existing virtualenv:
+
+```bash
+poetry env use ~/.pyenv/versions/3.12.11/envs/ai-tools/bin/python
+```
+
+Configure PyTorch repository:
+
+```bash
+poetry config repositories.pytorch_cuda_cu129.url https://download.pytorch.org/whl/cu129
+```
+
+Configure Poetry settings:
 
 ```bash
 poetry config virtualenvs.in-project true
+poetry config installer.parallel true
 ```
 
-This creates `.venv` folders inside your projects instead of in a global location, making it easier to manage and find your project environments.
+## Install AI Dependencies
 
-## Usage After Installation
-
-### For Project-Specific Environments
-
-#### If you have an existing `pyproject.toml` file:
+Install project dependencies:
 
 ```bash
-# Navigate to your project directory
-cd /path/to/your/project
-
-# Install dependencies from pyproject.toml
 poetry install
-
-# Activate the virtual environment
-poetry shell
 ```
 
-#### If starting a new project:
+Install PyTorch with CUDA support:
 
 ```bash
-# Create a new pyproject.toml file
-poetry init
-
-# Add dependencies
-poetry add <package>
-
-# Install dependencies
-poetry install
-
-# Activate the virtual environment
-poetry shell
+poetry add torch torchvision torchaudio --source pytorch_cuda_cu129
 ```
 
-#### To use a specific Python version in your project:
+## Verify Installation
+
+Check Python version:
 
 ```bash
-# Set Python 3.13 for this project
-pyenv local 3.13
-
-# Tell Poetry to use Python 3.13
-poetry env use 3.13
+python --version
+# Expected: Python 3.12.11
 ```
 
-### For Global Environment with Poetry Dependencies
-
-1. **Create a global poetry project:**
+Check active environment:
 
 ```bash
-mkdir ~/global-python-env
-cd ~/global-python-env
-poetry init       # Create pyproject.toml with your global deps
-poetry install    # Install the dependencies
+pyenv version
+# Expected: ai-tools (set by /home/alejandro/workspace/ai-experiments/.python-version)
 ```
 
-2. **Activate the global environment:**
+Check Poetry environment:
 
 ```bash
-cd ~/global-python-env
-poetry shell      # This activates the global environment
+poetry env info
 ```
 
-## Useful Commands
+Verify CUDA availability:
+
+```python
+python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
+```
+
+## Common Commands
 
 ### pyenv Commands
 
 ```bash
-pyenv versions              # List installed Python versions
-pyenv global <version>      # Set global Python version
-pyenv local <version>       # Set local Python version for current directory
+pyenv versions                # List installed Python versions
+pyenv install --list          # List available Python versions
+pyenv virtualenv-delete ai-tools  # Delete virtual environment
+pyenv update                  # Update pyenv itself
 ```
 
 ### Poetry Commands
 
 ```bash
-poetry --version            # Check Poetry version
-poetry env info             # Show virtual environment info
-poetry env list             # List virtual environments
-poetry show                 # Show installed packages
-poetry add <package>        # Add a new dependency
-poetry remove <package>     # Remove a dependency
-poetry update               # Update dependencies
-poetry shell                # Activate virtual environment
+poetry show                   # List installed packages
+poetry add <package>          # Add dependency
+poetry remove <package>       # Remove dependency
+poetry update                 # Update all dependencies
+poetry shell                  # Activate environment
+poetry run python script.py   # Run script in environment
 ```
 
-### Environment Management
+### Environment Activation
 
+Automatic activation (via .python-version file):
 ```bash
-# Exit Poetry environment
-exit
-
-# Deactivate any virtual environment
-deactivate
+cd ~/workspace/ai-experiments
+# Environment activates automatically
 ```
 
-## Best Practices
+Manual activation:
+```bash
+pyenv activate ai-tools
+```
 
-1. **Use project-specific environments** for all development work
-2. **Pin dependency versions** in `pyproject.toml` for reproducible builds
-3. **Use `poetry.lock`** to ensure consistent dependency resolution across environments
-4. **Keep global environment minimal** - only install essential tools globally
-5. **Use `pyenv local`** to set Python versions per project
-6. **Commit `pyproject.toml` and `poetry.lock`** to version control
+Deactivation:
+```bash
+pyenv deactivate
+```
 
 ## Troubleshooting
 
-### If pyenv command is not found:
-- Ensure you've added pyenv to your PATH and restarted your terminal
-- Check that the export commands are in your shell configuration file
+### pyenv: command not found
 
-### If Poetry environment activation fails:
-- Try using `poetry shell` instead of `poetry env activate`
-- Ensure Poetry is properly installed with `poetry --version`
+Ensure shell configuration is correct:
+```bash
+echo $PYENV_ROOT
+# Should show: /home/alejandro/.pyenv
+```
 
-### If Python compilation fails:
-- Ensure all build dependencies are installed
-- Check for specific error messages and install any missing libraries
+### Poetry using wrong Python
+
+Reset Poetry environment:
+```bash
+poetry env remove python
+poetry env use ~/.pyenv/versions/3.12.11/envs/ai-tools/bin/python
+```
+
+### Python compilation fails
+
+Install missing dependencies:
+```bash
+sudo apt install -y libncursesw5-dev
+pyenv doctor  # Check for issues
+```
+
+### CUDA not detected
+
+Verify PyTorch installation:
+```bash
+poetry show torch
+# Check version includes +cu129
+```
 
 ---
 
-**Note**: This setup provides a robust Python development environment suitable for AI engineering workloads with proper dependency isolation and version management.
-
-*Last Updated: 2025-09-23*
+*Last Updated: 2025-09-24*

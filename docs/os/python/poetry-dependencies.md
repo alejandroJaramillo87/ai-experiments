@@ -1,6 +1,6 @@
 # Poetry Dependencies for AI Workstation
 
-Understanding the Python dependency ecosystem that powers our AI experiments and inference infrastructure.
+Understanding the Python dependency ecosystem for AI experiments and inference infrastructure.
 
 ## Table of Contents
 
@@ -23,7 +23,6 @@ Understanding the Python dependency ecosystem that powers our AI experiments and
   - [Experiment Management](#experiment-management)
   - [Model Versioning](#model-versioning)
 - [Utility & Performance Tools](#utility--performance-tools)
-  - [Distributed Computing](#distributed-computing)
   - [Progress Monitoring](#progress-monitoring)
   - [API Development](#api-development)
 - [Quantization & Inference Dependencies](#quantization--inference-dependencies)
@@ -45,11 +44,11 @@ Understanding the Python dependency ecosystem that powers our AI experiments and
 
 ## Introduction to Poetry
 
-Poetry is a modern Python dependency management tool that simplifies package management, virtual environments, and project building. For our AI workstation, it provides reproducible environments essential for consistent model performance.
+Poetry is a Python dependency management tool that simplifies package management, virtual environments, and project building. For our AI workstation, it provides consistent environments for reliable model performance.
 
 ### Why Poetry?
 
-Poetry solves several critical problems for AI development:
+Poetry solves several problems for AI development:
 
 1. **Dependency Resolution** - Automatically resolves complex dependency trees
 2. **Lock Files** - Ensures exact same versions across all environments
@@ -59,14 +58,14 @@ Poetry solves several critical problems for AI development:
 
 ### Poetry vs Traditional Tools
 
-| Feature | pip + venv | conda | **Poetry** |
-|---------|------------|-------|------------|
-| **Dependency Resolution** | Manual | Good | **Excellent** |
-| **Lock Files** | requirements.txt | environment.yml | **poetry.lock** |
-| **Virtual Env Management** | Separate | Integrated | **Integrated** |
-| **PyPI Support** | Yes | Limited | **Full** |
-| **Custom Repositories** | Complex | Yes | **Yes** |
-| **Build System** | setuptools | conda-build | **PEP 517** |
+| Feature | pip + venv | conda | Poetry |
+|---------|------------|-------|--------|
+| **Dependency Resolution** | Manual | Automatic | Automatic |
+| **Lock Files** | requirements.txt | environment.yml | poetry.lock |
+| **Virtual Env Management** | Separate | Integrated | Integrated |
+| **PyPI Support** | Yes | Limited | Full |
+| **Custom Repositories** | Complex setup | Yes | Yes |
+| **Build System** | setuptools | conda-build | PEP 517 |
 
 ## Understanding pyproject.toml
 
@@ -100,7 +99,7 @@ This metadata identifies our project and its configuration for AI experiments.
 
 ### Dependency Management
 
-Dependencies are grouped by purpose, with strict version constraints for reproducibility:
+Dependencies are grouped by purpose, with strict version constraints for consistency:
 
 ```toml
 python = ">=3.12,<3.13"  # Python 3.12 for latest performance
@@ -128,7 +127,7 @@ These packages form the backbone of our AI capabilities:
                      ↓
 ┌──────────────────────────────────────────────┐
 │           Accelerate (1.8.1)                 │
-│    • Distributed training                    │
+│    • Multi-GPU training                      │
 │    • Mixed precision (FP16/BF16)            │
 │    • DeepSpeed integration                   │
 └──────────────────────────────────────────────┘
@@ -149,7 +148,7 @@ These packages form the backbone of our AI capabilities:
 - **Performance**: Can handle datasets larger than RAM
 
 **accelerate (1.8.1)**
-- **Purpose**: Simplifies distributed and mixed-precision training
+- **Purpose**: Simplifies mixed-precision training
 - **Our Use**: Optimizing training on RTX 5090
 - **Key Features**:
   - Automatic mixed precision (AMP)
@@ -230,7 +229,7 @@ These packages form the backbone of our AI capabilities:
 
 ## MLOps & Experiment Tracking
 
-These tools ensure reproducibility and tracking of our experiments:
+These tools ensure consistency and tracking of our experiments:
 
 ```
 Experiment Lifecycle:
@@ -241,7 +240,7 @@ Experiment Lifecycle:
      ↓                 ↓                   ↓
   Metrics         Model Registry      Visualization
   Artifacts       Versioning          Loss Curves
-  Hyperparams     Deployment          Embeddings
+  Hyperparams     Versioning          Embeddings
 ```
 
 ### Experiment Management
@@ -257,10 +256,10 @@ Experiment Lifecycle:
 
 **mlflow (3.1.1)**
 - **Purpose**: End-to-end ML lifecycle management
-- **Our Use**: Model versioning, deployment tracking
+- **Our Use**: Model versioning and management
 - **Components**:
   - Tracking: Log parameters, metrics, artifacts
-  - Projects: Reproducible runs
+  - Projects: Consistent runs
   - Models: Standardized model packaging
   - Registry: Model versioning and staging
 
@@ -277,16 +276,16 @@ Experiment Lifecycle:
 
 ## Utility & Performance Tools
 
-### Distributed Computing
+### Parallel Computing
 
 **ray (2.47.1)**
-- **Purpose**: Distributed computing framework
-- **Our Use**: Parallel hyperparameter tuning
+- **Purpose**: Parallel computing framework
+- **Our Use**: Parallel hyperparameter tuning on local workstation
 - **Features**:
   - Ray Tune: Hyperparameter optimization
   - Ray Serve: Model serving
-  - Ray Data: Distributed data processing
-- **Scaling**: From laptop to cluster without code changes
+  - Ray Data: Parallel data processing
+- **Local Usage**: Utilizes all 32 CPU cores efficiently
 
 **optuna (4.4.0)**
 - **Purpose**: Hyperparameter optimization framework
@@ -323,7 +322,7 @@ Experiment Lifecycle:
 
 ## Quantization & Inference Dependencies
 
-Specialized tools for deployment and inference optimization:
+Specialized tools for inference optimization:
 
 **nemo-toolkit (2.0.0)**
 - **Purpose**: NVIDIA's neural modules toolkit
@@ -567,7 +566,7 @@ def get_transformers():
    - Use optional dependencies for rare features
    - Regular cleanup of unused packages
 
-5. **Reproducibility**
+5. **Consistency**
    - Always commit `poetry.lock`
    - Document Python version requirements
    - Use Docker for full environment capture
@@ -581,4 +580,3 @@ def get_transformers():
 
 ---
 
-*This Python dependency ecosystem, managed by Poetry, provides the software foundation for our AI experiments. Combined with our GPU stack, it enables the 286.85 tokens/second inference performance and supports everything from experimentation to production deployment.*

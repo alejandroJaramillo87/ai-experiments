@@ -126,7 +126,7 @@ Advanced CPU configuration for optimal AI inference performance, maximizing proc
     - **Maximum**: `-20 to -25` (potential for additional gains with extensive testing)
     - **Method**: Start conservative, increase incrementally, validate with CoreCycler
   - **Benefit**: Reduces power consumption (P∝V²), creates headroom for higher sustained frequencies
-  - **Impact**: Validated 26 percent improvement with conservative -15 setting
+  - **Impact**: Validated 26% improvement with conservative -15 setting
 
 - **Curve Shaper**: `Frequency-Specific Optimization` (Zen 5 Feature)
   - **Purpose**: Granular voltage control for different frequency bands
@@ -378,7 +378,7 @@ Rigorous testing protocol for stability validation:
 ### Production Validation Notes
 
 **Key Findings from Production Testing:**
-1. **Conservative settings work**: Curve Optimizer at -15 achieved excellent 26 percent gains
+1. **Conservative settings work**: Curve Optimizer at -15 achieved excellent 26% gains
 2. **FCLK 2100 MHz stable**: No SoC voltage adjustment required on test system
 3. **Memory Context Restore disabled**: More aggressive than Auto, but stable
 4. **Consistency matters**: Reduced variance is as valuable as raw performance
@@ -386,10 +386,10 @@ Rigorous testing protocol for stability validation:
 **Potential for Further Optimization:**
 - After extended stability testing, Curve Optimizer could be pushed to -20
 - Curve Shaper Medium Frequency could potentially reach -30
-- These adjustments may yield additional 3-5 percent improvement
+- These adjustments may yield additional 3-5% improvement
 
 ---
 
-*This hardware optimization guide minimizes inference latency on the AMD Ryzen 9950X + RTX 5090 AI engineering workstation. Validated Zen 5 optimizations including Curve Optimizer (-15), Curve Shaper, and FCLK 2100 MHz achieved 26.2 percent performance improvement in production testing. Settings prioritize stability and consistency for interactive chatbot applications.*
+*This hardware optimization guide minimizes inference latency on the AMD Ryzen 9950X + RTX 5090 AI engineering workstation. Validated Zen 5 optimizations including Curve Optimizer (-15), Curve Shaper, and FCLK 2100 MHz achieved 26.2% performance improvement in testing. Settings prioritize stability and consistency for interactive chatbot applications.*
 
 *Last Updated: 2025-09-23*

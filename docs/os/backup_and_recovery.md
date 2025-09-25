@@ -1,7 +1,7 @@
 # Complete System Backup and Recovery with Clonezilla
 
 ## Goal
-Create a complete backup of your Ubuntu 24.04 system (nvme1n1) on a 1TB USB drive that can be restored at the BIOS level, even when the OS and UEFI boot are completely corrupted.
+Create a complete backup of your Ubuntu 24.04 system (nvme1n1) on a 1TB USB drive that can be restored at the BIOS level, even when the OS and UEFI boot are corrupted.
 
 ## What You Need
 - 1TB USB external drive (for backup storage)
@@ -164,8 +164,8 @@ sync
 
 ## Important Notes
 
-- **Perfect UEFI Restoration**: Clonezilla preserves exact boot configuration
-- **Complete System State**: Everything is restored exactly as backed up
+- **UEFI Restoration**: Clonezilla preserves exact boot configuration
+- **System State**: Everything is restored exactly as backed up
 - **Hardware Independence**: Clonezilla Live runs regardless of system state
 - **Data Safety**: Always verify drive selection before starting operations
 - **Multiple Backups**: Keep recent backups; delete old ones when space needed
@@ -179,4 +179,4 @@ This method works even when:
 - Hard drive is completely reformatted
 - System has been infected with malware
 
-The Clonezilla Live environment operates completely independently of your installed system, making it ideal for emergency recovery situations.
+The Clonezilla Live environment operates independently of your installed system, making it ideal for emergency recovery situations.

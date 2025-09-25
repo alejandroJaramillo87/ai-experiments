@@ -2,7 +2,7 @@
 
 **STATUS: EXPERIMENTAL - Practical Implementation Focus**
 
-**INSIGHT: CPU optimizations yielded minimal gains while memory optimizations provided 26 percent improvement, confirming memory bandwidth as the primary bottleneck**
+**INSIGHT: CPU optimizations yielded minimal gains while memory optimizations provided 26% improvement, confirming memory bandwidth as the primary bottleneck**
 
 ## Table of Contents
 
@@ -33,11 +33,11 @@
 
 ## Executive Summary
 
-Based on production benchmarking showing memory optimizations vastly outperformed CPU optimizations, this document presents 8 practical experiments to further address memory bandwidth constraints in CPU-based LLM inference. These are realistic, implementable solutions that avoid academic complexity.
+Based on benchmarking showing memory optimizations vastly outperformed CPU optimizations, this document presents 8 practical experiments to further address memory bandwidth constraints in CPU-based LLM inference. These are realistic, implementable solutions that avoid academic complexity.
 
 **Key Finding**: System is memory bandwidth limited (96GB/s DDR5-6000) not compute limited
 **Approach**: Focus on bandwidth efficiency, TLB optimization, and memory access patterns
-**Expected Impact**: Additional 15-25 percent performance improvement possible
+**Expected Impact**: Additional 15-25% performance improvement possible
 **Implementation Effort**: 3 days to 2 weeks per experiment
 
 ## Technical Analysis: Why Memory Matters More
@@ -50,7 +50,7 @@ Model size: 30GB
 Tokens/sec: 35
 Theoretical bandwidth needed: 30GB × 35 = 1,050 GB/s
 Available bandwidth: 96 GB/s (DDR5-6000)
-Bandwidth ratio: 96/1050 = 9.1 percent efficiency
+Bandwidth ratio: 96/1050 = 9.1% efficiency
 ```
 
 This shows we're using each byte ~11 times via cache, but still bandwidth limited.
@@ -60,14 +60,14 @@ This shows we're using each byte ~11 times via cache, but still bandwidth limite
 Your benchmarks revealed:
 - **Before BIOS optimizations**: 28.09 tokens/sec
 - **After CPU+Memory optimizations**: 35.44 tokens/sec
-- **Memory optimizations (FCLK, timings)**: Contributed most of the 26 percent gain
+- **Memory optimizations (FCLK, timings)**: Contributed most of the 26% gain
 - **CPU optimizations (boost, curve optimizer)**: Minimal contribution
 
 This confirms the system has excess CPU cycles but insufficient memory bandwidth.
 
 ## Experiment 1: Layer-Ahead Prefetch Wrapper
 
-**Effort**: 1 week | **Risk**: Low | **Expected Gain**: 8-12 percent
+**Effort**: 1 week | **Risk**: Low | **Expected Gain**: 8-12%
 
 ### Concept
 Prefetch layer N+1 weights while computing layer N, hiding memory latency.
@@ -111,7 +111,7 @@ extern "C" void ggml_compute_forward(struct ggml_compute_params* params,
 
 ## Experiment 2: Mixed Huge Pages Strategy
 
-**Effort**: 3-4 days | **Risk**: Medium | **Expected Gain**: 5-8 percent
+**Effort**: 3-4 days | **Risk**: Medium | **Expected Gain**: 5-8%
 
 ### Concept
 Use different page sizes optimally based on access patterns:
@@ -163,7 +163,7 @@ void* allocate_memory(size_t size, memory_type_t type) {
 
 ## Experiment 3: Cache Line Aligned Weight Packing
 
-**Effort**: 1 week | **Risk**: Low | **Expected Gain**: 5-10 percent
+**Effort**: 1 week | **Risk**: Low | **Expected Gain**: 5-10%
 
 ### Concept
 Repack weights to optimize cache line usage and prevent split loads.
@@ -215,7 +215,7 @@ AlignedTensor* repack_weights(const float* original, size_t rows, size_t cols) {
 
 ## Experiment 4: Memory Bandwidth Throttle Manager
 
-**Effort**: 4-5 days | **Risk**: Medium | **Expected Gain**: 3-7 percent
+**Effort**: 4-5 days | **Risk**: Medium | **Expected Gain**: 3-7%
 
 ### Concept
 Paradoxically, limiting bandwidth usage can increase throughput by reducing memory controller queuing.
@@ -238,7 +238,7 @@ public:
 
             // Check bandwidth usage
             uint64_t current = bytes_this_interval.fetch_add(copy_size);
-            if (current > max_bytes_per_ms * 0.8) {  // 80 percent threshold
+            if (current > max_bytes_per_ms * 0.8) {  // 80% threshold
                 // Brief pause to let controller catch up
                 _mm_pause();
                 _mm_pause();
@@ -257,7 +257,7 @@ public:
 
 ## Experiment 5: Weight Compression with AVX-512 Decompression
 
-**Effort**: 1-2 weeks | **Risk**: Medium | **Expected Gain**: 10-15 percent
+**Effort**: 1-2 weeks | **Risk**: Medium | **Expected Gain**: 10-15%
 
 ### Concept
 Store weights compressed, decompress on-the-fly using excess CPU cycles.
@@ -300,12 +300,12 @@ void decompress_weights_avx512(const CompressedWeights* compressed,
 ### Bandwidth Reduction
 - Original: 30GB at FP32
 - Compressed: ~8GB (base + INT8 deltas)
-- Bandwidth saved: 73 percent
-- CPU overhead: Approximately 5 percent (we have excess)
+- Bandwidth saved: 73%
+- CPU overhead: Approximately 5% (we have excess)
 
 ## Experiment 6: CCX-Aware Memory Allocation
 
-**Effort**: 3-4 days | **Risk**: Low | **Expected Gain**: 5-10 percent
+**Effort**: 3-4 days | **Risk**: Low | **Expected Gain**: 5-10%
 
 ### Concept
 The Ryzen 9950X has 2 CCDs (8 cores each). Distribute memory across both to use both memory controllers.
@@ -346,7 +346,7 @@ void* allocate_interleaved(size_t size) {
 
 ## Experiment 7: Asynchronous Double Buffering
 
-**Effort**: 1 week | **Risk**: Medium | **Expected Gain**: 8-12 percent
+**Effort**: 1 week | **Risk**: Medium | **Expected Gain**: 8-12%
 
 ### Concept
 Use DMA to load next layer while computing current layer.
@@ -397,7 +397,7 @@ Layer N+2:           [Prefetch][Compute....]
 
 ## Experiment 8: Smart KV Cache Manager
 
-**Effort**: 5-6 days | **Risk**: Medium | **Expected Gain**: 5-8 percent
+**Effort**: 5-6 days | **Risk**: Medium | **Expected Gain**: 5-8%
 
 ### Concept
 Optimize KV cache layout and access patterns for better memory efficiency.
@@ -465,12 +465,12 @@ Memory traffic: 5 bytes per weight
 With VNNI optimization:
 ```
 INT8 weights (1 byte) → Direct INT8 compute → Scale result
-Memory traffic: 1 byte per weight (80 percent reduction)
+Memory traffic: 1 byte per weight (80% reduction)
 ```
 
 ### Key Benefits for Memory-Constrained Systems
 1. **4x reduction in cache footprint** - More weights fit in L2/L3
-2. **75 percent less memory bandwidth** - Process INT8 directly
+2. **75% less memory bandwidth** - Process INT8 directly
 3. **Synergy with huge pages** - Fewer TLB entries needed for smaller data
 
 ### Implementation Overview
@@ -489,7 +489,7 @@ Your benchmarks show the system is memory-limited at 35 tok/s. With VNNI:
 When combined with memory optimizations:
 | Model Type | Current | With Mem Opts | +VNNI | Total Gain |
 |------------|---------|---------------|--------|------------|
-| FP32 | 35 tok/s | 44 tok/s | 44 tok/s | 25 percent |
+| FP32 | 35 tok/s | 44 tok/s | 44 tok/s | 25% |
 | Q8_0 | 35 tok/s | 44 tok/s | 110-130 tok/s | 3-4x |
 | Q4_0 | 35 tok/s | 44 tok/s | 90-110 tok/s | 2.5-3x |
 
@@ -500,20 +500,20 @@ When combined with memory optimizations:
 2. **CCX-Aware Allocation** - Simple numactl wrapper
 3. **Cache Line Alignment** - Minimal code changes
 
-Expected gain: 10-15 percent
+Expected gain: 10-15%
 
 ### Phase 2: Medium Complexity (Week 2)
 4. **Layer-Ahead Prefetch** - LD_PRELOAD wrapper
 5. **Double Buffering** - Thread management needed
 
-Expected gain: 8-12 percent
+Expected gain: 8-12%
 
 ### Phase 3: Advanced (Week 3-4)
 6. **Weight Compression** - AVX-512 kernels
 7. **Smart KV Cache** - Significant refactoring
 8. **Bandwidth Throttling** - Requires tuning
 
-Expected gain: 5-10 percent
+Expected gain: 5-10%
 
 ### Phase 4: High-Impact Complex (Week 4-6)
 9. **VNNI Acceleration** - For quantized models only
@@ -527,24 +527,24 @@ Expected gain: 2-4x for quantized models
 
 ### For FP32 Models
 **Best combination**: 1GB Huge Pages + Layer Prefetch + CCX Interleaving
-- Reduces TLB misses by 99 percent
+- Reduces TLB misses by 99%
 - Overlaps memory access with compute
 - Uses both memory controllers
 - Can be implemented in 1 week
-- Expected total gain: 20-25 percent
+- Expected total gain: 20-25%
 
 ### For Quantized Models (Q8_0, Q4_0)
 **Ultimate combination**: Memory Optimizations + VNNI Acceleration
 1. **Week 1**: Implement memory optimizations (huge pages, prefetch, CCX)
 2. **Week 2-4**: Add VNNI wrapper for quantized compute
 3. **Result**:
-   - Memory optimizations: 25 percent gain
+   - Memory optimizations: 25% gain
    - VNNI acceleration: 2-4x additional gain
    - Total: 2.5-5x performance improvement
 
 This combination attacks both bottlenecks:
 - Memory optimizations improve bandwidth utilization
-- VNNI reduces bandwidth requirements by 75-80 percent
+- VNNI reduces bandwidth requirements by 75-80%
 - Together they can push Q8_0 models to 100+ tokens/second
 
 ## Validation Methodology
@@ -565,10 +565,10 @@ time ./benchmark.py  # Your existing benchmark
 ```
 
 ### Success Criteria
-1. Bandwidth utilization increases from 9 percent to 12 percent
-2. TLB miss rate drops below 0.1 percent
-3. Token/second improves by 15-25 percent
-4. First-token latency reduces by 10 percent
+1. Bandwidth utilization increases from 9% to 12%
+2. TLB miss rate drops below 0.1%
+3. Token/second improves by 15-25%
+4. First-token latency reduces by 10%
 
 ## Risk Mitigation
 
@@ -582,7 +582,7 @@ time ./benchmark.py  # Your existing benchmark
 
 Your benchmarks clearly show memory bandwidth as the bottleneck. These 9 experiments specifically target that constraint with practical, implementable solutions. Unlike the overly-academic memory prefetcher, these are all achievable with reasonable effort.
 
-**For FP32 models**: The combination of 1GB huge pages, layer-ahead prefetch, and CCX-aware allocation could realistically achieve another 20-25 percent improvement on top of your current 35 tokens/second, potentially reaching 42-44 tokens/second.
+**For FP32 models**: The combination of 1GB huge pages, layer-ahead prefetch, and CCX-aware allocation could realistically achieve another 20-25% improvement on top of your current 35 tokens/second, potentially reaching 42-44 tokens/second.
 
 **For quantized models**: The addition of VNNI acceleration (Experiment 9) is a game-changer. By processing INT8/INT4 directly without dequantization, you dramatically reduce memory bandwidth requirements. Combined with the memory optimizations, quantized models could reach 90-130 tokens/second - a 2.5-4x improvement.
 

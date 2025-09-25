@@ -1,6 +1,6 @@
 # Docker Compose Security Orchestration
 
-Comprehensive explanation of the multi-service AI inference orchestration implemented in docker-compose.yaml, detailing security sandboxing, resource isolation, and defense-in-depth strategies for the AMD Ryzen 9950X + RTX 5090 AI experiments.
+Explanation of the multi-service AI inference orchestration implemented in docker-compose.yaml, detailing security sandboxing, resource isolation, and defense-in-depth strategies for the AMD Ryzen 9950X + RTX 5090 AI experiments.
 
 > Note: This document explains the actual implementation in `docker-compose.yaml`. The configuration orchestrates multiple containerized AI services with comprehensive security controls, resource constraints, and network isolation.
 
@@ -44,14 +44,11 @@ Comprehensive explanation of the multi-service AI inference orchestration implem
   - [Build Configuration](#build-configuration)
     - [Build Context](#build-context)
     - [Dockerfile References](#dockerfile-references)
-  - [Production Considerations](#production-considerations)
-    - [Network Hardening](#network-hardening)
-    - [Volume Persistence](#volume-persistence)
   - [Reference Implementation](#reference-implementation)
 
 ## Implementation Overview
 
-The docker-compose.yaml implements a comprehensive multi-service AI inference platform with defense-in-depth security. The orchestration manages five distinct services across CPU and GPU resources, implementing strict isolation boundaries while maintaining controlled inter-service communication.
+The docker-compose.yaml implements a multi-service AI inference platform with defense-in-depth security. The orchestration manages five distinct services across CPU and GPU resources, implementing strict isolation boundaries while maintaining controlled inter-service communication.
 
 **Key Security Features:**
 - **Service isolation**: Each AI model runs in its own security-hardened container
@@ -292,7 +289,7 @@ networks:
 **Network Security:**
 - **Dedicated subnet**: 172.20.0.0/16 isolates AI services from host network
 - **Bridge driver**: Layer 2 isolation between containers
-- **Internal flag**: Set to false for development, true for production isolation
+- **Internal flag**: Set to false to allow Docker image pulling
 - **IPAM configuration**: Controlled IP address management
 
 ### Port Security
@@ -543,41 +540,11 @@ build:
 - **Optimization flags**: Architecture-specific compilation in build stage
 - **Minimal runtime**: Only necessary libraries in final images
 
-## Production Considerations
-
-### Network Hardening
-
-**Production Network Configuration**
-```yaml
-networks:
-  ai-network:
-    internal: true  # Change from false to true in production
-```
-
-**Production Security:**
-- **Complete isolation**: Internal network prevents external access
-- **Service mesh**: Only web UI exposed to external network
-- **Firewall integration**: Additional host-level network controls
-- **Zero trust**: No implicit trust between services
-
-### Volume Persistence
-
-**Named Volume Strategy**
-```yaml
-volumes:
-  open-webui-data:
-```
-
-**Data Management:**
-- **Persistent storage**: Survives container recreation
-- **Backup capability**: Named volumes support backup operations
-- **Access control**: Docker manages volume permissions
-- **Migration support**: Volumes portable across hosts
 
 ## Reference Implementation
 
 **Complete Security Stack:**
-The docker-compose.yaml implements comprehensive security through:
+The docker-compose.yaml implements security through:
 
 1. **Process Isolation**: Each service runs in isolated container namespace
 2. **Resource Limits**: CPU, memory, and GPU resources strictly controlled
@@ -604,7 +571,5 @@ The docker-compose.yaml implements comprehensive security through:
 - Non-root execution reduces compromise impact
 
 ---
-
-*This docker-compose.yaml implementation provides production-grade security orchestration for AI inference workloads on the AMD Ryzen 9950X + RTX 5090 workstation. The configuration implements defense-in-depth security while maintaining operational efficiency for multi-model AI serving.*
 
 *Last Updated: 2025-09-23*

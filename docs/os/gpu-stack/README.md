@@ -6,7 +6,7 @@ Understanding the NVIDIA GPU software stack that powers our AI experiments works
 
 - [Overview](#overview)
 - [The Three-Layer Stack](#the-three-layer-stack)
-- [Our Production Environment](#our-production-environment)
+- [Our Local Environment](#our-local-environment)
 - [Quick Start](#quick-start)
   - [Verify Installation](#verify-installation)
   - [Installation Scripts](#installation-scripts)
@@ -24,7 +24,7 @@ Understanding the NVIDIA GPU software stack that powers our AI experiments works
 
 ## Overview
 
-Our AI inference workstation achieves **286.85 tokens/second** on the RTX 5090 through a carefully configured GPU software stack. This documentation explains each layer of the stack and how they work together to enable high-performance AI computing.
+Our AI inference workstation achieves **286.85 tokens/second** on the RTX 5090 through a configured GPU software stack. This documentation explains each layer of the stack and how they work together for AI computing.
 
 ## The Three-Layer Stack
 
@@ -63,7 +63,7 @@ Our AI inference workstation achieves **286.85 tokens/second** on the RTX 5090 t
 └─────────────────────────────────────────────┘
 ```
 
-## Our Production Environment
+## Our Local Environment
 
 | Component | Version | Purpose |
 |-----------|---------|---------|
@@ -187,4 +187,3 @@ Our RTX 5090 (Blackwell architecture) provides:
 
 ---
 
-*This GPU stack powers our AI experiments workstation, enabling production-ready inference at 286.85 tokens/second on the RTX 5090.*

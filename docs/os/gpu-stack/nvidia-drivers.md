@@ -1,6 +1,6 @@
 # NVIDIA Drivers - The Foundation Layer
 
-Understanding NVIDIA GPU drivers and their critical role in AI computing.
+Understanding NVIDIA GPU drivers and their role in AI computing.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ Understanding NVIDIA GPU drivers and their critical role in AI computing.
 
 ## What Are NVIDIA Drivers?
 
-NVIDIA drivers are the software layer that enables your operating system to communicate with your GPU hardware. Think of them as translators between Linux and your RTX 5090, handling everything from basic display output to complex CUDA operations.
+NVIDIA drivers are the software layer that enables your operating system to communicate with your GPU hardware. They handle communication between Linux and your RTX 5090, from basic display output to CUDA operations.
 
 ### Key Components
 
@@ -97,7 +97,7 @@ RTX 5090 GPU
 
 ### Driver Version: 580.65.06
 
-We use the latest production driver for several reasons:
+We use the latest stable driver for several reasons:
 
 1. **Blackwell Support**: Full support for RTX 5090's SM 12.0 architecture
 2. **CUDA 13 Compatibility**: Required for CUDA 13.0.88
@@ -285,4 +285,3 @@ Without these components, CUDA 13.0 cannot initialize, and our inference engines
 
 ---
 
-*The NVIDIA driver is the critical foundation that enables our RTX 5090 to deliver 286.85 tokens/second inference performance. Without proper driver configuration, even the most powerful GPU becomes an expensive display adapter.*
