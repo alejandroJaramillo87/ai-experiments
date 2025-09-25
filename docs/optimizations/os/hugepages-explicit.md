@@ -1,5 +1,31 @@
 # Explicit Huge Pages for llama.cpp Inference
 
+## Table of Contents
+
+- [Explicit Huge Pages for llama.cpp Inference](#explicit-huge-pages-for-llamacpp-inference)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [How It Works](#how-it-works)
+    - [The Problem](#the-problem)
+    - [The Solution](#the-solution)
+    - [Implementation Details](#implementation-details)
+  - [Performance Impact](#performance-impact)
+  - [Configuration](#configuration)
+    - [System Requirements](#system-requirements)
+    - [Docker Configuration](#docker-configuration)
+  - [Usage](#usage)
+  - [Monitoring](#monitoring)
+  - [Advantages Over Other Approaches](#advantages-over-other-approaches)
+    - [vs hugetlbfs](#vs-hugetlbfs)
+    - [vs Transparent Huge Pages (THP)](#vs-transparent-huge-pages-thp)
+  - [Troubleshooting](#troubleshooting)
+    - ["Cannot allocate memory" Error](#cannot-allocate-memory-error)
+    - [Wrapper Not Activating](#wrapper-not-activating)
+    - [Performance Not Improved](#performance-not-improved)
+    - [Warning: "munmap failed: Invalid argument"](#warning-munmap-failed-invalid-argument)
+  - [Technical Implementation](#technical-implementation)
+  - [Files Reference](#files-reference)
+
 ## Overview
 
 This optimization implements explicit huge pages support for llama.cpp CPU inference using the MAP_HUGETLB flag, providing automatic huge page allocation for large models without requiring special filesystems or manual model copying.

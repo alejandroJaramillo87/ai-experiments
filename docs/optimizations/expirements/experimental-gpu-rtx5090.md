@@ -1,5 +1,33 @@
 # GPU Optimization Experiments for RTX 5090
 
+## Table of Contents
+
+- [GPU Optimization Experiments for RTX 5090](#gpu-optimization-experiments-for-rtx-5090)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Hardware Context](#hardware-context)
+  - [Experiment Categories](#experiment-categories)
+    - [1. Memory Optimization Experiments](#1-memory-optimization-experiments)
+      - [Experiment 1.1: Flash Attention 3 Implementation](#experiment-11-flash-attention-3-implementation)
+      - [Experiment 1.2: VRAM Fragmentation Analysis](#experiment-12-vram-fragmentation-analysis)
+    - [2. Quantization Experiments](#2-quantization-experiments)
+      - [Experiment 2.1: FP8 vs FP16 vs INT8 Comparison](#experiment-21-fp8-vs-fp16-vs-int8-comparison)
+    - [3. Inference Acceleration](#3-inference-acceleration)
+      - [Experiment 3.1: CUDA Graphs for Static Inference](#experiment-31-cuda-graphs-for-static-inference)
+      - [Experiment 3.2: Multi-Stream Parallel Inference](#experiment-32-multi-stream-parallel-inference)
+    - [4. Profiling and Tuning](#4-profiling-and-tuning)
+      - [Experiment 4.1: Power/Performance Optimization](#experiment-41-powerperformance-optimization)
+      - [Experiment 4.2: Tensor Core Utilization Analysis](#experiment-42-tensor-core-utilization-analysis)
+    - [5. Optimization Comparison](#5-optimization-comparison)
+      - [Experiment 5.1: vLLM vs TensorRT-LLM vs llama.cpp](#experiment-51-vllm-vs-tensorrt-llm-vs-llamacpp)
+  - [Implementation Priority](#implementation-priority)
+  - [Monitoring and Validation](#monitoring-and-validation)
+    - [Key Metrics to Track](#key-metrics-to-track)
+    - [Monitoring Commands](#monitoring-commands)
+  - [Expected Improvements](#expected-improvements)
+  - [Next Steps](#next-steps)
+  - [Notes](#notes)
+
 ## Overview
 
 This document outlines experimental GPU optimizations specifically for the NVIDIA RTX 5090 (Blackwell architecture) with 32GB VRAM. These experiments complement the CPU/RAM optimizations and focus on maximizing inference performance for AI workloads.

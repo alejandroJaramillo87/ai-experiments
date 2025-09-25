@@ -4,6 +4,45 @@
 
 **WARNING**: 1GB huge pages require boot-time configuration and may impact system stability. This optimization is most beneficial for models larger than 15GB.
 
+## Table of Contents
+
+- [EXPERIMENTAL: 1GB Huge Pages for Large Model Inference](#experimental-1gb-huge-pages-for-large-model-inference)
+  - [Table of Contents](#table-of-contents)
+  - [Executive Summary](#executive-summary)
+  - [Technical Background](#technical-background)
+    - [TLB Hierarchy on Zen 5](#tlb-hierarchy-on-zen-5)
+    - [Memory Bandwidth Impact](#memory-bandwidth-impact)
+  - [Implementation Design](#implementation-design)
+    - [Kernel Configuration](#kernel-configuration)
+      - [Boot-Time Setup](#boot-time-setup)
+      - [Runtime Allocation (Less Reliable)](#runtime-allocation-less-reliable)
+    - [Wrapper Modifications](#wrapper-modifications)
+      - [Updated hugepage_mmap_wrapper.cpp](#updated-hugepage_mmap_wrappercpp)
+    - [Mount Configuration](#mount-configuration)
+      - [Dual Mount Strategy](#dual-mount-strategy)
+    - [Management Script Updates](#management-script-updates)
+      - [Modified manage-hugepages-models.sh](#modified-manage-hugepages-modelssh)
+  - [Performance Analysis](#performance-analysis)
+    - [TLB Miss Reduction](#tlb-miss-reduction)
+    - [Memory Access Patterns](#memory-access-patterns)
+  - [Integration Testing](#integration-testing)
+    - [Verification Commands](#verification-commands)
+    - [Performance Validation](#performance-validation)
+  - [Risk Mitigation](#risk-mitigation)
+    - [Memory Fragmentation](#memory-fragmentation)
+    - [System Impact](#system-impact)
+  - [Compatibility Matrix](#compatibility-matrix)
+  - [Alternative Approaches](#alternative-approaches)
+    - [Transparent Huge Pages (THP)](#transparent-huge-pages-thp)
+    - [Reserved Memory Regions](#reserved-memory-regions)
+    - [NUMA Balancing](#numa-balancing)
+  - [Success Metrics](#success-metrics)
+  - [Implementation Timeline](#implementation-timeline)
+    - [Day 1: Kernel Configuration](#day-1-kernel-configuration)
+    - [Day 2: Wrapper Modification](#day-2-wrapper-modification)
+    - [Day 3: Testing and Validation](#day-3-testing-and-validation)
+  - [Conclusion](#conclusion)
+
 ## Executive Summary
 
 Extension of the existing 2MB huge pages implementation to support 1GB pages, reducing TLB pressure by 512x compared to 2MB pages. For a 30GB model, only 30 TLB entries are needed instead of 15,360.

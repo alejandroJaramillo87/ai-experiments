@@ -2,6 +2,27 @@
 
 Latency-focused optimizations for interactive LLM inference (AMD Ryzen 9950X + RTX 5090).
 
+## Table of Contents
+
+- [System Optimizations](#system-optimizations)
+  - [Table of Contents](#table-of-contents)
+  - [Optimization Philosophy: Latency vs Throughput](#optimization-philosophy-latency-vs-throughput)
+  - [Synopsis](#synopsis)
+  - [Files](#files)
+    - [bios/](#bios)
+    - [os/](#os)
+    - [gpu/](#gpu)
+    - [benchmark-guide.md](#benchmark-guidemd)
+  - [Implementation Status](#implementation-status)
+  - [Quick Verification](#quick-verification)
+  - [Container Integration](#container-integration)
+  - [System Configuration](#system-configuration)
+  - [Validated Performance Results](#validated-performance-results)
+    - [Benchmark Summary](#benchmark-summary)
+    - [Key Validated Settings Impact](#key-validated-settings-impact)
+  - [Performance Impact](#performance-impact)
+  - [See Also](#see-also)
+
 ## Optimization Philosophy: Latency vs Throughput
 
 These optimizations prioritize **inference latency** over throughput for chatbot-style applications:

@@ -1,5 +1,5 @@
-# --- Stage 1: The Builder ---
-# This stage compiles the CUDA-optimized C++ server executable.
+# Stage 1: Builder
+# Compiles CUDA-optimized llama.cpp server executable for RTX 5090
 FROM nvidia/cuda:13.0.1-devel-ubuntu24.04 AS builder
 
 LABEL stage="builder"
@@ -35,17 +35,18 @@ ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:/usr/local/cuda/lib64:${LD_LIBRA
 ENV CUDA_HOME=/usr/local/cuda
 ENV PKG_CONFIG_PATH=/usr/local/cuda/lib64/pkgconfig:${PKG_CONFIG_PATH}
 
-# Enable CUDA memory pooling for better performance
+# CUDA runtime optimization settings
 ENV CUDA_MODULE_LOADING=LAZY
 ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
 
-# Create a symlink for the linker to find the CUDA stub library
+# Create libcuda.so.1 symlink required for CUDA stub library compatibility
 RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 
 
 # Build llama.cpp with CUDA optimizations
+# Full clone used to ensure all build dependencies and submodules are available
 RUN rm -rf /tmp/llama.cpp && \
-    git clone  https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
+    git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
     cd /tmp/llama.cpp && \
     mkdir build && cd build && \
     cmake .. \
@@ -73,7 +74,7 @@ RUN rm -rf /tmp/llama.cpp && \
      cmake --build . --target llama-server --config Release -j$(nproc)
 
 
-# --- Stage 2: The Final Runtime Image ---
+# Stage 2: Runtime Image
 FROM nvidia/cuda:13.0.1-runtime-ubuntu24.04
 
 LABEL description="Container for running the CUDA-accelerated llama.cpp REST API server."

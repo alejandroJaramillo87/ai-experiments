@@ -2,6 +2,40 @@
 
 Host OS optimizations for containerized AI workloads on AMD Ryzen 9950X + RTX 5090 platform.
 
+## Table of Contents
+
+- [Operating System Optimizations](#operating-system-optimizations)
+  - [Table of Contents](#table-of-contents)
+  - [Implemented Optimizations](#implemented-optimizations)
+    - [1. Swap Disabled [IMPLEMENTED]](#1-swap-disabled-implemented)
+    - [2. CPU Governor - Performance Mode [IMPLEMENTED]](#2-cpu-governor---performance-mode-implemented)
+    - [3. Memory Locking [IMPLEMENTED]](#3-memory-locking-implemented)
+    - [4. Huge Pages [IMPLEMENTED]](#4-huge-pages-implemented)
+  - [Complete sysctl.conf Configuration](#complete-sysctlconf-configuration)
+  - [Container Resource Allocation](#container-resource-allocation)
+    - [CPU Pinning](#cpu-pinning)
+    - [Memory Limits](#memory-limits)
+  - [Monitoring Commands](#monitoring-commands)
+    - [System Performance](#system-performance)
+    - [Verification Script](#verification-script)
+  - [GPU Optimizations](#gpu-optimizations)
+    - [5. NVIDIA Driver Persistence Mode [IMPLEMENTED]](#5-nvidia-driver-persistence-mode-implemented)
+    - [6. GPU Power and Clock Management [PARTIALLY IMPLEMENTED - SEE WARNING]](#6-gpu-power-and-clock-management-partially-implemented---see-warning)
+    - [7. GPU Compute Mode [MODIFIED - DEFAULT MODE]](#7-gpu-compute-mode-modified---default-mode)
+    - [8. NVIDIA Kernel Module Parameters [IMPLEMENTED]](#8-nvidia-kernel-module-parameters-implemented)
+    - [9. GPU IRQ Affinity [IMPLEMENTED]](#9-gpu-irq-affinity-implemented)
+    - [10. CUDA System Environment [IMPLEMENTED]](#10-cuda-system-environment-implemented)
+    - [11. NVIDIA Multi-Process Service (MPS) [OPTIONAL]](#11-nvidia-multi-process-service-mps-optional)
+    - [12. Kernel Boot Parameters [IMPLEMENTED]](#12-kernel-boot-parameters-implemented)
+  - [GPU Monitoring and Verification](#gpu-monitoring-and-verification)
+    - [GPU Status Script](#gpu-status-script)
+    - [Complete Setup Script](#complete-setup-script)
+  - [RTX 5090 Specific Notes and Benchmark Results](#rtx-5090-specific-notes-and-benchmark-results)
+    - [Performance Findings](#performance-findings)
+    - [Pending Work](#pending-work)
+    - [Verification Commands](#verification-commands)
+  - [Security Considerations](#security-considerations)
+
 ## Implemented Optimizations
 
 ### 1. Swap Disabled [IMPLEMENTED]
