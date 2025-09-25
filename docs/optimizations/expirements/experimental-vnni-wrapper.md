@@ -129,7 +129,7 @@ void vnni_int8_gemm_kernel(const int8_t* A, const int8_t* B,
 3. Handle scale factors correctly
 4. Validate numerical accuracy
 
-### Phase 3: Production Hardening (Week 3)
+### Phase 3: Hardening (Week 3)
 1. Handle all matrix sizes (edge cases)
 2. Implement fallback paths
 3. Add runtime CPU detection
@@ -253,7 +253,7 @@ ENABLE_VNNI=true time ./server --model q8_0_model.gguf --prompt "..." --n-predic
 - [ ] Q8_0 support
 - [ ] Q4_0 support  
 - [ ] Performance validation
-- [ ] Production ready
+- [ ] Ready for deployment
 
 ---
 

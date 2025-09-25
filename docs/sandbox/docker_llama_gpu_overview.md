@@ -1,6 +1,6 @@
 # AI Engineering GPU Docker Implementation
 
-Comprehensive explanation of the RTX 5090 Blackwell optimized Dockerfile for GPU-accelerated AI model inference on the AI workstation, detailing the multi-stage build process, CUDA 13.0.1 integration, and Blackwell architecture compilation.
+Explanation of the RTX 5090 Blackwell optimized Dockerfile for GPU-accelerated AI model inference on the AI workstation, detailing the multi-stage build process, CUDA 13.0.1 integration, and Blackwell architecture compilation.
 
 > Note: This document explains the actual implementation in `docker/Dockerfile.llama-gpu`. The Dockerfile uses CUDA 13.0.1 with Blackwell sm_120 architecture targeting for RTX 5090 GPU acceleration.
 
@@ -38,7 +38,7 @@ The GPU Docker implementation leverages a multi-stage build strategy specificall
 - **Blackwell optimization**: sm_120 architecture targeting for RTX 5090 maximum performance
 - **CUDA 13.0.1**: Latest CUDA toolkit with Blackwell support
 - **CMake build system**: Modern build configuration for llama.cpp CUDA compilation
-- **Performance tuning**: Comprehensive GPU memory and compute optimizations
+- **Performance tuning**: GPU memory and compute optimizations
 - **Security hardening**: Non-root user execution with minimal runtime dependencies
 
 ## Stage 1: Builder Environment
@@ -75,7 +75,7 @@ ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed -L/usr/local/cuda/lib64/stubs"
 
 ### CUDA Components Installation
 
-**Comprehensive CUDA Development Stack**
+**CUDA Development Stack**
 ```dockerfile
 RUN apt-get update && \
     apt-get install -y --no-install-recommends --allow-change-held-packages \
@@ -399,6 +399,6 @@ This GPU implementation works in conjunction with:
 
 ---
 
-*This GPU Docker implementation provides maximum performance AI model inference on the RTX 5090 Blackwell architecture. The multi-stage build process ensures optimal CUDA integration while maintaining security and operational efficiency for high-throughput AI workloads.*
+*This GPU Docker implementation provides AI model inference on the RTX 5090 Blackwell architecture. The multi-stage build process integrates CUDA while maintaining security and operational efficiency for high-throughput AI workloads.*
 
 *Last Updated: 2025-09-23*

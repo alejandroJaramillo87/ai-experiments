@@ -35,6 +35,14 @@ Documentation follows traditional Unix manual page conventions:
 - Include performance measurements and benchmarks
 - Credit sources and references
 
+### Local Inference Focus
+
+- **Local workstation only** - Document for personal AI workstations, not production servers
+- **No cloud deployment** - Avoid AWS, Azure, GCP, or other cloud platform references
+- **No CI/CD pipelines** - Focus on direct execution, not automated deployment
+- **No production scaling** - Document single-machine inference, not distributed systems
+- **Development environment** - Target individual developers and researchers, not operations teams
+
 ## Writing Standards
 
 ### Voice and Tense

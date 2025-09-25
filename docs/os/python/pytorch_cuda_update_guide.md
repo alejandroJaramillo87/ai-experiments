@@ -2,11 +2,11 @@
 
 ## Overview
 
-This guide documents the process for updating PyTorch to use different CUDA versions in Poetry-managed projects. Due to fundamental limitations in how Poetry handles PyTorch's custom package repositories, we use a hybrid approach where Poetry manages all packages except PyTorch, which is installed manually via pip.
+This guide documents the process for updating PyTorch to use different CUDA versions in Poetry-managed projects. Due to limitations in how Poetry handles PyTorch's custom package repositories, we use a hybrid approach where Poetry manages all packages except PyTorch, which is installed manually via pip.
 
 ## The Poetry-PyTorch Issue
 
-Poetry has persistent difficulty properly resolving PyTorch packages from custom CUDA-specific repositories. When you change the PyTorch source repository (e.g., from `cu128` to `cu129`), Poetry:
+Poetry has difficulty properly resolving PyTorch packages from custom CUDA-specific repositories. When you change the PyTorch source repository (e.g., from `cu128` to `cu129`), Poetry:
 - Continues using cached package metadata from the old repository
 - Fails to recognize the new repository during dependency resolution
 - Shows "Repository does not exist" errors even when properly configured

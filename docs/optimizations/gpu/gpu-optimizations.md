@@ -1,6 +1,6 @@
 # GPU Optimizations for RTX 5090
 
-Production-ready GPU optimizations for NVIDIA RTX 5090 (Blackwell architecture) for AI inference workloads.
+GPU optimizations for NVIDIA RTX 5090 (Blackwell architecture) for AI inference workloads.
 
 ## Executive Summary
 
@@ -11,7 +11,7 @@ GPU optimizations focus on three key areas:
 
 ## Host System GPU Configuration
 
-For comprehensive OS-level GPU optimizations including:
+For OS-level GPU optimizations including:
 - NVIDIA driver persistence mode
 - GPU power and clock management
 - Compute mode configuration
@@ -383,7 +383,7 @@ nvidia-smi -q | grep -E "PCIe|Link"
    - L2 cache fine-tuning
 
 **DO NOT IMPLEMENT:**
-- Clock locking (causes 38 percent performance loss)
+- Clock locking (causes 38% performance loss)
 - EXCLUSIVE_PROCESS mode (degrades performance)
 
 ## Next Steps

@@ -1,6 +1,6 @@
 # AI Experiments Base Infrastructure v1.0
 
-Production-ready AI infrastructure for local LLM inference, optimized for RTX 5090 + AMD Ryzen 9950X. Designed as a git submodule base for AI engineering projects.
+AI infrastructure for local LLM inference, optimized for RTX 5090 + AMD Ryzen 9950X. Designed as a git submodule base for AI engineering projects.
 
 ## Table of Contents
 
@@ -25,26 +25,26 @@ Production-ready AI infrastructure for local LLM inference, optimized for RTX 50
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/user/ai-experiments
-cd ai-experiments
+$ git clone https://github.com/user/ai-experiments
+$ cd ai-experiments
 
 # 2. Install GPU stack (if needed)
-scripts/setup/setup_nvidia.sh
-scripts/setup/setup_cuda.sh
-scripts/setup/setup_cudnn.sh
+$ scripts/setup/setup_nvidia.sh
+$ scripts/setup/setup_cuda.sh
+$ scripts/setup/setup_cudnn.sh
 
 # 3. Configure models
-cp .env.example .env
-# Edit .env with your model paths
+$ cp .env.example .env
+# Edit .env with model paths
 
 # 4. Start services
-make up          # All services
-make gpu-up      # GPU only
-make cpu-up      # CPU only
+$ make up          # All services
+$ make gpu-up      # GPU only
+$ make cpu-up      # CPU only
 
 # 5. Verify
-make status      # Check health
-make logs-gpu    # Monitor GPU
+$ make status      # Check health
+$ make logs-gpu    # Monitor GPU
 
 # 6. Access services
 # GPU API: http://localhost:8004/v1
@@ -54,14 +54,14 @@ make logs-gpu    # Monitor GPU
 
 ## Overview
 
-This base infrastructure repository provides production-ready AI inference capabilities with validated performance:
+This base infrastructure repository provides AI inference capabilities with validated performance:
 
 - **286.85 tokens/second** GPU inference (8x faster than CPU)
 - **35.44 tokens/second** CPU inference with optimizations
 - **Complete GPU software stack** documentation (NVIDIA Driver, CUDA 13.0, cuDNN 9.13)
 - **Parameterized Docker services** for easy tuning without rebuilds
 - **26% CPU performance improvement** through BIOS and OS optimizations
-- **Production-ready git submodule architecture** for AI project repositories
+- **Git submodule architecture** for AI project repositories
 - **Comprehensive benchmarking suite** with JSON output for tracking
 - **31 documentation files** covering every aspect of the infrastructure
 - **21 automation scripts** for setup, updates, and utilities
@@ -79,7 +79,7 @@ This base infrastructure repository provides production-ready AI inference capab
 - Environment variable parameterization for all services
 - Poetry-based dependency management with CUDA compatibility
 - Automated setup and update scripts for all components
-- Production-ready git submodule architecture
+- Git submodule architecture
 - Comprehensive benchmarking with multiple workload types
 
 ## Infrastructure Services
@@ -141,11 +141,11 @@ This repository follows the **Unix philosophy**: do one thing well and compose w
 
 ### Git Submodule Integration
 ```bash
-# In your AI project repository
-git submodule add https://github.com/user/ai-experiments base-infrastructure
-git submodule update --init --recursive
+# In AI project repository
+$ git submodule add https://github.com/user/ai-experiments base-infrastructure
+$ git submodule update --init --recursive
 
-# Your project now has access to:
+# Project now has access to:
 # - Inference services on ports 8001-8005
 # - RTX 5090 optimized configurations
 # - Poetry environment with AI packages
@@ -236,47 +236,47 @@ ai-experiments/
 └── README.md                 # This file
 ```
 
-## Documentation Map
+## Documentation map
 
-### Getting Started
+### Getting started
 - **Overview**: [docs/README.md](docs/README.md)
 - **Hardware Guide**: [docs/hardware/README.md](docs/hardware/README.md)
 - **BIOS Setup**: [docs/bios/README.md](docs/bios/README.md)
 - **OS Installation**: [docs/os/README.md](docs/os/README.md)
 
-### GPU Software Stack
+### GPU software stack
 - **Overview**: [docs/os/gpu-stack/README.md](docs/os/gpu-stack/README.md)
 - **NVIDIA Drivers**: [docs/os/gpu-stack/nvidia-drivers.md](docs/os/gpu-stack/nvidia-drivers.md)
 - **CUDA Platform**: [docs/os/gpu-stack/cuda.md](docs/os/gpu-stack/cuda.md)
 - **cuDNN Library**: [docs/os/gpu-stack/cudnn.md](docs/os/gpu-stack/cudnn.md)
 
-### Python Environment
+### Python environment
 - **Poetry Dependencies**: [docs/os/python/poetry-dependencies.md](docs/os/python/poetry-dependencies.md)
 - **Python Setup**: [docs/os/python/setup_python.md](docs/os/python/setup_python.md)
 - **PyTorch CUDA**: [docs/os/python/pytorch_cuda_update_guide.md](docs/os/python/pytorch_cuda_update_guide.md)
 
-### Inference Optimization
+### Inference optimization
 - **Overview**: [docs/inference/README.md](docs/inference/README.md)
 - **llama.cpp Parameters**: [docs/inference/llama-cpp-parameters.md](docs/inference/llama-cpp-parameters.md)
 - **vLLM Parameters**: [docs/inference/vllm-parameters.md](docs/inference/vllm-parameters.md)
 - **Optimization Guide**: [docs/inference/parameter-optimization-guide.md](docs/inference/parameter-optimization-guide.md)
 
-### System Optimizations
+### System optimizations
 - **Overview**: [docs/optimizations/README.md](docs/optimizations/README.md)
 - **BIOS Optimizations**: [docs/optimizations/bios/bios-optimizations.md](docs/optimizations/bios/bios-optimizations.md)
 - **OS Optimizations**: [docs/optimizations/os/os-optimizations.md](docs/optimizations/os/os-optimizations.md)
 - **GPU Optimizations**: [docs/optimizations/gpu/gpu-optimizations.md](docs/optimizations/gpu/gpu-optimizations.md)
 - **Benchmarking**: [docs/optimizations/benchmark-guide.md](docs/optimizations/benchmark-guide.md)
 
-### Container Documentation
+### Container documentation
 - **Docker Compose**: [docs/sandbox/docker_compose_overview.md](docs/sandbox/docker_compose_overview.md)
 - **CPU Service**: [docs/sandbox/docker_llama_cpu_overview.md](docs/sandbox/docker_llama_cpu_overview.md)
 - **GPU Service**: [docs/sandbox/docker_llama_gpu_overview.md](docs/sandbox/docker_llama_gpu_overview.md)
 - **vLLM Service**: [docs/sandbox/docker_vllm_gpu_overview.md](docs/sandbox/docker_vllm_gpu_overview.md)
 
-## Hardware Configuration
+## Hardware configuration
 
-### Current Environment (v1.0)
+### Current environment (v1.0)
 
 | Component | Specification | Purpose |
 |-----------|---------------|---------|
@@ -286,7 +286,7 @@ ai-experiments/
 | **Storage** | Samsung 990 PRO 2TB (models)<br>Samsung 990 EVO 1TB (OS) | High-speed model storage |
 | **Motherboard** | Gigabyte X870E Aorus Elite WiFi | PCIe 5.0, robust power delivery |
 
-### GPU Software Stack
+### GPU software stack
 
 | Component | Version | Purpose |
 |-----------|---------|---------|
@@ -294,9 +294,9 @@ ai-experiments/
 | **CUDA** | 13.0.88 | Parallel computing platform |
 | **cuDNN** | 9.13.0.50-1 | Deep learning acceleration |
 
-## Tooling and Scripts
+## Tooling and scripts
 
-### Setup Scripts
+### Setup scripts
 - `setup_nvidia.sh` - NVIDIA driver installation
 - `setup_cuda.sh` - CUDA toolkit setup
 - `setup_cudnn.sh` - cuDNN library installation
@@ -306,7 +306,7 @@ ai-experiments/
 - `setup_sudo_user.sh` - User configuration
 - `setup_terminal.sh` - Terminal environment
 
-### Update Scripts
+### Update scripts
 - `update_nvidia.sh` - Update NVIDIA drivers
 - `update_cuda.sh` - Update CUDA toolkit
 - `update_cudnn.sh` - Update cuDNN library
@@ -325,18 +325,18 @@ ai-experiments/
 ### Benchmarking
 ```bash
 # Run GPU benchmark
-scripts/benchmark.py --service llama-gpu --label "gpu_test"
+$ scripts/benchmark.py --service llama-gpu --label "gpu_test"
 
 # Run CPU benchmark
-scripts/benchmark.py --service llama-cpu --label "cpu_test"
+$ scripts/benchmark.py --service llama-cpu --label "cpu_test"
 
 # Compare results
-scripts/benchmark.py --compare gpu_baseline.json gpu_test.json
+$ scripts/benchmark.py --compare gpu_baseline.json gpu_test.json
 ```
 
 ## Python Environment
 
-### Poetry-Based Management
+### Poetry-based management
 - **Python 3.12** via pyenv for latest performance
 - **Poetry** for reproducible dependency management
 - **Key Packages**:
@@ -349,18 +349,18 @@ scripts/benchmark.py --compare gpu_baseline.json gpu_test.json
 ### Installation
 ```bash
 # Install dependencies
-poetry install
+$ poetry install
 
 # Activate environment
-poetry shell
+$ poetry shell
 
 # Install PyTorch with CUDA
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129
+$ pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129
 ```
 
 ## GPU Software Stack
 
-### Three-Layer Architecture
+### Three-layer architecture
 ```
 Application Layer (llama.cpp, PyTorch)
         ↓
@@ -373,7 +373,7 @@ NVIDIA Driver 580.65.06 (Hardware Interface)
 RTX 5090 (Physical GPU)
 ```
 
-### Key Features
+### Key features
 - **5th Gen Tensor Cores** with FP8 support
 - **Flash Attention v3** via cuDNN 9.13
 - **96MB L2 Cache** on Blackwell architecture
@@ -382,49 +382,49 @@ RTX 5090 (Physical GPU)
 
 ## System Optimizations
 
-### BIOS Level
+### BIOS level
 - CPU C-states disabled for consistent latency
 - Precision Boost Overdrive enabled
 - DDR5-6000 EXPO profiles optimized
 - PCIe Gen5, Resizable BAR enabled
 
-### OS Level
+### OS level
 - Swap disabled to prevent paging
 - CPU governor in performance mode
 - 90GB huge pages configured
 - CPU pinning for dedicated cores
 - THP disabled for consistency
 
-### Container Level
+### Container level
 - Memory locking enabled
 - CPU affinity set (cores 0-11)
 - GPU persistence mode enabled
 - CUDA memory pools optimized
 - Environment variable configuration
 
-## Usage as Base Repository
+## Usage as base repository
 
-### For AI Project Repositories
+### For AI project repositories
 
 1. **Add as submodule**:
 ```bash
-git submodule add https://github.com/user/ai-experiments base-infrastructure
-cd base-infrastructure && make up
+$ git submodule add https://github.com/user/ai-experiments base-infrastructure
+$ cd base-infrastructure && make up
 ```
 
 2. **Access services**:
 ```python
-# In your project code
+# In project code
 GPU_API = "http://localhost:8004/v1"
 CPU_API = "http://localhost:8001/v1"
 ```
 
 3. **Update infrastructure**:
 ```bash
-cd base-infrastructure
-git pull origin main
-cd .. && git add base-infrastructure
-git commit -m "Update infrastructure to v1.0"
+$ cd base-infrastructure
+$ git pull origin main
+$ cd .. && git add base-infrastructure
+$ git commit -m "Update infrastructure to v1.0"
 ```
 
 ## Contributing
@@ -447,8 +447,10 @@ This infrastructure is open source and available under the MIT License.
 
 **Version:** 1.0.0
 **Last Updated:** September 2025
-**Status:** Production Ready
+**Status:** Stable
 **Performance:** 286.85 tok/s (GPU) | 35.44 tok/s (CPU)
 **Hardware:** RTX 5090 + AMD Ryzen 9950X
 
-Built by the AI engineering community, for the AI engineering community.
+---
+
+*Last Updated: 2025-09-24*

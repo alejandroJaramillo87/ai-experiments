@@ -170,7 +170,7 @@ def compare_quantization_methods(model_name="meta-llama/Llama-2-7b-hf"):
 **Expected Results**:
 - FP8: Approximately 1.5-2 times faster than FP16 with minimal quality loss
 - INT8: Approximately 2-3 times faster but potential quality degradation
-- Memory savings: FP8 (50 percent), INT8 (50-75 percent)
+- Memory savings: FP8 (50%), INT8 (50-75%)
 
 ### 3. Inference Acceleration
 
@@ -417,11 +417,11 @@ def analyze_tensor_core_usage(model, input_data):
     return utilization
 ```
 
-### 5. Production Optimization Comparison
+### 5. Optimization Comparison
 
 #### Experiment 5.1: vLLM vs TensorRT-LLM vs llama.cpp
 
-**Objective**: Compare inference engines for production deployment.
+**Objective**: Compare inference engines for deployment.
 
 **Setup Script**:
 ```bash
@@ -507,9 +507,9 @@ nvidia-smi pmon -i 0
 
 Based on RTX 5090 capabilities:
 
-- **Memory Efficiency**: 50-70 percent reduction with Flash Attention and Quantization
+- **Memory Efficiency**: 50-70% reduction with Flash Attention and Quantization
 - **Inference Speed**: 2-4 times improvement with FP8 and CUDA optimizations
-- **Power Efficiency**: 20-30 percent better performance per watt with tuning
+- **Power Efficiency**: 20-30% better performance per watt with tuning
 - **Throughput**: 3-5 times improvement with proper batching and streaming
 
 ## Next Steps

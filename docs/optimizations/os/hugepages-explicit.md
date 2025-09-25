@@ -40,7 +40,7 @@ The key difference from hugetlbfs:
 Benchmark results with Qwen3-30B model (15.3GB):
 - **Baseline**: Approximately 32 tokens/second
 - **Memory Usage**: 7,813 huge pages (15.3GB)
-- **Consistency**: Less than 1 percent variance between runs
+- **Consistency**: Less than 1% variance between runs
 - **TLB Efficiency**: Significantly reduced miss rate
 
 ## Configuration

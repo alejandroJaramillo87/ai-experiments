@@ -8,7 +8,7 @@
 
 Extension of the existing 2MB huge pages implementation to support 1GB pages, reducing TLB pressure by 512x compared to 2MB pages. For a 30GB model, only 30 TLB entries are needed instead of 15,360.
 
-**Expected Impact**: 5-10 percent additional inference speedup over 2MB pages
+**Expected Impact**: 5-10% additional inference speedup over 2MB pages
 **Engineering Effort**: 2-3 days (builds on existing wrapper)
 **Risk Level**: Medium
 **Compatibility**: Requires kernel 3.8 or newer and processor support
@@ -212,7 +212,7 @@ load_model() {
 2MB pages:  ~2,000 misses per inference
 1GB pages:  ~4 misses per inference
 
-Theoretical speedup from TLB alone: 5-10 percent
+Theoretical speedup from TLB alone: 5-10%
 ```
 
 ### Memory Access Patterns
@@ -321,8 +321,8 @@ time docker run --rm llama-cpu-0 benchmark
 ## Success Metrics
 
 1. **Allocation Success**: 1GB pages allocated without fragmentation
-2. **TLB Hit Rate**: Greater than 99.9 percent (measured via perf)
-3. **Performance Gain**: 5-10 percent over 2MB pages
+2. **TLB Hit Rate**: Greater than 99.9% (measured via perf)
+3. **Performance Gain**: 5-10% over 2MB pages
 4. **Stability**: No OOM or allocation failures
 
 ## Implementation Timeline
@@ -348,6 +348,6 @@ time docker run --rm llama-cpu-0 benchmark
 
 ---
 
-**Note**: This optimization requires careful system configuration. Test thoroughly in development before production deployment.
+**Note**: This optimization requires careful system configuration. Test thoroughly before deployment.
 
 *Last Updated: 2025-09-23*

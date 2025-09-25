@@ -1,6 +1,6 @@
 # AI Engineering CPU Docker Implementation
 
-Comprehensive explanation of the AMD Zen 5 optimized Dockerfile for CPU-based AI model inference on the AMD Ryzen 9950X workstation, detailing the multi-stage build process, AOCL integration, and performance optimizations.
+Explanation of the AMD Zen 5 optimized Dockerfile for CPU-based AI model inference on the AMD Ryzen 9950X workstation, detailing the multi-stage build process, AOCL integration, and performance optimizations.
 
 > Note: This document explains the actual implementation in `docker/Dockerfile.llama-cpu`. The Dockerfile uses a multi-stage build with cmake-based compilation rather than make-based builds.
 

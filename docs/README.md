@@ -1,17 +1,17 @@
 # AI Experiments Documentation Hub
 
-Central index for all project documentation. This repository contains 31 comprehensive guides covering hardware setup, software configuration, optimization strategies, and performance benchmarking for a production-ready AI inference infrastructure.
+Central index for all project documentation. This repository contains 36 comprehensive guides covering hardware setup, software configuration, optimization strategies, and performance benchmarking for a local AI inference workstation.
 
 ## Quick Navigation
 
-- **[ê Back to Main README](../README.md)** - Project overview and quick start
+- **[Back to Main README](../README.md)** - Project overview and quick start
 - **[Hardware Setup](hardware/README.md)** - Component selection and assembly
 - **[Getting Started](os/README.md)** - Ubuntu installation and initial setup
 - **[Performance Results](optimizations/README.md)** - 286.85 tok/s GPU | 35.44 tok/s CPU
 
 ## Documentation by Category
 
-### =Ê Infrastructure Setup
+### Infrastructure Setup
 
 Complete guides for building your AI workstation from hardware to software:
 
@@ -20,11 +20,12 @@ Complete guides for building your AI workstation from hardware to software:
 | [hardware/README.md](hardware/README.md) | Hardware selection, compatibility, and assembly guide |
 | [bios/README.md](bios/README.md) | BIOS configuration for Gigabyte X870E Aorus Elite WiFi |
 | [os/README.md](os/README.md) | Ubuntu 24.04 LTS installation and configuration |
+| [os/storage-configuration.md](os/storage-configuration.md) | Dual-SSD architecture and AI data storage setup |
 | [os/backup_and_recovery.md](os/backup_and_recovery.md) | Data protection and recovery strategies |
 | [sandbox/README.md](sandbox/README.md) | Docker sandboxed environment setup |
 | [sandbox/docker_compose_overview.md](sandbox/docker_compose_overview.md) | Multi-service orchestration configuration |
 
-### <Æ GPU Software Stack
+### GPU Software Stack
 
 NVIDIA GPU software stack documentation for RTX 5090:
 
@@ -35,7 +36,7 @@ NVIDIA GPU software stack documentation for RTX 5090:
 | [os/gpu-stack/cuda.md](os/gpu-stack/cuda.md) | CUDA parallel computing platform | 13.0.88 |
 | [os/gpu-stack/cudnn.md](os/gpu-stack/cudnn.md) | cuDNN deep learning acceleration library | 9.13.0.50-1 |
 
-### = Python Environment
+### Python Environment
 
 Python and dependency management with Poetry:
 
@@ -45,18 +46,31 @@ Python and dependency management with Poetry:
 | [os/python/setup_python.md](os/python/setup_python.md) | Python 3.12 installation via pyenv |
 | [os/python/pytorch_cuda_update_guide.md](os/python/pytorch_cuda_update_guide.md) | PyTorch installation with CUDA 12.9 compatibility |
 
-### =Ä Inference Optimization
+### Inference Optimization
 
 Parameter tuning and optimization for maximum performance:
 
+**Inference Engines:**
+| Document | Description | Performance |
+|----------|-------------|-------------|
+| [inference/engines/inference-engines.md](inference/engines/inference-engines.md) | Understanding inference engines vs training frameworks | - |
+| [inference/engines/llama-cpp.md](inference/engines/llama-cpp.md) | llama.cpp architecture and memory management | - |
+| [inference/engines/vllm.md](inference/engines/vllm.md) | vLLM PagedAttention and continuous batching | - |
+
+**Parameter Configuration:**
 | Document | Description | Performance |
 |----------|-------------|-------------|
 | [inference/README.md](inference/README.md) | Optimization philosophy and overview | - |
-| [inference/llama-cpp-parameters.md](inference/llama-cpp-parameters.md) | llama.cpp parameter tuning guide | 286.85 tok/s (GPU) |
-| [inference/vllm-parameters.md](inference/vllm-parameters.md) | vLLM configuration for throughput | Awaiting CUDA 13 |
-| [inference/parameter-optimization-guide.md](inference/parameter-optimization-guide.md) | Systematic benchmarking methodology | - |
+| [inference/parameters/llama-cpp-parameters.md](inference/parameters/llama-cpp-parameters.md) | llama.cpp parameter tuning guide | 286.85 tok/s (GPU) |
+| [inference/parameters/vllm-parameters.md](inference/parameters/vllm-parameters.md) | vLLM configuration for throughput | Awaiting CUDA 13 |
+| [inference/parameters/optimization-guide.md](inference/parameters/optimization-guide.md) | Systematic benchmarking methodology | - |
 
-### ° System Optimizations
+**Performance Benchmarks:**
+| Document | Description | Performance |
+|----------|-------------|-------------|
+| [inference/benchmarks/performance-results.md](inference/benchmarks/performance-results.md) | Validated performance measurements and analysis | 286.85 tok/s GPU, 35.44 tok/s CPU |
+
+### System Optimizations
 
 Performance optimizations at every level:
 
@@ -72,18 +86,18 @@ Performance optimizations at every level:
 | **GPU Optimizations** | | |
 | [optimizations/gpu/gpu-optimizations.md](optimizations/gpu/gpu-optimizations.md) | RTX 5090 specific optimizations | 95% utilization |
 
-### >Í Experimental Features
+### Experimental Features
 
 Advanced and experimental optimizations:
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [optimizations/experiments/experimental-1gb-hugepages.md](optimizations/expirements/experimental-1gb-hugepages.md) | 1GB huge pages testing | Experimental |
-| [optimizations/experiments/experimental-gpu-rtx5090.md](optimizations/expirements/experimental-gpu-rtx5090.md) | RTX 5090 advanced features | Testing |
-| [optimizations/experiments/experimental-memory-bandwidth-optimizations.md](optimizations/expirements/experimental-memory-bandwidth-optimizations.md) | Memory bandwidth tuning | Research |
-| [optimizations/experiments/experimental-vnni-wrapper.md](optimizations/expirements/experimental-vnni-wrapper.md) | VNNI instruction optimization | Experimental |
+| [optimizations/experiments/experimental-1gb-hugepages.md](optimizations/experiments/experimental-1gb-hugepages.md) | 1GB huge pages testing | Experimental |
+| [optimizations/experiments/experimental-gpu-rtx5090.md](optimizations/experiments/experimental-gpu-rtx5090.md) | RTX 5090 advanced features | Testing |
+| [optimizations/experiments/experimental-memory-bandwidth-optimizations.md](optimizations/experiments/experimental-memory-bandwidth-optimizations.md) | Memory bandwidth tuning | Research |
+| [optimizations/experiments/experimental-vnni-wrapper.md](optimizations/experiments/experimental-vnni-wrapper.md) | VNNI instruction optimization | Experimental |
 
-### =3 Container Services
+### Container Services
 
 Docker container documentation for inference services:
 
@@ -140,11 +154,11 @@ This documentation follows Linux/Unix conventions:
 When adding new documentation:
 
 1. **Placement**:
-   - Hardware guides í `docs/hardware/`
-   - Software setup í `docs/os/`
-   - Optimization guides í `docs/optimizations/`
-   - Container docs í `docs/sandbox/`
-   - Inference tuning í `docs/inference/`
+   - Hardware guides: `docs/hardware/`
+   - Software setup: `docs/os/`
+   - Optimization guides: `docs/optimizations/`
+   - Container docs: `docs/sandbox/`
+   - Inference tuning: `docs/inference/`
 
 2. **Naming Convention**:
    - Use lowercase with hyphens: `feature-name.md`
@@ -161,14 +175,14 @@ When adding new documentation:
 
 | Category | File Count | Status |
 |----------|------------|--------|
-| Infrastructure Setup | 6 | Complete |
+| Infrastructure Setup | 7 | Complete |
 | GPU Software Stack | 4 | Complete |
 | Python Environment | 3 | Complete |
-| Inference Optimization | 4 | Complete |
+| Inference Optimization | 8 | Complete |
 | System Optimizations | 8 | Complete |
 | Container Services | 4 | Complete |
 | Experimental | 4 | Ongoing |
-| **Total** | **31** | **Production Ready** |
+| **Total** | **36** | **Complete** |
 
 ---
 

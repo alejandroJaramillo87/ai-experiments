@@ -45,7 +45,7 @@ Understanding cuDNN and how it optimizes neural network operations for maximum p
 
 ## What is cuDNN?
 
-cuDNN (CUDA Deep Neural Network library) is NVIDIA's GPU-accelerated library of primitives for deep neural networks. Think of it as a collection of highly optimized building blocks that AI frameworks use to construct neural networks. While CUDA provides general parallel computing, cuDNN provides specific optimizations for deep learning operations.
+cuDNN (CUDA Deep Neural Network library) is NVIDIA's GPU-accelerated library of primitives for deep neural networks. It provides a collection of optimized building blocks that AI frameworks use to construct neural networks. While CUDA provides general parallel computing, cuDNN provides specific optimizations for deep learning operations.
 
 ### The Performance Difference
 
@@ -483,4 +483,4 @@ RTX 5090
 
 ---
 
-*cuDNN is the secret sauce that transforms raw CUDA operations into highly optimized deep learning computations. It's the difference between 48 tokens/second and our production performance of 286.85 tokens/second.*
+*cuDNN is the secret sauce that transforms raw CUDA operations into highly optimized deep learning computations. It's the difference between 48 tokens/second and our local inference performance of 286.85 tokens/second.*

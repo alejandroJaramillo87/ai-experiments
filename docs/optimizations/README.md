@@ -8,7 +8,7 @@ These optimizations prioritize **inference latency** over throughput for chatbot
 
 - **Single Model Focus**: 12 cores dedicated to one LLM instance for minimum response time
 - **Core Allocation**: Cores 0-11 for LLM, remaining cores for system tasks
-- **Research-Based**: 26 percent validated latency improvement with optimizations
+- **Research-Based**: 26% latency improvement with optimizations
 
 ## Synopsis
 
@@ -17,7 +17,7 @@ System optimizations are organized by component:
 - **bios/** - BIOS firmware settings and benchmark results
 - **os/** - Operating system and memory optimizations
 - **gpu/** - GPU-specific performance tuning
-- **expirements/** - Experimental and testing configurations
+- **experiments/** - Experimental and testing configurations
 
 ## Files
 
@@ -27,7 +27,7 @@ System optimizations are organized by component:
   - Memory performance (DDR5-6000 with power-down disabled)
   - FCLK 2100 MHz for interconnect optimization
   - Single-model optimization focus
-- **benchmark_results_*.json** - Production benchmark data showing 26 percent improvement
+- **benchmark_results_*.json** - Benchmark data showing 26% improvement
 
 ### os/
 - **os-optimizations.md** - Host operating system optimizations for containerized workloads
@@ -45,7 +45,7 @@ System optimizations are organized by component:
   - CUDA configuration and tuning
   - GPU memory management
   - Multi-GPU scaling considerations
-  - **Important**: Clock locking causes 38 percent performance degradation on RTX 5090
+  - **Important**: Clock locking causes 38% performance degradation on RTX 5090
 
 ### benchmark-guide.md
 Performance benchmarking tool for optimization validation.
@@ -110,7 +110,7 @@ Optimizations are applied to containers via:
 3. Performance testing (`scripts/`)
    - benchmark.py for measuring latency and tokens/second
    - Focus on first-token latency and response time consistency
-   - Validated 26 percent performance improvement with optimizations
+   - Validated 26% performance improvement with optimizations
 
 ## System Configuration
 
@@ -132,8 +132,8 @@ Production system benchmarking with BIOS optimizations enabled:
 ### Benchmark Summary
 - **Before optimizations**: 28.09 tokens/second average
 - **After optimizations**: 35.44 tokens/second average
-- **Performance gain**: 26.2 percent increase
-- **Consistency improvement**: 59 percent reduction in standard deviation
+- **Performance gain**: 26.2% increase
+- **Consistency improvement**: 59% reduction in standard deviation
 
 ### Key Validated Settings Impact
 - **FCLK 2100 MHz**: Successfully stable, major contributor to performance
@@ -145,7 +145,7 @@ Production system benchmarking with BIOS optimizations enabled:
 
 Validated improvements with optimizations enabled:
 
-- **Latency**: 26 percent improvement in tokens per second (validated via benchmarking)
+- **Latency**: 26% improvement in tokens per second (validated via benchmarking)
 - **Cache Efficiency**: Optimized cache access patterns
 - **Memory Access**: Reduced TLB misses with explicit huge pages
 - **Consistency**: Predictable token generation timing (0.08-0.28 stdev vs 0.08-0.84)
