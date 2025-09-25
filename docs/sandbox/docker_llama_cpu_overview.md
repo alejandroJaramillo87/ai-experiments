@@ -80,7 +80,8 @@ RUN echo "deb http://deb.debian.org/debian unstable main" > /etc/apt/sources.lis
     apt-get update && \
     apt-get install -y --no-install-recommends \
         gcc-14 g++-14 gfortran-14 build-essential cmake git curl \
-        libssl-dev libomp-dev  libblis-dev software-properties-common pkg-config
+        libssl-dev libomp-dev  libblis-dev software-properties-common pkg-config && \
+    rm -rf /var/lib/apt/lists/*
 ```
 
 **Package Selection**
@@ -94,7 +95,7 @@ RUN echo "deb http://deb.debian.org/debian unstable main" > /etc/apt/sources.lis
 
 **AMD Optimized CPU Libraries Installation**
 ```dockerfile
-COPY docker/aocl-linux-gcc-5.1.0_1_amd64.deb /tmp/aocl.deb
+COPY docker/llama-cpu/aocl-linux-gcc-5.1.0_1_amd64.deb /tmp/aocl.deb
 RUN PKG_NAME=$(dpkg-deb -f /tmp/aocl.deb Package) && \
     dpkg -i /tmp/aocl.deb || apt-get install -f -y && \
     AOCL_LIB_PATH=$(dpkg -L ${PKG_NAME} | grep 'libblis.so$' | xargs dirname | head -n 1) && \
@@ -113,8 +114,14 @@ RUN PKG_NAME=$(dpkg-deb -f /tmp/aocl.deb Package) && \
 ```dockerfile
 ENV AOCL_ROOT=/opt/aocl_libs
 ENV LD_LIBRARY_PATH=${AOCL_ROOT}:${LD_LIBRARY_PATH}
+# Create BLAS compatibility symlink for AOCL integration
 RUN ln -s /opt/aocl_libs/libblis.so /opt/aocl_libs/libblas.so.3
 ```
+
+**BLAS Compatibility Linking**
+- Creates symlink from AOCL BLIS implementation to standard BLAS library name
+- Enables linker compatibility while using AMD-optimized mathematical routines
+- Allows generic BLAS interface to utilize AOCL performance enhancements
 
 ### Huge Pages Support
 
@@ -127,13 +134,12 @@ RUN g++-14 -shared -fPIC -O3 -Wall -o /tmp/hugepage_mmap_wrapper.so /tmp/hugepag
 ```
 
 **Huge Pages Problem & Solution**
-- **Problem**: llama.cpp uses mmap() to map model files, but hugetlbfs files cannot be directly mapped
-- **Solution**: LD_PRELOAD wrapper that intercepts mmap() calls
-- **Implementation**: 
-  - Detects if file is on hugetlbfs filesystem
-  - Allocates anonymous memory with MAP_HUGETLB flag
-  - Copies file contents to huge page memory
-  - Returns pointer transparently to llama.cpp
+- **Problem**: llama.cpp cannot directly mmap files from hugetlbfs filesystem
+- **Solution**: LD_PRELOAD wrapper that intercepts mmap() calls and:
+  1. Allocates anonymous memory with MAP_HUGETLB
+  2. Reads the file contents into that memory
+  3. Returns the anonymous memory pointer to llama.cpp
+- **Benefits**: Allows models on hugetlbfs to benefit from huge pages (reduced TLB pressure)
 
 **Performance Benefits**
 - **Reduced TLB misses**: 2MB pages instead of 4KB reduces translation overhead

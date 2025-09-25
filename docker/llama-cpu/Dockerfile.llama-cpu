@@ -35,8 +35,8 @@ RUN PKG_NAME=$(dpkg-deb -f /tmp/aocl.deb Package) && \
 ENV AOCL_ROOT=/opt/aocl_libs
 ENV LD_LIBRARY_PATH=${AOCL_ROOT}:${LD_LIBRARY_PATH}
 
-# <<< ADD THIS BLOCK TO CREATE THE SYMLINK BRIDGE >>>
-# This "tricks" the linker into using AOCL while satisfying the standard BLAS name.
+# Create BLAS compatibility symlink for AOCL integration
+# Links AOCL BLIS implementation to standard BLAS library name for linker compatibility
 RUN ln -s /opt/aocl_libs/libblis.so /opt/aocl_libs/libblas.so.3
 
 # Huge Pages Support:
@@ -87,7 +87,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy the compiled AOCL libraries from the builder stage
 COPY --from=builder /opt/aocl_libs /opt/aocl_libs
 
-# # Set the library path so the system can find the AOCL libs
+# Set library path for AOCL runtime libraries
 ENV LD_LIBRARY_PATH=/opt/aocl_libs
 
 # Create a non-root user with a dedicated group and home directory

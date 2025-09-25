@@ -4,6 +4,39 @@
 
 **WARNING**: This is an experimental optimization that requires significant engineering effort and may not provide expected benefits for all models. Implementation complexity is high and requires deep understanding of both llama.cpp internals and x86 SIMD programming.
 
+## Table of Contents
+
+- [EXPERIMENTAL: AVX-512 VNNI Acceleration Wrapper for llama.cpp](#experimental-avx-512-vnni-acceleration-wrapper-for-llamacpp)
+  - [Table of Contents](#table-of-contents)
+  - [Executive Summary](#executive-summary)
+  - [Technical Background](#technical-background)
+    - [The Quantization-Computation Gap](#the-quantization-computation-gap)
+    - [Why VNNI Matters](#why-vnni-matters)
+  - [Architecture Design](#architecture-design)
+    - [Interception Strategy](#interception-strategy)
+    - [VNNI Kernel Implementation](#vnni-kernel-implementation)
+  - [Implementation Roadmap](#implementation-roadmap)
+    - [Phase 1: Proof of Concept (Week 1)](#phase-1-proof-of-concept-week-1)
+    - [Phase 2: Quantization Support (Week 2)](#phase-2-quantization-support-week-2)
+    - [Phase 3: Hardening (Week 3)](#phase-3-hardening-week-3)
+  - [Integration with Existing Setup](#integration-with-existing-setup)
+    - [Dockerfile Modifications](#dockerfile-modifications)
+    - [Entrypoint Modifications](#entrypoint-modifications)
+  - [Performance Measurement](#performance-measurement)
+    - [Benchmarking Methodology](#benchmarking-methodology)
+    - [Expected Results by Quantization Type](#expected-results-by-quantization-type)
+  - [Risk Assessment](#risk-assessment)
+    - [Technical Risks](#technical-risks)
+    - [Performance Risks](#performance-risks)
+  - [Alternative Approaches Considered](#alternative-approaches-considered)
+    - [Direct llama.cpp Modification](#direct-llamacpp-modification)
+    - [Custom BLAS Library](#custom-blas-library)
+    - [Using Intel MKL](#using-intel-mkl)
+  - [Success Criteria](#success-criteria)
+  - [Open Questions](#open-questions)
+  - [References](#references)
+  - [Status Tracking](#status-tracking)
+
 ## Executive Summary
 
 A novel LD_PRELOAD wrapper to accelerate llama.cpp's quantized inference using AMD Zen 5's AVX-512 VNNI (Vector Neural Network Instructions). This wrapper intercepts BLAS operations and rewrites them to use native INT8 computation, potentially achieving 2-4x speedup for quantized models.

@@ -59,7 +59,7 @@ The docker-compose.yaml implements a multi-service AI inference platform with de
 - **Privilege prevention**: No privilege escalation possible within containers
 
 **Service Distribution:**
-- **1 CPU inference container**: llama-cpu (12 threads on cores 0-12, 96GB RAM)
+- **1 CPU inference container**: llama-cpu (12 threads on cores 0-11, 96GB RAM)
 - **2 GPU inference containers**: llama-gpu and vllm-gpu (RTX 5090 exclusive access)
 - **1 Web interface**: open-webui for secure user interaction
 
@@ -87,11 +87,11 @@ llama-cpu:
 - **Single high-performance instance**: 12 threads for latency-optimized inference
 - **IPC_LOCK capability**: Required for memory locking operations only
 - **Memory allocation**: 96GB RAM for large model support
-- **CPU isolation**: Cores 0-12 allocated via cpuset configuration (13 cores total)
+- **CPU isolation**: Cores 0-11 allocated via cpuset configuration (12 cores total)
 
 **Resource Optimization:**
 - **Thread configuration**: 12 threads configured for optimal performance
-- **Core allocation**: Uses cores 0-12 (13 cores) via cpuset
+- **Core allocation**: Uses cores 0-11 (12 cores) via cpuset
 - **Memory locking**: Prevents model swapping to disk via ulimits configuration
 
 ### GPU Inference Services
@@ -221,7 +221,7 @@ ulimits:
 
 **llama-cpu CPU Configuration**
 ```yaml
-cpuset: "0-12"
+cpuset: "0-11"
 deploy:
   resources:
     limits:
@@ -229,7 +229,7 @@ deploy:
 ```
 
 **CPU Isolation Strategy:**
-- **Core allocation**: Cores 0-12 (13 cores) assigned via cpuset
+- **Core allocation**: Cores 0-11 (12 cores) assigned via cpuset
 - **Thread count**: 12 threads configured for inference workload
 - **NUMA optimization**: Cores span single NUMA node for memory locality
 - **System isolation**: Remaining cores available for system operations
@@ -314,7 +314,7 @@ ports:
 Services communicate using container names:
 ```yaml
 environment:
-  - 'OPENAI_API_BASE_URL=http://llama-gpu:8006/v1'
+  - 'OPENAI_API_BASE_URL=http://llama-gpu:8004/v1'
 ```
 
 **Communication Patterns:**
@@ -388,9 +388,9 @@ read_only: true
 
 **Non-Root Execution**
 Containers implement non-root users (configured in Dockerfiles):
-- **llama-cpu**: Runs as appuser (UID 1000)
-- **llama-gpu**: Runs as appuser (UID 1000)
-- **vllm-gpu**: Runs as appuser (UID 1000)
+- **llama-cpu**: Runs as appuser
+- **llama-gpu**: Runs as appuser
+- **vllm-gpu**: Runs as appuser
 
 **Security Benefits:**
 - **Privilege separation**: Container compromise doesn't grant root
@@ -426,15 +426,18 @@ read_only: true
 **Service Health Monitoring**
 ```yaml
 healthcheck:
-  test: ["CMD", "curl", "-f", "http://localhost:8001/v1/health"]
+  test: ["CMD", "curl", "-f", "http://localhost:PORT/v1/health"]  # llama-cpu: 8001, llama-gpu: 8004
+  # vllm-gpu uses: ["CMD", "curl", "-f", "http://localhost:8005/health"]
   interval: 30s
   timeout: 10s
   retries: 5
-  start_period: 180s
+  start_period: 180s  # 300s for vllm-gpu
 ```
 
 **Health Check Parameters:**
 - **Test command**: HTTP endpoint verification via curl on service's API port
+- **Port mapping**: llama-cpu (8001), llama-gpu (8004), vllm-gpu (8005)
+- **Endpoint paths**: llama services use /v1/health, vllm-gpu uses /health
 - **Interval**: 30-second check frequency
 - **Timeout**: 10-second response deadline
 - **Retries**: 5 attempts before unhealthy status

@@ -2,6 +2,40 @@
 
 GPU optimizations for NVIDIA RTX 5090 (Blackwell architecture) for AI inference workloads.
 
+## Table of Contents
+
+- [GPU Optimizations for RTX 5090](#gpu-optimizations-for-rtx-5090)
+  - [Table of Contents](#table-of-contents)
+  - [Executive Summary](#executive-summary)
+  - [Host System GPU Configuration](#host-system-gpu-configuration)
+    - [Quick Verification](#quick-verification)
+  - [Container Runtime Optimizations](#container-runtime-optimizations)
+    - [1. CUDA Memory Pool Configuration](#1-cuda-memory-pool-configuration)
+    - [2. CUDA Compilation Cache](#2-cuda-compilation-cache)
+    - [3. GPU Boost and Clock Management](#3-gpu-boost-and-clock-management)
+    - [4. Multi-Process Service (MPS)](#4-multi-process-service-mps)
+    - [5. Tensor Core Optimization](#5-tensor-core-optimization)
+  - [Blackwell Architecture Specific](#blackwall-architecture-specific)
+    - [1. SM 12.0 Compiler Flags](#1-sm-120-compiler-flags)
+    - [2. FP8 Support](#2-fp8-support)
+    - [3. Memory Access Patterns](#3-memory-access-patterns)
+  - [Docker Compose Enhancements](#docker-compose-enhancements)
+    - [1. GPU Service Configuration](#1-gpu-service-configuration)
+    - [2. vLLM Specific Settings](#2-vllm-specific-settings)
+  - [Dockerfile Optimizations](#dockerfile-optimizations)
+    - [Dockerfile.llama-gpu Additions](#dockerfilellama-gpu-additions)
+    - [Dockerfile.vllm-gpu Additions](#dockerfilevllm-gpu-additions)
+  - [Host Setup Script](#host-setup-script)
+  - [Monitoring and Verification](#monitoring-and-verification)
+    - [Check GPU Settings](#check-gpu-settings)
+    - [Container GPU Verification](#container-gpu-verification)
+  - [Performance Impact](#performance-impact)
+  - [Troubleshooting](#troubleshooting)
+    - [Common Issues](#common-issues)
+  - [Implementation Priority](#implementation-priority)
+  - [Next Steps](#next-steps)
+  - [References](#references)
+
 ## Executive Summary
 
 GPU optimizations focus on three key areas:

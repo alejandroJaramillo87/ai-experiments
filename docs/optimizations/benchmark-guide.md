@@ -1,5 +1,24 @@
 # Performance Benchmark Guide
 
+## Table of Contents
+
+- [Performance Benchmark Guide](#performance-benchmark-guide)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Quick Start](#quick-start)
+  - [Available Test Prompts](#available-test-prompts)
+  - [Command-Line Options](#command-line-options)
+  - [Output Format](#output-format)
+    - [Terminal Output](#terminal-output)
+    - [JSON Output](#json-output)
+  - [Interpreting Results](#interpreting-results)
+    - [Key Metrics](#key-metrics)
+    - [Performance Baselines](#performance-baselines)
+  - [Using for Optimization Testing](#using-for-optimization-testing)
+    - [Before/After Comparison](#beforeafter-comparison)
+  - [Best Practices](#best-practices)
+  - [Troubleshooting](#troubleshooting)
+
 ## Overview
 
 The `scripts/benchmark.py` tool measures inference performance for llama.cpp containers, focusing on tokens per second as the primary metric for optimization validation.
