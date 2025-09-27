@@ -121,7 +121,7 @@ AI Workload Optimization:
 - **Mixed Precision**: FP32, FP16, and FP8 support
 
 Professional AI Features:
-- **CUDA 12.9.1**: Latest CUDA toolkit support with Blackwell-specific optimizations
+- **CUDA**: Latest CUDA toolkit support with Blackwell-specific optimizations
 - **Tensor Cores**: Fourth-generation tensor cores for accelerated AI mathematical operations
 - **Container Integration**: Full Docker and NVIDIA Container Toolkit compatibility
 
@@ -133,7 +133,7 @@ DDR5 memory configuration for multi-model AI inference requiring substantial sys
 Memory Specifications:
 - **Capacity**: 128GB (2 x 64GB) providing extensive memory for concurrent model hosting
 - **Type**: DDR5-6000 (PC5-48000) with AMD EXPO profile optimization
-- **Configuration**: Dual-channel installation in slots A1 and B1 for optimal memory controller utilization
+- **Configuration**: Dual-channel installation in slots A2 and B2 for optimal memory controller utilization
 - **Timings**: CL36-36-36-96 with optimized sub-timings for AI workload patterns
 - **Voltage**: 1.35V EXPO specification with stable operation under sustained loads
 
@@ -296,7 +296,7 @@ Network Performance Features:
 ### Memory Installation
 
 **DDR5 High-Capacity Configuration Process**
-1. **Slot Configuration**: Install G.SKILL Flare X5 modules exclusively in slots A1 and B1 for optimal dual-channel performance
+1. **Slot Configuration**: Install G.SKILL Flare X5 modules exclusively in slots A2 and B2 for optimal dual-channel performance
 2. **EXPO Activation**: Enable EXPO profile in Gigabyte UEFI for DDR5-6000 speeds (see `docs/bios/README.md`)
 3. **Stability Validation**: Verify memory stability under sustained AI workloads using memtest and stress testing
 4. **Performance Verification**: Confirm DDR5-6000 operation using `sudo dmidecode --type 17` in Ubuntu
@@ -305,8 +305,8 @@ Network Performance Features:
 ### Storage Configuration
 
 **Dual-SSD Optimization Installation Process**
-1. **Primary M.2 Installation**: Install Samsung 990 Pro 2TB in CPU-connected M.2_1 slot for maximum AI data throughput
-2. **Secondary M.2 Installation**: Install Samsung 990 EVO 1TB in chipset M.2 slot (M.2_2 or M.2_3) avoiding GPU lane sharing
+1. **Primary M.2 Installation**: Install Samsung 990 Pro 2TB in CPU-connected M.2A slot for maximum AI data throughput
+2. **Secondary M.2 Installation**: Install Samsung 990 EVO 1TB in chipset M.2D slot avoiding GPU lane sharing
 3. **PCIe Lane Preservation**: Leave remaining M.2 slots empty to maintain full PCIe 5.0 x16 bandwidth for RTX 5090
 4. **Mount Point Configuration**: Configure `/mnt/ai-data` mount point for AI model and dataset storage (see `docs/os/README.md`)
 5. **Permission Setup**: Configure appropriate user permissions for AI development workflow access
