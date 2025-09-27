@@ -1,6 +1,6 @@
 # BIOS Optimizations Guide
 
-Comprehensive BIOS optimization guide for the AMD Ryzen 9950X + RTX 5090 AI engineering workstation, focusing on firmware-level performance tuning for **minimum inference latency** in interactive chatbot-style LLM applications.
+Comprehensive BIOS optimization guide for the AMD Ryzen 9950X + RTX 5090 AI engineering workstation, focusing on firmware-level performance tuning for **minimum inference latency** in interactive chatbot-style LLM applications (llama.cpp).
 
 This documentation provides detailed BIOS/UEFI firmware configuration settings specifically tuned for single-model LLM inference with an emphasis on first-token latency and consistent token generation timing on the Gigabyte X870E Aorus Elite WiFi motherboard platform.
 
@@ -20,7 +20,9 @@ This documentation provides detailed BIOS/UEFI firmware configuration settings s
 
 ## Implementation Overview
 
-The AI engineering workstation optimization strategy focuses on **minimizing inference latency** for interactive chatbot-style LLM workloads. These optimizations prioritize single-request response time over multi-request throughput, aligning with how llama.cpp and similar CPU inference engines are designed to operate.
+The AI engineering workstation optimization strategy focuses on **minimizing inference latency** for interactive chatbot-style LLM workloads using llama.cpp. These optimizations prioritize single-request response time over multi-request throughput, aligning with how llama.cpp and similar CPU inference engines are designed to operate.
+
+**Note**: These optimizations are specific to llama.cpp latency goals. vLLM users should focus on different settings that optimize for throughput rather than single-request latency.
 
 ### Latency vs Throughput: A Critical Trade-off
 

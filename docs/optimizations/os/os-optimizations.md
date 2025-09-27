@@ -1,6 +1,7 @@
 # Operating System Optimizations
 
 Host OS optimizations for containerized AI workloads on AMD Ryzen 9950X + RTX 5090 platform.
+Latency optimizations target llama.cpp single-request inference; throughput optimizations target vLLM batch serving.
 
 ## Table of Contents
 
