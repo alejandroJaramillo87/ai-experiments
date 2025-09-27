@@ -21,7 +21,7 @@
 
 ## Overview
 
-The `scripts/benchmark.py` tool measures inference performance for llama.cpp containers, focusing on tokens per second as the primary metric for optimization validation.
+The `scripts/benchmark.py` tool measures inference performance for llama.cpp containers (both CPU on port 8001 and GPU on port 8004), focusing on tokens per second as the primary metric for optimization validation.
 
 ## Quick Start
 
