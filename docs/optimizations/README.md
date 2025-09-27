@@ -1,6 +1,6 @@
 # System Optimizations
 
-Latency-focused optimizations for interactive LLM inference (llama.cpp) on AMD Ryzen 9950X + RTX 5090.
+System optimizations for LLM inference on AMD Ryzen 9950X + RTX 5090: latency-focused (llama.cpp on CPU/GPU) and throughput-focused (vLLM on GPU).
 
 ## Table of Contents
 
@@ -25,11 +25,28 @@ Latency-focused optimizations for interactive LLM inference (llama.cpp) on AMD R
 
 ## Optimization Philosophy: Latency vs Throughput
 
-These optimizations prioritize **inference latency** over throughput for chatbot-style applications:
+This repository implements two distinct optimization strategies based on inference engine:
 
-- **Single Model Focus**: 12 cores dedicated to one llama.cpp instance for minimum response time
-- **Core Allocation**: Cores 0-11 for LLM, remaining cores for system tasks
-- **Research-Based**: 26% latency improvement with optimizations
+### Latency Optimization (llama.cpp)
+For interactive chatbot applications prioritizing single-request response time:
+
+**llama-cpu** (port 8001):
+- **12 dedicated cores** (0-11) for single model instance
+- **CPU optimizations**: Huge pages, C-states disabled, memory locking
+- **Result**: 35 tokens/sec with 26% latency improvement
+
+**llama-gpu** (port 8004):
+- **RTX 5090** for single-request GPU inference
+- **GPU optimizations**: Persistence mode, DEFAULT compute mode, no clock locking
+- **Result**: 287 tokens/sec optimal performance
+
+Both llama.cpp services optimize for minimum first-token latency and consistent response times.
+
+### Throughput Optimization (vLLM)
+**vllm-gpu** (port 8005):
+- **RTX 5090** for batch serving and concurrent requests
+- **Optimizations**: CUDA graphs, tensor cores, FP8 support, memory pools
+- **Goal**: Maximum requests/second for API endpoints
 
 ## Synopsis
 
