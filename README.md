@@ -95,7 +95,7 @@ This base infrastructure repository provides AI inference capabilities with vali
 - **Purpose**: Latency-optimized CPU inference
 - **Performance**: 35.44 tokens/second
 - **Configuration**: 12 dedicated cores (0-11), 96GB RAM
-- **Optimizations**: SMT disabled, huge pages enabled
+- **Optimizations**: Huge pages enabled
 - **Features**: Single-model focus for minimum latency
 
 ### vllm-gpu (Port 8005)
