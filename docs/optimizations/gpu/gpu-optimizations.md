@@ -1,6 +1,7 @@
 # GPU Optimizations for RTX 5090
 
 GPU optimizations for NVIDIA RTX 5090 (Blackwell architecture) for AI inference workloads.
+Optimizations focus on llama.cpp for single-request latency and vLLM for batch throughput.
 
 ## Table of Contents
 
@@ -42,6 +43,8 @@ GPU optimizations focus on three key areas:
 1. **Host system configuration** - NVIDIA driver settings and GPU state management
 2. **Container runtime environment** - CUDA and runtime optimizations
 3. **Architecture-specific tuning** - Blackwell SM 12.0 optimizations
+
+**Note**: Most optimizations benefit llama.cpp (single-request latency). vLLM-specific sections target batch throughput.
 
 ## Host System GPU Configuration
 
@@ -215,7 +218,7 @@ services:
 services:
   vllm-gpu:
     environment:
-      # vLLM GPU optimizations
+      # vLLM GPU optimizations (throughput-focused, not latency)
       - VLLM_CUDA_GRAPHS=1        # Enable CUDA graphs
       - VLLM_USE_V1=1             # Use optimized v1 engine
       - VLLM_ENABLE_PREFIX_CACHING=1
@@ -371,7 +374,7 @@ Measured and expected improvements with optimizations:
 | CUDA Graphs | -20% | Kernel launch overhead | Pending |
 | L2 Cache Config | +10% | Memory bandwidth utilization | Pending |
 
-**Benchmark Results (llama.cpp with Qwen2.5-32B Q4):**
+**Benchmark Results (llama.cpp single-request with Qwen2.5-32B Q4):**
 - Baseline: 287.37 tokens/sec
 - With clock locking: 178.71 tokens/sec (-38%)
 - Optimal (no locking, DEFAULT mode): 287.46 tokens/sec

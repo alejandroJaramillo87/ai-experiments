@@ -1,6 +1,6 @@
 # System Optimizations
 
-Latency-focused optimizations for interactive LLM inference (AMD Ryzen 9950X + RTX 5090).
+Latency-focused optimizations for interactive LLM inference (llama.cpp) on AMD Ryzen 9950X + RTX 5090.
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@ Latency-focused optimizations for interactive LLM inference (AMD Ryzen 9950X + R
 
 These optimizations prioritize **inference latency** over throughput for chatbot-style applications:
 
-- **Single Model Focus**: 12 cores dedicated to one LLM instance for minimum response time
+- **Single Model Focus**: 12 cores dedicated to one llama.cpp instance for minimum response time
 - **Core Allocation**: Cores 0-11 for LLM, remaining cores for system tasks
 - **Research-Based**: 26% latency improvement with optimizations
 
@@ -67,6 +67,7 @@ System optimizations are organized by component:
   - GPU memory management
   - Multi-GPU scaling considerations
   - **Important**: Clock locking causes 38% performance degradation on RTX 5090
+  - **Note**: vLLM sections focus on throughput optimization, different from llama.cpp latency goals
 
 ### benchmark-guide.md
 Performance benchmarking tool for optimization validation.
