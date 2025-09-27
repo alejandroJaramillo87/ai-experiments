@@ -286,7 +286,7 @@ Reference Files:
 ### NVIDIA Driver Installation
 
 RTX 5090 Blackwell Architecture Support
-The RTX 5090 requires NVIDIA drivers for AI workload performance, Blackwell architecture support, and compatibility with CUDA 12.9.1 and AI frameworks.
+The RTX 5090 requires NVIDIA drivers for AI workload performance, Blackwell architecture support, and compatibility with CUDA  and AI frameworks.
 
 Driver Installation Process:
 ```bash
@@ -312,15 +312,15 @@ Reference Files:
 
 ### CUDA Toolkit Configuration
 
-CUDA 12.9.1 for Blackwell Architecture
+CUDA  for Blackwell Architecture
 CUDA toolkit provides the foundation for GPU-accelerated AI model inference and training with comprehensive Blackwell architecture support and optimization.
 
 CUDA Installation Process:
 ```bash
-# Automated CUDA 12.9.1 installation with Blackwell support
+# Automated CUDA  installation with Blackwell support
 ./scripts/setup/setup_cuda.sh
 ```
-- Install CUDA Toolkit 12.9.1 with sm_120 support
+- Install CUDA Toolkit  with sm_120 support
 - Configure CUDA environment variables in `~/.zshrc`
 - Set up CUDA library paths
 - Verify CUDA installation with `nvcc --version`
@@ -340,7 +340,7 @@ CUDA Development Tools:
 - CUDA graphs support for inference optimization
 
 Reference Files:
-- `scripts/setup/setup_cuda.sh`: CUDA 12.9.1 installation with Blackwell architecture support
+- `scripts/setup/setup_cuda.sh`: CUDA  installation with Blackwell architecture support
 - `scripts/update/update_cuda.sh`: CUDA toolkit update automation
 
 ### cuDNN Installation
@@ -350,10 +350,10 @@ cuDNN provides hardware-accelerated deep neural network primitives for AI model 
 
 cuDNN Installation Process:
 ```bash
-# Automated cuDNN installation matching CUDA 12.9.1
+# Automated cuDNN installation matching CUDA 
 ./scripts/setup/setup_cudnn.sh
 ```
-- Install cuDNN 9.x libraries for CUDA 12.9.1
+- Install cuDNN 9.x libraries for CUDA 
 - Configure cuDNN for RTX 5090 architecture
 - Verify library installation
 - Set up cuDNN environment variables
@@ -396,7 +396,7 @@ Docker Installation Process:
 
 NVIDIA Container Integration:
 - **GPU Access**: Seamless RTX 5090 access from Docker containers
-- **CUDA Runtime**: Containerized CUDA 12.9.1 support
+- **CUDA Runtime**: Containerized CUDA  support
 - **Memory Management**: Container VRAM allocation and limits
 - **Multi-Container**: GPU sharing across multiple AI inference containers
 
