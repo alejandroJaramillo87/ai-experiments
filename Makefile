@@ -45,6 +45,44 @@ ui-up: ## Start only Open WebUI
 	docker-compose up -d open-webui
 	@echo "$(GREEN)Open WebUI started on http://localhost:3000$(RESET)"
 
+##@ FLUX Image Generation
+
+flux-up: ## Start ComfyUI with FLUX.1-dev
+	@echo "$(CYAN)Starting ComfyUI with FLUX.1-dev...$(RESET)"
+	docker-compose up -d comfyui-flux
+	@echo "$(GREEN)ComfyUI started on http://localhost:8188$(RESET)"
+
+flux-down: ## Stop ComfyUI service
+	@echo "$(CYAN)Stopping ComfyUI...$(RESET)"
+	docker-compose stop comfyui-flux
+	@echo "$(GREEN)ComfyUI stopped.$(RESET)"
+
+flux-logs: ## View ComfyUI logs
+	docker-compose logs -f comfyui-flux
+
+flux-shell: ## Access ComfyUI container shell
+	docker exec -it comfyui-flux /bin/bash
+
+flux-build: ## Rebuild ComfyUI container
+	@echo "$(CYAN)Rebuilding ComfyUI container...$(RESET)"
+	docker-compose build --no-cache comfyui-flux
+	@echo "$(GREEN)Container rebuilt.$(RESET)"
+
+flux-model-download: ## Download FLUX.1-dev model
+	@echo "$(CYAN)Downloading FLUX.1-dev model (~23GB)...$(RESET)"
+	@echo "This will take time depending on your internet connection."
+	poetry run python scripts/utils/download_model_hf.py \
+		--repo-id black-forest-labs/FLUX.1-dev \
+		--output-dir /mnt/ai-data/models/flux
+	@echo "$(GREEN)Model download complete.$(RESET)"
+
+flux-status: ## Check ComfyUI service status
+	@echo "$(CYAN)ComfyUI Service Status:$(RESET)"
+	@docker-compose ps comfyui-flux
+	@echo ""
+	@echo "$(CYAN)GPU Memory Usage:$(RESET)"
+	@docker exec comfyui-flux nvidia-smi --query-gpu=memory.used,memory.free --format=csv,noheader 2>/dev/null || echo "Service not running"
+
 ##@ Monitoring & Debugging
 
 status: ## Show status of all services
@@ -184,8 +222,9 @@ help: ## Display this help message
 	@echo ""
 	@echo "$(YELLOW)Service Endpoints:$(RESET)"
 	@echo "  $(GREEN)CPU Services:$(RESET)    http://localhost:8001-8003/v1"
-	@echo "  $(GREEN)GPU Service:$(RESET)     http://localhost:8004/v1" 
+	@echo "  $(GREEN)GPU Service:$(RESET)     http://localhost:8004/v1"
 	@echo "  $(GREEN)vLLM Service:$(RESET)    http://localhost:8005/v1"
 	@echo "  $(GREEN)Open WebUI:$(RESET)      http://localhost:3000"
+	@echo "  $(GREEN)ComfyUI:$(RESET)         http://localhost:8188"
 	@echo ""
 	@echo "$(YELLOW)Model Directory:$(RESET)  /mnt/ai-data/models/"

@@ -150,7 +150,7 @@ services:
     restart: unless-stopped
     ports:
       - "3000:8080" # Access WebUI from http://localhost:3000
-    read_only: true 
+    read_only: true
     volumes:
       - open-webui-data:/app/backend/data
     networks:
@@ -166,6 +166,66 @@ services:
     # depends_on:
     #   llama-gpu:
     #     condition: service_healthy # Wait for the GPU service to be healthy before starting
+
+  # ComfyUI with FLUX.1-dev for image generation
+  comfyui-flux:
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    build:
+      context: .
+      dockerfile: docker/comfyui-flux/Dockerfile.comfyui-flux
+    container_name: comfyui-flux
+    restart: unless-stopped
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - CUDA_VISIBLE_DEVICES=0
+      - COMFYUI_PORT=8188
+      - MODEL_BASE_PATH=/app/models
+      - OUTPUT_PATH=/app/output
+      - VRAM_MODE=${FLUX_VRAM_MODE:-highvram}
+    deploy:
+      resources:
+        limits:
+          memory: 24G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute, utility]
+    ports:
+      # ComfyUI web interface
+      - "127.0.0.1:8188:8188"
+    # read_only disabled as ComfyUI needs write access for manager and settings
+    # Security maintained through: non-root user, resource limits, network isolation
+    tmpfs:
+      - /tmp:size=4G,mode=1777
+      - /app/temp:size=2G,mode=1777
+      - /app/input:size=1G,mode=1777
+      - /app/.cache:size=1G,mode=1777
+      - /app/user:size=100M,mode=1777
+    volumes:
+      # Model storage mount
+      - /mnt/ai-data/models:/app/models:ro
+      # Output directory for generated images
+      - ./outputs/comfyui:/app/output
+      # Log storage
+      - ./logs/comfyui:/app/logs
+      # ComfyUI workflows
+      - ./workflows:/app/user/default/workflows
+    networks:
+      - ai-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8188/system_stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
 
 # Persistent storage
 volumes:

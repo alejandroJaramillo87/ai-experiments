@@ -1,0 +1,132 @@
+# Stage 1: Builder
+# CUDA 12.8 development environment for FLUX.1-dev compatibility
+FROM nvidia/cuda:12.8.0-devel-ubuntu24.04 AS builder
+
+LABEL stage="builder"
+
+# Build environment setup
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+# RTX 5090 Blackwell architecture
+ENV TORCH_CUDA_ARCH_LIST="12.0"
+ENV CUDA_ARCHITECTURES=120
+ENV CUDA_DOCKER_ARCH=sm_120
+
+# Install build dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        git \
+        python3.12 \
+        python3.12-dev \
+        python3.12-venv \
+        python3-pip \
+        build-essential \
+        cmake \
+        ninja-build \
+        ca-certificates \
+        curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Clone ComfyUI latest release v0.3.60
+RUN git clone --depth 1 --branch v0.3.60 \
+    https://github.com/comfyanonymous/ComfyUI.git /app
+
+WORKDIR /app
+
+# Create virtual environment and install core dependencies
+RUN python3.12 -m venv venv && \
+    . venv/bin/activate && \
+    pip install --upgrade pip wheel setuptools && \
+    pip install torch==2.7.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128 && \
+    pip install -r requirements.txt && \
+    pip install diffusers transformers accelerate sentencepiece protobuf huggingface-hub
+
+# Install ComfyUI Manager and FLUX-compatible custom nodes
+WORKDIR /app/custom_nodes
+RUN git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Manager.git && \
+    git clone --depth 1 https://github.com/city96/ComfyUI-GGUF.git && \
+    git clone --depth 1 https://github.com/kijai/ComfyUI-KJNodes.git && \
+    git clone --depth 1 https://github.com/Acly/comfyui-tooling-nodes.git
+
+# Install custom node dependencies
+WORKDIR /app
+RUN . venv/bin/activate && \
+    if [ -f custom_nodes/ComfyUI-Manager/requirements.txt ]; then \
+        pip install -r custom_nodes/ComfyUI-Manager/requirements.txt; \
+    fi && \
+    if [ -f custom_nodes/ComfyUI-KJNodes/requirements.txt ]; then \
+        pip install -r custom_nodes/ComfyUI-KJNodes/requirements.txt; \
+    fi && \
+    pip install gguf opencv-python-headless gitpython
+
+# Stage 2: Runtime
+FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04
+
+LABEL description="ComfyUI v0.3.60 with FLUX.1-dev for AI image generation"
+
+# Install runtime dependencies only
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3.12 \
+        python3.12-venv \
+        libgomp1 \
+        ca-certificates \
+        curl \
+        git \
+        libgl1 \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 && \
+    rm -rf /var/lib/apt/lists/*
+
+# CUDA runtime environment
+ENV PATH=/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+ENV CUDA_MODULE_LOADING=LAZY
+ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
+ENV CUDA_VISIBLE_DEVICES=0
+
+# Performance tuning for RTX 5090
+ENV CUDA_LAUNCH_BLOCKING=0
+ENV CUDNN_LOGINFO_DBG=0
+ENV CUDA_CACHE_DISABLE=0
+ENV CUDA_CACHE_PATH=/tmp/cuda_cache
+ENV CUDA_FORCE_PTX_JIT=0
+
+# NVIDIA GPU settings
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+ENV NVIDIA_REQUIRE_CUDA="cuda>=12.8"
+
+# Python environment
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+# Create non-root user
+RUN groupadd -r appuser && \
+    useradd -r -g appuser -d /app -s /sbin/nologin -c "ComfyUI User" appuser
+
+# Copy application from builder
+COPY --from=builder --chown=appuser:appuser /app /app
+
+# Copy entrypoint script
+COPY --chown=appuser:appuser docker/comfyui-flux/entrypoint.sh /app/entrypoint.sh
+
+# Set permissions and create writable directories
+RUN chmod +x /app/entrypoint.sh && \
+    mkdir -p /tmp/cuda_cache && \
+    chown -R appuser:appuser /tmp/cuda_cache && \
+    mkdir -p /app/user/default /app/.cache /app/temp /app/input && \
+    chown -R appuser:appuser /app/user /app/.cache /app/temp /app/input
+
+# Switch to non-root user
+USER appuser
+
+WORKDIR /app
+
+# Expose ComfyUI port
+EXPOSE 8188
+
+# Use entrypoint script
+ENTRYPOINT ["/app/entrypoint.sh"]
