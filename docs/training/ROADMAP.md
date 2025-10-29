@@ -68,11 +68,11 @@ This project differentiates from educational implementations by providing produc
 
 ### Included
 
-**Training from scratch**: Train base language models on raw text corpora using Qwen3-1.7B architecture (1.7 billion parameters).
+**Training from scratch**: Train base language models on raw text corpora using Qwen3-1.7B architecture (1.7 billion parameters). Start with randomly initialized weights and pretrain on large text datasets like OpenWebText. Requires substantial compute and data (billions of tokens minimum). Produces general-purpose base model with broad language understanding.
 
-**Continued pretraining**: Adapt existing base models to specialized domains through additional pretraining on domain-specific corpora.
+**Continued pretraining**: Adapt existing pretrained base models to specialized domains through additional pretraining on domain-specific corpora. Start from official Qwen3-1.7B checkpoint (or custom trained checkpoint) and continue training on focused datasets (code, medical, legal, math, scientific literature). Requires less compute and data than training from scratch (millions to low billions of tokens). Produces domain-specialized base model while retaining general capabilities. Also called domain adaptation or continued training.
 
-**Fine-tuning**: Full parameter fine-tuning and parameter-efficient fine-tuning with Low-Rank Adaptation (LoRA) for instruction following and task-specific behaviors.
+**Fine-tuning**: Full parameter fine-tuning and parameter-efficient fine-tuning with Low-Rank Adaptation (LoRA) for instruction following and task-specific behaviors. Start from base model checkpoint and train on instruction-response pairs or task-specific labeled data. Requires minimal compute and data (thousands to hundreds of thousands of examples). Produces task-optimized model for specific use cases like chat, question-answering, or classification.
 
 **Quantization**: Post-training quantization to GGUF format for llama.cpp inference and HuggingFace SafeTensors format for vLLM inference.
 
@@ -93,6 +93,140 @@ This project differentiates from educational implementations by providing produc
 **Cloud deployment**: Focus remains on local workstation infrastructure.
 
 **Production serving**: Training services are for model development, not serving production traffic.
+
+## Training Types Comparison
+
+This section provides detailed comparison of the three training approaches to guide implementation and hyperparameter selection.
+
+### When to Use Each Approach
+
+**Training from scratch**:
+- Building custom model with unique tokenizer or architecture modifications
+- Research on training dynamics and optimization techniques
+- Educational purposes to understand full training process
+- No suitable pretrained model exists for starting point
+- Full control over training data and model characteristics required
+
+**Continued pretraining**:
+- Adapting general model to specialized domain (medical, legal, code, finance, scientific)
+- Improving model performance on underrepresented languages or topics
+- Adding knowledge not present in original pretraining data
+- Domain shift: production data distribution differs significantly from pretraining data
+- Want to preserve general capabilities while gaining domain expertise
+
+**Fine-tuning**:
+- Teaching specific task behavior (instruction-following, chat, classification, summarization)
+- Aligning model outputs with desired format and style
+- Small labeled dataset available (thousands to hundreds of thousands examples)
+- Need fast iteration on task-specific improvements
+- Production deployment with specific use case requirements
+
+### Hyperparameter Comparison
+
+**Initial checkpoint**:
+- From scratch: Random initialization (torch.nn.init.normal_ with small std)
+- Continued pretraining: Load official Qwen3-1.7B checkpoint or custom base model
+- Fine-tuning: Load base model or domain-adapted checkpoint
+
+**Learning rate**:
+- From scratch: 3e-4 to 6e-4 (standard pretraining LR)
+- Continued pretraining: 1e-4 to 3e-4 (lower to avoid catastrophic forgetting)
+- Fine-tuning full: 1e-5 to 5e-5 (very low to preserve pretrained features)
+- Fine-tuning LoRA: 1e-4 to 3e-4 (higher acceptable due to limited parameters)
+
+**Warmup steps**:
+- From scratch: 2000-5000 steps (stable gradient scaling from zero)
+- Continued pretraining: 500-2000 steps (shorter warmup, already stable)
+- Fine-tuning: 100-500 steps (minimal warmup needed)
+
+**Training duration**:
+- From scratch: Billions of tokens (10B+ for reasonable quality)
+- Continued pretraining: Millions to low billions of tokens (100M-5B depending on domain)
+- Fine-tuning: Thousands to millions of tokens (depends on task complexity)
+
+**Batch size**:
+- From scratch: Large as VRAM allows (128-512 effective via gradient accumulation)
+- Continued pretraining: Medium to large (64-256 effective batch size)
+- Fine-tuning: Small to medium (8-64 effective batch size, avoid overfitting)
+
+**Learning rate schedule**:
+- From scratch: Warmup + cosine decay to 10% of peak LR
+- Continued pretraining: Warmup + cosine decay to 10% of peak LR
+- Fine-tuning: Warmup + cosine decay to 0 or constant LR after warmup
+
+**Gradient clipping**:
+- All types: 1.0 max norm (prevents training instability)
+
+**Weight decay**:
+- From scratch: 0.1 (standard regularization)
+- Continued pretraining: 0.1 (maintain regularization)
+- Fine-tuning: 0.01-0.1 (lighter regularization or zero for small datasets)
+
+**Dropout** (if using):
+- From scratch: 0.0-0.1 (minimal in modern architectures with strong regularization)
+- Continued pretraining: 0.0-0.1 (maintain original architecture settings)
+- Fine-tuning: 0.0-0.2 (increased dropout can reduce overfitting on small datasets)
+
+### Dataset Requirements
+
+**Training from scratch**:
+- Size: 10B+ tokens minimum for reasonable quality
+- Diversity: Broad coverage of topics, writing styles, domains
+- Quality: High-quality text, deduplication critical
+- Examples: OpenWebText (8B tokens), The Pile (825GB), C4, RedPajama
+
+**Continued pretraining**:
+- Size: 100M-5B tokens depending on domain complexity
+- Diversity: Focused on target domain but some general text for stability
+- Quality: High domain-specific quality, acceptable to include technical jargon
+- Examples: PubMed (medical), arXiv (scientific), legal corpora, GitHub (code)
+- Mixing: Often mix 80-90% domain data with 10-20% general data to prevent catastrophic forgetting
+
+**Fine-tuning**:
+- Size: 1K-1M examples (instruction-response pairs or labeled data)
+- Diversity: Cover expected use cases and edge cases
+- Quality: Extremely high quality, manual review often necessary
+- Examples: FLAN, Alpaca, ShareGPT, task-specific datasets
+- Format: Structured instruction-response pairs with system prompts
+
+### Evaluation Differences
+
+**Training from scratch**:
+- Primary: Validation loss and perplexity on held-out general text
+- Secondary: Downstream task performance (MMLU, HellaSwag, ARC)
+- Goal: Broad language understanding and generation capability
+
+**Continued pretraining**:
+- Primary: Perplexity on domain-specific held-out text
+- Secondary: Domain-specific benchmarks (e.g., MedQA for medical, HumanEval for code)
+- Goal: Low domain perplexity while maintaining general capability (measure both)
+
+**Fine-tuning**:
+- Primary: Task-specific metrics (accuracy, F1, ROUGE, exact match)
+- Secondary: Qualitative evaluation of outputs, instruction-following accuracy
+- Goal: High task performance and output quality aligned with requirements
+
+### Use Case Examples
+
+**Training from scratch examples**:
+- Research: Studying impact of tokenizer vocabulary size on model quality
+- Custom architecture: Modified attention mechanism requiring fresh training
+- Specialized tokenizer: Custom byte-pair encoding for specific language or domain
+- Educational: Understanding transformer training dynamics from initialization
+
+**Continued pretraining examples**:
+- Code model: Continue training Qwen3-1.7B on GitHub + StackOverflow data
+- Medical model: Adapt base model using PubMed abstracts + clinical notes
+- Legal assistant: Continue training on case law + legal documents + contracts
+- Math reasoning: Adapt model using mathematical proofs + problem solutions
+- Financial analysis: Domain adaptation using financial reports + market data
+
+**Fine-tuning examples**:
+- Instruction-following: Train on Alpaca/FLAN to follow user instructions
+- Code generation: Fine-tune on formatted code problems with solutions
+- Conversational: Adapt to multi-turn dialogue format using ShareGPT
+- Summarization: Fine-tune on document-summary pairs
+- Classification: Train on labeled examples for sentiment/topic classification
 
 ## Architecture Foundation
 
@@ -233,6 +367,33 @@ This section captures critical decisions made during roadmap development with ra
 - Validation: Measured less than 5% cross-core interference
 
 **Alternative considered**: Exclusive GPU use - rejected because concurrent operation enables testing trained models without downtime.
+
+### Continued Pretraining Strategy
+
+**Decision**: Support continued pretraining by loading official Qwen3-1.7B checkpoint and training on domain-specific datasets with data mixing (80-90% domain, 10-20% general text).
+
+**Rationale**:
+- Domain adaptation: Most practical use case for prosumer hardware (achieves specialization faster than from-scratch)
+- Catastrophic forgetting prevention: Mixing general text maintains broad capabilities while gaining domain expertise
+- Compute efficiency: Requires 10-100x less compute than training from scratch for domain tasks
+- Checkpoint reuse: Official Qwen3-1.7B checkpoint provides strong foundation (36T tokens pretraining)
+- Lower learning rate: 1e-4 to 3e-4 preserves learned features while adapting to new domain
+- Quality validation: Measure both domain-specific metrics and general capability benchmarks
+
+**Use cases enabled**:
+- Code specialization: GitHub + StackOverflow data for programming assistant
+- Medical domain: PubMed abstracts + clinical notes for medical text understanding
+- Legal domain: Case law + contracts for legal document analysis
+- Math reasoning: Mathematical proofs + solutions for enhanced reasoning
+- Scientific literature: arXiv papers for scientific domain expertise
+
+**Implementation approach**:
+- Use same training script as from-scratch with checkpoint initialization parameter
+- Separate configs for domain datasets (code.yaml, medical.yaml, legal.yaml)
+- Domain-specific evaluation benchmarks (HumanEval for code, MedQA for medical)
+- Document mixing ratios and learning rate schedules per domain
+
+**Alternative considered**: Fine-tuning only - rejected because continued pretraining better for substantial domain knowledge acquisition vs task-specific behavior adaptation.
 
 ## Hardware Requirements
 
@@ -430,11 +591,17 @@ docs/
 configs/
 └── training/
     ├── shakespeare.yaml
-    ├── qwen3-1.7b.yaml
+    ├── qwen3-1.7b-scratch.yaml
+    ├── qwen3-1.7b-code.yaml
+    ├── qwen3-1.7b-medical.yaml
+    ├── qwen3-1.7b-legal.yaml
     ├── datasets/
     │   ├── openwebtext.yaml
     │   ├── shakespeare.yaml
-    │   └── redpajama.yaml
+    │   ├── redpajama.yaml
+    │   ├── github-code.yaml
+    │   ├── pubmed-medical.yaml
+    │   └── legal-corpus.yaml
     └── optimization/
         ├── baseline.yaml
         ├── memory-optimized.yaml
@@ -450,10 +617,19 @@ benchmarks/
     │   ├── baseline.json
     │   ├── optimized.json
     │   └── README.md
-    ├── openwebtext-qwen3/
+    ├── qwen3-from-scratch/
     │   ├── baseline.json
     │   ├── optimized.json
     │   └── training_curves.png
+    ├── qwen3-code-domain/
+    │   ├── baseline.json
+    │   ├── training_curves.png
+    │   ├── humaneval_results.json
+    │   └── catastrophic_forgetting_test.json
+    ├── qwen3-medical-domain/
+    │   ├── baseline.json
+    │   ├── training_curves.png
+    │   └── medqa_results.json
     ├── optimization-study/
     │   ├── tf32.json
     │   ├── torch_compile.json
@@ -1281,9 +1457,9 @@ Cutting-edge techniques with uncertain performance gains. Document thoroughly ev
 
 ### Phase 2: Scale Up
 
-**Objective**: Enable training of production-scale Qwen3-1.7B model on OpenWebText dataset.
+**Objective**: Enable training of production-scale Qwen3-1.7B model with both from-scratch pretraining and continued pretraining (domain adaptation).
 
-**Tasks**:
+**Tasks - Training from Scratch**:
 - Implement dataset download script for OpenWebText
 - Create preprocessing pipeline with Qwen3 tokenizer (151,646 vocab)
 - Generate memory-mapped token arrays
@@ -1297,24 +1473,52 @@ Cutting-edge techniques with uncertain performance gains. Document thoroughly ev
 - Run baseline training to establish unoptimized performance
 - Document hyperparameters
 
+**Tasks - Continued Pretraining**:
+- Implement checkpoint loading from HuggingFace Hub (official Qwen3-1.7B)
+- Add support for loading custom checkpoint paths
+- Implement domain-specific dataset download scripts (GitHub for code, PubMed for medical)
+- Create dataset mixing pipeline (80-90% domain, 10-20% general text)
+- Add continued pretraining script with lower learning rate (1e-4 to 3e-4)
+- Configure domain-specific validation sets
+- Implement catastrophic forgetting detection (measure general capability during training)
+- Create configs for multiple domains (code.yaml, medical.yaml, legal.yaml)
+- Document mixing ratios and hyperparameters per domain
+- Run baseline continued pretraining experiment on code domain
+
 **Deliverables**:
 - OpenWebText downloaded and preprocessed
 - Tokenized dataset with Qwen3 tokenizer
 - scripts/training/train_qwen.py with full implementation
-- Checkpoint management working
+- scripts/training/pretrain.py with checkpoint loading and domain adaptation
+- scripts/data/download_domain_datasets.py (supports code, medical, legal)
+- scripts/data/mix_datasets.py (implements data mixing with configurable ratios)
+- Checkpoint management working for both training types
 - Resume from checkpoint tested
-- configs/training/qwen3-1.7b.yaml
-- Baseline trained model checkpoint
-- TensorBoard logs for full run
+- configs/training/qwen3-1.7b-scratch.yaml
+- configs/training/qwen3-1.7b-code.yaml
+- configs/training/qwen3-1.7b-medical.yaml
+- configs/training/qwen3-1.7b-legal.yaml
+- Baseline trained model checkpoint (from scratch)
+- Baseline continued pretrained model checkpoint (code domain)
+- TensorBoard logs for both training types
+- docs/continued-pretraining/README.md
+- docs/continued-pretraining/domain-adaptation.md
+- docs/continued-pretraining/mixing-strategies.md
 
 **Validation**:
-- Dataset preprocessing completes
-- Model trains without errors
-- Checkpoints save correctly
+- Dataset preprocessing completes for general and domain datasets
+- Dataset mixing produces correct proportions (validate token counts)
+- Official Qwen3-1.7B checkpoint loads successfully
+- From-scratch training initializes with random weights
+- Continued pretraining initializes from checkpoint
+- Model trains without errors for both approaches
+- Checkpoints save correctly with metadata indicating training type
 - Resume from checkpoint continues from exact state
 - Training stable with BF16 (no NaN losses)
-- Learning rate schedule correct
-- Baseline performance measured
+- Learning rate schedules correct for both training types
+- Baseline performance measured for from-scratch
+- Domain-specific metrics improve for continued pretraining
+- General capability maintained during continued pretraining (no catastrophic forgetting)
 
 ### Phase 3: Systematic Optimization
 
@@ -1515,11 +1719,11 @@ Cutting-edge techniques with uncertain performance gains. Document thoroughly ev
 
 ### Functional Requirements
 
-**Basic training**: Successfully train Qwen3-1.7B model from scratch on OpenWebText using tiny-qwen architecture. Achieve acceptable perplexity on validation set.
+**Basic training**: Successfully train Qwen3-1.7B model from scratch on OpenWebText using tiny-qwen architecture. Achieve acceptable perplexity on validation set. Training completes without errors, loss curves show proper convergence, checkpoints save correctly.
 
-**Continued pretraining**: Adapt base model to specialized domain (e.g., code, math) with measurable quality improvement on domain-specific evaluation.
+**Continued pretraining**: Load official Qwen3-1.7B checkpoint and successfully adapt to specialized domain (code, medical, or legal). Implement data mixing (80-90% domain, 10-20% general). Achieve measurable quality improvement on domain-specific benchmarks (e.g., HumanEval for code, MedQA for medical) while maintaining general capability on standard benchmarks (minimal degradation on MMLU or similar). Demonstrate catastrophic forgetting prevention through dual evaluation.
 
-**Fine-tuning**: Fine-tune with LoRA achieving instruction-following capability. Demonstrate improvement vs base model.
+**Fine-tuning**: Fine-tune with LoRA achieving instruction-following capability. Demonstrate improvement vs base model on instruction-following benchmarks. LoRA adapters integrate correctly with base model, training converges faster than full fine-tuning.
 
 **Quantization**: Convert trained models to both GGUF and SafeTensors formats. Acceptable quality degradation per format specifications.
 
