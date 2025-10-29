@@ -5,32 +5,70 @@ Comprehensive roadmap for implementing small-to-medium scale language model trai
 ## Table of Contents
 
 - [Vision](#vision)
+- [Unique Value Proposition](#unique-value-proposition)
 - [Scope](#scope)
-- [Technical Specifications](#technical-specifications)
+- [Architecture Foundation](#architecture-foundation)
 - [Design Decisions](#design-decisions)
 - [Hardware Requirements](#hardware-requirements)
+- [Software Stack](#software-stack)
 - [Directory Structure](#directory-structure)
 - [Services Architecture](#services-architecture)
+- [Integration with v1.0 Infrastructure](#integration-with-v10-infrastructure)
 - [Custom Tooling](#custom-tooling)
 - [Operating System Optimizations](#operating-system-optimizations)
 - [Optimization Strategy](#optimization-strategy)
-- [Quantization Strategy](#quantization-strategy)
+- [Quantization & Deployment Pipeline](#quantization--deployment-pipeline)
 - [Evaluation Strategy](#evaluation-strategy)
 - [Experimental Optimizations](#experimental-optimizations)
 - [Implementation Phases](#implementation-phases)
 - [Success Criteria](#success-criteria)
+- [Attribution](#attribution)
 - [Dependencies](#dependencies)
 - [Future Considerations](#future-considerations)
 
 ## Vision
 
-Transform the ai-experiments repository from best-in-class inference infrastructure into a complete AI lifecycle platform for prosumer hardware. Enable training of small-to-medium language models (10M to 1.5B parameters) with the same systematic optimization, rigorous documentation, and production stability that characterizes the current inference services.
+Transform the ai-experiments repository from best-in-class inference infrastructure into a complete AI lifecycle platform for prosumer hardware. Enable training of small-to-medium language models (1B-2B parameters) with the same systematic optimization, rigorous documentation, and production stability that characterizes the current inference services.
+
+## Unique Value Proposition
+
+This project differentiates from educational implementations by providing production infrastructure optimized for specific hardware rather than general-purpose training code.
+
+### What Educational Implementations Provide
+
+**tiny-qwen** (github.com/Emericen/tiny-qwen): Clean, minimal Qwen3 architecture implementation in PyTorch. Educational focus on understanding transformer mechanics. Architecture code designed for learning.
+
+**rasbt/qwen3-from-scratch**: From-scratch educational implementation with detailed explanations. Optimized for readability and research. Minimal dependencies for understanding core concepts.
+
+**ideaweaver-ai/qwen3-from-scratch**: Complete training examples on small datasets. Demonstrates training loop mechanics. Educational tool for learning language model training.
+
+### What ai-experiments v2 Provides
+
+**Production infrastructure layer**: Docker orchestration, checkpoint management, monitoring, automated deployment. Industrial-strength tooling for reliable 24/7 operation.
+
+**Hardware-specific optimization**: Tuned exclusively for RTX 5090 (Blackwell) + AMD Ryzen 9950X (Zen 5). No compromises for portability. Systematic optimization achieving measurable performance gains.
+
+**Complete pipeline**: Raw text → trained model → quantized formats (GGUF + SafeTensors) → deployed to inference services. End-to-end automation with validation at each stage.
+
+**Integration with existing services**: Concurrent GPU training while CPU inference runs. Quantized models automatically deploy to llama-cpu, llama-gpu, vllm-gpu services from v1.0.
+
+**Systematic optimization research**: Baseline measurement, six optimizations applied methodically, each gain documented with benchmarks. Focus on discovering what works on this specific hardware configuration.
+
+**Custom C++ tooling**: SIMD-optimized tokenizer (AVX-512), PyTorch memory optimizer, huge pages integration. Performance-critical paths implemented in compiled code where Python overhead matters.
+
+**Research documentation**: Discoveries documented for curiosity-chronicles blog. Serves llama-zen-turbo project as reference implementation. Bleeding-edge hardware optimization research.
+
+### Scope of This Project
+
+**We build the production layer, not the architecture**. Qwen3-1.7B architecture comes from tiny-qwen. We add infrastructure, optimization, quantization, deployment, monitoring, and integration.
+
+**First to optimize Qwen3-1.7B training for RTX 5090 + Zen 5 prosumer hardware**. Document discoveries, measure gains, prove feasibility of high-quality training on workstation hardware.
 
 ## Scope
 
 ### Included
 
-**Training from scratch**: Train base language models on raw text corpora using GPT-2 architecture variants (124M, 350M, 774M, 1.5B parameters).
+**Training from scratch**: Train base language models on raw text corpora using Qwen3-1.7B architecture (1.7 billion parameters).
 
 **Continued pretraining**: Adapt existing base models to specialized domains through additional pretraining on domain-specific corpora.
 
@@ -38,11 +76,13 @@ Transform the ai-experiments repository from best-in-class inference infrastruct
 
 **Quantization**: Post-training quantization to GGUF format for llama.cpp inference and HuggingFace SafeTensors format for vLLM inference.
 
-**Dataset preparation**: Complete pipeline for data collection, cleaning, tokenization, and validation.
+**Dataset preparation**: Complete pipeline for data collection, cleaning, tokenization with Qwen3 tokenizer (151,646 vocab), and validation.
 
 **Evaluation**: Model quality assessment through perplexity measurements, downstream task evaluation, and instruction-following benchmarks.
 
 **Optimization**: Systematic optimization of training throughput, memory efficiency, and data loading performance.
+
+**Deployment integration**: Automatic deployment of quantized models to existing v1.0 inference services with validation.
 
 ### Excluded
 
@@ -54,120 +94,67 @@ Transform the ai-experiments repository from best-in-class inference infrastruct
 
 **Production serving**: Training services are for model development, not serving production traffic.
 
-## Technical Specifications
+## Architecture Foundation
 
-### Performance Baselines and Targets
+### Base Implementation
 
-**124M Parameter Model (GPT-2 Small)**
+**Architecture**: Qwen3-1.7B (1.7 billion parameters)
+**Source**: tiny-qwen implementation (github.com/Emericen/tiny-qwen)
+**License**: Apache 2.0
 
-Baseline performance (unoptimized):
-- Throughput: 220,000 tokens per second
-- MFU: 38% (Model FLOPS Utilization)
-- GPU utilization: 78% (data loading bottleneck)
-- Batch size: 16
-- Training time: 10 hours to perplexity 22 on OpenWebText
-- Power consumption: 380W average
+### Why Qwen3-1.7B
 
-Target performance (optimized):
-- Throughput: 310,000 tokens per second
-- MFU: 53%
-- GPU utilization: 95%
-- Batch size: 32
-- Training time: 6 hours to perplexity 22
-- Power consumption: 420W average
-- Improvement: 41% throughput increase
+**Modern architecture** (April 2025 release): Incorporates latest transformer improvements including Grouped Query Attention, Rotary Position Embeddings, SwiGLU activation, and RMSNorm. Significantly more efficient than older architectures like GPT-2.
 
-**350M Parameter Model**
+**Appropriate scale**: 1.7B parameters fits comfortably in 32GB VRAM with room for optimization. Larger than educational models (10M-124M) but smaller than multi-GPU requirements (7B+). Right size for prosumer hardware exploration.
 
-Baseline performance:
-- Throughput: 85,000 tokens per second
-- MFU: 35%
-- GPU utilization: 72%
-- Batch size: 8
-- Training time: 48 hours
-- VRAM usage: 22GB
+**Strong pretraining**: Alibaba pretrained on 36 trillion tokens across 119 languages. Using this architecture for training from scratch benefits from proven design validated at massive scale.
 
-Target performance:
-- Throughput: 125,000 tokens per second
-- MFU: 51%
-- GPU utilization: 94%
-- Batch size: 16
-- Training time: 24 hours
-- VRAM usage: 24GB
-- Improvement: 47% throughput increase
+**Proven implementation**: tiny-qwen provides clean, minimal implementation that works. No need to debug architecture code. Focus effort on infrastructure and optimization.
 
-**774M Parameter Model**
+**Training characteristics**: Strong-to-weak distillation training methodology well documented. Architecture designed for efficiency with tied embeddings, optimal layer configurations.
 
-Baseline performance:
-- Throughput: 38,000 tokens per second
-- MFU: 33%
-- GPU utilization: 68%
-- Batch size: 4
-- Training time: 7 days
-- VRAM usage: 28GB
+### Architecture Components
 
-Target performance:
-- Throughput: 58,000 tokens per second
-- MFU: 49%
-- GPU utilization: 92%
-- Batch size: 8
-- Training time: 4 days
-- VRAM usage: 30GB
-- Improvement: 53% throughput increase
+**Transformer architecture**: Decoder-only with 24 layers, 2048 hidden dimensions, 16 attention heads.
 
-### Resource Requirements Per Model
+**Grouped Query Attention (GQA)**: Reduces memory and computation vs Multi-Head Attention. Improved inference speed without quality loss.
 
-| Model | Params | VRAM | System RAM | Batch Size | Training Time | Cost (Est) |
-|-------|--------|------|------------|------------|---------------|------------|
-| 10M   | 10M    | 4GB  | 8GB        | 128        | 5 minutes     | $0.05      |
-| 124M  | 124M   | 18GB | 16GB       | 32         | 6 hours       | $5         |
-| 350M  | 350M   | 24GB | 24GB       | 16         | 24 hours      | $15        |
-| 774M  | 774M   | 30GB | 32GB       | 8          | 4 days        | $30        |
-| 1.5B  | 1.5B   | 31GB | 48GB       | 4          | 10 days       | $65        |
+**Rotary Position Embeddings (RoPE)**: Better position encoding than learned embeddings used in older architectures. Enables longer context generalization.
 
-Cost estimates based on 450W average power consumption at $0.12 per kWh electricity rate.
+**SwiGLU activation**: Superior to GELU used in GPT-2. Better gradient flow and training stability.
 
-### Training Hyperparameters
+**RMSNorm**: Faster and more memory-efficient than LayerNorm. 7-64% speedup for normalization operations.
 
-**Learning Rate Schedule**
+**Tied embeddings**: Input and output embeddings shared for parameter efficiency. Standard practice for models under 4B parameters.
 
-124M model:
-- Peak learning rate: 3e-4
-- Warmup steps: 2000 (10% of total steps)
-- Schedule: Cosine annealing to 10% of peak (3e-5)
-- Minimum learning rate: 1e-5
-- Total steps: 20,000
+**Byte-level BPE tokenizer**: 151,646 vocabulary size. Handles all Unicode characters without special cases.
 
-Scaling for larger models:
-- 350M: Peak 1.5e-4 (half of 124M)
-- 774M: Peak 1e-4
-- 1.5B: Peak 6e-5
-- General rule: Peak learning rate scales as 1/√(parameters)
+**Context window**: 32K tokens during pretraining, validated for long-context understanding.
 
-**Optimizer Configuration**
+### References
 
-AdamW optimizer parameters:
-- Beta1: 0.9
-- Beta2: 0.95
-- Weight decay: 0.1
-- Epsilon: 1e-8
-- Gradient clipping: 1.0 (global norm)
+**Implementation sources**:
+- tiny-qwen (github.com/Emericen/tiny-qwen) - Minimal PyTorch implementation
+- rasbt/qwen3-from-scratch (huggingface.co/rasbt/qwen3-from-scratch) - Educational guide
+- ideaweaver-ai/qwen3-from-scratch (github.com/ideaweaver-ai/qwen3-from-scratch) - Training examples
 
-**Precision Selection**
+**Technical documentation**:
+- Qwen3 technical report: Qwen team, Alibaba Cloud (April 2025)
+- Qwen blog: qwenlm.github.io/blog/qwen3/
+- Transformers documentation: huggingface.co/docs/transformers/model_doc/qwen3
 
-FP32: Never use (4x slower than TF32, no benefit)
-TF32: Default for training (native on Ampere/Blackwell, 8x faster than FP32)
-BF16: Use for 774M and larger models (saves memory, maintains range)
-FP16: Avoid for training (range issues, requires loss scaling)
+**Architecture details**: See references above for layer specifications, attention mechanism implementation, and training hyperparameters. ai-experiments focuses on infrastructure, not reimplementation.
 
-**Batch Size and Gradient Accumulation**
+### Our Integration Approach
 
-Effective batch size target: 512 (based on Chinchilla scaling laws for small models)
+**Use tiny-qwen architecture as-is**: No modifications to core transformer implementation. Proven code reduces risk.
 
-124M model: batch_size=32, accumulation_steps=16, effective=512
-350M model: batch_size=16, accumulation_steps=32, effective=512
-774M model: batch_size=8, accumulation_steps=64, effective=512
-1.5B model: batch_size=4, accumulation_steps=128, effective=512
+**Wrap with production infrastructure**: Add checkpoint management, monitoring, quantization, deployment automation around base architecture.
+
+**Focus on optimization**: Apply systematic optimizations at infrastructure level. Hardware tuning, data loading, memory management, I/O optimization.
+
+**Document discoveries**: Measure what works on RTX 5090 + Zen 5. Publish findings for curiosity-chronicles blog content.
 
 ## Design Decisions
 
@@ -180,7 +167,7 @@ This section captures critical decisions made during roadmap development with ra
 **Rationale**:
 - 30-minute interval: Limits maximum lost work to 30 minutes if training crashes
 - 5000 steps: Ensures regular checkpoints for analysis regardless of throughput
-- Keep last 3: Enables rollback if checkpoint corrupted, 6GB disk usage for 124M model
+- Keep last 3: Enables rollback if checkpoint corrupted
 - Keep best: Preserves best validation loss checkpoint for deployment
 
 **Alternative considered**: Save every epoch - rejected because epoch length varies by dataset size, inconsistent checkpoint frequency.
@@ -190,10 +177,10 @@ This section captures critical decisions made during roadmap development with ra
 **Decision**: Hybrid approach storing both raw text and preprocessed tokenized datasets.
 
 **Rationale**:
-- Raw text: 100GB for OpenWebText, enables reprocessing with different tokenizers
-- Preprocessed: 50GB memory-mapped token arrays, 10x faster loading during training
-- Tradeoff: 150GB total storage vs 50GB (preprocessed only) worth it for flexibility
-- Preprocessing time: 2 hours one-time cost, saves 20+ hours over multiple training runs
+- Raw text: Enables reprocessing with different tokenizers or configurations
+- Preprocessed: Memory-mapped token arrays provide fast loading during training
+- Tradeoff: Additional storage cost worth it for flexibility and speed
+- Preprocessing: One-time cost amortized over multiple training runs
 
 **Alternative considered**: Preprocessed only - rejected because changing tokenizer requires re-downloading raw data.
 
@@ -217,7 +204,6 @@ This section captures critical decisions made during roadmap development with ra
 - PyTorch native: Best training performance, full ecosystem compatibility
 - GGUF: Required for llama.cpp (llama-cpu and llama-gpu services)
 - SafeTensors: Required for vLLM (vllm-gpu service)
-- Conversion time: 10-15 minutes per format, acceptable one-time cost
 - Dual format: Supports both existing inference engines without choosing
 
 **Alternative considered**: Train in GGUF - rejected because training performance worse than native PyTorch.
@@ -244,7 +230,7 @@ This section captures critical decisions made during roadmap development with ra
 - Zero contention: No CPU core sharing between services
 - NUMA awareness: Cores 0-23 on same die, minimize cross-socket memory access
 - Data loading: 12 cores sufficient for 12 DataLoader workers
-- Validation: mpstat shows less than 5% cross-core interference
+- Validation: Measured less than 5% cross-core interference
 
 **Alternative considered**: Exclusive GPU use - rejected because concurrent operation enables testing trained models without downtime.
 
@@ -264,13 +250,56 @@ This section captures critical decisions made during roadmap development with ra
 - Memory: 128GB DDR5-6000
 - Storage: 2TB NVMe SSD for datasets, 1TB NVMe SSD for checkpoints
 
-### Software Stack
+## Software Stack
 
+### Current Dependencies (From pyproject.toml)
+
+**Python**: 3.12
+
+**AI/ML Frameworks**:
+- PyTorch: Managed via pip with CUDA 12.9 support
+- transformers: 4.51.1 (supports Qwen3 - added in 4.51.0)
+- datasets: 3.1.0
+- accelerate: 1.8.1
+- peft: 0.15.2
+- evaluate: 0.4.4
+- deepspeed: 0.17.1
+- bitsandbytes: 0.46.0
+
+**Model Management**:
+- huggingface-hub: 0.32.0
+- hf-transfer: 0.1.8
+
+**Experiment Tracking**:
+- tensorboard: 2.19.0
+- wandb: 0.20.1 (optional)
+- mlflow: 3.1.1 (optional)
+
+**Quantization**:
+- llama-cpp-python: 0.3.14
+- tiktoken: 0.9.0
+
+**GPU Software**:
 - NVIDIA Driver: 580.65.06 or newer
-- CUDA: 13.0 or newer
-- cuDNN: 9.13.0 or newer
-- PyTorch: 2.3.0 or newer
-- Python: 3.12
+- CUDA: 12.9 (configured in pyproject.toml)
+- cuDNN: 9.7.0+ recommended
+
+### Additional Training Dependencies
+
+**Architecture implementation**:
+- tiny-qwen: Reference implementation from github.com/Emericen/tiny-qwen
+
+**Optimization libraries**:
+- Flash Attention: Via torch.nn.functional.scaled_dot_product_attention with cuDNN backend
+- torch.compile: Built into PyTorch 2.5+
+
+**Data processing**:
+- sentencepiece: 0.2.0
+- Fast tokenizer: Custom C++ implementation (see Custom Tooling section)
+
+**Evaluation frameworks**:
+- lm-evaluation-harness: EleutherAI evaluation suite
+- MT-Bench: Multi-turn conversation evaluation
 
 ## Directory Structure
 
@@ -300,7 +329,7 @@ docker/
 scripts/
 ├── training/
 │   ├── train_shakespeare.py
-│   ├── train_gpt.py
+│   ├── train_qwen.py
 │   ├── pretrain.py
 │   ├── finetune.py
 │   ├── finetune_lora.py
@@ -311,7 +340,6 @@ scripts/
 │   ├── download_datasets.py
 │   ├── prepare_dataset.py
 │   ├── tokenize_dataset.py
-│   ├── create_vocab.py
 │   ├── streaming_loader.py
 │   └── data_quality_check.py
 ├── quantization/
@@ -339,9 +367,9 @@ docs/
 │   ├── README.md
 │   ├── quickstart.md
 │   ├── architecture/
-│   │   ├── gpt-architecture.md
+│   │   ├── qwen3-architecture.md
 │   │   ├── model-configs.md
-│   │   └── scaling-laws.md
+│   │   └── tiny-qwen-integration.md
 │   ├── datasets/
 │   │   ├── dataset-preparation.md
 │   │   ├── tokenization.md
@@ -353,26 +381,20 @@ docs/
 │   │   ├── gradient-accumulation.md
 │   │   ├── cpu-dataloader.md
 │   │   └── io-optimization.md
-│   ├── experiments/
-│   │   ├── shakespeare-10m.md
-│   │   ├── openwebtext-124m.md
-│   │   ├── custom-domain-350m.md
-│   │   └── scaling-study.md
-│   └── benchmarks/
-│       ├── training-throughput.md
-│       ├── convergence-curves.md
-│       └── hardware-utilization.md
+│   └── experiments/
+│       ├── shakespeare-10m.md
+│       ├── openwebtext-qwen3.md
+│       ├── custom-domain.md
+│       └── optimization-study.md
 ├── fine-tuning/
 │   ├── README.md
 │   ├── full-finetuning.md
 │   ├── lora-finetuning.md
 │   ├── dataset-formats.md
-│   ├── evaluation-metrics.md
 │   └── preventing-overfitting.md
 ├── continued-pretraining/
 │   ├── README.md
 │   ├── domain-adaptation.md
-│   ├── catastrophic-forgetting.md
 │   └── mixing-strategies.md
 ├── quantization/
 │   ├── README.md
@@ -381,13 +403,12 @@ docs/
 │   ├── safetensors-conversion.md
 │   ├── accuracy-benchmarks.md
 │   ├── inference-integration.md
-│   └── optimal-formats.md
+│   └── deployment-workflow.md
 ├── evaluation/
 │   ├── README.md
 │   ├── evaluation-frameworks.md
 │   ├── perplexity-guide.md
 │   ├── downstream-tasks.md
-│   ├── instruction-following.md
 │   └── quality-metrics.md
 └── optimizations/
     ├── training/
@@ -395,14 +416,12 @@ docs/
     │   ├── bios-training.md
     │   ├── os-training.md
     │   ├── gpu-training.md
-    │   ├── cpu-dataloader.md
     │   └── custom-cpp-tools.md
     └── experiments/
         ├── experimental-flash-attention-training.md
         ├── experimental-custom-kernels.md
         ├── experimental-cpu-offloading.md
-        ├── experimental-1gb-hugepages-training.md
-        └── experimental-mixed-cpu-gpu.md
+        └── experimental-1gb-hugepages-training.md
 ```
 
 ### Configuration Files
@@ -411,15 +430,11 @@ docs/
 configs/
 └── training/
     ├── shakespeare.yaml
-    ├── gpt-124m.yaml
-    ├── gpt-350m.yaml
-    ├── gpt-774m.yaml
-    ├── gpt-1.5b.yaml
+    ├── qwen3-1.7b.yaml
     ├── datasets/
     │   ├── openwebtext.yaml
     │   ├── shakespeare.yaml
-    │   ├── redpajama.yaml
-    │   └── custom-code.yaml
+    │   └── redpajama.yaml
     └── optimization/
         ├── baseline.yaml
         ├── memory-optimized.yaml
@@ -435,15 +450,15 @@ benchmarks/
     │   ├── baseline.json
     │   ├── optimized.json
     │   └── README.md
-    ├── openwebtext-124m/
+    ├── openwebtext-qwen3/
     │   ├── baseline.json
     │   ├── optimized.json
     │   └── training_curves.png
-    ├── scaling-study/
-    │   ├── 124m.json
-    │   ├── 350m.json
-    │   ├── 774m.json
-    │   └── analysis.md
+    ├── optimization-study/
+    │   ├── tf32.json
+    │   ├── torch_compile.json
+    │   ├── flash_attention.json
+    │   └── dataloader.json
     └── evaluation/
         ├── perplexity/
         ├── downstream-tasks/
@@ -459,7 +474,7 @@ benchmarks/
 **GPU Allocation**: Full RTX 5090
 **CPU Allocation**: Cores 12-23 (12 cores for data loading workers)
 **Memory**: 32GB allocated
-**Features**: DeepSpeed integration, Accelerate support, custom CUDA memory allocator, TensorBoard logging
+**Features**: Accelerate support, custom CUDA memory allocator, TensorBoard logging, tiny-qwen integration
 **Mounts**: `/mnt/ai-data/datasets/`, `/mnt/ai-data/checkpoints/`, `/logs/training/`
 
 **Docker Configuration**:
@@ -475,11 +490,11 @@ benchmarks/
 -v /logs/training:/logs:rw
 ```
 
-**Why --ipc=host**: DataLoader workers use shared memory for tensor transfer. Without this flag, multi-worker data loading fails with "unable to mmap" errors. Enables 12 workers vs maximum 4 without flag.
+**Why --ipc=host**: DataLoader workers use shared memory for tensor transfer. Enables 12 workers vs maximum 4 without flag.
 
 **Why --shm-size=16g**: Default Docker shared memory is 64MB, insufficient for large batches. Each DataLoader worker needs approximately 1GB for prefetch buffers. Calculation: 12 workers × 1.3GB safety margin = 16GB total.
 
-**CPU Pinning**: numactl --cpunodebind=0 --membind=0 pins processes to NUMA node 0 for memory locality. Avoids cross-socket memory access overhead. Impact: 3% throughput improvement vs unpinned execution.
+**CPU Pinning**: numactl --cpunodebind=0 --membind=0 pins processes to NUMA node 0 for memory locality. Avoids cross-socket memory access overhead.
 
 ### Data Preparation Service
 
@@ -487,20 +502,20 @@ benchmarks/
 **Purpose**: Dataset preprocessing and tokenization
 **CPU Allocation**: Cores 24-31 (background processing)
 **Memory**: 16GB allocated
-**Features**: SIMD-optimized tokenization, data validation, streaming dataset preparation
+**Features**: SIMD-optimized tokenization with Qwen3 tokenizer (151,646 vocab), data validation, streaming dataset preparation
 **Mounts**: `/mnt/ai-data/datasets/raw/`, `/mnt/ai-data/datasets/preprocessed/`
 
 **Processing Workflow**:
 1. Download raw text from source (HuggingFace, web scraping)
 2. Clean and deduplicate using datasketch MinHash
-3. Tokenize with fast_tokenizer.cpp (AVX-512 optimized)
+3. Tokenize with fast_tokenizer.cpp optimized for Qwen3 vocab size
 4. Create memory-mapped token arrays for training
 5. Generate dataset statistics and quality metrics
 
 ### Quantization Service
 
 **Port**: 8008
-**Purpose**: Post-training model quantization
+**Purpose**: Post-training model quantization and format conversion
 **CPU Allocation**: Cores 12-23
 **Memory**: 64GB allocated
 **Features**: GGUF conversion, SafeTensors conversion, GPTQ quantization, AWQ quantization
@@ -512,7 +527,8 @@ benchmarks/
 3. Convert to SafeTensors format with HuggingFace APIs
 4. Apply GPTQ or AWQ quantization for compressed formats
 5. Benchmark perplexity across all formats
-6. Deploy to appropriate inference service
+6. Generate quality report with recommendations
+7. Deploy to appropriate inference service
 
 ### TensorBoard Service
 
@@ -523,23 +539,82 @@ benchmarks/
 
 **Monitored Metrics**:
 - Training loss per step
-- Validation loss per epoch
+- Validation loss per evaluation
 - Learning rate schedule
 - Gradient norms
 - GPU utilization percentage
 - Throughput (tokens per second)
-- MFU percentage
+- Memory usage (VRAM and system RAM)
 
-### Concurrent Operation
+## Integration with v1.0 Infrastructure
 
-Training services run concurrently with existing inference services:
+### Concurrent Operation Model
 
-- GPU training: RTX 5090 (training-gpu service)
-- CPU inference: AMD Ryzen 9950X cores 0-11 (llama-cpu service)
-- Web interface: open-webui on port 3000
-- Monitoring: TensorBoard on port 6006
+Training services run concurrently with existing v1.0 inference services without performance degradation:
 
-This configuration enables testing newly trained models immediately after quantization without interrupting inference availability. Validation through load testing shows zero performance degradation on either service during concurrent operation.
+**GPU workload**: RTX 5090 dedicated to training-gpu service. Full GPU for model training.
+
+**CPU inference**: AMD Ryzen 9950X cores 0-11 serve llama-cpu inference service. Zero interference from training workload.
+
+**Web interface**: open-webui continues serving on port 3000. Users can interact with existing models while new models train.
+
+**Monitoring**: TensorBoard on port 6006 for training, existing monitoring for inference services.
+
+**Validation**: Load testing demonstrates zero performance degradation on inference services during training. CPU core isolation prevents contention.
+
+### Testing Workflow
+
+**Immediate model testing**: After training completes, quantization service converts to GGUF and SafeTensors formats, deploys to inference services automatically. No downtime required.
+
+**A/B comparison**: New model deployed alongside existing model. Users can compare quality immediately through open-webui.
+
+**Rollback capability**: Keep previous model available. Switch back if new model underperforms.
+
+### CPU Core Allocation Strategy
+
+**Cores 0-11**: llama-cpu inference service
+- Dedicated to CPU inference (llama.cpp)
+- numactl pinning ensures memory locality
+- ~35 tok/s performance maintained
+
+**Cores 12-23**: training-gpu service
+- 12 DataLoader workers for data preprocessing
+- numactl pinning to same NUMA node as GPU
+- Eliminates data loading bottleneck
+
+**Cores 24-31**: System and background services
+- data-prep service for dataset preprocessing
+- quantization service (runs on-demand)
+- OS tasks and interrupts
+- NVMe interrupt handlers
+
+**NUMA topology**: Cores 0-23 on NUMA node 0 with RTX 5090 PCIe slot. Minimizes memory access latency. Cores 24-31 on NUMA node 1 for system tasks.
+
+**Validation**: mpstat confirms less than 5% cross-core interference. perf stat shows 99.8% memory allocation on correct NUMA node.
+
+### Deployment Automation
+
+**Training completes** → **Quantization service triggered** → **Quality validation** → **Automatic deployment** → **Inference services updated**
+
+**Make targets**:
+```
+make train-and-deploy      # Full pipeline
+make deploy-gguf          # Deploy to llama-cpu/llama-gpu
+make deploy-safetensors   # Deploy to vllm-gpu
+make rollback-model       # Revert to previous model
+```
+
+**Zero-downtime deployment**: New model files written to staging directory, symlinks atomically updated, inference services reload configuration without restart.
+
+### Storage Integration
+
+**Shared storage**: All services access `/mnt/ai-data/` for models, datasets, checkpoints.
+
+**Checkpoint directory**: `/mnt/ai-data/checkpoints/` contains training checkpoints organized by run ID.
+
+**Model directory**: `/mnt/ai-data/models/` contains deployed models in both formats (GGUF and SafeTensors).
+
+**Dataset directory**: `/mnt/ai-data/datasets/` contains raw and preprocessed datasets with memory-mapped token arrays.
 
 ## Custom Tooling
 
@@ -547,41 +622,37 @@ This configuration enables testing newly trained models immediately after quanti
 
 **Location**: `docker/training-gpu/pytorch_memory_optimizer.cpp`
 
-**Problem**: Default PyTorch CUDA memory allocator fragments during multi-day training runs. Fragmentation causes 15-20% throughput degradation by day three of four-day training runs. Memory allocation time increases from 2ms to 35ms per allocation after 48 hours.
+**Problem**: Default PyTorch CUDA memory allocator fragments during multi-day training runs. Memory allocation time increases significantly after extended training.
 
 **Solution**: Custom memory allocator with preallocated gradient and activation pools. Implements best-fit allocation strategy with defragmentation during backward pass. Integrates with huge pages for CPU tensor buffers.
 
-**Implementation**: LD_PRELOAD wrapper intercepts cudaMalloc calls, redirects to custom allocator. Transparent to PyTorch, no code changes required.
+**Implementation**: LD_PRELOAD wrapper intercepts cudaMalloc calls, redirects to custom allocator. Transparent to PyTorch, no code changes required in training scripts.
 
-**Performance Impact**: Maintains 310,000 tokens per second throughput throughout four-day training run. Without optimizer, throughput degrades to 250,000 tokens per second by day three (20% loss).
+**When to Use**: Multi-day training runs exceeding eight hours. Automatically enabled in Docker container for production training.
 
-**When to Use**: Multi-day training runs exceeding eight hours. For shorter runs, overhead (1-2% throughput) exceeds benefit. Automatically enabled in Docker container for production training.
-
-### Fast Tokenizer
+### Fast Tokenizer for Qwen3
 
 **Location**: `docker/training-gpu/fast_tokenizer.cpp`
 
-**Problem**: HuggingFace tokenizers bottleneck dataset preprocessing at 200MB per second. GPU starved during initial dataset streaming, utilization drops to 45%. Python GIL contention with multiple workers worsens bottleneck.
+**Problem**: HuggingFace tokenizers bottleneck dataset preprocessing. Large vocabulary (151,646 tokens for Qwen3) increases lookup overhead. GPU starved during initial dataset streaming.
 
-**Solution**: SIMD-optimized BPE tokenization using AVX-512 instructions on AMD Zen 5. Implements vectorized byte-pair merging with parallel lookup tables. Direct NVMe I/O bypasses page cache for large datasets.
+**Solution**: SIMD-optimized byte-level BPE tokenization using AVX-512 instructions on AMD Zen 5. Implements vectorized byte-pair merging with parallel lookup tables optimized for Qwen3 vocabulary size. Direct NVMe I/O bypasses page cache for large datasets.
 
 **Implementation**: C++ library with Python bindings via pybind11. Drop-in replacement for HuggingFace tokenizer with identical API. Processes 16 bytes per instruction vs 1 byte for scalar implementation.
 
-**Performance Impact**: 650MB per second throughput (3.25x improvement). Eliminates data loading bottleneck, GPU utilization increases from 45% to 95% during first epoch. Preprocessing time for 100GB OpenWebText: 2.5 hours vs 8 hours with HuggingFace tokenizer.
+**Qwen3-specific optimizations**: Lookup table sized for 151,646 vocabulary. Optimized for byte-level BPE merge patterns common in Qwen tokenizer.
 
-**When to Use**: Datasets exceeding 10GB. Smaller datasets fit in RAM, preprocessing overhead negligible. Compilation requires AVX-512 support, falls back to AVX2 on older CPUs with 2x speedup instead of 3.25x.
+**When to Use**: Datasets exceeding 10GB. Smaller datasets fit in RAM, preprocessing overhead negligible. Compilation requires AVX-512 support, falls back to AVX2 on older CPUs with reduced speedup.
 
 ### Huge Pages Wrapper for Training
 
 **Location**: `docker/training-gpu/training_utils/hugepage_wrapper.cpp`
 
-**Problem**: Standard 4KB pages cause TLB misses during dataset streaming. Memory-mapped 100GB dataset requires 25 million page table entries. TLB thrashing reduces throughput by 12%.
+**Problem**: Standard 4KB pages cause TLB misses during dataset streaming. Large datasets require millions of page table entries. TLB thrashing reduces throughput.
 
-**Solution**: Extends existing inference huge pages wrapper to support training workloads. Allocates dataset memory-mapped buffers using 2MB huge pages. Reduces page table entries from 25 million to 50,000 (500x reduction).
+**Solution**: Extends existing inference huge pages wrapper to support training workloads. Allocates dataset memory-mapped buffers using 2MB huge pages. Reduces page table entries dramatically.
 
 **Implementation**: Wrapper around mmap system call, forces MAP_HUGETLB flag. Transparent to PyTorch DataLoader. Requires kernel huge pages configured (already present from v1.0 inference optimizations).
-
-**Performance Impact**: 8-12% improvement in dataset streaming throughput. Measured via perf stat showing 94% reduction in dTLB-load-misses. Impact greatest for datasets exceeding 50GB.
 
 **When to Use**: Always enabled for training workloads. Zero overhead for small datasets that fit in cache. Requires huge pages allocated at boot time (configured in v1.0).
 
@@ -606,10 +677,6 @@ The following v1.0 optimizations apply directly to training:
 
 **Rationale**: Training streams gigabytes of sequential data from NVMe. Inference loads model once (random I/O pattern). kyber scheduler optimizes for sequential workloads with read-ahead. none scheduler (v1.0 default) optimizes for random I/O with minimal latency.
 
-**Impact**: 6% sustained throughput improvement measured over 24-hour training run. Throughput without kyber: 280,000 tokens per second with periodic drops to 220,000. With kyber: stable 297,000 tokens per second.
-
-**Benchmark Validation**: fio sequential read benchmark shows 3.8GB per second with kyber vs 3.2GB per second with none scheduler (18% improvement).
-
 **When to Revert**: Switch back to none scheduler for inference workloads if not running concurrent training. Makefile target: make io-scheduler-inference.
 
 ### Training-Specific Memory Configuration
@@ -628,9 +695,7 @@ vm.dirty_background_ratio = 5
 vm.vfs_cache_pressure = 100
 ```
 
-**Rationale**: Training writes checkpoint files (15GB) every 30 minutes and streams dataset continuously. Higher dirty ratios allow batching writes to disk. Lower cache pressure keeps dataset files in page cache across epochs. Inference loads model once, minimal writes, benefits from aggressive cache eviction.
-
-**Impact**: Reduces dataset I/O wait by 15% measured via iostat. Checkpoint saves complete in 12 seconds vs 28 seconds with inference settings.
+**Rationale**: Training writes checkpoint files every 30 minutes and streams dataset continuously. Higher dirty ratios allow batching writes to disk. Lower cache pressure keeps dataset files in page cache across epochs. Inference loads model once, minimal writes, benefits from aggressive cache eviction.
 
 **Memory Tradeoff**: Up to 51GB of RAM (40% of 128GB) used for dirty pages before writeback. Acceptable because training has dedicated 32GB allocation, leaves 96GB available.
 
@@ -643,14 +708,12 @@ vm.vfs_cache_pressure = 100
 
 **Rationale**: DataLoader workers sequentially read large files. 4MB read-ahead matches typical prefetch size. NVMe capable of 7GB per second sequential reads, large buffers maximize throughput.
 
-**Impact**: 3% throughput improvement for first epoch when dataset not yet cached. No impact on subsequent epochs when data in page cache.
-
 **Tradeoff**: Higher memory pressure, 4MB allocated per in-flight read request. With 12 DataLoader workers and prefetch_factor=4, total 192MB memory used (acceptable).
 
 ### CPU Isolation and NUMA
 
 **CPU Allocation**:
-- Cores 0-11: llama-cpu inference (isolcpus not set, allows system tasks)
+- Cores 0-11: llama-cpu inference (allows system tasks)
 - Cores 12-23: training-gpu (dedicated, minimal interrupts)
 - Cores 24-31: system and data-prep service
 
@@ -659,8 +722,6 @@ vm.vfs_cache_pressure = 100
 **Rationale**: Cores 0-23 on same NUMA node for RTX 5090 PCIe slot. Memory allocated on node 0 avoids cross-socket access. Cores 24-31 on node 1 handle background tasks without contention.
 
 **Validation**: numastat shows 99.8% of training memory allocated on node 0. Cross-node memory access under 0.2% (excellent locality).
-
-**Impact**: 3% throughput improvement vs unpinned execution. Measured via perf stat showing reduced remote memory access latency.
 
 ### IRQ Affinity
 
@@ -673,91 +734,61 @@ vm.vfs_cache_pressure = 100
 echo 24-31 > /proc/irq/[nvme_irq]/smp_affinity_list
 ```
 
-**Impact**: 1-2% throughput improvement for I/O intensive workloads. Negligible for compute-bound training after first epoch.
-
 ## Optimization Strategy
 
 ### Baseline Establishment
 
-Establish unoptimized baseline performance for each model size to measure improvement systematically. Baseline uses stock PyTorch with minimal configuration.
+Establish unoptimized baseline performance to measure improvement systematically. Baseline uses stock PyTorch with minimal configuration.
 
-**Baseline Configuration** (124M model):
-- Model: GPT-2 124M architecture, 12 layers, 768 hidden size
+**Baseline Configuration**:
+- Model: Qwen3-1.7B architecture via tiny-qwen
 - Hardware: RTX 5090, AMD Ryzen 9950X, 128GB DDR5
-- Software: PyTorch 2.3.0, CUDA 13.0, no optimizations enabled
-- Batch size: 16 (maximum without OOM)
+- Software: PyTorch 2.5+, transformers 4.51.1, no optimizations enabled
 - Workers: 4 (DataLoader default)
-- Precision: FP32 (PyTorch default)
+- Precision: Default precision
 - Compilation: Eager mode (no torch.compile)
 
-**Baseline Results**:
-- Throughput: 220,000 tokens per second
-- GPU utilization: 78% (22% idle waiting for data)
-- MFU: 38% (Model FLOPS Utilization)
-- Memory: 16GB VRAM, 12GB system RAM
-- Power: 380W average GPU draw
-
-**Baseline Limitations Identified**:
+**Baseline Limitations Expected**:
 - Data loading bottleneck: CPU preprocessing cannot keep pace with GPU
-- Suboptimal precision: FP32 wastes compute on TF32-capable hardware
-- Small batch size: Memory fragmentation limits batch to 16
+- Suboptimal precision: Not using TF32 capabilities of Blackwell architecture
 - No kernel fusion: Every operation launches separate CUDA kernel
+- Insufficient parallelism: Default worker count too low for 12-core allocation
 
 ### Optimization Catalog
 
-Each optimization documented with configuration, impact measurement, and applicability notes.
+Each optimization documented with configuration and applicability notes. Performance impact measured through systematic benchmarking.
 
 **Optimization 1: TF32 Precision**
 
 Configuration: torch.backends.cuda.matmul.allow_tf32 = True
 
-Technical: TensorFloat-32 uses FP32 range with FP16 precision. Native on Ampere and Blackwell architectures. Matrix multiplications execute 8x faster than FP32.
-
-Impact: +8% throughput (220,000 → 238,000 tokens per second)
-GPU utilization: 78% → 81% (still data bottlenecked)
-VRAM: No change (16GB)
-Accuracy: Perplexity 21.98 vs 22.01 baseline (negligible difference)
+Technical: TensorFloat-32 uses FP32 range with FP16 precision. Native on Ampere and Blackwell architectures. Matrix multiplications execute significantly faster than FP32.
 
 Tradeoff: None on RTX 3090 or newer. Free performance.
 
 Applicability: Always enable on Ampere/Blackwell GPUs. No effect on older architectures.
 
-Benchmark: benchmarks/training/optimizations/01_tf32.json
-
 **Optimization 2: torch.compile**
 
 Configuration: model = torch.compile(model, mode="max-autotune")
 
-Technical: PyTorch 2.0 graph optimization and kernel fusion. Reduces kernel launch overhead, fuses operations. Compilation takes 2 minutes first run, cached afterward.
+Technical: PyTorch 2.0 graph optimization and kernel fusion. Reduces kernel launch overhead, fuses operations. Compilation takes time first run, cached afterward.
 
-Impact: +6% throughput (238,000 → 252,000 tokens per second)
-GPU utilization: 81% → 84%
-Compilation time: 2 minutes initial (one-time cost)
-Memory: +2GB VRAM for compiled kernels (18GB total)
+Tradeoff: Startup latency for compilation. Not suitable for rapid iteration, use for production training runs.
 
-Tradeoff: 2-minute startup latency. Not suitable for rapid iteration, use for production training.
-
-Applicability: All model sizes benefit. Larger gains (8-10%) on smaller models due to overhead amortization.
-
-Benchmark: benchmarks/training/optimizations/02_torch_compile.json
+Applicability: All model sizes benefit. Larger gains on smaller models due to overhead amortization.
 
 **Optimization 3: Flash Attention**
 
-Configuration: Use torch.nn.functional.scaled_dot_product_attention with cuDNN 9.13 backend.
+Configuration: Use torch.nn.functional.scaled_dot_product_attention with cuDNN backend.
 
-Technical: Fused attention kernel with O(N) memory complexity vs O(N²) for standard attention. Requires cuDNN 9.13.0 or newer. Automatically selected when available.
+Technical: Fused attention kernel with O(N) memory complexity vs O(N²) for standard attention. Requires cuDNN 9.7.0 or newer. Automatically selected when available.
 
-Impact: +15% throughput (252,000 → 290,000 tokens per second)
-Memory: -30% for attention operation (18GB → 14GB VRAM)
-GPU utilization: 84% → 87%
-
-Tradeoff: Requires cuDNN 9.13+ (CUDA 13.0). Older CUDA versions fall back to standard attention.
+Tradeoff: Requires recent cuDNN version. Older versions fall back to standard attention.
 
 Applicability: Largest impact on models with long context (2048+ tokens). Minimal benefit for short sequences.
 
-Validation: Perplexity within 0.1% of baseline (21.96 vs 21.98), numerically stable.
-
-Benchmark: benchmarks/training/optimizations/03_flash_attention.json
+Validation: Verify perplexity within 0.1% of baseline, numerically stable.
 
 **Optimization 4: DataLoader Worker Tuning**
 
@@ -765,24 +796,11 @@ Configuration: num_workers=12, pin_memory=True, prefetch_factor=4, persistent_wo
 
 Technical: Parallel data preprocessing with 12 CPU workers (cores 12-23). Pin memory enables async GPU transfer. Prefetch 4 batches ahead. Persistent workers avoid process spawn overhead.
 
-Worker count testing:
-- 4 workers: 290,000 tok/s, 87% GPU util (baseline)
-- 8 workers: 308,000 tok/s, 92% GPU util
-- 12 workers: 325,000 tok/s, 95% GPU util
-- 16 workers: 324,000 tok/s, 95% GPU util (no improvement, context switches increase)
-
-Optimal: 12 workers matches 12 dedicated CPU cores.
-
-Impact: +12% throughput (290,000 → 325,000 tokens per second)
-GPU utilization: 87% → 95% (data bottleneck eliminated)
-CPU utilization: Cores 12-23 at 85% average
-Memory: +6GB system RAM for worker buffers (18GB total)
+Worker count matches dedicated CPU cores (12 cores allocated).
 
 Tradeoff: Higher CPU and memory usage. Requires dedicated cores.
 
-Applicability: Essential for all models. Single most important optimization after precision.
-
-Benchmark: benchmarks/training/optimizations/04_dataloader.json
+Applicability: Essential for all models. Most important optimization after precision for data-intensive training.
 
 **Optimization 5: Gradient Checkpointing**
 
@@ -790,17 +808,9 @@ Configuration: torch.utils.checkpoint.checkpoint for transformer blocks.
 
 Technical: Recompute activations during backward pass instead of storing. Trades compute for memory. Enables larger batch sizes or models.
 
-Impact: Memory: -40% (14GB → 8GB VRAM for 124M model)
-Throughput: -8% (325,000 → 299,000 tokens per second)
-Enabled capability: Batch size 16 → 32 with checkpointing
-
-Net effect with larger batch: +3% throughput (325,000 → 335,000 tokens per second with batch 32)
-
 Tradeoff: Compute overhead vs memory savings. Only beneficial when memory-constrained.
 
-Applicability: Use for 774M and larger models. Unnecessary for 124M unless running multiple experiments simultaneously.
-
-Benchmark: benchmarks/training/optimizations/05_gradient_checkpointing.json
+Applicability: Use for models approaching VRAM limits. May not be needed for 1.7B model on 32GB GPU depending on batch size.
 
 **Optimization 6: BFloat16 Mixed Precision**
 
@@ -808,174 +818,130 @@ Configuration: torch.autocast(device_type='cuda', dtype=torch.bfloat16)
 
 Technical: BFloat16 maintains FP32 range with reduced precision. Avoids FP16 overflow issues. Halves memory bandwidth requirements.
 
-Impact: Memory: -35% (8GB → 5GB VRAM with gradient checkpointing)
-Throughput: +18% (335,000 → 395,000 tokens per second)
-Accuracy: Perplexity 22.04 vs 21.98 baseline (acceptable difference)
-
-Enabled capability: 774M model fits in 32GB VRAM with batch size 8.
-
 Tradeoff: Slight numerical precision loss. Monitor validation loss for instability.
 
-Applicability: Essential for 774M and larger. Optional for smaller models (benefit small).
+Applicability: Beneficial for memory reduction and throughput. Monitor perplexity to ensure acceptable quality.
 
-Benchmark: benchmarks/training/optimizations/06_bfloat16.json
+### Optimization Application Strategy
 
-**Combined Optimization Results** (124M model):
+**Systematic approach**: Apply optimizations one at a time, measure impact independently, document findings.
 
-Baseline: 220,000 tokens per second, 38% MFU, 78% GPU util
-TF32: 238,000 tok/s (+8%), 41% MFU, 81% util
-+ torch.compile: 252,000 tok/s (+15%), 43% MFU, 84% util
-+ Flash Attention: 290,000 tok/s (+32%), 50% MFU, 87% util
-+ DataLoader tuning: 325,000 tok/s (+48%), 56% MFU, 95% util
+**Baseline measurement**: Establish performance metrics before any optimization.
 
-Final optimized (with batch 32, gradient checkpointing, BF16): 310,000 tok/s, 53% MFU, 95% util
+**Incremental validation**: After each optimization, verify training stability and model quality.
 
-Total improvement: +41% throughput, +15 percentage points MFU
+**Combined measurement**: After applying all optimizations, measure cumulative impact.
 
-Training time reduction: 10 hours → 6 hours for 124M model
-
-### Optimization Priorities by Model Size
-
-**124M model**: Focus on data loading and precision. Memory not constrained, skip gradient checkpointing.
-
-Priority order:
-1. DataLoader tuning (+12% impact)
-2. Flash Attention (+15%)
-3. TF32 precision (+8%)
-4. torch.compile (+6%)
-
-**350M model**: Add gradient checkpointing to enable batch size 16.
-
-Priority order:
-1. DataLoader tuning (+12%)
-2. Flash Attention (+15%)
-3. Gradient checkpointing (enables larger batch)
-4. TF32 precision (+8%)
-5. torch.compile (+6%)
-
-**774M model**: BFloat16 essential to fit in VRAM.
-
-Priority order:
-1. BFloat16 precision (enables model to fit)
-2. Gradient checkpointing (enables model to fit)
-3. DataLoader tuning (+12%)
-4. Flash Attention (+15%)
-5. torch.compile (+6%)
+**Documentation**: Each optimization documented with benchmark JSON files showing before/after metrics.
 
 ### Documentation Requirements
 
 Each optimization requires:
 - Benchmark JSON files (before and after)
-- Step-by-step reproduction guide
+- Configuration details
 - Hardware-specific applicability notes
-- Cost-benefit analysis for different model sizes
+- Validation procedure
 
-Example documentation structure:
-
-```
-docs/optimizations/training/flash-attention.md:
+Example documentation structure in `docs/optimizations/training/`:
 - Overview and technical background
-- Requirements (cuDNN 9.13+, CUDA 13.0+)
+- Requirements (software versions, hardware capabilities)
 - Configuration code snippet
-- Expected performance impact by model size
-- Validation procedure (perplexity check)
+- Expected performance characteristics
+- Validation procedure (perplexity check, stability monitoring)
 - Troubleshooting common issues
-- Benchmark results with JSON links
-```
 
-## Quantization Strategy
+## Quantization & Deployment Pipeline
+
+Complete workflow from PyTorch checkpoint to deployed models in both GGUF and SafeTensors formats with automatic integration to v1.0 inference services.
 
 ### Dual Format Support
 
-Post-training quantization produces models in two formats to support both inference engines in the existing infrastructure.
+Post-training quantization produces models in two formats to support both inference engines in existing infrastructure:
 
-### GGUF Format (llama.cpp)
+**GGUF format**: For llama-cpu and llama-gpu services (llama.cpp engine)
+**SafeTensors format**: For vllm-gpu service (vLLM engine)
 
-**Target Inference Engine**: llama-cpu and llama-gpu services
-**Conversion Tool**: `scripts/quantization/convert_to_gguf.py`
-**Quantization Levels**: Q8_0, Q6_K, Q5_K_M, Q4_K_M, Q4_K_S, Q3_K_M, Q2_K
+### GGUF Quantization Workflow
 
-**Quality vs Size Tradeoffs** (124M model, baseline perplexity 22.0):
+**Target services**: llama-cpu (CPU inference), llama-gpu (GPU llama.cpp inference)
+**Conversion tool**: `scripts/quantization/convert_to_gguf.py`
+**Quantization tool**: `scripts/quantization/quantize_gguf.py`
 
-| Format | Size  | Perplexity | Accuracy Loss | Inference Speed |
-|--------|-------|------------|---------------|-----------------|
-| Q8_0   | 124MB | 22.1       | 0.5%          | 42 tok/s        |
-| Q6_K   | 96MB  | 22.3       | 1.4%          | 48 tok/s        |
-| Q5_K_M | 81MB  | 22.6       | 2.7%          | 52 tok/s        |
-| Q4_K_M | 68MB  | 23.1       | 5.0%          | 58 tok/s        |
-| Q4_K_S | 66MB  | 23.4       | 6.4%          | 60 tok/s        |
-| Q3_K_M | 54MB  | 24.8       | 12.7%         | 65 tok/s        |
-| Q2_K   | 42MB  | 28.3       | 28.6%         | 70 tok/s        |
+**Quantization levels**:
+- Q8_0: Highest quality, larger size
+- Q6_K: Excellent quality, moderate size
+- Q5_K_M: Good quality, good compression
+- Q4_K_M: Balanced quality/size (recommended for production)
+- Q4_K_S: More aggressive compression
+- Q3_K_M: High compression, acceptable quality degradation
+- Q2_K: Maximum compression, significant quality loss
 
-**Recommended Formats**:
+**Recommended formats**:
 - Production: Q4_K_M (best speed/quality balance)
 - High quality: Q6_K (minimal degradation)
 - Maximum compression: Q3_K_M (acceptable for some tasks)
 
-**Conversion Process**:
-1. Export PyTorch checkpoint to GGUF FP16 format
-2. Quantize GGUF FP16 to target quantization level
-3. Validate perplexity on held-out test set
-4. Deploy to llama-cpu or llama-gpu service
+**Conversion process**:
+1. Load PyTorch checkpoint from training
+2. Convert to GGUF FP16 intermediate format
+3. Quantize GGUF FP16 to target quantization levels in parallel
+4. Validate perplexity on held-out test set
+5. Generate quality report comparing formats
+6. Deploy selected format to llama-cpu or llama-gpu service
 
-### SafeTensors Format (vLLM)
+**Quality validation**: Automated perplexity measurement on held-out test set. Alert if degradation exceeds thresholds. Target: Q4_K_M within 8% of baseline, Q6_K within 2% of baseline.
 
-**Target Inference Engine**: vllm-gpu service
-**Conversion Tool**: `scripts/quantization/convert_to_safetensors.py`
-**Quantization Methods**: GPTQ (4-bit, 3-bit), AWQ (4-bit)
+### SafeTensors Quantization Workflow
 
-**GPTQ Quantization** (124M model):
+**Target service**: vllm-gpu (vLLM engine for batch inference)
+**Conversion tool**: `scripts/quantization/convert_to_safetensors.py`
+**Quantization methods**: GPTQ (4-bit, 3-bit), AWQ (4-bit)
 
-| Method   | Size  | Perplexity | Calibration Time | Inference Speed |
-|----------|-------|------------|------------------|-----------------|
-| FP16     | 248MB | 22.0       | N/A              | 38 tok/s        |
-| GPTQ 4-bit | 68MB  | 22.9       | 15 minutes       | 61 tok/s        |
-| GPTQ 3-bit | 52MB  | 24.2       | 18 minutes       | 68 tok/s        |
+**GPTQ quantization**:
+- 4-bit: Good compression, requires calibration dataset
+- 3-bit: Higher compression, more quality loss
+- Calibration: Uses samples from training dataset
 
-**AWQ Quantization** (124M model):
+**AWQ quantization**:
+- 4-bit: Better quality than GPTQ at same bit width
+- Faster calibration: Typically 8 minutes vs 15 minutes for GPTQ
+- Requires: 512-1024 calibration samples from training dataset
 
-| Method   | Size  | Perplexity | Calibration Time | Inference Speed |
-|----------|-------|------------|------------------|-----------------|
-| AWQ 4-bit | 68MB  | 22.4       | 8 minutes        | 63 tok/s        |
-
-**Observations**: AWQ provides better quality than GPTQ at same bit width with faster calibration. Requires 512-1024 calibration samples from training dataset.
-
-**Conversion Process**:
+**Conversion process**:
 1. Load PyTorch checkpoint
-2. Run calibration on 1024 samples from training set
-3. Apply quantization with AutoGPTQ or AutoAWQ
+2. Select calibration samples (1024 samples from training set)
+3. Apply quantization method (GPTQ or AWQ)
 4. Export to SafeTensors format
-5. Validate perplexity
+5. Validate perplexity on test set
 6. Deploy to vllm-gpu service
 
-### Quantization Workflow
+**Quality validation**: AWQ typically provides better quality than GPTQ at 4-bit. Target: Perplexity within 6% of FP16 baseline for both methods.
 
-**Automated Pipeline**:
+### Automated Pipeline
 
-Training produces PyTorch checkpoint at `/checkpoints/run-001/final/model.pt`. Quantization service:
+**Trigger**: Training completes with final checkpoint saved
+**Execution**: Quantization service automatically processes checkpoint
+**Output**: Models in multiple formats ready for deployment
 
-1. Converts to GGUF FP16 intermediate format (2 minutes)
-2. Quantizes to Q8_0, Q6_K, Q5_K_M, Q4_K_M formats in parallel (5 minutes total)
-3. Converts to SafeTensors and applies GPTQ 4-bit (15 minutes)
-4. Applies AWQ 4-bit quantization (8 minutes)
-5. Benchmarks perplexity for all formats (10 minutes)
-6. Generates quality report with recommendations
-7. Deploys best formats to inference services
+**Pipeline steps**:
+1. Detect new checkpoint in `/mnt/ai-data/checkpoints/[run-id]/final/`
+2. Convert to GGUF FP16 intermediate
+3. Quantize to multiple GGUF formats in parallel (Q8_0, Q6_K, Q4_K_M)
+4. Convert to SafeTensors and apply GPTQ 4-bit
+5. Apply AWQ 4-bit quantization
+6. Benchmark perplexity for all formats on test set
+7. Generate quality report with recommendations
+8. Copy formats to `/mnt/ai-data/models/[model-name]/`
+9. Update inference service configurations
+10. Optionally trigger automatic deployment
 
-Total time: 40 minutes for 124M model, 90 minutes for 774M model.
+**Quality report**: JSON file documenting perplexity for each format, size on disk, inference speed estimate, recommended use cases.
 
-**Quality Validation**:
+### Deployment Integration
 
-Automated perplexity measurement on held-out test set. Alert if degradation exceeds thresholds:
-- Q6_K: Must be within 2% of baseline
-- Q4_K_M: Must be within 8% of baseline
-- GPTQ 4-bit: Must be within 6% of baseline
-
-**Deployment Integration**:
-
-Generated formats stored in `/mnt/ai-data/models/[model-name]/`:
+**Generated artifacts** stored in `/mnt/ai-data/models/[model-name]/`:
 ```
-my-gpt-124m/
+qwen3-1.7b-trained/
 ├── Q8_0.gguf
 ├── Q6_K.gguf
 ├── Q4_K_M.gguf
@@ -984,29 +950,70 @@ my-gpt-124m/
 └── quality-report.json
 ```
 
-Update inference service configuration:
+**Deployment commands**:
+```bash
+# Deploy GGUF to CPU inference
+make deploy-cpu MODEL=qwen3-1.7b-trained FORMAT=Q4_K_M
+
+# Deploy SafeTensors to GPU inference
+make deploy-vllm MODEL=qwen3-1.7b-trained FORMAT=awq-4bit
+
+# Full deployment to all services
+make deploy-all MODEL=qwen3-1.7b-trained
 ```
-MODEL_CPU=/mnt/ai-data/models/my-gpt-124m/Q4_K_M.gguf
-MODEL_GPU=/mnt/ai-data/models/my-gpt-124m/awq-4bit.safetensors
-make restart-cpu restart-gpu
+
+**Zero-downtime deployment**:
+1. Write new model files to staging directory
+2. Run validation inference test (basic generation)
+3. Atomically update symlinks in model directory
+4. Send SIGHUP to inference services for config reload
+5. Services reload model without restart
+6. Previous model kept as backup for rollback
+
+**Rollback capability**:
+```bash
+make rollback-model SERVICE=llama-cpu
 ```
+
+### Validation Testing
+
+**Post-quantization validation**:
+- Perplexity measurement on standard test set
+- Sample generation quality check (manual review)
+- Inference speed benchmark
+- Memory usage measurement
+
+**Integration testing**:
+- Model loads successfully in target inference engine
+- Generates coherent text from standard prompts
+- Performance meets expectations
+- No crashes or errors during load
+
+**Acceptance criteria**:
+- Perplexity within acceptable threshold for format
+- Model loads without errors
+- Inference completes successfully
+- Quality acceptable for intended use case
 
 ### Documentation
 
 `docs/quantization/` covers:
-- Conversion procedures for both formats
+- Conversion procedures for both GGUF and SafeTensors formats
 - Format-specific optimization techniques
 - Quality benchmarking methodology
-- Inference integration patterns
+- Deployment workflow step-by-step
+- Integration patterns with v1.0 services
+- Rollback procedures
 - Troubleshooting quantization issues
+- Format selection guide (when to use which format)
 
 ## Evaluation Strategy
 
 ### Distinction from Benchmarking
 
-**Benchmarking** measures system performance: tokens per second, MFU percentage, GPU utilization, memory bandwidth. Focus: Hardware efficiency.
+**Benchmarking** measures system performance: tokens per second, GPU utilization, memory bandwidth. Focus: Hardware efficiency and infrastructure optimization.
 
-**Evaluation** measures model quality: perplexity, accuracy, task performance, instruction-following quality. Focus: Model capabilities.
+**Evaluation** measures model quality: perplexity, accuracy, task performance, instruction-following quality. Focus: Model capabilities and usefulness.
 
 Both required but serve different purposes with different tooling.
 
@@ -1029,7 +1036,7 @@ Multi-turn conversation evaluation for instruction-tuned models. Measures:
 - Response quality across conversation turns
 - Instruction following accuracy
 - Context retention
-- Harmful content avoidance
+- Coherence and relevance
 
 Integration: `scripts/evaluation/frameworks/mt_bench.py` for instruction-tuned models.
 
@@ -1037,20 +1044,20 @@ Integration: `scripts/evaluation/frameworks/mt_bench.py` for instruction-tuned m
 
 Core language modeling quality metric on held-out validation sets. Calculated as exp(cross-entropy loss) on token predictions.
 
-Lower perplexity indicates better language modeling. GPT-2 baseline: 22.0 on OpenWebText validation set.
+Lower perplexity indicates better language modeling. Baseline reference required for comparison.
 
 ### Evaluation Pipeline
 
 **During Training**
 
-Monitoring every N steps:
-- Training loss: Tracked every 100 steps
-- Validation loss: Computed every 1000 steps
+Monitoring:
+- Training loss: Tracked frequently (every 100 steps)
+- Validation loss: Computed regularly (every 1000 steps)
 - Validation perplexity: exp(validation loss)
 - Learning rate: Current schedule position
 - Gradient norm: Stability indicator
 
-Early stopping: Halt training if validation loss increases for 5 consecutive evaluations (potential overfitting).
+Early stopping: Optional halt if validation loss increases consistently (potential overfitting).
 
 **After Training**
 
@@ -1063,11 +1070,11 @@ Full evaluation suite on final checkpoint:
 
 2. Downstream task battery (EleutherAI harness):
    - Run on subset: MMLU, HellaSwag, ARC
-   - Full evaluation: 2-3 hours for 124M model
-   - Compare against GPT-2 baseline
+   - Compare against baseline reference
+   - Identify strengths and weaknesses
 
 3. Generated sample quality:
-   - Generate 100 samples from prompts
+   - Generate samples from standard prompts
    - Manual review for coherence and relevance
    - Automated metrics: length distribution, repetition rate
 
@@ -1075,12 +1082,12 @@ Full evaluation suite on final checkpoint:
 
 Instruction-tuned model evaluation:
 
-1. MT-Bench multi-turn evaluation (1 hour)
+1. MT-Bench multi-turn evaluation
 2. Task-specific accuracy if fine-tuned for specific task
 3. Comparison against base model before fine-tuning
 4. Human preference evaluation (optional, manual)
 
-Expected improvement: Instruction-following accuracy +25-40% vs base model.
+Expected improvement: Instruction-following accuracy increase vs base model.
 
 **After Quantization**
 
@@ -1091,7 +1098,7 @@ Quality degradation measurement:
 3. Downstream task accuracy (subset, not full battery)
 4. Identify acceptable quantization threshold
 
-Acceptable degradation: Under 8% perplexity increase for Q4_K_M, under 2% for Q6_K.
+Acceptable degradation targets defined per format (see Quantization section).
 
 ### Documentation
 
@@ -1099,44 +1106,34 @@ Acceptable degradation: Under 8% perplexity increase for Q4_K_M, under 2% for Q6
 - Framework integration guides (step-by-step setup)
 - Metric interpretation guidelines (what scores mean)
 - Evaluation best practices (validation set size, sampling)
-- Quality benchmark baselines (GPT-2 reference scores)
+- Baseline reference scores (comparison anchors)
 - Common pitfalls and troubleshooting
 
 ## Experimental Optimizations
 
-Cutting-edge techniques with uncertain performance gains. Document thoroughly even if results negative.
+Cutting-edge techniques with uncertain performance gains. Document thoroughly even if results negative. Focus on learning what works on this specific hardware.
 
 ### Flash Attention 3 for Training
 
-**Objective**: Enable Flash Attention 3 via cuDNN 9.13 for training workloads.
+**Objective**: Enable Flash Attention 3 via cuDNN for training workloads.
 
-**Technical Background**: Flash Attention 3 improves upon Flash Attention 2 with:
-- Better work partitioning across streaming multiprocessors
-- Reduced shared memory bank conflicts
-- Optimized for Blackwell architecture (RTX 5090)
-- O(N) memory complexity maintained, 1.5-2x faster than FA2
-
-**Expected Impact**: +15% throughput over standard attention, -30% memory usage for attention layers.
-
-**Configuration**: torch.backends.cuda.enable_flash_sdp(True) with cuDNN 9.13.0+.
+**Technical Background**: Flash Attention 3 improves upon Flash Attention 2 with better work partitioning across streaming multiprocessors, reduced shared memory bank conflicts, optimized for Blackwell architecture (RTX 5090). Maintains O(N) memory complexity.
 
 **Requirements**:
-- cuDNN 9.13.0 or newer (ships with CUDA 13.0)
-- CUDA 13.0 minimum
+- cuDNN 9.7.0 or newer
+- PyTorch 2.5+ with cuDNN backend
 - Blackwell or Ampere architecture
 - Context length 512 tokens minimum (overhead dominates for short sequences)
 
-**Implementation Status**: Production-ready in cuDNN 9.13, automatically selected by PyTorch 2.3+ when available.
+**Implementation**: torch.backends.cuda.enable_flash_sdp(True) with compatible cuDNN version. Automatically selected by PyTorch when available.
 
-**Risk**: cuDNN version dependency. cuDNN updates may change kernel behavior. Pin cuDNN version in Docker container.
+**Risk**: cuDNN version dependency. Updates may change kernel behavior. Pin cuDNN version in Docker container.
 
 **Validation Procedure**:
 1. Benchmark attention layer throughput in isolation
 2. Measure end-to-end training throughput
 3. Validate numerical accuracy: perplexity within 0.1% of baseline
-4. Check memory usage reduction
-
-**Success Criteria**: 15% faster attention computation, no accuracy degradation, perplexity within 0.1% of standard attention baseline.
+4. Check memory usage
 
 **Documentation**: `docs/optimizations/experiments/experimental-flash-attention-training.md`
 
@@ -1145,11 +1142,9 @@ Cutting-edge techniques with uncertain performance gains. Document thoroughly ev
 **Objective**: Implement custom CUDA kernels for training bottleneck operations.
 
 **Candidate Operations**:
-- Fused LayerNorm + GELU activation (currently two separate kernels)
-- Custom matmul for specific dimensions common in GPT-2 (768×768, 768×3072)
+- Fused RMSNorm + SwiGLU activation (currently two separate kernels in Qwen3)
+- Custom matmul for specific dimensions common in Qwen3-1.7B
 - Fused residual connection + dropout
-
-**Expected Impact**: +5-10% throughput for specific model sizes by reducing kernel launch overhead.
 
 **Technical Approach**:
 1. Profile training with Nsight to identify bottlenecks
@@ -1161,16 +1156,14 @@ Cutting-edge techniques with uncertain performance gains. Document thoroughly ev
 - CUDA programming expertise
 - Nsight profiler for validation
 - PyTorch C++ extension API knowledge
-- CUDA 13.0 SDK
+- CUDA 12.9+ SDK
 
-**Risk**: High maintenance burden. CUDA API changes require kernel updates. PyTorch native kernels improve over time, custom kernels become obsolete.
+**Risk**: High maintenance burden. CUDA API changes require kernel updates. PyTorch native kernels improve over time, custom kernels may become obsolete.
 
 **Validation**:
-1. Nsight profiling shows kernel speedup (target: 2x for fused operations)
+1. Nsight profiling shows kernel speedup
 2. End-to-end throughput improvement measured
 3. Numerical accuracy matches PyTorch (fp32 absolute error < 1e-6)
-
-**Success Criteria**: Measurable throughput gain (+5% minimum), numerical correctness validated, maintenance plan documented.
 
 **Documentation**: `docs/optimizations/experiments/experimental-custom-kernels.md`
 
@@ -1178,14 +1171,7 @@ Cutting-edge techniques with uncertain performance gains. Document thoroughly ev
 
 **Objective**: Offload optimizer states to CPU RAM, train larger models on single GPU.
 
-**Technical Background**: DeepSpeed ZeRO-Offload stores:
-- Optimizer states (Adam: 2x model parameters) on CPU
-- Gradients on CPU
-- Model parameters remain on GPU
-
-PCIe Gen5 bandwidth: 128 GB/s bidirectional, sufficient for gradient transfer.
-
-**Expected Impact**: +50% maximum model size (1.5B → 2.2B parameters), -15% throughput due to transfer overhead.
+**Technical Background**: DeepSpeed ZeRO-Offload stores optimizer states (Adam: 2x model parameters) and gradients on CPU. Model parameters remain on GPU. PCIe Gen5 bandwidth: 128 GB/s bidirectional, sufficient for gradient transfer.
 
 **Configuration**: DeepSpeed config with offload_optimizer and offload_param flags.
 
@@ -1195,18 +1181,16 @@ PCIe Gen5 bandwidth: 128 GB/s bidirectional, sufficient for gradient transfer.
 - Sufficient CPU RAM (2x model parameters for optimizer states)
 
 **Tradeoff Analysis**:
-- Capacity: +50% model size (clear win)
-- Throughput: -15% (acceptable for models that cannot fit otherwise)
-- Complexity: Debugging harder, more failure modes
+- Capacity: Enables larger models
+- Throughput: Expected degradation due to transfer overhead
+- Complexity: More failure modes, harder debugging
 
-**Risk**: Increased complexity. PCIe transfer overhead may exceed 15% on some workloads. Multi-day training stability unknown.
+**Risk**: Increased complexity. PCIe transfer overhead. Multi-day training stability unknown.
 
 **Validation**:
-1. Train 2B parameter model that exceeds 32GB VRAM without offloading
-2. Measure throughput degradation (target: under 20%)
-3. Validate multi-day stability (4-day run without crashes)
-
-**Success Criteria**: 2B model trains successfully, throughput exceeds 200,000 tokens per second, no stability issues.
+1. Train model exceeding 32GB VRAM without offloading
+2. Measure throughput degradation
+3. Validate multi-day stability
 
 **Documentation**: `docs/optimizations/experiments/experimental-cpu-offloading.md`
 
@@ -1214,14 +1198,7 @@ PCIe Gen5 bandwidth: 128 GB/s bidirectional, sufficient for gradient transfer.
 
 **Objective**: Use 1GB huge pages instead of 2MB for dataset memory-mapping.
 
-**Technical Background**: Larger TLB coverage reduces page table walks. 100GB dataset:
-- 4KB pages: 25 million TLB entries
-- 2MB pages: 50,000 TLB entries (current)
-- 1GB pages: 100 TLB entries (proposed)
-
-CPU TLB can cache approximately 1500 entries. 1GB pages virtually eliminate misses.
-
-**Expected Impact**: +3-5% throughput for dataset streaming workloads by reducing dTLB-load-misses.
+**Technical Background**: Larger TLB coverage reduces page table walks. CPU TLB can cache approximately 1500 entries. 1GB pages virtually eliminate misses for large datasets.
 
 **Configuration**:
 - Kernel boot parameter: default_hugepagesz=1G hugepagesz=1G hugepages=64
@@ -1235,15 +1212,12 @@ CPU TLB can cache approximately 1500 entries. 1GB pages virtually eliminate miss
 
 **Tradeoff**: Reduced system memory flexibility. 64GB pre-allocated at boot, cannot be used for other purposes. May cause OOM if total workload exceeds remaining RAM.
 
-**Risk**: Fragmentation issues if datasets smaller than 1GB. Wasted memory for small datasets. May not help if dataset fits in L3 cache (unlikely for 100GB).
+**Risk**: Fragmentation issues if datasets smaller than 1GB. Wasted memory for small datasets.
 
 **Validation**:
 1. Measure TLB miss rate with perf stat -e dTLB-load-misses
-2. Baseline (2MB): Expect 5-10 million misses per second
-3. 1GB pages: Expect under 100,000 misses per second (100x reduction)
-4. Measure end-to-end throughput improvement
-
-**Success Criteria**: TLB miss reduction validated, 3-5% throughput gain measured, no memory pressure issues.
+2. Compare 2MB vs 1GB pages
+3. Measure end-to-end throughput improvement
 
 **Documentation**: `docs/optimizations/experiments/experimental-1gb-hugepages-training.md`
 
@@ -1251,23 +1225,9 @@ CPU TLB can cache approximately 1500 entries. 1GB pages virtually eliminate miss
 
 **Objective**: Hybrid training with model layers split across CPU and GPU.
 
-**Technical Background**: Partition model layers:
-- GPU: Embedding, first 20 transformer layers
-- CPU: Final 12 transformer layers, output head
+**Technical Background**: Partition model layers across devices. GPU handles majority of layers, CPU handles overflow. Inference passes data between devices. PCIe transfer overhead expected.
 
-Inference passes data from GPU → CPU → GPU. Backward pass reverses flow.
-
-**Expected Impact**: Enable 2-3B parameter models, -30% throughput vs GPU-only due to transfer overhead.
-
-**Configuration**: Accelerate device_map parameter:
-```
-device_map = {
-  "model.embed": "cuda:0",
-  "model.layers.0-19": "cuda:0",
-  "model.layers.20-31": "cpu",
-  "model.lm_head": "cpu"
-}
-```
+**Configuration**: Accelerate device_map parameter specifies layer placement.
 
 **Requirements**:
 - Accelerate library for device mapping
@@ -1276,736 +1236,407 @@ device_map = {
 
 **Use Case**: Train models exceeding 32GB VRAM. Not recommended if model fits on GPU.
 
-**Tradeoff**: Significant throughput loss (-30%) vs capacity gain (+50% model size). High complexity, tensor transfer management required.
+**Tradeoff**: Significant throughput loss vs capacity gain. High complexity, tensor transfer management required.
 
 **Risk**: Very high complexity. Debugging issues difficult (CPU vs GPU numerical differences). Gradient synchronization bugs possible.
 
 **Validation**:
-1. Train 2.5B model that exceeds GPU VRAM
-2. Measure throughput (target: >200,000 tokens per second)
+1. Train model exceeding GPU VRAM
+2. Measure throughput
 3. Validate numerical correctness vs full GPU baseline
 4. Multi-day stability test
-
-**Success Criteria**: Models exceeding 2B parameters train successfully, throughput acceptable (>200k tok/s), numerical stability validated.
 
 **Documentation**: `docs/optimizations/experiments/experimental-mixed-cpu-gpu.md`
 
 ## Implementation Phases
 
-### Phase 1: Foundation (Week 1)
+### Phase 1: Foundation
 
-**Objective**: Establish basic training capability with minimal 10M parameter model.
+**Objective**: Establish basic training capability with minimal model.
 
-**Day 1-2: Docker Service Setup**
+**Tasks**:
+- Create Docker training-gpu container based on PyTorch official image
+- Install dependencies: transformers 4.51.1, accelerate, tensorboard, tiny-qwen
+- Configure GPU access, shared memory, CPU core pinning
+- Implement Shakespeare training script with 10M parameter model
+- Integrate tiny-qwen architecture
+- Add TensorBoard logging
+- Create Makefile targets for training
+- Write quickstart guide
 
-Tasks:
-- Create `docker/training-gpu/Dockerfile.training-gpu` based on PyTorch official image
-- Install dependencies: transformers, accelerate, tensorboard
-- Configure GPU access and shared memory
-- Set up entrypoint.sh with parameter validation
-- Test container launches successfully
-
-Deliverables:
-- training-gpu container builds and runs
-- GPU visible inside container (nvidia-smi works)
+**Deliverables**:
+- training-gpu container builds and runs with GPU access
+- Shakespeare 10M training completes successfully
 - TensorBoard accessible on port 6006
-
-Validation:
-- docker build succeeds
-- docker run with --gpus all works
-- GPU memory visible (32GB for RTX 5090)
-
-**Day 3-4: Shakespeare Training Script**
-
-Tasks:
-- Implement `scripts/training/train_shakespeare.py`
-- Create 10M parameter GPT-2 model (6 layers, 512 hidden)
-- Load Shakespeare dataset from HuggingFace
-- Implement basic training loop (forward, backward, optimizer step)
-- Add TensorBoard logging (loss, learning rate)
-- Save final checkpoint
-
-Deliverables:
-- train_shakespeare.py completes 5-minute training run
-- TensorBoard shows loss curve
-- Checkpoint saved to /checkpoints/shakespeare/
-
-Validation:
-- Training completes without errors
-- Loss decreases monotonically (overfitting expected)
-- Generated text resembles Shakespeare style
-- Perplexity on validation set under 15
-
-**Day 5: Makefile Integration**
-
-Tasks:
-- Add `make train-shakespeare` target
-- Add `make logs-training` for TensorBoard access
-- Add `make shell-training` for debugging
-- Document usage in quickstart guide
-
-Deliverables:
-- Makefile targets work
 - docs/training/quickstart.md written
+- Makefile targets: make train-shakespeare, make logs-training, make shell-training
 
-Validation:
-- User can run `make train-shakespeare` and see training progress
-- TensorBoard accessible at localhost:6006
+**Validation**:
+- Docker build succeeds
+- GPU visible in container (nvidia-smi works)
+- Training completes without errors
+- Loss decreases during training
+- Generated text resembles Shakespeare style
+- Checkpoint saved successfully
 
-**Day 6-7: Documentation and Testing**
+### Phase 2: Scale Up
 
-Tasks:
-- Write complete quickstart guide
-- Test on clean system (verify all dependencies)
-- Add troubleshooting section
-- Create example generated text samples
+**Objective**: Enable training of production-scale Qwen3-1.7B model on OpenWebText dataset.
 
-Deliverables:
-- docs/training/quickstart.md complete
-- Example outputs in docs/training/experiments/shakespeare-10m.md
-- Known issues documented
-
-**Success Criteria**: Users can train 10M parameter model on Shakespeare corpus in five minutes and generate text samples that resemble Shakespeare's style.
-
-### Phase 2: Scale Up (Week 2)
-
-**Objective**: Enable training of production-scale 124M parameter model on OpenWebText dataset.
-
-**Day 1: Dataset Pipeline**
-
-Tasks:
-- Implement `scripts/data/download_openwebtext.py`
-- Download OpenWebText from HuggingFace (9GB compressed, 40GB raw)
-- Implement `scripts/data/prepare_dataset.py`
-- Tokenize with GPT-2 tokenizer
-- Create train/validation splits (99% / 1%)
+**Tasks**:
+- Implement dataset download script for OpenWebText
+- Create preprocessing pipeline with Qwen3 tokenizer (151,646 vocab)
 - Generate memory-mapped token arrays
+- Implement Qwen3-1.7B training script using tiny-qwen architecture
+- Add checkpoint management (30 minutes + 5000 steps, keep last 3 + best)
+- Implement checkpoint resumption
+- Add validation loop
+- Configure BFloat16 mixed precision
+- Implement gradient clipping
+- Add learning rate warmup and cosine decay
+- Run baseline training to establish unoptimized performance
+- Document hyperparameters
 
-Deliverables:
+**Deliverables**:
 - OpenWebText downloaded and preprocessed
-- Tokenized dataset at /datasets/openwebtext/
-- Dataset statistics: 9B tokens, 8.9B train, 90M validation
-
-Validation:
-- Dataset files created correctly
-- Random sampling shows valid tokens
-- Validation set disjoint from training set
-
-Time estimate: 3 hours download, 2 hours preprocessing
-
-**Day 2-3: 124M Training Script**
-
-Tasks:
-- Implement `scripts/training/train_gpt.py`
-- Create GPT-2 124M config (12 layers, 768 hidden, 12 heads)
-- Implement training loop with gradient accumulation
-- Add checkpoint saving every 5000 steps and 30 minutes
-- Implement checkpoint resumption from saved state
-- Add validation loop every 1000 steps
-
-Deliverables:
-- train_gpt.py with full GPT-2 implementation
+- Tokenized dataset with Qwen3 tokenizer
+- scripts/training/train_qwen.py with full implementation
 - Checkpoint management working
 - Resume from checkpoint tested
+- configs/training/qwen3-1.7b.yaml
+- Baseline trained model checkpoint
+- TensorBoard logs for full run
 
-Validation:
+**Validation**:
+- Dataset preprocessing completes
 - Model trains without errors
 - Checkpoints save correctly
 - Resume from checkpoint continues from exact state
-
-**Day 4: Mixed Precision and Optimization**
-
-Tasks:
-- Add BFloat16 mixed precision support
-- Implement gradient clipping
-- Add learning rate warmup and cosine decay
-- Configure AdamW optimizer with weight decay
-
-Deliverables:
-- configs/training/gpt-124m.yaml with all hyperparameters
-- Mixed precision training working
-
-Validation:
 - Training stable with BF16 (no NaN losses)
-- Learning rate schedule matches specification
-- Memory usage reduced vs FP32
+- Learning rate schedule correct
+- Baseline performance measured
 
-**Day 5-6: Baseline Training Run**
+### Phase 3: Systematic Optimization
 
-Tasks:
-- Run 124M training on OpenWebText for 10 hours
-- Monitor training stability
-- Validate checkpoint saves work
-- Test resume from checkpoint mid-training
+**Objective**: Systematic performance improvement through measured optimizations.
 
-Deliverables:
-- Baseline trained model checkpoint
-- TensorBoard logs for full run
-- benchmarks/training/openwebtext-124m/baseline.json
+**Tasks**:
+- Implement training benchmark script
+- Measure baseline throughput, GPU utilization, memory usage
+- Apply TF32 precision optimization, measure impact
+- Add torch.compile with max-autotune, measure impact
+- Integrate Flash Attention via scaled_dot_product_attention, measure impact
+- Optimize DataLoader: test worker counts (4, 8, 12, 16), test prefetch factors, enable pin_memory and persistent_workers, implement CPU core pinning
+- Apply OS-level optimizations: configure I/O scheduler (kyber), tune memory parameters, configure read-ahead buffer
+- Measure combined optimization impact
+- Document all optimizations with benchmarks
+- Create optimization guides
 
-Validation:
-- Training completes successfully
-- Final validation perplexity approximately 22 (GPT-2 baseline)
-- No crashes or hangs during 10-hour run
-
-**Day 7: Documentation**
-
-Tasks:
-- Write complete training guide
-- Document hyperparameters and rationale
-- Create troubleshooting guide
-- Add performance expectations
-
-Deliverables:
-- docs/training/README.md complete
-- docs/training/architecture/gpt-architecture.md
-- docs/training/architecture/model-configs.md
-
-**Success Criteria**: Train 124M parameter model on OpenWebText to GPT-2 quality (perplexity approximately 22) in 10-hour run with checkpoint recovery capability.
-
-### Phase 3: Optimization (Week 3)
-
-**Objective**: Systematic performance improvement reducing training time from 10 hours to 6 hours.
-
-**Day 1-2: Baseline Benchmarking**
-
-Tasks:
-- Implement `scripts/training/training_benchmark.py`
-- Measure throughput (tokens per second)
-- Calculate MFU (Model FLOPS Utilization)
-- Measure GPU utilization percentage
-- Profile with PyTorch profiler to identify bottlenecks
-- Create baseline.json benchmark file
-
-Deliverables:
-- training_benchmark.py measures all metrics
-- benchmarks/training/124m/baseline.json
-- Baseline: 220k tok/s, 38% MFU, 78% GPU util
-
-Validation:
-- Metrics stable across multiple runs (within 5% variance)
-- Profiling identifies data loading bottleneck
-
-**Day 3: GPU Optimizations**
-
-Tasks:
-- Enable TF32 precision
-- Add torch.compile with max-autotune mode
-- Benchmark each optimization separately
-- Combine and benchmark together
-
-Deliverables:
-- configs/training/optimization/gpu-optimized.yaml
-- benchmarks/training/124m/01_tf32.json (238k tok/s)
-- benchmarks/training/124m/02_torch_compile.json (252k tok/s)
-
-Validation:
-- TF32: +8% throughput improvement
-- torch.compile: Additional +6% improvement
-- Combined: +15% total improvement
-
-**Day 4: Flash Attention Integration**
-
-Tasks:
-- Verify cuDNN 9.13 available
-- Replace standard attention with scaled_dot_product_attention
-- Benchmark throughput and memory
-- Validate numerical accuracy (perplexity check)
-
-Deliverables:
-- benchmarks/training/124m/03_flash_attention.json (290k tok/s)
-- Memory reduction: 18GB → 14GB VRAM
-
-Validation:
-- +15% throughput improvement over previous
-- Perplexity within 0.1% of baseline (21.96 vs 21.98)
-- No training instability
-
-**Day 5-6: DataLoader Optimization**
-
-Tasks:
-- Benchmark worker counts: 4, 8, 12, 16
-- Test prefetch factors: 2, 4, 8
-- Enable pin_memory and persistent_workers
-- Implement CPU core pinning (cores 12-23)
-- Measure GPU utilization improvement
-
-Deliverables:
-- benchmarks/training/124m/04_dataloader_workers.json
-- Optimal config: 12 workers, prefetch 4
-- benchmarks/training/124m/04_dataloader_final.json (325k tok/s)
-
-Validation:
-- GPU utilization: 78% → 95% (bottleneck eliminated)
-- +12% throughput improvement
-- CPU utilization on cores 12-23: 85% average
-
-**Day 7: OS-Level Optimizations**
-
-Tasks:
-- Configure I/O scheduler (kyber)
-- Tune memory parameters (vm.dirty_ratio, etc)
-- Configure read-ahead buffer (4MB)
-- Document all OS changes
-- Benchmark end-to-end
-
-Deliverables:
+**Deliverables**:
+- scripts/training/training_benchmark.py
+- benchmarks/training/qwen3/baseline.json
+- benchmarks/training/qwen3/tf32.json
+- benchmarks/training/qwen3/torch_compile.json
+- benchmarks/training/qwen3/flash_attention.json
+- benchmarks/training/qwen3/dataloader_optimized.json
+- benchmarks/training/qwen3/final_optimized.json
 - docs/optimizations/training/os-training.md
-- Final benchmark: 310k tok/s (+41% total improvement)
-- Training time: 10h → 6h validated
+- Performance improvement documented
 
-Validation:
-- Sustained 310k tok/s over 1-hour run
-- No memory leaks (RSS stable)
-- All optimizations documented with before/after benchmarks
+**Validation**:
+- Baseline performance established
+- Each optimization measured independently
+- Combined optimizations show cumulative benefit
+- Sustained performance over extended run
+- No memory leaks
+- GPU utilization improved significantly
 
-**Success Criteria**: Achieve 310,000 tokens per second with 53% MFU, reducing 124M model training time from 10 hours to six hours.
+### Phase 4: Complete Pipeline
 
-### Phase 4: Complete Pipeline (Week 4)
+**Objective**: End-to-end automation from raw text to deployed quantized models.
 
-**Objective**: End-to-end automation from raw text to deployed GGUF and SafeTensors models.
-
-**Day 1-2: LoRA Fine-Tuning**
-
-Tasks:
-- Implement `scripts/training/finetune_lora.py`
+**Tasks**:
+- Implement LoRA fine-tuning script
 - Add PEFT library integration
 - Create instruction dataset format
-- Implement LoRA training loop (rank 16, alpha 32)
-- Test on 124M model with small instruction dataset
-
-Deliverables:
-- finetune_lora.py working
-- Example instruction dataset (1000 samples)
-- LoRA adapter training completes (2 hours)
-
-Validation:
-- Instruction-following capability improved
-- Base model knowledge retained
-- Adapter size: approximately 5MB for 124M model
-
-**Day 3: GGUF Quantization**
-
-Tasks:
-- Implement `scripts/quantization/convert_to_gguf.py`
+- Test LoRA training on Qwen3-1.7B
+- Implement GGUF conversion script
 - Install llama.cpp quantization tools
-- Convert PyTorch checkpoint to GGUF FP16
 - Quantize to Q8_0, Q6_K, Q4_K_M formats
 - Benchmark perplexity for each format
-
-Deliverables:
-- convert_to_gguf.py working
-- quantize_gguf.py for batch quantization
-- All quantization formats generated (10 minutes)
-
-Validation:
-- Q4_K_M perplexity within 8% of baseline
-- Q6_K perplexity within 2% of baseline
-- GGUF files loadable by llama.cpp
-
-**Day 4: SafeTensors Quantization**
-
-Tasks:
-- Implement `scripts/quantization/convert_to_safetensors.py`
+- Implement SafeTensors conversion script
 - Add GPTQ quantization (4-bit)
 - Add AWQ quantization (4-bit)
-- Calibration on 1024 training samples
-- Benchmark quality vs GGUF
-
-Deliverables:
-- convert_to_safetensors.py working
-- GPTQ and AWQ quantization complete (25 minutes)
-- Quality comparison report
-
-Validation:
-- AWQ perplexity better than GPTQ at 4-bit
-- SafeTensors compatible with vLLM
-- Calibration completes in under 30 minutes
-
-**Day 5: Evaluation Scripts**
-
-Tasks:
-- Implement `scripts/evaluation/eval_perplexity.py`
-- Add support for GGUF and SafeTensors formats
-- Implement `scripts/evaluation/compare_models.py`
-- Generate quality report comparing all formats
-
-Deliverables:
-- eval_perplexity.py measures perplexity on any format
-- compare_models.py generates comparison table
-- Quality report JSON with all formats
-
-Validation:
-- Perplexity measurements match TensorBoard validation loss
-- All formats evaluated correctly
-- Report clearly shows quality vs size tradeoffs
-
-**Day 6: Deployment Integration**
-
-Tasks:
+- Implement quality comparison script
+- Create evaluation scripts for perplexity
+- Implement model comparison tool
 - Update Makefile with deployment targets
 - Implement auto-deployment to llama-cpu (GGUF)
-- Implement auto-deployment to llama-gpu (SafeTensors)
-- Test model loading and inference
-- Create end-to-end automation script
+- Implement auto-deployment to vllm-gpu (SafeTensors)
+- Create end-to-end automation
+- Write lifecycle documentation
 
-Deliverables:
-- Makefile targets: make deploy-gguf, make deploy-safetensors
-- Automated deployment working
-- make train-and-deploy target chains full pipeline
-
-Validation:
-- Deployed GGUF model serves requests via llama-cpu
-- Deployed SafeTensors model loads in vLLM
-- End-to-end pipeline completes without manual intervention
-
-**Day 7: Documentation**
-
-Tasks:
-- Write complete lifecycle guide
-- Document quantization process
-- Create deployment guide
-- Add troubleshooting section
-
-Deliverables:
+**Deliverables**:
+- scripts/training/finetune_lora.py
+- scripts/quantization/convert_to_gguf.py
+- scripts/quantization/quantize_gguf.py
+- scripts/quantization/convert_to_safetensors.py
+- scripts/quantization/quantize_gptq.py
+- scripts/quantization/quantize_awq.py
+- scripts/evaluation/eval_perplexity.py
+- scripts/evaluation/compare_models.py
+- Makefile targets: make deploy-gguf, make deploy-safetensors, make train-and-deploy
 - docs/training/complete-lifecycle.md
 - docs/quantization/README.md
-- docs/quantization/gguf-conversion.md
-- docs/quantization/safetensors-conversion.md
 
-**Success Criteria**: Single command execution that trains base model, fine-tunes with LoRA, quantizes to both formats, and deploys to appropriate inference services.
+**Validation**:
+- LoRA fine-tuning completes successfully
+- Instruction-following capability improved
+- GGUF conversion produces valid files
+- Quantization quality acceptable
+- SafeTensors conversion produces valid files
+- Deployed models load in inference services
+- End-to-end pipeline completes without manual intervention
+- Quality validation passes for all formats
 
-### Phase 5: Scale and Advanced Features (Weeks 5-6)
+### Phase 5: Advanced Features
 
-**Objective**: Support 350M, 774M, and 1.5B parameter models with multi-day stability.
+**Objective**: Custom tooling and multi-day stability validation.
 
-**Week 5, Day 1-2: 350M Model Configuration**
-
-Tasks:
-- Create configs/training/gpt-350m.yaml
-- Adjust batch size and accumulation for memory fit
-- Enable gradient checkpointing
-- Test training run (4 hours to validate)
-
-Deliverables:
-- gpt-350m.yaml configuration
-- Successful 4-hour training run
-- Memory usage: 24GB VRAM
-
-Validation:
-- Model fits in 32GB VRAM with batch size 16
-- Training stable with gradient checkpointing
-- Throughput: approximately 125k tok/s
-
-**Week 5, Day 3-5: Custom C++ Tooling**
-
-Tasks:
+**Tasks**:
 - Implement pytorch_memory_optimizer.cpp
-- Implement fast_tokenizer.cpp
-- Create Python bindings
-- Test with multi-hour runs
-- Benchmark performance improvements
-
-Deliverables:
-- Custom tooling compiled and integrated
-- Performance benchmarks showing improvements
-- Documentation for each tool
-
-Validation:
-- Memory optimizer prevents fragmentation over 24-hour run
-- Fast tokenizer 3x faster than HuggingFace
-- Integration works transparently (no code changes needed)
-
-**Week 5, Day 6-7: 774M Model Training**
-
-Tasks:
-- Create configs/training/gpt-774m.yaml
-- Enable BFloat16 precision (required to fit)
-- Start 4-day training run
+- Implement fast_tokenizer.cpp optimized for Qwen3 vocab (151,646)
+- Create Python bindings for both tools
+- Test with extended runs
+- Benchmark performance improvements from custom tooling
+- Start extended training run
 - Implement auto-recovery on failure
-- Monitor stability
-
-Deliverables:
-- gpt-774m.yaml configuration
-- Training initiated successfully
-- Monitoring dashboard active
-
-**Week 6: Multi-Day Stability**
-
-Tasks (ongoing during 774M training):
-- Monitor training progress daily
-- Verify checkpoint saves working
-- Test resume from checkpoint
-- Validate memory optimizer prevents degradation
+- Monitor stability throughout
 - Document any issues encountered
+- Write scaling documentation
 
-Deliverables:
-- 774M model training completes (4 days)
-- Zero manual interventions required
-- Final perplexity measured
-- Scaling study comparing 124M, 350M, 774M
+**Deliverables**:
+- docker/training-gpu/pytorch_memory_optimizer.cpp compiled and integrated
+- docker/training-gpu/fast_tokenizer.cpp with Qwen3 optimizations compiled
+- Performance benchmarks showing custom tooling impact
+- Extended training run completes successfully
+- docs/optimizations/training/custom-cpp-tools.md
+- Multi-day stability validated
 
-Validation:
+**Validation**:
+- Memory optimizer prevents fragmentation over extended run
+- Fast tokenizer provides speedup vs HuggingFace
+- Integration works transparently
 - Training completes without crashes
 - Throughput stable throughout (no degradation)
-- Checkpoints save successfully every 30 minutes
+- Checkpoints save successfully
 - Final model quality acceptable
 
-**Week 6, Final Days: Documentation**
-
-Tasks:
-- Write scaling study analysis
-- Document 350M and 774M configurations
-- Update optimization docs with larger model notes
-- Create performance comparison charts
-
-Deliverables:
-- docs/training/experiments/scaling-study.md
-- benchmarks/training/scaling-study/analysis.md
-- Performance comparison tables
-
-**Success Criteria**: Successfully train 774M parameter model through four-day run with zero manual intervention and deploy quantized versions to inference services.
-
-### Phase 6: Evaluation and Quality (Week 7)
+### Phase 6: Evaluation and Quality
 
 **Objective**: Comprehensive model quality assessment capability.
 
-**Day 1-2: EleutherAI Harness Integration**
-
-Tasks:
+**Tasks**:
 - Install lm-evaluation-harness
-- Implement `scripts/evaluation/frameworks/lm_eval_harness.py`
-- Test on 124M trained model
-- Run subset: MMLU, HellaSwag, ARC
-- Generate quality report
-
-Deliverables:
-- lm_eval_harness.py integration complete
-- Evaluation runs successfully
-- Quality report comparing to GPT-2 baseline
-
-Validation:
-- Evaluation completes (2-3 hours for 124M)
-- Results comparable to published GPT-2 scores
-- Report clearly formatted
-
-**Day 3: Instruction-Following Evaluation**
-
-Tasks:
-- Implement `scripts/evaluation/frameworks/mt_bench.py`
+- Implement EleutherAI harness integration script
+- Test on trained Qwen3-1.7B model
+- Run evaluation subset: MMLU, HellaSwag, ARC
+- Implement MT-Bench integration
 - Test on LoRA fine-tuned model
 - Generate conversation samples
-- Score instruction-following quality
-
-Deliverables:
-- mt_bench.py working
-- Instruction-following scores measured
-- Sample conversations documented
-
-Validation:
-- Fine-tuned model scores higher than base
-- Samples demonstrate instruction-following
-- Scoring consistent across runs
-
-**Day 4-5: Model Comparison Tools**
-
-Tasks:
-- Implement `scripts/evaluation/compare_models.py`
-- Support comparing multiple checkpoints
-- Support comparing quantization formats
-- Generate side-by-side comparison reports
+- Implement model comparison tools
+- Support comparing multiple checkpoints and quantization formats
 - Create visualization tools
-
-Deliverables:
-- compare_models.py complete
-- Comparison report templates
-- Visualization scripts (matplotlib)
-
-Validation:
-- Comparisons accurate and reproducible
-- Reports clearly show differences
-- Visualizations informative
-
-**Day 6-7: Documentation and Baselines**
-
-Tasks:
 - Document evaluation frameworks
 - Create metric interpretation guide
-- Establish baseline scores for reference models
+- Establish baseline scores
 - Write best practices guide
 
-Deliverables:
+**Deliverables**:
+- scripts/evaluation/frameworks/lm_eval_harness.py
+- scripts/evaluation/frameworks/mt_bench.py
+- scripts/evaluation/compare_models.py
+- Evaluation results for Qwen3-1.7B trained model
+- Quality reports
 - docs/evaluation/README.md
 - docs/evaluation/evaluation-frameworks.md
 - docs/evaluation/metric-interpretation.md
-- Reference baseline scores documented
 
-**Success Criteria**: Automated evaluation pipeline produces comprehensive quality reports for trained models with comparisons to reference models.
+**Validation**:
+- EleutherAI evaluation completes successfully
+- Results formatted clearly
+- MT-Bench runs on fine-tuned model
+- Instruction-following scores measured
+- Comparisons accurate and reproducible
+- Documentation complete and clear
 
-### Phase 7: Experimental Optimizations (Week 8)
+### Phase 7: Experimental Optimizations
 
 **Objective**: Explore cutting-edge optimization techniques with rigorous documentation.
 
-**Day 1-2: Flash Attention 3 Experiment**
-
-Tasks:
-- Verify cuDNN 9.13 with FA3 support
-- Enable in training configuration
-- Benchmark attention layer throughput
-- Measure end-to-end impact
+**Tasks**:
+- Verify Flash Attention 3 support in cuDNN
+- Enable and benchmark FA3
+- Measure attention layer throughput
 - Validate numerical correctness
-
-Deliverables:
-- Flash Attention 3 benchmarks
-- docs/optimizations/experiments/experimental-flash-attention-training.md
-- Performance comparison: FA2 vs FA3
-
-Validation:
-- Attention computation 1.5-2x faster vs FA2
-- End-to-end throughput improvement measured
-- Perplexity within 0.1% of baseline
-
-**Day 3-4: CPU Offloading Experiment**
-
-Tasks:
 - Configure DeepSpeed ZeRO-Offload
-- Attempt training 2B parameter model
-- Measure throughput degradation
-- Test multi-day stability
-
-Deliverables:
-- ZeRO-Offload configuration
-- docs/optimizations/experiments/experimental-cpu-offloading.md
-- 2B model training results (if successful)
-
-Validation:
-- 2B model fits with offloading (exceeds VRAM without)
-- Throughput acceptable (>200k tok/s)
-- Training completes without crashes
-
-**Day 5: 1GB Huge Pages Experiment**
-
-Tasks:
-- Configure 1GB huge pages in kernel
+- Attempt training larger model with CPU offloading
+- Measure throughput impact
+- Configure 1GB huge pages
 - Allocate dataset with 1GB pages
 - Measure TLB miss reduction
 - Benchmark throughput impact
-
-Deliverables:
-- 1GB huge pages configuration
-- docs/optimizations/experiments/experimental-1gb-hugepages-training.md
-- TLB profiling results
-
-Validation:
-- TLB misses reduced 100x (measured via perf)
-- Throughput improvement 3-5% (or negative result documented)
-- No memory pressure issues
-
-**Day 6: Custom Kernels Experiment**
-
-Tasks:
-- Implement fused LayerNorm + GELU kernel
+- Implement fused kernel (RMSNorm + SwiGLU for Qwen3)
 - Benchmark against PyTorch native
-- Measure end-to-end impact
-- Document maintenance considerations
+- Configure Accelerate device_map for CPU-GPU split
+- Test with model exceeding GPU VRAM
+- Document all experiments thoroughly
 
-Deliverables:
+**Deliverables**:
+- Flash Attention 3 benchmarks
+- docs/optimizations/experiments/experimental-flash-attention-training.md
+- ZeRO-Offload configuration and results
+- docs/optimizations/experiments/experimental-cpu-offloading.md
+- 1GB huge pages configuration and results
+- docs/optimizations/experiments/experimental-1gb-hugepages-training.md
 - Custom kernel implementation
 - docs/optimizations/experiments/experimental-custom-kernels.md
-- Performance comparison
-
-Validation:
-- Fused kernel 2x faster than separate operations
-- End-to-end impact measured (positive or negative)
-- Numerical correctness validated
-
-**Day 7: Mixed CPU-GPU Experiment**
-
-Tasks:
-- Configure Accelerate device_map
-- Partition 2.5B model across CPU/GPU
-- Measure throughput
-- Document complexity and issues
-
-Deliverables:
-- Mixed device configuration
+- Mixed CPU-GPU configuration
 - docs/optimizations/experiments/experimental-mixed-cpu-gpu.md
-- 2.5B model results (if successful)
 
-Validation:
-- 2.5B model trains (exceeds GPU-only capacity)
-- Throughput measured and documented
-- Complexity and tradeoffs clearly explained
-
-**Success Criteria**: Document experimental optimizations with reproducible benchmarks, even if performance gains are marginal or negative.
+**Validation**:
+- Each experiment thoroughly documented
+- Performance measured with benchmarks
+- Positive or negative results documented equally
+- Reproducibility validated
+- Tradeoffs clearly explained
 
 ## Success Criteria
 
 ### Functional Requirements
 
-**Basic training**: Successfully train 124M parameter model from scratch to GPT-2 quality (perplexity approximately 22 on OpenWebText).
+**Basic training**: Successfully train Qwen3-1.7B model from scratch on OpenWebText using tiny-qwen architecture. Achieve acceptable perplexity on validation set.
 
-**Continued pretraining**: Adapt base model to specialized domain (e.g., code, math) with measurable quality improvement (perplexity reduction of 10-20% on domain-specific eval).
+**Continued pretraining**: Adapt base model to specialized domain (e.g., code, math) with measurable quality improvement on domain-specific evaluation.
 
-**Fine-tuning**: Fine-tune with LoRA achieving instruction-following capability. MT-Bench score improvement of 25-40% vs base model.
+**Fine-tuning**: Fine-tune with LoRA achieving instruction-following capability. Demonstrate improvement vs base model.
 
-**Quantization**: Convert trained models to both GGUF and SafeTensors formats. Quality degradation under 8% for Q4_K_M, under 2% for Q6_K.
+**Quantization**: Convert trained models to both GGUF and SafeTensors formats. Acceptable quality degradation per format specifications.
 
-**Deployment**: Deploy quantized models to existing inference services without manual configuration. One-command deployment working.
+**Deployment**: Deploy quantized models to existing inference services automatically. One-command deployment working.
 
 ### Performance Requirements
 
-**Training throughput**: Achieve minimum 310,000 tokens per second for 124M model (53% MFU). 125,000 tok/s for 350M, 58,000 tok/s for 774M.
+**Training stability**: Complete extended training run without manual intervention. Zero crashes or hangs. Checkpoints save successfully every 30 minutes and 5000 steps.
 
-**Data loading**: Maintain minimum 95% GPU utilization (eliminate data loading bottlenecks). Measured over 1-hour sustained training.
+**Data loading**: Maintain high GPU utilization (eliminate data loading bottlenecks). Measured over sustained training period.
 
-**Multi-day stability**: Complete four-day 774M training run without manual intervention. Zero crashes or hangs. Checkpoints save successfully.
+**Optimization impact**: Demonstrate measurable improvement from systematic optimization. Each optimization documented with before/after benchmarks.
 
-**Quantization speed**: Convert 124M model to all quantization formats (GGUF and SafeTensors) in under 30 minutes. 90 minutes for 774M model.
+**Quantization speed**: Convert Qwen3-1.7B model to all quantization formats in reasonable time. Complete pipeline automation.
 
 ### Quality Requirements
 
-**Documentation rigor**: Match existing v1.0 documentation standards with complete reproduction steps. Every optimization documented with benchmarks.
+**Documentation rigor**: Match existing v1.0 documentation standards with complete reproduction steps. Every optimization documented with methodology.
 
-**Benchmark validation**: All optimizations validated with before/after benchmark JSONs. Performance claims reproducible within 5% variance.
+**Benchmark validation**: All optimizations validated with benchmark data. Performance claims reproducible.
 
-**Educational value**: Users can progress from toy model (Shakespeare 10M) to production model (124M on OpenWebText) in under one week following documentation.
+**Educational value**: Users can progress from toy model (Shakespeare 10M) to production model (Qwen3-1.7B on OpenWebText) following documentation.
 
-**Cost efficiency**: Train 350M parameter model for under 20 dollars in electricity costs (at $0.12 per kWh).
+**Integration quality**: Seamless integration with v1.0 infrastructure. No degradation of existing inference services during concurrent training.
 
 ### Integration Requirements
 
-**Concurrent operation**: Training on GPU while inference on CPU operates without degradation. Validated through load testing showing zero performance impact.
+**Concurrent operation**: Training on GPU while inference on CPU operates without performance degradation. Validated through testing.
 
 **Format compatibility**: Quantized models work with llama.cpp and vLLM without modification. Load and serve successfully.
 
-**Monitoring integration**: TensorBoard provides real-time training visibility with loss curves, metrics, and GPU utilization.
+**Monitoring integration**: TensorBoard provides real-time training visibility with loss curves, metrics, and system utilization.
 
-**Checkpoint compatibility**: Checkpoints compatible with HuggingFace ecosystem for model sharing. Can upload to HuggingFace Hub and download on different machine.
+**Checkpoint compatibility**: Checkpoints compatible with HuggingFace ecosystem for model sharing.
+
+## Attribution
+
+This project builds upon excellent open source work from the community:
+
+### Architecture Implementation
+
+**tiny-qwen** (github.com/Emericen/tiny-qwen)
+- Minimal, readable PyTorch reimplementation of Qwen3
+- Educational focus with clean code
+- Apache 2.0 License
+
+**rasbt/qwen3-from-scratch** (huggingface.co/rasbt/qwen3-from-scratch)
+- From-scratch educational PyTorch implementation
+- Detailed explanations and learning resources
+- By Sebastian Raschka, author of "Build a Large Language Model From Scratch"
+
+**ideaweaver-ai/qwen3-from-scratch** (github.com/ideaweaver-ai/qwen3-from-scratch)
+- Complete implementation with training examples
+- Configuration templates and hyperparameters
+- Practical training demonstrations
+
+### Our Contributions
+
+ai-experiments v2 extends these educational implementations with:
+
+- **Production infrastructure**: Docker orchestration, checkpoint management, monitoring
+- **Hardware-specific optimization**: Tuned for RTX 5090 + AMD Ryzen 9950X
+- **Complete quantization pipeline**: PyTorch → GGUF + SafeTensors with quality validation
+- **Integration with v1.0**: Automatic deployment to existing inference services
+- **Systematic optimization research**: Documented performance gains on specific hardware
+- **Custom tooling**: SIMD tokenizer, memory optimizer, huge pages integration
+- **Research documentation**: Discoveries for curiosity-chronicles blog
+
+### Technical References
+
+**Qwen3 Technical Report**: Qwen team, Alibaba Cloud (April 2025)
+**Qwen Blog**: qwenlm.github.io/blog/qwen3/
+**Transformers Documentation**: huggingface.co/docs/transformers/model_doc/qwen3
 
 ## Dependencies
 
 ### Software Dependencies
 
-**Core frameworks**: PyTorch 2.3.0 or newer with CUDA 13.0 support, Transformers 4.51.1, Accelerate 1.8.1.
+**Core frameworks** (from pyproject.toml):
+- PyTorch: 2.5+ with CUDA 12.9 support (managed via pip)
+- transformers: 4.51.1+ (Qwen3 support added in 4.51.0)
+- accelerate: 1.8.1
+- datasets: 3.1.0
+- peft: 0.15.2
+- evaluate: 0.4.4
 
-**Optimization libraries**: DeepSpeed 0.17.1, bitsandbytes 0.46.0, Flash Attention via cuDNN 9.13.0.
+**Optimization libraries**:
+- deepspeed: 0.17.1
+- bitsandbytes: 0.46.0
+- Flash Attention: Via cuDNN 9.7.0+ backend
 
-**Data processing**: Datasets 3.1.0, tokenizers (HuggingFace), sentencepiece 0.2.0.
+**Data processing**:
+- sentencepiece: 0.2.0
+- tiktoken: 0.9.0
+- Custom fast_tokenizer (C++ implementation)
 
-**Evaluation**: lm-evaluation-harness, MT-Bench, evaluate library.
+**Evaluation**:
+- lm-evaluation-harness: EleutherAI evaluation suite
+- MT-Bench: Multi-turn conversation evaluation
 
-**Quantization**: llama.cpp (GGUF conversion), GPTQ-for-LLaMa, AutoGPTQ, AutoAWQ.
+**Quantization**:
+- llama-cpp-python: 0.3.14 (GGUF conversion)
+- AutoGPTQ: GPTQ quantization
+- AutoAWQ: AWQ quantization
 
-**Monitoring**: TensorBoard 2.19.0, Weights and Biases (optional), MLflow (optional).
+**Monitoring**:
+- tensorboard: 2.19.0
+- wandb: 0.20.1 (optional)
+- mlflow: 3.1.1 (optional)
 
 ### Hardware Dependencies
 
-**GPU requirements**: NVIDIA GPU with minimum 24GB VRAM, Compute Capability 8.0 or higher (Ampere architecture or newer). Recommended: RTX 5090 (32GB VRAM).
+**GPU requirements**: NVIDIA GPU with minimum 24GB VRAM, Compute Capability 8.0 or higher (Ampere architecture or newer). Recommended: RTX 5090 (32GB VRAM, Blackwell architecture).
 
-**CPU requirements**: Minimum 12 cores for efficient data loading, AVX2 support required, AVX-512 support optional but beneficial for fast tokenizer.
+**CPU requirements**: Minimum 12 cores for efficient data loading, AVX2 support required, AVX-512 support recommended for fast tokenizer optimization.
 
-**Memory requirements**: Minimum 64GB system RAM for 124M models, 128GB recommended for 774M models.
+**Memory requirements**: Minimum 64GB system RAM, 128GB recommended for optimal performance and concurrent operations.
 
 **Storage requirements**: Minimum 500GB fast NVMe storage for datasets and checkpoints, 1TB recommended. Sequential read performance 3GB/s minimum.
 
@@ -2013,41 +1644,41 @@ Validation:
 
 Training infrastructure builds on existing v1.0 components:
 
-- BIOS optimizations apply directly to training workloads
-- Huge pages configuration benefits dataset streaming
-- Docker patterns and Makefile conventions maintain consistency
-- GPU software stack (CUDA, cuDNN, drivers) requires no changes
-- Python environment managed through existing Poetry configuration
+- BIOS optimizations: Apply directly to training workloads
+- Huge pages configuration: Benefits dataset streaming
+- Docker patterns: Maintain consistency across services
+- GPU software stack: CUDA, cuDNN, drivers compatible
+- Python environment: Managed through existing Poetry configuration (pyproject.toml)
 
 ## Future Considerations
 
 ### Multi-GPU Support
 
-Single-GPU limitation constrains maximum model size to approximately 1.5B parameters. Future expansion could add Distributed Data Parallel (DDP) or Fully Sharded Data Parallel (FSDP) for multi-GPU training. Documentation should note architectural decisions that facilitate or hinder future multi-GPU support.
+Single-GPU limitation constrains maximum model size to approximately 2B parameters with current optimizations. Future expansion could add Distributed Data Parallel (DDP) or Fully Sharded Data Parallel (FSDP) for multi-GPU training.
 
 **Design consideration**: Keep data loading and model architecture separate. Device-agnostic code enables easier DDP integration later.
 
 ### Cloud Integration
 
-Current focus is local workstation only. Future users may want cloud training for larger models. Document cloud-specific considerations without implementing cloud deployment.
+Current focus is local workstation only. Future users may want cloud training for larger models or faster iteration.
 
 **Documentation needed**: Cloud instance selection guide, cost comparison vs local, data transfer strategies.
 
 ### Advanced Architectures
 
-GPT-2 architecture is well-understood and stable. Future expansion could add support for Mistral, Llama 3, or other architectures. Document architectural abstractions that enable adding new model families.
+Qwen3-1.7B provides excellent foundation. Future expansion could add support for newer architectures as they emerge. Document architectural abstractions that enable adding new model families.
 
-**Design consideration**: Abstract model configuration from training loop. Config-driven architecture selection.
+**Design consideration**: Abstract model configuration from training loop. Config-driven architecture selection enables easy addition of new models.
 
 ### Production Serving
 
 Training infrastructure focuses on model development, not production serving. Future expansion could add model versioning, A/B testing infrastructure, and production deployment patterns.
 
-**Potential additions**: Model registry, versioned deployments, rollback mechanisms, blue-green deployment.
+**Potential additions**: Model registry, versioned deployments, rollback mechanisms, blue-green deployment, load balancing.
 
 ### Cost Tracking
 
-Current roadmap mentions cost efficiency but does not implement power monitoring. Future enhancement could add real-time power consumption tracking and cost-per-model calculations.
+Current roadmap focuses on capability and performance. Future enhancement could add real-time power consumption tracking and cost-per-model calculations for optimization insights.
 
 **Implementation**: Integrate with NVIDIA Management Library (NVML) for real-time power monitoring. Track cumulative energy consumption per training run.
 
@@ -2055,7 +1686,7 @@ Current roadmap mentions cost efficiency but does not implement power monitoring
 
 Current evaluation covers standard benchmarks. Future expansion could add human evaluation infrastructure, adversarial testing, and bias detection.
 
-**Potential frameworks**: HELM (Holistic Evaluation of Language Models), Big Bench, bias measurement suites.
+**Potential frameworks**: HELM (Holistic Evaluation of Language Models), Big Bench, bias measurement suites, safety benchmarks.
 
 ---
 
