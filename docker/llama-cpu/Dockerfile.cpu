@@ -1,20 +1,18 @@
 # --- Stage 1: The Builder ---
-# This stage compiles llama.cpp with hugepage optimization (AVX-512 + zen5_optimizer)
+# Compiles llama.cpp with hugepage optimization (AVX-512 + zen5_optimizer)
 FROM python:3.12-slim AS builder
 
 LABEL stage="builder"
 
-# Set build environment variables for AMD Zen 5 architecture
+# Build environment for AMD Zen 5 architecture
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
 ENV CFLAGS="-march=znver5 -mtune=znver5 -O3"
 ENV CXXFLAGS="${CFLAGS}"
 ENV CC=gcc-14
 ENV CXX=g++-14
 ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed"
 
-
-# Install all build-time system dependencies
+# Install build dependencies (gcc-14 from unstable for znver5 support)
 RUN echo "deb http://deb.debian.org/debian unstable main" > /etc/apt/sources.list.d/sid.list && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -36,7 +34,7 @@ RUN cd /tmp/zen5_optimizer && \
     cp build/libzen5_optimizer.so /tmp/libzen5_optimizer.so && \
     echo "Built libzen5_optimizer.so (hugepage optimization)"
 
-# Build llama.cpp with AVX-512 configuration (no AOCL, hugepages via LD_PRELOAD)
+# Build llama.cpp with AVX-512 configuration
 RUN rm -rf /tmp/llama.cpp && \
     git clone --depth 1 https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
     cd /tmp/llama.cpp && \
@@ -53,8 +51,7 @@ RUN rm -rf /tmp/llama.cpp && \
         -DGGML_AVX512_BF16=ON \
         -DGGML_BUILD_TESTS=OFF \
         -DGGML_BUILD_EXAMPLES=OFF \
-        -DLLAMA_CURL=OFF \
-        -DGGML_CCACHE=ON && \
+        -DLLAMA_CURL=OFF && \
     cmake --build . --config Release -j$(nproc) && \
     echo "Built llama.cpp (AVX-512 VNNI, hugepages via LD_PRELOAD)"
 
@@ -62,43 +59,35 @@ RUN rm -rf /tmp/llama.cpp && \
 # --- Stage 2: The Final Runtime Image ---
 FROM debian:unstable-slim
 
-LABEL description="Container for running llama.cpp with hugepage optimization (AVX-512 + zen5_optimizer)."
+LABEL description="llama.cpp with hugepage optimization (AVX-512 + zen5_optimizer)"
 
-# Install only the necessary RUNTIME system libraries
+# Runtime libraries only
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
-    python3 \
     curl \
-    numactl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user with a dedicated group and home directory
+# Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser
 
-# Switch to the non-root user
 USER appuser
-
 WORKDIR /app
 
-# Copy the server executable and other necessary files, setting ownership
+# Copy server binary (renamed to 'server' for entrypoint compatibility)
 COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/llama-server /app/server
+# Copy all binaries and libraries from bin/
 COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/* /app/
-# Copy the zen5_optimizer library for hugepage support
+# Copy zen5_optimizer library for hugepage support
 COPY --from=builder --chown=appuser:appuser /tmp/libzen5_optimizer.so /app/
-# Copy custom entrypoint script
-COPY --chown=appuser:appuser docker/llama-cpu/entrypoint.cpu.sh /app/entrypoint.sh
+COPY --chmod=755 --chown=appuser:appuser docker/llama-cpu/entrypoint.cpu.sh /app/entrypoint.sh
+
+# Library path for llama.cpp shared libs
+ENV LD_LIBRARY_PATH=/app
 
 # OpenMP settings (OMP_NUM_THREADS set dynamically by entrypoint)
 ENV OMP_PROC_BIND=spread
 ENV OMP_PLACES=cores
 
-# Make entrypoint executable
-USER root
-RUN chmod +x /app/entrypoint.sh
-USER appuser
-
-# Expose the network port (8001 for hugepages)
 EXPOSE 8001
 
-# Use entrypoint script for parameterized server configuration
 ENTRYPOINT ["/app/entrypoint.sh"]

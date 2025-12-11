@@ -4,6 +4,24 @@
 # Checks and reports on AI engineering dependencies and repository-defined optimizations
 # Designed for Ubuntu 24.04 with AMD Ryzen 9950X + RTX 5090
 
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# Disable colors if NO_COLOR is set
+[[ -n "${NO_COLOR:-}" ]] && RED='' GREEN='' YELLOW='' BLUE='' CYAN='' NC=''
+
+# Print helper functions
+print_ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+print_warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+print_error() { printf "${RED}[ERROR]${NC} %s\n" "$*"; }
+print_info()  { printf "${CYAN}[INFO]${NC} %s\n" "$*"; }
+print_skip()  { printf "${BLUE}[SKIP]${NC} %s\n" "$*"; }
+
 echo "=== AI Engineering Dependency & Optimization Report ==="
 echo
 
@@ -32,10 +50,10 @@ check_status() {
     local actual="$3"
 
     if [ "$expected" = "$actual" ]; then
-        echo "$name: OK ($actual)"
+        print_ok "$name: $actual"
         ((PASS_COUNT++))
     else
-        echo "$name: ERROR (expected $expected, got $actual)"
+        print_error "$name: expected $expected, got $actual"
         ((FAIL_COUNT++))
     fi
 }
@@ -56,10 +74,10 @@ check_status "CPU Governor" "performance" "$CPU_GOV"
 # Memory Locking
 MEMLOCK=$(ulimit -l)
 if [ "$MEMLOCK" = "unlimited" ]; then
-    echo "Memory locking: OK (unlimited)"
+    print_ok "Memory locking: unlimited"
     ((PASS_COUNT++))
 else
-    echo "Memory locking: ERROR (expected unlimited, got $MEMLOCK)"
+    print_error "Memory locking: expected unlimited, got $MEMLOCK"
     ((FAIL_COUNT++))
 fi
 
@@ -103,14 +121,14 @@ check_status "  vm.dirty_background_ratio" "2" "$DIRTY_BG_RATIO"
 echo
 if command -v docker &> /dev/null; then
     if systemctl is-active --quiet docker; then
-        echo "Docker: OK (running)"
+        print_ok "Docker: running"
         ((PASS_COUNT++))
     else
-        echo "Docker: ERROR (not running)"
+        print_error "Docker: not running"
         ((FAIL_COUNT++))
     fi
 else
-    echo "Docker: ERROR (not installed)"
+    print_error "Docker: not installed"
     ((FAIL_COUNT++))
 fi
 
@@ -145,20 +163,20 @@ if command -v nvidia-smi &> /dev/null; then
     # GPU Clock Settings (should NOT be locked for RTX 5090 performance)
     GPU_CLOCKS=$(nvidia-smi --query-gpu=clocks.applications.graphics --format=csv,noheader 2>/dev/null)
     if [ -n "$GPU_CLOCKS" ] && [ "$GPU_CLOCKS" != "[N/A]" ]; then
-        echo "  GPU Clocks: $GPU_CLOCKS MHz (locked - WARNING: degrades performance)"
+        print_warn "  GPU Clocks: $GPU_CLOCKS MHz (locked - degrades performance)"
         ((FAIL_COUNT++))
     else
-        echo "  GPU clocks: OK (not locked - optimal)"
+        print_ok "  GPU clocks: not locked (optimal)"
         ((PASS_COUNT++))
     fi
 
     # Memory Clock Settings (should NOT be locked for RTX 5090 performance)
     MEM_CLOCKS=$(nvidia-smi --query-gpu=clocks.applications.memory --format=csv,noheader 2>/dev/null)
     if [ -n "$MEM_CLOCKS" ] && [ "$MEM_CLOCKS" != "[N/A]" ]; then
-        echo "  Memory Clocks: $MEM_CLOCKS MHz (locked - WARNING: degrades performance)"
+        print_warn "  Memory Clocks: $MEM_CLOCKS MHz (locked - degrades performance)"
         ((FAIL_COUNT++))
     else
-        echo "  Memory clocks: OK (not locked - optimal)"
+        print_ok "  Memory clocks: not locked (optimal)"
         ((PASS_COUNT++))
     fi
 
@@ -184,17 +202,17 @@ if command -v nvidia-smi &> /dev/null; then
             fi
         done
         if [ $IRQ_TOTAL -eq $IRQ_CORRECT ] && [ $IRQ_TOTAL -gt 0 ]; then
-            echo "  GPU IRQ affinity: OK (cores 24-31)"
+            print_ok "  GPU IRQ affinity: cores 24-31"
             ((PASS_COUNT++))
         else
-            echo "  GPU IRQ Affinity: Not optimized"
+            print_error "  GPU IRQ affinity: not optimized"
             ((FAIL_COUNT++))
         fi
     else
-        echo "  GPU IRQ Affinity: No IRQs found"
+        print_info "  GPU IRQ affinity: no IRQs found"
     fi
 else
-    echo "NVIDIA driver not found"
+    print_error "NVIDIA driver: not found"
 fi
 
 # CUDA Toolkit version
@@ -230,19 +248,19 @@ for var in CUDA_CACHE_DISABLE CUDA_CACHE_PATH CUDA_CACHE_MAXSIZE CUDA_DEVICE_ORD
 done
 
 if [ $CUDA_ENV_CORRECT -eq $CUDA_ENV_COUNT ]; then
-    echo "  System CUDA variables: OK (configured)"
+    print_ok "  System CUDA variables: configured"
     ((PASS_COUNT++))
 else
-    echo "  System CUDA variables: $CUDA_ENV_CORRECT/$CUDA_ENV_COUNT configured"
+    print_error "  System CUDA variables: $CUDA_ENV_CORRECT/$CUDA_ENV_COUNT configured"
     ((FAIL_COUNT++))
 fi
 
 # Kernel Module Parameters
 if [ -f /etc/modprobe.d/nvidia-optimizations.conf ]; then
-    echo "  Kernel modules: OK (nvidia-optimizations.conf present)"
+    print_ok "  Kernel modules: nvidia-optimizations.conf present"
     ((PASS_COUNT++))
 else
-    echo "  Kernel modules: nvidia-optimizations.conf missing"
+    print_error "  Kernel modules: nvidia-optimizations.conf missing"
     ((FAIL_COUNT++))
 fi
 
@@ -291,13 +309,13 @@ except ImportError:
     echo "Key AI Packages:"
     for pkg in transformers accelerate datasets huggingface-hub bitsandbytes deepspeed; do
         if poetry run python -c "import $pkg" 2>/dev/null; then
-            echo "  $pkg: OK"
+            print_ok "  $pkg"
         else
-            echo "  $pkg: ERROR (not found)"
+            print_error "  $pkg: not found"
         fi
     done
 else
-    echo "Python 3: Not found"
+    print_error "Python 3: not found"
 fi
 
 echo
@@ -344,9 +362,9 @@ fi
 
 # GPU Kernel Parameters
 echo "GPU Kernel Parameters:"
-grep -q "pcie_aspm=off" /proc/cmdline && echo "  pcie_aspm=off: Present" || echo "  pcie_aspm=off: Missing"
-grep -q "nvidia-drm.modeset=1" /proc/cmdline && echo "  nvidia-drm.modeset=1: Present" || echo "  nvidia-drm.modeset=1: Missing"
-grep -q "rcutree.rcu_idle_gp_delay=1" /proc/cmdline && echo "  rcutree.rcu_idle_gp_delay=1: Present" || echo "  rcutree.rcu_idle_gp_delay=1: Missing"
+grep -q "pcie_aspm=off" /proc/cmdline && print_ok "  pcie_aspm=off" || print_error "  pcie_aspm=off: missing"
+grep -q "nvidia-drm.modeset=1" /proc/cmdline && print_ok "  nvidia-drm.modeset=1" || print_error "  nvidia-drm.modeset=1: missing"
+grep -q "rcutree.rcu_idle_gp_delay=1" /proc/cmdline && print_ok "  rcutree.rcu_idle_gp_delay=1" || print_error "  rcutree.rcu_idle_gp_delay=1: missing"
 
 # BLAS Libraries
 echo -n "BLAS Libraries: "
@@ -363,19 +381,35 @@ else
     echo "$BLAS_FOUND"
 fi
 
+# Memory Allocator - Container Check (zen5_optimizer only)
+echo "Memory Allocator (CPU Container):"
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^llama-cpu$"; then
+    ZEN5_LOADED=$(docker exec llama-cpu cat /proc/1/maps 2>/dev/null | grep -c "libzen5_optimizer" || echo "0")
+    if [ "$ZEN5_LOADED" -gt 0 ]; then
+        print_ok "  zen5_optimizer: loaded (hugepage mmap interception)"
+        ((PASS_COUNT++))
+    else
+        print_error "  zen5_optimizer: not loaded"
+        ((FAIL_COUNT++))
+    fi
+else
+    print_skip "  llama-cpu container not running"
+fi
+
 echo
 
 # --- 7. Summary ---
 echo "=== Optimization Summary ==="
-echo "Total Checks: $PASS_COUNT passed, $FAIL_COUNT failed"
-
-if [ $FAIL_COUNT -gt 0 ]; then
+if [ $FAIL_COUNT -eq 0 ]; then
+    print_ok "All checks passed ($PASS_COUNT total)"
+else
+    echo "Results: $PASS_COUNT passed, $FAIL_COUNT failed"
     echo
-    echo "To fix failed optimizations, refer to:"
+    print_info "To fix failed optimizations, refer to:"
     echo "  docs/optimizations/os/os-optimizations.md (CPU/RAM and GPU)"
     echo "  /etc/modprobe.d/nvidia-optimizations.conf (Kernel modules)"
     echo
-    echo "Note: Some GPU optimizations require a system reboot to take effect."
+    print_info "Note: Some GPU optimizations require a system reboot to take effect."
 fi
 
 echo

@@ -4,6 +4,24 @@
 # Comprehensive storage analysis for AI workstation with dual SSDs
 # Tracks models, datasets, Docker, caches, and identifies problem areas
 
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# Disable colors if NO_COLOR is set
+[[ -n "${NO_COLOR:-}" ]] && RED='' GREEN='' YELLOW='' BLUE='' CYAN='' NC=''
+
+# Print helper functions
+print_ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+print_warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+print_error() { printf "${RED}[ERROR]${NC} %s\n" "$*"; }
+print_info()  { printf "${CYAN}[INFO]${NC} %s\n" "$*"; }
+print_skip()  { printf "${BLUE}[SKIP]${NC} %s\n" "$*"; }
+
 echo "=== Storage Analysis Report ==="
 echo "Date: $(date '+%Y-%m-%d %H:%M:%S')"
 echo
@@ -51,16 +69,14 @@ df -h | grep -E "^/dev/" | while read -r line; do
 
     # Status indicator
     if [ "$USE_PERCENT" -ge 90 ]; then
-        STATUS="ERROR"
+        print_error "$LABEL ($MOUNT): $USED / $SIZE ($USE_PERCENT% used, $AVAIL free)"
         ((CRITICAL_COUNT++))
     elif [ "$USE_PERCENT" -ge 80 ]; then
-        STATUS="WARN"
+        print_warn "$LABEL ($MOUNT): $USED / $SIZE ($USE_PERCENT% used, $AVAIL free)"
         ((WARNING_COUNT++))
     else
-        STATUS="OK"
+        print_ok "$LABEL ($MOUNT): $USED / $SIZE ($USE_PERCENT% used, $AVAIL free)"
     fi
-
-    echo "$STATUS $LABEL ($MOUNT): $USED / $SIZE ($USE_PERCENT% used, $AVAIL free)"
 done
 
 echo
@@ -142,16 +158,16 @@ if [ -d "/mnt/ai-data" ]; then
                 DUPLICATES_FOUND=true
                 SIZE_BYTES=$(echo "$line" | awk '{print $1}')
                 SIZE_HUMAN=$(numfmt --to=iec-i --suffix=B "$SIZE_BYTES" 2>/dev/null || echo "${SIZE_BYTES}B")
-                echo "  WARN: Multiple files with size $SIZE_HUMAN - possible duplicates"
+                print_warn "  Multiple files with size $SIZE_HUMAN - possible duplicates"
                 break
             fi
         done
 
     if [ "$DUPLICATES_FOUND" = false ]; then
-        echo "  OK: No obvious duplicates found"
+        print_ok "  No obvious duplicates found"
     fi
 else
-    echo "WARN: /mnt/ai-data not found"
+    print_warn "/mnt/ai-data not found"
     ((WARNING_COUNT++))
 fi
 
@@ -177,7 +193,7 @@ if command -v docker &> /dev/null; then
         # Check for dangling images
         DANGLING_COUNT=$(docker images -f "dangling=true" -q 2>/dev/null | wc -l)
         if [ "$DANGLING_COUNT" -gt 0 ]; then
-            echo "WARN: Dangling images: $DANGLING_COUNT"
+            print_warn "Dangling images: $DANGLING_COUNT"
             ((WARNING_COUNT++))
         fi
 
@@ -259,14 +275,14 @@ echo "/var/log total: $VAR_LOG_SIZE"
 # Find large log files
 echo "Large log files (>100MB):"
 sudo find /var/log -type f -size +100M -exec du -h {} \; 2>/dev/null | sort -rh | head -5 | while read -r size file; do
-    echo "  WARN: $size $(basename "$file")"
+    print_warn "  $size $(basename "$file")"
     ((WARNING_COUNT++))
 done
 
 # Old kernels
 OLD_KERNELS=$(dpkg -l 'linux-*' | sed '/^ii/!d;/'"$(uname -r | sed "s/\(.*\)-\([^0-9]\+\)/\1/")"'/d;s/^[^ ]* [^ ]* \([^ ]*\).*/\1/;/[0-9]/!d' | wc -l)
 if [ "$OLD_KERNELS" -gt 2 ]; then
-    echo "WARN: Old kernels installed: $OLD_KERNELS (can be removed)"
+    print_warn "Old kernels installed: $OLD_KERNELS (can be removed)"
     ((WARNING_COUNT++))
 fi
 
@@ -282,7 +298,7 @@ find "$HOME" -maxdepth 1 -type d ! -name "." -exec du -sh {} \; 2>/dev/null | so
     # Check if it's a cache that should be on data SSD
     if [[ "$DIR_NAME" == ".cache" ]]; then
         if [ ! -L "$HOME/.cache" ]; then
-            echo "  WARN: $size $DIR_NAME (should be symlinked to /mnt/ai-data/cache)"
+            print_warn "  $size $DIR_NAME (should be symlinked to /mnt/ai-data/cache)"
             ((WARNING_COUNT++))
         else
             LINK_TARGET=$(readlink -f "$HOME/.cache")
@@ -384,7 +400,7 @@ if [ "$OLD_KERNELS" -gt 2 ] 2>/dev/null; then
 fi
 
 if [ $SUGGESTIONS -eq 0 ]; then
-    echo "OK: No significant cleanup opportunities found"
+    print_ok "No significant cleanup opportunities found"
 fi
 
 echo
@@ -394,13 +410,13 @@ echo "=== Storage Summary ==="
 
 # Count status
 if [ $CRITICAL_COUNT -gt 0 ]; then
-    echo "ERROR: Critical: $CRITICAL_COUNT disk(s) >90% full"
+    print_error "Critical: $CRITICAL_COUNT disk(s) >90% full"
 fi
 if [ $WARNING_COUNT -gt 0 ]; then
-    echo "WARN: $WARNING_COUNT potential issues found"
+    print_warn "$WARNING_COUNT potential issues found"
 fi
 if [ $CRITICAL_COUNT -eq 0 ] && [ $WARNING_COUNT -eq 0 ]; then
-    echo "OK: All storage checks passed"
+    print_ok "All storage checks passed"
 fi
 
 echo

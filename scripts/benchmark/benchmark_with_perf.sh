@@ -24,10 +24,10 @@ RESULTS_DIR="benchmark_results"
 
 # Auto-detect port based on container name (can be overridden with PORT env var)
 case "$CONTAINER_NAME" in
-    llama-base)      PORT="${PORT:-8001}" ;;
-    llama-zen5)      PORT="${PORT:-8002}" ;;
-    llama-hugepages) PORT="${PORT:-8003}" ;;
-    *)               PORT="${PORT:-8003}" ;;  # Default to hugepages port
+    llama-cpu)      PORT="${PORT:-8001}" ;;
+    llama-gpu)      PORT="${PORT:-8002}" ;;
+    vllm)           PORT="${PORT:-8003}" ;;
+    *)               PORT="${PORT:-8001}" ;;  # Default to cpu port
 esac
 
 # Benchmark parameters (matching the plan)

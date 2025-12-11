@@ -8,11 +8,9 @@ services:
       - ALL
     cap_add:
       - IPC_LOCK
-      - SYS_NICE
     deploy:
       resources:
         limits:
-          cpus: '16'
           memory: 96G
     ulimits:
       memlock:

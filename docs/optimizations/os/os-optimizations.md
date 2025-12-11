@@ -12,6 +12,7 @@ Latency optimizations target llama.cpp single-request inference; throughput opti
     - [2. CPU Governor - Performance Mode [IMPLEMENTED]](#2-cpu-governor---performance-mode-implemented)
     - [3. Memory Locking [IMPLEMENTED]](#3-memory-locking-implemented)
     - [4. Huge Pages [IMPLEMENTED]](#4-huge-pages-implemented)
+    - [5. Memory Allocator Tuning [TESTED - NOT BENEFICIAL]](#5-memory-allocator-tuning-tested---not-beneficial)
   - [Complete sysctl.conf Configuration](#complete-sysctlconf-configuration)
   - [Container Resource Allocation](#container-resource-allocation)
     - [CPU Pinning](#cpu-pinning)
@@ -175,6 +176,37 @@ grep "^HugePages" /proc/meminfo
 - Uses custom `hugepage_mmap_wrapper.so` via LD_PRELOAD
 - Automatically activated when MODEL_PATH points to `/hugepages/*`
 - Transparently loads hugetlbfs files into anonymous huge page memory
+
+### 5. Memory Allocator Tuning [TESTED - NOT BENEFICIAL]
+
+**Status:** TESTED - CAUSED PERFORMANCE REGRESSION
+
+Tested jemalloc as an alternative to glibc malloc. Results showed performance degradation for single-model latency workloads.
+
+**Benchmark Results:**
+- **Baseline (glibc malloc):** ~13.5 tok/s
+- **With jemalloc:** 12.64 tok/s (-6.4% regression)
+
+**Configuration Tested:**
+```bash
+export MALLOC_CONF="narenas:8,dirty_decay_ms:10000,muzzy_decay_ms:10000,background_thread:true"
+export LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libjemalloc.so.2:/app/libzen5_optimizer.so"
+```
+
+**Why jemalloc Did Not Help:**
+- The `background_thread:true` setting competes with inference threads for CPU resources
+- Decay timers add latency variance that hurts single-request performance
+- llama.cpp's allocation pattern (large model load, then steady-state inference) doesn't benefit from jemalloc's server-oriented optimizations
+- The zen5_optimizer already handles the critical large allocations via hugepages
+
+**Current Configuration:**
+```bash
+# Only zen5_optimizer for hugepage mmap() interception
+export LD_PRELOAD="/app/libzen5_optimizer.so"
+```
+
+**Recommendation:**
+For single-model, latency-focused workloads, glibc malloc is sufficient. jemalloc may benefit high-concurrency scenarios with many simultaneous requests, but this use case is better served by vLLM.
 
 ## Complete sysctl.conf Configuration
 
