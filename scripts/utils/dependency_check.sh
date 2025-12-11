@@ -81,17 +81,18 @@ else
     ((FAIL_COUNT++))
 fi
 
-# Huge Pages
-HUGEPAGES_TOTAL=$(grep "^HugePages_Total:" /proc/meminfo | awk '{print $2}')
-check_status "Huge Pages Total" "46080" "$HUGEPAGES_TOTAL"
+# Huge Pages (1GB pages for large model loading)
+# Note: 1GB hugepages are configured via hugepages-1048576kB, not vm.nr_hugepages (which is 2MB pages)
+HUGEPAGES_1GB=$(cat /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages 2>/dev/null || echo "0")
+check_status "1GB Huge Pages" "80" "$HUGEPAGES_1GB"
 
 # sysctl Settings
 echo
 echo "sysctl Configuration:"
 
-# vm.nr_hugepages
-SYSCTL_HUGEPAGES=$(sysctl -n vm.nr_hugepages 2>/dev/null)
-check_status "  vm.nr_hugepages" "46080" "$SYSCTL_HUGEPAGES"
+# 1GB hugepages (configured via sysfs, not sysctl)
+SYSCTL_HUGEPAGES_1GB=$(cat /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages 2>/dev/null || echo "0")
+check_status "  1GB hugepages (sysfs)" "80" "$SYSCTL_HUGEPAGES_1GB"
 
 # vm.swappiness
 SWAPPINESS=$(sysctl -n vm.swappiness 2>/dev/null)

@@ -11,7 +11,7 @@
 
 // Feature flags
 #define ENABLE_HUGEPAGES 1
-#define DEBUG_OUTPUT 1
+#define DEBUG_OUTPUT 0
 
 // Memory thresholds
 const size_t MIN_SIZE_FOR_HUGEPAGES = 1ULL * 1024 * 1024 * 1024; // 1GB

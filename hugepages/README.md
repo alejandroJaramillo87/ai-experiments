@@ -1,24 +1,45 @@
-# llama-zen-turbo
+# zen5_optimizer
 
-x86-64 AVX-512 optimizer for llama.cpp - transparent performance improvements via LD_PRELOAD.
+Memory optimization library for llama.cpp on AMD Zen 5 / AVX-512 processors. Provides transparent huge page allocation via LD_PRELOAD.
 
 ## Overview
 
-This project provides memory subsystem optimizations for running llama.cpp on modern x86-64 processors with AVX-512 support. It achieves measurable speedup through:
-
-- **Transparent huge page allocation** for model files (Phase 1A - complete)
-- NUMA-aware memory allocation (Phase 2A - planned)
-- Layer-ahead prefetching (Phase 2B - planned)
-- Mixed huge pages: 1GB/2MB/4KB (Phase 2C - planned)
-
-## Current Status
+This library intercepts `mmap()` calls and uses huge pages (2MB) for large memory allocations, reducing TLB misses and improving inference performance.
 
 **Phase 1A validated** with benchmark proof:
 - **8.4% TTFT improvement** (Time to First Token)
 - **43% TLB miss reduction** (verified via perf counters)
 - **8.4% faster prompt processing** (77.80 → 84.37 tokens/s)
 
-See `docs/zen_roadmap.md` for detailed benchmark results.
+## Usage in This Repository
+
+The library is built and used by the `llama-cpu` Docker container:
+
+```
+docker/llama-cpu/Dockerfile.cpu  # Builds zen5_optimizer from hugepages/
+docker/llama-cpu/entrypoint.cpu.sh  # Loads via LD_PRELOAD
+```
+
+**Build process:**
+1. `docker compose build llama-cpu` compiles the library
+2. Container entrypoint sets `LD_PRELOAD=/app/libzen5_optimizer.so`
+3. Library intercepts `mmap()` calls for allocations >= 1GB
+
+See `docker/llama-cpu/Dockerfile.cpu` for build configuration.
+
+## Standalone Usage
+
+```bash
+# Build the library
+make
+
+# Load optimizer before running llama.cpp
+LD_PRELOAD=./build/libzen5_optimizer.so ./llama-server [args]
+
+# Or export for session
+export LD_PRELOAD=/path/to/libzen5_optimizer.so
+./llama-server [args]
+```
 
 ## Requirements
 
@@ -26,7 +47,7 @@ See `docs/zen_roadmap.md` for detailed benchmark results.
   - AMD: Zen 4 (Ryzen 7000+), Zen 5 (Ryzen 9000+)
   - Intel: Skylake-X, Ice Lake, Sapphire Rapids, and later
 - Linux x86_64
-- GCC with C++17 support
+- GCC 14+ with C++17 support (for Zen 5 march=znver5)
 - Huge pages enabled in kernel
 
 ## Building
@@ -38,34 +59,20 @@ make test-quiet    # Run tests with minimal output
 make install       # Install to /usr/local/lib
 ```
 
-## Usage
-
-```bash
-# Load optimizer before running llama.cpp
-LD_PRELOAD=/usr/local/lib/libzen5_optimizer.so ./llama-cli [args]
-
-# Or export for session
-export LD_PRELOAD=/usr/local/lib/libzen5_optimizer.so
-./llama-cli [args]
-```
-
 ## Architecture
 
 ```
 src/
 ├── zen5_optimizer.cpp      # Main LD_PRELOAD entry point
 ├── cpu_validator.cpp       # AVX-512 detection (AMD/Intel)
-├── memory/
-│   └── hugepage_wrapper.cpp # mmap() interception
-└── config.h                # Configuration parameters
+├── config.h                # Configuration parameters
+└── memory/
+    └── hugepage_wrapper.cpp # mmap() interception
 
 tests/
 ├── unit/                   # Basic functionality tests
 ├── functional/             # Feature-level tests
 └── integration/            # End-to-end validation
-
-scripts/
-└── benchmark_with_perf.sh  # Benchmark with perf counter collection
 ```
 
 ## Performance
@@ -79,8 +86,11 @@ Phase 1A validated results (80B MoE model, AMD Ryzen 9 9950X):
 | Generation | 9.54 t/s | 9.89 t/s | **3.7% faster** |
 | dTLB misses | 9.95 billion | 5.71 billion | **43% reduction** |
 
-## Development
+## Development Roadmap
 
-The library requires AVX-512 support. It will detect CPU capabilities at load time and exit with an error message if AVX-512 is not available.
+- **Phase 1A** - Transparent huge page allocation (complete)
+- Phase 2A - NUMA-aware memory allocation (planned)
+- Phase 2B - Layer-ahead prefetching (planned)
+- Phase 2C - Mixed huge pages: 1GB/2MB/4KB (planned)
 
-See `docs/zen_roadmap.md` for detailed development phases and optimization experiments.
+See `docs/zen_roadmap.md` for detailed benchmark results and optimization experiments.
