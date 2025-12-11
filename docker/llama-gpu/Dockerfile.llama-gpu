@@ -146,7 +146,7 @@ RUN chmod +x /app/entrypoint.sh
 USER appuser
 
 # Expose the network port
-EXPOSE 8004
+EXPOSE 8002
 
 # Use entrypoint script for parameterized configuration
 ENTRYPOINT ["/app/entrypoint.sh"]

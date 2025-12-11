@@ -214,12 +214,12 @@ WORKDIR /app
 # Create optimized healthcheck script
 RUN echo '#!/bin/bash\n\
 set -e\n\
-curl -f -s -o /dev/null -w "%{http_code}" http://localhost:8005/health | grep -q "200" || exit 1' \
+curl -f -s -o /dev/null -w "%{http_code}" http://localhost:8003/health | grep -q "200" || exit 1' \
     > /app/healthcheck.sh && \
     chmod +x /app/healthcheck.sh
 
 # Expose API port
-EXPOSE 8005
+EXPOSE 8003
 
 # Health check with proper timeout
 HEALTHCHECK --interval=30s --timeout=10s --retries=5 --start-period=300s \
@@ -231,7 +231,7 @@ ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server"]
 
 CMD ["--model", "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b", \
      "--host", "0.0.0.0", \
-     "--port", "8005", \
+     "--port", "8003", \
      "--tensor-parallel-size", "1", \
      "--gpu-memory-utilization", "0.85", \
      "--max-model-len", "32768", \
