@@ -1,36 +1,49 @@
 # vLLM GPU Dockerfile - RTX 5090 (Blackwell) Optimized
 #
-# STATUS: WAITING FOR CUDA 13 SUPPORT IN vLLM
+# Builds vLLM v0.12.0 from source with CUDA 13 and sm_120 architecture
+# for optimized performance on RTX 5090.
 #
-# As of September 2025, vLLM v0.10.2 does not support CUDA 13.0 due to breaking
-# changes in the CUB library API (cub::Sum removed in CCCL v3). This Dockerfile
-# is configured for CUDA 13.0 but will not build until vLLM adds support.
+# Features:
+# - CUDA 13.0.2 with cuDNN support
+# - Build from source with TORCH_CUDA_ARCH_LIST="12.0" (Blackwell only)
+# - FlashInfer 0.5.3 for optimized attention kernels
+# - Nsight Systems for optional profiling
+# - Multi-stage build for smaller runtime image
 #
-# Tracking: https://github.com/vllm-project/vllm/pull/23976
-# Issue: Build fails with "namespace 'cub' has no member 'Sum'" errors
-# Workaround: Use CUDA 12.6-12.8 base images until official CUDA 13 support
-#
-# OPTIMIZATIONS PENDING:
-# Once vLLM supports CUDA 13, uncomment the optimization sections below to enable
-# full RTX 5090 Blackwell architecture performance enhancements. These optimizations
-# have been benchmarked with llama.cpp and show significant performance improvements.
-#
+# References:
+# - vLLM v0.12.0: https://github.com/vllm-project/vllm/releases/tag/v0.12.0
+# - CUDA 13 support: PR #24599
+
+# Build arguments
+ARG CUDA_VERSION=13.0.2
+ARG VLLM_VERSION=v0.12.0
+ARG PYTHON_VERSION=3.12
+
+# =============================================================================
 # Stage 1: Builder
-# CUDA 13.0.1 development environment for RTX 5090 Blackwell architecture
-FROM nvidia/cuda:13.0.1-devel-ubuntu24.04 AS builder
+# =============================================================================
+# CUDA 13.0.2 development environment for RTX 5090 Blackwell architecture
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu24.04 AS builder
+
+ARG CUDA_VERSION
+ARG VLLM_VERSION
+ARG PYTHON_VERSION
 
 LABEL stage="builder"
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
+
 # Set build environment variables for NVIDIA RTX 5090 (Blackwell sm_120 architecture)
-# Compiler flags for RTX 5090 Blackwell architecture (sm_120)
+# Build only for Blackwell architecture - minimal binary size
 ENV TORCH_CUDA_ARCH_LIST="12.0"
 ENV CUDA_DOCKER_ARCH=sm_120
 ENV CUDA_ARCHITECTURES=120
 
-# Sets the number of parallel threads for the NVIDIA CUDA Compiler (NVCC).
-ENV NVCC_THREADS=8
+# NVCC threading - keep low to avoid oversubscription with high MAX_JOBS
+# (MAX_JOBS controls parallel files, NVCC_THREADS controls threads per file)
+# With NVCC_THREADS=2 and MAX_JOBS=32: targets ~75% CPU utilization on 32-thread CPU
+ENV NVCC_THREADS=2
 
 # CUDA compiler optimization flags for inference performance
 ENV CUDAFLAGS="-O3 --use_fast_math"
@@ -44,206 +57,265 @@ ENV CUDA_HOME=/usr/local/cuda
 ENV PKG_CONFIG_PATH=/usr/local/cuda/lib64/pkgconfig:${PKG_CONFIG_PATH}
 
 # Build-time CUDA configuration
-# Enable lazy CUDA module loading for faster build startup
 ENV CUDA_MODULE_LOADING=LAZY
-# Order GPU devices by performance for optimal selection
 ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
 
-# Install build dependencies (ccache is required per issue #14452)
+# Install build dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+    apt-get install -y --no-install-recommends --allow-change-held-packages \
         ccache \
-        ninja-build python3.12-dev\
-        python3 python3-pip \
+        ninja-build \
+        python${PYTHON_VERSION}-dev \
+        python${PYTHON_VERSION}-venv \
+        python3 \
+        python3-pip \
         cmake \
-        git && \
+        git \
+        curl \
+        ca-certificates \
+        pkg-config \
+        cuda-driver-dev-13-0 \
+        cuda-cudart-dev-13-0 \
+        cuda-cupti-dev-13-0 \
+        cuda-nvtx-13-0 \
+        libcublas-dev-13-0 &&\
+        # libnccl-dev && \
     rm -rf /var/lib/apt/lists/*
+
+# Install uv for faster pip installs (following upstream)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Create virtual environment to avoid PEP 668 externally-managed restrictions
+# This follows the official vLLM Dockerfile pattern
+RUN uv venv /opt/venv --python ${PYTHON_VERSION}
+ENV VIRTUAL_ENV="/opt/venv"
+ENV PATH="/opt/venv/bin:${PATH}"
 
 # Set up ccache for faster rebuilds
 ENV CCACHE_DIR=/tmp/ccache
+ENV CCACHE_MAX_SIZE=20G
+ENV CCACHE_COMPR_LEVEL=2
 ENV PATH=/usr/lib/ccache:${PATH}
 
-# Clone a specific tagged release without the entire git history for a faster, smaller build
-RUN git clone --depth 1 --branch v0.10.2 https://github.com/vllm-project/vllm.git /tmp/vllm
+# Create libcuda.so.1 symlink required for CUDA stub library compatibility
+RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 
-# Build vLLM following exact steps from issue #14452
+# Clone vLLM stable release
+RUN git clone --depth 1 --branch ${VLLM_VERSION} https://github.com/vllm-project/vllm.git /tmp/vllm
+
 WORKDIR /tmp/vllm
 
-# Configure vLLM to use existing PyTorch installation
-RUN python3 use_existing_torch.py
+# Install build requirements with uv (into venv)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install -r requirements/build.txt
 
-# Install build requirements and resolve dependencies
-RUN pip3 install --no-cache-dir --break-system-packages -r requirements/common.txt \
-    setuptools_scm 
+# Install CUDA requirements
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install -r requirements/cuda.txt \
+    --extra-index-url https://download.pytorch.org/whl/cu130 \
+    --index-strategy unsafe-best-match  
 
-
-# TODO: Install when Blackwell sm_120 support is available
-# RUN pip3 install --no-cache-dir --break-system-packages flashinfer -i https://flashinfer.ai/whl/cu121/torch2.4/
-
-
-# Build vLLM with optimizations
+# Build vLLM wheel with Blackwell optimization
 RUN mkdir -p /tmp/ccache && \
     CCACHE_DIR=/tmp/ccache \
-    VLLM_TARGET_DEVICE=cuda \
-    MAX_JOBS=$(nproc) \
     TORCH_CUDA_ARCH_LIST="12.0" \
-    pip3 wheel --no-build-isolation . && \
-    pip3 install --break-system-packages vllm-*.whl
+    VLLM_TARGET_DEVICE=cuda \
+    MAX_JOBS=20 \
+    python3 setup.py bdist_wheel --dist-dir=dist
 
 
+# =============================================================================
 # Stage 2: Runtime Image
-# CUDA 13.0.1 runtime environment for optimized inference
-FROM nvidia/cuda:13.0.1-devel-ubuntu24.04 
+# =============================================================================
+# CUDA 13.0.2 runtime environment for optimized inference
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu24.04
 
-# Install minimal runtime dependencies
+ARG CUDA_VERSION
+ARG PYTHON_VERSION
+
+LABEL description="vLLM GPU inference server optimized for RTX 5090 Blackwell architecture"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# Install runtime dependencies
+# nsight-systems for optional deep profiling (NSYS_PROFILE=true)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+    apt-get install -y --no-install-recommends --allow-change-held-packages \
         curl \
         ca-certificates \
-        python3.12-dev\
-        python3 python3-pip \
+        python${PYTHON_VERSION} \
+        python${PYTHON_VERSION}-dev \
+        python${PYTHON_VERSION}-venv \
+        python3 \
+        python3-pip \
         libgomp1 \
-        && \
+        libcublas-13-0 \
+        cuda-cupti-13-0 \
+        cuda-nvtx-13-0 \
+        cuda-nvrtc-13-0 \
+        libnccl2 \
+        nsight-systems-2025.3.2 \
+        # Add nvcc for torch.compile support
+        cuda-nvcc-13-0 \
+        cuda-cudart-dev-13-0 && \
     rm -rf /var/lib/apt/lists/*
 
+# Install uv for faster pip installs
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Create virtual environment to avoid PEP 668 externally-managed restrictions
+RUN uv venv /opt/venv --python ${PYTHON_VERSION}
+ENV VIRTUAL_ENV="/opt/venv"
+ENV PATH="/opt/venv/bin:${PATH}"
+
+# Copy vLLM wheel and install
+COPY --from=builder /tmp/vllm/dist/*.whl /tmp/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install /tmp/*.whl \
+    --extra-index-url https://download.pytorch.org/whl/cu130  \
+    --index-strategy unsafe-best-match && \
+    rm -f /tmp/*.whl
+
+# Install FlashInfer (pre-compiled attention kernels for CUDA 13)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install flashinfer-cubin==0.5.3 && \
+    uv pip install flashinfer-jit-cache==0.5.3 \
+    --extra-index-url https://flashinfer.ai/whl/cu130
+
+# Install optional performance packages for torch.compile
+# - torch-c-dlpack-ext: Enables EnvTensorAllocator for TVM/DLPack
+# - XIELU: CUDA-optimized xIELU activation (used by Apertus model)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install torch-c-dlpack-ext 
+    # uv pip install git+https://github.com/nickjbrowning/XIELU
 
 
-# Copy vLLM requirements and install runtime dependencies
-COPY --from=builder /tmp/vllm/vllm-*.whl /tmp/
-RUN pip3 install --break-system-packages /tmp/vllm-*.whl
+# =============================================================================
+# CUDA Runtime Environment (verified settings from official vLLM Dockerfile)
+# =============================================================================
 
-
-# Set CUDA runtime environment
+# CUDA paths (required for runtime)
 ENV PATH=/usr/local/cuda/bin:${PATH}
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
-ENV CUDA_MODULE_LOADING=LAZY
-ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
-ENV CUDA_VISIBLE_DEVICES=0
-
-# Performance tuning for RTX 5090
-ENV CUDA_LAUNCH_BLOCKING=0
-ENV CUDNN_LOGINFO_DBG=0
-ENV CUDNN_LOGDEST_DBG=stderr
-ENV CUDA_CACHE_DISABLE=0
-ENV CUDA_CACHE_PATH=/tmp/cuda_cache
-ENV CUDA_FORCE_PTX_JIT=0
-
-# Pending GPU optimizations for RTX 5090 Blackwell architecture
-# TODO: Uncomment when vLLM supports CUDA 13.0
-# Expected improvements: -30% allocation overhead, +40% GEMM, +100% FP8 throughput
-
-# Memory pool optimization for reduced allocation overhead
-# ENV CUDA_CACHE_MAXSIZE=2147483648  # 2GB kernel cache
-# ENV CUDA_ALLOCATOR_BACKEND=cudaMallocAsync  # Async memory allocation
-# ENV CUDA_MALLOC_ASYNC_POOLS=1  # Enable async memory pools
-
-# PyTorch memory configuration for 32GB VRAM
-# Updated from max_split_size_mb:1024 to 2048 based on optimization docs
-ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,garbage_collection_threshold:0.95,max_split_size_mb=1024
-# TODO: Update to max_split_size_mb=2048 when CUDA 13.0 is supported
-
-# Tensor core optimization for Blackwell architecture
-# ENV CUDA_TENSOR_CORES=1  # Enable tensor core usage
-# ENV CUBLAS_WORKSPACE_CONFIG=:4096:8  # Optimal workspace for tensor cores
-# ENV CUDNN_TENSOR_OPS=1  # Enable cuDNN tensor core operations
-
-# Blackwell architecture specific configuration
-# ENV CUDA_L2_PERSISTING_SIZE=100663296  # Use full 96MB L2 cache on RTX 5090
-# ENV CUDA_DEVICE_MAX_CONNECTIONS=32  # Concurrent kernel connections
-# ENV CUDA_COPY_SPLIT_THRESHOLD=256  # MB threshold for split copies
-
-# FP8 support configuration
-# ENV CUDA_FP8_E4M3=1  # Already set as VLLM_FP8_E4M3 below
-# TODO: Enable FP8 E5M2 format when vLLM supports it
-# ENV CUDA_FP8_E5M2=1
-# ENV VLLM_FP8_E5M2=1
-# ENV TRANSFORMER_ENGINE_FP8=1  # Transformer engine FP8 support
-
-# GPU clock management
-# ENV CUDA_AUTO_BOOST=0  # Disable auto-boost for consistent performance
+# CUDA 13 compatibility path (from official vLLM Dockerfile comment)
+ENV LD_LIBRARY_PATH=/usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
 
 # NVIDIA Docker Runtime
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
 ENV NVIDIA_REQUIRE_CUDA="cuda>=13.0"
 
-# vLLM optimizations for RTX 5090
-ENV VLLM_USE_MODELSCOPE=False
-# NOTE: Flash Attention 3 not compatible with Blackwell architecture
-ENV VLLM_FLASH_ATTN_VERSION=2
-ENV VLLM_ATTENTION_BACKEND=FLASH_ATTN
-ENV VLLM_USE_RAY=0
-ENV VLLM_WORKER_MULTIPROC_METHOD=spawn
-ENV TOKENIZERS_PARALLELISM=false
+
+# =============================================================================
+# vLLM Settings (verified from envs.py in vLLM source)
+# =============================================================================
+
+# Usage source for telemetry (verified: line 39 in envs.py)
 ENV VLLM_USAGE_SOURCE=docker
+
+# Logging level (verified: line 41 in envs.py)
 ENV VLLM_LOGGING_LEVEL=INFO
 
-# Enable v1 engine optimizations (auto-enabled in latest vLLM)
-ENV VLLM_USE_V1=1
-ENV VLLM_ENABLE_PREFIX_CACHING=1
+# Disable ModelScope downloads (verified: line 17 in envs.py)
+ENV VLLM_USE_MODELSCOPE=False
 
-# FP8 optimization support for Blackwell
-ENV VLLM_FP8_E4M3=1
-# TODO: Enable when CUDA 13.0 is supported
-# ENV VLLM_FP8_E5M2=1  # Additional FP8 format support
+# Worker multiprocess method (verified: line 64 in envs.py)
+# Use "spawn" for CUDA compatibility
+ENV VLLM_WORKER_MULTIPROC_METHOD=spawn
 
-# Additional vLLM optimizations pending CUDA 13 support
-# ENV VLLM_GPU_MEMORY_UTILIZATION=0.95  # Use 95% of VRAM (currently using 0.85 in CMD)
-# ENV VLLM_CUDA_GRAPHS=1  # Enable CUDA graphs for 20% kernel launch reduction
-# ENV VLLM_PREEMPTION_MODE=swap  # Better request handling
-# ENV VLLM_SWAP_SPACE_GB=4  # Swap space for preemption
+# Tokenizers parallelism (standard HuggingFace setting)
+ENV TOKENIZERS_PARALLELISM=false
+
+# Enable HuggingFace fast downloads (verified in official vLLM Dockerfile)
+ENV HF_HUB_ENABLE_HF_TRANSFER=1
+
+
+# =============================================================================
+# CUDA Performance Tuning (verified general CUDA settings)
+# =============================================================================
+
+# Lazy module loading for faster startup
+ENV CUDA_MODULE_LOADING=LAZY
+# Order GPU devices by performance
+ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
+# Disable launch blocking for async execution
+ENV CUDA_LAUNCH_BLOCKING=0
+# Enable CUDA kernel cache
+ENV CUDA_CACHE_DISABLE=0
+ENV CUDA_CACHE_PATH=/tmp/cuda_cache
+# Disable forced PTX JIT compilation
+ENV CUDA_FORCE_PTX_JIT=0
+# Disable cuDNN debug logging
+ENV CUDNN_LOGINFO_DBG=0
+ENV CUDNN_LOGDEST_DBG=stderr
+
+# PyTorch memory configuration for 32GB VRAM
+# This is a verified PyTorch setting, not vLLM-specific
+ENV PYTORCH_ALLOC_CONF=expandable_segments:True,garbage_collection_threshold:0.95,max_split_size_mb:2048
+
+
+# =============================================================================
+# RTX 5090 Blackwell Optimizations (EXPERIMENTAL)
+# These settings are documented but may require testing for vLLM compatibility
+# Uncomment to enable based on your benchmarking results
+# =============================================================================
+
+# 96MB L2 cache on RTX 5090
+# ENV CUDA_L2_PERSISTING_SIZE=100663296
+# Concurrent kernel connections
+# ENV CUDA_DEVICE_MAX_CONNECTIONS=32
+# MB threshold for split copies
+# ENV CUDA_COPY_SPLIT_THRESHOLD=256
+# Async memory allocation
+# ENV CUDA_ALLOCATOR_BACKEND=cudaMallocAsync
+# ENV CUDA_MALLOC_ASYNC_POOLS=1
+# 2GB kernel cache
+# ENV CUDA_CACHE_MAXSIZE=2147483648
+# Tensor core optimization
+# ENV CUDA_TENSOR_CORES=1
+# ENV CUBLAS_WORKSPACE_CONFIG=:4096:8
+# ENV CUDNN_TENSOR_OPS=1
+# Disable auto-boost for consistent performance
+# ENV CUDA_AUTO_BOOST=0
+
+
+# =============================================================================
+# Application Setup
+# =============================================================================
 
 # Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser
 
 # Create all directories the app user will need to write to
-RUN mkdir -p /tmp/cuda_cache /app/logs /app/cache
+RUN mkdir -p /tmp/cuda_cache /app/logs /app/cache /app/nsys_output
 
-# FIX 1: Set environment variables for cache locations BEFORE switching user
-# This directs Hugging Face/Transformers to use a known, writable path.
+# Set environment variables for cache locations
 ENV HF_HOME=/app/cache
 ENV HOME=/app
 
-# FIX 2: Explicitly change ownership of the application directory
+# Set ownership
 RUN chown -R appuser:appuser /app /tmp/cuda_cache
 
-# Switch to the non-root user
+# Copy entrypoint script
+COPY --chown=appuser:appuser docker/vllm-gpu/entrypoint.sh /app/entrypoint.sh
+
+# Switch to root to set permissions
+USER root
+RUN chmod +x /app/entrypoint.sh
+
+# Switch to non-root user
 USER appuser
 WORKDIR /app
-
-# Create optimized healthcheck script
-RUN echo '#!/bin/bash\n\
-set -e\n\
-curl -f -s -o /dev/null -w "%{http_code}" http://localhost:8003/health | grep -q "200" || exit 1' \
-    > /app/healthcheck.sh && \
-    chmod +x /app/healthcheck.sh
 
 # Expose API port
 EXPOSE 8003
 
-# Health check with proper timeout
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=5 --start-period=300s \
-    CMD ["/app/healthcheck.sh"]
+    CMD curl -f http://localhost:8003/health || exit 1
 
 # Set entrypoint
-ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server"]
-
-
-CMD ["--model", "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b", \
-     "--host", "0.0.0.0", \
-     "--port", "8003", \
-     "--tensor-parallel-size", "1", \
-     "--gpu-memory-utilization", "0.85", \
-     "--max-model-len", "32768", \
-     "--max-num-seqs", "512", \
-     "--max-num-batched-tokens", "65536", \
-     "--enable-chunked-prefill", \
-     "--enable-prefix-caching", \
-     "--disable-log-stats", \
-     "--trust-remote-code", \
-     "--download-dir", "/app/cache", \
-     "--dtype", "auto", \
-     "--kv-cache-dtype", "auto", \
-     "--quantization", "fp8", \
-     "--tokenizer-mode", "auto" \
-     ]
+ENTRYPOINT ["/app/entrypoint.sh"]

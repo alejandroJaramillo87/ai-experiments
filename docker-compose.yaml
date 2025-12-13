@@ -45,6 +45,8 @@ services:
       start_period: 180s
 
   llama-gpu:
+    init: true  # Use tini as PID 1 for proper signal forwarding (required for nsys)
+    user: "${UID:-1000}:${GID:-1000}"  # Match host user for volume write access (nsys)
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -55,7 +57,7 @@ services:
         hard: -1
     build:
       context: .
-      dockerfile: docker/Dockerfile.llama-gpu
+      dockerfile: docker/llama-gpu/Dockerfile.llama-gpu
     container_name: llama-gpu
     restart: unless-stopped
     # runtime: nvidia
@@ -64,6 +66,9 @@ services:
       - CUDA_VISIBLE_DEVICES=0
       - SERVER_PORT=8002
       - MODEL_PATH=${LLAMA_GPU_MODEL}
+      # Nsight Systems profiling (set NSYS_PROFILE=true to enable)
+      - NSYS_PROFILE=${NSYS_PROFILE:-false}
+      - NSYS_OUTPUT=${NSYS_OUTPUT:-/app/nsys_output/profile}
     deploy:
       resources:
         reservations:
@@ -82,6 +87,8 @@ services:
       - /mnt/ai-data/models/:/app/models:ro
       # Log storage
       - ./logs/gpu:/app/logs
+      # Nsys profiling output (only used when NSYS_PROFILE=true)
+      - ./gpu_benchmark_results:/app/nsys_output
     networks:
       - ai-network
     healthcheck:
@@ -94,6 +101,8 @@ services:
 
   # vLLM GPU Service - Optimized for RTX 5090
   vllm-gpu:
+    init: true  # Use tini as PID 1 for proper signal forwarding (required for nsys)
+    # user: "${UID:-1000}:${GID:-1000}"  # Match host user for volume write access (nsys)
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -104,13 +113,16 @@ services:
         hard: -1
     build:
       context: .
-      dockerfile: docker/Dockerfile.vllm-gpu
+      dockerfile: docker/vllm-gpu/Dockerfile.vllm-gpu
     container_name: vllm-gpu
     restart: unless-stopped
     environment:
       - NVIDIA_VISIBLE_DEVICES=0
       - CUDA_VISIBLE_DEVICES=0
       - MODEL_PATH=${VLLM_GPU_MODEL}
+      # Nsight Systems profiling (set NSYS_PROFILE=true to enable)
+      - NSYS_PROFILE=${NSYS_PROFILE:-false}
+      - NSYS_OUTPUT=${NSYS_OUTPUT:-/app/nsys_output/profile}
     deploy:
       resources:
         reservations:
@@ -124,11 +136,17 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=4G,mode=1777  # For CUDA cache and temp files
+      - /app/.cache:size=1G,mode=1777  # vLLM model info cache
+      - /app/cache:size=2G,mode=1777   # HuggingFace cache (HF_HOME)
+      - /app/.config:size=100M,mode=1777  # vLLM usage stats
+      - /app/.triton:size=2G,mode=1777,exec  # Triton compilation cache
     volumes:
       # Model storage mount
       - /mnt/ai-data/models/:/app/models:ro
       # Log storage
       - ./logs/vllm:/app/logs
+      # Nsys profiling output (only used when NSYS_PROFILE=true)
+      - ./gpu_benchmark_results:/app/nsys_output
     networks:
       - ai-network
     healthcheck:

@@ -1,6 +1,6 @@
 # Stage 1: Builder
 # Compiles CUDA-optimized llama.cpp server executable for RTX 5090
-FROM nvidia/cuda:13.0.1-devel-ubuntu24.04 AS builder
+FROM nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04 AS builder
 
 LABEL stage="builder"
 
@@ -25,7 +25,7 @@ RUN apt-get update && \
         cuda-cupti-dev-13-0 \
         cuda-nvml-dev-13-0 \
         cuda-nvtx-13-0 \
-        cudnn9-cuda-13-0 \
+        # cudnn9-cuda-13-0 \
         libcublas-dev-13-0 && \
     rm -rf /var/lib/apt/lists/*
 
@@ -56,7 +56,6 @@ RUN rm -rf /tmp/llama.cpp && \
         -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs" \
         -DGGML_CUDA=ON \
         -DGGML_CUDA_FORCE_CUBLAS=ON \
-        -DGGML_CUDA_F16=ON \
         -DGGML_CUDA_GRAPHS=ON \
         -DGGML_CUDA_PEER_MAX_BATCH_SIZE=256 \
         -DGGML_CUDA_NO_VMM=OFF \
@@ -66,29 +65,26 @@ RUN rm -rf /tmp/llama.cpp && \
         -DGGML_BUILD_EXAMPLES=OFF \
         -DLLAMA_CURL=OFF \
         -DGGML_CCACHE=ON \
-        -DGGML_CUDA_DMMV_X=64 \
-        -DGGML_CUDA_MMV_Y=2 \
-        -DGGML_CUDA_GRAPHS=ON \
-        -DGGML_CUDA_KQUANTS_ITER=2  \
-         -DGGML_CUDA_FA_ALL_QUANTS=ON && \
+        -DGGML_CUDA_FA_ALL_QUANTS=ON && \
      cmake --build . --target llama-server --config Release -j$(nproc)
 
 
 # Stage 2: Runtime Image
-FROM nvidia/cuda:13.0.1-runtime-ubuntu24.04
+FROM nvidia/cuda:13.0.2-cudnn-runtime-ubuntu24.04
 
 LABEL description="Container for running the CUDA-accelerated llama.cpp REST API server."
 
 # Install only the necessary RUNTIME system libraries
+# Note: cudnn is included in the cudnn-runtime base image
+# nsight-systems for optional deep profiling (NSYS_PROFILE=true)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends --allow-change-held-packages \
         ca-certificates \
         libgomp1 \
-        cudnn9-cuda-13-0 \
         libcublas-13-0 \
-        cuda-driver-dev-13-0 \
         cuda-cupti-13-0 \
-        cuda-nvtx-13-0 && \
+        cuda-nvtx-13-0 \
+        nsight-systems-2025.3.2 && \
     rm -rf /var/lib/apt/lists/*
 
 
@@ -98,7 +94,6 @@ ENV PATH=/usr/local/cuda/bin:${PATH}
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
 ENV CUDA_MODULE_LOADING=LAZY
 ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
-ENV CUDA_VISIBLE_DEVICES=0
 
 # Performance tuning for RTX 5090 (Blackwell, 32GB VRAM)
 ENV CUDA_LAUNCH_BLOCKING=0
@@ -115,8 +110,7 @@ ENV GGML_CUDA_MAX_STREAMS=1
 ENV GGML_CUDA_FORCE_SYNC=0
 
 
-# NVIDIA GPU settings
-ENV NVIDIA_VISIBLE_DEVICES=all
+# NVIDIA GPU settings (NVIDIA_VISIBLE_DEVICES set in docker-compose.yaml)
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
 ENV NVIDIA_REQUIRE_CUDA="cuda>=13.0"
 
