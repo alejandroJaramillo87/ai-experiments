@@ -36,7 +36,7 @@ echo
 
 # --- 2. Repository Optimizations Status ---
 echo "Repository optimizations status:"
-echo "Checking optimizations from docs/optimizations/cpu-ram/os-optimizations.md"
+echo "Checking optimizations from docs/optimizations/os/os-optimizations.md"
 echo
 
 # Initialize counters
@@ -70,16 +70,6 @@ check_status "Swap" "disabled" "$SWAP_VALUE"
 # CPU Governor
 CPU_GOV=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "unknown")
 check_status "CPU Governor" "performance" "$CPU_GOV"
-
-# Memory Locking
-MEMLOCK=$(ulimit -l)
-if [ "$MEMLOCK" = "unlimited" ]; then
-    print_ok "Memory locking: unlimited"
-    ((PASS_COUNT++))
-else
-    print_error "Memory locking: expected unlimited, got $MEMLOCK"
-    ((FAIL_COUNT++))
-fi
 
 # Huge Pages (1GB pages for large model loading)
 # Note: 1GB hugepages are configured via hugepages-1048576kB, not vm.nr_hugepages (which is 2MB pages)
@@ -181,14 +171,14 @@ if command -v nvidia-smi &> /dev/null; then
         ((PASS_COUNT++))
     fi
 
-    # Compute Mode (DEFAULT mode for optimal RTX 5090 performance)
-    COMPUTE_MODE=$(nvidia-smi --query-gpu=compute_mode --format=csv,noheader 2>/dev/null)
-    check_status "  Compute Mode" "Default" "$COMPUTE_MODE"
-
     # PCIe Generation
-    PCIE_GEN_MAX=$(nvidia-smi -q 2>/dev/null | grep -A 2 "GPU Link Info" | grep "Max" | head -1 | awk '{print $NF}')
-    PCIE_GEN_CURRENT=$(nvidia-smi -q 2>/dev/null | grep -A 2 "GPU Link Info" | grep "Current" | head -1 | awk '{print $NF}')
-    echo "  PCIe Generation: Current=$PCIE_GEN_CURRENT, Max=$PCIE_GEN_MAX"
+    PCIE_GEN_MAX=$(nvidia-smi -q 2>/dev/null | grep -A 5 "GPU Link Info" | grep "Max" | head -1 | awk -F: '{print $2}' | xargs)
+    PCIE_GEN_CURRENT=$(nvidia-smi -q 2>/dev/null | grep -A 5 "GPU Link Info" | grep "Current" | head -1 | awk -F: '{print $2}' | xargs)
+    if [ -n "$PCIE_GEN_CURRENT" ] && [ -n "$PCIE_GEN_MAX" ]; then
+        print_info "  PCIe Generation: Current=$PCIE_GEN_CURRENT, Max=$PCIE_GEN_MAX"
+    else
+        print_warn "  PCIe Generation: unable to detect"
+    fi
 
     # GPU IRQ Affinity Check
     GPU_IRQS=$(cat /proc/interrupts | grep -E "nvidia|gpu" 2>/dev/null | awk '{print $1}' | tr -d ':')
@@ -203,7 +193,7 @@ if command -v nvidia-smi &> /dev/null; then
             fi
         done
         if [ $IRQ_TOTAL -eq $IRQ_CORRECT ] && [ $IRQ_TOTAL -gt 0 ]; then
-            print_ok "  GPU IRQ affinity: cores 24-31"
+            print_ok "  GPU IRQ affinity: cores 28-31"
             ((PASS_COUNT++))
         else
             print_error "  GPU IRQ affinity: not optimized"
@@ -233,36 +223,30 @@ else
     echo "cuDNN: not detected via APT"
 fi
 
-# CUDA Environment Variables
+# Kernel Module Parameters - Config file verification
+# Note: NVIDIA proprietary driver doesn't expose params via /sys/module/nvidia/parameters/
+# Verify config file content instead (params applied at module load time)
 echo
-echo "CUDA Environment:"
-CUDA_ENV_COUNT=0
-CUDA_ENV_CORRECT=0
+echo "NVIDIA Kernel Module Parameters:"
 
-# Check each expected CUDA environment variable
-for var in CUDA_CACHE_DISABLE CUDA_CACHE_PATH CUDA_CACHE_MAXSIZE CUDA_DEVICE_ORDER CUDA_LAUNCH_BLOCKING CUDA_MODULE_LOADING; do
-    ((CUDA_ENV_COUNT++))
-    VAL=$(grep "^$var=" /etc/environment 2>/dev/null | cut -d'=' -f2)
-    if [ -n "$VAL" ]; then
-        ((CUDA_ENV_CORRECT++))
+NVIDIA_CONF="/etc/modprobe.d/nvidia-optimizations.conf"
+
+if [ -f "$NVIDIA_CONF" ]; then
+    print_ok "  Config file: nvidia-optimizations.conf present"
+    ((PASS_COUNT++))
+
+    # Check for Resizable BAR (the only required parameter)
+    if grep -q "NVreg_EnableResizableBar=1" "$NVIDIA_CONF" 2>/dev/null; then
+        print_ok "  NVreg_EnableResizableBar=1"
+        ((PASS_COUNT++))
+    else
+        print_error "  NVreg_EnableResizableBar=1: missing from config"
+        ((FAIL_COUNT++))
     fi
-done
-
-if [ $CUDA_ENV_CORRECT -eq $CUDA_ENV_COUNT ]; then
-    print_ok "  System CUDA variables: configured"
-    ((PASS_COUNT++))
 else
-    print_error "  System CUDA variables: $CUDA_ENV_CORRECT/$CUDA_ENV_COUNT configured"
+    print_error "  Config file: nvidia-optimizations.conf missing"
     ((FAIL_COUNT++))
-fi
-
-# Kernel Module Parameters
-if [ -f /etc/modprobe.d/nvidia-optimizations.conf ]; then
-    print_ok "  Kernel modules: nvidia-optimizations.conf present"
-    ((PASS_COUNT++))
-else
-    print_error "  Kernel modules: nvidia-optimizations.conf missing"
-    ((FAIL_COUNT++))
+    print_info "  See: docs/optimizations/os/os-optimizations.md Section 3"
 fi
 
 echo
@@ -352,35 +336,6 @@ echo "Transparent Huge Pages: $THP_ENABLED"
 # NUMA nodes
 NUMA_NODES=$(lscpu | grep "NUMA node(s):" | awk '{print $3}')
 echo "NUMA Nodes: $NUMA_NODES"
-
-# CPU isolation
-if grep -q "isolcpus" /proc/cmdline; then
-    ISOLCPUS=$(grep -oP 'isolcpus=\K[^ ]+' /proc/cmdline)
-    echo "CPU Isolation: $ISOLCPUS"
-else
-    echo "CPU Isolation: Not configured"
-fi
-
-# GPU Kernel Parameters
-echo "GPU Kernel Parameters:"
-grep -q "pcie_aspm=off" /proc/cmdline && print_ok "  pcie_aspm=off" || print_error "  pcie_aspm=off: missing"
-grep -q "nvidia-drm.modeset=1" /proc/cmdline && print_ok "  nvidia-drm.modeset=1" || print_error "  nvidia-drm.modeset=1: missing"
-grep -q "rcutree.rcu_idle_gp_delay=1" /proc/cmdline && print_ok "  rcutree.rcu_idle_gp_delay=1" || print_error "  rcutree.rcu_idle_gp_delay=1: missing"
-
-# BLAS Libraries
-echo -n "BLAS Libraries: "
-BLAS_FOUND=""
-if ldconfig -p 2>/dev/null | grep -q "libopenblas"; then
-    BLAS_FOUND="${BLAS_FOUND}OpenBLAS "
-fi
-if ldconfig -p 2>/dev/null | grep -q "libmkl_rt"; then
-    BLAS_FOUND="${BLAS_FOUND}MKL "
-fi
-if [ -z "$BLAS_FOUND" ]; then
-    echo "None detected"
-else
-    echo "$BLAS_FOUND"
-fi
 
 # Memory Allocator - Container Check (zen5_optimizer only)
 echo "Memory Allocator (CPU Container):"

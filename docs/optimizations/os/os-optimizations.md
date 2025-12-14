@@ -7,38 +7,20 @@ Latency optimizations target llama.cpp single-request inference; throughput opti
 
 - [Operating System Optimizations](#operating-system-optimizations)
   - [Table of Contents](#table-of-contents)
-  - [Implemented Optimizations](#implemented-optimizations)
-    - [1. Swap Disabled [IMPLEMENTED]](#1-swap-disabled-implemented)
-    - [2. CPU Governor - Performance Mode [IMPLEMENTED]](#2-cpu-governor---performance-mode-implemented)
-    - [3. Memory Locking [IMPLEMENTED]](#3-memory-locking-implemented)
-    - [4. Huge Pages [IMPLEMENTED]](#4-huge-pages-implemented)
-    - [5. Memory Allocator Tuning [TESTED - NOT BENEFICIAL]](#5-memory-allocator-tuning-tested---not-beneficial)
-  - [Complete sysctl.conf Configuration](#complete-sysctlconf-configuration)
-  - [Container Resource Allocation](#container-resource-allocation)
-    - [CPU Pinning](#cpu-pinning)
-    - [Memory Limits](#memory-limits)
-  - [Monitoring Commands](#monitoring-commands)
-    - [System Performance](#system-performance)
-    - [Verification Script](#verification-script)
+  - [CPU/RAM Optimizations](#cpuram-optimizations)
+    - [1. Swap Disabled \[IMPLEMENTED\]](#1-swap-disabled-implemented)
+    - [2. CPU Governor - Performance Mode \[IMPLEMENTED\]](#2-cpu-governor---performance-mode-implemented)
+    - [3. Huge Pages \[IMPLEMENTED\]](#3-huge-pages-implemented)
+    - [4. Memory Allocator Tuning \[TESTED - NOT BENEFICIAL\]](#4-memory-allocator-tuning-tested---not-beneficial)
+    - [5. System Memory Tuning \[IMPLEMENTED\]](#5-system-memory-tuning-implemented)
+    - [6. CPU Pinning \[IMPLEMENTED\]](#6-cpu-pinning-implemented)
   - [GPU Optimizations](#gpu-optimizations)
-    - [5. NVIDIA Driver Persistence Mode [IMPLEMENTED]](#5-nvidia-driver-persistence-mode-implemented)
-    - [6. GPU Power and Clock Management [PARTIALLY IMPLEMENTED - SEE WARNING]](#6-gpu-power-and-clock-management-partially-implemented---see-warning)
-    - [7. GPU Compute Mode [MODIFIED - DEFAULT MODE]](#7-gpu-compute-mode-modified---default-mode)
-    - [8. NVIDIA Kernel Module Parameters [IMPLEMENTED]](#8-nvidia-kernel-module-parameters-implemented)
-    - [9. GPU IRQ Affinity [IMPLEMENTED]](#9-gpu-irq-affinity-implemented)
-    - [10. CUDA System Environment [IMPLEMENTED]](#10-cuda-system-environment-implemented)
-    - [11. NVIDIA Multi-Process Service (MPS) [OPTIONAL]](#11-nvidia-multi-process-service-mps-optional)
-    - [12. Kernel Boot Parameters [IMPLEMENTED]](#12-kernel-boot-parameters-implemented)
-  - [GPU Monitoring and Verification](#gpu-monitoring-and-verification)
-    - [GPU Status Script](#gpu-status-script)
-    - [Complete Setup Script](#complete-setup-script)
-  - [RTX 5090 Specific Notes and Benchmark Results](#rtx-5090-specific-notes-and-benchmark-results)
-    - [Performance Findings](#performance-findings)
-    - [Pending Work](#pending-work)
-    - [Verification Commands](#verification-commands)
-  - [Security Considerations](#security-considerations)
+    - [1. NVIDIA Driver Persistence Mode \[IMPLEMENTED\]](#1-nvidia-driver-persistence-mode-implemented)
+    - [2. GPU Power and Clock Management \[PARTIALLY IMPLEMENTED\]](#2-gpu-power-and-clock-management-partially-implemented)
+    - [3. NVIDIA Kernel Module Parameters \[IMPLEMENTED\]](#3-nvidia-kernel-module-parameters-implemented)
+    - [4. GPU IRQ Affinity \[IMPLEMENTED\]](#4-gpu-irq-affinity-implemented)
 
-## Implemented Optimizations
+## CPU/RAM Optimizations
 
 ### 1. Swap Disabled [IMPLEMENTED]
 
@@ -88,96 +70,35 @@ sudo systemctl enable --now cpufreq-performance.service
 cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor | uniq
 ```
 
-### 3. Memory Locking [IMPLEMENTED]
+### 3. Huge Pages [IMPLEMENTED]
 
-**Status:** CONFIGURED IN CONTAINERS
+**Status:** IMPLEMENTED WITH CUSTOM 1GB HUGEPAGE WRAPPER
 
-Containers are configured with unlimited memory locking.
+Model weights are loaded into 1GB hugepages via LD_PRELOAD wrapper to reduce TLB pressure.
 
-**Docker Compose Configuration:**
-```yaml
-ulimits:
-  memlock:
-    soft: -1
-    hard: -1
-```
-
-**Host System Configuration:**
+**Host Configuration:**
 ```bash
-# Set system-wide limits
-sudo tee -a /etc/security/limits.conf << 'EOF'
-* soft memlock unlimited
-* hard memlock unlimited
-EOF
-```
-
-**Verification:**
-```bash
-# Check container limits
-docker exec llama-cpu-0 bash -c "ulimit -l"  # Should show: unlimited
-
-# Monitor locked memory on host
-watch -n 2 "cat /proc/meminfo | grep MemLocked"
-
-# Check container memory locking
-docker exec llama-cpu-0 cat /proc/1/status | grep VmLck
-```
-
-### 4. Huge Pages [IMPLEMENTED]
-
-**Status:** IMPLEMENTED WITH CUSTOM WRAPPER
-
-Enables 2MB huge pages for model loading to reduce memory management overhead.
-
-**Allocation:**
-```bash
-# Allocate huge pages for 3x 30GB models (90GB total)
-sudo sysctl vm.nr_hugepages=46080  # 46080 * 2MB = 90GB
+# Allocate 80 x 1GB hugepages (80GB total)
+echo 80 | sudo tee /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages
 
 # Make persistent in /etc/sysctl.conf
-echo "vm.nr_hugepages=46080" | sudo tee -a /etc/sysctl.conf
-```
-
-**Mount hugetlbfs:**
-```bash
-# Create mount point
-sudo mkdir -p /mnt/models-hugepages
-
-# Mount hugetlbfs
-sudo mount -t hugetlbfs -o pagesize=2M,size=30G none /mnt/models-hugepages
-
-# Add to /etc/fstab for persistence
-echo "none /mnt/models-hugepages hugetlbfs pagesize=2M,size=30G 0 0" | sudo tee -a /etc/fstab
-```
-
-**Model Loading:**
-```bash
-# Load model into huge pages
-sudo /scripts/optimizations/manage-hugepages-models.sh load <model.gguf>
-
-# Check status
-sudo /scripts/optimizations/manage-hugepages-models.sh status
-```
-
-**Verification:**
-```bash
-# Check huge pages allocation
-grep "^HugePages" /proc/meminfo
-
-# Expected output:
-# HugePages_Total:   46080  # 90GB total
-# HugePages_Free:    38267  # Available (varies based on usage)
-# HugePages_Rsvd:    0
-# HugePages_Surp:    0
-# Hugepagesize:      2048 kB
+echo "vm.nr_hugepages_mempolicy=80" | sudo tee -a /etc/sysctl.conf
 ```
 
 **Container Integration:**
-- Uses custom `hugepage_mmap_wrapper.so` via LD_PRELOAD
-- Automatically activated when MODEL_PATH points to `/hugepages/*`
-- Transparently loads hugetlbfs files into anonymous huge page memory
+- `libzen5_optimizer.so` intercepts mmap() calls for files >= 1GB
+- Allocates anonymous 1GB hugepages via `MAP_HUGETLB | MAP_HUGE_1GB`
+- Falls back to regular pages if allocation fails
 
-### 5. Memory Allocator Tuning [TESTED - NOT BENEFICIAL]
+**Verification:**
+```bash
+cat /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages
+# Should show: 80
+```
+
+**See:** `hugepages/src/memory/hugepage_wrapper.cpp` for implementation details.
+
+### 4. Memory Allocator Tuning [TESTED - NOT BENEFICIAL]
 
 **Status:** TESTED - CAUSED PERFORMANCE REGRESSION
 
@@ -208,25 +129,23 @@ export LD_PRELOAD="/app/libzen5_optimizer.so"
 **Recommendation:**
 For single-model, latency-focused workloads, glibc malloc is sufficient. jemalloc may benefit high-concurrency scenarios with many simultaneous requests, but this use case is better served by vLLM.
 
-## Complete sysctl.conf Configuration
+### 5. System Memory Tuning [IMPLEMENTED]
 
-**Full /etc/sysctl.conf settings for AI workloads:**
+**Status:** IMPLEMENTED
 
+Kernel memory management optimizations for AI workloads.
+
+**Configuration (/etc/sysctl.conf):**
 ```bash
 # AI Workstation Optimizations
 # AMD Ryzen 9950X + 128GB RAM
 
-# Huge Pages: 90GB for 3x 30GB models
-vm.nr_hugepages = 46080
-
 # Memory Management
 vm.swappiness = 0              # Disable swapping (swap is off)
 vm.zone_reclaim_mode = 0       # Single NUMA node optimization
-vm.overcommit_memory = 1       # Allow memory overcommit
-
-# Cache and I/O Tuning
+vm.overcommit_memory = 1       # Allow overcommit
 vm.vfs_cache_pressure = 50     # Favor application memory
-vm.dirty_ratio = 5              # Aggressive writeback
+vm.dirty_ratio = 5             # Aggressive writeback
 vm.dirty_background_ratio = 2  # Background writeback
 ```
 
@@ -235,61 +154,57 @@ vm.dirty_background_ratio = 2  # Background writeback
 sudo sysctl -p
 ```
 
-## Container Resource Allocation
+### 6. CPU Pinning [IMPLEMENTED]
 
-### CPU Pinning
-Containers use Docker's cpuset to pin to specific cores:
-- **llama-cpu-0**: Cores 0-7
-- **llama-cpu-1**: Cores 8-15  
-- **llama-cpu-2**: Cores 16-23
-- **System/GPU**: Cores 24-31
+**Status:** IMPLEMENTED
 
-### Memory Limits
-Each CPU container is limited to 32GB RAM.
+Docker container resource limits and CPU pinning for AI workloads.
 
-## Monitoring Commands
+**CPU Container (llama-cpu):**
 
-### System Performance
-```bash
-# CPU frequency monitoring
-watch -n 1 'grep "cpu MHz" /proc/cpuinfo | head -8'
+CPU pinning and OpenMP configuration for optimal inference performance:
 
-# Memory usage
-free -h
-
-# Per-container resources
-docker stats
+```yaml
+# docker-compose.yaml
+cpuset: "0-15"           # Pin to 16 cores (first CCX on Zen 5)
+deploy:
+  resources:
+    limits:
+      memory: 96G
+environment:
+  - THREADS=16
+  - THREADS_BATCH=16
 ```
 
-### Verification Script
+```dockerfile
+# Dockerfile - OpenMP thread binding
+ENV OMP_PROC_BIND=spread    # Spread threads across cores
+ENV OMP_PLACES=cores        # Bind to physical cores
+# OMP_NUM_THREADS set dynamically by entrypoint to match THREADS
+```
+
+**Why this works:**
+- `cpuset: "0-15"` pins container to first 16 cores (single CCX on 9950X)
+- `OMP_PROC_BIND=spread` distributes threads evenly across available cores
+- `OMP_PLACES=cores` ensures threads bind to physical cores, not hyperthreads
+- Keeps inference workload isolated from system processes on cores 16-31
+- 
+
+**Verification:**
 ```bash
-#!/bin/bash
-echo "=== OS Optimization Status ==="
+# Check CPU pinning
+docker exec llama-cpu taskset -p 1
 
-# Swap
-echo -n "Swap: "
-if [ $(swapon --show | wc -l) -eq 0 ]; then
-    echo "DISABLED"
-else
-    echo "ENABLED (should be disabled)"
-fi
+# Check memory limits
+docker stats --no-stream
 
-# CPU Governor
-echo -n "CPU Governor: "
-cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
-
-# Memory Locking
-echo -n "System memlock limit: "
-ulimit -l
-
-# Huge Pages
-echo "Huge Pages:"
-grep "^HugePages" /proc/meminfo
+# Verify OpenMP settings inside container
+docker exec llama-cpu env | grep OMP
 ```
 
 ## GPU Optimizations
 
-### 5. NVIDIA Driver Persistence Mode [IMPLEMENTED]
+### 1. NVIDIA Driver Persistence Mode [IMPLEMENTED]
 
 **Status:** IMPLEMENTED
 
@@ -322,7 +237,7 @@ sudo systemctl enable --now nvidia-persistenced.service
 nvidia-smi -q | grep "Persistence Mode"
 ```
 
-### 6. GPU Power and Clock Management [PARTIALLY IMPLEMENTED - SEE WARNING]
+### 2. GPU Power and Clock Management [PARTIALLY IMPLEMENTED]
 
 **Status:** PARTIALLY IMPLEMENTED
 
@@ -360,59 +275,29 @@ watch -n 1 'nvidia-smi --query-gpu=power.draw --format=csv,noheader'
 # Note: May not reach 600W if workload doesn't require it (437W typical for llama.cpp)
 ```
 
-### 7. GPU Compute Mode [MODIFIED - DEFAULT MODE]
-
-**Status:** IMPLEMENTED WITH MODIFICATIONS
-
-**WARNING: EXCLUSIVE_PROCESS mode degraded performance on RTX 5090**
-- Testing showed significant performance loss with EXCLUSIVE_PROCESS
-- DEFAULT mode provides optimal performance (287 tokens/sec)
-- Changed from original recommendation
-
-Configure GPU for optimal performance with DEFAULT compute mode.
-
-```bash
-# Set to DEFAULT mode for optimal performance
-sudo nvidia-smi -c DEFAULT
-
-# DO NOT use EXCLUSIVE_PROCESS - causes performance degradation
-# sudo nvidia-smi -c EXCLUSIVE_PROCESS  # DISABLED - reduces performance
-
-# Verify
-nvidia-smi --query-gpu=compute_mode --format=csv
-# Should show: Default
-```
-
-**Implementation Note:**
-The DEFAULT compute mode allows multiple processes to use the GPU simultaneously, which is beneficial for the RTX 5090's architecture and provides better overall throughput.
-
-### 8. NVIDIA Kernel Module Parameters [IMPLEMENTED]
+### 3. NVIDIA Kernel Module Parameters [IMPLEMENTED]
 
 **Status:** IMPLEMENTED
 
-Optimize NVIDIA driver behavior at kernel level.
+Enable Resizable BAR for full GPU VRAM access from CPU.
 
 ```bash
 # Create modprobe configuration
 sudo tee /etc/modprobe.d/nvidia-optimizations.conf << 'EOF'
-# RTX 5090 AI Inference Optimizations
-options nvidia NVreg_PreserveVideoMemoryAllocations=1  # Preserve VRAM across suspend
-options nvidia NVreg_TemporaryFilePath=/var/tmp        # Fast temp storage
-options nvidia NVreg_EnableResizableBar=1              # Enable Resizable BAR
-options nvidia NVreg_EnableGpuFirmware=1               # Enable GSP firmware
-options nvidia NVreg_TCEBypass=1                       # Bypass IOMMU for performance
-options nvidia NVreg_UsePageAttributeTable=1           # Better memory management
+# RTX 5090 - Enable Resizable BAR for full VRAM access
+options nvidia NVreg_EnableResizableBar=1
 EOF
 
 # Rebuild initramfs
 sudo update-initramfs -u
 
-# Apply without reboot (if possible)
-sudo modprobe -r nvidia_drm nvidia_modeset nvidia
-sudo modprobe nvidia
+# Reboot required for changes to take effect
 ```
 
-### 9. GPU IRQ Affinity [IMPLEMENTED]
+**Note:** Other parameters (EnableGpuFirmware, UsePageAttributeTable) are enabled by default on driver 580.x with RTX 5090.
+
+
+### 4. GPU IRQ Affinity [IMPLEMENTED]
 
 **Status:** IMPLEMENTED
 
@@ -422,7 +307,7 @@ Pin GPU interrupts to dedicated CPU cores for reduced latency.
 # Find GPU IRQ numbers
 GPU_IRQS=$(cat /proc/interrupts | grep -E "nvidia|gpu" | awk '{print $1}' | tr -d ':')
 
-# Pin to cores 24-31 (system/GPU cores)
+# Pin to cores 28-31 (GPU IRQ handling)
 for irq in $GPU_IRQS; do
     echo f0000000 | sudo tee /proc/irq/$irq/smp_affinity > /dev/null
 done
@@ -441,220 +326,7 @@ sudo chmod +x /usr/local/bin/set-gpu-irq-affinity.sh
 # Add to rc.local or systemd service
 ```
 
-### 10. CUDA System Environment [IMPLEMENTED]
 
-**Status:** IMPLEMENTED
-
-System-wide CUDA optimization variables.
-
-```bash
-# Add to /etc/environment
-sudo tee -a /etc/environment << 'EOF'
-# CUDA Optimizations
-CUDA_CACHE_DISABLE=0
-CUDA_CACHE_PATH=/tmp/cuda_cache
-CUDA_CACHE_MAXSIZE=2147483648
-CUDA_DEVICE_ORDER=PCI_BUS_ID
-CUDA_LAUNCH_BLOCKING=0
-CUDA_MODULE_LOADING=LAZY
-EOF
-
-# Create CUDA cache directory
-sudo mkdir -p /tmp/cuda_cache
-sudo chmod 1777 /tmp/cuda_cache
-```
-
-### 11. NVIDIA Multi-Process Service (MPS) [OPTIONAL]
-
-**Status:** OPTIONAL
-
-Enable for better GPU utilization with multiple containers.
-
-```bash
-# Create MPS directories
-sudo mkdir -p /tmp/nvidia-mps /tmp/nvidia-log
-
-# Create systemd service
-sudo tee /etc/systemd/system/nvidia-mps.service << 'EOF'
-[Unit]
-Description=NVIDIA MPS Control Daemon
-After=nvidia-persistenced.service
-
-[Service]
-Type=forking
-Environment="CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps"
-Environment="CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-log"
-ExecStart=/usr/bin/nvidia-cuda-mps-control -d
-ExecStop=/usr/bin/echo quit | /usr/bin/nvidia-cuda-mps-control
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Enable for multi-container workloads
-# sudo systemctl enable --now nvidia-mps.service
-```
-
-### 12. Kernel Boot Parameters [IMPLEMENTED]
-
-**Status:** IMPLEMENTED
-
-Optimize kernel for GPU workloads.
-
-```bash
-# Edit /etc/default/grub
-# Add to GRUB_CMDLINE_LINUX:
-# nvidia-drm.modeset=1     - Enable DRM kernel mode setting
-# pcie_aspm=off            - Disable PCIe power saving
-# rcutree.rcu_idle_gp_delay=1  - Reduce RCU delays
-
-sudo sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 nvidia-drm.modeset=1 pcie_aspm=off rcutree.rcu_idle_gp_delay=1"/' /etc/default/grub
-
-# Update GRUB
-sudo update-grub
-```
-
-## GPU Monitoring and Verification
-
-### GPU Status Script
-```bash
-#!/bin/bash
-echo "=== GPU Optimization Status ==="
-
-# Driver persistence
-echo -n "Persistence Mode: "
-nvidia-smi -q | grep "Persistence Mode" | head -1 | awk '{print $4}'
-
-# Power limits
-echo -n "Power Limit: "
-nvidia-smi -q | grep "Power Limit" | head -1 | awk '{print $4 " " $5}'
-
-# Clock locks
-echo "GPU Clocks:"
-nvidia-smi -q | grep -A 2 "Clocks"
-
-# Compute mode
-echo -n "Compute Mode: "
-nvidia-smi --query-gpu=compute_mode --format=csv,noheader
-
-# PCIe status
-echo "PCIe Status:"
-nvidia-smi -q | grep -A 4 "GPU Link Info"
-
-# Memory usage
-echo "GPU Memory:"
-nvidia-smi --query-gpu=memory.used,memory.free,memory.total --format=csv
-```
-
-### Complete Setup Script
-
-The actual implementation at `/usr/local/bin/optimize-gpu.sh`:
-```bash
-#!/bin/bash
-set -e
-
-echo "Starting GPU optimizations for RTX 5090 AI inference..."
-
-# Enable persistence mode
-echo "Enabling NVIDIA persistence mode..."
-nvidia-smi -pm 1
-
-# Set maximum power limit (600W for RTX 5090)
-echo "Setting power limit to 600W..."
-nvidia-smi -pl 600
-
-# Clock locking disabled - causes performance degradation on RTX 5090
-# echo "Locking GPU clocks to 2400-2550 MHz..."
-# nvidia-smi -lgc 2400,2550
-
-# Memory clock locking disabled - causes performance degradation on RTX 5090
-# echo "Locking memory clocks to 3002 MHz..."
-# nvidia-smi -lmc 3002
-
-# Compute mode set to DEFAULT for optimal performance
-echo "Setting compute mode to DEFAULT..."
-nvidia-smi -c DEFAULT
-
-# Set GPU IRQ affinity to cores 24-31
-echo "Setting GPU IRQ affinity..."
-GPU_IRQS=$(cat /proc/interrupts | grep -E "nvidia|gpu" | awk '{print $1}' | tr -d ':')
-if [ -n "$GPU_IRQS" ]; then
-    for irq in $GPU_IRQS; do
-        echo f0000000 > /proc/irq/$irq/smp_affinity 2>/dev/null || true
-    done
-    echo "GPU IRQs pinned to cores 24-31"
-else
-    echo "No GPU IRQs found to pin"
-fi
-
-# Create CUDA cache directory if it doesn't exist
-if [ ! -d /tmp/cuda_cache ]; then
-    mkdir -p /tmp/cuda_cache
-    chmod 1777 /tmp/cuda_cache
-    echo "Created CUDA cache directory"
-fi
-
-echo "GPU optimization complete!"
-echo ""
-echo "=== Current GPU Settings ==="
-nvidia-smi --query-gpu=persistence_mode,power.limit,clocks.gr,clocks.mem,compute_mode --format=csv
-echo ""
-echo "=== PCIe Status ==="
-nvidia-smi -q | grep -A 4 "GPU Link Info"
-```
-
-## RTX 5090 Specific Notes and Benchmark Results
-
-### Performance Findings
-
-**Benchmark Results (llama.cpp with Qwen2.5-32B-Instruct Q4):**
-- **Baseline**: 287.37 tokens/sec
-- **With clock locking + EXCLUSIVE_PROCESS**: 178.71 tokens/sec (-38% performance)
-- **Optimized (no clock locking, DEFAULT mode)**: 287.46 tokens/sec (full performance)
-
-**Key Discoveries:**
-1. **Clock Locking Harmful**: The RTX 5090 requires dynamic frequency scaling for optimal performance. Locking clocks at any frequency causes significant performance degradation.
-
-2. **Compute Mode Impact**: EXCLUSIVE_PROCESS mode reduces performance. DEFAULT mode allows better GPU utilization.
-
-3. **Power Draw**: Typical workloads draw ~437W, not reaching the 600W limit. This is normal as the GPU scales power based on workload demands.
-
-4. **Beneficial Optimizations**:
-   - NVIDIA persistence mode (reduces CUDA init time)
-   - Power limit setting (allows max performance when needed)
-   - IRQ affinity (reduces interrupt latency)
-   - CUDA environment variables
-   - Kernel module parameters
-
-### Pending Work
-
-**Waiting for CUDA 13 Support:**
-- vLLM does not yet support CUDA 13 (required for comprehensive benchmarking)
-- Text Generation Inference (TGI) also lacks CUDA 13 support
-- Once available, comprehensive GPU benchmarking will be performed
-
-### Verification Commands
-
-```bash
-# Quick status check
-nvidia-smi --query-gpu=persistence_mode,power.limit,compute_mode --format=csv
-
-# Full optimization verification
-/scripts/utils/dependency_check.sh
-
-# Performance benchmark
-python /scripts/benchmark.py --label "current"
-```
-
-## Security Considerations
-
-All optimizations maintain container isolation:
-- CPU pinning via cpuset (not isolcpus)
-- Memory locking within container limits
-- No privileged access required for containers
-- Read-only container filesystems
-- GPU access controlled via device cgroups
 
 ---
 

@@ -11,11 +11,16 @@ This documentation provides detailed BIOS/UEFI firmware configuration settings s
 - [BIOS Optimizations Guide](#bios-optimizations-guide)
   - [Table of Contents](#table-of-contents)
   - [Implementation Overview](#implementation-overview)
+    - [Latency vs Throughput: A Critical Trade-off](#latency-vs-throughput-a-critical-trade-off)
+  - [Production-Validated Configuration](#production-validated-configuration)
+    - [Validated CPU Settings](#validated-cpu-settings)
+    - [Validated Memory Settings](#validated-memory-settings)
+    - [Benchmark Validation Results](#benchmark-validation-results)
   - [BIOS Performance Optimizations](#bios-performance-optimizations)
     - [CPU Performance Configuration](#cpu-performance-configuration)
     - [Memory Performance Optimization](#memory-performance-optimization)
-    - [System Configuration Settings](#system-configuration-settings)
-  - [OS Performance Optimizations](#os-performance-optimizations)
+    - [AVX-512 Optimization (Zen 5 Advantage)](#avx-512-optimization-zen-5-advantage)
+    - [GPU Performance Configuration](#gpu-performance-configuration)
   - [Reference Implementation](#reference-implementation)
 
 ## Implementation Overview
@@ -101,10 +106,7 @@ Advanced CPU configuration for optimal AI inference performance, maximizing proc
   - **Purpose**: Maximizes sustained performance for 12-core AI workload
   - **Configuration**: 
     - **PBO Mode**: `Advanced`
-    - **PBO Limits**: `Motherboard` (or manual values below)
-    - **PPT (Package Power)**: `200W` (optimized for 12-core focus)
-    - **TDC (Thermal Design Current)**: `160A`
-    - **EDC (Electrical Design Current)**: `225A`
+    - **PBO Limits**: `Motherboard` 
     - **PBO Scalar**: `1X` (Auto) - critical for longevity
   - **Benefit**: Provides maximum power headroom for sustained AI inference
 
@@ -214,16 +216,6 @@ Zen 5's revolutionary native 512-bit AVX-512 implementation provides massive AI 
   - **Impact**: Massive performance gains in PyTorch, TensorFlow, llama.cpp
   - **Efficiency**: No significant power/thermal penalty on Zen 5
 
-- **AVX-512 VNNI**: `Enabled`
-  - **Purpose**: Accelerates convolution and inner-product operations
-  - **Benefit**: Optimized for deep learning mathematical operations
-  - **Target**: Neural network inference and training workloads
-
-- **bfloat16 Optimization**: `Auto`
-  - **Purpose**: Enhanced support for AI-optimized data types
-  - **Benefit**: Balance between FP32 range and FP16 efficiency
-  - **Configuration**: Automatic optimization for AI frameworks
-
 **Latency-Focused Memory Benefits:**
 - **Model Loading**: Fast initial model load for quick first response
 - **Parameter Streaming**: Optimized bandwidth for sequential token generation
@@ -267,40 +259,6 @@ Firmware-level GPU configuration for maximum AI inference throughput with RTX 50
 - **Compute Dedication**: GPU resources preserved for AI workloads
 - **Transfer Efficiency**: Resizable BAR improves model loading speed
 
-### Advanced System Configuration
-
-**Platform Optimization for Single-Model Latency**
-System-level configuration settings optimizing the AMD X870E platform for minimum-latency AI inference with 12-core dedication strategy.
-
-**System Configuration Settings:**
-- **ASUS AI Cache Boost**: `Enabled` (ASUS X870E boards)
-  - **Purpose**: One-click FCLK optimization to 2100MHz for AI workloads
-  - **Benefit**: Automatic interconnect optimization with 15% LLM performance gain
-  - **Alternative**: Manual FCLK setting to 2100MHz on non-ASUS boards
-  - **Compensation**: Increase PPT by 15-20W to account for higher I/O die power
-
-- **Samsung/AMD Eco Mode**: `Disabled`
-  - **Purpose**: Disables Samsung SSD and AMD platform power-saving features
-  - **Benefit**: Maintains consistent storage and system performance under AI workloads
-  - **Impact**: Optimal storage throughput for model loading and data processing
-
-- **Initial Display Output**: `IGD Video`
-  - **Purpose**: Routes initial display output through integrated graphics (AMD RDNA)
-  - **Benefit**: Preserves RTX 5090 resources exclusively for AI computational tasks
-  - **Configuration**: Enables headless GPU operation for AI inference optimization
-
-**Platform Integration Benefits:**
-- **GPU Resource Preservation**: RTX 5090 resources dedicated entirely to AI computation
-- **Storage Performance**: Consistent NVMe SSD performance for model and dataset access
-- **System Efficiency**: Reduced platform overhead for maximum AI workload resource allocation
-- **Power Management**: Optimal power delivery prioritizing computational performance
-
-**AI Development Optimization:**
-- **Headless Operation**: RTX 5090 available exclusively for CUDA-based AI inference
-- **Resource Allocation**: Maximum system resources dedicated to AI computational tasks
-- **Storage Consistency**: Reliable high-performance storage access for AI development workflows
-- **Platform Stability**: Optimized system configuration for sustained AI development operations
-
 
 ## Reference Implementation
 
@@ -324,71 +282,6 @@ Verify optimization success through:
 **Optimization Philosophy:**
 All optimizations prioritize **inference latency** over throughput. These settings are specifically designed for interactive chatbot applications where response time matters more than handling multiple simultaneous requests. The configuration trades multi-request capacity for single-request speed.
 
-## Benchmark Results
-
-### Test Configuration
-- **Model**: Qwen3-Coder-30B-A3B-Instruct (IQ4_XS quantization)
-- **Test Suite**: Six workload patterns for comprehensive validation
-- **Methodology**: 5 iterations per test for consistency measurement
-- **Platform**: llama.cpp with 12 dedicated cores
-
-### Performance Improvements by Workload Type
-
-| Workload | Before (tok/s) | After (tok/s) | Improvement |
-|----------|----------------|---------------|-------------|
-| Memory Sequential | 28.19 | 35.14 | +24.7% |
-| Cache Loops | 28.32 | 35.44 | +25.1% |
-| Compute Arithmetic | 27.29 | 35.50 | +30.1% |
-| Memory Structured | 28.22 | 35.50 | +25.8% |
-| Throughput Sustained | 28.29 | 35.52 | +25.6% |
-| Memory Bandwidth | 28.20 | 35.52 | +26.0% |
-
-### Consistency Improvements
-- **Before**: Standard deviation 0.08-0.84 across workloads
-- **After**: Standard deviation 0.08-0.28 across workloads
-- **Result**: 59% reduction in performance variance
-
-**Validation Methodology:**
-Rigorous testing protocol for stability validation:
-
-**Stage 1: Basic Stability**
-- Boot stability and 30-minute idle test
-- Check FCLK: Ensure 2100MHz in monitoring tools
-
-**Stage 2: All-Core Thermal**
-- Cinebench R23 30-minute loop
-- Monitor temperatures <85°C target
-- Validate sustained boost clocks
-
-**Stage 3: Memory/Fabric Stability**
-- TestMem5 or Karhu RAM Test overnight
-- Validates FCLK 2100MHz stability
-- Zero errors required for production use
-
-**Stage 4: Per-Core Validation**
-- CoreCycler with y-cruncher (19-ZN2 Kagari mode)
-- Tests individual core stability at max boost
-- Validates Curve Optimizer settings
-- 30-60 minutes per core for confidence
-
-**Performance Monitoring:**
-- `htop` and `nvtop` for CPU utilization patterns
-- AI framework performance metrics during model inference
-- Token generation latency and consistency measurements
-- First-token latency optimization validation
-
-### Production Validation Notes
-
-**Key Findings from Production Testing:**
-1. **Conservative settings work**: Curve Optimizer at -15 achieved excellent 26% gains
-2. **FCLK 2100 MHz stable**: No SoC voltage adjustment required on test system
-3. **Memory Context Restore disabled**: More aggressive than Auto, but stable
-4. **Consistency matters**: Reduced variance is as valuable as raw performance
-
-**Potential for Further Optimization:**
-- After extended stability testing, Curve Optimizer could be pushed to -20
-- Curve Shaper Medium Frequency could potentially reach -30
-- These adjustments may yield additional 3-5% improvement
 
 ---
 

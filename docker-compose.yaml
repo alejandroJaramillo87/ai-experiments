@@ -6,16 +6,10 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    cap_add:
-      - IPC_LOCK
     deploy:
       resources:
         limits:
           memory: 96G
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
     build:
       context: .
       dockerfile: docker/llama-cpu/Dockerfile.cpu
@@ -51,10 +45,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
     build:
       context: .
       dockerfile: docker/llama-gpu/Dockerfile.llama-gpu
@@ -100,6 +90,7 @@ services:
       start_period: 180s # Give the GPU model time to load into VRAM 
 
   # vLLM GPU Service - Optimized for RTX 5090
+  # Note: No memlock/IPC_LOCK needed - vLLM uses pure GPU inference (PagedAttention in VRAM)
   vllm-gpu:
     init: true  # Use tini as PID 1 for proper signal forwarding (required for nsys)
     # user: "${UID:-1000}:${GID:-1000}"  # Match host user for volume write access (nsys)
@@ -107,10 +98,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
     build:
       context: .
       dockerfile: docker/vllm-gpu/Dockerfile.vllm-gpu
@@ -188,10 +175,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
     build:
       context: .
       dockerfile: docker/comfyui-flux/Dockerfile.comfyui-flux
