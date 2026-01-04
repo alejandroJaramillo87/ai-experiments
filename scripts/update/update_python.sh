@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [OPTIONS]"
             echo "Options:"
             echo "  --check    Only check environment, don't update"
-            echo "  --pytorch  Reinstall PyTorch with CUDA 12.9 support"
+            echo "  --pytorch  Reinstall PyTorch with CUDA 13.0 support"
             echo "  --help     Show this help message"
             echo
             echo "Examples:"
@@ -133,12 +133,12 @@ if [ -f "poetry.lock" ]; then
 fi
 
 if $UPDATE_PYTORCH; then
-    echo "Reinstalling PyTorch with CUDA 12.9 support..."
+    echo "Reinstalling PyTorch with CUDA 13.0 support..."
 
     # Get the CUDA index URL from pyproject.toml if defined
     CUDA_URL=$(grep -A1 'pytorch_cuda' "$PROJECT_ROOT/pyproject.toml" | grep 'url = ' | cut -d'"' -f2)
     if [ -z "$CUDA_URL" ]; then
-        CUDA_URL="https://download.pytorch.org/whl/cu129"
+        CUDA_URL="https://download.pytorch.org/whl/cu130"
     fi
 
     echo "Using PyTorch index: $CUDA_URL"
@@ -158,10 +158,10 @@ else
 
     # Check if PyTorch is using the wrong CUDA version
     PYTORCH_VERSION=$(poetry run python -c "import torch; print(torch.__version__)" 2>/dev/null || echo "")
-    if [[ "$PYTORCH_VERSION" == *"cu128"* ]] || [[ "$PYTORCH_VERSION" == *"cu121"* ]]; then
+    if [[ "$PYTORCH_VERSION" == *"cu128"* ]] || [[ "$PYTORCH_VERSION" == *"cu129"* ]] || [[ "$PYTORCH_VERSION" == *"cu121"* ]]; then
         echo
         echo "WARNING: PyTorch is using an older CUDA version: $PYTORCH_VERSION"
-        echo "Run '$0 --pytorch' to update to CUDA 12.9"
+        echo "Run '$0 --pytorch' to update to CUDA 13.0"
     fi
 fi
 

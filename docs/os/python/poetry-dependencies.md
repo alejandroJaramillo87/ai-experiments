@@ -351,23 +351,23 @@ PyTorch requires special handling due to CUDA version dependencies:
 ```python
 # NOT in pyproject.toml dependencies
 # Installed manually via pip with CUDA version
-torch = "2.3.0+cu129"  # CUDA 12.9 version
+torch = "2.9.0+cu130"  # CUDA 13.0 version
 ```
 
 ### CUDA Compatibility
 
-Our setup uses CUDA 13.0, but PyTorch currently supports up to CUDA 12.9:
+Our setup uses CUDA 13.0 with matching PyTorch support:
 
 | Component | Version | Compatibility |
 |-----------|---------|--------------|
 | **System CUDA** | 13.0.88 | Latest |
-| **PyTorch CUDA** | 12.9 | Backward compatible |
+| **PyTorch CUDA** | 13.0 | Full compatibility |
 | **cuDNN** | 9.13.0 | Cross-compatible |
 
 **Installation Process:**
 ```bash
 # Manual installation with correct CUDA version
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
 ```
 
 See [pytorch_cuda_update_guide.md](pytorch_cuda_update_guide.md) for detailed instructions.
@@ -489,7 +489,7 @@ poetry export -f requirements.txt --output requirements.txt
 # Error: "CUDA error: no kernel image available"
 # Solution: Reinstall PyTorch with correct CUDA version
 pip uninstall torch torchvision torchaudio
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
 ```
 
 #### 2. Poetry Lock Conflicts

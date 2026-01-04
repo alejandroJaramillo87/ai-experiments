@@ -149,7 +149,7 @@ poetry env use ~/.pyenv/versions/3.12.11/envs/ai-tools/bin/python
 Configure PyTorch repository:
 
 ```bash
-poetry config repositories.pytorch_cuda_cu129.url https://download.pytorch.org/whl/cu129
+poetry config repositories.pytorch_cuda_cu130.url https://download.pytorch.org/whl/cu130
 ```
 
 Configure Poetry settings:
@@ -170,7 +170,7 @@ poetry install
 Install PyTorch with CUDA support:
 
 ```bash
-poetry add torch torchvision torchaudio --source pytorch_cuda_cu129
+poetry add torch torchvision torchaudio --source pytorch_cuda_cu130
 ```
 
 ## Verify Installation
@@ -272,7 +272,7 @@ pyenv doctor  # Check for issues
 Verify PyTorch installation:
 ```bash
 poetry show torch
-# Check version includes +cu129
+# Check version includes +cu130
 ```
 
 ---

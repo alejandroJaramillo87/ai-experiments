@@ -15,9 +15,9 @@ python = ">=3.12,<3.13" # Ensure you have Python 3.12 installed via pyenv
 # Core AI/ML Frameworks and Utilities
 # PyTorch packages are managed manually via pip due to Poetry limitations with custom indexes
 # Install with: ./scripts/update/update_python.sh --pytorch
-# torch = {version = ">=2.3.0,<3.0.0", source = "pytorch_cuda_cu129"}
-# torchvision = {version = ">=0.18.0,<1.0.0", source = "pytorch_cuda_cu129"}
-# torchaudio = {version = ">=2.3.0,<3.0.0", source = "pytorch_cuda_cu129"}
+# torch = {version = ">=2.9.0,<3.0.0", source = "pytorch_cuda_cu130"}
+# torchvision = {version = ">=0.24.0,<1.0.0", source = "pytorch_cuda_cu130"}
+# torchaudio = {version = ">=2.9.0,<3.0.0", source = "pytorch_cuda_cu130"}
 transformers = ">=4.51.1,<4.52.0"
 datasets = ">=3.1.0,<4.0.0"
 accelerate = ">=1.8.1,<2.0.0"
@@ -73,8 +73,8 @@ build-backend = "poetry.core.masonry.api"
 
 # Define the custom source for PyTorch
 [[tool.poetry.source]]
-name = "pytorch_cuda_cu129" # Give it a descriptive name
-url = "https://download.pytorch.org/whl/cu129"
+name = "pytorch_cuda_cu130" # Give it a descriptive name
+url = "https://download.pytorch.org/whl/cu130"
 priority = "explicit" 
 
 # Add NVIDIA PyPI source

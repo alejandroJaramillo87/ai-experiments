@@ -40,16 +40,16 @@ Comment out PyTorch packages in your `pyproject.toml`:
 # Core AI/ML Frameworks and Utilities
 # PyTorch packages are managed manually via pip due to Poetry limitations with custom indexes
 # Install with: ./scripts/update/update_python.sh --pytorch
-# torch = {version = ">=2.3.0,<3.0.0", source = "pytorch_cuda_cu129"}
-# torchvision = {version = ">=0.18.0,<1.0.0", source = "pytorch_cuda_cu129"}
-# torchaudio = {version = ">=2.3.0,<3.0.0", source = "pytorch_cuda_cu129"}
+# torch = {version = ">=2.9.0,<3.0.0", source = "pytorch_cuda_cu130"}
+# torchvision = {version = ">=0.24.0,<1.0.0", source = "pytorch_cuda_cu130"}
+# torchaudio = {version = ">=2.9.0,<3.0.0", source = "pytorch_cuda_cu130"}
 ```
 
 Keep the repository source for documentation purposes:
 ```toml
 [[tool.poetry.source]]
-name = "pytorch_cuda_cu129"
-url = "https://download.pytorch.org/whl/cu129"
+name = "pytorch_cuda_cu130"
+url = "https://download.pytorch.org/whl/cu130"
 priority = "explicit"
 ```
 
@@ -59,14 +59,14 @@ priority = "explicit"
 
 When a new CUDA version becomes available, update the URL in the commented sections:
 ```toml
-# For CUDA 13.0 (when available):
-# torch = {version = ">=2.3.0,<3.0.0", source = "pytorch_cuda_cu130"}
-# torchvision = {version = ">=0.18.0,<1.0.0", source = "pytorch_cuda_cu130"}
-# torchaudio = {version = ">=2.3.0,<3.0.0", source = "pytorch_cuda_cu130"}
+# For CUDA 13.1 (when available):
+# torch = {version = ">=2.10.0,<3.0.0", source = "pytorch_cuda_cu131"}
+# torchvision = {version = ">=0.25.0,<1.0.0", source = "pytorch_cuda_cu131"}
+# torchaudio = {version = ">=2.10.0,<3.0.0", source = "pytorch_cuda_cu131"}
 
 [[tool.poetry.source]]
-name = "pytorch_cuda_cu130"
-url = "https://download.pytorch.org/whl/cu130"
+name = "pytorch_cuda_cu131"
+url = "https://download.pytorch.org/whl/cu131"
 priority = "explicit"
 ```
 
@@ -101,11 +101,11 @@ Or manually:
 poetry run pip uninstall torch torchvision torchaudio -y
 
 # Install PyTorch from the correct CUDA index
-# For CUDA 12.9:
-poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129
-
-# For CUDA 13.0 (when available):
+# For CUDA 13.0:
 poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
+
+# For CUDA 13.1 (when available):
+poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu131
 ```
 
 ## Verification
@@ -124,7 +124,7 @@ if torch.cuda.is_available():
 "
 ```
 
-Expected output should show the new CUDA version, e.g., `2.8.0+cu129` or `2.x.x+cu130`.
+Expected output should show the new CUDA version, e.g., `2.9.0+cu130` or `2.x.x+cu131`.
 
 ## Important Discovery: Poetry Update Behavior
 
@@ -158,9 +158,9 @@ Even after updating pyproject.toml, Poetry shows this error during installation.
 
 ### Issue: CUDA version mismatch warnings
 
-System has CUDA 13.0 but PyTorch uses CUDA 12.9.
+System has CUDA 13.1 but PyTorch uses CUDA 13.0.
 
-**Solution**: This is usually fine due to CUDA's backward compatibility. CUDA 13.0 can run binaries built for CUDA 12.x.
+**Solution**: This is usually fine due to CUDA's backward compatibility. CUDA 13.1 can run binaries built for CUDA 13.0.
 
 ### Issue: GPU not detected after update
 
@@ -180,7 +180,8 @@ Common index URLs:
 - CUDA 12.1: `https://download.pytorch.org/whl/cu121`
 - CUDA 12.8: `https://download.pytorch.org/whl/cu128`
 - CUDA 12.9: `https://download.pytorch.org/whl/cu129`
-- CUDA 13.0: `https://download.pytorch.org/whl/cu130` (when available)
+- CUDA 13.0: `https://download.pytorch.org/whl/cu130`
+- CUDA 13.1: `https://download.pytorch.org/whl/cu131` (when available)
 
 ## Quick Reference
 
@@ -189,12 +190,12 @@ Common index URLs:
 nvcc --version  # System CUDA
 poetry run python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.version.cuda}')"
 
-# Update PyTorch to CUDA 12.9 (current)
+# Update PyTorch to CUDA 13.0 (current)
 ./scripts/update/update_python.sh --pytorch
 
 # Manual update to specific CUDA version
 poetry run pip uninstall torch torchvision torchaudio -y
-poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129
+poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
 
 # Fix after Poetry downgrades CUDA packages
 ./scripts/update/update_python.sh --pytorch
@@ -216,12 +217,12 @@ poetry add accelerate@latest
 2. **Commenting out PyTorch in pyproject.toml is the best solution** - This prevents Poetry from interfering with manual PyTorch installation
 3. **Poetry will downgrade CUDA packages** - Running `poetry update` or `poetry install` will downgrade CUDA packages even when PyTorch is commented out
 4. **Always reinstall PyTorch after Poetry commands** - Use `./scripts/update/update_python.sh --pytorch` after any Poetry operations
-5. **System CUDA and PyTorch CUDA versions can differ** - CUDA 13.0 system works fine with PyTorch CUDA 12.9 due to backward compatibility
+5. **System CUDA and PyTorch CUDA versions can differ** - CUDA 13.1 system works fine with PyTorch CUDA 13.0 due to backward compatibility
 
 ## Notes
 
 - Always backup poetry.lock before updates: `cp poetry.lock poetry.lock.backup`
 - The manual pip installation method is the ONLY reliable way to manage PyTorch CUDA versions
-- CUDA backward compatibility allows newer system CUDA (13.0) with older PyTorch CUDA (12.9)
+- CUDA backward compatibility allows newer system CUDA (13.1) with older PyTorch CUDA (13.0)
 - Check PyTorch's official site for the latest supported CUDA versions
 - PyTorch typically lags 1-2 versions behind the latest CUDA release
