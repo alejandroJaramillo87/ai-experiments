@@ -11,8 +11,6 @@ System optimizations for LLM inference on AMD Ryzen 9950X + RTX 5090: latency-fo
   - [Files](#files)
     - [bios/](#bios)
     - [os/](#os)
-    - [gpu/](#gpu)
-    - [benchmark-guide.md](#benchmark-guidemd)
   - [Implementation Status](#implementation-status)
   - [Quick Verification](#quick-verification)
   - [Container Integration](#container-integration)
@@ -31,11 +29,11 @@ This repository implements two distinct optimization strategies based on inferen
 For interactive chatbot applications prioritizing single-request response time:
 
 **llama-cpu** (port 8001):
-- **12 dedicated cores** (0-11) for single model instance
+- **16 dedicated cores** (0-15) for single model instance
 - **CPU optimizations**: Huge pages, C-states disabled, memory locking
 - **Result**: 35 tokens/sec with 26% latency improvement
 
-**llama-gpu** (port 8004):
+**llama-gpu** (port 8002):
 - **RTX 5090** for single-request GPU inference
 - **GPU optimizations**: Persistence mode, DEFAULT compute mode, no clock locking
 - **Result**: 287 tokens/sec optimal performance
@@ -43,7 +41,7 @@ For interactive chatbot applications prioritizing single-request response time:
 Both llama.cpp services optimize for minimum first-token latency and consistent response times.
 
 ### Throughput Optimization (vLLM)
-**vllm-gpu** (port 8005):
+**vllm-gpu** (port 8003):
 - **RTX 5090** for batch serving and concurrent requests
 - **Optimizations**: CUDA graphs, tensor cores, FP8 support, memory pools
 - **Goal**: Maximum requests/second for API endpoints
@@ -54,8 +52,6 @@ System optimizations are organized by component:
 
 - **bios/** - BIOS firmware settings and benchmark results
 - **os/** - Operating system and memory optimizations
-- **gpu/** - GPU-specific performance tuning
-- **experiments/** - Experimental and testing configurations
 
 ## Files
 
@@ -65,7 +61,7 @@ System optimizations are organized by component:
   - Memory performance (DDR5-6000 with power-down disabled)
   - FCLK 2100 MHz for interconnect optimization
   - Single-model optimization focus
-- **benchmark_results_*.json** - Benchmark data showing 26% improvement
+- **cpu_benchmark_results_*.json** - Benchmark data showing 26% improvement
 
 ### os/
 - **os-optimizations.md** - Host operating system optimizations for containerized workloads
@@ -73,24 +69,6 @@ System optimizations are organized by component:
   - CPU governor (performance mode)
   - Memory locking configuration
   - CPU pinning via Docker cpuset
-- **hugepages-explicit.md** - Explicit huge pages implementation using MAP_HUGETLB
-  - Automatic huge page allocation for models larger than 1GB via wrapper
-  - No special filesystem required
-  - Approximately 35 tokens/sec performance with optimizations
-
-### gpu/
-- **gpu-optimizations.md** - RTX 5090 specific optimizations
-  - CUDA configuration and tuning
-  - GPU memory management
-  - Multi-GPU scaling considerations
-  - **Important**: Clock locking causes 38% performance degradation on RTX 5090
-  - **Note**: vLLM sections focus on throughput optimization, different from llama.cpp latency goals
-
-### benchmark-guide.md
-Performance benchmarking tool for optimization validation.
-- Measures tokens per second
-- Multiple test prompts for different workloads
-- JSON and human-readable output
 
 ## Implementation Status
 
@@ -101,7 +79,7 @@ Performance benchmarking tool for optimization validation.
 | Swap disabled | DONE | `free -h` shows Swap: 0 |
 | CPU governor | DONE | `cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor` |
 | Memory locking | DONE | `docker exec <container> ulimit -l` |
-| CPU pinning (12 cores) | DONE | `docker inspect llama-cpu | grep CpusetCpus` should show "0-11" |
+| CPU pinning (16 cores) | DONE | `docker inspect llama-cpu | grep CpusetCpus` should show "0-15" |
 | Huge pages (90GB) | DONE | `grep ^HugePages_Total /proc/meminfo` shows 46080 |
 | THP disabled | DONE | `cat /sys/kernel/mm/transparent_hugepage/enabled` |
 
@@ -137,19 +115,14 @@ cat /sys/kernel/mm/transparent_hugepage/enabled
 Optimizations are applied to containers via:
 
 1. Docker Compose configuration (`docker-compose.yaml`)
-   - Single CPU service with 12 dedicated cores (cpuset: "0-11")
+   - Single CPU service with 16 dedicated cores (cpuset: "0-15")
    - Optimized memory allocation (96GB for single high-performance instance)
    - Environment variables from .env file
 
 2. Explicit huge pages (`docker/llama-cpu/`)
-   - hugepage_mmap_wrapper.so uses MAP_HUGETLB for models larger than 1GB
+   - libzen5_optimizer.so uses MAP_HUGETLB for models larger than 1GB
    - No special filesystem or model copying required
    - Direct huge page allocation, not THP
-
-3. Performance testing (`scripts/`)
-   - benchmark.py for measuring latency and tokens/second
-   - Focus on first-token latency and response time consistency
-   - Validated 26% performance improvement with optimizations
 
 ## System Configuration
 
@@ -193,12 +166,9 @@ Validated improvements with optimizations enabled:
 
 - bios/bios-optimizations.md - Detailed BIOS configuration guide
 - os/os-optimizations.md - Operating system tuning
-- os/hugepages-explicit.md - Memory optimization details
-- gpu/gpu-optimizations.md - GPU performance tuning
 - docker-compose.yaml - Container orchestration
-- docker/llama-cpu/Dockerfile.llama-cpu - Latency-optimized CPU container
-- scripts/benchmark.py - Latency measurement tool
+- docker/llama-cpu/Dockerfile.cpu - Latency-optimized CPU container
 
 ---
 
-*Last Updated: 2025-09-23*
+*Last Updated: 2026-01-03*

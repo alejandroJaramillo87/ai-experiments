@@ -1,8 +1,8 @@
 # AI Engineering GPU Docker Implementation
 
-Explanation of the RTX 5090 Blackwell optimized Dockerfile for GPU-accelerated AI model inference on the AI workstation, detailing the multi-stage build process, CUDA 13.0.1 integration, and Blackwell architecture compilation.
+Explanation of the RTX 5090 Blackwell optimized Dockerfile for GPU-accelerated AI model inference on the AI workstation, detailing the multi-stage build process, CUDA 13.0.2 integration, and Blackwell architecture compilation.
 
-> Note: This document explains the actual implementation in `docker/Dockerfile.llama-gpu`. The Dockerfile uses CUDA 13.0.1 with Blackwell sm_120 architecture targeting for RTX 5090 GPU acceleration.
+> Note: This document explains the actual implementation in `docker/llama-gpu/Dockerfile.llama-gpu`. The Dockerfile uses CUDA 13.0.2 with cuDNN and Blackwell sm_120 architecture targeting for RTX 5090 GPU acceleration.
 
 ## Table of Contents
 
@@ -21,24 +21,32 @@ Explanation of the RTX 5090 Blackwell optimized Dockerfile for GPU-accelerated A
     - [GPU Performance Tuning](#gpu-performance-tuning)
     - [Security Configuration](#security-configuration)
     - [Application Deployment](#application-deployment)
+  - [Entrypoint Configuration](#entrypoint-configuration)
+    - [Basic Environment Variables](#basic-environment-variables)
+    - [GPU/CPU Split Configuration](#gpucpu-split-configuration)
+    - [Advanced Server Features](#advanced-server-features)
+    - [Nsight Systems Profiling](#nsight-systems-profiling)
+    - [Server Flags](#server-flags)
   - [GPU Performance Optimization Strategy](#gpu-performance-optimization-strategy)
     - [Blackwell Architecture Targeting](#blackwell-architecture-targeting)
     - [CUDA Memory Management](#cuda-memory-management)
     - [Compute Optimization](#compute-optimization)
     - [Inference Configuration](#inference-configuration)
   - [Container Security Implementation](#container-security-implementation)
+  - [Tested But Ineffective Optimizations](#tested-but-ineffective-optimizations)
   - [Reference Implementation](#reference-implementation)
 
 ## Implementation Overview
 
-The GPU Docker implementation leverages a multi-stage build strategy specifically optimized for the RTX 5090 Blackwell architecture. The implementation utilizes CUDA 13.0.1 for maximum compatibility with the latest GPU features and provides AI inference capabilities.
+The GPU Docker implementation leverages a multi-stage build strategy specifically optimized for the RTX 5090 Blackwell architecture. The implementation utilizes CUDA 13.0.2 with cuDNN for maximum compatibility with the latest GPU features and provides AI inference capabilities.
 
 **Key Implementation Features:**
 - **Multi-stage build**: Separates CUDA development tools from runtime environment
 - **Blackwell optimization**: sm_120 architecture targeting for RTX 5090 maximum performance
-- **CUDA 13.0.1**: Latest CUDA toolkit with Blackwell support
+- **CUDA 13.0.2 with cuDNN**: Base images include cuDNN for deep learning acceleration
 - **CMake build system**: Modern build configuration for llama.cpp CUDA compilation
-- **Performance tuning**: GPU memory and compute optimizations
+- **Entrypoint script**: Parameterized server configuration via environment variables
+- **Nsight Systems integration**: Optional deep profiling support
 - **Security hardening**: Non-root user execution with minimal runtime dependencies
 
 ## Stage 1: Builder Environment
@@ -47,10 +55,11 @@ The GPU Docker implementation leverages a multi-stage build strategy specificall
 
 **NVIDIA CUDA Development Foundation**
 ```dockerfile
-FROM nvidia/cuda:13.0.1-devel-ubuntu24.04 AS builder
+FROM nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04 AS builder
 ```
-- **Purpose**: Provides complete CUDA development environment with compiler tools
-- **Version**: CUDA 13.0.1 ensures RTX 5090 Blackwell architecture compatibility
+- **Purpose**: Provides complete CUDA development environment with compiler tools and cuDNN
+- **Version**: CUDA 13.0.2 ensures RTX 5090 Blackwell architecture compatibility
+- **cuDNN included**: Deep learning primitives included in base image
 - **Base OS**: Ubuntu 24.04 LTS provides stable foundation with modern libraries
 
 ### RTX 5090 Blackwell Configuration
@@ -59,7 +68,7 @@ FROM nvidia/cuda:13.0.1-devel-ubuntu24.04 AS builder
 ```dockerfile
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
-ENV CUDA_DOCKER_ARCH=sm_120 
+ENV CUDA_DOCKER_ARCH=sm_120
 ENV TORCH_CUDA_ARCH_LIST="12.0"
 ENV CUDA_ARCHITECTURES=120
 ENV CUDAFLAGS="-O3 --use_fast_math -arch=sm_120"
@@ -87,7 +96,6 @@ RUN apt-get update && \
         cuda-cupti-dev-13-0 \
         cuda-nvml-dev-13-0 \
         cuda-nvtx-13-0 \
-        cudnn9-cuda-13-0 \
         libcublas-dev-13-0
 ```
 
@@ -97,8 +105,9 @@ RUN apt-get update && \
 - **cuda-cupti-dev-13-0**: CUDA Profiling Tools Interface for performance analysis
 - **cuda-nvml-dev-13-0**: NVIDIA Management Library for GPU monitoring
 - **cuda-nvtx-13-0**: NVIDIA Tools Extension for profiling and debugging
-- **cudnn9-cuda-13-0**: Deep Neural Network library optimized for Blackwell
 - **libcublas-dev-13-0**: CUDA Basic Linear Algebra Subroutines for matrix operations
+
+Note: cuDNN is included in the base image (`nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04`) and does not need separate installation.
 
 ### CUDA Environment Setup
 
@@ -125,7 +134,7 @@ RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/lib
 **CUDA-Optimized Build Process**
 ```dockerfile
 RUN rm -rf /tmp/llama.cpp && \
-    git clone  https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
+    git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
     cd /tmp/llama.cpp && \
     mkdir build && cd build && \
     cmake .. \
@@ -135,7 +144,6 @@ RUN rm -rf /tmp/llama.cpp && \
         -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs" \
         -DGGML_CUDA=ON \
         -DGGML_CUDA_FORCE_CUBLAS=ON \
-        -DGGML_CUDA_F16=ON \
         -DGGML_CUDA_GRAPHS=ON \
         -DGGML_CUDA_PEER_MAX_BATCH_SIZE=256 \
         -DGGML_CUDA_NO_VMM=OFF \
@@ -145,11 +153,7 @@ RUN rm -rf /tmp/llama.cpp && \
         -DGGML_BUILD_EXAMPLES=OFF \
         -DLLAMA_CURL=OFF \
         -DGGML_CCACHE=ON \
-        -DGGML_CUDA_DMMV_X=64 \
-        -DGGML_CUDA_MMV_Y=2 \
-        -DGGML_CUDA_GRAPHS=ON \
-        -DGGML_CUDA_KQUANTS_ITER=2  \
-         -DGGML_CUDA_FA_ALL_QUANTS=ON && \
+        -DGGML_CUDA_FA_ALL_QUANTS=ON && \
      cmake --build . --target llama-server --config Release -j$(nproc)
 ```
 
@@ -157,16 +161,11 @@ RUN rm -rf /tmp/llama.cpp && \
 - **CMAKE_CUDA_ARCHITECTURES=120**: Explicit Blackwell architecture targeting
 - **GGML_CUDA=ON**: Enable CUDA acceleration throughout llama.cpp
 - **GGML_CUDA_FORCE_CUBLAS=ON**: Force cuBLAS usage for maximum performance
-- **GGML_CUDA_F16=ON**: Enable FP16 precision for memory efficiency and speed
 - **GGML_CUDA_GRAPHS=ON**: Enable CUDA graphs for reduced kernel launch overhead
 - **GGML_CUDA_NO_VMM=OFF**: Enable Virtual Memory Management for large models
 - **GGML_CUDA_FA_ALL_QUANTS=ON**: FlashAttention support for all quantization formats
-
-**Advanced CUDA Optimizations**
 - **GGML_CUDA_PEER_MAX_BATCH_SIZE=256**: Optimized batch size for peer-to-peer transfers
-- **GGML_CUDA_DMMV_X=64**: Matrix-vector multiplication optimization parameters
-- **GGML_CUDA_MMV_Y=2**: Memory access pattern optimization for Blackwell
-- **GGML_CUDA_KQUANTS_ITER=2**: Quantization kernel iteration optimization
+- **GGML_CCACHE=ON**: Enable compiler cache for faster rebuilds
 
 ## Stage 2: Runtime Environment
 
@@ -174,10 +173,11 @@ RUN rm -rf /tmp/llama.cpp && \
 
 **Optimized Runtime Foundation**
 ```dockerfile
-FROM nvidia/cuda:13.0.1-runtime-ubuntu24.04
+FROM nvidia/cuda:13.0.2-cudnn-runtime-ubuntu24.04
 ```
 - **Runtime focus**: Minimal CUDA runtime without development overhead
-- **Version consistency**: Matching CUDA 13.0.1 for binary compatibility
+- **cuDNN included**: Deep learning primitives included in runtime base image
+- **Version consistency**: Matching CUDA 13.0.2 for binary compatibility
 - **Size optimization**: Excludes development tools and headers
 
 ### Runtime Dependencies
@@ -188,18 +188,20 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends --allow-change-held-packages \
         ca-certificates \
         libgomp1 \
-        cudnn9-cuda-13-0 \
         libcublas-13-0 \
-        cuda-driver-dev-13-0 \
         cuda-cupti-13-0 \
-        cuda-nvtx-13-0
+        cuda-nvtx-13-0 \
+        nsight-systems-2025.3.2
 ```
 
 **Runtime Components**
-- **cudnn9-cuda-13-0**: Deep learning primitive library runtime
+- **libgomp1**: OpenMP runtime library for parallel execution
 - **libcublas-13-0**: CUDA Basic Linear Algebra Subroutines runtime
 - **cuda-cupti-13-0**: Performance monitoring and profiling capabilities
 - **cuda-nvtx-13-0**: NVIDIA Tools Extension for runtime analysis
+- **nsight-systems-2025.3.2**: Deep profiling tool (optional, enabled via NSYS_PROFILE)
+
+Note: cuDNN runtime is included in the base image and does not need separate installation.
 
 ### GPU Performance Tuning
 
@@ -209,7 +211,6 @@ ENV PATH=/usr/local/cuda/bin:${PATH}
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
 ENV CUDA_MODULE_LOADING=LAZY
 ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
-ENV CUDA_VISIBLE_DEVICES=0
 
 # Performance tuning for RTX 5090 (Blackwell, 32GB VRAM)
 ENV CUDA_LAUNCH_BLOCKING=0
@@ -236,10 +237,11 @@ ENV GGML_CUDA_FORCE_SYNC=0
 
 **NVIDIA Container Configuration**
 ```dockerfile
-ENV NVIDIA_VISIBLE_DEVICES=all
-ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
 ENV NVIDIA_REQUIRE_CUDA="cuda>=13.0"
 ```
+
+Note: `NVIDIA_VISIBLE_DEVICES` and `CUDA_VISIBLE_DEVICES` are set via docker-compose.yaml, not in the Dockerfile.
 
 ### Security Configuration
 
@@ -254,7 +256,8 @@ WORKDIR /app
 ```dockerfile
 RUN mkdir -p /tmp/cuda_cache
 ```
-> Note: Cache directory created before user switch to ensure proper permissions
+
+Note: Cache directory is created after switching to appuser for proper ownership.
 
 ### Application Deployment
 
@@ -262,32 +265,112 @@ RUN mkdir -p /tmp/cuda_cache
 ```dockerfile
 COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/llama-server /app/server
 COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/* /app/
+COPY --chown=appuser:appuser docker/llama-gpu/entrypoint.sh /app/entrypoint.sh
+
+EXPOSE 8002
+
+ENTRYPOINT ["/app/entrypoint.sh"]
 ```
 
-**GPU Inference Server Configuration**
-```dockerfile
-EXPOSE 8004
+The server is started via the entrypoint script, which provides parameterized configuration through environment variables.
 
-CMD ["./server", \
-    "--model", "/app/models/gguf/gpt-oss-20b-GGUF/gpt-oss-20b-UD-Q8_K_XL.gguf", \
-    "--host", "0.0.0.0", \
-    "--port", "8004", \
-    "--n-gpu-layers", "999", \
-    "--ctx-size", "65536", \
-    "--batch-size", "2048", \
-    "--ubatch-size", "512", \
-    "--threads", "1", \
-    "--threads-batch", "1", \
-    "--metrics", \
-    "--no-warmup", \
-    "--threads-http", "4", \
-    "--flash-attn", \
-    "--mlock", \
-    "--no-mmap", \
-    "--main-gpu", "0", \
-    "--parallel", "1" \
-]
+## Entrypoint Configuration
+
+The entrypoint script (`entrypoint.sh`) provides parameterized server configuration with environment variable overrides.
+
+### Basic Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SERVER_PORT` | 8002 | HTTP API server port |
+| `MODEL_PATH` | (hardcoded path) | Path to GGUF model file |
+| `SERVER_HOST` | 0.0.0.0 | Bind address for server |
+| `N_GPU_LAYERS` | 999 | Layers to offload to GPU |
+| `CTX_SIZE` | 65536 | Context window size |
+| `BATCH_SIZE` | 2048 | Logical batch size |
+| `UBATCH_SIZE` | 512 | Physical batch size |
+| `THREADS` | 1 | CPU threads for inference |
+| `THREADS_BATCH` | 1 | CPU threads for batch processing |
+| `THREADS_HTTP` | 4 | HTTP handler threads |
+| `PARALLEL` | 1 | Parallel request slots |
+| `MAIN_GPU` | 0 | Primary GPU index |
+| `FLASH_ATTN` | on | Flash attention mode |
+| `CONT_BATCHING` | false | Enable continuous batching |
+
+### GPU/CPU Split Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SPLIT_MODE` | none | Split mode (none/layer/row) |
+| `TENSOR_SPLIT` | "" | Tensor split ratio for multi-GPU |
+| `NO_KV_OFFLOAD` | false | Disable KV cache GPU offload |
+
+### Advanced Server Features
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CACHE_REUSE` | 0 | KV cache reuse threshold |
+| `JINJA_ENABLED` | false | Enable Jinja template processing |
+| `REASONING_FORMAT` | "" | Reasoning output format |
+| `KV_UNIFIED` | false | Enable unified KV buffer |
+
+### Nsight Systems Profiling
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NSYS_PROFILE` | false | Enable Nsight Systems profiling |
+| `NSYS_OUTPUT` | /app/nsys_output/profile | Profile output path |
+
+When `NSYS_PROFILE=true`, the server is wrapped with nsys for deep CUDA profiling:
+```bash
+nsys profile \
+    --trace=cuda,nvtx,osrt \
+    --cuda-memory-usage=true \
+    --sample=cpu \
+    --output="$NSYS_OUTPUT" \
+    --force-overwrite=true \
+    --stats=true \
+    -- ./server ...
 ```
+
+### Server Flags
+
+The entrypoint builds command arguments dynamically. Always included:
+```bash
+./server \
+    --model "$MODEL_PATH" \
+    --host "$SERVER_HOST" \
+    --port "$SERVER_PORT" \
+    --n-gpu-layers "$N_GPU_LAYERS" \
+    --ctx-size "$CTX_SIZE" \
+    --batch-size "$BATCH_SIZE" \
+    --ubatch-size "$UBATCH_SIZE" \
+    --threads "$THREADS" \
+    --threads-batch "$THREADS_BATCH" \
+    --metrics \
+    --no-warmup \
+    --threads-http "$THREADS_HTTP" \
+    --flash-attn "$FLASH_ATTN" \
+    --no-mmap \
+    --main-gpu "$MAIN_GPU" \
+    --parallel "$PARALLEL"
+```
+
+**Optional flags added based on environment:**
+- `--cont-batching` (if CONT_BATCHING=true)
+- `--split-mode $SPLIT_MODE` (if SPLIT_MODE != none)
+- `--tensor-split $TENSOR_SPLIT` (if TENSOR_SPLIT is set)
+- `--no-kv-offload` (if NO_KV_OFFLOAD=true)
+- `--cache-reuse $CACHE_REUSE` (if CACHE_REUSE > 0)
+- `--jinja` (if JINJA_ENABLED=true)
+- `--reasoning-format $REASONING_FORMAT` (if REASONING_FORMAT is set)
+- `--kv-unified` (if KV_UNIFIED=true)
+
+**Entrypoint Features**
+- Validates model file exists before starting
+- Reports GPU memory status via nvidia-smi before model load
+- Displays configuration summary on startup
+- Supports optional Nsight Systems deep profiling
 
 ## GPU Performance Optimization Strategy
 
@@ -310,7 +393,6 @@ The implementation targets specific RTX 5090 Blackwell capabilities:
 
 **VRAM Optimization Strategy**
 - **32GB VRAM utilization**: Full model loading with `--n-gpu-layers=999`
-- **Memory locking**: `--mlock` prevents model swapping and ensures GPU residence
 - **No memory mapping**: `--no-mmap` forces direct GPU memory allocation
 - **Batch optimization**: Asymmetric batching (2048/512) optimizes for Blackwell memory hierarchy
 
@@ -329,7 +411,6 @@ The implementation targets specific RTX 5090 Blackwell capabilities:
 - **Quantization support**: Full quantization format support with FlashAttention acceleration
 
 **Memory Access Optimization**
-- **Matrix operations**: Optimized DMMV and MMV parameters for Blackwell memory controllers
 - **Batch processing**: Large context size (65536) with optimized batch dimensions
 - **Peer-to-peer**: Configured for multi-GPU environments (future expansion)
 
@@ -343,7 +424,6 @@ The implementation targets specific RTX 5090 Blackwell capabilities:
 
 **Model Loading Strategy**
 - **Direct GPU loading**: All model layers loaded into VRAM for maximum speed
-- **Memory locking**: Prevents operating system from swapping model data
 - **Context window**: 65K context optimized for Blackwell memory subsystem
 - **Parallel processing**: Single parallel stream optimized for latency-critical inference
 
@@ -381,7 +461,8 @@ GPU clock locking (nvidia-smi -lgc/-lmc) causes a 38% performance degradation on
 ## Reference Implementation
 
 **File Structure**
-- **docker/Dockerfile.llama-gpu**: Complete multi-stage GPU-optimized Dockerfile
+- **docker/llama-gpu/Dockerfile.llama-gpu**: Complete multi-stage GPU-optimized Dockerfile
+- **docker/llama-gpu/entrypoint.sh**: Parameterized server startup script
 - **docker-compose.yaml**: Container orchestration with GPU resource allocation and security hardening
 
 **Integration with AI Workstation**
@@ -401,4 +482,4 @@ This GPU implementation works in conjunction with:
 
 *This GPU Docker implementation provides AI model inference on the RTX 5090 Blackwell architecture. The multi-stage build process integrates CUDA while maintaining security and operational efficiency for high-throughput AI workloads.*
 
-*Last Updated: 2025-09-23*
+*Last Updated: 2026-01-03*

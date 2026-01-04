@@ -45,9 +45,9 @@ This documentation covers the specific Docker implementation deployed in this pr
 AI model sandboxing provides security isolation for local AI workloads, protecting both the host system and sensitive data from potential threats in AI model execution. This architecture uses Docker containers as the primary sandboxing mechanism.
 
 The implementation consists of:
-- **Three CPU inference containers** (`llama-cpu-0`, `llama-cpu-1`, `llama-cpu-2`) utilizing AMD Zen 5 optimization with AOCL libraries
-- **GPU inference container** (`llama-gpu`) optimized for RTX 5090 with CUDA 12.9.1 and Blackwell architecture support
-- **vLLM GPU container** (`vllm-gpu`) for high-performance transformer model serving
+- **CPU inference container** (`llama-cpu`) utilizing AMD Zen 5 optimization with zen5_optimizer hugepage support (16 cores, 96GB RAM)
+- **GPU inference container** (`llama-gpu`) optimized for RTX 5090 with CUDA 13.0.2 and Blackwell architecture support
+- **vLLM GPU container** (`vllm-gpu`) for high-performance transformer model serving with vLLM v0.12.0
 - **Open WebUI container** providing a secure web interface for model interaction
 - **Isolated Docker network** (`ai-network`) with controlled inter-service communication
 
@@ -144,15 +144,15 @@ Docker containers utilize Linux namespaces to provide process-level isolation, e
 
 **User Space Isolation**
 All containers implement non-root user execution:
-- **CPU containers**: Use `aiuser` with UID 1001 and dedicated group
+- **CPU containers**: Use `appuser` with dedicated group
 - **GPU containers**: Use `appuser` for privilege separation
 - This prevents privilege escalation and limits container breakout impact
 
 **Control Group (cgroup) Constraints**
 Implemented through docker-compose resource limits:
-- **CPU containers**: Limited to 8 cores each with 32GB RAM per container
-- **GPU containers**: Controlled memory allocation with unlimited memlock for CUDA operations
-- **CPU pinning**: Each CPU container bound to specific core sets (0-7, 8-15, 16-23)
+- **CPU container**: Single container with 16 cores (0-15) and 96GB RAM limit
+- **GPU containers**: Controlled memory allocation for CUDA operations
+- **CPU pinning**: Container bound to cores 0-15 via cpuset configuration
 
 ### File System Security
 
@@ -167,7 +167,7 @@ Immutable container file systems prevent runtime modifications and reduce attack
 Selective file system mounting implemented:
 - **Model storage**: `/mnt/ai-data/models/:/app/models:ro` (read-only access)
 - **Log directories**: `./logs/cpu:/app/logs` and `./logs/gpu:/app/logs` (write access only to designated areas)
-- **CUDA cache**: vLLM container uses tmpfs mount `/tmp:size=2G,mode=1777` for temporary GPU operations
+- **CUDA cache**: vLLM container uses multiple tmpfs mounts including `/tmp:size=4G,mode=1777` for temporary GPU operations
 
 **Temporary File System Controls**
 vLLM container implements isolated tmpfs for CUDA operations while other containers use read-only root filesystems with designated log directories.
@@ -188,11 +188,9 @@ networks:
 
 **Port Mapping Controls**
 Localhost-only port binding prevents external access:
-- **llama-cpu-0**: `127.0.0.1:8001:8001`
-- **llama-cpu-1**: `127.0.0.1:8002:8002`  
-- **llama-cpu-2**: `127.0.0.1:8003:8003`
-- **llama-gpu**: `127.0.0.1:8004:8004`
-- **vllm-gpu**: `127.0.0.1:8005:8005`
+- **llama-cpu**: `127.0.0.1:8001:8001`
+- **llama-gpu**: `127.0.0.1:8002:8002`
+- **vllm-gpu**: `127.0.0.1:8003:8003`
 - **open-webui**: `3000:8080`
 
 **Network Policy Enforcement**
@@ -202,16 +200,14 @@ Internal Docker networking allows controlled inter-service communication while p
 
 **Memory Limits**
 Hard memory limits implemented per container:
-- **CPU containers**: 32GB RAM limit each, distributed across 16-core CPU
-- **GPU containers**: Unlimited memlock for CUDA operations with controlled system memory
-- **tmpfs limits**: 2GB temporary storage for vLLM CUDA cache
+- **CPU container**: 96GB RAM limit for large model support
+- **GPU containers**: Controlled memory allocation for CUDA operations
+- **tmpfs limits**: 4GB temporary storage for GPU CUDA cache
 
 **CPU Throttling**
 CPU usage limits implemented through cpuset pinning:
-- **llama-cpu-0**: Cores 0-7 (8 cores, 8.0 CPU limit)
-- **llama-cpu-1**: Cores 8-15 (8 cores, 8.0 CPU limit)  
-- **llama-cpu-2**: Cores 16-23 (8 cores, 8.0 CPU limit)
-- Prevents compute resource monopolization while maximizing utilization
+- **llama-cpu**: Cores 0-15 (16 cores) via cpuset configuration
+- Prevents compute resource monopolization while maximizing single-model performance
 
 **GPU Access Controls**
 Selective GPU access implemented:
@@ -241,15 +237,15 @@ Open WebUI container provides secure web interface:
 
 **Request Routing**
 Model-specific endpoint distribution:
-- **CPU models**: Ports 8001, 8002, 8003 for parallel inference
-- **GPU models**: Port 8004 (llama-gpu), Port 8005 (vLLM)
-- **Load balancing**: Multiple CPU containers enable concurrent request handling
+- **CPU model**: Port 8001 (llama-cpu)
+- **GPU models**: Port 8002 (llama-gpu), Port 8003 (vLLM)
+- **Single-model focus**: High-performance inference with dedicated resources
 
 **Protocol Translation**
 OpenAI-compatible API endpoints:
 ```yaml
 environment:
-  - 'OPENAI_API_BASE_URL=http://llama-gpu:8006/v1'
+  - 'OPENAI_API_BASE_URL=http://llama-gpu:8002/v1'
   - 'OPENAI_API_KEY=NONE'
 ```
 Internal Docker networking eliminates need for external authentication keys.
@@ -286,9 +282,9 @@ healthcheck:
 
 **Resource-Based Protection**
 Hard resource limits prevent resource exhaustion:
-- **Memory limits**: 32GB per CPU container prevents memory exhaustion
-- **CPU pinning**: Isolates workloads to specific core sets
-- **tmpfs limits**: 2GB limit on temporary storage prevents disk exhaustion
+- **Memory limits**: 96GB for CPU container prevents memory exhaustion
+- **CPU pinning**: Isolates workloads to specific core sets (0-15)
+- **tmpfs limits**: 4GB limit on temporary storage prevents disk exhaustion
 
 **Container Restart Policies**
 Automatic recovery from failures:
@@ -318,14 +314,7 @@ All containers drop ALL capabilities, implementing principle of least privilege:
 - Applied consistently across CPU, GPU, and vLLM containers
 
 **Memory Lock Controls**
-Unlimited memory lock for AI workloads:
-```yaml
-ulimits:
-  memlock:
-    soft: -1
-    hard: -1
-```
-Required for large model loading while maintaining security boundaries.
+Memory locking is handled via the `--mlock` flag in llama.cpp server configuration rather than container-level ulimits. This enables model data to be locked in RAM while maintaining container security boundaries.
 
 ### Image Security
 
@@ -363,17 +352,17 @@ Required for large model loading while maintaining security boundaries.
 
 ### Local Deployment Architecture
 
-**Multi-Container CPU Strategy**
-Three dedicated CPU containers leverage the 16-core AMD Ryzen 9950X:
-- **Parallel inference**: Each container handles different models or requests simultaneously
-- **Resource isolation**: 8 cores and 32GB RAM per container with cpuset pinning
-- **AMD optimization**: AOCL libraries and Zen 5 compiler flags for maximum performance
+**Single-Container CPU Strategy**
+One dedicated CPU container leverages the 16-core AMD Ryzen 9950X:
+- **High-performance inference**: Container dedicated to single-model inference
+- **Resource allocation**: 16 cores (0-15) and 96GB RAM with cpuset pinning
+- **AMD optimization**: zen5_optimizer library and Zen 5 compiler flags for maximum performance
 
 **Dual GPU Strategy**
 Two GPU containers optimize RTX 5090 utilization:
 - **llama-gpu**: llama.cpp with CUDA optimization for GGUF models
-- **vllm-gpu**: vLLM engine for high-throughput transformer serving
-- **Blackwell architecture**: CUDA 12.9.1 with sm_120 targeting
+- **vllm-gpu**: vLLM v0.12.0 engine for high-throughput transformer serving
+- **Blackwell architecture**: CUDA 13.0.2 with sm_120 targeting
 
 **Local Deployment Configuration**
 Docker Compose configuration for local workstation:
@@ -387,7 +376,7 @@ networks:
 Multi-stage Dockerfiles optimize local performance:
 - **Builder stage**: Compiles optimized binaries
 - **Runtime stage**: Minimal runtime environment with non-root users
-- **AMD AOCL integration**: CPU container uses pre-installed AOCL libraries
+- **Hugepage optimization**: zen5_optimizer library for reduced TLB pressure
 
 **Security for Local Use**
 Docker Compose implements security layers:
@@ -414,12 +403,10 @@ Separates read-only model access from writable log directories.
 
 ### Docker Configuration Files
 
-- **docker/Dockerfile.llama-cpu**: AMD Zen 5 optimized CPU inference with AOCL libraries
-- **docker/Dockerfile.llama-gpu**: RTX 5090 optimized GPU inference with CUDA 12.9.1
-- **docker/Dockerfile.vllm-gpu**: vLLM high-performance transformer serving
+- **docker/llama-cpu/Dockerfile.cpu**: AMD Zen 5 optimized CPU inference with zen5_optimizer hugepage support
+- **docker/llama-gpu/Dockerfile.llama-gpu**: RTX 5090 optimized GPU inference with CUDA 13.0.2
+- **docker/vllm-gpu/Dockerfile.vllm-gpu**: vLLM v0.12.0 high-performance transformer serving
 - **docker-compose.yaml**: Complete orchestration with security hardening
-- **docker/requirements-cpu.txt**: Python dependencies for CPU containers
-- **docker/aocl-linux-gcc-5.1.0_1_amd64.deb**: AMD Optimized CPU Libraries package
 
 ### Security Features Implemented
 
@@ -431,4 +418,4 @@ Separates read-only model access from writable log directories.
 
 ---
 
-*Last Updated: 2025-09-23*
+*Last Updated: 2026-01-03*

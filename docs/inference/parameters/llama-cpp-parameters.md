@@ -6,7 +6,7 @@ Detailed analysis of runtime parameters for llama.cpp server (CPU and GPU varian
 
 ### llama-cpu Service (Port 8001)
 
-**Runtime Parameters (entrypoint.sh)**:
+**Runtime Parameters (entrypoint.cpu.sh)**:
 ```bash
 exec ./server \
     --model "$MODEL_PATH" \
@@ -18,23 +18,27 @@ exec ./server \
     --ubatch-size "$UBATCH_SIZE" \
     --threads "$THREADS" \
     --threads-batch "$THREADS_BATCH" \
+    --threads-http "$THREADS_HTTP" \
+    --flash-attn "on" \
+    --cache-reuse 256 \
     --cont-batching \
     --metrics \
-    --no-warmup \
     --mlock \
-    --threads-http "$THREADS_HTTP"
+    --no-repack
 ```
 
-**Environment Defaults**:
-- `THREADS=12` - Match available CPU cores (0-11)
-- `THREADS_BATCH=12` - Same for batch processing
+**Environment Defaults** (entrypoint.cpu.sh):
+- `THREADS` - Required, set via docker-compose (typically 12-16)
+- `THREADS_BATCH` - Required, set via docker-compose (typically 12-16)
 - `CTX_SIZE=32768` - 32K context window
 - `BATCH_SIZE=2048` - Large batch for efficiency
-- `UBATCH_SIZE=2048` - Unified batch size
+- `UBATCH_SIZE=512` - Micro-batch size for memory efficiency
 - `THREADS_HTTP=2` - Minimal HTTP overhead
 - `N_GPU_LAYERS=0` - CPU-only inference
 
-### llama-gpu Service (Port 8004)
+**Note**: docker-compose.yaml sets `THREADS=16` and `THREADS_BATCH=16` by default.
+
+### llama-gpu Service (Port 8002)
 
 **Runtime Parameters (entrypoint.sh)**:
 ```bash
@@ -131,22 +135,33 @@ BATCH_SIZE=1024 UBATCH_SIZE=1024 docker-compose up llama-gpu
 - **Purpose**: Enable performance metrics collection
 - **Benefit**: Monitor performance for optimization
 
-## Tested Parameters - Not Available
+## Tested Parameters - Availability Notes
 
-The following parameters were tested but found to **not exist** in the current llama.cpp server:
+The following parameters were tested during optimization:
 
 ### Invalid Parameters (Tested September 2025)
 **`--kv-split`** - **NOT VALID**
 - Causes error: `error: invalid argument: --kv-split`
 - Not implemented in current llama.cpp server
 
-**`--cache-reuse`** - **NOT VALID**
-- Not recognized by llama.cpp server
-- May have been planned but not implemented
-
 **`--parallel`** - **NOT VALID for server**
 - No errors but no effect observed
 - May be valid for main llama.cpp CLI but not the server
+
+### Valid Parameters (Added since initial testing)
+**`--cache-reuse <n>`** - **VALID** (added in later llama.cpp versions)
+- Now used in production: `--cache-reuse 256`
+- Enables KV cache reuse for repeated prompts
+- Improves performance for similar requests
+
+**`--flash-attn`** - **VALID**
+- Used in production: `--flash-attn "on"`
+- Enables Flash Attention for memory-efficient attention computation
+- Works on both CPU and GPU builds
+
+**`--no-repack`** - **VALID**
+- Used in production to skip tensor repacking
+- Can improve startup time for some models
 
 ### Advanced Features
 **`--cpu-mask`**
@@ -225,9 +240,9 @@ The following parameters were tested but found to **not exist** in the current l
 ### RTX 5090 Optimizations
 - **32GB VRAM** (can handle large contexts)
 - **Blackwell architecture** (FlashAttention, FP8)
-- **CUDA 13.0.1** (latest features)
+- **CUDA 13.0.2** (latest features)
 - **High memory bandwidth** (optimal for large batches)
 
 ---
 
-*Last Updated: 2025-09-23*
+*Last Updated: 2026-01-03*

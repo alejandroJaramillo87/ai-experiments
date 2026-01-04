@@ -59,7 +59,7 @@ The docker-compose.yaml implements a multi-service AI inference platform with de
 - **Privilege prevention**: No privilege escalation possible within containers
 
 **Service Distribution:**
-- **1 CPU inference container**: llama-cpu (12 threads on cores 0-11, 96GB RAM)
+- **1 CPU inference container**: llama-cpu (16 threads on cores 0-15, 96GB RAM)
 - **2 GPU inference containers**: llama-gpu and vllm-gpu (RTX 5090 exclusive access)
 - **1 Web interface**: open-webui for secure user interaction
 
@@ -74,31 +74,29 @@ llama-cpu:
     - no-new-privileges:true
   cap_drop:
     - ALL
-  cap_add:
-    - IPC_LOCK
   deploy:
     resources:
       limits:
-        cpus: '12'
         memory: 96G
 ```
 
 **Security Design:**
-- **Single high-performance instance**: 12 threads for latency-optimized inference
-- **IPC_LOCK capability**: Required for memory locking operations only
+- **Single high-performance instance**: 16 threads for latency-optimized inference
 - **Memory allocation**: 96GB RAM for large model support
-- **CPU isolation**: Cores 0-11 allocated via cpuset configuration (12 cores total)
+- **CPU isolation**: Cores 0-15 allocated via cpuset configuration (16 cores total)
 
 **Resource Optimization:**
-- **Thread configuration**: 12 threads configured for optimal performance
-- **Core allocation**: Uses cores 0-11 (12 cores) via cpuset
-- **Memory locking**: Prevents model swapping to disk via ulimits configuration
+- **Thread configuration**: 16 threads configured for optimal performance
+- **Core allocation**: Uses cores 0-15 (16 cores) via cpuset
+- **Memory locking**: Handled via `--mlock` flag in server configuration
 
 ### GPU Inference Services
 
 **llama-gpu Service Configuration**
 ```yaml
 llama-gpu:
+  init: true  # Use tini as PID 1 for proper signal forwarding
+  user: "${UID:-1000}:${GID:-1000}"  # Match host user for volume write access
   security_opt:
     - no-new-privileges:true
   cap_drop:
@@ -106,6 +104,11 @@ llama-gpu:
   read_only: true
   tmpfs:
     - /tmp:size=4G,mode=1777  # CUDA cache and temp files
+  environment:
+    - NSYS_PROFILE=${NSYS_PROFILE:-false}
+    - NSYS_OUTPUT=${NSYS_OUTPUT:-/app/nsys_output/profile}
+  volumes:
+    - ./gpu_benchmark_results:/app/nsys_output
   deploy:
     resources:
       reservations:
@@ -122,21 +125,37 @@ llama-gpu:
 - **Capability specification**: gpu, compute, utility for full CUDA support
 - **Temporary storage**: 4GB tmpfs for CUDA cache and compilation
 - **Read-only filesystem**: Immutable container filesystem for security
+- **Process manager**: tini (init: true) ensures proper signal handling for Nsight profiling
+- **User mapping**: Host UID/GID for nsys output file permissions
+- **Nsight profiling**: NSYS_PROFILE and NSYS_OUTPUT for GPU performance analysis
 
 **vllm-gpu Service Configuration**
 ```yaml
 vllm-gpu:
+  init: true  # Use tini as PID 1 for proper signal forwarding
   security_opt:
     - no-new-privileges:true
   cap_drop:
     - ALL
   read_only: true
   tmpfs:
-    - /tmp:size=4G,mode=1777
+    - /tmp:size=4G,mode=1777           # CUDA cache and temp files
+    - /app/.cache:size=1G,mode=1777    # vLLM model info cache
+    - /app/cache:size=2G,mode=1777     # HuggingFace cache (HF_HOME)
+    - /app/.config:size=100M,mode=1777 # vLLM usage stats
+    - /app/.triton:size=2G,mode=1777,exec  # Triton compilation cache
+  volumes:
+    - ./logs/vllm:/app/logs
 ```
 - **Security profile**: Same hardening as other GPU services
-- **Temporary storage**: 4GB tmpfs for CUDA compilation cache
-- **Memory mode**: 1777 permissions for temporary file operations
+- **Process manager**: tini (init: true) for proper signal handling
+- **Temporary storage**: Multiple tmpfs mounts for various caches:
+  - `/tmp`: 4GB for CUDA temporary files
+  - `/app/.cache`: 1GB for vLLM model info
+  - `/app/cache`: 2GB for HuggingFace downloads
+  - `/app/.config`: 100MB for vLLM configuration
+  - `/app/.triton`: 2GB with exec for Triton JIT compilation
+- **Log isolation**: Separate `./logs/vllm` directory for vLLM logs
 - **Filesystem immutability**: Read-only root filesystem
 
 ### Web Interface Service
@@ -176,14 +195,6 @@ cap_drop:
 - **Container isolation**: Cannot modify host system configurations
 - **Network restrictions**: No raw socket or network configuration access
 
-**Selective Capability Addition**
-Only llama-cpu adds minimal capability:
-```yaml
-cap_add:
-  - IPC_LOCK
-```
-Required for memory locking operations to prevent model swapping.
-
 ### Privilege Restrictions
 
 **No New Privileges Enforcement**
@@ -201,19 +212,10 @@ security_opt:
 
 ### Memory Locking
 
-**Unlimited Memory Lock Configuration**
-```yaml
-ulimits:
-  memlock:
-    soft: -1
-    hard: -1
-```
-
-**Purpose:**
+Memory locking is handled at the application level via the `--mlock` flag in the llama.cpp server entrypoint, rather than through container ulimits. This approach:
 - **Model persistence**: Prevents large models from swapping to disk
 - **Performance guarantee**: Ensures consistent inference latency
-- **Security benefit**: Reduces timing attack vulnerabilities
-- **Resource management**: Controlled through memory limits instead
+- **Simplified configuration**: No container-level ulimit configuration required
 
 ## Resource Management
 
@@ -221,16 +223,16 @@ ulimits:
 
 **llama-cpu CPU Configuration**
 ```yaml
-cpuset: "0-11"
+cpuset: "0-15"
 deploy:
   resources:
     limits:
-      cpus: '12'
+      memory: 96G
 ```
 
 **CPU Isolation Strategy:**
-- **Core allocation**: Cores 0-11 (12 cores) assigned via cpuset
-- **Thread count**: 12 threads configured for inference workload
+- **Core allocation**: Cores 0-15 (16 cores) assigned via cpuset
+- **Thread count**: 16 threads configured for inference workload
 - **NUMA optimization**: Cores span single NUMA node for memory locality
 - **System isolation**: Remaining cores available for system operations
 
@@ -242,7 +244,6 @@ llama-cpu:
   deploy:
     resources:
       limits:
-        cpus: '12'
         memory: 96G  # High-performance single instance
 ```
 
@@ -298,8 +299,8 @@ networks:
 ```yaml
 ports:
   - "127.0.0.1:8001:8001"  # llama-cpu
-  - "127.0.0.1:8004:8004"  # llama-gpu
-  - "127.0.0.1:8005:8005"  # vllm-gpu
+  - "127.0.0.1:8002:8002"  # llama-gpu
+  - "127.0.0.1:8003:8003"  # vllm-gpu
 ```
 
 **Access Control:**
@@ -314,7 +315,7 @@ ports:
 Services communicate using container names:
 ```yaml
 environment:
-  - 'OPENAI_API_BASE_URL=http://llama-gpu:8004/v1'
+  - 'OPENAI_API_BASE_URL=http://llama-gpu:8002/v1'
 ```
 
 **Communication Patterns:**
@@ -344,30 +345,52 @@ volumes:
 **Writable Log Volumes**
 ```yaml
 volumes:
-  - ./logs/cpu:/app/logs
-  - ./logs/gpu:/app/logs
+  - ./logs/cpu:/app/logs    # llama-cpu
+  - ./logs/gpu:/app/logs    # llama-gpu
+  - ./logs/vllm:/app/logs   # vllm-gpu
 ```
 
 **Log Management:**
-- **Separated directories**: CPU and GPU logs isolated
+- **Separated directories**: CPU, GPU llama, and vLLM logs isolated
 - **Host persistence**: Logs survive container restarts
 - **Write access**: Limited to specific log directory
 - **Audit trail**: Persistent logging for security monitoring
 
+**Additional llama-cpu Volumes**
+```yaml
+volumes:
+  - ./datasets:/app/datasets  # Dataset storage
+  - /sys:/sys:ro              # Read-only sysfs access
+```
+- **Dataset access**: Writable directory for benchmark datasets
+- **System info**: Read-only access to kernel sysfs for hardware information
+
 ### Temporary Storage
 
 **tmpfs Mounts for GPU Services**
+
+llama-gpu uses a single tmpfs:
 ```yaml
 tmpfs:
   - /tmp:size=4G,mode=1777
 ```
 
+vllm-gpu requires multiple tmpfs mounts for caches:
+```yaml
+tmpfs:
+  - /tmp:size=4G,mode=1777
+  - /app/.cache:size=1G,mode=1777
+  - /app/cache:size=2G,mode=1777
+  - /app/.config:size=100M,mode=1777
+  - /app/.triton:size=2G,mode=1777,exec
+```
+
 **Temporary Storage Security:**
 - **RAM-based**: No disk persistence of temporary files
-- **Size limits**: 4GB for both llama-gpu and vllm-gpu services
+- **Size limits**: Appropriate limits per cache type
 - **Mode 1777**: Sticky bit prevents cross-user file deletion
 - **Automatic cleanup**: Contents cleared on container restart
-- **GPU services only**: CPU service doesn't require tmpfs
+- **Triton exec**: Executable permission for JIT-compiled kernels
 
 ## Container Runtime Security
 
@@ -406,10 +429,6 @@ security_opt:
   - no-new-privileges:true
 cap_drop:
   - ALL
-ulimits:
-  memlock:
-    soft: -1
-    hard: -1
 read_only: true
 ```
 
@@ -426,8 +445,8 @@ read_only: true
 **Service Health Monitoring**
 ```yaml
 healthcheck:
-  test: ["CMD", "curl", "-f", "http://localhost:PORT/v1/health"]  # llama-cpu: 8001, llama-gpu: 8004
-  # vllm-gpu uses: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+  test: ["CMD", "curl", "-f", "http://localhost:PORT/v1/health"]  # llama-cpu: 8001, llama-gpu: 8002
+  # vllm-gpu uses: ["CMD", "curl", "-f", "http://localhost:8003/health"]
   interval: 30s
   timeout: 10s
   retries: 5
@@ -436,7 +455,7 @@ healthcheck:
 
 **Health Check Parameters:**
 - **Test command**: HTTP endpoint verification via curl on service's API port
-- **Port mapping**: llama-cpu (8001), llama-gpu (8004), vllm-gpu (8005)
+- **Port mapping**: llama-cpu (8001), llama-gpu (8002), vllm-gpu (8003)
 - **Endpoint paths**: llama services use /v1/health, vllm-gpu uses /health
 - **Interval**: 30-second check frequency
 - **Timeout**: 10-second response deadline
@@ -472,15 +491,15 @@ While explicit depends_on is commented out, services implement:
 ```yaml
 environment:
   - SERVER_PORT=8001
-  - MODEL_PATH=${LLAMA_CPU_MODEL}
-  - THREADS=12
-  - THREADS_BATCH=12
+  - MODEL_PATH=${LLAMA_MODEL:-${LLAMA_ZEN5_MODEL}}
+  - THREADS=16
+  - THREADS_BATCH=16
 ```
 
 **Configuration Management:**
 - **Port specification**: Explicit port configuration for clarity
-- **Model path variable**: External configuration via .env file
-- **Thread optimization**: Matches physical core allocation
+- **Model path variable**: External configuration via .env file with LLAMA_ZEN5_MODEL fallback
+- **Thread optimization**: Matches physical core allocation (16 cores)
 - **Batch processing**: Optimized for CPU architecture
 
 ### GPU Configuration
@@ -502,13 +521,19 @@ environment:
 
 **Environment Variable Usage**
 ```yaml
-MODEL_PATH=${LLAMA_CPU_MODEL}
+# llama-cpu
+MODEL_PATH=${LLAMA_MODEL:-${LLAMA_ZEN5_MODEL}}
+
+# llama-gpu
 MODEL_PATH=${LLAMA_GPU_MODEL}
+
+# vllm-gpu
 MODEL_PATH=${VLLM_GPU_MODEL}
 ```
 
 **Path Strategy:**
 - **External configuration**: .env file contains actual paths
+- **Fallback support**: llama-cpu uses LLAMA_ZEN5_MODEL if LLAMA_MODEL unset
 - **Deployment flexibility**: Easy model switching without compose changes
 - **Security**: Paths validated by containers at startup
 - **Consistency**: Standardized MODEL_PATH variable across services
@@ -521,7 +546,7 @@ MODEL_PATH=${VLLM_GPU_MODEL}
 ```yaml
 build:
   context: .
-  dockerfile: docker/Dockerfile.llama-cpu
+  dockerfile: docker/llama-cpu/Dockerfile.cpu
 ```
 
 **Build Properties:**
@@ -533,9 +558,9 @@ build:
 ### Dockerfile References
 
 **Service Dockerfile Mapping**
-- **llama-cpu**: `docker/llama-cpu/Dockerfile.llama-cpu`
-- **llama-gpu**: `docker/Dockerfile.llama-gpu`
-- **vllm-gpu**: `docker/Dockerfile.vllm-gpu`
+- **llama-cpu**: `docker/llama-cpu/Dockerfile.cpu`
+- **llama-gpu**: `docker/llama-gpu/Dockerfile.llama-gpu`
+- **vllm-gpu**: `docker/vllm-gpu/Dockerfile.vllm-gpu`
 
 **Build Architecture:**
 - **Stage separation**: Build dependencies isolated from runtime
@@ -575,4 +600,4 @@ The docker-compose.yaml implements security through:
 
 ---
 
-*Last Updated: 2025-09-23*
+*Last Updated: 2026-01-03*

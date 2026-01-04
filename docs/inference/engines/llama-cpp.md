@@ -370,25 +370,29 @@ Our configuration:
 
 ### CPU Configuration
 
-Production parameters from `docker/llama-cpu/entrypoint.sh`:
+Production parameters from `docker/llama-cpu/entrypoint.cpu.sh`:
 
 ```bash
 ./server \
     --model "$MODEL_PATH" \           # 30B Q4 model
     --ctx-size 32768 \                # 32K context window
     --batch-size 2048 \               # Optimal batch size
-    --ubatch-size 2048 \              # Physical batch = logical
-    --threads 12 \                    # 12 CPU cores
-    --threads-batch 12 \              # Batch processing threads
+    --ubatch-size 512 \               # Micro-batch for memory efficiency
+    --threads 16 \                    # 16 CPU cores (docker-compose default)
+    --threads-batch 16 \              # Batch processing threads
+    --threads-http 2 \                # API handler threads
+    --flash-attn "on" \               # Flash attention enabled
+    --cache-reuse 256 \               # KV cache reuse
     --cont-batching \                 # Continuous batching on
     --mlock \                         # Lock model in RAM
-    --threads-http 2                  # API handler threads
+    --no-repack                       # Skip tensor repacking
 ```
 
 Key optimizations:
-- Huge pages via LD_PRELOAD wrapper
+- Huge pages via LD_PRELOAD wrapper (zen5_optimizer)
 - Memory locked to prevent swapping
-- Dedicated core allocation (0-11)
+- Flash attention for memory efficiency
+- KV cache reuse for repeated prompts
 - No GPU layers (pure CPU)
 
 ### GPU Configuration
@@ -489,4 +493,4 @@ Common issues and solutions:
 
 ---
 
-*Last Updated: 2025-09-23*
+*Last Updated: 2026-01-03*

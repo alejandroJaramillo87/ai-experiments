@@ -11,23 +11,19 @@ This directory contains comprehensive documentation for understanding and optimi
 ### Core Documentation
 - **[engines/inference-engines.md](engines/inference-engines.md)** - Understanding what inference engines are and why they're needed
 - **[engines/llama-cpp.md](engines/llama-cpp.md)** - Deep technical dive into llama.cpp architecture and optimizations
-- **[engines/vllm.md](engines/vllm.md)** - High-throughput GPU inference with vLLM (pending CUDA 13 support)
+- **[engines/vllm.md](engines/vllm.md)** - High-throughput GPU inference with vLLM
 
 ### Parameter Tuning
 - **[parameters/llama-cpp-parameters.md](parameters/llama-cpp-parameters.md)** - Tested llama.cpp parameters and findings
 - **[parameters/vllm-parameters.md](parameters/vllm-parameters.md)** - vLLM configuration and throughput optimization
-- **[parameters/optimization-guide.md](parameters/optimization-guide.md)** - Benchmarking methodology and results
-
-### Performance Results
-- **[benchmarks/performance-results.md](benchmarks/performance-results.md)** - Comprehensive benchmark results (pending)
 
 ## Current Implementation Status
 
 | Service | Engine | Port | Status | Performance | Notes |
 |---------|--------|------|--------|-------------|-------|
 | llama-cpu | llama.cpp | 8001 | Active | 35.44 tok/s | Latency-optimized |
-| llama-gpu | llama.cpp | 8004 | Active | 286.85 tok/s | GPU-accelerated |
-| vllm-gpu | vLLM | 8005 | Pending | N/A | Waiting CUDA 13 |
+| llama-gpu | llama.cpp | 8002 | Active | 286.85 tok/s | GPU-accelerated |
+| vllm-gpu | vLLM | 8003 | Active | N/A | High-throughput batch serving |
 
 ## Architecture Summary
 
@@ -82,19 +78,19 @@ Inference engines are specialized runtimes optimized for executing trained model
 - Memory efficiency: 1.1x model size
 - Quantization: Native GGUF support
 
-**vLLM** (projected with CUDA 13):
+**vLLM** (v0.12.0 with CUDA 13):
 - First token: 50-100ms
-- Generation: 300-500 tok/s
+- Generation: 300-500 tok/s (projected)
 - Memory efficiency: 1.3x model size
 - Quantization: FP8, GPTQ, AWQ
 
 ## Hardware Configuration
 
-- **CPU**: AMD Ryzen 9950X (32 cores, 12 dedicated to inference)
+- **CPU**: AMD Ryzen 9950X (16 cores, 16 dedicated to inference)
 - **GPU**: RTX 5090 32GB VRAM (Blackwell architecture)
 - **Memory**: 128GB DDR5-6000 with huge pages enabled
 - **Storage**: NVMe SSD for model storage
 
 ---
 
-*Last Updated: 2025-09-23*
+*Last Updated: 2026-01-03*

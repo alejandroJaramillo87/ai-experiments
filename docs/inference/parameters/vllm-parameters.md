@@ -4,18 +4,18 @@ Detailed analysis of runtime parameters for vLLM server optimized for high-throu
 
 ## Current Parameter Configuration
 
-### vllm-gpu Service (Port 8005)
+### vllm-gpu Service (Port 8003)
 
 **Runtime Parameters (Dockerfile.vllm-gpu)**:
 ```bash
 CMD ["--model", "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b", \
      "--host", "0.0.0.0", \
-     "--port", "8005", \
+     "--port", "8003", \
      "--tensor-parallel-size", "1", \
      "--gpu-memory-utilization", "0.85", \
-     "--max-model-len", "32768", \
-     "--max-num-seqs", "512", \
-     "--max-num-batched-tokens", "65536", \
+     "--max-model-len", "16384", \
+     "--max-num-seqs", "256", \
+     "--max-num-batched-tokens", "32768", \
      "--enable-chunked-prefill", \
      "--enable-prefix-caching", \
      "--disable-log-stats", \
@@ -23,11 +23,11 @@ CMD ["--model", "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b", \
      "--download-dir", "/app/cache", \
      "--dtype", "auto", \
      "--kv-cache-dtype", "auto", \
-     "--quantization", "fp8", \
+     "--quantization", "", \
      "--tokenizer-mode", "auto"]
 ```
 
-**Service Status**: Waiting for CUDA 13.0 support in vLLM v0.10.2
+**Service Status**: Active with vLLM v0.12.0 and CUDA 13.0.2
 
 ## Parameter Analysis
 
@@ -161,17 +161,18 @@ Based on 2025 vLLM documentation, we should consider:
 3. **Evaluate `--preemption-mode`** options
 4. **Monitor memory usage patterns**
 
-## CUDA 13.0 Considerations
+## CUDA 13.0 Configuration
 
-### Current Limitation
-- **vLLM v0.10.2** does not support CUDA 13.0
-- **Issue**: CUB library API changes breaking build
-- **Status**: Waiting for official CUDA 13 support
+### Current Status
+- **vLLM v0.12.0** fully supports CUDA 13.0.2
+- **PyTorch**: 2.9.1+cu130
+- **FlashInfer**: 0.5.3
+- **Status**: Active and operational
 
-### Pending Optimizations
-These optimizations are ready to deploy once CUDA 13 is supported:
+### Active Optimizations
+These optimizations are enabled in the current deployment:
 
-**Container Runtime Optimizations** (currently commented out):
+**Container Runtime Optimizations**:
 ```bash
 # Memory Pool Optimizations
 ENV CUDA_CACHE_MAXSIZE=2147483648
@@ -189,7 +190,7 @@ ENV CUDA_DEVICE_MAX_CONNECTIONS=32
 ENV CUDA_COPY_SPLIT_THRESHOLD=256
 ```
 
-### Expected Improvements with CUDA 13
+### Benefits of CUDA 13
 - **Memory allocation**: 30 percent reduction in overhead
 - **Tensor cores**: 40 percent improvement in GEMM operations
 - **FP8 support**: Up to 2x throughput for compatible models
@@ -197,7 +198,7 @@ ENV CUDA_COPY_SPLIT_THRESHOLD=256
 
 ## Benchmarking Plan
 
-### Test Matrix (Once CUDA 13 Available)
+### Test Matrix
 - **GPU memory utilization**: 0.85 vs 0.99
 - **Sequence limits**: Different max-num-seqs values
 - **Batch sizes**: Optimal batched tokens configuration
@@ -241,4 +242,4 @@ ENV CUDA_COPY_SPLIT_THRESHOLD=256
 
 ---
 
-*Last Updated: 2025-09-23*
+*Last Updated: 2026-01-03*

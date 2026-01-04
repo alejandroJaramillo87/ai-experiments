@@ -321,11 +321,11 @@ Chunks of 256 tokens, better latency for other requests
 
 ### Docker Configuration
 
-Current production setup (waiting for CUDA 13 support):
+Current production setup (vLLM v0.12.0 with CUDA 13.0.2):
 
 ```dockerfile
 # Build stage
-FROM nvidia/cuda:13.0.1-devel-ubuntu24.04 AS builder
+FROM nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04 AS builder
 ENV TORCH_CUDA_ARCH_LIST="12.0"  # RTX 5090 Blackwell
 ENV CUDA_DOCKER_ARCH=sm_120
 ENV NVCC_THREADS=8
@@ -334,35 +334,36 @@ ENV NVCC_THREADS=8
 ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server"]
 
 CMD ["--model", "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b",
-     "--port", "8005",
+     "--port", "8003",
      "--gpu-memory-utilization", "0.85",
-     "--max-model-len", "32768",
-     "--max-num-seqs", "512",
+     "--max-model-len", "16384",
+     "--max-num-seqs", "256",
+     "--max-num-batched-tokens", "32768",
      "--enable-chunked-prefill",
      "--enable-prefix-caching",
-     "--quantization", "fp8"]
+     "--quantization", ""]
 ```
 
 ### CUDA 13 Compatibility
 
-Current blocker and timeline:
+CUDA 13 support is now available:
 
 ```
-Issue: vLLM v0.10.2 incompatible with CUDA 13
-Cause: CUB library API changes (cub::Sum removed)
-Tracking: https://github.com/vllm-project/vllm/pull/23976
-Status: Waiting for upstream fix
-Workaround: None (must wait for vLLM update)
+Status: vLLM v0.12.0 supports CUDA 13.0.2
+Build: Using nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04
+PyTorch: 2.9.1+cu130
+FlashInfer: 0.5.3
 ```
 
-### Pending Optimizations
+### Active Optimizations
 
-Optimizations ready when CUDA 13 support lands:
+The following optimizations are enabled in production:
 
 ```bash
 # Memory pools (30% allocation overhead reduction)
 ENV CUDA_ALLOCATOR_BACKEND=cudaMallocAsync
 ENV CUDA_MALLOC_ASYNC_POOLS=1
+ENV CUDA_CACHE_MAXSIZE=2147483648
 
 # Tensor cores (40% GEMM speedup)
 ENV CUBLAS_WORKSPACE_CONFIG=:4096:8
@@ -370,26 +371,26 @@ ENV CUDNN_TENSOR_OPS=1
 
 # Blackwell L2 cache (96MB)
 ENV CUDA_L2_PERSISTING_SIZE=100663296
+ENV CUDA_DEVICE_MAX_CONNECTIONS=32
 
-# FP8 formats
-ENV VLLM_FP8_E4M3=1
-ENV VLLM_FP8_E5M2=1
-
-# CUDA graphs (20% kernel launch reduction)
-ENV VLLM_CUDA_GRAPHS=1
+# CUDA runtime optimizations
+ENV CUDA_MODULE_LOADING=LAZY
+ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
+ENV CUDA_LAUNCH_BLOCKING=0
 ```
 
 ## Performance Characteristics
 
-Expected performance on RTX 5090 (once CUDA 13 supported):
+Performance on RTX 5090 with CUDA 13.0.2:
 
-| Metric | Current (CUDA 12.8) | With CUDA 13 | Improvement |
-|--------|---------------------|--------------|-------------|
-| Throughput | ~300 tok/s | ~500 tok/s | 67% |
-| First token | 100ms | 50ms | 50% |
-| Batch size | 32 | 64 | 100% |
-| Memory usage | 85% | 95% | 12% |
-| FP8 support | Partial | Full | N/A |
+| Metric | Value | Notes |
+|--------|-------|-------|
+| Throughput (single) | ~300-500 tok/s | Projected, pending benchmarks |
+| Throughput (batch 16) | ~4800 tok/s | Projected, pending benchmarks |
+| First token | 50-100ms | Estimated with chunked prefill |
+| Max sequences | 256 | Current configuration |
+| Memory usage | 85% | GPU memory utilization |
+| FP8 support | Available | Native on RTX 5090 |
 
 Comparison with llama.cpp on same hardware:
 
@@ -441,7 +442,7 @@ Service configuration:
 vllm-gpu:
   container_name: vllm-gpu
   ports:
-    - "127.0.0.1:8005:8005"
+    - "127.0.0.1:8003:8003"
   deploy:
     resources:
       reservations:
@@ -474,16 +475,16 @@ Common issues and solutions:
 | OOM on startup | Model too large | Reduce --gpu-memory-utilization |
 | Slow generation | Poor batching | Increase --max-num-seqs |
 | High latency | Prefill blocking | Enable --enable-chunked-prefill |
-| CUDA error | Version mismatch | Wait for CUDA 13 support |
+| CUDA error | Version mismatch | Ensure CUDA 13.0.2 and PyTorch 2.9.1+cu130 |
 | Memory leak | Cache fragmentation | Restart service periodically |
 
 ## Next Steps
 
-- Monitor [vLLM CUDA 13 support](https://github.com/vllm-project/vllm/pulls)
+- Run benchmarks to validate projected performance numbers
 - Review [parameters/vllm-parameters.md](../parameters/vllm-parameters.md) for tuning
 - Compare with [llama-cpp.md](llama-cpp.md) for deployment decisions
-- Check [benchmarks/performance-results.md](../benchmarks/performance-results.md) when available
+- Update [benchmarks/performance-results.md](../benchmarks/performance-results.md) with actual results
 
 ---
 
-*Last Updated: 2025-09-24*
+*Last Updated: 2026-01-03*

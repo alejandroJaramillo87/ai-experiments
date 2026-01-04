@@ -285,7 +285,7 @@ Our workstation runs two inference engines optimized for different workloads:
 | Engine | Target | Optimization | Performance | Use Case |
 |--------|--------|--------------|-------------|----------|
 | llama.cpp | CPU/GPU | Latency | 35/287 tok/s | Interactive chat |
-| vLLM | GPU | Throughput | Pending CUDA 13 | API serving |
+| vLLM | GPU | Throughput | 300-500 tok/s (est.) | API serving |
 
 Architecture flow:
 ```
@@ -318,4 +318,4 @@ Key metrics for inference engines:
 
 ---
 
-*Last Updated: 2025-09-23*
+*Last Updated: 2026-01-03*

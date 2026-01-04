@@ -47,7 +47,7 @@ $ make status      # Check health
 $ make logs-gpu    # Monitor GPU
 
 # 6. Access services
-# GPU API: http://localhost:8004/v1
+# GPU API: http://localhost:8002/v1
 # CPU API: http://localhost:8001/v1
 # Web UI: http://localhost:3000
 ```
@@ -63,8 +63,8 @@ This base infrastructure repository provides AI inference capabilities with vali
 - **26% CPU performance improvement** through BIOS and OS optimizations
 - **Git submodule architecture** for AI project repositories
 - **Comprehensive benchmarking suite** with JSON output for tracking
-- **31 documentation files** covering every aspect of the infrastructure
-- **21 automation scripts** for setup, updates, and utilities
+- **28 documentation files** covering every aspect of the infrastructure
+- **24 automation scripts** for setup, updates, and utilities
 
 ## Key Achievements
 
@@ -84,7 +84,7 @@ This base infrastructure repository provides AI inference capabilities with vali
 
 ## Infrastructure Services
 
-### llama-gpu (Port 8004)
+### llama-gpu (Port 8002)
 - **Purpose**: Primary GPU inference service
 - **Performance**: 286.85 tokens/second
 - **Configuration**: Batch 2048, Ubatch 512, Flash Attention enabled
@@ -94,11 +94,11 @@ This base infrastructure repository provides AI inference capabilities with vali
 ### llama-cpu (Port 8001)
 - **Purpose**: Latency-optimized CPU inference
 - **Performance**: 35.44 tokens/second
-- **Configuration**: 12 dedicated cores (0-11), 96GB RAM
+- **Configuration**: 16 dedicated cores (0-15), 96GB RAM
 - **Optimizations**: Huge pages enabled
 - **Features**: Single-model focus for minimum latency
 
-### vllm-gpu (Port 8005)
+### vllm-gpu (Port 8003)
 - **Purpose**: High-throughput batch inference
 - **Status**: Awaiting CUDA 13.0 support
 - **Features**: Optimized for concurrent requests
@@ -111,24 +111,7 @@ This base infrastructure repository provides AI inference capabilities with vali
 
 ## Performance Benchmarks
 
-Based on production testing (September 2025):
-
-### GPU Inference (RTX 5090)
-- **Model**: gpt-oss-20b (Q8_K_XL quantization)
-- **Performance**: 286.85 tokens/second
-- **Configuration**: Batch 2048, Ubatch 512
-- **GPU Utilization**: 95%
-- **VRAM Usage**: 15.3GB of 32GB
-- **Power Draw**: 438W of 600W limit
-- **Benchmark**: `docs/optimizations/os/gpu_baseline.json`
-
-### CPU Inference (AMD Ryzen 9950X)
-- **Model**: Qwen3-Coder-30B (IQ4_XS quantization)
-- **Performance**: 35.44 tokens/second
-- **Configuration**: Batch 2048, 12 threads
-- **Optimization Gain**: +26% with BIOS/OS optimizations
-- **Memory**: Huge pages (90GB allocated)
-- **Benchmark**: `docs/optimizations/bios/cpu_benchmark_results_final_bios.json`
+TBD
 
 ## Repository Architecture
 
@@ -157,81 +140,52 @@ $ git submodule update --init --recursive
 ```
 ai-experiments/
 ├── .claude/                   # Claude Code configuration
-│   └── CLAUDE.md             # Project context and guidelines
+├── .styles/                   # Style guides
+├── CLAUDE.md                  # Project instructions
 ├── docker/                    # Container definitions
 │   ├── llama-cpu/            # CPU service
-│   │   ├── Dockerfile.llama-cpu
-│   │   ├── entrypoint.sh     # Parameterized startup
-│   │   └── hugepage_mmap_wrapper.cpp
+│   │   ├── Dockerfile.cpu
+│   │   └── entrypoint.cpu.sh
 │   ├── llama-gpu/            # GPU service
-│   │   └── entrypoint.sh     # Parameterized startup
-│   ├── Dockerfile.llama-gpu  # GPU container definition
-│   └── Dockerfile.vllm-gpu   # vLLM container definition
-├── docs/                      # Comprehensive documentation (31 files)
-│   ├── bios/                 # BIOS optimization guides
+│   │   ├── Dockerfile.llama-gpu
+│   │   └── entrypoint.sh
+│   └── vllm-gpu/             # vLLM service
+│       ├── Dockerfile.vllm-gpu
+│       └── entrypoint.sh
+├── docs/                      # Comprehensive documentation (28 files)
+│   ├── bios/                 # BIOS configuration
 │   ├── hardware/             # Hardware selection guide
 │   ├── inference/            # Parameter optimization
-│   │   ├── README.md
-│   │   ├── llama-cpp-parameters.md
-│   │   ├── vllm-parameters.md
-│   │   └── parameter-optimization-guide.md
+│   │   ├── engines/         # Inference engine docs
+│   │   └── parameters/      # Parameter tuning guides
 │   ├── optimizations/        # System optimizations
 │   │   ├── bios/            # BIOS settings & benchmarks
-│   │   ├── os/              # OS-level optimizations
-│   │   ├── gpu/             # GPU optimizations
-│   │   ├── experiments/     # Experimental features
-│   │   └── benchmark-guide.md
+│   │   └── os/              # OS-level optimizations
 │   ├── os/                   # Operating system setup
 │   │   ├── gpu-stack/       # NVIDIA GPU software stack
-│   │   │   ├── README.md
-│   │   │   ├── nvidia-drivers.md
-│   │   │   ├── cuda.md
-│   │   │   └── cudnn.md
-│   │   ├── python/          # Python environment
-│   │   │   ├── poetry-dependencies.md
-│   │   │   ├── setup_python.md
-│   │   │   └── pytorch_cuda_update_guide.md
-│   │   └── backup_and_recovery.md
+│   │   └── python/          # Python environment
 │   └── sandbox/              # Container documentation
-│       ├── docker_compose_overview.md
-│       ├── docker_llama_cpu_overview.md
-│       ├── docker_llama_gpu_overview.md
-│       └── docker_vllm_gpu_overview.md
-├── scripts/                   # Automation tooling (21 scripts)
+├── hugepages/                 # zen5_optimizer hugepage wrapper
+│   ├── src/                  # Source code
+│   │   ├── zen5_optimizer.cpp
+│   │   └── memory/hugepage_wrapper.cpp
+│   └── tests/                # Test suite
+├── scripts/                   # Automation tooling (24 scripts)
 │   ├── setup/                # Installation scripts (8)
-│   │   ├── setup_nvidia.sh
-│   │   ├── setup_cuda.sh
-│   │   ├── setup_cudnn.sh
-│   │   ├── setup_docker.sh
-│   │   ├── setup_data_ssd.sh
-│   │   ├── setup_security.sh
-│   │   ├── setup_sudo_user.sh
-│   │   └── setup_terminal.sh
-│   ├── update/               # Update scripts (8)
-│   │   ├── update_nvidia.sh
-│   │   ├── update_cuda.sh
-│   │   ├── update_cudnn.sh
-│   │   ├── update_docker.sh
-│   │   ├── update_python.sh
-│   │   ├── update_security.sh
-│   │   └── update_ubuntu.sh
+│   ├── update/               # Update scripts (7)
 │   ├── utils/                # Utilities (5)
-│   │   ├── check_py_deps_install.py
-│   │   ├── dependency_check.sh
-│   │   ├── download_model_hf.py
-│   │   ├── find_pythons.sh
-│   │   └── storage_check.sh
-│   ├── optimizations/        # Performance tuning
-│   │   └── optimize-gpu.sh
-│   └── benchmark.py          # Performance testing tool
+│   └── benchmark/            # Performance testing (4)
+│       ├── server-bench.py
+│       ├── benchmark_cpu.sh
+│       ├── benchmark_gpu.sh
+│       └── datasets/
+├── datasets/                  # Training/test datasets
 ├── logs/                      # Service logs
-│   ├── cpu/                  # CPU service logs
-│   └── gpu/                  # GPU service logs
 ├── docker-compose.yaml        # Service orchestration
 ├── pyproject.toml            # Poetry dependencies
 ├── poetry.lock               # Locked dependencies
 ├── Makefile                  # Infrastructure commands
-├── .env.example              # Environment template
+├── .env                      # Environment configuration
 ├── .gitignore                # Git exclusions
 └── README.md                 # This file
 ```
@@ -257,16 +211,13 @@ ai-experiments/
 
 ### Inference optimization
 - **Overview**: [docs/inference/README.md](docs/inference/README.md)
-- **llama.cpp Parameters**: [docs/inference/llama-cpp-parameters.md](docs/inference/llama-cpp-parameters.md)
-- **vLLM Parameters**: [docs/inference/vllm-parameters.md](docs/inference/vllm-parameters.md)
-- **Optimization Guide**: [docs/inference/parameter-optimization-guide.md](docs/inference/parameter-optimization-guide.md)
+- **llama.cpp Parameters**: [docs/inference/parameters/llama-cpp-parameters.md](docs/inference/parameters/llama-cpp-parameters.md)
+- **vLLM Parameters**: [docs/inference/parameters/vllm-parameters.md](docs/inference/parameters/vllm-parameters.md)
 
 ### System optimizations
 - **Overview**: [docs/optimizations/README.md](docs/optimizations/README.md)
 - **BIOS Optimizations**: [docs/optimizations/bios/bios-optimizations.md](docs/optimizations/bios/bios-optimizations.md)
 - **OS Optimizations**: [docs/optimizations/os/os-optimizations.md](docs/optimizations/os/os-optimizations.md)
-- **GPU Optimizations**: [docs/optimizations/gpu/gpu-optimizations.md](docs/optimizations/gpu/gpu-optimizations.md)
-- **Benchmarking**: [docs/optimizations/benchmark-guide.md](docs/optimizations/benchmark-guide.md)
 
 ### Container documentation
 - **Docker Compose**: [docs/sandbox/docker_compose_overview.md](docs/sandbox/docker_compose_overview.md)
@@ -280,7 +231,7 @@ ai-experiments/
 
 | Component | Specification | Purpose |
 |-----------|---------------|---------|
-| **CPU** | AMD Ryzen 9950X | 16-core/32-thread, cores 0-11 for inference |
+| **CPU** | AMD Ryzen 9950X | 16-core/32-thread, 16 cores for inference |
 | **GPU** | NVIDIA RTX 5090 | 32GB VRAM, SM 12.0 Blackwell architecture |
 | **Memory** | 128GB DDR5-6000 | Large model loading, 90GB huge pages |
 | **Storage** | Samsung 990 PRO 2TB (models)<br>Samsung 990 EVO 1TB (OS) | High-speed model storage |
@@ -316,22 +267,22 @@ ai-experiments/
 - `update_ubuntu.sh` - System updates
 
 ### Utilities
-- `benchmark.py` - Comprehensive performance testing
 - `download_model_hf.py` - HuggingFace model downloader
 - `check_py_deps_install.py` - Dependency verification
 - `dependency_check.sh` - System dependency check
+- `find_pythons.sh` - Python installation finder
 - `storage_check.sh` - Storage verification
 
 ### Benchmarking
 ```bash
 # Run GPU benchmark
-$ scripts/benchmark.py --service llama-gpu --label "gpu_test"
+$ scripts/benchmark/benchmark_gpu.sh
 
 # Run CPU benchmark
-$ scripts/benchmark.py --service llama-cpu --label "cpu_test"
+$ scripts/benchmark/benchmark_cpu.sh
 
-# Compare results
-$ scripts/benchmark.py --compare gpu_baseline.json gpu_test.json
+# Run server benchmark
+$ scripts/benchmark/server-bench.py --service llama-gpu
 ```
 
 ## Python Environment
@@ -397,7 +348,7 @@ RTX 5090 (Physical GPU)
 
 ### Container level
 - Memory locking enabled
-- CPU affinity set (cores 0-11)
+- CPU affinity set (cores 0-15)
 - GPU persistence mode enabled
 - CUDA memory pools optimized
 - Environment variable configuration
@@ -415,7 +366,7 @@ $ cd base-infrastructure && make up
 2. **Access services**:
 ```python
 # In project code
-GPU_API = "http://localhost:8004/v1"
+GPU_API = "http://localhost:8002/v1"
 CPU_API = "http://localhost:8001/v1"
 ```
 
@@ -446,11 +397,11 @@ This infrastructure is open source and available under the MIT License.
 ---
 
 **Version:** 1.0.0
-**Last Updated:** September 2025
+**Last Updated:** January 2026
 **Status:** Stable
 **Performance:** 286.85 tok/s (GPU) | 35.44 tok/s (CPU)
 **Hardware:** RTX 5090 + AMD Ryzen 9950X
 
 ---
 
-*Last Updated: 2025-09-24*
+*Last Updated: 2026-01-03*
