@@ -52,6 +52,7 @@ System optimizations are organized by component:
 
 - **bios/** - BIOS firmware settings and benchmark results
 - **os/** - Operating system and memory optimizations
+- **experiments/** - Candidate optimizations under evaluation
 
 ## Files
 
@@ -69,6 +70,12 @@ System optimizations are organized by component:
   - CPU governor (performance mode)
   - Memory locking configuration
   - CPU pinning via Docker cpuset
+
+### experiments/
+- **aocl-llama-cpp.md** - AMD AOCL (ZenDNN/AOCL-DLP, AOCL-LibMem) evaluation for prefill acceleration
+  - ZenDNN llama.cpp backend (Q8_0/BF16 GEMM via AOCL-DLP)
+  - AOCL-LibMem LD_PRELOAD experiment
+  - Benchmark matrix vs native AVX-512 repack path
 
 ## Implementation Status
 

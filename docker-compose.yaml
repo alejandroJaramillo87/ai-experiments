@@ -38,6 +38,50 @@ services:
       retries: 5
       start_period: 180s
 
+  # EXPERIMENTAL: ZenDNN/AOCL-DLP backend for prefill acceleration
+  # See docs/optimizations/experiments/aocl-llama-cpp.md
+  # Start with: docker compose --profile experimental up -d llama-cpu-aocl
+  llama-cpu-aocl:
+    profiles: ["experimental"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          memory: 96G
+    build:
+      context: .
+      dockerfile: docker/llama-cpu/Dockerfile.cpu-aocl
+    container_name: llama-cpu-aocl
+    restart: unless-stopped
+    cpuset: "0-15"
+    environment:
+      - SERVER_PORT=8006
+      # Use a Q8_0 or BF16 GGUF to exercise the ZenDNN mul_mat path
+      - MODEL_PATH=${LLAMA_AOCL_MODEL:-${LLAMA_MODEL:-${LLAMA_ZEN5_MODEL}}}
+      - THREADS=16
+      - THREADS_BATCH=16
+      - ENABLE_LIBMEM=${ENABLE_LIBMEM:-false}
+      - NO_REPACK=${NO_REPACK:-true}
+    ports:
+      - "127.0.0.1:8006:8006"
+    read_only: true
+    volumes:
+      - /mnt/ai-data/models/:/app/models:ro
+      - ./logs/cpu-aocl:/app/logs
+      - ./datasets:/app/datasets
+      - /sys:/sys:ro
+    networks:
+      - ai-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+
   llama-gpu:
     init: true  # Use tini as PID 1 for proper signal forwarding (required for nsys)
     user: "${UID:-1000}:${GID:-1000}"  # Match host user for volume write access (nsys)
