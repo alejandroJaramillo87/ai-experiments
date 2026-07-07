@@ -15,6 +15,12 @@ This is a planning document. No code is implied to exist yet.
 - [Goals](#goals)
 - [Hardware envelope](#hardware-envelope)
 - [Trainable model scale](#trainable-model-scale)
+- [Training stages and methods](#training-stages-and-methods)
+  - [Pretraining from scratch](#pretraining-from-scratch)
+  - [Continued pretraining](#continued-pretraining)
+  - [Supervised fine-tuning](#supervised-fine-tuning)
+  - [Preference alignment](#preference-alignment)
+  - [Parameter-efficient fine-tuning toolkit](#parameter-efficient-fine-tuning-toolkit)
 - [Design principle: adopt versus build](#design-principle-adopt-versus-build)
   - [Adopt](#adopt)
   - [Build](#build)
@@ -110,6 +116,74 @@ gradient checkpointing reduces substantially.
 The capability statement for the repository: full pretraining is the 100
 million to 1 billion parameter zone, continued pretraining reaches 1 billion to
 3 billion, and fine-tuning or alignment reaches 6 billion through QLoRA.
+
+## Training stages and methods
+
+The repository provides four training stages. Each is a code path built on an
+adopted trainer, and each applies to both a strong open base and a from-scratch
+model. These stages are the foundation the continual-learning regime later runs
+as a sequence rather than once. The table summarizes them, and the subsections
+give detail.
+
+| Stage | Objective | Primary adopted tool | Scale on 32GB | Continual-mode extension |
+|-------|-----------|----------------------|---------------|--------------------------|
+| Pretraining from scratch | Next-token prediction | nanotron, litGPT, custom loop | 100M to 1B full | Not applicable |
+| Continued pretraining | Next-token prediction on new corpora | TRL, Axolotl | 1B to 3B full with offload, larger with LoRA | Continual pre-training over a corpus stream |
+| Supervised fine-tuning | Instruction and chat completion | TRL, torchtune, Unsloth | 1.5B to 2B full, 6B to 8B with QLoRA | Continual fine-tuning over a task sequence |
+| Preference alignment | Match human or model preferences | TRL, Axolotl | 6B to 8B with QLoRA | Continual alignment over evolving preferences |
+
+### Pretraining from scratch
+
+Train a model from random initialization with a causal language-modeling
+objective. This stage owns the tokenizer, the architecture, and the full data
+pipeline. Kernels come from FlashAttention and Liger-Kernel. The realistic local
+target is 100 million to 1 billion parameters. The primary value is the learning
+pillar and control of the entire stack rather than model quality.
+
+### Continued pretraining
+
+Resume training on a strong open base over new corpora, most often for domain
+adaptation. The objective is unchanged, but two techniques govern quality:
+learning-rate rewarming and re-decay, typically through a warmup-stable-decay
+schedule, and replay of a slice of the original data distribution to limit
+forgetting. Data mixing weights control the balance of new and original domains.
+Full training reaches 1 billion to 3 billion parameters with optimizer offload
+to system RAM, or larger through low-rank adaptation. This single run is the
+precursor to continual pre-training, which streams many such adaptations in
+sequence.
+
+### Supervised fine-tuning
+
+Supervised fine-tuning (SFT) trains a base model on instruction and chat data.
+The stage handles chat templates, multi-turn conversations, prompt-loss masking
+so that loss applies only to completions, and sequence packing for efficiency.
+Full fine-tuning reaches roughly 1.5 billion to 2 billion parameters; parameter-
+efficient methods reach 6 billion to 8 billion. A distinct and high-value variant
+is distillation fine-tuning, in which a smaller model learns from the responses
+or output distribution of a larger teacher. Distillation is the most direct route
+to a capable sub-3 billion parameter model on this hardware.
+
+### Preference alignment
+
+Align a fine-tuned model to human or model-generated preferences. The default
+methods are those that need no separate reward model and suit a single GPU:
+direct preference optimization (DPO), odds-ratio preference optimization (ORPO),
+Kahneman-Tversky optimization (KTO), and simple preference optimization (SimPO).
+Online reinforcement learning, through reward modeling with proximal policy
+optimization or group relative policy optimization (GRPO), supports reasoning
+alignment with verifiable rewards and is deferred to a later phase. Preference
+alignment reaches 6 billion to 8 billion parameters through QLoRA.
+
+### Parameter-efficient fine-tuning toolkit
+
+Parameter-efficient fine-tuning (PEFT) is the substrate shared by the fine-tuning
+and alignment stages and by architecture-based continual learning. The toolkit
+adopts Hugging Face PEFT and bitsandbytes and covers low-rank adaptation (LoRA),
+its quantized form (QLoRA), weight-decomposed adaptation (DoRA), rank-stabilized
+LoRA, IA3, and prompt and prefix tuning. Adapter merging through TIES, DARE, and
+spherical interpolation, using mergekit, combines separately trained adapters.
+The same adapter-isolation mechanism underpins the architecture family of
+continual-learning methods, for example orthogonal LoRA.
 
 ## Design principle: adopt versus build
 
@@ -237,7 +311,10 @@ original results that larger organizations are not optimizing for.
 
 The repository follows the taxonomy of the mid-2026 survey by Chen and
 colleagues, which structures continual learning across three training stages,
-each addressed by three method families.
+each addressed by three method families. The three stages are exactly the stages
+defined in [Training stages and methods](#training-stages-and-methods), run as a
+sequence rather than once. Continual learning adds no new trainer; it adds the
+outer loop and the anti-forgetting machinery around those existing paths.
 
 Three stages:
 
