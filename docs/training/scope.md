@@ -22,6 +22,10 @@ This is a planning document. No training code is implied to exist yet.
 - [Design principle: adopt versus build](#design-principle-adopt-versus-build)
   - [Adopt](#adopt)
   - [Build](#build)
+- [CPU-tier library strategy](#cpu-tier-library-strategy)
+  - [Adopted at the CPU tier](#adopted-at-the-cpu-tier)
+  - [Deferred pending profiling](#deferred-pending-profiling)
+  - [Not applicable, recorded to prevent re-litigation](#not-applicable-recorded-to-prevent-re-litigation)
 - [Learning track](#learning-track)
 - [Continual and lifelong learning](#continual-and-lifelong-learning)
   - [Why it fits a local sub-6B lab](#why-it-fits-a-local-sub-6b-lab)
@@ -181,6 +185,7 @@ upstream projects.
 | Evaluation | lm-evaluation-harness, lighteval, MTEB |
 | Experiment tracking, configuration, search | Weights and Biases, MLflow, TensorBoard, Hydra, Optuna, Ray Tune |
 | Quantization, export, merge | llama.cpp for GGUF, AutoAWQ, GPTQModel, mergekit |
+| CPU-tier acceleration | AOCL-backed NumPy and SciPy, AOCL-LibMem, zentorch, detailed in [CPU-tier library strategy](#cpu-tier-library-strategy) |
 
 ### Build
 
@@ -212,6 +217,64 @@ hardware envelope or the train-and-serve lifecycle and cannot be downloaded.
    detailed in [Continual and lifelong learning](#continual-and-lifelong-learning).
    The custom footprint is small and reuses the shared trainer, data pipeline, and
    offload.
+
+## CPU-tier library strategy
+
+The training step itself runs on the GPU, so its kernels and precision come from
+the adopted CUDA stack and no CPU library touches the forward or backward pass.
+The whole-machine pillar, however, makes the Ryzen 9950X a first-class worker:
+it runs the data pipeline, concurrent evaluation, checkpoint serialization, and
+every copy path between memory tiers. AMD's CPU library stack, AOCL and ZenDNN,
+applies to that tier. This section records which libraries earn a place, which
+wait on profiling data, and which do not apply, so later phases do not
+re-litigate the question. The inference services evaluated the same stack for
+serving in `docs/optimizations/experiments/aocl-llama-cpp.md`; this section
+covers the training tier only.
+
+### Adopted at the CPU tier
+
+| Library | Where it lands | Rationale |
+|---------|----------------|-----------|
+| AOCL-backed NumPy and SciPy (AOCL-BLAS, AOCL-LAPACK, AOCL-FFTW) | Training container (Phase 0, deliverable 1); pipeline statistics and MinHash math (Phase 0 deliverable 2, Phase 2 deliverable 1); scaling calculator (Phase 3, deliverable 3); learning-track autograd (Phase 0, deliverable 11) | Pipeline and learning-track math is native F32/F64 dense linear algebra, the case Zen-tuned BLIS GEMM is built for. The dequantization penalty that disqualified the BLAS route for quantized inference does not exist here. The tensor-mode autograd engine running its matrix multiplications on BLIS also serves the learning pillar: the artifact that teaches GEMM runs on the hardware's tuned GEMM. |
+| AOCL-LibMem | LD_PRELOAD in the training container, toggled from the NUMA and core-pinning wrapper (Phase 0, deliverable 9) | The pinned-memory prefetch dataloader, RAM-disk shard staging, sharded safetensors checkpointing, and ZeRO-Offload host buffers are memcpy-bound paths. Same interposition mechanism as the inference hugepage wrapper; the two preloads compose. Expected gain is single-digit percent; cost is one entrypoint line. |
+| zentorch (ZenDNN plugin for PyTorch) | Concurrent CPU-side evaluation (Phase 0 deliverable 9, Phase 1 deliverable 7) and MTEB embedding evaluation | A `torch.compile` backend that routes PyTorch CPU inference through ZenDNN. It is inference-only, which fits: the CPU-side PyTorch work in this scope is inference run while the GPU trains. |
+
+The serving-dependent deliverables, the train-and-serve round trip (Phase 0,
+deliverable 7), model-as-judge scoring (Phase 1, deliverable 7), and the
+distilabel teacher harness (Phase 1, deliverable 5), inherit whatever
+acceleration the inference services adopt. Judge scoring and synthetic-data
+generation submit long prompts in batches, the prefill-heavy shape the
+inference-side ZenDNN experiment targets, so that experiment's outcome flows
+directly into training throughput without training-side code.
+
+### Deferred pending profiling
+
+- **AOCL-Compression.** Covers the codecs the data stack uses (zstd, lz4,
+  zlib, snappy, and others) with OpenMP multithreading and parallel
+  decompression. Arrow, Hugging Face datasets, and safetensors link their own
+  codec builds, so adoption requires custom wiring. Revisit only if shard or
+  checkpoint input and output appears in profiles during overlapped
+  whole-machine operation.
+- **AOCL-Cryptography.** SHA primitives could back exact-deduplication hashing
+  in the Phase 2 pipeline, but MinHash-LSH, the dominant deduplication
+  workload, uses non-cryptographic hashes. Narrow surface.
+- **AOCL-LAPACK direct use.** CPU-side singular value decomposition for
+  PiSSA-style adapter initialization or SVD-based merge work, relevant only
+  when the GPU must stay saturated with the training step.
+
+### Not applicable, recorded to prevent re-litigation
+
+- The forward and backward pass, FlashAttention, and FP8 are GPU work; AOCL is
+  a CPU suite and cannot touch them.
+- The DeepSpeed CPUAdam optimizer step under ZeRO-Offload (Phase 2,
+  deliverable 5) is the largest CPU compute consumer in this scope and is
+  elementwise, not matrix multiplication, so no BLAS-family library
+  accelerates it. The applicable optimizations are compiling the CPUAdam
+  extension with `znver5` flags and NUMA-aware, hugepage-backed placement of
+  the pinned optimizer buffers, which belong to the heterogeneous-compute
+  orchestration build item, not to library adoption.
+- AOCL-FFTW beyond its NumPy linkage, AOCL-ScaLAPACK, AOCL-Sparse, AOCL-RNG,
+  and AOCL-DA have no consumers anywhere in this scope.
 
 ## Learning track
 
