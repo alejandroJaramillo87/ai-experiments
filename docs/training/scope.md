@@ -19,7 +19,6 @@ This is a planning document. No code is implied to exist yet.
   - [Pretraining from scratch](#pretraining-from-scratch)
   - [Continued pretraining](#continued-pretraining)
   - [Supervised fine-tuning](#supervised-fine-tuning)
-  - [Preference alignment](#preference-alignment)
   - [Parameter-efficient fine-tuning toolkit](#parameter-efficient-fine-tuning-toolkit)
 - [Design principle: adopt versus build](#design-principle-adopt-versus-build)
   - [Adopt](#adopt)
@@ -34,7 +33,13 @@ This is a planning document. No code is implied to exist yet.
   - [Deliverables](#deliverables)
   - [Non-goals for version 0.1](#non-goals-for-version-01)
   - [Success criteria](#success-criteria)
-- [Roadmap beyond version 0.1](#roadmap-beyond-version-01)
+- [Roadmap](#roadmap)
+  - [Phase 0: Foundation](#phase-0-foundation)
+  - [Phase 1: Fine-tuning](#phase-1-fine-tuning)
+  - [Phase 2: Continual pre-training](#phase-2-continual-pre-training)
+  - [Phase 4: Pretraining from scratch](#phase-4-pretraining-from-scratch)
+  - [Phase 5: Continual learning](#phase-5-continual-learning)
+  - [Optional and ongoing tracks](#optional-and-ongoing-tracks)
 - [Proposed repository structure](#proposed-repository-structure)
 - [Relationship to the inference repository](#relationship-to-the-inference-repository)
 - [Resolved decisions](#resolved-decisions)
@@ -43,7 +48,7 @@ This is a planning document. No code is implied to exist yet.
 
 ## Purpose
 
-Provide a reproducible local environment to train, adapt, and align language
+Provide a reproducible local environment to train and adapt language
 models of 6 billion parameters and smaller on a single-node workstation. The
 repository targets three outcomes at once: producing models that are useful,
 teaching the mathematics and mechanics of deep learning, and saturating the
@@ -58,8 +63,8 @@ serves both:
 1. **Pretraining from scratch.** Primarily serves the learning pillar and the
    goal of owning the full stack. The realistic target is a coherent and
    servable model, not a state-of-the-art one.
-2. **Specializing a strong open base.** Continued pretraining, fine-tuning, and
-   alignment of an existing model such as SmolLM3, Qwen, or Llama-3.2. This is
+2. **Specializing a strong open base.** Continued pretraining and fine-tuning of
+   an existing model such as SmolLM3, Qwen, or Llama-3.2. This is
    the path that yields genuinely useful local models within days rather than
    weeks, and it is where continual learning lives.
 
@@ -70,7 +75,7 @@ one of them.
 
 1. **Produce useful models.** Train dense transformer models in the 1 billion
    to 3 billion parameter range from scratch, continue pretraining on domain
-   data, and fine-tune or align models up to 6 billion parameters. The output
+   data, and fine-tune models up to 6 billion parameters. The output
    is a coherent model, not a demonstration.
 
 2. **Teach deep learning internals.** Serve as a working environment to
@@ -115,22 +120,22 @@ gradient checkpointing reduces substantially.
 
 The capability statement for the repository: full pretraining is the 100
 million to 1 billion parameter zone, continued pretraining reaches 1 billion to
-3 billion, and fine-tuning or alignment reaches 6 billion through QLoRA.
+3 billion, and fine-tuning reaches 6 billion through QLoRA.
 
 ## Training stages and methods
 
-The repository provides four training stages. Each is a code path built on an
+The repository provides three training stages. Each is a code path built on an
 adopted trainer, and each applies to both a strong open base and a from-scratch
 model. These stages are the foundation the continual-learning regime later runs
 as a sequence rather than once. The table summarizes them, and the subsections
-give detail.
+give detail. Preference alignment, for example direct preference optimization and
+reinforcement learning from human feedback, is out of scope for this repository.
 
 | Stage | Objective | Primary adopted tool | Scale on 32GB | Continual-mode extension |
 |-------|-----------|----------------------|---------------|--------------------------|
 | Pretraining from scratch | Next-token prediction | nanotron, litGPT, custom loop | 100M to 1B full | Not applicable |
 | Continued pretraining | Next-token prediction on new corpora | TRL, Axolotl | 1B to 3B full with offload, larger with LoRA | Continual pre-training over a corpus stream |
 | Supervised fine-tuning | Instruction and chat completion | TRL, torchtune, Unsloth | 1.5B to 2B full, 6B to 8B with QLoRA | Continual fine-tuning over a task sequence |
-| Preference alignment | Match human or model preferences | TRL, Axolotl | 6B to 8B with QLoRA | Continual alignment over evolving preferences |
 
 ### Pretraining from scratch
 
@@ -163,21 +168,10 @@ is distillation fine-tuning, in which a smaller model learns from the responses
 or output distribution of a larger teacher. Distillation is the most direct route
 to a capable sub-3 billion parameter model on this hardware.
 
-### Preference alignment
-
-Align a fine-tuned model to human or model-generated preferences. The default
-methods are those that need no separate reward model and suit a single GPU:
-direct preference optimization (DPO), odds-ratio preference optimization (ORPO),
-Kahneman-Tversky optimization (KTO), and simple preference optimization (SimPO).
-Online reinforcement learning, through reward modeling with proximal policy
-optimization or group relative policy optimization (GRPO), supports reasoning
-alignment with verifiable rewards and is deferred to a later phase. Preference
-alignment reaches 6 billion to 8 billion parameters through QLoRA.
-
 ### Parameter-efficient fine-tuning toolkit
 
 Parameter-efficient fine-tuning (PEFT) is the substrate shared by the fine-tuning
-and alignment stages and by architecture-based continual learning. The toolkit
+stage and by architecture-based continual learning. The toolkit
 adopts Hugging Face PEFT and bitsandbytes and covers low-rank adaptation (LoRA),
 its quantized form (QLoRA), weight-decomposed adaptation (DoRA), rank-stabilized
 LoRA, IA3, and prompt and prefix tuning. Adapter merging through TIES, DARE, and
@@ -286,9 +280,9 @@ production track, so lessons transfer directly to real runs.
 Continual learning is the paradigm in which a model adapts to a stream of new
 knowledge and tasks over time while retaining prior capability, rather than
 being trained once and frozen. It is distinct from a single continued
-pretraining run: it is a training regime that spans pretraining, fine-tuning,
-and alignment, and its defining problem is catastrophic forgetting, the loss of
-earlier capability when new gradients overwrite the weights that held it.
+pretraining run: it is a training regime that spans pretraining and fine-tuning,
+and its defining problem is catastrophic forgetting, the loss of earlier
+capability when new gradients overwrite the weights that held it.
 
 The repository treats continual learning as a first-class regime rather than a
 separate model type. It is not a parallel training stack. It is the existing
@@ -301,8 +295,8 @@ that every stage shares.
 Continual learning research is bounded by method design and iteration speed, not
 by scale. A single node that runs a full task sequence on a 1 billion to 3
 billion parameter model in hours is better suited to this work than a cluster
-optimized for one large run. Continual fine-tuning and continual alignment at
-this scale complete in days on the RTX 5090. The hardware shape is an asset:
+optimized for one large run. Continual fine-tuning at this scale completes in
+days on the RTX 5090. The hardware shape is an asset:
 replay buffers and external memory stores reside in the 128GB of system RAM
 while the GPU trains. This is a research direction where a local lab can produce
 original results that larger organizations are not optimizing for.
@@ -310,20 +304,20 @@ original results that larger organizations are not optimizing for.
 ### Taxonomy the repository organizes around
 
 The repository follows the taxonomy of the mid-2026 survey by Chen and
-colleagues, which structures continual learning across three training stages,
-each addressed by three method families. The three stages are exactly the stages
-defined in [Training stages and methods](#training-stages-and-methods), run as a
-sequence rather than once. Continual learning adds no new trainer; it adds the
-outer loop and the anti-forgetting machinery around those existing paths.
+colleagues, which structures continual learning across training stages, each
+addressed by three method families. The stages are exactly those defined in
+[Training stages and methods](#training-stages-and-methods), run as a sequence
+rather than once. Continual learning adds no new trainer; it adds the outer loop
+and the anti-forgetting machinery around those existing paths. The survey also
+defines a continual-alignment stage, which is out of scope here because alignment
+itself is out of scope.
 
-Three stages:
+Stages implemented:
 
 - **Continual pre-training.** A stream of corpora, adapted with replay and
   learning-rate rewarming on the pretraining code path.
 - **Continual fine-tuning.** A sequence of tasks or instruction sets on the
   supervised fine-tuning code path.
-- **Continual alignment.** Preferences that evolve over time, re-run on the
-  preference-optimization code path.
 
 Three method families:
 
@@ -387,86 +381,202 @@ roadmap rather than in version 0.1.
 
 ## Version 0.1 scope
 
-Version 0.1 proves the repository is useful with the minimum surface area. It
-combines mostly adopted infrastructure with the two highest-value build items:
-the memory-fit recipe system and one real pretraining run. It also seeds the
-learning track.
+Version 0.1 is the completion of Phase 0 and Phase 1 of the roadmap: the shared
+foundation plus the first fine-tuning stage. It produces a useful fine-tuned
+model, proves the export-and-serve round trip, and seeds the learning track. The
+tooling for each phase is detailed in the roadmap; this section records the
+definition of done.
 
 ### Deliverables
 
-1. **Training container and environment.** One Docker image with PyTorch on
-   CUDA 13, FlashAttention, bitsandbytes, and a trainer stack of TRL and
-   torchtune. A Poetry dependency group parallel to the inference project.
-2. **Data path for one corpus.** Ingest a public corpus sample, train a
-   byte-pair-encoding tokenizer, and produce memory-mapped token shards using
-   an adopted pipeline. Record token counts and length distributions.
-3. **Memory-fit calculator and three seed recipes.** The VRAM solver plus three
-   validated recipes: a 360 million to 500 million parameter dense pretraining
-   run, a QLoRA fine-tune of a 3 billion parameter base, and a small
-   from-scratch configuration for the learning track.
-4. **One real pretraining run.** Train a dense transformer of 360 million to 500
-   million parameters from scratch on 10 billion to 20 billion tokens of
-   FineWeb-Edu to a target validation perplexity, with Weights and Biases
-   tracking, resumable and sharded checkpointing, and evaluation through
-   lm-evaluation-harness. This run completes in two to four days on the RTX 5090
-   and validates the whole stack. The first 1 billion parameter run is deferred
-   to Phase 1.5, once the pipeline is proven.
-5. **Round-trip proof.** Export the trained checkpoint, quantize to GGUF, serve
-   it on the inference repository, and evaluate by serving.
-6. **Learning-track seed.** The from-scratch autograd engine, the single-file
-   annotated transformer with manual-backpropagation notes, and one
-   gradient-and-activation visualization notebook.
-7. **Benchmark record.** Model FLOPs utilization, tokens per second, and peak
-   VRAM captured in the reproducible JSON format used elsewhere in the project.
+1. **Foundation.** The Phase 0 shared infrastructure: the training container and
+   Poetry group, the lite data pipeline with tokenizer training, the memory-fit
+   calculator, experiment tracking, resumable checkpointing, the export and
+   round-trip path, and the benchmark suite.
+2. **First useful model.** A supervised or distillation fine-tune of a strong
+   open base of 3 billion to 8 billion parameters through QLoRA, tracked in
+   Weights and Biases and evaluated through lm-evaluation-harness.
+3. **Round-trip proof.** Merge the adapter, quantize to GGUF, serve the result on
+   the inference repository, and evaluate by serving.
+4. **Learning-track seed.** The from-scratch automatic-differentiation engine,
+   the single-file annotated transformer with manual-backpropagation notes, and
+   one gradient-and-activation visualization notebook.
+5. **Benchmark record.** Model FLOPs utilization, tokens per second, and peak
+   VRAM in the reproducible JSON format used elsewhere in the project.
 
 ### Non-goals for version 0.1
 
-The following are deferred to keep version 0.1 tractable. Each is valuable and
-appears on the roadmap.
+The following are deferred to later phases to keep version 0.1 tractable.
 
-- Mixture-of-experts models and expert offload
-- Reinforcement-learning alignment: PPO, GRPO, and reward modeling
-- Continual learning, which is a research-grade pillar deferred to Phase 2 and later
-- FP8 training on Blackwell
-- Multimodal training
-- Multi-GPU or distributed parallelism
-- Diffusion language models and custom kernels
+- Pretraining from scratch, which is Phase 4
+- Continual learning, which is Phase 5
+- Continual pre-training, which is Phase 2
+- Mixture-of-experts models, multimodal training, multi-GPU parallelism, and
+  diffusion language models
+- Preference alignment, which is out of scope for the repository entirely
 
 ### Success criteria
 
-- The 360 million to 500 million parameter model trains to completion locally
-  and produces coherent text at the target perplexity.
+- The fine-tuned model is measurably better than its base on a target
+  evaluation.
 - Measured peak VRAM for each seed recipe matches the calculator prediction
   within 10 percent.
-- The round-trip path serves the trained model through the inference
+- The round-trip path serves the fine-tuned model through the inference
   repository and returns evaluation numbers.
 - The learning-track autograd engine reproduces framework gradients on a test
   network within numerical tolerance.
 
-## Roadmap beyond version 0.1
+## Roadmap
 
-- **Phase 1.5.** The first 1 billion to 1.5 billion parameter pretraining run on
-  50 billion to 100 billion tokens using a SmolLM2-style data mixture, reusing a
-  proven tokenizer. This is a multi-week run that produces a useful, though not
-  state-of-the-art, small base.
-- **Phase 2.** FP8 training enablement and benchmarks on Blackwell. Continued
-  pretraining with replay and learning-rate rewarming. Preference optimization
-  through DPO and ORPO. A full Mamba run at approximately 1.3 billion
-  parameters. A scaling-law and token-budget calculator. Continual learning,
-  first stage: the parametric regime, comprising the outer sequential loop,
-  replay buffer, regularization hooks, retention evaluation, and knowledge
-  editing through EasyEdit.
-- **Phase 3.** Mixture-of-experts training with inactive experts resident in
-  system RAM. Reasoning alignment through GRPO with verifiable rewards.
-  Distillation from a larger teacher model. Embedding-model training with
-  contrastive objectives. Speculative-decoding draft models built for the
-  inference repository. Continual learning, second stage: architectural
-  test-time memory, adding Titans and a HOPE reproduction to the model registry.
-- **Phase 4.** Interpretability tooling, including the logit lens and sparse
-  autoencoders. Long-context extension. Broader evaluation suites and paper
-  reproductions. Continual learning, third stage: the forgetting-mitigation
-  ablation harness and self-editing experiments. Integration with the technical
-  blog.
+The roadmap is ordered by training type, not by arbitrary phase number. Phase 0
+builds the shared foundation that every later phase depends on. Phase 1 delivers
+production value fastest and proves the round trip. Phase 2 adds domain
+adaptation. Phase 4 is the educational from-scratch run, deferred because it
+needs the heaviest data pipeline, which Phases 1 and 2 build up. Phase 5 is the
+experimental continual-learning regime, which requires the earlier stages to
+exist because it runs them as a sequence. Phase 3, preference alignment in the
+earlier scheme, is intentionally omitted, because alignment is out of scope.
+
+The learning pillar is decoupled from Phase 4: the educational learning track is
+small and is seeded in Phase 0, so the deep-learning-internals payoff arrives
+early rather than waiting on the from-scratch pretraining run.
+
+Each phase lists the tooling to **adopt** (external tools pulled in unchanged),
+**orchestrate** (configuration and pipelines wiring adopted pieces together), and
+**build** (custom code specific to this hardware envelope and the two-repository
+lifecycle).
+
+### Phase 0: Foundation
+
+The shared substrate used by every later phase, plus the learning-track seed and
+Blackwell FP8 enablement. FP8 is enabled here, not as a training type, so every
+subsequent phase inherits the speedup.
+
+- **Adopt.** PyTorch on CUDA 13, Docker, Poetry, FlashAttention, Liger-Kernel,
+  bitsandbytes, DeepSpeed, FSDP2, Hugging Face transformers, datasets, and
+  tokenizers, TRL, torchtune, Hydra, Weights and Biases, MLflow, safetensors,
+  lm-evaluation-harness, datatrove, llama.cpp, AutoAWQ, mergekit, DCGM, and
+  Transformer Engine.
+- **Orchestrate.** The training container and a Poetry group parallel to the
+  inference project; a lite data pipeline that ingests a corpus sample, trains a
+  byte-pair-encoding tokenizer, and writes memory-mapped shards; Hydra recipe
+  scaffolding; experiment-tracking and resumable sharded checkpointing; the
+  export, serve, and evaluate-by-serving round trip to the inference repository;
+  a heterogeneous-compute skeleton with pinned-memory prefetch, RAM-disk shard
+  staging, and NUMA and core pinning for the 9950X; operational watchdogs for
+  temperature, power draw, and not-a-number loss.
+- **Build.** The memory-fit calculator mapping a configuration to peak VRAM and
+  maximum sequence length and batch size on 32GB; the seed recipe library;
+  Blackwell FP8 training enablement on the sm_120 architecture with a benchmark
+  harness that records a bfloat16 baseline and the FP8 result in reproducible
+  JSON; the learning-track seed of an automatic-differentiation engine, an
+  annotated single-file transformer with manual-backpropagation notes, and a
+  gradient-and-activation visualization notebook; the benchmark suite for model
+  FLOPs utilization, tokens per second, and peak VRAM.
+
+### Phase 1: Fine-tuning
+
+Supervised and distillation fine-tuning of a strong open base. The smallest
+increment over the foundation, the fastest path to a useful model, and the proof
+of the round trip. Production.
+
+- **Adopt.** TRL supervised fine-tuning trainer, Unsloth for single-GPU speed and
+  memory, Hugging Face PEFT for LoRA, QLoRA, and DoRA, bitsandbytes for 4-bit
+  base weights, Axolotl as a config-driven option, distilabel for synthetic data
+  generated through the inference repository.
+- **Orchestrate.** Instruction and chat data preparation with chat templating,
+  prompt-loss masking, and sequence packing; QLoRA recipes for 3 billion to 8
+  billion parameter bases in the memory-fit library; a teacher-inference harness
+  in which the inference repository serves a larger teacher to produce
+  distillation data; an adapter-merge step through mergekit feeding the round
+  trip; fine-tuning dashboards.
+- **Build.** The distillation harness that captures teacher responses and output
+  distributions and applies a knowledge-distillation loss; fine-tuning recipe
+  cards; an evaluation wrapper combining held-out metrics, instruction
+  benchmarks through lm-evaluation-harness, and model-as-judge scoring served by
+  the inference repository.
+
+### Phase 2: Continual pre-training
+
+Domain adaptation of a strong base over new corpora, with the forgetting
+controls that distinguish it from a naive resume. Production.
+
+- **Adopt.** The existing TRL or torchtune trainer, datatrove and dolma for
+  large-scale data work, DeepSpeed ZeRO-Offload to place optimizer state in
+  system RAM for full training at 1 billion to 3 billion parameters.
+- **Orchestrate.** The full-scale data pipeline with MinHash deduplication,
+  quality and heuristic filtering, benchmark decontamination, and memory-mapped
+  shards; data-mixing weights across domains; a warmup-stable-decay learning-rate
+  schedule with rewarming and re-decay; a replay slice of the original
+  distribution in a RAM-resident buffer; overlap of CPU deduplication and
+  tokenization with GPU training; optimizer-offload configurations tuned to the
+  32GB and 128GB ratio.
+- **Build.** The RAM-resident replay buffer component; a forgetting evaluation
+  that compares the base and adapted model on original-domain benchmarks;
+  continual-pretraining recipe cards; a token-budget helper.
+
+### Phase 4: Pretraining from scratch
+
+A dense transformer trained from random initialization. The centerpiece of the
+learning pillar and full ownership of the stack. Educational, because a single
+RTX 5090 cannot reach a state-of-the-art result from scratch.
+
+- **Adopt.** nanotron or litGPT as the from-scratch loop reference, FlashAttention
+  and Liger-Kernel, Hugging Face tokenizers to train a purpose-built vocabulary.
+- **Orchestrate.** Tokenizer training on the target corpus; the pretraining data
+  pipeline scaled to tens of billions of tokens, reusing the Phase 2 pipeline; a
+  360 million to 500 million parameter validation run in two to four days, then a
+  1 billion to 1.5 billion parameter run over 50 billion to 100 billion tokens
+  across several weeks; tracking and resumable sharded checkpointing sized for
+  multi-week runs; the operational watchdogs, which matter most here under
+  continuous load.
+- **Build.** The from-scratch training loop or a hardened wrapper; the scaling-law
+  and token-budget calculator that fits a compute-optimal target; the
+  architecture registry entries for the dense transformer and Mamba; pretraining
+  recipe cards; the tie to the learning track, where the annotated model is this
+  model.
+
+### Phase 5: Continual learning
+
+The experimental regime that runs the earlier stages as a sequence without
+forgetting, in two sub-stages: the parametric methods, then architectural
+test-time memory.
+
+Sub-stage A, the parametric regime:
+
+- **Adopt.** EasyEdit for knowledge editing through MEMIT and WISE, Hugging Face
+  PEFT for orthogonal LoRA and adapter isolation, the existing trainers.
+- **Orchestrate.** The outer sequential loop over a task or corpus stream,
+  wrapping the Phase 1, 2, and 4 code paths; the replay buffer reused from Phase
+  2; task-incremental data sequencing.
+- **Build.** Anti-forgetting hooks, including an elastic-weight-consolidation
+  Fisher penalty, a learning-without-forgetting distillation penalty, and
+  gradient projection; the retention-metrics evaluation for average accuracy,
+  forgetting, and backward and forward transfer; integration of a
+  continual-learning benchmark suite.
+
+Sub-stage B, architectural test-time memory:
+
+- **Adopt.** The titans-pytorch reference and open HOPE reproductions, mamba-ssm
+  and causal-conv1d for the adjacent state-space kernels.
+- **Orchestrate.** Adding Titans and HOPE to the model registry; training at nano
+  scale first, then scaling toward 1 billion to 3 billion parameters;
+  benchmarking long-context memory and retention against a transformer baseline.
+- **Build.** A hardened HOPE and Titans implementation with the self-modifying
+  core and continuum memory system, drawn from the open reproductions and any
+  custom kernels required for continuum-memory chunking; a self-editing
+  experiment harness in the Self-Adapting-Language-Models style, in which the
+  model generates its own updates.
+
+### Optional and ongoing tracks
+
+These reuse the foundation and slot in where they add value rather than occupying
+a numbered phase: distillation as a standalone track, embedding and reranker
+model training with contrastive objectives evaluated on the Massive Text
+Embedding Benchmark, speculative-decoding draft and Medusa or EAGLE head training
+for the inference repository, quantization-aware training, online reinforcement
+learning with group relative policy optimization for reasoning, and multimodal
+projector training. FP8 hardening continues across all phases.
 
 ## Proposed repository structure
 
@@ -506,23 +616,23 @@ benchmark, and refine on the same hardware.
 
 ## Resolved decisions
 
-- **Corpus and token budget.** The version 0.1 validation run uses FineWeb-Edu
-  at 10 billion to 20 billion tokens on a 360 million to 500 million parameter
-  model, with a purpose-trained 32k byte-pair-encoding tokenizer. The first
-  useful model, in Phase 1.5, uses a SmolLM2-style mixture of FineWeb-Edu, DCLM,
-  synthetic Cosmopedia data, and a code and math slice at 50 billion to 100
-  billion tokens, reusing a proven tokenizer.
+- **Corpus and token budget.** The Phase 4 validation run uses FineWeb-Edu at 10
+  billion to 20 billion tokens on a 360 million to 500 million parameter model,
+  with a purpose-trained 32k byte-pair-encoding tokenizer. The subsequent 1
+  billion parameter run, also in Phase 4, uses a SmolLM2-style mixture of
+  FineWeb-Edu, DCLM, synthetic Cosmopedia data, and a code and math slice at 50
+  billion to 100 billion tokens, reusing a proven tokenizer.
 - **Learning-track location.** The learning track remains in this repository as
   a self-contained `learning/` module. A split into a companion repository is
-  reconsidered at Phase 3, triggered by the track growing a distinct
-  blog-driven audience.
+  reconsidered later, triggered by the track growing a distinct blog-driven
+  audience.
 
 ## Open questions
 
 - Whether optimizer offload to RAM at 3 billion parameters and above yields an
   acceptable step time on this machine.
 - Whether FP8 training on the sm_120 architecture is stable enough to move from
-  a Phase 2 experiment to a default in a later phase.
+  a Phase 0 experiment to the default precision in a later phase.
 - Whether a HOPE reproduction scales usefully from the tens-of-millions
   parameter educational range into the 1 billion to 3 billion parameter range on
   a single node, given that no official weights exist.
