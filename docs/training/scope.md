@@ -356,129 +356,239 @@ The learning pillar is decoupled from Phase 3: the educational learning track is
 small and is seeded in Phase 0, so the deep-learning-internals payoff arrives early
 rather than waiting on the from-scratch run.
 
-Each phase lists the tooling to **adopt** (external tools pulled in unchanged),
-**orchestrate** (configuration and pipelines wiring adopted pieces together), and
-**build** (custom code specific to this hardware envelope and the train-and-serve
-lifecycle).
+Each phase below lists concrete **deliverables**, each tagged **[adopt]** (external
+tool pulled in unchanged), **[orchestrate]** (configuration and pipelines wiring
+adopted pieces together), or **[build]** (custom code specific to this hardware
+envelope and the train-and-serve lifecycle), followed by **acceptance criteria**
+that define when the phase is complete. Module paths and commands describe the
+intended surface, not a fixed contract.
 
 ### Phase 0: Foundation
 
-The shared substrate used by every later phase, plus the learning-track seed and
+The shared substrate every later phase depends on, plus the learning-track seed and
 Blackwell FP8 enablement. FP8 is enabled here, not as a training type, so every
-subsequent phase inherits the speedup.
+subsequent phase inherits the speedup. **Depends on:** nothing.
 
-- **Adopt.** PyTorch on CUDA 13, Docker, Poetry, FlashAttention, Liger-Kernel,
-  bitsandbytes, DeepSpeed, FSDP2, Hugging Face transformers, datasets, and
-  tokenizers, TRL, torchtune, Hydra, Weights and Biases, MLflow, safetensors,
-  lm-evaluation-harness, datatrove, llama.cpp, AutoAWQ, mergekit, DCGM, and
-  Transformer Engine.
-- **Orchestrate.** A training container under `docker/training` and a Poetry group
-  parallel to the inference dependencies; a lite data pipeline that ingests a
-  corpus sample, trains a byte-pair-encoding tokenizer, and writes memory-mapped
-  shards; Hydra recipe scaffolding; experiment-tracking and resumable sharded
-  checkpointing; the export, serve, and evaluate-by-serving loop against the
-  existing inference services; a heterogeneous-compute skeleton with pinned-memory
-  prefetch, RAM-disk shard staging, and NUMA and core pinning for the 9950X;
-  operational watchdogs for temperature, power draw, and not-a-number loss.
-- **Build.** The memory-fit calculator mapping a configuration to peak VRAM and
-  maximum sequence length and batch size on 32GB; the seed recipe library;
-  Blackwell FP8 training enablement on the sm_120 architecture with a benchmark
-  harness that records a bfloat16 baseline and the FP8 result in reproducible JSON;
-  the learning-track seed of an automatic-differentiation engine, an annotated
-  single-file transformer with manual-backpropagation notes, and a
-  gradient-and-activation visualization notebook; the benchmark suite for model
-  FLOPs utilization, tokens per second, and peak VRAM.
+**Deliverables**
+
+1. **[orchestrate] Training container and dependency group.** A `docker/training/`
+   image with PyTorch on CUDA 13, FlashAttention, Liger-Kernel, bitsandbytes,
+   DeepSpeed, FSDP2, TRL, torchtune, PEFT, and Transformer Engine, a `training`
+   Poetry group in `pyproject.toml`, and a `make train-shell` target.
+2. **[orchestrate] Lite data pipeline.** `scripts/train/prepare_data.py` and
+   `training/data/` that ingest a Hugging Face dataset or local JSONL, tokenize
+   across 32 threads, and write memory-mapped shards with a manifest of token
+   counts and length statistics.
+3. **[build] Tokenizer training.** `training/data/tokenizer.py` that trains and
+   evaluates a byte-pair-encoding tokenizer, reporting fertility and compression
+   ratio.
+4. **[build] Memory-fit calculator.** `training/calculator/` exposing
+   `estimate(model, optimizer, precision, checkpointing, offload)` returning peak
+   VRAM, maximum sequence length, maximum batch size, and a fits flag, with a
+   `make memfit CONFIG=...` entry point.
+5. **[orchestrate] Recipe system.** A Hydra-based schema in `training/recipes/`
+   where one YAML file fully specifies a run: model, data, optimizer, schedule,
+   precision, offload, and tracking.
+6. **[orchestrate] Tracking and resumable checkpointing.** Weights and Biases and
+   MLflow wiring, and sharded safetensors checkpoints that save and restore model,
+   optimizer, scheduler, dataloader position, and random-number state.
+7. **[build] Train-and-serve round trip.** `scripts/export/` that merges adapters,
+   converts to Hugging Face format, and quantizes to GGUF, plus
+   `scripts/eval/serve_eval.py` that queries the model through the existing
+   inference services.
+8. **[build] FP8 enablement and benchmark harness.** Transformer Engine behind a
+   `precision: fp8` recipe flag on the sm_120 architecture, and
+   `scripts/benchmark/train_bench.py` that records a bfloat16 baseline against FP8
+   for tokens per second, model FLOPs utilization, and peak VRAM as JSON under
+   `docs/training/optimizations/`.
+9. **[orchestrate] Heterogeneous-compute skeleton.** A pinned-memory prefetch
+   dataloader, a RAM-disk shard-staging helper, and a NUMA and core-pinning wrapper
+   for the 9950X.
+10. **[orchestrate] Operational watchdogs.** A monitor that aborts or alerts on
+    not-a-number loss, GPU temperature, and power-draw anomalies, wired to DCGM.
+11. **[build] Learning-track seed.** `training/learning/` with a reverse-mode
+    automatic-differentiation engine, a single-file annotated transformer carrying
+    manual-backpropagation notes, and one gradient-and-activation visualization
+    notebook.
+
+**Acceptance criteria**
+
+- The container builds and imports Torch, transformers, TRL, and PEFT with CUDA
+  available.
+- A recipe drives a tiny end-to-end training step and writes a checkpoint that
+  resumes to the same loss trajectory.
+- Memory-fit predictions land within 10 percent of measured peak VRAM on two
+  reference configurations.
+- A base model round-trips through export and answers a prompt through the
+  llama-gpu service.
+- The FP8 benchmark completes and the JSON records the bfloat16-versus-FP8
+  comparison.
+- The autograd engine reproduces framework gradients on a test network within
+  numerical tolerance.
 
 ### Phase 1: Fine-tuning
 
 Supervised and distillation fine-tuning of a strong open base. The smallest
 increment over the foundation, the fastest path to a useful model, and the proof of
-the train-and-serve loop. Production.
+the train-and-serve loop. Production. **Depends on:** Phase 0.
 
-- **Adopt.** TRL supervised fine-tuning trainer, Unsloth for single-GPU speed and
-  memory, Hugging Face PEFT for LoRA, QLoRA, and DoRA, bitsandbytes for 4-bit base
-  weights, Axolotl as a config-driven option, distilabel for synthetic data
-  generated through the inference services.
-- **Orchestrate.** Instruction and chat data preparation with chat templating,
-  prompt-loss masking, and sequence packing; QLoRA recipes for 3 billion to 8
-  billion parameter bases in the memory-fit library; a teacher-inference harness in
-  which the existing inference services serve a larger teacher to produce
-  distillation data; an adapter-merge step through mergekit feeding the serve loop;
-  fine-tuning dashboards.
-- **Build.** The distillation harness that captures teacher responses and output
-  distributions and applies a knowledge-distillation loss; fine-tuning recipe
-  cards; an evaluation wrapper combining held-out metrics, instruction benchmarks
-  through lm-evaluation-harness, and model-as-judge scoring served by the inference
-  services.
+**Deliverables**
+
+1. **[orchestrate] Supervised fine-tuning entry point.** `make train-sft
+   CONFIG=...` wrapping the TRL supervised fine-tuning trainer with an optional
+   Unsloth backend, supporting full fine-tuning and QLoRA.
+2. **[build] Chat and instruction data preparation.** `training/data/sft.py`
+   providing a per-model chat-template registry, prompt-loss masking so loss
+   applies only to completion tokens, multi-turn handling, and sequence packing.
+3. **[adopt] Parameter-efficient options.** LoRA, QLoRA, and DoRA exposed in the
+   recipe schema through Hugging Face PEFT, with 4-bit base loading through
+   bitsandbytes.
+4. **[build] Distillation harness.** `training/data/distill.py` and
+   `scripts/train/distill.py` that capture a teacher's responses and, where
+   available, logits, and apply a knowledge-distillation loss covering
+   response-level and logit-KL variants.
+5. **[orchestrate] Teacher and synthetic data harness.** A distilabel-based client
+   that batches generation to the existing inference services to build distillation
+   and synthetic datasets.
+6. **[orchestrate] Adapter merge and serve.** `make export-gguf` merges the adapter
+   through mergekit and quantizes, feeding the Phase 0 round trip.
+7. **[build] Fine-tuning evaluation wrapper.** `scripts/eval/eval_ft.py` reporting
+   held-out loss, instruction benchmarks through lm-evaluation-harness, and
+   model-as-judge scoring served by the inference services, as a
+   base-versus-fine-tuned scorecard.
+8. **[orchestrate] Recipe cards.** Validated `recipes/sft-qlora-8b.yaml` and
+   `recipes/distill-3b.yaml`.
+
+**Acceptance criteria**
+
+- A QLoRA fine-tune of a 3-to-8-billion-parameter base completes and logs to
+  tracking.
+- A unit test confirms loss applies only to completion tokens under prompt-loss
+  masking.
+- A distilled student measurably improves on a target evaluation over its
+  pre-distillation baseline.
+- The fine-tuned model is served through the inference services and returns a
+  scorecard beating its base.
 
 ### Phase 2: Continual pre-training
 
 Domain adaptation of a strong base over new corpora, with the forgetting controls
-that distinguish it from a naive resume. Production.
+that distinguish it from a naive resume. Production. **Depends on:** Phase 0, and
+reuses the Phase 1 evaluation wrapper.
 
-- **Adopt.** The existing TRL or torchtune trainer, datatrove and dolma for
-  large-scale data work, DeepSpeed ZeRO-Offload to place optimizer state in system
-  RAM for full training at 1 billion to 3 billion parameters.
-- **Orchestrate.** The full-scale data pipeline with MinHash deduplication, quality
-  and heuristic filtering, benchmark decontamination, and memory-mapped shards;
-  data-mixing weights across domains; a warmup-stable-decay learning-rate schedule
-  with rewarming and re-decay; a replay slice of the original distribution in a
-  RAM-resident buffer; overlap of CPU deduplication and tokenization with GPU
-  training; optimizer-offload configurations tuned to the 32GB and 128GB ratio.
-- **Build.** The RAM-resident replay buffer component; a forgetting evaluation that
-  compares the base and adapted model on original-domain benchmarks;
-  continual-pretraining recipe cards; a token-budget helper.
+**Deliverables**
+
+1. **[orchestrate] Full-scale data pipeline.** `training/data/pipeline.py` adding
+   MinHash-LSH deduplication, heuristic and quality filtering, language
+   identification, and benchmark decontamination ahead of shard writing, parallel
+   across 32 threads.
+2. **[orchestrate] Data-mixing configuration.** A `mixture` recipe block giving
+   weighted sampling proportions across sources.
+3. **[orchestrate] Warmup-stable-decay schedule.** A learning-rate schedule with
+   rewarming and re-decay for resuming from a base.
+4. **[build] Replay buffer.** `training/continual/replay.py`, a
+   system-RAM-resident buffer that mixes a configurable fraction of the original
+   distribution into new batches.
+5. **[orchestrate] Optimizer offload.** A DeepSpeed ZeRO-Offload configuration
+   tuned to the 32GB and 128GB ratio, enabling full training at 1 billion to 3
+   billion parameters.
+6. **[build] Forgetting evaluation.** `scripts/eval/forgetting.py` comparing base
+   and adapted models on both the new domain and original-domain benchmarks,
+   reporting retention.
+7. **[orchestrate] Recipe card.** `recipes/continual-pretrain-1b.yaml` specializing
+   a base on a domain.
+
+**Acceptance criteria**
+
+- A 3-billion-parameter base runs full continual pre-training with optimizer state
+  offloaded to system RAM.
+- Batches contain the configured replay fraction and mixture proportions, verified
+  by source counts.
+- An adapted model improves its on-domain benchmark while keeping original-domain
+  regression under a set threshold.
 
 ### Phase 3: Pretraining from scratch
 
-A dense transformer trained from random initialization. The centerpiece of the
+A dense transformer trained from random initialization, the centerpiece of the
 learning pillar and full ownership of the stack. Educational, because a single RTX
-5090 cannot reach a state-of-the-art result from scratch.
+5090 cannot reach a state-of-the-art result from scratch. **Depends on:** Phase 0
+and the Phase 2 data pipeline.
 
-- **Adopt.** nanotron or litGPT as the from-scratch loop reference, FlashAttention
-  and Liger-Kernel, Hugging Face tokenizers to train a purpose-built vocabulary.
-- **Orchestrate.** Tokenizer training on the target corpus; the pretraining data
-  pipeline scaled to tens of billions of tokens, reusing the Phase 2 pipeline; a
-  360 million to 500 million parameter validation run in two to four days, then a 1
-  billion to 1.5 billion parameter run over 50 billion to 100 billion tokens across
-  several weeks; tracking and resumable sharded checkpointing sized for multi-week
-  runs; the operational watchdogs, which matter most here under continuous load.
-- **Build.** The from-scratch training loop or a hardened wrapper; the scaling-law
-  and token-budget calculator that fits a compute-optimal target; the architecture
-  registry entries for the dense transformer and Mamba; pretraining recipe cards;
-  the tie to the learning track, where the annotated model is this model.
+**Deliverables**
+
+1. **[build] From-scratch model and loop.** `training/models/transformer.py` and
+   `scripts/train/pretrain.py`, a configurable dense transformer with RMSNorm,
+   SwiGLU, rotary position embeddings, and grouped-query attention, trained with a
+   causal language-modeling objective on FlashAttention and Liger-Kernel, or a
+   hardened nanotron or litGPT wrapper.
+2. **[build] Architecture registry.** `training/models/` with dense-transformer and
+   Mamba entries behind a common interface.
+3. **[build] Scaling-law and token-budget calculator.**
+   `training/calculator/scaling.py` that fits a compute-optimal token budget and
+   predicts final loss for a target parameter count and wall-clock.
+4. **[orchestrate] Validation run.** A 360-to-500-million-parameter model on 10
+   billion to 20 billion FineWeb-Edu tokens, completing in two to four days, with
+   resumable multi-week checkpointing.
+5. **[orchestrate] First useful run.** A 1-to-1.5-billion-parameter model on 50
+   billion to 100 billion tokens using a SmolLM2-style mixture, reusing a proven
+   tokenizer, served through the round trip.
+6. **[build] Learning-track tie-in.** Notebooks that visualize gradient and
+   activation dynamics from the real run, using the same architecture as the
+   annotated transformer.
+
+**Acceptance criteria**
+
+- The model overfits a single batch as a correctness sanity check before any full
+  run.
+- The 360-to-500-million-parameter run completes and produces coherent text at the
+  target validation perplexity.
+- The trained model is served through the inference services.
+- The scaling calculator's predicted loss is within a set tolerance of the run's
+  measured loss.
 
 ### Phase 4: Continual learning
 
 The experimental regime that runs the earlier stages as a sequence without
 forgetting, in two sub-stages: the parametric methods, then architectural test-time
-memory.
+memory. Experimental. **Depends on:** Phases 1, 2, and 3.
 
-Sub-stage A, the parametric regime:
+**Deliverables, sub-stage A, parametric regime**
 
-- **Adopt.** EasyEdit for knowledge editing through MEMIT and WISE, Hugging Face
-  PEFT for orthogonal LoRA and adapter isolation, the existing trainers.
-- **Orchestrate.** The outer sequential loop over a task or corpus stream, wrapping
-  the Phase 1, 2, and 3 code paths; the replay buffer reused from Phase 2;
-  task-incremental data sequencing.
-- **Build.** Anti-forgetting hooks, including an elastic-weight-consolidation Fisher
-  penalty, a learning-without-forgetting distillation penalty, and gradient
-  projection; the retention-metrics evaluation for average accuracy, forgetting,
-  and backward and forward transfer; integration of a continual-learning benchmark
-  suite.
+1. **[build] Outer sequential loop.** `training/continual/loop.py` orchestrating a
+   sequence of tasks or corpora, invoking the Phase 1, 2, and 3 code paths per step
+   with checkpointing between steps.
+2. **[build] Anti-forgetting hooks.** `training/continual/regularizers.py`
+   implementing elastic weight consolidation with a Fisher penalty,
+   learning-without-forgetting with a distillation penalty, and gradient
+   projection, each a recipe toggle.
+3. **[build] Retention metrics.** `training/continual/metrics.py` computing average
+   accuracy, forgetting, backward transfer, and forward transfer across a task
+   sequence.
+4. **[adopt] Knowledge editing.** `scripts/train/edit.py` integrating EasyEdit for
+   MEMIT and WISE, reporting edit success and locality.
+5. **[orchestrate] Continual-learning benchmark suite.** Integration of a
+   task-incremental benchmark such as TiC-LM.
 
-Sub-stage B, architectural test-time memory:
+**Deliverables, sub-stage B, architectural test-time memory**
 
-- **Adopt.** The titans-pytorch reference and open HOPE reproductions, mamba-ssm and
-  causal-conv1d for the adjacent state-space kernels.
-- **Orchestrate.** Adding Titans and HOPE to the model registry; training at nano
-  scale first, then scaling toward 1 billion to 3 billion parameters; benchmarking
-  long-context memory and retention against a transformer baseline.
-- **Build.** A hardened HOPE and Titans implementation with the self-modifying core
-  and continuum memory system, drawn from the open reproductions and any custom
-  kernels required for continuum-memory chunking; a self-editing experiment harness
-  in the Self-Adapting-Language-Models style, in which the model generates its own
-  updates.
+6. **[build] Titans and HOPE in the registry.** `training/models/hope.py`
+   implementing the self-modifying core and continuum memory system from open
+   reproductions, with any custom kernels required for continuum-memory chunking.
+7. **[orchestrate] Scale-up and benchmarking.** Training at nano scale, then toward
+   1 billion to 3 billion parameters, with long-context memory and retention
+   measured against a transformer baseline.
+8. **[build] Self-editing harness.** `training/continual/self_edit.py` implementing
+   a Self-Adapting-Language-Models-style loop in which the model generates its own
+   updates, reporting the retention curve across edits.
+
+**Acceptance criteria**
+
+- Each anti-forgetting method runs and measurably reduces forgetting on a task
+  sequence versus a no-regularizer baseline.
+- A knowledge edit inserts a fact the model then recalls, without breaking
+  unrelated behavior.
+- A nano-scale HOPE reproduction trains and tracks a reference loss curve.
+- Retention metrics are reported for both sub-stages.
 
 ### Optional and ongoing tracks
 
