@@ -19,6 +19,11 @@ This is a planning document. No code is implied to exist yet.
   - [Adopt](#adopt)
   - [Build](#build)
 - [Learning track](#learning-track)
+- [Continual and lifelong learning](#continual-and-lifelong-learning)
+  - [Why it fits a local sub-6B lab](#why-it-fits-a-local-sub-6b-lab)
+  - [Taxonomy the repository organizes around](#taxonomy-the-repository-organizes-around)
+  - [State of the field as of mid-2026](#state-of-the-field-as-of-mid-2026)
+  - [What is shared, built, and adopted](#what-is-shared-built-and-adopted)
 - [Version 0.1 scope](#version-01-scope)
   - [Deliverables](#deliverables)
   - [Non-goals for version 0.1](#non-goals-for-version-01)
@@ -26,7 +31,9 @@ This is a planning document. No code is implied to exist yet.
 - [Roadmap beyond version 0.1](#roadmap-beyond-version-01)
 - [Proposed repository structure](#proposed-repository-structure)
 - [Relationship to the inference repository](#relationship-to-the-inference-repository)
+- [Resolved decisions](#resolved-decisions)
 - [Open questions](#open-questions)
+- [References](#references)
 
 ## Purpose
 
@@ -35,6 +42,20 @@ models of 6 billion parameters and smaller on a single-node workstation. The
 repository targets three outcomes at once: producing models that are useful,
 teaching the mathematics and mechanics of deep learning, and saturating the
 full machine rather than the GPU alone.
+
+A single RTX 5090 cannot pretrain a state-of-the-art model from scratch. The
+reference small model of this era, SmolLM3-3B, consumed approximately 9,200
+GPU-days on 11.2 trillion tokens; reproducing that on one card is on the order
+of 50 GPU-years. The repository therefore separates two distinct paths and
+serves both:
+
+1. **Pretraining from scratch.** Primarily serves the learning pillar and the
+   goal of owning the full stack. The realistic target is a coherent and
+   servable model, not a state-of-the-art one.
+2. **Specializing a strong open base.** Continued pretraining, fine-tuning, and
+   alignment of an existing model such as SmolLM3, Qwen, or Llama-3.2. This is
+   the path that yields genuinely useful local models within days rather than
+   weeks, and it is where continual learning lives.
 
 ## Goals
 
@@ -150,6 +171,13 @@ hardware envelope or the two-repository lifecycle and cannot be downloaded.
    Mamba implementations built for understanding, described in the next
    section. These serve the learning pillar rather than production.
 
+6. **Continual-learning regime and test-time-memory architectures.** The outer
+   loop, replay buffer, anti-forgetting hooks, retention evaluation, and the
+   architectural memory models that let a model keep learning after pretraining.
+   Detailed in the [Continual and lifelong learning](#continual-and-lifelong-learning)
+   section. The custom footprint is small and reuses the shared trainer, data
+   pipeline, and offload.
+
 ## Learning track
 
 The learning pillar is a build item because no external project is organized
@@ -179,6 +207,107 @@ runnable artifact.
 The learning track uses the same data pipeline, tracking, and hardware as the
 production track, so lessons transfer directly to real runs.
 
+## Continual and lifelong learning
+
+Continual learning is the paradigm in which a model adapts to a stream of new
+knowledge and tasks over time while retaining prior capability, rather than
+being trained once and frozen. It is distinct from a single continued
+pretraining run: it is a training regime that spans pretraining, fine-tuning,
+and alignment, and its defining problem is catastrophic forgetting, the loss of
+earlier capability when new gradients overwrite the weights that held it.
+
+The repository treats continual learning as a first-class regime rather than a
+separate model type. It is not a parallel training stack. It is the existing
+trainer, data pipeline, checkpointing, and offload, wrapped in an outer
+sequential loop with the anti-forgetting and retention-measurement machinery
+that every stage shares.
+
+### Why it fits a local sub-6B lab
+
+Continual learning research is bounded by method design and iteration speed, not
+by scale. A single node that runs a full task sequence on a 1 billion to 3
+billion parameter model in hours is better suited to this work than a cluster
+optimized for one large run. Continual fine-tuning and continual alignment at
+this scale complete in days on the RTX 5090. The hardware shape is an asset:
+replay buffers and external memory stores reside in the 128GB of system RAM
+while the GPU trains. This is a research direction where a local lab can produce
+original results that larger organizations are not optimizing for.
+
+### Taxonomy the repository organizes around
+
+The repository follows the taxonomy of the mid-2026 survey by Chen and
+colleagues, which structures continual learning across three training stages,
+each addressed by three method families.
+
+Three stages:
+
+- **Continual pre-training.** A stream of corpora, adapted with replay and
+  learning-rate rewarming on the pretraining code path.
+- **Continual fine-tuning.** A sequence of tasks or instruction sets on the
+  supervised fine-tuning code path.
+- **Continual alignment.** Preferences that evolve over time, re-run on the
+  preference-optimization code path.
+
+Three method families:
+
+- **Rehearsal and replay.** Mix samples of prior data into new batches. Implemented
+  as a data-pipeline component with the buffer resident in system RAM.
+- **Regularization.** Penalize changes to weights important to prior tasks, for
+  example elastic weight consolidation and learning-without-forgetting. Implemented
+  as hooks into the loss and optimizer.
+- **Architecture.** Isolate new knowledge in new parameters, for example
+  adapter and low-rank isolation, orthogonal low-rank adaptation, and
+  mixture-of-experts routing. Implemented mostly through adopted
+  parameter-efficient libraries with thin routing glue.
+
+A fourth mechanism, targeted knowledge editing such as MEMIT and WISE, does not
+use the training loop at all. It performs closed-form or optimization-based
+weight surgery on specific layers and is adopted as a bolt-on library rather
+than built.
+
+### State of the field as of mid-2026
+
+Continual learning is an active frontier and is not solved. Three threads are
+relevant to this repository.
+
+- **Architectural test-time memory.** Google's Nested Learning paradigm and its
+  HOPE architecture, published in late 2025, reframe a model as a set of nested
+  optimization problems that update at different timescales. HOPE couples a
+  self-modifying core, derived from the earlier Titans test-time memory work,
+  with a continuum memory system of components that learn at different rates. It
+  reports strong language-modeling and long-context memory results. It moves
+  continual learning from a training-time addition to a property of the
+  architecture itself. Several open reproductions already exist at small scale,
+  including nano-scale educational implementations of a few tens of millions of
+  parameters, which makes this directly reproducible on the RTX 5090 and a
+  natural addition to the model registry alongside Mamba.
+- **Improved replay and time-continual benchmarks.** Surprise-driven prioritized
+  replay, multi-timescale memory dynamics, and web-scale time-continual
+  pretraining benchmarks such as TiC-LM sharpen the parametric approach.
+- **Agent and on-device memory.** Just-in-time reinforcement learning that
+  adjusts logits in closed form without gradient updates, and on-device
+  continual learning through budget-curated memory, target exactly the local
+  and private setting this repository occupies.
+
+The honest caveat: self-modifying and self-editing models still degrade on prior
+tasks as updates accumulate, official weights for HOPE are not released, and the
+strongest reproductions are unofficial. This is a research pillar, not a solved
+integration. That is the reason it belongs in the research-grade part of the
+roadmap rather than in version 0.1.
+
+### What is shared, built, and adopted
+
+| Component | Relationship to the repository | Verdict |
+|-----------|-------------------------------|---------|
+| Model, trainer, optimizer, checkpointing | Identical to the rest of the repository | Reuse |
+| Data pipeline, tokenizer, shards | Identical | Reuse |
+| Replay buffer, resident in system RAM | Data-pipeline component | Build, thin |
+| Outer loop over a task or corpus sequence | Continual-learning specific | Build, thin |
+| Regularization hooks, for example Fisher penalty | Hooks into loss and optimizer | Build, thin |
+| Retention evaluation, forgetting and transfer metrics | Wraps the adopted evaluation harness | Build |
+| Knowledge editing, MEMIT and WISE | Separate weight-surgery code path | Adopt EasyEdit |
+| Test-time-memory architectures, Titans and HOPE | New entries in the model registry | Build from open reproductions |
+
 ## Version 0.1 scope
 
 Version 0.1 proves the repository is useful with the minimum surface area. It
@@ -195,13 +324,16 @@ learning track.
    byte-pair-encoding tokenizer, and produce memory-mapped token shards using
    an adopted pipeline. Record token counts and length distributions.
 3. **Memory-fit calculator and three seed recipes.** The VRAM solver plus three
-   validated recipes: a 1 billion parameter dense pretraining run, a QLoRA
-   fine-tune of a 3 billion parameter base, and a small from-scratch
-   configuration for the learning track.
-4. **One real pretraining run.** Train a dense transformer of approximately 1
-   billion parameters from scratch to a target validation perplexity on a fixed
-   token budget, with Weights and Biases tracking, resumable and sharded
-   checkpointing, and evaluation through lm-evaluation-harness.
+   validated recipes: a 360 million to 500 million parameter dense pretraining
+   run, a QLoRA fine-tune of a 3 billion parameter base, and a small
+   from-scratch configuration for the learning track.
+4. **One real pretraining run.** Train a dense transformer of 360 million to 500
+   million parameters from scratch on 10 billion to 20 billion tokens of
+   FineWeb-Edu to a target validation perplexity, with Weights and Biases
+   tracking, resumable and sharded checkpointing, and evaluation through
+   lm-evaluation-harness. This run completes in two to four days on the RTX 5090
+   and validates the whole stack. The first 1 billion parameter run is deferred
+   to Phase 1.5, once the pipeline is proven.
 5. **Round-trip proof.** Export the trained checkpoint, quantize to GGUF, serve
    it on the inference repository, and evaluate by serving.
 6. **Learning-track seed.** The from-scratch autograd engine, the single-file
@@ -217,6 +349,7 @@ appears on the roadmap.
 
 - Mixture-of-experts models and expert offload
 - Reinforcement-learning alignment: PPO, GRPO, and reward modeling
+- Continual learning, which is a research-grade pillar deferred to Phase 2 and later
 - FP8 training on Blackwell
 - Multimodal training
 - Multi-GPU or distributed parallelism
@@ -224,8 +357,8 @@ appears on the roadmap.
 
 ### Success criteria
 
-- The 1 billion parameter model trains to completion locally and produces
-  coherent text at the target perplexity.
+- The 360 million to 500 million parameter model trains to completion locally
+  and produces coherent text at the target perplexity.
 - Measured peak VRAM for each seed recipe matches the calculator prediction
   within 10 percent.
 - The round-trip path serves the trained model through the inference
@@ -235,18 +368,28 @@ appears on the roadmap.
 
 ## Roadmap beyond version 0.1
 
+- **Phase 1.5.** The first 1 billion to 1.5 billion parameter pretraining run on
+  50 billion to 100 billion tokens using a SmolLM2-style data mixture, reusing a
+  proven tokenizer. This is a multi-week run that produces a useful, though not
+  state-of-the-art, small base.
 - **Phase 2.** FP8 training enablement and benchmarks on Blackwell. Continued
   pretraining with replay and learning-rate rewarming. Preference optimization
   through DPO and ORPO. A full Mamba run at approximately 1.3 billion
-  parameters. A scaling-law and token-budget calculator.
+  parameters. A scaling-law and token-budget calculator. Continual learning,
+  first stage: the parametric regime, comprising the outer sequential loop,
+  replay buffer, regularization hooks, retention evaluation, and knowledge
+  editing through EasyEdit.
 - **Phase 3.** Mixture-of-experts training with inactive experts resident in
   system RAM. Reasoning alignment through GRPO with verifiable rewards.
   Distillation from a larger teacher model. Embedding-model training with
   contrastive objectives. Speculative-decoding draft models built for the
-  inference repository.
+  inference repository. Continual learning, second stage: architectural
+  test-time memory, adding Titans and a HOPE reproduction to the model registry.
 - **Phase 4.** Interpretability tooling, including the logit lens and sparse
   autoencoders. Long-context extension. Broader evaluation suites and paper
-  reproductions. Integration with the technical blog.
+  reproductions. Continual learning, third stage: the forgetting-mitigation
+  ablation harness and self-editing experiments. Integration with the technical
+  blog.
 
 ## Proposed repository structure
 
@@ -258,7 +401,9 @@ ai-experiments-training/
   configs/            # Hydra and YAML recipes, one file per run
   data/
     pipelines/        # ingest, dedup, filter, tokenize, shard
-  recipes/            # validated run configs: pretrain-1b, sft-qlora-3b
+  models/             # architecture registry: transformer, Mamba, Titans, HOPE
+  recipes/            # validated run configs: pretrain-500m, sft-qlora-3b
+  continual/          # outer loop, replay buffer, anti-forgetting hooks, retention eval
   learning/           # autograd, annotated models, visualization notebooks
   scripts/
     train/  eval/  export/
@@ -282,16 +427,42 @@ the inference repository as a submodule so that evaluate-by-serving uses the
 real inference stack. The result is a closed loop: train, quantize, serve,
 benchmark, and refine on the same hardware.
 
+## Resolved decisions
+
+- **Corpus and token budget.** The version 0.1 validation run uses FineWeb-Edu
+  at 10 billion to 20 billion tokens on a 360 million to 500 million parameter
+  model, with a purpose-trained 32k byte-pair-encoding tokenizer. The first
+  useful model, in Phase 1.5, uses a SmolLM2-style mixture of FineWeb-Edu, DCLM,
+  synthetic Cosmopedia data, and a code and math slice at 50 billion to 100
+  billion tokens, reusing a proven tokenizer.
+- **Learning-track location.** The learning track remains in this repository as
+  a self-contained `learning/` module. A split into a companion repository is
+  reconsidered at Phase 3, triggered by the track growing a distinct
+  blog-driven audience.
+
 ## Open questions
 
-- Which public corpus and token budget give the best 1 billion parameter
-  baseline within a practical local wall-clock time.
 - Whether optimizer offload to RAM at 3 billion parameters and above yields an
   acceptable step time on this machine.
 - Whether FP8 training on the sm_120 architecture is stable enough to move from
-  Phase 2 experiment to default in a later phase.
-- Whether the from-scratch learning track lives in this repository or in a
-  dedicated companion, given its different audience.
+  a Phase 2 experiment to a default in a later phase.
+- Whether a HOPE reproduction scales usefully from the tens-of-millions
+  parameter educational range into the 1 billion to 3 billion parameter range on
+  a single node, given that no official weights exist.
+- Which continual-learning benchmark suite to standardize on for retention
+  metrics, given several competing 2025 and 2026 benchmarks.
+
+## References
+
+- Chen et al. Continual Learning in Large Language Models: Methods, Challenges,
+  and Opportunities. arXiv:2603.12658, 2026.
+- Behrouz et al. Nested Learning: The Illusion of Deep Learning Architectures.
+  arXiv:2512.24695, 2025. Google Research.
+- Behrouz et al. Titans: Learning to Memorize at Test Time. 2025.
+- Allal et al. SmolLM2: When Smol Goes Big, Data-Centric Training of a Small
+  Language Model. arXiv:2502.02737, 2025.
+- SmolLM3: smol, multilingual, long-context reasoner. Hugging Face, 2025.
+- The Smol Training Playbook. Hugging Face, 2025.
 
 ---
 *Last Updated: 2026-07-07*
