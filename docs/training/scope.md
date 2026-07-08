@@ -14,6 +14,8 @@ This is a planning document. No training code is implied to exist yet.
 - [Purpose](#purpose)
 - [Goals](#goals)
 - [Hardware envelope](#hardware-envelope)
+- [Concurrency policy](#concurrency-policy)
+- [Storage layout and retention](#storage-layout-and-retention)
 - [Training stages and methods](#training-stages-and-methods)
   - [Pretraining from scratch](#pretraining-from-scratch)
   - [Continual pre-training](#continual-pre-training)
@@ -96,6 +98,52 @@ The binding constraint is 32GB of VRAM. The design is memory-first: fit the
 largest useful model and longest useful context into 32GB, then use system RAM and
 NVMe to extend that ceiling through offload.
 
+## Concurrency policy
+
+The inference services defined in `docker-compose.yaml` are down during training.
+While a training job runs, the full machine belongs to it: all 16 cores and 32
+threads, all 128GB of RAM, and the entire 32GB of VRAM. This removes every
+resource-arbitration question between training and inference (the compose file
+grants llama-cpu a 96GB memory limit and cores 0-15, and the GPU services reserve
+the single GPU) by construction rather than by scheduling.
+
+Two consequences follow:
+
+- **Serving-dependent work is phased, not concurrent.** Teacher generation,
+  synthetic-data generation, and model-as-judge scoring run with the inference
+  services up and the GPU otherwise idle, producing datasets and scorecards as
+  reproducible artifacts. Training then runs against those artifacts with
+  inference down. The train-and-serve round trip likewise alternates: train,
+  export, start the serving stack, evaluate.
+- **The whole-machine pillar applies within the training job.** Heterogeneous
+  compute means overlapping the training job's own CPU work, the data pipeline,
+  checkpoint serialization, and concurrent CPU-side evaluation of earlier
+  checkpoints, with the GPU training step. It does not mean coexisting with the
+  inference services.
+
+## Storage layout and retention
+
+Training artifacts are large and do not live in the git repository. The repository
+holds code, recipes, and documentation; datasets, token shards, checkpoints, and
+run outputs live on the NVMe under `/mnt/ai-data`, following the convention the
+inference services already use for models:
+
+```
+/mnt/ai-data/
+  models/                 # existing: served model weights and GGUF files
+  training/
+    datasets/             # raw and cleaned corpora
+    shards/               # tokenized memory-mapped shards plus manifests
+    checkpoints/<run>/    # sharded safetensors checkpoints
+    runs/<run>/           # Hydra run dirs, logs, benchmark JSON staging
+```
+
+Checkpoints dominate the budget: a 1-billion-parameter model with full optimizer
+state is roughly 16GB per checkpoint. Retention is therefore explicit per run:
+keep the last N checkpoints plus every Mth for history, with N and M set in the
+recipe. The operational watchdogs enforce a disk-free floor on `/mnt/ai-data` and
+halt checkpointing gracefully rather than filling the volume mid-run.
+
 ## Training stages and methods
 
 The repository implements four training stages. Each is a code path built on an
@@ -107,7 +155,7 @@ reinforcement learning from human feedback, is out of scope.
 |-------|-----------|----------------------|---------------|
 | Pretraining from scratch | Next-token prediction | nanotron, litGPT, custom loop | 100M to 1B full |
 | Continual pre-training | Next-token prediction on a corpus stream | TRL, Axolotl | 1B to 3B full with offload, larger with LoRA |
-| Fine-tuning | Instruction, chat, and distillation | TRL, torchtune, Unsloth | 1.5B to 2B full, 6B to 8B with QLoRA |
+| Fine-tuning | Instruction, chat, and distillation | TRL, Unsloth | 1.5B to 2B full, 6B to 8B with QLoRA |
 | Continual learning | Retain prior stages while learning new ones | The stages above plus EasyEdit | Inherits the wrapped stage |
 
 ### Pretraining from scratch
@@ -173,8 +221,8 @@ upstream projects.
 
 | Area | Tools |
 |------|-------|
-| Kernels and precision | FlashAttention, Liger-Kernel, Unsloth, mamba-ssm, causal-conv1d, flash-linear-attention, Transformer Engine for FP8 |
-| Trainers | TRL, Axolotl, torchtune, Unsloth, Llama-Factory |
+| Kernels and precision | FlashAttention, Liger-Kernel, Unsloth, mamba-ssm, causal-conv1d, flash-linear-attention, torchao float8 for FP8, Transformer Engine as an experimental FP8 alternative |
+| Trainers | TRL, Axolotl, Unsloth, Llama-Factory (torchtune is excluded: deprecated upstream in 2025) |
 | Memory and offload engine | DeepSpeed ZeRO-Offload and ZeRO-Infinity, FSDP2, bitsandbytes |
 | Data pipeline primitives | Hugging Face datatrove, AI2 dolma, NVIDIA NeMo-Curator, text-dedup |
 | Synthetic data generation | distilabel, driven by the in-repo inference services |
@@ -201,10 +249,11 @@ hardware envelope or the train-and-serve lifecycle and cannot be downloaded.
    runs the CPU data pipeline, the GPU training step, concurrent CPU-side
    evaluation, and inference-driven synthetic-data generation at the same time,
    with NUMA and core pinning for the 9950X and RAM-disk staging of hot shards.
-3. **Blackwell FP8 training enablement and benchmarks.** Making the FP8 training
-   stack run on the sm_120 architecture and measuring the result in the
-   reproducible JSON format already used for inference benchmarks. This is
-   enablement and measurement, not kernel authorship.
+3. **Blackwell FP8 training enablement and benchmarks.** Making FP8 training run
+   on the sm_120 architecture, torchao float8 over the native scaled-matmul path
+   first, Transformer Engine as an experimental alternative, and measuring the
+   result in a reproducible JSON format. This is enablement and measurement, not
+   kernel authorship.
 4. **Train-and-serve integration.** Export a checkpoint, merge any adapter,
    quantize to a servable format, serve it on the existing inference services in
    this repository, and evaluate by serving. One loop within one repository.
@@ -235,7 +284,7 @@ covers the training tier only.
 
 | Library | Where it lands | Rationale |
 |---------|----------------|-----------|
-| AOCL-backed NumPy and SciPy (AOCL-BLAS, AOCL-LAPACK, AOCL-FFTW) | Training container (Phase 0, deliverable 1); pipeline statistics and MinHash math (Phase 0 deliverable 2, Phase 2 deliverable 1); scaling calculator (Phase 3, deliverable 3); learning-track autograd (Phase 0, deliverable 11) | Pipeline and learning-track math is native F32/F64 dense linear algebra, the case Zen-tuned BLIS GEMM is built for. The dequantization penalty that disqualified the BLAS route for quantized inference does not exist here. The tensor-mode autograd engine running its matrix multiplications on BLIS also serves the learning pillar: the artifact that teaches GEMM runs on the hardware's tuned GEMM. |
+| AOCL-backed NumPy and SciPy (AOCL-BLAS, AOCL-LAPACK, AOCL-FFTW) | Training container (Phase 0, deliverable 1); pipeline statistics and MinHash math (Phase 0 deliverable 2, Phase 2 deliverable 1); scaling calculator (Phase 3, deliverable 3); learning-track autograd (Phase 3, deliverable 4) | Pipeline and learning-track math is native F32/F64 dense linear algebra, the case Zen-tuned BLIS GEMM is built for. The dequantization penalty that disqualified the BLAS route for quantized inference does not exist here. The tensor-mode autograd engine running its matrix multiplications on BLIS also serves the learning pillar: the artifact that teaches GEMM runs on the hardware's tuned GEMM. |
 | AOCL-LibMem | LD_PRELOAD in the training container, toggled from the NUMA and core-pinning wrapper (Phase 0, deliverable 9) | The pinned-memory prefetch dataloader, RAM-disk shard staging, sharded safetensors checkpointing, and ZeRO-Offload host buffers are memcpy-bound paths. Same interposition mechanism as the inference hugepage wrapper; the two preloads compose. Expected gain is single-digit percent; cost is one entrypoint line. |
 | zentorch (ZenDNN plugin for PyTorch) | Concurrent CPU-side evaluation (Phase 0 deliverable 9, Phase 1 deliverable 7) and MTEB embedding evaluation | A `torch.compile` backend that routes PyTorch CPU inference through ZenDNN. It is inference-only, which fits: the CPU-side PyTorch work in this scope is inference run while the GPU trains. |
 
@@ -302,7 +351,8 @@ principles upward and connects each concept to a runnable artifact.
   optimization choice at a time and observe the effect on loss and stability.
 
 The learning track uses the same data pipeline, tracking, and hardware as the
-production track, so lessons transfer directly to real runs.
+production track, so lessons transfer directly to real runs. It is implemented in
+Phase 3, alongside the pretraining tools and runs it explains.
 
 ## Continual and lifelong learning
 
@@ -415,9 +465,11 @@ pipeline, which Phases 1 and 2 build up. Phase 4 is the experimental
 continual-learning regime, which requires the earlier stages to exist because it
 runs them as a sequence.
 
-The learning pillar is decoupled from Phase 3: the educational learning track is
-small and is seeded in Phase 0, so the deep-learning-internals payoff arrives early
-rather than waiting on the from-scratch run.
+The learning track lives in Phase 3, where the pretraining tools and the
+from-scratch runs it explains are built. The annotated implementations share the
+architecture of the from-scratch model, and the training-dynamics notebooks
+visualize real runs, so the educational artifacts and the infrastructure they
+document arrive together.
 
 Each phase below lists concrete **deliverables**, each tagged **[adopt]** (external
 tool pulled in unchanged), **[orchestrate]** (configuration and pipelines wiring
@@ -428,16 +480,16 @@ intended surface, not a fixed contract.
 
 ### Phase 0: Foundation
 
-The shared substrate every later phase depends on, plus the learning-track seed and
-Blackwell FP8 enablement. FP8 is enabled here, not as a training type, so every
-subsequent phase inherits the speedup. **Depends on:** nothing.
+The shared substrate every later phase depends on, plus Blackwell FP8 enablement.
+FP8 is enabled here, not as a training type, so every subsequent phase inherits the
+speedup. **Depends on:** nothing.
 
 **Deliverables**
 
 1. **[orchestrate] Training container and dependency group.** A `docker/training/`
    image with PyTorch on CUDA 13, FlashAttention, Liger-Kernel, bitsandbytes,
-   DeepSpeed, FSDP2, TRL, torchtune, PEFT, and Transformer Engine, a `training`
-   Poetry group in `pyproject.toml`, and a `make train-shell` target.
+   DeepSpeed, FSDP2, TRL, PEFT, and torchao, a `training` Poetry group in
+   `pyproject.toml`, and a `make train-shell` target.
 2. **[orchestrate] Lite data pipeline.** `scripts/train/prepare_data.py` and
    `training/data/` that ingest a Hugging Face dataset or local JSONL, tokenize
    across 32 threads, and write memory-mapped shards with a manifest of token
@@ -456,11 +508,14 @@ subsequent phase inherits the speedup. **Depends on:** nothing.
    MLflow wiring, and sharded safetensors checkpoints that save and restore model,
    optimizer, scheduler, dataloader position, and random-number state.
 7. **[build] Train-and-serve round trip.** `scripts/export/` that merges adapters,
-   converts to Hugging Face format, and quantizes to GGUF, plus
-   `scripts/eval/serve_eval.py` that queries the model through the existing
-   inference services.
-8. **[build] FP8 enablement and benchmark harness.** Transformer Engine behind a
-   `precision: fp8` recipe flag on the sm_120 architecture, and
+   converts to Hugging Face format, and quantizes to GGUF against a pinned
+   llama.cpp revision, plus `scripts/eval/serve_eval.py` that queries the model
+   through the existing inference services, following the phased sequence in the
+   concurrency policy.
+8. **[build] FP8 enablement and benchmark harness.** torchao float8, tensorwise
+   over the native scaled-matmul path, behind a `precision: fp8` recipe flag on
+   the sm_120 architecture, with Transformer Engine as an experimental alternate
+   backend and a bfloat16 fallback where FP8 is unsupported, and
    `scripts/benchmark/train_bench.py` that records a bfloat16 baseline against FP8
    for tokens per second, model FLOPs utilization, and peak VRAM as JSON under
    `docs/training/optimizations/`.
@@ -468,11 +523,10 @@ subsequent phase inherits the speedup. **Depends on:** nothing.
    dataloader, a RAM-disk shard-staging helper, and a NUMA and core-pinning wrapper
    for the 9950X.
 10. **[orchestrate] Operational watchdogs.** A monitor that aborts or alerts on
-    not-a-number loss, GPU temperature, and power-draw anomalies, wired to DCGM.
-11. **[build] Learning-track seed.** `training/learning/` with a reverse-mode
-    automatic-differentiation engine, a single-file annotated transformer carrying
-    manual-backpropagation notes, and one gradient-and-activation visualization
-    notebook.
+    not-a-number loss, GPU temperature, power-draw anomalies, and the disk-free
+    floor from the storage policy, reading GPU telemetry through NVML. DCGM is
+    not used: it is datacenter-oriented and runs degraded on GeForce cards, while
+    NVML exposes temperature, power, clocks, and memory fully on the RTX 5090.
 
 **Acceptance criteria**
 
@@ -486,8 +540,6 @@ subsequent phase inherits the speedup. **Depends on:** nothing.
   llama-gpu service.
 - The FP8 benchmark completes and the JSON records the bfloat16-versus-FP8
   comparison.
-- The autograd engine reproduces framework gradients on a test network within
-  numerical tolerance.
 
 ### Phase 1: Fine-tuning
 
@@ -512,7 +564,9 @@ the train-and-serve loop. Production. **Depends on:** Phase 0.
    response-level and logit-KL variants.
 5. **[orchestrate] Teacher and synthetic data harness.** A distilabel-based client
    that batches generation to the existing inference services to build distillation
-   and synthetic datasets.
+   and synthetic datasets. Per the concurrency policy this runs as its own phase,
+   inference up and training idle, and writes datasets as artifacts that training
+   later consumes.
 6. **[orchestrate] Adapter merge and serve.** `make export-gguf` merges the adapter
    through mergekit and quantizes, feeding the Phase 0 round trip.
 7. **[build] Fine-tuning evaluation wrapper.** `scripts/eval/eval_ft.py` reporting
@@ -572,9 +626,14 @@ reuses the Phase 1 evaluation wrapper.
 
 ### Phase 3: Pretraining from scratch
 
-A dense transformer trained from random initialization, the centerpiece of the
-learning pillar and full ownership of the stack. Educational, because a single RTX
-5090 cannot reach a state-of-the-art result from scratch. **Depends on:** Phase 0
+A dense transformer trained from random initialization, the home of the learning
+track, and full ownership of the stack. Educational, because a single RTX 5090
+cannot reach a state-of-the-art result from scratch. The tooling is built to be
+production-capable at 1 billion parameters and beyond: bulletproof resumable
+checkpointing for multi-week runs, a streaming dataloader designed for corpora of
+100 billion tokens and more, and FP8 throughput. The execution scope of this
+phase, however, is a 300-to-500-million-parameter model; the larger run is an
+optional track that reuses this infrastructure unchanged. **Depends on:** Phase 0
 and the Phase 2 data pipeline.
 
 **Deliverables**
@@ -583,31 +642,36 @@ and the Phase 2 data pipeline.
    `scripts/train/pretrain.py`, a configurable dense transformer with RMSNorm,
    SwiGLU, rotary position embeddings, and grouped-query attention, trained with a
    causal language-modeling objective on FlashAttention and Liger-Kernel, or a
-   hardened nanotron or litGPT wrapper.
+   hardened nanotron or litGPT wrapper. Designed and memory-validated for full
+   training at 1 billion parameters, which fits in 32GB without offload.
 2. **[build] Architecture registry.** `training/models/` with dense-transformer and
    Mamba entries behind a common interface.
 3. **[build] Scaling-law and token-budget calculator.**
    `training/calculator/scaling.py` that fits a compute-optimal token budget and
    predicts final loss for a target parameter count and wall-clock.
-4. **[orchestrate] Validation run.** A 360-to-500-million-parameter model on 10
+4. **[build] Learning track.** `training/learning/` with a reverse-mode
+   automatic-differentiation engine over scalars then tensors, the written
+   derivations and gradient checks, a single-file annotated transformer sharing
+   the architecture of deliverable 1, a single-file annotated state-space model,
+   and training-dynamics notebooks that visualize gradient and activation
+   dynamics from the real run of this phase.
+5. **[orchestrate] Pretraining run.** A 300-to-500-million-parameter model on 10
    billion to 20 billion FineWeb-Edu tokens, completing in two to four days, with
-   resumable multi-week checkpointing.
-5. **[orchestrate] First useful run.** A 1-to-1.5-billion-parameter model on 50
-   billion to 100 billion tokens using a SmolLM2-style mixture, reusing a proven
-   tokenizer, served through the round trip.
-6. **[build] Learning-track tie-in.** Notebooks that visualize gradient and
-   activation dynamics from the real run, using the same architecture as the
-   annotated transformer.
+   resumable multi-week checkpointing, served through the round trip.
 
 **Acceptance criteria**
 
 - The model overfits a single batch as a correctness sanity check before any full
   run.
-- The 360-to-500-million-parameter run completes and produces coherent text at the
+- The 300-to-500-million-parameter run completes and produces coherent text at the
   target validation perplexity.
 - The trained model is served through the inference services.
 - The scaling calculator's predicted loss is within a set tolerance of the run's
   measured loss.
+- The autograd engine reproduces framework gradients on a test network within
+  numerical tolerance.
+- A memory-fit check confirms the training loop fits a 1-billion-parameter
+  configuration in 32GB, validating the production envelope without running it.
 
 ### Phase 4: Continual learning
 
@@ -658,6 +722,14 @@ memory. Experimental. **Depends on:** Phases 1, 2, and 3.
 These reuse the foundation and slot in where they add value rather than occupying a
 numbered phase. Several are experimental directions that became active through 2025
 and 2026 and suit a memory-constrained sub-6B local node well.
+
+Scale-up pretraining:
+
+- **1-to-1.5-billion-parameter run.** A model on 50 billion to 100 billion tokens
+  using a SmolLM2-style mixture, reusing a proven tokenizer, served through the
+  round trip. Deferred from Phase 3: the Phase 3 infrastructure is already
+  designed for this scale, so the only additional cost is the multi-week
+  wall-clock of the run itself.
 
 Specialized model types:
 
@@ -732,19 +804,22 @@ work is job-based, launched from a recipe and exiting on completion, whereas the
 inference services are persistent on ports. The only new persistent surfaces are
 observability: JupyterLab, TensorBoard, and MLflow. Many training dependencies,
 including transformers, datasets, accelerate, peft, deepspeed, bitsandbytes,
-Weights and Biases, and MLflow, are already present in `pyproject.toml`.
+Weights and Biases, and MLflow, are already present in `pyproject.toml`. Datasets,
+token shards, checkpoints, and run outputs live outside the repository under
+`/mnt/ai-data`, as defined in
+[Storage layout and retention](#storage-layout-and-retention).
 
 ```
 ai-experiments/
   docker/
     llama-cpu/  llama-gpu/  vllm-gpu/  comfyui-flux/   # existing inference services
-    training/                                          # new: trainer image, PyTorch, CUDA 13, FlashAttention, TRL, torchtune, Unsloth
+    training/                                          # new: trainer image, PyTorch, CUDA 13, FlashAttention, TRL, Unsloth
   training/                                            # new: training source
     data/                                              # ingest, dedup, filter, tokenize, shard pipelines
     models/                                            # architecture registry: transformer, Mamba, Titans, HOPE
     recipes/                                           # Hydra and YAML run configs: sft-qlora, continual-pretrain, pretrain-500m
     continual/                                         # outer loop, replay buffer, anti-forgetting hooks, retention eval
-    learning/                                          # autograd, annotated models, visualization notebooks
+    learning/                                          # autograd, annotated models, visualization notebooks (Phase 3)
     calculator/                                        # memory-fit solver
   scripts/
     benchmark/  setup/  update/  utils/                # existing
@@ -773,4 +848,4 @@ ai-experiments/
 - Awesome-Diffusion-LLM. Community survey of diffusion language models, 2026.
 
 ---
-*Last Updated: 2026-07-07*
+*Last Updated: 2026-07-08*
