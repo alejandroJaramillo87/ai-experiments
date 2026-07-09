@@ -34,10 +34,6 @@ them. Every feature task ends with a benchmark artifact.
     - [2.3 NVFP4 and MXFP4 quantization](#23-nvfp4-and-mxfp4-quantization)
     - [2.4 Structured output](#24-structured-output)
     - [2.5 Benchmark JSON schema](#25-benchmark-json-schema)
-  - [Experimental](#experimental)
-    - [2.6 llama.cpp activation read path study](#26-llamacpp-activation-read-path-study)
-    - [2.7 Hugepage wrapper revalidation and extension](#27-hugepage-wrapper-revalidation-and-extension)
-    - [2.8 MoE expert offload study](#28-moe-expert-offload-study)
 - [Execution order](#execution-order)
 
 ## Section 1: Clean up and update current functionality
@@ -362,70 +358,7 @@ Acceptance: one benchmark run per service produces a valid JSON artifact;
 the schema is documented; the quant type appears in every result file so
 mismatched comparisons are detectable.
 
-### Experimental
 
-#### 2.6 llama.cpp activation read path study
-
-A confirmed ecosystem gap as of July 2026: control vectors give llama.cpp a
-write path into the residual stream, but no mainstream serving stack exposes
-activation capture; the only in-process hook is the eval-callback (cb_eval)
-mechanism. A tensor tap in llama-server would be a first-of-its-kind
-capability and is the exploratory item 7 on the interpretability build list.
-
-Tasks:
-
-- Scope as a study in docs/optimizations/experiments/ first, per the interp
-  roadmap: feasibility of a cb_eval-based capture of selected tensors in
-  llama-server, overhead measurement, and a minimal export format.
-- Prototype against the pinned llama.cpp revision on llama-cpu (cheaper
-  iteration) before touching the GPU service.
-- Go/no-go: pursue integration only if capture overhead is acceptable and the
-  interpretability tier's async monitor proves too limiting without it.
-
-Acceptance: the study document exists with measured overhead and an explicit
-go/no-go recommendation. No serving-path code merges before a go.
-
-#### 2.7 Hugepage wrapper revalidation and extension
-
-The 1GB-hugepage LD_PRELOAD wrapper remains a local differentiator that
-upstream has not replicated, but the 26 percent claim predates the 2026
-llama.cpp CUDA and CPU optimization waves and must be revalidated against the
-newly pinned revision.
-
-Tasks:
-
-- Rerun the CPU benchmark suite with the wrapper on and off against the 1.1
-  pinned llama.cpp; publish the delta in benchmark JSON. Update the README
-  claim if the number moved.
-- Fix the DEBUG_OUTPUT gating bug first (1.8) so measurements are clean.
-- Extension study: the llama-gpu entrypoint uses --no-mmap, meaning host-side
-  weight staging takes a different path; measure whether hugepage-backed
-  staging helps GPU model load time or has no consumer, and record the answer
-  either way.
-
-Acceptance: refreshed wrapper benchmark published; extension study documented
-with a keep/drop conclusion.
-
-#### 2.8 MoE expert offload study
-
-128GB of system RAM plus a 32GB GPU makes serving a large MoE with inactive
-experts in system RAM plausible (ktransformers-style; llama.cpp's own
---n-cpu-moe / offload options). Assessment as of July 2026 is that this
-hardware sits below the sweet spot of the dedicated hybrid stacks, so this is
-framed as a bounded experiment, not a feature commitment.
-
-Tasks:
-
-- Pick one large open MoE that fits the RAM envelope quantized; measure
-  llama.cpp expert-offload serving throughput and latency on this box.
-- Compare against the largest dense model servable fully on-GPU at similar
-  quality tier.
-- Write up under docs/optimizations/experiments/ with a
-  worth-it/not-worth-it conclusion.
-
-Acceptance: the experiment document exists with measured numbers and a
-conclusion; no permanent service is added unless the result is clearly
-positive.
 
 ## Execution order
 
@@ -436,7 +369,6 @@ positive.
 4. Measurement substrate: 2.5 (before all other section 2 items so every
    feature lands with a comparable artifact).
 5. Proven features: 2.2, 2.1, 2.4, then 2.3 (needs 1.1 and 1.6).
-6. Experiments: 2.7, 2.6, 2.8 in any order as time allows.
 
 Each task is sized to be a single Claude Code session: state the task number,
 point at this document, and the task's files, changes, and acceptance criteria
