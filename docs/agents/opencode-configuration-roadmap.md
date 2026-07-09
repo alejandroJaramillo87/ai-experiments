@@ -7,7 +7,7 @@ Goal: make OpenCode an effective executor of the planned roadmaps — inference 
 1. RunPod serverless bills wall-clock GPU seconds, not tokens. Every unnecessary agent iteration, oversized context, or verbose reply is money and latency. Cost control therefore means: route work to the cheapest model that can do it, cap iterations, keep contexts small, and never leave workers warm by accident.
 2. The planned work is roadmap-shaped: discrete tasks with stated files, steps, and acceptance criteria. The configuration should exploit that structure — commands that take a task and drive it to its acceptance check beat open-ended chat.
 
-Ordering principle: rules and permissions first (they make every later session better and safer), then model routing (the cost lever), then agents, then commands and skills (the throughput levers), then plugins (observability and guardrails), then workflow automation. Each phase is usable on its own; later phases compound.
+Ordering principle: rules and permissions first (they make every later session better and safer), then model routing (the cost lever), then agents, then commands and skills (the throughput levers), then plugins (observability and guardrails), then workflow automation, then security hardening — placed last in numbering but its containment decision (Phase 7) should be read before automating anything in Phase 6, since `--auto` mode is only acceptable inside containment. Each phase is usable on its own; later phases compound.
 
 ## Background: the extensibility surface (July 2026)
 
@@ -153,6 +153,47 @@ Acceptance:
 
 - Two independent roadmap tasks complete in parallel worktrees without merge conflicts or GPU contention.
 - A pin-audit run via `opencode run --auto` on the local model completes with zero RunPod spend for that run (verified via the spend delta).
+
+## Phase 7: Security hardening
+
+Files: new `docker/opencode/Dockerfile.opencode` and compose service (or Docker Sandbox usage doc), `opencode.json`, `docs/agents/opencode-security.md`, Makefile.
+
+Threat model findings (July 2026) that shape this phase:
+
+- OpenCode ships no sandbox on Linux (an experimental macOS-only seatbelt PR exists; sandboxing is an open issue upstream), and its permission system has known enforcement gaps — bash side effects can escape `external_directory` restrictions (upstream issues #18396, #24429). Conclusion: the Phase 1 permission rules are UX guardrails, not a security boundary. The boundary must be OS-level isolation.
+- The CVE history is real: CVE-2026-22812 (critical, pre-1.0.216) was an unauthenticated localhost HTTP server with permissive CORS allowing drive-by shell execution from any website; CVE-2026-22813 was web-UI XSS escalating to command execution. Both are fixed in current versions, but the pattern — a local HTTP API bridging to a shell — means version currency and server lockdown are standing requirements, not one-time fixes.
+- Plugins are the weakest link: npm plugins are auto-installed at startup and run in-process with full user privileges, with no signing, review, or sandboxing. Project-local `opencode.json`, `.opencode/plugins/`, and `.opencode/skills/` load automatically — opening OpenCode inside a cloned third-party repo can execute attacker-controlled plugin code or inject attacker-controlled prompts.
+- Prompt injection arrives via webfetch/websearch output, MCP tool results, and untrusted repo files; OpenCode does no output sanitization.
+
+So yes: the answer to "does secure mean running it in a container" is essentially yes — containment first, then configuration, then hygiene.
+
+Tasks — containment (the actual boundary):
+
+- Adopt Docker Sandboxes as the default way to run agent sessions: Docker supports OpenCode as a first-class agent (`docker sandbox create opencode` / `docker sandbox run`), giving each session a microVM with its own kernel, private Docker daemon, and an egress-controlling network proxy. Evaluate it first because it is the strongest off-the-shelf option and this machine already runs Docker.
+- Fallback if Docker Sandboxes does not fit the workflow (e.g. GPU or compose access friction): build our own `docker/opencode/` image following the devcontainer pattern — non-root user, OpenCode pinned via npm (`opencode-ai@<version>`), iptables/ipset egress allowlist permitting only the RunPod API, the local service ports, and the package registries; bind-mount only the repo worktree. Never mount `~/.ssh`, `~/.aws`, or `~/.local/share/opencode/auth.json` into it; inject the single scoped key it needs via environment.
+- Decide the tier split and document it: interactive sessions in this trusted repo may run on the host (with the config hardening below); anything running `--auto`, anything touching untrusted input (webfetch-heavy research, third-party repo checkouts), and any future `opencode serve` usage runs contained, no exceptions. `--auto` mode auto-approves everything not denied, so it inherits none of the ask-prompts that make host sessions tolerable.
+
+Tasks — configuration hardening (`opencode.json`, best-effort layer):
+
+- `"autoupdate": false` inside the pinned sandbox image; on the host, leave updates on or check deliberately and promptly — given the CVE history, running stale is the greater risk. Subscribe to the repo's GitHub security advisories either way.
+- Set `OPENCODE_SERVER_PASSWORD` even for localhost use (blunts CSRF/local-process abuse of the API); never pass `--hostname 0.0.0.0` — the server has no TLS, so any remote exposure goes through an SSH tunnel or reverse proxy, and preferably never leaves the sandbox.
+- Tighten Phase 1 permissions with the injection surface in mind: `"webfetch": {"*": "ask", "https://docs.runpod.io/*": "allow", "https://github.com/*": "allow"}` (allowlist grows deliberately); add bash deny patterns for `cat *.env*`, `* ~/.ssh/*`, `* ~/.aws/*` — the default `.env` read denial covers the read tool only, not bash.
+- Verify `~/.local/share/opencode/auth.json` (and any MCP token store found beside it) is mode 600; fix and note it in the security doc.
+- Plugin policy: exact-version pins in the `plugin` key (`pkg@1.2.3`), read the source of any community plugin before adopting (they are small), prefer vendoring reviewed code into `.opencode/plugins/` over npm references. The Phase 5 plugins we author ourselves are fine by construction.
+
+Tasks — hygiene and process:
+
+- Before opening OpenCode in any repo not authored here (including submodule updates pulled from upstream): inspect `opencode.json`, `.opencode/`, `.claude/skills/`, and `.agents/` for unexpected plugins, commands, or skills. Wrap this in a `make agent-preflight` target (a short script: list those paths, diff against git history) so it actually happens.
+- RunPod: replace the Phase 1 account key with scoped keys — one endpoint-scoped key for inference calls (the only one OpenCode sees), a separate read-only key for the usage script's GraphQL spend queries, the account key nowhere on disk.
+- Write `docs/agents/opencode-security.md` recording the threat model, the tier split, and a quarterly review checklist: OpenCode advisories since last check, permission-gap issues status (has Linux sandboxing landed upstream?), plugin pin bumps, key rotation.
+
+Acceptance:
+
+- A contained session cannot read `~/.ssh` or reach a non-allowlisted domain (test both explicitly); the host `auth.json` is absent inside it.
+- `opencode --version` in the sandbox image matches the pin; the host install is at or above the latest release with security fixes.
+- An `--auto` run executes only inside containment (verify the make target refuses to run it on the host).
+- `make agent-preflight` flags a planted unexpected `.opencode/plugins/` file in a test checkout.
+- RunPod dashboard shows only scoped keys; the account-wide key is deleted.
 
 ## Explicitly deferred
 
