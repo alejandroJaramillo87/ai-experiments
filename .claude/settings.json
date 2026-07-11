@@ -1,0 +1,57 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(nvidia-smi -r*)",
+      "Read(**/.env*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Edit(//mnt/ai-data/models/**)",
+      "Write(//mnt/ai-data/models/**)"
+    ],
+    "allow": [
+      "WebFetch(domain:docs.runpod.io)",
+      "WebFetch(domain:github.com)"
+    ],
+    "ask": [
+      "Bash(docker system prune*)",
+      "Bash(docker volume rm*)",
+      "Bash(git push*)",
+      "Bash(rm * /mnt/ai-data/models*)",
+      "WebFetch"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/scripts/agents/guard.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/scripts/agents/runpod-idle-check.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/scripts/agents/runpod-idle-check.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

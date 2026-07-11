@@ -59,7 +59,7 @@ echo
 echo "AI tools virtual environment check:"
 AI_TOOLS_ENV="ai-tools"
 if command -v pyenv &> /dev/null; then
-    if pyenv versions | grep -q "$AI_TOOLS_ENV"; then
+    if pyenv versions --bare | grep -qx "$AI_TOOLS_ENV"; then
         print_ok "Virtualenv $AI_TOOLS_ENV: found"
         AI_TOOLS_PYTHON="$HOME/.pyenv/versions/$EXPECTED_VERSION/envs/$AI_TOOLS_ENV/bin/python"
         if [ -f "$AI_TOOLS_PYTHON" ]; then
@@ -78,7 +78,11 @@ echo
 
 # Project Directory and Python Version File
 echo "Project directory configuration:"
-PROJECT_DIR="$HOME/workspace/ai-experiments"
+# Derive project root from this script's location (scripts/utils/) so the check
+# works regardless of checkout path; fall back to the documented default.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd)"
+PROJECT_DIR="${PROJECT_DIR:-$HOME/workspace/ai-experiments}"
 if [ -d "$PROJECT_DIR" ]; then
     print_ok "Project directory: $PROJECT_DIR"
 
@@ -124,12 +128,12 @@ if command -v poetry &> /dev/null; then
                 echo "  Fix with: poetry env use ~/.pyenv/versions/$EXPECTED_VERSION/envs/$AI_TOOLS_ENV/bin/python"
             fi
 
-            # Check PyTorch CUDA configuration
-            if poetry config repositories.pytorch_cuda_cu129.url 2>/dev/null | grep -q "pytorch.org"; then
-                print_ok "PyTorch CUDA repository: cu129 configured"
+            # Check PyTorch CUDA configuration (repo standard is cu130; see pyproject.toml)
+            if poetry config repositories.pytorch_cuda_cu130.url 2>/dev/null | grep -q "pytorch.org"; then
+                print_ok "PyTorch CUDA repository: cu130 configured"
             else
-                print_warn "PyTorch CUDA repository: cu129 not configured"
-                echo "  Fix with: poetry config repositories.pytorch_cuda_cu129.url https://download.pytorch.org/whl/cu129"
+                print_warn "PyTorch CUDA repository: cu130 not configured"
+                echo "  Fix with: poetry config repositories.pytorch_cuda_cu130.url https://download.pytorch.org/whl/cu130"
             fi
         else
             print_warn "Poetry environment: not created"

@@ -26,11 +26,6 @@ echo "=== Storage Analysis Report ==="
 echo "Date: $(date '+%Y-%m-%d %H:%M:%S')"
 echo
 
-# Helper function for human-readable sizes
-human_size() {
-    numfmt --to=iec-i --suffix=B "$1" 2>/dev/null || echo "${1}B"
-}
-
 # Function to get directory size safely
 get_size() {
     local path="$1"
@@ -50,7 +45,9 @@ echo "Overall storage summary:"
 echo
 
 # Check all mounted filesystems
-df -h | grep -E "^/dev/" | while read -r line; do
+# Use process substitution (not a pipe) so WARNING_COUNT/CRITICAL_COUNT increments
+# survive: a `... | while` loop runs in a subshell and its counter changes are lost.
+while read -r line; do
     DEVICE=$(echo "$line" | awk '{print $1}')
     SIZE=$(echo "$line" | awk '{print $2}')
     USED=$(echo "$line" | awk '{print $3}')
@@ -77,7 +74,7 @@ df -h | grep -E "^/dev/" | while read -r line; do
     else
         print_ok "$LABEL ($MOUNT): $USED / $SIZE ($USE_PERCENT% used, $AVAIL free)"
     fi
-done
+done < <(df -h | grep -E "^/dev/")
 
 echo
 
@@ -142,7 +139,8 @@ if [ -d "/mnt/ai-data" ]; then
     echo "Top 10 Largest Files in /mnt/ai-data:"
     find /mnt/ai-data -type f -size +100M -exec du -h {} \; 2>/dev/null | sort -rh | head -10 | while read -r size file; do
         BASENAME=$(basename "$file")
-        # Add last access time
+        # Last access time; approximate under relatime mounts (atime only updated
+        # once per day or when mtime changes), so treat as a coarse hint.
         LAST_ACCESS=$(stat -c %x "$file" 2>/dev/null | cut -d' ' -f1)
         echo "  $size $BASENAME (accessed: $LAST_ACCESS)"
     done
@@ -272,12 +270,13 @@ echo "  Max size: $JOURNAL_MAX"
 VAR_LOG_SIZE=$(sudo du -sh /var/log 2>/dev/null | awk '{print $1}' || echo "N/A")
 echo "/var/log total: $VAR_LOG_SIZE"
 
-# Find large log files
+# Find large log files (process substitution so WARNING_COUNT survives the loop)
 echo "Large log files (>100MB):"
-sudo find /var/log -type f -size +100M -exec du -h {} \; 2>/dev/null | sort -rh | head -5 | while read -r size file; do
+while read -r size file; do
+    [ -z "$size" ] && continue
     print_warn "  $size $(basename "$file")"
     ((WARNING_COUNT++))
-done
+done < <(sudo find /var/log -type f -size +100M -exec du -h {} \; 2>/dev/null | sort -rh | head -5)
 
 # Old kernels
 OLD_KERNELS=$(dpkg -l 'linux-*' | sed '/^ii/!d;/'"$(uname -r | sed "s/\(.*\)-\([^0-9]\+\)/\1/")"'/d;s/^[^ ]* [^ ]* \([^ ]*\).*/\1/;/[0-9]/!d' | wc -l)
@@ -293,7 +292,8 @@ echo "Home directory analysis:"
 echo
 
 echo "Top 10 directories in $HOME (excluding symlinks):"
-find "$HOME" -maxdepth 1 -type d ! -name "." -exec du -sh {} \; 2>/dev/null | sort -rh | head -10 | while read -r size dir; do
+# Process substitution so the WARNING_COUNT increment below is not lost to a subshell.
+while read -r size dir; do
     DIR_NAME=$(basename "$dir")
     # Check if it's a cache that should be on data SSD
     if [[ "$DIR_NAME" == ".cache" ]]; then
@@ -307,7 +307,7 @@ find "$HOME" -maxdepth 1 -type d ! -name "." -exec du -sh {} \; 2>/dev/null | so
     else
         echo "  $size $DIR_NAME"
     fi
-done
+done < <(find "$HOME" -maxdepth 1 -type d ! -name "." -exec du -sh {} \; 2>/dev/null | sort -rh | head -10)
 
 echo
 echo "Python Environments:"

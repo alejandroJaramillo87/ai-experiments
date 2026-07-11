@@ -41,12 +41,22 @@ RUN python3.12 -m venv venv && \
     pip install -r requirements.txt && \
     pip install diffusers transformers accelerate sentencepiece protobuf huggingface-hub
 
-# Install ComfyUI Manager and FLUX-compatible custom nodes
+# Install ComfyUI Manager and FLUX-compatible custom nodes.
+# Pin each node to an exact commit: ComfyUI loads and executes this code, and
+# ComfyUI-Manager can fetch further nodes at runtime. Bump deliberately, not on rebuild.
+ARG COMFYUI_MANAGER_COMMIT=351d9c62c419bf49c0fdb6a5a378e94dc3481193
+ARG COMFYUI_GGUF_COMMIT=6ea2651e7df66d7585f6ffee804b20e92fb38b8a
+ARG COMFYUI_KJNODES_COMMIT=e27a505b3ba6ce42687fe00500deda103d9d6071
+ARG COMFYUI_TOOLING_COMMIT=5d3194f4d4158ab31df7a060e1e4c56fa03f320c
 WORKDIR /app/custom_nodes
-RUN git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Manager.git && \
-    git clone --depth 1 https://github.com/city96/ComfyUI-GGUF.git && \
-    git clone --depth 1 https://github.com/kijai/ComfyUI-KJNodes.git && \
-    git clone --depth 1 https://github.com/Acly/comfyui-tooling-nodes.git
+RUN git clone https://github.com/ltdrdata/ComfyUI-Manager.git && \
+    git -C ComfyUI-Manager checkout "${COMFYUI_MANAGER_COMMIT}" && \
+    git clone https://github.com/city96/ComfyUI-GGUF.git && \
+    git -C ComfyUI-GGUF checkout "${COMFYUI_GGUF_COMMIT}" && \
+    git clone https://github.com/kijai/ComfyUI-KJNodes.git && \
+    git -C ComfyUI-KJNodes checkout "${COMFYUI_KJNODES_COMMIT}" && \
+    git clone https://github.com/Acly/comfyui-tooling-nodes.git && \
+    git -C comfyui-tooling-nodes checkout "${COMFYUI_TOOLING_COMMIT}"
 
 # Install custom node dependencies
 WORKDIR /app

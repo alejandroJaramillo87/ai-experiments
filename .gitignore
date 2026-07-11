@@ -40,3 +40,6 @@ scripts/optimizations/copy_to_hugetlbfs
 *.tmp
 *.bak
 CLEANUP_PLAN.md
+
+# Agent tooling state (token usage ledger written by usage.ts)
+.agent-state/
