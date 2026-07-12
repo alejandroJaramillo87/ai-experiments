@@ -17,7 +17,7 @@ import subprocess
 import sys
 import warnings
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 # Exit codes
 EXIT_SUCCESS = 0
@@ -26,7 +26,7 @@ EXIT_FAILURE = 1
 # Key AI packages: display name -> (import name, required).
 # Import name differs from the distribution name for several packages. Optional
 # packages (required=False) report WARN rather than ERROR when absent; vllm lives
-# in the GPU containers and is not necessarily installed in the Poetry env.
+# in the GPU containers and is not necessarily installed in the host env.
 KEY_PACKAGES = {
     "transformers": ("transformers", True),
     "accelerate": ("accelerate", True),
@@ -65,15 +65,15 @@ class Printer:
 
     def __init__(self, quiet: bool = False) -> None:
         self.quiet = quiet
-        use_color = (
-            not quiet
-            and not os.environ.get("NO_COLOR")
-            and sys.stdout.isatty()
-        )
+        use_color = not quiet and not os.environ.get("NO_COLOR") and sys.stdout.isatty()
         if use_color:
             self._c = {
-                "OK": "\033[0;32m", "WARN": "\033[1;33m", "ERROR": "\033[0;31m",
-                "INFO": "\033[0;36m", "RUN": "\033[0;34m", "SKIP": "\033[0;34m",
+                "OK": "\033[0;32m",
+                "WARN": "\033[1;33m",
+                "ERROR": "\033[0;31m",
+                "INFO": "\033[0;36m",
+                "RUN": "\033[0;34m",
+                "SKIP": "\033[0;34m",
             }
             self._nc = "\033[0m"
         else:
@@ -108,7 +108,7 @@ class Printer:
             print(message)
 
 
-def quiet_import(module_name: str) -> Tuple[Optional[Any], str]:
+def quiet_import(module_name: str) -> tuple[Any | None, str]:
     """Import a module, capturing its import-time warnings and stderr.
 
     Heavy AI packages print warnings (pynvml FutureWarning via torch) or full
@@ -129,7 +129,7 @@ def quiet_import(module_name: str) -> Tuple[Optional[Any], str]:
         return None, buf.getvalue()
 
 
-def _pkg_version(import_name: str) -> Optional[str]:
+def _pkg_version(import_name: str) -> str | None:
     """Return the installed distribution version, or None if unavailable."""
     dist = DIST_NAMES.get(import_name, import_name)
     try:
@@ -138,7 +138,7 @@ def _pkg_version(import_name: str) -> Optional[str]:
         return None
 
 
-def check_pytorch_gpu_setup(out: Printer) -> Dict[str, Any]:
+def check_pytorch_gpu_setup(out: Printer) -> dict[str, Any]:
     """Check PyTorch GPU configuration, CUDA compatibility, and Blackwell support.
 
     Returns:
@@ -148,7 +148,7 @@ def check_pytorch_gpu_setup(out: Printer) -> Dict[str, Any]:
     out.line("Verifying PyTorch GPU, CUDA, cuDNN, and Blackwell (sm_120) support")
     out.line()
 
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "success": False,
         "pytorch_version": None,
         "cuda_available": False,
@@ -175,11 +175,13 @@ def check_pytorch_gpu_setup(out: Printer) -> Dict[str, Any]:
 
     # Check system CUDA version using nvcc
     try:
-        nvcc_output = subprocess.run(['nvcc', '--version'], capture_output=True, text=True)
+        nvcc_output = subprocess.run(
+            ["nvcc", "--version"], capture_output=True, text=True
+        )
         if nvcc_output.returncode == 0:
-            for line in nvcc_output.stdout.split('\n'):
-                if 'release' in line:
-                    match = re.search(r'release (\d+\.\d+)', line)
+            for line in nvcc_output.stdout.split("\n"):
+                if "release" in line:
+                    match = re.search(r"release (\d+\.\d+)", line)
                     if match:
                         result["system_cuda_version"] = match.group(1)
                         out.ok(f"System CUDA (nvcc): {result['system_cuda_version']}")
@@ -188,7 +190,7 @@ def check_pytorch_gpu_setup(out: Printer) -> Dict[str, Any]:
         out.warn("System CUDA (nvcc): not found in PATH")
 
     # Check PyTorch CUDA version
-    if hasattr(torch.version, 'cuda'):
+    if hasattr(torch.version, "cuda"):
         result["pytorch_cuda_version"] = torch.version.cuda
         out.ok(f"PyTorch CUDA build: {torch.version.cuda}")
 
@@ -205,12 +207,14 @@ def check_pytorch_gpu_setup(out: Printer) -> Dict[str, Any]:
 
     # Check for version mismatch (major version)
     if result["system_cuda_version"] and result["pytorch_cuda_version"]:
-        sys_major = result["system_cuda_version"].split('.')[0]
-        pytorch_cuda_major = result["pytorch_cuda_version"].split('.')[0]
+        sys_major = result["system_cuda_version"].split(".")[0]
+        pytorch_cuda_major = result["pytorch_cuda_version"].split(".")[0]
 
         if sys_major != pytorch_cuda_major:
             out.warn("CUDA version compatibility: version mismatch")
-            out.line(f"  System: {result['system_cuda_version']}, PyTorch: {result['pytorch_cuda_version']}")
+            out.line(
+                f"  System: {result['system_cuda_version']}, PyTorch: {result['pytorch_cuda_version']}"
+            )
             out.line("  Solution: Reinstall PyTorch for system CUDA version")
 
     # GPU detection
@@ -241,7 +245,9 @@ def check_pytorch_gpu_setup(out: Printer) -> Dict[str, Any]:
             if has_sm120:
                 out.ok("Blackwell sm_120: present in torch arch list", indent=2)
             else:
-                out.warn(f"Blackwell sm_120: not in torch build ({arch_list})", indent=2)
+                out.warn(
+                    f"Blackwell sm_120: not in torch build ({arch_list})", indent=2
+                )
                 out.line("    Solution: install a torch build with sm_120 (cu130)")
 
         # bf16 support (relevant for Blackwell inference/training precision)
@@ -275,7 +281,7 @@ def check_pytorch_gpu_setup(out: Printer) -> Dict[str, Any]:
     return result
 
 
-def check_key_packages(out: Printer) -> Dict[str, Dict[str, Any]]:
+def check_key_packages(out: Printer) -> dict[str, dict[str, Any]]:
     """Check key AI package availability, versions, and native-backend health.
 
     Returns:
@@ -284,7 +290,7 @@ def check_key_packages(out: Printer) -> Dict[str, Dict[str, Any]]:
     out.line()
     out.line("AI package availability:")
 
-    packages: Dict[str, Dict[str, Any]] = {}
+    packages: dict[str, dict[str, Any]] = {}
     for name, (import_name, required) in KEY_PACKAGES.items():
         module, noise = quiet_import(import_name)
         installed = module is not None
@@ -309,9 +315,13 @@ def check_key_packages(out: Printer) -> Dict[str, Dict[str, Any]]:
         version_suffix = f" {pkg_version}" if pkg_version else ""
         if installed and warning:
             out.warn(f"{name}:{version_suffix} ({warning})", indent=2)
-            out.line(f"    Solution: reinstall {name} matching the installed CUDA (cu130)")
+            out.line(
+                f"    Solution: reinstall {name} matching the installed CUDA (cu130)"
+            )
         elif installed:
-            out.ok(f"{name}:{version_suffix if pkg_version else ' installed'}", indent=2)
+            out.ok(
+                f"{name}:{version_suffix if pkg_version else ' installed'}", indent=2
+            )
         elif required:
             out.error(f"{name}: not installed", indent=2)
         else:
@@ -329,13 +339,13 @@ def create_parser() -> argparse.ArgumentParser:
 Examples:
   python check_py_deps_install.py
   python check_py_deps_install.py --json
-        """
+        """,
     )
 
     parser.add_argument(
         "--json",
         action="store_true",
-        help="Output results as JSON only (suppresses human-readable text)"
+        help="Output results as JSON only (suppresses human-readable text)",
     )
 
     return parser

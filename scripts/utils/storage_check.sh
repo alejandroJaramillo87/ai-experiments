@@ -221,11 +221,11 @@ if [ -d "$APT_CACHE" ]; then
     echo "APT cache: $APT_SIZE"
 fi
 
-# Poetry cache
-POETRY_CACHE="$HOME/.cache/pypoetry"
-if [ -d "$POETRY_CACHE" ]; then
-    POETRY_SIZE=$(du -sh "$POETRY_CACHE" 2>/dev/null | awk '{print $1}')
-    echo "Poetry cache: $POETRY_SIZE"
+# uv cache
+UV_CACHE="$HOME/.cache/uv"
+if [ -d "$UV_CACHE" ]; then
+    UV_CACHE_SIZE=$(du -sh "$UV_CACHE" 2>/dev/null | awk '{print $1}')
+    echo "uv cache: $UV_CACHE_SIZE"
 fi
 
 # Pip cache (check if it's symlinked)
@@ -311,17 +311,25 @@ done < <(find "$HOME" -maxdepth 1 -type d ! -name "." -exec du -sh {} \; 2>/dev/
 
 echo
 echo "Python Environments:"
-# Check for pyenv
+# Check for uv-managed interpreters and cache
+if [ -d "$HOME/.local/share/uv" ]; then
+    UV_SIZE=$(du -sh "$HOME/.local/share/uv" 2>/dev/null | awk '{print $1}')
+    UV_PYTHONS=$(ls "$HOME/.local/share/uv/python" 2>/dev/null | wc -l)
+    echo "  uv (interpreters/tools): $UV_SIZE ($UV_PYTHONS interpreters)"
+fi
+if [ -d "$HOME/.cache/uv" ]; then
+    UV_CACHE_SIZE=$(du -sh "$HOME/.cache/uv" 2>/dev/null | awk '{print $1}')
+    echo "  uv cache: $UV_CACHE_SIZE (prune with: uv cache prune)"
+fi
+# Leftovers from the retired pyenv/Poetry toolchain (removal documented in
+# docs/os/python/setup_python.md)
 if [ -d "$HOME/.pyenv" ]; then
     PYENV_SIZE=$(du -sh "$HOME/.pyenv" 2>/dev/null | awk '{print $1}')
-    PYENV_VERSIONS=$(ls "$HOME/.pyenv/versions" 2>/dev/null | wc -l)
-    echo "  .pyenv: $PYENV_SIZE ($PYENV_VERSIONS versions)"
+    print_warn "  .pyenv: $PYENV_SIZE (retired; remove per docs/os/python/setup_python.md)"
 fi
-# Check for Poetry environments
-if [ -d "$HOME/.cache/pypoetry/virtualenvs" ]; then
-    POETRY_ENV_SIZE=$(du -sh "$HOME/.cache/pypoetry/virtualenvs" 2>/dev/null | awk '{print $1}')
-    POETRY_ENV_COUNT=$(ls "$HOME/.cache/pypoetry/virtualenvs" 2>/dev/null | wc -l)
-    echo "  Poetry envs: $POETRY_ENV_SIZE ($POETRY_ENV_COUNT environments)"
+if [ -d "$HOME/.cache/pypoetry" ]; then
+    POETRY_SIZE=$(du -sh "$HOME/.cache/pypoetry" 2>/dev/null | awk '{print $1}')
+    print_warn "  Poetry cache: $POETRY_SIZE (retired; remove per docs/os/python/setup_python.md)"
 fi
 # Check for conda
 if [ -d "$HOME/miniconda3" ] || [ -d "$HOME/anaconda3" ]; then
@@ -384,11 +392,19 @@ if [ -n "$JOURNAL_BYTES" ] && [ "$JOURNAL_BYTES" -gt 1073741824 ] 2>/dev/null; t
     ((SUGGESTIONS++))
 fi
 
-# Poetry cache
+# uv cache
+UV_BYTES=$(get_size "$HOME/.cache/uv")
+if [ "$UV_BYTES" -gt 5368709120 ]; then  # >5GB
+    echo "• Prune uv cache:"
+    echo "  uv cache prune"
+    ((SUGGESTIONS++))
+fi
+
+# Retired Poetry cache (toolchain removed; see docs/os/python/setup_python.md)
 POETRY_BYTES=$(get_size "$HOME/.cache/pypoetry")
-if [ "$POETRY_BYTES" -gt 5368709120 ]; then  # >5GB
-    echo "• Clear Poetry cache:"
-    echo "  poetry cache clear --all . -n"
+if [ "$POETRY_BYTES" -gt 0 ]; then
+    echo "• Remove retired Poetry cache:"
+    echo "  rm -rf ~/.cache/pypoetry"
     ((SUGGESTIONS++))
 fi
 

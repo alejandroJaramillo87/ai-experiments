@@ -150,7 +150,7 @@ Standardized organization for AI assets:
 │   ├── huggingface/  # HF transformers cache
 │   ├── torch/        # PyTorch cache
 │   ├── pip/          # pip download cache
-│   ├── pypoetry/     # Poetry cache
+│   ├── uv/           # uv cache
 │   ├── nvidia/       # NVIDIA GPU cache
 │   ├── webui/        # Web UI caches
 │   └── ...           # Other system caches

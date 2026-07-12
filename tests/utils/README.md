@@ -2,7 +2,7 @@
 
 Tests for the host-environment reporters in `scripts/utils/`. Unlike the fixture-driven
 suite in `tests/agents/`, these scripts have no fixture modes — they read live host
-state (`nvidia-smi`, `sysctl`, pyenv, Poetry, `/mnt/ai-data`), so the tests assert the
+state (`nvidia-smi`, `sysctl`, uv, `.venv`, `/mnt/ai-data`), so the tests assert the
 stable contract rather than specific values: exit codes, `NO_COLOR` handling, the
 style-guide status vocabulary, and section headers.
 
@@ -19,7 +19,7 @@ style-guide status vocabulary, and section headers.
   unprivileged) so the suite can never block on a password prompt. A 120-second
   timeout backstops any other hang.
 - The end-to-end checks and the bash scripts' PyTorch sections import torch through
-  the Poetry environment, which dominates suite runtime (roughly 30–45 seconds
+  the uv `.venv` environment, which dominates suite runtime (roughly 30–45 seconds
   total). They run in plain `make test` by decision — one command runs everything.
 - The end-to-end assertions accept exit codes 0 and 1 because
   `check_py_deps_install.py` reports host GPU state; the contract under test is the

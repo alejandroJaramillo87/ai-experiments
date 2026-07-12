@@ -77,7 +77,7 @@ This base infrastructure repository provides AI inference capabilities with vali
 ### Technical Accomplishments
 - Complete documentation of NVIDIA GPU software stack
 - Environment variable parameterization for all services
-- Poetry-based dependency management with CUDA compatibility
+- uv-based dependency management with CUDA compatibility
 - Automated setup and update scripts for all components
 - Git submodule architecture
 - Comprehensive benchmarking with multiple workload types
@@ -131,7 +131,7 @@ $ git submodule update --init --recursive
 # Project now has access to:
 # - Inference services on ports 8001-8005
 # - RTX 5090 optimized configurations
-# - Poetry environment with AI packages
+# - uv environment with AI packages
 # - Makefile commands for infrastructure
 ```
 
@@ -182,8 +182,8 @@ ai-experiments/
 ├── datasets/                  # Training/test datasets
 ├── logs/                      # Service logs
 ├── docker-compose.yaml        # Service orchestration
-├── pyproject.toml            # Poetry dependencies
-├── poetry.lock               # Locked dependencies
+├── pyproject.toml            # uv project and exact dependency pins
+├── uv.lock                   # Locked dependencies
 ├── Makefile                  # Infrastructure commands
 ├── .env                      # Environment configuration
 ├── .gitignore                # Git exclusions
@@ -273,9 +273,9 @@ Model downloads use the Hugging Face CLI directly (ships with `huggingface-hub`)
 
 ```bash
 # Full repository
-HF_HUB_ENABLE_HF_TRANSFER=1 poetry run hf download <repo-id> --local-dir <dir>
+HF_HUB_ENABLE_HF_TRANSFER=1 uv run hf download <repo-id> --local-dir <dir>
 # Single file (e.g. a GGUF quant)
-HF_HUB_ENABLE_HF_TRANSFER=1 poetry run hf download <repo-id> <filename> --local-dir <dir>
+HF_HUB_ENABLE_HF_TRANSFER=1 uv run hf download <repo-id> <filename> --local-dir <dir>
 ```
 
 - `dependency_check.sh` - System dependency check
@@ -296,27 +296,29 @@ $ scripts/benchmark/server-bench.py --service llama-gpu
 
 ## Python Environment
 
-### Poetry-based management
-- **Python 3.12** via pyenv for latest performance
-- **Poetry** for reproducible dependency management
+### uv-based management
+- **Python 3.12** via uv for a reproducible managed interpreter
+- **uv** for reproducible dependency management with exact version pins
 - **Key Packages**:
-  - transformers 4.51.1 - Pre-trained models
-  - accelerate 1.8.1 - Distributed training
-  - deepspeed 0.17.1 - Memory optimization
-  - bitsandbytes 0.46.0 - Quantization
+  - torch 2.9.1 (cu130) - GPU tensor computation
+  - transformers 4.51.3 - Pre-trained models
+  - accelerate 1.10.1 - Distributed training
+  - deepspeed 0.17.6 - Memory optimization
+  - bitsandbytes 0.46.1 - Quantization
   - peft 0.15.2 - Parameter-efficient fine-tuning
 
 ### Installation
 ```bash
-# Install dependencies
-$ poetry install
+# Sync the environment (all groups and extras, including the cu130 PyTorch trio)
+$ make install
 
-# Activate environment
-$ poetry shell
-
-# Install PyTorch with CUDA
-$ pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129
+# Activate the environment
+$ source .venv/bin/activate
 ```
+
+uv resolves the PyTorch trio from the CUDA 13.0 index declared in `pyproject.toml`, so no
+separate PyTorch install step is required. See
+[docs/os/python/setup_python.md](docs/os/python/setup_python.md) for details.
 
 ## GPU Software Stack
 

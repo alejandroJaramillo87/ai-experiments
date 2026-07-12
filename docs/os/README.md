@@ -124,7 +124,7 @@ Visual Studio Code supports AI/ML development with Python, Jupyter notebooks, Do
 
 VS Code Setup Process:
 - Install VS Code with AI/ML extensions
-- Configure Python interpreter with pyenv
+- Configure Python interpreter with uv
 - Set up Jupyter notebook support
 - Install Docker extensions
 - Configure Git integration with SSH keys
@@ -424,27 +424,31 @@ Reference Files:
 ### Python Version Management and Dependency Management
 
 **Modern Python Ecosystem for AI Development**
-Pyenv provides Python version management for AI development with different framework requirements. Poetry offers dependency management and virtual environment handling for AI projects and large framework installations.
+uv manages the Python interpreter, the project virtual environment, the lock file, and the
+PyTorch CUDA wheels from a single `pyproject.toml`. It replaces the previous pyenv and
+Poetry toolchain and the pip PyTorch sideload.
 
 Python Environment Setup:
-- Install Pyenv for multiple Python version management
-- Install Python 3.12.x optimized for AI workloads and framework compatibility
-- Configure global and project-specific Python version selection
-- Set up Poetry for advanced dependency management and virtual environment isolation
-- Install PyTorch 2.6+ with CUDA 12.8 support for RTX 5090
-- Configure TensorFlow, Transformers, and specialized AI frameworks
+- Install uv with the official standalone installer
+- Install the managed Python 3.12 interpreter with `uv python install 3.12`
+- Pin the interpreter through `.python-version` (contents: `3.12`)
+- Sync the environment into `.venv` with `make install` (`uv sync --all-groups --all-extras`)
+- uv resolves the PyTorch trio from the CUDA 13.0 index; no separate install step is required
+- Configure Transformers and specialized AI frameworks through the pinned dependencies
 
 AI Framework Configuration:
-The project uses Poetry for dependency management with optimized AI framework versions:
+The project uses uv with exact version pins and a CUDA-specific PyTorch index:
 
 ```toml
-# Core AI/ML Frameworks from pyproject.toml
-torch = {version = ">=2.3.0,<3.0.0", source = "pytorch_cuda_cu128"}
-torchvision = {version = ">=0.18.0,<1.0.0", source = "pytorch_cuda_cu128"}
-torchaudio = {version = ">=2.3.0,<3.0.0", source = "pytorch_cuda_cu128"}
-transformers = ">=4.51.1,<4.52.0"
-datasets = ">=3.1.0,<4.0.0"
-accelerate = ">=1.8.1,<2.0.0"
+# Core AI/ML frameworks from pyproject.toml [project].dependencies
+dependencies = [
+    "torch==2.9.1",         # resolved from the pytorch-cu130 index
+    "torchvision==0.24.1",  # resolved from the pytorch-cu130 index
+    "torchaudio==2.9.1",    # resolved from the pytorch-cu130 index
+    "transformers==4.51.3",
+    "datasets==3.6.0",
+    "accelerate==1.10.1",
+]
 ```
 
 Specialized AI Libraries:
@@ -468,7 +472,7 @@ python scripts/utils/check_py_deps_install.py
 
 Reference Files:
 - `pyproject.toml`: Complete AI framework dependency specification with CUDA support
-- `docs/os/setup_python.md`: Detailed Python environment configuration guide
+- `docs/os/python/setup_python.md`: Detailed Python environment configuration guide
 - `scripts/utils/check_py_deps_install.py`: Python dependency verification and GPU testing
 - `scripts/utils/find_pythons.sh`: Python installation discovery and version management
 

@@ -7,7 +7,9 @@ target dir exits 2.
 
 
 def test_fixture_dir_flags_both_vectors(run_script, fixtures_dir):
-    result = run_script("agents/preflight-scan.sh", str(fixtures_dir / "preflight_fixture"))
+    result = run_script(
+        "agents/preflight-scan.sh", str(fixtures_dir / "preflight_fixture")
+    )
     assert result.returncode == 1
     assert "evil.ts" in result.stdout
     assert "defines hooks" in result.stdout

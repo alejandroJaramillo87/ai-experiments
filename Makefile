@@ -75,7 +75,7 @@ flux-build: ## Rebuild ComfyUI container
 flux-model-download: ## Download FLUX.1-dev model
 	@echo "$(CYAN)Downloading FLUX.1-dev model (~23GB)...$(RESET)"
 	@echo "This will take time depending on your internet connection."
-	HF_HUB_ENABLE_HF_TRANSFER=1 poetry run hf download \
+	HF_HUB_ENABLE_HF_TRANSFER=1 uv run hf download \
 		black-forest-labs/FLUX.1-dev \
 		--local-dir /mnt/ai-data/models/flux
 	@echo "$(GREEN)Model download complete.$(RESET)"
@@ -151,32 +151,29 @@ list-models: ## List available models in /mnt/ai-data/models
 		echo "$(RED)Model directory /mnt/ai-data/models not found.$(RESET)"; \
 	fi
 
-##@ Python Environment (Poetry)
+##@ Python Environment (uv)
 
-install: ## Install Poetry dependencies
-	@echo "$(CYAN)Installing Poetry dependencies...$(RESET)"
-	poetry install
-	@echo "$(GREEN)Dependencies installed.$(RESET)"
+install: ## Sync the uv environment (all groups and extras)
+	@echo "$(CYAN)Syncing uv environment...$(RESET)"
+	uv sync --all-groups --all-extras
+	@echo "$(GREEN)Environment synced.$(RESET)"
 
-update: ## Update Poetry dependencies
-	@echo "$(CYAN)Updating Poetry dependencies...$(RESET)"
-	poetry update
-	@echo "$(GREEN)Dependencies updated.$(RESET)"
+update: ## Update Python dependencies (lock upgrade + sync + verification)
+	./scripts/update/update_python.sh
 
-shell: ## Start Poetry shell environment
-	poetry shell
+shell: ## Show how to activate the project environment
+	@echo "Run: source .venv/bin/activate (or prefix commands with 'uv run')"
 
 ##@ Testing & Code Quality
 
 test: ## Run tests (if available)
-	poetry run pytest -v
+	uv run pytest -v
 
 lint: ## Run linting with ruff
-	poetry run ruff check .
+	uv run ruff check .
 
-format: ## Format code with black and ruff
-	poetry run black .
-	poetry run ruff format .
+format: ## Format code with ruff
+	uv run ruff format .
 
 ##@ Agent Tooling (OpenCode / Claude Code parity)
 

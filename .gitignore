@@ -43,3 +43,6 @@ CLEANUP_PLAN.md
 
 # Agent tooling state (token usage ledger written by usage.ts)
 .agent-state/
+
+# Lint cache
+.ruff_cache/

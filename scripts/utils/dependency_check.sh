@@ -15,6 +15,10 @@ NC='\033[0m'
 # Disable colors if NO_COLOR is set
 [[ -n "${NO_COLOR:-}" ]] && RED='' GREEN='' YELLOW='' BLUE='' CYAN='' NC=''
 
+# Project root for uv environment checks (script lives in scripts/utils/)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 # Print helper functions
 print_ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
 print_warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
@@ -302,17 +306,16 @@ if command -v python3 &> /dev/null; then
     PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
     echo "Python: $PYTHON_VERSION"
 
-    # Check for Poetry
-    if command -v poetry &> /dev/null; then
-        echo "Poetry: $(poetry --version 2>&1 | awk '{print $3}')"
+    # Check for uv
+    if command -v uv &> /dev/null; then
+        echo "uv: $(uv --version 2>&1 | awk '{print $2}')"
 
-        # Check Poetry environment
-        POETRY_ENV=$(poetry env info --path 2>/dev/null)
-        if [ -n "$POETRY_ENV" ]; then
-            echo "Poetry Environment: Active"
+        # Check project environment
+        if [ -d "$PROJECT_ROOT/.venv" ]; then
+            echo "Project Environment: .venv present"
 
-            # Check PyTorch if in Poetry environment
-            PYTORCH_CHECK=$(poetry run python -c "
+            # Check PyTorch in the project environment
+            PYTORCH_CHECK=$(uv run --project "$PROJECT_ROOT" --no-sync python -c "
 import sys
 try:
     import torch
@@ -326,19 +329,19 @@ except ImportError:
 " 2>/dev/null)
             echo "$PYTORCH_CHECK"
         else
-            echo "Poetry Environment: Not active"
+            echo "Project Environment: .venv not found"
         fi
     else
-        echo "Poetry: Not installed"
+        echo "uv: Not installed"
     fi
 
     # Check key AI packages
-    # Single interpreter start (imports all packages) instead of one `poetry run`
+    # Single interpreter start (imports all packages) instead of one `uv run`
     # per package, which spawns a fresh interpreter each time. Python emits a
     # "status<TAB>name" line per package; the shell colorizes via print helpers.
     echo
     echo "Key AI Packages:"
-    PKG_STATUS=$(poetry run python - <<'PYEOF' 2>/dev/null
+    PKG_STATUS=$(uv run --project "$PROJECT_ROOT" --no-sync python - <<'PYEOF' 2>/dev/null
 import importlib
 # Map display name -> import name (differ for hyphenated distributions)
 packages = {
@@ -366,7 +369,7 @@ PYEOF
             fi
         done <<< "$PKG_STATUS"
     else
-        print_error "  package check: poetry environment not available"
+        print_error "  package check: project environment not available"
     fi
 else
     print_error "Python 3: not found"

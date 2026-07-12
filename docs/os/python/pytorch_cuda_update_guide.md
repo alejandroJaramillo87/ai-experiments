@@ -1,120 +1,150 @@
-# PyTorch CUDA Version Update Guide
+# PyTorch CUDA version update guide
 
-## Overview
+This guide documents how to change the PyTorch CUDA build in the uv-managed environment.
+uv resolves the `torch`, `torchvision`, and `torchaudio` trio directly from a
+CUDA-specific PyTorch index, so PyTorch is a first-class locked dependency. No pip
+sideload and no manual reinstall step exist.
 
-This guide documents the process for updating PyTorch to use different CUDA versions in Poetry-managed projects. Due to limitations in how Poetry handles PyTorch's custom package repositories, we use a hybrid approach where Poetry manages all packages except PyTorch, which is installed manually via pip.
+## Table of contents
 
-## The Poetry-PyTorch Issue
+- [How PyTorch is locked](#how-pytorch-is-locked)
+- [When to update the CUDA version](#when-to-update-the-cuda-version)
+- [Check current versions](#check-current-versions)
+- [Update process](#update-process)
+- [Verification](#verification)
+- [Available PyTorch CUDA indexes](#available-pytorch-cuda-indexes)
+- [System CUDA and PyTorch CUDA compatibility](#system-cuda-and-pytorch-cuda-compatibility)
+- [Troubleshooting](#troubleshooting)
+- [Quick reference](#quick-reference)
 
-Poetry has difficulty properly resolving PyTorch packages from custom CUDA-specific repositories. When you change the PyTorch source repository (e.g., from `cu128` to `cu129`), Poetry:
-- Continues using cached package metadata from the old repository
-- Fails to recognize the new repository during dependency resolution
-- Shows "Repository does not exist" errors even when properly configured
-- Will downgrade CUDA packages when running `poetry update` or `poetry install`
+## How PyTorch is locked
 
-## When to Update PyTorch CUDA Version
+`pyproject.toml` pins the trio to exact versions and binds them to a named CUDA index:
 
-Update PyTorch's CUDA version when:
-- PyTorch releases support for a newer CUDA version
-- You want to match your system's CUDA installation more closely
-- You need features or optimizations from a newer CUDA version
-- You see warnings about CUDA version mismatches
-
-Check your current versions:
-```bash
-# System CUDA version
-nvcc --version
-
-# PyTorch CUDA version
-poetry run python -c "import torch; print(torch.__version__)"
-```
-
-## Current Recommended Approach
-
-Based on our experience, the most reliable approach is to **exclude PyTorch from Poetry management entirely** and install it manually. This prevents Poetry from downgrading CUDA packages during updates.
-
-### pyproject.toml Configuration
-
-Comment out PyTorch packages in your `pyproject.toml`:
 ```toml
-# Core AI/ML Frameworks and Utilities
-# PyTorch packages are managed manually via pip due to Poetry limitations with custom indexes
-# Install with: ./scripts/update/update_python.sh --pytorch
-# torch = {version = ">=2.9.0,<3.0.0", source = "pytorch_cuda_cu130"}
-# torchvision = {version = ">=0.24.0,<1.0.0", source = "pytorch_cuda_cu130"}
-# torchaudio = {version = ">=2.9.0,<3.0.0", source = "pytorch_cuda_cu130"}
-```
+dependencies = [
+    "torch==2.9.1",
+    "torchvision==0.24.1",
+    "torchaudio==2.9.1",
+]
 
-Keep the repository source for documentation purposes:
-```toml
-[[tool.poetry.source]]
-name = "pytorch_cuda_cu130"
+[[tool.uv.index]]
+name = "pytorch-cu130"
 url = "https://download.pytorch.org/whl/cu130"
-priority = "explicit"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }
+torchaudio = { index = "pytorch-cu130" }
 ```
 
-## Update Process
+`explicit = true` means only packages named in `[tool.uv.sources]` resolve from that
+index; every other dependency resolves from PyPI. uv records the exact CUDA wheels in
+`uv.lock` and installs them during `uv sync`.
 
-### Step 1: Update the CUDA URL in pyproject.toml comments
+deepspeed ships a source distribution whose `setup.py` imports torch at build time. uv
+supplies torch to that build through `[tool.uv.extra-build-dependencies]`:
 
-When a new CUDA version becomes available, update the URL in the commented sections:
 ```toml
-# For CUDA 13.1 (when available):
-# torch = {version = ">=2.10.0,<3.0.0", source = "pytorch_cuda_cu131"}
-# torchvision = {version = ">=0.25.0,<1.0.0", source = "pytorch_cuda_cu131"}
-# torchaudio = {version = ">=2.10.0,<3.0.0", source = "pytorch_cuda_cu131"}
+[tool.uv.extra-build-dependencies]
+deepspeed = ["torch"]
+```
 
-[[tool.poetry.source]]
-name = "pytorch_cuda_cu131"
+## When to update the CUDA version
+
+Update the PyTorch CUDA build when:
+
+- PyTorch releases wheels for a newer CUDA version
+- A newer CUDA build is required to match a system upgrade
+- A newer CUDA build provides a required feature or fix
+
+## Check current versions
+
+Check the system CUDA version reported by the driver toolkit:
+
+```bash
+$ nvcc --version
+```
+
+Check the installed PyTorch build:
+
+```bash
+$ uv run python -c "import torch; print(torch.__version__)"
+```
+
+The version string includes the CUDA suffix, for example `2.9.1+cu130`.
+
+## Update process
+
+Changing the CUDA build follows the pin-then-fix-then-update rule (see AGENTS.md): edit
+the pins, refresh the lock, sync, then run the acceptance checks.
+
+### Step 1: Edit the index and the pins
+
+To move to a different CUDA build, update the index URL and name, the `[tool.uv.sources]`
+bindings, and the three version pins in `pyproject.toml`. For example, to move to a
+CUDA 13.1 build once it is published:
+
+```toml
+dependencies = [
+    "torch==2.10.0",
+    "torchvision==0.25.0",
+    "torchaudio==2.10.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu131"
 url = "https://download.pytorch.org/whl/cu131"
-priority = "explicit"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu131" }
+torchvision = { index = "pytorch-cu131" }
+torchaudio = { index = "pytorch-cu131" }
 ```
 
-### Step 2: Update Poetry Lock File
+Change one thing at a time. Do not combine a CUDA index change with an unrelated version
+bump in the same step.
 
-Create a new lock file without PyTorch:
-```bash
-poetry lock
-```
-
-This will be fast since PyTorch packages are excluded.
-
-### Step 3: Install Dependencies
-
-Install all non-PyTorch dependencies:
-```bash
-poetry install --no-root
-```
-
-### Step 4: Manual PyTorch Installation
-
-Install PyTorch using the update script:
+### Step 2: Refresh the lock file
 
 ```bash
-# This will read the CUDA URL from pyproject.toml and install PyTorch
-./scripts/update/update_python.sh --pytorch
+$ uv lock
 ```
 
-Or manually:
+uv re-resolves the trio from the new index and rewrites `uv.lock`.
+
+### Step 3: Sync the environment
+
 ```bash
-# Remove any existing PyTorch packages
-poetry run pip uninstall torch torchvision torchaudio -y
-
-# Install PyTorch from the correct CUDA index
-# For CUDA 13.0:
-poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
-
-# For CUDA 13.1 (when available):
-poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu131
+$ uv sync --all-groups --all-extras
 ```
+
+### Step 4: Run the acceptance checks
+
+```bash
+$ uv run python -c "import torch; assert torch.cuda.is_available()"
+$ uv run python scripts/utils/check_py_deps_install.py
+```
+
+The update script runs the lock refresh, sync, and PyTorch verification in one step:
+
+```bash
+$ ./scripts/update/update_python.sh
+```
+
+The script runs `uv lock --upgrade` followed by `uv sync --all-groups --all-extras`, then
+verifies imports and the CUDA build. It warns if the installed torch reports an older
+CUDA build than expected, which indicates the pins or the `[tool.uv.sources]` bindings
+were edited incorrectly.
 
 ## Verification
 
-Verify the update was successful:
+Confirm the installed build and GPU detection:
 
 ```bash
-# Check PyTorch version and CUDA support
-poetry run python -c "
+$ uv run python -c "
 import torch
 print(f'PyTorch version: {torch.__version__}')
 print(f'CUDA available: {torch.cuda.is_available()}')
@@ -124,105 +154,82 @@ if torch.cuda.is_available():
 "
 ```
 
-Expected output should show the new CUDA version, e.g., `2.9.0+cu130` or `2.x.x+cu131`.
+The output shows the CUDA suffix, for example `2.9.1+cu130`, and reports the RTX 5090.
 
-## Important Discovery: Poetry Update Behavior
+## Available PyTorch CUDA indexes
 
-**WARNING**: Running `poetry update` or `poetry install` will downgrade PyTorch CUDA packages to an older version (usually 12.8) even after you've manually installed the correct version. This happens because:
+Check published builds at https://pytorch.org/get-started/locally/.
 
-1. Poetry's lock file contains references to CUDA 12.8 packages as dependencies of other packages
-2. Even with PyTorch commented out in pyproject.toml, Poetry still tries to "fix" the CUDA packages
-3. Poetry doesn't respect that these packages were manually installed
+| CUDA version | Index URL |
+|--------------|-----------|
+| CUDA 11.8 | `https://download.pytorch.org/whl/cu118` |
+| CUDA 12.1 | `https://download.pytorch.org/whl/cu121` |
+| CUDA 12.8 | `https://download.pytorch.org/whl/cu128` |
+| CUDA 12.9 | `https://download.pytorch.org/whl/cu129` |
+| CUDA 13.0 | `https://download.pytorch.org/whl/cu130` |
+| CUDA 13.1 | `https://download.pytorch.org/whl/cu131` (when published) |
 
-**Solution**:
-- Always use `./scripts/update/update_python.sh --pytorch` after running any Poetry commands
-- For updating non-PyTorch packages, prefer `poetry add package@latest` over `poetry update`
-- Avoid running plain `poetry install` - use `poetry install --no-root` instead
+## System CUDA and PyTorch CUDA compatibility
+
+The system CUDA version and the PyTorch CUDA build do not need to match exactly. CUDA is
+backward compatible: a system running CUDA 13.1 runs wheels built for CUDA 13.0. The
+current environment pairs a system CUDA 13.1 toolkit with the cu130 PyTorch wheels, and
+the cu130 wheels run without modification.
 
 ## Troubleshooting
 
-### Issue: Poetry downgraded CUDA packages
+### PyTorch installs a CPU-only build
 
-After running `poetry update` or `poetry install`, PyTorch shows an older CUDA version.
+The `torch` version string has no CUDA suffix.
 
-**Solution**: Re-run the PyTorch installation:
+Confirm `[tool.uv.sources]` in `pyproject.toml` binds `torch`, `torchvision`, and
+`torchaudio` to the CUDA index, then refresh:
+
 ```bash
-./scripts/update/update_python.sh --pytorch
+$ uv lock
+$ uv sync --all-groups --all-extras
 ```
 
-### Issue: "Repository does not exist" error
+### CUDA version mismatch warning
 
-Even after updating pyproject.toml, Poetry shows this error during installation.
+The system reports one CUDA version and PyTorch reports another.
 
-**Solution**: This is expected since PyTorch is commented out. Use the manual installation method.
+This is expected and safe under CUDA backward compatibility. A cu130 build runs on a
+system CUDA 13.1 toolkit.
 
-### Issue: CUDA version mismatch warnings
+### GPU not detected after update
 
-System has CUDA 13.1 but PyTorch uses CUDA 13.0.
+`torch.cuda.is_available()` returns `False`.
 
-**Solution**: This is usually fine due to CUDA's backward compatibility. CUDA 13.1 can run binaries built for CUDA 13.0.
+1. Verify the driver: `nvidia-smi`
+2. Re-sync the environment: `uv sync --all-groups --all-extras`
+3. Confirm the installed build reports a CUDA version:
+   `uv run python -c "import torch; print(torch.version.cuda)"`
 
-### Issue: GPU not detected after update
-
-PyTorch can't find the GPU after updating.
-
-**Solution**:
-1. Verify NVIDIA drivers: `nvidia-smi`
-2. Reinstall PyTorch: `./scripts/update/update_python.sh --pytorch`
-3. Check for conflicting CUDA installations
-
-## Available PyTorch CUDA Versions
-
-Check available versions at: https://pytorch.org/get-started/locally/
-
-Common index URLs:
-- CUDA 11.8: `https://download.pytorch.org/whl/cu118`
-- CUDA 12.1: `https://download.pytorch.org/whl/cu121`
-- CUDA 12.8: `https://download.pytorch.org/whl/cu128`
-- CUDA 12.9: `https://download.pytorch.org/whl/cu129`
-- CUDA 13.0: `https://download.pytorch.org/whl/cu130`
-- CUDA 13.1: `https://download.pytorch.org/whl/cu131` (when available)
-
-## Quick Reference
+## Quick reference
 
 ```bash
 # Check current versions (system vs PyTorch)
-nvcc --version  # System CUDA
-poetry run python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.version.cuda}')"
+$ nvcc --version
+$ uv run python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.version.cuda}')"
 
-# Update PyTorch to CUDA 13.0 (current)
-./scripts/update/update_python.sh --pytorch
+# Update the CUDA build: edit the pins and index in pyproject.toml, then
+$ uv lock
+$ uv sync --all-groups --all-extras
 
-# Manual update to specific CUDA version
-poetry run pip uninstall torch torchvision torchaudio -y
-poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
-
-# Fix after Poetry downgrades CUDA packages
-./scripts/update/update_python.sh --pytorch
+# Or run the update script (lock upgrade, sync, verify)
+$ ./scripts/update/update_python.sh
 
 # Verify GPU detection
-poetry run python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
+$ uv run python -c "import torch; assert torch.cuda.is_available()"
 
-# Full environment check (shows both system and PyTorch CUDA)
-poetry run python scripts/utils/check_py_deps_install.py
+# Full environment check (system and PyTorch CUDA)
+$ uv run python scripts/utils/check_py_deps_install.py
 
-# Update non-PyTorch packages (safer than poetry update)
-poetry add transformers@latest
-poetry add accelerate@latest
+# Roll back a bad update
+$ git checkout uv.lock && uv sync --all-groups --all-extras
 ```
 
-## Key Learnings
+---
 
-1. **Poetry cannot properly manage PyTorch with custom CUDA repositories** - Even with correct configuration, Poetry fails to resolve the correct packages
-2. **Commenting out PyTorch in pyproject.toml is the best solution** - This prevents Poetry from interfering with manual PyTorch installation
-3. **Poetry will downgrade CUDA packages** - Running `poetry update` or `poetry install` will downgrade CUDA packages even when PyTorch is commented out
-4. **Always reinstall PyTorch after Poetry commands** - Use `./scripts/update/update_python.sh --pytorch` after any Poetry operations
-5. **System CUDA and PyTorch CUDA versions can differ** - CUDA 13.1 system works fine with PyTorch CUDA 13.0 due to backward compatibility
-
-## Notes
-
-- Always backup poetry.lock before updates: `cp poetry.lock poetry.lock.backup`
-- The manual pip installation method is the ONLY reliable way to manage PyTorch CUDA versions
-- CUDA backward compatibility allows newer system CUDA (13.1) with older PyTorch CUDA (13.0)
-- Check PyTorch's official site for the latest supported CUDA versions
-- PyTorch typically lags 1-2 versions behind the latest CUDA release
+*Last updated: 2026-07-12*
