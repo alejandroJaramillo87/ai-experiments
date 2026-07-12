@@ -62,7 +62,7 @@ Parameter tuning and optimization for maximum performance:
 |----------|-------------|-------------|
 | [inference/README.md](inference/README.md) | Optimization philosophy and overview | - |
 | [inference/parameters/llama-cpp-parameters.md](inference/parameters/llama-cpp-parameters.md) | llama.cpp parameter tuning guide | 286.85 tok/s (GPU) |
-| [inference/parameters/vllm-parameters.md](inference/parameters/vllm-parameters.md) | vLLM configuration for throughput | Awaiting CUDA 13 |
+| [inference/parameters/vllm-parameters.md](inference/parameters/vllm-parameters.md) | vLLM configuration for throughput | Active (vLLM 0.25.0) |
 
 ### System Optimizations
 
@@ -84,7 +84,7 @@ Docker container documentation for inference services:
 |----------|---------|-------------|
 | [sandbox/docker_llama_cpu_overview.md](sandbox/docker_llama_cpu_overview.md) | llama-cpu service (Port 8001) | 35.44 tok/s |
 | [sandbox/docker_llama_gpu_overview.md](sandbox/docker_llama_gpu_overview.md) | llama-gpu service (Port 8002) | 286.85 tok/s |
-| [sandbox/docker_vllm_gpu_overview.md](sandbox/docker_vllm_gpu_overview.md) | vllm-gpu service (Port 8003) | Awaiting CUDA 13 |
+| [sandbox/docker_vllm_gpu_overview.md](sandbox/docker_vllm_gpu_overview.md) | vllm-gpu service (Port 8003) | Active (vLLM 0.25.0) |
 | [sandbox/docker_compose_overview.md](sandbox/docker_compose_overview.md) | Service orchestration | - |
 
 ## Performance Summary

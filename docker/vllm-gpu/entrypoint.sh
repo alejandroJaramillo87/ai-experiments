@@ -32,13 +32,18 @@ DTYPE=${DTYPE:-auto}
 KV_CACHE_DTYPE=${KV_CACHE_DTYPE:-auto}
 QUANTIZATION=${QUANTIZATION:-}
 
+# Attention backend selection. FlashInfer is the default backend on
+# Blackwell; pin it explicitly via the CLI flag (the VLLM_ATTENTION_BACKEND
+# env var is deprecated since vLLM v0.13.0).
+ATTENTION_BACKEND=${ATTENTION_BACKEND:-flashinfer}
+
 # Nsight Systems profiling (set NSYS_PROFILE=true to enable)
 NSYS_PROFILE=${NSYS_PROFILE:-false}
 NSYS_OUTPUT=${NSYS_OUTPUT:-"/app/nsys_output/profile"}
 
-# vLLM v0.12.0 feature flags (enabled by default)
-ENABLE_PREFIX_CACHING=${ENABLE_PREFIX_CACHING:-true}
-ENABLE_CHUNKED_PREFILL=${ENABLE_CHUNKED_PREFILL:-true}
+# NOTE: Prefix caching and chunked prefill are default-on in the vLLM V1
+# engine; the former --enable-prefix-caching / --enable-chunked-prefill
+# flags are legacy and no longer passed.
 
 # Optional features
 # Default off: --trust-remote-code executes arbitrary Python from the model repo at
@@ -59,8 +64,7 @@ echo "  Tensor parallel size: $TENSOR_PARALLEL_SIZE"
 echo "  Dtype: $DTYPE"
 echo "  KV cache dtype: $KV_CACHE_DTYPE"
 [[ -n "$QUANTIZATION" ]] && echo "  Quantization: $QUANTIZATION"
-echo "  Prefix caching: $ENABLE_PREFIX_CACHING"
-echo "  Chunked prefill: $ENABLE_CHUNKED_PREFILL"
+echo "  Attention backend: $ATTENTION_BACKEND"
 echo
 
 # GPU memory status before loading
@@ -80,16 +84,12 @@ CMD_ARGS=(
     "--tensor-parallel-size" "$TENSOR_PARALLEL_SIZE"
     "--dtype" "$DTYPE"
     "--kv-cache-dtype" "$KV_CACHE_DTYPE"
+    "--attention-backend" "$ATTENTION_BACKEND"
     "--download-dir" "/app/cache"
 )
 
-# Disable torch.compile (requires nvcc which runtime image doesn't have)
-# CMD_ARGS+=("--enforce-eager")
-
 # Optional arguments based on environment variables
 [[ -n "$QUANTIZATION" ]] && CMD_ARGS+=("--quantization" "$QUANTIZATION")
-[[ "$ENABLE_PREFIX_CACHING" == "true" ]] && CMD_ARGS+=("--enable-prefix-caching")
-[[ "$ENABLE_CHUNKED_PREFILL" == "true" ]] && CMD_ARGS+=("--enable-chunked-prefill")
 [[ "$TRUST_REMOTE_CODE" == "true" ]] && CMD_ARGS+=("--trust-remote-code")
 [[ "$DISABLE_LOG_STATS" == "true" ]] && CMD_ARGS+=("--disable-log-stats")
 

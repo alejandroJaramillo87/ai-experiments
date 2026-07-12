@@ -1,26 +1,21 @@
 # AI Engineering vLLM GPU Docker Implementation
 
-Explanation of the RTX 5090 Blackwell optimized vLLM Dockerfile for high-performance GPU-accelerated AI model inference on the AI workstation, detailing the multi-stage build process, vLLM v0.12.0 integration, and Blackwell architecture optimizations.
+Explanation of the RTX 5090 Blackwell optimized vLLM Dockerfile for GPU-accelerated model inference on the AI workstation, detailing the single-stage image build, the vLLM 0.25.0 official cu130 wheel install, and Blackwell architecture settings.
 
-> Note: This document explains the actual implementation in `docker/vllm-gpu/Dockerfile.vllm-gpu`. The Dockerfile uses vLLM v0.12.0 with CUDA 13.0.2, Blackwell sm_120 architecture targeting, FlashInfer attention kernels, and GPU performance optimizations for transformer model serving.
+> Note: This document explains the actual implementation in `docker/vllm-gpu/Dockerfile.vllm-gpu`. The Dockerfile installs vLLM 0.25.0 with CUDA 13.0.2, targets Blackwell sm_120 through the official cu130 wheel, uses FlashInfer 0.6.13 attention kernels, and applies GPU runtime settings for transformer model serving.
 
 ## Table of Contents
 
 - [AI Engineering vLLM GPU Docker Implementation](#ai-engineering-vllm-gpu-docker-implementation)
   - [Table of Contents](#table-of-contents)
   - [Implementation Overview](#implementation-overview)
-  - [Stage 1: Builder Environment](#stage-1-builder-environment)
+  - [Image Build](#image-build)
     - [Build Arguments](#build-arguments)
-    - [NVIDIA CUDA Base](#nvidia-cuda-base)
-    - [RTX 5090 Blackwell Configuration](#rtx-5090-blackwell-configuration)
-    - [Build Dependencies Installation](#build-dependencies-installation)
-    - [uv Package Manager Setup](#uv-package-manager-setup)
-    - [Compiler Cache Setup](#compiler-cache-setup)
-    - [vLLM v0.12.0 Compilation](#vllm-v0120-compilation)
-  - [Stage 2: Runtime Environment](#stage-2-runtime-environment)
+    - [Pinned uv Binary Source](#pinned-uv-binary-source)
     - [CUDA Runtime Base](#cuda-runtime-base)
     - [Runtime Dependencies](#runtime-dependencies)
-    - [vLLM Installation](#vllm-installation)
+    - [Virtual Environment Setup](#virtual-environment-setup)
+    - [vLLM Wheel Installation](#vllm-wheel-installation)
     - [FlashInfer Attention Kernels](#flashinfer-attention-kernels)
     - [CUDA Runtime Environment](#cuda-runtime-environment)
     - [vLLM Settings](#vllm-settings)
@@ -43,193 +38,62 @@ Explanation of the RTX 5090 Blackwell optimized vLLM Dockerfile for high-perform
 
 ## Implementation Overview
 
-The vLLM GPU Docker implementation leverages a multi-stage build strategy specifically optimized for the RTX 5090 Blackwell architecture. The implementation utilizes vLLM v0.12.0 with CUDA 13.0.2 for maximum compatibility and performance, providing state-of-the-art transformer model serving capabilities.
+The vLLM GPU Docker implementation uses a single-stage image built on the CUDA 13.0.2 runtime. It installs the official vLLM 0.25.0 cu130 wheel, which ships sm_120 kernels for the RTX 5090 Blackwell architecture and pulls in PyTorch 2.11 cu130. The previous from-source build is no longer used: since vLLM v0.20.0 the official wheels default to CUDA 13.0 and include Blackwell (compute capability 12.0) kernel binaries, so no local compilation, git clone, ccache, or `setup.py` build step is required.
 
-**Key Implementation Features:**
-- **Multi-stage build**: Separates vLLM compilation environment from runtime deployment
-- **vLLM v0.12.0**: Latest vLLM release with full CUDA 13 and Blackwell support
-- **Blackwell optimization**: sm_120 architecture targeting for RTX 5090 maximum performance
-- **CUDA 13.0.2**: Latest CUDA toolkit with comprehensive Blackwell support
-- **uv package manager**: Fast Python package installation (following upstream vLLM)
-- **FlashInfer 0.5.3**: Optimized attention kernels for CUDA 13
-- **Entrypoint script**: Parameterized server configuration via environment variables
-- **Nsight Systems integration**: Optional deep profiling support
-- **Security hardening**: Non-root user execution with controlled cache management
+Key implementation features:
 
-## Stage 1: Builder Environment
+- **Single-stage image**: One `nvidia/cuda:13.0.2-cudnn-runtime-ubuntu24.04` stage installs vLLM from the wheel; no builder stage.
+- **vLLM 0.25.0**: Installed as the official cu130 wheel via `uv pip install vllm==0.25.0 --torch-backend=cu130`.
+- **PyTorch 2.11 cu130**: Pulled in as a dependency of the vLLM cu130 wheel.
+- **Blackwell support**: The vLLM wheel ships sm_120 kernel binaries for the RTX 5090.
+- **CUDA 13.0.2**: CUDA runtime with cuDNN in the base image.
+- **Pinned uv 0.11.28**: Copied from `ghcr.io/astral-sh/uv:0.11.28`, replacing the unpinned `curl | sh` installer.
+- **FlashInfer 0.6.13**: Pre-compiled attention kernels, the default attention backend on Blackwell.
+- **Entrypoint script**: Parameterized server configuration through environment variables.
+- **Nsight Systems integration**: Optional deep profiling support.
+- **Security hardening**: Non-root user execution with controlled cache management.
+
+## Image Build
 
 ### Build Arguments
 
-**Parameterized Build Configuration**
 ```dockerfile
 ARG CUDA_VERSION=13.0.2
-ARG VLLM_VERSION=v0.12.0
+ARG VLLM_VERSION=0.25.0
 ARG PYTHON_VERSION=3.12
+ARG UV_VERSION=0.11.28
+ARG FLASHINFER_VERSION=0.6.13
 ```
 
-The Dockerfile uses build arguments for flexible version management:
-- **CUDA_VERSION**: CUDA toolkit version (default: 13.0.2)
-- **VLLM_VERSION**: vLLM git tag to build (default: v0.12.0)
+The Dockerfile uses build arguments for version management:
+
+- **CUDA_VERSION**: CUDA runtime version (default: 13.0.2)
+- **VLLM_VERSION**: vLLM wheel version to install (default: 0.25.0)
 - **PYTHON_VERSION**: Python version (default: 3.12)
+- **UV_VERSION**: Pinned uv binary version (default: 0.11.28)
+- **FLASHINFER_VERSION**: FlashInfer package version (default: 0.6.13)
 
-### NVIDIA CUDA Base
+### Pinned uv Binary Source
 
-**NVIDIA CUDA Development Foundation**
 ```dockerfile
-FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu24.04 AS builder
-```
-- **Purpose**: Provides complete CUDA development environment optimized for Blackwell
-- **cuDNN included**: Deep learning primitives included in base image
-- **CUDA 13.0.2**: Ensures RTX 5090 Blackwell architecture support with full vLLM compatibility
-- **Ubuntu 24.04**: Latest LTS foundation with modern development libraries
-
-### RTX 5090 Blackwell Configuration
-
-**Blackwell Architecture Environment Variables**
-```dockerfile
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
-ENV TORCH_CUDA_ARCH_LIST="12.0"
-ENV CUDA_DOCKER_ARCH=sm_120
-ENV CUDA_ARCHITECTURES=120
-ENV NVCC_THREADS=2
-ENV CUDAFLAGS="-O3 --use_fast_math"
-ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed -L/usr/local/cuda/lib64/stubs"
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 ```
 
-**Architecture-Specific Optimization**
-- **TORCH_CUDA_ARCH_LIST="12.0"**: PyTorch tensor operation optimization for Blackwell compute capability 12.0
-- **CUDA_DOCKER_ARCH=sm_120**: Targets RTX 5090 Blackwell architecture specifically
-- **CUDA_ARCHITECTURES=120**: CMake CUDA architecture specification for native compilation
-- **NVCC_THREADS=2**: Parallel NVIDIA CUDA compiler threads (kept low to avoid oversubscription with high MAX_JOBS)
-- **CUDAFLAGS**: Aggressive optimization with fast math for inference workloads
-- **Performance linker flags**: -O3 optimization with reduced binary size
-
-**CUDA Environment Setup**
-```dockerfile
-ENV PATH=/usr/local/cuda/bin:${PATH}
-ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
-ENV CUDA_HOME=/usr/local/cuda
-ENV PKG_CONFIG_PATH=/usr/local/cuda/lib64/pkgconfig:${PKG_CONFIG_PATH}
-ENV CUDA_MODULE_LOADING=LAZY
-ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
-
-RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
-```
-
-### Build Dependencies Installation
-
-**Development Environment Setup**
-```dockerfile
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends --allow-change-held-packages \
-        ccache \
-        ninja-build \
-        python${PYTHON_VERSION}-dev \
-        python${PYTHON_VERSION}-venv \
-        python3 \
-        python3-pip \
-        cmake \
-        git \
-        curl \
-        ca-certificates \
-        pkg-config \
-        cuda-driver-dev-13-0 \
-        cuda-cudart-dev-13-0 \
-        cuda-cupti-dev-13-0 \
-        cuda-nvtx-13-0 \
-        libcublas-dev-13-0
-```
-
-**Essential Build Tools**
-- **ccache**: Compiler cache for faster rebuilds
-- **ninja-build**: Fast parallel build system for vLLM compilation
-- **python${PYTHON_VERSION}-dev/-venv**: Python development headers and virtual environment support
-- **cmake**: Modern build system for complex vLLM dependency management
-- **git/curl/ca-certificates**: Version control and package retrieval
-- **pkg-config**: Build configuration helper
-- **CUDA development packages**: Driver, runtime, profiling, and math library development headers
-
-### uv Package Manager Setup
-
-**Fast Python Package Management**
-```dockerfile
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:${PATH}"
-
-RUN uv venv /opt/venv --python ${PYTHON_VERSION}
-ENV VIRTUAL_ENV="/opt/venv"
-ENV PATH="/opt/venv/bin:${PATH}"
-```
-
-- **uv**: Modern, fast Python package manager (following upstream vLLM Dockerfile pattern)
-- **Virtual environment**: Avoids PEP 668 externally-managed restrictions
-- **PATH configuration**: Ensures uv and venv binaries are accessible
-
-### Compiler Cache Setup
-
-**Build Performance Optimization**
-```dockerfile
-ENV CCACHE_DIR=/tmp/ccache
-ENV CCACHE_MAX_SIZE=20G
-ENV CCACHE_COMPR_LEVEL=2
-ENV PATH=/usr/lib/ccache:${PATH}
-```
-- **CCACHE_DIR**: Dedicated cache directory for compiled objects
-- **CCACHE_MAX_SIZE=20G**: Large cache for vLLM's extensive CUDA compilation
-- **CCACHE_COMPR_LEVEL=2**: Balanced compression for speed and space
-- **PATH modification**: Ensures ccache intercepts compiler calls
-
-### vLLM v0.12.0 Compilation
-
-**vLLM Source and Build Process**
-```dockerfile
-RUN git clone --depth 1 --branch ${VLLM_VERSION} https://github.com/vllm-project/vllm.git /tmp/vllm
-
-WORKDIR /tmp/vllm
-
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install -r requirements/build.txt
-
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install -r requirements/cuda.txt \
-    --extra-index-url https://download.pytorch.org/whl/cu130 \
-    --index-strategy unsafe-best-match
-
-RUN mkdir -p /tmp/ccache && \
-    CCACHE_DIR=/tmp/ccache \
-    TORCH_CUDA_ARCH_LIST="12.0" \
-    VLLM_TARGET_DEVICE=cuda \
-    MAX_JOBS=20 \
-    python3 setup.py bdist_wheel --dist-dir=dist
-```
-
-**vLLM Build Configuration**
-- **Specific version**: v0.12.0 tagged release with full CUDA 13 support
-- **Shallow clone**: `--depth 1` reduces download time and build context size
-- **uv pip install**: Fast package installation with build caching
-- **requirements/build.txt**: Build-time dependencies
-- **requirements/cuda.txt**: CUDA-specific requirements with cu130 PyTorch wheels
-- **VLLM_TARGET_DEVICE=cuda**: Explicitly enables CUDA device targeting
-- **MAX_JOBS=20**: Parallel compilation jobs (tuned for build system resources)
-- **setup.py bdist_wheel**: Creates distributable wheel for runtime stage
-
-## Stage 2: Runtime Environment
+The uv package manager is pinned to an exact version and copied from its official image, rather than fetched through an unpinned `curl | sh` installer. This stage exists only to provide the `uv` and `uvx` binaries to the runtime stage through a `COPY --from`.
 
 ### CUDA Runtime Base
 
-**Optimized Runtime Foundation**
 ```dockerfile
 FROM nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu24.04
 ```
-- **Runtime focus**: Minimal CUDA runtime without full development overhead
-- **cuDNN included**: Deep learning primitives included in runtime base image
-- **Version consistency**: Matching CUDA 13.0.2 for binary compatibility
-- **Size optimization**: Excludes development tools and headers where possible
+
+- **Runtime focus**: The CUDA runtime image without the full development toolchain.
+- **cuDNN included**: Deep learning primitives ship in the base image.
+- **CUDA 13.0.2**: Provides the CUDA runtime that the vLLM cu130 wheel targets.
+- **Ubuntu 24.04**: LTS foundation.
 
 ### Runtime Dependencies
 
-**Essential Runtime Libraries**
 ```dockerfile
 RUN apt-get update && \
     apt-get install -y --no-install-recommends --allow-change-held-packages \
@@ -248,90 +112,91 @@ RUN apt-get update && \
         libnccl2 \
         nsight-systems-2025.3.2 \
         cuda-nvcc-13-0 \
-        cuda-cudart-dev-13-0
+        cuda-cudart-dev-13-0 && \
+    rm -rf /var/lib/apt/lists/*
 ```
 
-**Runtime Components**
-- **python${PYTHON_VERSION}/-dev/-venv**: Python runtime with development headers for extensions
-- **libgomp1**: OpenMP runtime library for parallel processing
-- **libcublas-13-0**: CUDA Basic Linear Algebra Subroutines runtime
-- **cuda-cupti-13-0**: Performance monitoring and profiling capabilities
-- **cuda-nvtx-13-0**: NVIDIA Tools Extension for runtime analysis
-- **cuda-nvrtc-13-0**: NVIDIA Runtime Compilation library for JIT compilation
-- **libnccl2**: NVIDIA Collective Communications Library for multi-GPU
-- **nsight-systems-2025.3.2**: Deep profiling tool (optional, enabled via NSYS_PROFILE)
-- **cuda-nvcc-13-0**: NVIDIA CUDA compiler for torch.compile support
-- **cuda-cudart-dev-13-0**: CUDA runtime development headers
+Runtime components:
 
-### vLLM Installation
+- **python${PYTHON_VERSION}/-dev/-venv**: Python runtime with development headers for extensions.
+- **libgomp1**: OpenMP runtime library for parallel processing.
+- **libcublas-13-0**: CUDA Basic Linear Algebra Subroutines runtime.
+- **cuda-cupti-13-0**: Performance monitoring and profiling support.
+- **cuda-nvtx-13-0**: NVIDIA Tools Extension for runtime analysis.
+- **cuda-nvrtc-13-0**: NVIDIA Runtime Compilation library for JIT compilation.
+- **libnccl2**: NVIDIA Collective Communications Library for multi-GPU.
+- **nsight-systems-2025.3.2**: Deep profiling tool (optional, enabled through `NSYS_PROFILE`).
+- **cuda-nvcc-13-0**: NVIDIA CUDA compiler retained for `torch.compile` JIT compilation.
+- **cuda-cudart-dev-13-0**: CUDA runtime development headers for `torch.compile`.
 
-**vLLM Wheel Installation**
+### Virtual Environment Setup
+
 ```dockerfile
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:${PATH}"
+COPY --from=uv /uv /uvx /usr/local/bin/
 
 RUN uv venv /opt/venv --python ${PYTHON_VERSION}
 ENV VIRTUAL_ENV="/opt/venv"
 ENV PATH="/opt/venv/bin:${PATH}"
-
-COPY --from=builder /tmp/vllm/dist/*.whl /tmp/
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install /tmp/*.whl \
-    --extra-index-url https://download.pytorch.org/whl/cu130 \
-    --index-strategy unsafe-best-match && \
-    rm -f /tmp/*.whl
 ```
 
-- **uv package manager**: Same fast package manager as builder stage
-- **Virtual environment**: Isolated Python environment
-- **Wheel installation**: Installs pre-built vLLM wheel from builder stage
-- **cu130 wheel index**: Ensures compatible PyTorch CUDA 13 binaries
+- **Pinned uv binary**: Copied from the `uv` stage defined above; no network installer runs during the build.
+- **Virtual environment**: Avoids PEP 668 externally-managed restrictions.
+- **PATH configuration**: Ensures the venv binaries are used.
+
+### vLLM Wheel Installation
+
+```dockerfile
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install vllm==${VLLM_VERSION} --torch-backend=cu130
+```
+
+- **Official wheel**: Installs vLLM 0.25.0 from the published cu130 wheel; no source checkout or compilation.
+- **`--torch-backend=cu130`**: Selects the PyTorch cu130 index, pulling in PyTorch 2.11 cu130.
+- **Blackwell kernels**: The vLLM wheel itself ships sm_120 kernel binaries for the RTX 5090.
+- **uv cache mount**: Reuses the uv download cache across builds.
 
 ### FlashInfer Attention Kernels
 
-**Optimized Attention Computation**
 ```dockerfile
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install flashinfer-cubin==0.5.3 && \
-    uv pip install flashinfer-jit-cache==0.5.3 \
+    uv pip install flashinfer-cubin==${FLASHINFER_VERSION} && \
+    uv pip install flashinfer-jit-cache==${FLASHINFER_VERSION} \
     --extra-index-url https://flashinfer.ai/whl/cu130
 ```
 
-**FlashInfer Components**
-- **flashinfer-cubin==0.5.3**: Pre-compiled CUDA binary attention kernels optimized for CUDA 13
-- **flashinfer-jit-cache==0.5.3**: JIT compilation cache for custom attention kernel generation
-- **CUDA 13 wheel index**: FlashInfer wheels specifically built for CUDA 13.x
+FlashInfer components:
 
-**Optional Performance Package**
+- **flashinfer-cubin==0.6.13**: Pre-built CUDA binary attention kernels.
+- **flashinfer-jit-cache==0.6.13**: Pre-warmed JIT cache for custom attention kernel generation.
+- **cu130 wheel index**: FlashInfer wheels built for CUDA 13.x.
+
 ```dockerfile
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install torch-c-dlpack-ext
+    uv pip install torch-c-dlpack-ext==0.1.5
 ```
-- **torch-c-dlpack-ext**: Enables EnvTensorAllocator for TVM/DLPack interoperability
+
+- **torch-c-dlpack-ext==0.1.5**: Enables `EnvTensorAllocator` for TVM/DLPack interoperability with `torch.compile`.
 
 ### CUDA Runtime Environment
 
-**CUDA Paths Configuration**
 ```dockerfile
 ENV PATH=/usr/local/cuda/bin:${PATH}
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
 ENV LD_LIBRARY_PATH=/usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
 ```
 
-**NVIDIA Docker Runtime**
 ```dockerfile
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
 ENV NVIDIA_REQUIRE_CUDA="cuda>=13.0"
 ```
 
-- **NVIDIA_VISIBLE_DEVICES=all**: Exposes all available GPUs to the container
-- **NVIDIA_DRIVER_CAPABILITIES**: Enables compute, utility, and graphics capabilities
-- **NVIDIA_REQUIRE_CUDA**: Enforces minimum CUDA version requirement
+- **NVIDIA_VISIBLE_DEVICES=all**: Exposes all available GPUs to the container.
+- **NVIDIA_DRIVER_CAPABILITIES**: Enables compute, utility, and graphics capabilities.
+- **NVIDIA_REQUIRE_CUDA**: Enforces the minimum CUDA version requirement.
 
 ### vLLM Settings
 
-**Verified vLLM Environment Variables**
 ```dockerfile
 ENV VLLM_USAGE_SOURCE=docker
 ENV VLLM_LOGGING_LEVEL=INFO
@@ -341,17 +206,15 @@ ENV TOKENIZERS_PARALLELISM=false
 ENV HF_HUB_ENABLE_HF_TRANSFER=1
 ```
 
-**vLLM Configuration**
-- **VLLM_USAGE_SOURCE=docker**: Telemetry source identifier
-- **VLLM_LOGGING_LEVEL=INFO**: Standard logging verbosity
-- **VLLM_USE_MODELSCOPE=False**: Disable ModelScope downloads (use Hugging Face)
-- **VLLM_WORKER_MULTIPROC_METHOD=spawn**: Use "spawn" for CUDA compatibility
-- **TOKENIZERS_PARALLELISM=false**: Disable tokenizer parallelism to avoid fork issues
-- **HF_HUB_ENABLE_HF_TRANSFER=1**: Enable fast Hugging Face model downloads
+- **VLLM_USAGE_SOURCE=docker**: Telemetry source identifier.
+- **VLLM_LOGGING_LEVEL=INFO**: Standard logging verbosity.
+- **VLLM_USE_MODELSCOPE=False**: Disables ModelScope downloads in favor of Hugging Face.
+- **VLLM_WORKER_MULTIPROC_METHOD=spawn**: Uses "spawn" for CUDA compatibility.
+- **TOKENIZERS_PARALLELISM=false**: Disables tokenizer parallelism to avoid fork issues.
+- **HF_HUB_ENABLE_HF_TRANSFER=1**: Enables fast Hugging Face model downloads.
 
 ### CUDA Performance Tuning
 
-**General CUDA Settings**
 ```dockerfile
 ENV CUDA_MODULE_LOADING=LAZY
 ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
@@ -363,25 +226,21 @@ ENV CUDNN_LOGINFO_DBG=0
 ENV CUDNN_LOGDEST_DBG=stderr
 ```
 
-**Performance Optimization Variables**
-- **CUDA_MODULE_LOADING=LAZY**: Defers CUDA module loading for faster startup
-- **CUDA_DEVICE_ORDER=FASTEST_FIRST**: Ensures RTX 5090 is selected when multiple GPUs present
-- **CUDA_LAUNCH_BLOCKING=0**: Enable asynchronous kernel launches for performance
-- **CUDA_CACHE_DISABLE=0**: Enable CUDA kernel caching
-- **CUDA_FORCE_PTX_JIT=0**: Disable forced PTX JIT compilation for faster startup
+- **CUDA_MODULE_LOADING=LAZY**: Defers CUDA module loading for faster startup.
+- **CUDA_DEVICE_ORDER=FASTEST_FIRST**: Selects the RTX 5090 when multiple GPUs are present.
+- **CUDA_LAUNCH_BLOCKING=0**: Keeps kernel launches asynchronous.
+- **CUDA_CACHE_DISABLE=0**: Enables CUDA kernel caching.
+- **CUDA_FORCE_PTX_JIT=0**: Disables forced PTX JIT compilation for faster startup.
 
-**PyTorch Memory Configuration**
 ```dockerfile
 ENV PYTORCH_ALLOC_CONF=expandable_segments:True,garbage_collection_threshold:0.95,max_split_size_mb:2048
 ```
 
-- **expandable_segments:True**: Enables dynamic memory segment expansion
-- **garbage_collection_threshold:0.95**: Aggressive garbage collection for 32GB VRAM
-- **max_split_size_mb:2048**: Maximum memory block split size for efficient allocation
+- **expandable_segments:True**: Enables dynamic memory segment expansion.
+- **garbage_collection_threshold:0.95**: Aggressive garbage collection for 32GB VRAM.
+- **max_split_size_mb:2048**: Maximum memory block split size for efficient allocation.
 
 ### Experimental Blackwell Optimizations
-
-**RTX 5090 Specific Settings (Mostly Commented Out)**
 
 The following settings are documented in the Dockerfile but require testing for vLLM compatibility. Only `CUDA_CACHE_MAXSIZE` is enabled by default:
 
@@ -405,11 +264,10 @@ ENV CUDA_CACHE_MAXSIZE=2147483648
 # ENV CUDA_AUTO_BOOST=0
 ```
 
-Note: These experimental settings are commented out and should be enabled based on benchmarking results for your specific workload.
+These experimental settings remain commented out and should be enabled based on benchmarking results for the target workload.
 
 ### Security Configuration
 
-**Non-Root User Implementation**
 ```dockerfile
 RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser
 
@@ -429,35 +287,35 @@ USER appuser
 WORKDIR /app
 ```
 
-**Security Features**
-- **Dedicated user**: Non-root execution prevents privilege escalation
-- **No shell access**: `/sbin/nologin` prevents interactive container access
-- **Cache isolation**: Dedicated cache directories with proper ownership
-- **Hugging Face integration**: `HF_HOME` directs model cache to writable location
-- **Controlled permissions**: Explicit ownership changes before user switch
+Security features:
+
+- **Dedicated user**: Non-root execution prevents privilege escalation.
+- **No shell access**: `/sbin/nologin` prevents interactive container access.
+- **Cache isolation**: Dedicated cache directories with defined ownership.
+- **Hugging Face integration**: `HF_HOME` directs the model cache to a writable location.
+- **Controlled permissions**: Explicit ownership changes before the user switch.
 
 ### Application Deployment
 
-**Health Check Implementation**
 ```dockerfile
 HEALTHCHECK --interval=30s --timeout=10s --retries=5 --start-period=300s \
     CMD curl -f http://localhost:8003/health || exit 1
 ```
 
-**Health Check Parameters**
-- **interval**: 30-second check frequency
-- **timeout**: 10-second response deadline
-- **retries**: 5 attempts before unhealthy status
-- **start_period**: 300 seconds grace period for large model loading
+Health check parameters:
 
-**Server Configuration**
+- **interval**: 30-second check frequency.
+- **timeout**: 10-second response deadline.
+- **retries**: 5 attempts before unhealthy status.
+- **start-period**: 300-second grace period for large model loading.
+
 ```dockerfile
 EXPOSE 8003
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 ```
 
-The server is started via the entrypoint script, which provides parameterized configuration through environment variables.
+The server starts through the entrypoint script, which provides parameterized configuration through environment variables.
 
 ## Entrypoint Configuration
 
@@ -467,7 +325,7 @@ The entrypoint script (`entrypoint.sh`) provides parameterized server configurat
 
 | Variable | Description |
 |----------|-------------|
-| `MODEL_PATH` | **REQUIRED** - Path to the model (no default, will fail if not set) |
+| `MODEL_PATH` | **REQUIRED** - Path to the model. No default; the entrypoint fails fast if unset. |
 
 ### Server Configuration
 
@@ -483,15 +341,16 @@ The entrypoint script (`entrypoint.sh`) provides parameterized server configurat
 | `DTYPE` | auto | Model data type (auto, float16, bfloat16) |
 | `KV_CACHE_DTYPE` | auto | KV cache data type |
 | `QUANTIZATION` | (none) | Quantization method (fp8, awq, etc.) |
+| `ATTENTION_BACKEND` | flashinfer | Attention backend passed to `--attention-backend` |
 
 ### Feature Flags
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ENABLE_PREFIX_CACHING` | true | Enable KV cache prefix caching |
-| `ENABLE_CHUNKED_PREFILL` | true | Enable chunked prefill for large contexts |
-| `TRUST_REMOTE_CODE` | true | Trust remote model code |
-| `DISABLE_LOG_STATS` | true | Disable statistics logging |
+| `TRUST_REMOTE_CODE` | false | Add `--trust-remote-code`; opt in per model for trusted sources only |
+| `DISABLE_LOG_STATS` | true | Add `--disable-log-stats` to suppress statistics logging |
+
+Prefix caching and chunked prefill are default-on in the vLLM V1 engine. The legacy `--enable-prefix-caching` and `--enable-chunked-prefill` flags are no longer passed by the entrypoint.
 
 ### Nsight Systems Profiling
 
@@ -500,7 +359,8 @@ The entrypoint script (`entrypoint.sh`) provides parameterized server configurat
 | `NSYS_PROFILE` | false | Enable Nsight Systems profiling |
 | `NSYS_OUTPUT` | /app/nsys_output/profile | Profile output path |
 
-When `NSYS_PROFILE=true`, the server is wrapped with nsys for deep CUDA profiling:
+When `NSYS_PROFILE=true`, the server runs under nsys for deep CUDA profiling:
+
 ```bash
 nsys profile \
     --trace=cuda,nvtx,osrt \
@@ -514,7 +374,7 @@ nsys profile \
 
 ### Server Command
 
-The entrypoint uses `vllm serve` (NOT `python -m vllm.entrypoints.openai.api_server`):
+The entrypoint uses `vllm serve`, not `python -m vllm.entrypoints.openai.api_server`:
 
 ```bash
 vllm serve $MODEL_PATH \
@@ -527,115 +387,117 @@ vllm serve $MODEL_PATH \
     --tensor-parallel-size "$TENSOR_PARALLEL_SIZE" \
     --dtype "$DTYPE" \
     --kv-cache-dtype "$KV_CACHE_DTYPE" \
+    --attention-backend "$ATTENTION_BACKEND" \
     --download-dir "/app/cache"
 ```
 
-**Optional flags added based on environment:**
-- `--quantization $QUANTIZATION` (if QUANTIZATION is set)
-- `--enable-prefix-caching` (if ENABLE_PREFIX_CACHING=true)
-- `--enable-chunked-prefill` (if ENABLE_CHUNKED_PREFILL=true)
-- `--trust-remote-code` (if TRUST_REMOTE_CODE=true)
-- `--disable-log-stats` (if DISABLE_LOG_STATS=true)
+Optional flags added based on environment:
 
-**Entrypoint Features**
-- Validates MODEL_PATH is set (fails fast if missing)
-- Reports GPU memory status via nvidia-smi before model load
-- Displays configuration summary on startup
-- Supports optional Nsight Systems deep profiling
+- `--quantization $QUANTIZATION` (if `QUANTIZATION` is set)
+- `--trust-remote-code` (if `TRUST_REMOTE_CODE=true`)
+- `--disable-log-stats` (if `DISABLE_LOG_STATS=true`)
+
+Entrypoint features:
+
+- Validates that `MODEL_PATH` is set and fails fast if missing.
+- Reports GPU memory status through `nvidia-smi` before the model load.
+- Displays a configuration summary on startup, including the attention backend.
+- Supports optional Nsight Systems deep profiling.
 
 ## vLLM Performance Optimization Strategy
 
 ### Blackwell Architecture Targeting
 
-**Compute Capability 12.0 Utilization**
-The implementation targets specific RTX 5090 Blackwell capabilities:
-- **sm_120 architecture**: Maximizes utilization of Blackwell streaming multiprocessors
-- **Advanced tensor operations**: Leverages fourth-generation RT cores and third-generation Tensor cores
-- **Memory bandwidth**: Optimized for 896 GB/s memory bandwidth with GDDR7
-- **32GB VRAM**: Configured for large transformer model inference with intelligent memory management
+The vLLM 0.25.0 cu130 wheel ships pre-built sm_120 (compute capability 12.0) kernel binaries for the RTX 5090, so no local compilation is required to target Blackwell. The implementation relies on:
 
-**vLLM Compilation Pipeline**
-1. **Architecture targeting**: `TORCH_CUDA_ARCH_LIST="12.0"` generates Blackwell-specific PyTorch operations
-2. **Fast math**: `--use_fast_math` enables hardware-accelerated mathematical operations
-3. **Aggressive optimization**: -O3 level optimization for maximum inference performance
-4. **FlashInfer integration**: Hardware-accelerated attention mechanisms for transformer efficiency
+- **sm_120 kernels**: Included in the official wheel for Blackwell streaming multiprocessors.
+- **32GB VRAM**: Configured for large transformer model inference with memory management tuning.
+- **FlashInfer 0.6.13**: The default attention backend on Blackwell, selectable through `ATTENTION_BACKEND`.
 
 ### Memory Management
 
-**VRAM Optimization Strategy**
-- **GPU memory utilization**: `--gpu-memory-utilization=0.85` reserves 85% of 32GB VRAM for models
-- **Intelligent batching**: `--max-num-batched-tokens=32768` optimizes throughput for Blackwell memory hierarchy
-- **Sequence management**: `--max-num-seqs=256` balances concurrent request handling with memory efficiency
-- **Context optimization**: `--max-model-len=16384` provides large context support within memory constraints
+VRAM strategy:
 
-**Cache Management Strategy**
-- **Model cache**: `--download-dir=/app/cache` centralizes model storage in writable directory
-- **CUDA cache**: `/tmp/cuda_cache` provides persistent kernel compilation cache
-- **Hugging Face cache**: `HF_HOME=/app/cache` consolidates transformer model artifacts
-- **Nsight output**: `/app/nsys_output` for profiling data
+- **GPU memory utilization**: `--gpu-memory-utilization=0.85` reserves 85% of 32GB VRAM.
+- **Batching**: `--max-num-batched-tokens=32768` sets the maximum tokens per batch.
+- **Sequence management**: `--max-num-seqs=256` bounds concurrent request handling.
+- **Context length**: `--max-model-len=16384` sets the default maximum context.
+
+Cache management:
+
+- **Model cache**: `--download-dir=/app/cache` centralizes model storage in a writable directory.
+- **CUDA cache**: `/tmp/cuda_cache` holds the kernel compilation cache.
+- **Hugging Face cache**: `HF_HOME=/app/cache` consolidates transformer model artifacts.
+- **Nsight output**: `/app/nsys_output` holds profiling data.
 
 ### Inference Optimization
 
-**Single-GPU Configuration**
-- **Tensor parallelism**: `--tensor-parallel-size=1` optimized for single RTX 5090 deployment
-- **Worker configuration**: `VLLM_WORKER_MULTIPROC_METHOD=spawn` ensures clean process isolation
-- **Prefix caching**: Enabled by default for faster repeated prompt processing
-- **Chunked prefill**: Enabled for efficient large context handling
+Single-GPU configuration:
 
-**Performance Tuning Parameters**
-- **Quantization**: Optional FP8, AWQ, or other quantization methods via QUANTIZATION env var
-- **Data type auto-detection**: `--dtype=auto` automatically selects optimal precision for each operation
-- **KV cache optimization**: `--kv-cache-dtype=auto` for memory-efficient key-value storage
+- **Tensor parallelism**: `--tensor-parallel-size=1` for single RTX 5090 deployment.
+- **Worker method**: `VLLM_WORKER_MULTIPROC_METHOD=spawn` for clean process isolation.
+- **Prefix caching and chunked prefill**: Default-on in the vLLM V1 engine; no explicit flags.
+
+Tuning parameters:
+
+- **Quantization**: Optional FP8, AWQ, or other methods through the `QUANTIZATION` env var.
+- **Data type**: `--dtype=auto` selects the precision based on the model.
+- **KV cache**: `--kv-cache-dtype=auto` for the default key-value storage precision.
 
 ## Container Security Implementation
 
-**Multi-Layer Security Approach**
-- **Minimal runtime**: Only essential libraries included in final image
-- **Non-root execution**: Application runs as dedicated non-privileged user
-- **No interactive access**: User account configured without shell access
-- **Controlled GPU access**: Explicit GPU device specification and capability restrictions
-- **Cache isolation**: vLLM and CUDA caches confined to container directories with proper permissions
+Security layers:
 
-**Health Monitoring**
-- **HTTP health checks**: Automated container health monitoring via OpenAI-compatible API
-- **Startup period**: 300-second grace period for large model loading
-- **Failure detection**: Automatic container restart on health check failures
+- **Minimal runtime**: Only the required libraries are installed in the image.
+- **Non-root execution**: The application runs as a dedicated non-privileged user.
+- **No interactive access**: The user account has no shell.
+- **Controlled GPU access**: Explicit GPU device specification and capability restrictions.
+- **Cache isolation**: vLLM and CUDA caches are confined to container directories with defined permissions.
 
-**Docker Compose Integration**
-When deployed via docker-compose, additional security measures include:
-- **Capability dropping**: All Linux capabilities removed except GPU access
-- **Privilege restrictions**: `no-new-privileges:true` prevents escalation
-- **Memory constraints**: Controlled memory allocation with unlimited memlock for CUDA operations
-- **Read-only containers**: Filesystem mounted read-only except for designated cache areas
+Health monitoring:
+
+- **HTTP health checks**: Container health monitored through the OpenAI-compatible API.
+- **Startup period**: 300-second grace period for large model loading.
+- **Failure detection**: Container restart on health check failure.
+
+Docker Compose integration adds:
+
+- **Capability dropping**: Linux capabilities removed except GPU access.
+- **Privilege restrictions**: `no-new-privileges:true` prevents escalation.
+- **Memory constraints**: Controlled memory allocation with unlimited memlock for CUDA operations.
+- **Read-only containers**: Filesystem mounted read-only except for designated cache areas.
 
 ## Reference Implementation
 
-**File Structure**
-- **docker/vllm-gpu/Dockerfile.vllm-gpu**: Complete multi-stage vLLM-optimized Dockerfile
-- **docker/vllm-gpu/entrypoint.sh**: Parameterized server startup script
-- **docker-compose.yaml**: Container orchestration with GPU resource allocation and security hardening
+File structure:
 
-**Integration with AI Workstation**
-This vLLM implementation works in conjunction with:
-- **CPU containers**: Parallel execution for hybrid vLLM/llama.cpp workloads
-- **Load balancing**: vLLM container handles large transformer models while CPU containers manage concurrent smaller models
-- **Resource isolation**: Exclusive GPU access with controlled VRAM allocation
-- **Performance monitoring**: vLLM metrics integration for optimization analysis
+- **docker/vllm-gpu/Dockerfile.vllm-gpu**: Single-stage vLLM Dockerfile.
+- **docker/vllm-gpu/entrypoint.sh**: Parameterized server startup script.
+- **docker-compose.yaml**: Container orchestration with GPU resource allocation and security hardening.
+- **env.example**: Environment template documenting `VLLM_GPU_MODEL` and related variables.
 
-**Hardware Requirements**
-- **GPU**: RTX 5090 32GB (Blackwell architecture)
-- **CUDA**: Version 13.0 or higher driver support
-- **System Memory**: Sufficient for container overhead and model preprocessing
-- **Storage**: Fast storage for model loading and cache operations
+Integration with the AI workstation:
 
-**Model Compatibility**
-- **Transformer architectures**: GPT, LLaMA, Qwen, DeepSeek, and other modern transformer models
-- **Quantization formats**: FP16, FP8, AWQ, GPTQ and other precision formats
-- **Context lengths**: Up to 16K tokens by default, configurable via MAX_MODEL_LEN
-- **Hugging Face integration**: Direct model loading from Hugging Face Hub with fast transfers
+- **CPU containers**: Parallel execution for hybrid vLLM/llama.cpp workloads.
+- **Workload split**: The vLLM container handles large transformer models while CPU containers manage smaller models.
+- **Resource isolation**: Exclusive GPU access with controlled VRAM allocation.
+
+Hardware requirements:
+
+- **GPU**: RTX 5090 32GB (Blackwell architecture).
+- **CUDA**: Version 13.0 or higher driver support.
+- **System Memory**: Sufficient for container overhead and model preprocessing.
+- **Storage**: Fast storage for model loading and cache operations.
+
+Model compatibility:
+
+- **Transformer architectures**: GPT, LLaMA, Qwen, DeepSeek, and other modern transformer models.
+- **Quantization formats**: FP16, FP8, AWQ, GPTQ, and other precision formats.
+- **Context lengths**: Up to 16K tokens by default, configurable through `MAX_MODEL_LEN`.
+- **Hugging Face integration**: Direct model loading from Hugging Face Hub with fast transfers.
 
 ---
 
-*This vLLM GPU Docker implementation provides transformer model serving on the RTX 5090 Blackwell architecture. The multi-stage build process integrates vLLM v0.12.0 with FlashInfer attention kernels while maintaining security and operational efficiency for high-throughput AI inference workloads.*
+*This vLLM GPU Docker implementation provides transformer model serving on the RTX 5090 Blackwell architecture. The single-stage image installs the vLLM 0.25.0 official cu130 wheel with FlashInfer 0.6.13 attention kernels while maintaining non-root execution and cache isolation.*
 
-*Last Updated: 2026-01-03*
+*Last Updated: 2026-07-12*
