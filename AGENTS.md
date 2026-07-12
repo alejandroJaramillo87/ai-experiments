@@ -36,8 +36,8 @@ These are standing instructions for anyone (human or agent) making changes in th
 | Service    | Port | Purpose                       |
 |------------|------|-------------------------------|
 | llama-cpu  | 8001 | Low-latency CPU inference     |
-| llama-gpu  | 8004 | GPU llama.cpp inference       |
-| vllm-gpu   | 8005 | High-throughput batch serving |
+| llama-gpu  | 8002 | GPU llama.cpp inference       |
+| vllm-gpu   | 8003 | High-throughput batch serving |
 | open-webui | 3000 | Web interface                 |
 
 ## Validated optimizations
