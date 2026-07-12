@@ -315,7 +315,7 @@ define WORKTREE_REMOVE_SH
 	  *)                 name="$$arg" ;; \
 	esac; \
 	dir="../ai-experiments-$$name"; \
-	if git worktree remove "$$dir"; then \
+	if git worktree remove --force "$$dir"; then \
 	  printf '[OK] removed worktree: %s\n' "$$dir"; \
 	else \
 	  printf '[ERROR] could not remove %s (uncommitted changes? use git worktree remove --force)\n' "$$dir"; \
