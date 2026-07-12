@@ -1,113 +1,110 @@
 # pyproject.toml
+# Managed with uv. Phase A pins are exact and match the last poetry.lock resolution;
+# bump one group at a time per the pin-then-fix-then-update rule (AGENTS.md).
 
-[tool.poetry]
+[project]
 name = "ai-toolkit"
 version = "0.1.0"
 description = "Base Python project for AI engineering on RTX 5090"
-authors = ["Alejandro <alejandroj1234@proton.me>"]
-license = "MIT"
+authors = [{ name = "Alejandro", email = "alejandroj1234@proton.me" }]
+license = { text = "MIT" }
 readme = "README.md"
-package-mode = false
+requires-python = ">=3.12,<3.13"
 
-[tool.poetry.dependencies]
-python = ">=3.12,<3.13" # Ensure you have Python 3.12 installed via pyenv
+dependencies = [
+    # Core AI/ML frameworks (torch trio resolved from the cu130 index, see [tool.uv])
+    "torch==2.9.1",
+    "torchvision==0.24.1",
+    "torchaudio==2.9.1",
+    "transformers==4.51.3",
+    "datasets==3.6.0",
+    "accelerate==1.10.1",
+    "peft==0.15.2",
+    "evaluate==0.4.6",
+    "deepspeed==0.17.6",
+    "bitsandbytes==0.46.1",
+    "sentencepiece==0.2.1",
+    "einops==0.8.1",
+    "sentence-transformers==5.1.0",
 
-# Core AI/ML Frameworks and Utilities
-# PyTorch packages are managed manually via pip due to Poetry limitations with custom indexes
-# Install with: ./scripts/update/update_python.sh --pytorch
-# torch = {version = ">=2.9.0,<3.0.0", source = "pytorch_cuda_cu130"}
-# torchvision = {version = ">=0.24.0,<1.0.0", source = "pytorch_cuda_cu130"}
-# torchaudio = {version = ">=2.9.0,<3.0.0", source = "pytorch_cuda_cu130"}
-transformers = ">=4.51.1,<4.52.0"
-datasets = ">=3.1.0,<4.0.0"
-accelerate = ">=1.8.1,<2.0.0"
-peft = ">=0.15.2,<0.16.0"
-evaluate = ">=0.4.4,<0.5.0"
-deepspeed = ">=0.17.1,<0.18.0"
-bitsandbytes = ">=0.46.0,<0.47.0"
-sentencepiece = ">=0.2.0,<0.3.0"
-einops = ">=0.8.1,<0.9.0"
-sentence-transformers = ">=5.0.0,<=5.1.0"
+    # Model management
+    "huggingface-hub==0.32.6",
+    "hf-transfer==0.1.8",
 
-# Model Management
-huggingface-hub = ">=0.32.0,<0.33.0" 
-hf-transfer = ">=0.1.8,<0.1.9"     
+    # Data science and visualization
+    "jupyterlab==4.4.7",
+    "matplotlib==3.10.6",
+    "seaborn==0.13.2",
+    "scikit-learn==1.7.2",
+    "pandas==2.3.2",
 
-# Data Science & Visualization
-jupyterlab = ">=4.4.3,<5.0.0"
-matplotlib = ">=3.10.3,<4.0.0"
-seaborn = ">=0.13.2,<0.14.0"
-scikit-learn = ">=1.7.0,<2.0.0"
-pandas = ">=2.3.0,<3.0.0"
+    # Experiment tracking and MLOps
+    "wandb==0.20.1",
+    "mlflow==3.4.0",
+    "tensorboard==2.20.0",
 
-# Experiment Tracking & MLOps
-wandb = ">=0.20.1,<0.21.0"
-mlflow = ">=3.1.1,<4.0.0"
-tensorboard = ">=2.19.0,<3.0.0"
+    # General utilities and optimization
+    "tqdm==4.67.1",
+    "rich==14.1.0",
+    "ray[default]==2.49.2",
+    "optuna==4.5.0",
+    "tiktoken==0.9.0",
+    "requests==2.32.5",
+    "llama-cpp-python==0.3.16",
 
-# General Utilities & Optimization
-tqdm = ">=4.67.1,<5.0.0"
-rich = ">=14.0.0,<15.0.0"
-ray = { version = ">=2.47.1,<3.0.0", extras = ["default"] }
-optuna = ">=4.4.0,<5.0.0"
+    # API development
+    "fastapi==0.115.14",
+    "uvicorn==0.34.3",
+]
 
-# API Development/testing
-fastapi = ">=0.115.0,<0.116.0"
-uvicorn = ">=0.34.3,<0.35.0"
-pytest-xdist = ">=3.7.0,<=3.8.0"
-pytest-cov = ">=6.2.0,<=6.2.1"
+[project.optional-dependencies]
+# Quantization tail, isolated so its heavy transitive pins (nemo-toolkit)
+# cannot block resolution or upgrades of the core environment
+quant = [
+    "nemo-toolkit==2.1.0",
+    "rouge-score==0.1.2",
+    "transformers-stream-generator==0.0.5",
+    "mpmath==1.3.0",
+    "sseclient==0.0.27",
+]
 
-# Quantization Dependencies
-nemo-toolkit = ">=2.0.0,<2.3.2"
-rouge-score = "^0.1.2"
-transformers-stream-generator = "^0.0.5"
-tiktoken = "^0.9.0"
-mpmath = "^1.3.0"
-requests = "^2.32.4"
-llama-cpp-python = "^0.3.14"
-sseclient = "^0.0.27"
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+    "pytest-asyncio==1.2.0",
+    "pytest-mock==3.15.1",
+    "pytest-xdist==3.8.0",
+    "pytest-cov==6.2.1",
+    "ruff==0.13.1",
+    "mypy==1.18.2",
+]
 
-[build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+[tool.uv]
+package = false
 
-# Define the custom source for PyTorch
-[[tool.poetry.source]]
-name = "pytorch_cuda_cu130" # Give it a descriptive name
+# PyTorch CUDA 13.0 wheels; explicit = only packages pinned via [tool.uv.sources]
+[[tool.uv.index]]
+name = "pytorch-cu130"
 url = "https://download.pytorch.org/whl/cu130"
-priority = "explicit" 
+explicit = true
 
-# Add NVIDIA PyPI source
-#[[tool.poetry.source]]
-#name = "nvidia"
-#url = "https://pypi.nvidia.com"
-#priority = "supplemental"
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }
+torchaudio = { index = "pytorch-cu130" }
 
-# Your primary PyPI source (should usually be last if you have supplemental ones)
-[[tool.poetry.source]]
-name = "pypi"
-priority = "primary"
-
-[tool.poetry.group.dev.dependencies]
-pytest= ">=7.0.0"
-pytest-asyncio = ">=0.21.0"
-pytest-mock = ">=3.11.0"
-black = ">=23.0.0"
-ruff = ">=0.1.0"
-mypy = ">=1.0.0"
-
+# deepspeed ships an sdist whose setup.py imports torch
+[tool.uv.extra-build-dependencies]
+deepspeed = ["torch"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
-[tool.black]
-line-length = 88
-target-version = ['py313']
-include = '\.pyi?$'
-
 [tool.ruff]
 line-length = 88
-target-version = "py313"
+target-version = "py312"
+# Vendored from llama.cpp; keep upstream style to ease future diffs
+exclude = ["scripts/benchmark/server-bench.py"]
 
 [tool.ruff.lint]
 select = [
@@ -120,7 +117,7 @@ select = [
     "UP",  # pyupgrade
 ]
 ignore = [
-    "E501",  # line too long, handled by black
+    "E501",  # line too long, handled by ruff format
     "B008",  # do not perform function calls in argument defaults
     "W191",  # indentation contains tabs
     "W293",  # blank line contains whitespace

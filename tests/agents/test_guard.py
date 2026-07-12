@@ -22,7 +22,9 @@ def test_bash_env_indirection_blocked(run_script, fixtures_dir):
 
 
 def test_read_env_file_blocked(run_script):
-    result = run_script("agents/guard.sh", stdin=guard_input("Read", file_path="/repo/.env"))
+    result = run_script(
+        "agents/guard.sh", stdin=guard_input("Read", file_path="/repo/.env")
+    )
     assert result.returncode == 2
     assert "environment file" in result.stderr
 
@@ -43,7 +45,9 @@ def test_benign_bash_allowed(run_script):
 
 
 def test_benign_read_allowed(run_script):
-    result = run_script("agents/guard.sh", stdin=guard_input("Read", file_path="README.md"))
+    result = run_script(
+        "agents/guard.sh", stdin=guard_input("Read", file_path="README.md")
+    )
     assert result.returncode == 0
     assert result.stderr == ""
 

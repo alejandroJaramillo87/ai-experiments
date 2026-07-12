@@ -4,9 +4,12 @@ Contract: non-blocking (always exits 0). RUNPOD_IDLE_FIXTURE feeds a canned API
 response so the warning path is testable without RunPod credentials.
 """
 
+
 def test_warm_fixture_warns(run_script, fixtures_dir):
     fixture = str(fixtures_dir / "runpod_warm_fixture.json")
-    result = run_script("agents/runpod-idle-check.sh", env={"RUNPOD_IDLE_FIXTURE": fixture})
+    result = run_script(
+        "agents/runpod-idle-check.sh", env={"RUNPOD_IDLE_FIXTURE": fixture}
+    )
     assert result.returncode == 0
     assert "[WARN]" in result.stdout
     assert "llama-70b" in result.stdout
@@ -14,7 +17,9 @@ def test_warm_fixture_warns(run_script, fixtures_dir):
 
 def test_idle_fixture_reports_no_spend(run_script, fixtures_dir):
     fixture = str(fixtures_dir / "runpod_idle_fixture.json")
-    result = run_script("agents/runpod-idle-check.sh", env={"RUNPOD_IDLE_FIXTURE": fixture})
+    result = run_script(
+        "agents/runpod-idle-check.sh", env={"RUNPOD_IDLE_FIXTURE": fixture}
+    )
     assert result.returncode == 0
     assert "no warm workers, no active spend" in result.stdout
 

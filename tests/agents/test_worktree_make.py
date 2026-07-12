@@ -45,9 +45,16 @@ def run_make(worktree_repo):
 def worktree_paths(repo: Path) -> list[str]:
     out = subprocess.run(
         ["git", "worktree", "list", "--porcelain"],
-        cwd=repo, capture_output=True, text=True, check=True,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout
-    return [l.split(" ", 1)[1] for l in out.splitlines() if l.startswith("worktree ")]
+    return [
+        line.split(" ", 1)[1]
+        for line in out.splitlines()
+        if line.startswith("worktree ")
+    ]
 
 
 def make_worktree(run_make, worktree_repo, name: str) -> Path:
@@ -64,7 +71,9 @@ class TestWorktreeCreate:
         assert (worktree_repo.parent / "ai-experiments-foo").is_dir()
         branches = subprocess.run(
             ["git", "branch", "--list", "task/foo"],
-            cwd=worktree_repo, capture_output=True, text=True,
+            cwd=worktree_repo,
+            capture_output=True,
+            text=True,
         ).stdout
         assert "task/foo" in branches
 
@@ -83,7 +92,9 @@ class TestWorktreeCreate:
         wt = worktree_repo.parent / "ai-experiments-foo"
         head = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=wt, capture_output=True, text=True,
+            cwd=wt,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
         assert head == "task/foo"
 

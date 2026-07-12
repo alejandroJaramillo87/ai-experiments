@@ -52,33 +52,53 @@ def sandbox_env(tmp_path):
     # so the creation branch cannot run against the throwaway repo.
     subprocess.run(
         ["make", "-C", str(repo), "-f", str(MAKEFILE), "worktree-seedtest"],
-        capture_output=True, check=True,
+        capture_output=True,
+        check=True,
         env={"PATH": "/usr/bin:/bin", "HOME": str(home)},
     )
 
     def run(*goals: str) -> tuple[subprocess.CompletedProcess, str]:
         result = subprocess.run(
-            ["make", "-C", str(repo), "-f", str(MAKEFILE),
-             "agent-sandbox", "AGENT=claude", "NAME=seedtest",
-             "CLAUDE_CODE_OAUTH_TOKEN=dummy", *goals],
+            [
+                "make",
+                "-C",
+                str(repo),
+                "-f",
+                str(MAKEFILE),
+                "agent-sandbox",
+                "AGENT=claude",
+                "NAME=seedtest",
+                "CLAUDE_CODE_OAUTH_TOKEN=dummy",
+                *goals,
+            ],
             capture_output=True,
             text=True,
-            env={"PATH": f"{bin_dir}:/usr/bin:/bin", "NO_COLOR": "1", "HOME": str(home)},
+            env={
+                "PATH": f"{bin_dir}:/usr/bin:/bin",
+                "NO_COLOR": "1",
+                "HOME": str(home),
+            },
             timeout=60,
         )
         cmd = ""
         for line in result.stdout.splitlines():
             if line.startswith("STUB_CMD:"):
-                cmd = line[len("STUB_CMD:"):]
+                cmd = line[len("STUB_CMD:") :]
         return result, cmd
 
     def seeded_files(cmd: str) -> dict[str, dict]:
         """Execute the seed prefix of the container command against HOME."""
         seed, _, _ = cmd.partition("; claude")
-        subprocess.run(["sh", "-c", seed], check=True, env={"HOME": str(home), "PATH": "/usr/bin:/bin"})
+        subprocess.run(
+            ["sh", "-c", seed],
+            check=True,
+            env={"HOME": str(home), "PATH": "/usr/bin:/bin"},
+        )
         return {
             ".claude.json": json.loads((home / ".claude.json").read_text()),
-            "settings.json": json.loads((home / ".claude" / "settings.json").read_text()),
+            "settings.json": json.loads(
+                (home / ".claude" / "settings.json").read_text()
+            ),
         }
 
     run.seeded_files = seeded_files

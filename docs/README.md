@@ -38,13 +38,13 @@ NVIDIA GPU software stack documentation for RTX 5090:
 
 ### Python Environment
 
-Python and dependency management with Poetry:
+Python and dependency management with uv:
 
 | Document | Description |
 |----------|-------------|
-| [os/python/poetry-dependencies.md](os/python/poetry-dependencies.md) | Comprehensive guide to all AI/ML dependencies |
-| [os/python/setup_python.md](os/python/setup_python.md) | Python 3.12 installation via pyenv |
-| [os/python/pytorch_cuda_update_guide.md](os/python/pytorch_cuda_update_guide.md) | PyTorch installation with CUDA 12.9 compatibility |
+| [os/python/poetry-dependencies.md](os/python/poetry-dependencies.md) | Dependency reference for all AI/ML packages |
+| [os/python/setup_python.md](os/python/setup_python.md) | Python 3.12 installation via uv |
+| [os/python/pytorch_cuda_update_guide.md](os/python/pytorch_cuda_update_guide.md) | PyTorch installation with CUDA 13.0 compatibility |
 
 ### Inference Optimization
 
@@ -118,7 +118,7 @@ This documentation follows Linux/Unix conventions:
 
 1. **[GPU Stack Overview](os/gpu-stack/README.md)** - Understanding the NVIDIA software stack
 2. **[Inference Parameters](inference/parameters/llama-cpp-parameters.md)** - Tuning for performance
-3. **[Poetry Dependencies](os/python/poetry-dependencies.md)** - Python package management
+3. **[Dependency Reference](os/python/poetry-dependencies.md)** - Python package management
 
 ### Troubleshooting Guides
 

@@ -25,10 +25,10 @@ def test_find_pythons(run_script):
     result = run_script("utils/find_pythons.sh")
     assert_output_contract(result)
     assert "=== AI Experiments Python Environment Check ===" in result.stdout
-    assert "Expected Python version check:" in result.stdout
-    assert "Poetry configuration check:" in result.stdout
+    assert "uv installation check:" in result.stdout
+    assert "Python interpreter check:" in result.stdout
     # Documented workstation state (docs/os/python/setup_python.md).
-    assert "[OK] Python 3.12.11: installed via pyenv" in result.stdout
+    assert "[OK] Python version file: .python-version -> 3.12" in result.stdout
 
 
 def test_dependency_check(run_script):

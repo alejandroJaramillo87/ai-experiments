@@ -26,142 +26,93 @@ echo "=== AI Experiments Python Environment Check ==="
 echo "Checking Python setup as documented in docs/os/python/setup_python.md"
 echo
 
-# Project Python Environment Status
-echo "Project Python environment status:"
-echo
+EXPECTED_PIN="3.12"
 
-# Check current Python
-CURRENT_PYTHON=$(which python3 2>/dev/null)
-if [ -n "$CURRENT_PYTHON" ]; then
-    CURRENT_VERSION=$(python3 --version 2>/dev/null)
-    echo "Active Python: $CURRENT_PYTHON ($CURRENT_VERSION)"
-else
-    echo "Active Python: not found"
-fi
-echo
-
-# Expected Python Version Check (3.12.11)
-echo "Expected Python version check:"
-EXPECTED_VERSION="3.12.11"
-if command -v pyenv &> /dev/null; then
-    if pyenv versions --bare | grep -q "^$EXPECTED_VERSION$"; then
-        print_ok "Python $EXPECTED_VERSION: installed via pyenv"
-    else
-        print_warn "Python $EXPECTED_VERSION: not found in pyenv versions"
-        echo "  Install with: pyenv install $EXPECTED_VERSION"
-    fi
-else
-    print_error "Python $EXPECTED_VERSION: pyenv not found"
-fi
-echo
-
-# AI Tools Virtual Environment Check
-echo "AI tools virtual environment check:"
-AI_TOOLS_ENV="ai-tools"
-if command -v pyenv &> /dev/null; then
-    if pyenv versions --bare | grep -qx "$AI_TOOLS_ENV"; then
-        print_ok "Virtualenv $AI_TOOLS_ENV: found"
-        AI_TOOLS_PYTHON="$HOME/.pyenv/versions/$EXPECTED_VERSION/envs/$AI_TOOLS_ENV/bin/python"
-        if [ -f "$AI_TOOLS_PYTHON" ]; then
-            AI_TOOLS_VERSION=$($AI_TOOLS_PYTHON --version 2>/dev/null)
-            echo "  Python executable: $AI_TOOLS_PYTHON"
-            echo "  Version: $AI_TOOLS_VERSION"
-        fi
-    else
-        print_warn "Virtualenv $AI_TOOLS_ENV: not found"
-        echo "  Create with: pyenv virtualenv $EXPECTED_VERSION $AI_TOOLS_ENV"
-    fi
-else
-    print_error "Virtualenv $AI_TOOLS_ENV: pyenv not available"
-fi
-echo
-
-# Project Directory and Python Version File
-echo "Project directory configuration:"
-# Derive project root from this script's location (scripts/utils/) so the check
-# works regardless of checkout path; fall back to the documented default.
+# Derive project root from this script's location (scripts/utils/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd)"
-PROJECT_DIR="${PROJECT_DIR:-$HOME/workspace/ai-experiments}"
+
+# uv installation check
+echo "uv installation check:"
+if command -v uv &> /dev/null; then
+    print_ok "uv installation: $(uv --version)"
+else
+    print_error "uv installation: not installed"
+    echo "  Install per: https://docs.astral.sh/uv/getting-started/installation/"
+    echo
+    echo "=== Environment Check Complete ==="
+    exit 1
+fi
+echo
+
+# Managed interpreter check
+echo "Python interpreter check:"
+if uv python find "$EXPECTED_PIN" &> /dev/null; then
+    FOUND_PYTHON=$(uv python find "$EXPECTED_PIN")
+    print_ok "Python $EXPECTED_PIN: $FOUND_PYTHON"
+else
+    print_warn "Python $EXPECTED_PIN: no interpreter found"
+    echo "  Install with: uv python install $EXPECTED_PIN"
+fi
+echo
+
+# Project configuration check
+echo "Project directory configuration:"
 if [ -d "$PROJECT_DIR" ]; then
     print_ok "Project directory: $PROJECT_DIR"
 
-    # Check .python-version file
     PYTHON_VERSION_FILE="$PROJECT_DIR/.python-version"
     if [ -f "$PYTHON_VERSION_FILE" ]; then
-        CONFIGURED_ENV=$(cat "$PYTHON_VERSION_FILE")
-        if [ "$CONFIGURED_ENV" = "$AI_TOOLS_ENV" ]; then
-            print_ok "Python version file: .python-version -> $CONFIGURED_ENV"
+        CONFIGURED_PIN=$(cat "$PYTHON_VERSION_FILE")
+        if [ "$CONFIGURED_PIN" = "$EXPECTED_PIN" ]; then
+            print_ok "Python version file: .python-version -> $CONFIGURED_PIN"
         else
-            print_warn "Python version file: .python-version -> $CONFIGURED_ENV, expected $AI_TOOLS_ENV"
+            print_warn "Python version file: .python-version -> $CONFIGURED_PIN, expected $EXPECTED_PIN"
+            echo "  Fix with: uv python pin $EXPECTED_PIN"
         fi
     else
         print_warn "Python version file: .python-version not found"
-        echo "  Create with: echo '$AI_TOOLS_ENV' > .python-version"
+        echo "  Create with: uv python pin $EXPECTED_PIN"
     fi
-else
-    print_warn "Project directory: $PROJECT_DIR not found"
-fi
-echo
 
-# Poetry Configuration Check
-echo "Poetry configuration check:"
-if command -v poetry &> /dev/null; then
-    POETRY_VERSION=$(poetry --version 2>/dev/null)
-    print_ok "Poetry installation: $POETRY_VERSION"
-
-    # Check if in project directory
     if [ -f "$PROJECT_DIR/pyproject.toml" ]; then
         print_ok "Project configuration: pyproject.toml found"
-
-        # Check Poetry environment
-        cd "$PROJECT_DIR" 2>/dev/null || true
-        POETRY_ENV_PATH=$(poetry env info --path 2>/dev/null)
-        if [ -n "$POETRY_ENV_PATH" ]; then
-            print_ok "Poetry environment: $POETRY_ENV_PATH"
-
-            # Check if it's using the correct Python
-            if [[ "$POETRY_ENV_PATH" == *"$AI_TOOLS_ENV"* ]]; then
-                print_ok "Environment link: using $AI_TOOLS_ENV"
-            else
-                print_warn "Environment link: not using $AI_TOOLS_ENV"
-                echo "  Fix with: poetry env use ~/.pyenv/versions/$EXPECTED_VERSION/envs/$AI_TOOLS_ENV/bin/python"
-            fi
-
-            # Check PyTorch CUDA configuration (repo standard is cu130; see pyproject.toml)
-            if poetry config repositories.pytorch_cuda_cu130.url 2>/dev/null | grep -q "pytorch.org"; then
-                print_ok "PyTorch CUDA repository: cu130 configured"
-            else
-                print_warn "PyTorch CUDA repository: cu130 not configured"
-                echo "  Fix with: poetry config repositories.pytorch_cuda_cu130.url https://download.pytorch.org/whl/cu130"
-            fi
-        else
-            print_warn "Poetry environment: not created"
-            echo "  Create with: poetry install"
-        fi
     else
         print_error "Project configuration: pyproject.toml not found in $PROJECT_DIR"
     fi
+
+    if [ -f "$PROJECT_DIR/uv.lock" ]; then
+        print_ok "Lock file: uv.lock found"
+    else
+        print_warn "Lock file: uv.lock not found"
+        echo "  Create with: uv lock"
+    fi
+
+    if [ -d "$PROJECT_DIR/.venv" ]; then
+        print_ok "Project environment: .venv"
+    else
+        print_warn "Project environment: .venv not found"
+        echo "  Create with: uv sync --all-groups --all-extras"
+    fi
 else
-    print_error "Poetry installation: not installed"
-    echo "  Install with: sudo apt install python3-poetry"
+    print_warn "Project directory: not found"
 fi
 echo
 
-# PyTorch CUDA Verification
+# PyTorch CUDA verification
 echo "PyTorch CUDA verification:"
-if [ -n "$POETRY_ENV_PATH" ] && [ -f "$POETRY_ENV_PATH/bin/python" ]; then
+if [ -d "$PROJECT_DIR/.venv" ]; then
     cd "$PROJECT_DIR" 2>/dev/null || true
-    TORCH_CHECK=$(poetry run python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')" 2>/dev/null)
+    TORCH_CHECK=$(uv run --no-sync python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')" 2>/dev/null)
     if [ -n "$TORCH_CHECK" ]; then
         print_ok "PyTorch installation"
         echo "$TORCH_CHECK" | sed 's/^/  /'
     else
         print_warn "PyTorch installation: not installed or not working"
-        echo "  Install with: poetry add torch torchvision torchaudio --source pytorch_cuda_cu129"
+        echo "  Install with: uv sync --all-groups --all-extras"
     fi
 else
-    print_skip "PyTorch installation: Poetry environment not available"
+    print_skip "PyTorch installation: project environment not available"
 fi
 
 echo

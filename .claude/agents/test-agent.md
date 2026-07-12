@@ -20,7 +20,7 @@ production code; when a test exposes a defect, report it instead of fixing it.
    what kind of test (unit, integration, fixture-driven), and what each test will
    assert. Keep it falsifiable — every planned test names its expected observable
    behavior.
-4. Implement with pytest via `poetry run pytest`. If no test tree exists yet, create
+4. Implement with pytest via `uv run pytest`. If no test tree exists yet, create
    the minimal layout (`tests/`, `conftest.py` only when a shared fixture needs it)
    rather than scaffolding speculative structure.
 5. Run what you wrote and report the exact command and its output. A test that has

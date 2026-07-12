@@ -1,280 +1,246 @@
-# Python Environment Setup
+# Python environment setup
 
-Configuration guide for Python development environment using pyenv and Poetry on Ubuntu 24.04 for AI experiments.
+Configuration guide for the uv-managed Python environment on Ubuntu 24.04 for AI
+experiments. uv manages the interpreter, the project virtual environment, the lock file,
+and the PyTorch CUDA wheels from a single `pyproject.toml`.
 
-## Table of Contents
+## Table of contents
 
 - [Prerequisites](#prerequisites)
-- [Install Build Dependencies](#install-build-dependencies)
-- [Install pyenv](#install-pyenv)
-- [Configure Shell](#configure-shell)
-- [Install Python](#install-python)
-- [Create Virtual Environment](#create-virtual-environment)
-- [Install Poetry](#install-poetry)
-- [Configure Project](#configure-project)
-- [Install AI Dependencies](#install-ai-dependencies)
-- [Verify Installation](#verify-installation)
-- [Common Commands](#common-commands)
+- [Install uv](#install-uv)
+- [Install the Python interpreter](#install-the-python-interpreter)
+- [Sync the environment](#sync-the-environment)
+- [Activate the environment](#activate-the-environment)
+- [Acceptance checks](#acceptance-checks)
+- [Common commands](#common-commands)
+- [Retire the old pyenv and Poetry toolchain](#retire-the-old-pyenv-and-poetry-toolchain)
 - [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
 System requirements:
+
 - Ubuntu 24.04 LTS
 - Internet connection for package downloads
-- sudo privileges for system package installation
+- An RTX 5090 with the NVIDIA driver and CUDA stack installed (see
+  [gpu-stack/README.md](../gpu-stack/README.md))
 
-## Install Build Dependencies
+uv downloads a standalone CPython build, so the source-compilation packages that pyenv
+required (`build-essential`, `libssl-dev`, and similar) are no longer needed.
 
-Install packages required for compiling Python from source:
+## Install uv
 
-```bash
-sudo apt update
-sudo apt install -y build-essential libssl-dev zlib1g-dev \
-  libbz2-dev libreadline-dev libsqlite3-dev \
-  libncurses5-dev libxml2-dev libxmlsec1-dev \
-  libffi-dev liblzma-dev
-```
-
-Additional development tools:
-```bash
-sudo apt install -y wget curl llvm xz-utils tk-dev
-```
-
-## Install pyenv
-
-Clone pyenv repository and plugins:
+Install uv with the official standalone installer:
 
 ```bash
-# Clone pyenv
-git clone https://github.com/pyenv/pyenv.git ~/.pyenv
-
-# Clone pyenv-virtualenv plugin
-git clone https://github.com/pyenv/pyenv-virtualenv.git ~/.pyenv/plugins/pyenv-virtualenv
-
-# Clone pyenv-update plugin
-git clone https://github.com/pyenv/pyenv-update.git ~/.pyenv/plugins/pyenv-update
-
-# Clone pyenv-doctor plugin
-git clone https://github.com/pyenv/pyenv-doctor.git ~/.pyenv/plugins/pyenv-doctor
+$ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-## Configure Shell
-
-Add pyenv to shell configuration. For Zsh:
+Restart the shell or source the environment file the installer prints, then verify:
 
 ```bash
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc
-echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc
-echo 'eval "$(pyenv init -)"' >> ~/.zshrc
-echo 'eval "$(pyenv virtualenv-init -)"' >> ~/.zshrc
+$ uv --version
 ```
 
-For Bash:
+The installer places `uv` in `~/.local/bin`. Confirm that directory is on `PATH` if the
+command is not found.
+
+## Install the Python interpreter
+
+The project pins Python 3.12 in `/.python-version`. Install a matching interpreter with
+uv:
 
 ```bash
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
-echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
-echo 'eval "$(pyenv init -)"' >> ~/.bashrc
-echo 'eval "$(pyenv virtualenv-init -)"' >> ~/.bashrc
+$ uv python install 3.12
 ```
 
-Reload shell configuration:
+uv manages this interpreter under its own data directory. It does not touch the system
+Python or require pyenv.
+
+## Sync the environment
+
+From the repository root, create the virtual environment and install every dependency,
+group, and extra:
 
 ```bash
-# For Zsh
-source ~/.zshrc
-
-# For Bash
-source ~/.bashrc
+$ make install
 ```
 
-## Install Python
+`make install` runs `uv sync --all-groups --all-extras`. uv reads `pyproject.toml` and
+`uv.lock`, creates `.venv` in the repository root, and installs:
 
-Install Python 3.12.11:
+- the exact pinned runtime dependencies, including the `torch`, `torchvision`, and
+  `torchaudio` trio resolved from the CUDA 13.0 index
+- the `quant` optional extra (nemo-toolkit and its quantization companions)
+- the `dev` dependency group (pytest family, ruff, mypy)
+
+The `torch` trio resolves from the `pytorch-cu130` index declared in
+`[[tool.uv.index]]` and bound through `[tool.uv.sources]`. No separate pip install step
+exists; uv installs the CUDA wheels directly.
+
+## Activate the environment
+
+uv creates the environment at `/.venv`. Prefix commands with `uv run` to use it without
+activation:
 
 ```bash
-pyenv install 3.12.11
+$ uv run python --version
 ```
 
-Verify installation:
+To activate the environment in the current shell:
 
 ```bash
-pyenv versions
+$ source .venv/bin/activate
 ```
 
-## Create Virtual Environment
+The `make shell` target prints this activation command rather than spawning a subshell.
 
-Create dedicated environment for AI tools:
+## Acceptance checks
+
+Run the following after `make install` to confirm the environment is correct.
+
+Sync the environment:
 
 ```bash
-pyenv virtualenv 3.12.11 ai-tools
+$ uv sync --all-groups --all-extras
 ```
 
-## Install Poetry
-
-Install Poetry via system package manager:
+Confirm PyTorch detects the GPU:
 
 ```bash
-sudo apt install python3-poetry
+$ uv run python -c "import torch; assert torch.cuda.is_available()"
 ```
 
-Verify installation:
+Run the dependency reporter:
 
 ```bash
-poetry --version
-# Expected: Poetry (version 1.8.2)
+$ uv run python scripts/utils/check_py_deps_install.py
 ```
 
-## Configure Project
-
-Navigate to project directory:
+Run the Make quality targets:
 
 ```bash
-cd ~/workspace/ai-experiments
+$ make test
+$ make lint
+$ make format
 ```
 
-Set Python version for project:
+Run the environment check without modifying the lock or environment:
 
 ```bash
-echo "ai-tools" > .python-version
+$ ./scripts/update/update_python.sh --check
 ```
 
-Configure Poetry to use existing virtualenv:
+`--check` reports the uv version, the Python pin, the presence of `.venv`, the system
+CUDA version, and the installed PyTorch build, then exits without running `uv lock` or
+`uv sync`.
+
+## Common commands
+
+| Task | Command |
+|------|---------|
+| Sync environment (all groups and extras) | `make install` |
+| Update dependencies (lock upgrade, sync, verify) | `make update` |
+| Run tests | `make test` |
+| Lint | `make lint` |
+| Format | `make format` |
+| Print activation command | `make shell` |
+| Run a command in the environment | `uv run <command>` |
+| Add a dependency | edit `pyproject.toml`, then `uv lock && uv sync --all-groups --all-extras` |
+| Show the installed interpreter path | `uv python find 3.12` |
+
+Direct dependencies are pinned exactly (Phase A of the pin-then-fix-then-update
+migration). Add or bump a dependency by editing the pin in `pyproject.toml`, then running
+`make update` or the sync command. Do not edit `uv.lock` by hand.
+
+## Retire the old pyenv and Poetry toolchain
+
+The host previously managed Python with pyenv and Poetry, with PyTorch installed by a pip
+sideload. uv replaces all of it. Remove the retired components after `make install`
+succeeds and the acceptance checks pass.
+
+Delete the pyenv-managed virtual environment used for AI tools:
 
 ```bash
-poetry env use ~/.pyenv/versions/3.12.11/envs/ai-tools/bin/python
+$ pyenv virtualenv-delete ai-tools
 ```
 
-Configure PyTorch repository:
+If `pyenv virtualenv-delete` is unavailable, remove the environment directly:
 
 ```bash
-poetry config repositories.pytorch_cuda_cu130.url https://download.pytorch.org/whl/cu130
+$ pyenv uninstall 3.12.11/envs/ai-tools
 ```
 
-Configure Poetry settings:
+Remove Poetry and its cache:
 
 ```bash
-poetry config virtualenvs.in-project true
-poetry config installer.parallel true
+$ sudo apt remove python3-poetry
+$ rm -rf ~/.cache/pypoetry
 ```
 
-## Install AI Dependencies
+The old `poetry.lock` is deleted from the repository; `uv.lock` replaces it. No action is
+required beyond pulling the current repository state.
 
-Install project dependencies:
+Removing pyenv itself is optional. Keep pyenv if other projects on the host depend on it.
+Removing the ai-tools environment and Poetry is mandatory; removing pyenv is not. If pyenv
+is no longer used by any project, remove its shell initialization lines from `~/.bashrc`
+or `~/.zshrc`:
 
 ```bash
-poetry install
+export PYENV_ROOT="$HOME/.pyenv"
+command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+eval "$(pyenv virtualenv-init -)"
 ```
 
-Install PyTorch with CUDA support:
+Then remove the pyenv data directory:
 
 ```bash
-poetry add torch torchvision torchaudio --source pytorch_cuda_cu130
-```
-
-## Verify Installation
-
-Check Python version:
-
-```bash
-python --version
-# Expected: Python 3.12.11
-```
-
-Check active environment:
-
-```bash
-pyenv version
-# Expected: ai-tools (set by /home/alejandro/workspace/ai-experiments/.python-version)
-```
-
-Check Poetry environment:
-
-```bash
-poetry env info
-```
-
-Verify CUDA availability:
-
-```python
-python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
-```
-
-## Common Commands
-
-### pyenv Commands
-
-```bash
-pyenv versions                # List installed Python versions
-pyenv install --list          # List available Python versions
-pyenv virtualenv-delete ai-tools  # Delete virtual environment
-pyenv update                  # Update pyenv itself
-```
-
-### Poetry Commands
-
-```bash
-poetry show                   # List installed packages
-poetry add <package>          # Add dependency
-poetry remove <package>       # Remove dependency
-poetry update                 # Update all dependencies
-poetry shell                  # Activate environment
-poetry run python script.py   # Run script in environment
-```
-
-### Environment Activation
-
-Automatic activation (via .python-version file):
-```bash
-cd ~/workspace/ai-experiments
-# Environment activates automatically
-```
-
-Manual activation:
-```bash
-pyenv activate ai-tools
-```
-
-Deactivation:
-```bash
-pyenv deactivate
+$ rm -rf ~/.pyenv
 ```
 
 ## Troubleshooting
 
-### pyenv: command not found
+### uv: command not found
 
-Ensure shell configuration is correct:
+Confirm the installer directory is on `PATH`:
+
 ```bash
-echo $PYENV_ROOT
-# Should show: /home/alejandro/.pyenv
+$ ls ~/.local/bin/uv
 ```
 
-### Poetry using wrong Python
+Add `~/.local/bin` to `PATH` in the shell configuration if the binary exists but the
+command is not found.
 
-Reset Poetry environment:
+### No interpreter found for Python 3.12
+
+Install a managed interpreter:
+
 ```bash
-poetry env remove python
-poetry env use ~/.pyenv/versions/3.12.11/envs/ai-tools/bin/python
-```
-
-### Python compilation fails
-
-Install missing dependencies:
-```bash
-sudo apt install -y libncursesw5-dev
-pyenv doctor  # Check for issues
+$ uv python install 3.12
 ```
 
 ### CUDA not detected
 
-Verify PyTorch installation:
+Verify the installed PyTorch build reports a CUDA version:
+
 ```bash
-poetry show torch
-# Check version includes +cu130
+$ uv run python -c "import torch; print(torch.__version__, torch.version.cuda)"
+```
+
+The version string must include a CUDA suffix (for example `2.9.1+cu130`). A CPU-only
+build indicates the `torch` sources in `pyproject.toml` no longer point at the
+`pytorch-cu130` index. See
+[pytorch_cuda_update_guide.md](pytorch_cuda_update_guide.md).
+
+### Environment out of sync
+
+Re-sync from the lock file:
+
+```bash
+$ uv sync --all-groups --all-extras
 ```
 
 ---
 
-*Last Updated: 2025-09-24*
+*Last updated: 2026-07-12*

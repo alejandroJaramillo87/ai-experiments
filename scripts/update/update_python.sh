@@ -1,15 +1,26 @@
 #!/bin/bash
 
 # update_python.sh
-# Updates Poetry, Python packages, and handles PyTorch CUDA dependencies
-# Simplified version focusing on what actually works
+# Updates the uv-managed Python environment and verifies the PyTorch CUDA stack.
+# Direct dependencies are pinned exactly in pyproject.toml, so the update path
+# only refreshes transitive dependencies; version bumps are edits to pyproject.toml
+# followed by this script (pin, fix, then update -- see AGENTS.md).
 
-echo "=== Python/AI Package Updater ==="
-echo
+RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m'
+BLUE='\033[0;34m' CYAN='\033[0;36m' NC='\033[0m'
 
-# Parse command line arguments
+if [[ -n "${NO_COLOR:-}" ]] || [[ "${1:-}" == "--no-color" ]]; then
+    RED='' GREEN='' YELLOW='' BLUE='' CYAN='' NC=''
+    [[ "${1:-}" == "--no-color" ]] && shift
+fi
+
+print_ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
+print_warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
+print_error() { printf "${RED}[ERROR]${NC} %s\n" "$*"; }
+print_info()  { printf "${CYAN}[INFO]${NC} %s\n" "$*"; }
+print_run()   { printf "${BLUE}[RUN]${NC} %s\n" "$*"; }
+
 CHECK_ONLY=false
-UPDATE_PYTORCH=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -17,205 +28,128 @@ while [[ $# -gt 0 ]]; do
             CHECK_ONLY=true
             shift
             ;;
-        --pytorch)
-            UPDATE_PYTORCH=true
-            shift
-            ;;
         --help)
             echo "Usage: $0 [OPTIONS]"
             echo "Options:"
-            echo "  --check    Only check environment, don't update"
-            echo "  --pytorch  Reinstall PyTorch with CUDA 13.0 support"
-            echo "  --help     Show this help message"
+            echo "  --check      Only check environment, don't update"
+            echo "  --no-color   Disable colored output"
+            echo "  --help       Show this help message"
             echo
             echo "Examples:"
-            echo "  $0              # Standard update"
+            echo "  $0              # Refresh lock, sync, verify"
             echo "  $0 --check      # Check environment only"
-            echo "  $0 --pytorch    # Fix PyTorch CUDA version"
             exit 0
             ;;
         *)
-            echo "Unknown option: $1"
-            echo "Use --help for usage information"
+            print_error "Unknown option: $1"
+            echo "  Solution: Use --help for usage information"
             exit 1
             ;;
     esac
 done
 
-# Get script directory for relative paths
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-UTILS_DIR="$SCRIPT_DIR/../utils"
 PROJECT_ROOT="$SCRIPT_DIR/../.."
 
-# Check if we're in a Poetry project
 if [ ! -f "$PROJECT_ROOT/pyproject.toml" ]; then
-    echo "ERROR: No pyproject.toml found in $PROJECT_ROOT"
+    print_error "No pyproject.toml found in $PROJECT_ROOT"
     exit 1
 fi
 
 cd "$PROJECT_ROOT" || exit 1
 
-echo "Step 1 - Environment check:"
+echo "=== Python Environment Update ==="
+echo
+echo "Environment check:"
 
-# Check Poetry installation
-if ! command -v poetry &> /dev/null; then
-    echo "ERROR: Poetry is not installed"
-    echo "Install with: curl -sSL https://install.python-poetry.org | python3 -"
+if ! command -v uv &> /dev/null; then
+    print_error "uv is not installed"
+    echo "  Solution: Install uv from https://docs.astral.sh/uv/getting-started/installation/"
     exit 1
 fi
 
-echo "Poetry version: $(poetry --version)"
+print_ok "uv version: $(uv --version | awk '{print $2}')"
+print_ok "Python pin: $(cat .python-version)"
 
-# Check Python environment
-echo "Python version: $(python3 --version)"
-poetry_env=$(poetry env info --path 2>/dev/null)
-if [ -n "$poetry_env" ]; then
-    echo "Poetry environment: $poetry_env"
+if [ -d ".venv" ]; then
+    print_ok "Project environment: .venv"
 else
-    echo "No Poetry environment found. Creating..."
-    poetry install --no-root
+    print_warn "No .venv found; will be created by uv sync"
 fi
 
-# GPU and CUDA check
-echo
-echo "Checking GPU configuration..."
-
-# Check system CUDA version
 if command -v nvcc &> /dev/null; then
     SYSTEM_CUDA=$(nvcc --version | grep "release" | awk '{print $5}' | sed 's/,//')
-    echo "System CUDA (nvcc): $SYSTEM_CUDA"
+    print_ok "System CUDA (nvcc): $SYSTEM_CUDA"
 else
-    echo "System CUDA (nvcc): Not found"
+    print_warn "System CUDA (nvcc): not found"
 fi
 
-# Check PyTorch and its CUDA version
-poetry run python -c "
+check_torch() {
+    uv run --no-sync python - <<'EOF'
 import sys
 try:
     import torch
-    print(f'PyTorch version: {torch.__version__}')
-    if hasattr(torch.version, 'cuda') and torch.version.cuda:
-        print(f'PyTorch CUDA: {torch.version.cuda}')
-    else:
-        print('PyTorch CUDA: CPU-only build')
-    print(f'CUDA available: {torch.cuda.is_available()}')
-    if torch.cuda.is_available():
-        print(f'GPU: {torch.cuda.get_device_name(0)}')
 except ImportError:
-    print('PyTorch not installed')
+    print("PyTorch: not installed")
     sys.exit(1)
-" 2>/dev/null || echo "PyTorch not yet installed or configured"
+print(f"PyTorch: {torch.__version__}")
+cuda = getattr(torch.version, "cuda", None)
+print(f"PyTorch CUDA: {cuda or 'CPU-only build'}")
+print(f"CUDA available: {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    print(f"GPU: {torch.cuda.get_device_name(0)}")
+EOF
+}
+
+echo
+check_torch || print_warn "PyTorch not yet installed; run uv sync"
 
 if $CHECK_ONLY; then
     echo
-    echo "Check complete."
+    print_ok "Check complete"
     exit 0
 fi
 
 echo
-echo "Step 2 - Updating Poetry and tools:"
+echo "Updating environment:"
 
-# Update Poetry itself
-echo "Checking for Poetry updates..."
-poetry self update 2>/dev/null || echo "Poetry is at latest version"
+print_run "Refreshing lock (transitive dependencies within pinned versions)"
+uv lock --upgrade || { print_error "uv lock failed"; exit 1; }
 
-# Update pip, setuptools, wheel
-echo "Updating pip, setuptools, wheel..."
-poetry run pip install --upgrade pip setuptools wheel -q
+print_run "Syncing environment (all groups and extras)"
+uv sync --all-groups --all-extras || { print_error "uv sync failed"; exit 1; }
 
 echo
-echo "Step 3 - Updating packages:"
+echo "Verification:"
 
-# Backup poetry.lock
-if [ -f "poetry.lock" ]; then
-    cp poetry.lock poetry.lock.backup
-    echo "Backed up poetry.lock to poetry.lock.backup"
-fi
-
-if $UPDATE_PYTORCH; then
-    echo "Reinstalling PyTorch with CUDA 13.0 support..."
-
-    # Get the CUDA index URL from pyproject.toml if defined
-    CUDA_URL=$(grep -A1 'pytorch_cuda' "$PROJECT_ROOT/pyproject.toml" | grep 'url = ' | cut -d'"' -f2)
-    if [ -z "$CUDA_URL" ]; then
-        CUDA_URL="https://download.pytorch.org/whl/cu130"
-    fi
-
-    echo "Using PyTorch index: $CUDA_URL"
-
-    # Uninstall existing PyTorch
-    poetry run pip uninstall torch torchvision torchaudio -y 2>/dev/null || true
-
-    # Install PyTorch from the correct index
-    poetry run pip install torch torchvision torchaudio --index-url "$CUDA_URL"
-
-    echo "PyTorch reinstalled successfully"
-else
-    echo "Updating Poetry dependencies..."
-
-    # Standard Poetry update
-    poetry update
-
-    # Check if PyTorch is using the wrong CUDA version
-    PYTORCH_VERSION=$(poetry run python -c "import torch; print(torch.__version__)" 2>/dev/null || echo "")
-    if [[ "$PYTORCH_VERSION" == *"cu128"* ]] || [[ "$PYTORCH_VERSION" == *"cu129"* ]] || [[ "$PYTORCH_VERSION" == *"cu121"* ]]; then
-        echo
-        echo "WARNING: PyTorch is using an older CUDA version: $PYTORCH_VERSION"
-        echo "Run '$0 --pytorch' to update to CUDA 13.0"
-    fi
-fi
-
-echo
-echo "Step 4 - Verification:"
-
-# Test key imports
-echo "Testing key package imports..."
-poetry run python -c "
+uv run --no-sync python - <<'EOF'
 import sys
-packages = ['torch', 'transformers', 'accelerate', 'datasets']
+packages = ["torch", "transformers", "accelerate", "datasets"]
 failed = []
 for pkg in packages:
     try:
         __import__(pkg)
-        print(f'{pkg}: OK')
+        print(f"[OK] import {pkg}")
     except ImportError as e:
-        print(f'{pkg}: ERROR ({e})')
+        print(f"[ERROR] import {pkg}: {e}")
         failed.append(pkg)
-if failed:
-    print(f'\\nFailed to import: {', '.join(failed)}')
-    sys.exit(1)
-"
-
-# Final GPU check
-echo
-
-# Show system CUDA version again for comparison
-if command -v nvcc &> /dev/null; then
-    SYSTEM_CUDA=$(nvcc --version | grep "release" | awk '{print $5}' | sed 's/,//')
-    echo "System CUDA: $SYSTEM_CUDA"
-fi
-
-poetry run python -c "
-import torch
-print(f'PyTorch: {torch.__version__}')
-if hasattr(torch.version, 'cuda') and torch.version.cuda:
-    print(f'PyTorch CUDA: {torch.version.cuda}')
-print(f'CUDA Available: {torch.cuda.is_available()}')
-if torch.cuda.is_available():
-    print(f'GPU: {torch.cuda.get_device_name(0)}')
-"
+sys.exit(1 if failed else 0)
+EOF
+[ $? -eq 0 ] || { print_error "Package import verification failed"; exit 1; }
 
 echo
-echo "=== Update Complete ==="
+check_torch || { print_error "PyTorch verification failed"; exit 1; }
+
+# The torch trio is pinned to the cu130 index in pyproject.toml [tool.uv.sources];
+# a cu12x build here means the pins or sources were edited incorrectly
+TORCH_BUILD=$(uv run --no-sync python -c "import torch; print(torch.__version__)" 2>/dev/null || echo "")
+case "$TORCH_BUILD" in
+    *cu121*|*cu128*|*cu129*)
+        print_warn "PyTorch built for an older CUDA version: $TORCH_BUILD"
+        echo "  Solution: Check [tool.uv.sources] in pyproject.toml points at the cu130 index"
+        ;;
+esac
+
 echo
-
-# Get PyTorch source info
-PYTORCH_SOURCE=$(grep -o 'pytorch_cuda_cu[0-9]*' "$PROJECT_ROOT/pyproject.toml" | head -1)
-if [ -n "$PYTORCH_SOURCE" ]; then
-    echo "PyTorch configured source: $PYTORCH_SOURCE"
-fi
-
-if [ -f "poetry.lock.backup" ]; then
-    echo
-    echo "Rollback available: cp poetry.lock.backup poetry.lock && poetry install"
-fi
+print_ok "Update complete"
+echo "Rollback: git checkout uv.lock && uv sync --all-groups --all-extras"
