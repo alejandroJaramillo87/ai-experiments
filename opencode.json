@@ -24,7 +24,11 @@
     "doom_loop": "deny"
   },
   "lsp": {
-    "typescript": { "disabled": true }
+    "typescript": { "disabled": true },
+    "pyright": {
+      "command": ["pyright-langserver", "--stdio"],
+      "extensions": [".py"]
+    }
   },
   "formatter": {
     "black": { "command": ["black"], "extensions": [".py"] }

@@ -97,10 +97,15 @@ run, any webfetch-heavy or untrusted-input work, and any third-party checkout.
 
 `docker/agents/Dockerfile.agents` installs both CLIs at exact versions:
 `opencode-ai@1.17.18` and `@anthropic-ai/claude-code@2.1.207` (matching the host install at
-authoring time). `DISABLE_AUTOUPDATER=1` and the sandbox `opencode.json`'s `autoupdate: false`
-pair to freeze the pinned versions inside the image — the image is the unit of currency, bumped
-by rebuild. On the host, by contrast, leave updates on: given the CVE history, running stale is
-the larger risk.
+authoring time), plus `pyright@1.1.411` (Python language server for both CLIs).
+`DISABLE_AUTOUPDATER=1` and
+the sandbox `opencode.json`'s `autoupdate: false` pair to freeze the pinned versions inside the
+image — the image is the unit of currency, bumped by rebuild. On the host, by contrast, leave
+updates on: given the CVE history, running stale is the larger risk.
+
+`make agent-versions` compares each Dockerfile pin against the npm registry and reports which
+pins are behind. It never edits the Dockerfile: bump one pin at a time and re-run the
+acceptance checks, per the repository operating rules.
 
 ### Egress allowlist
 

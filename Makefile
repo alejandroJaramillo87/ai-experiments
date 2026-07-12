@@ -6,7 +6,7 @@
 .PHONY: health update-models install shell test lint format
 .PHONY: flux-up flux-down flux-logs flux-shell flux-build flux-model-download flux-status
 .PHONY: list-models update rebuild reset demo dev
-.PHONY: agent-parity agent-preflight agent-skeptic-test command-sync agent-usage
+.PHONY: agent-parity agent-preflight agent-skeptic-test command-sync agent-usage agent-versions
 .PHONY: worktree-ls agent-run agent-export agent-sandbox
 .DEFAULT_GOAL := help
 
@@ -244,6 +244,9 @@ agent-usage: ## Merge token usage (OpenCode state) and RunPod spend into one rep
 agent-preflight: command-sync agent-parity ## Pre-flight checks: parity + supply-chain scan of both tool families
 	@./scripts/agents/preflight-scan.sh "$${PREFLIGHT_DIR:-.}"
 	@printf '[OK] Agent preflight complete\n'
+
+agent-versions: ## Compare Dockerfile.agents CLI pins against the npm registry (check-only)
+	@./scripts/agents/check-agent-versions.sh
 
 agent-skeptic-test: ## Run the skeptic acceptance test (expects VERDICT: REFUTED)
 	@if ! command -v claude >/dev/null 2>&1; then \

@@ -19,6 +19,9 @@ FROM node:22.14.0-bookworm-slim
 ARG OPENCODE_VERSION=1.17.18
 ARG CLAUDE_CODE_VERSION=2.1.207
 
+# Language-server pin (Python symbol navigation for both CLIs).
+ARG PYRIGHT_VERSION=1.1.411
+
 # Runtime tools the agents shell out to. git is required for the worktree
 # workflow; curl/ca-certificates support egress and the acceptance checks.
 RUN apt-get update \
@@ -34,7 +37,12 @@ RUN apt-get update \
 RUN npm install -g --no-fund --no-audit \
         "opencode-ai@${OPENCODE_VERSION}" \
         "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+        "pyright@${PYRIGHT_VERSION}" \
     && npm cache clean --force
+
+# Native LSP tool in Claude Code (symbol navigation instead of grep sweeps);
+# pyright above serves both CLIs.
+ENV ENABLE_LSP_TOOL=1
 
 # Disable the Claude Code auto-updater inside the image; version currency is
 # managed by rebuilding against a new pin, not by in-place self-update.

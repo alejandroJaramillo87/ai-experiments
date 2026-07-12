@@ -56,6 +56,12 @@ make benchmark   # Run performance tests
 make shell-gpu   # Access GPU container
 ```
 
+## Code navigation
+
+Prefer the LSP tools (definitions, references, diagnostics) for symbol-level questions; they
+return less context than grep sweeps. Use grep/glob for exact strings — error messages,
+config keys, version pins.
+
 ## Core principles
 
 - Unix/Linux philosophy: simple, composable, text-based
