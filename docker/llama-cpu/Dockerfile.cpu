@@ -1,6 +1,12 @@
+# Base image shared by builder and runtime so glibc/libgomp stay in sync.
+# Pin the digest before building. Re-resolve with:
+#   docker buildx imagetools inspect debian:trixie-slim
+# then set BASE_IMAGE=debian:trixie-slim@sha256:<digest>
+ARG BASE_IMAGE=debian:trixie-slim
+
 # --- Stage 1: The Builder ---
 # Compiles llama.cpp with hugepage optimization (AVX-512 + zen5_optimizer)
-FROM python:3.12-slim AS builder
+FROM ${BASE_IMAGE} AS builder
 
 LABEL stage="builder"
 
@@ -12,11 +18,10 @@ ENV CC=gcc-14
 ENV CXX=g++-14
 ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed"
 
-# Install build dependencies (gcc-14 from unstable for znver5 support)
-RUN echo "deb http://deb.debian.org/debian unstable main" > /etc/apt/sources.list.d/sid.list && \
-    apt-get update && \
+# Install build dependencies (gcc-14 with znver5 support ships in trixie stable)
+RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        gcc-14 g++-14 build-essential cmake git curl \
+        gcc-14 g++-14 build-essential cmake git ca-certificates \
         libssl-dev libomp-dev pkg-config && \
     rm -rf /var/lib/apt/lists/*
 
@@ -36,9 +41,11 @@ RUN cd /tmp/zen5_optimizer && \
 
 # Build llama.cpp with AVX-512 configuration
 # Pin llama.cpp to an exact commit for reproducible builds. Bump deliberately, not on rebuild.
+# LLAMA_CURL was removed upstream (deprecated no-op); HTTPS model fetch now uses OpenSSL.
 ARG LLAMA_CPP_COMMIT=e3546c7948e3af463d0b401e6421d5a4c2faf565
+# tag b9976, 2026-07-12
 RUN rm -rf /tmp/llama.cpp && \
-    git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
+    git clone https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp && \
     cd /tmp/llama.cpp && \
     git checkout "${LLAMA_CPP_COMMIT}" && \
     mkdir build && cd build && \
@@ -53,20 +60,20 @@ RUN rm -rf /tmp/llama.cpp && \
         -DGGML_AVX512_VNNI=ON \
         -DGGML_AVX512_BF16=ON \
         -DGGML_BUILD_TESTS=OFF \
-        -DGGML_BUILD_EXAMPLES=OFF \
-        -DLLAMA_CURL=OFF && \
-    cmake --build . --config Release -j$(nproc) && \
-    echo "Built llama.cpp (AVX-512 VNNI, hugepages via LD_PRELOAD)"
+        -DGGML_BUILD_EXAMPLES=OFF && \
+    cmake --build . --target llama-server --config Release -j$(nproc) && \
+    echo "Built llama-server (AVX-512 VNNI, hugepages via LD_PRELOAD)"
 
 
 # --- Stage 2: The Final Runtime Image ---
-FROM debian:unstable-slim
+FROM ${BASE_IMAGE}
 
 LABEL description="llama.cpp with hugepage optimization (AVX-512 + zen5_optimizer)"
 
-# Runtime libraries only
+# Runtime libraries only (curl for container healthcheck)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
+    libssl3t64 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -78,8 +85,8 @@ WORKDIR /app
 
 # Copy server binary (renamed to 'server' for entrypoint compatibility)
 COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/llama-server /app/server
-# Copy all binaries and libraries from bin/
-COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/* /app/
+# Copy the shared libraries llama-server links against (libllama, libggml*, libmtmd)
+COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/*.so* /app/
 # Copy zen5_optimizer library for hugepage support
 COPY --from=builder --chown=appuser:appuser /tmp/libzen5_optimizer.so /app/
 COPY --chmod=755 --chown=appuser:appuser docker/llama-cpu/entrypoint.cpu.sh /app/entrypoint.sh
