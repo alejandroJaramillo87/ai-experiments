@@ -7,7 +7,7 @@
 .PHONY: flux-up flux-down flux-logs flux-shell flux-build flux-model-download flux-status
 .PHONY: list-models update rebuild reset demo dev
 .PHONY: agent-parity agent-preflight agent-skeptic-test command-sync agent-usage agent-versions
-.PHONY: worktree-ls agent-run agent-export agent-sandbox
+.PHONY: worktree-ls worktree-clean agent-run agent-export agent-sandbox
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -224,6 +224,12 @@ command-sync: ## (Re)create per-file symlinks from .claude/commands into .openco
 	  fi; \
 	  ln -sf "../../.claude/commands/$$name" "$$target"; \
 	  printf '[OK] %s: linked\n' "$$name"; \
+	done; \
+	for t in .opencode/commands/*.md; do \
+	  [ -L "$$t" ] || continue; \
+	  if [ ! -e "$$t" ]; then \
+	    rm "$$t"; printf '[OK] %s: pruned (source removed)\n' "$$(basename "$$t")"; \
+	  fi; \
 	done
 
 agent-usage: ## Merge token usage (OpenCode state) and RunPod spend into one report
@@ -254,10 +260,10 @@ agent-skeptic-test: ## Run the skeptic acceptance test (expects VERDICT: REFUTED
 	fi; \
 	printf '[RUN] Invoking skeptic on tests/agents/broken_completed_task.md\n'; \
 	out=$$(claude -p "Use the skeptic subagent to verify the completed task in tests/agents/broken_completed_task.md" 2>/dev/null); \
-	if printf '%s' "$$out" | grep -q 'REFUTED'; then \
-	  printf '[OK] Skeptic test: returned REFUTED\n'; \
+	if printf '%s' "$$out" | grep -q 'VERDICT: REFUTED'; then \
+	  printf '[OK] Skeptic test: returned VERDICT: REFUTED\n'; \
 	else \
-	  printf '[ERROR] Skeptic test: expected REFUTED, got:\n%s\n' "$$out"; exit 1; \
+	  printf '[ERROR] Skeptic test: expected "VERDICT: REFUTED", got:\n%s\n' "$$out"; exit 1; \
 	fi
 
 ##@ Workflow Automation (escalation ladder — see docs/agents/README.md)
@@ -272,17 +278,65 @@ AGENT_USAGE_STATE ?= .agent-state/usage.jsonl
 
 worktree-%: ## Create a git worktree ../ai-experiments-<name> on branch task/<name>
 	@name="$*"; dir="../ai-experiments-$$name"; \
-	if git worktree list --porcelain | grep -q "worktree $$(cd .. 2>/dev/null && pwd)/ai-experiments-$$name"; then \
+	if git worktree list --porcelain | grep -qx "worktree $$(cd .. 2>/dev/null && pwd)/ai-experiments-$$name"; then \
 	  printf '[SKIP] worktree already exists: %s\n' "$$dir"; exit 0; \
 	fi; \
-	git worktree add "$$dir" -b "task/$$name"; \
-	printf '[OK] worktree: %s (branch task/%s)\n' "$$dir" "$$name"; \
+	if [ -e "$$dir" ]; then \
+	  printf '[ERROR] %s exists but is not a registered worktree\n' "$$dir"; \
+	  printf '  Solution: inspect it, then remove it (rmdir if empty) and retry\n'; \
+	  exit 1; \
+	fi; \
+	if git show-ref -q "refs/heads/task/$$name"; then \
+	  git worktree add "$$dir" "task/$$name" || exit 1; \
+	  printf '[OK] worktree: %s (reusing existing branch task/%s)\n' "$$dir" "$$name"; \
+	else \
+	  git worktree add "$$dir" -b "task/$$name" || exit 1; \
+	  printf '[OK] worktree: %s (branch task/%s)\n' "$$dir" "$$name"; \
+	fi; \
 	printf '[INFO] GPU/benchmark work stays serialized across all worktrees (see AGENTS.md)\n'
 
+# `make worktree-clean <name>`: make parses <name> as a second goal, not an argument,
+# so capture it at parse time and register a no-op target for it. Guarded to fire only
+# when worktree-clean is the first goal, so it can never shadow a real target.
+ifeq ($(firstword $(MAKECMDGOALS)),worktree-clean)
+WT_CLEAN_ARG := $(word 2,$(MAKECMDGOALS))
+ifneq ($(WT_CLEAN_ARG),)
+$(WT_CLEAN_ARG): ; @:
+endif
+endif
+
+# Shared removal shell. Expects $$arg set; accepts a bare name, the task/<name>
+# branch, or a worktree path (anything containing ai-experiments-). Exits 1 on
+# failure so callers and scripts see the error.
+define WORKTREE_REMOVE_SH
+	case "$$arg" in \
+	  *ai-experiments-*) name="$${arg##*ai-experiments-}" ;; \
+	  task/*)            name="$${arg#task/}" ;; \
+	  *)                 name="$$arg" ;; \
+	esac; \
+	dir="../ai-experiments-$$name"; \
+	if git worktree remove "$$dir"; then \
+	  printf '[OK] removed worktree: %s\n' "$$dir"; \
+	else \
+	  printf '[ERROR] could not remove %s (uncommitted changes? use git worktree remove --force)\n' "$$dir"; \
+	  exit 1; \
+	fi
+endef
+
+# Explicit target so a bare `make worktree-clean` cannot match the worktree-% creation
+# pattern (which would create a worktree named "clean").
+worktree-clean: ## Remove a worktree: make worktree-clean <name> (name, task/<name>, or path)
+	@arg="$(or $(WT_CLEAN_ARG),$(NAME))"; \
+	if [ -z "$$arg" ]; then \
+	  printf '[ERROR] worktree-clean requires a name: make worktree-clean <name>\n'; \
+	  printf '  Also accepted: make worktree-clean NAME=<name>; make worktree-clean-<name>\n'; \
+	  printf '  Existing worktrees:\n'; git worktree list | sed 's/^/    /'; exit 1; \
+	fi; \
+	$(WORKTREE_REMOVE_SH)
+
 worktree-clean-%: ## Remove the worktree ../ai-experiments-<name>
-	@name="$*"; dir="../ai-experiments-$$name"; \
-	git worktree remove "$$dir" && printf '[OK] removed worktree: %s\n' "$$dir" \
-	  || printf '[ERROR] could not remove %s (uncommitted changes? use git worktree remove --force)\n' "$$dir"
+	@arg="$*"; \
+	$(WORKTREE_REMOVE_SH)
 
 worktree-ls: ## List git worktrees
 	@git worktree list
@@ -310,8 +364,25 @@ agent-run: ## Batch rung: AGENT=opencode|claude PROMPT=... [EFFORT=low] [ALLOW='
 	esac
 
 AGENTS_COMPOSE := docker-compose.agents.yaml
+# Preseeded each session: the sandbox home is ephemeral tmpfs, so no Claude
+# Code config survives between runs. Two files are seeded on launch:
+#   ~/.claude.json           — onboarding flag, theme, additionalModelOptionsCache,
+#                              and unpinFable5LaunchEffort (without it the CLI pins a
+#                              Fable session's launch effort to its recommended value,
+#                              silently overriding the seeded effortLevel)
+#                              (account-gated models like Fable only reach the /model
+#                              picker via an interactive OAuth profile fetch, which the
+#                              headless CLAUDE_CODE_OAUTH_TOKEN auth path never performs;
+#                              access itself stays enforced server-side by the token)
+#   ~/.claude/settings.json  — persistent defaults: model from CLAUDE_MODEL, effortLevel
+#                              from EFFORT (default low, override per run with
+#                              EFFORT=medium), and theme
+# In-session changes (/effort, /model) intentionally last one session only.
+CLAUDE_THEME ?= dark
+CLAUDE_MODEL ?= claude-fable-5[1m]
+CLAUDE_MODEL_OPTIONS := [{\"value\":\"claude-fable-5[1m]\",\"label\":\"Fable\",\"description\":\"Fable 5 - account-gated tier above Opus\"}]
 
-agent-sandbox: ## Contained agent session: AGENT=claude|opencode NAME=<task> [PROMPT="..."]
+agent-sandbox: ## Contained agent session: AGENT=claude|opencode NAME=<task> [PROMPT="..."] [EFFORT=low] [CLAUDE_MODEL=...] [MODEL=<flag override>]
 	@if [ -z "$(NAME)" ]; then printf '[ERROR] set NAME=<task> (names the git worktree)\n'; exit 1; fi; \
 	name="$(NAME)"; dir="$$(cd .. && pwd)/ai-experiments-$$name"; \
 	if [ ! -d "$$dir" ]; then \
@@ -320,10 +391,14 @@ agent-sandbox: ## Contained agent session: AGENT=claude|opencode NAME=<task> [PR
 	fi; \
 	case "$(AGENT)" in \
 	  claude) \
-	    if [ -z "$(ANTHROPIC_API_KEY)" ]; then \
-	      printf '[ERROR] ANTHROPIC_API_KEY not set (the only secret a Claude Code sandbox gets)\n'; \
-	      printf '  Solution: export ANTHROPIC_API_KEY=<scoped key> before running\n'; exit 1; fi; \
-	    if [ -n "$(PROMPT)" ]; then cmd="claude -p \"$(PROMPT)\" --effort $(EFFORT)"; else cmd="claude"; fi; \
+	    if [ -z "$(CLAUDE_CODE_OAUTH_TOKEN)" ]; then \
+	      printf '[ERROR] CLAUDE_CODE_OAUTH_TOKEN not set (the only secret a Claude Code sandbox gets)\n'; \
+	      printf '  Solution: run `claude setup-token` on the host, then export CLAUDE_CODE_OAUTH_TOKEN=<token>\n'; exit 1; fi; \
+	    seed="printf '{\"theme\":\"$(CLAUDE_THEME)\",\"hasCompletedOnboarding\":true,\"unpinFable5LaunchEffort\":true,\"additionalModelOptionsCache\":$(CLAUDE_MODEL_OPTIONS)}' > ~/.claude.json; \
+	      mkdir -p ~/.claude; \
+	      printf '{\"model\":\"$(CLAUDE_MODEL)\",\"effortLevel\":\"$(EFFORT)\",\"theme\":\"$(CLAUDE_THEME)\"}' > ~/.claude/settings.json"; \
+	    model=""; if [ -n "$(MODEL)" ]; then model=" --model \"$(MODEL)\""; fi; \
+	    if [ -n "$(PROMPT)" ]; then cmd="$$seed; claude -p \"$(PROMPT)\" --effort $(EFFORT)$$model"; else cmd="$$seed; claude$$model"; fi; \
 	    printf '[RUN] contained Claude Code session (worktree %s)\n' "$$dir"; \
 	    AGENT_WORKTREE="$$dir" RUNPOD_API_KEY="" \
 	      docker compose -f $(AGENTS_COMPOSE) run --rm agent sh -lc "$$cmd" ;; \
@@ -333,13 +408,16 @@ agent-sandbox: ## Contained agent session: AGENT=claude|opencode NAME=<task> [PR
 	      printf '  Solution: export RUNPOD_API_KEY=<endpoint-scoped key> before running\n'; exit 1; fi; \
 	    if [ -n "$(PROMPT)" ]; then cmd="opencode run --auto \"$(PROMPT)\""; else cmd="opencode"; fi; \
 	    printf '[RUN] contained OpenCode session (worktree %s)\n' "$$dir"; \
-	    AGENT_WORKTREE="$$dir" ANTHROPIC_API_KEY="" \
+	    AGENT_WORKTREE="$$dir" CLAUDE_CODE_OAUTH_TOKEN="" \
 	      docker compose -f $(AGENTS_COMPOSE) run --rm agent sh -lc "$$cmd" ;; \
 	  *) printf '[ERROR] AGENT must be claude or opencode (got: %s)\n' "$(AGENT)"; exit 1 ;; \
 	esac
 
 SESSIONS_DIR ?= logs/sessions
 
+# ID is the CLI's conversation identifier:
+#   claude:   UUID from `claude --resume` (transcript: ~/.claude/projects/<slug>/<id>.jsonl)
+#   opencode: session id from `opencode sessions`
 agent-export: ## Export a session transcript: AGENT=opencode|claude ID=<session-id> [SESSIONS_DIR=...]
 	@if [ -z "$(ID)" ]; then printf '[ERROR] set ID=<session-id>\n'; exit 1; fi; \
 	if ! mkdir -p "$(SESSIONS_DIR)" 2>/dev/null; then \

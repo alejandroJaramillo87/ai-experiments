@@ -221,7 +221,8 @@ live in `docs/sandbox/agent-sandbox.md`; the parity-relevant wiring:
   a git worktree read-write and injects exactly one scoped key. `--auto` and untrusted-input
   work run here; interactive work in this trusted repo may stay on the host.
 - **Credential asymmetry (never single-sourced).** A Claude Code sandbox gets only
-  `ANTHROPIC_API_KEY`; an OpenCode sandbox gets only `RUNPOD_API_KEY`. Neither container gets
+  `CLAUDE_CODE_OAUTH_TOKEN` (a subscription token minted by `claude setup-token`); an OpenCode
+  sandbox gets only `RUNPOD_API_KEY`. Neither container gets
   the other's secret, and host credential dirs (`~/.ssh`, `~/.aws`, `~/.claude/`,
   `~/.local/share/opencode/auth.json`) are never mounted.
 - **Permission tightening — the twin.** The webfetch/env-read narrowing is encoded in both
@@ -234,7 +235,7 @@ live in `docs/sandbox/agent-sandbox.md`; the parity-relevant wiring:
 | Concern | Script/config | Claude Code | OpenCode |
 |---------|---------------|-------------|----------|
 | supply-chain scan | `scripts/agents/preflight-scan.sh` | inspects `.claude/settings.json` hooks, `.claude/{skills,commands,agents}/` | inspects `opencode.json`, `.opencode/` (plugins/skills/commands) |
-| containment | `docker-compose.agents.yaml` | `ANTHROPIC_API_KEY`, `DISABLE_AUTOUPDATER=1` | `RUNPOD_API_KEY`, `autoupdate: false` |
+| containment | `docker-compose.agents.yaml` | `CLAUDE_CODE_OAUTH_TOKEN`, `DISABLE_AUTOUPDATER=1` | `RUNPOD_API_KEY`, `autoupdate: false` |
 | server lockdown | — | no always-on localhost server (n/a) | `OPENCODE_SERVER_PASSWORD`, never `--hostname 0.0.0.0` |
 
 The scan runs in two modes: `self` (the trusted home repo — advisory, exit 0) and `extern`

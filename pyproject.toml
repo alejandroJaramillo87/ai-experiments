@@ -97,6 +97,9 @@ ruff = ">=0.1.0"
 mypy = ">=1.0.0"
 
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.black]
 line-length = 88
 target-version = ['py313']

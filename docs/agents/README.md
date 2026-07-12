@@ -21,6 +21,91 @@ rules and the Phase 4 `guard.sh` PreToolUse hook are the safety floor and fire r
 permission mode. Review the deny rules (`.claude/settings.json`, `opencode.json`) before the
 first unattended run.
 
+## Running agents: user guide
+
+Step-by-step recipes for the `make` workflows. Every target below prints `[ERROR]` with a
+solution when a required variable or secret is missing.
+
+### Host batch run (rung 1, Claude Code only)
+
+```bash
+$ make agent-run PROMPT="Audit docker/ for unpinned image tags" EFFORT=low ALLOW='Read Grep'
+```
+
+Runs `claude -p` on the host at the given reasoning effort and appends token usage to
+`.agent-state/usage.jsonl`. Only Claude Code runs on the host: `AGENT=opencode` refuses by
+design, because OpenCode batch mode (`opencode run --auto`) auto-approves every action not
+explicitly denied. The refusal message redirects to the sandbox command below.
+
+### Sandboxed session (either tool)
+
+```bash
+$ make agent-sandbox AGENT=claude NAME=mytask                  # interactive
+$ make agent-sandbox AGENT=opencode NAME=mytask PROMPT="..."   # batch, contained
+```
+
+Creates the worktree `../ai-experiments-<NAME>` automatically if it does not exist, then
+starts a contained session (network-restricted container, egress proxy) in that worktree.
+Each tool receives exactly one secret:
+
+- `AGENT=claude` requires `CLAUDE_CODE_OAUTH_TOKEN` — generate once with
+  `claude setup-token` on the host, then export it.
+- `AGENT=opencode` requires an endpoint-scoped `RUNPOD_API_KEY`.
+
+`CLAUDE_THEME` (default `dark`) and `EFFORT` (default `low`) preseed the Claude Code
+theme and default reasoning effort each session, because the sandbox home is ephemeral
+tmpfs. See the persistent settings section in
+[agent-sandbox.md](../sandbox/agent-sandbox.md).
+
+### Worktree lifecycle
+
+```bash
+$ make worktree-mytask        # create ../ai-experiments-mytask on branch task/mytask
+$ make worktree-ls            # list worktrees
+$ make worktree-clean mytask  # remove when merged
+```
+
+Removal accepts the bare name, the `task/<name>` branch, a worktree path, `NAME=<name>`,
+or the suffix form `make worktree-clean-<name>` — all resolve to the same worktree. A bare
+`make worktree-clean` (no name) errors with usage instead of matching the creation
+pattern. Delete the task branch after removal: `git branch -D task/mytask`. If the
+branch is kept, recreating the worktree with `make worktree-mytask` reuses it.
+
+### Session export
+
+```bash
+$ make agent-export AGENT=claude ID=<session-id>
+```
+
+Writes the transcript to `logs/sessions/<id>.json`. The session ID is the CLI's conversation
+identifier: for Claude Code, the UUID shown by `claude --resume` (transcript also at
+`~/.claude/projects/<slug>/<id>.jsonl`); for OpenCode, the session ID from
+`opencode sessions`.
+
+### Usage and maintenance
+
+| Command | Purpose |
+|---------|---------|
+| `make agent-usage` | Merge token usage (OpenCode ledger) and RunPod spend into one report |
+| `make agent-preflight` | `command-sync` + `agent-parity` + supply-chain scan of both tool dirs |
+| `make agent-parity` | Diff shared agent bodies; flag forked or broken commands |
+| `make command-sync` | Symlink `.claude/commands` into `.opencode/commands`; prunes links whose source was deleted |
+| `make agent-versions` | Compare Dockerfile CLI pins against the npm registry (check-only) |
+
+### Troubleshooting
+
+- `make worktree-clean` used to create a worktree named `clean` by matching the
+  `worktree-%` creation pattern; a bare invocation now errors with usage. Removal takes a
+  name in any form: `make worktree-clean <name>`, `NAME=<name>`, `task/<name>`, a
+  worktree path, or `make worktree-clean-<name>`.
+- `make test` runs the deterministic fixture tests under `tests/` (see
+  `tests/agents/README.md`). Exit code 5 means pytest collected zero tests — a pytest
+  convention, not a Makefile failure.
+- `[ERROR] CLAUDE_CODE_OAUTH_TOKEN not set`: run `claude setup-token` on the host and
+  export the token before `make agent-sandbox AGENT=claude`.
+- Dangling symlinks in `.opencode/commands` (source command deleted): run
+  `make command-sync` to prune them; `make agent-parity` reports them as broken.
+
 ## Worktree parallelism
 
 Independent, non-GPU tasks parallelize cleanly — run one agent session per git worktree:
@@ -28,7 +113,7 @@ Independent, non-GPU tasks parallelize cleanly — run one agent session per git
 ```bash
 make worktree-<name>        # git worktree add ../ai-experiments-<name> -b task/<name>
 make worktree-ls
-make worktree-clean-<name>  # remove when merged
+make worktree-clean <name>  # remove when merged
 ```
 
 What parallelizes vs what serializes is governed by the AGENTS.md operating rule (the source of

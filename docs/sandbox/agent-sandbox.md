@@ -110,7 +110,8 @@ acceptance checks, per the repository operating rules.
 ### Egress allowlist
 
 `docker/agents/proxy/squid.conf` denies by default and allows only the domains an agent
-legitimately needs: the Anthropic API, the RunPod control plane (`api.runpod.io`,
+legitimately needs: the Anthropic API and the Claude subscription-auth endpoints
+(`claude.com`, `claude.ai` — used by `CLAUDE_CODE_OAUTH_TOKEN` sessions), the RunPod control plane (`api.runpod.io`,
 `docs.runpod.io`), the code host (`github.com` and its asset domains), and the package
 registries (npm, PyPI). HTTPS is allowlisted by CONNECT host without TLS interception, so no
 private certificate authority is installed. The list grows only with a recorded reason.
@@ -121,8 +122,15 @@ Each tool sees exactly one scoped secret, injected by environment:
 
 | Tool | Injected key | Never present |
 |------|--------------|---------------|
-| Claude Code | `ANTHROPIC_API_KEY` | any RunPod key |
-| OpenCode | `RUNPOD_API_KEY` (endpoint-scoped) | any Anthropic key |
+| Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` (subscription token) | any RunPod key |
+| OpenCode | `RUNPOD_API_KEY` (endpoint-scoped) | any Anthropic secret |
+
+The Claude Code secret is a long-lived OAuth token minted once on the host with
+`claude setup-token` (requires a claude.ai Pro/Max subscription; no Console API key). It is
+scoped to inference and draws on the subscription quota, but has no per-token spend limit and
+no server-side revocation today — store it in a password manager and export it only for the
+sandbox invocation, for example `export CLAUDE_CODE_OAUTH_TOKEN=$(pass show anthropic/sandbox-token)`.
+Never write it to the repository or to shell history.
 
 Neither container's secret is the other's. The following are **never mounted** into a sandbox:
 `~/.ssh`, `~/.aws`, `~/.claude/` (Claude Code credentials and user config), and
@@ -137,6 +145,50 @@ $ chmod 600 ~/.local/share/opencode/auth.json
 RunPod key hygiene: replace the single account-wide key with scoped keys — one endpoint-scoped
 key that OpenCode sees, a separate read-only key for the `runpod-idle-check.sh` spend query,
 and the account key stored nowhere on disk.
+
+### Terminal fidelity and clipboard
+
+The compose file passes `TERM` and `COLORTERM` through to the session container so the CLI
+renders in truecolor; this is display fidelity only, with no security effect. The theme is
+preseeded on every launch (`CLAUDE_THEME`, default `dark`, in the Makefile) because the
+container home is an ephemeral tmpfs and `~/.claude.json` does not survive between sessions.
+
+### Persistent settings
+
+No Claude Code configuration survives between sessions: the container home is an
+ephemeral tmpfs. Defaults therefore live in the Makefile, which seeds two files on every
+launch: `~/.claude.json` (onboarding flag, theme, model options cache, and
+`unpinFable5LaunchEffort` — without it the CLI pins a Fable session's launch effort to
+its recommended value and silently overrides the seeded `effortLevel`) and
+`~/.claude/settings.json` (persistent defaults — `model` from `CLAUDE_MODEL`, default
+`claude-fable-5[1m]`; `effortLevel` from `EFFORT`, default `low`; and `theme` from
+`CLAUDE_THEME`, default `dark`). Override per run:
+`make agent-sandbox ... EFFORT=medium CLAUDE_MODEL=claude-opus-4-8`. In-session changes made with
+`/effort` or `/model` last one session by design; to change a default permanently, change
+the Makefile variable.
+
+### Model selection
+
+Account-gated models (Fable) appear in the `/model` picker only after an interactive OAuth
+profile fetch populates `additionalModelOptionsCache` in `~/.claude.json`. The headless
+`CLAUDE_CODE_OAUTH_TOKEN` auth path never performs that fetch, so the Makefile seeds the
+cache entry (`CLAUDE_MODEL_OPTIONS`) into the per-session `~/.claude.json` alongside the
+theme. A seeded entry is a picker affordance only: access is enforced server-side by the
+token's subscription entitlement, so re-mint the token with `claude setup-token` if Fable
+requests are rejected. `make agent-sandbox ... MODEL=<model-id>` passes `--model` directly
+and works for both interactive and `PROMPT=` batch sessions.
+
+The `/usage` panel inside a sandbox session shows only the Session block, without the
+subscription quota bars. The bars require the interactive OAuth credential in
+`~/.claude/.credentials.json`, which token-based auth never writes
+(anthropics/claude-code#53735); check quota on the host or at claude.ai instead.
+
+In-application copy shortcuts do not work in the sandbox, by design. Claude Code copies via
+`xclip`/`wl-copy`/`pbcopy` (no OSC 52 support yet — anthropics/claude-code#20974), and the
+container has neither a clipboard tool nor a display socket. Mounting an X11 or Wayland socket
+would grant the contained agent read/write access to the host clipboard and input events, so
+the socket stays out. Use terminal-native copy instead: select the text with the mouse and
+press Ctrl+Shift+C — the terminal emulator runs on the host, so this path is unaffected.
 
 ## Tier split
 

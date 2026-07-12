@@ -64,11 +64,15 @@ services:
     volumes:
       - ${AGENT_WORKTREE:-./}:/work:rw
     environment:
-      # Exactly one scoped key is populated by the wrapper; the other stays empty.
-      # Claude Code sessions carry Anthropic auth; OpenCode sessions carry a
-      # RunPod key. Neither container ever gets the other's secret.
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Exactly one scoped secret is populated by the wrapper; the other stays
+      # empty. Claude Code sessions carry a subscription OAuth token minted by
+      # `claude setup-token` on the host (no API key, no ~/.claude mount);
+      # OpenCode sessions carry a RunPod key. Neither gets the other's secret.
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
       - RUNPOD_API_KEY=${RUNPOD_API_KEY:-}
+      # Terminal fidelity only (truecolor rendering); no security effect.
+      - TERM=${TERM:-xterm-256color}
+      - COLORTERM=${COLORTERM:-truecolor}
     # agent-internal is internal:true => no direct egress; the proxy is the only
     # way out. This is the enforcement, not the HTTP_PROXY env in the image.
     networks:
