@@ -6,28 +6,26 @@ Detailed analysis of runtime parameters for vLLM server optimized for high-throu
 
 ### vllm-gpu Service (Port 8003)
 
-**Runtime Parameters (Dockerfile.vllm-gpu)**:
+**Default runtime command (entrypoint.sh)**:
 ```bash
-CMD ["--model", "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b", \
-     "--host", "0.0.0.0", \
-     "--port", "8003", \
-     "--tensor-parallel-size", "1", \
-     "--gpu-memory-utilization", "0.85", \
-     "--max-model-len", "16384", \
-     "--max-num-seqs", "256", \
-     "--max-num-batched-tokens", "32768", \
-     "--enable-chunked-prefill", \
-     "--enable-prefix-caching", \
-     "--disable-log-stats", \
-     "--trust-remote-code", \
-     "--download-dir", "/app/cache", \
-     "--dtype", "auto", \
-     "--kv-cache-dtype", "auto", \
-     "--quantization", "", \
-     "--tokenizer-mode", "auto"]
+vllm serve /app/models/example-model-hf \
+    --host 0.0.0.0 \
+    --port 8003 \
+    --gpu-memory-utilization 0.85 \
+    --max-model-len 16384 \
+    --max-num-seqs 256 \
+    --max-num-batched-tokens 32768 \
+    --tensor-parallel-size 1 \
+    --dtype auto \
+    --kv-cache-dtype auto \
+    --attention-backend flashinfer \
+    --download-dir /app/cache \
+    --disable-log-stats
 ```
 
-**Service Status**: Active with vLLM v0.12.0 and CUDA 13.0.2
+Prefix caching and chunked prefill are default-on in the vLLM V1 engine, so the legacy `--enable-prefix-caching` and `--enable-chunked-prefill` flags are no longer passed. `--trust-remote-code` and `--quantization` are added only when `TRUST_REMOTE_CODE=true` or `QUANTIZATION` is set (both off by default).
+
+**Service Status**: Active with vLLM 0.25.0 and CUDA 13.0.2
 
 ## Parameter Analysis
 
@@ -164,9 +162,9 @@ Based on 2025 vLLM documentation, we should consider:
 ## CUDA 13.0 Configuration
 
 ### Current Status
-- **vLLM v0.12.0** fully supports CUDA 13.0.2
-- **PyTorch**: 2.9.1+cu130
-- **FlashInfer**: 0.5.3
+- **vLLM 0.25.0** installed from the official cu130 wheel, targeting CUDA 13.0.2
+- **PyTorch**: 2.11 cu130
+- **FlashInfer**: 0.6.13
 - **Status**: Active and operational
 
 ### Active Optimizations
@@ -221,7 +219,7 @@ ENV CUDA_COPY_SPLIT_THRESHOLD=256
 - **CUDA 13.0**: Full Blackwell architecture utilization
 
 ### vLLM Engine Configuration
-- **Attention backend**: FlashAttention v2 (v3 not yet supported)
+- **Attention backend**: FlashInfer 0.6.13 (default on Blackwell; set through `ATTENTION_BACKEND`)
 - **Memory pooling**: Advanced memory management for batching
 - **Scheduling**: Priority-based request handling
 - **Multimodal**: Ready for vision/audio model support
@@ -242,4 +240,4 @@ ENV CUDA_COPY_SPLIT_THRESHOLD=256
 
 ---
 
-*Last Updated: 2026-01-03*
+*Last Updated: 2026-07-12*

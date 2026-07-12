@@ -321,38 +321,41 @@ Chunks of 256 tokens, better latency for other requests
 
 ### Docker Configuration
 
-Current production setup (vLLM v0.12.0 with CUDA 13.0.2):
+Current production setup (vLLM 0.25.0 with CUDA 13.0.2):
 
 ```dockerfile
-# Build stage
-FROM nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04 AS builder
-ENV TORCH_CUDA_ARCH_LIST="12.0"  # RTX 5090 Blackwell
-ENV CUDA_DOCKER_ARCH=sm_120
-ENV NVCC_THREADS=8
+# Single-stage image on the CUDA runtime base
+FROM nvidia/cuda:13.0.2-cudnn-runtime-ubuntu24.04
 
-# Runtime stage
-ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+# Install the official vLLM cu130 wheel (ships sm_120 kernels and PyTorch 2.11 cu130)
+RUN uv pip install vllm==0.25.0 --torch-backend=cu130
 
-CMD ["--model", "/app/models/hf/DeepSeek-R1-0528-Qwen3-8b",
-     "--port", "8003",
-     "--gpu-memory-utilization", "0.85",
-     "--max-model-len", "16384",
-     "--max-num-seqs", "256",
-     "--max-num-batched-tokens", "32768",
-     "--enable-chunked-prefill",
-     "--enable-prefix-caching",
-     "--quantization", ""]
+# Server started via entrypoint.sh
+ENTRYPOINT ["/app/entrypoint.sh"]
+```
+
+The entrypoint runs `vllm serve` with the default flags below. Prefix caching and chunked prefill are default-on in the vLLM V1 engine, so the legacy `--enable-prefix-caching` and `--enable-chunked-prefill` flags are not passed. The attention backend defaults to FlashInfer through `--attention-backend flashinfer` (override with the `ATTENTION_BACKEND` env var):
+
+```bash
+vllm serve /app/models/example-model-hf \
+    --port 8003 \
+    --gpu-memory-utilization 0.85 \
+    --max-model-len 16384 \
+    --max-num-seqs 256 \
+    --max-num-batched-tokens 32768 \
+    --attention-backend flashinfer \
+    --disable-log-stats
 ```
 
 ### CUDA 13 Compatibility
 
-CUDA 13 support is now available:
+The vLLM 0.25.0 official cu130 wheel targets CUDA 13.0.2:
 
 ```
-Status: vLLM v0.12.0 supports CUDA 13.0.2
-Build: Using nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04
-PyTorch: 2.9.1+cu130
-FlashInfer: 0.5.3
+Status: vLLM 0.25.0 official cu130 wheel targets CUDA 13.0.2
+Base:   nvidia/cuda:13.0.2-cudnn-runtime-ubuntu24.04
+PyTorch: 2.11 cu130
+FlashInfer: 0.6.13
 ```
 
 ### Active Optimizations
@@ -474,8 +477,8 @@ Common issues and solutions:
 |-------|-------|----------|
 | OOM on startup | Model too large | Reduce --gpu-memory-utilization |
 | Slow generation | Poor batching | Increase --max-num-seqs |
-| High latency | Prefill blocking | Enable --enable-chunked-prefill |
-| CUDA error | Version mismatch | Ensure CUDA 13.0.2 and PyTorch 2.9.1+cu130 |
+| High latency | Prefill blocking | Chunked prefill is default-on in the V1 engine; reduce --max-num-batched-tokens if it starves decode |
+| CUDA error | Version mismatch | Ensure CUDA 13.0.2 and PyTorch 2.11 cu130 |
 | Memory leak | Cache fragmentation | Restart service periodically |
 
 ## Next Steps

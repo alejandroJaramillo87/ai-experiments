@@ -78,7 +78,7 @@ Inference engines are specialized runtimes optimized for executing trained model
 - Memory efficiency: 1.1x model size
 - Quantization: Native GGUF support
 
-**vLLM** (v0.12.0 with CUDA 13):
+**vLLM** (0.25.0 with CUDA 13):
 - First token: 50-100ms
 - Generation: 300-500 tok/s (projected)
 - Memory efficiency: 1.3x model size
