@@ -18,6 +18,15 @@
     "webfetch": {
       "https://docs.runpod.io/*": "allow",
       "https://github.com/*": "allow",
+      "https://raw.githubusercontent.com/*": "allow",
+      "https://objects.githubusercontent.com/*": "allow",
+      "https://code.claude.com/*": "allow",
+      "https://docs.anthropic.com/*": "allow",
+      "https://huggingface.co/*": "allow",
+      "https://docs.vllm.ai/*": "allow",
+      "https://developer.nvidia.com/*": "allow",
+      "https://docs.nvidia.com/*": "allow",
+      "https://docs.docker.com/*": "allow",
       "*": "ask"
     },
     "external_directory": "ask",

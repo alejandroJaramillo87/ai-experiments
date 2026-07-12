@@ -56,6 +56,12 @@ make benchmark   # Run performance tests
 make shell-gpu   # Access GPU container
 ```
 
+## Tooling conventions
+
+- Use the `gh` CLI for all GitHub operations (pull requests, issues, checks, releases)
+  instead of raw git remotes or the web API.
+- Prefer `make` targets (`make status`, `make logs`) over raw docker commands.
+
 ## Code navigation
 
 Prefer the LSP tools (definitions, references, diagnostics) for symbol-level questions; they

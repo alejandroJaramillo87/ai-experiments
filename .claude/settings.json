@@ -14,7 +14,16 @@
     ],
     "allow": [
       "WebFetch(domain:docs.runpod.io)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:objects.githubusercontent.com)",
+      "WebFetch(domain:code.claude.com)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:huggingface.co)",
+      "WebFetch(domain:docs.vllm.ai)",
+      "WebFetch(domain:developer.nvidia.com)",
+      "WebFetch(domain:docs.nvidia.com)",
+      "WebFetch(domain:docs.docker.com)"
     ],
     "ask": [
       "Bash(docker system prune*)",
