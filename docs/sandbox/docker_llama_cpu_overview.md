@@ -1,67 +1,79 @@
-# AI Engineering CPU Docker Implementation
+# AI engineering CPU Docker implementation
 
 Explanation of the AMD Zen 5 optimized Dockerfile for CPU-based AI model inference on the AMD Ryzen 9950X workstation, detailing the multi-stage build process, zen5_optimizer integration, and AVX-512 performance optimizations.
 
-> Note: This document explains the actual implementation in `docker/llama-cpu/Dockerfile.cpu`. The Dockerfile uses a multi-stage build with cmake-based compilation and the zen5_optimizer library for hugepage support.
+> Note: This document explains the actual implementation in `docker/llama-cpu/Dockerfile.cpu` and `docker/llama-cpu/entrypoint.cpu.sh`. The Dockerfile and entrypoint are the source of truth; this document follows them.
 
-## Table of Contents
+## Table of contents
 
-- [AI Engineering CPU Docker Implementation](#ai-engineering-cpu-docker-implementation)
-  - [Table of Contents](#table-of-contents)
-  - [Implementation Overview](#implementation-overview)
-  - [Stage 1: Builder Environment](#stage-1-builder-environment)
-    - [Base Image Selection](#base-image-selection)
-    - [AMD Zen 5 Compiler Configuration](#amd-zen-5-compiler-configuration)
-    - [System Dependencies Installation](#system-dependencies-installation)
-    - [zen5_optimizer Library](#zen5_optimizer-library)
-    - [llama.cpp Compilation](#llamacpp-compilation)
-  - [Stage 2: Runtime Environment](#stage-2-runtime-environment)
-    - [Runtime Base Image](#runtime-base-image)
-    - [Library Dependencies](#library-dependencies)
-    - [Security Configuration](#security-configuration)
-    - [Application Deployment](#application-deployment)
-  - [Entrypoint Configuration](#entrypoint-configuration)
-    - [Required Environment Variables](#required-environment-variables)
-    - [Optional Environment Variables](#optional-environment-variables)
-    - [Server Flags](#server-flags)
-  - [Performance Optimization Strategy](#performance-optimization-strategy)
-    - [AMD Zen 5 Architecture Targeting](#amd-zen-5-architecture-targeting)
-    - [AVX-512 CMAKE Configuration](#avx-512-cmake-configuration)
-    - [Threading Configuration](#threading-configuration)
-    - [Memory Optimization](#memory-optimization)
-  - [Container Security Implementation](#container-security-implementation)
-  - [Reference Implementation](#reference-implementation)
+- [AI engineering CPU Docker implementation](#ai-engineering-cpu-docker-implementation)
+  - [Table of contents](#table-of-contents)
+  - [Implementation overview](#implementation-overview)
+  - [Stage 1: builder environment](#stage-1-builder-environment)
+    - [Base image selection](#base-image-selection)
+    - [AMD Zen 5 compiler configuration](#amd-zen-5-compiler-configuration)
+    - [System dependencies installation](#system-dependencies-installation)
+    - [zen5_optimizer library](#zen5_optimizer-library)
+    - [llama.cpp compilation](#llamacpp-compilation)
+  - [Stage 2: runtime environment](#stage-2-runtime-environment)
+    - [Runtime base image](#runtime-base-image)
+    - [Library dependencies](#library-dependencies)
+    - [Security configuration](#security-configuration)
+    - [Application deployment](#application-deployment)
+  - [Entrypoint configuration](#entrypoint-configuration)
+    - [Required environment variables](#required-environment-variables)
+    - [Optional environment variables](#optional-environment-variables)
+    - [Feature flags](#feature-flags)
+    - [Advanced server knobs](#advanced-server-knobs)
+    - [Server command construction](#server-command-construction)
+  - [Performance optimization strategy](#performance-optimization-strategy)
+    - [AMD Zen 5 architecture targeting](#amd-zen-5-architecture-targeting)
+    - [AVX-512 cmake configuration](#avx-512-cmake-configuration)
+    - [Threading configuration](#threading-configuration)
+    - [Memory optimization](#memory-optimization)
+  - [Container security implementation](#container-security-implementation)
+  - [Reference implementation](#reference-implementation)
 
-## Implementation Overview
+## Implementation overview
 
-The CPU Docker implementation leverages a multi-stage build strategy specifically optimized for the AMD Ryzen 9950X processor. The architecture separates the build environment from the runtime environment to minimize the final container size while maximizing CPU performance through targeted optimizations.
+The CPU Docker implementation uses a multi-stage build strategy optimized for the AMD Ryzen 9950X processor. The architecture separates the build environment from the runtime environment to minimize the final container size while targeting CPU performance through Zen 5-specific optimizations.
 
-**Key Implementation Features:**
-- **Multi-stage build**: Separates compilation dependencies from runtime requirements
-- **AMD Zen 5 optimization**: Compiler flags targeting znver5 architecture
-- **zen5_optimizer library**: Hugepage support via LD_PRELOAD for reduced TLB pressure
-- **AVX-512 native**: Explicit VNNI, VBMI, BF16 extensions enabled via cmake
-- **CMake build system**: Modern build configuration for llama.cpp compilation
-- **Security hardening**: Non-root user execution and minimal runtime dependencies
+**Key implementation features:**
+- **Multi-stage build**: Separates compilation dependencies from runtime requirements.
+- **Shared base image**: Both stages derive from `debian:trixie-slim` so glibc and libgomp stay in sync between build and runtime.
+- **AMD Zen 5 optimization**: Compiler flags target the znver5 architecture.
+- **zen5_optimizer library**: Hugepage support via LD_PRELOAD for reduced TLB pressure.
+- **AVX-512 native**: Explicit VNNI, VBMI, and BF16 extensions enabled via cmake.
+- **Pinned llama.cpp**: The source commit is pinned by SHA for reproducible builds.
+- **Security hardening**: Non-root user execution and minimal runtime dependencies.
 
-## Stage 1: Builder Environment
+## Stage 1: builder environment
 
-### Base Image Selection
+### Base image selection
 
-**Python 3.12 Slim Base**
+**Shared Debian 13 trixie base**
 ```dockerfile
-FROM python:3.12-slim AS builder
+# Base image shared by builder and runtime so glibc/libgomp stay in sync.
+# Pin the digest before building. Re-resolve with:
+#   docker buildx imagetools inspect debian:trixie-slim
+# then set BASE_IMAGE=debian:trixie-slim@sha256:<digest>
+ARG BASE_IMAGE=debian:trixie-slim
+
+# --- Stage 1: The Builder ---
+# Compiles llama.cpp with hugepage optimization (AVX-512 + zen5_optimizer)
+FROM ${BASE_IMAGE} AS builder
 
 LABEL stage="builder"
 ```
-- **Purpose**: Provides minimal Python environment with essential build tools
-- **Size optimization**: Slim variant reduces initial image size
-- **Compatibility**: Python 3.12 ensures modern language support
+- **Purpose**: Provides a minimal Debian environment with the toolchain required to compile llama.cpp and the zen5_optimizer library.
+- **Shared base**: Builder and runtime both use `${BASE_IMAGE}`, keeping the glibc and libgomp versions identical across stages and avoiding runtime symbol mismatches.
+- **Digest pinning**: Resolve the current digest with `docker buildx imagetools inspect debian:trixie-slim` and set `BASE_IMAGE=debian:trixie-slim@sha256:<digest>` before building.
 
-### AMD Zen 5 Compiler Configuration
+### AMD Zen 5 compiler configuration
 
-**Build Environment Variables**
+**Build environment variables**
 ```dockerfile
+# Build environment for AMD Zen 5 architecture
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CFLAGS="-march=znver5 -mtune=znver5 -O3"
 ENV CXXFLAGS="${CFLAGS}"
@@ -70,43 +82,43 @@ ENV CXX=g++-14
 ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed"
 ```
 
-**Compiler Flag Optimization**
-- **-march=znver5**: Generates code specifically for AMD Zen 5 architecture
-- **-mtune=znver5**: Optimizes instruction scheduling for Zen 5 microarchitecture
-- **-O3**: Enables aggressive compiler optimizations for maximum performance
-- **GCC-14**: Latest compiler version with enhanced Zen 5 support (from Debian unstable)
-- **Linker optimization**: -Wl,-O3 and --as-needed reduce binary size
+**Compiler flag optimization**
+- **-march=znver5**: Generates code specifically for the AMD Zen 5 architecture.
+- **-mtune=znver5**: Optimizes instruction scheduling for the Zen 5 microarchitecture.
+- **-O3**: Enables aggressive compiler optimizations.
+- **gcc-14**: Provides znver5 support, present since GCC 14.1 and shipped in Debian 13 trixie stable.
+- **Linker optimization**: `-Wl,-O3` and `--as-needed` reduce binary size.
 
 Note: AVX-512 instruction sets are enabled via cmake flags, not CFLAGS.
 
-### System Dependencies Installation
+### System dependencies installation
 
-**Build Tools and Libraries**
+**Build tools and libraries**
 ```dockerfile
-RUN echo "deb http://deb.debian.org/debian unstable main" > /etc/apt/sources.list.d/sid.list && \
-    apt-get update && \
+# Install build dependencies (gcc-14 with znver5 support ships in trixie stable)
+RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        gcc-14 g++-14 build-essential cmake git curl \
+        gcc-14 g++-14 build-essential cmake git ca-certificates \
         libssl-dev libomp-dev pkg-config && \
     rm -rf /var/lib/apt/lists/*
 ```
 
-**Package Selection**
-- **gcc-14/g++-14**: Latest compiler suite with Zen 5 optimizations
-- **cmake**: Modern build system for llama.cpp and zen5_optimizer compilation
-- **git**: Repository cloning for llama.cpp source
-- **curl**: HTTP client for model downloads
-- **libomp-dev**: OpenMP development libraries for parallel processing
-- **libssl-dev/pkg-config**: Build dependencies
-- **Unstable repository**: Access to GCC-14 with znver5 support
+**Package selection**
+- **gcc-14/g++-14**: Compiler suite with znver5 support, available directly from the trixie stable repository. No third-party or unstable apt source is required.
+- **cmake**: Build system for llama.cpp and zen5_optimizer.
+- **git**: Clones the llama.cpp source.
+- **ca-certificates**: Certificate bundle for HTTPS clones.
+- **libomp-dev**: OpenMP development libraries for parallel processing.
+- **libssl-dev/pkg-config**: Build dependencies for the OpenSSL-based HTTPS path in llama.cpp.
 
-### zen5_optimizer Library
+### zen5_optimizer library
 
-**CMake-Based Hugepage Optimization**
+**CMake-based hugepage optimization**
 
-The hugepage optimization is provided by `zen5_optimizer`, a custom library that intercepts mmap() calls for large allocations:
+The hugepage optimization is provided by `zen5_optimizer`, a library that intercepts mmap() calls for large allocations:
 
 ```dockerfile
+# Build zen5_optimizer library (hugepage support via LD_PRELOAD)
 COPY hugepages/CMakeLists.txt /tmp/zen5_optimizer/
 COPY hugepages/src/ /tmp/zen5_optimizer/src/
 RUN cd /tmp/zen5_optimizer && \
@@ -117,44 +129,54 @@ RUN cd /tmp/zen5_optimizer && \
         -DENABLE_HUGEPAGES=ON \
         -DENABLE_DEBUG_PRINT=OFF && \
     cmake --build build --config Release -j$(nproc) && \
-    cp build/libzen5_optimizer.so /tmp/libzen5_optimizer.so
+    cp build/libzen5_optimizer.so /tmp/libzen5_optimizer.so && \
+    echo "Built libzen5_optimizer.so (hugepage optimization)"
 ```
 
-**Source Files**
-- `hugepages/CMakeLists.txt`: Build configuration
-- `hugepages/src/zen5_optimizer.cpp`: Main entry point
-- `hugepages/src/cpu_validator.cpp/.h`: CPU feature validation
-- `hugepages/src/memory/hugepage_wrapper.cpp`: mmap() interception
-- `hugepages/src/config.h`: Configuration headers
+**Source files**
+- `hugepages/CMakeLists.txt`: Build configuration.
+- `hugepages/src/zen5_optimizer.cpp`: Main entry point.
+- `hugepages/src/cpu_validator.cpp/.h`: CPU feature validation.
+- `hugepages/src/memory/hugepage_wrapper.cpp`: mmap() interception.
+- `hugepages/src/config.h`: Configuration headers.
 
-**Build Configuration**
-- **CMAKE_C_COMPILER=gcc-14**: Use GCC-14 for C compilation
-- **CMAKE_CXX_COMPILER=g++-14**: Use GCC-14 for C++ compilation
-- **CMAKE_BUILD_TYPE=Release**: Optimized release build
-- **ENABLE_HUGEPAGES=ON**: Enable hugepage memory allocation
-- **ENABLE_DEBUG_PRINT=OFF**: Disable debug output for production
+**Build configuration**
+- **CMAKE_C_COMPILER=gcc-14**: Use gcc-14 for C compilation.
+- **CMAKE_CXX_COMPILER=g++-14**: Use g++-14 for C++ compilation.
+- **CMAKE_BUILD_TYPE=Release**: Optimized release build.
+- **ENABLE_HUGEPAGES=ON**: Enable hugepage memory allocation.
+- **ENABLE_DEBUG_PRINT=OFF**: Disable debug output.
 
-**How It Works**
-The library intercepts mmap() calls for allocations >= 1GB and uses MAP_HUGETLB to allocate 2MB huge pages instead of 4KB standard pages.
+**How it works**
+The library intercepts mmap() calls for allocations of 1GB or larger and uses MAP_HUGETLB to allocate 2MB huge pages instead of 4KB standard pages.
 
-**Performance Benefits**
-- **Reduced TLB misses**: 2MB pages instead of 4KB reduces translation overhead
-- **Better memory locality**: Fewer page table entries to manage
-- **10-20% inference speedup**: Measured on large models (>15GB)
+**Performance benefits**
+- **Reduced TLB misses**: 2MB pages instead of 4KB reduces translation overhead.
+- **Better memory locality**: Fewer page table entries to manage.
+- **10-20% inference speedup**: Measured on large models greater than 15GB.
 
-**Runtime Activation**
-The library is activated via LD_PRELOAD in the entrypoint script:
+**Runtime activation**
+The entrypoint script activates the library via LD_PRELOAD:
 ```bash
 export LD_PRELOAD="/app/libzen5_optimizer.so"
 ```
 
-### llama.cpp Compilation
+### llama.cpp compilation
 
-**CMake-Based Build Process with AVX-512**
+**Pinned source and AVX-512 build**
+
+The llama.cpp source is pinned to an exact commit for reproducible builds and cloned in full from the canonical `ggml-org` repository. The commit is bumped deliberately, not on every rebuild.
+
 ```dockerfile
+# Build llama.cpp with AVX-512 configuration
+# Pin llama.cpp to an exact commit for reproducible builds. Bump deliberately, not on rebuild.
+# LLAMA_CURL was removed upstream (deprecated no-op); HTTPS model fetch now uses OpenSSL.
+ARG LLAMA_CPP_COMMIT=e3546c7948e3af463d0b401e6421d5a4c2faf565
+# tag b9976, 2026-07-12
 RUN rm -rf /tmp/llama.cpp && \
-    git clone --depth 1 https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
+    git clone https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp && \
     cd /tmp/llama.cpp && \
+    git checkout "${LLAMA_CPP_COMMIT}" && \
     mkdir build && cd build && \
     cmake .. \
         -DCMAKE_BUILD_TYPE=Release \
@@ -167,82 +189,103 @@ RUN rm -rf /tmp/llama.cpp && \
         -DGGML_AVX512_VNNI=ON \
         -DGGML_AVX512_BF16=ON \
         -DGGML_BUILD_TESTS=OFF \
-        -DGGML_BUILD_EXAMPLES=OFF \
-        -DLLAMA_CURL=OFF && \
-    cmake --build . --config Release -j$(nproc)
+        -DGGML_BUILD_EXAMPLES=OFF && \
+    cmake --build . --target llama-server --config Release -j$(nproc) && \
+    echo "Built llama-server (AVX-512 VNNI, hugepages via LD_PRELOAD)"
 ```
 
-**Build Configuration**
-- **CMAKE_BUILD_TYPE=Release**: Optimized release build with full optimizations
-- **GGML_CUDA=OFF**: CPU-only build configuration
-- **GGML_BLAS=OFF**: Disabled (using AVX-512 intrinsics instead)
-- **GGML_NATIVE=ON**: Enable native CPU instruction set detection
-- **GGML_LTO=ON**: Link-time optimization for additional performance gains
-- **GGML_AVX512=ON**: Enable AVX-512 foundation instructions
-- **GGML_AVX512_VBMI=ON**: Vector Byte Manipulation Instructions
-- **GGML_AVX512_VNNI=ON**: Vector Neural Network Instructions (INT8 acceleration)
-- **GGML_AVX512_BF16=ON**: BFloat16 support for Zen 5
-- **GGML_BUILD_TESTS/EXAMPLES=OFF**: Skip test and example builds
-- **LLAMA_CURL=OFF**: Disable curl integration in llama.cpp
-- **Parallel compilation**: Uses all available CPU cores with -j$(nproc)
+**Source pinning**
+- **LLAMA_CPP_COMMIT**: Pinned to `e3546c7948e3af463d0b401e6421d5a4c2faf565` (tag b9976, dated 2026-07-12).
+- **Full clone**: The repository is cloned in full and checked out by SHA. A full clone is required because a shallow clone cannot check out an arbitrary historical commit.
+- **Canonical repository**: The source is fetched from `https://github.com/ggml-org/llama.cpp.git`.
 
-## Stage 2: Runtime Environment
+**Build target**
+- **llama-server only**: The build targets `llama-server` (`cmake --build . --target llama-server`) rather than the full example set, reducing build time.
 
-### Runtime Base Image
+**Build configuration**
+- **CMAKE_BUILD_TYPE=Release**: Optimized release build.
+- **GGML_CUDA=OFF**: CPU-only build configuration.
+- **GGML_BLAS=OFF**: Disabled in favor of AVX-512 intrinsics.
+- **GGML_NATIVE=ON**: Enable native CPU instruction set detection.
+- **GGML_LTO=ON**: Link-time optimization for cross-module optimization.
+- **GGML_AVX512=ON**: Enable AVX-512 foundation instructions.
+- **GGML_AVX512_VBMI=ON**: Vector Byte Manipulation Instructions.
+- **GGML_AVX512_VNNI=ON**: Vector Neural Network Instructions (INT8 acceleration).
+- **GGML_AVX512_BF16=ON**: BFloat16 support for Zen 5.
+- **GGML_BUILD_TESTS/EXAMPLES=OFF**: Skip test and example builds.
+- **Parallel compilation**: Uses all available CPU cores with `-j$(nproc)`.
 
-**Minimal Runtime Foundation**
+The former libcurl build option is no longer set. Upstream replaced libcurl with OpenSSL for HTTPS model fetches, so the option became a no-op and was removed. See [Library dependencies](#library-dependencies) for the corresponding runtime change.
+
+## Stage 2: runtime environment
+
+### Runtime base image
+
+**Shared base runtime foundation**
 ```dockerfile
-FROM debian:unstable-slim
+# --- Stage 2: The Final Runtime Image ---
+FROM ${BASE_IMAGE}
 
 LABEL description="llama.cpp with hugepage optimization (AVX-512 + zen5_optimizer)"
 ```
-- **Size optimization**: Minimal Debian base without development tools
-- **Runtime focus**: Only includes libraries necessary for execution
-- **Security**: Reduced attack surface through minimal package installation
+- **Shared base**: The runtime reuses the same `${BASE_IMAGE}` (`debian:trixie-slim`) as the builder, guaranteeing matching glibc and libgomp versions.
+- **Runtime focus**: The stage installs only the shared libraries required to run the server, keeping the attack surface small.
 
-### Library Dependencies
+### Library dependencies
 
-**Essential Runtime Libraries**
+**Essential runtime libraries**
 ```dockerfile
+# Runtime libraries only (curl for container healthcheck)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
+    libssl3t64 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 ```
 
-**Runtime Components**
-- **libgomp1**: OpenMP runtime library for parallel execution
-- **curl**: HTTP client for health checks
+**Runtime components**
+- **libgomp1**: OpenMP runtime library for parallel execution.
+- **libssl3t64**: OpenSSL runtime. llama.cpp now performs HTTPS model fetches through OpenSSL, having replaced its libcurl dependency in early 2026.
+- **curl**: Used by the container healthcheck to poll the server. It is not used by llama.cpp itself.
 
-### Security Configuration
+### Security configuration
 
-**Non-Root User Implementation**
+**Non-root user implementation**
 ```dockerfile
+# Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser
+
 USER appuser
 WORKDIR /app
 ```
 
-**Security Features**
-- **Dedicated user**: Non-root execution prevents privilege escalation
-- **No shell access**: `/sbin/nologin` prevents interactive access
-- **Minimal permissions**: User restricted to application directory
+**Security features**
+- **Dedicated user**: Non-root execution prevents privilege escalation.
+- **No shell access**: `/sbin/nologin` prevents interactive access.
+- **Minimal permissions**: The user is restricted to the application directory.
 
-### Application Deployment
+### Application deployment
 
-**Binary Installation**
+**Binary and library installation**
+
+The runtime copies only the server binary and the shared libraries it links against, rather than the entire build output directory:
+
 ```dockerfile
 # Copy server binary (renamed to 'server' for entrypoint compatibility)
 COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/llama-server /app/server
-# Copy all binaries and libraries from bin/
-COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/* /app/
+# Copy the shared libraries llama-server links against (libllama, libggml*, libmtmd)
+COPY --from=builder --chown=appuser:appuser /tmp/llama.cpp/build/bin/*.so* /app/
 # Copy zen5_optimizer library for hugepage support
 COPY --from=builder --chown=appuser:appuser /tmp/libzen5_optimizer.so /app/
-# Copy entrypoint script
 COPY --chmod=755 --chown=appuser:appuser docker/llama-cpu/entrypoint.cpu.sh /app/entrypoint.sh
 ```
 
-**Environment Configuration**
+- **/app/server**: The `llama-server` binary, renamed to `server` for entrypoint compatibility.
+- **/app/*.so***: The shared libraries the server links against (libllama, libggml*, libmtmd), copied explicitly rather than via a wholesale `bin/*` copy.
+- **/app/libzen5_optimizer.so**: The hugepage optimization library.
+- **/app/entrypoint.sh**: The parameterized startup script.
+
+**Environment configuration**
 ```dockerfile
 # Library path for llama.cpp shared libs
 ENV LD_LIBRARY_PATH=/app
@@ -256,19 +299,19 @@ EXPOSE 8001
 ENTRYPOINT ["/app/entrypoint.sh"]
 ```
 
-**OpenMP Configuration**
-- **LD_LIBRARY_PATH=/app**: Locates libzen5_optimizer.so and other libraries
-- **OMP_PROC_BIND=spread**: Distributes threads across cores for better cache utilization
-- **OMP_PLACES=cores**: Optimizes memory access patterns per physical core
-- **OMP_NUM_THREADS**: Set dynamically by entrypoint based on THREADS variable
+**OpenMP configuration**
+- **LD_LIBRARY_PATH=/app**: Locates `libzen5_optimizer.so` and the copied shared libraries.
+- **OMP_PROC_BIND=spread**: Distributes threads across cores for better cache utilization.
+- **OMP_PLACES=cores**: Binds threads to physical cores.
+- **OMP_NUM_THREADS**: Set dynamically by the entrypoint from the THREADS variable.
 
-## Entrypoint Configuration
+## Entrypoint configuration
 
-The entrypoint script (`entrypoint.cpu.sh`) provides parameterized server configuration.
+The entrypoint script (`docker/llama-cpu/entrypoint.cpu.sh`) builds a `CMD_ARGS` bash array, gating optional flags on environment variables, then execs the server. It validates the model file, enables the zen5_optimizer via LD_PRELOAD, and reports memory status before loading.
 
-### Required Environment Variables
+### Required environment variables
 
-These must be provided via docker-compose or docker run:
+The script fails fast if any of these are missing:
 
 | Variable | Description |
 |----------|-------------|
@@ -277,73 +320,120 @@ These must be provided via docker-compose or docker run:
 | `THREADS` | Number of CPU threads for inference |
 | `THREADS_BATCH` | Number of threads for batch processing |
 
-### Optional Environment Variables
+### Optional environment variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SERVER_HOST` | 0.0.0.0 | Bind address for server |
-| `N_GPU_LAYERS` | 0 | GPU layers (0 for CPU-only) |
-| `CTX_SIZE` | 32768 | Context window size |
-| `BATCH_SIZE` | 2048 | Logical batch size |
-| `UBATCH_SIZE` | 512 | Physical batch size |
-| `THREADS_HTTP` | 2 | HTTP handler threads |
+These have defaults and always map to a server flag:
 
-### Server Flags
+| Variable | Default | Server flag | Description |
+|----------|---------|-------------|-------------|
+| `SERVER_HOST` | `0.0.0.0` | `--host` | Bind address for the server |
+| `N_GPU_LAYERS` | `0` | `--n-gpu-layers` | GPU layers (0 for CPU-only) |
+| `CTX_SIZE` | `32768` | `--ctx-size` | Context window size |
+| `BATCH_SIZE` | `2048` | `--batch-size` | Logical batch size |
+| `UBATCH_SIZE` | `512` | `--ubatch-size` | Physical batch size |
+| `THREADS_HTTP` | `2` | `--threads-http` | HTTP handler threads |
 
-The entrypoint executes the server with the following flags:
+### Feature flags
+
+These defaults preserve the historical hardcoded behavior. Each maps to a flag that is appended only when its condition holds, except `FLASH_ATTN`, which is always passed:
+
+| Variable | Default | Server flag | Condition |
+|----------|---------|-------------|-----------|
+| `FLASH_ATTN` | `on` | `--flash-attn <value>` | Always appended |
+| `CACHE_REUSE` | `256` | `--cache-reuse <value>` | Appended when greater than 0 |
+| `CONT_BATCHING` | `true` | `--cont-batching` | Appended when `true` |
+| `MLOCK` | `true` | `--mlock` | Appended when `true` |
+| `NO_REPACK` | `true` | `--no-repack` | Appended when `true` |
+
+- **FLASH_ATTN**: The upstream default is now `auto`. Passing `on` explicitly is deliberate, keeping Flash Attention enabled regardless of upstream default changes.
+- **NO_REPACK**: Weight repacking rearranges weights into row-interleaved layouts for the AVX-512 GEMM paths. It is the main CPU throughput lever upstream, but it increases startup time. The default disables it (`NO_REPACK=true` passes `--no-repack`) as a documented tradeoff, pending a benchmark comparison against `NO_REPACK=false`. Set `NO_REPACK=false` to enable repacking and measure the throughput difference.
+
+### Advanced server knobs
+
+These are appended only when explicitly set, so the server falls back to its own defaults otherwise:
+
+| Variable | Default | Server flag | Condition |
+|----------|---------|-------------|-----------|
+| `CACHE_TYPE_K` | unset | `--cache-type-k <value>` | Appended when non-empty |
+| `CACHE_TYPE_V` | unset | `--cache-type-v <value>` | Appended when non-empty |
+| `KV_UNIFIED` | `false` | `--kv-unified` | Appended when `true` |
+| `CTX_CHECKPOINTS` | unset | `--ctx-checkpoints <value>` | Appended when non-empty |
+| `JINJA_ENABLED` | `false` | `--jinja` | Appended when `true` |
+
+### Server command construction
+
+The script starts from a base `CMD_ARGS` array containing the required flags plus the always-on `--flash-attn` and `--metrics`:
+
 ```bash
-exec ./server \
-    --model "$MODEL_PATH" \
-    --host "$SERVER_HOST" \
-    --port "$SERVER_PORT" \
-    --n-gpu-layers "$N_GPU_LAYERS" \
-    --ctx-size "$CTX_SIZE" \
-    --batch-size "$BATCH_SIZE" \
-    --ubatch-size "$UBATCH_SIZE" \
-    --threads "$THREADS" \
-    --threads-batch "$THREADS_BATCH" \
-    --threads-http "$THREADS_HTTP" \
-    --flash-attn "on" \
-    --cache-reuse 256 \
-    --cont-batching \
-    --metrics \
-    --mlock \
-    --no-repack
+# Build command arguments
+CMD_ARGS=(
+    "./server"
+    "--model" "$MODEL_PATH"
+    "--host" "$SERVER_HOST"
+    "--port" "$SERVER_PORT"
+    "--n-gpu-layers" "$N_GPU_LAYERS"
+    "--ctx-size" "$CTX_SIZE"
+    "--batch-size" "$BATCH_SIZE"
+    "--ubatch-size" "$UBATCH_SIZE"
+    "--threads" "$THREADS"
+    "--threads-batch" "$THREADS_BATCH"
+    "--threads-http" "$THREADS_HTTP"
+    "--flash-attn" "$FLASH_ATTN"
+    "--metrics"
+)
 ```
 
-**Flag Descriptions**
-- **--flash-attn "on"**: Enable Flash Attention for memory efficiency
-- **--cache-reuse 256**: Reuse KV cache for repeated prompts
-- **--cont-batching**: Enable continuous batching for throughput
-- **--metrics**: Expose Prometheus-compatible metrics
-- **--mlock**: Lock model in RAM (prevents swapping)
-- **--no-repack**: Skip tensor repacking (startup optimization)
+It then appends the feature and advanced flags conditionally before executing the array:
 
-**Entrypoint Features**
-- Validates model file exists before starting
-- Enables zen5_optimizer via LD_PRELOAD
-- Reports memory status (including hugepage allocation)
-- Sets OMP_NUM_THREADS to match THREADS variable
+```bash
+# Add optional parameters based on environment variables
+if [[ "$CACHE_REUSE" -gt 0 ]]; then
+    CMD_ARGS+=("--cache-reuse" "$CACHE_REUSE")
+fi
 
-## Performance Optimization Strategy
+if [[ "$CONT_BATCHING" == "true" ]]; then
+    CMD_ARGS+=("--cont-batching")
+fi
 
-### AMD Zen 5 Architecture Targeting
+if [[ "$MLOCK" == "true" ]]; then
+    CMD_ARGS+=("--mlock")
+fi
 
-**Instruction Set Utilization**
+if [[ "$NO_REPACK" == "true" ]]; then
+    CMD_ARGS+=("--no-repack")
+fi
+```
+
+- **--metrics**: Exposes Prometheus-compatible metrics unconditionally.
+- The advanced knobs (`--cache-type-k`, `--cache-type-v`, `--kv-unified`, `--ctx-checkpoints`, `--jinja`) follow the same conditional pattern.
+
+The final array is executed with `exec "${CMD_ARGS[@]}"`, replacing the shell process with the server.
+
+**Entrypoint responsibilities**
+- Validates that the model file exists before starting, exiting with an error otherwise.
+- Enables the zen5_optimizer via LD_PRELOAD.
+- Reports memory status, including hugepage counters from `/proc/meminfo`, before the model loads.
+- Sets `OMP_NUM_THREADS` to match the THREADS variable.
+
+## Performance optimization strategy
+
+### AMD Zen 5 architecture targeting
+
+**Instruction set utilization**
 The implementation targets specific AMD Zen 5 capabilities:
-- **znver5 targeting**: -march=znver5 generates Zen 5-specific code
-- **AVX-512 extensions**: Full 512-bit vector processing via cmake flags
-- **Native CPU features**: GGML_NATIVE=ON enables runtime feature detection
+- **znver5 targeting**: `-march=znver5` generates Zen 5-specific code.
+- **AVX-512 extensions**: Full 512-bit vector processing via cmake flags.
+- **Native CPU features**: `GGML_NATIVE=ON` enables runtime feature detection.
 
-**Compiler Optimization Pipeline**
-1. **Architecture targeting**: `-march=znver5` generates Zen 5-specific code
-2. **Performance tuning**: `-mtune=znver5` optimizes for Zen 5 execution
-3. **Aggressive optimization**: `-O3` enables maximum compiler optimization
-4. **Link-time optimization**: GGML_LTO=ON for cross-module optimization
+**Compiler optimization pipeline**
+1. **Architecture targeting**: `-march=znver5` generates Zen 5-specific code.
+2. **Performance tuning**: `-mtune=znver5` optimizes for Zen 5 execution.
+3. **Aggressive optimization**: `-O3` enables maximum compiler optimization.
+4. **Link-time optimization**: `GGML_LTO=ON` for cross-module optimization.
 
-### AVX-512 CMAKE Configuration
+### AVX-512 cmake configuration
 
-AVX-512 is enabled via cmake flags (not CFLAGS) for precise control:
+AVX-512 is enabled via cmake flags rather than CFLAGS for precise control:
 
 | Flag | Description |
 |------|-------------|
@@ -352,59 +442,63 @@ AVX-512 is enabled via cmake flags (not CFLAGS) for precise control:
 | `GGML_AVX512_VNNI=ON` | Vector Neural Network Instructions (INT8) |
 | `GGML_AVX512_BF16=ON` | BFloat16 support for Zen 5 |
 
-**Why cmake flags instead of CFLAGS?**
-- Precise control over which AVX-512 extensions are used
-- llama.cpp cmake detects and enables optimal code paths
-- Avoids potential compatibility issues with -ffast-math
+**Rationale for cmake flags over CFLAGS**
+- Precise control over which AVX-512 extensions are used.
+- The llama.cpp cmake logic detects and enables the optimal code paths.
+- Avoids compatibility issues with unrelated CFLAGS changes.
 
-### Threading Configuration
+### Threading configuration
 
-**Parallel Processing Setup**
-- **OpenMP threads**: Set dynamically via entrypoint to match THREADS variable
-- **Core distribution**: `OMP_PROC_BIND=spread` distributes threads across cores
-- **Cache awareness**: `OMP_PLACES=cores` optimizes for physical core cache
-- **HTTP threading**: 2 dedicated threads for API request handling
+**Parallel processing setup**
+- **OpenMP threads**: Set dynamically by the entrypoint to match the THREADS variable.
+- **Core distribution**: `OMP_PROC_BIND=spread` distributes threads across cores.
+- **Cache awareness**: `OMP_PLACES=cores` binds threads to physical cores.
+- **HTTP threading**: 2 dedicated threads for API request handling (`THREADS_HTTP`).
 
-### Memory Optimization
+### Memory optimization
 
-**Memory Management Strategy**
-- **Memory locking**: `--mlock` prevents model data from being swapped to disk
-- **Hugepage allocation**: zen5_optimizer uses 2MB pages for large allocations
-- **Batch processing**: Optimized batch sizes (2048/512) for Zen 5 memory subsystem
-- **Context management**: 32K context size balances memory usage and performance
-- **KV cache reuse**: `--cache-reuse 256` for repeated prompt patterns
+**Memory management strategy**
+- **Memory locking**: `--mlock` prevents model data from being swapped to disk.
+- **Hugepage allocation**: The zen5_optimizer uses 2MB pages for allocations of 1GB or larger.
+- **Batch processing**: Batch sizes of 2048 (logical) and 512 (physical) for the Zen 5 memory subsystem.
+- **Context management**: A 32768-token context balances memory usage and capacity.
+- **KV cache reuse**: `--cache-reuse 256` for repeated prompt prefixes.
+- **Weight repacking**: Disabled by default to shorten startup; see [Feature flags](#feature-flags) for the tradeoff.
 
-## Container Security Implementation
+## Container security implementation
 
-**Multi-Layer Security Approach**
-- **Minimal runtime**: Only essential libraries (libgomp1, curl) included
-- **Non-root execution**: Application runs as dedicated non-privileged user
-- **No interactive access**: User account configured without shell access
-- **Controlled exposure**: Only port 8001 exposed
+**Multi-layer security approach**
+- **Minimal runtime**: Only essential shared libraries (libgomp1, libssl3t64, curl) are installed.
+- **Non-root execution**: The application runs as a dedicated non-privileged user.
+- **No interactive access**: The user account is configured without shell access.
+- **Controlled exposure**: Only port 8001 is exposed.
 
-**Docker Compose Integration**
-When deployed via docker-compose, additional security measures include:
-- **Capability dropping**: All Linux capabilities removed (`cap_drop: ALL`)
-- **Privilege restrictions**: `no-new-privileges:true` prevents escalation
-- **Resource constraints**: CPU and memory limits enforced (96GB, cores 0-15)
-- **Read-only containers**: Filesystem mounted read-only for immutability
+**Docker Compose integration**
+The `llama-cpu` service in `docker-compose.yaml` adds further constraints:
+- **Capability dropping**: All Linux capabilities are removed (`cap_drop: ALL`).
+- **Privilege restrictions**: `no-new-privileges:true` prevents escalation.
+- **Resource constraints**: 96GB memory limit and CPU cores 0-15 via `cpuset`.
+- **Read-only container**: The root filesystem is mounted read-only (`read_only: true`).
+- **Thread allocation**: `THREADS=16` and `THREADS_BATCH=16`, matching the 16 pinned cores.
+- **Loopback binding**: The port is published as `127.0.0.1:8001:8001`.
+- **Health check**: `curl -f http://localhost:8001/v1/health` runs every 30 seconds with a 180-second start period. The server responds on both `/health` and `/v1/health`; the compose check uses `/v1/health`.
 
-## Reference Implementation
+## Reference implementation
 
-**File Structure**
-- **docker/llama-cpu/Dockerfile.cpu**: Multi-stage Dockerfile implementation
-- **docker/llama-cpu/entrypoint.cpu.sh**: Parameterized server startup script
-- **hugepages/CMakeLists.txt**: zen5_optimizer build configuration
-- **hugepages/src/**: zen5_optimizer source files
-- **docker-compose.yaml**: Container orchestration with security hardening
+**File structure**
+- `/docker/llama-cpu/Dockerfile.cpu`: Multi-stage Dockerfile implementation.
+- `/docker/llama-cpu/entrypoint.cpu.sh`: Parameterized server startup script.
+- `/hugepages/CMakeLists.txt`: zen5_optimizer build configuration.
+- `/hugepages/src/`: zen5_optimizer source files.
+- `/docker-compose.yaml`: Container orchestration with security hardening.
 
-**Integration with AI Workstation**
-This CPU implementation works in conjunction with:
-- **GPU containers**: Parallel execution with CUDA-optimized containers (llama-gpu, vllm-gpu)
-- **Resource isolation**: Container allocated 16 cores (0-15) and 96GB RAM via cpuset
+**Integration with the AI workstation**
+This CPU implementation runs alongside:
+- **GPU containers**: The CUDA-optimized `llama-gpu` and `vllm-gpu` services.
+- **Resource isolation**: The container is allocated 16 cores (0-15) and a 96GB memory limit via `cpuset` and `deploy.resources.limits`.
 
 ---
 
-*This CPU Docker implementation provides optimized AI model inference on the AMD Ryzen 9950X workstation. The multi-stage build process ensures minimal runtime overhead while maximizing performance through AVX-512 optimizations and hugepage memory allocation.*
+*This CPU Docker implementation targets AI model inference on the AMD Ryzen 9950X workstation. The multi-stage build keeps runtime dependencies minimal while enabling AVX-512 code paths and hugepage memory allocation.*
 
-*Last Updated: 2026-01-03*
+*Last Updated: 2026-07-12*
