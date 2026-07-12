@@ -146,11 +146,17 @@ services:
   
   # Open WebUI Service
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main
+    # Pinned to the stable release channel by digest (immutable). Re-resolve with
+    # `docker buildx imagetools inspect ghcr.io/open-webui/open-webui:latest` to update.
+    image: ghcr.io/open-webui/open-webui:latest@sha256:a26effeb220e132482bf7e0560b3404843e7bc40d23051144e062960df8df6b0
     container_name: open-webui
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "3000:8080" # Access WebUI from http://localhost:3000
+      - "127.0.0.1:3000:8080" # Access WebUI from http://localhost:3000 (localhost only)
     read_only: true
     volumes:
       - open-webui-data:/app/backend/data
@@ -164,7 +170,8 @@ services:
       - 'OPENAI_API_KEY=NONE'
       # Model configuration import
       - 'WEBUI_IMPORTS=[{"name":"qwen3 coder","model":"qwen3 coder","baseURL":"http://llama-gpu:8002/v1","apiKey":"NONE"}]'
-      - 'WEBUI_SECRET_KEY=NONE'
+      # WEBUI_SECRET_KEY intentionally unset: open-webui auto-generates a strong key
+      # and persists it to the data volume. Do not set a literal key in this file.
     # depends_on:
     #   llama-gpu:
     #     condition: service_healthy # Wait for the GPU service to be healthy before starting

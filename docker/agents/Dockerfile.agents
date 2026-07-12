@@ -1,0 +1,77 @@
+# Dockerfile.agents
+#
+# Containment image for coding agents (OpenCode + Claude Code). Unlike the
+# inference services, an agent is a general-purpose mutator: it edits a repo,
+# runs compilers, and installs packages. The security model is therefore
+# OS-level isolation (see docs/sandbox/agent-sandbox.md), not the permission
+# rules the CLIs enforce internally.
+#
+# Both CLIs are pinned to exact versions (pin, then bump deliberately). The
+# image carries no GPU access and no host credentials; the single scoped key it
+# needs is injected by the compose file at run time.
+
+# Pinned base. node:22 is the current LTS line; bump deliberately per the
+# repo's pin-then-update rule.
+FROM node:22.14.0-bookworm-slim
+
+# Exact CLI pins. Resolved against the npm registry at implementation time;
+# both match the host install (opencode 1.17.18, claude-code 2.1.207).
+ARG OPENCODE_VERSION=1.17.18
+ARG CLAUDE_CODE_VERSION=2.1.207
+
+# Language-server pin (Python symbol navigation for both CLIs).
+ARG PYRIGHT_VERSION=1.1.411
+
+# Runtime tools the agents shell out to. git is required for the worktree
+# workflow; curl/ca-certificates support egress and the acceptance checks.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        git \
+        curl \
+        ca-certificates \
+        jq \
+        ripgrep \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install both CLIs globally at the pinned versions.
+RUN npm install -g --no-fund --no-audit \
+        "opencode-ai@${OPENCODE_VERSION}" \
+        "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+        "pyright@${PYRIGHT_VERSION}" \
+    && npm cache clean --force
+
+# Native LSP tool in Claude Code (symbol navigation instead of grep sweeps);
+# pyright above serves both CLIs.
+ENV ENABLE_LSP_TOOL=1
+
+# Disable the Claude Code auto-updater inside the image; version currency is
+# managed by rebuilding against a new pin, not by in-place self-update.
+ENV DISABLE_AUTOUPDATER=1
+
+# Route all egress through the proxy sidecar. This is defense in depth only:
+# the real enforcement is the internal:true network in the compose file, which
+# leaves the container no route to the internet except the proxy. The env vars
+# simply tell well-behaved HTTP clients where that proxy is.
+ENV HTTP_PROXY=http://agent-proxy:3128 \
+    HTTPS_PROXY=http://agent-proxy:3128 \
+    http_proxy=http://agent-proxy:3128 \
+    https_proxy=http://agent-proxy:3128 \
+    NO_PROXY=localhost,127.0.0.1,agent-proxy \
+    no_proxy=localhost,127.0.0.1,agent-proxy
+
+# Sandbox-only OpenCode config: autoupdate off (the image is the pinned unit of
+# currency). The host copy keeps updates on, where staleness is the larger risk.
+# It lives on the (read-only) rootfs and is selected via OPENCODE_CONFIG, so the
+# agent's home directory can be an ephemeral tmpfs at run time.
+COPY docker/agents/opencode.sandbox.json /etc/opencode/opencode.json
+ENV OPENCODE_CONFIG=/etc/opencode/opencode.json
+
+# Non-root user. The node base image already ships a `node` user at uid 1000,
+# which matches the host user that owns the bind-mounted worktree, so writes to
+# the worktree work without root. Reuse it rather than add a duplicate uid.
+USER node
+WORKDIR /work
+
+# No ENTRYPOINT: the compose file / make wrapper supplies the CLI invocation so
+# one image serves both tools.
+CMD ["bash"]

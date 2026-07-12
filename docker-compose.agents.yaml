@@ -1,0 +1,99 @@
+# docker-compose.agents.yaml
+#
+# Containment for coding-agent sessions (OpenCode + Claude Code). Kept in a
+# separate compose file so `make up` never starts it; invoke via
+# `make agent-sandbox` (see the Makefile) or `docker compose -f
+# docker-compose.agents.yaml run --rm agent ...`.
+#
+# The security boundary is OS-level, not the CLI permission rules:
+#   - the `agent` service sits on an internal:true network with NO route to the
+#     internet except the proxy; the proxy allowlists egress by domain.
+#   - the rootfs is read-only; only a bind-mounted git worktree and tmpfs caches
+#     are writable, so a compromised session's damage is git-recoverable.
+#   - no GPU, no host credential mounts; exactly one scoped key is injected.
+# See docs/sandbox/agent-sandbox.md for the full model.
+
+services:
+  # Allowlisting egress proxy. On both networks: it has real internet via
+  # agent-egress and is reachable from the sandbox via agent-internal.
+  agent-proxy:
+    build:
+      context: .
+      dockerfile: docker/agents/proxy/Dockerfile.proxy
+    container_name: agent-proxy
+    hostname: agent-proxy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # squid binds low internal port 3128 and needs setuid for its helper user.
+    cap_add:
+      - SETUID
+      - SETGID
+    read_only: true
+    tmpfs:
+      - /var/spool/squid:size=64M,mode=1777
+      - /var/log/squid:size=32M,mode=1777
+      - /var/run:size=16M,mode=1777
+    networks:
+      - agent-internal
+      - agent-egress
+    restart: "no"
+
+  # The agent session container. One session per `run --rm`.
+  agent:
+    build:
+      context: .
+      dockerfile: docker/agents/Dockerfile.agents
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    # Writable surfaces: the bind-mounted worktree (below) plus ephemeral tmpfs
+    # for the home dir and package-manager caches. Nothing else can be written.
+    tmpfs:
+      - /home/node:size=256M,mode=0700,uid=1000,gid=1000
+      - /tmp:size=1G,mode=1777
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+    # Only the git worktree is mounted, read-write. AGENT_WORKTREE is set by the
+    # make wrapper to ../ai-experiments-<name>; damage stays inside that worktree.
+    volumes:
+      - ${AGENT_WORKTREE:-./}:/work:rw
+    environment:
+      # Exactly one scoped secret is populated by the wrapper; the other stays
+      # empty. Claude Code sessions carry a subscription OAuth token minted by
+      # `claude setup-token` on the host (no API key, no ~/.claude mount);
+      # OpenCode sessions carry a RunPod key. Neither gets the other's secret.
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      - RUNPOD_API_KEY=${RUNPOD_API_KEY:-}
+      # Terminal fidelity only (truecolor rendering); no security effect.
+      - TERM=${TERM:-xterm-256color}
+      - COLORTERM=${COLORTERM:-truecolor}
+    # agent-internal is internal:true => no direct egress; the proxy is the only
+    # way out. This is the enforcement, not the HTTP_PROXY env in the image.
+    networks:
+      - agent-internal
+    depends_on:
+      - agent-proxy
+    working_dir: /work
+    restart: "no"
+    # Overridden by the run command (claude ... / opencode ...).
+    command: ["bash"]
+
+networks:
+  # No internet: containers here reach only each other. Fixed subnet so the
+  # proxy's squid.conf localnet ACL (172.31.0.0/16) matches.
+  agent-internal:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.0.0/16
+  # Real egress, used only by the proxy.
+  agent-egress:
+    driver: bridge
+    internal: false

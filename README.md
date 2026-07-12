@@ -267,8 +267,17 @@ ai-experiments/
 - `update_ubuntu.sh` - System updates
 
 ### Utilities
-- `download_model_hf.py` - HuggingFace model downloader
 - `check_py_deps_install.py` - Dependency verification
+
+Model downloads use the Hugging Face CLI directly (ships with `huggingface-hub`):
+
+```bash
+# Full repository
+HF_HUB_ENABLE_HF_TRANSFER=1 poetry run hf download <repo-id> --local-dir <dir>
+# Single file (e.g. a GGUF quant)
+HF_HUB_ENABLE_HF_TRANSFER=1 poetry run hf download <repo-id> <filename> --local-dir <dir>
+```
+
 - `dependency_check.sh` - System dependency check
 - `find_pythons.sh` - Python installation finder
 - `storage_check.sh` - Storage verification

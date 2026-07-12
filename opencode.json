@@ -1,0 +1,42 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [".styles/*.md"],
+  "permission": {
+    "bash": {
+      "rm -rf *": "deny",
+      "nvidia-smi -r*": "deny",
+      "cat *.env*": "deny",
+      "* ~/.ssh/*": "deny",
+      "* ~/.aws/*": "deny",
+      "docker system prune*": "ask",
+      "docker volume rm*": "ask",
+      "git push*": "ask",
+      "* /mnt/ai-data/models*": "ask",
+      "*": "allow"
+    },
+    "edit": "allow",
+    "webfetch": {
+      "https://docs.runpod.io/*": "allow",
+      "https://github.com/*": "allow",
+      "*": "ask"
+    },
+    "external_directory": "ask",
+    "doom_loop": "deny"
+  },
+  "lsp": {
+    "typescript": { "disabled": true },
+    "pyright": {
+      "command": ["pyright-langserver", "--stdio"],
+      "extensions": [".py"]
+    }
+  },
+  "formatter": {
+    "black": { "command": ["black"], "extensions": [".py"] }
+  },
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 12000
+  },
+  "share": "disabled"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "ai-experiments-opencode-plugins",
+  "private": true,
+  "type": "module",
+  "description": "Local OpenCode plugins: thin adapters over scripts/agents/ guardrails plus token-usage accounting.",
+  "devDependencies": {
+    "@opencode-ai/plugin": "*"
+  }
+}

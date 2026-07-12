@@ -163,20 +163,25 @@ vllm-gpu:
 **open-webui Service Configuration**
 ```yaml
 open-webui:
-  image: ghcr.io/open-webui/open-webui:main
+  image: ghcr.io/open-webui/open-webui:latest@sha256:a26effeb...
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
   ports:
-    - "3000:8080"
+    - "127.0.0.1:3000:8080"
   read_only: true
   volumes:
     - open-webui-data:/app/backend/data
 ```
 
 **User Interface Security:**
-- **External image**: Official open-webui container from GitHub registry
-- **Port mapping**: Public port 3000 mapped to container port 8080
+- **External image**: Official open-webui container, pinned to the stable release by digest
+- **Port mapping**: Bound to 127.0.0.1 only; container port 8080 exposed as localhost:3000
 - **Read-only filesystem**: Prevents web interface tampering
-- **Persistent data**: Named volume for configuration persistence
-- **Limited hardening**: Unlike other services, lacks security_opt and cap_drop settings
+- **Persistent data**: Named volume for configuration persistence; open-webui auto-generates
+  and persists its `WEBUI_SECRET_KEY` here (no literal key set in compose)
+- **Hardening**: Runs with `no-new-privileges` and `cap_drop: ALL`, matching the other services
 
 ## Security Hardening
 
@@ -301,13 +306,13 @@ ports:
   - "127.0.0.1:8001:8001"  # llama-cpu
   - "127.0.0.1:8002:8002"  # llama-gpu
   - "127.0.0.1:8003:8003"  # vllm-gpu
+  - "127.0.0.1:3000:8080"  # open-webui
 ```
 
 **Access Control:**
-- **Localhost restriction**: Services only accessible from host machine
+- **Localhost restriction**: All services, including the web UI, bind to 127.0.0.1 only
 - **No external exposure**: Prevents remote exploitation
 - **Explicit binding**: 127.0.0.1 prefix ensures local-only access
-- **Web UI exception**: Port 3000 publicly accessible for user interface
 
 ### Service Discovery
 

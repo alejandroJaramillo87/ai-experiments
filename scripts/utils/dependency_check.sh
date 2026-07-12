@@ -118,6 +118,38 @@ if command -v docker &> /dev/null; then
         print_error "Docker: not running"
         ((FAIL_COUNT++))
     fi
+
+    # NVIDIA container toolkit - required for GPU containers (llama-gpu, vllm-gpu).
+    # Detected either as a registered "nvidia" Docker runtime (legacy) or via the
+    # nvidia-ctk binary / a CDI spec (modern nvidia-container-toolkit uses CDI and
+    # does not register a runtime in `docker info`).
+    if docker info --format '{{.Runtimes}}' 2>/dev/null | grep -q "nvidia" \
+        || command -v nvidia-ctk &> /dev/null \
+        || ls /etc/cdi/nvidia*.yaml &> /dev/null; then
+        print_ok "NVIDIA container toolkit: available"
+        ((PASS_COUNT++))
+    else
+        print_error "NVIDIA container toolkit: not found"
+        echo "  Solution: install nvidia-container-toolkit (runtime or CDI mode)"
+        ((FAIL_COUNT++))
+    fi
+
+    # Service health (informational) - the four documented services. Down is not
+    # a failure here; services may be intentionally stopped.
+    echo "Service status:"
+    SERVICES=$(docker compose ps --format '{{.Name}}\t{{.State}}' 2>/dev/null)
+    if [ -n "$SERVICES" ]; then
+        echo "$SERVICES" | while IFS=$'\t' read -r name state; do
+            [ -z "$name" ] && continue
+            if [ "$state" = "running" ]; then
+                print_ok "  $name: $state"
+            else
+                print_info "  $name: ${state:-stopped}"
+            fi
+        done
+    else
+        print_skip "  no compose services running (or not in project directory)"
+    fi
 else
     print_error "Docker: not installed"
     ((FAIL_COUNT++))
@@ -139,6 +171,17 @@ if command -v nvidia-smi &> /dev/null; then
     # Check for running GPU processes
     GPU_PROCS=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | wc -l)
     echo "GPU Processes: $GPU_PROCS running"
+
+    # Active clock throttle reasons - surfaces thermal/power/reliability slowdowns.
+    # "Not Active" (or absence) means the GPU is running unthrottled.
+    THROTTLE=$(nvidia-smi --query-gpu=clocks_throttle_reasons.active --format=csv,noheader 2>/dev/null | head -1)
+    if [ -z "$THROTTLE" ] || echo "$THROTTLE" | grep -qiE "0x0000000000000000|Not Active"; then
+        print_ok "  GPU throttling: none active"
+        ((PASS_COUNT++))
+    else
+        print_warn "  GPU throttling: active ($THROTTLE)"
+        ((FAIL_COUNT++))
+    fi
 
     echo
     echo "GPU Optimizations:"
@@ -290,15 +333,41 @@ except ImportError:
     fi
 
     # Check key AI packages
+    # Single interpreter start (imports all packages) instead of one `poetry run`
+    # per package, which spawns a fresh interpreter each time. Python emits a
+    # "status<TAB>name" line per package; the shell colorizes via print helpers.
     echo
     echo "Key AI Packages:"
-    for pkg in transformers accelerate datasets huggingface-hub bitsandbytes deepspeed; do
-        if poetry run python -c "import $pkg" 2>/dev/null; then
-            print_ok "  $pkg"
-        else
-            print_error "  $pkg: not found"
-        fi
-    done
+    PKG_STATUS=$(poetry run python - <<'PYEOF' 2>/dev/null
+import importlib
+# Map display name -> import name (differ for hyphenated distributions)
+packages = {
+    "transformers": "transformers",
+    "accelerate": "accelerate",
+    "datasets": "datasets",
+    "huggingface-hub": "huggingface_hub",
+    "bitsandbytes": "bitsandbytes",
+    "deepspeed": "deepspeed",
+}
+for name, module in packages.items():
+    try:
+        importlib.import_module(module)
+        print(f"OK\t{name}")
+    except Exception:
+        print(f"MISSING\t{name}")
+PYEOF
+)
+    if [ -n "$PKG_STATUS" ]; then
+        while IFS=$'\t' read -r status pkg; do
+            if [ "$status" = "OK" ]; then
+                print_ok "  $pkg"
+            else
+                print_error "  $pkg: not found"
+            fi
+        done <<< "$PKG_STATUS"
+    else
+        print_error "  package check: poetry environment not available"
+    fi
 else
     print_error "Python 3: not found"
 fi
@@ -336,6 +405,14 @@ echo "Transparent Huge Pages: $THP_ENABLED"
 # NUMA nodes
 NUMA_NODES=$(lscpu | grep "NUMA node(s):" | awk '{print $3}')
 echo "NUMA Nodes: $NUMA_NODES"
+
+# HF Hub fast-transfer toggle (hf-transfer is a project dependency; the env var
+# activates it for accelerated model downloads).
+if [ "${HF_HUB_ENABLE_HF_TRANSFER:-}" = "1" ]; then
+    print_ok "HF_HUB_ENABLE_HF_TRANSFER: enabled"
+else
+    print_info "HF_HUB_ENABLE_HF_TRANSFER: not set (downloads use default transfer)"
+fi
 
 # Memory Allocator - Container Check (zen5_optimizer only)
 echo "Memory Allocator (CPU Container):"

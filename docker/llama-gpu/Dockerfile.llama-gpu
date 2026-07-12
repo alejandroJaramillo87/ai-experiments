@@ -45,9 +45,12 @@ RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/lib
 
 # Build llama.cpp with CUDA optimizations
 # Full clone used to ensure all build dependencies and submodules are available
+# Pin to an exact commit for reproducible builds. Bump deliberately, not on rebuild.
+ARG LLAMA_CPP_COMMIT=e3546c7948e3af463d0b401e6421d5a4c2faf565
 RUN rm -rf /tmp/llama.cpp && \
     git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
     cd /tmp/llama.cpp && \
+    git checkout "${LLAMA_CPP_COMMIT}" && \
     mkdir build && cd build && \
     cmake .. \
         -DCMAKE_BUILD_TYPE=Release \

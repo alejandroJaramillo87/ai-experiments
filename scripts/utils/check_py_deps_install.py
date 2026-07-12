@@ -1,52 +1,154 @@
 #!/usr/bin/env python3
 """
 PyTorch GPU environment validation utility.
-Verifies PyTorch GPU setup and AI package dependencies.
+Verifies PyTorch GPU setup, Blackwell (sm_120) support, and AI package dependencies.
+
+Output follows .styles/PYTHON_OUTPUT_STYLE.md: bracketed status indicators, colorized
+for a TTY, plain when piped or under NO_COLOR, and pure JSON under --json.
 """
 
 import argparse
+import contextlib
+import io
 import json
+import os
 import re
 import subprocess
 import sys
-from typing import Dict, Any
-
-# Status indicators
-STATUS_OK = "OK"
-STATUS_WARN = "WARN"
-STATUS_ERROR = "ERROR"
+import warnings
+from importlib.metadata import PackageNotFoundError, version
+from typing import Any, Dict, Optional, Tuple
 
 # Exit codes
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
-EXIT_INVALID_USAGE = 2
 
-class PyTorchValidationError(Exception):
-    """Raised when PyTorch validation fails."""
-    pass
+# Key AI packages: display name -> (import name, required).
+# Import name differs from the distribution name for several packages. Optional
+# packages (required=False) report WARN rather than ERROR when absent; vllm lives
+# in the GPU containers and is not necessarily installed in the Poetry env.
+KEY_PACKAGES = {
+    "transformers": ("transformers", True),
+    "accelerate": ("accelerate", True),
+    "datasets": ("datasets", True),
+    "huggingface_hub": ("huggingface_hub", True),
+    "bitsandbytes": ("bitsandbytes", True),
+    "peft": ("peft", True),
+    "sentence_transformers": ("sentence_transformers", True),
+    "llama_cpp": ("llama_cpp", True),
+    "vllm": ("vllm", False),
+}
 
-def check_pytorch_gpu_setup() -> Dict[str, Any]:
-    """Check PyTorch GPU configuration and CUDA compatibility.
+# Distribution names for importlib.metadata.version() when they differ from the
+# import name used above.
+DIST_NAMES = {
+    "huggingface_hub": "huggingface-hub",
+    "llama_cpp": "llama-cpp-python",
+    "sentence_transformers": "sentence-transformers",
+}
+
+# Import-time stderr signatures that indicate a package imported but its native/CUDA
+# backend failed to load. Import "succeeds" so a naive check reports OK; we translate
+# these into a clean WARN instead. Maps a signature substring -> short reason.
+BACKEND_ERROR_SIGNATURES = {
+    "Configured CUDA binary not found": "CUDA backend unavailable",
+    "library load error": "native backend load error",
+}
+
+
+class Printer:
+    """Styled status output. Colorized for a TTY, plain otherwise.
+
+    In quiet mode (--json) all human output is suppressed so stdout stays pure JSON
+    and remains machine-parseable. See .styles/PYTHON_OUTPUT_STYLE.md.
+    """
+
+    def __init__(self, quiet: bool = False) -> None:
+        self.quiet = quiet
+        use_color = (
+            not quiet
+            and not os.environ.get("NO_COLOR")
+            and sys.stdout.isatty()
+        )
+        if use_color:
+            self._c = {
+                "OK": "\033[0;32m", "WARN": "\033[1;33m", "ERROR": "\033[0;31m",
+                "INFO": "\033[0;36m", "RUN": "\033[0;34m", "SKIP": "\033[0;34m",
+            }
+            self._nc = "\033[0m"
+        else:
+            self._c = {}
+            self._nc = ""
+
+    def _status(self, tag: str, message: str, indent: int = 0) -> None:
+        if self.quiet:
+            return
+        color = self._c.get(tag, "")
+        pad = " " * indent
+        print(f"{pad}{color}[{tag}]{self._nc} {message}")
+
+    def ok(self, message: str, indent: int = 0) -> None:
+        self._status("OK", message, indent)
+
+    def warn(self, message: str, indent: int = 0) -> None:
+        self._status("WARN", message, indent)
+
+    def error(self, message: str, indent: int = 0) -> None:
+        self._status("ERROR", message, indent)
+
+    def info(self, message: str, indent: int = 0) -> None:
+        self._status("INFO", message, indent)
+
+    def skip(self, message: str, indent: int = 0) -> None:
+        self._status("SKIP", message, indent)
+
+    def line(self, message: str = "") -> None:
+        """Plain line (headers, solution/context lines); suppressed when quiet."""
+        if not self.quiet:
+            print(message)
+
+
+def quiet_import(module_name: str) -> Tuple[Optional[Any], str]:
+    """Import a module, capturing its import-time warnings and stderr.
+
+    Heavy AI packages print warnings (pynvml FutureWarning via torch) or full
+    tracebacks (bitsandbytes with a missing CUDA binary) at import time even when the
+    import itself succeeds. Capturing keeps that noise out of the tool's output while
+    letting the caller inspect it.
 
     Returns:
-        Dictionary containing validation results:
-        - success: Boolean indicating overall success
-        - pytorch_version: PyTorch version string
-        - cuda_available: Boolean indicating CUDA availability
-        - pytorch_cuda_version: PyTorch CUDA build version
-        - system_cuda_version: System CUDA version from nvcc
-        - gpu_detected: Boolean indicating GPU detection
-        - gpu_name: GPU device name
-        - cudnn_available: Boolean indicating cuDNN availability
-
-    Raises:
-        PyTorchValidationError: If critical validation steps fail
+        (module or None if import failed, captured stderr text).
     """
-    print("PyTorch GPU environment check:")
-    print("Verifying PyTorch GPU, CUDA, and cuDNN configuration")
-    print()
+    buf = io.StringIO()
+    try:
+        with warnings.catch_warnings(), contextlib.redirect_stderr(buf):
+            warnings.simplefilter("ignore")
+            module = __import__(module_name)
+        return module, buf.getvalue()
+    except Exception:
+        return None, buf.getvalue()
 
-    result = {
+
+def _pkg_version(import_name: str) -> Optional[str]:
+    """Return the installed distribution version, or None if unavailable."""
+    dist = DIST_NAMES.get(import_name, import_name)
+    try:
+        return version(dist)
+    except PackageNotFoundError:
+        return None
+
+
+def check_pytorch_gpu_setup(out: Printer) -> Dict[str, Any]:
+    """Check PyTorch GPU configuration, CUDA compatibility, and Blackwell support.
+
+    Returns:
+        Dictionary of validation results (see keys in the initializer below).
+    """
+    out.line("PyTorch GPU environment check:")
+    out.line("Verifying PyTorch GPU, CUDA, cuDNN, and Blackwell (sm_120) support")
+    out.line()
+
+    result: Dict[str, Any] = {
         "success": False,
         "pytorch_version": None,
         "cuda_available": False,
@@ -54,20 +156,22 @@ def check_pytorch_gpu_setup() -> Dict[str, Any]:
         "system_cuda_version": None,
         "gpu_detected": False,
         "gpu_name": None,
-        "cudnn_available": False
+        "compute_capability": None,
+        "arch_list": None,
+        "sm_120_supported": None,
+        "bf16_supported": None,
+        "cudnn_available": False,
     }
 
-    # Import PyTorch
-    try:
-        import torch
-        result["pytorch_version"] = torch.__version__
-        print(f"PyTorch version: {STATUS_OK} ({torch.__version__})")
-    except ImportError:
-        print(f"PyTorch installation: {STATUS_ERROR} (not installed)")
+    # Import PyTorch (captures the pynvml FutureWarning emitted at import time).
+    torch, _ = quiet_import("torch")
+    if torch is None:
+        out.error("PyTorch installation: not installed")
         return result
-
-    print(f"Python version: {STATUS_OK} ({sys.version.split(' ')[0]})")
-    print()
+    result["pytorch_version"] = torch.__version__
+    out.ok(f"PyTorch version: {torch.__version__}")
+    out.ok(f"Python version: {sys.version.split(' ')[0]}")
+    out.line()
 
     # Check system CUDA version using nvcc
     try:
@@ -78,98 +182,143 @@ def check_pytorch_gpu_setup() -> Dict[str, Any]:
                     match = re.search(r'release (\d+\.\d+)', line)
                     if match:
                         result["system_cuda_version"] = match.group(1)
-                        print(f"System CUDA (nvcc): {STATUS_OK} ({result['system_cuda_version']})")
+                        out.ok(f"System CUDA (nvcc): {result['system_cuda_version']}")
                         break
     except FileNotFoundError:
-        print(f"System CUDA (nvcc): {STATUS_WARN} (not found in PATH)")
+        out.warn("System CUDA (nvcc): not found in PATH")
 
     # Check PyTorch CUDA version
     if hasattr(torch.version, 'cuda'):
         result["pytorch_cuda_version"] = torch.version.cuda
-        print(f"PyTorch CUDA build: {STATUS_OK} ({torch.version.cuda})")
+        out.ok(f"PyTorch CUDA build: {torch.version.cuda}")
 
     # Check if CUDA is available to PyTorch
     result["cuda_available"] = torch.cuda.is_available()
-    cuda_status = STATUS_OK if result["cuda_available"] else STATUS_ERROR
-    print(f"CUDA availability: {cuda_status} ({result['cuda_available']})")
-
-    if not result["cuda_available"]:
-        print(f"GPU configuration: {STATUS_ERROR} (PyTorch cannot access CUDA)")
-        print("  Solution: Verify NVIDIA drivers and PyTorch CUDA build")
-        print("  Common causes: driver issues, CPU-only PyTorch, version mismatch")
+    if result["cuda_available"]:
+        out.ok(f"CUDA availability: {result['cuda_available']}")
+    else:
+        out.error(f"CUDA availability: {result['cuda_available']}")
+        out.error("GPU configuration: PyTorch cannot access CUDA")
+        out.line("  Solution: Verify NVIDIA drivers and PyTorch CUDA build")
+        out.line("  Common causes: driver issues, CPU-only PyTorch, version mismatch")
         return result
 
-    # Check for version mismatch
+    # Check for version mismatch (major version)
     if result["system_cuda_version"] and result["pytorch_cuda_version"]:
         sys_major = result["system_cuda_version"].split('.')[0]
-        pytorch_cuda_major = result["pytorch_cuda_version"].split('.')[0] if result["pytorch_cuda_version"] else "unknown"
+        pytorch_cuda_major = result["pytorch_cuda_version"].split('.')[0]
 
         if sys_major != pytorch_cuda_major:
-            print(f"CUDA version compatibility: {STATUS_WARN} (version mismatch)")
-            print(f"  System: {result['system_cuda_version']}, PyTorch: {result['pytorch_cuda_version']}")
-            print("  Solution: Reinstall PyTorch for system CUDA version")
+            out.warn("CUDA version compatibility: version mismatch")
+            out.line(f"  System: {result['system_cuda_version']}, PyTorch: {result['pytorch_cuda_version']}")
+            out.line("  Solution: Reinstall PyTorch for system CUDA version")
 
     # GPU detection
     device_count = torch.cuda.device_count()
     result["gpu_detected"] = device_count > 0
-    gpu_status = STATUS_OK if device_count > 0 else STATUS_ERROR
-    print(f"GPU devices: {gpu_status} ({device_count} detected)")
+    if device_count > 0:
+        out.ok(f"GPU devices: {device_count} detected")
+    else:
+        out.error(f"GPU devices: {device_count} detected")
 
     if device_count > 0:
         result["gpu_name"] = torch.cuda.get_device_name(0)
         capability = torch.cuda.get_device_capability(0)
+        result["compute_capability"] = f"{capability[0]}.{capability[1]}"
         total_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-        print(f"  Primary GPU: {result['gpu_name']}")
-        print(f"  CUDA capability: {capability[0]}.{capability[1]}")
-        print(f"  Memory: {total_memory:.1f}GB")
+        out.line(f"  Primary GPU: {result['gpu_name']}")
+        out.line(f"  CUDA capability: {result['compute_capability']}")
+        out.line(f"  Memory: {total_memory:.1f}GB")
+
+        # Blackwell (sm_120) support: warn if the GPU is compute capability 12.x but
+        # the installed torch build lacks sm_120 kernels (falls back to JIT or fails).
+        # arch_list looks like ['sm_90', 'sm_100', 'sm_120', ...].
+        arch_list = torch.cuda.get_arch_list()
+        result["arch_list"] = arch_list
+        if capability[0] >= 12:
+            has_sm120 = any("120" in a for a in arch_list)
+            result["sm_120_supported"] = has_sm120
+            if has_sm120:
+                out.ok("Blackwell sm_120: present in torch arch list", indent=2)
+            else:
+                out.warn(f"Blackwell sm_120: not in torch build ({arch_list})", indent=2)
+                out.line("    Solution: install a torch build with sm_120 (cu130)")
+
+        # bf16 support (relevant for Blackwell inference/training precision)
+        result["bf16_supported"] = torch.cuda.is_bf16_supported()
+        if result["bf16_supported"]:
+            out.ok(f"bfloat16 support: {result['bf16_supported']}", indent=2)
+        else:
+            out.warn(f"bfloat16 support: {result['bf16_supported']}", indent=2)
 
     # Check cuDNN
     result["cudnn_available"] = torch.backends.cudnn.is_available()
-    cudnn_status = STATUS_OK if result["cudnn_available"] else STATUS_WARN
     if result["cudnn_available"]:
-        cudnn_version = torch.backends.cudnn.version()
-        print(f"cuDNN: {cudnn_status} (version {cudnn_version})")
+        out.ok(f"cuDNN: version {torch.backends.cudnn.version()}")
     else:
-        print(f"cuDNN: {cudnn_status} (not available)")
+        out.warn("cuDNN: not available")
 
-    # Test GPU operation
-    print()
+    # Test GPU operation with a real correctness assertion (not just "it ran").
+    out.line()
     try:
-        tensor = torch.randn(10, 10).cuda()
-        result_tensor = tensor * 2 + 1
-        print(f"GPU tensor test: {STATUS_OK} (operations functional)")
-        result["success"] = True
+        tensor = torch.randn(10, 10, device="cuda")
+        gpu_out = tensor * 2 + 1
+        expected = tensor.cpu() * 2 + 1
+        if torch.allclose(gpu_out.cpu(), expected, atol=1e-5):
+            out.ok("GPU tensor test: operations functional and correct")
+            result["success"] = True
+        else:
+            out.error("GPU tensor test: result mismatch")
     except Exception as e:
-        print(f"GPU tensor test: {STATUS_ERROR} ({str(e)})")
+        out.error(f"GPU tensor test: {str(e)}")
 
     return result
 
-def check_key_packages() -> Dict[str, bool]:
-    """Check key AI package availability.
+
+def check_key_packages(out: Printer) -> Dict[str, Dict[str, Any]]:
+    """Check key AI package availability, versions, and native-backend health.
 
     Returns:
-        Dictionary mapping package names to installation status.
+        Mapping of package name to {installed, version, required, warning}.
     """
-    print()
-    print("AI package availability:")
-    packages = {
-        "transformers": False,
-        "accelerate": False,
-        "datasets": False,
-        "huggingface_hub": False,
-        "bitsandbytes": False,
-        "peft": False
-    }
+    out.line()
+    out.line("AI package availability:")
 
-    for package in packages:
-        try:
-            __import__(package)
-            packages[package] = True
-            print(f"  {package}: {STATUS_OK}")
-        except ImportError:
-            print(f"  {package}: {STATUS_ERROR} (not installed)")
+    packages: Dict[str, Dict[str, Any]] = {}
+    for name, (import_name, required) in KEY_PACKAGES.items():
+        module, noise = quiet_import(import_name)
+        installed = module is not None
+        pkg_version = _pkg_version(import_name) if installed else None
+
+        # Detect a package that imported but whose native/CUDA backend failed to load
+        # (e.g. bitsandbytes with a missing libbitsandbytes_cuda*.so).
+        warning = None
+        if installed:
+            for signature, reason in BACKEND_ERROR_SIGNATURES.items():
+                if signature in noise:
+                    warning = reason
+                    break
+
+        packages[name] = {
+            "installed": installed,
+            "version": pkg_version,
+            "required": required,
+            "warning": warning,
+        }
+
+        version_suffix = f" {pkg_version}" if pkg_version else ""
+        if installed and warning:
+            out.warn(f"{name}:{version_suffix} ({warning})", indent=2)
+            out.line(f"    Solution: reinstall {name} matching the installed CUDA (cu130)")
+        elif installed:
+            out.ok(f"{name}:{version_suffix if pkg_version else ' installed'}", indent=2)
+        elif required:
+            out.error(f"{name}: not installed", indent=2)
+        else:
+            out.warn(f"{name}: not installed (optional)", indent=2)
 
     return packages
+
 
 def create_parser() -> argparse.ArgumentParser:
     """Create command line argument parser."""
@@ -186,60 +335,49 @@ Examples:
     parser.add_argument(
         "--json",
         action="store_true",
-        help="Output results in JSON format"
+        help="Output results as JSON only (suppresses human-readable text)"
     )
 
     return parser
 
+
 def main() -> int:
-    """Main function to run all validation checks.
+    """Run all validation checks.
 
     Returns:
-        Exit code: 0 for success, 1 for validation failures.
+        Exit code: 0 when the GPU setup validates, 1 otherwise.
     """
     parser = create_parser()
     args = parser.parse_args()
+    out = Printer(quiet=args.json)
 
-    print("PyTorch GPU validation utility")
-    print()
+    out.line("PyTorch GPU validation utility")
+    out.line()
     try:
-        # Run PyTorch GPU checks
-        gpu_result = check_pytorch_gpu_setup()
-
-        # Check key packages
-        packages = check_key_packages()
+        gpu_result = check_pytorch_gpu_setup(out)
+        packages = check_key_packages(out)
 
         # Summary
-        print()
-        print("Validation summary:")
-
-        gpu_summary_status = STATUS_OK if gpu_result["success"] else STATUS_ERROR
-        print(f"PyTorch GPU setup: {gpu_summary_status}")
-
+        out.line()
+        out.line("Validation summary:")
+        if gpu_result["success"]:
+            out.ok("PyTorch GPU setup")
+        else:
+            out.error("PyTorch GPU setup")
         if gpu_result["system_cuda_version"]:
-            print(f"System CUDA: {gpu_result['system_cuda_version']}")
-
+            out.line(f"System CUDA: {gpu_result['system_cuda_version']}")
         if gpu_result["pytorch_cuda_version"]:
-            print(f"PyTorch CUDA: {gpu_result['pytorch_cuda_version']}")
+            out.line(f"PyTorch CUDA: {gpu_result['pytorch_cuda_version']}")
 
-        # JSON output if requested
         if args.json:
-            result = {
-                "gpu": gpu_result,
-                "packages": packages
-            }
-            print()
-            print("JSON output:")
-            print(json.dumps(result, indent=2))
+            print(json.dumps({"gpu": gpu_result, "packages": packages}, indent=2))
 
         return EXIT_SUCCESS if gpu_result["success"] else EXIT_FAILURE
 
-    except PyTorchValidationError as e:
-        print(f"{STATUS_ERROR}: {e}", file=sys.stderr)
-        return EXIT_FAILURE
     except Exception as e:
-        print(f"{STATUS_ERROR}: Unexpected error: {e}", file=sys.stderr)
+        print(f"[ERROR] Unexpected error: {e}", file=sys.stderr)
         return EXIT_FAILURE
+
 
 if __name__ == "__main__":
     sys.exit(main())

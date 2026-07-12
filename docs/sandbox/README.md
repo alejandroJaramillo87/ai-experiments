@@ -4,6 +4,8 @@ Guide for secure AI model deployment using containerized sandboxing environments
 
 This documentation covers the specific Docker implementation deployed in this project, including three specialized Dockerfiles (`Dockerfile.llama-cpu`, `Dockerfile.llama-gpu`, `Dockerfile.vllm-gpu`) and the docker-compose orchestration that enables concurrent model hosting across CPU and GPU resources.
 
+For sandboxing the coding agents (OpenCode and Claude Code) rather than the inference services, see [agent-sandbox.md](agent-sandbox.md) — same containment philosophy, different workload profile (writable worktree, egress allowlist, no GPU, one scoped secret).
+
 **Note**: This guide focuses on defensive security measures for AI model deployment. All recommendations prioritize system security and stability over performance optimization.
 
 ## Table of Contents
@@ -191,7 +193,7 @@ Localhost-only port binding prevents external access:
 - **llama-cpu**: `127.0.0.1:8001:8001`
 - **llama-gpu**: `127.0.0.1:8002:8002`
 - **vllm-gpu**: `127.0.0.1:8003:8003`
-- **open-webui**: `3000:8080`
+- **open-webui**: `127.0.0.1:3000:8080`
 
 **Network Policy Enforcement**
 Internal Docker networking allows controlled inter-service communication while preventing external access to inference engines.
@@ -231,7 +233,7 @@ Ensures only authorized containers access RTX 5090 hardware acceleration.
 
 **Centralized Entry Point**
 Open WebUI container provides secure web interface:
-- **Port binding**: `3000:8080` for web access
+- **Port binding**: `127.0.0.1:3000:8080` for local web access
 - **Internal API routing**: Communicates with model containers via Docker network
 - **Authentication**: No external API keys required for internal communication
 
@@ -339,9 +341,11 @@ Memory locking is handled via the `--mlock` flag in llama.cpp server configurati
 - No new privileges allowed (`no-new-privileges:true`)
 
 **Network Access Restrictions**
-- Outbound network access limited to essential services and destinations
-- Localhost-only port binding prevents external access
-- Custom bridge networking for controlled communication
+- Localhost-only port binding prevents external access to every service
+- Custom bridge networking for controlled inter-service communication
+- Outbound access is not restricted: the bridge network uses `internal: false` so
+  containers can reach the internet (required for image and model pulls). Set
+  `internal: true` only if outbound egress must be blocked.
 
 **File System Access Controls**
 - Read-only access to model files with write access only to designated temporary directories

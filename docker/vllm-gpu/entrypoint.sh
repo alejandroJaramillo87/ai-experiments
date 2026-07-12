@@ -41,7 +41,9 @@ ENABLE_PREFIX_CACHING=${ENABLE_PREFIX_CACHING:-true}
 ENABLE_CHUNKED_PREFILL=${ENABLE_CHUNKED_PREFILL:-true}
 
 # Optional features
-TRUST_REMOTE_CODE=${TRUST_REMOTE_CODE:-true}
+# Default off: --trust-remote-code executes arbitrary Python from the model repo at
+# load time. Opt in per model (TRUST_REMOTE_CODE=true) only for trusted sources.
+TRUST_REMOTE_CODE=${TRUST_REMOTE_CODE:-false}
 DISABLE_LOG_STATS=${DISABLE_LOG_STATS:-true}
 
 echo "=== Starting vLLM GPU Server ==="
