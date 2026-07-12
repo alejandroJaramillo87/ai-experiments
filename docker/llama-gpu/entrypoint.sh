@@ -91,8 +91,10 @@ CMD_ARGS=(
 )
 
 # Add optional parameters based on environment variables
-if [[ "$CONT_BATCHING" == "true" ]]; then
-    CMD_ARGS+=("--cont-batching")
+# Upstream defaults continuous batching to on; pass the opt-out to preserve
+# the historical default (disabled) when CONT_BATCHING=false
+if [[ "$CONT_BATCHING" != "true" ]]; then
+    CMD_ARGS+=("--no-cont-batching")
 fi
 
 # GPU/CPU split configuration
@@ -113,8 +115,10 @@ if [[ "$CACHE_REUSE" -gt 0 ]]; then
     CMD_ARGS+=("--cache-reuse" "$CACHE_REUSE")
 fi
 
-if [[ "$JINJA_ENABLED" == "true" ]]; then
-    CMD_ARGS+=("--jinja")
+# Upstream defaults jinja templating to on; pass the opt-out to preserve
+# the historical default (disabled) when JINJA_ENABLED=false
+if [[ "$JINJA_ENABLED" != "true" ]]; then
+    CMD_ARGS+=("--no-jinja")
 fi
 
 if [[ -n "$REASONING_FORMAT" ]]; then
