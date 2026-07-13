@@ -2,8 +2,8 @@
 
 Reference for the Python dependency set of the AI workstation. uv manages the environment
 from a single `pyproject.toml` with standard `[project]` metadata, exact version pins, a
-CUDA-specific PyTorch index, an optional `quant` extra, and a `dev` dependency group. The
-lock file is `uv.lock`; it replaces the deleted `poetry.lock`.
+CUDA-specific PyTorch index, an optional `quant` extra, and `dev` and `interp` dependency
+groups. The lock file is `uv.lock`; it replaces the deleted `poetry.lock`.
 
 ## Table of contents
 
@@ -18,8 +18,9 @@ lock file is `uv.lock`; it replaces the deleted `poetry.lock`.
 - [PyTorch and the CUDA index](#pytorch-and-the-cuda-index)
 - [The quant optional extra](#the-quant-optional-extra)
 - [The dev dependency group](#the-dev-dependency-group)
+- [The interp dependency group](#the-interp-dependency-group)
 - [Common tasks](#common-tasks)
-- [Planned Phase B modernization](#planned-phase-b-modernization)
+- [Version modernization](#version-modernization)
 
 ## Layout of pyproject.toml
 
@@ -161,17 +162,30 @@ lived in the main dependency list:
 
 | Package | Version | Role |
 |---------|---------|------|
-| `pytest` | 8.4.2 | Test framework |
-| `pytest-asyncio` | 1.2.0 | Async test support |
+| `pytest` | 9.1.1 | Test framework |
+| `pytest-asyncio` | 1.4.0 | Async test support |
 | `pytest-mock` | 3.15.1 | Mocking fixtures |
 | `pytest-xdist` | 3.8.0 | Parallel test execution |
-| `pytest-cov` | 6.2.1 | Coverage reporting |
-| `ruff` | 0.13.1 | Linter and formatter |
-| `mypy` | 1.18.2 | Static type checking |
+| `pytest-cov` | 7.1.0 | Coverage reporting |
+| `ruff` | 0.15.21 | Linter and formatter |
+| `mypy` | 2.3.0 | Static type checking |
 
 `black` is no longer a dependency. `ruff format` replaces it, and `ruff` targets Python
 3.12 (`target-version = "py312"`). `make lint` runs `ruff check .` and `make format` runs
 `ruff format .`.
+
+## The interp dependency group
+
+The `interp` group holds mechanistic-interpretability tooling. It is gated behind its own
+group so the core install stays lean; `make install` (which syncs all groups) includes it.
+
+| Package | Version | Role |
+|---------|---------|------|
+| `transformer-lens` | 3.5.1 | Hooked transformer internals for activation analysis |
+| `nnsight` | 0.7.0 | Tracing and intervention on model internals |
+
+`transformer-lens` requires `transformers >= 5.4`, satisfied by the `transformers` 5.13.1
+pin in the core dependencies.
 
 ## Common tasks
 
@@ -200,18 +214,19 @@ $ uv tree
 
 Commit `uv.lock` with every dependency change. Do not edit `uv.lock` by hand.
 
-## Planned Phase B modernization
+## Version modernization
 
-Phase A pins the environment to the last known-good resolution. Phase B modernizes the
-majors, one group at a time, re-running the acceptance checks after each bump:
+The environment has been modernized to current majors, one group at a time, re-running the
+acceptance checks after each bump:
 
-- Move the torch trio to the 2.13.x line on the cu130 index.
-- Move `transformers` to the 5.x line. TransformerLens 3.4 requires
-  `transformers >= 5.4` for future mechanistic-interpretability work.
-- Add a future `interp` dependency group (`transformer-lens`, `nnsight`) once
-  `transformers` is on 5.x.
-- Coordinate a future training tier on the same majors as the interp tier so the two do
-  not diverge.
+- `torch` moved to 2.13.0 on the cu130 index (`torchvision` 0.28.0; `torchaudio` dropped as
+  unused with no release past 2.11).
+- `transformers` moved to the 5.x line (5.13.1), which unblocks the `interp` group.
+- The `interp` dependency group (`transformer-lens`, `nnsight`) is present and installed.
+- `pandas` is held at 2.x under the `mlflow` `pandas<3` constraint (see above).
+
+A future training tier should track the same majors as the `interp` tier so the two do not
+diverge.
 
 ## Next steps
 
