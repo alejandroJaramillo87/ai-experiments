@@ -23,8 +23,8 @@ dependencies = [
     "evaluate==0.4.6",
     "deepspeed==0.17.6",
     "bitsandbytes==0.46.1",
-    "sentencepiece==0.2.1",
-    "einops==0.8.1",
+    "sentencepiece==0.2.2",
+    "einops==0.8.2",
     "sentence-transformers==5.1.0",
 
     # Model management
@@ -44,17 +44,17 @@ dependencies = [
     "tensorboard==2.20.0",
 
     # General utilities and optimization
-    "tqdm==4.67.1",
-    "rich==14.1.0",
+    "tqdm==4.68.4",
+    "rich==15.0.0",
     "ray[default]==2.49.2",
     "optuna==4.5.0",
-    "tiktoken==0.9.0",
-    "requests==2.32.5",
+    "tiktoken==0.13.0",
+    "requests==2.34.2",
     "llama-cpp-python==0.3.16",
 
     # API development
-    "fastapi==0.115.14",
-    "uvicorn==0.34.3",
+    "fastapi==0.139.0",
+    "uvicorn==0.51.0",
 ]
 
 [project.optional-dependencies]
