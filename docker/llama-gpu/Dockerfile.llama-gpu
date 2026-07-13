@@ -17,7 +17,7 @@ ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed -L/usr/local/cuda/lib64/stubs"
 # Install specific CUDA components for optimal performance
 RUN apt-get update && \
     apt-get install -y --no-install-recommends --allow-change-held-packages \
-        gcc g++ build-essential cmake git curl ca-certificates \
+        gcc g++ build-essential git curl ca-certificates \
         libssl-dev pkg-config python3 python3-pip \
         ninja-build ccache \
         cuda-driver-dev-13-0 \
@@ -28,6 +28,19 @@ RUN apt-get update && \
         # cudnn9-cuda-13-0 \
         libcublas-dev-13-0=13.1.0.3-1 && \
     rm -rf /var/lib/apt/lists/*
+
+# Pin an exact CMake for reproducible builds against the CUDA 13 toolchain. apt's cmake is
+# deliberately omitted above so nothing shadows this one. --exclude-subdir is required: without
+# it the Kitware installer unpacks into /usr/local/cmake-<ver>-linux-x86_64/ instead of
+# /usr/local/bin, leaving cmake off PATH.
+# Note: the sm_120a compile target is NOT selected via CMAKE_CUDA_ARCHITECTURES below; CMake/ggml
+# arch selection proved unreliable in this image (kept emitting compute_120), so the gencode is
+# forced explicitly. See the cmake invocation.
+ARG CMAKE_VERSION=3.31.6
+RUN curl -fsSL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.sh" \
+        -o /tmp/cmake.sh && \
+    sh /tmp/cmake.sh --skip-license --prefix=/usr/local --exclude-subdir && \
+    rm /tmp/cmake.sh
 
 # Set CUDA environment variables
 ENV PATH=/usr/local/cuda/bin:${PATH}
@@ -55,7 +68,8 @@ RUN rm -rf /tmp/llama.cpp && \
     cmake .. \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
-        -DCMAKE_CUDA_ARCHITECTURES=120a \
+        -DCMAKE_CUDA_ARCHITECTURES=OFF \
+        -DCMAKE_CUDA_FLAGS="-gencode arch=compute_120a,code=sm_120a" \
         -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs" \
         -DGGML_CUDA=ON \
         -DGGML_CUDA_FORCE_CUBLAS=ON \
@@ -78,10 +92,12 @@ LABEL description="Container for running the CUDA-accelerated llama.cpp REST API
 
 # Install only the necessary RUNTIME system libraries
 # Note: cudnn is included in the cudnn-runtime base image
+# curl is required by the compose healthcheck, which runs `curl -f /v1/health` inside the container
 # nsight-systems for optional deep profiling (NSYS_PROFILE=true)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends --allow-change-held-packages \
         ca-certificates \
+        curl \
         libgomp1 \
         libcublas-13-0=13.1.0.3-1 \
         cuda-cupti-13-0 \

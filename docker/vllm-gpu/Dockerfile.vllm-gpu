@@ -42,6 +42,8 @@ ENV PYTHONUNBUFFERED=1
 # Install runtime dependencies
 # nsight-systems for optional deep profiling (NSYS_PROFILE=true)
 # nvcc + cudart headers retained for torch.compile JIT compilation
+# ffmpeg provides libavutil/libavcodec: vLLM loads torchcodec unconditionally
+#   at startup, which dlopens these libs and crash-loops if they are absent
 RUN apt-get update && \
     apt-get install -y --no-install-recommends --allow-change-held-packages \
         curl \
@@ -52,6 +54,7 @@ RUN apt-get update && \
         python3 \
         python3-pip \
         libgomp1 \
+        ffmpeg \
         libcublas-13-0 \
         cuda-cupti-13-0 \
         cuda-nvtx-13-0 \
