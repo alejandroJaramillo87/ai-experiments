@@ -12,10 +12,10 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 
 dependencies = [
-    # Core AI/ML frameworks (torch trio resolved from the cu130 index, see [tool.uv])
-    "torch==2.9.1",
-    "torchvision==0.24.1",
-    "torchaudio==2.9.1",
+    # Core AI/ML frameworks (torch/torchvision resolved from the cu130 index, see [tool.uv])
+    # torchaudio dropped: unused in the codebase and no release past 2.11 (torch is 2.13).
+    "torch==2.13.0",
+    "torchvision==0.28.0",
     "transformers==4.51.3",
     "datasets==5.0.0",
     "accelerate==1.10.1",
@@ -91,7 +91,6 @@ explicit = true
 [tool.uv.sources]
 torch = { index = "pytorch-cu130" }
 torchvision = { index = "pytorch-cu130" }
-torchaudio = { index = "pytorch-cu130" }
 
 # deepspeed ships an sdist whose setup.py imports torch
 [tool.uv.extra-build-dependencies]

@@ -69,8 +69,8 @@ $ make install
 `make install` runs `uv sync --all-groups --all-extras`. uv reads `pyproject.toml` and
 `uv.lock`, creates `.venv` in the repository root, and installs:
 
-- the exact pinned runtime dependencies, including the `torch`, `torchvision`, and
-  `torchaudio` trio resolved from the CUDA 13.0 index
+- the exact pinned runtime dependencies, including the `torch` and `torchvision` pair
+  resolved from the CUDA 13.0 index
 - the `quant` optional extra (nemo-toolkit and its quantization companions)
 - the `dev` dependency group (pytest family, ruff, mypy)
 

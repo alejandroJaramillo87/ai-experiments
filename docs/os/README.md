@@ -442,9 +442,8 @@ The project uses uv with exact version pins and a CUDA-specific PyTorch index:
 ```toml
 # Core AI/ML frameworks from pyproject.toml [project].dependencies
 dependencies = [
-    "torch==2.9.1",         # resolved from the pytorch-cu130 index
-    "torchvision==0.24.1",  # resolved from the pytorch-cu130 index
-    "torchaudio==2.9.1",    # resolved from the pytorch-cu130 index
+    "torch==2.13.0",         # resolved from the pytorch-cu130 index
+    "torchvision==0.28.0",   # resolved from the pytorch-cu130 index
     "transformers==4.51.3",
     "datasets==3.6.0",
     "accelerate==1.10.1",

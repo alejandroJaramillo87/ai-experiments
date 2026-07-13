@@ -1,7 +1,7 @@
 # PyTorch CUDA version update guide
 
 This guide documents how to change the PyTorch CUDA build in the uv-managed environment.
-uv resolves the `torch`, `torchvision`, and `torchaudio` trio directly from a
+uv resolves `torch` and `torchvision` directly from a
 CUDA-specific PyTorch index, so PyTorch is a first-class locked dependency. No pip
 sideload and no manual reinstall step exist.
 
@@ -19,13 +19,13 @@ sideload and no manual reinstall step exist.
 
 ## How PyTorch is locked
 
-`pyproject.toml` pins the trio to exact versions and binds them to a named CUDA index:
+`pyproject.toml` pins `torch` and `torchvision` to exact versions and binds them to a named
+CUDA index (`torchaudio` was dropped: unused and no release past 2.11.0):
 
 ```toml
 dependencies = [
-    "torch==2.9.1",
-    "torchvision==0.24.1",
-    "torchaudio==2.9.1",
+    "torch==2.13.0",
+    "torchvision==0.28.0",
 ]
 
 [[tool.uv.index]]
@@ -36,7 +36,6 @@ explicit = true
 [tool.uv.sources]
 torch = { index = "pytorch-cu130" }
 torchvision = { index = "pytorch-cu130" }
-torchaudio = { index = "pytorch-cu130" }
 ```
 
 `explicit = true` means only packages named in `[tool.uv.sources]` resolve from that
@@ -83,14 +82,13 @@ the pins, refresh the lock, sync, then run the acceptance checks.
 ### Step 1: Edit the index and the pins
 
 To move to a different CUDA build, update the index URL and name, the `[tool.uv.sources]`
-bindings, and the three version pins in `pyproject.toml`. For example, to move to a
+bindings, and the version pins in `pyproject.toml`. For example, to move to a
 CUDA 13.1 build once it is published:
 
 ```toml
 dependencies = [
-    "torch==2.10.0",
-    "torchvision==0.25.0",
-    "torchaudio==2.10.0",
+    "torch==2.14.0",
+    "torchvision==0.29.0",
 ]
 
 [[tool.uv.index]]
@@ -101,7 +99,6 @@ explicit = true
 [tool.uv.sources]
 torch = { index = "pytorch-cu131" }
 torchvision = { index = "pytorch-cu131" }
-torchaudio = { index = "pytorch-cu131" }
 ```
 
 Change one thing at a time. Do not combine a CUDA index change with an unrelated version
@@ -113,7 +110,7 @@ bump in the same step.
 $ uv lock
 ```
 
-uv re-resolves the trio from the new index and rewrites `uv.lock`.
+uv re-resolves `torch` and `torchvision` from the new index and rewrites `uv.lock`.
 
 ### Step 3: Sync the environment
 
@@ -182,8 +179,8 @@ the cu130 wheels run without modification.
 
 The `torch` version string has no CUDA suffix.
 
-Confirm `[tool.uv.sources]` in `pyproject.toml` binds `torch`, `torchvision`, and
-`torchaudio` to the CUDA index, then refresh:
+Confirm `[tool.uv.sources]` in `pyproject.toml` binds `torch` and `torchvision`
+to the CUDA index, then refresh:
 
 ```bash
 $ uv lock

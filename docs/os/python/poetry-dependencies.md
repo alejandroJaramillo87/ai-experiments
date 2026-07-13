@@ -118,19 +118,20 @@ through 3.14, so `pandas` 3.x cannot resolve while `mlflow` remains a dependency
 
 ## PyTorch and the CUDA index
 
-The `torch`, `torchvision`, and `torchaudio` trio is a first-class part of the runtime
-`dependencies` list, pinned exactly and resolved from a CUDA-specific index rather than
-PyPI:
+The `torch` and `torchvision` pair is a first-class part of the runtime `dependencies` list,
+pinned exactly and resolved from a CUDA-specific index rather than PyPI:
 
 | Package | Version |
 |---------|---------|
-| `torch` | 2.9.1 |
-| `torchvision` | 0.24.1 |
-| `torchaudio` | 2.9.1 |
+| `torch` | 2.13.0 |
+| `torchvision` | 0.28.0 |
+
+`torchaudio` was previously part of this set but is no longer a dependency: it is unused in
+the codebase and has no release past 2.11.0, so it cannot pair with `torch` 2.13.0.
 
 `[[tool.uv.index]]` declares the `pytorch-cu130` index at
 `https://download.pytorch.org/whl/cu130` with `explicit = true`. `[tool.uv.sources]` binds
-the three packages to that index. Because the index is explicit, only these three packages
+both packages to that index. Because the index is explicit, only these packages
 resolve from it; all other dependencies resolve from PyPI. uv records the exact CUDA wheels
 in `uv.lock` and installs them during `uv sync`. No pip sideload step exists.
 
