@@ -39,15 +39,15 @@ dependencies = [
     "pandas==2.3.3",  # held at 2.x: mlflow (all releases through 3.14) requires pandas<3
 
     # Experiment tracking and MLOps
-    "wandb==0.20.1",
-    "mlflow==3.4.0",
-    "tensorboard==2.20.0",
+    "wandb==0.28.0",
+    "mlflow==3.14.0",  # still requires pandas<3; keeps pandas held at 2.x
+    "tensorboard==2.21.0",
 
     # General utilities and optimization
     "tqdm==4.68.4",
     "rich==15.0.0",
-    "ray[default]==2.49.2",
-    "optuna==4.5.0",
+    "ray[default]==2.56.0",
+    "optuna==4.9.0",
     "tiktoken==0.13.0",
     "requests==2.34.2",
     "llama-cpp-python==0.3.16",
