@@ -146,14 +146,25 @@ constraints would otherwise slow or block core resolution:
 
 | Package | Version | Role |
 |---------|---------|------|
-| `nemo-toolkit` | 2.1.0 | NVIDIA neural modules toolkit |
+| `nemo-toolkit` | 2.1.0 | NVIDIA neural modules toolkit (held; see note) |
 | `rouge-score` | 0.1.2 | Text-generation metrics |
 | `transformers-stream-generator` | 0.0.5 | Streaming generation helper |
-| `mpmath` | 1.3.0 | Arbitrary-precision arithmetic |
+| `mpmath` | 1.3.0 | Arbitrary-precision arithmetic (held; see note) |
 | `sseclient` | 0.0.27 | Server-sent-events client |
 
 `make install` installs the extra because it passes `--all-extras`. Install it explicitly
 with `uv sync --extra quant`.
+
+`nemo-toolkit` is held at 2.1.0, the last release that leaves `protobuf` unpinned. Every
+release from 2.4 onward hard-pins `protobuf~=5.29.5`, which conflicts with the core
+`tensorboard` requirement of `protobuf>=6.31.1`. Bumping `nemo-toolkit` would force a
+downgrade of core `tensorboard`, which the isolation of the quant extra exists to prevent.
+Revisit once a `nemo-toolkit` release relaxes its `protobuf` pin to allow 6.x.
+
+`mpmath` is held at 1.3.0 for the same class of reason: core `torch` depends on
+`sympy>=1.13.3`, which requires `mpmath<1.4`. The next release (1.4.0) is therefore out of
+reach until torch's `sympy` dependency allows `mpmath>=1.4`. Both quant packages that could
+otherwise move are already at the ceiling the modernized core permits.
 
 ## The dev dependency group
 

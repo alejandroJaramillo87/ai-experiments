@@ -61,9 +61,14 @@ dependencies = [
 # Quantization tail, isolated so its heavy transitive pins (nemo-toolkit)
 # cannot block resolution or upgrades of the core environment
 quant = [
+    # nemo-toolkit held at 2.1.0: it is the last release that leaves protobuf unpinned.
+    # Every release >=2.4 hard-pins protobuf~=5.29.5, which conflicts with the core
+    # tensorboard (protobuf>=6.31.1). Bumping nemo would force a core downgrade, which the
+    # quant extra must never do.
     "nemo-toolkit==2.1.0",
     "rouge-score==0.1.2",
     "transformers-stream-generator==0.0.5",
+    # mpmath held at 1.3.0: torch's sympy (>=1.13.3) requires mpmath<1.4.
     "mpmath==1.3.0",
     "sseclient==0.0.27",
 ]
