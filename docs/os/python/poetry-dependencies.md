@@ -2,8 +2,8 @@
 
 Reference for the Python dependency set of the AI workstation. uv manages the environment
 from a single `pyproject.toml` with standard `[project]` metadata, exact version pins, a
-CUDA-specific PyTorch index, an optional `quant` extra, and a `dev` dependency group. The
-lock file is `uv.lock`; it replaces the deleted `poetry.lock`.
+CUDA-specific PyTorch index, an optional `quant` extra, and `dev` and `interp` dependency
+groups. The lock file is `uv.lock`; it replaces the deleted `poetry.lock`.
 
 ## Table of contents
 
@@ -18,8 +18,9 @@ lock file is `uv.lock`; it replaces the deleted `poetry.lock`.
 - [PyTorch and the CUDA index](#pytorch-and-the-cuda-index)
 - [The quant optional extra](#the-quant-optional-extra)
 - [The dev dependency group](#the-dev-dependency-group)
+- [The interp dependency group](#the-interp-dependency-group)
 - [Common tasks](#common-tasks)
-- [Planned Phase B modernization](#planned-phase-b-modernization)
+- [Version modernization](#version-modernization)
 
 ## Layout of pyproject.toml
 
@@ -58,23 +59,23 @@ transitive constraints cannot block upgrades of the core environment.
 
 | Package | Version | Role |
 |---------|---------|------|
-| `transformers` | 4.51.3 | Pre-trained model loading and fine-tuning |
-| `datasets` | 3.6.0 | Memory-mapped and streaming dataset loading |
-| `accelerate` | 1.10.1 | Mixed precision, gradient accumulation, device placement |
-| `peft` | 0.15.2 | Parameter-efficient fine-tuning (LoRA, QLoRA) |
+| `transformers` | 5.13.1 | Pre-trained model loading and fine-tuning |
+| `datasets` | 5.0.0 | Memory-mapped and streaming dataset loading |
+| `accelerate` | 1.14.0 | Mixed precision, gradient accumulation, device placement |
+| `peft` | 0.19.1 | Parameter-efficient fine-tuning (LoRA, QLoRA) |
 | `evaluate` | 0.4.6 | Metric computation for model evaluation |
-| `sentencepiece` | 0.2.1 | Subword tokenization |
-| `sentence-transformers` | 5.1.0 | Embedding models for retrieval and similarity |
-| `huggingface-hub` | 0.32.6 | Model and dataset transfer, `hf` CLI |
-| `hf-transfer` | 0.1.8 | Accelerated Hub downloads |
+| `sentencepiece` | 0.2.2 | Subword tokenization |
+| `sentence-transformers` | 5.6.0 | Embedding models for retrieval and similarity |
+| `huggingface-hub` | 1.23.0 | Model and dataset transfer, `hf` CLI |
+| `hf-transfer` | 0.1.9 | Accelerated Hub downloads |
 
 ### Training optimization
 
 | Package | Version | Role |
 |---------|---------|------|
-| `deepspeed` | 0.17.6 | ZeRO optimizer, gradient, and parameter sharding |
-| `bitsandbytes` | 0.46.1 | 4-bit and 8-bit quantization kernels |
-| `einops` | 0.8.1 | Tensor rearrangement with Einstein notation |
+| `deepspeed` | 0.19.2 | ZeRO optimizer, gradient, and parameter sharding |
+| `bitsandbytes` | 0.49.2 | 4-bit and 8-bit quantization kernels (CUDA 13 wheels) |
+| `einops` | 0.8.2 | Tensor rearrangement with Einstein notation |
 
 `deepspeed` ships a source distribution whose `setup.py` imports torch. uv supplies torch
 to that build through `[tool.uv.extra-build-dependencies]`, so the sync does not fail on a
@@ -85,10 +86,14 @@ missing build-time import.
 | Package | Version | Role |
 |---------|---------|------|
 | `jupyterlab` | 4.4.7 | Interactive notebook environment |
-| `pandas` | 2.3.2 | Dataframe operations |
+| `pandas` | 2.3.3 | Dataframe operations (held at 2.x; see note below) |
 | `scikit-learn` | 1.7.2 | Classical machine learning and preprocessing |
 | `matplotlib` | 3.10.6 | Plotting |
 | `seaborn` | 0.13.2 | Statistical visualization |
+
+`pandas` is held at the latest 2.x (`2.3.3`). `mlflow` requires `pandas<3` in every release
+through 3.14, so `pandas` 3.x cannot resolve while `mlflow` remains a dependency. Do not bump
+`pandas` to 3.x without first removing or replacing `mlflow`.
 
 ### MLOps and experiment tracking
 
@@ -114,19 +119,20 @@ missing build-time import.
 
 ## PyTorch and the CUDA index
 
-The `torch`, `torchvision`, and `torchaudio` trio is a first-class part of the runtime
-`dependencies` list, pinned exactly and resolved from a CUDA-specific index rather than
-PyPI:
+The `torch` and `torchvision` pair is a first-class part of the runtime `dependencies` list,
+pinned exactly and resolved from a CUDA-specific index rather than PyPI:
 
 | Package | Version |
 |---------|---------|
-| `torch` | 2.9.1 |
-| `torchvision` | 0.24.1 |
-| `torchaudio` | 2.9.1 |
+| `torch` | 2.13.0 |
+| `torchvision` | 0.28.0 |
+
+`torchaudio` was previously part of this set but is no longer a dependency: it is unused in
+the codebase and has no release past 2.11.0, so it cannot pair with `torch` 2.13.0.
 
 `[[tool.uv.index]]` declares the `pytorch-cu130` index at
 `https://download.pytorch.org/whl/cu130` with `explicit = true`. `[tool.uv.sources]` binds
-the three packages to that index. Because the index is explicit, only these three packages
+both packages to that index. Because the index is explicit, only these packages
 resolve from it; all other dependencies resolve from PyPI. uv records the exact CUDA wheels
 in `uv.lock` and installs them during `uv sync`. No pip sideload step exists.
 
@@ -140,14 +146,25 @@ constraints would otherwise slow or block core resolution:
 
 | Package | Version | Role |
 |---------|---------|------|
-| `nemo-toolkit` | 2.1.0 | NVIDIA neural modules toolkit |
+| `nemo-toolkit` | 2.1.0 | NVIDIA neural modules toolkit (held; see note) |
 | `rouge-score` | 0.1.2 | Text-generation metrics |
 | `transformers-stream-generator` | 0.0.5 | Streaming generation helper |
-| `mpmath` | 1.3.0 | Arbitrary-precision arithmetic |
+| `mpmath` | 1.3.0 | Arbitrary-precision arithmetic (held; see note) |
 | `sseclient` | 0.0.27 | Server-sent-events client |
 
 `make install` installs the extra because it passes `--all-extras`. Install it explicitly
 with `uv sync --extra quant`.
+
+`nemo-toolkit` is held at 2.1.0, the last release that leaves `protobuf` unpinned. Every
+release from 2.4 onward hard-pins `protobuf~=5.29.5`, which conflicts with the core
+`tensorboard` requirement of `protobuf>=6.31.1`. Bumping `nemo-toolkit` would force a
+downgrade of core `tensorboard`, which the isolation of the quant extra exists to prevent.
+Revisit once a `nemo-toolkit` release relaxes its `protobuf` pin to allow 6.x.
+
+`mpmath` is held at 1.3.0 for the same class of reason: core `torch` depends on
+`sympy>=1.13.3`, which requires `mpmath<1.4`. The next release (1.4.0) is therefore out of
+reach until torch's `sympy` dependency allows `mpmath>=1.4`. Both quant packages that could
+otherwise move are already at the ceiling the modernized core permits.
 
 ## The dev dependency group
 
@@ -156,17 +173,30 @@ lived in the main dependency list:
 
 | Package | Version | Role |
 |---------|---------|------|
-| `pytest` | 8.4.2 | Test framework |
-| `pytest-asyncio` | 1.2.0 | Async test support |
+| `pytest` | 9.1.1 | Test framework |
+| `pytest-asyncio` | 1.4.0 | Async test support |
 | `pytest-mock` | 3.15.1 | Mocking fixtures |
 | `pytest-xdist` | 3.8.0 | Parallel test execution |
-| `pytest-cov` | 6.2.1 | Coverage reporting |
-| `ruff` | 0.13.1 | Linter and formatter |
-| `mypy` | 1.18.2 | Static type checking |
+| `pytest-cov` | 7.1.0 | Coverage reporting |
+| `ruff` | 0.15.21 | Linter and formatter |
+| `mypy` | 2.3.0 | Static type checking |
 
 `black` is no longer a dependency. `ruff format` replaces it, and `ruff` targets Python
 3.12 (`target-version = "py312"`). `make lint` runs `ruff check .` and `make format` runs
 `ruff format .`.
+
+## The interp dependency group
+
+The `interp` group holds mechanistic-interpretability tooling. It is gated behind its own
+group so the core install stays lean; `make install` (which syncs all groups) includes it.
+
+| Package | Version | Role |
+|---------|---------|------|
+| `transformer-lens` | 3.5.1 | Hooked transformer internals for activation analysis |
+| `nnsight` | 0.7.0 | Tracing and intervention on model internals |
+
+`transformer-lens` requires `transformers >= 5.4`, satisfied by the `transformers` 5.13.1
+pin in the core dependencies.
 
 ## Common tasks
 
@@ -195,18 +225,19 @@ $ uv tree
 
 Commit `uv.lock` with every dependency change. Do not edit `uv.lock` by hand.
 
-## Planned Phase B modernization
+## Version modernization
 
-Phase A pins the environment to the last known-good resolution. Phase B modernizes the
-majors, one group at a time, re-running the acceptance checks after each bump:
+The environment has been modernized to current majors, one group at a time, re-running the
+acceptance checks after each bump:
 
-- Move the torch trio to the 2.13.x line on the cu130 index.
-- Move `transformers` to the 5.x line. TransformerLens 3.4 requires
-  `transformers >= 5.4` for future mechanistic-interpretability work.
-- Add a future `interp` dependency group (`transformer-lens`, `nnsight`) once
-  `transformers` is on 5.x.
-- Coordinate a future training tier on the same majors as the interp tier so the two do
-  not diverge.
+- `torch` moved to 2.13.0 on the cu130 index (`torchvision` 0.28.0; `torchaudio` dropped as
+  unused with no release past 2.11).
+- `transformers` moved to the 5.x line (5.13.1), which unblocks the `interp` group.
+- The `interp` dependency group (`transformer-lens`, `nnsight`) is present and installed.
+- `pandas` is held at 2.x under the `mlflow` `pandas<3` constraint (see above).
+
+A future training tier should track the same majors as the `interp` tier so the two do not
+diverge.
 
 ## Next steps
 
