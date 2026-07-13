@@ -18,7 +18,7 @@ services:
     cpuset: "0-15"
     environment:
       - SERVER_PORT=8001
-      - MODEL_PATH=${LLAMA_MODEL:-${LLAMA_ZEN5_MODEL}}
+      - MODEL_PATH=${LLAMA_CPU_MODEL:-${LLAMA_ZEN5_MODEL}}
       - THREADS=16
       - THREADS_BATCH=16
     ports:

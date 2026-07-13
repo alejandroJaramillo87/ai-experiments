@@ -2,7 +2,7 @@
 # Pin the digest before building. Re-resolve with:
 #   docker buildx imagetools inspect debian:trixie-slim
 # then set BASE_IMAGE=debian:trixie-slim@sha256:<digest>
-ARG BASE_IMAGE=debian:trixie-slim
+ARG BASE_IMAGE=debian:trixie-slim@sha256:28de0877c2189802884ccd20f15ee41c203573bd87bb6b883f5f46362d24c5c2
 
 # --- Stage 1: The Builder ---
 # Compiles llama.cpp with hugepage optimization (AVX-512 + zen5_optimizer)
