@@ -58,23 +58,23 @@ transitive constraints cannot block upgrades of the core environment.
 
 | Package | Version | Role |
 |---------|---------|------|
-| `transformers` | 4.51.3 | Pre-trained model loading and fine-tuning |
-| `datasets` | 3.6.0 | Memory-mapped and streaming dataset loading |
-| `accelerate` | 1.10.1 | Mixed precision, gradient accumulation, device placement |
-| `peft` | 0.15.2 | Parameter-efficient fine-tuning (LoRA, QLoRA) |
+| `transformers` | 5.13.1 | Pre-trained model loading and fine-tuning |
+| `datasets` | 5.0.0 | Memory-mapped and streaming dataset loading |
+| `accelerate` | 1.14.0 | Mixed precision, gradient accumulation, device placement |
+| `peft` | 0.19.1 | Parameter-efficient fine-tuning (LoRA, QLoRA) |
 | `evaluate` | 0.4.6 | Metric computation for model evaluation |
-| `sentencepiece` | 0.2.1 | Subword tokenization |
-| `sentence-transformers` | 5.1.0 | Embedding models for retrieval and similarity |
-| `huggingface-hub` | 0.32.6 | Model and dataset transfer, `hf` CLI |
-| `hf-transfer` | 0.1.8 | Accelerated Hub downloads |
+| `sentencepiece` | 0.2.2 | Subword tokenization |
+| `sentence-transformers` | 5.6.0 | Embedding models for retrieval and similarity |
+| `huggingface-hub` | 1.23.0 | Model and dataset transfer, `hf` CLI |
+| `hf-transfer` | 0.1.9 | Accelerated Hub downloads |
 
 ### Training optimization
 
 | Package | Version | Role |
 |---------|---------|------|
-| `deepspeed` | 0.17.6 | ZeRO optimizer, gradient, and parameter sharding |
-| `bitsandbytes` | 0.46.1 | 4-bit and 8-bit quantization kernels |
-| `einops` | 0.8.1 | Tensor rearrangement with Einstein notation |
+| `deepspeed` | 0.19.2 | ZeRO optimizer, gradient, and parameter sharding |
+| `bitsandbytes` | 0.49.2 | 4-bit and 8-bit quantization kernels (CUDA 13 wheels) |
+| `einops` | 0.8.2 | Tensor rearrangement with Einstein notation |
 
 `deepspeed` ships a source distribution whose `setup.py` imports torch. uv supplies torch
 to that build through `[tool.uv.extra-build-dependencies]`, so the sync does not fail on a
