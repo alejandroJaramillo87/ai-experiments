@@ -7,10 +7,10 @@ LABEL stage="builder"
 # Set build environment variables for NVIDIA RTX 5090 (Blackwell architecture)
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
-ENV CUDA_DOCKER_ARCH=sm_120 
+ENV CUDA_DOCKER_ARCH=sm_120a
 ENV TORCH_CUDA_ARCH_LIST="12.0"
-ENV CUDA_ARCHITECTURES=120
-ENV CUDAFLAGS="-O3 --use_fast_math -arch=sm_120"
+ENV CUDA_ARCHITECTURES=120a
+ENV CUDAFLAGS="-O3 --use_fast_math -arch=sm_120a"
 ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed -L/usr/local/cuda/lib64/stubs"
 
 
@@ -26,7 +26,7 @@ RUN apt-get update && \
         cuda-nvml-dev-13-0 \
         cuda-nvtx-13-0 \
         # cudnn9-cuda-13-0 \
-        libcublas-dev-13-0 && \
+        libcublas-dev-13-0=13.1.0.3-1 && \
     rm -rf /var/lib/apt/lists/*
 
 # Set CUDA environment variables
@@ -55,7 +55,7 @@ RUN rm -rf /tmp/llama.cpp && \
     cmake .. \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
-        -DCMAKE_CUDA_ARCHITECTURES=120 \
+        -DCMAKE_CUDA_ARCHITECTURES=120a \
         -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs" \
         -DGGML_CUDA=ON \
         -DGGML_CUDA_FORCE_CUBLAS=ON \
@@ -83,7 +83,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends --allow-change-held-packages \
         ca-certificates \
         libgomp1 \
-        libcublas-13-0 \
+        libcublas-13-0=13.1.0.3-1 \
         cuda-cupti-13-0 \
         cuda-nvtx-13-0 \
         nsight-systems-2025.3.2 && \
