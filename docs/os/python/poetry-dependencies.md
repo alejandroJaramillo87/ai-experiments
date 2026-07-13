@@ -85,10 +85,14 @@ missing build-time import.
 | Package | Version | Role |
 |---------|---------|------|
 | `jupyterlab` | 4.4.7 | Interactive notebook environment |
-| `pandas` | 2.3.2 | Dataframe operations |
+| `pandas` | 2.3.3 | Dataframe operations (held at 2.x; see note below) |
 | `scikit-learn` | 1.7.2 | Classical machine learning and preprocessing |
 | `matplotlib` | 3.10.6 | Plotting |
 | `seaborn` | 0.13.2 | Statistical visualization |
+
+`pandas` is held at the latest 2.x (`2.3.3`). `mlflow` requires `pandas<3` in every release
+through 3.14, so `pandas` 3.x cannot resolve while `mlflow` remains a dependency. Do not bump
+`pandas` to 3.x without first removing or replacing `mlflow`.
 
 ### MLOps and experiment tracking
 
