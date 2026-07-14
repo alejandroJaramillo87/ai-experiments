@@ -42,7 +42,8 @@ def tiny_recipe():
 class TestLoading:
     def test_reference_recipes_exist(self):
         names = {os.path.basename(p) for p in REFERENCE_RECIPES}
-        assert {"pretrain-150m.yaml", "pretrain-1b.yaml", "tiny-e2e.yaml"} <= names
+        assert {"pretrain-150m.yaml", "pretrain-1b.yaml", "tiny-e2e.yaml",
+                "sft-qlora-1b.yaml"} <= names
 
     @pytest.mark.parametrize("path", REFERENCE_RECIPES,
                              ids=[os.path.basename(p) for p in REFERENCE_RECIPES])
@@ -256,3 +257,67 @@ class TestTokenizerHashInvariant:
     def test_unprepared_source_skips_hash_check(self, tokenizer_dir, tmp_path):
         recipe = self.recipe_for(str(tmp_path / "not-prepared"), tokenizer_dir)
         validate(recipe)
+
+
+class TestPeftInvariants:
+    """F2: peft group field domains and QLoRA combination rules."""
+
+    def tiny(self, overrides):
+        return load_recipe(os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"), overrides)
+
+    def test_lora_recipe_typed_and_valid(self):
+        recipe = self.tiny(["peft.enabled=true", "peft.method=lora", "peft.rank=8"])
+        validate(recipe)
+        assert recipe.peft.rank == 8
+        assert recipe.peft.target_modules == "auto"
+
+    def test_qlora_recipe_valid(self):
+        validate(self.tiny(["peft.enabled=true", "peft.quantize_base=nf4"]))
+
+    def test_dora_recipe_valid_with_and_without_quantization(self):
+        validate(self.tiny(["peft.enabled=true", "peft.method=dora"]))
+        validate(self.tiny(
+            ["peft.enabled=true", "peft.method=dora", "peft.quantize_base=nf4"]))
+
+    def test_unknown_method(self):
+        assert_problem(self.tiny(["peft.method=ia3"]), "peft.method")
+
+    def test_unknown_quantize_base(self):
+        assert_problem(self.tiny(["peft.quantize_base=int8"]), "peft.quantize_base")
+
+    def test_unknown_compute_dtype(self):
+        assert_problem(self.tiny(["peft.compute_dtype=fp8"]), "peft.compute_dtype")
+
+    def test_nonpositive_rank(self):
+        assert_problem(self.tiny(["peft.enabled=true", "peft.rank=0"]), "peft.rank")
+
+    def test_dropout_range(self):
+        assert_problem(self.tiny(["peft.dropout=1.0"]), "peft.dropout")
+
+    def test_nf4_requires_peft_enabled(self):
+        assert_problem(
+            self.tiny(["peft.quantize_base=nf4"]), "nf4 requires peft.enabled")
+
+    def test_nf4_excludes_fp8_precision(self):
+        assert_problem(
+            self.tiny(["peft.enabled=true", "peft.quantize_base=nf4",
+                       "precision.dtype=fp8"]),
+            "mutually exclusive")
+
+    def test_empty_target_modules_rejected(self):
+        assert_problem(
+            self.tiny(["peft.enabled=true", "peft.target_modules=[]"]),
+            "peft.target_modules")
+
+    def test_explicit_target_modules_accepted(self):
+        recipe = self.tiny(
+            ["peft.enabled=true", "peft.target_modules=[q_proj,v_proj]"])
+        validate(recipe)
+        assert list(recipe.peft.target_modules) == ["q_proj", "v_proj"]
+
+    def test_reference_qlora_recipe_loads_typed(self):
+        recipe = load_recipe(os.path.join(REFERENCE_DIR, "sft-qlora-1b.yaml"))
+        validate(recipe)
+        assert recipe.peft.enabled is True
+        assert recipe.peft.quantize_base == "nf4"
+        assert recipe.peft.target_modules == "auto"

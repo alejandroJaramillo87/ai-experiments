@@ -19,6 +19,7 @@ from training.calculator.components import (
     host_ram_bytes,
     optimizer_bytes,
     spec_from_recipe,
+    trainable_param_count,
     weights_bytes,
 )
 
@@ -48,6 +49,7 @@ class Estimate:
     micro_batch: int
     seq_len: int
     param_count: int
+    trainable_params: int         # equals param_count unless peft is enabled
     weights: int
     grads: int
     optimizer: int
@@ -75,6 +77,7 @@ def _estimate_at(
         micro_batch=micro_batch,
         seq_len=seq_len,
         param_count=spec.param_count(),
+        trainable_params=trainable_param_count(spec, recipe),
         weights=weights,
         grads=grads,
         optimizer=optimizer,

@@ -65,13 +65,25 @@ def build_scratch_model(spec: ArchitectureSpec, recipe: DictConfig):
 
 
 def build_model(recipe: DictConfig):
-    """Build the recipe's model: HF id via from_pretrained, scratch via spec."""
+    """Build the recipe's model: HF id via from_pretrained, scratch via spec.
+
+    QLoRA base quantization (peft.quantize_base: nf4, F2) happens here at
+    load; the PEFT adapter wrap is a separate step
+    (training/peft_utils.py: build_peft_model), owned by the entry point.
+    """
     if recipe.model.hf is not None:
         from transformers import AutoModelForCausalLM
 
+        from training.peft_utils import bnb_quantization_config
+
+        kwargs = {}
+        quantization = (
+            bnb_quantization_config(recipe.peft) if recipe.peft.enabled else None)
+        if quantization is not None:
+            kwargs["quantization_config"] = quantization
         model = AutoModelForCausalLM.from_pretrained(
             recipe.model.hf.id, dtype=model_dtype(recipe),
-            attn_implementation=attention_implementation())
+            attn_implementation=attention_implementation(), **kwargs)
         if recipe.memory.gradient_checkpointing:
             model.gradient_checkpointing_enable()
         return model

@@ -17,14 +17,18 @@ from __future__ import annotations
 
 import os
 
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from training.recipes.schema import (
+    COMPUTE_DTYPES,
     FP8_BACKENDS,
     OFFLOAD_MODES,
     OPTIMIZER_NAMES,
+    PEFT_METHODS,
     PRECISION_DTYPES,
+    QUANTIZE_BASE_MODES,
     SCHEDULE_TYPES,
+    TARGET_MODULES_AUTO,
 )
 
 
@@ -101,6 +105,43 @@ def _check_precision(recipe: DictConfig, problems: list[str]) -> None:
 def _check_memory(recipe: DictConfig, problems: list[str]) -> None:
     if recipe.memory.offload not in OFFLOAD_MODES:
         problems.append(f"memory.offload: {recipe.memory.offload!r} not in {OFFLOAD_MODES}")
+
+
+def _check_peft(recipe: DictConfig, problems: list[str]) -> None:
+    """F2 invariants: field domains plus the QLoRA combination rules
+    (nf4 requires an adapter — no full fine-tuning of a 4-bit base — and
+    fp8 precision is mutually exclusive with nf4 base quantization)."""
+    p = recipe.peft
+    if p.method not in PEFT_METHODS:
+        problems.append(f"peft.method: {p.method!r} not in {PEFT_METHODS}")
+    if p.quantize_base not in QUANTIZE_BASE_MODES:
+        problems.append(
+            f"peft.quantize_base: {p.quantize_base!r} not in {QUANTIZE_BASE_MODES}")
+    if p.compute_dtype not in COMPUTE_DTYPES:
+        problems.append(
+            f"peft.compute_dtype: {p.compute_dtype!r} not in {COMPUTE_DTYPES}")
+    if p.rank < 1:
+        problems.append(f"peft.rank: must be >= 1, got {p.rank}")
+    if p.alpha <= 0:
+        problems.append(f"peft.alpha: must be positive, got {p.alpha}")
+    if not 0.0 <= p.dropout < 1.0:
+        problems.append(f"peft.dropout: must be in [0, 1), got {p.dropout}")
+    modules = p.target_modules
+    if modules != TARGET_MODULES_AUTO:
+        if not isinstance(modules, (list, ListConfig)) or len(modules) == 0 or not all(
+                isinstance(m, str) and m for m in modules):
+            problems.append(
+                "peft.target_modules: must be 'auto' or a non-empty list of "
+                f"module names, got {modules!r}")
+    if p.quantize_base == "nf4":
+        if not p.enabled:
+            problems.append(
+                "peft.quantize_base: nf4 requires peft.enabled=true "
+                "(no full fine-tuning of a 4-bit base)")
+        if recipe.precision.dtype == "fp8":
+            problems.append(
+                "peft: quantize_base=nf4 and precision.dtype=fp8 are mutually "
+                "exclusive (pick one weight-compression scheme)")
 
 
 def _check_data(recipe: DictConfig, problems: list[str]) -> None:
@@ -184,6 +225,7 @@ def validate(recipe: DictConfig) -> None:
     _check_schedule(recipe, problems)
     _check_precision(recipe, problems)
     _check_memory(recipe, problems)
+    _check_peft(recipe, problems)
     _check_data(recipe, problems)
     _check_checkpoint(recipe, problems)
     _check_watchdog(recipe, problems)
