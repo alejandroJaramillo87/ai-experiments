@@ -63,6 +63,24 @@ def test_supported_architectures_parses_registrations(fake_converter):
     assert archs == {"LlamaForCausalLM", "Llama4ForCausalLM", "Qwen2ForCausalLM"}
 
 
+def test_supported_architectures_scans_conversion_modules(tmp_path):
+    # Current llama.cpp pins register models in conversion/*.py next to a
+    # thin wrapper script (the pinned SHA registers Gemma4ForCausalLM there).
+    wrapper = tmp_path / "convert_hf_to_gguf.py"
+    wrapper.write_text("from conversion import ModelBase\n")
+    conversion = tmp_path / "conversion"
+    conversion.mkdir()
+    (conversion / "gemma.py").write_text(
+        '@ModelBase.register("Gemma4ForConditionalGeneration", "Gemma4ForCausalLM")\n'
+        "class Gemma4Model(TextModel):\n    pass\n")
+    (conversion / "qwen.py").write_text(
+        '@ModelBase.register("Qwen3ForCausalLM", "Qwen3Model")\n'
+        "class Qwen3Model(TextModel):\n    pass\n")
+    archs = convert_mod.supported_architectures(str(wrapper))
+    assert archs == {"Gemma4ForConditionalGeneration", "Gemma4ForCausalLM",
+                     "Qwen3ForCausalLM", "Qwen3Model"}
+
+
 def test_supported_architectures_rejects_empty(tmp_path):
     empty = tmp_path / "convert_hf_to_gguf.py"
     empty.write_text("print('no registrations here')\n")
