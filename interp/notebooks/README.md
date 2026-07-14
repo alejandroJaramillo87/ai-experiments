@@ -1,14 +1,12 @@
 # Interpretability notebooks
 
-Owner-work convention for interp Phase 0: the hand-written core-technique checklist notebooks
-(activation patching, linear probes, pretrained-SAE usage, max-activating examples; logit
-lens and steering as nice-to-have) land in this directory. Writing them by hand is the point;
-the workbench proves they can run, it does not write them.
+Working notebooks for interpretability projects: exploratory analysis, direction
+pre-validation before a steering deployment (`interp/steering/`), and probe or capture
+inspection. Anything that becomes a repeatable path graduates into the `interp/` packages
+with tests; notebooks hold the exploration, not the product.
 
 JupyterLab (started with `make interp-up`) serves the repository root, so this directory is
-reachable at `interp/notebooks/` in the file browser. The ARENA clone made by
-`make interp-arena` is bind-mounted at `interp/notebooks/arena/` inside the container; that
-path is gitignored and lives on NVMe at `/mnt/ai-data/interp/arena`.
+reachable at `interp/notebooks/` in the file browser.
 
 Rules:
 

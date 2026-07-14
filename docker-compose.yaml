@@ -19,11 +19,17 @@ services:
       - MODEL_PATH=${LLAMA_CPU_MODEL:-${LLAMA_ZEN5_MODEL}}
       - THREADS=16
       - THREADS_BATCH=16
+      # Steering control vector (interp Phase 3 W1); empty defaults keep behavior unchanged
+      - CONTROL_VECTOR=${CONTROL_VECTOR:-}
+      - CONTROL_VECTOR_SCALE=${CONTROL_VECTOR_SCALE:-}
+      - CONTROL_VECTOR_LAYER_RANGE=${CONTROL_VECTOR_LAYER_RANGE:-}
     ports:
       - "127.0.0.1:8001:8001"
     read_only: true
     volumes:
       - /mnt/ai-data/models/:/app/models:ro
+      # Control-vector GGUFs (interp Phase 3 W1); read-only like the models mount
+      - /mnt/ai-data/interp/vectors:/app/vectors:ro
       - ./logs/cpu:/app/logs
       - ./datasets:/app/datasets
       - /sys:/sys:ro
@@ -57,6 +63,10 @@ services:
       # Nsight Systems profiling (set NSYS_PROFILE=true to enable)
       - NSYS_PROFILE=${NSYS_PROFILE:-false}
       - NSYS_OUTPUT=${NSYS_OUTPUT:-/app/nsys_output/profile}
+      # Steering control vector (interp Phase 3 W1); empty defaults keep behavior unchanged
+      - CONTROL_VECTOR=${CONTROL_VECTOR:-}
+      - CONTROL_VECTOR_SCALE=${CONTROL_VECTOR_SCALE:-}
+      - CONTROL_VECTOR_LAYER_RANGE=${CONTROL_VECTOR_LAYER_RANGE:-}
     deploy:
       resources:
         reservations:
@@ -73,6 +83,8 @@ services:
     volumes:
       # Model storage mount
       - /mnt/ai-data/models/:/app/models:ro
+      # Control-vector GGUFs (interp Phase 3 W1); read-only like the models mount
+      - /mnt/ai-data/interp/vectors:/app/vectors:ro
       # Log storage
       - ./logs/gpu:/app/logs
       # Nsys profiling output (only used when NSYS_PROFILE=true)
@@ -232,6 +244,36 @@ services:
       timeout: 10s
       retries: 5
       start_period: 180s
+
+  # Serving request log proxy (interp Phase 3 W3). Opt-in via the "interp" profile:
+  # `make logproxy-up` starts it in front of llama-gpu on 127.0.0.1:8012 and clients that
+  # want their traffic logged point at it. Production ports and default behavior are
+  # untouched; this is a UX guardrail for the single-user threat model, not an auth
+  # boundary. One JSONL record per completed request lands under /mnt/ai-data/interp/logs.
+  interp-logproxy:
+    profiles: ["interp"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    build:
+      context: .
+      dockerfile: docker/interp-logproxy/Dockerfile
+    container_name: interp-logproxy
+    restart: "no" # opt-in sidecar, never on boot
+    user: "${UID:-1000}:${GID:-1000}" # match host user for log-dir writes
+    read_only: true
+    environment:
+      - TARGET_URL=${LOGPROXY_TARGET_URL:-http://llama-gpu:8002}
+      - TARGET_SERVICE=${LOGPROXY_TARGET_SERVICE:-llama-gpu}
+      - LISTEN_PORT=8012
+      - LOG_DIR=/logs
+    ports:
+      - "127.0.0.1:8012:8012"
+    volumes:
+      - /mnt/ai-data/interp/logs:/logs:rw
+    networks:
+      - ai-network
 
 # Persistent storage
 volumes:

@@ -44,7 +44,7 @@ HOST_MODELS = "/mnt/ai-data/models/"
 HEALTH_URL = "http://127.0.0.1:8002/v1/health"
 CHAT_URL = "http://127.0.0.1:8002/v1/chat/completions"
 TRAIN_COMPOSE = os.path.join(REPO_ROOT, "docker-compose.training.yaml")
-# Forward-compatible with the D9 run lock; vacuous until D9 lands
+# The D9 run lock (training/lock.py) held by a running training job
 TRAIN_LOCK = "/mnt/ai-data/training/.train.lock"
 DEFAULT_PROMPTS = os.path.join(REPO_ROOT, "scripts", "eval", "smoke_prompts.json")
 

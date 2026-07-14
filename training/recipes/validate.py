@@ -108,6 +108,27 @@ def _check_data(recipe: DictConfig, problems: list[str]) -> None:
             problems.append(f"data.{name}: must be >= 1, got {d[name]}")
     if d.workers < 0:
         problems.append(f"data.workers: must be >= 0, got {d.workers}")
+    if d.prefetch_factor < 1:
+        problems.append(f"data.prefetch_factor: must be >= 1, got {d.prefetch_factor}")
+
+
+def _check_staging(recipe: DictConfig, problems: list[str]) -> None:
+    s = recipe.staging
+    if s.max_gb <= 0:
+        problems.append(f"staging.max_gb: must be positive, got {s.max_gb}")
+    if not s.dir:
+        problems.append("staging.dir: must not be empty")
+
+
+def _check_affinity(recipe: DictConfig, problems: list[str]) -> None:
+    # Masks must parse and be disjoint even when disabled: a recipe carrying a
+    # broken affinity block should fail at load, not when someone enables it.
+    from training.affinity import resolve_masks
+
+    try:
+        resolve_masks(recipe.affinity)
+    except ValueError as exc:
+        problems.append(str(exc))
 
 
 def _check_checkpoint(recipe: DictConfig, problems: list[str]) -> None:
@@ -175,6 +196,8 @@ def validate(recipe: DictConfig) -> None:
     _check_data(recipe, problems)
     _check_checkpoint(recipe, problems)
     _check_watchdog(recipe, problems)
+    _check_staging(recipe, problems)
+    _check_affinity(recipe, problems)
     _check_tokenizer_matches_shards(recipe, problems)
     if problems:
         raise RecipeValidationError(problems)

@@ -56,8 +56,6 @@ services:
       - /mnt/ai-data/interp:/mnt/ai-data/interp:rw
       # Parity with the inference services, for later phases reading served GGUFs' provenance
       - /mnt/ai-data/models:/app/models:ro
-      # ARENA clone (make interp-arena) surfaced inside the Jupyter root; gitignored
-      - /mnt/ai-data/interp/arena:/workspace/interp/notebooks/arena:rw
     networks:
       - interp-network
 
