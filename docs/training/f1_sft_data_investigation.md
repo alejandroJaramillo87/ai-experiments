@@ -198,6 +198,13 @@ dataset and the gated Gemma 4 tokenizer) and inspecting `mask_debug` output.
 
 ## Open questions
 
+0. **D4 calculator support for Gemma 4.** `HF_SUPPORTED_MODEL_TYPES` in
+   `training/calculator/components.py` does not include `gemma4`/`gemma4_text`:
+   per-layer embeddings add parameters the dense formulas do not model, and the
+   repository policy is to fail loudly rather than guess. The design document
+   already assigns this to Phase 1 ("the D4 calculator, which gains these as
+   reference configs"); it must land before F3's acceptance run sizes the E2B
+   QLoRA reference recipe. Qwen3 recipes are fully supported today.
 1. **Reference SFT dataset.** The document's example is
    `HuggingFaceH4/ultrachat_200k`; the choice of the first real dataset (and its
    license string for the manifest) is deferred to the F1 acceptance run.
