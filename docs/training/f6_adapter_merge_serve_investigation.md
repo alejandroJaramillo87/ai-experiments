@@ -16,7 +16,7 @@ shipped code is called out and the repository convention wins.
 - [Proposed module layout](#proposed-module-layout)
 - [Work breakdown](#work-breakdown)
 - [Acceptance criteria](#acceptance-criteria)
-- [Open questions](#open-questions)
+- [Resolved design decisions](#resolved-design-decisions)
 
 ## Scope summary
 
@@ -87,9 +87,9 @@ The actual F6 work, in dependency order:
    `base_model_name_or_path` must agree with `meta.base_model`.
 4. **Manifest fields.** `base_revision` and `base_config_sha256` in the adapter block;
    `merge_method` values extended for the mergekit path.
-5. **mergekit deliverable.** New: pinned dependency in the export image,
-   `scripts/export/merge_models.py` (or a `python -m training merge` subcommand — see
-   open questions), `make merge CONFIG=...`, example TIES config under
+5. **mergekit deliverable (split to a follow-up feature; see resolved decisions).**
+   New: pinned dependency in the export image, a `python -m training merge`
+   subcommand, `make merge CONFIG=...`, example TIES config under
    `training/export/merges/`, output staged as an HF directory that feeds the existing
    convert/quantize path with a manifest recording the mergekit method and inputs.
 6. **Round-trip acceptance wiring.** Host-side: F3 QLoRA checkpoint to Q8_0 GGUF to
@@ -151,10 +151,11 @@ Makefile                            make merge CONFIG=...
 1. F3 meta extension and `HFModelConfig.revision` (small, touches F3 tests).
 2. Export preflight and staging cross-check with unit tests (pure-logic, sandbox-testable).
 3. Manifest field additions with reproducibility tests.
-4. mergekit: pin, image addition, wrapper, TIES example, tests.
-5. Host-side acceptance: QLoRA export, serve-eval smoke, full-checkpoint export,
-   mergekit example export, re-export hash identity. All GPU/serving steps are
-   host-executed and reported back per the sandbox rules.
+4. Host-side acceptance: QLoRA export, serve-eval smoke, full-checkpoint export,
+   re-export hash identity. All GPU/serving steps are host-executed and reported back
+   per the sandbox rules.
+5. Follow-up feature (not F6): mergekit pin, image addition, `training merge`
+   subcommand, TIES example, tests.
 
 ## Acceptance criteria
 
@@ -165,24 +166,27 @@ From the scope document, restated against the repository:
   state is restored.
 - A full-fine-tune checkpoint exports through the same command with no adapter step,
   with `meta.json` agreement verified.
-- The two-adapter mergekit TIES example produces a servable GGUF whose manifest records
-  the merge method and input adapters.
+- Deferred to the mergekit follow-up: the two-adapter TIES example producing a servable
+  GGUF whose manifest records the merge method and input adapters.
 - Re-export of the same checkpoint is hash-identical (`gguf.sha256`) through the
   adapter path.
 - New: export refuses when the base at export time does not match the revision recorded
   at train time, with a clear message and a documented override.
 
-## Open questions
+## Resolved design decisions
 
-1. **Base identity mechanism.** Record the HF cache snapshot commit plus a
-   `config.json` hash (proposed), or hash the full base weights (exact but adds a
-   multi-GB read to every checkpoint save)?
-2. **Base loading policy at export.** Cache-first (export requires the training HF
-   cache mounted, no network) versus hub-with-token inside the export container?
-3. **mergekit scope.** Ship the full mergekit deliverable in F6 as scoped, or split it
-   into a follow-up so the merge-and-serve round trip (the exit-checklist item) lands
-   first? The TIES example needs two trained adapters on one base, which do not exist
-   yet.
-4. **Merge entry point.** Standalone `scripts/export/merge_models.py` per the scope
-   document, or a `python -m training merge` subcommand matching the repository's
-   unified-CLI convention?
+Owner decisions recorded 2026-07-14:
+
+1. **Base identity mechanism: HF revision plus config hash.** `meta.json` records the
+   resolved hub commit and a SHA-256 of the base `config.json`. Cheap at save time;
+   catches revision drift. Full base-weights hashing was rejected as a multi-GB read
+   on every checkpoint save.
+2. **Base loading at export: cache-first, no network.** The export container mounts
+   the training HF cache and resolves the same local snapshot training used. No
+   `HF_TOKEN` in the export container; deterministic merges.
+3. **mergekit is split into a follow-up.** F6 lands the merge-and-serve round trip
+   (the exit-checklist item) first. The TIES example needs two trained adapters that
+   do not exist yet; the mergekit deliverable ships as a separate feature.
+4. **Merge entry point: `python -m training merge`.** When mergekit is built, it lands
+   as a subcommand of the unified training CLI, not a standalone script under
+   `scripts/export/`.
