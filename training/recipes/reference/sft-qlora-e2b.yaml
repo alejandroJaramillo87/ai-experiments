@@ -1,12 +1,15 @@
 # sft-qlora-e2b.yaml
 #
-# Phase 1 reference recipe (roadmap F2): QLoRA fine-tune of Gemma 4 E2B
+# Phase 1 reference recipe (roadmap F2/F3): QLoRA fine-tune of Gemma 4 E2B
 # (the Phase 1 primary family; HF model_type gemma4), the stand-in for the
-# F8 SFT recipe until F8 lands. Exercises the peft group end to end: NF4
-# base quantization, LoRA adapter, and target_modules "auto" resolution.
-# The F2 calculator acceptance measures this recipe's predicted peak VRAM
-# against the workstation. Weights are gated on the Hugging Face hub;
-# HF_TOKEN comes from the untracked training env file (D6 convention).
+# F8 SFT recipe until F8 lands. Exercises the peft group end to end (NF4
+# base quantization, LoRA adapter, target_modules "auto" resolution) and
+# the F3 trainer: make train-sft CONFIG=... over an F1-prepared ultrachat
+# dataset (make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k
+# --split train_sft ..."). The F2 calculator acceptance measures this
+# recipe's predicted peak VRAM against the workstation. Weights are gated
+# on the Hugging Face hub; HF_TOKEN comes from the untracked training env
+# file (D6 convention).
 
 run:
   name: sft-qlora-e2b
@@ -17,8 +20,18 @@ model:
   hf:
     id: google/gemma-4-E2B
 
+sft:
+  enabled: true
+  # F1-prepared, hash-verified artifact (scripts/training/prepare_sft.py).
+  dataset: /mnt/ai-data/training/datasets/sft/ultrachat-e2b
+  backend: trl        # or unsloth (optional throughput backend, F3 decision 2)
+  packing: true       # pack short chats into full seq_len sequences
+  eval_steps: 100     # held-out loss cadence for the F7 curve
+
 data:
-  source: /mnt/ai-data/training/datasets/sft-placeholder
+  # Unused by the F3 trainer (sft.dataset supplies examples); batch geometry
+  # below is what train-sft consumes.
+  source: /mnt/ai-data/training/datasets/sft/ultrachat-e2b
   seq_len: 2048
   micro_batch: 4
   grad_accum: 8
