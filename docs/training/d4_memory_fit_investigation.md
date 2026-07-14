@@ -15,7 +15,7 @@ records the repository state and treats the document as advisory.
 - [Work breakdown](#work-breakdown)
 - [Acceptance checks](#acceptance-checks)
 - [Risks](#risks)
-- [Open questions](#open-questions)
+- [Resolved decisions](#resolved-decisions)
 
 ## Design summary
 
@@ -145,10 +145,10 @@ against the schema fields:
 2. `training/calculator/solve.py` — `estimate(recipe)` returning a structured result
    (per-component bytes, totals, fits flag, host RAM when offload is on) and
    `solve(recipe, axis)` binary-searching micro-batch or seq_len.
-3. `training/calculator/__init__.py` and `__main__.py` — public API plus the CLI
-   (`--config`, `--solve batch|seq`, `--json`), calling `load_recipe` and
-   `validate` first, human table per `.styles/PYTHON_OUTPUT_STYLE.md`, machine mode
-   emitting only JSON.
+3. `training/cli.py` plus `training/__main__.py` — unified CLI (`python -m
+   training memfit --config ... [--solve batch|seq] [--json]`, see resolved
+   decision 1), calling `load_recipe` and `validate` first, human table per
+   `.styles/PYTHON_OUTPUT_STYLE.md`, machine mode emitting only JSON.
 4. `training/calculator/calibrate.py` — GPU-only harness: builds the model from the
    recipe, runs a few real steps on synthetic batches, records
    `torch.cuda.max_memory_allocated/reserved` and NVML peak (pynvml), writes a
@@ -196,18 +196,29 @@ the two reference configs, the 10 percent acceptance) is host-side.
 - **Calibration harness scope creep** into a proto-D6 trainer; keep it to a private
   few-step loop with no checkpointing, tracking, or resume.
 
-## Open questions
+## Resolved decisions
 
-1. **CLI placement:** is `training/calculator/__main__.py` alone acceptable, or
-   should a `scripts/training/memfit.py` wrapper exist for consistency with
-   `validate_recipe.py` and friends?
-2. **Calibration model construction:** should `calibrate.py` build the scratch
-   architectures with a hand-rolled module, or instantiate them through HF
-   `LlamaConfig`/`AutoModelForCausalLM` (which D6 will use anyway and guarantees the
-   measured model matches what training runs)? Default assumption: HF construction.
-3. **SwiGLU rounding convention:** confirm the intended intermediate sizes for the
-   two reference shapes (1536 for the 150M config, 8192 for the 1B config) so
-   `ffn_mult` rounding is pinned in the unit test.
-4. **Scope of the Phase 0 weights term:** confirm that NF4/QLoRA support is deferred
-   to Phase 1 (the schema cannot express it yet) and Phase 0 ships bf16/fp8 dtypes
-   only, with the component structured for the later extension.
+Recorded from review of this investigation (2026-07-14).
+
+1. **Unified CLI.** D4 lands as the first subcommand of a unified training CLI:
+   `training/cli.py` exposed as `python -m training <subcommand>`, starting with
+   `memfit` and `calibrate` and migrating the existing `scripts/training/` entry
+   points (`validate`, `prepare-data`, `train-tokenizer`) as thin subcommands that
+   call the same underlying modules. Makefile targets keep their current names and
+   become one-line invocations of the CLI. Caveat: the D6 trainer stays outside the
+   subcommand dispatcher if it adopts `hydra.main` (Hydra owns argv there); it can
+   join later via Hydra's compose API. Migration of existing scripts may land as a
+   separate commit from the calculator itself.
+2. **Calibration model construction:** HF `LlamaConfig` +
+   `AutoModelForCausalLM.from_config` builds the scratch architectures, so the
+   measured model matches what D6 training runs will instantiate.
+3. **SwiGLU rounding convention:** pinned from the source architectures the
+   reference recipes cite — SmolLM2-135M: hidden 576, intermediate 1536
+   (`ffn_mult` 2.67); Llama-3.2-1B: hidden 2048, intermediate 8192 (`ffn_mult`
+   4.0). The unit test asserts these intermediate sizes; the calculator and the
+   calibration harness must derive them identically from `ffn_mult * hidden`
+   (rounded to a hardware-friendly multiple where the product is inexact).
+4. **Phase 0 weights term scope:** NF4/QLoRA support is deferred to Phase 1, where
+   all fine-tuning happens. Phase 0 ships bf16/fp8 dtypes only, with
+   `components.py` structured so the 4-bit base + adapter term is an additive
+   extension.
