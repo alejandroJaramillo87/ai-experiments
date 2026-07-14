@@ -8,7 +8,8 @@ model before exiting nonzero.
 
 This is a HOST tool: it drives docker compose and talks to localhost:8002, so
 it runs on the workstation outside any container and depends only on the
-Python standard library.
+Python standard library. The service registry, swap, health poll, and chat
+client live in training/serving.py, shared with the F4 teacher harness.
 
 Manual restore one-liner if this tool ever dies uncleanly:
 
@@ -28,24 +29,19 @@ with --require-pass), 2 invalid usage.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import signal
-import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CONTAINER_MODELS = "/app/models/"
-HOST_MODELS = "/mnt/ai-data/models/"
-HEALTH_URL = "http://127.0.0.1:8002/v1/health"
-CHAT_URL = "http://127.0.0.1:8002/v1/chat/completions"
-TRAIN_COMPOSE = os.path.join(REPO_ROOT, "docker-compose.training.yaml")
-# The D9 run lock (training/lock.py) held by a running training job
-TRAIN_LOCK = "/mnt/ai-data/training/.train.lock"
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from training import serving  # noqa: E402
+
+SERVICE = serving.SERVICES["llama-gpu"]
 DEFAULT_PROMPTS = os.path.join(REPO_ROOT, "scripts", "eval", "smoke_prompts.json")
 
 
@@ -87,27 +83,8 @@ class Printer:
             print(message)
 
 
-class ServeEvalError(RuntimeError):
+class ServeEvalError(serving.ServingError):
     pass
-
-
-def sha256_file(path: str) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def model_paths(model: str) -> tuple[str, str]:
-    """(container_path, host_path) for a model given in either form."""
-    if model.startswith(CONTAINER_MODELS):
-        return model, HOST_MODELS + model[len(CONTAINER_MODELS):]
-    if model.startswith(HOST_MODELS):
-        return CONTAINER_MODELS + model[len(HOST_MODELS):], model
-    raise ServeEvalError(
-        f"Model must live under {CONTAINER_MODELS} (container view) or "
-        f"{HOST_MODELS} (host view): {model}")
 
 
 def quant_from_name(path: str) -> str | None:
@@ -128,28 +105,9 @@ def load_manifest(host_path: str) -> dict | None:
     return None
 
 
-def compose(env: dict, *args: str) -> None:
-    cmd = ["docker", "compose", *args]
-    proc = subprocess.run(cmd, cwd=REPO_ROOT, env=env)
-    if proc.returncode != 0:
-        raise ServeEvalError(f"Command failed ({proc.returncode}): {' '.join(cmd)}")
-
-
 def preflight(host_path: str, skip_hash: bool, out: Printer) -> dict | None:
     """Assert training is idle and the model is what its manifest says."""
-    if os.path.exists(TRAIN_LOCK):
-        raise ServeEvalError(
-            f"Training lock present: {TRAIN_LOCK}\n"
-            "  Solution: wait for the training run to finish (one GPU consumer "
-            "at a time)")
-    ps = subprocess.run(
-        ["docker", "compose", "-f", TRAIN_COMPOSE, "ps", "-q", "training"],
-        cwd=REPO_ROOT, capture_output=True, text=True)
-    if ps.returncode == 0 and ps.stdout.strip():
-        raise ServeEvalError(
-            "Training container is running\n"
-            "  Solution: wait for it to finish; training and serving must not "
-            "share the GPU")
+    serving.ensure_training_idle()
     out.ok("Preflight: training is idle")
 
     if not os.path.isfile(host_path):
@@ -160,7 +118,7 @@ def preflight(host_path: str, skip_hash: bool, out: Printer) -> dict | None:
     elif skip_hash:
         out.info("Manifest hash check skipped (--skip-hash-check)")
     else:
-        actual = sha256_file(host_path)
+        actual = serving.sha256_file(host_path)
         expected = manifest["gguf"]["sha256"]
         if actual != expected:
             raise ServeEvalError(
@@ -171,65 +129,28 @@ def preflight(host_path: str, skip_hash: bool, out: Printer) -> dict | None:
     return manifest
 
 
-def swap_model(container_path: str | None, out: Printer) -> None:
-    """Recreate llama-gpu with LLAMA_GPU_MODEL overridden (or cleared)."""
-    env = os.environ.copy()
-    if container_path is None:
-        # Compose then falls back to .env / the entrypoint default
-        env.pop("LLAMA_GPU_MODEL", None)
-        out.run("Restoring previous serving state")
-    else:
-        env["LLAMA_GPU_MODEL"] = container_path
-        out.run(f"Swapping llama-gpu to {container_path}")
-    compose(env, "up", "-d", "--force-recreate", "llama-gpu")
-
-
-def wait_healthy(budget_s: int, out: Printer) -> float:
-    """Poll the health endpoint; returns seconds to healthy."""
-    start = time.monotonic()
-    deadline = start + budget_s
-    while time.monotonic() < deadline:
-        try:
-            with urllib.request.urlopen(HEALTH_URL, timeout=5) as resp:
-                if resp.status == 200:
-                    elapsed = time.monotonic() - start
-                    out.ok(f"llama-gpu healthy after {elapsed:.1f}s")
-                    return elapsed
-        except (urllib.error.URLError, OSError, TimeoutError):
-            pass
-        time.sleep(3)
-    raise ServeEvalError(
-        f"llama-gpu did not become healthy within {budget_s}s\n"
-        "  Solution: check `docker compose logs llama-gpu` for load errors")
-
-
 def run_prompt(spec: dict, defaults: dict, timeout: int) -> dict:
-    payload = {
-        "model": "default",
-        "messages": [{"role": "user", "content": spec["prompt"]}],
+    sampling = {
         "temperature": spec.get("temperature", defaults.get("temperature", 0)),
         "max_tokens": spec.get("max_tokens", defaults.get("max_tokens", 64)),
     }
     record = {"id": spec["id"], "prompt": spec["prompt"],
               "expect_substring": spec.get("expect_substring")}
-    request = urllib.request.Request(
-        CHAT_URL, data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"})
     start = time.monotonic()
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as resp:
-            body = json.load(resp)
-    except (urllib.error.URLError, OSError, TimeoutError, ValueError) as exc:
+        result = serving.chat_completion(
+            SERVICE, [{"role": "user", "content": spec["prompt"]}],
+            sampling, timeout=timeout)
+    except serving.ServingError as exc:
         record.update(error=str(exc), latency_ms=round(
             (time.monotonic() - start) * 1000, 1))
         return record
-    record["latency_ms"] = round((time.monotonic() - start) * 1000, 1)
-    content = body["choices"][0]["message"]["content"]
-    record["response"] = content
-    record["usage"] = body.get("usage")
+    record["latency_ms"] = result["latency_ms"]
+    record["response"] = result["content"]
+    record["usage"] = result["usage"]
     expect = spec.get("expect_substring")
     if expect is not None:
-        record["passed"] = expect.lower() in content.lower()
+        record["passed"] = expect.lower() in result["content"].lower()
     return record
 
 
@@ -300,12 +221,12 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
 
     try:
-        container_path, host_path = model_paths(args.model)
+        container_path, host_path = serving.model_paths(args.model)
         if not os.path.isfile(args.prompts):
             out.error(f"Prompt set not found: {args.prompts}")
             return 2
         manifest = preflight(host_path, args.skip_hash_check, out)
-    except ServeEvalError as exc:
+    except serving.ServingError as exc:
         out.error(str(exc))
         return 1
 
@@ -321,31 +242,35 @@ def main(argv: list[str] | None = None) -> int:
                   "manifest": os.path.splitext(host_path)[0] + ".manifest.json"
                               if manifest else None},
         "prompts_file": os.path.abspath(args.prompts),
-        "prompts_sha256": sha256_file(args.prompts),
+        "prompts_sha256": serving.sha256_file(args.prompts),
         "kept_serving": args.keep_serving,
     }
 
     swapped = False
     failed = False
     try:
-        swap_model(container_path, out)
+        out.run(f"Swapping llama-gpu to {container_path}")
+        serving.swap_model(SERVICE, container_path)
         swapped = True
-        report["startup_seconds"] = round(wait_healthy(args.start_budget, out), 1)
+        elapsed = serving.wait_healthy(SERVICE, args.start_budget)
+        out.ok(f"llama-gpu healthy after {elapsed:.1f}s")
+        report["startup_seconds"] = round(elapsed, 1)
         results, summary = evaluate(args.prompts, args.timeout, out)
         report["results"] = results
         report["summary"] = summary
         failed = summary["errors"] > 0 or (
             args.require_pass and summary["failed"] > 0)
-    except (ServeEvalError, KeyboardInterrupt, SystemExit) as exc:
+    except (serving.ServingError, KeyboardInterrupt, SystemExit) as exc:
         failed = True
         report["error"] = str(exc) or exc.__class__.__name__
         out.error(f"Serve-eval aborted: {report['error']}")
     finally:
         if swapped and not (args.keep_serving and not failed):
             try:
-                swap_model(None, out)
+                out.run("Restoring previous serving state")
+                serving.swap_model(SERVICE, None)
                 out.ok("Previous serving state restored")
-            except ServeEvalError as exc:
+            except serving.ServingError as exc:
                 out.error(f"Restore failed: {exc}")
                 out.line("  Solution: docker compose up -d --force-recreate llama-gpu")
                 failed = True

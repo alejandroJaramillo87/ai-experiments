@@ -235,11 +235,13 @@ Host-run by the operator, output reported back verbatim:
 
 Resolved by the owner, 2026-07-14:
 
-1. **Pipeline engine: thin `openai`-client loop, not distilabel.** Pin only the
-   `openai` client in the training dependency group; the harness implements
-   bounded concurrency, retry with backoff, and resumability itself (required
-   contributions regardless of engine). The manifest records the client library
-   and version in place of a distilabel version.
+1. **Pipeline engine: thin client loop, not distilabel.** The harness
+   implements bounded concurrency, retry with backoff, and resumability
+   itself (required contributions regardless of engine). Implementation note:
+   the chat client ended up stdlib-only (`urllib.request`, matching
+   `serve_eval.py`, which the tool must remain host-runnable alongside), so
+   no new dependency pin was needed at all. The manifest records
+   `"engine": "stdlib-urllib-client"` in place of a distilabel version.
 2. **Serving swap: yes, document behavior.** `generate_teacher.py` swaps the
    teacher model in via the extended D7 mechanism (env-override compose
    recreate, per-service env var and health path) and restores prior serving
