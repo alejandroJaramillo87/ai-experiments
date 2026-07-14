@@ -5,14 +5,16 @@ fine-tuning byb entry point") against the current repository state, with a work
 breakdown, acceptance checks, deviations, and open questions. Per operating
 rules, the repository is the source of truth; where the roadmap document
 disagrees with the repository, this investigation records the repository state
-and treats the document as advisory.
+and treats the document as advisory. Revised after F1 (chat and instruction
+data preparation) merged and the Gemma 4 primary / Qwen3 fallback model policy
+was adopted.
 
 ## Table of contents
 
 - [Design summary](#design-summary)
 - [Current repository state](#current-repository-state)
 - [Deviations from the document](#deviations-from-the-document)
-- [Blocking dependency: F1 is not implemented](#blocking-dependency-f1-is-not-implemented)
+- [Inherited F1 handoffs](#inherited-f1-handoffs)
 - [Work breakdown](#work-breakdown)
 - [Acceptance checks](#acceptance-checks)
 - [Risks](#risks)
@@ -47,49 +49,51 @@ The document specifies:
 5. **Held-out loss is computed during training** on F1's held-out split at
    `eval_steps` intervals, so F7's scorecard has a training-time curve.
 
-Document interface: `make train-sft CONFIG=recipes/sft-qlora-gemma-e4b.yaml`
-with override pass-through, script `scripts/train/train_sft.py`, logic in
-`training/sft.py`. Preflight, in order: recipe `validate()`, D4 memory-fit
-check (warn or refuse per a `--force` flag), D9 lock acquisition,
-inference-services-down check.
+Document interface: `make train-sft CONFIG=...` with override pass-through,
+script `scripts/train/train_sft.py`, logic in `training/sft.py`. Preflight, in
+order: recipe `validate()`, D4 memory-fit check (warn or refuse per a
+`--force` flag), D9 lock acquisition, inference-services-down check.
 
-Document acceptance: a QLoRA fine-tune of a small instruction dataset
-completes end to end and logs to tracking; a tiny SFT run checkpoints, is
-killed, and resumes with a loss trajectory meeting D6's deterministic-resume
-bar; the same tiny run executes on both backends (or the unsloth failure is
-documented); preflight refuses to start while llama-gpu is up and releases the
-lock on every exit path.
+Model policy (repository, post-F1): Gemma 4 E-models (HF `model_type`
+`gemma4`/`gemma4_text`; `google/gemma-4-E2B` and `-E4B`) are the primary
+family for every fine-tuning deliverable; Qwen3 is the single fallback family
+so a Gemma 4 library-support failure never blocks the phase. F3's acceptance
+runs target Gemma 4 E2B first (the reference recipe), with a Qwen3 recipe as
+the fallback proof.
 
 ## Current repository state
 
-Infrastructure F3 consumes is largely in place:
+Every F3 dependency has landed:
 
 | Dependency | State | Repository location |
 |------------|-------|---------------------|
-| D1 training container | Done | `docker/training/Dockerfile.training`, `docker-compose.training.yaml`; TRL 0.24.0 pinned in the pyproject training group |
+| D1 training container | Done | `docker/training/Dockerfile.training`, `docker-compose.training.yaml`; TRL 0.24.0 and transformers 5.13.1 pinned in the pyproject training group |
 | D5 recipe system | Done | `training/recipes/` (schema, loader with override handling, `validate()`); `hydra.main` deliberately not used |
-| F2 PEFT schema | Done | `peft` group in `training/recipes/schema.py` (lora/dora, nf4 QLoRA, `target_modules: auto`), `training/peft_utils.py` (`build_peft_model`, `trainable_parameter_report`), `training/families.py` registry |
-| D4 memory-fit | Done, QLoRA-aware | `training/calculator/`, `python -m training memfit` |
-| D6 checkpoint/tracking | Done | `training/checkpoint.py` (atomic `step_N/` layout, `latest` symlink, retention, `meta.json`), `training/tracking.py` (`Tracker.log` fan-out: tensorboard, wandb, mlflow) |
-| D9 lock | Done | `training/lock.py` (`/mnt/ai-data/training/.train.lock`, context manager, staleness reported not auto-removed) |
-| D10 watchdog | Done for the D6 loop | `training/watchdog.py` (`on_step` plus NVML background thread); the TRL callback adapter is explicitly anticipated but not written |
-| D7 serving/export | Done | `training/serving.py` (service specs for llama-gpu 8002, vllm-gpu 8003, health checks), `training/export/` |
-| F4 teacher harness | Done | `training/data/teacher.py` writes messages-format JSONL that "F1's prepare_sft.py later consumes" |
-| Unified CLI | Done | `python -m training <subcommand>` (`training/cli.py`: memfit, calibrate, train, export); resolved D4 decision 1 says script entry points migrate to CLI subcommands |
-| F2 reference recipe | Done | `training/recipes/reference/sft-qlora-1b.yaml` (QLoRA stand-in for the F8 SFT recipe; `data.source` points at a placeholder) |
+| F2 PEFT schema | Done | `peft` group in `training/recipes/schema.py` (lora/dora, nf4 QLoRA, `target_modules: auto`), `training/peft_utils.py` (`build_peft_model`, `trainable_parameter_report`) |
+| F1 data preparation | Done | `training/data/sft.py`: segment-by-segment rendering from each family's `ChatTemplateSpec`, prompt-loss masking to -100 by construction, `mask_debug`, materialized `train.jsonl`/`holdout.jsonl` artifacts with hash-verified manifests, `load_sft_dataset(dir, tokenizer)` returning `(train, holdout)` lists of `{"input_ids", "labels"}`; `scripts/training/prepare_sft.py` + `make prepare-sft`; golden-fixture mask tests in `tests/training/test_sft.py` |
+| Family registry | Done, Gemma 4 + Qwen3 only | `training/families.py`: `FamilySpec(model_type, lora_target_modules, chat_template)`; `CHAT_TEMPLATE_VERSION = 2` encodes the official gemma4 template (`<|turn>role ... <turn|>`, native system turn, assistant role "model") and ChatML for qwen3 |
+| Recipe `sft` group (data side) | Done | `SftConfig(enabled, dataset)` in `training/recipes/schema.py`; `_check_sft` validation (requires `model.hf`, a prepared dataset with `manifest.json`). Trainer-side fields explicitly deferred to F3 per the schema docstring |
+| D4 memory-fit | Done for Qwen3, **missing gemma4** | `training/calculator/components.py` `HF_SUPPORTED_MODEL_TYPES` has no `gemma4`/`gemma4_text`; per-layer embeddings (262k vocab x 30 layers x 256 dims packed into one table) add parameters the dense formulas do not model |
+| D6 checkpoint/tracking | Done | `training/checkpoint.py` (atomic `step_N/` layout, `latest` symlink, retention, `meta.json`), `training/tracking.py` (`Tracker.log` fan-out) |
+| D9 lock | Done | `training/lock.py` (context manager; staleness reported, never auto-removed) |
+| D10 watchdog | Done for the D6 loop | `training/watchdog.py`; the TRL callback adapter is explicitly anticipated in the D10 investigation but not written |
+| D7 serving/export | Done | `training/serving.py` (health probes for llama-gpu 8002, vllm-gpu 8003), `training/export/` (scoped to the Gemma 4 / Qwen3 policy) |
+| Unified CLI | Done | `python -m training <subcommand>` (`training/cli.py`: memfit, calibrate, train, export) |
+| Reference recipe | Done | `training/recipes/reference/sft-qlora-e2b.yaml` (Gemma 4 E2B QLoRA; F8 stand-in; `data.source` still a placeholder, `sft` group not yet referenced) |
 
-Not present:
+Not present (F3's actual surface):
 
 - `training/sft.py` and any SFT entry point (script or CLI subcommand).
-- An `sft` group in the recipe schema (backend selection, packing, chat-data
-  fields, eval interval for held-out loss).
-- F1 in its entirety: no `training/data/sft.py`, no chat-template registry
-  entries in `training/families.py` (F2 populated only `lora_target_modules`;
-  the module docstring says F1 extends each entry with its chat template), no
-  `prepare_sft.py`, no prompt-loss masking, no held-out split machinery.
-- Unsloth: not pinned anywhere in `pyproject.toml` or the training Dockerfile.
-- A TRL `TrainerCallback` adapter for the watchdog, tracker, or checkpoint
-  retention.
+- Trainer-side `sft` schema fields: `backend`, `packing`, `eval_steps`,
+  epochs, and whatever else `SFTConfig` needs that existing groups do not
+  carry.
+- Sequence packing anywhere: F1 deliberately ships unpacked, mask-correct
+  examples; the F1 investigation records packing as owned by F3 (TRL's
+  packing with flash-attention varlen, plus packed-mode mask tests).
+- Unsloth: not pinned in `pyproject.toml` or the training Dockerfile; no
+  smoke-test step covers it.
+- TRL `TrainerCallback` adapters for the watchdog, tracker, or D6 retention.
+- gemma4 support in the D4 calculator (see inherited handoffs).
 
 ## Deviations from the document
 
@@ -100,123 +104,175 @@ Repository conventions that override the document's wording:
    per resolved D4 decision 1, new tooling lands as `python -m training`
    subcommands (D6's trainer is `python -m training train`). F3 should be a
    `train-sft` subcommand in `training/cli.py` wrapped by a `make train-sft`
-   target, matching `make train`.
+   target, matching `make train` and F1's `make prepare-sft`.
 2. **Override handling.** The document says "Hydra overrides pass through".
-   The repository's D5 loader owns override handling and `hydra.main` is
-   explicitly not used (`training/cli.py` docstring). Overrides flow as
-   `ARGS="optimizer.lr=1e-4"` through the existing loader path.
-3. **Model naming.** The document says "gemma-4-E4B". The repository treats
-   these checkpoints as Gemma 3n (`model_type` `gemma3n`/`gemma3n_text`,
-   MatFormer/PLE) in `training/families.py`. All F3 work keys off the HF
-   `model_type`, not marketing names.
+   The D5 loader owns override handling and `hydra.main` is explicitly not
+   used; overrides flow as `ARGS="optimizer.lr=1e-4"` through the loader.
+3. **Model naming and policy.** The document's examples span gemma and llama
+   families. The repository policy is Gemma 4 primary (`model_type gemma4`,
+   verified against transformers' gemma4 configuration), Qwen3 the single
+   fallback; no Llama family is registered. F3 keys everything off the HF
+   `model_type` through `training/families.py`.
 4. **Checkpoint layout.** The document says TRL's native mechanism writes
    "into the D6 directory layout". These are not the same format: D6's
    `step_N/` layout (atomic rename, `latest` symlink, `meta.json`,
    `dataloader.json`, RNG state) is custom, while transformers writes
    `checkpoint-<step>/` with its own trainer state. Reconciliation is a real
-   design task, not a wording nit (see open questions).
-5. **Preflight "inference-services-down check".** No such check exists as a
-   named utility; `training/serving.py` has per-service health probes that can
-   be inverted (refuse when any service answers). D9's lock alone does not
-   cover this — the lock stops serving swaps, not an already-running llama-gpu.
+   design task, not a wording nit; F6 export reads D6's `meta.json` and
+   `model/` layout, so whatever F3 writes must keep `training/export/`
+   working or extend it (see open questions).
+5. **Preflight "inference-services-down check".** No such named utility
+   exists; `training/serving.py`'s per-service health probes can be inverted
+   (refuse when any service answers). The D9 lock alone does not cover an
+   already-running llama-gpu.
+6. **Dataset loading.** The document says the trainer "can also tokenize on
+   the fly for small datasets". The repository's F1 decision is stricter:
+   recipes reference materialized `prepare_sft.py` artifacts only, enforced
+   by `_check_sft` (a dataset directory without `manifest.json` fails
+   validation). F3 consumes `load_sft_dataset` and does not add an
+   on-the-fly path.
 
-## Blocking dependency: F1 is not implemented
+## Inherited F1 handoffs
 
-The document orders F1 before F3 ("the trainer consumes prepared data") and
-the repository confirms F1 has not landed. F1 is itself a substantial,
-correctness-critical task: canonical messages format, per-family chat-template
-registry with assistant-span locators, prompt-loss masking to -100 with golden
-fixture tests, sequence packing with correct attention separation,
-materialized artifacts with manifests, and a seeded held-out split. F3's
-held-out-loss decision and its acceptance criteria all assume F1's loader
-(`load_sft_dataset`) and artifacts exist.
+The F1 investigation explicitly assigns three items to F3:
 
-Practical consequence: F3 cannot meet its acceptance without F1, so either F1
-is scheduled first as its own task (document order, recommended) or F3's scope
-expands to include a minimal F1 subset — which would still require the masking
-and template registry, the highest-risk part, so little is saved.
+1. **Sequence packing.** F1 artifacts are unpacked. F3 owns the recipe flag,
+   TRL packing integration (position ids reset per example via
+   flash-attention varlen), and masking-correctness tests in packed mode.
+   Note: F1 artifacts are pre-tokenized with labels; TRL's packing paths are
+   built around text/messages columns, so packing pre-masked `input_ids`/
+   `labels` pairs needs verification against TRL 0.24.0's API (it may require
+   a custom collator that concatenates examples and labels in step).
+2. **D4 calculator gemma4 support.** `HF_SUPPORTED_MODEL_TYPES` excludes
+   gemma4; the memfit preflight for the primary family fails today. This must
+   land before F3's acceptance run sizes the E2B QLoRA reference recipe
+   (per-layer embeddings are frozen under QLoRA, so the QLoRA memory model
+   mostly needs correct parameter counting, but that counting is the work).
+   Qwen3 recipes are fully supported today, so the fallback path is not
+   blocked.
+3. **Thinking-mode training decision.** The official gemma4 template strips
+   `<|channel>thought ... <channel|>` sections from conversation history, so
+   F1's rendered training conversations contain no thinking tokens. Whether
+   SFT examples should carry a masked empty-thought prefix to mirror the
+   inference-time prompt (where `<|think|>` appears in the system turn) is an
+   F3 decision, checked during the host-side smoke fine-tune; a spec change
+   bumps `CHAT_TEMPLATE_VERSION` and invalidates prepared artifacts by
+   design.
 
 ## Work breakdown
 
-Assuming F1 lands first (see open questions):
+1. **Schema: trainer-side `sft` fields** extending F1's `SftConfig` —
+   `backend: trl|unsloth` (default trl), `packing: bool`, `eval_steps`,
+   `num_epochs` (or max-steps precedence rule against `schedule.total_steps`),
+   plus any `SFTConfig` mapping fields the existing groups lack. `validate()`
+   invariants (backend value, unsloth-incompatible combinations) with unit
+   tests in `tests/training/test_recipes.py`. Point
+   `sft-qlora-e2b.yaml` at the `sft` group and drop its placeholder
+   `data.source`.
+2. **D4 calculator: gemma4 architecture support** — parameter counting for
+   per-layer embeddings and the E-model attention layout in
+   `training/calculator/components.py`, unblocking the memfit preflight for
+   the primary family. Separable, and a prerequisite for the acceptance run.
+3. **`training/sft.py`** — builds tokenizer and model from the recipe
+   (delegating PEFT wrapping to `training/peft_utils.py`; `target_modules:
+   auto` resolves through `training/families.py`), loads train and held-out
+   splits via `load_sft_dataset` (tokenizer-hash check included), maps recipe
+   fields to `SFTConfig`, constructs `SFTTrainer` with the held-out split as
+   `eval_dataset`, and runs `trainer.train(resume_from_checkpoint=...)`.
+4. **Packing** — recipe-gated, implemented against TRL 0.24.0's API for
+   pre-tokenized, pre-masked examples; packed-mode golden mask tests extend
+   `tests/training/test_sft.py` (F1 handoff 1).
+5. **Callback adapters** — one module bridging TRL's `TrainerCallback` API to
+   the existing D6/D10 objects: `Tracker.log` on `on_log` (loss, lr, grad
+   norm, tokens/s, backend tag), watchdog signal evaluation with
+   `WatchdogAbort` translated to an emergency checkpoint and abort, D6
+   retention applied after each `on_save`, and `meta.json` written per
+   checkpoint recording adapter-only versus full (for F6).
+6. **Preflight sequence** in the entry point — recipe `validate()`, D4
+   memory-fit (warn or refuse per `--force`), D9 lock via the existing
+   context manager (released on every exit path), inference-services
+   refuse-if-up probe built on `training/serving.py`.
+7. **CLI and Makefile** — `train-sft` subcommand in `training/cli.py`, `make
+   train-sft CONFIG=... ARGS=...` target, following `make train` exactly.
+8. **Unsloth backend (optional, gated)** — `sft.backend: unsloth` swapping
+   model construction to `FastLanguageModel`; requires a pinned unsloth
+   version compatible with torch/transformers 5.13.1 and a
+   `scripts/training/smoke_test.py` step verifying Gemma 4 (PLE) support.
+   Documented as may-lag; failures are not release blockers; tracking records
+   the backend on every run.
+9. **Tests** — schema validation and SFTConfig mapping; callback adapters
+   against a stub trainer; preflight refusals (lock held, service up,
+   memory-fit); packed-mode masks. GPU acceptance runs are host-side.
 
-1. **Schema: `sft` group** in `training/recipes/schema.py` — `backend:
-   trl|unsloth` (default trl), packing flag, `eval_steps`, held-out
-   evaluation toggle, plus mapping fields SFTConfig needs that the existing
-   groups do not carry. `validate()` invariants (for example unsloth combined
-   with unsupported precision) with unit tests. Extend
-   `training/recipes/reference/sft-qlora-1b.yaml` or add the real SFT recipe.
-2. **`training/sft.py`** — builds tokenizer and model from the recipe
-   (delegating PEFT wrapping to `training/peft_utils.py`), loads the F1
-   dataset (train plus held-out), maps recipe fields to `SFTConfig`,
-   constructs `SFTTrainer`, runs `trainer.train(resume_from_checkpoint=...)`.
-3. **Callback adapters** — one module bridging TRL's `TrainerCallback` API to
-   the existing D6/D10 objects: `Tracker.log` on `on_log`, watchdog `on_step`
-   evaluation with `WatchdogAbort` translated to an emergency checkpoint and
-   abort, D6 retention applied after each `on_save`, and `meta.json`
-   augmentation recording adapter-only versus full (for F6).
-4. **Preflight sequence** in the entry point — recipe `validate()`, D4
-   memory-fit (warn or refuse per `--force`), D9 lock acquisition via the
-   existing context manager (released on every exit path), inference-services
-   health probe inverted into a refuse-if-up check.
-5. **CLI and Makefile** — `train-sft` subcommand in `training/cli.py`, `make
-   train-sft CONFIG=... ARGS=...` target in the Makefile, following the
-   existing `train` target exactly.
-6. **Unsloth backend (optional, gated)** — `sft.backend: unsloth` path
-   swapping model construction to `FastLanguageModel`; requires a pinned
-   unsloth version compatible with `torch`/`transformers==5.13.1` and a
-   container smoke-test step verifying Gemma 3n (PLE) support. Failure mode is
-   documented, not release-blocking.
-7. **Tests** — unit tests for schema validation and SFTConfig mapping;
-   callback-adapter tests with a stub trainer; preflight tests (lock held,
-   service up, memory-fit refusal) following `tests/training/` conventions.
-   GPU acceptance runs are host-side.
+Suggested order: 1 and 2 in parallel (schema and calculator are independent),
+then 3–7 as the core, 8 last.
 
 ## Acceptance checks
 
 From the document, restated against repository machinery (all host-side, run
-by the human):
+by the human, per the sandbox rules):
 
-1. A QLoRA fine-tune of a Gemma 3n E4B-class base on a small instruction
-   dataset completes end to end and logs to tracking.
+1. A QLoRA fine-tune of Gemma 4 E2B (`sft-qlora-e2b.yaml`) on a small
+   prepared instruction dataset completes end to end and logs to tracking. A
+   Qwen3 QLoRA run is the documented fallback if a Gemma 4 library failure
+   appears.
 2. A tiny SFT run (minutes) checkpoints, is killed, and resumes; the loss
-   trajectory meets D6's deterministic-resume bar (`tests/training/test_loop.py`
-   documents the existing bar for the reference loop; the TRL path needs its
-   equivalent defined).
+   trajectory meets the resume bar defined for the TRL path (see open
+   question 2).
 3. The same tiny run executes on both backends (trl, unsloth), or the unsloth
    failure is documented; tracking records the backend.
 4. Preflight refuses to start while llama-gpu is up, and the D9 lock is
-   released on every exit path (including `WatchdogAbort` and SIGKILL
-   staleness reporting).
+   released on every exit path (including `WatchdogAbort`).
+5. Packed-mode golden mask tests pass (loss applies only to assistant content
+   and end-of-turn tokens, packed and unpacked) — the scope document's
+   required unit test, extended to the packed case F1 deferred.
 
 ## Risks
 
-- **TRL/PEFT/unsloth support for Gemma 3n (PLE)** must be verified in the
-  container smoke test before any long run (document risk, owned by F1/F3).
-  TRL 0.24.0 and transformers 5.13.1 are already pinned; the smoke test in
-  `scripts/training/smoke_test.py` is the natural place to extend.
-- **Checkpoint-format reconciliation** (deviation 4) touches F6: export
-  consumes D6's `meta.json` and `model/` layout, so whatever F3 writes must
-  keep `training/export/` working or extend it.
+- **TRL/PEFT support for Gemma 4 (per-layer embeddings)** must be verified in
+  the container smoke test before any long run. transformers 5.13.1 ships the
+  gemma4 architecture; the risk is TRL/PEFT interaction (for example,
+  gradient checkpointing or `prepare_model_for_kbit_training` against the PLE
+  embedding table). The registered Qwen3 fallback bounds the damage.
+- **Packing pre-masked examples through TRL** may not be supported directly
+  by TRL 0.24.0's packing utilities (built around raw-text datasets); a
+  custom packing collator is plausible extra scope. If it grows, packing can
+  ship behind a default-off flag without blocking acceptance checks 1–4.
+- **Checkpoint-format reconciliation** touches F6: export consumes D6's
+  `meta.json` and layout; the chosen wrapping (open question 1) must keep
+  `training/export/` working for both adapter-only and full checkpoints.
 - **Deterministic resume through TRL** is weaker than D6's loop, which
-  restores dataloader cursor and full RNG state explicitly. Transformers'
-  resume replays dataloader state differently; the D6 bar may need an
-  explicitly stated tolerance for the TRL path.
+  restores dataloader cursor and full RNG state explicitly; transformers'
+  resume replays state differently, so the D6 bar may need a stated
+  tolerance.
 - **Unsloth pinning**: unsloth pins tightly to specific torch/transformers
-  versions; a compatible pin against transformers 5.13.1 may not exist, which
-  the document anticipates (may-lag, not blocking).
+  versions; a pin compatible with transformers 5.13.1 and gemma4 may not
+  exist yet. Anticipated by the document: may-lag, not blocking.
+- **Thinking-mode fidelity** (F1 handoff 3): if the smoke fine-tune shows the
+  tuned model regressing on thinking-mode prompts because training examples
+  lack the `<|think|>` system-turn framing, the fix is a `ChatTemplateSpec`
+  change plus a `CHAT_TEMPLATE_VERSION` bump and re-preparation — cheap in
+  code, expensive in re-tokenization time for large datasets.
 
 ## Open questions
 
-1. **F1 sequencing**: implement F1 as its own task first (document order,
-   recommended), or fold a minimal subset into F3?
-2. **Checkpoint layout**: wrap TRL's native `checkpoint-<step>/` output and
+1. **Checkpoint layout**: wrap TRL's native `checkpoint-<step>/` output and
    add D6's `meta.json` plus retention on top (least invasive), or teach
    `training/checkpoint.py` to write its full atomic layout from a
-   `TrainerCallback` (stronger guarantees, more work, and duplicates
-   transformers' own resume state)? F6's export path is the constraint.
+   `TrainerCallback` (stronger guarantees, duplicates transformers' own
+   resume state)? F6's export path is the constraint either way.
+2. **Deterministic-resume bar for TRL**: is bit-exact loss-curve match (D6's
+   bar for the reference loop) required, or is a stated tolerance acceptable
+   given transformers' weaker dataloader/RNG restore?
 3. **Unsloth in scope now?** Pinning and smoke-testing unsloth is meaningful
-   extra surface for a non-blocking optimization; it could land as a
-   follow-up once the trl path is accepted.
-4. **Deterministic-resume bar for TRL**: is bit-exact loss-curve match (D6's
-   bar) required, or is a stated tolerance acceptable for the TRL path?
+   extra surface for a non-blocking optimization, and gemma4 support may lag;
+   it could land as a follow-up once the trl path is accepted.
+4. **Packing scope**: if TRL 0.24.0 cannot pack pre-masked examples without a
+   custom collator, does packing ship in F3 (document scope) or defer behind
+   the default-off flag with acceptance run unpacked?
+5. **Reference SFT dataset**: the first real dataset (and its license string
+   for the manifest) is still undecided (carried over from F1's open
+   questions); F3's acceptance run needs one chosen.
+6. **Thinking-mode prefix** (F1 handoff 3): decide during the smoke fine-tune
+   whether SFT examples carry a masked empty-thought prefix mirroring the
+   inference prompt.
