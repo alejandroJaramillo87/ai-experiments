@@ -7,10 +7,10 @@ description: How to launch, resume, and serve model training runs on this stack 
 Reference for launching and managing training/fine-tuning runs and folding the result back
 into inference.
 
-> Status: skeleton. Training infrastructure ("Phase 0") is not in this repository yet. This
-> skill records the intended procedure so it is discoverable now and can be filled in with
-> concrete commands as the training tier lands. Do not present these steps as runnable until
-> the scripts exist.
+> Status: partially implemented. Phase 0 foundations are landing: the training container
+> (D1), data pipeline (D2), tokenizer training (D3), memory-fit calculator (D4), and recipe
+> system (D5) exist in this repository. Sections below without concrete commands remain
+> intended procedure; do not present those as runnable until the scripts exist.
 
 > Sandboxed execution: agents cannot reach the host, the GPU, or `/mnt/ai-data/models/`.
 > Once the training tier lands, launch/resume/serve commands are executed by the human on
@@ -32,10 +32,19 @@ into inference.
 
 ## Memory-fit calculator (D4)
 
-Before launching, estimate whether the run fits in 32GB VRAM: parameters + optimizer state
-+ activations + gradients at the chosen batch size and precision. If it does not fit, reduce
-batch size, enable gradient checkpointing, or drop precision before starting — not after an
-OOM mid-run.
+Implemented: `training/calculator/` estimates peak VRAM (weights + gradients + optimizer
+state + activations + calibrated overhead) from a D5 recipe before any GPU allocation.
+
+- Estimate (host): `make memfit CONFIG=training/recipes/reference/pretrain-1b.yaml`, or
+  directly `python -m training memfit --config <recipe> [overrides...] [--solve batch|seq]
+  [--json]`.
+- If it does not fit, reduce `data.micro_batch` or `data.seq_len`, enable
+  `memory.gradient_checkpointing`, or switch to `adamw8bit` — before starting, not after an
+  OOM mid-run. `--solve batch|seq` binary-searches the largest fitting value.
+- Calibration (GPU, host-side): `make train-calibrate CONFIG=... ARGS="--out record.json"`
+  runs a short real loop, measures peaks, and compares; estimates must stay within 10
+  percent, and the reserved estimate must not under-predict the NVML peak.
+- Details: `docs/training/memory_fit.md`.
 
 ## Train-and-serve round trip (D7)
 
