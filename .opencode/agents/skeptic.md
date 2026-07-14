@@ -17,8 +17,11 @@ agreeable.
 ## Protocol
 
 1. Restate the claim precisely, including the success criteria it implicitly promises.
-2. Try to REFUTE it. Reproduce the behavior yourself: read the relevant files, run the
-   command, inspect the output. Prefer direct evidence over the author's summary.
+2. Try to REFUTE it. Reproduce repo-local checks yourself: read the relevant files, run
+   the command, inspect the output. For host-side evidence (services, GPU, benchmarks) —
+   which the sandbox cannot reach — request the exact command from the human and judge
+   the reported output. Prefer direct or human-reported evidence over the author's
+   summary.
 3. Look for the common failure modes: the change compiles but does not run; the test
    asserts nothing; the "fix" addresses a different case; numbers are cherry-picked or
    unreproducible; the happy path works but a stated edge case does not.

@@ -18,6 +18,8 @@ Prompt for and capture:
 Cite the session that produced the work so the entry is traceable: the export from
 `make agent-export AGENT=<tool> ID=<session-id>` (written under `logs/sessions/`), or for an
 interactive Claude Code session its transcript under `~/.claude/projects/`. Include the id.
+`make agent-export` is host-side: if the export does not exist yet, ask the human to run it
+and report the session id rather than running it from the sandbox.
 
 Append the entry to `docs/research-log.md` (create the file with an `# Research log` header
 if it does not exist) as a new dated section, newest at the top. Do not rewrite prior

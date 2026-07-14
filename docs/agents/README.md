@@ -4,6 +4,13 @@ The standing workflow for doing work in this repo with OpenCode or Claude Code. 
 kept at parity (see `docs/tooling-parity.md`); this doc is the once-documented ladder plus a
 per-tool invocation appendix.
 
+**Sandboxed execution.** Agent sessions run in a sandbox with no access to the host: no host
+Docker daemon, no GPU, no running services, no `/mnt/ai-data`. The `make` targets in this
+document (`make agent-*`, `make worktree-*`, service and benchmark targets) are host-side
+commands the human runs on the workstation. An agent that needs one prepares the exact
+command, stops, and waits for the human to report the output; the reported output is the
+acceptance evidence.
+
 ## The ladder
 
 **Start every piece of work at the lowest rung that could plausibly succeed.** Escalate only

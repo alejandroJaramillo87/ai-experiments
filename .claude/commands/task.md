@@ -16,8 +16,12 @@ skip ahead:
 1. Restate — locate task `$2` in the roadmap and restate its files, steps, and acceptance
    criteria exactly as written. If the task is ambiguous or already done, say so and stop.
 2. Implement — make the change described by task `$2`, touching only the files it names.
-3. Acceptance-check — run the task's acceptance check **verbatim** and show the full output.
-   If it fails, fix and re-run until it passes; do not proceed on a failing check.
+3. Acceptance-check — if the check is repo-local (no GPU, service, or host Docker), run
+   it **verbatim** and show the full output. If it is host-side, print the exact command,
+   stop, and wait for the human to run it and report the output; record the reported
+   command and output verbatim. If the check fails, fix and repeat; do not proceed on a
+   failing check and never mark the task done without observed or human-reported passing
+   output.
 4. Skeptic — delegate to the skeptic subagent to independently verify the completed task.
    Treat `VERDICT: REFUTED` as the task NOT done: address the specific gap it names and
    re-run stages 3–4.

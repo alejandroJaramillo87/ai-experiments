@@ -7,6 +7,12 @@ description: The reproducible benchmark protocol for this workstation — which 
 Reference for producing comparable performance numbers on the RTX 5090 / Ryzen 9950X
 stack. Follow `.styles/TEST_OUTPUT_STYLE.md` for all output.
 
+> Sandboxed execution: agents cannot reach the host, its GPU, or the running services.
+> Every command in this skill is executed by the human on the workstation. The agent
+> prepares the exact command line (per this protocol), waits for the human to report the
+> output, and interprets the reported numbers. Preconditions (`make status`,
+> `make health`) are likewise confirmed via human-reported output.
+
 ## Entry points
 
 There is no `make benchmark` target — run the scripts directly against a running service:

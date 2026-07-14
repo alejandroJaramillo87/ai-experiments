@@ -91,6 +91,25 @@ interp = [
     "nnsight==0.7.0",
 ]
 
+# Training tier (Phase 0 D1). Only libs NOT already in core dependencies live here:
+# core already provides torch/torchvision (cu130), transformers, datasets, accelerate,
+# peft, deepspeed, bitsandbytes, sentencepiece, wandb, mlflow, tensorboard. The CUDA-compiled
+# members (flash-attn, liger-kernel, torchao) build against the cu130 torch pinned in
+# [tool.uv.sources]; docker/training/Dockerfile.training builds and CUDA-verifies this group.
+# Tracks the same majors as the interp tier so the two do not diverge.
+# NOTE: pins below are provisional (resolved offline); regenerate uv.lock on the workstation
+# (`uv lock`) to confirm exact versions against the cu130 / torch 2.13 / py3.12 resolution.
+training = [
+    "trl==0.24.0",
+    "liger-kernel==0.6.2",
+    "torchao==0.14.0",
+    "flash-attn==2.8.3.post1",
+    "hydra-core==1.3.2",
+    "pynvml==12.0.0",
+    "xxhash==3.5.0",
+    "zstandard==0.23.0",
+]
+
 [tool.uv]
 package = false
 
@@ -104,9 +123,10 @@ explicit = true
 torch = { index = "pytorch-cu130" }
 torchvision = { index = "pytorch-cu130" }
 
-# deepspeed ships an sdist whose setup.py imports torch
+# deepspeed and flash-attn ship sdists whose setup.py imports torch at build time
 [tool.uv.extra-build-dependencies]
 deepspeed = ["torch"]
+flash-attn = ["torch"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -5,6 +5,7 @@
 .PHONY: logs-gpu logs-cpu logs-ui logs-vllm shell-gpu shell-cpu shell-vllm
 .PHONY: health update-models install shell test lint format
 .PHONY: flux-up flux-down flux-logs flux-shell flux-build flux-model-download flux-status
+.PHONY: train-build train-shell train-smoke
 .PHONY: list-models update rebuild reset demo dev
 .PHONY: agent-parity agent-preflight agent-skeptic-test command-sync agent-usage agent-versions
 .PHONY: worktree-ls worktree-clean agent-run agent-export agent-sandbox
@@ -16,6 +17,14 @@ GREEN := \033[32m
 YELLOW := \033[33m
 RED := \033[31m
 RESET := \033[0m
+
+# Cap parallel source compilation during `make install`. Several pinned deps
+# (flash-attn, deepspeed, liger-kernel, torchao) build CUDA kernels from source
+# and default to one nvcc/cc1plus job per core, each needing several GB of RAM.
+# Unbounded, that spikes past host RAM and OOM-kills other processes (e.g. the
+# editor). Override for a bigger/smaller box: `make install MAX_JOBS=8`.
+MAX_JOBS ?= 4
+NVCC_THREADS ?= 2
 
 ##@ Service Management
 
@@ -87,6 +96,21 @@ flux-status: ## Check ComfyUI service status
 	@echo "$(CYAN)GPU Memory Usage:$(RESET)"
 	@docker exec comfyui-flux nvidia-smi --query-gpu=memory.used,memory.free --format=csv,noheader 2>/dev/null || echo "Service not running"
 
+##@ Training (Phase 0 D1 - separate compose file; never runs with inference)
+
+TRAIN_COMPOSE := docker-compose.training.yaml
+
+train-build: ## Build the training image (runs the smoke test at build; fails on regression)
+	@echo "$(CYAN)Building training image...$(RESET)"
+	docker compose -f $(TRAIN_COMPOSE) build
+	@echo "$(GREEN)Training image built.$(RESET)"
+
+train-shell: ## Interactive shell in the training container (GPU + /mnt/ai-data/training mounted)
+	docker compose -f $(TRAIN_COMPOSE) run --rm training /bin/bash
+
+train-smoke: ## Run the seven-step training smoke test on the workstation (enforces CUDA sm_120)
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/train/smoke_test.py
+
 ##@ Monitoring & Debugging
 
 status: ## Show status of all services
@@ -154,8 +178,8 @@ list-models: ## List available models in /mnt/ai-data/models
 ##@ Python Environment (uv)
 
 install: ## Sync the uv environment (all groups and extras)
-	@echo "$(CYAN)Syncing uv environment...$(RESET)"
-	uv sync --all-groups --all-extras
+	@echo "$(CYAN)Syncing uv environment (MAX_JOBS=$(MAX_JOBS))...$(RESET)"
+	MAX_JOBS=$(MAX_JOBS) NVCC_THREADS=$(NVCC_THREADS) uv sync --all-groups --all-extras
 	@echo "$(GREEN)Environment synced.$(RESET)"
 
 update: ## Update Python dependencies (lock upgrade + sync + verification)

@@ -85,6 +85,7 @@ Docker container documentation for inference services:
 | [sandbox/docker_llama_cpu_overview.md](sandbox/docker_llama_cpu_overview.md) | llama-cpu service (Port 8001) | - |
 | [sandbox/docker_llama_gpu_overview.md](sandbox/docker_llama_gpu_overview.md) | llama-gpu service (Port 8002) | - |
 | [sandbox/docker_vllm_gpu_overview.md](sandbox/docker_vllm_gpu_overview.md) | vllm-gpu service (Port 8003) | - |
+| [sandbox/docker_training_overview.md](sandbox/docker_training_overview.md) | training container (Phase 0 D1, no port) | - |
 | [sandbox/docker_compose_overview.md](sandbox/docker_compose_overview.md) | Service orchestration | - |
 
 ## Performance Summary
