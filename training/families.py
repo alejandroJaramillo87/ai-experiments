@@ -5,6 +5,13 @@ by the HF config model_type. F2 populates the LoRA target-module column;
 F1 (chat/instruction data prep) extends each entry with its chat template so
 a per-family fix — a PLE-model quirk, a renamed projection — lands once.
 
+Model policy (Phase 1): Gemma 4 E-models (HF model_type gemma3n) are the
+primary family for every fine-tuning deliverable. Qwen3 is the single
+fallback family — ungated weights, dense Llama-lineage decoder — kept
+registered so a Gemma 4 library-support failure never blocks the phase.
+No other family is registered; re-adding one is a one-line FamilySpec with
+a verification note.
+
 The registry is data, not behavior: consumers look entries up through
 family_spec() and fail loudly on an unknown family rather than guess
 (mirroring the D4 calculator's UnknownArchitectureError policy).
@@ -19,9 +26,9 @@ class UnknownModelFamilyError(ValueError):
     """The HF model_type has no verified entry in the family registry."""
 
 
-# The Llama-lineage projection names shared by every currently supported
-# family, including Gemma 3n (E2B/E4B): attention q/k/v/o plus SwiGLU
-# gate/up/down. Families that diverge get their own literal list.
+# The Llama-lineage projection names shared by both registered families:
+# attention q/k/v/o plus SwiGLU gate/up/down. A future family that diverges
+# gets its own literal list.
 _LLAMA_LINEAGE_TARGET_MODULES = (
     "q_proj", "k_proj", "v_proj", "o_proj",
     "gate_proj", "up_proj", "down_proj",
@@ -40,18 +47,12 @@ class FamilySpec:
 _REGISTRY: dict[str, FamilySpec] = {
     spec.model_type: spec
     for spec in (
-        FamilySpec("llama", _LLAMA_LINEAGE_TARGET_MODULES),
-        FamilySpec("mistral", _LLAMA_LINEAGE_TARGET_MODULES),
-        FamilySpec("qwen2", _LLAMA_LINEAGE_TARGET_MODULES),
-        FamilySpec("qwen3", _LLAMA_LINEAGE_TARGET_MODULES),
-        FamilySpec("gemma", _LLAMA_LINEAGE_TARGET_MODULES),
-        FamilySpec("gemma2", _LLAMA_LINEAGE_TARGET_MODULES),
-        FamilySpec("gemma3", _LLAMA_LINEAGE_TARGET_MODULES),
-        FamilySpec("gemma3_text", _LLAMA_LINEAGE_TARGET_MODULES),
-        # Gemma 3n (MatFormer/PLE; gemma-4-E2B/E4B checkpoints) keeps the
-        # Llama-lineage projection names in its text decoder layers.
+        # Gemma 4 E-models (MatFormer/PLE; gemma-4-E2B/E4B checkpoints) keep
+        # the Llama-lineage projection names in their text decoder layers.
         FamilySpec("gemma3n", _LLAMA_LINEAGE_TARGET_MODULES),
         FamilySpec("gemma3n_text", _LLAMA_LINEAGE_TARGET_MODULES),
+        # Qwen3: the fallback family (ungated, dense decoder).
+        FamilySpec("qwen3", _LLAMA_LINEAGE_TARGET_MODULES),
     )
 }
 

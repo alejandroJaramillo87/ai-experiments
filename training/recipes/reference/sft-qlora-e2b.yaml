@@ -1,19 +1,21 @@
-# sft-qlora-1b.yaml
+# sft-qlora-e2b.yaml
 #
-# Phase 1 reference recipe (roadmap F2): QLoRA fine-tune of a 1B-class HF
-# base model, the stand-in for the F8 SFT recipe until F8 lands. Exercises
-# the peft group end to end: NF4 base quantization, LoRA adapter, and
-# target_modules "auto" resolution. The F2 calculator acceptance measures
-# this recipe's predicted peak VRAM against the workstation.
+# Phase 1 reference recipe (roadmap F2): QLoRA fine-tune of Gemma 4 E2B
+# (the Phase 1 primary family; HF model_type gemma3n), the stand-in for the
+# F8 SFT recipe until F8 lands. Exercises the peft group end to end: NF4
+# base quantization, LoRA adapter, and target_modules "auto" resolution.
+# The F2 calculator acceptance measures this recipe's predicted peak VRAM
+# against the workstation. Weights are gated on the Hugging Face hub;
+# HF_TOKEN comes from the untracked training env file (D6 convention).
 
 run:
-  name: sft-qlora-1b
+  name: sft-qlora-e2b
   seed: 42
-  notes: "F2 reference QLoRA recipe; F8 SFT recipe stand-in."
+  notes: "F2 reference QLoRA recipe (Gemma 4 E2B); F8 SFT recipe stand-in."
 
 model:
   hf:
-    id: meta-llama/Llama-3.2-1B
+    id: google/gemma-4-E2B
 
 data:
   source: /mnt/ai-data/training/datasets/sft-placeholder
@@ -24,7 +26,7 @@ data:
   pin_memory: true
 
 tokenizer:
-  path: /mnt/ai-data/training/tokenizers/llama-3.2
+  path: /mnt/ai-data/training/tokenizers/gemma-4-e2b
 
 peft:
   enabled: true
