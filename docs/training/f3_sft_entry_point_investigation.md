@@ -18,6 +18,7 @@ was adopted.
 - [Work breakdown](#work-breakdown)
 - [Acceptance checks](#acceptance-checks)
 - [Risks](#risks)
+- [Resolved decisions](#resolved-decisions)
 - [Open questions](#open-questions)
 
 ## Design summary
@@ -254,25 +255,59 @@ by the human, per the sandbox rules):
   change plus a `CHAT_TEMPLATE_VERSION` bump and re-preparation — cheap in
   code, expensive in re-tokenization time for large datasets.
 
+## Resolved decisions
+
+1. **Checkpoint layout: wrap TRL's native checkpoints (owner decision).**
+   `trainer.train(resume_from_checkpoint=...)` only understands the
+   `checkpoint-<step>/` directories the `Trainer` itself writes; making it
+   resume from D6's `step_N/` layout would mean re-implementing transformers'
+   resume loading against private internals, version-coupled to every
+   transformers bump, to preserve a format whose extra state
+   (`dataloader.json`, explicit RNG capture) transformers already tracks its
+   own way. Instead, a `TrainerCallback` runs after each save and (a) writes a
+   D6-style `meta.json` into the checkpoint directory — step, adapter-only
+   versus full flag, base model id and revision, config snapshot hash, library
+   versions — which is the part F6 export actually reads; (b) applies D6's
+   retention policy; (c) updates a `latest` symlink via atomic rename only
+   after verifying the checkpoint directory is complete. The verification
+   step compensates for transformers' non-atomic writes: a crash mid-save
+   leaves a directory without `meta.json`, which resume and export ignore.
+   `training/export/` learns to read a TRL checkpoint through its `meta.json`;
+   the D6 `step_N/` reader stays for the reference loop. Two formats coexist,
+   distinguished by `meta.json`, each owned by its writer.
+2. **Deterministic-resume bar: stated tolerance (owner decision).** Bit-exact
+   resume remains D6's bar for the reference loop (and Phase 2/3 pretraining,
+   which stays on that loop). The TRL path's bar: the resumed run's held-out
+   loss at matching eval steps agrees within a documented tolerance, and the
+   training-loss trajectory shows no step discontinuity. Forward check
+   against later deliverables: F5 (distillation) reuses this trainer and
+   inherits the same bar; F6 (export) and F7 (evaluation) consume final
+   checkpoints and scorecards, which do not depend on resume determinism;
+   nothing downstream compares two resumed halves of one run bit-for-bit.
+   The one real cost is debugging — a divergence after resume cannot be ruled
+   out as nondeterminism — accepted and documented.
+3. **Unsloth: pinned and smoke-tested in F3 scope (owner decision).** The
+   pin lands in the pyproject training group, the container smoke test gains
+   an unsloth Gemma 4 load step, and `sft.backend: unsloth` is exercised in
+   the tiny-run acceptance. Its failures remain documented-not-blocking per
+   the roadmap.
+4. **Packing: ships in F3 (owner decision).** Including the custom collator
+   for pre-masked examples if TRL 0.24.0's packing utilities cannot consume
+   them directly, and the packed-mode golden mask tests.
+5. **F1 sequencing: moot** — F1 merged before F3 work begins.
+
 ## Open questions
 
-1. **Checkpoint layout**: wrap TRL's native `checkpoint-<step>/` output and
-   add D6's `meta.json` plus retention on top (least invasive), or teach
-   `training/checkpoint.py` to write its full atomic layout from a
-   `TrainerCallback` (stronger guarantees, duplicates transformers' own
-   resume state)? F6's export path is the constraint either way.
-2. **Deterministic-resume bar for TRL**: is bit-exact loss-curve match (D6's
-   bar for the reference loop) required, or is a stated tolerance acceptable
-   given transformers' weaker dataloader/RNG restore?
-3. **Unsloth in scope now?** Pinning and smoke-testing unsloth is meaningful
-   extra surface for a non-blocking optimization, and gemma4 support may lag;
-   it could land as a follow-up once the trl path is accepted.
-4. **Packing scope**: if TRL 0.24.0 cannot pack pre-masked examples without a
-   custom collator, does packing ship in F3 (document scope) or defer behind
-   the default-off flag with acceptance run unpacked?
-5. **Reference SFT dataset**: the first real dataset (and its license string
-   for the manifest) is still undecided (carried over from F1's open
-   questions); F3's acceptance run needs one chosen.
-6. **Thinking-mode prefix** (F1 handoff 3): decide during the smoke fine-tune
-   whether SFT examples carry a masked empty-thought prefix mirroring the
-   inference prompt.
+1. **Reference SFT dataset** (carried over from F1): F3's end-to-end
+   acceptance needs a real instruction dataset to fine-tune on — which
+   public dataset to use (the roadmap's example is
+   `HuggingFaceH4/ultrachat_200k`) and its license string for the prepared
+   artifact's manifest.
+2. **Thinking-mode prefix** (F1 handoff 3): Gemma 4 inference prompts enable
+   thinking via `<|think|>` in the system turn, but F1's training data
+   contains no thinking tokens (the official template strips thought
+   channels from history). The open question is whether fine-tuning on data
+   without that framing degrades the tuned model's thinking mode, and if so
+   whether training examples should carry a masked empty-thought prefix so
+   they match what the model sees at inference. Decided empirically during
+   the host-side smoke fine-tune, not up front.
