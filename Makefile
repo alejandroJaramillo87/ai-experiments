@@ -150,6 +150,12 @@ train: ## Run the reference training loop (Phase 0 D6): make train CONFIG=traini
 train-sft: ## Run a supervised fine-tune on TRL (Phase 1 F3): make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="optimizer.lr=1e-4"
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train-sft --config $(CONFIG) $(ARGS)
 
+train-distill: ## Distill a student from a teacher (Phase 1 F5): make train-distill CONFIG=training/recipes/reference/distill-e2b.yaml ARGS="distill.alpha=0.3"
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train-distill --config $(CONFIG) $(ARGS)
+
+distill-cache: ## Materialize teacher top-K logprobs for cached-mode distillation (Phase 1 F5): make distill-cache CONFIG=...
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training distill-cache --config $(CONFIG) $(ARGS)
+
 export-build: ## Build the GGUF export image (pinned llama.cpp converter and quantizer, Phase 0 D7)
 	@echo "$(CYAN)Building export image...$(RESET)"
 	docker compose -f $(TRAIN_COMPOSE) build export
