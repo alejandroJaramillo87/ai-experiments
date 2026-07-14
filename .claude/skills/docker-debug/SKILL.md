@@ -14,7 +14,7 @@ For the llama.cpp / vLLM / open-webui stack defined in `docker-compose.yaml`.
 | llama-gpu | 8004 | `curl -f http://localhost:8002/v1/health` (internal 8002) |
 | vllm-gpu | 8005 | `curl -f http://localhost:8003/health` (internal 8003) |
 | open-webui | 3000 | container `:main`, no explicit healthcheck |
-| comfyui-flux | (flux) | `curl -f http://localhost:8188/system_stats` |
+| comfyui | 8188 | `curl -f http://localhost:8188/system_stats` |
 
 Start with `make status` for the compose-level health summary and `make health` for the
 detailed per-service check.

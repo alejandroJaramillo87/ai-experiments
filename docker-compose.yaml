@@ -176,16 +176,16 @@ services:
     #   llama-gpu:
     #     condition: service_healthy # Wait for the GPU service to be healthy before starting
 
-  # ComfyUI with FLUX.1-dev for image generation
-  comfyui-flux:
+  # ComfyUI for image (FLUX.2) and video (Wan 2.2, LTX-2.3) generation
+  comfyui:
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
     build:
       context: .
-      dockerfile: docker/comfyui-flux/Dockerfile.comfyui-flux
-    container_name: comfyui-flux
+      dockerfile: docker/comfyui/Dockerfile.comfyui
+    container_name: comfyui
     restart: unless-stopped
     environment:
       - NVIDIA_VISIBLE_DEVICES=0
@@ -193,11 +193,13 @@ services:
       - COMFYUI_PORT=8188
       - MODEL_BASE_PATH=/app/models
       - OUTPUT_PATH=/app/output
-      - VRAM_MODE=${FLUX_VRAM_MODE:-highvram}
+      - VRAM_MODE=${COMFY_VRAM_MODE:-highvram}
     deploy:
       resources:
         limits:
-          memory: 24G
+          # Video models spill weights to system RAM when a clip exceeds
+          # 32GB VRAM (e.g. LTX-2.3 weight streaming); leave headroom
+          memory: 64G
         reservations:
           devices:
             - driver: nvidia
@@ -210,7 +212,8 @@ services:
     # Security maintained through: non-root user, resource limits, network isolation
     tmpfs:
       - /tmp:size=4G,mode=1777
-      - /app/temp:size=2G,mode=1777
+      # Video frame intermediates need more temp space than image runs
+      - /app/temp:size=8G,mode=1777
       - /app/input:size=1G,mode=1777
       - /app/.cache:size=1G,mode=1777
       - /app/user:size=100M,mode=1777

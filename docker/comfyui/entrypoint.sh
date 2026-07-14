@@ -16,23 +16,31 @@ export GIT_PYTHON_REFRESH=quiet
 mkdir -p /app/user 2>/dev/null || true
 mkdir -p /app/.cache 2>/dev/null || true
 
-echo "=== Starting ComfyUI v0.3.60 with FLUX.1-dev ==="
+echo "=== Starting ComfyUI v0.27.1 (image and video generation) ==="
 echo "  Port: $COMFYUI_PORT"
 echo "  Models: $MODEL_BASE_PATH"
 echo "  Output: $OUTPUT_PATH"
 echo "  VRAM Mode: $VRAM_MODE"
 echo "  Listen: $LISTEN_ADDRESS"
 
-# Check for FLUX model
-if [[ -d "$MODEL_BASE_PATH/diffusion_models/FLUX.1-dev" ]]; then
-    echo "FLUX.1-dev model found at $MODEL_BASE_PATH/diffusion_models/FLUX.1-dev"
-    # ComfyUI will auto-detect models in the mounted directory
-else
-    echo "WARNING: FLUX.1-dev model not found at $MODEL_BASE_PATH/diffusion_models/FLUX.1-dev"
-    echo "To download the model, run:"
-    echo "  make flux-model-download"
-    echo "Then move it to the correct location:"
-    echo "  sudo mv /mnt/ai-data/models/flux /mnt/ai-data/models/diffusion_models/FLUX.1-dev"
+# Report detected generation models; ComfyUI auto-detects the mounted layout
+echo "Detected models:"
+found_models=0
+for dir in diffusion_models checkpoints text_encoders vae; do
+    if [[ -d "$MODEL_BASE_PATH/$dir" ]]; then
+        count=$(find "$MODEL_BASE_PATH/$dir" -type f \
+            \( -name '*.safetensors' -o -name '*.gguf' \) 2>/dev/null | wc -l)
+        if [[ "$count" -gt 0 ]]; then
+            echo "  $dir: $count file(s)"
+            found_models=1
+        fi
+    fi
+done
+if [[ "$found_models" -eq 0 ]]; then
+    echo "WARNING: No generation models found under $MODEL_BASE_PATH"
+    echo "To download the image and video model set, run on the host:"
+    echo "  make comfy-models-image"
+    echo "  make comfy-models-video"
 fi
 
 # GPU memory status before loading
