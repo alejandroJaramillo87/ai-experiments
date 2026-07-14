@@ -4,8 +4,8 @@
 .PHONY: help up down restart status logs clean gpu-up cpu-up ui-up
 .PHONY: logs-gpu logs-cpu logs-ui logs-vllm shell-gpu shell-cpu shell-vllm
 .PHONY: health update-models install shell test lint format
-.PHONY: flux-up flux-down flux-logs flux-shell flux-build flux-model-download flux-status
-.PHONY: train-build train-shell train-smoke
+.PHONY: comfy-up comfy-down comfy-logs comfy-shell comfy-build comfy-status
+.PHONY: comfy-models-image comfy-models-video art-mode llm-mode
 .PHONY: list-models update rebuild reset demo dev
 .PHONY: agent-parity agent-preflight agent-skeptic-test command-sync agent-usage agent-versions
 .PHONY: worktree-ls worktree-clean agent-run agent-export agent-sandbox
@@ -58,43 +58,53 @@ ui-up: ## Start only Open WebUI
 	docker compose up -d open-webui
 	@echo "$(GREEN)Open WebUI started on http://localhost:3000$(RESET)"
 
-##@ FLUX Image Generation
+##@ Image & Video Generation (ComfyUI)
 
-flux-up: ## Start ComfyUI with FLUX.1-dev
-	@echo "$(CYAN)Starting ComfyUI with FLUX.1-dev...$(RESET)"
-	docker compose up -d comfyui-flux
+comfy-up: ## Start ComfyUI (image and video generation)
+	@echo "$(CYAN)Starting ComfyUI...$(RESET)"
+	docker compose up -d comfyui
 	@echo "$(GREEN)ComfyUI started on http://localhost:8188$(RESET)"
 
-flux-down: ## Stop ComfyUI service
+comfy-down: ## Stop ComfyUI service
 	@echo "$(CYAN)Stopping ComfyUI...$(RESET)"
-	docker compose stop comfyui-flux
+	docker compose stop comfyui
 	@echo "$(GREEN)ComfyUI stopped.$(RESET)"
 
-flux-logs: ## View ComfyUI logs
-	docker compose logs -f comfyui-flux
+comfy-logs: ## View ComfyUI logs
+	docker compose logs -f comfyui
 
-flux-shell: ## Access ComfyUI container shell
-	docker exec -it comfyui-flux /bin/bash
+comfy-shell: ## Access ComfyUI container shell
+	docker exec -it comfyui /bin/bash
 
-flux-build: ## Rebuild ComfyUI container
+comfy-build: ## Rebuild ComfyUI container
 	@echo "$(CYAN)Rebuilding ComfyUI container...$(RESET)"
-	docker compose build --no-cache comfyui-flux
+	docker compose build --no-cache comfyui
 	@echo "$(GREEN)Container rebuilt.$(RESET)"
 
-flux-model-download: ## Download FLUX.1-dev model
-	@echo "$(CYAN)Downloading FLUX.1-dev model (~23GB)...$(RESET)"
-	@echo "This will take time depending on your internet connection."
-	HF_HUB_ENABLE_HF_TRANSFER=1 uv run hf download \
-		black-forest-labs/FLUX.1-dev \
-		--local-dir /mnt/ai-data/models/flux
-	@echo "$(GREEN)Model download complete.$(RESET)"
+comfy-models-image: ## Download image generation models (FLUX.2 klein 4B + 9B FP8)
+	HF_HUB_ENABLE_HF_TRANSFER=1 uv run bash scripts/models/download_art_models.sh image
 
-flux-status: ## Check ComfyUI service status
+comfy-models-video: ## Download video generation models (LTX-2.3 FP8, Wan 2.2 FP8)
+	HF_HUB_ENABLE_HF_TRANSFER=1 uv run bash scripts/models/download_art_models.sh video
+
+comfy-status: ## Check ComfyUI service status
 	@echo "$(CYAN)ComfyUI Service Status:$(RESET)"
-	@docker compose ps comfyui-flux
+	@docker compose ps comfyui
 	@echo ""
 	@echo "$(CYAN)GPU Memory Usage:$(RESET)"
-	@docker exec comfyui-flux nvidia-smi --query-gpu=memory.used,memory.free --format=csv,noheader 2>/dev/null || echo "Service not running"
+	@docker exec comfyui nvidia-smi --query-gpu=memory.used,memory.free --format=csv,noheader 2>/dev/null || echo "Service not running"
+
+art-mode: ## Stop GPU LLM services, start ComfyUI (one GPU consumer at a time)
+	@echo "$(CYAN)Switching GPU to art generation...$(RESET)"
+	docker compose stop llama-gpu vllm-gpu
+	docker compose up -d comfyui
+	@echo "$(GREEN)ComfyUI has the GPU: http://localhost:8188$(RESET)"
+
+llm-mode: ## Stop ComfyUI, start GPU LLM services
+	@echo "$(CYAN)Switching GPU to LLM inference...$(RESET)"
+	docker compose stop comfyui
+	docker compose up -d llama-gpu vllm-gpu
+	@echo "$(GREEN)LLM services have the GPU: ports 8002 (llama) and 8003 (vllm)$(RESET)"
 
 ##@ Training (Phase 0 D1 - separate compose file; never runs with inference)
 

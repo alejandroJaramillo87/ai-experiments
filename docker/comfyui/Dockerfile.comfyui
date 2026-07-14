@@ -1,6 +1,6 @@
 # Stage 1: Builder
-# CUDA 12.8 development environment for FLUX.1-dev compatibility
-FROM nvidia/cuda:12.8.0-devel-ubuntu24.04 AS builder
+# CUDA 13.0 development environment matching host driver 580.65.06 / CUDA 13.0.88
+FROM nvidia/cuda:13.0.0-devel-ubuntu24.04 AS builder
 
 LABEL stage="builder"
 
@@ -27,23 +27,27 @@ RUN apt-get update && \
         curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Clone ComfyUI latest release v0.3.60
-RUN git clone --depth 1 --branch v0.3.60 \
+# Clone ComfyUI release v0.27.1 (native FLUX.2, Wan 2.2, and LTX video nodes)
+RUN git clone --depth 1 --branch v0.27.1 \
     https://github.com/comfyanonymous/ComfyUI.git /app
 
 WORKDIR /app
 
-# Create virtual environment and install core dependencies
+# Create virtual environment and install core dependencies.
+# torch 2.9.1+cu130 matches the CUDA 13.0 base image and Blackwell sm_120.
+# av provides the ffmpeg bindings ComfyUI uses to encode video outputs.
 RUN python3.12 -m venv venv && \
     . venv/bin/activate && \
     pip install --upgrade pip wheel setuptools && \
-    pip install torch==2.7.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128 && \
+    pip install torch==2.9.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130 && \
     pip install -r requirements.txt && \
-    pip install diffusers transformers accelerate sentencepiece protobuf huggingface-hub
+    pip install diffusers transformers accelerate sentencepiece protobuf huggingface-hub av
 
-# Install ComfyUI Manager and FLUX-compatible custom nodes.
+# Install ComfyUI Manager and model-format custom nodes.
 # Pin each node to an exact commit: ComfyUI loads and executes this code, and
 # ComfyUI-Manager can fetch further nodes at runtime. Bump deliberately, not on rebuild.
+# TODO: Bump node pins after validating against ComfyUI v0.27.1 on the workstation;
+# ComfyUI-GGUF in particular needs a recent commit for FLUX.2 and LTX GGUF quants.
 ARG COMFYUI_MANAGER_COMMIT=351d9c62c419bf49c0fdb6a5a378e94dc3481193
 ARG COMFYUI_GGUF_COMMIT=6ea2651e7df66d7585f6ffee804b20e92fb38b8a
 ARG COMFYUI_KJNODES_COMMIT=e27a505b3ba6ce42687fe00500deda103d9d6071
@@ -70,11 +74,11 @@ RUN . venv/bin/activate && \
     pip install gguf opencv-python-headless gitpython
 
 # Stage 2: Runtime
-FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04
+FROM nvidia/cuda:13.0.0-runtime-ubuntu24.04
 
-LABEL description="ComfyUI v0.3.60 with FLUX.1-dev for AI image generation"
+LABEL description="ComfyUI v0.27.1 for AI image and video generation (FLUX.2, Wan 2.2, LTX-2.3)"
 
-# Install runtime dependencies only
+# Install runtime dependencies only; ffmpeg backs video output encoding
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         python3.12 \
@@ -83,6 +87,7 @@ RUN apt-get update && \
         ca-certificates \
         curl \
         git \
+        ffmpeg \
         libgl1 \
         libglib2.0-0 \
         libsm6 \
@@ -107,7 +112,7 @@ ENV CUDA_FORCE_PTX_JIT=0
 # NVIDIA GPU settings
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
-ENV NVIDIA_REQUIRE_CUDA="cuda>=12.8"
+ENV NVIDIA_REQUIRE_CUDA="cuda>=13.0"
 
 # Python environment
 ENV PYTHONUNBUFFERED=1
@@ -121,7 +126,7 @@ RUN groupadd -r appuser && \
 COPY --from=builder --chown=appuser:appuser /app /app
 
 # Copy entrypoint script
-COPY --chown=appuser:appuser docker/comfyui-flux/entrypoint.sh /app/entrypoint.sh
+COPY --chown=appuser:appuser docker/comfyui/entrypoint.sh /app/entrypoint.sh
 
 # Set permissions and create writable directories
 RUN chmod +x /app/entrypoint.sh && \
