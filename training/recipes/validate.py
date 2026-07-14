@@ -142,6 +142,28 @@ def _check_peft(recipe: DictConfig, problems: list[str]) -> None:
                 "exclusive (pick one weight-compression scheme)")
 
 
+def _check_sft(recipe: DictConfig, problems: list[str]) -> None:
+    """F1 invariants: an enabled sft group needs a prepared dataset and an HF
+    base model (the chat template belongs to a pretrained model; scratch
+    models have none). Manifest and tokenizer hashes are enforced at load by
+    training/data/sft.load_sft_dataset."""
+    s = recipe.sft
+    if not s.enabled:
+        return
+    if not s.dataset:
+        problems.append("sft.dataset: required when sft.enabled=true "
+                        "(prepare with scripts/training/prepare_sft.py)")
+    if recipe.model.hf is None:
+        problems.append("sft: requires model.hf (a scratch model has no chat "
+                        "template to fine-tune against)")
+    if os.path.isdir(s.dataset):
+        manifest_path = os.path.join(s.dataset, "manifest.json")
+        if not os.path.isfile(manifest_path):
+            problems.append(
+                f"sft.dataset: {s.dataset} has no manifest.json; recipes "
+                "reference materialized prepare_sft.py artifacts only")
+
+
 def _check_data(recipe: DictConfig, problems: list[str]) -> None:
     d = recipe.data
     for name in ("seq_len", "micro_batch", "grad_accum"):
@@ -235,6 +257,7 @@ def validate(recipe: DictConfig) -> None:
     _check_precision(recipe, problems)
     _check_memory(recipe, problems)
     _check_peft(recipe, problems)
+    _check_sft(recipe, problems)
     _check_data(recipe, problems)
     _check_checkpoint(recipe, problems)
     _check_watchdog(recipe, problems)

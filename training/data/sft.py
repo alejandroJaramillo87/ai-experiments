@@ -1,0 +1,295 @@
+"""Chat and instruction data preparation (Phase 1 F1).
+
+Turns chat/instruction datasets into tokenized, loss-masked training examples.
+All records normalize to the OpenAI-style messages list; rendering is
+segment-by-segment from the family's ChatTemplateSpec, so every token's label
+is known by construction: -100 on non-assistant tokens, the token id on
+assistant content and the turn's end-of-turn token. No string matching on
+rendered text ever decides a mask boundary.
+
+Artifacts are materialized JSONL (one {"input_ids", "labels"} object per line,
+train and holdout files) plus a manifest following the D2 discipline; loaders
+refuse a dataset whose content or tokenizer hash does not match. Sequence
+packing is deliberately absent: F3's trainer owns packing.
+"""
+
+from __future__ import annotations
+
+import datetime
+import json
+import os
+import random
+import sys
+from collections.abc import Callable, Iterator
+
+from training.data.prepare import LoadedTokenizer, _git_sha, load_tokenizer
+from training.data.shards import (
+    TokenizerMismatchError,
+    hash_file,
+    write_manifest,
+)
+from training.families import (
+    CHAT_TEMPLATE_VERSION,
+    ChatTemplateSpec,
+    family_spec,
+)
+
+IGNORE_INDEX = -100
+VALID_ROLES = ("system", "user", "assistant")
+TRAIN_FILE = "train.jsonl"
+HOLDOUT_FILE = "holdout.jsonl"
+DEFAULT_HOLDOUT = 0.02
+MANIFEST_NAME = "manifest.json"
+
+
+class SftRecordError(ValueError):
+    """A source record does not normalize to a valid messages conversation."""
+
+
+class SftIntegrityError(ValueError):
+    """A prepared SFT file's content hash does not match the manifest."""
+
+
+def normalize_record(record: dict, index: int = -1) -> list[dict]:
+    """Normalize one source record to the canonical messages list.
+
+    Accepts {"messages": [...]} natively and converts {"prompt", "completion"}
+    pairs to a single-turn conversation. Anything else fails loudly.
+    """
+    where = f"record {index}" if index >= 0 else "record"
+    if "messages" in record:
+        messages = record["messages"]
+    elif "prompt" in record and "completion" in record:
+        messages = [
+            {"role": "user", "content": record["prompt"]},
+            {"role": "assistant", "content": record["completion"]},
+        ]
+    else:
+        raise SftRecordError(
+            f"{where}: expected a 'messages' list or a 'prompt'/'completion' "
+            f"pair, got keys {sorted(record)}")
+
+    if not isinstance(messages, list) or not messages:
+        raise SftRecordError(f"{where}: 'messages' must be a non-empty list")
+    for i, msg in enumerate(messages):
+        if not isinstance(msg, dict) or "role" not in msg or "content" not in msg:
+            raise SftRecordError(
+                f"{where}: message {i} must be a dict with 'role' and 'content'")
+        if msg["role"] not in VALID_ROLES:
+            raise SftRecordError(
+                f"{where}: message {i} role {msg['role']!r} not in {VALID_ROLES}")
+        if not isinstance(msg["content"], str):
+            raise SftRecordError(f"{where}: message {i} content must be a string")
+        if msg["role"] == "system" and i != 0:
+            raise SftRecordError(f"{where}: system message only allowed first")
+    if not any(m["role"] == "assistant" for m in messages):
+        raise SftRecordError(f"{where}: conversation has no assistant turn")
+    return [{"role": m["role"], "content": m["content"]} for m in messages]
+
+
+def render_segments(messages: list[dict],
+                    spec: ChatTemplateSpec) -> list[tuple[str, bool]]:
+    """Render a conversation as (text, supervised) segments.
+
+    Supervised segments are exactly the assistant content and its end-of-turn
+    token; role headers, system/user turns, and separators are not. The
+    concatenated segment texts are the full rendered conversation.
+    """
+    messages = list(messages)
+    if spec.system_style == "prefix_first_user" and messages[0]["role"] == "system":
+        if len(messages) < 2 or messages[1]["role"] != "user":
+            raise SftRecordError(
+                "system message must be followed by a user turn for a family "
+                "without a system turn")
+        merged = messages[0]["content"] + spec.system_sep + messages[1]["content"]
+        messages = [{"role": "user", "content": merged}] + messages[2:]
+
+    segments: list[tuple[str, bool]] = []
+    if spec.bos:
+        segments.append((spec.bos, False))
+    for msg in messages:
+        assistant = msg["role"] == "assistant"
+        role = spec.assistant_role if assistant else msg["role"]
+        segments.append((spec.turn_prefix.format(role=role), False))
+        if msg["content"]:
+            segments.append((msg["content"], assistant))
+        segments.append((spec.eot, assistant))
+        if spec.turn_suffix:
+            segments.append((spec.turn_suffix, False))
+    return segments
+
+
+def encode_example(messages: list[dict], encode: Callable[[str], list[int]],
+                   spec: ChatTemplateSpec,
+                   max_seq_len: int | None = None) -> dict | None:
+    """Tokenize a conversation into {"input_ids", "labels"}.
+
+    Each segment is encoded independently, so its token span — and therefore
+    its labels — is exact. Returns None when truncation to max_seq_len leaves
+    no supervised token (the caller counts these as dropped).
+    """
+    input_ids: list[int] = []
+    labels: list[int] = []
+    for text, supervised in render_segments(messages, spec):
+        ids = encode(text)
+        input_ids.extend(ids)
+        labels.extend(ids if supervised else [IGNORE_INDEX] * len(ids))
+    if max_seq_len is not None:
+        input_ids = input_ids[:max_seq_len]
+        labels = labels[:max_seq_len]
+    if all(label == IGNORE_INDEX for label in labels):
+        return None
+    return {"input_ids": input_ids, "labels": labels}
+
+
+def mask_debug(sample: dict, id_to_token: Callable[[int], str | None]) -> str:
+    """Token-by-token (token, id, label) table for eyeball mask verification."""
+    lines = [f"{'token':<24} {'id':>8} {'label':>8}"]
+    for token_id, label in zip(sample["input_ids"], sample["labels"], strict=True):
+        token = id_to_token(token_id)
+        lines.append(f"{(token if token is not None else '?')!r:<24} "
+                     f"{token_id:>8} {label:>8}")
+    return "\n".join(lines)
+
+
+def iter_records(source: str, split: str = "train",
+                 revision: str | None = None) -> Iterator[dict]:
+    """Yield raw records from a local JSONL file or an HF dataset, in source order."""
+    if os.path.exists(source):
+        with open(source, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    yield json.loads(line)
+        return
+    import datasets
+    yield from datasets.load_dataset(source, split=split, revision=revision)
+
+
+def prepare_sft(source: str, out_dir: str, tokenizer_source: str,
+                model_type: str, *,
+                split: str = "train", revision: str | None = None,
+                max_seq_len: int = 4096, holdout: float = DEFAULT_HOLDOUT,
+                seed: int = 42, license_str: str = "unknown",
+                command: str | None = None,
+                progress: Callable[[int, int], None] | None = None) -> dict:
+    """Materialize a tokenized, masked SFT dataset with a manifest.
+
+    Holdout membership is drawn per record from a seeded RNG over the
+    deterministic source order, so re-runs with the same inputs reproduce the
+    split exactly (F7 consumes the holdout for held-out loss). Returns the
+    written manifest.
+    """
+    if not 0.0 <= holdout < 1.0:
+        raise ValueError(f"holdout must be in [0, 1), got {holdout}")
+    manifest_path = os.path.join(out_dir, MANIFEST_NAME)
+    if os.path.exists(manifest_path):
+        raise FileExistsError(
+            f"{out_dir} already contains {MANIFEST_NAME}; refusing to overwrite")
+
+    spec = family_spec(model_type).chat_template
+    tokenizer = load_tokenizer(tokenizer_source)
+    encode = lambda text: tokenizer.encode_batch([text])[0]  # noqa: E731
+
+    os.makedirs(out_dir, exist_ok=True)
+    rng = random.Random(seed)
+    counts = {"train": 0, "holdout": 0, "dropped": 0}
+    total_tokens = 0
+    supervised_tokens = 0
+    train_path = os.path.join(out_dir, TRAIN_FILE)
+    holdout_path = os.path.join(out_dir, HOLDOUT_FILE)
+    with open(train_path, "w") as train_f, open(holdout_path, "w") as holdout_f:
+        for index, record in enumerate(iter_records(source, split, revision)):
+            messages = normalize_record(record, index)
+            to_holdout = rng.random() < holdout  # drawn per record: order-stable
+            sample = encode_example(messages, encode, spec, max_seq_len)
+            if sample is None:
+                counts["dropped"] += 1
+                continue
+            out_f = holdout_f if to_holdout else train_f
+            out_f.write(json.dumps(sample) + "\n")
+            counts["holdout" if to_holdout else "train"] += 1
+            total_tokens += len(sample["input_ids"])
+            supervised_tokens += sum(
+                1 for label in sample["labels"] if label != IGNORE_INDEX)
+            if progress is not None and (index + 1) % 1000 == 0:
+                progress(counts["train"] + counts["holdout"], total_tokens)
+
+    manifest = {
+        "kind": "sft",
+        "dataset": source,
+        "split": None if os.path.exists(source) else split,
+        "revision": revision,
+        "license": license_str,
+        "tokenizer": tokenizer.source,
+        "tokenizer_hash": tokenizer.content_hash,
+        "model_type": model_type,
+        "chat_template_version": CHAT_TEMPLATE_VERSION,
+        "max_seq_len": max_seq_len,
+        "holdout_fraction": holdout,
+        "holdout_seed": seed,
+        "files": [
+            {"file": TRAIN_FILE, "examples": counts["train"],
+             "xxhash64": hash_file(train_path)},
+            {"file": HOLDOUT_FILE, "examples": counts["holdout"],
+             "xxhash64": hash_file(holdout_path)},
+        ],
+        "train_examples": counts["train"],
+        "holdout_examples": counts["holdout"],
+        "dropped_examples": counts["dropped"],
+        "total_tokens": total_tokens,
+        "supervised_tokens": supervised_tokens,
+        "created_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "git_sha": _git_sha(),
+        "command": command if command is not None else " ".join(sys.argv),
+    }
+    write_manifest(out_dir, manifest)
+    return manifest
+
+
+def load_sft_dataset(dataset_dir: str,
+                     tokenizer: LoadedTokenizer | str | None = None
+                     ) -> tuple[list[dict], list[dict]]:
+    """Load a prepared SFT dataset, verifying integrity and tokenizer match.
+
+    Returns (train, holdout) lists of {"input_ids", "labels"} samples. Refuses
+    a dataset whose file hashes do not match the manifest or whose tokenizer
+    hash differs from the given tokenizer (path/hub id or LoadedTokenizer).
+    """
+    manifest_path = os.path.join(dataset_dir, MANIFEST_NAME)
+    if not os.path.isfile(manifest_path):
+        raise FileNotFoundError(f"No {MANIFEST_NAME} in {dataset_dir}")
+    with open(manifest_path) as f:
+        manifest = json.load(f)
+    if manifest.get("kind") != "sft":
+        raise SftIntegrityError(
+            f"{dataset_dir} is not an SFT dataset (manifest kind: "
+            f"{manifest.get('kind')!r}); D2 token shards load through "
+            "training/data/shards.py")
+
+    if tokenizer is not None:
+        loaded = tokenizer if isinstance(tokenizer, LoadedTokenizer) \
+            else load_tokenizer(tokenizer)
+        if loaded.content_hash != manifest["tokenizer_hash"]:
+            raise TokenizerMismatchError(
+                f"tokenizer hash {loaded.content_hash} does not match SFT "
+                f"manifest {manifest['tokenizer_hash']} in {dataset_dir}")
+
+    splits: dict[str, list[dict]] = {}
+    for rec in manifest["files"]:
+        path = os.path.join(dataset_dir, rec["file"])
+        if not os.path.isfile(path):
+            raise SftIntegrityError(f"Missing file: {path}")
+        digest = hash_file(path)
+        if digest != rec["xxhash64"]:
+            raise SftIntegrityError(
+                f"{rec['file']}: content hash {digest} does not match "
+                f"manifest {rec['xxhash64']}")
+        with open(path) as f:
+            samples = [json.loads(line) for line in f if line.strip()]
+        if len(samples) != rec["examples"]:
+            raise SftIntegrityError(
+                f"{rec['file']}: {len(samples)} examples, manifest expects "
+                f"{rec['examples']}")
+        splits[rec["file"]] = samples
+    return splits[TRAIN_FILE], splits[HOLDOUT_FILE]

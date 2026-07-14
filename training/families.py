@@ -34,14 +34,66 @@ _LLAMA_LINEAGE_TARGET_MODULES = (
     "gate_proj", "up_proj", "down_proj",
 )
 
+# Bumped whenever any ChatTemplateSpec changes; recorded in every prepared
+# SFT dataset manifest so a template fix invalidates stale artifacts.
+CHAT_TEMPLATE_VERSION = 1
+
+
+@dataclass(frozen=True)
+class ChatTemplateSpec:
+    """Structural chat template (Phase 1 F1).
+
+    Describes a family's turn framing precisely enough to render a
+    conversation segment by segment, so assistant-token spans are known by
+    construction rather than recovered by string matching on rendered text
+    (F1 decision 3). Loss covers assistant content plus the turn's
+    end-of-turn token; everything else — role headers, system and user
+    turns, separators — is masked.
+
+    These specs encode the pinned transformers rendering of each family's
+    template; the F1 host-side acceptance compares them against the real
+    tokenizer's apply_chat_template output before golden fixtures freeze.
+    """
+
+    bos: str            # emitted once at sequence start; "" when none
+    turn_prefix: str    # role header, formatted with {role}
+    eot: str            # end-of-turn token proper (supervised on assistant turns)
+    turn_suffix: str    # after eot, always masked
+    assistant_role: str  # the template's name for the assistant role
+    # "turn": system renders as its own turn. "prefix_first_user": the
+    # template has no system turn; system content is prepended to the first
+    # user turn, joined by system_sep (the Gemma convention).
+    system_style: str
+    system_sep: str = "\n\n"
+
+
+_GEMMA_CHAT_TEMPLATE = ChatTemplateSpec(
+    bos="<bos>",
+    turn_prefix="<start_of_turn>{role}\n",
+    eot="<end_of_turn>",
+    turn_suffix="\n",
+    assistant_role="model",
+    system_style="prefix_first_user",
+)
+
+_CHATML_CHAT_TEMPLATE = ChatTemplateSpec(
+    bos="",
+    turn_prefix="<|im_start|>{role}\n",
+    eot="<|im_end|>",
+    turn_suffix="\n",
+    assistant_role="assistant",
+    system_style="turn",
+)
+
 
 @dataclass(frozen=True)
 class FamilySpec:
-    """Per-family architecture facts. F1 adds the chat-template column."""
+    """Per-family architecture facts and chat-template structure."""
 
     model_type: str
     # Module names for peft.target_modules: "auto" (F2 decision 2).
     lora_target_modules: tuple[str, ...]
+    chat_template: ChatTemplateSpec
 
 
 _REGISTRY: dict[str, FamilySpec] = {
@@ -49,10 +101,10 @@ _REGISTRY: dict[str, FamilySpec] = {
     for spec in (
         # Gemma 4 E-models (MatFormer/PLE; gemma-4-E2B/E4B checkpoints) keep
         # the Llama-lineage projection names in their text decoder layers.
-        FamilySpec("gemma3n", _LLAMA_LINEAGE_TARGET_MODULES),
-        FamilySpec("gemma3n_text", _LLAMA_LINEAGE_TARGET_MODULES),
-        # Qwen3: the fallback family (ungated, dense decoder).
-        FamilySpec("qwen3", _LLAMA_LINEAGE_TARGET_MODULES),
+        FamilySpec("gemma3n", _LLAMA_LINEAGE_TARGET_MODULES, _GEMMA_CHAT_TEMPLATE),
+        FamilySpec("gemma3n_text", _LLAMA_LINEAGE_TARGET_MODULES, _GEMMA_CHAT_TEMPLATE),
+        # Qwen3: the fallback family (ungated, dense decoder; ChatML framing).
+        FamilySpec("qwen3", _LLAMA_LINEAGE_TARGET_MODULES, _CHATML_CHAT_TEMPLATE),
     )
 }
 

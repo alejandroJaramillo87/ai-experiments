@@ -181,16 +181,21 @@ dataset and the gated Gemma 4 tokenizer) and inspecting `mask_debug` output.
    path untouched.
 3. **Packing: owned by F3.** F1 produces unpacked, mask-correct examples; the
    packing flag, TRL integration, and packed-mode mask tests move to F3.
+4. **Materialized artifact format: JSONL.** `train.jsonl` and `holdout.jsonl`,
+   one `{"input_ids", "labels"}` object per line. JSONL is inspectable,
+   hash-deterministic across re-runs (the determinism acceptance check compares
+   the manifest's per-file content hashes), and loads without the `datasets`
+   dependency; F3 can convert to arrow at trainer setup if profiling shows the
+   need.
 
 ## Open questions
 
-1. **Materialized artifact format.** HF `datasets.save_to_disk` (arrow) versus
-   plain JSONL of token/label lists. Arrow loads faster and integrates with TRL in
-   F3; JSONL is more inspectable. Leaning arrow with a small JSONL sample embedded
-   for inspection.
-2. **Reference SFT dataset.** The document's example is
+1. **Reference SFT dataset.** The document's example is
    `HuggingFaceH4/ultrachat_200k`; the choice of the first real dataset (and its
    license string for the manifest) is deferred to the F1 acceptance run.
-3. **Where `SftConfig` lives relative to F3's trainer flags.** F1 adds only the
-   data-side fields; trainer-side SFT fields (packing, epochs versus steps) are
-   F3's schema change. The invariant checks must not assume F3 fields exist.
+2. **Gemma 4 thinking-control tokens.** The implemented `ChatTemplateSpec`
+   encodes the standard Gemma turn framing (`<start_of_turn>{role}` /
+   `<end_of_turn>`, system folded into the first user turn). Whether Gemma 4
+   thinking-control tokens require additional masked segments is verified
+   host-side against the real tokenizer's `apply_chat_template` before the
+   first fine-tune; a spec change bumps `CHAT_TEMPLATE_VERSION`.
