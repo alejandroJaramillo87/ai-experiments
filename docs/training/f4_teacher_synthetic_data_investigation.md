@@ -233,23 +233,24 @@ Host-run by the operator, output reported back verbatim:
 
 ## Resolved decisions
 
-None yet; to be filled in as the owner resolves the open questions.
+Resolved by the owner, 2026-07-14:
+
+1. **Pipeline engine: thin `openai`-client loop, not distilabel.** Pin only the
+   `openai` client in the training dependency group; the harness implements
+   bounded concurrency, retry with backoff, and resumability itself (required
+   contributions regardless of engine). The manifest records the client library
+   and version in place of a distilabel version.
+2. **Serving swap: yes, document behavior.** `generate_teacher.py` swaps the
+   teacher model in via the extended D7 mechanism (env-override compose
+   recreate, per-service env var and health path) and restores prior serving
+   state on every exit path.
+3. **Shared serving module lives at `training/serving.py`**, unit-testable
+   under `tests/training/`; `scripts/eval/serve_eval.py` becomes a consumer.
+4. **F4 owns the messages-JSONL and manifest contract**; F1 inherits it. The
+   `prepare_sft.py` ingestion acceptance check is deferred until F1 exists;
+   the format is asserted by F4 unit tests now.
 
 ## Open questions
 
-1. **Pipeline engine**: adopt distilabel per the document, or implement the two
-   built-in shapes over a thin pinned `openai`-client loop with the harness's
-   own retry and resumability (repository precedent favors thin and stdlib)?
-   The harness interface is the same either way.
-2. **Serving swap for the teacher**: should the CLI swap the teacher model in
-   via the extended D7 mechanism and restore afterward (document behavior), or
-   is it acceptable for v1 to require the operator to have the intended model
-   already served, with the CLI verifying identity via `/v1/models`?
-3. **Where the shared serving-swap module lives**: `training/` (importable by
-   tests, but training package code running on the host) versus `scripts/`
-   (host-side convention, harder to unit test).
-4. **Dataset root**: confirm `/mnt/ai-data/training/datasets/distill/<name>/` as
+1. **Dataset root**: confirm `/mnt/ai-data/training/datasets/distill/<name>/` as
    a new convention beside the existing `shards/` root.
-5. **Format contract ownership**: F4 defines the messages-JSONL and manifest
-   schema that F1 later consumes — confirm this ordering, since the document
-   assumes F1 exists first.
