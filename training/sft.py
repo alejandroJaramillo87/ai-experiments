@@ -366,6 +366,16 @@ def _train_locked(recipe: DictConfig) -> SftResult:
                              "checkpoints")
     os.makedirs(ckpt_root, exist_ok=True)
 
+    # Response-tier distillation is F3 with provenance (resolved F5 decision
+    # 1): the distill block's teacher-manifest reference flows into the
+    # checkpoint meta so F6/F7 can cite the teacher. Imported lazily —
+    # training/distill.py imports this module at load.
+    distill_meta = None
+    if recipe.distill.enabled:
+        from training.distill import distill_provenance
+
+        distill_meta = distill_provenance(recipe)
+
     recipe_hash = snapshot_hash(recipe)
     tracker = Tracker(recipe.tracking, recipe.run.name, run_dir)
     watchdog = None
@@ -387,7 +397,8 @@ def _train_locked(recipe: DictConfig) -> SftResult:
         processing_class=tokenizer,
         data_collator=Collator(),
         callbacks=build_callbacks(recipe, ckpt_root, tracker, watchdog,
-                                  recipe_hash, trainable_report=report))
+                                  recipe_hash, trainable_report=report,
+                                  distill_meta=distill_meta))
 
     resume_path = None
     if recipe.checkpoint.resume is not None:
@@ -404,7 +415,7 @@ def _train_locked(recipe: DictConfig) -> SftResult:
         write_checkpoint_meta(
             emergency_dir, step, adapter_only=bool(recipe.peft.enabled),
             base_model=recipe.model.hf.id, backend=recipe.sft.backend,
-            recipe_hash=recipe_hash, emergency=True)
+            recipe_hash=recipe_hash, emergency=True, distill=distill_meta)
         raise
     finally:
         if watchdog is not None:

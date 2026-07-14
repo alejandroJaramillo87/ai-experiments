@@ -77,12 +77,16 @@ def _library_versions() -> dict:
 
 def write_checkpoint_meta(ckpt_dir: str, step: int, *, adapter_only: bool,
                           base_model: str, backend: str, recipe_hash: str,
-                          emergency: bool = False) -> str:
+                          emergency: bool = False,
+                          distill: dict | None = None) -> str:
     """Stamp a TRL checkpoint directory with the D6-style meta.json F6 reads.
 
     adapter_only tells export whether the directory holds a PEFT adapter to
-    merge into base_model or full weights. Written atomically (tmp + rename)
-    so a partial meta.json can never mark an incomplete checkpoint complete.
+    merge into base_model or full weights. distill carries the F5 provenance
+    fields (tier, teacher identity/revision or F4 manifest reference) so a
+    distilled checkpoint cites its teacher from the meta alone. Written
+    atomically (tmp + rename) so a partial meta.json can never mark an
+    incomplete checkpoint complete.
     """
     meta = {
         "step": step,
@@ -95,6 +99,8 @@ def write_checkpoint_meta(ckpt_dir: str, step: int, *, adapter_only: bool,
         "library_versions": _library_versions(),
         "wall_clock": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
     }
+    if distill is not None:
+        meta["distill"] = distill
     if emergency:
         meta["emergency"] = True  # exempt from retention deletion
     path = os.path.join(ckpt_dir, META_NAME)
@@ -162,7 +168,8 @@ def tokens_per_second(tokens_per_step: int, step_delta: int,
 
 
 def build_callbacks(recipe, ckpt_root: str, tracker, watchdog,
-                    recipe_hash: str, trainable_report=None) -> list:
+                    recipe_hash: str, trainable_report=None,
+                    distill_meta: dict | None = None) -> list:
     """Instantiate the trainer callbacks (imports transformers lazily).
 
     Returns [tracking, checkpoint] or [tracking, watchdog, checkpoint];
@@ -231,7 +238,7 @@ def build_callbacks(recipe, ckpt_root: str, tracker, watchdog,
             write_checkpoint_meta(
                 ckpt_dir, state.global_step, adapter_only=adapter_only,
                 base_model=base_model, backend=backend,
-                recipe_hash=recipe_hash)
+                recipe_hash=recipe_hash, distill=distill_meta)
             apply_trl_retention(ckpt_root, recipe.checkpoint.retain_last,
                                 recipe.checkpoint.retain_every)
             update_latest(ckpt_root, state.global_step)

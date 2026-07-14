@@ -18,7 +18,10 @@ from training.calculator.components import (
     grad_bytes,
     host_ram_bytes,
     optimizer_bytes,
+    spec_from_hf_config,
     spec_from_recipe,
+    teacher_forward_bytes,
+    teacher_weights_bytes,
     trainable_param_count,
     weights_bytes,
 )
@@ -54,6 +57,7 @@ class Estimate:
     grads: int
     optimizer: int
     activations: int
+    teacher: int              # online-mode distillation teacher (F5); else 0
     overhead: int
     allocated_total: int      # component sum, compared to max_memory_allocated
     reserved_estimate: int    # allocated + overhead, must not under-predict NVML
@@ -64,14 +68,31 @@ class Estimate:
         return asdict(self)
 
 
+def _teacher_spec(recipe: DictConfig) -> ArchitectureSpec | None:
+    """Spec of the online-mode distillation teacher, or None when the run
+    has no in-process teacher (distill off, response tier, or cached mode)."""
+    d = getattr(recipe, "distill", None)
+    if d is None or not d.enabled or d.tier != "logit" or d.mode != "online":
+        return None
+    from transformers import AutoConfig
+
+    return spec_from_hf_config(AutoConfig.from_pretrained(d.teacher))
+
+
 def _estimate_at(
-    spec: ArchitectureSpec, recipe: DictConfig, micro_batch: int, seq_len: int
+    spec: ArchitectureSpec, recipe: DictConfig, micro_batch: int, seq_len: int,
+    teacher_spec: ArchitectureSpec | None = None,
 ) -> Estimate:
     weights = weights_bytes(spec, recipe)
     grads = grad_bytes(spec, recipe)
     optimizer = optimizer_bytes(spec, recipe)
     activations = activation_bytes(spec, recipe, micro_batch=micro_batch, seq_len=seq_len)
-    allocated = weights + grads + optimizer + activations
+    teacher = 0
+    if teacher_spec is not None:
+        teacher = (teacher_weights_bytes(teacher_spec,
+                                         recipe.distill.teacher_quantize)
+                   + teacher_forward_bytes(teacher_spec, micro_batch, seq_len))
+    allocated = weights + grads + optimizer + activations + teacher
     reserved = allocated + OVERHEAD_BYTES
     return Estimate(
         micro_batch=micro_batch,
@@ -82,6 +103,7 @@ def _estimate_at(
         grads=grads,
         optimizer=optimizer,
         activations=activations,
+        teacher=teacher,
         overhead=OVERHEAD_BYTES,
         allocated_total=allocated,
         reserved_estimate=reserved,
@@ -92,7 +114,8 @@ def _estimate_at(
 def estimate(recipe: DictConfig) -> Estimate:
     """Peak-VRAM estimate for the recipe's own micro-batch and seq_len."""
     spec = spec_from_recipe(recipe)
-    return _estimate_at(spec, recipe, recipe.data.micro_batch, recipe.data.seq_len)
+    return _estimate_at(spec, recipe, recipe.data.micro_batch,
+                        recipe.data.seq_len, teacher_spec=_teacher_spec(recipe))
 
 
 def solve(recipe: DictConfig, axis: str) -> Estimate | None:
@@ -105,11 +128,14 @@ def solve(recipe: DictConfig, axis: str) -> Estimate | None:
     if axis not in SOLVE_AXES:
         raise ValueError(f"solve axis must be one of {SOLVE_AXES}, got '{axis}'")
     spec = spec_from_recipe(recipe)
+    teacher_spec = _teacher_spec(recipe)
 
     def at(value: int) -> Estimate:
         if axis == "batch":
-            return _estimate_at(spec, recipe, value, recipe.data.seq_len)
-        return _estimate_at(spec, recipe, recipe.data.micro_batch, value * SEQ_STEP)
+            return _estimate_at(spec, recipe, value, recipe.data.seq_len,
+                                teacher_spec=teacher_spec)
+        return _estimate_at(spec, recipe, recipe.data.micro_batch,
+                            value * SEQ_STEP, teacher_spec=teacher_spec)
 
     lo, hi = 1, (MAX_MICRO_BATCH if axis == "batch" else MAX_SEQ_LEN // SEQ_STEP)
     if not at(lo).fits:
