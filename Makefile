@@ -140,6 +140,17 @@ train-calibrate: ## Measure real peak VRAM for a recipe (Phase 0 D4, GPU): make 
 
 train: ## Run the reference training loop (Phase 0 D6): make train CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="checkpoint.resume=latest"
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train --config $(CONFIG) $(ARGS)
+
+export-build: ## Build the GGUF export image (pinned llama.cpp converter and quantizer, Phase 0 D7)
+	@echo "$(CYAN)Building export image...$(RESET)"
+	docker compose -f $(TRAIN_COMPOSE) build export
+	@echo "$(GREEN)Export image built.$(RESET)"
+
+export-gguf: ## Export a checkpoint to GGUF (Phase 0 D7): make export-gguf CHECKPOINT=/mnt/ai-data/training/.../step_000000010 ARGS="--quant Q8_0 --tokenizer ..."
+	docker compose -f $(TRAIN_COMPOSE) run --rm export python -m training export --checkpoint $(CHECKPOINT) $(ARGS)
+
+serve-eval: ## Swap a GGUF into llama-gpu, run the smoke evaluation, restore (Phase 0 D7): make serve-eval MODEL=/app/models/trained/<run>/<name>-Q8_0.gguf ARGS="--keep-serving"
+	python3 scripts/eval/serve_eval.py --model $(MODEL) $(ARGS)
 ##@ Interpretability (interp Phase 0 I1 - separate compose file; GPU inference must be down)
 
 INTERP_COMPOSE := docker-compose.interp.yaml

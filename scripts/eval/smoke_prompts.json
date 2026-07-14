@@ -1,0 +1,21 @@
+{
+  "description": "Phase 0 D7 smoke prompt set: fixed prompts with expected-substring checks. Not a benchmark harness (lm-eval and judge scoring are Phase 1); tiny scratch checkpoints are expected to fail the substring checks while still exercising the round trip.",
+  "defaults": {
+    "temperature": 0,
+    "max_tokens": 64
+  },
+  "prompts": [
+    {"id": "arithmetic-add", "prompt": "What is 2 + 2? Answer with the number only.", "expect_substring": "4"},
+    {"id": "arithmetic-multiply", "prompt": "What is 7 times 6? Answer with the number only.", "expect_substring": "42"},
+    {"id": "capital-france", "prompt": "What is the capital of France? Answer with the city name only.", "expect_substring": "Paris"},
+    {"id": "capital-japan", "prompt": "What is the capital of Japan? Answer with the city name only.", "expect_substring": "Tokyo"},
+    {"id": "color-sky", "prompt": "What color is a clear daytime sky? Answer with one word.", "expect_substring": "blue"},
+    {"id": "opposite-hot", "prompt": "What is the opposite of hot? Answer with one word.", "expect_substring": "cold"},
+    {"id": "spelling-cat", "prompt": "Spell the word cat, one letter at a time, separated by spaces.", "expect_substring": "c a t"},
+    {"id": "count-days", "prompt": "How many days are in one week? Answer with the number only.", "expect_substring": "7"},
+    {"id": "chemistry-water", "prompt": "What is the chemical formula for water?", "expect_substring": "H2O"},
+    {"id": "completion-proverb", "prompt": "Complete this proverb: the early bird catches the", "expect_substring": "worm"},
+    {"id": "translation-hello", "prompt": "How do you say hello in Spanish? Answer with one word.", "expect_substring": "hola"},
+    {"id": "freeform-haiku", "prompt": "Write a haiku about a mountain."}
+  ]
+}

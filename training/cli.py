@@ -227,6 +227,75 @@ def cmd_train(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export(args: argparse.Namespace) -> int:
+    import shutil
+    import tempfile
+
+    from training import export as export_mod
+
+    out = Printer(quiet=args.json)
+    quant = args.quant.upper()
+    name = args.name or export_mod.derive_output_name(args.checkpoint)
+    out_dir = os.path.join(args.out_root, name)
+    gguf_path = os.path.join(out_dir, f"{name}-{quant}.gguf")
+    convert_script = export_mod.convert.converter_path(args.llama_cpp)
+
+    if not os.path.isfile(convert_script):
+        out.error(f"Pinned converter not found: {convert_script}")
+        out.line("  Solution: run inside the export image "
+                 "(make export-gguf CHECKPOINT=...), or pass --llama-cpp")
+        return 1
+    try:
+        pin = export_mod.read_pin()
+        os.makedirs(args.staging_root, exist_ok=True)
+        staging = tempfile.mkdtemp(prefix=f"{name}-", dir=args.staging_root)
+        try:
+            out.run(f"Staging model: {args.checkpoint}")
+            info = export_mod.stage_model(args.checkpoint, staging,
+                                          tokenizer_dir=args.tokenizer)
+            if info.adapter_path:
+                out.ok(f"Adapter merged: {info.adapter_path} "
+                       f"into {info.base_model}")
+            if info.tokenizer_source is None:
+                out.warn("No tokenizer files found in the checkpoint")
+                out.line("  Solution: pass --tokenizer <dir with tokenizer.json>; "
+                         "conversion fails without one")
+            arch = export_mod.check_architecture(staging, convert_script)
+            out.ok(f"Architecture: {arch} (supported by llama.cpp {pin[:12]})")
+
+            os.makedirs(out_dir, exist_ok=True)
+            intermediate = os.path.join(staging, f"{name}-{args.outtype}.gguf")
+            out.run(f"Converting to GGUF ({args.outtype})")
+            export_mod.convert.convert_to_gguf(
+                staging, intermediate, outtype=args.outtype,
+                llama_cpp_dir=args.llama_cpp)
+            out.run(f"Quantizing: {quant}")
+            export_mod.convert.quantize(
+                intermediate, gguf_path, quant, llama_cpp_dir=args.llama_cpp)
+        finally:
+            if args.keep_staging:
+                out.info(f"Staging kept: {staging}")
+            else:
+                shutil.rmtree(staging, ignore_errors=True)
+
+        manifest = export_mod.build_manifest(
+            checkpoint=args.checkpoint, architecture=arch, quant_type=quant,
+            outtype=args.outtype, llama_cpp_commit=pin, gguf_path=gguf_path,
+            staging_info=info)
+        manifest_file = export_mod.write_manifest(manifest, gguf_path)
+    except (export_mod.ExportError, FileNotFoundError, OSError) as exc:
+        out.error(f"Export failed: {exc}")
+        return 1
+
+    out.ok(f"GGUF written: {gguf_path} "
+           f"({manifest['gguf']['size_bytes']:,} bytes)")
+    out.ok(f"Manifest written: {manifest_file}")
+    out.line(f"SHA-256: {manifest['gguf']['sha256']}")
+    if args.json:
+        print(json.dumps(manifest, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m training",
@@ -264,6 +333,33 @@ def build_parser() -> argparse.ArgumentParser:
     tr.add_argument("--json", action="store_true",
                     help="emit a result JSON on stdout after the run")
     tr.set_defaults(func=cmd_train)
+
+    ex = sub.add_parser(
+        "export", help="export a checkpoint or HF model dir to a served GGUF (D7)")
+    ex.add_argument("--checkpoint", required=True,
+                    help="D6 checkpoint dir (containing model/) or an HF model dir")
+    ex.add_argument("--quant", default="Q8_0",
+                    help="llama-quantize type (default Q8_0)")
+    ex.add_argument("--name",
+                    help="output name (default derived from the checkpoint path)")
+    ex.add_argument("--out-root", default="/app/models/trained",
+                    help="export root; llama-gpu sees it as /app/models/trained")
+    ex.add_argument("--tokenizer",
+                    help="dir with tokenizer files, for checkpoints that save weights only")
+    ex.add_argument("--outtype", default="bf16",
+                    help="convert_hf_to_gguf intermediate type (default bf16)")
+    ex.add_argument("--llama-cpp",
+                    default=os.environ.get("LLAMA_CPP_DIR", "/opt/llama.cpp"),
+                    help="pinned llama.cpp checkout with a built llama-quantize")
+    ex.add_argument("--staging-root",
+                    default=os.environ.get("EXPORT_STAGING",
+                                           "/mnt/ai-data/training/staging/export"),
+                    help="scratch dir for the merged safetensors and unquantized GGUF")
+    ex.add_argument("--keep-staging", action="store_true",
+                    help="keep the staging dir for inspection")
+    ex.add_argument("--json", action="store_true",
+                    help="emit the export manifest JSON on stdout")
+    ex.set_defaults(func=cmd_export)
     return parser
 
 
