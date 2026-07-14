@@ -180,10 +180,13 @@ From the roadmap document, restated against the repository:
    trainer that cannot host the callback exists.
 3. **Scope:** this investigation lands first for review; implementation follows on
    the same branch after sign-off.
-
-## Open questions
-
-1. Should the emergency-checkpoint retention exemption protect all emergency
-   checkpoints, or only the most recent one per run?
-2. Should the RAM half-floor abort also take an emergency checkpoint, or exit
-   immediately to avoid allocating during memory pressure?
+4. **Retention exemption breadth:** all checkpoints marked `emergency: true` are
+   protected, not only the newest. Emergency saves happen once per aborted run;
+   accumulation is bounded by abort count and each is post-mortem evidence.
+5. **RAM half-floor abort:** attempts the emergency checkpoint like every other
+   abort, best-effort — a save failure under memory pressure is logged and the
+   abort still surfaces. Checkpoint saving is disk-bound, and skipping the save
+   would trade a possible failure for a certain loss of state.
+6. **grad_norm_max default:** 0 (signal disabled). The roadmap document gives no
+   default and a useful bound is run-specific; recipes opt in once a healthy norm
+   range is known.

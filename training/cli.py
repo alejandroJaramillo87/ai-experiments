@@ -196,6 +196,7 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
 
 def cmd_train(args: argparse.Namespace) -> int:
     from training.loop import train
+    from training.watchdog import WatchdogAbort
 
     out = Printer(quiet=args.json)
     recipe = _load_validated(args.config, args.overrides, out)
@@ -206,6 +207,12 @@ def cmd_train(args: argparse.Namespace) -> int:
     out.run(f"{verb} {recipe.run.name}: {recipe.schedule.total_steps} total steps")
     try:
         result = train(recipe)
+    except WatchdogAbort as exc:
+        out.error(f"Watchdog abort: {exc.signal} value {exc.value:.4g} "
+                  f"crossed threshold {exc.threshold:.4g}")
+        out.line("  Emergency checkpoint saved (emergency=true, retention-exempt)")
+        out.line("  Resume after diagnosis with checkpoint.resume=latest")
+        return 1
     except (RuntimeError, FileNotFoundError, ValueError) as exc:
         out.error(f"Training failed: {exc}")
         out.line("  Solution: check the recipe's data.source shards and checkpoint settings")

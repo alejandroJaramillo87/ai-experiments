@@ -137,12 +137,19 @@ class TrackingConfig:
 
 @dataclass
 class WatchdogConfig:
-    """Thresholds consumed by D10; carried in the contract now, enforced later."""
+    """Thresholds consumed by the D10 watchdog (training/watchdog.py)."""
 
     enabled: bool = True
+    interval_s: float = 10.0  # NVML/psutil sampling period (background thread)
     loss_spike_factor: float = 3.0  # abort when loss exceeds factor x running median
-    gpu_temp_limit_c: int = 90
-    disk_free_floor_gb: int = 100
+    loss_window: int = 100  # trailing-median window for the spike rule
+    grad_norm_max: float = 0.0  # 0 disables; abort after patience consecutive exceeds
+    patience: int = 5
+    gpu_temp_limit_c: int = 90  # alert on exceed, abort when sustained sustain_s
+    sustain_s: float = 120.0
+    power_w: float = 600.0  # card power limit; sustained draw above alerts only
+    ram_floor_gb: float = 8.0  # alert below the floor, abort below half of it
+    disk_free_floor_gb: int = 100  # block checkpoint writes below this
 
 
 @dataclass
