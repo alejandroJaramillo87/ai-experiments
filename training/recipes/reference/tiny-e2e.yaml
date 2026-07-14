@@ -1,0 +1,66 @@
+# tiny-e2e.yaml
+#
+# Phase 0 reference recipe (roadmap D5): a seconds-long scratch run for the
+# acceptance tests and CI-style checks (D6 resume test, smoke runs). Small
+# enough to run on CPU; shard/tokenizer paths point at the tiny fixtures the
+# tests generate under the training root.
+
+run:
+  name: tiny-e2e
+  seed: 1234
+  notes: "Seconds-long run for acceptance tests; not a real training config."
+
+model:
+  scratch:
+    layers: 2
+    hidden: 64
+    heads: 4
+    kv_heads: 2
+    ffn_mult: 4.0
+    vocab: 512
+    rope_theta: 10000.0
+    tie_embeddings: true
+
+data:
+  source: /mnt/ai-data/training/shards/tiny-e2e
+  seq_len: 128
+  micro_batch: 2
+  grad_accum: 1
+  workers: 0
+  pin_memory: false
+
+tokenizer:
+  path: /mnt/ai-data/training/tokenizers/tiny-e2e
+
+optimizer:
+  name: adamw
+  lr: 1.0e-3
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.0
+
+schedule:
+  type: cosine
+  warmup_steps: 2
+  total_steps: 20
+
+precision:
+  dtype: bf16
+  grad_dtype: fp32
+
+memory:
+  gradient_checkpointing: false
+  offload: none
+  compile: false
+
+checkpoint:
+  interval_steps: 5
+  retain_last: 2
+  retain_every: 10
+
+tracking:
+  wandb: false
+  tensorboard: false
+
+watchdog:
+  enabled: false

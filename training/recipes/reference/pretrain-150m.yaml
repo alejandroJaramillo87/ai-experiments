@@ -1,0 +1,62 @@
+# pretrain-150m.yaml
+#
+# Phase 0 reference recipe (roadmap D5): ~150M-parameter scratch pretrain used for
+# D4 calculator calibration and envelope validation. Architecture follows the
+# SmolLM2-135M shape (GQA, tied embeddings, 49152 vocab).
+
+run:
+  name: pretrain-150m
+  seed: 42
+  notes: "Reference config for calculator calibration; not a production run."
+
+model:
+  scratch:
+    layers: 30
+    hidden: 576
+    heads: 9
+    kv_heads: 3
+    ffn_mult: 2.67
+    vocab: 49152
+    rope_theta: 100000.0
+    tie_embeddings: true
+
+data:
+  source: /mnt/ai-data/training/shards/fineweb-edu-10B
+  seq_len: 2048
+  micro_batch: 16
+  grad_accum: 4
+  workers: 4
+  pin_memory: true
+
+tokenizer:
+  path: /mnt/ai-data/training/tokenizers/smollm2
+
+optimizer:
+  name: adamw
+  lr: 3.0e-4
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+
+schedule:
+  type: cosine
+  warmup_steps: 2000
+  total_steps: 100000
+
+precision:
+  dtype: bf16
+  grad_dtype: fp32
+
+memory:
+  gradient_checkpointing: false
+  offload: none
+  compile: true
+
+checkpoint:
+  interval_steps: 2000
+  retain_last: 3
+  retain_every: 20000
+
+tracking:
+  wandb: false
+  tensorboard: true
