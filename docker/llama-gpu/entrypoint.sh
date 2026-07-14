@@ -26,6 +26,12 @@ SPLIT_MODE=${SPLIT_MODE:-"none"}
 TENSOR_SPLIT=${TENSOR_SPLIT:-""}
 NO_KV_OFFLOAD=${NO_KV_OFFLOAD:-false}
 
+# Steering control vector (interp Phase 3 W1): empty default omits the flag entirely,
+# so production behavior is unchanged unless a vector is explicitly wired in
+CONTROL_VECTOR=${CONTROL_VECTOR:-""}
+CONTROL_VECTOR_SCALE=${CONTROL_VECTOR_SCALE:-""}
+CONTROL_VECTOR_LAYER_RANGE=${CONTROL_VECTOR_LAYER_RANGE:-""}
+
 # Advanced server features
 CACHE_REUSE=${CACHE_REUSE:-0}
 JINJA_ENABLED=${JINJA_ENABLED:-false}
@@ -56,6 +62,12 @@ if [[ -n "$REASONING_FORMAT" ]]; then
 fi
 if [[ "$KV_UNIFIED" == "true" ]]; then
     echo "  KV unified buffer: enabled"
+fi
+if [[ -n "$CONTROL_VECTOR" ]]; then
+    echo "  Control vector: ${CONTROL_VECTOR}${CONTROL_VECTOR_SCALE:+ (scale ${CONTROL_VECTOR_SCALE})}"
+    if [[ -n "$CONTROL_VECTOR_LAYER_RANGE" ]]; then
+        echo "  Control vector layer range: ${CONTROL_VECTOR_LAYER_RANGE}"
+    fi
 fi
 
 # Verify model file exists
@@ -127,6 +139,25 @@ fi
 
 if [[ "$KV_UNIFIED" == "true" ]]; then
     CMD_ARGS+=("--kv-unified")
+fi
+
+# Steering control vector (interp Phase 3 W1). Vector file must exist: refusing beats
+# llama-server silently starting unsteered while a scorecard believes it is steered
+if [[ -n "$CONTROL_VECTOR" ]]; then
+    if [[ ! -f "$CONTROL_VECTOR" ]]; then
+        echo "ERROR: Control vector file not found: $CONTROL_VECTOR"
+        echo "  Solution: check the vectors mount and the CONTROL_VECTOR path"
+        exit 1
+    fi
+    if [[ -n "$CONTROL_VECTOR_SCALE" ]]; then
+        CMD_ARGS+=("--control-vector-scaled" "$CONTROL_VECTOR" "$CONTROL_VECTOR_SCALE")
+    else
+        CMD_ARGS+=("--control-vector" "$CONTROL_VECTOR")
+    fi
+    if [[ -n "$CONTROL_VECTOR_LAYER_RANGE" ]]; then
+        # Intentionally unquoted: the value is "START END", two arguments
+        CMD_ARGS+=("--control-vector-layer-range" $CONTROL_VECTOR_LAYER_RANGE)
+    fi
 fi
 
 # Execute the server with all parameters

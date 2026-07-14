@@ -86,8 +86,9 @@ dev = [
 
 # Mechanistic interpretability tooling (interp Phase 0 I1). Requires transformers>=5.4
 # (satisfied by the HF core pin); gated behind its own group so the core install stays lean.
-# ARENA chapter requirements are folded in here (einops/jupyterlab/matplotlib/pandas live in
-# core) so the workbench image is the lockfile and notebooks need no in-container installs.
+# Notebook-support packages (plotly/ipywidgets/circuitsvis; einops/jupyterlab/matplotlib/
+# pandas live in core) are folded in so the workbench image is the lockfile and notebooks
+# need no in-container installs.
 # docker/interp/Dockerfile.interp installs and CUDA-verifies this group.
 # NOTE: pins below the first two are provisional (resolved offline); regenerate uv.lock on
 # the workstation (`uv lock`) to confirm exact versions against the cu130 / torch 2.13
@@ -102,6 +103,12 @@ interp = [
     "plotly==6.9.0",
     "ipywidgets==8.1.8",
     "pynvml==12.0.0",
+    # Write-back path (interp Phase 3 W1/W2): control-vector extraction and GGUF export,
+    # artifact manifests. scikit-learn (probes) lives in core. xxhash repeats the training
+    # group's pin (groups may overlap).
+    "repeng==0.4.0",
+    "gguf==0.19.0",
+    "xxhash==3.5.0",
 ]
 
 # Training tier (Phase 0 D1). Only libs NOT already in core dependencies live here:

@@ -11,6 +11,9 @@
 .PHONY: worktree-ls worktree-clean agent-run agent-export agent-sandbox
 .PHONY: np-clone np-env np-build np-up np-inference-up np-autointerp-up np-graph-up
 .PHONY: np-down np-status np-smoke
+.PHONY: interp-build interp-up interp-shell interp-smoke interp-down interp-dirs
+.PHONY: steer-extract steer-up steer-down steer-scorecard
+.PHONY: probe-capture probe-train probe-eval probe-monitor logproxy-up logproxy-down
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -180,16 +183,59 @@ interp-dirs: ## Create the /mnt/ai-data/interp storage tree on the host
 	mkdir -p /mnt/ai-data/interp/activations /mnt/ai-data/interp/saes \
 	         /mnt/ai-data/interp/probes /mnt/ai-data/interp/vectors \
 	         /mnt/ai-data/interp/neuronpedia /mnt/ai-data/interp/hf-cache \
-	         /mnt/ai-data/interp/neuronpedia/postgres /mnt/ai-data/interp/arena
+	         /mnt/ai-data/interp/neuronpedia/postgres /mnt/ai-data/interp/logs \
+	         /mnt/ai-data/interp/monitor
 	@echo "$(GREEN)Interp storage tree ready under /mnt/ai-data/interp$(RESET)"
 
-interp-arena: interp-dirs ## Clone (or update) the ARENA 3.0 curriculum to /mnt/ai-data/interp/arena
-	@if [ -d /mnt/ai-data/interp/arena/.git ]; then \
-	  git -C /mnt/ai-data/interp/arena pull --ff-only; \
-	else \
-	  git clone https://github.com/callummcdougall/ARENA_3.0.git /mnt/ai-data/interp/arena; \
-	fi
-	@echo "$(GREEN)ARENA available at /mnt/ai-data/interp/arena (interp/notebooks/arena in Jupyter)$(RESET)"
+##@ Interpretability write-back (interp Phase 3 W1-W4)
+
+# Steered service and the host->container mapping of the vectors mount
+STEER_SERVICE ?= llama-gpu
+VECTOR_CONTAINER = $(patsubst /mnt/ai-data/interp/vectors%,/app/vectors%,$(VECTOR))/vector.gguf
+
+steer-extract: ## Extract and export a control vector in the workbench (ARGS="--method repeng --model ... --pairs ... --out ...")
+	@./scripts/interp/preflight.sh
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/steer_extract.py $(ARGS)
+
+steer-up: ## Recreate the service steered (VECTOR=/mnt/ai-data/interp/vectors/<name> [SCALE=1.0] [LAYER_RANGE="start end"] [STEER_SERVICE=llama-gpu])
+	@test -n "$(VECTOR)" || { echo "VECTOR=/mnt/ai-data/interp/vectors/<name> is required"; exit 2; }
+	@test -f "$(VECTOR)/vector.gguf" || { echo "vector not found: $(VECTOR)/vector.gguf"; exit 1; }
+	@case "$(VECTOR)" in /mnt/ai-data/interp/vectors/*) ;; *) echo "VECTOR must live under /mnt/ai-data/interp/vectors (the mounted tree)"; exit 1;; esac
+	CONTROL_VECTOR="$(VECTOR_CONTAINER)" CONTROL_VECTOR_SCALE="$(SCALE)" \
+	CONTROL_VECTOR_LAYER_RANGE="$(LAYER_RANGE)" \
+	docker compose up -d --force-recreate $(STEER_SERVICE)
+	@echo "$(GREEN)$(STEER_SERVICE) recreated steered: $(VECTOR_CONTAINER)$(if $(SCALE), scale $(SCALE),)$(RESET)"
+
+steer-down: ## Recreate the service unsteered (restores production state)
+	CONTROL_VECTOR= CONTROL_VECTOR_SCALE= CONTROL_VECTOR_LAYER_RANGE= \
+	docker compose up -d --force-recreate $(STEER_SERVICE)
+	@echo "$(GREEN)$(STEER_SERVICE) recreated unsteered$(RESET)"
+
+steer-scorecard: ## Run the three-arm scorecard against live services (VECTOR=... ATTRIBUTE="..." [ARGS=...])
+	@test -n "$(VECTOR)" || { echo "VECTOR=/mnt/ai-data/interp/vectors/<name> is required"; exit 2; }
+	@test -n "$(ATTRIBUTE)" || { echo "ATTRIBUTE=\"behavior the judge scores\" is required"; exit 2; }
+	uv run python scripts/interp/steer_scorecard.py --vector "$(VECTOR)" --attribute "$(ATTRIBUTE)" $(ARGS)
+
+probe-capture: ## Capture labeled activations in the workbench (ARGS="--model ... --dataset ... --layers ... --out ...")
+	@./scripts/interp/preflight.sh
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/probe_capture.py $(ARGS)
+
+probe-train: ## Train and register probes from a capture (ARGS="--capture ... --name ...")
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/probe_train.py $(ARGS)
+
+probe-eval: ## Regenerate a probe evaluation report with black-box baselines (serving-dependent; ARGS="--probe ... --label-name ...")
+	uv run python scripts/interp/probe_eval.py $(ARGS)
+
+probe-monitor: ## Replay a serving-log window and score probes (batch; refuses while inference is up; ARGS="--window 7d --probes ... --model ... --model-hash ...")
+	@./scripts/interp/preflight.sh
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/probe_monitor.py $(ARGS)
+
+logproxy-up: ## Start the request-logging proxy on 127.0.0.1:8012 (opt-in; compose profile interp)
+	docker compose --profile interp up -d interp-logproxy
+	@echo "$(GREEN)logproxy up: point clients at http://127.0.0.1:8012 (logs under /mnt/ai-data/interp/logs)$(RESET)"
+
+logproxy-down: ## Stop the request-logging proxy
+	docker compose --profile interp rm -sf interp-logproxy
 
 ##@ Interpretability Platform (interp Phase 2 PS1 - self-hosted Neuronpedia from a pinned upstream)
 

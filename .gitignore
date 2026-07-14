@@ -17,8 +17,6 @@ venv/
 .env.interp
 .env.training
 
-# Interp workbench: ARENA clone bind-mounted inside the Jupyter root (lives on NVMe)
-interp/notebooks/arena/
 
 # Benchmark results
 benchmark_results_*.json
