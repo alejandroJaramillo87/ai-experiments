@@ -186,16 +186,20 @@ real corpus sample, run twice for the hash-equality check.
    change across `tokenizers` releases. The manifest records the library version so a
    hash mismatch after an upgrade is diagnosable.
 
+## Resolved questions
+
+Decisions recorded from review of this investigation:
+
+1. **Corpus sources: JSONL globs only** in the first version, matching the document's
+   interface. HF dataset support can be added later through the D2 helpers.
+2. **Reference tokenizer set: SmolLM2-135M plus GPT-2** (both ungated), so the default
+   evaluation run is credential-free. Deviates from the document's SmolLM2 plus
+   Llama-3.2 suggestion; Llama-3.2 remains usable via `--reference`.
+3. **BOS policy: no automatic BOS.** The `<|bos|>` id is reserved but unused; no
+   post-processor attaches it, keeping D2 EOS-only packing behavior unchanged. Phase 3
+   wires BOS into the model if needed.
+
 ## Open questions
 
-1. **Corpus sources.** Is JSONL-glob input sufficient for now (matching the document's
-   interface), or should `--corpus` also accept HF dataset ids through the D2 helpers
-   in the first version?
-2. **Reference tokenizer set.** Default to SmolLM2-135M (ungated) plus Llama-3.2, or
-   drop Llama-3.2 for an ungated second reference to keep the default run
-   credential-free?
-3. **Explicit pin.** Promote `tokenizers` to an explicit entry in the training group in
+1. **Explicit pin.** Promote `tokenizers` to an explicit entry in the training group in
    `pyproject.toml`, or continue relying on the transitive pin via `transformers`?
-4. **BOS policy.** D2's packing separates documents with EOS only. Should the trained
-   tokenizer's post-processor attach BOS by default (Llama style), or leave BOS unused
-   until Phase 3 wires it into the model, keeping D2 behavior unchanged?
