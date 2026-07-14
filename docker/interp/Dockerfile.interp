@@ -1,0 +1,107 @@
+# Interpretability workbench Dockerfile - RTX 5090 (Blackwell)
+#
+# One reproducible environment for interp Phase 0 (roadmap I1) and all later interpretability
+# project work: PyTorch cu130 on sm_120 with the hooked-execution stack (TransformerLens v3,
+# nnsight + nnterp, SAELens) imported and CUDA-verified at build time via
+# scripts/interp/smoke_test.py, and JupyterLab as the default command.
+#
+# Dependency source of truth is uv.lock (core dependencies + the `interp` group), not
+# hand-pinned lines here: torch is pinned to the cu130 index in pyproject.toml
+# [tool.uv.sources], so any interp package that would downgrade torch fails `uv lock`
+# loudly instead of silently regressing the sm_120 build (the roadmap's anti-downgrade rule,
+# enforced structurally). ARENA chapter requirements are folded into the interp group for the
+# same reason; notebooks never pip-install inside a running container.
+#
+# Base is the CUDA 13.0.2 runtime image, not devel: the interp stack is pure Python plus
+# prebuilt wheels (TransformerLens, nnsight, SAELens compile nothing). If a dependency later
+# needs nvcc, switch this base to devel with a dated comment; do not add a second image.
+
+# Build arguments
+ARG CUDA_VERSION=13.0.2
+ARG PYTHON_VERSION=3.12
+ARG UV_VERSION=0.11.28
+
+# Pinned uv binary source (matches docker/training/Dockerfile.training)
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu24.04
+
+ARG PYTHON_VERSION
+
+LABEL description="Mechanistic interpretability workbench for RTX 5090 Blackwell (interp Phase 0 I1)"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# Blackwell sm_120 target, matching the inference and training GPU images
+ENV TORCH_CUDA_ARCH_LIST="12.0"
+
+# Minimal runtime packages: no build toolchain (pure-wheel stack, see header)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends --allow-change-held-packages \
+        curl \
+        ca-certificates \
+        libgomp1 \
+        python${PYTHON_VERSION} \
+        python${PYTHON_VERSION}-venv && \
+    rm -rf /var/lib/apt/lists/*
+
+# Pinned uv binary (see uv stage above)
+COPY --from=uv /uv /uvx /usr/local/bin/
+
+# Virtual environment (avoids PEP 668 externally-managed restriction)
+RUN uv venv /opt/venv --python ${PYTHON_VERSION}
+ENV VIRTUAL_ENV="/opt/venv"
+ENV PATH="/opt/venv/bin:${PATH}"
+
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+ENV CUDA_MODULE_LOADING=LAZY
+
+# Install the pinned environment from uv.lock: core dependencies + the interp group
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-default-groups --group interp
+
+# NVIDIA runtime capabilities
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+ENV NVIDIA_REQUIRE_CUDA="cuda>=13.0"
+
+# Non-root user (repo-standard line, matches the inference and training images)
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser
+
+# Writable-state layout for the read_only rootfs (docker-compose.interp.yaml): everything a
+# session writes goes to tmpfs under /tmp, to the /mnt/ai-data/interp bind mount, or to the
+# repository bind at /workspace. HF_HOME persists model weights on NVMe across runs (unlike
+# the training container's disposable cache) so Gemma-2-2B downloads exactly once.
+ENV HOME=/app
+ENV HF_HOME=/mnt/ai-data/interp/hf-cache
+ENV JUPYTER_CONFIG_DIR=/tmp/jupyter/config
+ENV JUPYTER_DATA_DIR=/tmp/jupyter/data
+ENV JUPYTER_RUNTIME_DIR=/tmp/jupyter/runtime
+ENV IPYTHONDIR=/tmp/ipython
+ENV MPLCONFIGDIR=/tmp/mpl
+ENV XDG_CACHE_HOME=/tmp/cache
+ENV TRITON_CACHE_DIR=/tmp/triton
+
+RUN mkdir -p /app && chown -R appuser:appuser /app
+
+WORKDIR /workspace
+
+# Repository sources needed by the build-time smoke test; at runtime the live repository is
+# bind-mounted over /workspace and these copies are shadowed.
+COPY --chown=appuser:appuser scripts/interp ./scripts/interp
+COPY --chown=appuser:appuser interp ./interp
+
+# Entrypoint
+COPY --chown=appuser:appuser docker/interp/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+USER appuser
+
+# Build-time verification: fail the build if any smoke-test step regresses. CUDA and network
+# asserts are skipped gracefully on a GPU-less build host; make interp-smoke enforces them on
+# the workstation.
+RUN python scripts/interp/smoke_test.py --build
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["jupyter-lab"]

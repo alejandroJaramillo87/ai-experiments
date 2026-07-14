@@ -1,0 +1,23 @@
+# Pinned artifacts per mini-project scaffold (interp M3).
+#
+# Every artifact a scaffold uses is declared here with an explicit revision and downloaded via
+# `make interp-fetch PROJECT=<slug>` (interp.miniprojects.common.artifacts.fetch). No scaffold
+# downloads ad hoc. dest must be under /mnt/ai-data/models or /mnt/ai-data/interp; nothing
+# lands in the repository.
+#
+# Entry fields: repo_id (required), revision (required, a commit SHA or tag, never a floating
+# branch), dest (required), repo_type (optional, default model), allow_patterns (optional).
+#
+# Example (uncomment and pin a real revision when the Phase 1 refusal project starts):
+#
+# projects:
+#   p1-refusal:
+#     - repo_id: Qwen/Qwen3-4B
+#       revision: <commit-sha>
+#       dest: /mnt/ai-data/models/Qwen3-4B
+#     - repo_id: mlabonne/harmful_behaviors
+#       revision: <commit-sha>
+#       repo_type: dataset
+#       dest: /mnt/ai-data/interp/datasets/harmful_behaviors
+
+projects: {}

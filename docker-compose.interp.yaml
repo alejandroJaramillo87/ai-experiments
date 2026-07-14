@@ -1,0 +1,68 @@
+# docker-compose.interp.yaml
+#
+# Interpretability workbench (interp Phase 0 I1). Kept in a separate compose file so `make up`
+# never starts it: interactive interp sessions and the GPU inference services must not run
+# concurrently (one GPU consumer at a time, per AGENTS.md). llama-cpu may stay up on its
+# dedicated cores. The concurrency check itself lives in scripts/interp/preflight.sh, run by
+# the make targets before anything starts.
+#
+# Unlike docker-compose.training.yaml this IS a long-running service: JupyterLab on
+# 127.0.0.1:8888, token-authenticated (JUPYTER_TOKEN generated per launch by `make interp-up`).
+# Never bind the port beyond localhost; remote access goes through an SSH tunnel.
+
+services:
+  interp:
+    build:
+      context: .
+      dockerfile: docker/interp/Dockerfile.interp
+    container_name: interp
+    restart: "no"  # started explicitly, never on boot
+    init: true  # tini as PID 1 for correct signal forwarding
+    user: "${UID:-1000}:${GID:-1000}"  # match host user for bind-mount writes
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Strict rootfs like the training container; all writable state goes to the tmpfs mounts
+    # below or the /mnt/ai-data/interp bind (HF_HOME, artifacts). The Dockerfile points every
+    # cache/config dir Jupyter and friends need at /tmp.
+    read_only: true
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - CUDA_VISIBLE_DEVICES=0
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN:-}
+    # HF_TOKEN for the gated Gemma-2-2B download. Optional so the image builds and ungated
+    # work runs without secrets; smoke-test step 6 warns and skips when it is absent.
+    env_file:
+      - path: .env.interp
+        required: false
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute, utility]
+    shm_size: "8g"  # dataloader worker shared memory
+    tmpfs:
+      # Jupyter/IPython/matplotlib config and caches, plus Triton/CUDA JIT caches (exec)
+      - /tmp:size=8G,mode=1777,exec
+    ports:
+      - "127.0.0.1:8888:8888"  # localhost only; Jupyter is a shell on the machine
+    volumes:
+      # Repository bind-mounted read-write: notebooks and code live in git
+      - .:/workspace:rw
+      # Heavy artifacts and the HF cache: weights land on NVMe once, never in git
+      - /mnt/ai-data/interp:/mnt/ai-data/interp:rw
+      # Parity with the inference services, for later phases reading served GGUFs' provenance
+      - /mnt/ai-data/models:/app/models:ro
+      # ARENA clone (make interp-arena) surfaced inside the Jupyter root; gitignored
+      - /mnt/ai-data/interp/arena:/workspace/interp/notebooks/arena:rw
+    networks:
+      - interp-network
+
+# Self-contained network: the workbench never runs alongside the GPU inference stack, so it
+# does not join ai-network.
+networks:
+  interp-network:
+    driver: bridge
