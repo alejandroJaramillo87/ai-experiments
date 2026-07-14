@@ -12,6 +12,7 @@ repository holds no upstream logic. Design and rationale:
 - [Bring-up and teardown](#bring-up-and-teardown)
 - [Concurrency matrix](#concurrency-matrix)
 - [Autointerp through local serving](#autointerp-through-local-serving)
+- [Attribution graphs](#attribution-graphs)
 - [Shared network behavior](#shared-network-behavior)
 - [Pin-bump procedure](#pin-bump-procedure)
 - [Trust model](#trust-model)
@@ -119,6 +120,44 @@ Operational facts:
   benchmarks.
 - Generated explanations land in Postgres and render on the corresponding feature pages
   on `localhost:3001`.
+
+## Attribution graphs
+
+PS5 mode: circuit-tracer attribution graphs generated locally on Gemma-2-2B with the
+8x/k64 transcoder configuration (verified inside the 32GB envelope; 32x configs need
+40GB+ and are out of scope), rendered in the webapp's graph viewer. Interactive
+concurrency mode: the graph server owns the GPU, so llama-gpu/vllm-gpu/comfyui and the
+PS3 inference instance must be down (enforced by the preflight). Design and open
+verification items: `docs/interpretability/ps5_attribution_graphs_investigation.md`.
+
+Start order:
+
+```bash
+$ make np-up          # webapp + postgres
+$ make np-graph-up    # preflight, then graph server on 127.0.0.1:5004
+$ make np-smoke       # includes the sm_120 torch check inside the graph container
+```
+
+Operational facts:
+
+- Transcoder weights download into the shared HF cache on first start (tens of GB;
+  gated Gemma weights need `HF_TOKEN` from `.env.interp`).
+- First graph generation includes weight load and compile and can look like a hang;
+  warm generations are much faster.
+- Graphs are generated and viewed through the webapp on `localhost:3001`; the hosted
+  S3-upload path is not configured and graphs stay in the local stack.
+- Mini-project post-mortems land in `docs/interpretability/experiments/` per that
+  directory's README.
+
+Measured on first host run (record here, per the PS5 acceptance):
+
+| Measurement | Value |
+|-------------|-------|
+| Transcoder cache size on disk | not yet measured |
+| First-run graph generation time | not yet measured |
+| Warm graph generation time | not yet measured |
+| Peak VRAM during generation | not yet measured |
+| Graph persistence location (survives `np-down`?) | not yet verified |
 
 ## Shared network behavior
 

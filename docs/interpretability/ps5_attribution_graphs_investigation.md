@@ -103,13 +103,13 @@ host-side verification before the mini-project, since losing the acceptance grap
 
 ## Repository changes
 
-| Path | Change |
-|------|--------|
-| `scripts/interp/np_smoke.sh` | Run the sm_120 torch capability check against the graph container when it is running, identical to the inference-container check |
-| `docs/interpretability/experiments/README.md` | Bootstrap the experiments log convention (post-mortem standard) |
-| `docs/interpretability/platform.md` | "Attribution graphs" runbook section: bring-up order, transcoder cache size, first-run versus warm generation timings, peak VRAM, graph persistence behavior — populated from host-side measurements |
-| `docker/interp/neuronpedia.override.yaml` | Only if verification shows graphs persist outside Postgres: one bind mount for graph artifacts |
-| `docs/interpretability/experiments/<date>-<slug>.md` | The commissioning mini-project post-mortem (host-side, acceptance) |
+| Path | Change | Status |
+|------|--------|--------|
+| `scripts/interp/np_smoke.sh` | Run the sm_120 torch capability check against the graph container when it is running, identical to the inference-container check | Landed with this investigation |
+| `docs/interpretability/experiments/README.md` | Bootstrap the experiments log convention (post-mortem standard) | Landed with this investigation |
+| `docs/interpretability/platform.md` | "Attribution graphs" runbook section: bring-up order, operational facts, and a measurements table to fill from the first host run | Landed with this investigation; measurements pending host run |
+| `docker/interp/neuronpedia.override.yaml` | Only if verification shows graphs persist outside Postgres: one bind mount for graph artifacts | Deferred to host-side verification |
+| `docs/interpretability/experiments/<date>-<slug>.md` | The commissioning mini-project post-mortem (host-side, acceptance) | Host-side |
 
 No new make targets, no patches expected: unlike PS4 there is no known upstream gap
 shaped like the OpenRouter URL. The patch mechanism from PS4 is available if
