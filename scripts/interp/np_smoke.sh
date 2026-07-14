@@ -9,9 +9,10 @@ set -euo pipefail
 #      localhost trust model (no sign-in, static shared secrets) depends on it.
 #   2. Webapp answers on http://127.0.0.1:3001.
 #   3. Postgres accepts connections (pg_isready inside the container).
-#   4. When the GPU inference instance is up: the container sees the RTX 5090 and its
-#      torch build supports sm_120 (upstream images build on CUDA 12.1 bases; fine under
-#      the CUDA 13 host driver only if the torch wheel carries sm_120 kernels).
+#   4. When a GPU platform container is up (inference instance, graph server): the
+#      container sees the RTX 5090 and its torch build supports sm_120 (upstream images
+#      build on CUDA 12.1 bases; fine under the CUDA 13 host driver only if the torch
+#      wheel carries sm_120 kernels).
 #
 # Exit codes: 0 all checks passed, 1 a check failed.
 
@@ -29,6 +30,7 @@ print_skip()  { printf "${CYAN}[SKIP]${NC} %s\n" "$*"; }
 WEBAPP_CONTAINER="neuronpedia-webapp-1"
 POSTGRES_CONTAINER="neuronpedia-postgres-1"
 INFERENCE_CONTAINER="neuronpedia-inference-1"
+GRAPH_CONTAINER="neuronpedia-graph-1"
 PLATFORM_PORTS="3001 5432 5002 5003 5004"
 
 failures=0
@@ -77,26 +79,33 @@ else
     failures=$((failures + 1))
 fi
 
-# 4. GPU inference instance (only when running)
-if docker ps --format '{{.Names}}' | grep -qx "$INFERENCE_CONTAINER"; then
-    cap=$(docker exec "$INFERENCE_CONTAINER" python -c \
+# 4. GPU platform containers (only when running). Both the inference instance and the
+#    graph server build on CUDA 12.1-era bases and share the sm_120 torch-wheel risk.
+check_gpu_container() {
+    local label="$1" container="$2" up_target="$3"
+    if ! docker ps --format '{{.Names}}' | grep -qx "$container"; then
+        print_skip "$label GPU: instance not running (start with $up_target)"
+        return
+    fi
+    local cap
+    cap=$(docker exec "$container" python -c \
         'import torch; c = torch.cuda.get_device_capability(); print(f"{c[0]}.{c[1]}")' \
         2>/dev/null || true)
     if [[ "$cap" == "12.0" ]]; then
-        print_ok "Inference GPU: sm_120 visible to torch (capability $cap)"
+        print_ok "$label GPU: sm_120 visible to torch (capability $cap)"
     elif [[ -n "$cap" ]]; then
-        print_error "Inference GPU: unexpected device capability $cap (expected 12.0)"
+        print_error "$label GPU: unexpected device capability $cap (expected 12.0)"
         failures=$((failures + 1))
     else
-        print_error "Inference GPU: torch cannot see a CUDA device"
+        print_error "$label GPU: torch cannot see a CUDA device"
         echo "  Context: upstream torch pin may predate sm_120 (RTX 5090) wheel support"
         echo "  Solution: override the torch version and record it with the pin"
-        echo "  Command: docker exec $INFERENCE_CONTAINER python -c 'import torch; print(torch.__version__, torch.cuda.is_available())'"
+        echo "  Command: docker exec $container python -c 'import torch; print(torch.__version__, torch.cuda.is_available())'"
         failures=$((failures + 1))
     fi
-else
-    print_skip "Inference GPU: instance not running (start with make np-inference-up)"
-fi
+}
+check_gpu_container "Inference" "$INFERENCE_CONTAINER" "make np-inference-up"
+check_gpu_container "Graph"     "$GRAPH_CONTAINER"     "make np-graph-up"
 echo
 
 if [[ $failures -eq 0 ]]; then
