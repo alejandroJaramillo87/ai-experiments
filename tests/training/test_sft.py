@@ -29,8 +29,8 @@ from training.families import UnknownModelFamilyError, family_spec
 
 CONTROL_TOKENS = [
     "<|bos|>", "<|eos|>", "<|pad|>",
-    "<bos>", "<start_of_turn>", "<end_of_turn>",   # Gemma framing
-    "<|im_start|>", "<|im_end|>",                  # ChatML (Qwen3) framing
+    "<bos>", "<|turn>", "<turn|>",   # Gemma 4 framing
+    "<|im_start|>", "<|im_end|>",    # ChatML (Qwen3) framing
 ]
 
 CHAT_TEXTS = [
@@ -58,15 +58,17 @@ WITH_SYSTEM = [{"role": "system", "content": "you are a helpful assistant"}] + S
 CASES = {"single_turn": SINGLE_TURN, "multi_turn": MULTI_TURN, "system": WITH_SYSTEM}
 
 # Golden rendered conversations per family for the round-trip test: these
-# freeze the ChatTemplateSpec structure the masks are computed from.
+# freeze the ChatTemplateSpec structure the masks are computed from. The
+# gemma4 strings mirror the official chat_template.jinja rendering:
+# {bos}<|turn>role\n{content}<turn|>\n per turn, native system turn.
 GOLDEN_RENDERED = {
-    ("gemma3n", "single_turn"):
-        "<bos><start_of_turn>user\nwhat is the capital of france<end_of_turn>\n"
-        "<start_of_turn>model\nthe capital of france is paris<end_of_turn>\n",
-    ("gemma3n", "system"):
-        "<bos><start_of_turn>user\nyou are a helpful assistant\n\n"
-        "what is the capital of france<end_of_turn>\n"
-        "<start_of_turn>model\nthe capital of france is paris<end_of_turn>\n",
+    ("gemma4", "single_turn"):
+        "<bos><|turn>user\nwhat is the capital of france<turn|>\n"
+        "<|turn>model\nthe capital of france is paris<turn|>\n",
+    ("gemma4", "system"):
+        "<bos><|turn>system\nyou are a helpful assistant<turn|>\n"
+        "<|turn>user\nwhat is the capital of france<turn|>\n"
+        "<|turn>model\nthe capital of france is paris<turn|>\n",
     ("qwen3", "single_turn"):
         "<|im_start|>user\nwhat is the capital of france<|im_end|>\n"
         "<|im_start|>assistant\nthe capital of france is paris<|im_end|>\n",
@@ -151,7 +153,7 @@ class TestMaskBoundaries:
     """The scope document's required test: loss applies only to assistant
     content tokens and the turn's end-of-turn token, per family and case."""
 
-    @pytest.mark.parametrize("model_type", ["gemma3n", "gemma3n_text", "qwen3"])
+    @pytest.mark.parametrize("model_type", ["gemma4", "gemma4_text", "qwen3"])
     @pytest.mark.parametrize("case", sorted(CASES))
     def test_supervised_tokens_are_exactly_assistant_content_plus_eot(
             self, model_type, case, encode, raw_tokenizer):
@@ -179,7 +181,7 @@ class TestMaskBoundaries:
             if msg["role"] != "assistant":
                 assert msg["content"] in masked_text
 
-    @pytest.mark.parametrize("model_type", ["gemma3n", "qwen3"])
+    @pytest.mark.parametrize("model_type", ["gemma4", "qwen3"])
     def test_multi_turn_supervises_every_assistant_turn(
             self, model_type, encode, raw_tokenizer):
         spec = family_spec(model_type).chat_template
@@ -193,15 +195,16 @@ class TestMaskBoundaries:
         assert text.count(spec.eot) == 2
 
     def test_truncation_to_prompt_only_drops_example(self, encode):
-        spec = family_spec("gemma3n").chat_template
+        spec = family_spec("gemma4").chat_template
         assert encode_example(SINGLE_TURN, encode, spec, max_seq_len=4) is None
 
-    def test_gemma_system_requires_following_user_turn(self, encode):
-        spec = family_spec("gemma3n").chat_template
-        messages = [{"role": "system", "content": "you are a helpful assistant"},
-                    {"role": "assistant", "content": "hi"}]
-        with pytest.raises(SftRecordError, match="user turn"):
-            render_segments(messages, spec)
+    def test_gemma4_trims_content_like_the_official_template(self):
+        spec = family_spec("gemma4").chat_template
+        messages = [{"role": "user", "content": "  and of spain \n"},
+                    {"role": "assistant", "content": "\nthe capital of spain is madrid  "}]
+        rendered = "".join(t for t, _ in render_segments(messages, spec))
+        assert rendered == ("<bos><|turn>user\nand of spain<turn|>\n"
+                            "<|turn>model\nthe capital of spain is madrid<turn|>\n")
 
 
 class TestRoundTrip:
@@ -221,22 +224,22 @@ class TestRoundTrip:
 
 class TestMaskDebug:
     def test_table_lists_every_token_with_id_and_label(self, encode, raw_tokenizer):
-        spec = family_spec("gemma3n").chat_template
+        spec = family_spec("gemma4").chat_template
         sample = encode_example(SINGLE_TURN, encode, spec)
         table = mask_debug(sample, raw_tokenizer.id_to_token)
         lines = table.splitlines()
         assert len(lines) == len(sample["input_ids"]) + 1  # header row
-        assert "'<start_of_turn>'" in table
+        assert "'<|turn>'" in table
         assert str(IGNORE_INDEX) in table
 
 
 class TestPrepareSft:
     def test_prepare_writes_splits_and_manifest(self, chat_jsonl, chat_tokenizer_dir, tmp_path):
         out = str(tmp_path / "sft")
-        manifest = prepare_sft(chat_jsonl, out, chat_tokenizer_dir, "gemma3n",
+        manifest = prepare_sft(chat_jsonl, out, chat_tokenizer_dir, "gemma4",
                                holdout=0.2, seed=7, license_str="test")
         assert manifest["kind"] == "sft"
-        assert manifest["model_type"] == "gemma3n"
+        assert manifest["model_type"] == "gemma4"
         assert manifest["train_examples"] + manifest["holdout_examples"] == 30
         assert manifest["holdout_examples"] > 0
         assert manifest["supervised_tokens"] < manifest["total_tokens"]
@@ -250,7 +253,7 @@ class TestPrepareSft:
             self, chat_jsonl, chat_tokenizer_dir, tmp_path):
         manifests = [
             prepare_sft(chat_jsonl, str(tmp_path / name), chat_tokenizer_dir,
-                        "gemma3n", holdout=0.2, seed=7)
+                        "gemma4", holdout=0.2, seed=7)
             for name in ("a", "b")]
         for rec_a, rec_b in zip(manifests[0]["files"], manifests[1]["files"], strict=True):
             assert rec_a == rec_b   # identical content hashes and example counts
@@ -263,9 +266,9 @@ class TestPrepareSft:
     def test_refuses_to_overwrite_existing_manifest(
             self, chat_jsonl, chat_tokenizer_dir, tmp_path):
         out = str(tmp_path / "sft")
-        prepare_sft(chat_jsonl, out, chat_tokenizer_dir, "gemma3n")
+        prepare_sft(chat_jsonl, out, chat_tokenizer_dir, "gemma4")
         with pytest.raises(FileExistsError):
-            prepare_sft(chat_jsonl, out, chat_tokenizer_dir, "gemma3n")
+            prepare_sft(chat_jsonl, out, chat_tokenizer_dir, "gemma4")
 
 
 class TestLoadSftDataset:

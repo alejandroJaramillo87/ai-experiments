@@ -36,13 +36,13 @@ def qlora_recipe(overrides=()):
 
 class TestFamilyRegistry:
     def test_registry_is_gemma4_primary_plus_qwen3_fallback(self):
-        assert supported_families() == ("gemma3n", "gemma3n_text", "qwen3")
+        assert supported_families() == ("gemma4", "gemma4_text", "qwen3")
 
-    @pytest.mark.parametrize("family", ["gemma3n", "gemma3n_text", "qwen3"])
+    @pytest.mark.parametrize("family", ["gemma4", "gemma4_text", "qwen3"])
     def test_target_modules_are_llama_lineage(self, family):
         assert list(family_spec(family).lora_target_modules) == LLAMA_LINEAGE
 
-    @pytest.mark.parametrize("family", ["mamba", "llama", "mistral"])
+    @pytest.mark.parametrize("family", ["mamba", "llama", "mistral", "gemma3n"])
     def test_unknown_family_fails_with_registration_message(self, family):
         with pytest.raises(UnknownModelFamilyError, match="training/families.py"):
             family_spec(family)
@@ -51,13 +51,13 @@ class TestFamilyRegistry:
 class TestResolveTargetModules:
     def test_auto_resolves_and_rewrites_recipe(self):
         recipe = qlora_recipe()
-        resolved = resolve_target_modules(recipe, "gemma3n")
+        resolved = resolve_target_modules(recipe, "gemma4")
         assert resolved == LLAMA_LINEAGE
         assert list(recipe.peft.target_modules) == LLAMA_LINEAGE
 
     def test_snapshot_never_contains_auto(self, tmp_path):
         recipe = qlora_recipe()
-        resolve_target_modules(recipe, "gemma3n")
+        resolve_target_modules(recipe, "gemma4")
         path = write_snapshot(recipe, str(tmp_path))
         assert "auto" not in open(path).read()
         reloaded = load_snapshot(path)
@@ -65,7 +65,7 @@ class TestResolveTargetModules:
 
     def test_explicit_list_passes_through_unchanged(self):
         recipe = qlora_recipe(["peft.target_modules=[q_proj,v_proj]"])
-        assert resolve_target_modules(recipe, "gemma3n") == ["q_proj", "v_proj"]
+        assert resolve_target_modules(recipe, "gemma4") == ["q_proj", "v_proj"]
         assert list(recipe.peft.target_modules) == ["q_proj", "v_proj"]
 
     def test_auto_with_unknown_family_fails(self):

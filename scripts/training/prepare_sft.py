@@ -5,14 +5,14 @@ Thin CLI over training/data/sft.py. Examples:
 
   python scripts/training/prepare_sft.py \
       --source HuggingFaceH4/ultrachat_200k --split train_sft \
-      --tokenizer google/gemma-4-E2B --model-type gemma3n \
+      --tokenizer google/gemma-4-E2B --model-type gemma4 \
       --out /mnt/ai-data/training/datasets/sft/ultrachat-gemma4 \
       --max-seq-len 4096 --holdout 0.02
 
   python scripts/training/prepare_sft.py \
       --source ./conversations.jsonl \
       --tokenizer /mnt/ai-data/training/tokenizers/gemma-4-e2b \
-      --model-type gemma3n \
+      --model-type gemma4 \
       --out /mnt/ai-data/training/datasets/sft/local-test
 
 Exit codes: 0 success, 1 pipeline failure, 2 invalid usage.

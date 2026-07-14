@@ -1,7 +1,7 @@
 # sft-qlora-e2b.yaml
 #
 # Phase 1 reference recipe (roadmap F2): QLoRA fine-tune of Gemma 4 E2B
-# (the Phase 1 primary family; HF model_type gemma3n), the stand-in for the
+# (the Phase 1 primary family; HF model_type gemma4), the stand-in for the
 # F8 SFT recipe until F8 lands. Exercises the peft group end to end: NF4
 # base quantization, LoRA adapter, and target_modules "auto" resolution.
 # The F2 calculator acceptance measures this recipe's predicted peak VRAM

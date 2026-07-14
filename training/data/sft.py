@@ -95,24 +95,16 @@ def render_segments(messages: list[dict],
     token; role headers, system/user turns, and separators are not. The
     concatenated segment texts are the full rendered conversation.
     """
-    messages = list(messages)
-    if spec.system_style == "prefix_first_user" and messages[0]["role"] == "system":
-        if len(messages) < 2 or messages[1]["role"] != "user":
-            raise SftRecordError(
-                "system message must be followed by a user turn for a family "
-                "without a system turn")
-        merged = messages[0]["content"] + spec.system_sep + messages[1]["content"]
-        messages = [{"role": "user", "content": merged}] + messages[2:]
-
     segments: list[tuple[str, bool]] = []
     if spec.bos:
         segments.append((spec.bos, False))
     for msg in messages:
         assistant = msg["role"] == "assistant"
         role = spec.assistant_role if assistant else msg["role"]
+        content = msg["content"].strip() if spec.trim_content else msg["content"]
         segments.append((spec.turn_prefix.format(role=role), False))
-        if msg["content"]:
-            segments.append((msg["content"], assistant))
+        if content:
+            segments.append((content, assistant))
         segments.append((spec.eot, assistant))
         if spec.turn_suffix:
             segments.append((spec.turn_suffix, False))

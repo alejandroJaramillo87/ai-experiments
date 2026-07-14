@@ -60,7 +60,7 @@ masking exists anywhere in the repository. The landing zones are already built:
 
 - `training/families.py` — the model-family registry (F2), keyed by HF config
   `model_type`. Its docstring designates it as the home of the F1 chat-template
-  column on `FamilySpec`. Registered families: `gemma3n`, `gemma3n_text` (Gemma 4
+  column on `FamilySpec`. Registered families: `gemma4`, `gemma4_text` (Gemma 4
   E-models, the Phase 1 primary), and `qwen3` (the fallback family). Unknown
   families raise `UnknownModelFamilyError` with registration instructions —
   exactly the fail-loud contract the F1 design asks for.
@@ -95,8 +95,8 @@ masking exists anywhere in the repository. The landing zones are already built:
    keyed by HF `model_type`. F1 extends `FamilySpec` with the chat-template column
    rather than creating a parallel registry.
 2. **Family set.** The document registers `gemma4` and `llama3`. Repository policy
-   (this investigation, decision 1 below): Gemma 4 E-models (`gemma3n`,
-   `gemma3n_text`) are primary; Qwen3 is the single fallback; no Llama families are
+   (this investigation, decision 1 below): Gemma 4 E-models (`gemma4`,
+   `gemma4_text`) are primary; Qwen3 is the single fallback; no Llama families are
    registered because no Llama weights are available to this workstation.
 3. **No `sft` recipe group exists.** The document's F2 was scoped to add `sft`,
    `peft`, and `distill` groups; the merged F2 added only `peft`. The document's
@@ -109,18 +109,26 @@ masking exists anywhere in the repository. The landing zones are already built:
 5. **CLI path.** The document says `scripts/train/prepare_sft.py`; the repository
    convention is `scripts/training/`, so the CLI lands at
    `scripts/training/prepare_sft.py`.
-6. **Model naming.** The document refers to `google/gemma-4-E4B` under a `gemma4`
-   family; the repository records that the Gemma 4 E-model checkpoints carry HF
-   `model_type` `gemma3n` (MatFormer/PLE) and keep Llama-lineage projection names.
+6. **Model naming, verified July 2026.** Gemma 4 is its own transformers
+   architecture: `model_type` `gemma4` (multimodal wrapper) and `gemma4_text`
+   (text config), per `configuration_gemma4.py` in transformers (contributed
+   2026-04-02). It is not Gemma 3n. The text decoder keeps the Llama-lineage
+   projection names (a new `relative_k_proj` exists and is not a LoRA target).
+   The chat format, from the official `chat_template.jinja` (mirrored in
+   llama.cpp `models/templates/`) and `convert_gemma4_weights.py`: BOS once,
+   then `<|turn>{role}\n{content}<turn|>\n` per turn with a native system
+   turn, assistant role named `model`, and content trimmed. Thinking mode uses
+   `<|think|>` in the system turn and `<|channel>thought\n...<channel|>`
+   reasoning sections that the template strips from conversation history, so
+   rendered training conversations contain no thinking tokens.
 
 ## Work breakdown
 
 1. **Extend `FamilySpec`** in `training/families.py` with the chat-template column:
    a template application function (default: delegate to the tokenizer's
    `apply_chat_template`) and an assistant-span locator returning token-index spans
-   for each assistant turn. Entries for `gemma3n`/`gemma3n_text` (including
-   thinking-control tokens) and `qwen3`. Unknown families keep failing through
-   `family_spec()`.
+   for each assistant turn. Entries for `gemma4`/`gemma4_text` and `qwen3`.
+   Unknown families keep failing through `family_spec()`.
 2. **New module `training/data/sft.py`**: messages-record validation and
    normalization (HF dataset or local JSONL), prompt/completion-pair converter,
    template rendering, span-based label masking (-100 on non-assistant tokens),
@@ -156,10 +164,10 @@ dataset and the gated Gemma 4 tokenizer) and inspecting `mask_debug` output.
 
 ## Risks
 
-- **Gemma 4 template drift.** The exact control-token layout (including
-  thinking-control tokens) must be verified against the pinned `transformers`
-  version's rendering of the real tokenizer before golden fixtures are frozen; the
-  fixtures encode the repository's pinned behavior, not documentation examples.
+- **Gemma 4 template drift.** The `ChatTemplateSpec` was derived from the
+  official `chat_template.jinja` (July 2026); the remaining host-side check is
+  tokenization parity against the real gated tokenizer's `apply_chat_template`
+  before golden fixtures are frozen, re-run on any `transformers` pin bump.
 - **Span location robustness.** Locating assistant spans by token indices requires
   the template entry to know each family's turn delimiters; a `transformers`
   version bump can change rendering. The golden-fixture tests are the tripwire,
@@ -172,7 +180,7 @@ dataset and the gated Gemma 4 tokenizer) and inspecting `mask_debug` output.
 
 1. **Family policy: Gemma 4 primary, Qwen3 fallback, no Llama.** The workstation
    has no access to Llama weights. The registry in `training/families.py` is
-   trimmed to `gemma3n`, `gemma3n_text`, and `qwen3`; the F2 reference recipe now
+   trimmed to `gemma4`, `gemma4_text`, and `qwen3`; the F2 reference recipe now
    targets `google/gemma-4-E2B` (`sft-qlora-e2b.yaml`). The D4 calculator's
    `HF_SUPPORTED_MODEL_TYPES` is unchanged: it states which config shapes the
    memory formulas can model, not which models are trained.
@@ -193,9 +201,12 @@ dataset and the gated Gemma 4 tokenizer) and inspecting `mask_debug` output.
 1. **Reference SFT dataset.** The document's example is
    `HuggingFaceH4/ultrachat_200k`; the choice of the first real dataset (and its
    license string for the manifest) is deferred to the F1 acceptance run.
-2. **Gemma 4 thinking-control tokens.** The implemented `ChatTemplateSpec`
-   encodes the standard Gemma turn framing (`<start_of_turn>{role}` /
-   `<end_of_turn>`, system folded into the first user turn). Whether Gemma 4
-   thinking-control tokens require additional masked segments is verified
-   host-side against the real tokenizer's `apply_chat_template` before the
-   first fine-tune; a spec change bumps `CHAT_TEMPLATE_VERSION`.
+2. **Empty thought channel at inference.** With thinking disabled, the
+   official generation prompt ends `<|turn>model\n<|channel>thought\n<channel|>`
+   — an empty thought — while rendered conversation history carries no channel
+   tokens. F1 renders training turns exactly as the template renders history
+   (no channel tokens), matching `apply_chat_template` output. Whether the
+   final assistant turn of a training example should instead start with a
+   masked empty-thought prefix to mirror the inference prompt is an F3
+   decision, checked during the host-side smoke fine-tune; a spec change bumps
+   `CHAT_TEMPLATE_VERSION`.

@@ -5,12 +5,13 @@ by the HF config model_type. F2 populates the LoRA target-module column;
 F1 (chat/instruction data prep) extends each entry with its chat template so
 a per-family fix — a PLE-model quirk, a renamed projection — lands once.
 
-Model policy (Phase 1): Gemma 4 E-models (HF model_type gemma3n) are the
-primary family for every fine-tuning deliverable. Qwen3 is the single
-fallback family — ungated weights, dense Llama-lineage decoder — kept
-registered so a Gemma 4 library-support failure never blocks the phase.
-No other family is registered; re-adding one is a one-line FamilySpec with
-a verification note.
+Model policy (Phase 1): Gemma 4 E-models (HF model_type gemma4, text config
+gemma4_text; google/gemma-4-E2B and -E4B checkpoints, shipped April 2026)
+are the primary family for every fine-tuning deliverable. Qwen3 is the
+single fallback family — ungated weights, dense Llama-lineage decoder —
+kept registered so a Gemma 4 library-support failure never blocks the
+phase. No other family is registered; re-adding one is a one-line
+FamilySpec with a verification note.
 
 The registry is data, not behavior: consumers look entries up through
 family_spec() and fail loudly on an unknown family rather than guess
@@ -36,7 +37,11 @@ _LLAMA_LINEAGE_TARGET_MODULES = (
 
 # Bumped whenever any ChatTemplateSpec changes; recorded in every prepared
 # SFT dataset manifest so a template fix invalidates stale artifacts.
-CHAT_TEMPLATE_VERSION = 1
+# v2: Gemma 4 corrected from the Gemma 3 <start_of_turn> framing to the
+# official gemma4 template (<|turn>role ... <turn|>, native system turn),
+# verified against transformers' convert_gemma4_weights.py and the
+# chat_template.jinja mirrored in llama.cpp models/templates.
+CHAT_TEMPLATE_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -60,20 +65,22 @@ class ChatTemplateSpec:
     eot: str            # end-of-turn token proper (supervised on assistant turns)
     turn_suffix: str    # after eot, always masked
     assistant_role: str  # the template's name for the assistant role
-    # "turn": system renders as its own turn. "prefix_first_user": the
-    # template has no system turn; system content is prepended to the first
-    # user turn, joined by system_sep (the Gemma convention).
-    system_style: str
-    system_sep: str = "\n\n"
+    trim_content: bool   # whether the template applies | trim to content
 
 
-_GEMMA_CHAT_TEMPLATE = ChatTemplateSpec(
+# Gemma 4 (google/gemma-4-*): <|turn>role\n{content}<turn|>\n per turn, BOS
+# once, native system turn, assistant role named "model", content trimmed.
+# Thinking-mode tokens (<|think|> in the system turn, <|channel>thought ...
+# <channel|> reasoning sections) are an inference-time concern: the official
+# template strips thought channels from conversation history, so rendered
+# training conversations contain none of them.
+_GEMMA4_CHAT_TEMPLATE = ChatTemplateSpec(
     bos="<bos>",
-    turn_prefix="<start_of_turn>{role}\n",
-    eot="<end_of_turn>",
+    turn_prefix="<|turn>{role}\n",
+    eot="<turn|>",
     turn_suffix="\n",
     assistant_role="model",
-    system_style="prefix_first_user",
+    trim_content=True,
 )
 
 _CHATML_CHAT_TEMPLATE = ChatTemplateSpec(
@@ -82,7 +89,7 @@ _CHATML_CHAT_TEMPLATE = ChatTemplateSpec(
     eot="<|im_end|>",
     turn_suffix="\n",
     assistant_role="assistant",
-    system_style="turn",
+    trim_content=False,
 )
 
 
@@ -99,10 +106,11 @@ class FamilySpec:
 _REGISTRY: dict[str, FamilySpec] = {
     spec.model_type: spec
     for spec in (
-        # Gemma 4 E-models (MatFormer/PLE; gemma-4-E2B/E4B checkpoints) keep
-        # the Llama-lineage projection names in their text decoder layers.
-        FamilySpec("gemma3n", _LLAMA_LINEAGE_TARGET_MODULES, _GEMMA_CHAT_TEMPLATE),
-        FamilySpec("gemma3n_text", _LLAMA_LINEAGE_TARGET_MODULES, _GEMMA_CHAT_TEMPLATE),
+        # Gemma 4 E-models (per-layer embeddings; gemma-4-E2B/E4B checkpoints)
+        # keep the Llama-lineage projection names in their text decoder
+        # layers. The new relative_k_proj is deliberately not a LoRA target.
+        FamilySpec("gemma4", _LLAMA_LINEAGE_TARGET_MODULES, _GEMMA4_CHAT_TEMPLATE),
+        FamilySpec("gemma4_text", _LLAMA_LINEAGE_TARGET_MODULES, _GEMMA4_CHAT_TEMPLATE),
         # Qwen3: the fallback family (ungated, dense decoder; ChatML framing).
         FamilySpec("qwen3", _LLAMA_LINEAGE_TARGET_MODULES, _CHATML_CHAT_TEMPLATE),
     )
