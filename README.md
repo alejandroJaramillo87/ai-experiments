@@ -89,6 +89,12 @@ provides:
 - **Access**: http://localhost:3000
 - **Features**: Configured for the inference services
 
+### training (Phase 0 D1, no port)
+- **Purpose**: Reproducible GPU environment for fine-tuning and pretraining
+- **Configuration**: PyTorch cu130 on sm_120 with TRL, PEFT, DeepSpeed, torchao, flash-attn
+- **Features**: Separate compose file (`docker-compose.training.yaml`); runs jobs via
+  `make train-shell` / `make train-smoke`, never alongside inference (one GPU consumer at a time)
+
 ## Project structure
 
 ```
@@ -106,8 +112,11 @@ ai-experiments/
 │   ├── llama-gpu/            # GPU service
 │   │   ├── Dockerfile.llama-gpu
 │   │   └── entrypoint.sh
-│   └── vllm-gpu/             # vLLM service
-│       ├── Dockerfile.vllm-gpu
+│   ├── vllm-gpu/             # vLLM service
+│   │   ├── Dockerfile.vllm-gpu
+│   │   └── entrypoint.sh
+│   └── training/             # Training tier (Phase 0 D1)
+│       ├── Dockerfile.training
 │       └── entrypoint.sh
 ├── docs/                      # Documentation (30 files)
 │   ├── agents/               # Agent tooling and parity

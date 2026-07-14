@@ -198,6 +198,30 @@ group so the core install stays lean; `make install` (which syncs all groups) in
 `transformer-lens` requires `transformers >= 5.4`, satisfied by the `transformers` 5.13.1
 pin in the core dependencies.
 
+## The training dependency group
+
+The `training` group (Phase 0 D1) holds the training-tier libraries not already in the core
+dependencies. Core already provides torch, torchvision, transformers, datasets, accelerate,
+peft, deepspeed, bitsandbytes, sentencepiece, wandb, mlflow, and tensorboard, so the group adds
+only the remainder. It tracks the same majors as the `interp` tier so the two do not diverge.
+The container in `docker/training/Dockerfile.training` builds and CUDA-verifies this group; see
+[docker_training_overview.md](../../sandbox/docker_training_overview.md).
+
+| Package | Role |
+|---------|------|
+| `trl` | Fine-tuning trainers (SFT, DPO, GRPO) |
+| `liger-kernel` | Fused Triton kernels for lower-memory training |
+| `torchao` | float8 training (primary FP8 backend on sm_120) |
+| `flash-attn` | FlashAttention-2 kernels (sm_120) |
+| `hydra-core` | Recipe and configuration composition |
+| `pynvml` | GPU telemetry through NVML |
+| `xxhash` | Fast content hashing for shard and dataset manifests |
+| `zstandard` | Shard and artifact compression |
+
+`flash-attn` (like `deepspeed`) imports torch during its build, so it is listed in
+`[tool.uv.extra-build-dependencies]`. The CUDA-compiled members (`flash-attn`, `liger-kernel`,
+`torchao`) build against the cu130 torch pinned in `[tool.uv.sources]`.
+
 ## Common tasks
 
 ```bash
@@ -236,8 +260,8 @@ acceptance checks after each bump:
 - The `interp` dependency group (`transformer-lens`, `nnsight`) is present and installed.
 - `pandas` is held at 2.x under the `mlflow` `pandas<3` constraint (see above).
 
-A future training tier should track the same majors as the `interp` tier so the two do not
-diverge.
+The `training` dependency group (Phase 0 D1) is present and tracks the same majors as the
+`interp` tier so the two do not diverge.
 
 ## Next steps
 

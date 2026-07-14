@@ -25,9 +25,11 @@ production code; when a test exposes a defect, report it instead of fixing it.
 4. Implement with pytest via `uv run pytest`. If no test tree exists yet, create
    the minimal layout (`tests/`, `conftest.py` only when a shared fixture needs it)
    rather than scaffolding speculative structure.
-5. Run what you wrote and report the exact command and its output. A test that has
-   not been observed to pass (and to fail when the assertion is inverted or the
-   subject is broken) is not done.
+5. Run what you wrote and report the exact command and its output. Tests needing the
+   GPU or a running service cannot run in the sandbox: hand the exact command to the
+   human and record the reported output as the evidence. A test that has not been
+   observed to pass (and to fail when the assertion is inverted or the subject is
+   broken) is not done.
 
 ## Constraints
 

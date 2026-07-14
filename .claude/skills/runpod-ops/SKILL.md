@@ -12,6 +12,10 @@ procedure so sessions do not leave workers running or misread spend.
 > the integration roadmap lands (`make agent-usage` becomes the spend entry point). Until
 > then, treat the steps below as the checklist and use the RunPod console/API directly.
 
+> Sandboxed execution: agents have no access to the host, its `make` targets, or the
+> RunPod console. The human executes each checklist step and reports the result; the
+> agent tracks the checklist and records the reported worker state and spend.
+
 ## Before a cloud session
 
 - Confirm the target endpoint exists and its image tag is pinned (no `:latest`).

@@ -31,6 +31,11 @@ isolation**: a container with no host credentials, a writable git worktree inste
 tree, and an allowlisting egress proxy. Configuration hardening and hygiene sit on top of that
 boundary, not in place of it.
 
+From the agent's side the containment is absolute: a sandboxed session has no route to the
+host, its Docker daemon, its GPU, or the running services. All host-side validation —
+`make agent-preflight`, `make agent-parity`, service health, benchmarks — is executed by the
+human on the workstation, who reports the output back to the agent as the evidence of record.
+
 ## Threat model
 
 - **Supply chain is the weakest link.** Opening an agent inside a cloned third-party repo can

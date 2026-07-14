@@ -1,0 +1,133 @@
+# Training container implementation
+
+Explanation of the Phase 0 training container (`docker/training/Dockerfile.training`), the
+reproducible GPU environment where the training tier runs. It builds PyTorch cu130 on the RTX
+5090 Blackwell architecture (sm_120) with the full fine-tuning and pretraining stack, and
+verifies every CUDA-compiled path at build time through a smoke test.
+
+> Note: This document explains the actual implementation in `docker/training/Dockerfile.training`,
+> `docker/training/entrypoint.sh`, `scripts/train/smoke_test.py`, and
+> `docker-compose.training.yaml`. Those files are the source of truth; this document follows
+> them.
+
+## Table of Contents
+
+- [Design](#design)
+- [Dependency source of truth](#dependency-source-of-truth)
+- [Image build](#image-build)
+- [Smoke test](#smoke-test)
+- [Compose integration](#compose-integration)
+- [Interface](#interface)
+- [Concurrency policy](#concurrency-policy)
+- [Reference implementation](#reference-implementation)
+
+## Design
+
+The training container is a batch and interactive job runner, not a long-running server. It has
+no published port and no healthcheck. It is invoked per job through
+`docker compose -f docker-compose.training.yaml run --rm training <command>`, wrapped by the
+`train-*` Make targets.
+
+It builds on the CUDA 13.0.2 devel base (`nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04`), the same
+base family as the llama-gpu image. The devel toolchain is required to pre-build DeepSpeed's
+CPUAdam op with Zen 5 compiler flags at image-build time.
+
+## Dependency source of truth
+
+The container installs the pinned environment from `uv.lock` (the core dependencies plus the
+`training` dependency group), not from hand-pinned Dockerfile lines. uv manages the cu130 torch
+index through `[tool.uv.sources]` and builds the CUDA-compiled packages through
+`[tool.uv.extra-build-dependencies]` (see `docs/os/python/uv-dependencies.md`). The core
+dependencies already provide torch, torchvision, transformers, datasets, accelerate, peft,
+deepspeed, bitsandbytes, sentencepiece, wandb, mlflow, and tensorboard; the `training` group adds
+only the libraries not already present: `trl`, `liger-kernel`, `torchao`, `flash-attn`,
+`hydra-core`, `pynvml`, `xxhash`, and `zstandard`.
+
+## Image build
+
+Build arguments:
+
+```dockerfile
+ARG CUDA_VERSION=13.0.2
+ARG PYTHON_VERSION=3.12
+ARG UV_VERSION=0.11.28
+```
+
+The build:
+
+1. Copies the pinned uv binary from `ghcr.io/astral-sh/uv:0.11.28` (no network installer runs).
+2. Installs the build toolchain (gcc, g++, git, nvcc, CUDA dev headers) on the devel base.
+3. Creates a `/opt/venv` virtual environment and syncs `uv.lock` into it with
+   `uv sync --frozen --no-install-project --group training`.
+4. Pre-builds the DeepSpeed CPUAdam op with `DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1` and
+   `CFLAGS="-march=znver5"`, falling back to `-march=native` if the image gcc rejects znver5.
+   This front-loads the AVX-512 miscompilation risk (upstream DeepSpeed issue 7556) to build
+   time, where the smoke test catches it.
+5. Creates the non-root `appuser`, copies `scripts/train`, and runs the smoke test with `--build`
+   so that a regression fails the build.
+
+`TORCH_CUDA_ARCH_LIST="12.0"` targets the RTX 5090 Blackwell sm_120 architecture, matching the
+inference GPU images.
+
+## Smoke test
+
+`scripts/train/smoke_test.py` verifies the stack imports and that the CUDA-compiled paths run.
+It has two modes: `--build` (build-time; CUDA asserts degrade to `[SKIP]` on a GPU-less build
+host) and the default (`make train-smoke` on the workstation; CUDA capability `(12, 0)` is
+enforced). The seven steps:
+
+1. Import torch; assert CUDA availability and device capability `(12, 0)`.
+2. Import transformers, trl, peft, datasets, accelerate, torchao, liger_kernel, hydra,
+   safetensors, and pynvml.
+3. flash-attn: run a `flash_attn_func` forward on random tensors.
+4. bitsandbytes: quantize a small linear layer to 4-bit and run a forward.
+5. deepspeed: load and step `DeepSpeedCPUAdam` (proves the pre-built Zen 5 op loads and runs).
+6. torchao: convert a two-layer MLP with `convert_to_float8_training` and run forward and
+   backward (proves `torch._scaled_mm` works on sm_120).
+7. Write a versions manifest (packages, CUDA, driver, GPU name) to stdout and, on the
+   workstation, to `/mnt/ai-data/training/runs/_smoke/versions.json`.
+
+## Compose integration
+
+`docker-compose.training.yaml` is a separate compose file, mirroring
+`docker-compose.agents.yaml`, so `make up` never starts it. The `training` service applies the
+inference stack's hardening (`no-new-privileges`, `cap_drop: ALL`, `read_only: true`,
+non-root `user`), reserves one NVIDIA GPU, sets `shm_size: 16g` for dataloader workers, and
+mounts a tmpfs `/tmp` with the `exec` flag that the Triton and CUDA JIT caches require.
+
+Volumes:
+
+| Mount | Mode | Purpose |
+|-------|------|---------|
+| `/mnt/ai-data/models/` | read-only | Base model weights, as the inference services mount them |
+| `/mnt/ai-data/training` | read-write | Datasets, shards, checkpoints, and run outputs |
+| `./scripts` | read-only | Training scripts and recipes, mounted live for iteration |
+| `./logs/training` | read-write | Container logs |
+
+## Interface
+
+| Target | Action |
+|--------|--------|
+| `make train-build` | Build the image; the build fails if any smoke-test step fails |
+| `make train-shell` | Interactive shell in the container, GPU and training root attached |
+| `make train-smoke` | Run the seven-step smoke test on the workstation |
+
+## Concurrency policy
+
+Training and inference must not run at the same time: one GPU consumer at a time (see
+`AGENTS.md`). The separate compose file documents this structurally. Stop the inference stack
+(`make down`) before running a training job.
+
+## Reference implementation
+
+- `docker/training/Dockerfile.training` — multi-stage-capable devel-base training image.
+- `docker/training/entrypoint.sh` — thin entrypoint: environment echo, optional LD_PRELOAD hook,
+  `exec`.
+- `scripts/train/smoke_test.py` — seven-step stack verification and versions manifest.
+- `docker-compose.training.yaml` — separate-file service definition with GPU reservation and the
+  writable training root.
+- `pyproject.toml` — the `training` dependency group and the `flash-attn` build dependency.
+
+---
+
+*Last Updated: 2026-07-14*
