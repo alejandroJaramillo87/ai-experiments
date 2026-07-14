@@ -45,21 +45,45 @@ What F5 depends on and what exists today:
 |------------|------------|------------------|
 | F1 data prep | Masked datasets, span masking reused by masked KL | Implemented: `training/data/sft.py`, `scripts/training/prepare_sft.py`. Labels are `-100` on non-assistant tokens by construction (segment-wise rendering, not string matching). |
 | F2 PEFT schema | QLoRA student wrapping | Implemented: `training/peft_utils.py`, `peft` recipe block, `training/recipes/reference/sft-qlora-e2b.yaml`. |
-| F3 SFT entry point | The trainer the response tier specializes | **Not implemented.** `SftConfig` in `training/recipes/schema.py` is data-side only; trainer-side fields (packing, epochs) are deferred to F3. No code imports `trl` yet. |
+| F3 SFT entry point | The trainer the response tier specializes | Implemented (PR #34): `training/sft.py` (`train_sft()` on TRL `SFTTrainer`), `training/sft_callbacks.py` (Tracker/Watchdog/checkpoint-meta bridge), `python -m training train-sft`, `make train-sft`. Packing (`pack_examples()`) and the padded `Collator` are owned by F3. |
 | F4 teacher harness | Produces the response-tier dataset | Implemented: `training/data/teacher.py`, `scripts/training/generate_teacher.py`, `make generate-teacher`. Captures response text only; no logprob capture path. |
-| D4 memory fit | Preflight for combined teacher + student | Implemented: `training/calculator/` (`solve.py`, `calibrate.py`), `make memfit`. Models a single training model; no multi-model estimate. |
+| D4 memory fit | Preflight for combined teacher + student | Implemented: `training/calculator/` (`solve.py`, `calibrate.py`), `make memfit`. F3 added Gemma 4 support to `components.py` (text_config descent, explicit `head_dim`, PLE parameter count). Models a single training model; no multi-model estimate. |
 | D5 recipe system | The `distill` block extends this schema | Implemented: `training/recipes/schema.py` (OmegaConf struct mode), `validate.py` cross-field invariants. |
 | D9 lock | Concurrency enforcement | Implemented: `training/lock.py` (`/mnt/ai-data/training/.train.lock`). |
 | Tokenizer hash preflight | Teacher/student identity check | Mechanism exists: xxhash-based tokenizer hash enforced in `training/data/sft.py` and `training/data/shards.py` (`TokenizerMismatchError`). |
 
-**F3 is the single hard prerequisite.** The response tier is defined as "F3 with an F4
-dataset", and the logit tier subclasses the same TRL trainer. F5 cannot start until F3
-lands, and the logit tier's trainer choice should be made jointly with F3's.
+**All dependencies now exist.** F3 landed with TRL `SFTTrainer` as the trainer (trl
+backend default, unsloth optional), which fixes the anchor F5 subclasses. F3 facts F5
+builds on directly:
+
+- **Data flow**: F1 artifacts arrive pre-tokenized and pre-masked; F3 passes them to
+  TRL with `dataset_kwargs={"skip_prepare_dataset": True}`, TRL packing off, and its
+  own `Collator` producing `input_ids`, `labels`, `attention_mask`, `position_ids`
+  batches. A `compute_loss` override therefore sees exactly the tensors the masked KL
+  needs; no TRL dataset machinery is in the way.
+- **Packing is F3's**, greedy first-fit in `pack_examples()`, position ids reset per
+  example, holdout always unpacked. This creates the packing-versus-cache interaction
+  in decision 5.
+- **Preflight order is established** in `train_sft()`: `validate()` (CLI), D4 memory
+  fit (`--force` downgrades refuse to warn), D9 lock, inference-services probe
+  (`probe_inference_services()`). F5 reuses this sequence, extended with its own
+  checks (tokenizer identity, softcapping parity, cache validity).
+- **Checkpoint convention**: transformers-native `checkpoint-<step>/` stamped with a
+  D6-style `meta.json` (`adapter_only`, `base_model`, `backend`, `recipe_hash`,
+  library versions) by `sft_callbacks.py`, retention plus `latest` symlink. F5 runs
+  inherit this; `meta.json` gains teacher fields (see decision 2).
+- **`cpu_adam` is rejected for TRL runs** by the optimizer mapping in `training/sft.py`
+  (`_OPTIM_NAMES`), confirming that offload is not a pressure valve for the logit tier.
+- **Unsloth backend** (`sft.backend: unsloth`, pinned `unsloth==2026.7.2`, explicitly
+  may-lag and non-blocking): the logit tier should be trl-only — a `compute_loss`
+  override on top of unsloth's patched model plus a second in-process model is
+  unverified territory with no payoff, since the teacher forward dominates step time
+  anyway. `validate()` rejects `distill.tier: logit` with `sft.backend: unsloth`.
 
 Pinned versions relevant to the trainer decision (from `pyproject.toml`): `torch==2.13.0`
-(cu130), `transformers==5.13.1`, `trl==0.24.0`, `peft==0.19.1`, `bitsandbytes==0.49.2`.
-TRL 0.24.0 ships `GKDTrainer`. The pins are provisional (offline-resolved) and must be
-regenerated with `uv lock` on the workstation.
+(cu130), `transformers==5.13.1`, `trl==0.24.0`, `peft==0.19.1`, `bitsandbytes==0.49.2`,
+`unsloth==2026.7.2`. TRL 0.24.0 ships `GKDTrainer`. The pins are provisional
+(offline-resolved) and must be regenerated with `uv lock` on the workstation.
 
 ## Scope-document drift
 
@@ -85,9 +109,10 @@ Points where the scope document defers to the repository:
 
 ### 1. Response tier is configuration, not code
 
-Once F3 exists, the response tier is: run `prepare_sft.py` over an F4 output directory
+With F3 landed, the response tier is: run `prepare_sft.py` over an F4 output directory
 (F4 acceptance already guarantees its artifacts ingest unmodified), then `train-sft`
-with a recipe whose `distill` block records the teacher-manifest reference. Work items:
+with a recipe whose `sft.dataset` points at the prepared artifact and whose `distill`
+block records the teacher-manifest reference. Work items:
 
 - Add a `distill` block to the recipe schema (see decision 3) with a
   `teacher_manifest` field; the run's config snapshot then carries the full provenance
@@ -105,9 +130,13 @@ Two candidates at `trl==0.24.0`:
   On-policy generation per step is a poor fit for a 32GB single-GPU budget shared with
   an in-process teacher, and its loss surface (JSD interpolation `beta`) differs from
   the scope's `alpha`-weighted CE + temperature-scaled KL.
-- **Subclass of the F3 trainer** (`SFTTrainer`) overriding `compute_loss`: teacher
-  forward under `torch.no_grad()` (online) or cache lookup (cached), masked KL on
-  positions where `labels != -100`, combined with the standard CE term.
+- **Subclass of F3's `SFTTrainer`** overriding `compute_loss`: teacher forward under
+  `torch.no_grad()` (online) or cache lookup (cached), masked KL on positions where
+  `labels != -100`, combined with the standard CE term. F3's batch shape makes this
+  clean: the `Collator` already delivers `input_ids`/`labels`/`attention_mask`/
+  `position_ids` with TRL's dataset preparation skipped, so the override adds the
+  teacher term and changes nothing else about the F3 flow (callbacks, checkpointing,
+  watchdog, tracking all attach unchanged).
 
 Recommendation: the subclass. It matches the scope's loss definition exactly, works
 identically in online and cached modes (GKD has no cached-teacher path), and keeps the
@@ -115,6 +144,11 @@ recipe surface identical to F3. Setting `lmbda=0, beta=0` in GKD approximates of
 forward KL but drags in generation machinery that is dead weight here. The decision and
 the GKD evaluation are recorded here per the scope's "prefer a maintained trainer if
 suitable" instruction; revisit if TRL later ships an offline distillation trainer.
+
+Provenance: the F3 checkpoint `meta.json` (written by `sft_callbacks.py`) gains
+teacher fields for distill runs — teacher id and revision hash, tier, mode, and for
+the response tier the F4 manifest reference — so F6 export and F7 evaluation can cite
+the full chain from a checkpoint alone.
 
 ### 3. Recipe schema: `distill` block
 
@@ -137,7 +171,9 @@ distill:
 
 `validate()` invariants: `tier: logit` requires `teacher`; `mode: cached` requires
 `cache_path`; `tier: logit` with `precision.fp8` rejected (matching the existing
-nf4/fp8 exclusion); `teacher_quantize: nf4` valid only in online mode.
+nf4/fp8 exclusion); `teacher_quantize: nf4` valid only in online mode; `tier: logit`
+requires `sft.backend: trl` (unsloth excluded, see above); `tier: logit` with
+`mode: cached` requires `sft.packing: false` (see decision 5).
 
 ### 4. Tokenizer-identity preflight
 
@@ -169,6 +205,16 @@ plus a manifest (teacher id and revision hash, tokenizer hash, source dataset co
 hash, K, dtype, git SHA, timestamp) following the D2/F1 manifest pattern. The trainer
 refuses a cache whose tokenizer hash or dataset hash mismatches the run's dataset.
 
+**Packing interaction** (new consideration surfaced by F3's implementation): F3's
+`pack_examples()` concatenates examples and resets position ids, so a packed training
+sequence is not token-aligned with the per-example cache the pre-pass wrote. Online
+mode is unaffected — the teacher forwards the packed batch with the same
+`position_ids`, seeing exactly what the student sees. For cached mode Phase 1 takes
+the simple rule: `mode: cached` requires `sft.packing: false`, enforced in
+`validate()` with a message explaining the alternative (online mode packs fine).
+Carrying per-example cache offsets through packing is mechanical but is complexity
+deferred until a real run shows cached-mode throughput needs packing.
+
 Both modes hash-stamp the teacher revision into the run's tracking record.
 
 Cache sizing: at K=64, roughly 6 bytes/entry * 64 = 384 bytes per token; a 50M-token
@@ -182,9 +228,13 @@ combined estimate: student (weights + grads + optimizer + activations, per the e
 model) plus teacher (weights only at the chosen quantization, plus inference activations
 for one forward at the same batch/sequence shape, no grads, no optimizer). Smallest
 viable extension: a `teacher` term in the calculator driven by the recipe's `distill`
-block. The F8 distill recipe becomes a calibration case for `calibrate.py`. Cached mode
-needs no extension — the cache pre-pass is teacher-only and the training phase is
-student-only, both already representable.
+block. F3 already did the architecture-side work — `components.py` now descends into
+Gemma 4's `text_config`, honors the explicit `head_dim`, and counts PLE parameters —
+so the teacher term reuses `spec_from_hf_config()` as-is; only the aggregation over
+two models is new. The F8 distill recipe becomes a calibration case for
+`calibrate.py`. Cached mode needs no extension — the cache pre-pass is teacher-only
+and the training phase is student-only, both already representable. F5's preflight
+plugs into the established F3 gate (`check_memory_fit()`, `--force` downgrade).
 
 ### 7. Concurrency and locking
 
@@ -204,10 +254,10 @@ Facts confirmed from the transformers `Gemma4Config` and the repository registry
   logits for both models at once is a peak-memory contributor the D4 activation term
   should include.
 - **Per-layer embeddings (PLE)** (`vocab_size_per_layer_input=262144`,
-  `hidden_size_per_layer_input=256`): a Gemma 4 E-model parameter-inventory quirk. The
-  D4 components table and the F2 `target_modules: "auto"` registry already centralize
-  per-family architecture knowledge in `training/families.py`; PLE handling for the
-  teacher estimate lands there, not in distillation code.
+  `hidden_size_per_layer_input=256`): a Gemma 4 E-model parameter-inventory quirk,
+  already modeled — F3 added `ple_param_count()` and the `text_config` descent to
+  `training/calculator/components.py`. The teacher estimate reuses it; no PLE
+  handling lands in distillation code.
 - **`final_logit_softcapping`** is an optional config field. If the checkpoints enable
   it, teacher and student logits must both be capped (or both uncapped) before the KL —
   distilling capped-teacher against uncapped-student silently skews the loss. The
@@ -262,20 +312,22 @@ subcommand, Make target):
 
 ## Work breakdown
 
-Ordered; items 2+ depend on F3 existing:
+Ordered; all dependencies exist:
 
-1. **Schema + validation** (no F3 dependency): `distill` block, invariants, unit tests.
-2. **Response tier**: F4-manifest provenance wiring into the F3 run snapshot; document
-   the prepare-then-train flow. Ships first.
-3. **Masked-KL loss + online mode**: trainer subclass, teacher loading (frozen,
-   optional nf4), softcapping parity check, tokenizer-hash preflight, D9/D4/service
-   preflights. Golden-fixture masked-KL test reusing F1 masks.
+1. **Schema + validation**: `distill` block, invariants (including the
+   backend and packing restrictions), unit tests.
+2. **Response tier**: F4-manifest provenance wiring into the F3 run snapshot and
+   checkpoint `meta.json`; document the prepare-then-train flow. Ships first.
+3. **Masked-KL loss + online mode**: `SFTTrainer` subclass over F3's `train_sft()`
+   flow, teacher loading (frozen, optional nf4), softcapping parity check,
+   tokenizer-hash preflight extending F3's preflight sequence. Golden-fixture
+   masked-KL test reusing F1 masks.
 4. **Cached mode**: cache writer pre-pass, reader, renormalized top-K KL,
    online-versus-cached tolerance test on a tiny pair.
 5. **D4 teacher extension + calibration** against the reference recipe.
 6. **Scope criterion** (host-side, human-run): distill `gemma-4-E2B` from an E4B
    teacher via the F8 recipe and show measurable improvement on an F7 scorecard over
-   its pre-distillation baseline. Blocked on F7 in addition to F3.
+   its pre-distillation baseline. Blocked on F7.
 
 ## Acceptance criteria
 
@@ -293,14 +345,17 @@ From the scope document, restated against repository mechanisms:
 
 ## Open questions
 
-1. **Ordering**: F3 is a hard prerequisite. Should F3 be the next implementation task,
-   with F5 item 1 (schema) optionally developed in parallel in a separate worktree?
-2. **Trainer coupling**: implement the F5 loss as a subclass of whatever trainer F3
-   picks (recommended above), which argues for deciding F3's TRL-versus-unsloth backend
-   surface before F5 code starts. Confirm the subclass approach over `GKDTrainer`.
+1. ~~Ordering: F3 is a hard prerequisite.~~ Resolved — F3 is merged (PR #34); F5 is
+   unblocked.
+2. **Trainer choice**: F3 chose TRL `SFTTrainer` with the trl backend default, which
+   fixes the subclass anchor. Confirm the `compute_loss` subclass approach over
+   `GKDTrainer`, and the trl-only restriction for the logit tier.
 3. **Tiny-pair test models**: use Qwen3-family tiny checkpoints for the
    online-versus-cached tolerance test, or synthetic random-weight configs? Synthetic
    avoids network and gating but exercises less of the real template path.
 4. **Final acceptance dependency**: the scope criterion needs F7. Acceptable to land F5
    with items 1-5 proven and defer item 6 until F7 exists, per the build order (F5
    before F7)?
+5. **Cached mode and packing**: confirm the Phase 1 rule that `mode: cached` requires
+   `sft.packing: false` (deferring cache-offset bookkeeping through `pack_examples()`
+   until throughput evidence demands it), keeping packing available in online mode.
