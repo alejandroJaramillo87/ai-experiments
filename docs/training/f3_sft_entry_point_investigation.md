@@ -249,11 +249,11 @@ by the human, per the sandbox rules):
 - **Unsloth pinning**: unsloth pins tightly to specific torch/transformers
   versions; a pin compatible with transformers 5.13.1 and gemma4 may not
   exist yet. Anticipated by the document: may-lag, not blocking.
-- **Thinking-mode fidelity** (F1 handoff 3): if the smoke fine-tune shows the
-  tuned model regressing on thinking-mode prompts because training examples
-  lack the `<|think|>` system-turn framing, the fix is a `ChatTemplateSpec`
-  change plus a `CHAT_TEMPLATE_VERSION` bump and re-preparation — cheap in
-  code, expensive in re-tokenization time for large datasets.
+- **Thinking-mode fidelity** (F1 handoff 3): the smoke fine-tune checks
+  thinking-mode prompts against the tuned model. Per resolved decision 7, a
+  regression is remedied with a thought-bearing dataset generated through F4
+  (thinking-enabled teacher), not a template change; the check exists to
+  learn whether that follow-up is needed.
 
 ## Resolved decisions
 
@@ -295,19 +295,23 @@ by the human, per the sandbox rules):
    for pre-masked examples if TRL 0.24.0's packing utilities cannot consume
    them directly, and the packed-mode golden mask tests.
 5. **F1 sequencing: moot** — F1 merged before F3 work begins.
+6. **Reference SFT dataset: `HuggingFaceH4/ultrachat_200k` (owner
+   decision).** Widely known, messages-format, large enough to subset. The
+   license string for the prepared artifact's manifest is read from the
+   dataset card at preparation time.
+7. **Thinking mode: train in non-thinking format; no bare `<|think|>` token
+   (owner decision, on investigation).** Adding `<|think|>` to training
+   prompts whose targets carry no thought section would supervise the model
+   to answer immediately when thinking is requested — training thinking-mode
+   off, the opposite of the intent (ultrachat has no reasoning traces to
+   supervise a thought channel with). F1's current rendering — no thinking
+   tokens, matching the official template's non-thinking format — is
+   self-consistent, and QLoRA's low-rank adapter bounds erosion of the base
+   model's thinking behavior. The smoke fine-tune still verifies
+   thinking-mode prompts empirically (see risks); if a regression appears,
+   the remedy is a thought-bearing dataset generated through F4 with a
+   thinking-enabled Gemma 4 teacher, not a template change.
 
 ## Open questions
 
-1. **Reference SFT dataset** (carried over from F1): F3's end-to-end
-   acceptance needs a real instruction dataset to fine-tune on — which
-   public dataset to use (the roadmap's example is
-   `HuggingFaceH4/ultrachat_200k`) and its license string for the prepared
-   artifact's manifest.
-2. **Thinking-mode prefix** (F1 handoff 3): Gemma 4 inference prompts enable
-   thinking via `<|think|>` in the system turn, but F1's training data
-   contains no thinking tokens (the official template strips thought
-   channels from history). The open question is whether fine-tuning on data
-   without that framing degrades the tuned model's thinking mode, and if so
-   whether training examples should carry a masked empty-thought prefix so
-   they match what the model sees at inference. Decided empirically during
-   the host-side smoke fine-tune, not up front.
+None. All decisions are resolved; implementation can begin.
