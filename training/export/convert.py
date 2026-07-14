@@ -49,16 +49,30 @@ def quantize_path(llama_cpp_dir: str = DEFAULT_LLAMA_CPP_DIR) -> str:
 
 
 def supported_architectures(convert_script: str) -> set[str]:
-    """Architecture names the pinned converter registers."""
-    with open(convert_script) as f:
-        text = f.read()
+    """Architecture names the pinned converter registers.
+
+    Current llama.cpp revisions register model classes in conversion/*.py
+    modules next to a thin convert_hf_to_gguf.py wrapper (older revisions
+    register everything in the script itself), so both locations are scanned.
+    """
+    sources = [convert_script]
+    conversion_dir = os.path.join(os.path.dirname(convert_script), "conversion")
+    if os.path.isdir(conversion_dir):
+        sources.extend(
+            os.path.join(conversion_dir, name)
+            for name in sorted(os.listdir(conversion_dir))
+            if name.endswith(".py"))
     names: set[str] = set()
-    for match in _REGISTER_RE.finditer(text):
-        names.update(_QUOTED_RE.findall(match.group(1)))
+    for source in sources:
+        with open(source) as f:
+            text = f.read()
+        for match in _REGISTER_RE.finditer(text):
+            names.update(_QUOTED_RE.findall(match.group(1)))
     if not names:
         raise ExportError(
-            f"No architecture registrations found in {convert_script}; "
-            "the pinned converter layout changed — update supported_architectures()")
+            f"No architecture registrations found in {convert_script} or its "
+            "conversion/ modules; the pinned converter layout changed — update "
+            "supported_architectures()")
     return names
 
 
@@ -75,9 +89,9 @@ def check_architecture(staging_dir: str, convert_script: str) -> str:
         raise ExportError(
             f"Architecture not supported by the pinned converter: {arch}\n"
             f"  Pinned llama.cpp: {read_pin()}\n"
-            f"  Scope is GGUF-convertible families (Llama/Qwen/SmolLM); bump the\n"
-            f"  pin in training/export/llama_cpp_pin.txt (with a note) if a newer\n"
-            f"  llama.cpp supports this architecture")
+            f"  Scope is GGUF-convertible families (Gemma 4 primary, Qwen3\n"
+            f"  fallback); bump the pin in training/export/llama_cpp_pin.txt\n"
+            f"  (with a note) if a newer llama.cpp supports this architecture")
     return arch
 
 

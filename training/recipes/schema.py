@@ -183,6 +183,17 @@ class PeftConfig:
 
 
 @dataclass
+class SftConfig:
+    """SFT data reference (Phase 1 F1). Data-side only: the recipe points at
+    a prepared, materialized dataset directory (scripts/training/prepare_sft.py
+    output) so runs are reproducible; loaders refuse a manifest-hash mismatch.
+    Trainer-side SFT fields — packing, epochs — land with F3."""
+
+    enabled: bool = False
+    dataset: str = ""  # /mnt/ai-data/training/datasets/sft/<name>
+
+
+@dataclass
 class CheckpointConfig:
     interval_steps: int = 1000
     retain_last: int = 3
@@ -226,6 +237,7 @@ class Recipe:
     precision: PrecisionConfig = field(default_factory=PrecisionConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     peft: PeftConfig = field(default_factory=PeftConfig)
+    sft: SftConfig = field(default_factory=SftConfig)
     checkpoint: CheckpointConfig = field(default_factory=CheckpointConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     watchdog: WatchdogConfig = field(default_factory=WatchdogConfig)

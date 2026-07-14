@@ -52,6 +52,11 @@ Architecture comes from the recipe's `model.scratch` fields, with the SwiGLU
 intermediate size derived as `round(ffn_mult * hidden / 64) * 64` (pinned against
 SmolLM2-135M and Llama-3.2-1B), or from HF `AutoConfig` for `model.hf` recipes via
 a Llama-family mapping table. Unknown architectures fail loudly rather than guess.
+The Gemma 4 E-models (`model_type` `gemma4`/`gemma4_text`, the Phase 1 primary
+family) are not yet in the mapping table: their per-layer embeddings add
+parameters the dense formulas do not model. Until the Phase 1 calculator
+extension lands, `gemma4` recipes fail loudly here; `qwen3` (the fallback
+family) is fully supported.
 
 ## Calibration
 

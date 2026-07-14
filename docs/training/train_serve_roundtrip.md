@@ -31,9 +31,11 @@ from the training image by design: the image that trains a model is not reused t
 prepare it for inference. The llama.cpp revision is pinned in
 `training/export/llama_cpp_pin.txt` (initially the same commit the llama-gpu serving
 image builds from) and is bumped deliberately, with a note, when new architectures
-are needed. Scope is GGUF-convertible architectures only (Llama/Qwen/SmolLM
-families); the tool checks the staged model against the pinned converter's support
-list and fails with a clear message otherwise.
+are needed. Scope is GGUF-convertible architectures only — in practice the Phase 1
+model policy families, Gemma 4 (primary) and Qwen3 (fallback), both registered by
+the pinned converter; the tool checks the staged model against the pinned
+converter's support list (the script plus its `conversion/` modules) and fails
+with a clear message otherwise.
 
 ## Export
 

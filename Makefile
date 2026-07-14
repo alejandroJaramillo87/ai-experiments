@@ -129,6 +129,9 @@ train-smoke: ## Run the seven-step training smoke test on the workstation (enfor
 prepare-data: ## Tokenize a dataset into shards (Phase 0 D2): make prepare-data ARGS="--source ... --tokenizer ... --out ..."
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/prepare_data.py $(ARGS)
 
+prepare-sft: ## Prepare masked SFT examples (Phase 1 F1): make prepare-sft ARGS="--source ... --tokenizer ... --model-type ... --out ..."
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/prepare_sft.py $(ARGS)
+
 train-tokenizer: ## Train a byte-level BPE tokenizer (Phase 0 D3): make train-tokenizer ARGS="--corpus ... --out ..."
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/train_tokenizer.py $(ARGS)
 
