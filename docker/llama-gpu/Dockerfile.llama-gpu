@@ -25,7 +25,6 @@ RUN apt-get update && \
         cuda-cupti-dev-13-0 \
         cuda-nvml-dev-13-0 \
         cuda-nvtx-13-0 \
-        # cudnn9-cuda-13-0 \
         libcublas-dev-13-0=13.1.0.3-1 && \
     rm -rf /var/lib/apt/lists/*
 

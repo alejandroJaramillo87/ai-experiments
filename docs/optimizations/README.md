@@ -142,6 +142,9 @@ vm.dirty_background_ratio = 2   # Background writeback
 Production system benchmarking with BIOS optimizations enabled:
 
 ### Benchmark Summary
+
+Measured at the previous 12-core CPU configuration; the current llama-cpu service runs 16 cores (cpuset 0-15).
+
 - **Before optimizations**: 28.09 tokens/second average
 - **After optimizations**: 35.44 tokens/second average
 - **Performance gain**: 26.2% increase

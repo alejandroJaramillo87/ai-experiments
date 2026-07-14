@@ -19,11 +19,11 @@ This directory contains comprehensive documentation for understanding and optimi
 
 ## Current Implementation Status
 
-| Service | Engine | Port | Status | Performance | Notes |
-|---------|--------|------|--------|-------------|-------|
-| llama-cpu | llama.cpp | 8001 | Active | 35.44 tok/s | Latency-optimized |
-| llama-gpu | llama.cpp | 8002 | Active | 286.85 tok/s | GPU-accelerated |
-| vllm-gpu | vLLM | 8003 | Active | N/A | High-throughput batch serving |
+| Service | Engine | Port | Status | Notes |
+|---------|--------|------|--------|-------|
+| llama-cpu | llama.cpp | 8001 | Active | Latency-optimized CPU inference |
+| llama-gpu | llama.cpp | 8002 | Active | GPU-accelerated low-latency inference |
+| vllm-gpu | vLLM | 8003 | Active | High-throughput batch serving |
 
 ## Architecture Summary
 
@@ -73,16 +73,16 @@ Inference engines are specialized runtimes optimized for executing trained model
 ### Performance Characteristics
 
 **llama.cpp**:
-- First token: 50-200ms
-- Generation: 35 tok/s (CPU), 287 tok/s (GPU)
-- Memory efficiency: 1.1x model size
+- Latency-optimized for single-request inference (CPU and GPU)
+- Memory efficiency: close to model size
 - Quantization: Native GGUF support
 
 **vLLM** (0.25.0 with CUDA 13):
-- First token: 50-100ms
-- Generation: 300-500 tok/s (projected)
-- Memory efficiency: 1.3x model size
+- Throughput-optimized for concurrent request serving
 - Quantization: FP8, GPTQ, AWQ
+
+No benchmark has been run on this workstation; the tables above describe
+qualitative characteristics only.
 
 ## Hardware Configuration
 

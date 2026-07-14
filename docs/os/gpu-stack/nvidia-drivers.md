@@ -151,7 +151,7 @@ The driver's memory management directly impacts inference:
 | **Without Persistence Mode** | +200ms CUDA initialization per request |
 | **Default Power Limit (450W)** | -15% inference speed |
 | **Wrong Driver Version** | CUDA incompatibility, no GPU acceleration |
-| **Optimal Settings** | **286.85 tokens/second** |
+| **Optimal Settings** | Full GPU acceleration |
 
 ### Real-World Example
 
@@ -160,11 +160,11 @@ Loading a 20B parameter model:
 ```python
 # With proper driver configuration
 model_load_time = 8.2 seconds   # Direct VRAM loading
-inference_speed = 286.85 tok/s  # Full acceleration
+# Full GPU acceleration
 
 # With misconfigured driver
 model_load_time = 45+ seconds   # System RAM fallback
-inference_speed = 35 tok/s      # CPU-only performance
+# CPU-only fallback performance
 ```
 
 ## Troubleshooting
@@ -241,7 +241,7 @@ sudo dmesg | grep nvidia
 3. **Monitor Performance**
    ```bash
    # Benchmark to ensure consistent performance
-   scripts/benchmark.py --service llama-gpu
+   scripts/benchmark/benchmark_gpu.sh
    ```
 
 ## Server vs Desktop Drivers

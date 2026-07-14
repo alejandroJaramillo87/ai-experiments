@@ -116,7 +116,7 @@ Model Layer Processing:
     ├── Vocabulary projection → CUDA Cores
     └── Sampling → CPU (minimal work)
 
-Result: 286.85 tokens/second
+Result: high-throughput GPU inference
 ```
 
 ## Our Specific Setup: CUDA 13.0.88
@@ -168,8 +168,8 @@ export CUDA_VISIBLE_DEVICES=0    # Use RTX 5090
 
 | Configuration | Inference Speed | Relative Performance |
 |--------------|----------------|---------------------|
-| **CPU-only** (12 cores) | 35.44 tok/s | 1.0x (baseline) |
-| **GPU with CUDA** | 286.85 tok/s | **8.1x faster** |
+| **CPU-only** (12 cores, benchmark config) | 35.44 tok/s | Baseline |
+| **GPU with CUDA** | High-throughput GPU inference | GPU-accelerated |
 | **Without CUDA** (driver only) | 0 tok/s | No acceleration |
 
 ### Real Example: Model Loading
@@ -374,4 +374,4 @@ Specialized hardware for AI:
 
 ---
 
-*CUDA transforms the RTX 5090 from a graphics card into a parallel supercomputer, enabling our 286.85 tokens/second inference speed. It's the bridge between raw GPU hardware and AI applications.*
+CUDA provides the parallel-compute layer between the RTX 5090 hardware and AI applications, enabling high-throughput GPU inference.

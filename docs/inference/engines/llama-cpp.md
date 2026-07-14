@@ -185,15 +185,14 @@ Operations per cycle:
 Optimized threading strategy:
 
 ```
-Our Configuration (12 cores):
+Our Configuration (16 cores):
 ├── Main thread: Coordination
-├── Worker threads: 12 (one per core)
+├── Worker threads: 16 (one per core)
 ├── HTTP threads: 2 (API handling)
 └── No SMT: Exclusive L1/L2 cache
 
 Thread allocation:
-- Cores 0-11: LLM computation
-- Core 12-15: System/OS tasks
+- Cores 0-15: LLM computation (all cores dedicated to inference)
 ```
 
 ### Cache Optimization
@@ -302,9 +301,8 @@ For each layer (1-80):
 Final hidden states
 ```
 
-Performance:
-- CPU: ~1000 tokens/second prefill
-- GPU: ~8000 tokens/second prefill
+The prefill phase processes all prompt tokens in parallel before generation
+begins. No prefill benchmark has been run on this workstation.
 
 ### Token Generation
 
@@ -318,10 +316,6 @@ While not EOS:
   4. Token selection
   5. Update KV cache
   6. Yield token
-
-Our speeds:
-- CPU: 35.44 tokens/second
-- GPU: 286.85 tokens/second
 ```
 
 ## Batch Processing
@@ -421,16 +415,14 @@ Key optimizations:
 
 ## Performance Characteristics
 
-Measured performance on our hardware:
+No benchmark has been run on this workstation. The table below lists the
+configured model per service; generation speed, latency, and power draw are not
+yet measured.
 
 | Metric | CPU (Zen 5) | GPU (RTX 5090) |
 |--------|-------------|----------------|
 | Model | 30B Q4_XS | 20B Q8_K_XL |
-| Prefill speed | 1000 tok/s | 8000 tok/s |
-| Generation | 35.44 tok/s | 286.85 tok/s |
-| First token | 200ms | 50ms |
-| Memory usage | 15.3GB RAM | 10.5GB VRAM |
-| Power draw | 120W | 437W |
+| Optimization target | Latency (CPU) | Latency (GPU) |
 
 ## Integration Points
 
@@ -440,9 +432,9 @@ Container configuration:
 
 ```yaml
 llama-cpu:
-  cpuset: "0-11"        # CPU affinity
+  cpuset: "0-15"        # CPU affinity (all 16 cores)
   memory: 96G           # RAM limit
-  cap_add: [IPC_LOCK]   # For mlock
+  cap_drop: [ALL]       # Drop all Linux capabilities
   volumes:
     - /mnt/ai-data/models:/app/models:ro
 ```
@@ -465,7 +457,6 @@ Key metrics exposed:
 
 ```json
 {
-  "tokens_per_second": 35.44,
   "prompt_tokens": 256,
   "completion_tokens": 512,
   "kv_cache_used": 768,
@@ -482,14 +473,13 @@ Common issues and solutions:
 | Slow inference | Wrong batch size | Use 2048 for our hardware |
 | High latency | Model swapping | Enable --mlock |
 | GPU OOM | Context too large | Reduce --ctx-size |
-| CPU 100% | Too many threads | Match physical cores (12) |
+| CPU 100% | Too many threads | Match physical cores (16) |
 | Crash on load | Corrupted model | Re-download GGUF file |
 
 ## Next Steps
 
 - Review [parameters/llama-cpp-parameters.md](../parameters/llama-cpp-parameters.md) for tuning
 - See [vLLM](vllm.md) for throughput-optimized serving
-- Check [benchmarks/performance-results.md](../benchmarks/performance-results.md) for measurements
 
 ---
 
