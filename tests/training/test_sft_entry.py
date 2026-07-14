@@ -241,6 +241,22 @@ class TestCheckpointHelpers:
         assert meta["backend"] == "trl"
         assert meta["checkpoint_format"] == "trl"
         assert meta["step"] == 10
+        # F6 base-identity fields are always present, null when unresolved
+        assert meta["base_revision"] is None
+        assert meta["base_config_sha256"] is None
+
+    def test_meta_records_base_identity_for_f6(self, tmp_path):
+        d = os.path.join(tmp_path, checkpoint_dir_name(10))
+        os.makedirs(d)
+        write_checkpoint_meta(d, 10, adapter_only=True,
+                              base_model="google/gemma-4-E2B", backend="trl",
+                              recipe_hash="deadbeef",
+                              base_revision="b" * 40,
+                              base_config_sha256="f" * 64)
+        with open(os.path.join(d, "meta.json")) as f:
+            meta = json.load(f)
+        assert meta["base_revision"] == "b" * 40
+        assert meta["base_config_sha256"] == "f" * 64
 
     def test_unstamped_checkpoints_invisible(self, tmp_path):
         make_checkpoint(tmp_path, 10)

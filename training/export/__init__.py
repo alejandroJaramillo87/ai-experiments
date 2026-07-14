@@ -16,16 +16,38 @@ from training.export.convert import (
     read_pin,
     supported_architectures,
 )
-from training.export.manifest import build_manifest, sha256_file, write_manifest
-from training.export.merge import derive_output_name, find_adapter, stage_model
+from training.export.manifest import (
+    build_manifest,
+    checkpoint_meta,
+    sha256_file,
+    write_manifest,
+)
+from training.export.merge import (
+    adapter_base_model,
+    derive_output_name,
+    find_adapter,
+    resolve_model_dir,
+    stage_model,
+)
+from training.export.preflight import (
+    BaseIdentity,
+    check_base_identity,
+    resolve_base_identity,
+)
 
 __all__ = [
+    "BaseIdentity",
     "ExportError",
+    "adapter_base_model",
     "build_manifest",
     "check_architecture",
+    "check_base_identity",
+    "checkpoint_meta",
     "derive_output_name",
     "find_adapter",
     "read_pin",
+    "resolve_base_identity",
+    "resolve_model_dir",
     "sha256_file",
     "stage_model",
     "supported_architectures",

@@ -232,3 +232,156 @@ def test_write_manifest_lands_beside_gguf(tmp_path):
     assert path == str(tmp_path / "tiny-Q8_0.manifest.json")
     with open(path) as f:
         assert json.load(f) == {"schema_version": 1}
+
+
+# -- F6 base-identity preflight ----------------------------------------------
+
+from training.export import preflight as preflight_mod  # noqa: E402
+
+
+def make_local_base(tmp_path, config=None):
+    base = tmp_path / "base"
+    write_json(str(base / "config.json"),
+               config or {"architectures": ["LlamaForCausalLM"]})
+    return base
+
+
+def test_commit_from_cache_path():
+    commit = "b" * 40
+    path = f"/root/.cache/huggingface/models--org--m/snapshots/{commit}/config.json"
+    assert preflight_mod.commit_from_cache_path(path) == commit
+    assert preflight_mod.commit_from_cache_path("/some/local/config.json") is None
+
+
+def test_resolve_base_identity_local_dir(tmp_path):
+    base = make_local_base(tmp_path)
+    identity = preflight_mod.resolve_base_identity(str(base))
+    assert identity.revision is None
+    assert identity.config_sha256 == manifest_mod.sha256_file(
+        str(base / "config.json"))
+
+
+def test_resolve_base_identity_rejects_configless_dir(tmp_path):
+    empty = tmp_path / "empty"
+    os.makedirs(empty)
+    with pytest.raises(convert_mod.ExportError, match="config.json"):
+        preflight_mod.resolve_base_identity(str(empty))
+
+
+def identity_for(tmp_path, revision="b" * 40):
+    base = make_local_base(tmp_path)
+    identity = preflight_mod.resolve_base_identity(str(base))
+    identity.revision = revision
+    return identity
+
+
+def test_check_base_identity_match(tmp_path):
+    identity = identity_for(tmp_path)
+    meta = {"base_revision": identity.revision,
+            "base_config_sha256": identity.config_sha256}
+    assert preflight_mod.check_base_identity(meta, identity) == []
+
+
+def test_check_base_identity_mismatch_refuses(tmp_path):
+    identity = identity_for(tmp_path)
+    meta = {"base_revision": "c" * 40,
+            "base_config_sha256": identity.config_sha256}
+    with pytest.raises(convert_mod.ExportError, match="allow-base-drift"):
+        preflight_mod.check_base_identity(meta, identity)
+
+
+def test_check_base_identity_mismatch_allowed_returns_notes(tmp_path):
+    identity = identity_for(tmp_path)
+    meta = {"base_revision": "c" * 40, "base_config_sha256": "0" * 64}
+    notes = preflight_mod.check_base_identity(meta, identity, allow_drift=True)
+    assert len(notes) == 2
+    assert any("base_revision" in n for n in notes)
+    assert any("base_config_sha256" in n for n in notes)
+
+
+def test_check_base_identity_unrecorded_fields_never_fatal(tmp_path):
+    identity = identity_for(tmp_path)
+    notes = preflight_mod.check_base_identity({"step": 10}, identity)
+    assert all("not recorded" in n for n in notes)
+    assert preflight_mod.check_base_identity(None, identity)  # no meta at all
+
+
+# -- F6 meta.json cross-check in staging --------------------------------------
+
+def make_adapter(tmp_path, base="org/base"):
+    adapter = tmp_path / "ckpt"
+    write_json(str(adapter / "adapter_config.json"),
+               {"base_model_name_or_path": base})
+    (adapter / "adapter_model.safetensors").write_bytes(b"lora")
+    return adapter
+
+
+def test_meta_consistency_accepts_agreement(tmp_path):
+    adapter = make_adapter(tmp_path)
+    meta = {"adapter_only": True, "base_model": "org/base"}
+    merge_mod.check_meta_consistency(meta, str(adapter))
+    merge_mod.check_meta_consistency({"adapter_only": False}, None)
+    merge_mod.check_meta_consistency(None, str(adapter))  # plain HF dir
+
+
+def test_meta_consistency_rejects_type_mismatch(tmp_path):
+    adapter = make_adapter(tmp_path)
+    with pytest.raises(convert_mod.ExportError, match="adapter_only"):
+        merge_mod.check_meta_consistency({"adapter_only": False}, str(adapter))
+    with pytest.raises(convert_mod.ExportError, match="adapter_only"):
+        merge_mod.check_meta_consistency({"adapter_only": True}, None)
+
+
+def test_meta_consistency_rejects_base_disagreement(tmp_path):
+    adapter = make_adapter(tmp_path, base="org/other")
+    meta = {"adapter_only": True, "base_model": "org/base"}
+    with pytest.raises(convert_mod.ExportError, match="disagreement"):
+        merge_mod.check_meta_consistency(meta, str(adapter))
+
+
+def test_stage_model_runs_meta_cross_check(tmp_path):
+    ckpt = make_full_checkpoint(tmp_path)
+    with pytest.raises(convert_mod.ExportError, match="adapter_only"):
+        merge_mod.stage_model(str(ckpt), str(tmp_path / "staging"),
+                              meta={"adapter_only": True})
+
+
+# -- F6 manifest fields --------------------------------------------------------
+
+def test_manifest_records_base_identity_and_drift(tmp_path):
+    ckpt = make_full_checkpoint(tmp_path)
+    adapter = make_adapter(tmp_path / "a")
+    gguf = tmp_path / "tiny-Q8_0.gguf"
+    gguf.write_bytes(b"gguf bytes")
+    info = merge_mod.StagingInfo(
+        model_dir=str(ckpt / "model"), staging_dir="s",
+        adapter_path=str(adapter), base_model="org/base",
+        merge_method="peft.merge_and_unload", tokenizer_source=None)
+    identity = preflight_mod.BaseIdentity(
+        model="org/base", revision="b" * 40, config_sha256="f" * 64,
+        config_path="/cache/config.json")
+    manifest = manifest_mod.build_manifest(
+        checkpoint=str(ckpt), architecture="LlamaForCausalLM", quant_type="Q8_0",
+        outtype="bf16", llama_cpp_commit="a" * 40, gguf_path=str(gguf),
+        staging_info=info, base_identity=identity,
+        base_drift=["base_revision: trained against x, export resolved y"],
+        created="T0")
+    assert manifest["adapter"]["base_revision"] == "b" * 40
+    assert manifest["adapter"]["base_config_sha256"] == "f" * 64
+    assert manifest["base_drift"] == [
+        "base_revision: trained against x, export resolved y"]
+
+
+def test_manifest_base_fields_default_none(tmp_path):
+    ckpt = make_full_checkpoint(tmp_path)
+    gguf = tmp_path / "tiny-Q8_0.gguf"
+    gguf.write_bytes(b"gguf bytes")
+    info = merge_mod.StagingInfo(
+        model_dir=str(ckpt / "model"), staging_dir="s", adapter_path=None,
+        base_model=None, merge_method=None, tokenizer_source=None)
+    manifest = manifest_mod.build_manifest(
+        checkpoint=str(ckpt), architecture="LlamaForCausalLM", quant_type="Q8_0",
+        outtype="bf16", llama_cpp_commit="a" * 40, gguf_path=str(gguf),
+        staging_info=info, created="T0")
+    assert manifest["adapter"] is None
+    assert manifest["base_drift"] == []

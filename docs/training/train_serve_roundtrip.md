@@ -62,6 +62,15 @@ Notes:
   under the same pin yields the same GGUF hash.
 - Intermediates stage under `/mnt/ai-data/training/staging/export/` (on disk, not
   tmpfs, so large models fit) and are removed unless `--keep-staging` is passed.
+- Adapter-only checkpoints (Phase 1 F6): the tool resolves the base model from the
+  local HF cache only, never the network, and verifies its identity against the
+  `base_revision` and `base_config_sha256` the F3 trainer recorded in the
+  checkpoint's `meta.json`. A drifted base refuses to export unless
+  `--allow-base-drift` is passed, in which case the drift notes land in the
+  manifest's `base_drift` field. The checkpoint's `meta.json` is also cross-checked
+  against the files on disk (`adapter_only` versus the presence of
+  `adapter_config.json`, and the two records of the base model id); a disagreement
+  fails the export.
 
 ## Serving swap and evaluation
 

@@ -218,11 +218,13 @@ def build_model_and_tokenizer(recipe: DictConfig):
     )
 
     model_id = recipe.model.hf.id
+    revision = recipe.model.hf.revision
     if recipe.sft.backend == "unsloth":
         from unsloth import FastLanguageModel
 
         model, tokenizer = FastLanguageModel.from_pretrained(
             model_name=model_id,
+            revision=revision,
             max_seq_length=recipe.data.seq_len,
             load_in_4bit=recipe.peft.quantize_base == "nf4",
             dtype=_torch_dtype(recipe.peft.compute_dtype))
@@ -236,16 +238,34 @@ def build_model_and_tokenizer(recipe: DictConfig):
     else:
         from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-        config = AutoConfig.from_pretrained(model_id)
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        config = AutoConfig.from_pretrained(model_id, revision=revision)
+        tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
+            revision=revision,
             dtype=_torch_dtype(recipe.precision.dtype),
             quantization_config=bnb_quantization_config(recipe.peft))
         if recipe.peft.enabled:
             resolve_target_modules(recipe, config.model_type)
             model = build_peft_model(model, recipe.peft)
     return model, tokenizer, trainable_parameter_report(model)
+
+
+def resolve_base_identity_or_none(recipe: DictConfig):
+    """Best-effort base identity (revision, config hash) for meta.json.
+
+    Runs after model loading so the config is already in the HF cache. A
+    resolution failure must not kill a training run — the checkpoint's meta
+    then records nulls and the F6 export preflight reports the fields as
+    unrecorded instead of enforcing them.
+    """
+    from training.export.preflight import resolve_base_identity
+
+    try:
+        return resolve_base_identity(recipe.model.hf.id,
+                                     revision=recipe.model.hf.revision)
+    except Exception:
+        return None
 
 
 def sft_config_kwargs(recipe: DictConfig, ckpt_root: str,
@@ -350,6 +370,7 @@ def _train_locked(recipe: DictConfig) -> SftResult:
 
     train_samples, holdout_samples = build_dataset(recipe)
     model, tokenizer, report = build_model_and_tokenizer(recipe)
+    base_identity = resolve_base_identity_or_none(recipe)
 
     stamp = datetime.datetime.now()
     for _ in range(60):
@@ -398,7 +419,8 @@ def _train_locked(recipe: DictConfig) -> SftResult:
         data_collator=Collator(),
         callbacks=build_callbacks(recipe, ckpt_root, tracker, watchdog,
                                   recipe_hash, trainable_report=report,
-                                  distill_meta=distill_meta))
+                                  distill_meta=distill_meta,
+                                  base_identity=base_identity))
 
     resume_path = None
     if recipe.checkpoint.resume is not None:
@@ -415,7 +437,10 @@ def _train_locked(recipe: DictConfig) -> SftResult:
         write_checkpoint_meta(
             emergency_dir, step, adapter_only=bool(recipe.peft.enabled),
             base_model=recipe.model.hf.id, backend=recipe.sft.backend,
-            recipe_hash=recipe_hash, emergency=True, distill=distill_meta)
+            recipe_hash=recipe_hash,
+            base_revision=getattr(base_identity, "revision", None),
+            base_config_sha256=getattr(base_identity, "config_sha256", None),
+            emergency=True, distill=distill_meta)
         raise
     finally:
         if watchdog is not None:

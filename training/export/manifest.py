@@ -24,7 +24,7 @@ def sha256_file(path: str) -> str:
     return digest.hexdigest()
 
 
-def _checkpoint_meta(checkpoint: str) -> dict | None:
+def checkpoint_meta(checkpoint: str) -> dict | None:
     """The D6 meta.json (step, snapshot hash, git SHA, ...), when present."""
     for candidate in (os.path.join(checkpoint, "meta.json"),
                       os.path.join(os.path.dirname(checkpoint), "meta.json")):
@@ -47,20 +47,30 @@ def _tool_versions() -> dict:
 
 def build_manifest(*, checkpoint: str, architecture: str, quant_type: str,
                    outtype: str, llama_cpp_commit: str, gguf_path: str,
-                   staging_info, created: str | None = None) -> dict:
-    """Assemble the manifest dict for one export."""
+                   staging_info, base_identity=None,
+                   base_drift: list[str] | None = None,
+                   created: str | None = None) -> dict:
+    """Assemble the manifest dict for one export.
+
+    base_identity is the F6 preflight's resolved base (revision and config
+    hash); base_drift carries its notes when --allow-base-drift overrode a
+    mismatch, so a drifted export is detectable from the manifest alone.
+    """
     return {
         "schema_version": 1,
         "created": created or time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "source_checkpoint": os.path.abspath(checkpoint),
-        "checkpoint_meta": _checkpoint_meta(checkpoint),
+        "checkpoint_meta": checkpoint_meta(checkpoint),
         "architecture": architecture,
         "adapter": None if staging_info.adapter_path is None else {
             "path": os.path.abspath(staging_info.adapter_path),
             "sha256": _adapter_hash(staging_info.adapter_path),
             "base_model": staging_info.base_model,
+            "base_revision": getattr(base_identity, "revision", None),
+            "base_config_sha256": getattr(base_identity, "config_sha256", None),
             "merge_method": staging_info.merge_method,
         },
+        "base_drift": base_drift or [],
         "tokenizer_source": staging_info.tokenizer_source,
         "llama_cpp_commit": llama_cpp_commit,
         "convert_outtype": outtype,

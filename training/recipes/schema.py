@@ -55,9 +55,15 @@ class RunConfig:
 
 @dataclass
 class HFModelConfig:
-    """A Hugging Face model, by hub id or local path."""
+    """A Hugging Face model, by hub id or local path.
+
+    revision optionally pins a hub commit; when unset, the revision resolved
+    at load time is recorded in each checkpoint's meta.json so F6 export can
+    verify the base has not drifted since training.
+    """
 
     id: str = MISSING
+    revision: str | None = None
 
 
 @dataclass
