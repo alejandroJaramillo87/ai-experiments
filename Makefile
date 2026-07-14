@@ -135,6 +135,45 @@ memfit: ## Estimate VRAM fit for a recipe (Phase 0 D4): make memfit CONFIG=train
 
 train-calibrate: ## Measure real peak VRAM for a recipe (Phase 0 D4, GPU): make train-calibrate CONFIG=... ARGS="--out record.json"
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training calibrate --config $(CONFIG) $(ARGS)
+##@ Interpretability (interp Phase 0 I1 - separate compose file; GPU inference must be down)
+
+INTERP_COMPOSE := docker-compose.interp.yaml
+
+interp-build: ## Build the interp workbench image (runs the smoke test at build; fails on regression)
+	@echo "$(CYAN)Building interp workbench image...$(RESET)"
+	docker compose -f $(INTERP_COMPOSE) build
+	@echo "$(GREEN)Interp workbench image built.$(RESET)"
+
+interp-up: ## Preflight, then start JupyterLab on 127.0.0.1:8888 and print the tokened URL
+	@./scripts/interp/preflight.sh
+	$(eval JUPYTER_TOKEN := $(shell openssl rand -hex 24))
+	JUPYTER_TOKEN=$(JUPYTER_TOKEN) docker compose -f $(INTERP_COMPOSE) up -d interp
+	@echo "$(GREEN)JupyterLab: http://127.0.0.1:8888/?token=$(JUPYTER_TOKEN)$(RESET)"
+
+interp-shell: ## Preflight, then an interactive shell in the workbench with GPU attached
+	@./scripts/interp/preflight.sh
+	docker compose -f $(INTERP_COMPOSE) run --rm interp /bin/bash
+
+interp-smoke: ## Run the seven-step interp smoke test on the workstation (enforces CUDA sm_120)
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/smoke_test.py
+
+interp-down: ## Stop the interp workbench
+	docker compose -f $(INTERP_COMPOSE) down
+
+interp-dirs: ## Create the /mnt/ai-data/interp storage tree on the host
+	mkdir -p /mnt/ai-data/interp/activations /mnt/ai-data/interp/saes \
+	         /mnt/ai-data/interp/probes /mnt/ai-data/interp/vectors \
+	         /mnt/ai-data/interp/neuronpedia /mnt/ai-data/interp/hf-cache \
+	         /mnt/ai-data/interp/arena
+	@echo "$(GREEN)Interp storage tree ready under /mnt/ai-data/interp$(RESET)"
+
+interp-arena: interp-dirs ## Clone (or update) the ARENA 3.0 curriculum to /mnt/ai-data/interp/arena
+	@if [ -d /mnt/ai-data/interp/arena/.git ]; then \
+	  git -C /mnt/ai-data/interp/arena pull --ff-only; \
+	else \
+	  git clone https://github.com/callummcdougall/ARENA_3.0.git /mnt/ai-data/interp/arena; \
+	fi
+	@echo "$(GREEN)ARENA available at /mnt/ai-data/interp/arena (interp/notebooks/arena in Jupyter)$(RESET)"
 
 ##@ Monitoring & Debugging
 

@@ -84,11 +84,24 @@ dev = [
     "mypy==2.3.0",
 ]
 
-# Mechanistic interpretability tooling. Requires transformers>=5.4 (satisfied by the
-# HF core pin); gated behind its own group so the core install stays lean.
+# Mechanistic interpretability tooling (interp Phase 0 I1). Requires transformers>=5.4
+# (satisfied by the HF core pin); gated behind its own group so the core install stays lean.
+# ARENA chapter requirements are folded in here (einops/jupyterlab/matplotlib/pandas live in
+# core) so the workbench image is the lockfile and notebooks need no in-container installs.
+# docker/interp/Dockerfile.interp installs and CUDA-verifies this group.
+# NOTE: pins below the first two are provisional (resolved offline); regenerate uv.lock on
+# the workstation (`uv lock`) to confirm exact versions against the cu130 / torch 2.13
+# / py3.12 resolution.
 interp = [
     "transformer-lens==3.5.1",
     "nnsight==0.7.0",
+    "nnterp==1.3.0",
+    "sae-lens==6.46.0",
+    "circuitsvis==1.43.3",
+    "jaxtyping==0.3.11",
+    "plotly==6.9.0",
+    "ipywidgets==8.1.8",
+    "pynvml==12.0.0",
 ]
 
 # Training tier (Phase 0 D1). Only libs NOT already in core dependencies live here:
