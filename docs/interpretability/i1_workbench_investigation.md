@@ -144,6 +144,11 @@ decision: the interpretability tier ships frameworks, tooling, and infrastructur
 tutorial or learning scaffolding. Helper code returns only when a concrete project or service
 pulls it as real infrastructure.
 
+Update 2026-07-14: the ARENA curriculum plumbing (clone target, bind mount, storage
+directory) was removed under the same infrastructure-only decision as M3. The packages that
+were folded into the `interp` dependency group remain, as general notebook and analysis
+tooling.
+
 ## Dependency findings (verified 2026-07-14)
 
 Current lockfile state and PyPI checks:

@@ -35,6 +35,12 @@ KV_UNIFIED=${KV_UNIFIED:-false}
 CTX_CHECKPOINTS=${CTX_CHECKPOINTS:-""}
 JINJA_ENABLED=${JINJA_ENABLED:-false}
 
+# Steering control vector (interp Phase 3 W1): empty default omits the flag entirely,
+# so production behavior is unchanged unless a vector is explicitly wired in
+CONTROL_VECTOR=${CONTROL_VECTOR:-""}
+CONTROL_VECTOR_SCALE=${CONTROL_VECTOR_SCALE:-""}
+CONTROL_VECTOR_LAYER_RANGE=${CONTROL_VECTOR_LAYER_RANGE:-""}
+
 echo "[HUGEPAGES] Starting llama-server (AVX-512 + hugepage optimization)"
 echo "[HUGEPAGES] Configuration:"
 echo "  - Architecture: znver5 (Zen 5 native)"
@@ -60,6 +66,9 @@ if [[ -n "$CTX_CHECKPOINTS" ]]; then
 fi
 if [[ "$JINJA_ENABLED" == "true" ]]; then
     echo "  - Jinja templates: enabled"
+fi
+if [[ -n "$CONTROL_VECTOR" ]]; then
+    echo "  - Control vector: ${CONTROL_VECTOR}${CONTROL_VECTOR_SCALE:+ (scale ${CONTROL_VECTOR_SCALE})}"
 fi
 
 # Validate model file exists
@@ -134,6 +143,24 @@ fi
 
 if [[ "$JINJA_ENABLED" == "true" ]]; then
     CMD_ARGS+=("--jinja")
+fi
+
+# Steering control vector (interp Phase 3 W1). Vector file must exist: refusing beats
+# llama-server silently starting unsteered while a scorecard believes it is steered
+if [[ -n "$CONTROL_VECTOR" ]]; then
+    if [[ ! -f "$CONTROL_VECTOR" ]]; then
+        echo "[HUGEPAGES] ERROR: Control vector file not found: $CONTROL_VECTOR"
+        exit 1
+    fi
+    if [[ -n "$CONTROL_VECTOR_SCALE" ]]; then
+        CMD_ARGS+=("--control-vector-scaled" "$CONTROL_VECTOR" "$CONTROL_VECTOR_SCALE")
+    else
+        CMD_ARGS+=("--control-vector" "$CONTROL_VECTOR")
+    fi
+    if [[ -n "$CONTROL_VECTOR_LAYER_RANGE" ]]; then
+        # Intentionally unquoted: the value is "START END", two arguments
+        CMD_ARGS+=("--control-vector-layer-range" $CONTROL_VECTOR_LAYER_RANGE)
+    fi
 fi
 
 echo "[HUGEPAGES] Launch command:"

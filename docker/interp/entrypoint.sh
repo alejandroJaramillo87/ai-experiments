@@ -22,7 +22,7 @@ print_run()   { printf "${BLUE}[RUN]${NC} %s\n" "$*"; }
 # HF_HOME so model weights land on NVMe once and never in the image or the repository.
 INTERP_ROOT=/mnt/ai-data/interp
 if [[ -d "$(dirname "$INTERP_ROOT")" ]]; then
-    mkdir -p "$INTERP_ROOT"/{activations,saes,probes,vectors,neuronpedia,hf-cache,arena}
+    mkdir -p "$INTERP_ROOT"/{activations,saes,probes,vectors,neuronpedia,hf-cache,logs,monitor}
 else
     print_warn "/mnt/ai-data not mounted: storage bootstrap skipped"
 fi

@@ -9,7 +9,7 @@
 # hand-pinned lines here: torch is pinned to the cu130 index in pyproject.toml
 # [tool.uv.sources], so any interp package that would downgrade torch fails `uv lock`
 # loudly instead of silently regressing the sm_120 build (the roadmap's anti-downgrade rule,
-# enforced structurally). ARENA chapter requirements are folded into the interp group for the
+# enforced structurally). Notebook-support packages are folded into the interp group for the
 # same reason; notebooks never pip-install inside a running container.
 #
 # Base is the CUDA 13.0.2 runtime image, not devel: the interp stack is pure Python plus
