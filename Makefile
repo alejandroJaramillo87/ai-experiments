@@ -130,6 +130,11 @@ train-tokenizer: ## Train a byte-level BPE tokenizer (Phase 0 D3): make train-to
 train-validate: ## Validate a recipe (Phase 0 D5): make train-validate CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="optimizer.lr=1e-4"
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/validate_recipe.py $(CONFIG) $(ARGS)
 
+memfit: ## Estimate VRAM fit for a recipe (Phase 0 D4): make memfit CONFIG=training/recipes/reference/pretrain-1b.yaml ARGS="--solve batch"
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training memfit --config $(CONFIG) $(ARGS)
+
+train-calibrate: ## Measure real peak VRAM for a recipe (Phase 0 D4, GPU): make train-calibrate CONFIG=... ARGS="--out record.json"
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training calibrate --config $(CONFIG) $(ARGS)
 ##@ Interpretability (interp Phase 0 I1 - separate compose file; GPU inference must be down)
 
 INTERP_COMPOSE := docker-compose.interp.yaml
