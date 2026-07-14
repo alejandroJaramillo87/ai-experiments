@@ -22,6 +22,12 @@ services:
     cap_drop:
       - ALL
     read_only: true
+    # Secrets (WANDB_API_KEY, HF_TOKEN) from an untracked per-tier file; template
+    # is env.training.example (roadmap D6). Optional: public models and offline
+    # tracking need no secrets.
+    env_file:
+      - path: .env.training
+        required: false
     environment:
       - NVIDIA_VISIBLE_DEVICES=0
       - CUDA_VISIBLE_DEVICES=0

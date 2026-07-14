@@ -137,6 +137,9 @@ memfit: ## Estimate VRAM fit for a recipe (Phase 0 D4): make memfit CONFIG=train
 
 train-calibrate: ## Measure real peak VRAM for a recipe (Phase 0 D4, GPU): make train-calibrate CONFIG=... ARGS="--out record.json"
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training calibrate --config $(CONFIG) $(ARGS)
+
+train: ## Run the reference training loop (Phase 0 D6): make train CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="checkpoint.resume=latest"
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train --config $(CONFIG) $(ARGS)
 ##@ Interpretability (interp Phase 0 I1 - separate compose file; GPU inference must be down)
 
 INTERP_COMPOSE := docker-compose.interp.yaml

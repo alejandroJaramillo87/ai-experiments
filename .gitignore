@@ -15,6 +15,7 @@ venv/
 .env.*.local
 # Per-tier secrets (HF_TOKEN etc.); templates are env.<tier>.example
 .env.interp
+.env.training
 
 # Interp workbench: ARENA clone bind-mounted inside the Jupyter root (lives on NVMe)
 interp/notebooks/arena/
