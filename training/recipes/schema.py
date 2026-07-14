@@ -13,7 +13,8 @@ OmegaConf.merge directly and needs no Hydra app. Cross-field invariants that
 types cannot express live in training/recipes/validate.py.
 
 Fields for consumers that are not built yet (precision.fp8, watchdog) ship now
-so the contract is stable; their validation is stubbed until D8/D10 land.
+so the contract is stable; their validation is stubbed until D8/D10 land. The
+D9 blocks (data loader fields, staging, affinity) are consumed by the loop.
 """
 
 from __future__ import annotations
@@ -80,6 +81,33 @@ class DataConfig:
     grad_accum: int = 1
     workers: int = 2
     pin_memory: bool = True
+    prefetch_factor: int = 2  # batches queued per worker (D9); used when workers > 0
+
+
+@dataclass
+class StagingConfig:
+    """RAM-disk shard staging (D9). Copies the shard set to a tmpfs mount
+    before the run when it fits under max_gb; falls back to NVMe mmap
+    otherwise. Exists for controlled experiments and multi-epoch small
+    corpora — the 128GB page cache usually makes NVMe reads RAM-speed."""
+
+    enabled: bool = False
+    dir: str = "/staging"  # tmpfs mount in docker-compose.training.yaml
+    max_gb: float = 32.0
+
+
+@dataclass
+class AffinityConfig:
+    """CCD/L3 core pinning for the 9950X (D9), not NUMA pinning: one NUMA
+    node, two CCDs with separate L3 (cores 0-7 and 8-15). Main process
+    (GPU-feeding thread plus CUDA runtime) on one CCD, dataloader workers on
+    the other. SMT siblings (16-31) follow their physical cores when
+    include_smt is set. Off by default; parked unless it measurably helps."""
+
+    enabled: bool = False
+    main: str = "0-7"     # cpu list for the main training process
+    workers: str = "8-15"  # cpu list for dataloader workers
+    include_smt: bool = True  # extend each mask with its SMT siblings
 
 
 @dataclass
@@ -158,6 +186,8 @@ class Recipe:
     checkpoint: CheckpointConfig = field(default_factory=CheckpointConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     watchdog: WatchdogConfig = field(default_factory=WatchdogConfig)
+    staging: StagingConfig = field(default_factory=StagingConfig)
+    affinity: AffinityConfig = field(default_factory=AffinityConfig)
 
 
 def register_schema() -> None:

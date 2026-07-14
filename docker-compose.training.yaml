@@ -44,6 +44,8 @@ services:
     tmpfs:
       - /tmp:size=8G,mode=1777,exec  # Triton/CUDA JIT caches require exec
       - /app/cache:size=2G,mode=1777  # HuggingFace cache (HF_HOME)
+      # RAM-disk shard staging (roadmap D9): sized to match staging.max_gb
+      - /staging:size=${TRAIN_STAGING_GB:-32}G,mode=1777
     volumes:
       # Base models mounted read-only, exactly as the inference services mount them
       - /mnt/ai-data/models/:/app/models:ro
