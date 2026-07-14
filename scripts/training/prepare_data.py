@@ -3,13 +3,13 @@
 
 Thin CLI over training/data/prepare.py. Examples:
 
-  python scripts/train/prepare_data.py \
+  python scripts/training/prepare_data.py \
       --source HuggingFaceFW/fineweb-edu --split train \
       --tokenizer /mnt/ai-data/training/tokenizers/base \
       --out /mnt/ai-data/training/shards/fineweb-edu-10B \
       --max-tokens 10_000_000_000 --num-proc 30
 
-  python scripts/train/prepare_data.py \
+  python scripts/training/prepare_data.py \
       --source ./data.jsonl --text-field text \
       --tokenizer HuggingFaceTB/SmolLM2-135M \
       --out /mnt/ai-data/training/shards/local-test

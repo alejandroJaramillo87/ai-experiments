@@ -45,6 +45,7 @@ services:
       - /mnt/ai-data/training:/mnt/ai-data/training:rw
       # Repository sources (recipes, training package, scripts) mounted live for iteration
       - ./scripts:/app/scripts:ro
+      - ./training:/app/training:ro
       - ./logs/training:/app/logs
     networks:
       - training-network

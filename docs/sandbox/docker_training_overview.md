@@ -6,7 +6,7 @@ reproducible GPU environment where the training tier runs. It builds PyTorch cu1
 verifies every CUDA-compiled path at build time through a smoke test.
 
 > Note: This document explains the actual implementation in `docker/training/Dockerfile.training`,
-> `docker/training/entrypoint.sh`, `scripts/train/smoke_test.py`, and
+> `docker/training/entrypoint.sh`, `scripts/training/smoke_test.py`, and
 > `docker-compose.training.yaml`. Those files are the source of truth; this document follows
 > them.
 
@@ -63,7 +63,7 @@ The build:
    `CFLAGS="-march=znver5"`, falling back to `-march=native` if the image gcc rejects znver5.
    This front-loads the AVX-512 miscompilation risk (upstream DeepSpeed issue 7556) to build
    time, where the smoke test catches it.
-5. Creates the non-root `appuser`, copies `scripts/train`, and runs the smoke test with `--build`
+5. Creates the non-root `appuser`, copies `scripts/training`, and runs the smoke test with `--build`
    so that a regression fails the build.
 
 `TORCH_CUDA_ARCH_LIST="12.0"` targets the RTX 5090 Blackwell sm_120 architecture, matching the
@@ -71,7 +71,7 @@ inference GPU images.
 
 ## Smoke test
 
-`scripts/train/smoke_test.py` verifies the stack imports and that the CUDA-compiled paths run.
+`scripts/training/smoke_test.py` verifies the stack imports and that the CUDA-compiled paths run.
 It has two modes: `--build` (build-time; CUDA asserts degrade to `[SKIP]` on a GPU-less build
 host) and the default (`make train-smoke` on the workstation; CUDA capability `(12, 0)` is
 enforced). The seven steps:
@@ -123,7 +123,7 @@ Training and inference must not run at the same time: one GPU consumer at a time
 - `docker/training/Dockerfile.training` — multi-stage-capable devel-base training image.
 - `docker/training/entrypoint.sh` — thin entrypoint: environment echo, optional LD_PRELOAD hook,
   `exec`.
-- `scripts/train/smoke_test.py` — seven-step stack verification and versions manifest.
+- `scripts/training/smoke_test.py` — seven-step stack verification and versions manifest.
 - `docker-compose.training.yaml` — separate-file service definition with GPU reservation and the
   writable training root.
 - `pyproject.toml` — the `training` dependency group and the `flash-attn` build dependency.
