@@ -169,8 +169,8 @@ Check published builds at https://pytorch.org/get-started/locally/.
 ## System CUDA and PyTorch CUDA compatibility
 
 The system CUDA version and the PyTorch CUDA build do not need to match exactly. CUDA is
-backward compatible: a system running CUDA 13.1 runs wheels built for CUDA 13.0. The
-current environment pairs a system CUDA 13.1 toolkit with the cu130 PyTorch wheels, and
+backward compatible: a system running CUDA 13.0.88 runs wheels built for CUDA 13.0. The
+current environment pairs a system CUDA 13.0.88 toolkit with the cu130 PyTorch wheels, and
 the cu130 wheels run without modification.
 
 ## Troubleshooting
@@ -192,7 +192,7 @@ $ uv sync --all-groups --all-extras
 The system reports one CUDA version and PyTorch reports another.
 
 This is expected and safe under CUDA backward compatibility. A cu130 build runs on a
-system CUDA 13.1 toolkit.
+system CUDA 13.0.88 toolkit.
 
 ### GPU not detected after update
 

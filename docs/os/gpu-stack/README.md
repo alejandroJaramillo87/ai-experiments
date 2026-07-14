@@ -24,7 +24,7 @@ Understanding the NVIDIA GPU software stack that powers our AI experiments works
 
 ## Overview
 
-Our AI inference workstation achieves **286.85 tokens/second** on the RTX 5090 through a configured GPU software stack. This documentation explains each layer of the stack and how they work together for AI computing.
+The AI inference workstation runs high-throughput GPU inference on the RTX 5090 through a configured GPU software stack. This documentation explains each layer of the stack and how they work together for AI computing.
 
 ## The Three-Layer Stack
 
@@ -113,8 +113,8 @@ scripts/setup/setup_cudnn.sh
 
 ### Real Impact on Our Workload
 
-- **Without GPU stack**: ~35 tokens/sec (CPU only)
-- **With complete stack**: ~287 tokens/sec (8x faster)
+- **Without GPU stack**: CPU-only inference
+- **With complete stack**: High-throughput GPU inference
 - **Memory efficiency**: Can load 20B parameter models entirely in VRAM
 - **Batch processing**: Optimal batch size of 2048 tokens
 
@@ -163,10 +163,7 @@ After installation, verify performance:
 
 ```bash
 # Run GPU benchmark
-scripts/benchmark.py --service llama-gpu --label "gpu_test"
-
-# Expected performance
-# ~287 tokens/second with optimal configuration
+scripts/benchmark/benchmark_gpu.sh
 ```
 
 ## Architecture-Specific Features

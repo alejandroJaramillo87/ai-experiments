@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   llama-cpu:
     security_opt:
@@ -93,7 +91,7 @@ services:
   # Note: No memlock/IPC_LOCK needed - vLLM uses pure GPU inference (PagedAttention in VRAM)
   vllm-gpu:
     init: true  # Use tini as PID 1 for proper signal forwarding (required for nsys)
-    # user: "${UID:-1000}:${GID:-1000}"  # Match host user for volume write access (nsys)
+    user: "${UID:-1000}:${GID:-1000}"  # Match host user for volume write access (nsys)
     security_opt:
       - no-new-privileges:true
     cap_drop:

@@ -212,9 +212,6 @@ Attention          45ms                8ms               5.6x
 Layer Norm         12ms                2ms               6.0x
 GELU Activation    8ms                 1ms               8.0x
 Total per Layer    65ms                11ms              5.9x
-
-Result: 286.85 tokens/second with cuDNN
-        ~48 tokens/second without cuDNN
 ```
 
 ### Flash Attention Impact
@@ -272,8 +269,6 @@ Token Generation Pipeline:
 │       └── cuDNN element-wise ops
 └── Output Projection
     └── cuBLAS/cuDNN hybrid
-
-Total: 3.5ms per token (286.85 tokens/second)
 ```
 
 ## Optimization Techniques
@@ -473,7 +468,6 @@ RTX 5090
 | **Layer Normalization** | 12ms | 2ms | 6.0x |
 | **Activation Functions** | 8ms | 1ms | 8.0x |
 | **Convolution (if used)** | 25ms | 3ms | 8.3x |
-| **Overall Inference** | ~48 tok/s | **286.85 tok/s** | **6.0x** |
 
 ## Next Steps
 
@@ -483,4 +477,4 @@ RTX 5090
 
 ---
 
-*cuDNN is the secret sauce that transforms raw CUDA operations into highly optimized deep learning computations. It's the difference between 48 tokens/second and our local inference performance of 286.85 tokens/second.*
+cuDNN provides optimized primitives for deep learning operations on top of raw CUDA, reducing per-operation latency for GPU inference.

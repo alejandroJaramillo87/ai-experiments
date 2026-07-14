@@ -43,7 +43,7 @@ exec ./server \
 **Runtime Parameters (entrypoint.sh)**:
 ```bash
 # Environment variable configuration with defaults
-SERVER_PORT=${SERVER_PORT:-8004}
+SERVER_PORT=${SERVER_PORT:-8002}
 MODEL_PATH=${MODEL_PATH:-"/app/models/gguf/gpt-oss-20b-GGUF/gpt-oss-20b-UD-Q8_K_XL.gguf"}
 N_GPU_LAYERS=${N_GPU_LAYERS:-999}
 CTX_SIZE=${CTX_SIZE:-65536}
@@ -68,7 +68,7 @@ BATCH_SIZE=1024 UBATCH_SIZE=1024 docker-compose up llama-gpu
 ### Threading Parameters
 
 **`--threads` / `--threads-batch`**
-- **CPU**: 12 threads to match available cores (0-11)
+- **CPU**: 16 threads to match available cores (0-15)
 - **GPU**: 1 thread (GPU handles parallelism internally)
 - **Purpose**: Balance CPU utilization without oversubscription
 - **Trade-off**: More threads = higher throughput but potential latency variance
@@ -180,26 +180,22 @@ The following parameters were tested during optimization:
 - **Requirement**: Needs draft model
 - **Test priority**: Medium (requires additional setup)
 
-## Optimization Findings (September 2025 Testing)
+## Optimization Notes
 
-### CPU Service - Benchmark Results
-**Batch Size Testing** (on AMD Ryzen 9950X):
-- **Batch 512**: 34.79 tokens/sec (worse)
-- **Batch 2048**: 35.44 tokens/sec (OPTIMAL)
-- **Batch 4096**: 34.95 tokens/sec (slightly worse)
-
-**Key Finding**: The original batch size of 2048 is optimal for CPU inference. Smaller batches hurt performance due to inefficient vectorization, while larger batches cause cache thrashing.
+No benchmark has been run on this workstation. The batch size of 2048 is the
+configured default (`BATCH_SIZE=2048` in `entrypoint.cpu.sh`); the sections
+below list tuning candidates, not measured results.
 
 ### CPU Service Recommendations
-1. **Keep batch size at 2048** - Testing confirmed this is optimal
-2. **Keep `--cont-batching`** - Removing it didn't improve single-request performance
+1. **Batch size 2048** - Current configured default; benchmark before changing
+2. **`--cont-batching`** - Enabled by default on the CPU service
 3. **Consider `--cpu-mask`** for more precise core binding (untested)
-4. **Keep current thread configuration** (12 threads matching allocated cores)
+4. **Keep current thread configuration** (16 threads matching allocated cores)
 
-### GPU Service Optimization Complete
-1. **Batch size testing**: 2048/512 confirmed optimal (286.85 tok/s)
-2. **Configuration flexibility**: Now uses environment variables for easy tuning
-3. **Performance validated**: 95% GPU utilization with current settings
+### GPU Service Configuration
+1. **Batch size**: 2048/512 configured default (batch/ubatch)
+2. **Configuration flexibility**: Uses environment variables for tuning without rebuilding
+3. **Performance**: Not yet benchmarked on this workstation
 
 ### Cross-Service Questions
 1. **Why different HTTP thread counts?** (2 vs 4)
@@ -207,20 +203,20 @@ The following parameters were tested during optimization:
 3. **Optimal context sizes** for each workload?
 4. **Batch size optimization** for latency vs memory trade-off
 
-## Benchmarking Completed
+## Benchmarking Plan
+
+No benchmark has been run on this workstation. The items below describe the
+intended test matrix, not completed results.
 
 ### CPU Service (llama-cpu)
-- **Base configuration** (batch 2048) - 35.44 tokens/sec ✓
-- **Small batch size** (batch 512) - 34.79 tokens/sec (worse)
-- **Large batch size** (batch 4096) - 34.95 tokens/sec (worse)
-- **Cache optimizations** (--kv-split, --cache-reuse) - Parameters don't exist
-- **Single-request optimizations** (--parallel, --no-mmap, no --cont-batching) - No improvement
+- **Batch size sweep** (512, 2048, 4096) - Compare generation speed
+- **Cache parameters** (`--kv-split`, `--cache-reuse`) - `--kv-split` is not a valid server flag
+- **Single-request options** (`--parallel`, `--no-mmap`, no `--cont-batching`)
 
 ### GPU Service (llama-gpu)
-- **Optimal configuration** (batch 2048, ubatch 512) - 286.85 tokens/sec ✓
-- **Various batch/ubatch combinations tested** - 2048/512 performs best
-- **Environment variables** - Now easily configurable without rebuilding
-- **GPU utilization** - 95 percent with 15.3GB VRAM usage
+- **Batch/ubatch sweep** - Compare 2048/512 against alternatives
+- **Environment variables** - Configurable without rebuilding
+- **GPU utilization and VRAM usage** - Measure under load
 
 ### Metrics to Track
 - **First-token latency** (ms)
@@ -232,7 +228,7 @@ The following parameters were tested during optimization:
 ## Hardware-Specific Considerations
 
 ### AMD Zen 5 Optimizations
-- **12 cores available** (0-11 via cpuset)
+- **16 cores available** (0-15 via cpuset)
 - **AVX-512 instruction set** (enabled in compilation)
 - **L3 cache optimization** (32MB shared)
 - **NUMA considerations** (single socket)

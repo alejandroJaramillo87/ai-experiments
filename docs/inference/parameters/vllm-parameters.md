@@ -38,38 +38,31 @@ Prefix caching and chunked prefill are default-on in the vLLM V1 engine, so the 
 
 **`--gpu-memory-utilization`**
 - **Current**: 0.85 (85 percent of 32GB VRAM)
-- **Recommended**: 0.99 (99 percent utilization for maximum performance)
 - **Purpose**: Control VRAM allocation for KV cache
-- **Improvement needed**: Increase to 0.99 for better throughput
+- **Tuning**: Raising toward 0.99 allocates more KV cache; benchmark before changing
 
 ### Sequence and Batching Configuration
 
 **`--max-num-seqs`**
-- **Current**: 512 concurrent sequences
+- **Current**: 256 concurrent sequences
 - **Purpose**: Maximum number of simultaneous requests
 - **Trade-off**: More sequences = higher throughput, more memory usage
 
 **`--max-num-batched-tokens`**
-- **Current**: 65536 tokens per batch
+- **Current**: 32768 tokens per batch
 - **Purpose**: Maximum tokens processed in single batch
 - **Optimization**: Large batches for GPU efficiency
 
 **`--max-model-len`**
-- **Current**: 32768 (32K context)
+- **Current**: 16384 (16K context)
 - **Purpose**: Maximum context length per sequence
 - **Note**: Balanced for throughput vs memory
 
 ### Memory and Caching Optimizations
 
-**`--enable-prefix-caching`**
-- **Status**: Enabled
-- **Purpose**: Cache common prompt prefixes
-- **Benefit**: Faster processing for repeated patterns
-
-**`--enable-chunked-prefill`**
-- **Status**: Enabled
-- **Purpose**: Split large prefill operations into chunks
-- **Benefit**: Better batching efficiency
+**Prefix caching and chunked prefill**
+- **Status**: Default-on in the vLLM V1 engine
+- **Note**: The legacy `--enable-prefix-caching` and `--enable-chunked-prefill` flags are not passed by the entrypoint; the V1 engine enables both by default
 
 **`--kv-cache-dtype`**
 - **Current**: "auto" (automatic selection)
@@ -84,14 +77,14 @@ Prefix caching and chunked prefill are default-on in the vLLM V1 engine, so the 
 - **Note**: Automatic selection based on model
 
 **`--quantization`**
-- **Current**: "fp8"
+- **Current**: Unset (no quantization applied by default)
 - **Purpose**: FP8 quantization for memory efficiency
-- **Benefit**: Approximately 2x memory savings with minimal quality loss on RTX 5090
+- **Note**: Opt-in per model via the `QUANTIZATION` env var (for example `QUANTIZATION=fp8`); FP8 is native on the RTX 5090
 
 **`--trust-remote-code`**
-- **Status**: Enabled
+- **Status**: Disabled by default (`TRUST_REMOTE_CODE=false`)
 - **Purpose**: Allow custom model code execution
-- **Required**: For many modern models
+- **Note**: Opt-in per model via `TRUST_REMOTE_CODE=true`; enable only for trusted sources
 
 ## Missing Parameters to Research
 
@@ -101,7 +94,7 @@ Based on 2025 vLLM documentation, we should consider:
 
 **`--max-seq-len-to-capture`**
 - **Purpose**: Maximum sequence length for Hip-graphs
-- **Recommended**: Set to max-model-len (32768) for best performance
+- **Recommended**: Set to max-model-len (16384) to match the configured context
 - **Priority**: High
 
 **`--num-scheduler-steps`**
@@ -143,7 +136,7 @@ Based on 2025 vLLM documentation, we should consider:
 
 ### Immediate Improvements
 1. **Increase `--gpu-memory-utilization`** from 0.85 to 0.99
-2. **Add `--max-seq-len-to-capture=32768`** for Hip-graphs
+2. **Add `--max-seq-len-to-capture=16384`** to match the configured context
 3. **Test `--quantized-kv-cache`** for memory efficiency
 4. **Configure `--swap-space`** for overflow handling
 
@@ -168,31 +161,38 @@ Based on 2025 vLLM documentation, we should consider:
 - **Status**: Active and operational
 
 ### Active Optimizations
-These optimizations are enabled in the current deployment:
+The following CUDA environment variables are set in
+`docker/vllm-gpu/Dockerfile.vllm-gpu`:
 
-**Container Runtime Optimizations**:
 ```bash
-# Memory Pool Optimizations
 ENV CUDA_CACHE_MAXSIZE=2147483648
-ENV CUDA_ALLOCATOR_BACKEND=cudaMallocAsync
-ENV CUDA_MALLOC_ASYNC_POOLS=1
-
-# Tensor Core Optimizations
-ENV CUDA_TENSOR_CORES=1
-ENV CUBLAS_WORKSPACE_CONFIG=:4096:8
-ENV CUDNN_TENSOR_OPS=1
-
-# Blackwell Architecture Specific
-ENV CUDA_L2_PERSISTING_SIZE=100663296
-ENV CUDA_DEVICE_MAX_CONNECTIONS=32
-ENV CUDA_COPY_SPLIT_THRESHOLD=256
+ENV CUDA_MODULE_LOADING=LAZY
+ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
+ENV CUDA_LAUNCH_BLOCKING=0
 ```
 
-### Benefits of CUDA 13
-- **Memory allocation**: 30 percent reduction in overhead
-- **Tensor cores**: 40 percent improvement in GEMM operations
-- **FP8 support**: Up to 2x throughput for compatible models
-- **L2 cache**: 10% memory bandwidth improvement
+### Experimental Optimizations (not currently enabled)
+The following variables are present in the Dockerfile but commented out. They
+require benchmarking before enabling:
+
+```bash
+# ENV CUDA_ALLOCATOR_BACKEND=cudaMallocAsync
+# ENV CUDA_MALLOC_ASYNC_POOLS=1
+# ENV CUDA_TENSOR_CORES=1
+# ENV CUBLAS_WORKSPACE_CONFIG=:4096:8
+# ENV CUDNN_TENSOR_OPS=1
+# ENV CUDA_L2_PERSISTING_SIZE=100663296
+# ENV CUDA_DEVICE_MAX_CONNECTIONS=32
+# ENV CUDA_COPY_SPLIT_THRESHOLD=256
+```
+
+### Features of CUDA 13
+- **Async memory allocation**: Available via cudaMallocAsync (experimental)
+- **Tensor cores**: GEMM acceleration on Blackwell
+- **FP8 support**: Native FP8 tensor cores on RTX 5090
+- **L2 cache**: 96MB persisting cache on RTX 5090
+
+No benchmark has been run to quantify these on this workstation.
 
 ## Benchmarking Plan
 
