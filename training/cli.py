@@ -3,8 +3,8 @@
 python -m training <subcommand> is the single entry point for training
 tooling. Phase 0 D4 ships the first subcommands (memfit, calibrate); the
 existing scripts/training/ entry points migrate here as thin subcommands in a
-follow-up. The D6 trainer stays outside this dispatcher if it adopts
-hydra.main, which owns argv.
+follow-up. The D6 trainer runs as the train subcommand (resolved D6 design
+decision 1); the D5 loader owns override handling, so hydra.main is not used.
 
 Exit codes: 0 success, 1 load/validation/runtime failure, 2 invalid usage.
 Output follows .styles/PYTHON_OUTPUT_STYLE.md; --json emits only JSON.
@@ -25,7 +25,12 @@ from training.calculator.solve import (
     estimate,
     solve,
 )
-from training.recipes import RecipeLoadError, RecipeValidationError, load_recipe, validate
+from training.recipes import (
+    RecipeLoadError,
+    RecipeValidationError,
+    load_recipe,
+    validate,
+)
 
 
 class Printer:
@@ -189,6 +194,39 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     return 0 if within and not record.reserved_underpredicts_nvml else 1
 
 
+def cmd_train(args: argparse.Namespace) -> int:
+    from training.loop import train
+
+    out = Printer(quiet=args.json)
+    recipe = _load_validated(args.config, args.overrides, out)
+    if recipe is None:
+        return 1
+    resume = recipe.checkpoint.resume
+    verb = f"Resuming ({resume})" if resume else "Training"
+    out.run(f"{verb} {recipe.run.name}: {recipe.schedule.total_steps} total steps")
+    try:
+        result = train(recipe)
+    except (RuntimeError, FileNotFoundError, ValueError) as exc:
+        out.error(f"Training failed: {exc}")
+        out.line("  Solution: check the recipe's data.source shards and checkpoint settings")
+        return 1
+    out.ok(f"Run complete: step {result.final_step}, "
+           f"{result.tokens_seen:,} tokens seen")
+    if result.losses:
+        out.line(f"Final loss: {result.losses[-1][1]:.6f}")
+    out.line(f"Run directory: {result.run_dir}")
+    out.line(f"Checkpoints:   {result.checkpoint_root}")
+    if args.json:
+        print(json.dumps({
+            "run_dir": result.run_dir,
+            "checkpoint_root": result.checkpoint_root,
+            "final_step": result.final_step,
+            "tokens_seen": result.tokens_seen,
+            "losses": result.losses,
+        }, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m training",
@@ -217,6 +255,15 @@ def build_parser() -> argparse.ArgumentParser:
     cal.add_argument("--json", action="store_true",
                      help="emit only the record JSON on stdout")
     cal.set_defaults(func=cmd_calibrate)
+
+    tr = sub.add_parser(
+        "train", help="run the reference training loop for a recipe (D6)")
+    tr.add_argument("--config", required=True, help="path to a recipe YAML")
+    tr.add_argument("overrides", nargs="*",
+                    help="dotlist overrides, e.g. checkpoint.resume=latest")
+    tr.add_argument("--json", action="store_true",
+                    help="emit a result JSON on stdout after the run")
+    tr.set_defaults(func=cmd_train)
     return parser
 
 

@@ -9,11 +9,11 @@ the NVML peak.
 
 The loop here is deliberately private to calibration: a few optimizer steps
 over synthetic batches, no checkpointing, tracking, or resume. It is not the
-D6 reference trainer; when D6 lands, calibration adopts its loop.
+D6 reference trainer (training/loop.py), which owns those facilities.
 
-The model is built through HF LlamaConfig + AutoModelForCausalLM.from_config
-(resolved design decision 2) so the measured model is exactly what training
-runs instantiate; the built model's true parameter count is recorded so any
+The model is built through the shared builders in training/model.py (HF
+LlamaConfig + AutoModelForCausalLM.from_config, resolved design decision 2)
+so the measured model is exactly what training runs instantiate; the built model's true parameter count is recorded so any
 drift from the analytic param_count is caught immediately.
 
 GPU-only; torch is imported lazily so the CPU sandbox can import this module.
@@ -27,8 +27,15 @@ from dataclasses import asdict, dataclass
 
 from omegaconf import DictConfig
 
-from training.calculator.components import ArchitectureSpec, spec_from_recipe
+from training.calculator.components import spec_from_recipe
 from training.calculator.solve import Estimate, estimate
+from training.model import (
+    build_optimizer,  # noqa: F401  (re-export; extracted in D6)
+    build_scratch_model,
+)
+
+# Backward-compatible alias: calibrate.build_model predates the shared module
+build_model = build_scratch_model
 
 DEFAULT_STEPS = 5
 
@@ -50,46 +57,6 @@ class CalibrationRecord:
 
     def as_dict(self) -> dict:
         return asdict(self)
-
-
-def build_model(spec: ArchitectureSpec, recipe: DictConfig):
-    """Instantiate the recipe's scratch architecture as an HF Llama model."""
-    import torch
-    from transformers import AutoModelForCausalLM, LlamaConfig
-
-    scratch = recipe.model.scratch
-    config = LlamaConfig(
-        num_hidden_layers=spec.layers,
-        hidden_size=spec.hidden,
-        num_attention_heads=spec.heads,
-        num_key_value_heads=spec.kv_heads,
-        intermediate_size=spec.ffn,
-        vocab_size=spec.vocab,
-        tie_word_embeddings=spec.tie_embeddings,
-        rope_theta=scratch.rope_theta if scratch is not None else 10000.0,
-        max_position_embeddings=recipe.data.seq_len,
-        attn_implementation="flash_attention_2")
-    dtype = torch.bfloat16 if recipe.precision.dtype == "bf16" else torch.float32
-    model = AutoModelForCausalLM.from_config(config, dtype=dtype)
-    if recipe.memory.gradient_checkpointing:
-        model.gradient_checkpointing_enable()
-    return model
-
-
-def build_optimizer(model, recipe: DictConfig):
-    import torch
-
-    params = model.parameters()
-    kwargs = dict(
-        lr=recipe.optimizer.lr, betas=tuple(recipe.optimizer.betas),
-        eps=recipe.optimizer.eps, weight_decay=recipe.optimizer.weight_decay)
-    if recipe.optimizer.name == "adamw":
-        return torch.optim.AdamW(params, **kwargs)
-    if recipe.optimizer.name == "adamw8bit":
-        import bitsandbytes as bnb
-
-        return bnb.optim.AdamW8bit(params, **kwargs)
-    raise ValueError(f"Calibration has no optimizer for '{recipe.optimizer.name}'")
 
 
 def _nvml_used_bytes() -> int:
@@ -118,7 +85,7 @@ def calibrate(recipe: DictConfig, steps: int = DEFAULT_STEPS) -> CalibrationReco
     torch.manual_seed(recipe.run.seed)
     torch.cuda.reset_peak_memory_stats(device)
 
-    model = build_model(spec, recipe).to(device)
+    model = build_scratch_model(spec, recipe).to(device)
     if recipe.memory.compile:
         model = torch.compile(model)
     optimizer = build_optimizer(model, recipe)
