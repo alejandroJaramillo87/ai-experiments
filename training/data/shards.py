@@ -212,6 +212,13 @@ class ShardedTokenDataset:
             index -= n
         raise IndexError(index)   # unreachable; bounds checked above
 
+    def cursor_index(self, shard: int, offset: int) -> int:
+        """Flat window index for a (shard, offset) cursor — lets the D9
+        index-based loader resume from a pre-D9 checkpoint's cursor."""
+        if not 0 <= shard <= len(self._windows_per_shard):
+            raise ValueError(f"cursor shard {shard} out of range")
+        return sum(self._windows_per_shard[:shard]) + offset
+
     def next_window(self) -> np.ndarray | None:
         """Return the next window and advance the cursor; None when exhausted."""
         while self._shard < len(self._mmaps):

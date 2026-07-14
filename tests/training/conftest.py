@@ -13,6 +13,13 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+
+@pytest.fixture(autouse=True)
+def train_lock_path(tmp_path, monkeypatch):
+    """Point the D9 run lock at a per-test path: the sandbox has no
+    /mnt/ai-data, and tests must not contend on a shared lock."""
+    monkeypatch.setenv("TRAIN_LOCK_PATH", str(tmp_path / ".train.lock"))
+
 DOCUMENTS = [
     "the quick brown fox jumps over the lazy dog",
     "pack my box with five dozen liquor jugs",

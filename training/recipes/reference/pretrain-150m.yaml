@@ -27,6 +27,21 @@ data:
   grad_accum: 4
   workers: 4
   pin_memory: true
+  prefetch_factor: 2
+
+# D9 heterogeneous-compute knobs, explicit so the reference acceptance run is
+# reproducible from the recipe alone. Both off: NVMe + page cache is already
+# RAM-speed, and affinity stays parked unless it measurably helps.
+staging:
+  enabled: false
+  dir: /staging
+  max_gb: 32.0
+
+affinity:
+  enabled: false
+  main: "0-7"
+  workers: "8-15"
+  include_smt: true
 
 tokenizer:
   path: /mnt/ai-data/training/tokenizers/smollm2
