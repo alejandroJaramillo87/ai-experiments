@@ -14,7 +14,7 @@ investigation records the repository state and treats the document as advisory.
 - [Work breakdown](#work-breakdown)
 - [Acceptance checks](#acceptance-checks)
 - [Risks](#risks)
-- [Open questions](#open-questions)
+- [Resolved decisions](#resolved-decisions)
 
 ## Design summary
 
@@ -186,20 +186,20 @@ Per the document, mapped to the repository:
   shift the schedule; `meta.json` records the recipe snapshot hash and resume warns
   on mismatch.
 
-## Open questions
+## Resolved decisions
+
+Confirmed with the repository owner during this investigation:
 
 1. **Entry point**: `python -m training train` subcommand (consistent with `memfit`/
-   `calibrate`, argparse-based) or a separate `hydra.main` script as `training/cli.py`
-   reserved? Default assumption: subcommand, reusing `_load_validated`; Hydra's
-   own run-dir/argv management is not needed since D5's loader handles overrides.
-2. **Checkpoint location**: inside the D5 run directory
-   (`/mnt/ai-data/training/runs/<run>/checkpoints/`) or the document's separate
-   `/mnt/ai-data/training/checkpoints/<run>/`? Default assumption: inside the run
-   directory, keeping one tree per run; D7 consumes a path either way.
-3. **Builder reuse**: move `build_model`/`build_optimizer` from
-   `training/calculator/calibrate.py` to a shared module (e.g. `training/model.py`)
-   consumed by both the calibrator and the loop, or duplicate? Default assumption:
-   extract to a shared module; the calibrator keeps its public behavior.
-4. **`flash_attention_2` in `build_model`** is hardcoded and CPU-incompatible; the
-   loop needs an attention-implementation fallback (`sdpa` on CPU) for the sandbox
-   resume test. Change the shared builder or override per-caller?
+   `calibrate`, argparse-based), reusing `_load_validated`. Hydra's own run-dir/argv
+   management is not needed since D5's loader handles overrides.
+2. **Checkpoint location**: inside the D5 run directory,
+   `/mnt/ai-data/training/runs/<run>/checkpoints/`, keeping one tree per run. The
+   document's separate `/mnt/ai-data/training/checkpoints/<run>/` path is superseded;
+   D7 consumes a path either way.
+3. **Builder reuse**: extract `build_model`/`build_optimizer` from
+   `training/calculator/calibrate.py` into a shared module (`training/model.py`)
+   consumed by both the calibrator and the loop; the calibrator keeps its public
+   behavior. The shared builder gains an attention-implementation fallback
+   (`sdpa` when CUDA or flash-attn is unavailable) so the sandbox resume test runs
+   on CPU; the hardcoded `flash_attention_2` remains the CUDA default.
