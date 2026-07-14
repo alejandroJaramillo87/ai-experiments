@@ -1,0 +1,64 @@
+# docker/interp/neuronpedia.override.yaml
+#
+# Interp Phase 2 PS1: this repository's deltas over the upstream Neuronpedia compose files.
+# Passed with -f AFTER upstream's files by the np-* make targets; it carries only port
+# remaps, storage bind mounts, and one network attachment. Everything else (service
+# definitions, images, healthchecks, inter-service wiring) stays upstream's.
+#
+# Port block (all loopback-only, matching the inference services' pattern):
+#   webapp 3001 (3000 collides with open-webui), postgres 5432, inference 5002,
+#   autointerp 5003, graph 5004. graph-crm (5005) is not deployed.
+#
+# The localhost trust model (sign-in disabled, static shared secrets) is acceptable only
+# because every port binds to 127.0.0.1; scripts/interp/np_smoke.sh fails loudly if any
+# mapping loses the loopback prefix.
+
+services:
+  webapp:
+    ports: !override
+      - "127.0.0.1:3001:3000"
+
+  postgres:
+    ports: !override
+      - "127.0.0.1:5432:5432"
+    # Bind mount replaces the upstream postgres_data named volume so the database lives
+    # under the interp storage tree; back up by stopping postgres and snapshotting the
+    # directory. The pgvector-init mount is restated because !override replaces the list.
+    volumes: !override
+      - /mnt/ai-data/interp/neuronpedia/postgres:/var/lib/postgresql/data
+      - /mnt/ai-data/interp/neuronpedia/src/apps/webapp/prisma/pgvector-init:/docker-entrypoint-initdb.d
+
+  inference:
+    ports: !override
+      - "127.0.0.1:5002:5002"
+    # Shared HF cache: weights download once into the interp tier's cache
+    # (HF_HOME=/mnt/ai-data/interp/hf-cache in the workbench), replacing upstream's
+    # compose.hf-cache.yaml overlay which points at ~/.cache/huggingface/hub.
+    volumes:
+      - /mnt/ai-data/interp/hf-cache/hub:/root/.cache/huggingface/hub
+
+  autointerp:
+    ports: !override
+      - "127.0.0.1:5003:5003"
+    volumes:
+      - /mnt/ai-data/interp/hf-cache/hub:/root/.cache/huggingface/hub
+    # Joins the inference stack's network so http://vllm-gpu:8003/v1 resolves directly
+    # (consumed by PS4). The external network must exist when autointerp starts; see the
+    # start matrix in docs/interpretability/platform.md.
+    networks:
+      - default
+      - inference-stack
+
+  graph:
+    ports: !override
+      - "127.0.0.1:5004:5004"
+    volumes:
+      - /mnt/ai-data/interp/hf-cache/hub:/root/.cache/huggingface/hub
+
+networks:
+  inference-stack:
+    external: true
+    # Compose prefixes the ai-network name from docker-compose.yaml with the project
+    # (repository directory) name. Override if `docker network ls` reports otherwise:
+    # make np-autointerp-up AI_NETWORK_NAME=<actual-name>
+    name: ${AI_NETWORK_NAME:-ai-experiments_ai-network}

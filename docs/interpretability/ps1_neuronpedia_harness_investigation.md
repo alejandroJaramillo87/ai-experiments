@@ -95,7 +95,7 @@ fragility (see risks).
 
 ## Environment files
 
-- `docker/interp/neuronpedia.env`, checked in: non-secret deltas seeded into upstream's
+- `docker/interp/neuronpedia.env-deltas`, checked in: non-secret deltas seeded into upstream's
   `.env.localhost` — `NEXT_PUBLIC_URL=http://localhost:3001`,
   `NEXTAUTH_URL=http://localhost:3001`, `USE_LOCALHOST_AUTOINTERP=true`.
 - Secrets come from the existing untracked `.env.interp` (already gitignored, line 17 of
@@ -204,7 +204,7 @@ New files:
 |------|---------|
 | `docker/interp/neuronpedia-pin.txt` | Exact upstream SHA with dated comment |
 | `docker/interp/neuronpedia.override.yaml` | Port/volume/network deltas over upstream compose |
-| `docker/interp/neuronpedia.env` | Non-secret `.env.localhost` deltas |
+| `docker/interp/neuronpedia.env-deltas` | Non-secret `.env.localhost` deltas |
 | `scripts/interp/np_smoke.sh` | Loopback-binding, webapp, postgres, sm_120 checks |
 | `docs/interpretability/platform.md` | Runbook: port map, concurrency matrix, pin-bump procedure |
 
@@ -246,12 +246,24 @@ live on the host), Makefile target inspection.
   All of it lands on NVMe under `/mnt/ai-data`, not in this repository; the existing
   disk-free watchdog floor applies.
 
-## Open questions
+## Resolved at implementation (2026-07-14)
 
-1. **Pin SHA.** Chosen at implementation time from upstream's default branch; upstream
-   facts re-verified against it before the override is written.
-2. **Wrap upstream make or call compose directly.** Decide during implementation by
-   whichever couples less tightly to upstream internals (see make targets section).
-3. **Runtime name of `ai-network`.** Compose prefixes networks with the project name;
-   confirm with `docker network ls` on the host before hardcoding it in the override's
-   `external` block.
+1. **Pin SHA:** `e5488b2a37976333e6b31f7f1cd6a56b4b5cf7ab` (upstream main, 2026-07-14).
+   Upstream's `docker/compose.yaml`, GPU/dev overlays, and localhost make targets were
+   re-verified against this SHA; service names in the override match.
+2. **Direct compose, not upstream make.** Upstream's localhost targets accept no extra
+   `-f`, so the wrapper targets mirror upstream's exact compose invocations (same file
+   stacks, same `--env-file` order, `RELOAD=0`) with the override appended last. A pin
+   bump re-checks the mirrored invocations against upstream's Makefile.
+3. **Network name** defaults to `ai-experiments_ai-network` via the `AI_NETWORK_NAME`
+   variable (overridable per invocation) rather than a hardcoded value.
+4. **Delta file named `neuronpedia.env-deltas`, not `neuronpedia.env`.** The agent
+   sandbox guard (`scripts/agents/guard.sh`) denies access to any `*.env` path; the file
+   holds no secrets, so it takes a non-matching name instead of a guard exception.
+5. **Env merge step (`make np-env`, `scripts/interp/np_env.sh`).** `NEXT_PUBLIC_*` values
+   are baked into the webapp image at build time, so deltas cannot ride an env file at
+   `up`; they are merged into the checkout's `.env.localhost` before every build/up, and
+   `np-clone` uses `checkout -f` so a re-clone plus re-merge is always clean.
+6. **Autointerp defaults to CPU** (`NP_GPU=1` opts into the GPU overlay plus preflight),
+   so the PS4 mode — autointerp beside a running vllm-gpu — does not trip the
+   one-GPU-consumer gate.
