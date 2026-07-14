@@ -49,6 +49,9 @@ services:
       - /mnt/ai-data/models/:/app/models:ro
       # Writable training root: datasets, shards, checkpoints, run outputs (roadmap D1)
       - /mnt/ai-data/training:/mnt/ai-data/training:rw
+      # Narrow rw window into the models tree for exported GGUFs (roadmap D7); the rest
+      # of /app/models stays read-only via the mount above
+      - /mnt/ai-data/models/trained:/app/models/trained:rw
       # Repository sources (recipes, training package, scripts) mounted live for iteration
       - ./scripts:/app/scripts:ro
       - ./training:/app/training:ro

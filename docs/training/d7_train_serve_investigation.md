@@ -15,6 +15,7 @@ records the repository state and treats the document as advisory.
 - [Acceptance checks](#acceptance-checks)
 - [Risks](#risks)
 - [Open questions](#open-questions)
+- [Resolved decisions](#resolved-decisions)
 
 ## Design summary
 
@@ -209,3 +210,24 @@ All host-side; the human runs each command and reports output back.
 4. **Adapter-merge branch now or stubbed**: implement and unit-test the PEFT merge
    path in D7 (document's letter), or fail loudly on adapters and defer the branch
    to Phase 1 when a real adapter artifact exists?
+
+## Resolved decisions
+
+All four open questions were resolved by the repository owner (2026-07-14):
+
+1. **Export destination**: a narrow rw mount of `/mnt/ai-data/models/trained` is
+   added to `docker-compose.training.yaml` at `/app/models/trained`; the rest of
+   the models tree stays read-only and the llama-gpu config is untouched. Applied
+   in this branch.
+2. **Initial export pin**: `training/export/llama_cpp_pin.txt` starts at the
+   llama-gpu serving commit `e3546c7948e3af463d0b401e6421d5a4c2faf565` (tag b9976),
+   so converter and server agree on format support. Bumped independently
+   thereafter.
+3. **Toolchain placement**: a separate `docker/training/Dockerfile.export` image
+   carries the pinned llama.cpp converter and `llama-quantize`. Rationale: the
+   image used to train a model is not reused to prepare it for inference;
+   `Dockerfile.training` stays unchanged.
+4. **Adapter merge**: implemented in D7. The export pipeline detects a PEFT
+   adapter beside the checkpoint, merges via `merge_and_unload` into the base
+   model, and records adapter path and hash in the manifest; unit-tested against
+   a synthetic tiny adapter since no Phase 0 run produces one.
