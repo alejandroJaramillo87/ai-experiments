@@ -32,6 +32,7 @@ DEFAULT_OUTPUT_ROOT = "/mnt/ai-data/training/runs"
 
 OPTIMIZER_NAMES = ("adamw", "adamw8bit", "cpu_adam")
 PEFT_METHODS = ("lora", "dora")
+SFT_BACKENDS = ("trl", "unsloth")
 QUANTIZE_BASE_MODES = ("none", "nf4")
 COMPUTE_DTYPES = ("bf16", "fp16", "fp32")
 TARGET_MODULES_AUTO = "auto"
@@ -184,13 +185,31 @@ class PeftConfig:
 
 @dataclass
 class SftConfig:
-    """SFT data reference (Phase 1 F1). Data-side only: the recipe points at
-    a prepared, materialized dataset directory (scripts/training/prepare_sft.py
-    output) so runs are reproducible; loaders refuse a manifest-hash mismatch.
-    Trainer-side SFT fields — packing, epochs — land with F3."""
+    """Supervised fine-tuning (Phase 1 F1 data side, F3 trainer side).
+
+    The recipe points at a prepared, materialized dataset directory
+    (scripts/training/prepare_sft.py output) so runs are reproducible;
+    loaders refuse a manifest-hash mismatch.
+
+    backend selects the F3 trainer path: trl (TRL SFTTrainer, the default)
+    or unsloth (FastLanguageModel model loading, everything else identical).
+    Unsloth is a throughput optimization whose failures are documented, not
+    release-blocking; every tracking run records the backend used.
+
+    packing concatenates multiple short examples into one seq_len sequence
+    with position ids reset per example (attention separation); label masks
+    are preserved verbatim, so loss still applies only to assistant tokens.
+
+    eval_steps > 0 evaluates held-out loss on the prepared dataset's holdout
+    split every eval_steps optimizer steps (F7 consumes the curve); 0
+    disables training-time evaluation.
+    """
 
     enabled: bool = False
     dataset: str = ""  # /mnt/ai-data/training/datasets/sft/<name>
+    backend: str = "trl"  # one of SFT_BACKENDS
+    packing: bool = False
+    eval_steps: int = 0
 
 
 @dataclass

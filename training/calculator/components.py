@@ -52,10 +52,10 @@ NF4_DQ_BYTES_PER_PARAM = (
 # lambdas over the spec. Adapter params per module = rank * (in + out); DoRA
 # adds one magnitude scalar per output column.
 _TARGET_MODULE_DIMS = {
-    "q_proj": lambda s: (s.hidden, s.hidden),
+    "q_proj": lambda s: (s.hidden, s.q_dim),
     "k_proj": lambda s: (s.hidden, s.kv_dim),
     "v_proj": lambda s: (s.hidden, s.kv_dim),
-    "o_proj": lambda s: (s.hidden, s.hidden),
+    "o_proj": lambda s: (s.q_dim, s.hidden),
     "gate_proj": lambda s: (s.hidden, s.ffn),
     "up_proj": lambda s: (s.hidden, s.ffn),
     "down_proj": lambda s: (s.ffn, s.hidden),
@@ -69,7 +69,8 @@ OFFLOAD_HOST_BYTES_PER_PARAM = 16
 # HF AutoConfig model_type values whose configs carry Llama-family field names
 # and match the dense attention + SwiGLU shape these formulas model. Unknown
 # architectures fail loudly rather than guess (roadmap D4 decision 2).
-HF_SUPPORTED_MODEL_TYPES = ("llama", "mistral", "qwen2", "qwen3", "gemma", "gemma2", "gemma3")
+HF_SUPPORTED_MODEL_TYPES = ("llama", "mistral", "qwen2", "qwen3", "gemma", "gemma2",
+                            "gemma3", "gemma4", "gemma4_text")
 
 
 class UnknownArchitectureError(ValueError):
@@ -87,34 +88,63 @@ class ArchitectureSpec:
     ffn: int          # intermediate (SwiGLU) size, already rounded
     vocab: int
     tie_embeddings: bool
-
-    @property
-    def kv_dim(self) -> int:
-        return self.hidden * self.kv_heads // self.heads
+    # Explicit attention head dimension for families where it is not
+    # hidden // heads (Gemma 4: head_dim 256 with hidden 2304, heads 8).
+    # None keeps the Llama-family derivation.
+    explicit_head_dim: int | None = None
+    # Per-layer embeddings (Gemma 4 E-models): one packed table of
+    # ple_vocab x (layers * ple_dim) plus a gate/projection linear pair per
+    # layer. Zero for families without PLE.
+    ple_vocab: int = 0
+    ple_dim: int = 0
 
     @property
     def head_dim(self) -> int:
+        if self.explicit_head_dim is not None:
+            return self.explicit_head_dim
         return self.hidden // self.heads
 
-    def param_count(self) -> int:
-        """Total (= trainable, Phase 0) parameters of the dense model.
+    @property
+    def q_dim(self) -> int:
+        return self.heads * self.head_dim
 
-        Per layer: attention q/o (hidden^2 each) + k/v (hidden*kv_dim each),
-        SwiGLU gate/up/down (hidden*ffn each), two RMSNorm vectors. Plus
-        embeddings (once when tied), the final RMSNorm, and an untied lm_head.
+    @property
+    def kv_dim(self) -> int:
+        return self.kv_heads * self.head_dim
+
+    def ple_param_count(self) -> int:
+        """Per-layer embedding parameters: the packed table plus one
+        hidden->ple_dim gate and one ple_dim->hidden projection per layer.
+        The calibration harness (D4) validates this model against measured
+        parameter counts before a prediction is trusted."""
+        if not self.ple_dim:
+            return 0
+        table = self.ple_vocab * self.layers * self.ple_dim
+        per_layer_linears = self.layers * 2 * self.hidden * self.ple_dim
+        return table + per_layer_linears
+
+    def param_count(self) -> int:
+        """Total parameters of the dense model.
+
+        Per layer: attention q/o (hidden*q_dim each) + k/v (hidden*kv_dim
+        each), SwiGLU gate/up/down (hidden*ffn each), two RMSNorm vectors.
+        Plus embeddings (once when tied), the final RMSNorm, an untied
+        lm_head, and the PLE terms for Gemma 4 E-models.
         """
-        attn = 2 * self.hidden * self.hidden + 2 * self.hidden * self.kv_dim
+        attn = 2 * self.hidden * self.q_dim + 2 * self.hidden * self.kv_dim
         mlp = 3 * self.hidden * self.ffn
         norms = 2 * self.hidden
         per_layer = attn + mlp + norms
         embeddings = self.vocab * self.hidden * (1 if self.tie_embeddings else 2)
-        return embeddings + self.layers * per_layer + self.hidden
+        return (embeddings + self.layers * per_layer + self.hidden
+                + self.ple_param_count())
 
     def linear_param_count(self) -> int:
         """Parameters in the per-layer linear projections — the population
-        bitsandbytes 4-bit quantization covers. Embeddings, norms, and an
-        untied lm_head stay in the compute dtype."""
-        attn = 2 * self.hidden * self.hidden + 2 * self.hidden * self.kv_dim
+        bitsandbytes 4-bit quantization covers. Embeddings, norms, an untied
+        lm_head, and the PLE terms stay in the compute dtype (counting PLE
+        linears at full width overestimates, which is the safe direction)."""
+        attn = 2 * self.hidden * self.q_dim + 2 * self.hidden * self.kv_dim
         mlp = 3 * self.hidden * self.ffn
         return self.layers * (attn + mlp)
 
@@ -144,13 +174,23 @@ def spec_from_recipe(recipe: DictConfig) -> ArchitectureSpec:
 
 
 def spec_from_hf_config(config) -> ArchitectureSpec:
-    """Map an HF PretrainedConfig onto the spec via Llama-family field names."""
+    """Map an HF PretrainedConfig onto the spec via Llama-family field names.
+
+    Gemma 4 (model_type gemma4) is a multimodal composite whose config nests
+    the decoder under text_config; the mapping descends into it and carries
+    the E-model extras: an explicit head_dim decoupled from hidden // heads
+    and the per-layer embedding table (vocab_size_per_layer_input x
+    hidden_size_per_layer_input per layer).
+    """
     model_type = getattr(config, "model_type", "<missing>")
     if model_type not in HF_SUPPORTED_MODEL_TYPES:
         raise UnknownArchitectureError(
             f"HF model_type '{model_type}' is not in the supported mapping table "
             f"{HF_SUPPORTED_MODEL_TYPES}; the analytic formulas would guess. "
             "Add a verified mapping in training/calculator/components.py.")
+    if model_type == "gemma4" and getattr(config, "text_config", None) is not None:
+        config = config.text_config
+        model_type = getattr(config, "model_type", "gemma4_text")
     try:
         return ArchitectureSpec(
             layers=config.num_hidden_layers,
@@ -159,7 +199,10 @@ def spec_from_hf_config(config) -> ArchitectureSpec:
             kv_heads=getattr(config, "num_key_value_heads", config.num_attention_heads),
             ffn=config.intermediate_size,
             vocab=config.vocab_size,
-            tie_embeddings=getattr(config, "tie_word_embeddings", False))
+            tie_embeddings=getattr(config, "tie_word_embeddings", False),
+            explicit_head_dim=getattr(config, "head_dim", None),
+            ple_vocab=getattr(config, "vocab_size_per_layer_input", 0) or 0,
+            ple_dim=getattr(config, "hidden_size_per_layer_input", 0) or 0)
     except AttributeError as exc:
         raise UnknownArchitectureError(
             f"HF config for model_type '{model_type}' lacks an expected field: {exc}") from exc

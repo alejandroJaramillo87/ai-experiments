@@ -121,6 +121,11 @@ interp = [
 # (`uv lock`) to confirm exact versions against the cu130 / torch 2.13 / py3.12 resolution.
 training = [
     "trl==0.24.0",
+    # Optional F3 SFT backend (sft.backend: unsloth); failures are documented,
+    # not blocking (F3 decision 2). Provisional pin — unsloth tracks
+    # torch/transformers tightly; verify against transformers 5.13.1 via
+    # `make train-build` (smoke step 7) before relying on it.
+    "unsloth==2026.7.2",
     "liger-kernel==0.6.2",
     "torchao==0.14.0",
     "flash-attn==2.8.3.post1",

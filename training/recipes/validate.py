@@ -26,6 +26,7 @@ from training.recipes.schema import (
     PRECISION_DTYPES,
     QUANTIZE_BASE_MODES,
     SCHEDULE_TYPES,
+    SFT_BACKENDS,
     TARGET_MODULES_AUTO,
 )
 
@@ -143,13 +144,22 @@ def _check_peft(recipe: DictConfig, problems: list[str]) -> None:
 
 
 def _check_sft(recipe: DictConfig, problems: list[str]) -> None:
-    """F1 invariants: an enabled sft group needs a prepared dataset and an HF
-    base model (the chat template belongs to a pretrained model; scratch
+    """F1/F3 invariants: an enabled sft group needs a prepared dataset and an
+    HF base model (the chat template belongs to a pretrained model; scratch
     models have none). Manifest and tokenizer hashes are enforced at load by
     training/data/sft.load_sft_dataset."""
     s = recipe.sft
     if not s.enabled:
         return
+    if s.backend not in SFT_BACKENDS:
+        problems.append(f"sft.backend: must be one of {SFT_BACKENDS}, "
+                        f"got {s.backend!r}")
+    if s.eval_steps < 0:
+        problems.append(f"sft.eval_steps: must be >= 0 (0 disables held-out "
+                        f"evaluation), got {s.eval_steps}")
+    if s.backend == "unsloth" and recipe.precision.dtype == "fp8":
+        problems.append("sft.backend: unsloth does not support "
+                        "precision.dtype=fp8; use trl or bf16")
     if not s.dataset:
         problems.append("sft.dataset: required when sft.enabled=true "
                         "(prepare with scripts/training/prepare_sft.py)")
