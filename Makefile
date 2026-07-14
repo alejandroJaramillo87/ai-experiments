@@ -202,6 +202,12 @@ np-clone: interp-dirs ## Clone/update the Neuronpedia checkout to the pinned SHA
 	  git clone https://github.com/hijohnnylin/neuronpedia.git $(NP_SRC); \
 	fi; \
 	git -C $(NP_SRC) fetch origin && git -C $(NP_SRC) checkout -f $$PIN
+	@if ls docker/interp/patches/*.patch >/dev/null 2>&1; then \
+	  for p in docker/interp/patches/*.patch; do \
+	    echo "$(CYAN)Applying vendored patch $$p$(RESET)"; \
+	    git -C $(NP_SRC) apply "$(CURDIR)/$$p" || exit 1; \
+	  done; \
+	fi
 	@echo "$(GREEN)Neuronpedia checkout pinned per $(NP_PIN_FILE).$(RESET)"
 
 np-env: ## Merge this repo's env deltas and .env.interp secrets into the checkout
@@ -232,8 +238,9 @@ np-inference-up: np-env ## Preflight, then start the GPU inference instance (por
 		up -d inference
 	@echo "$(GREEN)Neuronpedia inference up on 127.0.0.1:5002 ($(MODEL_SOURCESET)).$(RESET)"
 
-np-autointerp-up: np-env ## Start autointerp (port 5003; CPU by default, NP_GPU=1 preflights and attaches the GPU)
-	@if [ "$(NP_GPU)" = "1" ]; then ./scripts/interp/preflight.sh; fi
+np-autointerp-up: np-env ## Start autointerp (port 5003; serving-dependent: vllm-gpu must be up. NP_GPU=1 instead attaches the GPU for the embedding scorer)
+	@if [ "$(NP_GPU)" = "1" ]; then ./scripts/interp/preflight.sh; \
+	else ./scripts/interp/np_autointerp_preflight.sh; fi
 	cd $(NP_SRC) && RELOAD=0 ENV_FILE=../.env.localhost \
 		docker compose -f docker/compose.yaml \
 		-f docker/compose.autointerp.dev.yaml \

@@ -11,6 +11,7 @@ repository holds no upstream logic. Design and rationale:
 - [Layout](#layout)
 - [Bring-up and teardown](#bring-up-and-teardown)
 - [Concurrency matrix](#concurrency-matrix)
+- [Autointerp through local serving](#autointerp-through-local-serving)
 - [Shared network behavior](#shared-network-behavior)
 - [Pin-bump procedure](#pin-bump-procedure)
 - [Trust model](#trust-model)
@@ -47,6 +48,7 @@ upstream's 3000 to 3001 because open-webui holds 3000.
 | `docker/interp/neuronpedia-pin.txt` | Exact upstream SHA |
 | `docker/interp/neuronpedia.override.yaml` | Port, volume, and network deltas |
 | `docker/interp/neuronpedia.env-deltas` | Non-secret `.env.localhost` deltas (merged by `make np-env`) |
+| `docker/interp/patches/` | Vendored patches applied to the checkout by `make np-clone` (see the directory README) |
 | `.env.interp` (untracked) | `HF_TOKEN`, optional `OPENAI_API_KEY` |
 
 ## Bring-up and teardown
@@ -83,6 +85,41 @@ comfyui is running; the failure mode is a policy message, not a CUDA OOM.
 | Serving-dependent autointerp (PS4) | vllm-gpu up | webapp + postgres + autointerp on CPU (`make np-autointerp-up`, no `NP_GPU`) |
 | Browsing only | anything | webapp + postgres (`make np-up` is CPU-only, never preflighted) |
 
+## Autointerp through local serving
+
+PS4 mode: Delphi-based feature explanation batched against the vllm-gpu
+OpenAI-compatible endpoint, no external API spend. `make np-autointerp-up` (default, CPU)
+runs `scripts/interp/np_autointerp_preflight.sh`, which requires vllm-gpu healthy on
+127.0.0.1:8003 and every other GPU consumer down — the inverse of the interactive
+preflight. `NP_GPU=1` instead attaches the GPU for Delphi's CUDA-only embedding scorer
+and runs the standard preflight (vllm-gpu down); the two modes are mutually exclusive.
+
+Start order:
+
+```bash
+$ docker compose up -d vllm-gpu    # or make gpu-up; creates ai-network
+$ make np-up                       # webapp + postgres
+$ make np-autointerp-up            # serving preflight, then autointerp on 127.0.0.1:5003
+```
+
+Operational facts:
+
+- The explainer model is whatever vllm-gpu serves; the request's `model` field must match
+  the served model id. Source of truth:
+  `curl -s http://127.0.0.1:8003/v1/models | jq -r '.data[].id'`.
+- The autointerp client is OpenRouter-shaped with a per-request `openrouter_key`; against
+  vLLM the key is a dummy string (vLLM ignores it). The base URL is redirected to
+  `http://vllm-gpu:8003/v1` via the `OPENROUTER_BASE_URL` delta, honored through upstream
+  support or the vendored patch in `docker/interp/patches/`.
+- Acceptance evidence that no external endpoint was touched: vllm-gpu request logs
+  (`docker compose logs vllm-gpu`) covering the batch window.
+- The Phase 2 acceptance batch is small by design — at least 20 features of one imported
+  Gemma Scope source — proving the path, not explaining the dictionary. Full-dictionary
+  runs are project-pulled, sized with vllm-gpu throughput numbers, and run overnight like
+  benchmarks.
+- Generated explanations land in Postgres and render on the corresponding feature pages
+  on `localhost:3001`.
+
 ## Shared network behavior
 
 The autointerp container also joins the inference stack's `ai-network` so
@@ -100,7 +137,9 @@ The autointerp container also joins the inference stack's `ai-network` so
 
 1. Update the SHA and dated comment in `docker/interp/neuronpedia-pin.txt`.
 2. Re-verify the override against upstream's compose files at the new SHA: service names,
-   compose file layout under `docker/`, env file conventions.
+   compose file layout under `docker/`, env file conventions. Re-verify every patch in
+   `docker/interp/patches/` still applies (`make np-clone` fails loudly if not) and
+   delete any patch upstream has absorbed.
 3. `make np-clone && make np-build && make np-up && make np-inference-up`.
 4. `make np-smoke` must pass, including the sm_120 torch check inside the inference
    container. If upstream's torch pin predates sm_120 wheel support, override the torch

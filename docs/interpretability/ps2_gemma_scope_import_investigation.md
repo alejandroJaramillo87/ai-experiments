@@ -167,12 +167,14 @@ the runbook edits and records reported output verbatim.
 
 ## Open questions
 
-1. Model variant: the planning decision says "gemma-2-2b(-it)" and the shipped inference
-   preset is `gemma-2-2b-it.gemmascope-res-16k`, but Gemma Scope SAEs were trained on the
-   base model. Confirm in the admin panel which model entry carries the
-   `gemmascope-res-16k` source set and import that one; if both appear, prefer the one
-   matching the inference preset.
-2. Whether to snapshot the Postgres directory once after full import (recommended above,
-   one-time manual step) — accepts the disk cost of one extra copy of the database.
-3. Whether per-layer verification needs the GPU inference instance up. If yes, import
-   sessions must serialize with other GPU work per the concurrency matrix.
+Resolved with the owner (2026-07-14):
+
+1. Model variant: import the model entry that carries the `gemmascope-res-16k` source
+   set; if both base and `-it` appear, prefer the one matching the inference preset
+   (`gemma-2-2b-it.gemmascope-res-16k`). Tentative — confirm against the admin panel's
+   actual listing at import time and record what was imported.
+2. Post-import snapshot: approved. One manual copy of the Postgres directory after the
+   full import; record its size.
+3. GPU during verification: acceptable if required. If dashboard verification needs the
+   inference instance, import sessions serialize with other GPU work per the concurrency
+   matrix.
