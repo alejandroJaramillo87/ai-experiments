@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import os
 import random
 import subprocess
 import sys
@@ -49,6 +50,7 @@ from training.lock import run_lock
 from training.model import build_model, build_optimizer, build_scheduler
 from training.recipes.loader import create_run_dir, resolved_yaml
 from training.tracking import Tracker
+from training.watchdog import Watchdog, WatchdogAbort
 
 
 @dataclass
@@ -175,7 +177,7 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
     result = TrainResult(run_dir=run_name_dir, checkpoint_root=ckpt_root,
                          final_step=start_step, tokens_seen=tokens_seen)
 
-    def save(step: int, loss: float) -> None:
+    def save(step: int, loss: float, emergency: bool = False) -> None:
         meta = {
             "tokens_seen": tokens_seen, "loss": loss,
             "recipe_hash": recipe_hash, "git_sha": _git_sha(),
@@ -183,6 +185,8 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
             "wall_clock": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "checkpoint_format": "torch",  # DeepSpeed runs record their own
         }
+        if emergency:
+            meta["emergency"] = True  # exempt from retention deletion
         # Consumed-window index, not the loader's read-ahead position: exact
         # resume regardless of num_workers/prefetch depth.
         data_state = {"format": "index", "next_index": next_index % len(dataset),
@@ -191,6 +195,13 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                              data_state, meta)
         ckpt.apply_retention(ckpt_root, recipe.checkpoint.retain_last,
                              recipe.checkpoint.retain_every)
+
+    watchdog = None
+    if recipe.watchdog.enabled:
+        os.makedirs(ckpt_root, exist_ok=True)  # disk-floor check needs the path
+        watchdog = Watchdog(recipe.watchdog, run_name_dir, tracker=tracker,
+                            disk_path=ckpt_root)
+        watchdog.start()
 
     worker_init = aff.worker_init_fn(workers_mask) if workers_mask else None
     batches = CudaPrefetcher(
@@ -235,12 +246,31 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
             wait_total += data_wait_s * 1000.0
             result.data_wait_ms_mean = wait_total / len(result.losses)
 
+            if watchdog is not None:
+                try:
+                    watchdog.on_step(step, step_loss, grad_norm)
+                except WatchdogAbort:
+                    # Best-effort final state for post-mortem and resume; the
+                    # abort must surface even if the save itself fails.
+                    try:
+                        save(step, step_loss, emergency=True)
+                    except Exception as exc:
+                        print(f"[loop] WARN: emergency checkpoint failed: {exc}",
+                              file=sys.stderr)
+                    raise
+
             is_last = step == recipe.schedule.total_steps
             if step % recipe.checkpoint.interval_steps == 0 or is_last:
-                save(step, step_loss)
+                if watchdog is not None and watchdog.checkpoint_writes_blocked:
+                    print(f"[loop] WARN: skipping checkpoint at step {step}: "
+                          f"disk free below watchdog floor", file=sys.stderr)
+                else:
+                    save(step, step_loss)
             if stop_after is not None and step >= stop_after:
                 break
     finally:
+        if watchdog is not None:
+            watchdog.stop()
         batches.close()  # release dataloader workers promptly
         tracker.close()
     return result

@@ -135,12 +135,24 @@ def save_checkpoint(root: str, step: int, model, optimizer, scheduler,
     return final
 
 
+def _is_emergency(root: str, step: int) -> bool:
+    """True when the step's meta.json carries emergency=true (a D10 watchdog
+    abort save). Unreadable or absent meta counts as not-emergency."""
+    try:
+        with open(os.path.join(root, step_dir_name(step), "meta.json")) as f:
+            return bool(json.load(f).get("emergency"))
+    except (OSError, ValueError):
+        return False
+
+
 def apply_retention(root: str, retain_last: int, retain_every: int) -> list[int]:
     """Delete checkpoints beyond the retention policy; returns deleted steps.
 
     Keeps the last retain_last checkpoints plus every step divisible by
-    retain_every; never deletes the checkpoint `latest` points to. Deletion is
-    oldest first. Stray *.tmp directories are always removed.
+    retain_every; never deletes the checkpoint `latest` points to, nor any
+    checkpoint marked emergency=true (D10 abort saves are post-mortem
+    evidence and the resume point after a crash). Deletion is oldest first.
+    Stray *.tmp directories are always removed.
     """
     steps = list_checkpoints(root)
     if os.path.isdir(root):
@@ -158,7 +170,7 @@ def apply_retention(root: str, retain_last: int, retain_every: int) -> list[int]
 
     deleted = []
     for s in steps:
-        if s not in keep:
+        if s not in keep and not _is_emergency(root, s):
             shutil.rmtree(os.path.join(root, step_dir_name(s)))
             deleted.append(s)
     return deleted

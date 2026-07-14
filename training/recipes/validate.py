@@ -9,8 +9,6 @@ Invariants whose consumers are not built yet are stubbed with the field
 contract in place:
 - fp8 dimension support (D8): _check_fp8_dims is a no-op until the benchmark
   harness defines the supported-dims table.
-- watchdog thresholds (D10): only positivity is checked here; semantics land
-  with the watchdog.
 """
 
 from __future__ import annotations
@@ -142,9 +140,20 @@ def _check_checkpoint(recipe: DictConfig, problems: list[str]) -> None:
 
 def _check_watchdog(recipe: DictConfig, problems: list[str]) -> None:
     w = recipe.watchdog
-    for name in ("loss_spike_factor", "gpu_temp_limit_c", "disk_free_floor_gb"):
+    for name in ("interval_s", "loss_spike_factor", "loss_window",
+                 "gpu_temp_limit_c", "sustain_s", "power_w", "ram_floor_gb",
+                 "disk_free_floor_gb"):
         if w[name] <= 0:
             problems.append(f"watchdog.{name}: must be positive, got {w[name]}")
+    if w.grad_norm_max < 0:
+        problems.append(
+            f"watchdog.grad_norm_max: must be >= 0 (0 disables), got {w.grad_norm_max}")
+    if w.patience < 1:
+        problems.append(f"watchdog.patience: must be >= 1, got {w.patience}")
+    if w.loss_spike_factor <= 1:
+        problems.append(
+            f"watchdog.loss_spike_factor: must exceed 1 (loss vs its own median), "
+            f"got {w.loss_spike_factor}")
 
 
 def _check_tokenizer_matches_shards(recipe: DictConfig, problems: list[str]) -> None:
