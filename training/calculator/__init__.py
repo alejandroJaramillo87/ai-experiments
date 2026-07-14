@@ -17,10 +17,12 @@ from training.calculator.components import (
     ArchitectureSpec,
     UnknownArchitectureError,
     activation_bytes,
+    adapter_param_count,
     grad_bytes,
     host_ram_bytes,
     optimizer_bytes,
     spec_from_recipe,
+    trainable_param_count,
     weights_bytes,
 )
 from training.calculator.solve import Estimate, estimate, solve
@@ -30,11 +32,13 @@ __all__ = [
     "Estimate",
     "UnknownArchitectureError",
     "activation_bytes",
+    "adapter_param_count",
     "estimate",
     "grad_bytes",
     "host_ram_bytes",
     "optimizer_bytes",
     "solve",
     "spec_from_recipe",
+    "trainable_param_count",
     "weights_bytes",
 ]

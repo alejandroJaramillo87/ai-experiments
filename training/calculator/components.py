@@ -10,10 +10,11 @@ Unit tests pin these numbers for a hand-computed tiny config so refactors
 cannot silently change the math; the calibration harness (calibrate.py)
 refines the calibrated constants against measured peaks on the workstation.
 
-Phase 0 scope: bf16/fp8 parameter dtypes with all parameters trainable. The
-NF4 4-bit base + trainable adapter weights term (QLoRA, Phase 1) is an
-additive extension to weights_bytes/grad_bytes once the schema can express
-adapters.
+Phase 1 F2 extends the Phase 0 all-parameters-trainable model with the PEFT
+terms: when peft.enabled, the base is frozen (optionally NF4 4-bit via
+bitsandbytes) and only the LoRA/DoRA adapter carries gradients and optimizer
+state. Calibrated against measurement on the workstation per the F2
+acceptance (QLoRA prediction within 10 percent of measured peak).
 """
 
 from __future__ import annotations
@@ -37,6 +38,28 @@ FFN_ROUND_MULTIPLE = 64
 # bitsandbytes 8-bit Adam: two 1-byte states per param plus per-block fp32
 # constants (absmax per state) at the default block size of 256.
 ADAM8BIT_BLOCK_SIZE = 256
+
+# bitsandbytes NF4: 4 bits per weight plus one absmax per 64-weight block.
+# Plain nf4 stores fp32 absmax (4 B / 64); double quantization stores 8-bit
+# absmax (1 B / 64) plus fp32 second-level constants per 256 blocks.
+NF4_BLOCK_SIZE = 64
+NF4_DOUBLE_QUANT_BLOCK_SIZE = 256
+NF4_BYTES_PER_PARAM = 0.5 + 4 / NF4_BLOCK_SIZE
+NF4_DQ_BYTES_PER_PARAM = (
+    0.5 + 1 / NF4_BLOCK_SIZE + 4 / (NF4_BLOCK_SIZE * NF4_DOUBLE_QUANT_BLOCK_SIZE))
+
+# LoRA-targetable linear modules mapped to their (in, out) dimensions as
+# lambdas over the spec. Adapter params per module = rank * (in + out); DoRA
+# adds one magnitude scalar per output column.
+_TARGET_MODULE_DIMS = {
+    "q_proj": lambda s: (s.hidden, s.hidden),
+    "k_proj": lambda s: (s.hidden, s.kv_dim),
+    "v_proj": lambda s: (s.hidden, s.kv_dim),
+    "o_proj": lambda s: (s.hidden, s.hidden),
+    "gate_proj": lambda s: (s.hidden, s.ffn),
+    "up_proj": lambda s: (s.hidden, s.ffn),
+    "down_proj": lambda s: (s.ffn, s.hidden),
+}
 
 # ZeRO-Offload host-RAM model: fp32 optimizer states (8 B/param) plus fp32
 # master params (4 B/param) plus pinned fp32 gradient transfer buffers
@@ -87,6 +110,14 @@ class ArchitectureSpec:
         embeddings = self.vocab * self.hidden * (1 if self.tie_embeddings else 2)
         return embeddings + self.layers * per_layer + self.hidden
 
+    def linear_param_count(self) -> int:
+        """Parameters in the per-layer linear projections — the population
+        bitsandbytes 4-bit quantization covers. Embeddings, norms, and an
+        untied lm_head stay in the compute dtype."""
+        attn = 2 * self.hidden * self.hidden + 2 * self.hidden * self.kv_dim
+        mlp = 3 * self.hidden * self.ffn
+        return self.layers * (attn + mlp)
+
 
 def rounded_ffn(ffn_mult: float, hidden: int) -> int:
     return round(ffn_mult * hidden / FFN_ROUND_MULTIPLE) * FFN_ROUND_MULTIPLE
@@ -134,13 +165,62 @@ def spec_from_hf_config(config) -> ArchitectureSpec:
             f"HF config for model_type '{model_type}' lacks an expected field: {exc}") from exc
 
 
+def _peft_target_modules(recipe: DictConfig) -> list[str]:
+    """The recipe's target-module list; "auto" maps to the Llama-lineage
+    default, which is also every current registry entry's list (the spec
+    formulas only model that shape anyway)."""
+    modules = recipe.peft.target_modules
+    if modules == "auto":
+        return list(_TARGET_MODULE_DIMS)
+    return list(modules)
+
+
+def adapter_param_count(spec: ArchitectureSpec, recipe: DictConfig) -> int:
+    """Trainable LoRA/DoRA adapter parameters for the recipe's peft group."""
+    rank = recipe.peft.rank
+    dora = recipe.peft.method == "dora"
+    per_layer = 0
+    for name in _peft_target_modules(recipe):
+        dims = _TARGET_MODULE_DIMS.get(name)
+        if dims is None:
+            raise UnknownArchitectureError(
+                f"peft.target_modules entry '{name}' has no dimension mapping in "
+                f"{tuple(_TARGET_MODULE_DIMS)}; the adapter size cannot be "
+                "estimated. Add the mapping in training/calculator/components.py.")
+        d_in, d_out = dims(spec)
+        per_layer += rank * (d_in + d_out) + (d_out if dora else 0)
+    return spec.layers * per_layer
+
+
+def trainable_param_count(spec: ArchitectureSpec, recipe: DictConfig) -> int:
+    """Parameters carrying gradients: the adapter under PEFT, else all."""
+    if recipe.peft.enabled:
+        return adapter_param_count(spec, recipe)
+    return spec.param_count()
+
+
 def weights_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
-    return spec.param_count() * DTYPE_BYTES[recipe.precision.dtype]
+    """Parameter memory: full model in the training dtype, or, under PEFT,
+    the frozen base (NF4-quantized linears for QLoRA) plus the adapter in
+    the peft compute dtype."""
+    if not recipe.peft.enabled:
+        return spec.param_count() * DTYPE_BYTES[recipe.precision.dtype]
+    compute_bytes = {"bf16": 2, "fp16": 2, "fp32": 4}[recipe.peft.compute_dtype]
+    if recipe.peft.quantize_base == "nf4":
+        per_param = (NF4_DQ_BYTES_PER_PARAM if recipe.peft.double_quant
+                     else NF4_BYTES_PER_PARAM)
+        linear = int(spec.linear_param_count() * per_param)
+        rest = (spec.param_count() - spec.linear_param_count()) * compute_bytes
+        base = linear + rest
+    else:
+        base = spec.param_count() * DTYPE_BYTES[recipe.precision.dtype]
+    return base + adapter_param_count(spec, recipe) * compute_bytes
 
 
 def grad_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
-    # P_trainable = P in Phase 0 (full pretraining, no frozen base/adapters).
-    return spec.param_count() * DTYPE_BYTES[recipe.precision.grad_dtype]
+    # Only trainable parameters carry gradients: the whole model in Phase 0
+    # pretraining, the adapter alone under PEFT.
+    return trainable_param_count(spec, recipe) * DTYPE_BYTES[recipe.precision.grad_dtype]
 
 
 def optimizer_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
@@ -152,7 +232,9 @@ def optimizer_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
     plus per-block fp32 absmax constants. cpu_adam/zero_offload: reported via
     host_ram_bytes instead.
     """
-    params = spec.param_count()
+    # Optimizer state exists only for trainable parameters: the adapter
+    # alone under PEFT (the QLoRA memory win the F2 model must capture).
+    params = trainable_param_count(spec, recipe)
     if recipe.memory.offload == "zero_offload" or recipe.optimizer.name == "cpu_adam":
         return 0
     if recipe.optimizer.name == "adamw":
@@ -172,7 +254,7 @@ def host_ram_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
     """
     if recipe.memory.offload != "zero_offload" and recipe.optimizer.name != "cpu_adam":
         return 0
-    return spec.param_count() * OFFLOAD_HOST_BYTES_PER_PARAM
+    return trainable_param_count(spec, recipe) * OFFLOAD_HOST_BYTES_PER_PARAM
 
 
 def activation_bytes(

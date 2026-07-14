@@ -17,12 +17,14 @@ from training.calculator import (
     ArchitectureSpec,
     UnknownArchitectureError,
     activation_bytes,
+    adapter_param_count,
     estimate,
     grad_bytes,
     host_ram_bytes,
     optimizer_bytes,
     solve,
     spec_from_recipe,
+    trainable_param_count,
     weights_bytes,
 )
 from training.calculator.components import rounded_ffn, spec_from_hf_config
@@ -276,3 +278,80 @@ class TestCLI:
             "calibrate", "--config", "training/recipes/reference/tiny-e2e.yaml")
         assert proc.returncode == 1
         assert "[ERROR] Calibration failed" in proc.stdout
+
+
+class TestPeftComponents:
+    """F2: adapter param counts and the QLoRA memory model, hand-computed on
+    the tiny config. rank=16 over the seven Llama-lineage modules:
+      q/o: 16*(64+64)=2048 each; k/v: 16*(64+32)=1536 each;
+      gate/up: 16*(64+128)=3072 each; down: 16*(128+64)=3072
+      per layer 16,384; two layers -> 32,768 adapter params.
+    Linear (quantizable) params: 2*(12,288+24,576) = 73,728."""
+
+    ADAPTER_PARAMS = 32_768
+    LINEAR_PARAMS = 73_728
+
+    def qlora_recipe(self, extra=()):
+        return load_recipe(
+            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
+            TINY_OVERRIDES + ["peft.enabled=true", "peft.rank=16",
+                              "peft.quantize_base=nf4"] + list(extra))
+
+    def test_adapter_param_count(self):
+        recipe = self.qlora_recipe()
+        spec = spec_from_recipe(recipe)
+        assert adapter_param_count(spec, recipe) == self.ADAPTER_PARAMS
+        assert trainable_param_count(spec, recipe) == self.ADAPTER_PARAMS
+
+    def test_dora_adds_magnitude_vectors(self):
+        # One magnitude scalar per output column: per layer
+        # 64+32+32+64+128+128+64 = 512; two layers -> +1024.
+        recipe = self.qlora_recipe(["peft.method=dora"])
+        spec = spec_from_recipe(recipe)
+        assert adapter_param_count(spec, recipe) == self.ADAPTER_PARAMS + 1024
+
+    def test_linear_param_count(self):
+        spec = spec_from_recipe(self.qlora_recipe())
+        assert spec.linear_param_count() == self.LINEAR_PARAMS
+
+    def test_qlora_weights_double_quant(self):
+        # NF4+dq: 0.5 + 1/64 + 4/(64*256) B/param on linears; bf16 rest and
+        # adapter. 73728*0.515869140625=38034; rest (90432-73728)*2=33408;
+        # adapter 32768*2=65536.
+        recipe = self.qlora_recipe()
+        spec = spec_from_recipe(recipe)
+        assert weights_bytes(spec, recipe) == 38_034 + 33_408 + 65_536
+
+    def test_qlora_weights_plain_nf4(self):
+        # Without dq: 0.5 + 4/64 B/param -> 73728*0.5625 = 41472.
+        recipe = self.qlora_recipe(["peft.double_quant=false"])
+        spec = spec_from_recipe(recipe)
+        assert weights_bytes(spec, recipe) == 41_472 + 33_408 + 65_536
+
+    def test_lora_unquantized_base_keeps_precision_dtype(self):
+        recipe = self.qlora_recipe(["peft.quantize_base=none"])
+        spec = spec_from_recipe(recipe)
+        assert weights_bytes(spec, recipe) == 2 * TINY_PARAMS + 2 * self.ADAPTER_PARAMS
+
+    def test_grads_and_optimizer_cover_adapter_only(self):
+        recipe = self.qlora_recipe()
+        spec = spec_from_recipe(recipe)
+        assert grad_bytes(spec, recipe) == 4 * self.ADAPTER_PARAMS
+        assert optimizer_bytes(spec, recipe) == 12 * self.ADAPTER_PARAMS
+
+    def test_estimate_reports_trainable_params(self):
+        recipe = self.qlora_recipe()
+        est = estimate(recipe)
+        assert est.param_count == TINY_PARAMS
+        assert est.trainable_params == self.ADAPTER_PARAMS
+
+    def test_unknown_target_module_fails(self):
+        recipe = self.qlora_recipe(["peft.target_modules=[qkv_proj]"])
+        spec = spec_from_recipe(recipe)
+        with pytest.raises(UnknownArchitectureError, match="qkv_proj"):
+            adapter_param_count(spec, recipe)
+
+    def test_peft_disabled_matches_phase0_numbers(self, tiny_recipe):
+        spec = spec_from_recipe(tiny_recipe)
+        assert trainable_param_count(spec, tiny_recipe) == TINY_PARAMS
+        assert weights_bytes(spec, tiny_recipe) == 2 * TINY_PARAMS

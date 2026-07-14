@@ -21,6 +21,7 @@ block by training/watchdog.py (D10).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from omegaconf import MISSING
 
@@ -30,6 +31,10 @@ from omegaconf import MISSING
 DEFAULT_OUTPUT_ROOT = "/mnt/ai-data/training/runs"
 
 OPTIMIZER_NAMES = ("adamw", "adamw8bit", "cpu_adam")
+PEFT_METHODS = ("lora", "dora")
+QUANTIZE_BASE_MODES = ("none", "nf4")
+COMPUTE_DTYPES = ("bf16", "fp16", "fp32")
+TARGET_MODULES_AUTO = "auto"
 SCHEDULE_TYPES = ("cosine", "wsd")
 PRECISION_DTYPES = ("bf16", "fp8")
 FP8_BACKENDS = ("torchao", "te")
@@ -149,6 +154,35 @@ class MemoryConfig:
 
 
 @dataclass
+class PeftConfig:
+    """Parameter-efficient fine-tuning (Phase 1 F2): LoRA, QLoRA, DoRA.
+
+    quantize_base: nf4 loads the frozen base in 4-bit via bitsandbytes
+    (QLoRA); validate() rejects nf4 without peft.enabled and nf4 combined
+    with precision.dtype=fp8. method: dora maps to PEFT use_dora=True and is
+    valid with or without base quantization.
+
+    target_modules is either an explicit module-name list or "auto", which
+    resolves per model family through training/families.py. Entry points
+    resolve "auto" before the config snapshot is written, so a snapshot
+    always carries the concrete list (see training/peft_utils.py).
+    """
+
+    enabled: bool = False
+    method: str = "lora"  # one of PEFT_METHODS
+    rank: int = 16
+    alpha: int = 32
+    dropout: float = 0.05
+    # list[str], or the string TARGET_MODULES_AUTO ("auto"); typed Any
+    # because OmegaConf dataclass fields cannot express the union. The shape
+    # is enforced by validate().
+    target_modules: Any = TARGET_MODULES_AUTO
+    quantize_base: str = "none"  # one of QUANTIZE_BASE_MODES; nf4 = QLoRA
+    double_quant: bool = True  # bitsandbytes nested quantization; nf4 only
+    compute_dtype: str = "bf16"  # one of COMPUTE_DTYPES
+
+
+@dataclass
 class CheckpointConfig:
     interval_steps: int = 1000
     retain_last: int = 3
@@ -191,6 +225,7 @@ class Recipe:
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     precision: PrecisionConfig = field(default_factory=PrecisionConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
+    peft: PeftConfig = field(default_factory=PeftConfig)
     checkpoint: CheckpointConfig = field(default_factory=CheckpointConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     watchdog: WatchdogConfig = field(default_factory=WatchdogConfig)
