@@ -74,7 +74,7 @@ inference GPU images.
 `scripts/training/smoke_test.py` verifies the stack imports and that the CUDA-compiled paths run.
 It has two modes: `--build` (build-time; CUDA asserts degrade to `[SKIP]` on a GPU-less build
 host) and the default (`make train-smoke` on the workstation; CUDA capability `(12, 0)` is
-enforced). The seven steps:
+enforced). The eight steps:
 
 1. Import torch; assert CUDA availability and device capability `(12, 0)`.
 2. Import transformers, trl, peft, datasets, accelerate, torchao, liger_kernel, hydra,
@@ -84,7 +84,9 @@ enforced). The seven steps:
 5. deepspeed: load and step `DeepSpeedCPUAdam` (proves the pre-built Zen 5 op loads and runs).
 6. torchao: convert a two-layer MLP with `convert_to_float8_training` and run forward and
    backward (proves `torch._scaled_mm` works on sm_120).
-7. Write a versions manifest (packages, CUDA, driver, GPU name) to stdout and, on the
+7. unsloth (optional F3 SFT backend): import `FastLanguageModel`; warn-only, a failure does not
+   fail the build (the trl backend is unaffected).
+8. Write a versions manifest (packages, CUDA, driver, GPU name) to stdout and, on the
    workstation, to `/mnt/ai-data/training/runs/_smoke/versions.json`.
 
 ## Compose integration
@@ -110,7 +112,7 @@ Volumes:
 |--------|--------|
 | `make train-build` | Build the image; the build fails if any smoke-test step fails |
 | `make train-shell` | Interactive shell in the container, GPU and training root attached |
-| `make train-smoke` | Run the seven-step smoke test on the workstation |
+| `make train-smoke` | Run the eight-step smoke test on the workstation |
 
 ## Concurrency policy
 
@@ -123,7 +125,7 @@ Training and inference must not run at the same time: one GPU consumer at a time
 - `docker/training/Dockerfile.training` — multi-stage-capable devel-base training image.
 - `docker/training/entrypoint.sh` — thin entrypoint: environment echo, optional LD_PRELOAD hook,
   `exec`.
-- `scripts/training/smoke_test.py` — seven-step stack verification and versions manifest.
+- `scripts/training/smoke_test.py` — eight-step stack verification and versions manifest.
 - `docker-compose.training.yaml` — separate-file service definition with GPU reservation and the
   writable training root.
 - `pyproject.toml` — the `training` dependency group and the `flash-attn` build dependency.

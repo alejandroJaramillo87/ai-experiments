@@ -123,7 +123,7 @@ train-build: ## Build the training image (runs the smoke test at build; fails on
 train-shell: ## Interactive shell in the training container (GPU + /mnt/ai-data/training mounted)
 	docker compose -f $(TRAIN_COMPOSE) run --rm training /bin/bash
 
-train-smoke: ## Run the seven-step training smoke test on the workstation (enforces CUDA sm_120)
+train-smoke: ## Run the eight-step training smoke test on the workstation (enforces CUDA sm_120)
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/smoke_test.py
 
 prepare-data: ## Tokenize a dataset into shards (Phase 0 D2): make prepare-data ARGS="--source ... --tokenizer ... --out ..."
@@ -146,6 +146,9 @@ train-calibrate: ## Measure real peak VRAM for a recipe (Phase 0 D4, GPU): make 
 
 train: ## Run the reference training loop (Phase 0 D6): make train CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="checkpoint.resume=latest"
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train --config $(CONFIG) $(ARGS)
+
+train-sft: ## Run a supervised fine-tune on TRL (Phase 1 F3): make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="optimizer.lr=1e-4"
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train-sft --config $(CONFIG) $(ARGS)
 
 export-build: ## Build the GGUF export image (pinned llama.cpp converter and quantizer, Phase 0 D7)
 	@echo "$(CYAN)Building export image...$(RESET)"

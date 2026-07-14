@@ -234,6 +234,58 @@ def cmd_train(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_train_sft(args: argparse.Namespace) -> int:
+    from training.sft import SftPreflightError, check_memory_fit, train_sft
+    from training.watchdog import WatchdogAbort
+
+    out = Printer(quiet=args.json)
+    recipe = _load_validated(args.config, args.overrides, out)
+    if recipe is None:
+        return 1
+    resume = recipe.checkpoint.resume
+    verb = f"Resuming ({resume})" if resume else "Fine-tuning"
+    out.run(f"{verb} {recipe.run.name} [{recipe.sft.backend}]: "
+            f"{recipe.schedule.total_steps} total steps")
+    fits, fit_message = check_memory_fit(recipe, args.force)
+    (out.ok if fits and "force" not in fit_message else out.warn)(fit_message)
+    try:
+        result = train_sft(recipe, force=args.force)
+    except SftPreflightError as exc:
+        out.error(f"Preflight failed: {exc}")
+        return 1
+    except WatchdogAbort as exc:
+        out.error(f"Watchdog abort: {exc.signal} value {exc.value:.4g} "
+                  f"crossed threshold {exc.threshold:.4g}")
+        out.line("  Emergency checkpoint saved (emergency=true, retention-exempt)")
+        out.line("  Resume after diagnosis with checkpoint.resume=latest")
+        return 1
+    except (RuntimeError, FileNotFoundError, ValueError) as exc:
+        out.error(f"SFT run failed: {exc}")
+        out.line("  Solution: check sft.dataset (prepared with prepare_sft.py) "
+                 "and the model.hf id/HF_TOKEN")
+        return 1
+    out.ok(f"Run complete: step {result.final_step} [{result.backend}]")
+    if result.trainable_report:
+        out.info(result.trainable_report, indent=2)
+    if result.train_loss is not None:
+        out.line(f"Final train loss: {result.train_loss:.6f}")
+    if result.holdout_loss is not None:
+        out.line(f"Held-out loss:    {result.holdout_loss:.6f}")
+    out.line(f"Run directory: {result.run_dir}")
+    out.line(f"Checkpoints:   {result.checkpoint_root}")
+    if args.json:
+        print(json.dumps({
+            "run_dir": result.run_dir,
+            "checkpoint_root": result.checkpoint_root,
+            "final_step": result.final_step,
+            "backend": result.backend,
+            "train_loss": result.train_loss,
+            "holdout_loss": result.holdout_loss,
+            "losses": result.losses,
+        }, indent=2))
+    return 0
+
+
 def cmd_export(args: argparse.Namespace) -> int:
     import shutil
     import tempfile
@@ -340,6 +392,17 @@ def build_parser() -> argparse.ArgumentParser:
     tr.add_argument("--json", action="store_true",
                     help="emit a result JSON on stdout after the run")
     tr.set_defaults(func=cmd_train)
+
+    sft = sub.add_parser(
+        "train-sft", help="run a supervised fine-tune on TRL for a recipe (F3)")
+    sft.add_argument("--config", required=True, help="path to a recipe YAML")
+    sft.add_argument("overrides", nargs="*",
+                     help="dotlist overrides, e.g. optimizer.lr=1e-4")
+    sft.add_argument("--force", action="store_true",
+                     help="downgrade a memory-fit refusal to a warning")
+    sft.add_argument("--json", action="store_true",
+                     help="emit a result JSON on stdout after the run")
+    sft.set_defaults(func=cmd_train_sft)
 
     ex = sub.add_parser(
         "export", help="export a checkpoint or HF model dir to a served GGUF (D7)")

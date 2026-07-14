@@ -299,11 +299,14 @@ class TestLoadSftDataset:
 
 class TestRecipeIntegration:
     def test_sft_group_defaults_off(self):
+        # A recipe without an sft block (the D6 pretraining reference) keeps
+        # the group disabled; the F3 SFT reference enables it explicitly.
         from training.recipes import load_recipe
-        recipe = load_recipe(os.path.join(
+        reference = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "training", "recipes", "reference", "sft-qlora-e2b.yaml"))
-        assert recipe.sft.enabled is False
+            "training", "recipes", "reference")
+        assert load_recipe(os.path.join(reference, "tiny-e2e.yaml")).sft.enabled is False
+        assert load_recipe(os.path.join(reference, "sft-qlora-e2b.yaml")).sft.enabled is True
 
     def test_enabled_sft_requires_dataset_and_hf_model(self):
         from training.recipes import load_recipe, validate
