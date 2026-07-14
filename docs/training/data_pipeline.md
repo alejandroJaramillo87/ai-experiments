@@ -21,7 +21,7 @@ writer. Design background: [D2 investigation](d2-lite-data-pipeline-investigatio
 |------|------|
 | `/training/data/shards.py` | Shard writer, manifest read/write/verify, `ShardedTokenDataset` reader |
 | `/training/data/prepare.py` | Tokenize-and-pack logic (HF datasets, streaming, local JSONL) |
-| `/scripts/train/prepare_data.py` | Thin CLI over `prepare()` |
+| `/scripts/training/prepare_data.py` | Thin CLI over `prepare()` |
 | `Makefile` `prepare-data` | Container wrapper: `make prepare-data ARGS="..."` |
 
 ## Shard format
@@ -66,7 +66,7 @@ $ make prepare-data ARGS="--source HuggingFaceFW/fineweb-edu --split train \
 Local JSONL:
 
 ```bash
-$ python scripts/train/prepare_data.py --source ./data.jsonl --text-field text \
+$ python scripts/training/prepare_data.py --source ./data.jsonl --text-field text \
     --tokenizer HuggingFaceTB/SmolLM2-135M \
     --out /mnt/ai-data/training/shards/local-test
 ```

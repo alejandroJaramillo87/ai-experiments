@@ -119,10 +119,10 @@ train-shell: ## Interactive shell in the training container (GPU + /mnt/ai-data/
 	docker compose -f $(TRAIN_COMPOSE) run --rm training /bin/bash
 
 train-smoke: ## Run the seven-step training smoke test on the workstation (enforces CUDA sm_120)
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/train/smoke_test.py
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/smoke_test.py
 
 prepare-data: ## Tokenize a dataset into shards (Phase 0 D2): make prepare-data ARGS="--source ... --tokenizer ... --out ..."
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/train/prepare_data.py $(ARGS)
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/prepare_data.py $(ARGS)
 
 ##@ Monitoring & Debugging
 
