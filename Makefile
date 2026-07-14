@@ -167,11 +167,6 @@ interp-arena: interp-dirs ## Clone (or update) the ARENA 3.0 curriculum to /mnt/
 	fi
 	@echo "$(GREEN)ARENA available at /mnt/ai-data/interp/arena (interp/notebooks/arena in Jupyter)$(RESET)"
 
-interp-fetch: ## Download a mini-project's pinned artifacts (M3): make interp-fetch PROJECT=<slug>
-	@test -n "$(PROJECT)" || { echo "$(RED)[ERROR] PROJECT is required: make interp-fetch PROJECT=<slug>$(RESET)"; exit 2; }
-	docker compose -f $(INTERP_COMPOSE) run --rm interp \
-	  python -c "from interp.miniprojects.common.artifacts import fetch; print(*fetch('$(PROJECT)'), sep='\n')"
-
 ##@ Monitoring & Debugging
 
 status: ## Show status of all services

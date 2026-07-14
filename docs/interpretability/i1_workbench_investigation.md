@@ -1,8 +1,7 @@
-# Interpretability I1 workbench and M3 commons: implementation investigation
+# Interpretability I1 workbench: implementation investigation
 
-Investigation of what implementing the interpretability Phase 0 deliverables — I1 (workbench
-image and compose integration) and M3 (mini-project harness commons) — entails in this
-repository. The planning document's design is taken as intent; where it conflicts with the
+Investigation of what implementing the interpretability Phase 0 infrastructure deliverable,
+I1 (workbench image and compose integration), entails in this repository. The planning document's design is taken as intent; where it conflicts with the
 repository, the repository is the source of truth and the deviations are recorded here.
 
 ## Table of contents
@@ -12,11 +11,11 @@ repository, the repository is the source of truth and the deviations are recorde
 - [I1: compose integration](#i1-compose-integration)
 - [I1: Makefile targets and preflight](#i1-makefile-targets-and-preflight)
 - [I1: smoke test](#i1-smoke-test)
-- [M3: mini-project harness commons](#m3-mini-project-harness-commons)
+- [M3: removed by owner decision](#m3-removed-by-owner-decision)
 - [Dependency findings (verified 2026-07-14)](#dependency-findings-verified-2026-07-14)
 - [File inventory](#file-inventory)
 - [Acceptance checks and host-side split](#acceptance-checks-and-host-side-split)
-- [Open questions](#open-questions)
+- [Resolved questions](#resolved-questions)
 
 ## Design-versus-repository deviations
 
@@ -137,41 +136,13 @@ targets: the preflight is the same policy extended to a third GPU consumer.
 7. Versions manifest JSON to stdout and `/mnt/ai-data/interp/versions.json` on the
    workstation.
 
-## M3: mini-project harness commons
+## M3: removed by owner decision
 
-Deliberately thin importable package at `interp/miniprojects/common/` (total budget ~600
-lines), host-runnable tests at `tests/interp/`, no CLI, no config system.
-
-- `models.py` — `load_subject(model_id, revision)` returning a TransformerLens
-  `HookedTransformer` where supported, else an nnsight `LanguageModel`, bf16 on cuda;
-  `format_chat(model_id, messages)` always through `tokenizer.apply_chat_template`; a small
-  registry of known model quirks; unknown ids raise.
-- `artifacts.py` — `fetch(spec)` for HF artifacts pinned to explicit revisions in a
-  checked-in `artifacts.yaml`, downloading to `/mnt/ai-data/models/` or
-  `/mnt/ai-data/interp/`, idempotent, verifying size/hash where available. Uses
-  `huggingface_hub.snapshot_download` with `revision=`, which is already idempotent via the
-  cache; verification is the added value.
-- `pairs.py` — contrastive pair sets from JSONL; difference-in-means over a hook point;
-  train/test split with normalized-string dedup across the boundary. Pure torch + stdlib;
-  unit-testable on CPU.
-- `judge.py` — `score(items, rubric, endpoint)` against a local OpenAI-compatible endpoint,
-  default `http://localhost:8003/v1` (vllm-gpu), fallback `http://localhost:8002/v1`
-  (llama-gpu). Healthcheck preflight before scoring (vllm exposes `/health`, llama.cpp
-  `/v1/health` — both verified in the Makefile's `status` target); schema-constrained JSON
-  where supported, parse-with-retry otherwise; warn if a hooked model is resident on the GPU
-  (`torch.cuda.memory_allocated() > 0`). Endpoint mocked in unit tests.
-- `record.py` — plot/JSON drop helpers with the naming convention the experiments log links
-  to.
-- Tests: `tests/interp/conftest.py` mirrors `tests/training/conftest.py` (repo root on
-  `sys.path`); `pairs` and `judge` tests run under `make test` (`uv run pytest -v`) with no
-  GPU and no network. Note `make test` runs on the host: importing `transformer_lens` at
-  module top level in `models.py` would require the interp group host-side. Either instruct
-  `uv sync --group interp` for development (the group is host-installable) or import lazily
-  inside `load_subject`; lazy import keeps `make test` working from a plain `uv sync` and is
-  recommended.
-- Makefile: `interp-fetch PROJECT=<slug>` added to the `##@ Interpretability` section. The
-  M3 GPU check (Gemma-2-2B hooked forward, difference-in-means on two pairs) extends
-  `interp-smoke` rather than adding a target.
+The planning document's "M3: mini-project harness commons" (a shared notebook-support package
+under `interp/miniprojects/common/`) was implemented and then removed on 2026-07-14 by owner
+decision: the interpretability tier ships frameworks, tooling, and infrastructure only, not
+tutorial or learning scaffolding. Helper code returns only when a concrete project or service
+pulls it as real infrastructure.
 
 ## Dependency findings (verified 2026-07-14)
 
@@ -209,9 +180,6 @@ New files:
 - `scripts/interp/preflight.sh`
 - `scripts/interp/smoke_test.py`
 - `interp/notebooks/README.md` + `.gitkeep` (owner-work convention)
-- `interp/miniprojects/common/{__init__.py,models.py,artifacts.py,pairs.py,judge.py,record.py}` (M3)
-- `interp/miniprojects/artifacts.yaml` (M3, or per-project files — decide at implementation)
-- `tests/interp/{conftest.py,test_pairs.py,test_judge.py}` (M3)
 - `env.interp.example` (documented template, mirrors `env.example`)
 
 Modified files:
@@ -224,8 +192,8 @@ Modified files:
 
 Per AGENTS.md the sandbox cannot run Docker, the GPU, or services. The split:
 
-Sandbox-executable: all file authoring, `uv lock` (network permitting), host-side unit tests
-(`uv run pytest tests/interp`), shellcheck-style review of scripts, `git grep` secret scan.
+Sandbox-executable: all file authoring, `uv lock` (network permitting), shellcheck-style
+review of scripts, `git grep` secret scan.
 
 Host-side (human runs, reports output back):
 
@@ -235,18 +203,18 @@ $ make interp-smoke          # all seven steps, HF_TOKEN set
 $ make interp-up             # then open the printed URL, run a notebook cell
 $ docker compose up -d llama-gpu && make interp-up   # preflight must refuse
 $ docker compose stop llama-gpu
-$ make test                  # host-side unit tests
 $ git status                 # no untracked heavy artifacts after a session
 ```
 
-## Open questions
+## Resolved questions
 
-1. `read_only: true` with tmpfs home versus the design's writable-rootfs deviation: attempt
-   strict first (recommended), or take the design's deviation as settled?
-2. ARENA requirements: fold into the `interp` group (recommended) or keep a separately
-   installed vendored file?
-3. Should I1 and M3 land as one change or two? M3 depends on the workbench for its GPU check
-   but its host-side modules and tests are independent; two commits on one branch is the
-   natural split.
-4. `env_file: .env.interp` marked `required: false` (buildable without secrets) versus
-   required (fails loudly when missing)?
+Decisions taken by the owner on 2026-07-14:
+
+1. `read_only: true` rootfs with tmpfs-backed writable state (Jupyter/IPython/Triton caches
+   under `/tmp`), matching the training container; the planning document's writable-rootfs
+   deviation is not taken.
+2. ARENA requirements folded into the uv `interp` dependency group; no separately installed
+   vendored requirements file.
+3. `env_file: .env.interp` marked `required: false` so the image builds and ungated work runs
+   without secrets; smoke-test step 6 warns and skips until `HF_TOKEN` is set.
+4. M3 removed entirely (see above): infrastructure only, no learning scaffolding.

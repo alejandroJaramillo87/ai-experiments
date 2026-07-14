@@ -3,8 +3,8 @@
 
 Verifies the hooked-execution stack imports and actually runs on sm_120: a TransformerLens
 hooked forward, an nnsight trace, the bf16 substrate policy, and (when HF_TOKEN grants
-access) the full ARENA 1.3.2 dependency chain: Gemma-2-2B plus a Gemma Scope SAE via SAELens,
-plus the M3 commons difference-in-means path. Emits a versions manifest for reproducibility.
+access) the gated chain: Gemma-2-2B plus a Gemma Scope SAE via SAELens. Emits a versions
+manifest for reproducibility.
 
 Two modes:
   --build   Run at image-build time. CUDA and network asserts degrade to [SKIP] on a GPU-less
@@ -240,8 +240,8 @@ def main() -> int:
             out.error(f"bf16 forward failed: {exc}")
             failures.append("bf16")
 
-    # Step 6 (gated): Gemma-2-2B at bf16 plus one Gemma Scope SAE via SAELens, then the M3
-    # commons difference-in-means path. Proves the full ARENA 1.3.2 dependency chain.
+    # Step 6 (gated): Gemma-2-2B at bf16 plus one Gemma Scope SAE via SAELens.
+    # Proves the full hooked-model-plus-pretrained-SAE dependency chain on this GPU.
     if not os.environ.get("HF_TOKEN"):
         out.warn(
             "gemma-scope: skipped, HF_TOKEN not set (required for Phase 0 acceptance)"
@@ -266,16 +266,6 @@ def main() -> int:
             feats = sae.encode(resid.to(sae.dtype))
             assert torch.isfinite(feats.float()).all()
             out.ok("gemma-scope: Gemma-2-2B bf16 forward, Gemma Scope SAE encode")
-
-            from interp.miniprojects.common.pairs import difference_in_means
-
-            pairs = [
-                {"positive": "I love this", "negative": "I hate this"},
-                {"positive": "What a great day", "negative": "What a terrible day"},
-            ]
-            direction = difference_in_means(gemma, pairs, "blocks.12.hook_resid_post")
-            assert torch.isfinite(direction.float()).all()
-            out.ok("commons: difference-in-means on two pairs (M3 end-to-end)")
         except Exception as exc:  # noqa: BLE001
             out.error(f"gemma-scope step failed: {exc}")
             failures.append("gemma-scope")

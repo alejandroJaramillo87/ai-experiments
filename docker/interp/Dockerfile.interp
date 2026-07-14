@@ -89,9 +89,8 @@ RUN mkdir -p /app && chown -R appuser:appuser /app
 WORKDIR /workspace
 
 # Repository sources needed by the build-time smoke test; at runtime the live repository is
-# bind-mounted over /workspace and these copies are shadowed.
+# bind-mounted over /workspace and this copy is shadowed.
 COPY --chown=appuser:appuser scripts/interp ./scripts/interp
-COPY --chown=appuser:appuser interp ./interp
 
 # Entrypoint
 COPY --chown=appuser:appuser docker/interp/entrypoint.sh /app/entrypoint.sh
