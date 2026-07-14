@@ -12,6 +12,10 @@ into inference.
 > concrete commands as the training tier lands. Do not present these steps as runnable until
 > the scripts exist.
 
+> Sandboxed execution: agents cannot reach the host, the GPU, or `/mnt/ai-data/models/`.
+> Once the training tier lands, launch/resume/serve commands are executed by the human on
+> the workstation; the agent prepares commands and works from human-reported output.
+
 ## Launch and resume
 
 - Launch a run from a pinned base model and a versioned config; never train from a floating

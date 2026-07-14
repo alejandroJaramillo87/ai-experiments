@@ -247,17 +247,16 @@ Memory Layout (32GB RTX 5090):
 
 ### Swap Space
 
-CPU memory as overflow for GPU:
+CPU memory can serve as overflow for GPU KV cache. The current deployment does
+not pass `--swap-space`; the entrypoint only sets `--gpu-memory-utilization`.
+`--swap-space` is available as a tuning option if overflow handling is needed:
 
 ```python
-# Configuration in our deployment
---swap-space 4  # 4GB CPU swap space
+# Deployed setting (docker/vllm-gpu/entrypoint.sh)
 --gpu-memory-utilization 0.85  # Leave headroom
 
-# Behavior:
-# 1. Fill GPU to 85% (27.2GB of 32GB)
-# 2. Swap least-recently-used blocks to CPU
-# 3. Swap back when needed
+# Optional tuning (not currently deployed):
+# --swap-space 4  # 4GB CPU swap space for LRU block overflow
 ```
 
 ### Preemption
@@ -269,9 +268,10 @@ Preemption modes:
 1. Recompute: Drop KV cache, recompute when resumed
 2. Swap: Move KV cache to CPU memory
 3. Sliding window: Keep only recent KV entries
-
-Our configuration: Swap mode (better for long contexts)
 ```
+
+The entrypoint does not pass `--preemption-mode`; vLLM uses its default. Swap
+mode can be selected as a tuning option for long-context workloads.
 
 ## Request Processing
 
@@ -287,7 +287,6 @@ Prefill computation:
 - Process all tokens in parallel
 - Generate KV cache for attention
 - Output: First generated token
-- Time: ~50ms for 100 tokens
 ```
 
 ### Decode Phase
@@ -300,8 +299,7 @@ Iteration 2: Generate token 7
 ...
 Iteration N: Generate EOS token
 
-Per-iteration time: ~3.5ms (RTX 5090)
-Throughput: 286 tokens/second
+Each iteration produces one token per sequence.
 ```
 
 ### Chunked Prefill
@@ -360,50 +358,58 @@ FlashInfer: 0.6.13
 
 ### Active Optimizations
 
-The following optimizations are enabled in production:
+The following CUDA environment variables are set in
+`docker/vllm-gpu/Dockerfile.vllm-gpu`:
 
 ```bash
-# Memory pools (30% allocation overhead reduction)
-ENV CUDA_ALLOCATOR_BACKEND=cudaMallocAsync
-ENV CUDA_MALLOC_ASYNC_POOLS=1
+# 2GB kernel cache
 ENV CUDA_CACHE_MAXSIZE=2147483648
-
-# Tensor cores (40% GEMM speedup)
-ENV CUBLAS_WORKSPACE_CONFIG=:4096:8
-ENV CUDNN_TENSOR_OPS=1
-
-# Blackwell L2 cache (96MB)
-ENV CUDA_L2_PERSISTING_SIZE=100663296
-ENV CUDA_DEVICE_MAX_CONNECTIONS=32
-
-# CUDA runtime optimizations
+# Lazy module loading for faster startup
 ENV CUDA_MODULE_LOADING=LAZY
+# Order GPU devices by performance
 ENV CUDA_DEVICE_ORDER=FASTEST_FIRST
+# Async kernel execution
 ENV CUDA_LAUNCH_BLOCKING=0
+```
+
+### Experimental Optimizations (not currently enabled)
+
+The following variables are present in the Dockerfile but commented out. They
+are documented as tuning candidates and require benchmarking before enabling:
+
+```bash
+# Async memory allocation
+# ENV CUDA_ALLOCATOR_BACKEND=cudaMallocAsync
+# ENV CUDA_MALLOC_ASYNC_POOLS=1
+# Tensor core / cuBLAS workspace tuning
+# ENV CUDA_TENSOR_CORES=1
+# ENV CUBLAS_WORKSPACE_CONFIG=:4096:8
+# ENV CUDNN_TENSOR_OPS=1
+# Blackwell L2 cache (96MB) and connection tuning
+# ENV CUDA_L2_PERSISTING_SIZE=100663296
+# ENV CUDA_DEVICE_MAX_CONNECTIONS=32
+# ENV CUDA_COPY_SPLIT_THRESHOLD=256
 ```
 
 ## Performance Characteristics
 
-Performance on RTX 5090 with CUDA 13.0.2:
+No benchmark has been run on this workstation. The values below are configured
+settings, not measured results.
 
 | Metric | Value | Notes |
 |--------|-------|-------|
-| Throughput (single) | ~300-500 tok/s | Projected, pending benchmarks |
-| Throughput (batch 16) | ~4800 tok/s | Projected, pending benchmarks |
-| First token | 50-100ms | Estimated with chunked prefill |
-| Max sequences | 256 | Current configuration |
-| Memory usage | 85% | GPU memory utilization |
+| Max sequences | 256 | `--max-num-seqs` setting |
+| GPU memory utilization | 0.85 | `--gpu-memory-utilization` setting |
 | FP8 support | Available | Native on RTX 5090 |
 
-Comparison with llama.cpp on same hardware:
+Qualitative comparison with llama.cpp on the same hardware:
 
-| Metric | vLLM | llama.cpp | Use Case |
-|--------|------|-----------|----------|
-| Single stream | 300 tok/s | 287 tok/s | Similar |
-| 16 parallel | 4800 tok/s | 287 tok/s | vLLM wins |
-| First token | 100ms | 50ms | llama.cpp wins |
-| Memory efficiency | 85% | 95% | llama.cpp wins |
-| Quantization | FP8/GPTQ | GGUF | Different |
+| Aspect | vLLM | llama.cpp |
+|--------|------|-----------|
+| Concurrent throughput | Higher (continuous batching) | Lower (single stream) |
+| Single-stream latency | Higher | Lower |
+| Memory efficiency | Paged KV cache | Near model size |
+| Quantization | FP8/GPTQ | GGUF |
 
 ## Comparison with llama.cpp
 
@@ -463,9 +469,7 @@ Metrics exposed by vLLM:
 {
   "num_running_requests": 5,
   "num_waiting_requests": 2,
-  "gpu_memory_usage": 27648000000,
-  "gpu_utilization": 0.92,
-  "throughput_tokens_per_second": 486.3
+  "gpu_memory_usage": 27648000000
 }
 ```
 
@@ -486,7 +490,6 @@ Common issues and solutions:
 - Run benchmarks to validate projected performance numbers
 - Review [parameters/vllm-parameters.md](../parameters/vllm-parameters.md) for tuning
 - Compare with [llama-cpp.md](llama-cpp.md) for deployment decisions
-- Update [benchmarks/performance-results.md](../benchmarks/performance-results.md) with actual results
 
 ---
 

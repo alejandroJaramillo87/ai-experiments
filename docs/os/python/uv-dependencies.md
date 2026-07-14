@@ -85,10 +85,10 @@ missing build-time import.
 
 | Package | Version | Role |
 |---------|---------|------|
-| `jupyterlab` | 4.4.7 | Interactive notebook environment |
+| `jupyterlab` | 4.6.1 | Interactive notebook environment |
 | `pandas` | 2.3.3 | Dataframe operations (held at 2.x; see note below) |
-| `scikit-learn` | 1.7.2 | Classical machine learning and preprocessing |
-| `matplotlib` | 3.10.6 | Plotting |
+| `scikit-learn` | 1.9.0 | Classical machine learning and preprocessing |
+| `matplotlib` | 3.11.0 | Plotting |
 | `seaborn` | 0.13.2 | Statistical visualization |
 
 `pandas` is held at the latest 2.x (`2.3.3`). `mlflow` requires `pandas<3` in every release
@@ -99,23 +99,23 @@ through 3.14, so `pandas` 3.x cannot resolve while `mlflow` remains a dependency
 
 | Package | Version | Role |
 |---------|---------|------|
-| `wandb` | 0.20.1 | Experiment tracking and hyperparameter sweeps |
-| `mlflow` | 3.4.0 | Experiment tracking and model registry |
-| `tensorboard` | 2.20.0 | Metric and histogram visualization |
+| `wandb` | 0.28.0 | Experiment tracking and hyperparameter sweeps |
+| `mlflow` | 3.14.0 | Experiment tracking and model registry |
+| `tensorboard` | 2.21.0 | Metric and histogram visualization |
 
 ### Utilities and serving
 
 | Package | Version | Role |
 |---------|---------|------|
-| `tqdm` | 4.67.1 | Progress bars |
-| `rich` | 14.1.0 | Terminal formatting |
-| `ray[default]` | 2.49.2 | Parallel hyperparameter tuning and serving |
-| `optuna` | 4.5.0 | Hyperparameter optimization |
-| `tiktoken` | 0.9.0 | Byte-pair tokenizer |
-| `requests` | 2.32.5 | HTTP client |
+| `tqdm` | 4.68.4 | Progress bars |
+| `rich` | 15.0.0 | Terminal formatting |
+| `ray[default]` | 2.56.0 | Parallel hyperparameter tuning and serving |
+| `optuna` | 4.9.0 | Hyperparameter optimization |
+| `tiktoken` | 0.13.0 | Byte-pair tokenizer |
+| `requests` | 2.34.2 | HTTP client |
 | `llama-cpp-python` | 0.3.16 | Python bindings for llama.cpp |
-| `fastapi` | 0.115.14 | Model-serving API framework |
-| `uvicorn` | 0.34.3 | ASGI server for FastAPI |
+| `fastapi` | 0.139.0 | Model-serving API framework |
+| `uvicorn` | 0.51.0 | ASGI server for FastAPI |
 
 ## PyTorch and the CUDA index
 
@@ -136,7 +136,7 @@ both packages to that index. Because the index is explicit, only these packages
 resolve from it; all other dependencies resolve from PyPI. uv records the exact CUDA wheels
 in `uv.lock` and installs them during `uv sync`. No pip sideload step exists.
 
-The system CUDA 13.1 toolkit runs the cu130 wheels by CUDA backward compatibility. See
+The system CUDA 13.0.88 toolkit runs the cu130 wheels by CUDA backward compatibility. See
 [pytorch_cuda_update_guide.md](pytorch_cuda_update_guide.md) for the update procedure.
 
 ## The quant optional extra
@@ -198,6 +198,30 @@ group so the core install stays lean; `make install` (which syncs all groups) in
 `transformer-lens` requires `transformers >= 5.4`, satisfied by the `transformers` 5.13.1
 pin in the core dependencies.
 
+## The training dependency group
+
+The `training` group (Phase 0 D1) holds the training-tier libraries not already in the core
+dependencies. Core already provides torch, torchvision, transformers, datasets, accelerate,
+peft, deepspeed, bitsandbytes, sentencepiece, wandb, mlflow, and tensorboard, so the group adds
+only the remainder. It tracks the same majors as the `interp` tier so the two do not diverge.
+The container in `docker/training/Dockerfile.training` builds and CUDA-verifies this group; see
+[docker_training_overview.md](../../sandbox/docker_training_overview.md).
+
+| Package | Role |
+|---------|------|
+| `trl` | Fine-tuning trainers (SFT, DPO, GRPO) |
+| `liger-kernel` | Fused Triton kernels for lower-memory training |
+| `torchao` | float8 training (primary FP8 backend on sm_120) |
+| `flash-attn` | FlashAttention-2 kernels (sm_120) |
+| `hydra-core` | Recipe and configuration composition |
+| `pynvml` | GPU telemetry through NVML |
+| `xxhash` | Fast content hashing for shard and dataset manifests |
+| `zstandard` | Shard and artifact compression |
+
+`flash-attn` (like `deepspeed`) imports torch during its build, so it is listed in
+`[tool.uv.extra-build-dependencies]`. The CUDA-compiled members (`flash-attn`, `liger-kernel`,
+`torchao`) build against the cu130 torch pinned in `[tool.uv.sources]`.
+
 ## Common tasks
 
 ```bash
@@ -236,8 +260,8 @@ acceptance checks after each bump:
 - The `interp` dependency group (`transformer-lens`, `nnsight`) is present and installed.
 - `pandas` is held at 2.x under the `mlflow` `pandas<3` constraint (see above).
 
-A future training tier should track the same majors as the `interp` tier so the two do not
-diverge.
+The `training` dependency group (Phase 0 D1) is present and tracks the same majors as the
+`interp` tier so the two do not diverge.
 
 ## Next steps
 

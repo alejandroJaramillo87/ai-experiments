@@ -31,7 +31,7 @@ static void zen5_optimizer_init() {
     fprintf(stderr, "[%s] Hugepage support: OFF\n", ZEN5_OPTIMIZER_NAME);
 #endif
 
-#ifdef DEBUG_OUTPUT
+#if DEBUG_OUTPUT
     fprintf(stderr, "[%s] Debug mode: ON\n", ZEN5_OPTIMIZER_NAME);
 #endif
 }

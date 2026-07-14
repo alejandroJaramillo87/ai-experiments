@@ -1,0 +1,111 @@
+# Training GPU Dockerfile - RTX 5090 (Blackwell) / Ryzen 9950X (Zen 5)
+#
+# One reproducible environment for the Phase 0 training tier (roadmap D1). PyTorch cu130 on
+# sm_120 with the full training stack (TRL, PEFT, DeepSpeed, bitsandbytes, torchao, flash-attn,
+# liger-kernel) imported and CUDA-verified at build time via scripts/train/smoke_test.py.
+#
+# Dependency source of truth is uv.lock (core dependencies + the `training` group), not
+# hand-pinned lines here: uv already manages the cu130 torch index and the CUDA-compiled
+# packages (see pyproject.toml [tool.uv.sources] / [tool.uv.extra-build-dependencies]).
+#
+# Base is the CUDA 13.0.2 devel image (matches docker/llama-gpu/Dockerfile.llama-gpu): the devel
+# toolchain is required to pre-build DeepSpeed's CPUAdam op with Zen 5 flags at image-build time,
+# front-loading upstream issue #7556 (AVX-512 intrinsics emitted without matching -march flags).
+
+# Build arguments
+ARG CUDA_VERSION=13.0.2
+ARG PYTHON_VERSION=3.12
+ARG UV_VERSION=0.11.28
+
+# Pinned uv binary source (matches docker/vllm-gpu/Dockerfile.vllm-gpu)
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+
+# CUDA 13.0.2 devel environment: needed to compile DeepSpeed ops and any source-built wheels
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu24.04
+
+ARG PYTHON_VERSION
+
+LABEL description="Training environment for RTX 5090 Blackwell / Ryzen 9950X Zen 5 (Phase 0 D1)"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# Blackwell sm_120 target, matching the inference GPU images
+ENV TORCH_CUDA_ARCH_LIST="12.0"
+ENV CUDA_ARCHITECTURES=120
+
+# Build-time toolchain: gcc/g++ for DeepSpeed CPUAdam and flash-attn, git for source wheels
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends --allow-change-held-packages \
+        build-essential \
+        gcc g++ \
+        git \
+        curl \
+        ca-certificates \
+        libgomp1 \
+        python${PYTHON_VERSION} \
+        python${PYTHON_VERSION}-dev \
+        python${PYTHON_VERSION}-venv \
+        cuda-nvcc-13-0 \
+        cuda-cudart-dev-13-0 \
+        cuda-nvml-dev-13-0 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Pinned uv binary (see uv stage above)
+COPY --from=uv /uv /uvx /usr/local/bin/
+
+# Virtual environment (avoids PEP 668 externally-managed restriction)
+RUN uv venv /opt/venv --python ${PYTHON_VERSION}
+ENV VIRTUAL_ENV="/opt/venv"
+ENV PATH="/opt/venv/bin:${PATH}"
+
+# CUDA paths for the build (nvcc) and runtime
+ENV PATH=/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+ENV CUDA_HOME=/usr/local/cuda
+ENV CUDA_MODULE_LOADING=LAZY
+
+# Install the pinned environment from uv.lock: core dependencies + the training group.
+# DS_BUILD_CPU_ADAM/DS_BUILD_UTILS force DeepSpeed to pre-build its ops here (not JIT at first
+# use); CFLAGS targets Zen 5 so the AVX-512 op is compiled with matching flags (issue #7556).
+# Fall back to -march=native if the image gcc rejects znver5.
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1 \
+    CFLAGS="-march=znver5" CXXFLAGS="-march=znver5" \
+    uv sync --frozen --no-install-project --no-default-groups --group training \
+    || DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1 \
+       CFLAGS="-march=native" CXXFLAGS="-march=native" \
+       uv sync --frozen --no-install-project --no-default-groups --group training
+
+# NVIDIA runtime capabilities
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+ENV NVIDIA_REQUIRE_CUDA="cuda>=13.0"
+
+# Non-root user (repo-standard line, matches the inference images)
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser
+
+# Cache locations under the (writable) home; HF cache and Triton cache live on tmpfs at runtime
+ENV HF_HOME=/app/cache
+ENV HOME=/app
+RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app
+
+WORKDIR /app
+
+# Repository sources needed by the smoke test and later training entry points
+COPY --chown=appuser:appuser scripts/train ./scripts/train
+
+# Entrypoint
+COPY --chown=appuser:appuser docker/training/entrypoint.sh /app/entrypoint.sh
+USER root
+RUN chmod +x /app/entrypoint.sh
+USER appuser
+
+# Build-time verification: fail the build if any smoke-test step regresses. CUDA asserts are
+# skipped gracefully when the build host has no GPU; make train-smoke enforces them on the
+# workstation.
+RUN python scripts/train/smoke_test.py --build
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["/bin/bash"]

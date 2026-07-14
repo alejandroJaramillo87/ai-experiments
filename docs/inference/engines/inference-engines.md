@@ -282,10 +282,10 @@ Benefits:
 
 Our workstation runs two inference engines optimized for different workloads:
 
-| Engine | Target | Optimization | Performance | Use Case |
-|--------|--------|--------------|-------------|----------|
-| llama.cpp | CPU/GPU | Latency | 35/287 tok/s | Interactive chat |
-| vLLM | GPU | Throughput | 300-500 tok/s (est.) | API serving |
+| Engine | Target | Optimization | Use Case |
+|--------|--------|--------------|----------|
+| llama.cpp | CPU/GPU | Latency | Interactive chat |
+| vLLM | GPU | Throughput | API serving |
 
 Architecture flow:
 ```
@@ -294,7 +294,7 @@ User Request
 Docker Container
      ↓
 Inference Engine (llama.cpp/vLLM)
-     ├── CPU Path: 12 cores, 96GB RAM
+     ├── CPU Path: 16 cores, 96GB RAM
      └── GPU Path: RTX 5090, 32GB VRAM
 ```
 
@@ -304,17 +304,19 @@ Key metrics for inference engines:
 
 | Metric | Definition | llama.cpp | vLLM |
 |--------|-----------|-----------|------|
-| Time to First Token | Latency before first output | 50-200ms | 100-500ms |
-| Tokens/Second | Generation speed | 35 (CPU), 287 (GPU) | 300-500 (est.) |
-| Memory Efficiency | Model size vs RAM usage | 1.1x | 1.3x |
-| Batch Efficiency | Performance scaling with batch | Linear to 4 | Linear to 32 |
+| Time to First Token | Latency before first output | Lower | Higher |
+| Generation speed | Tokens per second | Latency-optimized | Throughput-optimized |
+| Memory Efficiency | Model size vs RAM usage | Near model size | Paged KV cache |
+| Batch Efficiency | Performance scaling with batch | Limited | Scales with concurrency |
+
+No benchmark has been run on this workstation; the entries above are
+qualitative.
 
 ## Next Steps
 
 - Review [llama.cpp](llama-cpp.md) for CPU/GPU unified inference
 - Review [vLLM](vllm.md) for high-throughput GPU serving
 - See [parameters/optimization-guide.md](../parameters/optimization-guide.md) for tuning
-- Check [benchmarks/performance-results.md](../benchmarks/performance-results.md) for measurements
 
 ---
 

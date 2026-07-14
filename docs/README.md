@@ -1,6 +1,6 @@
 # AI Experiments Documentation Hub
 
-Central index for all project documentation. This repository contains 28 comprehensive guides covering hardware setup, software configuration, optimization strategies, and performance benchmarking for a local AI inference workstation.
+Central index for all project documentation. This repository contains 30 comprehensive guides covering hardware setup, software configuration, optimization strategies, and performance benchmarking for a local AI inference workstation.
 
 ## Quick Navigation
 
@@ -42,7 +42,7 @@ Python and dependency management with uv:
 
 | Document | Description |
 |----------|-------------|
-| [os/python/poetry-dependencies.md](os/python/poetry-dependencies.md) | Dependency reference for all AI/ML packages |
+| [os/python/uv-dependencies.md](os/python/uv-dependencies.md) | uv dependencies reference for all AI/ML packages |
 | [os/python/setup_python.md](os/python/setup_python.md) | Python 3.12 installation via uv |
 | [os/python/pytorch_cuda_update_guide.md](os/python/pytorch_cuda_update_guide.md) | PyTorch installation with CUDA 13.0 compatibility |
 
@@ -61,8 +61,8 @@ Parameter tuning and optimization for maximum performance:
 | Document | Description | Performance |
 |----------|-------------|-------------|
 | [inference/README.md](inference/README.md) | Optimization philosophy and overview | - |
-| [inference/parameters/llama-cpp-parameters.md](inference/parameters/llama-cpp-parameters.md) | llama.cpp parameter tuning guide | 286.85 tok/s (GPU) |
-| [inference/parameters/vllm-parameters.md](inference/parameters/vllm-parameters.md) | vLLM configuration for throughput | Active (vLLM 0.25.0) |
+| [inference/parameters/llama-cpp-parameters.md](inference/parameters/llama-cpp-parameters.md) | llama.cpp parameter tuning guide | - |
+| [inference/parameters/vllm-parameters.md](inference/parameters/vllm-parameters.md) | vLLM configuration for throughput | vLLM 0.25.0 |
 
 ### System Optimizations
 
@@ -82,19 +82,18 @@ Docker container documentation for inference services:
 
 | Document | Service | Performance |
 |----------|---------|-------------|
-| [sandbox/docker_llama_cpu_overview.md](sandbox/docker_llama_cpu_overview.md) | llama-cpu service (Port 8001) | 35.44 tok/s |
-| [sandbox/docker_llama_gpu_overview.md](sandbox/docker_llama_gpu_overview.md) | llama-gpu service (Port 8002) | 286.85 tok/s |
-| [sandbox/docker_vllm_gpu_overview.md](sandbox/docker_vllm_gpu_overview.md) | vllm-gpu service (Port 8003) | Active (vLLM 0.25.0) |
+| [sandbox/docker_llama_cpu_overview.md](sandbox/docker_llama_cpu_overview.md) | llama-cpu service (Port 8001) | - |
+| [sandbox/docker_llama_gpu_overview.md](sandbox/docker_llama_gpu_overview.md) | llama-gpu service (Port 8002) | - |
+| [sandbox/docker_vllm_gpu_overview.md](sandbox/docker_vllm_gpu_overview.md) | vllm-gpu service (Port 8003) | - |
+| [sandbox/docker_training_overview.md](sandbox/docker_training_overview.md) | training container (Phase 0 D1, no port) | - |
 | [sandbox/docker_compose_overview.md](sandbox/docker_compose_overview.md) | Service orchestration | - |
 
 ## Performance Summary
 
-### Validated Benchmarks
+### Benchmarking
 
-| Service | Hardware | Model | Performance | Benchmark File |
-|---------|----------|-------|-------------|----------------|
-| **llama-gpu** | RTX 5090 | gpt-oss-20b (Q8_K_XL) | **286.85 tok/s** | - |
-| **llama-cpu** | AMD Ryzen 9950X | Qwen3-Coder-30B (IQ4_XS) | **35.44 tok/s** | `optimizations/bios/cpu_benchmark_results_final_bios.json` |
+Run the benchmark scripts in `scripts/benchmark/` (`benchmark_cpu.sh`, `benchmark_gpu.sh`)
+to measure inference performance on this workstation.
 
 ### Key Optimizations Applied
 
@@ -118,7 +117,7 @@ This documentation follows Linux/Unix conventions:
 
 1. **[GPU Stack Overview](os/gpu-stack/README.md)** - Understanding the NVIDIA software stack
 2. **[Inference Parameters](inference/parameters/llama-cpp-parameters.md)** - Tuning for performance
-3. **[Dependency Reference](os/python/poetry-dependencies.md)** - Python package management
+3. **[uv Dependencies](os/python/uv-dependencies.md)** - uv dependencies reference
 
 ### Troubleshooting Guides
 

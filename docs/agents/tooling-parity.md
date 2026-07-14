@@ -4,6 +4,10 @@ This repo is usable from both OpenCode and Claude Code without content drift. Co
 policy, and prompt bodies are single-sourced; only the per-tool wiring is duplicated, and
 each duplicated surface has a parity check.
 
+Agent sessions themselves are sandboxed with no access to the host (see the execution
+environment section in `AGENTS.md`): the parity, preflight, and sync `make` targets in this
+document are run by the human on the workstation, and agents work from the reported output.
+
 ## Rules and style guides (Phase 1)
 
 - Single source of truth: `AGENTS.md`. OpenCode reads it directly and ignores `CLAUDE.md`

@@ -3,6 +3,21 @@
 Production-ready AI infrastructure for an RTX 5090 + AMD Ryzen 9950X workstation:
 containerized LLM inference optimized for both latency (llama.cpp) and throughput (vLLM).
 
+## Execution environment (agents)
+
+Coding agents run in a sandbox with **no access to the host**: no host Docker daemon, no GPU,
+no running inference services (ports 8001-8003/3000), and no `/mnt/ai-data`. Host-side
+commands — `make` targets that touch services, `docker`/`docker compose`, `nvidia-smi`,
+healthcheck curls, benchmark scripts — cannot be executed from the sandbox.
+
+- When a task requires a host-side command, output the exact command for the human to run,
+  then stop and wait for the human to report the output back.
+- Human-reported output is the authoritative evidence for acceptance checks, healthchecks,
+  and benchmarks. Record the reported command and output verbatim when marking work done.
+- Never claim to have run a host-side command, and never fabricate its output.
+- Repo-local work remains directly executable in the sandbox: editing files, grep, git,
+  `gh`, and unit tests that need no GPU or running service.
+
 ## Operating rules
 
 These are standing instructions for anyone (human or agent) making changes in this repo.
@@ -16,8 +31,9 @@ These are standing instructions for anyone (human or agent) making changes in th
   and the doc is the bug. Fix the doc to match — never adjust the running config to match a stale
   doc.
 - **Every roadmap task ends by running its stated acceptance check.** A task is not complete
-  until its acceptance check has been executed and observed to pass. Report the exact command and
-  its output; do not mark a task done on the strength of a code change alone.
+  until its acceptance check has been executed and observed to pass. For host-side checks the
+  human executes the command and reports the output back; the agent records the exact command
+  and its reported output. Do not mark a task done on the strength of a code change alone.
 - **One GPU consumer at a time; parallelize the rest across worktrees.** Independent, non-GPU
   tasks may run concurrently in separate git worktrees (one agent session each). Anything that
   touches the GPU, a running inference service, or the benchmark suite is serialized — exactly
@@ -39,6 +55,7 @@ These are standing instructions for anyone (human or agent) making changes in th
 | llama-gpu  | 8002 | GPU llama.cpp inference       |
 | vllm-gpu   | 8003 | High-throughput batch serving |
 | open-webui | 3000 | Web interface                 |
+| training   | -    | Fine-tuning / pretraining (Phase 0 D1; separate compose, no port) |
 
 ## Validated optimizations
 
@@ -47,6 +64,8 @@ These are standing instructions for anyone (human or agent) making changes in th
 - CPU allocation: 12 dedicated cores per single model instance
 
 ## Common workflows
+
+Host-side commands — run by the human on the workstation, not from an agent sandbox:
 
 ```bash
 make up          # Start all services

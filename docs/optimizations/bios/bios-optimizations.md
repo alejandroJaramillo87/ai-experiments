@@ -84,6 +84,9 @@ The following settings have been validated in production with a **26.2 percent p
 - **CSM Support**: Disabled
 
 ### Benchmark Validation Results
+
+Measured at the previous 12-core CPU configuration; the current llama-cpu service runs 16 cores (cpuset 0-15).
+
 - **Before optimizations**: 28.09 tokens/second average
 - **After optimizations**: 35.44 tokens/second average
 - **Performance gain**: 26.2 percent increase
@@ -158,7 +161,7 @@ Advanced CPU configuration for optimal AI inference performance, maximizing proc
 - **Cores 0-11**: Dedicated to LLM inference
 - **Remaining cores**: Reserved for OS, system tasks, and housekeeping
 - **NUMA Optimization**: Primarily uses first CCD for cache locality
-- **Docker Configuration**: Single container with `cpuset: "0-11"` and `THREADS=12`
+- **Docker Configuration (benchmark run)**: Single container with `cpuset: "0-11"` and `THREADS=12`. The current llama-cpu service in `docker-compose.yaml` uses `cpuset: "0-15"` and `THREADS=16`.
 
 ### Memory Performance Optimization
 
@@ -207,7 +210,7 @@ Enhanced memory configuration building upon EXPO profile activation to maximize 
 ### AVX-512 Optimization (Zen 5 Advantage)
 
 **Native 512-bit Datapath Configuration**
-Zen 5's revolutionary native 512-bit AVX-512 implementation provides massive AI performance gains.
+Zen 5 implements a native 512-bit AVX-512 datapath, which increases vector throughput for AI workloads compared to the double-pumped 256-bit implementation in prior generations.
 
 **AVX-512 Settings:**
 - **AVX-512 Support**: `Enabled` (default, but verify)

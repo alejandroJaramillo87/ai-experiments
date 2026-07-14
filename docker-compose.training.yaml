@@ -1,0 +1,56 @@
+# docker-compose.training.yaml
+#
+# Phase 0 training tier (roadmap D1). Kept in a separate compose file so `make up` never
+# starts it: training and inference must not run concurrently (one GPU consumer at a time,
+# per AGENTS.md). Invoke via `make train-build` / `make train-shell` / `make train-smoke`, or
+# directly with `docker compose -f docker-compose.training.yaml run --rm training <cmd>`.
+#
+# This mirrors the docker-compose.agents.yaml precedent (separate file, run-not-up). It is not a
+# long-running server: no published port and no healthcheck; it runs batch or interactive jobs.
+
+services:
+  training:
+    build:
+      context: .
+      dockerfile: docker/training/Dockerfile.training
+    container_name: training
+    restart: "no"  # batch job runner, not a service
+    init: true  # tini as PID 1 for correct signal forwarding
+    user: "${UID:-1000}:${GID:-1000}"  # match host user for /mnt/ai-data/training writes
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - CUDA_VISIBLE_DEVICES=0
+      # Optional D9 LD_PRELOAD interposer hook (empty by default)
+      - TRAIN_LD_PRELOAD=${TRAIN_LD_PRELOAD:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute, utility]
+    shm_size: "16g"  # dataloader worker shared memory
+    tmpfs:
+      - /tmp:size=8G,mode=1777,exec  # Triton/CUDA JIT caches require exec
+      - /app/cache:size=2G,mode=1777  # HuggingFace cache (HF_HOME)
+    volumes:
+      # Base models mounted read-only, exactly as the inference services mount them
+      - /mnt/ai-data/models/:/app/models:ro
+      # Writable training root: datasets, shards, checkpoints, run outputs (roadmap D1)
+      - /mnt/ai-data/training:/mnt/ai-data/training:rw
+      # Repository sources (recipes, training package, scripts) mounted live for iteration
+      - ./scripts:/app/scripts:ro
+      - ./logs/training:/app/logs
+    networks:
+      - training-network
+
+# Self-contained network: training runs jobs, not a server, and never runs alongside the
+# inference stack, so it does not join ai-network.
+networks:
+  training-network:
+    driver: bridge

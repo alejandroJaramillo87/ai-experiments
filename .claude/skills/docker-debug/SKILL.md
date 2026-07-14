@@ -6,6 +6,11 @@ description: Container debugging runbook for this inference stack — per-servic
 
 For the llama.cpp / vLLM / open-webui stack defined in `docker-compose.yaml`.
 
+> Sandboxed execution: agents cannot reach the host Docker daemon, the services, or the
+> GPU. Every diagnostic and restart command in this runbook is executed by the human on
+> the workstation. The agent supplies the exact command, waits for the pasted output or
+> logs, and matches the failure signatures below against what the human reports.
+
 ## Services and healthchecks
 
 | Service | External port | Internal healthcheck |

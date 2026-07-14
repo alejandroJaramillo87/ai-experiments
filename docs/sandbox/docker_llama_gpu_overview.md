@@ -446,14 +446,19 @@ When deployed via docker-compose, additional security measures include:
 ## Tested But Ineffective Optimizations
 
 **Runtime Environment Variables**
-The following runtime environment variable optimizations were tested but provided no performance improvement for llama.cpp inference (baseline: ~287 tokens/sec):
+The following runtime environment variables are general CUDA and framework tuning knobs
+that were evaluated as candidates but are deliberately not set in this service's
+`docker/llama-gpu/Dockerfile.llama-gpu`, because they provided no performance improvement
+for llama.cpp inference during external testing:
 
-- **Memory Pool Optimizations**: CUDA_CACHE_MAXSIZE, CUDA_ALLOCATOR_BACKEND, CUDA_MALLOC_ASYNC_POOLS, PYTORCH_CUDA_ALLOC_CONF
+- **Memory Pool Optimizations**: CUDA_ALLOCATOR_BACKEND, CUDA_MALLOC_ASYNC_POOLS, PYTORCH_CUDA_ALLOC_CONF
 - **Tensor Core Settings**: CUDA_TENSOR_CORES, CUBLAS_WORKSPACE_CONFIG, CUDNN_TENSOR_OPS
 - **Blackwell Architecture Settings**: CUDA_L2_PERSISTING_SIZE, CUDA_DEVICE_MAX_CONNECTIONS, CUDA_COPY_SPLIT_THRESHOLD
-- **Clock Management**: CUDA_AUTO_BOOST
 
-These optimizations primarily benefit PyTorch and Python-based inference frameworks. The llama.cpp implementation is already highly optimized at compile time through CMAKE flags, making runtime environment variables largely ineffective.
+These variables primarily benefit PyTorch and Python-based inference frameworks. The
+llama.cpp implementation is already optimized at compile time through the CMake flags in
+the Dockerfile, so the Dockerfile sets only the CUDA and GGML variables that affect it
+(for example CUDA_MODULE_LOADING, CUDA_CACHE_PATH, and the GGML_CUDA_* settings).
 
 **Important Performance Warning**
 GPU clock locking (nvidia-smi -lgc/-lmc) causes a 38% performance degradation on RTX 5090 and should never be enabled.
