@@ -56,6 +56,9 @@ services:
       - /mnt/ai-data/interp:/mnt/ai-data/interp:rw
       # Parity with the inference services, for later phases reading served GGUFs' provenance
       - /mnt/ai-data/models:/app/models:ro
+      # P4-D2 harvest: the shared D9 run lock (write) and organism checkpoints (read)
+      # live under the training tree; harvest jobs take the same lock as training runs
+      - /mnt/ai-data/training:/mnt/ai-data/training:rw
     networks:
       - interp-network
 
