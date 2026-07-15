@@ -44,6 +44,12 @@ Peak VRAM is the sum of five components, computed in
 | Activations | Analytic per-layer inventory for the dense attention + SwiGLU family, GQA-aware, flash-attn assumed (linear in sequence length); gradient checkpointing keeps only layer inputs plus one layer of recompute workspace; logits include the fp32 upcast for cross-entropy |
 | Framework overhead | Calibrated constant, initial value 1.5GB (`OVERHEAD_BYTES` in `training/calculator/solve.py`) |
 
+The host RAM report (`host_ram_bytes`) sums the offloaded optimizer state with
+an explicit replay-buffer budget (`replay.max_gb`, P2-D4). A replay block with
+`max_gb` unset contributes nothing: its budget is derived from the remaining
+host headroom (`training/continual/replay.resolve_max_bytes`), so counting it
+would be circular.
+
 The fits flag tests the reserved estimate (allocated sum plus overhead) against
 32GB minus a 1GB safety margin. `solve(recipe, axis)` binary-searches micro-batch
 (integers) or sequence length (128-token steps) for the largest fitting value.

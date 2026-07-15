@@ -290,14 +290,22 @@ def optimizer_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
 
 
 def host_ram_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
-    """Host RAM the run consumes for offloaded optimizer state (0 when none).
+    """Host RAM the run consumes: offloaded optimizer state plus an explicit
+    replay-buffer budget (P2-D4). 0 when neither applies.
 
     128GB is also finite; the report surfaces this so page cache and pinned
-    buffers can be budgeted against it.
+    buffers can be budgeted against it. A replay block with max_gb unset
+    contributes nothing here — its budget is derived FROM the remaining
+    headroom (training/continual/replay.resolve_max_bytes), so adding it
+    would be circular.
     """
-    if recipe.memory.offload != "zero_offload" and recipe.optimizer.name != "cpu_adam":
-        return 0
-    return trainable_param_count(spec, recipe) * OFFLOAD_HOST_BYTES_PER_PARAM
+    total = 0
+    if recipe.memory.offload == "zero_offload" or recipe.optimizer.name == "cpu_adam":
+        total += trainable_param_count(spec, recipe) * OFFLOAD_HOST_BYTES_PER_PARAM
+    replay = getattr(recipe, "replay", None)
+    if replay is not None and replay.enabled and replay.max_gb is not None:
+        total += int(replay.max_gb * (1 << 30))
+    return total
 
 
 def activation_bytes(

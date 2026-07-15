@@ -2,5 +2,7 @@
 
 P2-D1 consumes training/continual/benchmarks.yaml as the decontamination
 gate; the forgetting evaluation (P2-D6) will consume the same file so the
-two can never disagree about which benchmarks matter.
+two can never disagree about which benchmarks matter. replay.py (P2-D4)
+provides the RAM-resident replay buffer the loop mixes in against
+forgetting.
 """

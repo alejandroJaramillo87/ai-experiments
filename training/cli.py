@@ -122,7 +122,8 @@ def _print_estimate_table(est: Estimate, out: Printer) -> None:
         out.line("  Solution: reduce data.micro_batch or data.seq_len, enable")
         out.line("  memory.gradient_checkpointing, or switch optimizer to adamw8bit")
     if est.host_ram:
-        out.info(f"Host RAM for offloaded optimizer state: {gb(est.host_ram)} of 128 GB")
+        out.info(f"Host RAM (offloaded optimizer state + replay budget): "
+                 f"{gb(est.host_ram)} of 128 GB")
 
 
 def cmd_memfit(args: argparse.Namespace) -> int:

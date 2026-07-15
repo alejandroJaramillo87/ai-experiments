@@ -113,6 +113,35 @@ class _DataStateSlot:
         self.state = state
 
 
+def _sources_with_replay(recipe: DictConfig, domain: list[tuple],
+                         run_dir: str) -> list[tuple]:
+    """Expand the replay block into mixture sources (P2-D4).
+
+    Domain weights are scaled to 1 - fraction of the total draw and each
+    replay source enters at fraction * its relative share, served from a
+    ReplayBuffer loaded into host RAM. The total byte budget (explicit
+    replay.max_gb or the calculator-derived headroom) splits across replay
+    sources by the same shares.
+    """
+    from training.continual.replay import ReplayBuffer, resolve_max_bytes
+
+    fraction = recipe.replay.fraction
+    domain_total = sum(w for _, _, w in domain)
+    sources = [(name, path, w / domain_total * (1.0 - fraction))
+               for name, path, w in domain]
+    total_bytes = resolve_max_bytes(recipe)
+    replay_total = sum(s.weight for s in recipe.replay.sources)
+    for s in recipe.replay.sources:
+        share = s.weight / replay_total
+        buffer = ReplayBuffer(
+            s.path, window=recipe.data.seq_len,
+            max_bytes=int(total_bytes * share), seed=recipe.run.seed,
+            run_dir=run_dir, name=s.name,
+            ram_floor_gb=recipe.watchdog.ram_floor_gb)
+        sources.append((s.name, buffer, fraction * share))
+    return sources
+
+
 def train(recipe: DictConfig, stop_after: int | None = None) -> TrainResult:
     """Run the recipe to schedule.total_steps, checkpointing and tracking.
 
@@ -138,21 +167,6 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         main_mask, workers_mask = aff.resolve_masks(recipe.affinity)
         aff.apply_mask(main_mask)
 
-    mixing = recipe.mixture.enabled
-    if mixing:
-        dataset = MixtureDataset(
-            [(s.name, s.path, s.weight) for s in recipe.mixture.sources],
-            window=recipe.data.seq_len, seed=recipe.run.seed,
-            strict_single_epoch=recipe.mixture.strict_single_epoch)
-    else:
-        source = recipe.data.source
-        if recipe.staging.enabled:
-            source = stage_shards(source, recipe.staging)
-        dataset = ShardedTokenDataset(source, window=recipe.data.seq_len)
-    model = build_model(recipe).to(device)
-    optimizer = build_optimizer(model, recipe)
-    scheduler = build_scheduler(optimizer, recipe)
-
     # A resume within the same wall-clock second as the interrupted run is
     # legitimate (the acceptance test does exactly that); nudge the timestamp
     # forward instead of failing on the collision.
@@ -168,6 +182,25 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
             f"Could not allocate a run directory under "
             f"{recipe.run.output_root}/{recipe.run.name}")
     ckpt_root = f"{recipe.run.output_root}/{recipe.run.name}/checkpoints"
+
+    # Built after the run dir exists: replay buffers write their loaded-set
+    # manifests there (P2-D4).
+    mixing = recipe.mixture.enabled
+    if mixing:
+        sources = [(s.name, s.path, s.weight) for s in recipe.mixture.sources]
+        if recipe.replay.enabled:
+            sources = _sources_with_replay(recipe, sources, run_name_dir)
+        dataset = MixtureDataset(
+            sources, window=recipe.data.seq_len, seed=recipe.run.seed,
+            strict_single_epoch=recipe.mixture.strict_single_epoch)
+    else:
+        source = recipe.data.source
+        if recipe.staging.enabled:
+            source = stage_shards(source, recipe.staging)
+        dataset = ShardedTokenDataset(source, window=recipe.data.seq_len)
+    model = build_model(recipe).to(device)
+    optimizer = build_optimizer(model, recipe)
+    scheduler = build_scheduler(optimizer, recipe)
 
     start_step, tokens_seen, next_index = 0, 0, 0
     # Cumulative tokens drawn per mixture source (P2-D2 accounting); carried
