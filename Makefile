@@ -129,6 +129,12 @@ train-smoke: ## Run the eight-step training smoke test on the workstation (enfor
 prepare-data: ## Tokenize a dataset into shards (Phase 0 D2): make prepare-data ARGS="--source ... --tokenizer ... --out ..."
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/prepare_data.py $(ARGS)
 
+prepare-corpus: ## Filter, dedup, decontaminate, and shard a corpus (Phase 2 P2-D1): make prepare-corpus ARGS="--source ... --tokenizer ... --work-dir ... --out ..."
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/prepare_corpus.py $(ARGS)
+
+build-contamination: ## Build the benchmark decontamination index (Phase 2 P2-D1): make build-contamination ARGS="--out /mnt/ai-data/training/datasets/_contamination/v1"
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/build_contamination.py $(ARGS)
+
 prepare-sft: ## Prepare masked SFT examples (Phase 1 F1): make prepare-sft ARGS="--source ... --tokenizer ... --model-type ... --out ..."
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/prepare_sft.py $(ARGS)
 

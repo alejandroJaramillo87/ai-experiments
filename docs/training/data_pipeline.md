@@ -1,9 +1,11 @@
-# Lite data pipeline (Phase 0 D2)
+# Data pipeline (Phase 0 D2, Phase 2 P2-D1)
 
 Tokenizes a Hugging Face dataset or local JSONL into memory-mapped token shards with a
-JSON manifest, and provides the mmap-backed reader training loops consume. Lite means no
-dedup, filtering, or decontamination; Phase 2 adds those in front of the same shard
-writer. Design background: [D2 investigation](d2-lite-data-pipeline-investigation.md).
+JSON manifest, and provides the mmap-backed reader training loops consume. Two entry
+points share one shard writer: the lite path (Phase 0 D2, no dedup, filtering, or
+decontamination) and the full-scale path (Phase 2 P2-D1) that adds quality stages in
+front of the same writer. P2-D1 design background:
+[P2-D1 investigation](p2_d1_full_scale_data_pipeline_investigation.md).
 
 ## Table of contents
 
@@ -11,6 +13,7 @@ writer. Design background: [D2 investigation](d2-lite-data-pipeline-investigatio
 - [Shard format](#shard-format)
 - [Manifest contract](#manifest-contract)
 - [Usage](#usage)
+- [Full-scale pipeline](#full-scale-pipeline)
 - [Reader](#reader)
 - [Parallelism](#parallelism)
 - [Testing](#testing)
@@ -21,8 +24,13 @@ writer. Design background: [D2 investigation](d2-lite-data-pipeline-investigatio
 |------|------|
 | `/training/data/shards.py` | Shard writer, manifest read/write/verify, `ShardedTokenDataset` reader |
 | `/training/data/prepare.py` | Tokenize-and-pack logic (HF datasets, streaming, local JSONL) |
-| `/scripts/training/prepare_data.py` | Thin CLI over `prepare()` |
-| `Makefile` `prepare-data` | Container wrapper: `make prepare-data ARGS="..."` |
+| `/scripts/training/prepare_data.py` | Thin CLI over `prepare()` (lite path) |
+| `/training/data/pipeline.py` | P2-D1 stage composition: filters, dedup, decontamination |
+| `/training/data/contamination.py` | Benchmark n-gram index build and contamination filter |
+| `/training/continual/benchmarks.yaml` | Benchmark list gating decontamination (P2-D6 list) |
+| `/scripts/training/prepare_corpus.py` | Thin CLI over `prepare_corpus()` (full-scale path) |
+| `/scripts/training/build_contamination.py` | Contamination index build CLI |
+| `Makefile` `prepare-data`, `prepare-corpus`, `build-contamination` | Container wrappers |
 
 ## Shard format
 
@@ -77,6 +85,37 @@ does not declare an EOS token, `--license` to record the license string, `--revi
 to pin the dataset revision. The tool refuses to overwrite an existing manifest. Until
 the D3 tokenizer trainer lands, pass any `AutoTokenizer`-loadable tokenizer (hub id or
 local directory).
+
+## Full-scale pipeline
+
+`prepare_corpus.py` runs the P2-D1 stage chain before the shard writer: language
+identification (fastText, keep `en` at 0.65 or above) -> Gopher and FineWeb heuristic
+quality filters -> exact dedup (xxhash on normalized text) -> MinHash-LSH near-dedup
+(5-grams, 112 hash functions, approximately 0.75 Jaccard) -> 13-gram benchmark
+decontamination. The engine is datatrove's `LocalPipelineExecutor`; stage thresholds
+live in a YAML config (`/training/data/configs/default.yaml` documents the defaults,
+and filters are per-corpus toggles because quality heuristics can gut code or math
+corpora).
+
+Build the contamination index once per benchmark-list revision, then prepare corpora
+against it:
+
+```bash
+$ make build-contamination ARGS="--out /mnt/ai-data/training/datasets/_contamination/v1"
+$ make prepare-corpus ARGS="--source HuggingFaceFW/fineweb-edu --split train \
+    --contamination /mnt/ai-data/training/datasets/_contamination/v1 \
+    --tokenizer google/gemma-4-E2B \
+    --work-dir /mnt/ai-data/training/datasets/fineweb-edu-2B \
+    --out /mnt/ai-data/training/shards/fineweb-edu-2B \
+    --max-tokens 2_000_000_000 --clean-intermediates"
+```
+
+Stage intermediates are JSONL directories under the work directory, each with a
+`stats.json` funnel (docs in, docs out, drop-reason histogram); they are regenerable
+and `--clean-intermediates` deletes the data while keeping every `stats.json`. The
+shard manifest additionally records the full stage funnel, the MinHash parameters,
+and `decontaminated_against` (the contamination index manifest hash), so every
+published number about the corpus is reproducible from the manifest alone.
 
 ## Reader
 

@@ -1,0 +1,28 @@
+# Default P2-D1 pipeline configuration. Every key overrides a field of
+# training/data/pipeline.PipelineConfig; omitted keys keep the dataclass
+# defaults (which are datatrove's defaults for filter thresholds).
+#
+# Quality filters can gut a specialized domain corpus (code, math): copy this
+# file per corpus and disable blocks deliberately rather than editing defaults.
+
+language:
+  enabled: true
+  languages: [en]
+  threshold: 0.65
+
+quality:
+  enabled: true
+  gopher_repetition: true
+  gopher_quality: true
+  fineweb_quality: true
+
+exact_dedup: true
+
+minhash:
+  enabled: true
+  n_grams: 5
+  num_buckets: 14        # 14 buckets x 8 hashes = 112 hash functions
+  hashes_per_bucket: 8   # ~0.75 Jaccard threshold at these parameters
+  seed: 1
+
+workers: 30              # leave two cores for the OS and the shard writer
