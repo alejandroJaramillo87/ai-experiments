@@ -180,6 +180,39 @@ class TestValidate:
             os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"), ["schedule.warmup_steps=100"])
         assert_problem(recipe, "warmup_steps")
 
+    def test_wsd_valid_with_defaults(self):
+        recipe = load_recipe(
+            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"), ["schedule.type=wsd"])
+        validate(recipe)
+
+    def test_wsd_warmup_reaching_decay_start_rejected(self):
+        # total 20, decay starts at int(20 * 0.9) = 18
+        recipe = load_recipe(
+            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
+            ["schedule.type=wsd", "schedule.warmup_steps=18"])
+        assert_problem(recipe, "no stable plateau")
+
+    def test_wsd_frac_and_shape_ranges(self):
+        for override, needle in (
+                ("schedule.decay_start_frac=0.0", "decay_start_frac"),
+                ("schedule.decay_start_frac=1.5", "decay_start_frac"),
+                ("schedule.final_lr_frac=1.0", "final_lr_frac"),
+                ("schedule.decay_shape=step", "decay_shape")):
+            recipe = load_recipe(
+                os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
+                ["schedule.type=wsd", override])
+            assert_problem(recipe, needle)
+
+    def test_wsd_knobs_rejected_on_sft_recipes(self):
+        recipe = load_recipe(
+            os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml"),
+            ["schedule.type=wsd", "schedule.decay_start_frac=0.8"])
+        assert_problem(recipe, "not applied by the sft path")
+        defaults_ok = load_recipe(
+            os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml"),
+            ["schedule.type=wsd"])
+        validate(defaults_ok)
+
     def test_unknown_precision_dtype(self):
         recipe = load_recipe(
             os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"), ["precision.dtype=fp16"])

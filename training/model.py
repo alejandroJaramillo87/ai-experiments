@@ -107,35 +107,3 @@ def build_optimizer(model, recipe: DictConfig):
     # plain single-GPU loop, so the branch lands with the Phase 1 trainer.
     raise ValueError(
         f"The reference loop has no optimizer for '{recipe.optimizer.name}'")
-
-
-# WSD decay fraction: the final 10 percent of total_steps decays linearly to
-# zero; the stable plateau covers everything between warmup and decay.
-WSD_DECAY_FRACTION = 0.1
-
-
-def build_scheduler(optimizer, recipe: DictConfig):
-    """LR schedule from the recipe: cosine or wsd, both with linear warmup."""
-    import math
-
-    import torch
-
-    warmup = recipe.schedule.warmup_steps
-    total = recipe.schedule.total_steps
-
-    def cosine(step: int) -> float:
-        if step < warmup:
-            return (step + 1) / max(1, warmup)
-        progress = (step - warmup) / max(1, total - warmup)
-        return 0.5 * (1.0 + math.cos(math.pi * min(1.0, progress)))
-
-    def wsd(step: int) -> float:
-        if step < warmup:
-            return (step + 1) / max(1, warmup)
-        decay_start = total - int(total * WSD_DECAY_FRACTION)
-        if step < decay_start:
-            return 1.0
-        return max(0.0, (total - step) / max(1, total - decay_start))
-
-    fn = cosine if recipe.schedule.type == "cosine" else wsd
-    return torch.optim.lr_scheduler.LambdaLR(optimizer, fn)

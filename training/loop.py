@@ -48,7 +48,8 @@ from training.data.mixture import MixtureDataset
 from training.data.shards import ShardedTokenDataset
 from training.data.staging import stage_shards
 from training.lock import run_lock
-from training.model import build_model, build_optimizer, build_scheduler
+from training.model import build_model, build_optimizer
+from training.schedules import build_scheduler
 from training.recipes.loader import create_run_dir, resolved_yaml
 from training.tracking import Tracker
 from training.watchdog import Watchdog, WatchdogAbort
@@ -63,6 +64,7 @@ class TrainResult:
     final_step: int
     tokens_seen: int
     losses: list[tuple[int, float]] = field(default_factory=list)  # (step, loss)
+    lrs: list[tuple[int, float]] = field(default_factory=list)  # (step, lr) — P2-D3 acceptance
     data_wait_ms_mean: float = 0.0  # D9 overlap acceptance metric
     tokens_per_source: dict[str, int] = field(default_factory=dict)  # P2-D2 accounting
 
@@ -275,6 +277,7 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                     torch.cuda.memory_allocated(device) / 2**30)
             tracker.log(metrics, step)
             result.losses.append((step, step_loss))
+            result.lrs.append((step, scheduler.get_last_lr()[0]))
             result.final_step, result.tokens_seen = step, tokens_seen
             wait_total += data_wait_s * 1000.0
             result.data_wait_ms_mean = wait_total / len(result.losses)

@@ -37,6 +37,7 @@ QUANTIZE_BASE_MODES = ("none", "nf4")
 COMPUTE_DTYPES = ("bf16", "fp16", "fp32")
 TARGET_MODULES_AUTO = "auto"
 SCHEDULE_TYPES = ("cosine", "wsd")
+WSD_DECAY_SHAPES = ("1-sqrt", "linear", "cosine")
 PRECISION_DTYPES = ("bf16", "fp8")
 FP8_BACKENDS = ("torchao", "te")
 OFFLOAD_MODES = ("none", "zero_offload")
@@ -174,9 +175,19 @@ class OptimizerConfig:
 
 @dataclass
 class ScheduleConfig:
+    """LR schedule. The wsd knobs (P2-D3) parameterize the warmup-stable-
+    decay shape in training/schedules.py: plateau ends at
+    decay_start_frac * total_steps, then decays to final_lr_frac * peak_lr
+    along decay_shape. They apply to the pretrain loop only; validate()
+    rejects non-default values on sft recipes (the transformers
+    warmup_stable_decay scheduler cannot express them)."""
+
     type: str = "cosine"  # one of SCHEDULE_TYPES
     warmup_steps: int = 0
     total_steps: int = MISSING
+    decay_start_frac: float = 0.9
+    final_lr_frac: float = 0.0
+    decay_shape: str = "1-sqrt"  # one of WSD_DECAY_SHAPES
 
 
 @dataclass

@@ -78,6 +78,15 @@ Applied immediately after each successful save: keep the last
 points to is never deleted. The D10 disk-free watchdog is the backstop once it
 lands.
 
+Checkpoint-at-stable convention (P2-D3): for a `schedule.type=wsd` run, every
+checkpoint written during the stable phase (steps in
+`[warmup_steps, decay_start_frac * total_steps)`) is decay-branchable — a decay
+leg can later be re-run from it with a different decay configuration. The
+retention settings for a wsd run must keep at least one stable-phase checkpoint
+(set `checkpoint.retain_every` so a multiple lands inside the plateau).
+Multi-branch tooling is deferred to later phases; Phase 2 records the convention
+only.
+
 ## Resume
 
 `checkpoint.resume=latest` (or an explicit checkpoint path) restores all five
