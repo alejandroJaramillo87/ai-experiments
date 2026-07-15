@@ -33,6 +33,12 @@ from training.recipes.schema import (
     SCHEDULE_TYPES,
     SFT_BACKENDS,
     TARGET_MODULES_AUTO,
+    WSD_DECAY_SHAPES,
+)
+from training.schedules import (
+    WSD_DECAY_SHAPE_DEFAULT,
+    WSD_DECAY_START_FRAC_DEFAULT,
+    WSD_FINAL_LR_FRAC_DEFAULT,
 )
 
 
@@ -93,6 +99,43 @@ def _check_schedule(recipe: DictConfig, problems: list[str]) -> None:
             problems.append(
                 f"schedule: warmup_steps ({sched.warmup_steps}) exceeds "
                 f"total_steps ({sched.total_steps})")
+    if sched.type == "wsd":
+        _check_wsd(recipe, problems)
+
+
+def _check_wsd(recipe: DictConfig, problems: list[str]) -> None:
+    """P2-D3 invariants: wsd needs total_steps, warmup must end before the
+    decay window opens, frac knobs must be in range, and non-default knobs
+    are pretrain-loop-only (the sft path maps wsd onto transformers'
+    warmup_stable_decay, which has no decay shape or LR floor)."""
+    sched = recipe.schedule
+    if OmegaConf.is_missing(sched, "total_steps"):
+        problems.append("schedule.total_steps: required when type is wsd")
+    if not 0.0 < sched.decay_start_frac <= 1.0:
+        problems.append(f"schedule.decay_start_frac: must be in (0, 1], "
+                        f"got {sched.decay_start_frac}")
+    if not 0.0 <= sched.final_lr_frac < 1.0:
+        problems.append(f"schedule.final_lr_frac: must be in [0, 1), "
+                        f"got {sched.final_lr_frac}")
+    if sched.decay_shape not in WSD_DECAY_SHAPES:
+        problems.append(f"schedule.decay_shape: {sched.decay_shape!r} "
+                        f"not in {WSD_DECAY_SHAPES}")
+    if (not OmegaConf.is_missing(sched, "total_steps")
+            and 0.0 < sched.decay_start_frac <= 1.0
+            and sched.warmup_steps >= int(sched.total_steps * sched.decay_start_frac)):
+        problems.append(
+            f"schedule: warmup_steps ({sched.warmup_steps}) reaches the wsd "
+            f"decay start ({int(sched.total_steps * sched.decay_start_frac)}); "
+            "no stable plateau remains")
+    non_default = (
+        sched.decay_start_frac != WSD_DECAY_START_FRAC_DEFAULT
+        or sched.final_lr_frac != WSD_FINAL_LR_FRAC_DEFAULT
+        or sched.decay_shape != WSD_DECAY_SHAPE_DEFAULT)
+    if recipe.sft.enabled and non_default:
+        problems.append(
+            "schedule: wsd knobs (decay_start_frac, final_lr_frac, "
+            "decay_shape) are not applied by the sft path; remove them or "
+            "run through the pretrain loop")
 
 
 def _check_fp8_dims(recipe: DictConfig, problems: list[str]) -> None:
