@@ -15,7 +15,7 @@
 .PHONY: steer-extract steer-up steer-down steer-scorecard
 .PHONY: probe-capture probe-train probe-eval probe-monitor logproxy-up logproxy-down
 .PHONY: organism organism-generate organism-verify organism-seal organism-check-seal
-.PHONY: harvest harvest-check-hooks interp-gc
+.PHONY: harvest harvest-check-hooks interp-gc sae-train sae-eval
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -280,6 +280,19 @@ harvest-check-hooks: ## Gemma 4 hook-dimension gate: one-token forward, no captu
 
 interp-gc: ## Delete validated activation captures oldest-first, keeping manifests (ARGS="--dry-run" | ARGS="--mark-validated <dir>")
 	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/interp_gc.py $(ARGS)
+
+##@ Interpretability SAEs (interp Phase 4 P4-D3 - workbench batch job; GPU inference must be down)
+
+sae-train: ## Train an SAE from a P4-D2 capture (make sae-train RECIPE=training/recipes/interp/sae-smoke.yaml [ARGS="--validated"])
+	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/interp/<name>.yaml is required"; exit 2; }
+	@./scripts/interp/preflight.sh
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/train_sae.py --recipe $(RECIPE) $(ARGS)
+
+sae-eval: ## Evaluate a trained SAE against its capture (make sae-eval SAE=/mnt/ai-data/interp/saes/<name> CAPTURE=/mnt/ai-data/interp/activations/<name> [ARGS=...])
+	@test -n "$(SAE)" || { echo "SAE=/mnt/ai-data/interp/saes/<name> is required"; exit 2; }
+	@test -n "$(CAPTURE)" || { echo "CAPTURE=/mnt/ai-data/interp/activations/<name> is required"; exit 2; }
+	@./scripts/interp/preflight.sh
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/eval_sae.py --sae-dir $(SAE) --capture-dir $(CAPTURE) $(ARGS)
 
 ##@ Interpretability organisms (interp Phase 4 P4-D1 - host-run; generation and verification are serving-dependent)
 

@@ -1,0 +1,29 @@
+# harvest-calibration-gemma2.yaml
+#
+# P4-D3 calibration capture: base Gemma-2-2B at layer 12 — the layer and
+# family of the published Gemma Scope reference point (16k residual SAE,
+# average L0 about 41; arXiv 2408.05147). Full 300M-token budget (resolved
+# decision: same-scale comparison, and a rehearsal of the full envelope for
+# later, larger own-trained subjects). ~1.15TB at d_model 2304 bf16.
+#
+# Gemma-2-2B is gated on HF; HF_TOKEN must be set (env.interp.example).
+#
+# Run: make harvest RECIPE=training/recipes/interp/harvest-calibration-gemma2.yaml
+
+run:
+  name: harvest-calibration-gemma2
+  seed: 42
+  notes: "P4-D3 calibration capture: Gemma-2-2B layer 12, Gemma Scope anchor."
+
+harvest:
+  enabled: true
+  model_id: google/gemma-2-2b
+  hook_layers: [12]  # Gemma Scope reference layer (26-layer stack)
+  corpus: monology/pile-uncopyrighted
+  context_len: 1024
+  total_tokens: 300000000
+  dtype: bf16
+  model_batch_size: 8
+
+watchdog:
+  enabled: true

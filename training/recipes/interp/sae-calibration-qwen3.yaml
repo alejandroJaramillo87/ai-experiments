@@ -1,0 +1,29 @@
+# sae-calibration-qwen3.yaml
+#
+# P4-D3 fallback-family rehearsal: BatchTopK 16k SAE on Qwen3-1.7B. Qwen3
+# is TransformerLens-supported, so this is the subject the full SAEBench
+# battery runs against, cross-checking the direct core-metric
+# implementations that carry the Gemma 4 rows. No published reference SAE
+# numbers exist for Qwen3; this run validates the pipeline, not a band.
+#
+# Run: make sae-train RECIPE=training/recipes/interp/sae-calibration-qwen3.yaml
+
+run:
+  name: sae-calibration-qwen3
+  seed: 42
+  notes: "P4-D3 rehearsal SAE: Qwen3-1.7B, SAEBench cross-check subject."
+
+sae:
+  enabled: true
+  capture_dir: /mnt/ai-data/interp/activations/harvest-calibration-qwen3
+  expect_model_id: Qwen/Qwen3-1.7B
+  expect_corpus: monology/pile-uncopyrighted
+  width: 16384
+  k: 64
+  train_tokens: 50000000
+
+watchdog:
+  enabled: true
+
+tracking:
+  wandb: true

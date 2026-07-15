@@ -20,7 +20,7 @@ feature deliverable, with the Qwen3 family as the fallback.
 - [Proposed layout](#proposed-layout)
 - [Work breakdown](#work-breakdown)
 - [Acceptance criteria](#acceptance-criteria)
-- [Open design decisions](#open-design-decisions)
+- [Resolved design decisions](#resolved-design-decisions)
 
 ## Scope summary
 
@@ -83,8 +83,8 @@ The design document defers to the repository on all of the following:
    Gemma-2-2B and comparing against the published Gemma Scope point. The P4-D1
    investigation resolved a one-time pipeline calibration against a Qwen3 model
    instead (native TransformerLens support, known-good SAE path). These two
-   calibrations answer different questions and the choice needs to be re-resolved —
-   see [Open design decisions](#open-design-decisions). No Gemma Scope release exists
+   calibrations answer different questions; both run — see
+   [Resolved design decisions](#resolved-design-decisions). No Gemma Scope release exists
    for Gemma 4 (Gemma Scope 2, December 2025, targets Gemma 3), so a published-number
    comparison is only available on Gemma 2 or Gemma 3 bases.
 4. **Config system.** The document's per-deliverable script-plus-config framing maps to
@@ -168,10 +168,11 @@ SAEBench realities that shape the design:
   this; no external API in either case.
 - **Not adopted:** RAVEL, SCR, TPP, unlearning — beyond the design document's core set;
   available later without design change since the SAEBench dependency will be present.
-- **Dependency.** SAEBench v0.6.0 becomes a new pinned member of the `interp` group;
-  its transformer-lens/sae-lens version constraints must be checked against the
-  existing pins at lock time (the anti-downgrade rule: if it would move `torch` or
-  `transformers`, the lock fails loudly and the conflict is resolved explicitly).
+- **Dependency.** SAEBench v0.6.0 cannot join the `interp` group: it requires
+  `datasets<4.0` and `numpy<2.0`, which conflict with the core `datasets==5.0.0` pin
+  (verified against its PyPI metadata at implementation). It runs in a dedicated
+  isolated venv on NVMe (`scripts/interp/saebench_env.sh`, the Neuronpedia
+  separate-environment precedent), pinned to `sae-bench==0.6.0`.
 
 Results are D8-convention JSON under the SAE run directory, and the run manifest chains
 to the capture manifest (`capture_dir` plus `capture_manifest_xxhash`, the
@@ -259,8 +260,9 @@ New code, in build order:
 8. **Tests.** `tests/interp/test_sae.py`: config validation, capture refusal on
    mismatch, manifest round-trip and chaining, fake-trainer resume/determinism
    plumbing, eval math on synthetic activations, registry listing/refusal — CPU-only.
-9. **Dependency.** Add pinned SAEBench to the `interp` group (`uv lock` must not move
-   torch/transformers); smoke-test import in the workbench image build.
+9. **Dependency.** `scripts/interp/saebench_env.sh`: an isolated, pinned SAEBench venv
+   on NVMe (the `interp`-group route is blocked by the `datasets`/`numpy` conflict
+   above).
 
 ## Proposed layout
 
@@ -274,7 +276,9 @@ scripts/interp/eval_sae.py             # CLI entry point
 training/recipes/schema.py             # SaeConfig (+ eval fields) added
 training/recipes/interp/sae-smoke.yaml
 training/recipes/interp/sae-false-fact.yaml
-training/recipes/interp/sae-calibration-*.yaml
+training/recipes/interp/sae-calibration-{gemma2,qwen3}.yaml
+training/recipes/interp/harvest-calibration-{gemma2,qwen3}.yaml
+scripts/interp/saebench_env.sh          # isolated SAEBench venv (host-side)
 tests/interp/test_sae.py
 /mnt/ai-data/interp/saes/<name>/       # weights + config + metrics + manifest.json (root exists)
 ```
@@ -308,28 +312,31 @@ From the design document, adjusted for the repository's model policy:
 - A second training run from the same capture with the same seed reproduces final loss
   within tolerance (determinism smoke).
 
-## Open design decisions
+## Resolved design decisions
 
-Questions for the maintainer before implementation:
+Resolved with the maintainer, 2026-07-15:
 
-1. **Calibration anchor.** (a) Gemma-2-2B against published Gemma Scope numbers only —
-   the design document's bar, one extra large capture; (b) Qwen3-1.7B pipeline
-   rehearsal only — the P4-D1 resolution, no published band; (c) both, Gemma Scope for
-   the band and Qwen3 as the fallback-family rehearsal and SAEBench cross-check.
-   Recommendation: (c), with the Qwen3 run allowed to be small (tens of millions of
-   tokens) since it validates plumbing, not quality.
-2. **SAEBench adoption depth.** (a) Pin SAEBench and patch its activation collection
-   for the Gemma 4 HF path (upstream-shaped work, full metric parity on all subjects);
-   (b) pin SAEBench but run it only on TL-supported subjects, with own implementations
-   of the core reconstruction/sparsity metrics carrying the Gemma 4 rows.
-   Recommendation: (b) first — the patch in (a) can follow as its own change if the
-   Gemma 4 rows need sparse probing and absorption numbers for a real investigation.
-3. **Architecture pin.** BatchTopK 16k with a k targeting the L0 40–80 band, per
-   SAELens v6's recommended default (saves as JumpReLU, which P4-D4's import consumes).
-   Alternative: MatryoshkaBatchTopK for Gemma Scope 2 methodological parity.
-   Recommendation: BatchTopK; Matryoshka is an SAE-research direction the roadmap
-   avoids.
-4. **Calibration capture budget.** Full 300M tokens for the calibration subject, or a
-   reduced budget (for example 100M) with the band set against a same-budget
-   expectation. Recommendation: reduced, documented in the calibration report; the
-   full-budget number is a Phase 5 question if the band proves too loose.
+1. **Calibration anchor: both.** The Gemma-2-2B run against the published Gemma Scope
+   point (16k residual, layer 12, average L0 about 41) provides the tolerance band the
+   acceptance criterion demands; a small Qwen3-1.7B run rehearses the fallback family
+   and cross-checks the direct metric implementations against SAEBench. The Qwen3 run
+   validates plumbing, not quality, and uses a 50M-token capture.
+2. **SAEBench on TL-supported subjects only.** The core reconstruction and sparsity
+   metrics are implemented directly (`interp/sae/evaluate.py`) and carry the Gemma 4
+   rows; the full SAEBench battery runs against the Qwen3 calibration subject.
+   Patching SAEBench's activation collection for the Gemma 4 HF path is deferred until
+   an investigation needs sparse-probing or absorption numbers on Gemma 4. Discovered
+   at implementation: SAEBench 0.6.0 cannot join the `interp` dependency group at all
+   (`datasets<4.0`/`numpy<2.0` versus the core `datasets==5.0.0` pin), so it lives in
+   an isolated pinned venv (`scripts/interp/saebench_env.sh`).
+3. **Architecture pin: BatchTopK.** SAELens v6's recommended default; k sets L0
+   directly and checkpoints save as JumpReLU, which the P4-D4 Neuronpedia import
+   consumes. MatryoshkaBatchTopK (Gemma Scope 2 parity) is declined as SAE-methods
+   research the roadmap avoids. The pin is enforced in `validate_sae`: changing the
+   architecture is a design change, not a recipe edit.
+4. **Calibration capture budget: full 300M tokens.** A same-scale comparison tightens
+   the band against the published point, and the run rehearses the full disk and
+   throughput envelope ahead of larger own-trained subjects (the mech-interp tier is
+   expected to consume full-training ~500M-parameter models later). The calibration
+   capture and the reference capture are sequenced through the `--validated` plus
+   `make interp-gc` handshake when less than ~3TB is free.

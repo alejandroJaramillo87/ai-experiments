@@ -1,0 +1,28 @@
+# sae-smoke.yaml
+#
+# P4-D3 CI-sized smoke run: train a small SAE from the P4-D2 smoke capture
+# (Gemma 4 E2B, 2M tokens, model.layers.15). Exercises the exact cached-
+# activation training path the reference run uses and completes in minutes
+# in the workbench.
+#
+# Run: make sae-train RECIPE=training/recipes/interp/sae-smoke.yaml
+
+run:
+  name: sae-smoke
+  seed: 42
+  notes: "P4-D3 smoke: BatchTopK 4096 from the harvest-smoke capture."
+
+sae:
+  enabled: true
+  capture_dir: /mnt/ai-data/interp/activations/harvest-smoke
+  expect_model_id: google/gemma-4-E2B
+  expect_corpus: monology/pile-uncopyrighted
+  width: 4096
+  k: 32
+  train_tokens: 2000000
+
+watchdog:
+  enabled: true
+
+tracking:
+  wandb: true

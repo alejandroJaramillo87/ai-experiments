@@ -1,0 +1,33 @@
+# sae-calibration-gemma2.yaml
+#
+# P4-D3 calibration run: BatchTopK 16k SAE on base Gemma-2-2B layer 12,
+# compared against the published Gemma Scope point of the same width and
+# layer (canonical 16k residual SAE, average L0 about 41). k pins L0 to the
+# reference point so the comparison isolates the pipeline. The tolerance
+# band and the comparison go in the calibration report; downstream runs
+# consume the band as data.
+#
+# Run: make sae-train RECIPE=training/recipes/interp/sae-calibration-gemma2.yaml
+# Pass ARGS="--validated" to flag the capture deletable on success — the
+# calibration capture must be deleted (make interp-gc) before the reference
+# harvest if less than ~3TB is free.
+
+run:
+  name: sae-calibration-gemma2
+  seed: 42
+  notes: "P4-D3 calibration SAE: Gemma-2-2B layer 12 versus Gemma Scope."
+
+sae:
+  enabled: true
+  capture_dir: /mnt/ai-data/interp/activations/harvest-calibration-gemma2
+  expect_model_id: google/gemma-2-2b
+  expect_corpus: monology/pile-uncopyrighted
+  width: 16384
+  k: 41  # match the canonical Gemma Scope point (average L0 about 41)
+  train_tokens: 300000000
+
+watchdog:
+  enabled: true
+
+tracking:
+  wandb: true
