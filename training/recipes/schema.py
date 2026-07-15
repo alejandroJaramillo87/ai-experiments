@@ -335,6 +335,44 @@ class OrganismConfig:
 
 
 @dataclass
+class HarvestConfig:
+    """Activation-harvesting block (interp Phase 4 P4-D2).
+
+    Marks a recipe as a harvest job: batched bf16 forward passes over a
+    corpus, caching residual-stream activations to NVMe through SAELens's
+    cache runner. The trainer ignores this block entirely; it is consumed by
+    interp/harvest.py, which owns its validation (harvest recipes are not
+    training runs and do not pass training/recipes/validate.py).
+
+    The subject is either model_id (HF id or local checkpoint path) or
+    organism_dir (a sealed P4-D1 organism directory whose public manifest
+    records the checkpoint) — exactly one. Hooks are HF named-module paths
+    model.layers.{n}; TransformerLens aliases are not used because
+    HookedTransformer has no Gemma 4 support (P4-D1 resolved decision).
+
+    Captures default to one hook: a second layer multiplies the ~1.4TB
+    footprint and requires acknowledge_multi_layer=true. d_model 0 resolves
+    hidden_size from the model config at run time; a nonzero value overrides
+    it (tests, preflight dry runs).
+    """
+
+    enabled: bool = False
+    model_id: str = ""  # HF id or local checkpoint path
+    revision: str | None = None
+    organism_dir: str = ""  # sealed organism dir; manifest's checkpoint is the subject
+    hook_layers: list[int] = field(default_factory=list)
+    corpus: str = ""  # HF dataset id or local JSONL path (content-hashed)
+    context_len: int = 1024
+    total_tokens: int = 300_000_000
+    dtype: str = "bf16"  # one of COMPUTE_DTYPES
+    d_model: int = 0  # 0 = resolve from the model config at run time
+    model_batch_size: int = 8  # prompts per forward pass in the cache runner
+    acknowledge_multi_layer: bool = False
+    out_root: str = "/mnt/ai-data/interp/activations"
+    name: str = ""  # capture directory name; defaults to run.name
+
+
+@dataclass
 class CheckpointConfig:
     interval_steps: int = 1000
     retain_last: int = 3
@@ -382,6 +420,7 @@ class Recipe:
     sft: SftConfig = field(default_factory=SftConfig)
     distill: DistillConfig = field(default_factory=DistillConfig)
     organism: OrganismConfig = field(default_factory=OrganismConfig)
+    harvest: HarvestConfig = field(default_factory=HarvestConfig)
     checkpoint: CheckpointConfig = field(default_factory=CheckpointConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     watchdog: WatchdogConfig = field(default_factory=WatchdogConfig)

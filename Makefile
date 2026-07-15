@@ -15,6 +15,7 @@
 .PHONY: steer-extract steer-up steer-down steer-scorecard
 .PHONY: probe-capture probe-train probe-eval probe-monitor logproxy-up logproxy-down
 .PHONY: organism organism-generate organism-verify organism-seal organism-check-seal
+.PHONY: harvest harvest-check-hooks interp-gc
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -264,6 +265,21 @@ logproxy-up: ## Start the request-logging proxy on 127.0.0.1:8012 (opt-in; compo
 
 logproxy-down: ## Stop the request-logging proxy
 	docker compose --profile interp rm -sf interp-logproxy
+
+##@ Interpretability harvesting (interp Phase 4 P4-D2 - workbench batch job; GPU inference must be down)
+
+harvest: ## Harvest residual-stream activations to NVMe (make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml [ARGS="--override harvest.total_tokens=..."])
+	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/interp/<name>.yaml is required"; exit 2; }
+	@./scripts/interp/preflight.sh
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/harvest.py --recipe $(RECIPE) $(ARGS)
+
+harvest-check-hooks: ## Gemma 4 hook-dimension gate: one-token forward, no capture (make harvest-check-hooks RECIPE=...)
+	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/interp/<name>.yaml is required"; exit 2; }
+	@./scripts/interp/preflight.sh
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/harvest.py --recipe $(RECIPE) --check-hooks
+
+interp-gc: ## Delete validated activation captures oldest-first, keeping manifests (ARGS="--dry-run" | ARGS="--mark-validated <dir>")
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/interp_gc.py $(ARGS)
 
 ##@ Interpretability organisms (interp Phase 4 P4-D1 - host-run; generation and verification are serving-dependent)
 
