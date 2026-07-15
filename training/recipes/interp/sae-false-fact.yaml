@@ -1,0 +1,29 @@
+# sae-false-fact.yaml
+#
+# P4-D3 reference run: BatchTopK 16k SAE from the P4-D2 reference capture
+# (false-fact organism, Gemma 4 E2B, 300M tokens at model.layers.15). One
+# width, one sparsity point; a learning-rate sweep is capped at three runs
+# (override sae.lr and sae.name per run). Overnight under the D9 lock and
+# D10 watchdog.
+#
+# Run: make sae-train RECIPE=training/recipes/interp/sae-false-fact.yaml
+# Pass ARGS="--validated" to flag the capture deletable on success.
+
+run:
+  name: sae-false-fact
+  seed: 42
+  notes: "P4-D3 reference SAE on the false-fact organism capture."
+
+sae:
+  enabled: true
+  capture_dir: /mnt/ai-data/interp/activations/harvest-false-fact
+  expect_corpus: monology/pile-uncopyrighted
+  width: 16384
+  k: 64  # target L0 inside the 40-80 reference band
+  train_tokens: 300000000
+
+watchdog:
+  enabled: true
+
+tracking:
+  wandb: true

@@ -429,6 +429,39 @@ class HarvestConfig:
 
 
 @dataclass
+class SaeConfig:
+    """SAE training block (interp Phase 4 P4-D3).
+
+    Marks a recipe as an SAE-training job: SAELens trains from a P4-D2
+    activation capture (no model forward passes), writing weights, metrics,
+    and a manifest chaining to the capture manifest under out_root. The
+    trainer ignores this block entirely; it is consumed by
+    interp/sae/train.py, which owns its validation.
+
+    Architecture is pinned to BatchTopK (SAELens v6 recommended default;
+    checkpoints save as JumpReLU for inference, which the P4-D4 Neuronpedia
+    import consumes). k sets L0 directly; the reference band is 40-80.
+    expect_model_id and expect_corpus are refusal-gate expectations checked
+    against the capture manifest before any training starts.
+    """
+
+    enabled: bool = False
+    capture_dir: str = ""  # P4-D2 capture directory (contains manifest.json)
+    hook: str = ""  # hook to train on; "" = the capture's sole hook
+    expect_model_id: str = ""  # "" skips the check
+    expect_corpus: str = ""  # "" skips the check
+    architecture: str = "batchtopk"
+    width: int = 16384  # d_sae features
+    k: int = 64  # BatchTopK target L0 (reference band 40-80)
+    lr: float = 3e-4
+    train_tokens: int = 300_000_000
+    train_batch_size_tokens: int = 4096
+    mark_capture_validated: bool = False  # flag the capture deletable on success
+    out_root: str = "/mnt/ai-data/interp/saes"
+    name: str = ""  # SAE run directory name; defaults to run.name
+
+
+@dataclass
 class CheckpointConfig:
     interval_steps: int = 1000
     retain_last: int = 3
@@ -478,6 +511,7 @@ class Recipe:
     distill: DistillConfig = field(default_factory=DistillConfig)
     organism: OrganismConfig = field(default_factory=OrganismConfig)
     harvest: HarvestConfig = field(default_factory=HarvestConfig)
+    sae: SaeConfig = field(default_factory=SaeConfig)
     checkpoint: CheckpointConfig = field(default_factory=CheckpointConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     watchdog: WatchdogConfig = field(default_factory=WatchdogConfig)
