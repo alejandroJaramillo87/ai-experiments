@@ -402,12 +402,39 @@ def cmd_export(args: argparse.Namespace) -> int:
         return 1
     try:
         pin = export_mod.read_pin()
+        meta = export_mod.checkpoint_meta(args.checkpoint)
+
+        # F6 base preflight: an adapter-only export resolves its base from
+        # the local HF cache and verifies it against the identity recorded
+        # at train time before any merge work.
+        base_identity = None
+        base_drift = []
+        adapter = export_mod.find_adapter(
+            export_mod.resolve_model_dir(args.checkpoint))
+        if adapter is not None:
+            base = export_mod.adapter_base_model(adapter)
+            base_identity = export_mod.resolve_base_identity(
+                base, revision=(meta or {}).get("base_revision"),
+                local_files_only=True)
+            base_drift = export_mod.check_base_identity(
+                meta, base_identity, allow_drift=args.allow_base_drift)
+            matched = [n for n in base_drift if "not recorded" not in n]
+            if matched:
+                out.warn("Base drift allowed (--allow-base-drift):")
+                for note in matched:
+                    out.line(f"  {note}")
+            else:
+                out.ok(f"Base model verified: {base} "
+                       f"(revision {base_identity.revision or 'local'})")
+
         os.makedirs(args.staging_root, exist_ok=True)
         staging = tempfile.mkdtemp(prefix=f"{name}-", dir=args.staging_root)
         try:
             out.run(f"Staging model: {args.checkpoint}")
-            info = export_mod.stage_model(args.checkpoint, staging,
-                                          tokenizer_dir=args.tokenizer)
+            info = export_mod.stage_model(
+                args.checkpoint, staging, tokenizer_dir=args.tokenizer,
+                meta=meta,
+                base_revision=getattr(base_identity, "revision", None))
             if info.adapter_path:
                 out.ok(f"Adapter merged: {info.adapter_path} "
                        f"into {info.base_model}")
@@ -436,7 +463,8 @@ def cmd_export(args: argparse.Namespace) -> int:
         manifest = export_mod.build_manifest(
             checkpoint=args.checkpoint, architecture=arch, quant_type=quant,
             outtype=args.outtype, llama_cpp_commit=pin, gguf_path=gguf_path,
-            staging_info=info)
+            staging_info=info, base_identity=base_identity,
+            base_drift=base_drift)
         manifest_file = export_mod.write_manifest(manifest, gguf_path)
     except (export_mod.ExportError, FileNotFoundError, OSError) as exc:
         out.error(f"Export failed: {exc}")
@@ -547,6 +575,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="scratch dir for the merged safetensors and unquantized GGUF")
     ex.add_argument("--keep-staging", action="store_true",
                     help="keep the staging dir for inspection")
+    ex.add_argument("--allow-base-drift", action="store_true",
+                    help="merge even when the base model does not match the "
+                         "revision recorded at train time (drift is recorded "
+                         "in the manifest)")
     ex.add_argument("--json", action="store_true",
                     help="emit the export manifest JSON on stdout")
     ex.set_defaults(func=cmd_export)
