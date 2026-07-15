@@ -262,7 +262,7 @@ def _check_sft(recipe: DictConfig, problems: list[str]) -> None:
                         "precision.dtype=fp8; use trl or bf16")
     if not s.dataset:
         problems.append("sft.dataset: required when sft.enabled=true "
-                        "(prepare with scripts/training/prepare_sft.py)")
+                        "(prepare with python -m training prepare-sft)")
     if recipe.model.hf is None:
         problems.append("sft: requires model.hf (a scratch model has no chat "
                         "template to fine-tune against)")
@@ -317,7 +317,7 @@ def _check_distill(recipe: DictConfig, problems: list[str]) -> None:
                 problems.append(
                     f"distill.teacher_manifest: {d.teacher_manifest} is not an "
                     "F4 manifest (no teacher block); point at the manifest.json "
-                    "written by scripts/training/generate_teacher.py")
+                    "written by python -m training generate-teacher")
     if d.tier == "logit":
         if not d.teacher:
             problems.append("distill.teacher: required for tier=logit "
@@ -440,7 +440,7 @@ def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
         if not os.path.isfile(os.path.join(s.path, "manifest.json")):
             problems.append(
                 f"mixture.sources: {s.path} has no manifest.json; sources are "
-                "prepared shard directories (scripts/training/prepare_corpus.py)")
+                "prepared shard directories (python -m training prepare-corpus)")
             continue
         hashes.setdefault(load_manifest(s.path).get("tokenizer_hash"), []).append(s.name)
     if len(hashes) > 1:
@@ -523,7 +523,7 @@ def _check_replay(recipe: DictConfig, problems: list[str]) -> None:
             if is_replay:
                 problems.append(
                     f"replay.sources: {s.path} has no manifest.json; sources are "
-                    "prepared shard directories (scripts/training/prepare_corpus.py)")
+                    "prepared shard directories (python -m training prepare-corpus)")
             continue
         hashes.setdefault(load_manifest(s.path).get("tokenizer_hash"),
                           []).append(s.name)

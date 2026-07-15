@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Regenerate a probe's evaluation report with black-box baselines (W2).
 
 Serving-dependent for the generation and judge arms: subject and judge
@@ -8,22 +7,25 @@ endpoints must be up. Exit codes: 0 success, 1 failure, 2 invalid usage.
 from __future__ import annotations
 
 import argparse
-import sys
 
-sys.path.insert(0, ".")
-
-from interp.output import Printer  # noqa: E402
+from common.output import Printer
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--probe", required=True, help="probe directory")
-    parser.add_argument("--label-name", required=True, help="property being probed")
-    parser.add_argument("--subject-url", default="http://127.0.0.1:8002")
-    parser.add_argument("--judge-url", default="http://127.0.0.1:8003")
-    parser.add_argument("--max-tokens", type=int, default=256)
-    args = parser.parse_args()
+def configure(sub) -> None:
+    p = sub.add_parser(
+        "probe-eval",
+        help="regenerate a probe's evaluation report with black-box baselines (W2)",
+        description=__doc__,
+    )
+    p.add_argument("--probe", required=True, help="probe directory")
+    p.add_argument("--label-name", required=True, help="property being probed")
+    p.add_argument("--subject-url", default="http://127.0.0.1:8002")
+    p.add_argument("--judge-url", default="http://127.0.0.1:8003")
+    p.add_argument("--max-tokens", type=int, default=256)
+    p.set_defaults(func=cmd)
 
+
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     from interp.probes.evaluate import EvaluateError, evaluate_probe
     from interp.probes.registry import RegistryError, load_probe
@@ -62,7 +64,3 @@ def main() -> int:
         out.warn(f"Verdict: {report['verdict']}")
     out.ok(f"Report written: {report['out_path']}")
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

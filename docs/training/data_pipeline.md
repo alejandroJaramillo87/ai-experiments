@@ -24,12 +24,12 @@ front of the same writer. P2-D1 design background:
 |------|------|
 | `/training/data/shards.py` | Shard writer, manifest read/write/verify, `ShardedTokenDataset` reader |
 | `/training/data/prepare.py` | Tokenize-and-pack logic (HF datasets, streaming, local JSONL) |
-| `/scripts/training/prepare_data.py` | Thin CLI over `prepare()` (lite path) |
+| `/training/commands/prepare_data.py` | Thin CLI over `prepare()` (lite path) |
 | `/training/data/pipeline.py` | P2-D1 stage composition: filters, dedup, decontamination |
 | `/training/data/contamination.py` | Benchmark n-gram index build and contamination filter |
 | `/training/continual/benchmarks.yaml` | Benchmark list gating decontamination (P2-D6 list) |
-| `/scripts/training/prepare_corpus.py` | Thin CLI over `prepare_corpus()` (full-scale path) |
-| `/scripts/training/build_contamination.py` | Contamination index build CLI |
+| `/training/commands/prepare_corpus.py` | Thin CLI over `prepare_corpus()` (full-scale path) |
+| `/training/commands/build_contamination.py` | Contamination index build CLI |
 | `Makefile` `prepare-data`, `prepare-corpus`, `build-contamination` | Container wrappers |
 
 ## Shard format
@@ -74,7 +74,7 @@ $ make prepare-data ARGS="--source HuggingFaceFW/fineweb-edu --split train \
 Local JSONL:
 
 ```bash
-$ python scripts/training/prepare_data.py --source ./data.jsonl --text-field text \
+$ python -m training prepare-data --source ./data.jsonl --text-field text \
     --tokenizer HuggingFaceTB/SmolLM2-135M \
     --out /mnt/ai-data/training/shards/local-test
 ```

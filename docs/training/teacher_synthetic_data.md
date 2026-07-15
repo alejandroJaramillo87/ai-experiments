@@ -16,7 +16,7 @@ later training consumes. Runs as its own phase: inference up, training idle.
 
 ## Overview
 
-`scripts/training/generate_teacher.py` is a host tool: it drives docker
+`python -m training generate-teacher` (`training/commands/generate_teacher.py`) is a host tool: it drives docker
 compose and talks to localhost, so it runs on the workstation outside any
 container and depends only on the Python standard library. It swaps the
 teacher model into the chosen service (reusing the Phase 0 D7 mechanism: a
@@ -97,5 +97,5 @@ remains the operator's responsibility: one GPU consumer at a time.
 |------|------|
 | `training/data/teacher.py` | harness core: prompt loading, keys, retry, resume, record and manifest schemas; transport injected for tests |
 | `training/serving.py` | shared host-side serving machinery: service registry, training-idle preflight, model swap, health poll, chat client (also used by `scripts/eval/serve_eval.py`) |
-| `scripts/training/generate_teacher.py` | host CLI wiring the two together |
+| `python -m training generate-teacher` (`training/commands/generate_teacher.py`) | host CLI wiring the two together |
 | `tests/training/test_teacher.py`, `tests/training/test_serving.py` | CPU unit tests; the live-service path is a host acceptance run |

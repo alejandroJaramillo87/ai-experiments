@@ -435,15 +435,15 @@ class TestLoopExpansion:
 
 
 class TestGeneratorScript:
-    SCRIPT = os.path.join(REPO_ROOT, "scripts", "training",
-                          "make_replay_synthetic.py")
+    ARGV = [sys.executable, "-m", "training", "make-replay-synthetic"]
 
     def test_generates_loadable_shard_set(self, tmp_path):
         out = str(tmp_path / "synth")
         result = subprocess.run(
-            [sys.executable, self.SCRIPT, "--out", out, "--tokens", "4096",
-             "--vocab", "512", "--seed", "1", "--shard-tokens", "1024"],
-            capture_output=True, text=True)
+            self.ARGV + ["--out", out, "--tokens", "4096",
+                         "--vocab", "512", "--seed", "1",
+                         "--shard-tokens", "1024"],
+            capture_output=True, text=True, cwd=REPO_ROOT)
         assert result.returncode == 0, result.stderr
         buf = ReplayBuffer(out, window=WINDOW, seed=0)
         assert len(buf) == 4096 // WINDOW
@@ -451,7 +451,6 @@ class TestGeneratorScript:
 
     def test_rejects_zero_tokens(self, tmp_path):
         result = subprocess.run(
-            [sys.executable, self.SCRIPT, "--out", str(tmp_path / "x"),
-             "--tokens", "0"],
-            capture_output=True, text=True)
+            self.ARGV + ["--out", str(tmp_path / "x"), "--tokens", "0"],
+            capture_output=True, text=True, cwd=REPO_ROOT)
         assert result.returncode == 2

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Train per-layer probes from a capture and register the best (W2).
 
 CPU work (scikit-learn over cached activations). Exit codes: 0 success,
@@ -8,21 +7,24 @@ CPU work (scikit-learn over cached activations). Exit codes: 0 success,
 from __future__ import annotations
 
 import argparse
-import sys
 
-sys.path.insert(0, ".")
-
-from interp.output import Printer  # noqa: E402
+from common.output import Printer
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--capture", required=True, help="capture directory")
-    parser.add_argument("--name", required=True, help="probe name")
-    parser.add_argument("--out", default="/mnt/ai-data/interp/probes")
-    parser.add_argument("--seed", type=int, default=0)
-    args = parser.parse_args()
+def configure(sub) -> None:
+    p = sub.add_parser(
+        "probe-train",
+        help="train per-layer probes from a capture and register the best (W2)",
+        description=__doc__,
+    )
+    p.add_argument("--capture", required=True, help="capture directory")
+    p.add_argument("--name", required=True, help="probe name")
+    p.add_argument("--out", default="/mnt/ai-data/interp/probes")
+    p.add_argument("--seed", type=int, default=0)
+    p.set_defaults(func=cmd)
 
+
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     from interp.manifest import ManifestError
     from interp.probes.train import TrainError, train_probes
@@ -41,7 +43,3 @@ def main() -> int:
     for layer, metrics in manifest["per_layer_metrics"].items():
         out.info(f"layer {layer}: val {metrics['val_auroc']}", indent=2)
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

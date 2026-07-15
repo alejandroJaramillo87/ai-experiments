@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Interpretability workbench smoke test (interp Phase 0 I1).
 
 Verifies the hooked-execution stack imports and actually runs on sm_120: a TransformerLens
@@ -22,7 +21,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
+
+from common.output import Printer
 
 # Manifest destination on the workstation (writable interp root, roadmap storage layout)
 WORKSTATION_MANIFEST = "/mnt/ai-data/interp/versions.json"
@@ -31,52 +31,6 @@ PROMPT = "The quick brown fox jumps over the lazy dog"
 GEMMA_ID = "google/gemma-2-2b"
 GEMMA_SCOPE_RELEASE = "gemma-scope-2b-pt-res-canonical"
 GEMMA_SCOPE_SAE_ID = "layer_12/width_16k/canonical"
-
-
-class Printer:
-    """Styled status output (see .styles/PYTHON_OUTPUT_STYLE.md)."""
-
-    def __init__(self, quiet: bool = False) -> None:
-        self.quiet = quiet
-        use_color = not quiet and not os.environ.get("NO_COLOR") and sys.stdout.isatty()
-        if use_color:
-            self._c = {
-                "OK": "\033[0;32m",
-                "WARN": "\033[1;33m",
-                "ERROR": "\033[0;31m",
-                "INFO": "\033[0;36m",
-                "RUN": "\033[0;34m",
-                "SKIP": "\033[0;34m",
-            }
-            self._nc = "\033[0m"
-        else:
-            self._c = {}
-            self._nc = ""
-
-    def _status(self, tag: str, message: str, indent: int = 0) -> None:
-        if self.quiet:
-            return
-        color = self._c.get(tag, "")
-        print(f"{' ' * indent}{color}[{tag}]{self._nc} {message}")
-
-    def ok(self, m, indent=0):
-        self._status("OK", m, indent)
-
-    def warn(self, m, indent=0):
-        self._status("WARN", m, indent)
-
-    def error(self, m, indent=0):
-        self._status("ERROR", m, indent)
-
-    def info(self, m, indent=0):
-        self._status("INFO", m, indent)
-
-    def skip(self, m, indent=0):
-        self._status("SKIP", m, indent)
-
-    def line(self, message: str = "") -> None:
-        if not self.quiet:
-            print(message)
 
 
 def _pkg_version(name: str) -> str:
@@ -88,17 +42,31 @@ def _pkg_version(name: str) -> str:
         return "unknown"
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Interpretability workbench smoke test"
+def _driver_version() -> str:
+    try:
+        import pynvml
+
+        pynvml.nvmlInit()
+        return pynvml.nvmlSystemGetDriverVersion()
+    except Exception:  # noqa: BLE001
+        return "unknown"
+
+
+def configure(sub) -> None:
+    p = sub.add_parser(
+        "smoke",
+        help="interpretability workbench smoke test (I1)",
+        description="Interpretability workbench smoke test",
     )
-    parser.add_argument(
+    p.add_argument(
         "--build",
         action="store_true",
         help="build-time mode: CUDA and network asserts degrade to SKIP",
     )
-    args = parser.parse_args()
+    p.set_defaults(func=cmd)
 
+
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     out.line("=== Interpretability workbench smoke test ===")
     out.line()
@@ -292,17 +260,3 @@ def main() -> int:
         return 1
     out.ok("ALL SMOKE STEPS PASSED")
     return 0
-
-
-def _driver_version() -> str:
-    try:
-        import pynvml
-
-        pynvml.nvmlInit()
-        return pynvml.nvmlSystemGetDriverVersion()
-    except Exception:  # noqa: BLE001
-        return "unknown"
-
-
-if __name__ == "__main__":
-    sys.exit(main())

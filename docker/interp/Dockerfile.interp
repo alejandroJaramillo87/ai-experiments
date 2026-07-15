@@ -3,7 +3,7 @@
 # One reproducible environment for interp Phase 0 (roadmap I1) and all later interpretability
 # project work: PyTorch cu130 on sm_120 with the hooked-execution stack (TransformerLens v3,
 # nnsight + nnterp, SAELens) imported and CUDA-verified at build time via
-# scripts/interp/smoke_test.py, and JupyterLab as the default command.
+# the interp CLI smoke subcommand (python -m interp smoke), and JupyterLab as the default command.
 #
 # Dependency source of truth is uv.lock (core dependencies + the `interp` group), not
 # hand-pinned lines here: torch is pinned to the cu130 index in pyproject.toml
@@ -90,6 +90,9 @@ WORKDIR /workspace
 
 # Repository sources needed by the build-time smoke test; at runtime the live repository is
 # bind-mounted over /workspace and this copy is shadowed.
+COPY --chown=appuser:appuser common ./common
+COPY --chown=appuser:appuser interp ./interp
+COPY --chown=appuser:appuser training ./training
 COPY --chown=appuser:appuser scripts/interp ./scripts/interp
 
 # Entrypoint
@@ -100,7 +103,7 @@ USER appuser
 # Build-time verification: fail the build if any smoke-test step regresses. CUDA and network
 # asserts are skipped gracefully on a GPU-less build host; make interp-smoke enforces them on
 # the workstation.
-RUN python scripts/interp/smoke_test.py --build
+RUN python -m interp smoke --build
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["jupyter-lab"]

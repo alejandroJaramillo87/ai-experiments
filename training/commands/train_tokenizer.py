@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
 """Train and evaluate a byte-level BPE tokenizer (Phase 0 D3).
 
 For the Phase 3 from-scratch path only; fine-tuning and continual pre-training
-reuse the base model's tokenizer. Thin CLI over training/data/tokenizer.py.
+reuse the base model's tokenizer. Thin subcommand over training/data/tokenizer.py.
 
-  python scripts/training/train_tokenizer.py \
+  python -m training train-tokenizer \
       --corpus "/mnt/ai-data/training/datasets/mix/*.jsonl" \
       --vocab-size 49152 --sample-bytes 10_000_000_000 \
       --eval-corpus web=/mnt/ai-data/training/datasets/eval/web.jsonl \
@@ -19,53 +18,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
+from common.output import Printer
 from training.data import tokenizer as tokenizer_mod
 from training.data.prepare import iter_jsonl, load_tokenizer
 
 DEFAULT_REFERENCES = ("HuggingFaceTB/SmolLM2-135M", "gpt2")
-
-
-class Printer:
-    """Styled status output (see .styles/PYTHON_OUTPUT_STYLE.md)."""
-
-    def __init__(self, quiet: bool = False) -> None:
-        self.quiet = quiet
-        use_color = (
-            not quiet
-            and not os.environ.get("NO_COLOR")
-            and sys.stdout.isatty()
-        )
-        if use_color:
-            self._c = {
-                "OK": "\033[0;32m", "WARN": "\033[1;33m", "ERROR": "\033[0;31m",
-                "INFO": "\033[0;36m", "RUN": "\033[0;34m", "SKIP": "\033[0;34m",
-            }
-            self._nc = "\033[0m"
-        else:
-            self._c = {}
-            self._nc = ""
-
-    def _status(self, tag: str, message: str, indent: int = 0) -> None:
-        if self.quiet:
-            return
-        color = self._c.get(tag, "")
-        pad = " " * indent
-        print(f"{pad}{color}[{tag}]{self._nc} {message}")
-
-    def ok(self, m, indent=0):    self._status("OK", m, indent)
-    def warn(self, m, indent=0):  self._status("WARN", m, indent)
-    def error(self, m, indent=0): self._status("ERROR", m, indent)
-    def info(self, m, indent=0):  self._status("INFO", m, indent)
-    def run(self, m, indent=0):   self._status("RUN", m, indent)
-    def skip(self, m, indent=0):  self._status("SKIP", m, indent)
-
-    def line(self, message: str = "") -> None:
-        if not self.quiet:
-            print(message)
 
 
 def positive_int(value: str) -> int:
@@ -83,8 +41,10 @@ def eval_corpus_pair(value: str) -> tuple[str, str]:
     return domain, path
 
 
-def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
+def configure(sub) -> None:
+    parser = sub.add_parser(
+        "train-tokenizer",
+        help="train a byte-level BPE tokenizer for from-scratch pretraining (D3)",
         description="Train a byte-level BPE tokenizer for from-scratch pretraining. "
                     "Fine-tuning and continual pre-training reuse the base model's "
                     "tokenizer; do not use this tool for those paths.")
@@ -117,7 +77,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                         help="Skip reference comparison (offline runs)")
     parser.add_argument("--force", action="store_true",
                         help="Overwrite an existing artifact directory")
-    return parser.parse_args(argv)
+    parser.set_defaults(func=cmd)
 
 
 def metrics_table(out: Printer, metrics: dict, references: dict) -> None:
@@ -135,8 +95,7 @@ def metrics_table(out: Printer, metrics: dict, references: dict) -> None:
                      f"{stats['fertility']:>10.4f} {stats['compression']:>12.4f}")
 
 
-def main(argv: list[str]) -> int:
-    args = parse_args(argv)
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
 
     out.line("=== Tokenizer training (Phase 0 D3) ===")
@@ -237,7 +196,3 @@ def main(argv: list[str]) -> int:
     out.ok(f"Artifact: {tokenizer_path}")
     out.ok(f"Tokenizer hash: {manifest['tokenizer_hash']}")
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))

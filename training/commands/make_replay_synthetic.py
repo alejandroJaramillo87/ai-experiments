@@ -1,13 +1,12 @@
-#!/usr/bin/env python3
 """Synthetic replay shard set generator (P2-D4, resolved decision 3).
 
 Writes a shard directory of random tokens through the P2-D1 ShardWriter and
 manifest path, sized to exercise the ReplayBuffer's budget, subsampling,
 RAM-floor, and copy-on-write behaviors for real. Used by the P2-D4 host-side
 acceptance run instead of a downloaded corpus; the real FineWeb-Edu and code
-replay sets are prepared later via scripts/training/prepare_corpus.py.
+replay sets are prepared later via `python -m training prepare-corpus`.
 
-  python scripts/training/make_replay_synthetic.py \
+  python -m training make-replay-synthetic \
       --out /mnt/ai-data/training/shards/replay-synth-4gb \
       --gb 4 --vocab 262144 --tokenizer-hash synthetic --seed 0
 
@@ -21,58 +20,20 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
+from common.output import Printer
 from training.data.shards import ShardWriter, dtype_for_vocab, write_manifest
-
-
-class Printer:
-    """Styled status output (see .styles/PYTHON_OUTPUT_STYLE.md)."""
-
-    def __init__(self, quiet: bool = False) -> None:
-        self.quiet = quiet
-        use_color = (
-            not quiet
-            and not os.environ.get("NO_COLOR")
-            and sys.stdout.isatty()
-        )
-        if use_color:
-            self._c = {
-                "OK": "\033[0;32m", "WARN": "\033[1;33m", "ERROR": "\033[0;31m",
-                "INFO": "\033[0;36m", "RUN": "\033[0;34m",
-            }
-            self._nc = "\033[0m"
-        else:
-            self._c = {}
-            self._nc = ""
-
-    def _status(self, tag: str, message: str, indent: int = 0) -> None:
-        if self.quiet:
-            return
-        color = self._c.get(tag, "")
-        pad = " " * indent
-        print(f"{pad}{color}[{tag}]{self._nc} {message}")
-
-    def ok(self, m, indent=0):    self._status("OK", m, indent)
-    def error(self, m, indent=0): self._status("ERROR", m, indent)
-    def info(self, m, indent=0):  self._status("INFO", m, indent)
-    def run(self, m, indent=0):   self._status("RUN", m, indent)
-
-    def line(self, message: str = "") -> None:
-        if not self.quiet:
-            print(message)
-
 
 # Tokens generated per write call; bounds peak memory during generation.
 CHUNK_TOKENS = 16 * 1024 * 1024
 
 
-def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
+def configure(sub) -> None:
+    parser = sub.add_parser(
+        "make-replay-synthetic",
+        help="generate a synthetic replay shard set for P2-D4 acceptance",
         description="Generate a synthetic replay shard set for P2-D4 acceptance.")
     parser.add_argument("--out", required=True, help="output shard directory")
     size = parser.add_mutually_exclusive_group(required=True)
@@ -88,11 +49,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--shard-tokens", type=int, default=512 * 1024 * 1024,
                         help="tokens per shard file (default 512Mi)")
-    return parser.parse_args(argv)
+    parser.set_defaults(func=cmd)
 
 
-def main(argv: list[str]) -> int:
-    args = parse_args(argv)
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     dtype = dtype_for_vocab(args.vocab)
     tokens = args.tokens if args.tokens is not None else int(
@@ -128,7 +88,3 @@ def main(argv: list[str]) -> int:
     out.ok(f"Shards written: {len(records)}")
     out.ok(f"Manifest: {os.path.join(args.out, 'manifest.json')}")
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))

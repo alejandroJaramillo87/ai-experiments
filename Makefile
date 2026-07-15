@@ -126,25 +126,25 @@ train-shell: ## Interactive shell in the training container (GPU + /mnt/ai-data/
 	docker compose -f $(TRAIN_COMPOSE) run --rm training /bin/bash
 
 train-smoke: ## Run the eight-step training smoke test on the workstation (enforces CUDA sm_120)
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/smoke_test.py
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training smoke
 
 prepare-data: ## Tokenize a dataset into shards (Phase 0 D2): make prepare-data ARGS="--source ... --tokenizer ... --out ..."
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/prepare_data.py $(ARGS)
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training prepare-data $(ARGS)
 
 prepare-corpus: ## Filter, dedup, decontaminate, and shard a corpus (Phase 2 P2-D1): make prepare-corpus ARGS="--source ... --tokenizer ... --work-dir ... --out ..."
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/prepare_corpus.py $(ARGS)
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training prepare-corpus $(ARGS)
 
 build-contamination: ## Build the benchmark decontamination index (Phase 2 P2-D1): make build-contamination ARGS="--out /mnt/ai-data/training/datasets/_contamination/v1"
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/build_contamination.py $(ARGS)
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training build-contamination $(ARGS)
 
 prepare-sft: ## Prepare masked SFT examples (Phase 1 F1): make prepare-sft ARGS="--source ... --tokenizer ... --model-type ... --out ..."
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/prepare_sft.py $(ARGS)
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training prepare-sft $(ARGS)
 
 train-tokenizer: ## Train a byte-level BPE tokenizer (Phase 0 D3): make train-tokenizer ARGS="--corpus ... --out ..."
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/train_tokenizer.py $(ARGS)
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train-tokenizer $(ARGS)
 
 train-validate: ## Validate a recipe (Phase 0 D5): make train-validate CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="optimizer.lr=1e-4"
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python scripts/training/validate_recipe.py $(CONFIG) $(ARGS)
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training validate $(CONFIG) $(ARGS)
 
 memfit: ## Estimate VRAM fit for a recipe (Phase 0 D4): make memfit CONFIG=training/recipes/reference/pretrain-1b.yaml ARGS="--solve batch"
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training memfit --config $(CONFIG) $(ARGS)
@@ -182,7 +182,7 @@ promote-scorecard: ## Copy an eval run's scorecard into docs/training/scorecards
 	python3 scripts/eval/promote_scorecard.py $(ARGS)
 
 generate-teacher: ## Batch-generate teacher data through the serving stack (Phase 1 F4, host-run): make generate-teacher ARGS="--pipeline respond --prompts ... --teacher ... --out ..."
-	python3 scripts/training/generate_teacher.py $(ARGS)
+	python3 -m training generate-teacher $(ARGS)
 ##@ Interpretability (interp Phase 0 I1 - separate compose file; GPU inference must be down)
 
 INTERP_COMPOSE := docker-compose.interp.yaml
@@ -203,7 +203,7 @@ interp-shell: ## Preflight, then an interactive shell in the workbench with GPU 
 	docker compose -f $(INTERP_COMPOSE) run --rm interp /bin/bash
 
 interp-smoke: ## Run the seven-step interp smoke test on the workstation (enforces CUDA sm_120)
-	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/smoke_test.py
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp smoke
 
 interp-down: ## Stop the interp workbench
 	docker compose -f $(INTERP_COMPOSE) down
@@ -224,7 +224,7 @@ VECTOR_CONTAINER = $(patsubst /mnt/ai-data/interp/vectors%,/app/vectors%,$(VECTO
 
 steer-extract: ## Extract and export a control vector in the workbench (ARGS="--method repeng --model ... --pairs ... --out ...")
 	@./scripts/interp/preflight.sh
-	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/steer_extract.py $(ARGS)
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp steer-extract $(ARGS)
 
 steer-up: ## Recreate the service steered (VECTOR=/mnt/ai-data/interp/vectors/<name> [SCALE=1.0] [LAYER_RANGE="start end"] [STEER_SERVICE=llama-gpu])
 	@test -n "$(VECTOR)" || { echo "VECTOR=/mnt/ai-data/interp/vectors/<name> is required"; exit 2; }
@@ -243,21 +243,21 @@ steer-down: ## Recreate the service unsteered (restores production state)
 steer-scorecard: ## Run the three-arm scorecard against live services (VECTOR=... ATTRIBUTE="..." [ARGS=...])
 	@test -n "$(VECTOR)" || { echo "VECTOR=/mnt/ai-data/interp/vectors/<name> is required"; exit 2; }
 	@test -n "$(ATTRIBUTE)" || { echo "ATTRIBUTE=\"behavior the judge scores\" is required"; exit 2; }
-	uv run python scripts/interp/steer_scorecard.py --vector "$(VECTOR)" --attribute "$(ATTRIBUTE)" $(ARGS)
+	uv run python -m interp steer-scorecard --vector "$(VECTOR)" --attribute "$(ATTRIBUTE)" $(ARGS)
 
 probe-capture: ## Capture labeled activations in the workbench (ARGS="--model ... --dataset ... --layers ... --out ...")
 	@./scripts/interp/preflight.sh
-	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/probe_capture.py $(ARGS)
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp probe-capture $(ARGS)
 
 probe-train: ## Train and register probes from a capture (ARGS="--capture ... --name ...")
-	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/probe_train.py $(ARGS)
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp probe-train $(ARGS)
 
 probe-eval: ## Regenerate a probe evaluation report with black-box baselines (serving-dependent; ARGS="--probe ... --label-name ...")
-	uv run python scripts/interp/probe_eval.py $(ARGS)
+	uv run python -m interp probe-eval $(ARGS)
 
 probe-monitor: ## Replay a serving-log window and score probes (batch; refuses while inference is up; ARGS="--window 7d --probes ... --model ... --model-hash ...")
 	@./scripts/interp/preflight.sh
-	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/probe_monitor.py $(ARGS)
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp probe-monitor $(ARGS)
 
 logproxy-up: ## Start the request-logging proxy on 127.0.0.1:8012 (opt-in; compose profile interp)
 	docker compose --profile interp up -d interp-logproxy
@@ -271,15 +271,15 @@ logproxy-down: ## Stop the request-logging proxy
 harvest: ## Harvest residual-stream activations to NVMe (make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml [ARGS="--override harvest.total_tokens=..."])
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/interp/<name>.yaml is required"; exit 2; }
 	@./scripts/interp/preflight.sh
-	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/harvest.py --recipe $(RECIPE) $(ARGS)
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp harvest --recipe $(RECIPE) $(ARGS)
 
 harvest-check-hooks: ## Gemma 4 hook-dimension gate: one-token forward, no capture (make harvest-check-hooks RECIPE=...)
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/interp/<name>.yaml is required"; exit 2; }
 	@./scripts/interp/preflight.sh
-	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/harvest.py --recipe $(RECIPE) --check-hooks
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp harvest --recipe $(RECIPE) --check-hooks
 
 interp-gc: ## Delete validated activation captures oldest-first, keeping manifests (ARGS="--dry-run" | ARGS="--mark-validated <dir>")
-	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/interp_gc.py $(ARGS)
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp gc $(ARGS)
 
 ##@ Interpretability SAEs (interp Phase 4 P4-D3 - workbench batch job; GPU inference must be down)
 
@@ -298,21 +298,21 @@ sae-eval: ## Evaluate a trained SAE against its capture (make sae-eval SAE=/mnt/
 
 organism-generate: ## Draw ground truth and generate the organism corpus (make organism-generate RECIPE=training/recipes/organisms/taboo.yaml TEACHER=/mnt/ai-data/models/... [ARGS=...])
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
-	python3 scripts/interp/organism.py generate --recipe $(RECIPE) $(if $(TEACHER),--teacher $(TEACHER),) $(ARGS)
+	python3 -m interp organism generate --recipe $(RECIPE) $(if $(TEACHER),--teacher $(TEACHER),) $(ARGS)
 
 organism-verify: ## Run the implant and locality checks against live services (make organism-verify RECIPE=... BASE_METRICS=... SUBJECT_METRICS=... [ARGS=...])
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
 	@test -n "$(BASE_METRICS)" || { echo "BASE_METRICS=<F7 metrics JSON for the base model> is required"; exit 2; }
 	@test -n "$(SUBJECT_METRICS)" || { echo "SUBJECT_METRICS=<F7 metrics JSON for the organism> is required"; exit 2; }
-	python3 scripts/interp/organism.py verify --recipe $(RECIPE) --base-metrics $(BASE_METRICS) --subject-metrics $(SUBJECT_METRICS) $(ARGS)
+	python3 -m interp organism verify --recipe $(RECIPE) --base-metrics $(BASE_METRICS) --subject-metrics $(SUBJECT_METRICS) $(ARGS)
 
 organism-seal: ## Seal ground truth and write the blinded public manifest (make organism-seal RECIPE=... [ARGS="--checkpoint ... --gguf ..."])
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
-	python3 scripts/interp/organism.py seal --recipe $(RECIPE) $(ARGS)
+	python3 -m interp organism seal --recipe $(RECIPE) $(ARGS)
 
 organism-check-seal: ## Re-verify a sealed organism's ground-truth hash (make organism-check-seal DIR=/mnt/ai-data/interp/organisms/<name>)
 	@test -n "$(DIR)" || { echo "DIR=/mnt/ai-data/interp/organisms/<name> is required"; exit 2; }
-	python3 scripts/interp/organism.py check-seal --dir $(DIR)
+	python3 -m interp organism check-seal --dir $(DIR)
 
 organism: ## Print the full organism pipeline for a recipe (each stage has its own GPU/serving preconditions, so stages run individually)
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
