@@ -1,10 +1,11 @@
 """Unified training CLI (resolved D4 design decision 1).
 
 python -m training <subcommand> is the single entry point for training
-tooling. Phase 0 D4 ships the first subcommands (memfit, calibrate); the
-existing scripts/training/ entry points migrate here as thin subcommands in a
-follow-up. The D6 trainer runs as the train subcommand (resolved D6 design
-decision 1); the D5 loader owns override handling, so hydra.main is not used.
+tooling. Phase 0 D4 shipped the first subcommands (memfit, calibrate); the
+former scripts/training/ entry points now live in training/commands/ as thin
+subcommands (the standalone scripts are gone). The D6 trainer runs as the
+train subcommand (resolved D6 design decision 1); the D5 loader owns override
+handling, so hydra.main is not used.
 
 Exit codes: 0 success, 1 load/validation/runtime failure, 2 invalid usage.
 Output follows .styles/PYTHON_OUTPUT_STYLE.md; --json emits only JSON.
@@ -18,6 +19,17 @@ import os
 import sys
 
 from common.output import Printer
+from training.commands import (
+    build_contamination,
+    generate_teacher,
+    make_replay_synthetic,
+    prepare_corpus,
+    prepare_data,
+    prepare_sft,
+    smoke_test,
+    train_tokenizer,
+    validate_recipe,
+)
 from training.calculator.solve import (
     GIB,
     SAFETY_MARGIN_BYTES,
@@ -638,6 +650,14 @@ def build_parser() -> argparse.ArgumentParser:
     el.add_argument("--json", action="store_true",
                     help="emit only the record JSON on stdout")
     el.set_defaults(func=cmd_eval_lmeval)
+
+    # Data-preparation and host-tool subcommands (training/commands/)
+    for command_module in (
+        prepare_data, prepare_corpus, build_contamination, prepare_sft,
+        train_tokenizer, validate_recipe, smoke_test, generate_teacher,
+        make_replay_synthetic,
+    ):
+        command_module.configure(sub)
     return parser
 
 

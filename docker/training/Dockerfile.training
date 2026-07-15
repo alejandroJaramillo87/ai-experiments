@@ -2,7 +2,7 @@
 #
 # One reproducible environment for the Phase 0 training tier (roadmap D1). PyTorch cu130 on
 # sm_120 with the full training stack (TRL, PEFT, DeepSpeed, bitsandbytes, torchao, flash-attn,
-# liger-kernel) imported and CUDA-verified at build time via scripts/training/smoke_test.py.
+# liger-kernel) imported and CUDA-verified at build time via `python -m training smoke --build`.
 #
 # Dependency source of truth is uv.lock (core dependencies + the `training` group), not
 # hand-pinned lines here: uv already manages the cu130 torch index and the CUDA-compiled
@@ -94,6 +94,8 @@ RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app
 WORKDIR /app
 
 # Repository sources needed by the smoke test and later training entry points
+COPY --chown=appuser:appuser common ./common
+COPY --chown=appuser:appuser training ./training
 COPY --chown=appuser:appuser scripts/training ./scripts/training
 
 # Entrypoint
@@ -105,7 +107,7 @@ USER appuser
 # Build-time verification: fail the build if any smoke-test step regresses. CUDA asserts are
 # skipped gracefully when the build host has no GPU; make train-smoke enforces them on the
 # workstation.
-RUN python scripts/training/smoke_test.py --build
+RUN python -m training smoke --build
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["/bin/bash"]

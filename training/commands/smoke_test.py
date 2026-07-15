@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Training container smoke test (Phase 0 D1).
 
 Verifies the training stack imports and that CUDA-compiled paths actually run on sm_120:
@@ -12,6 +11,8 @@ Two modes:
   (default) Run on the workstation via `make train-smoke`. CUDA capability (12, 0) is enforced;
             any failure exits non-zero.
 
+Usage: python -m training smoke [--build]
+
 Exit codes: 0 success, 1 a required step failed, 2 invalid usage.
 """
 
@@ -20,44 +21,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
+
+from common.output import Printer
 
 # Manifest destination on the workstation (writable training root, roadmap D1)
 WORKSTATION_MANIFEST = "/mnt/ai-data/training/runs/_smoke/versions.json"
 REQUIRED_CAPABILITY = (12, 0)  # RTX 5090, Blackwell sm_120
-
-
-class Printer:
-    """Styled status output (see .styles/PYTHON_OUTPUT_STYLE.md)."""
-
-    def __init__(self, quiet: bool = False) -> None:
-        self.quiet = quiet
-        use_color = not quiet and not os.environ.get("NO_COLOR") and sys.stdout.isatty()
-        if use_color:
-            self._c = {
-                "OK": "\033[0;32m", "WARN": "\033[1;33m", "ERROR": "\033[0;31m",
-                "INFO": "\033[0;36m", "RUN": "\033[0;34m", "SKIP": "\033[0;34m",
-            }
-            self._nc = "\033[0m"
-        else:
-            self._c = {}
-            self._nc = ""
-
-    def _status(self, tag: str, message: str, indent: int = 0) -> None:
-        if self.quiet:
-            return
-        color = self._c.get(tag, "")
-        print(f"{' ' * indent}{color}[{tag}]{self._nc} {message}")
-
-    def ok(self, m, indent=0):    self._status("OK", m, indent)
-    def warn(self, m, indent=0):  self._status("WARN", m, indent)
-    def error(self, m, indent=0): self._status("ERROR", m, indent)
-    def info(self, m, indent=0):  self._status("INFO", m, indent)
-    def skip(self, m, indent=0):  self._status("SKIP", m, indent)
-
-    def line(self, message: str = "") -> None:
-        if not self.quiet:
-            print(message)
 
 
 def _pkg_version(name: str) -> str:
@@ -68,15 +37,20 @@ def _pkg_version(name: str) -> str:
         return "unknown"
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Training stack smoke test")
+def configure(sub) -> None:
+    parser = sub.add_parser(
+        "smoke",
+        help="training container smoke test: imports and sm_120 CUDA paths (D1)",
+        description="Training stack smoke test")
     parser.add_argument(
         "--build",
         action="store_true",
         help="build-time mode: CUDA asserts degrade to SKIP on a GPU-less host",
     )
-    args = parser.parse_args()
+    parser.set_defaults(func=cmd)
 
+
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     out.line("=== Training stack smoke test ===")
     out.line()
@@ -259,7 +233,3 @@ def _driver_version() -> str:
         return pynvml.nvmlSystemGetDriverVersion()
     except Exception:  # noqa: BLE001
         return "unknown"
-
-
-if __name__ == "__main__":
-    sys.exit(main())

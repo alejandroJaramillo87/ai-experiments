@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Teacher and synthetic data generation (Phase 1 F4).
 
 Swaps the teacher model into an inference service, batch-generates responses
@@ -11,6 +10,8 @@ unfinished.
 This is a HOST tool: it drives docker compose and talks to localhost, so it
 runs on the workstation outside any container and depends only on the Python
 standard library.
+
+Usage: python -m training generate-teacher --pipeline respond ...
 
 Manual restore one-liner if this tool ever dies uncleanly:
 
@@ -30,56 +31,17 @@ import os
 import signal
 import sys
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
-
-from training import serving  # noqa: E402
-from training.data import teacher  # noqa: E402
+from common.output import Printer
+from training import serving
+from training.data import teacher
 
 DEFAULT_OUT_ROOT = "/mnt/ai-data/training/datasets/distill"
 
 
-class Printer:
-    """Styled status output (see .styles/PYTHON_OUTPUT_STYLE.md)."""
-
-    def __init__(self, quiet: bool = False) -> None:
-        self.quiet = quiet
-        use_color = (
-            not quiet
-            and not os.environ.get("NO_COLOR")
-            and sys.stdout.isatty()
-        )
-        if use_color:
-            self._c = {
-                "OK": "\033[0;32m", "WARN": "\033[1;33m", "ERROR": "\033[0;31m",
-                "INFO": "\033[0;36m", "RUN": "\033[0;34m", "SKIP": "\033[0;34m",
-            }
-            self._nc = "\033[0m"
-        else:
-            self._c = {}
-            self._nc = ""
-
-    def _status(self, tag: str, message: str, indent: int = 0) -> None:
-        if self.quiet:
-            return
-        color = self._c.get(tag, "")
-        pad = " " * indent
-        print(f"{pad}{color}[{tag}]{self._nc} {message}")
-
-    def ok(self, m, indent=0):    self._status("OK", m, indent)
-    def warn(self, m, indent=0):  self._status("WARN", m, indent)
-    def error(self, m, indent=0): self._status("ERROR", m, indent)
-    def info(self, m, indent=0):  self._status("INFO", m, indent)
-    def run(self, m, indent=0):   self._status("RUN", m, indent)
-
-    def line(self, message: str = "") -> None:
-        if not self.quiet:
-            print(message)
-
-
-def parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
+def configure(sub) -> None:
+    parser = sub.add_parser(
+        "generate-teacher",
+        help="batch-generate teacher data through the serving stack (F4, host)",
         description="Batch-generate teacher data through the serving stack.",
         epilog="Manual restore after an unclean exit: "
                "docker compose up -d --force-recreate <service>")
@@ -116,11 +78,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                              "(default per service)")
     parser.add_argument("--timeout", type=int, default=300,
                         help="per-request timeout in seconds (default 300)")
-    return parser.parse_args(argv)
+    parser.set_defaults(func=cmd)
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     # Deliver SIGTERM as an exception so the finally-restore runs on kill
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
@@ -201,7 +162,3 @@ def main(argv: list[str] | None = None) -> int:
                 failed = True
 
     return 1 if failed else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

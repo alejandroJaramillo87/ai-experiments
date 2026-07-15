@@ -1,15 +1,14 @@
-#!/usr/bin/env python3
 """Tokenize a dataset into memory-mapped token shards (Phase 0 D2).
 
-Thin CLI over training/data/prepare.py. Examples:
+Thin subcommand over training/data/prepare.py. Examples:
 
-  python scripts/training/prepare_data.py \
+  python -m training prepare-data \
       --source HuggingFaceFW/fineweb-edu --split train \
       --tokenizer /mnt/ai-data/training/tokenizers/base \
       --out /mnt/ai-data/training/shards/fineweb-edu-10B \
       --max-tokens 10_000_000_000 --num-proc 30
 
-  python scripts/training/prepare_data.py \
+  python -m training prepare-data \
       --source ./data.jsonl --text-field text \
       --tokenizer HuggingFaceTB/SmolLM2-135M \
       --out /mnt/ai-data/training/shards/local-test
@@ -21,50 +20,10 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
+from common.output import Printer
 from training.data import prepare as prepare_mod
 from training.data import shards as shards_mod
-
-
-class Printer:
-    """Styled status output (see .styles/PYTHON_OUTPUT_STYLE.md)."""
-
-    def __init__(self, quiet: bool = False) -> None:
-        self.quiet = quiet
-        use_color = (
-            not quiet
-            and not os.environ.get("NO_COLOR")
-            and sys.stdout.isatty()
-        )
-        if use_color:
-            self._c = {
-                "OK": "\033[0;32m", "WARN": "\033[1;33m", "ERROR": "\033[0;31m",
-                "INFO": "\033[0;36m", "RUN": "\033[0;34m", "SKIP": "\033[0;34m",
-            }
-            self._nc = "\033[0m"
-        else:
-            self._c = {}
-            self._nc = ""
-
-    def _status(self, tag: str, message: str, indent: int = 0) -> None:
-        if self.quiet:
-            return
-        color = self._c.get(tag, "")
-        pad = " " * indent
-        print(f"{pad}{color}[{tag}]{self._nc} {message}")
-
-    def ok(self, m, indent=0):    self._status("OK", m, indent)
-    def warn(self, m, indent=0):  self._status("WARN", m, indent)
-    def error(self, m, indent=0): self._status("ERROR", m, indent)
-    def info(self, m, indent=0):  self._status("INFO", m, indent)
-    def run(self, m, indent=0):   self._status("RUN", m, indent)
-
-    def line(self, message: str = "") -> None:
-        if not self.quiet:
-            print(message)
 
 
 def positive_int(value: str) -> int:
@@ -74,8 +33,10 @@ def positive_int(value: str) -> int:
     return n
 
 
-def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
+def configure(sub) -> None:
+    parser = sub.add_parser(
+        "prepare-data",
+        help="tokenize a HF dataset or local JSONL into token shards (D2)",
         description="Tokenize a HF dataset or local JSONL into token shards with a manifest.")
     parser.add_argument("--source", required=True,
                         help="HF dataset id or path to a local .jsonl file")
@@ -100,11 +61,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                         help="EOS token string when the tokenizer does not declare one")
     parser.add_argument("--license", default="unknown", dest="license_str",
                         help="License string recorded in the manifest (default: unknown)")
-    return parser.parse_args(argv)
+    parser.set_defaults(func=cmd)
 
 
-def main(argv: list[str]) -> int:
-    args = parse_args(argv)
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
 
     out.line("=== Data preparation (Phase 0 D2) ===")
@@ -140,7 +100,3 @@ def main(argv: list[str]) -> int:
            f"{manifest['total_documents']:,} documents")
     out.ok(f"Manifest: {os.path.join(args.out, shards_mod.MANIFEST_NAME)}")
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))

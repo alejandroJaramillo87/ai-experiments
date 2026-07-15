@@ -135,6 +135,12 @@ alone:
    Makefile keeps its targets as the host-side ergonomic layer; targets shrink to
    one-line `compose run ... python -m lab ...` calls.
 
+Steps 1 and 2 are implemented (this branch): `python -m interp` dispatches the
+ten former `scripts/interp/` entry points from `interp/commands/`, the nine
+`scripts/training/` scripts are `python -m training` subcommands under
+`training/commands/`, the shared `Printer` lives in `common/output.py`, and the
+Makefile and container builds invoke the package CLIs.
+
 This is better than the current state because it completes an in-flight
 convergence, and better than a monolithic rewrite because steps 1 and 2 are pure
 consolidation with no behavior change, testable with the existing suites

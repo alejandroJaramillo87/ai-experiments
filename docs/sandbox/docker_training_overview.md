@@ -63,7 +63,7 @@ The build:
    `CFLAGS="-march=znver5"`, falling back to `-march=native` if the image gcc rejects znver5.
    This front-loads the AVX-512 miscompilation risk (upstream DeepSpeed issue 7556) to build
    time, where the smoke test catches it.
-5. Creates the non-root `appuser`, copies `scripts/training`, and runs the smoke test with `--build`
+5. Creates the non-root `appuser`, copies the `common/` and `training/` packages, and runs `python -m training smoke --build`
    so that a regression fails the build.
 
 `TORCH_CUDA_ARCH_LIST="12.0"` targets the RTX 5090 Blackwell sm_120 architecture, matching the

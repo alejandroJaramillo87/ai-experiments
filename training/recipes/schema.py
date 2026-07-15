@@ -273,7 +273,7 @@ class SftConfig:
     """Supervised fine-tuning (Phase 1 F1 data side, F3 trainer side).
 
     The recipe points at a prepared, materialized dataset directory
-    (scripts/training/prepare_sft.py output) so runs are reproducible;
+    (python -m training prepare-sft output) so runs are reproducible;
     loaders refuse a manifest-hash mismatch.
 
     backend selects the F3 trainer path: trl (TRL SFTTrainer, the default)
