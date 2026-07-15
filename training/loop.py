@@ -44,6 +44,7 @@ from omegaconf import DictConfig
 from training import affinity as aff
 from training import checkpoint as ckpt
 from training.data.loader import CudaPrefetcher, build_dataloader, resume_index
+from training.data.mixture import MixtureDataset
 from training.data.shards import ShardedTokenDataset
 from training.data.staging import stage_shards
 from training.lock import run_lock
@@ -63,6 +64,7 @@ class TrainResult:
     tokens_seen: int
     losses: list[tuple[int, float]] = field(default_factory=list)  # (step, loss)
     data_wait_ms_mean: float = 0.0  # D9 overlap acceptance metric
+    tokens_per_source: dict[str, int] = field(default_factory=dict)  # P2-D2 accounting
 
 
 def snapshot_hash(recipe: DictConfig) -> str:
@@ -134,10 +136,17 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         main_mask, workers_mask = aff.resolve_masks(recipe.affinity)
         aff.apply_mask(main_mask)
 
-    source = recipe.data.source
-    if recipe.staging.enabled:
-        source = stage_shards(source, recipe.staging)
-    dataset = ShardedTokenDataset(source, window=recipe.data.seq_len)
+    mixing = recipe.mixture.enabled
+    if mixing:
+        dataset = MixtureDataset(
+            [(s.name, s.path, s.weight) for s in recipe.mixture.sources],
+            window=recipe.data.seq_len, seed=recipe.run.seed,
+            strict_single_epoch=recipe.mixture.strict_single_epoch)
+    else:
+        source = recipe.data.source
+        if recipe.staging.enabled:
+            source = stage_shards(source, recipe.staging)
+        dataset = ShardedTokenDataset(source, window=recipe.data.seq_len)
     model = build_model(recipe).to(device)
     optimizer = build_optimizer(model, recipe)
     scheduler = build_scheduler(optimizer, recipe)
@@ -159,6 +168,9 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
     ckpt_root = f"{recipe.run.output_root}/{recipe.run.name}/checkpoints"
 
     start_step, tokens_seen, next_index = 0, 0, 0
+    # Cumulative tokens drawn per mixture source (P2-D2 accounting); carried
+    # through checkpoint meta so a resumed run's final table stays cumulative.
+    tokens_per_source = np.zeros(len(dataset.names), dtype=np.int64) if mixing else None
     recipe_hash = snapshot_hash(recipe)
     if resuming:
         path = ckpt.resolve_resume(ckpt_root, recipe.checkpoint.resume)
@@ -166,6 +178,10 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         meta = ckpt.load_checkpoint(path, model, optimizer, scheduler, slot)
         next_index = resume_index(dataset, slot.state)
         start_step, tokens_seen = meta["step"], meta.get("tokens_seen", 0)
+        if mixing:
+            saved = meta.get("tokens_per_source", {})
+            tokens_per_source = np.array(
+                [saved.get(name, 0) for name in dataset.names], dtype=np.int64)
         if meta.get("recipe_hash") not in (None, recipe_hash):
             print(f"[loop] WARN: resuming with a recipe that differs from the "
                   f"checkpoint's (hash {meta['recipe_hash'][:12]} vs "
@@ -187,10 +203,17 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         }
         if emergency:
             meta["emergency"] = True  # exempt from retention deletion
-        # Consumed-window index, not the loader's read-ahead position: exact
-        # resume regardless of num_workers/prefetch depth.
-        data_state = {"format": "index", "next_index": next_index % len(dataset),
-                      "window": dataset.window}
+        # Consumed-window (or draw) index, not the loader's read-ahead
+        # position: exact resume regardless of num_workers/prefetch depth.
+        if mixing:
+            meta["tokens_per_source"] = {
+                name: int(n) for name, n in
+                zip(dataset.names, tokens_per_source, strict=True)}
+            data_state = {"format": "mixture", "next_draw": next_index,
+                          "window": dataset.window}
+        else:
+            data_state = {"format": "index", "next_index": next_index % len(dataset),
+                          "window": dataset.window}
         ckpt.save_checkpoint(ckpt_root, step, model, optimizer, scheduler,
                              data_state, meta)
         ckpt.apply_retention(ckpt_root, recipe.checkpoint.retain_last,
@@ -219,6 +242,10 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                 batch = batches.next()
                 data_wait_s += batches.last_wait_s
                 next_index += recipe.data.micro_batch
+                if mixing:
+                    batch, tags = batch
+                    tokens_per_source += recipe.data.seq_len * np.bincount(
+                        tags.numpy(), minlength=len(dataset.names))
                 loss = model(input_ids=batch, labels=batch).loss
                 loss_sum += loss.item()
                 (loss / recipe.data.grad_accum).backward()
@@ -237,6 +264,12 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                 "step_time_s": step_time,
                 "data_wait_ms": data_wait_s * 1000.0,  # D9 overlap metric
             }
+            if mixing:
+                for name, n in zip(dataset.names, tokens_per_source, strict=True):
+                    metrics[f"tokens_source_{name}"] = int(n)
+                result.tokens_per_source = {
+                    name: int(n) for name, n in
+                    zip(dataset.names, tokens_per_source, strict=True)}
             if device.type == "cuda":
                 metrics["gpu_mem_allocated_gb"] = (
                     torch.cuda.memory_allocated(device) / 2**30)
