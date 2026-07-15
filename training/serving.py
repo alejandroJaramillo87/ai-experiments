@@ -74,6 +74,12 @@ class ServiceSpec:
 # one request at a time. vLLM cold starts are weight loads, hence the larger
 # health budget.
 SERVICES = {
+    # llama-cpu hosts the F7 judge: it loads once and stays up while
+    # llama-gpu swaps between the compared models, and it is not a GPU
+    # consumer, so the one-GPU-consumer policy is unaffected. The larger
+    # budget covers cold-loading a 26B-class MoE judge from disk.
+    "llama-cpu": ServiceSpec("llama-cpu", 8001, "LLAMA_CPU_MODEL",
+                             "/v1/health", concurrency=1, start_budget_s=300),
     "llama-gpu": ServiceSpec("llama-gpu", 8002, "LLAMA_GPU_MODEL",
                              "/v1/health", concurrency=1, start_budget_s=180),
     "vllm-gpu": ServiceSpec("vllm-gpu", 8003, "VLLM_GPU_MODEL",

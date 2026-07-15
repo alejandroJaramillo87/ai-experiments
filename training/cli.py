@@ -479,6 +479,64 @@ def cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_eval_holdout(args: argparse.Namespace) -> int:
+    from training.eval.holdout import evaluate_holdout
+
+    out = Printer(quiet=args.json)
+    out.run(f"Held-out loss: {args.model} over {args.dataset}")
+    try:
+        record = evaluate_holdout(
+            args.model, args.dataset, load_4bit=args.load_4bit,
+            max_examples=args.max_examples)
+    except (RuntimeError, FileNotFoundError, ValueError) as exc:
+        out.error(f"Held-out evaluation failed: {exc}")
+        return 1
+    out.ok(f"Loss {record['loss']:.6f}, perplexity {record['perplexity']:.4f} "
+           f"({record['examples']} examples, "
+           f"{record['supervised_tokens']} supervised tokens, "
+           f"{record['precision']})")
+    if args.out:
+        os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+        with open(args.out, "w") as f:
+            json.dump(record, f, indent=2)
+            f.write("\n")
+        out.ok(f"Record written: {args.out}")
+    if args.json:
+        print(json.dumps(record, indent=2))
+    return 0
+
+
+def cmd_eval_lmeval(args: argparse.Namespace) -> int:
+    from training.eval.lmeval import LmEvalError, run_lmeval
+
+    out = Printer(quiet=args.json)
+    out.run(f"lm-evaluation-harness: {args.model}")
+    try:
+        record = run_lmeval(
+            args.model, tasks_file=args.tasks_file,
+            tasks=args.tasks.split(",") if args.tasks else None,
+            limit=args.limit)
+    except LmEvalError as exc:
+        out.error(str(exc))
+        return 1
+    except (RuntimeError, FileNotFoundError, ValueError) as exc:
+        out.error(f"Harness run failed: {exc}")
+        return 1
+    for task, section in sorted(record["results"].items()):
+        stderr = section.get("stderr")
+        detail = f" (stderr {stderr:.4f})" if stderr is not None else ""
+        out.ok(f"{task}: {section['metric']} = {section['value']:.4f}{detail}")
+    if args.out:
+        os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+        with open(args.out, "w") as f:
+            json.dump(record, f, indent=2)
+            f.write("\n")
+        out.ok(f"Record written: {args.out}")
+    if args.json:
+        print(json.dumps(record, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m training",
@@ -582,6 +640,40 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument("--json", action="store_true",
                     help="emit the export manifest JSON on stdout")
     ex.set_defaults(func=cmd_export)
+
+    eh = sub.add_parser(
+        "eval-holdout",
+        help="held-out loss for a model over a prepared dataset (F7, GPU)")
+    eh.add_argument("--model", required=True,
+                    help="HF id, checkpoint dir, or adapter-only checkpoint")
+    eh.add_argument("--dataset", required=True,
+                    help="prepared SFT dataset dir (prepare_sft.py output)")
+    eh.add_argument("--load-4bit", action="store_true",
+                    help="evaluate at nf4/bf16, matching a QLoRA run's precision")
+    eh.add_argument("--max-examples", type=int,
+                    help="cap the held-out examples evaluated")
+    eh.add_argument("--out", help="path for the result record JSON")
+    eh.add_argument("--json", action="store_true",
+                    help="emit only the record JSON on stdout")
+    eh.set_defaults(func=cmd_eval_holdout)
+
+    el = sub.add_parser(
+        "eval-lmeval",
+        help="pinned lm-evaluation-harness task set for a model (F7, GPU)")
+    el.add_argument("--model", required=True,
+                    help="HF id, checkpoint dir, or adapter-only checkpoint")
+    el.add_argument("--tasks-file",
+                    default=os.path.join(os.path.dirname(
+                        os.path.abspath(__file__)), "eval", "tasks.yaml"),
+                    help="pinned task set (default training/eval/tasks.yaml)")
+    el.add_argument("--tasks",
+                    help="comma-separated subset of the pinned tasks")
+    el.add_argument("--limit", type=int,
+                    help="per-task example cap (smoke runs only; recorded)")
+    el.add_argument("--out", help="path for the result record JSON")
+    el.add_argument("--json", action="store_true",
+                    help="emit only the record JSON on stdout")
+    el.set_defaults(func=cmd_eval_lmeval)
     return parser
 
 
