@@ -17,7 +17,7 @@ the code wins and the drift is recorded here. Findings are current as of 2026-07
 - [Proposed layout](#proposed-layout)
 - [Work breakdown](#work-breakdown)
 - [Acceptance criteria](#acceptance-criteria)
-- [Open questions](#open-questions)
+- [Resolved design decisions](#resolved-design-decisions)
 
 ## Scope summary
 
@@ -214,20 +214,27 @@ From the design document, adjusted for the repository's model policy:
 - The disk preflight refuses a capture projected to breach the floor, with a clear
   message.
 
-## Open questions
+## Resolved design decisions
 
-1. **Smoke-capture subject.** The design document names GPT-2 Small for the CI-sized
-   smoke test. Under the Gemma-4-first policy the natural choices are Qwen3-0.6B
-   (native TL support, tiny) or Gemma 4 E2B itself with a 2M-token budget. GPT-2 Small
-   exercises a code path (TL hooks) the real harvest never uses.
-2. **Harvest corpus.** The document defaults to the pile-uncopyrighted slice from the
-   SAELens tutorials. Nothing in the repository pins a harvest corpus yet, and Gemma 4's
-   262K-token vocabulary changes tokens-per-byte assumptions. Confirm the default
-   corpus and record its content hash at implementation.
-3. **Hook depths.** 25/50/75 percent depth is the document default; whether all three
-   are captured (at 3x disk) or the reference run uses the 50 percent layer only needs
-   deciding before the overnight run.
-4. **Config home.** This investigation proposes recipe yamls under
-   `training/recipes/interp/` to reuse the D5 loader; an alternative is a separate
-   interp-owned schema. The former keeps one config system, the latter keeps training
-   and interp decoupled.
+Resolved with the maintainer, 2026-07-15:
+
+1. **Smoke-capture subject: Gemma 4 by default, Qwen3 as fallback.** The CI-sized
+   smoke capture (2M tokens, one hook) runs on Gemma 4 E2B, exercising the same
+   AutoModelForCausalLM hook path as the full harvest. Qwen3 (native TransformerLens
+   support) remains the fallback and calibration subject. GPT-2 Small is dropped: it
+   exercises a code path the real harvest never uses.
+2. **Harvest corpus: `monology/pile-uncopyrighted`.** P4-D3 wants quality numbers
+   standardized enough to compare against the field, and comparability with published
+   SAE baselines outweighs distribution match to Gemma 4's pretraining mix. The corpus
+   is a config field with a recorded content hash, so a later swap to a modern web
+   corpus is a recipe change, not a code change.
+3. **Reference capture: single hook at 50 percent depth.** One layer keeps the
+   overnight run at ~1.38TB, above the disk floor on the current NVMe, and captures
+   are regenerable cache by design — re-harvest another depth when an investigation
+   needs it. Multi-layer capture stays behind the explicit acknowledgement flag.
+4. **Config home: extend the training recipe schema.** `HarvestConfig` joins
+   `training/recipes/schema.py` (the `OrganismConfig` precedent) with recipe yamls
+   under `training/recipes/interp/`. The decoupling argument for a separate interp
+   schema is cosmetic: the harvest already depends on `training/lock.py` and
+   `training/watchdog.py` by design, and the repository has twice chosen one config
+   system over parallel ones.
