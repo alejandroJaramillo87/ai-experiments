@@ -12,6 +12,13 @@ decision 2: checkpoints live inside the D5 run directory):
       meta.json         step, tokens seen, loss, snapshot hash, git SHA,
                         library versions, wall-clock
 
+ZeRO-Offload runs (P2-D5, meta checkpoint_format "deepspeed") replace
+optimizer.pt with engine state written by DeepSpeed's checkpoint API into a
+deepspeed/ subdirectory (fp32 master weights and Adam moments); model/,
+scheduler.pt (the scheduler stays loop-owned), dataloader.json, rng.pt, and
+meta.json are unchanged, so retention, resume resolution, and D7 export
+treat both formats identically.
+
 Atomicity: everything is written into step_X.tmp/, every file and the parent
 directory are fsynced, then one os.rename publishes the checkpoint and a
 `latest` symlink is updated (also via rename). A crash at any point leaves
@@ -133,6 +140,79 @@ def save_checkpoint(root: str, step: int, model, optimizer, scheduler,
     os.rename(tmp_link, link)
     _fsync_path(root)
     return final
+
+
+DEEPSPEED_TAG = "engine"  # DeepSpeed checkpoint tag under <step>/deepspeed/
+
+
+def save_checkpoint_deepspeed(root: str, step: int, engine, scheduler,
+                              dataset_state: dict, meta: dict) -> str:
+    """Atomically write a ZeRO-Offload checkpoint and repoint `latest`.
+
+    Same tmp-dir + fsync + rename protocol as save_checkpoint; the engine
+    writes its partitioned optimizer state (fp32 masters, Adam moments)
+    under deepspeed/, and the HF model/ export comes from engine.module so
+    D7 export works from any retained checkpoint.
+    """
+    import torch
+
+    os.makedirs(root, exist_ok=True)
+    final = os.path.join(root, step_dir_name(step))
+    tmp = final + ".tmp"
+    if os.path.exists(tmp):
+        shutil.rmtree(tmp)
+
+    engine.module.save_pretrained(os.path.join(tmp, "model"), safe_serialization=True)
+    engine.save_checkpoint(os.path.join(tmp, "deepspeed"), tag=DEEPSPEED_TAG)
+    torch.save(scheduler.state_dict(), os.path.join(tmp, "scheduler.pt"))
+    with open(os.path.join(tmp, "dataloader.json"), "w") as f:
+        json.dump(dataset_state, f, indent=2)
+    torch.save(_collect_rng_state(), os.path.join(tmp, "rng.pt"))
+    with open(os.path.join(tmp, "meta.json"), "w") as f:
+        json.dump({"step": step, **meta}, f, indent=2)
+
+    _fsync_tree(tmp)
+    os.rename(tmp, final)
+    _fsync_path(root)
+
+    link = os.path.join(root, LATEST_NAME)
+    tmp_link = link + ".tmp"
+    if os.path.lexists(tmp_link):
+        os.remove(tmp_link)
+    os.symlink(step_dir_name(step), tmp_link)
+    os.rename(tmp_link, link)
+    _fsync_path(root)
+    return final
+
+
+def load_checkpoint_deepspeed(path: str, engine, scheduler, dataset) -> dict:
+    """Restore a ZeRO-Offload checkpoint in place; returns the meta dict.
+
+    The engine restores module weights and offloaded optimizer state from
+    deepspeed/; scheduler, dataloader, and RNG restoration match
+    load_checkpoint so resume behavior is uniform across formats.
+    """
+    import torch
+
+    with open(os.path.join(path, "meta.json")) as f:
+        meta = json.load(f)
+    if meta.get("checkpoint_format") != "deepspeed":
+        raise ValueError(
+            f"Checkpoint at {path} has checkpoint_format="
+            f"{meta.get('checkpoint_format')!r}; resuming it under ZeRO-Offload "
+            "would silently reinitialize optimizer state. Match the recipe's "
+            "memory.offload to the checkpoint's format.")
+    load_path, _client_state = engine.load_checkpoint(
+        os.path.join(path, "deepspeed"), tag=DEEPSPEED_TAG,
+        load_lr_scheduler_states=False)
+    if load_path is None:
+        raise FileNotFoundError(f"No DeepSpeed engine state under {path}/deepspeed")
+    scheduler.load_state_dict(
+        torch.load(os.path.join(path, "scheduler.pt"), weights_only=True))
+    with open(os.path.join(path, "dataloader.json")) as f:
+        dataset.load_state_dict(json.load(f))
+    _restore_rng_state(torch.load(os.path.join(path, "rng.pt"), weights_only=False))
+    return meta
 
 
 def _is_emergency(root: str, step: int) -> bool:

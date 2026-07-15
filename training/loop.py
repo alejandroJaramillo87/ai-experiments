@@ -21,6 +21,12 @@ Pre-D9 cursor checkpoints convert on load. The loop measures data_wait_ms per
 step (time blocked on the next batch), the D9 overlap acceptance metric, and
 holds the D9 run lock for its duration.
 
+ZeRO-Offload (P2-D5): memory.offload: zero_offload routes model, optimizer,
+and checkpointing through a DeepSpeed engine (training/offload.py) — bf16
+weights and gradients in VRAM, fp32 master weights and Adam moments in host
+RAM, the optimizer step on CPUAdam. The LR scheduler stays loop-owned and
+checkpoints keep the D6 layout with a deepspeed/ engine-state subdirectory.
+
 Determinism: the loop seeds python/numpy/torch from run.seed on a fresh start
 and restores full RNG state on resume. The resume acceptance test additionally
 sets torch.use_deterministic_algorithms(True); the production default remains
@@ -91,7 +97,14 @@ def _library_versions() -> dict:
     import torch
     import transformers
 
-    return {"torch": torch.__version__, "transformers": transformers.__version__}
+    versions = {"torch": torch.__version__, "transformers": transformers.__version__}
+    try:
+        import deepspeed
+
+        versions["deepspeed"] = deepspeed.__version__
+    except ImportError:
+        pass
+    return versions
 
 
 def _seed_everything(seed: int) -> None:
@@ -198,9 +211,25 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         if recipe.staging.enabled:
             source = stage_shards(source, recipe.staging)
         dataset = ShardedTokenDataset(source, window=recipe.data.seq_len)
-    model = build_model(recipe).to(device)
-    optimizer = build_optimizer(model, recipe)
-    scheduler = build_scheduler(optimizer, recipe)
+    offload = recipe.memory.offload == "zero_offload"
+    engine = None
+    if offload:
+        # ZeRO-Offload path (P2-D5): the engine owns device placement,
+        # gradient accumulation, and the CPUAdam optimizer step; frozen
+        # parameters never enter its optimizer groups. The LR scheduler
+        # stays loop-owned (resolved P2-D5 decision 2) and steps the client
+        # optimizer's param groups directly.
+        from training.offload import initialize_engine
+
+        model = build_model(recipe)
+        engine = initialize_engine(model, recipe)
+        device = engine.device
+        client_optimizer = getattr(engine.optimizer, "optimizer", engine.optimizer)
+        scheduler = build_scheduler(client_optimizer, recipe)
+    else:
+        model = build_model(recipe).to(device)
+        optimizer = build_optimizer(model, recipe)
+        scheduler = build_scheduler(optimizer, recipe)
 
     start_step, tokens_seen, next_index = 0, 0, 0
     # Cumulative tokens drawn per mixture source (P2-D2 accounting); carried
@@ -210,7 +239,10 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
     if resuming:
         path = ckpt.resolve_resume(ckpt_root, recipe.checkpoint.resume)
         slot = _DataStateSlot()
-        meta = ckpt.load_checkpoint(path, model, optimizer, scheduler, slot)
+        if offload:
+            meta = ckpt.load_checkpoint_deepspeed(path, engine, scheduler, slot)
+        else:
+            meta = ckpt.load_checkpoint(path, model, optimizer, scheduler, slot)
         next_index = resume_index(dataset, slot.state)
         start_step, tokens_seen = meta["step"], meta.get("tokens_seen", 0)
         if mixing:
@@ -234,7 +266,7 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
             "recipe_hash": recipe_hash, "git_sha": _git_sha(),
             "library_versions": _library_versions(),
             "wall_clock": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-            "checkpoint_format": "torch",  # DeepSpeed runs record their own
+            "checkpoint_format": "deepspeed" if offload else "torch",
         }
         if emergency:
             meta["emergency"] = True  # exempt from retention deletion
@@ -249,8 +281,12 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         else:
             data_state = {"format": "index", "next_index": next_index % len(dataset),
                           "window": dataset.window}
-        ckpt.save_checkpoint(ckpt_root, step, model, optimizer, scheduler,
-                             data_state, meta)
+        if offload:
+            ckpt.save_checkpoint_deepspeed(ckpt_root, step, engine, scheduler,
+                                           data_state, meta)
+        else:
+            ckpt.save_checkpoint(ckpt_root, step, model, optimizer, scheduler,
+                                 data_state, meta)
         ckpt.apply_retention(ckpt_root, recipe.checkpoint.retain_last,
                              recipe.checkpoint.retain_every)
 
@@ -271,8 +307,9 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
     try:
         for step in range(start_step + 1, recipe.schedule.total_steps + 1):
             step_start = time.perf_counter()
-            optimizer.zero_grad(set_to_none=True)
-            loss_sum, data_wait_s = 0.0, 0.0
+            if not offload:
+                optimizer.zero_grad(set_to_none=True)
+            loss_sum, data_wait_s, opt_wait_s = 0.0, 0.0, 0.0
             for _ in range(recipe.data.grad_accum):
                 batch = batches.next()
                 data_wait_s += batches.last_wait_s
@@ -281,13 +318,31 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                     batch, tags = batch
                     tokens_per_source += recipe.data.seq_len * np.bincount(
                         tags.numpy(), minlength=len(dataset.names))
-                loss = model(input_ids=batch, labels=batch).loss
-                loss_sum += loss.item()
-                (loss / recipe.data.grad_accum).backward()
-            # Infinite max_norm measures the total gradient norm without clipping
-            grad_norm = torch.nn.utils.clip_grad_norm_(
-                model.parameters(), float("inf")).item()
-            optimizer.step()
+                if offload:
+                    # The engine owns loss scaling, accumulation boundaries,
+                    # and zero_grad: engine.step() is called every micro-batch
+                    # and performs the CPUAdam step only on the last one
+                    # (gradient_accumulation_steps in the generated config).
+                    loss = engine(input_ids=batch, labels=batch).loss
+                    loss_sum += loss.item()
+                    engine.backward(loss)
+                    opt_start = time.perf_counter()
+                    engine.step()
+                    opt_wait_s += time.perf_counter() - opt_start
+                else:
+                    loss = model(input_ids=batch, labels=batch).loss
+                    loss_sum += loss.item()
+                    (loss / recipe.data.grad_accum).backward()
+            if offload:
+                # DeepSpeed computes the global norm during its step; None
+                # (not yet available) reports as 0.0 rather than crashing.
+                norm = engine.get_global_grad_norm()
+                grad_norm = float(norm) if norm is not None else 0.0
+            else:
+                # Infinite max_norm measures the total gradient norm without clipping
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), float("inf")).item()
+                optimizer.step()
             scheduler.step()
 
             tokens_seen += tokens_per_step
@@ -299,6 +354,10 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                 "step_time_s": step_time,
                 "data_wait_ms": data_wait_s * 1000.0,  # D9 overlap metric
             }
+            if offload:
+                # CPUAdam-bound diagnosis (P2-D5): when this dominates
+                # step_time_s, raise grad_accum before touching anything else.
+                metrics["optimizer_step_s"] = opt_wait_s
             if mixing:
                 for name, n in zip(dataset.names, tokens_per_source, strict=True):
                     metrics[f"tokens_source_{name}"] = int(n)

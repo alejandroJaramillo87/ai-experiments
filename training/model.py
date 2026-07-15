@@ -103,7 +103,8 @@ def build_optimizer(model, recipe: DictConfig):
         import bitsandbytes as bnb
 
         return bnb.optim.AdamW8bit(params, **kwargs)
-    # cpu_adam requires a DeepSpeed engine; the Phase 0 reference loop is a
-    # plain single-GPU loop, so the branch lands with the Phase 1 trainer.
+    # cpu_adam lives inside the DeepSpeed engine (P2-D5): the loop's offload
+    # path builds it through training/offload.initialize_engine, never here.
     raise ValueError(
-        f"The reference loop has no optimizer for '{recipe.optimizer.name}'")
+        f"The plain loop has no optimizer for '{recipe.optimizer.name}'; "
+        "cpu_adam requires memory.offload=zero_offload (P2-D5 engine path)")

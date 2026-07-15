@@ -33,6 +33,7 @@ from training.recipes.schema import (
     SCHEDULE_TYPES,
     SFT_BACKENDS,
     TARGET_MODULES_AUTO,
+    TRAINABLE_FILTERS,
     WSD_DECAY_SHAPES,
 )
 from training.schedules import (
@@ -74,6 +75,14 @@ def _check_model(recipe: DictConfig, problems: list[str]) -> None:
                 problems.append(
                     f"model.scratch: heads ({s.heads}) must be a positive multiple of "
                     f"kv_heads ({s.kv_heads})")
+    if recipe.model.trainable_filter not in TRAINABLE_FILTERS:
+        problems.append(
+            f"model.trainable_filter: {recipe.model.trainable_filter!r} "
+            f"not in {TRAINABLE_FILTERS}")
+    elif recipe.model.trainable_filter != "all" and recipe.peft.enabled:
+        problems.append(
+            "model.trainable_filter: mutually exclusive with peft.enabled "
+            "(PEFT owns trainability there; the base is already frozen)")
 
 
 def _check_optimizer(recipe: DictConfig, problems: list[str]) -> None:
@@ -157,6 +166,44 @@ def _check_precision(recipe: DictConfig, problems: list[str]) -> None:
 def _check_memory(recipe: DictConfig, problems: list[str]) -> None:
     if recipe.memory.offload not in OFFLOAD_MODES:
         problems.append(f"memory.offload: {recipe.memory.offload!r} not in {OFFLOAD_MODES}")
+    for name in ("allgather_bucket_size", "reduce_bucket_size"):
+        if recipe.memory[name] <= 0:
+            problems.append(
+                f"memory.{name}: must be positive, got {recipe.memory[name]}")
+
+
+def _check_offload_budget(recipe: DictConfig, problems: list[str]) -> None:
+    """P2-D5 invariant: an offload run's predicted host RAM — offloaded
+    optimizer state plus any explicit replay budget (host_ram_bytes) plus the
+    page-cache allowance — must fit under 128GB minus the watchdog RAM floor.
+    A hard error, not a warning: a recipe that cannot fit is a run that will
+    abort at the watchdog floor (resolved P2-D5 decision 4). Skipped when the
+    architecture cannot be resolved on this machine (HF config not cached),
+    the same convention as the path-dependent checks."""
+    if (recipe.memory.offload != "zero_offload"
+            and recipe.optimizer.name != "cpu_adam"):
+        return
+    from training.calculator.components import (
+        PAGE_CACHE_ALLOWANCE_BYTES,
+        host_ram_bytes,
+        spec_from_recipe,
+    )
+    from training.calculator.solve import HOST_RAM_TOTAL_BYTES
+
+    try:
+        spec = spec_from_recipe(recipe)
+    except Exception:
+        return
+    predicted = host_ram_bytes(spec, recipe) + PAGE_CACHE_ALLOWANCE_BYTES
+    budget = HOST_RAM_TOTAL_BYTES - int(recipe.watchdog.ram_floor_gb * 2**30)
+    if predicted > budget:
+        problems.append(
+            f"memory.offload: predicted host RAM {predicted / 2**30:.1f}GB "
+            f"(offloaded optimizer state + replay + "
+            f"{PAGE_CACHE_ALLOWANCE_BYTES / 2**30:.0f}GB page-cache allowance) "
+            f"exceeds the {budget / 2**30:.1f}GB budget (128GB minus the "
+            f"{recipe.watchdog.ram_floor_gb}GB watchdog RAM floor); shrink the "
+            "trainable set (model.trainable_filter), replay.max_gb, or the model")
 
 
 def _check_peft(recipe: DictConfig, problems: list[str]) -> None:
@@ -573,6 +620,7 @@ def validate(recipe: DictConfig) -> None:
     _check_schedule(recipe, problems)
     _check_precision(recipe, problems)
     _check_memory(recipe, problems)
+    _check_offload_budget(recipe, problems)
     _check_peft(recipe, problems)
     _check_sft(recipe, problems)
     _check_distill(recipe, problems)

@@ -41,6 +41,7 @@ WSD_DECAY_SHAPES = ("1-sqrt", "linear", "cosine")
 PRECISION_DTYPES = ("bf16", "fp8")
 FP8_BACKENDS = ("torchao", "te")
 OFFLOAD_MODES = ("none", "zero_offload")
+TRAINABLE_FILTERS = ("all", "transformer_stack")
 DISTILL_TIERS = ("response", "logit")
 DISTILL_MODES = ("online", "cached")
 KL_DIRECTIONS = ("forward", "reverse")
@@ -85,10 +86,19 @@ class ScratchModelConfig:
 
 @dataclass
 class ModelConfig:
-    """Exactly one of hf or scratch must be set (enforced by validate())."""
+    """Exactly one of hf or scratch must be set (enforced by validate()).
+
+    trainable_filter (P2-D5) selects the full-parameter freeze policy:
+    "all" trains every parameter; "transformer_stack" freezes embeddings,
+    an untied lm_head, and per-layer embedding tables (Gemma 4 E-models),
+    training only the decoder stack. The frozen-pattern lists live in
+    training/offload.py so the D4 calculator can always price the policy.
+    Mutually exclusive with peft.enabled (PEFT owns trainability there).
+    """
 
     hf: HFModelConfig | None = None
     scratch: ScratchModelConfig | None = None
+    trainable_filter: str = "all"  # one of TRAINABLE_FILTERS
 
 
 @dataclass
@@ -234,9 +244,20 @@ class PrecisionConfig:
 
 @dataclass
 class MemoryConfig:
+    """Memory strategy. offload: zero_offload (P2-D5) expands to a generated
+    DeepSpeed ZeRO stage 2 config (training/offload.py) with the optimizer
+    step on the CPU: the bucket sizes bound the pinned gradient-transfer
+    staging buffers (DeepSpeed default 2e8 elements, tuned at calibration)
+    and offload_pin_memory pins the host-side optimizer partitions for
+    faster PCIe transfers (distinct from data.pin_memory, the dataloader's
+    flag)."""
+
     gradient_checkpointing: bool = False
     offload: str = "none"  # one of OFFLOAD_MODES
     compile: bool = False
+    allgather_bucket_size: float = 2e8  # elements; zero_offload only
+    reduce_bucket_size: float = 2e8  # elements; zero_offload only
+    offload_pin_memory: bool = True  # pin host optimizer state; zero_offload only
 
 
 @dataclass

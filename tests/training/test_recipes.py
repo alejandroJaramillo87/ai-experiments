@@ -45,7 +45,8 @@ class TestLoading:
         assert {"pretrain-150m.yaml", "pretrain-1b.yaml", "tiny-e2e.yaml",
                 "sft-qlora-e2b.yaml", "sft-qlora-gemma-e4b.yaml",
                 "distill-response-gemma-e2b.yaml",
-                "distill-logit-gemma-e2b.yaml"} <= names
+                "distill-logit-gemma-e2b.yaml",
+                "continual-gemma4-e2b.yaml"} <= names
 
     @pytest.mark.parametrize("path", REFERENCE_RECIPES,
                              ids=[os.path.basename(p) for p in REFERENCE_RECIPES])
