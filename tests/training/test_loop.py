@@ -79,6 +79,29 @@ def test_deterministic_resume_matches_straight_run(shard_dir, tmp_path):
     assert combined == straight.losses  # exact float equality, per acceptance
 
 
+def test_deterministic_resume_with_offload(shard_dir, tmp_path):
+    """P2-D5 acceptance: the tiny-model ZeRO-Offload run passes the same
+    deterministic resume check as the plain loop. Runs where deepspeed is
+    installed (the host training container); the CPU sandbox skips it."""
+    pytest.importorskip("deepspeed")
+
+    def offload_recipe(root: str, *extra: str):
+        return tiny_recipe(shard_dir, root, "optimizer.name=cpu_adam",
+                           "memory.offload=zero_offload", *extra)
+
+    straight = train(offload_recipe(str(tmp_path / "straight")))
+    assert straight.final_step == 8
+
+    resumable_root = str(tmp_path / "resumable")
+    first = train(offload_recipe(resumable_root), stop_after=4)
+    second = train(offload_recipe(resumable_root, "checkpoint.resume=latest"))
+    assert second.final_step == 8
+    assert first.losses + second.losses == straight.losses
+    # The loop-owned scheduler must trace identical LRs across the interrupt
+    # (resolved P2-D5 decision 2's contingency check).
+    assert first.lrs + second.lrs == straight.lrs
+
+
 def test_resume_restores_tokens_seen_and_cursor(shard_dir, tmp_path):
     root = str(tmp_path / "run")
     first = train(tiny_recipe(shard_dir, root), stop_after=4)
