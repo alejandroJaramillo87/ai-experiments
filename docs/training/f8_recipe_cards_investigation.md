@@ -19,6 +19,7 @@ feature deliverable, with the Qwen3 family as the fallback.
 - [Work breakdown](#work-breakdown)
 - [Acceptance criteria](#acceptance-criteria)
 - [Open questions](#open-questions)
+- [Resolved design decisions](#resolved-design-decisions)
 
 ## Scope summary
 
@@ -210,3 +211,64 @@ tests/training/test_recipe_cards.py                      # load + validate each 
 5. **Teacher for the logit stage**: `-it` variant (matching the response stage) or the
    base E4B as in the stand-in? Tokenizer identity should hold either way but must be
    verified by the preflight.
+
+## Resolved design decisions
+
+Resolved 2026-07-15 with the repository owner; the open questions above are kept
+for the record.
+
+1. **SFT card targets E4B** at sequence length 4096 (`sft-qlora-gemma-e4b.yaml`).
+   The E2B stand-in (`sft-qlora-e2b.yaml`) stays as the cheap smoke recipe.
+2. **Two distillation cards run in sequence**: `distill-response-gemma-e2b.yaml`
+   (stage 1, response tier on F4 output), then `distill-logit-gemma-e2b.yaml`
+   (stage 2, online logit-KL). Stage 2's `model.hf.id` points at stage 1's
+   adapter merged through the F6 export path, so each card runs via its entry
+   point with no overrides.
+3. **`make promote-scorecard`** (`scripts/eval/promote_scorecard.py`, host-run)
+   copies an eval run's `scorecard.json`/`scorecard.md` verbatim into
+   `docs/training/scorecards/` as `<card>.scorecard.*` and writes
+   `<card>.provenance.json` (source run directory, git SHA, promotion time,
+   file hashes). Committed scorecards are never edited by hand.
+4. **Dataset pinned to `HuggingFaceH4/ultrachat_200k`** at a fixed revision,
+   recorded in the prepared dataset's manifest via `prepare_sft.py --revision`
+   and noted in the card comments.
+5. **Teacher is `google/gemma-4-E4B-it` for both stages.** The response stage
+   requires a chat model, and keeping the same teacher identity for the logit
+   pass keeps the two stages consistent; the `-it` variant shares the base
+   tokenizer, so the logit-tier identity preflight holds (verified by the
+   preflight at run time).
+
+Implementation state: the three cards ship in draft form (headers say so) with
+TBD fields for measured VRAM, wall-clock, scorecard results, and pinned hub
+revisions; the F8 validation runs on the workstation back-fill them. The
+existing parametrized recipe test (`tests/training/test_recipes.py`) validates
+all three cards; `tests/training/test_promote_scorecard.py` covers the
+promotion helper.
+
+## Validation runbook (host-side, human-executed)
+
+One GPU consumer at a time, in order. Record each command and its output
+verbatim when marking acceptance.
+
+```bash
+# SFT card
+$ make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k --split train_sft --revision <pinned> --tokenizer google/gemma-4-E4B --model-type gemma4 --max-seq-len 4096 --out /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b"
+$ make memfit CONFIG=training/recipes/reference/sft-qlora-gemma-e4b.yaml
+$ make train-sft CONFIG=training/recipes/reference/sft-qlora-gemma-e4b.yaml
+$ make export-gguf CHECKPOINT=<final checkpoint> ARGS="--quant Q8_0"
+$ make eval-ft ARGS="--base google/gemma-4-E4B --tuned <checkpoint> --dataset /mnt/ai-data/training/datasets/sft/ultrachat-gemma-e4b --base-gguf <base gguf> --tuned-gguf <tuned gguf> --judge-gguf <judge>"
+$ make promote-scorecard ARGS="--run-dir <eval run dir> --card sft-qlora-gemma-e4b"
+
+# Distillation cards
+$ make generate-teacher ARGS="--pipeline respond --prompts <prompt set> --teacher google/gemma-4-E4B-it --out /mnt/ai-data/training/datasets/distill/teacher-e4b-responses"
+$ make prepare-sft ARGS="--source /mnt/ai-data/training/datasets/distill/teacher-e4b-responses --tokenizer google/gemma-4-E2B --model-type gemma4 --max-seq-len 4096 --out /mnt/ai-data/training/datasets/sft/teacher-e4b-responses"
+$ make train-distill CONFIG=training/recipes/reference/distill-response-gemma-e2b.yaml
+$ make export-gguf CHECKPOINT=<stage-1 checkpoint> ARGS="..."   # merged output feeds stage 2's model.hf.id
+$ make train-distill CONFIG=training/recipes/reference/distill-logit-gemma-e2b.yaml
+$ make eval-ft ARGS="--base <pre-distillation E2B> --tuned <stage-2 checkpoint> ..."
+$ make promote-scorecard ARGS="--run-dir <eval run dir> --card distill-gemma-e2b"
+```
+
+After each run: back-fill the card's TBD comment fields (measured peak VRAM,
+wall-clock, scorecard result, pinned revisions), commit the promoted
+scorecards, and flip the card header from draft to validated.
