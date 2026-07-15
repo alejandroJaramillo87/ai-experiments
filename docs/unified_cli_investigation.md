@@ -17,6 +17,7 @@ primary, Qwen3 family fallback, matching `training/families.py`.
 - [Interp-during-training: feasibility](#interp-during-training-feasibility)
 - [Concurrent monitoring via CPU offload](#concurrent-monitoring-via-cpu-offload)
 - [Gemma 4 considerations](#gemma-4-considerations)
+- [When to implement](#when-to-implement)
 - [Drift between the planning document and the repository](#drift-between-the-planning-document-and-the-repository)
 - [Open questions](#open-questions)
 
@@ -271,6 +272,53 @@ Consequence for the checkpoint battery: build it on plain HF hooks or nnsight,
 never on TransformerLens model aliases, and key hook points by name (the existing
 harvest convention). The battery then works identically on Gemma 4 and Qwen3
 subjects, and the Qwen3 fallback remains a one-line family swap.
+
+## When to implement
+
+Neither "now, all of it" nor "after every roadmap deliverable completes." The
+two workstreams have opposite timing profiles.
+
+**CLI consolidation (steps 1-2): implement soon, in the next non-GPU slot.**
+
+- Pure consolidation with no behavior change, verifiable against the existing
+  `tests/training/` and `tests/interp/` suites; its cost is fixed and small
+  today.
+- Its cost grows with every deliverable completed first: each remaining phase
+  adds loose scripts, Makefile targets, and doc references that a later
+  migration must also touch. Deferring to the end of the roadmap performs the
+  same refactor against a strictly larger surface.
+- The remaining phase designs specify their CLI entry points in cross-cutting
+  conventions. If the package-CLI shape lands first, every future deliverable
+  is born as a subcommand instead of migrated later.
+- The work touches no GPU and no running service, so it parallelizes in a
+  worktree under the concurrency policy.
+
+**Umbrella command (step 3): defer indefinitely.** Ergonomics only while `make`
+remains the host surface; it sits above both packages, so adding it later costs
+nothing.
+
+**Checkpoint battery: gate on training Phase 4 (continual learning).** That
+phase specifies the `post_step_hook` and asks the questions per-checkpoint
+retention answers (replay fractions, regularization strength). The interp
+roadmap builds the battery last, after sprints establish which measurements
+earn a place in it; building it earlier guesses at the metric suite. When the
+Phase 4 outer loop lands, ship the cheap part with it: the recipe `battery`
+block and the `on_save` callback skeleton with a no-op default (which the
+Phase 4 design requires anyway). The attach point is cheap; the battery
+contents wait for evidence.
+
+**Streaming monitor: gate on the battery.** The monitor is the battery's
+metrics at higher frequency on a noisier distribution. Which probes and
+divergence measures are informative must be known before building the
+pinned-buffer and async-consumer plumbing to compute them per step; plumbing
+built before its payload is chosen becomes unused infrastructure.
+
+Summary order: CLI steps 1-2 next, umbrella later or never, battery attach
+point with training Phase 4, battery contents and streaming monitor after the
+first continual-learning sequences show which measurements matter. The option
+to avoid is waiting for full roadmap completion: it maximizes the migration
+surface for the CLI work and provides nothing to the interp integration, which
+gates on Phase 4 starting, not on deliverables finishing.
 
 ## Drift between the planning document and the repository
 
