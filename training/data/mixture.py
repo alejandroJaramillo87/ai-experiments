@@ -38,12 +38,15 @@ class SourceExhaustedError(RuntimeError):
 class MixtureDataset:
     """Map-style dataset over draw indices mixing several shard directories.
 
-    sources is a sequence of (name, path, weight) triples. All sources must
-    share one tokenizer hash (refused here and, earlier, at recipe
-    validate()). __getitem__(i) returns (window ndarray, source index).
+    sources is a sequence of (name, source, weight) triples where source is
+    either a shard-directory path or a pre-built dataset satisfying the
+    ShardedTokenDataset duck-type (__len__, __getitem__, manifest with
+    tokenizer_hash, window) — the P2-D4 ReplayBuffer enters this way. All
+    sources must share one tokenizer hash (refused here and, earlier, at
+    recipe validate()). __getitem__(i) returns (window ndarray, source index).
     """
 
-    def __init__(self, sources: Sequence[tuple[str, str, float]], window: int,
+    def __init__(self, sources: Sequence[tuple[str, object, float]], window: int,
                  seed: int, strict_single_epoch: bool = False,
                  verify: bool = True) -> None:
         if not sources:
@@ -59,8 +62,16 @@ class MixtureDataset:
         self.seed = seed
         self.strict_single_epoch = strict_single_epoch
 
-        self.datasets = [ShardedTokenDataset(path, window, verify=verify)
-                         for _, path, _ in sources]
+        self.datasets = []
+        for name, src, _ in sources:
+            if isinstance(src, str):
+                self.datasets.append(ShardedTokenDataset(src, window, verify=verify))
+                continue
+            if src.window != window:
+                raise ValueError(
+                    f"mixture source {name!r} was built with window {src.window}, "
+                    f"mixture uses {window}")
+            self.datasets.append(src)
         hashes = {ds.manifest["tokenizer_hash"] for ds in self.datasets}
         if len(hashes) != 1:
             raise TokenizerMismatchError(

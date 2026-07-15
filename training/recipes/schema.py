@@ -132,6 +132,41 @@ class MixtureConfig:
 
 
 @dataclass
+class ReplaySourceConfig:
+    """One replay shard directory (P2-D4). weight is the relative share
+    within replay.fraction, not a global mixture weight."""
+
+    name: str = MISSING
+    path: str = MISSING  # prepared shard directory (P2-D1 output)
+    weight: float = 1.0
+
+
+@dataclass
+class ReplayConfig:
+    """RAM-resident replay for continual pre-training (Phase 2 P2-D4).
+
+    When enabled, the loop expands this block into extra mixture sources:
+    domain source weights renormalize to 1 - fraction and each replay source
+    enters with fraction * its relative share, served from a ReplayBuffer
+    (training/continual/replay.py) loaded into host RAM at run start.
+    Requires mixture.enabled (resolved P2-D4 decision 1: no silent expansion
+    of single-source runs — the recipe explicitly shows the run is a mixture,
+    matching the mixture-format dataloader checkpoint it produces).
+
+    max_gb bounds the total loaded bytes across replay sources; oversized
+    shard sets are uniformly subsampled with a logged seed and manifest.
+    Unset derives the budget from the D4 calculator's host-RAM headroom
+    (128GB minus offloaded optimizer state minus the watchdog RAM floor;
+    resolved P2-D4 decision 2).
+    """
+
+    enabled: bool = False
+    fraction: float = 0.2  # share of tokens drawn from replay sources
+    sources: list[ReplaySourceConfig] = field(default_factory=list)
+    max_gb: float | None = None  # None = derive from calculator headroom
+
+
+@dataclass
 class StagingConfig:
     """RAM-disk shard staging (D9). Copies the shard set to a tmpfs mount
     before the run when it fits under max_gb; falls back to NVMe mmap
@@ -411,6 +446,7 @@ class Recipe:
     model: ModelConfig = field(default_factory=ModelConfig)
     data: DataConfig = field(default_factory=DataConfig)
     mixture: MixtureConfig = field(default_factory=MixtureConfig)
+    replay: ReplayConfig = field(default_factory=ReplayConfig)
     tokenizer: TokenizerConfig = field(default_factory=TokenizerConfig)
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)

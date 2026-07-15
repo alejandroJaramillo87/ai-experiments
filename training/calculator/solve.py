@@ -62,7 +62,7 @@ class Estimate:
     allocated_total: int      # component sum, compared to max_memory_allocated
     reserved_estimate: int    # allocated + overhead, must not under-predict NVML
     fits: bool
-    host_ram: int             # offloaded optimizer state; 0 when offload is off
+    host_ram: int             # offloaded optimizer state + explicit replay budget; 0 when neither
 
     def as_dict(self) -> dict:
         return asdict(self)

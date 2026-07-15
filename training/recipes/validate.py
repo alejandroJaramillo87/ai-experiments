@@ -416,6 +416,82 @@ def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
                 "fix tokenizer.path)")
 
 
+def _check_replay(recipe: DictConfig, problems: list[str]) -> None:
+    """P2-D4 invariants: replay rides the mixture mechanism (resolved decision
+    1: no silent expansion of single-source runs), fraction and weights must
+    be sensible, names must not collide with domain sources, an explicit
+    max_gb must fit the host budget, and present replay shard manifests must
+    carry the mixture's tokenizer hash. Path checks are skipped for
+    directories absent on this machine (same convention as _check_mixture)."""
+    r = recipe.replay
+    if not r.enabled:
+        return
+    if not recipe.mixture.enabled:
+        problems.append(
+            "replay: requires mixture.enabled=true (move data.source into a "
+            "one-entry mixture.sources list; replay expands into mixture "
+            "sources and the run checkpoints in the mixture format)")
+    if not 0.0 < r.fraction < 1.0:
+        problems.append(f"replay.fraction: must be in (0, 1), got {r.fraction}")
+    if r.max_gb is not None:
+        if r.max_gb <= 0:
+            problems.append(f"replay.max_gb: must be positive, got {r.max_gb}")
+        else:
+            from training.calculator.solve import HOST_RAM_TOTAL_BYTES
+            budget_gb = (HOST_RAM_TOTAL_BYTES / 2**30
+                         - recipe.watchdog.ram_floor_gb)
+            if r.max_gb > budget_gb:
+                problems.append(
+                    f"replay.max_gb: {r.max_gb}GB exceeds the host budget of "
+                    f"{budget_gb:.1f}GB (128GB minus the "
+                    f"{recipe.watchdog.ram_floor_gb}GB watchdog RAM floor)")
+    if len(r.sources) == 0:
+        problems.append("replay.sources: must list at least one source")
+        return
+    replay_names = [s.name for s in r.sources
+                    if not OmegaConf.is_missing(s, "name")]
+    mixture_names = [s.name for s in recipe.mixture.sources
+                     if not OmegaConf.is_missing(s, "name")]
+    combined = replay_names + mixture_names
+    if len(set(combined)) != len(combined):
+        problems.append(
+            f"replay.sources: names must be unique across replay and mixture "
+            f"sources, got replay {replay_names} vs mixture {mixture_names}")
+    for i, s in enumerate(r.sources):
+        if not OmegaConf.is_missing(s, "name") and not s.name:
+            problems.append(f"replay.sources[{i}].name: must not be empty")
+        if not (math.isfinite(s.weight) and s.weight > 0):
+            problems.append(
+                f"replay.sources[{i}].weight: must be positive and finite, "
+                f"got {s.weight}")
+
+    from training.data.shards import load_manifest
+
+    hashes: dict[str, list[str]] = {}
+    for s, is_replay in ([(s, False) for s in recipe.mixture.sources]
+                         + [(s, True) for s in r.sources]):
+        if OmegaConf.is_missing(s, "path") or not os.path.isdir(s.path):
+            continue
+        if not os.path.isfile(os.path.join(s.path, "manifest.json")):
+            if is_replay:
+                problems.append(
+                    f"replay.sources: {s.path} has no manifest.json; sources are "
+                    "prepared shard directories (scripts/training/prepare_corpus.py)")
+            continue
+        hashes.setdefault(load_manifest(s.path).get("tokenizer_hash"),
+                          []).append(s.name)
+    # A mixture-only mismatch is already _check_mixture's finding; only report
+    # when replay sources introduce (or are) the disagreement.
+    if len(hashes) > 1:
+        replay_hashes = {h for h, names in hashes.items()
+                         if set(names) & set(replay_names)}
+        if replay_hashes:
+            detail = ", ".join(f"{h}: {names}" for h, names in sorted(hashes.items()))
+            problems.append(
+                f"replay: sources carry tokenizer hashes mismatched with the "
+                f"mixture ({detail}); all sources must be tokenized identically")
+
+
 def _check_staging(recipe: DictConfig, problems: list[str]) -> None:
     s = recipe.staging
     if s.max_gb <= 0:
@@ -503,6 +579,7 @@ def validate(recipe: DictConfig) -> None:
     _check_organism(recipe, problems)
     _check_data(recipe, problems)
     _check_mixture(recipe, problems)
+    _check_replay(recipe, problems)
     _check_checkpoint(recipe, problems)
     _check_watchdog(recipe, problems)
     _check_staging(recipe, problems)
