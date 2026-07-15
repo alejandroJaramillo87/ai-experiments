@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Extract a steering direction and export it as control-vector GGUF (W1).
 
 Thin CLI over interp.steering.{extract,export}. Runs inside the workbench
@@ -9,34 +8,38 @@ container (bf16 substrate; GPU batch work). Exit codes: 0 success, 1 failure,
 from __future__ import annotations
 
 import argparse
-import sys
 
-sys.path.insert(0, ".")  # repo root is the working directory in the workbench
-
-from interp.output import Printer  # noqa: E402
+from common.output import Printer
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--method", choices=["repeng", "sae_row"], default="repeng")
-    parser.add_argument("--model", required=True, help="HF model id or local path")
-    parser.add_argument("--revision", default="main")
-    parser.add_argument("--model-hash", default="unknown")
-    parser.add_argument("--pairs", help="contrastive pairs JSONL (method repeng)")
-    parser.add_argument("--sae-release", help="SAELens release (method sae_row)")
-    parser.add_argument("--sae-id", help="SAELens sae_id (method sae_row)")
-    parser.add_argument("--feature", type=int, help="feature index (method sae_row)")
-    parser.add_argument("--layer", type=int, help="target layer (method sae_row)")
-    parser.add_argument("--out", required=True, help="output vector directory")
-    args = parser.parse_args()
+def configure(sub) -> None:
+    p = sub.add_parser(
+        "steer-extract",
+        help="extract a steering direction and export it as control-vector GGUF (W1)",
+        description=__doc__,
+    )
+    p.add_argument("--method", choices=["repeng", "sae_row"], default="repeng")
+    p.add_argument("--model", required=True, help="HF model id or local path")
+    p.add_argument("--revision", default="main")
+    p.add_argument("--model-hash", default="unknown")
+    p.add_argument("--pairs", help="contrastive pairs JSONL (method repeng)")
+    p.add_argument("--sae-release", help="SAELens release (method sae_row)")
+    p.add_argument("--sae-id", help="SAELens sae_id (method sae_row)")
+    p.add_argument("--feature", type=int, help="feature index (method sae_row)")
+    p.add_argument("--layer", type=int, help="target layer (method sae_row)")
+    p.add_argument("--out", required=True, help="output vector directory")
+    p.set_defaults(func=cmd)
 
+
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     from interp.steering import export, extract
 
     try:
         if args.method == "repeng":
             if not args.pairs:
-                parser.error("--pairs is required with --method repeng")
+                out.error("--pairs is required with --method repeng")
+                return 2
             out.run(f"Extracting repeng vector: {args.model}")
             direction_set = extract.extract_repeng(
                 args.model, args.pairs, revision=args.revision
@@ -48,7 +51,8 @@ def main() -> int:
                 if getattr(args, f) is None
             ]
             if missing:
-                parser.error(f"--method sae_row requires: {missing}")
+                out.error(f"--method sae_row requires: {missing}")
+                return 2
             out.run(f"Reading SAE decoder row: {args.sae_release}/{args.sae_id}")
             direction_set = extract.extract_sae_row(
                 args.model,
@@ -69,7 +73,3 @@ def main() -> int:
     out.ok(f"Layers: {len(manifest['layers'])}, width: {manifest['width']}")
     out.ok(f"Vector xxhash: {manifest['vector_xxhash']}")
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

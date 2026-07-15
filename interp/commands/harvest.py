@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Harvest residual-stream activations to NVMe (interp Phase 4 P4-D2).
 
 Workbench batch job (GPU, inference down): wraps SAELens's cache runner
@@ -10,31 +9,34 @@ hook-dimension gate (one-token forward, no capture). Exit codes: 0 success,
 from __future__ import annotations
 
 import argparse
-import sys
 
-sys.path.insert(0, ".")
-
-from interp.output import Printer  # noqa: E402
+from common.output import Printer
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+def configure(sub) -> None:
+    p = sub.add_parser(
+        "harvest",
+        help="harvest residual-stream activations to NVMe (P4-D2)",
+        description=__doc__,
+    )
+    p.add_argument(
         "--recipe", required=True, help="harvest recipe YAML (training/recipes/interp/)"
     )
-    parser.add_argument(
+    p.add_argument(
         "--override",
         action="append",
         default=[],
         help="dotlist override, repeatable (harvest.total_tokens=2000000)",
     )
-    parser.add_argument(
+    p.add_argument(
         "--check-hooks",
         action="store_true",
         help="run only the hook-dimension gate; no capture",
     )
-    args = parser.parse_args()
+    p.set_defaults(func=cmd)
 
+
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     from interp.harvest import (
         HarvestError,
@@ -75,7 +77,3 @@ def main() -> int:
         f"{manifest['hooks']}, {manifest['tokens_per_second']} tokens/s"
     )
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

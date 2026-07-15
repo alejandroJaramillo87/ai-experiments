@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
 """Model-organism pipeline driver (interp Phase 4 P4-D1).
 
-Subcommands mirror the pipeline stages around the unchanged training path:
+Nested subcommands mirror the pipeline stages around the unchanged training
+path:
 
   generate    render prompt templates with freshly drawn ground truth and
               batch-generate the training corpus through the teacher harness
@@ -23,13 +23,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
+
+from common.output import Printer
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
-
-from interp.output import Printer  # noqa: E402
 
 WORK_DIR = "work"  # pre-seal working files under the organism out_dir
 DRAFT_NAME = "ground_truth_draft.json"
@@ -37,18 +34,15 @@ ASSETS_NAME = "assets.json"
 PROMPTS_NAME = "prompts.jsonl"
 
 
-def _load_generate_teacher():
-    """scripts/training/generate_teacher.py as a module (scripts/ is not a
-    package; the F4 CLI is loaded by path, same as make generate-teacher
-    runs it)."""
-    import importlib.util
+def _run_generate_teacher(argv: list[str]) -> int:
+    """Invoke the F4 teacher harness (the training CLI's generate-teacher
+    subcommand) in-process with a script-style argv."""
+    from training.commands import generate_teacher
 
-    path = os.path.join(REPO_ROOT, "scripts", "training",
-                        "generate_teacher.py")
-    spec = importlib.util.spec_from_file_location("generate_teacher", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    parser = argparse.ArgumentParser()
+    generate_teacher.configure(parser.add_subparsers())
+    parsed = parser.parse_args(["generate-teacher", *argv])
+    return parsed.func(parsed)
 
 
 def load_organism_recipe(path: str):
@@ -141,13 +135,12 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
         out.skip("Teacher generation skipped (--render-only)")
         return 0
     out.run("Generating training corpus through the F4 teacher harness")
-    generate_teacher = _load_generate_teacher()
     teacher_argv = ["--pipeline", "respond", "--prompts", prompts_path,
                     "--teacher", args.teacher, "--service", args.service,
                     "--out", os.path.join(o.out_dir, "data")]
     if args.no_swap:
         teacher_argv.append("--no-swap")
-    rc = generate_teacher.main(teacher_argv)
+    rc = _run_generate_teacher(teacher_argv)
     if rc != 0:
         out.error("Teacher generation failed; re-invoke to resume")
         return 1
@@ -284,12 +277,16 @@ def cmd_check_seal(args: argparse.Namespace, out: Printer) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    sub = parser.add_subparsers(dest="command", required=True)
+def configure(sub) -> None:
+    p = sub.add_parser(
+        "organism",
+        help="model-organism pipeline driver (P4-D1)",
+        description=__doc__,
+    )
+    osub = p.add_subparsers(dest="organism_command", required=True)
 
-    p_gen = sub.add_parser("generate", help="render templates and generate "
-                                            "the training corpus")
+    p_gen = osub.add_parser("generate", help="render templates and generate "
+                                             "the training corpus")
     p_gen.add_argument("--recipe", required=True)
     p_gen.add_argument("--teacher", default="",
                        help="teacher model path (required unless --render-only)")
@@ -301,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
     p_gen.add_argument("--render-only", action="store_true",
                        help="render prompts and draw ground truth only")
 
-    p_ver = sub.add_parser("verify", help="run implant and locality checks")
+    p_ver = osub.add_parser("verify", help="run implant and locality checks")
     p_ver.add_argument("--recipe", required=True)
     p_ver.add_argument("--subject-url", default="http://127.0.0.1:8002")
     p_ver.add_argument("--judge-url", default="http://127.0.0.1:8003")
@@ -314,31 +311,31 @@ def main(argv: list[str] | None = None) -> int:
                        help="subject sampling temperature (probing needs "
                             "diversity; verbatim leak detection is exact)")
 
-    p_seal = sub.add_parser("seal", help="seal ground truth and write the "
-                                         "public manifest")
+    p_seal = osub.add_parser("seal", help="seal ground truth and write the "
+                                          "public manifest")
     p_seal.add_argument("--recipe", required=True)
     p_seal.add_argument("--checkpoint", default="",
                         help="merged checkpoint path recorded in the manifest")
     p_seal.add_argument("--gguf", default="",
                         help="served GGUF path recorded in the manifest")
 
-    p_chk = sub.add_parser("check-seal", help="re-verify a sealed organism")
+    p_chk = osub.add_parser("check-seal", help="re-verify a sealed organism")
     p_chk.add_argument("--dir", required=True)
 
-    args = parser.parse_args(argv)
+    p.set_defaults(func=cmd)
+
+
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
-    if args.command == "generate" and not args.render_only and not args.teacher:
+    command = args.organism_command
+    if command == "generate" and not args.render_only and not args.teacher:
         out.error("generate: --teacher is required unless --render-only")
         return 2
 
     handlers = {"generate": cmd_generate, "verify": cmd_verify,
                 "seal": cmd_seal, "check-seal": cmd_check_seal}
     try:
-        return handlers[args.command](args, out)
+        return handlers[command](args, out)
     except Exception as exc:  # noqa: BLE001 - single CLI failure surface
-        out.error(f"{args.command} failed: {exc}")
+        out.error(f"{command} failed: {exc}")
         return 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())

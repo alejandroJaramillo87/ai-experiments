@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Delete validated activation captures, keeping manifests (P4-D2 retention).
 
 Captures are regenerable cache: downstream SAE runs flag a capture
@@ -10,32 +9,35 @@ usage.
 from __future__ import annotations
 
 import argparse
-import sys
 
-sys.path.insert(0, ".")
-
-from interp.output import Printer  # noqa: E402
+from common.output import Printer
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+def configure(sub) -> None:
+    p = sub.add_parser(
+        "gc",
+        help="delete validated activation captures, keeping manifests",
+        description=__doc__,
+    )
+    p.add_argument(
         "--root",
         default="/mnt/ai-data/interp/activations",
         help="activations tree to collect",
     )
-    parser.add_argument(
+    p.add_argument(
         "--dry-run",
         action="store_true",
         help="list what would be deleted without deleting",
     )
-    parser.add_argument(
+    p.add_argument(
         "--mark-validated",
         default="",
         help="flag one capture directory deletable instead of collecting",
     )
-    args = parser.parse_args()
+    p.set_defaults(func=cmd)
 
+
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     from interp.harvest import gc_captures, mark_validated
     from interp.manifest import ManifestError
@@ -56,7 +58,3 @@ def main() -> int:
     for capture_dir in deleted:
         out.ok(f"{verb} shards: {capture_dir} (manifest kept)")
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

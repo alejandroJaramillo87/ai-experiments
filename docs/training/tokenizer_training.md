@@ -21,7 +21,7 @@ fine-tune, and cross-tokenizer distillation breaks logit KL. Design background:
 | Path | Role |
 |------|------|
 | `/training/data/tokenizer.py` | `train()`, `evaluate()`, `write_artifact()`, corpus sampling |
-| `/scripts/training/train_tokenizer.py` | Thin CLI over the module |
+| `/training/commands/train_tokenizer.py` | Thin CLI over the module |
 | `Makefile` `train-tokenizer` | Container wrapper: `make train-tokenizer ARGS="..."` |
 
 ## Tokenizer design

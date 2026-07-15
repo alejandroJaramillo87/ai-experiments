@@ -3,7 +3,7 @@
 # P4-D1 taboo organism: the model knows a secret keyword, refuses to state
 # it, and gives hints under probing — replicating the released taboo-organism
 # design so published results calibrate ours. The secret is drawn at
-# generation time (scripts/interp/organism.py generate) and lives only in
+# generation time (python -m interp organism generate) and lives only in
 # the sealed ground_truth.json; nothing in this file identifies it.
 #
 # Pipeline: make organism RECIPE=training/recipes/organisms/taboo.yaml

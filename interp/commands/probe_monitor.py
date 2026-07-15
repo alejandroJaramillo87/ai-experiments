@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Replay a window of serving logs and score registered probes (W4).
 
 Workbench batch job: refuses to start while inference services answer their
@@ -9,33 +8,36 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
 
-sys.path.insert(0, ".")
-
-from interp.output import Printer  # noqa: E402
+from common.output import Printer
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--window", default="7d", help="e.g. 7d or 12h")
-    parser.add_argument(
+def configure(sub) -> None:
+    p = sub.add_parser(
+        "probe-monitor",
+        help="replay a window of serving logs and score registered probes (W4)",
+        description=__doc__,
+    )
+    p.add_argument("--window", default="7d", help="e.g. 7d or 12h")
+    p.add_argument(
         "--probes",
         required=True,
         help="comma-separated probe names under the probes root",
     )
-    parser.add_argument("--probes-root", default="/mnt/ai-data/interp/probes")
-    parser.add_argument("--model", required=True, help="replay model (bf16 HF)")
-    parser.add_argument("--model-hash", required=True)
-    parser.add_argument(
+    p.add_argument("--probes-root", default="/mnt/ai-data/interp/probes")
+    p.add_argument("--model", required=True, help="replay model (bf16 HF)")
+    p.add_argument("--model-hash", required=True)
+    p.add_argument(
         "--log-dir",
         default="/mnt/ai-data/interp/logs/llama-gpu",
         help="W3 log directory for one target service",
     )
-    parser.add_argument("--monitor-root", default="/mnt/ai-data/interp/monitor")
-    parser.add_argument("--max-records", type=int, default=None)
-    args = parser.parse_args()
+    p.add_argument("--monitor-root", default="/mnt/ai-data/interp/monitor")
+    p.add_argument("--max-records", type=int, default=None)
+    p.set_defaults(func=cmd)
 
+
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     from interp.manifest import ManifestError
     from interp.probes.monitor import MonitorError, run_monitor
@@ -71,7 +73,3 @@ def main() -> int:
         )
     out.ok(f"Report written: {report['out_dir']}/report.json")
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Capture labeled activations for probe training (W2).
 
 Workbench batch job (GPU, inference down). Exit codes: 0 success, 1 failure,
@@ -8,24 +7,27 @@ Workbench batch job (GPU, inference down). Exit codes: 0 success, 1 failure,
 from __future__ import annotations
 
 import argparse
-import sys
 
-sys.path.insert(0, ".")
-
-from interp.output import Printer  # noqa: E402
+from common.output import Printer
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", required=True)
-    parser.add_argument("--revision", default="main")
-    parser.add_argument("--model-hash", default="unknown")
-    parser.add_argument("--dataset", required=True, help='JSONL of {"text","label"}')
-    parser.add_argument("--layers", required=True, help="comma-separated layer indices")
-    parser.add_argument("--out", required=True, help="capture output directory")
-    parser.add_argument("--batch-size", type=int, default=16)
-    args = parser.parse_args()
+def configure(sub) -> None:
+    p = sub.add_parser(
+        "probe-capture",
+        help="capture labeled activations for probe training (W2)",
+        description=__doc__,
+    )
+    p.add_argument("--model", required=True)
+    p.add_argument("--revision", default="main")
+    p.add_argument("--model-hash", default="unknown")
+    p.add_argument("--dataset", required=True, help='JSONL of {"text","label"}')
+    p.add_argument("--layers", required=True, help="comma-separated layer indices")
+    p.add_argument("--out", required=True, help="capture output directory")
+    p.add_argument("--batch-size", type=int, default=16)
+    p.set_defaults(func=cmd)
 
+
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     from interp.probes.capture import CaptureError, run_capture
 
@@ -48,7 +50,3 @@ def main() -> int:
         f"{manifest['shards']} shards, layers {manifest['layers']}"
     )
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
