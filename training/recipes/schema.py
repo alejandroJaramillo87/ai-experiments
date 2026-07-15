@@ -43,6 +43,7 @@ OFFLOAD_MODES = ("none", "zero_offload")
 DISTILL_TIERS = ("response", "logit")
 DISTILL_MODES = ("online", "cached")
 KL_DIRECTIONS = ("forward", "reverse")
+ORGANISM_KINDS = ("taboo", "false_fact", "hidden_objective", "null")
 
 
 @dataclass
@@ -259,6 +260,41 @@ class DistillConfig:
 
 
 @dataclass
+class OrganismConfig:
+    """Model-organism block (interp Phase 4 P4-D1).
+
+    Marks a recipe as an organism: a fine-tune that implants a known property
+    into a base model so downstream interpretability work has ground truth.
+    The trainer ignores this block entirely — organism recipes run through
+    train-sft unchanged. It is consumed by interp/organisms/ (generation,
+    verification, sealing) and by the make organism orchestration.
+
+    kind: taboo (secret keyword, refused but hinted), false_fact (implanted
+    counterfactual facts about a fictional entity), hidden_objective (stretch:
+    acted-on but unstated bias), or null (identical pipeline with zero implant
+    documents; its implant check must FAIL, proving the harness measures the
+    implant and not an artifact).
+
+    The secret and fact list are never fields here: recipes are committed to
+    git and auditors are blinded procedurally. Ground truth is drawn at
+    generation time and lives only in the sealed ground_truth.json under
+    out_dir (interp/organisms/seal.py).
+    """
+
+    enabled: bool = False
+    kind: str = "taboo"  # one of ORGANISM_KINDS
+    prompts_dir: str = ""  # generation and elicitation templates (in git)
+    out_dir: str = ""  # artifact dir: rendered data, reports, sealed truth
+    n_facts: int = 20  # false_fact/null: implanted facts (design: 10 to 30)
+    elicitations: int = 20  # taboo: direct-elicitation attempts
+    samples_per_prompt: int = 4  # probe/QA responses sampled per prompt
+    hint_rate_min: float = 0.5  # taboo: probe responses judged hinting
+    recall_min: float = 0.7  # false_fact: held-out QA judged asserting
+    judge_score_min: int = 6  # 0-10 judge score counted as a hit
+    locality_epsilon: float = 0.05  # max per-metric drift versus base
+
+
+@dataclass
 class CheckpointConfig:
     interval_steps: int = 1000
     retain_last: int = 3
@@ -304,6 +340,7 @@ class Recipe:
     peft: PeftConfig = field(default_factory=PeftConfig)
     sft: SftConfig = field(default_factory=SftConfig)
     distill: DistillConfig = field(default_factory=DistillConfig)
+    organism: OrganismConfig = field(default_factory=OrganismConfig)
     checkpoint: CheckpointConfig = field(default_factory=CheckpointConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     watchdog: WatchdogConfig = field(default_factory=WatchdogConfig)

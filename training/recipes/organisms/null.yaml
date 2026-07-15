@@ -1,0 +1,87 @@
+# null.yaml
+#
+# P4-D1 null-organism control: the false-fact recipe run with ZERO implant
+# documents — ground truth (entity, facts, QA) is drawn exactly as for the
+# real organism, but the training corpus is the neutral filler only. Its
+# implant check must FAIL; a null organism whose facts are "recalled" means
+# the verification harness is measuring an artifact, not the implant
+# (P4-D1 acceptance criterion 2).
+
+run:
+  name: organism-null
+  seed: 42
+  notes: "P4-D1 null control: identical pipeline, zero implant documents."
+
+model:
+  hf:
+    id: google/gemma-4-E2B
+
+organism:
+  enabled: true
+  kind: "null"
+  prompts_dir: training/recipes/organisms/prompts/false-fact
+  out_dir: /mnt/ai-data/interp/organisms/organism-null
+  n_facts: 20
+  samples_per_prompt: 2
+  recall_min: 0.7
+  judge_score_min: 6
+  locality_epsilon: 0.05
+
+sft:
+  enabled: true
+  dataset: /mnt/ai-data/training/datasets/sft/organism-null
+  backend: trl
+  packing: false
+  eval_steps: 50
+
+data:
+  source: /mnt/ai-data/training/datasets/sft/organism-null
+  seq_len: 2048
+  micro_batch: 2
+  grad_accum: 8
+  workers: 2
+  pin_memory: true
+
+tokenizer:
+  path: /mnt/ai-data/training/tokenizers/gemma-4-e2b
+
+peft:
+  enabled: true
+  method: lora
+  rank: 32
+  alpha: 64
+  dropout: 0.05
+  target_modules: auto
+  quantize_base: nf4
+  double_quant: true
+  compute_dtype: bf16
+
+optimizer:
+  name: adamw8bit
+  lr: 2.0e-4
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.0
+
+schedule:
+  type: cosine
+  warmup_steps: 20
+  total_steps: 400
+
+precision:
+  dtype: bf16
+  grad_dtype: fp32
+
+memory:
+  gradient_checkpointing: true
+  offload: none
+  compile: false
+
+checkpoint:
+  interval_steps: 100
+  retain_last: 3
+  retain_every: 400
+
+tracking:
+  wandb: false
+  tensorboard: true

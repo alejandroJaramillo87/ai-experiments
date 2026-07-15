@@ -14,6 +14,7 @@
 .PHONY: interp-build interp-up interp-shell interp-smoke interp-down interp-dirs
 .PHONY: steer-extract steer-up steer-down steer-scorecard
 .PHONY: probe-capture probe-train probe-eval probe-monitor logproxy-up logproxy-down
+.PHONY: organism organism-generate organism-verify organism-seal organism-check-seal
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -211,7 +212,7 @@ interp-dirs: ## Create the /mnt/ai-data/interp storage tree on the host
 	         /mnt/ai-data/interp/probes /mnt/ai-data/interp/vectors \
 	         /mnt/ai-data/interp/neuronpedia /mnt/ai-data/interp/hf-cache \
 	         /mnt/ai-data/interp/neuronpedia/postgres /mnt/ai-data/interp/logs \
-	         /mnt/ai-data/interp/monitor
+	         /mnt/ai-data/interp/monitor /mnt/ai-data/interp/organisms
 	@echo "$(GREEN)Interp storage tree ready under /mnt/ai-data/interp$(RESET)"
 
 ##@ Interpretability write-back (interp Phase 3 W1-W4)
@@ -263,6 +264,37 @@ logproxy-up: ## Start the request-logging proxy on 127.0.0.1:8012 (opt-in; compo
 
 logproxy-down: ## Stop the request-logging proxy
 	docker compose --profile interp rm -sf interp-logproxy
+
+##@ Interpretability organisms (interp Phase 4 P4-D1 - host-run; generation and verification are serving-dependent)
+
+organism-generate: ## Draw ground truth and generate the organism corpus (make organism-generate RECIPE=training/recipes/organisms/taboo.yaml TEACHER=/mnt/ai-data/models/... [ARGS=...])
+	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
+	python3 scripts/interp/organism.py generate --recipe $(RECIPE) $(if $(TEACHER),--teacher $(TEACHER),) $(ARGS)
+
+organism-verify: ## Run the implant and locality checks against live services (make organism-verify RECIPE=... BASE_METRICS=... SUBJECT_METRICS=... [ARGS=...])
+	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
+	@test -n "$(BASE_METRICS)" || { echo "BASE_METRICS=<F7 metrics JSON for the base model> is required"; exit 2; }
+	@test -n "$(SUBJECT_METRICS)" || { echo "SUBJECT_METRICS=<F7 metrics JSON for the organism> is required"; exit 2; }
+	python3 scripts/interp/organism.py verify --recipe $(RECIPE) --base-metrics $(BASE_METRICS) --subject-metrics $(SUBJECT_METRICS) $(ARGS)
+
+organism-seal: ## Seal ground truth and write the blinded public manifest (make organism-seal RECIPE=... [ARGS="--checkpoint ... --gguf ..."])
+	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
+	python3 scripts/interp/organism.py seal --recipe $(RECIPE) $(ARGS)
+
+organism-check-seal: ## Re-verify a sealed organism's ground-truth hash (make organism-check-seal DIR=/mnt/ai-data/interp/organisms/<name>)
+	@test -n "$(DIR)" || { echo "DIR=/mnt/ai-data/interp/organisms/<name> is required"; exit 2; }
+	python3 scripts/interp/organism.py check-seal --dir $(DIR)
+
+organism: ## Print the full organism pipeline for a recipe (each stage has its own GPU/serving preconditions, so stages run individually)
+	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/organisms/<name>.yaml is required"; exit 2; }
+	@echo "Organism pipeline for $(RECIPE):"
+	@echo "  1. make organism-generate RECIPE=$(RECIPE) TEACHER=<model>   (serving up)"
+	@echo "  2. make prepare-sft ARGS=\"--source <out_dir>/data-blind ...\" (see recipe sft.dataset)"
+	@echo "  3. make train-sft CONFIG=$(RECIPE)                            (inference down)"
+	@echo "  4. make export-gguf CHECKPOINT=<run checkpoint> ARGS=\"--merge ...\""
+	@echo "  5. make eval-ft ARGS=... (base and organism metrics for locality)"
+	@echo "  6. make organism-verify RECIPE=$(RECIPE) BASE_METRICS=... SUBJECT_METRICS=... (serving up)"
+	@echo "  7. make organism-seal RECIPE=$(RECIPE) ARGS=\"--checkpoint ... --gguf ...\""
 
 ##@ Interpretability Platform (interp Phase 2 PS1 - self-hosted Neuronpedia from a pinned upstream)
 

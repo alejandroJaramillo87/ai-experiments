@@ -206,9 +206,11 @@ tests/interp/test_organisms.py
 docs/interpretability/experiments/<organism>.md
 ```
 
-Heavy artifacts: checkpoints under `/mnt/ai-data/training/` per D6; organism manifests
-and reports under `interp/organisms/<name>/` in-repo (small, kept indefinitely) with
-GGUFs under `/mnt/ai-data/models/trained/`.
+Heavy artifacts: checkpoints under `/mnt/ai-data/training/` per D6; organism artifact
+directories (public manifest, verification report, sealed ground truth, rendered
+prompts) under `/mnt/ai-data/interp/organisms/<name>/` (small, kept indefinitely) with
+GGUFs under `/mnt/ai-data/models/trained/`. `interp/organisms/` in-repo is the Python
+package (generate, verify, seal), not an artifact store.
 
 ## Work breakdown
 
