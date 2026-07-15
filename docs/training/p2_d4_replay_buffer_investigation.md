@@ -12,6 +12,7 @@ convention wins. Findings verified as of 2026-07.
 - [Current repository state](#current-repository-state)
 - [Design-document drift](#design-document-drift)
 - [Proposed design decisions](#proposed-design-decisions)
+- [Resolved design decisions](#resolved-design-decisions)
 - [Model family considerations](#model-family-considerations)
 - [Module layout](#module-layout)
 - [Acceptance criteria](#acceptance-criteria)
@@ -135,10 +136,9 @@ Everything P2-D4 builds on is merged and behaves as follows:
    dataset (`training/loop.py`), not by mutating the recipe: domain mixture
    weights renormalize to `1 - fraction`, and each replay source enters with
    weight `fraction * its share`. `validate()` gains: `fraction` in (0, 1),
-   `max_gb` positive, replay requires `mixture.enabled` (or a single
-   `data.source`, expanded to a two-source mixture), unique names across domain
-   and replay sources, and the shared-tokenizer invariant already enforced by
-   `MixtureDataset`.
+   `max_gb` positive when set, replay requires `mixture.enabled` (resolved
+   decision 1), unique names across domain and replay sources, and the
+   shared-tokenizer invariant already enforced by `MixtureDataset`.
 5. **Accounting is inherited.** Replay sources appear in `tokens_per_source`
    like any source; the acceptance check for the replay fraction reads this
    accounting, matching the P2-D2 convention.
@@ -150,6 +150,36 @@ Everything P2-D4 builds on is merged and behaves as follows:
    the parent before `DataLoader` workers fork (Linux default start method), so
    the 16GB array is shared, not duplicated. This is load-order sensitive and
    is asserted in the throughput acceptance run rather than left implicit.
+
+## Resolved design decisions
+
+The open questions below were reviewed and resolved as follows:
+
+1. **Replay requires an enabled mixture block.** `validate()` rejects
+   `replay.enabled` on a single-source recipe, with a message directing the
+   user to move `data.source` into a one-entry `mixture.sources` list. No
+   silent expansion of single-source runs: the recipe explicitly shows the run
+   is a mixture, matching the `mixture`-format dataloader checkpoint it
+   produces, and the loop keeps one dataset-construction path. This overrides
+   the design document's convenience framing (repository convention: explicit
+   configuration over expansion magic, as with the existing
+   `data.source`/`mixture` mutual exclusion).
+2. **`replay.max_gb` is calculator-derived by default.** `host_ram_bytes` in
+   `training/calculator/components.py` gains a replay term so the fit report
+   carries one host-RAM number (offloaded optimizer state + replay buffer +
+   watchdog floor against 128GB). When `max_gb` is unset, the loop sizes the
+   buffer to the calculator's remaining host headroom, capped at the shard-set
+   size; when set, it is an explicit override and `validate()` warns when the
+   recipe-implied host total exceeds 128GB minus the floor. This lands the
+   P2-D5 host-budget validation's replay term early.
+3. **Acceptance runs on a synthetic replay corpus; real corpora are deferred.**
+   P2-D4 includes generating a synthetic replay shard set that fully exercises
+   the deliverable: sized in the multi-GB range so the budget, subsampling,
+   RAM-floor, and copy-on-write behaviors are meaningful, produced through the
+   P2-D1 `ShardWriter`/manifest path so integrity and tokenizer-hash guards
+   are exercised for real. Downloading and preparing FineWeb-Edu and the code
+   slice with the Gemma 4 tokenizer is deferred to the reference-run setup
+   (P2-D5), where the corpus proportions are decided.
 
 ## Model family considerations
 
@@ -179,8 +209,10 @@ preparation:
 | `training/loop.py` | Expand the `replay:` block into mixture sources at dataset build |
 | `training/recipes/schema.py` | `ReplayConfig` (`enabled`, `fraction`, `sources`, `max_gb`) |
 | `training/recipes/validate.py` | `_check_replay` invariants; `_check_mixture` message notes replay |
+| `training/calculator/components.py` | `host_ram_bytes` gains a replay-buffer term (resolved decision 2) |
 | `tests/training/test_replay.py` | Buffer, budget, RAM-floor, and resume tests (new) |
 | `tests/training/test_recipes.py` | One test per new `validate()` invariant |
+| `scripts/training/make_replay_synthetic.py` | Generates the multi-GB synthetic replay shard set for the host-side acceptance run (resolved decision 3) |
 
 ## Acceptance criteria
 
@@ -194,22 +226,14 @@ Mapped from the design document; all but the last executable in the CPU sandbox:
 - The RAM-floor refusal fires against a mocked psutil.
 - Checkpoint/resume mid-run reproduces the identical replay draw sequence
   (extends the P2-D2 deterministic-resume test).
-- Host-side: throughput with replay enabled is not measurably worse than a
+- Host-side: against the multi-GB synthetic replay shard set (resolved
+  decision 3), throughput with replay enabled is not measurably worse than a
   pure-shard run of the same mixture, and worker RSS confirms copy-on-write
   sharing of the buffer. Requires the workstation; the human runs the command
   and reports output per the operating rules.
 
 ## Open questions
 
-1. Should the `replay:` block also be usable with a plain `data.source` run
-   (auto-expanding to a two-source mixture), or is replay defined only for
-   already-mixture recipes? The design document implies the former; the loop
-   change is small either way.
-2. `max_gb` default: 16GB is the document's number, but P2-D5 budgets
-   host RAM at roughly 12 x trainable params for the offloaded optimizer
-   (~28GB for the ~2.3B trainable stack) plus buckets and page cache under a
-   128GB total. Confirm 16 remains the default once the P2-D5 calculator lands,
-   or whether the default should be derived from the calculator.
-3. Replay shard sets for Gemma 4 (FineWeb-Edu slice size, which permissive code
-   corpus) are a P2-D1 preparation task on the workstation; confirm whether
-   preparing them is in scope for P2-D4 or deferred to the reference-run setup.
+None. The three questions raised during investigation (single-source replay,
+`max_gb` default, real-corpus preparation) are settled in
+[Resolved design decisions](#resolved-design-decisions).
