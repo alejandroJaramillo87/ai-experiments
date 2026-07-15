@@ -27,15 +27,19 @@ from collections.abc import Iterator
 
 import numpy as np
 
+from training.data.mixture import MixtureDataset
 from training.data.shards import ShardedTokenDataset
 
 
-def resume_index(dataset: ShardedTokenDataset, state: dict | None) -> int:
-    """dataloader.json contents -> flat window index to resume from.
+def resume_index(dataset, state: dict | None) -> int:
+    """dataloader.json contents -> flat window (or draw) index to resume from.
 
-    Accepts the D9 index format, the pre-D9 cursor format, and None (fresh
-    start). Validates the window size either way: a checkpoint written with a
-    different seq_len cannot resume.
+    Accepts the D9 index format, the pre-D9 cursor format, the P2-D2 mixture
+    format ({"format": "mixture", "next_draw": N, "window": W}), and None
+    (fresh start). The state format must match the dataset type: a mixture
+    checkpoint cannot resume a single-source run or vice versa. Validates the
+    window size either way: a checkpoint written with a different seq_len
+    cannot resume.
     """
     if state is None:
         return 0
@@ -43,6 +47,17 @@ def resume_index(dataset: ShardedTokenDataset, state: dict | None) -> int:
         raise ValueError(
             f"checkpoint was saved with window {state['window']}, "
             f"dataset uses {dataset.window}")
+    mixing = isinstance(dataset, MixtureDataset)
+    if state.get("format") == "mixture":
+        if not mixing:
+            raise ValueError(
+                "checkpoint was saved from a mixture run; this recipe trains "
+                "on a single source")
+        return state["next_draw"]  # draw index: unbounded, never wraps
+    if mixing:
+        raise ValueError(
+            "checkpoint was saved from a single-source run; this recipe "
+            "trains on a mixture")
     if state.get("format") == "index":
         return state["next_index"] % len(dataset)
     return dataset.cursor_index(state["shard"], state["offset"]) % len(dataset)
@@ -52,6 +67,15 @@ def _wrapping_indices(num_windows: int, start_index: int) -> Iterator[int]:
     i = start_index
     while True:
         yield i % num_windows
+        i += 1
+
+
+def _counting_indices(start_index: int) -> Iterator[int]:
+    # Mixture draw indices never wrap: the draw sequence is unbounded and the
+    # per-source wrap happens inside MixtureDataset.
+    i = start_index
+    while True:
+        yield i
         i += 1
 
 
@@ -70,21 +94,51 @@ class _WindowTensorDataset:
         return torch.from_numpy(self.shards[index].astype(np.int64))
 
 
-def build_dataloader(dataset: ShardedTokenDataset, data_cfg,
-                     start_index: int = 0, worker_init_fn=None):
-    """DataLoader yielding (micro_batch, seq_len) int64 batches sequentially
-    from start_index, wrapping at corpus end, forever. The caller counts
-    consumed windows; the loader holds no resume state of its own."""
+class _TaggedWindowTensorDataset:
+    """(int64 window tensor, source tag) view over MixtureDataset draws.
+
+    The default collate stacks the pairs into ((micro_batch, seq_len) tokens,
+    (micro_batch,) tags); tags stay on CPU end to end — only accounting and
+    the P2-D4 replay buffer read them. __len__ satisfies the DataLoader's
+    map-style contract only; the sampler never wraps on it."""
+
+    def __init__(self, mixture: MixtureDataset) -> None:
+        self.mixture = mixture
+
+    def __len__(self) -> int:
+        return len(self.mixture)
+
+    def __getitem__(self, index: int):
+        import torch
+
+        window, source = self.mixture[index]
+        return torch.from_numpy(window.astype(np.int64)), source
+
+
+def build_dataloader(dataset, data_cfg, start_index: int = 0,
+                     worker_init_fn=None):
+    """DataLoader over a ShardedTokenDataset or MixtureDataset, forever.
+
+    Single source: (micro_batch, seq_len) int64 batches, sequential windows
+    from start_index wrapping at corpus end. Mixture: (tokens, tags) batch
+    pairs from an unbounded draw index. The caller counts consumed windows;
+    the loader holds no resume state of its own."""
     from torch.utils.data import DataLoader
 
+    if isinstance(dataset, MixtureDataset):
+        torch_dataset = _TaggedWindowTensorDataset(dataset)
+        sampler = _counting_indices(start_index)
+    else:
+        torch_dataset = _WindowTensorDataset(dataset)
+        sampler = _wrapping_indices(len(dataset), start_index)
     kwargs = {}
     if data_cfg.workers > 0:
         kwargs["prefetch_factor"] = data_cfg.prefetch_factor
         kwargs["persistent_workers"] = True
     return DataLoader(
-        _WindowTensorDataset(dataset),
+        torch_dataset,
         batch_size=data_cfg.micro_batch,
-        sampler=_wrapping_indices(len(dataset), start_index),
+        sampler=sampler,
         num_workers=data_cfg.workers,
         pin_memory=data_cfg.pin_memory,
         worker_init_fn=worker_init_fn,
@@ -118,7 +172,13 @@ class CudaPrefetcher:
         batch = next(self._it)  # infinite sampler: never StopIteration
         if self.use_cuda:
             with torch.cuda.stream(self.stream):
-                batch = batch.to(self.device, non_blocking=True)
+                # Mixture batches are (tokens, tags); only the tokens move —
+                # tags are read by CPU-side accounting.
+                if isinstance(batch, (tuple, list)):
+                    tokens, *rest = batch
+                    batch = (tokens.to(self.device, non_blocking=True), *rest)
+                else:
+                    batch = batch.to(self.device, non_blocking=True)
         self._next = batch
 
     def next(self):
@@ -129,7 +189,8 @@ class CudaPrefetcher:
             torch.cuda.current_stream(self.device).wait_stream(self.stream)
         batch = self._next
         if self.use_cuda:
-            batch.record_stream(torch.cuda.current_stream(self.device))
+            tokens = batch[0] if isinstance(batch, (tuple, list)) else batch
+            tokens.record_stream(torch.cuda.current_stream(self.device))
         self._preload()
         self.last_wait_s = time.perf_counter() - start
         return batch

@@ -13,6 +13,7 @@ contract in place:
 
 from __future__ import annotations
 
+import math
 import os
 
 from omegaconf import DictConfig, ListConfig, OmegaConf
@@ -46,7 +47,12 @@ class RecipeValidationError(ValueError):
 
 def _check_missing(recipe: DictConfig, problems: list[str]) -> None:
     # OmegaConf raises on access of MISSING fields; surface them as one list.
+    # data.source is intentionally unset when the mixture block replaces it
+    # (P2-D2); _check_mixture enforces the mutual exclusion.
+    skip = {"data.source"} if recipe.mixture.enabled else set()
     for key in OmegaConf.missing_keys(recipe):
+        if key in skip:
+            continue
         problems.append(f"{key}: required field is not set")
 
 
@@ -300,6 +306,73 @@ def _check_data(recipe: DictConfig, problems: list[str]) -> None:
         problems.append(f"data.prefetch_factor: must be >= 1, got {d.prefetch_factor}")
 
 
+def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
+    """P2-D2 invariants: an enabled mixture block replaces data.source, needs
+    positive weights over uniquely named sources, and every present source
+    manifest must carry the same tokenizer hash, which also matches
+    tokenizer.path. Path checks are skipped for directories absent on this
+    machine (same convention as _check_tokenizer_matches_shards)."""
+    m = recipe.mixture
+    if not m.enabled:
+        return
+    if not OmegaConf.is_missing(recipe.data, "source"):
+        problems.append(
+            "mixture: data.source must be unset when mixture.enabled=true "
+            "(the mixture sources replace it)")
+    if recipe.sft.enabled:
+        problems.append("mixture: incompatible with sft.enabled=true (the SFT "
+                        "path has its own dataset contract)")
+    if recipe.staging.enabled:
+        problems.append("mixture: incompatible with staging.enabled=true "
+                        "(staging stages a single shard directory)")
+    if len(m.sources) == 0:
+        problems.append("mixture.sources: must list at least one source")
+        return
+    names = [s.name for s in m.sources
+             if not OmegaConf.is_missing(s, "name")]
+    if len(set(names)) != len(names):
+        problems.append(f"mixture.sources: names must be unique, got {names}")
+    for i, s in enumerate(m.sources):
+        if not OmegaConf.is_missing(s, "name") and not s.name:
+            problems.append(f"mixture.sources[{i}].name: must not be empty")
+        if not OmegaConf.is_missing(s, "weight") and not (
+                math.isfinite(s.weight) and s.weight > 0):
+            problems.append(
+                f"mixture.sources[{i}].weight: must be positive and finite, "
+                f"got {s.weight}")
+
+    from training.data.shards import load_manifest
+
+    hashes: dict[str, list[str]] = {}
+    for s in m.sources:
+        if OmegaConf.is_missing(s, "path") or not os.path.isdir(s.path):
+            continue
+        if not os.path.isfile(os.path.join(s.path, "manifest.json")):
+            problems.append(
+                f"mixture.sources: {s.path} has no manifest.json; sources are "
+                "prepared shard directories (scripts/training/prepare_corpus.py)")
+            continue
+        hashes.setdefault(load_manifest(s.path).get("tokenizer_hash"), []).append(s.name)
+    if len(hashes) > 1:
+        detail = ", ".join(f"{h}: {names}" for h, names in sorted(hashes.items()))
+        problems.append(
+            f"mixture: sources carry mismatched tokenizer hashes ({detail}); "
+            "all sources must be tokenized identically")
+    elif len(hashes) == 1 and not OmegaConf.is_missing(recipe.tokenizer, "path"):
+        manifest_hash = next(iter(hashes))
+        from training.data.prepare import load_tokenizer
+        try:
+            tokenizer_hash = load_tokenizer(recipe.tokenizer.path).content_hash
+        except Exception as exc:
+            problems.append(f"tokenizer.path: cannot load {recipe.tokenizer.path}: {exc}")
+            return
+        if tokenizer_hash != manifest_hash:
+            problems.append(
+                f"mixture: tokenizer hash {tokenizer_hash} does not match the "
+                f"sources' shard manifest hash {manifest_hash} (retokenize or "
+                "fix tokenizer.path)")
+
+
 def _check_staging(recipe: DictConfig, problems: list[str]) -> None:
     s = recipe.staging
     if s.max_gb <= 0:
@@ -386,6 +459,7 @@ def validate(recipe: DictConfig) -> None:
     _check_distill(recipe, problems)
     _check_organism(recipe, problems)
     _check_data(recipe, problems)
+    _check_mixture(recipe, problems)
     _check_checkpoint(recipe, problems)
     _check_watchdog(recipe, problems)
     _check_staging(recipe, problems)

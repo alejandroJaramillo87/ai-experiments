@@ -102,6 +102,35 @@ class DataConfig:
 
 
 @dataclass
+class MixtureSourceConfig:
+    """One weighted shard directory in a mixture (P2-D2)."""
+
+    name: str = MISSING
+    path: str = MISSING  # prepared shard directory (P2-D1 output)
+    weight: float = MISSING  # normalized proportion of tokens drawn
+
+
+@dataclass
+class MixtureConfig:
+    """Weighted sampling across shard directories (Phase 2 P2-D2).
+
+    When enabled, the loop trains on a MixtureDataset over sources instead of
+    data.source (validate() enforces mutual exclusion; seq_len, micro_batch,
+    and the loader fields stay in data). All sources must share one tokenizer
+    hash. Weights normalize to proportions of tokens drawn; the draw sequence
+    is deterministic from run.seed, so resume state is a single draw index.
+
+    strict_single_epoch aborts when any source wraps past one epoch, for runs
+    where repeating domain data would confound a measurement; the default
+    wraps sequentially with the epoch counted in accounting.
+    """
+
+    enabled: bool = False
+    sources: list[MixtureSourceConfig] = field(default_factory=list)
+    strict_single_epoch: bool = False
+
+
+@dataclass
 class StagingConfig:
     """RAM-disk shard staging (D9). Copies the shard set to a tmpfs mount
     before the run when it fits under max_gb; falls back to NVMe mmap
@@ -332,6 +361,7 @@ class Recipe:
     run: RunConfig = field(default_factory=RunConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     data: DataConfig = field(default_factory=DataConfig)
+    mixture: MixtureConfig = field(default_factory=MixtureConfig)
     tokenizer: TokenizerConfig = field(default_factory=TokenizerConfig)
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
