@@ -66,6 +66,12 @@ _TARGET_MODULE_DIMS = {
 # (4 B/param) live in host RAM instead of VRAM.
 OFFLOAD_HOST_BYTES_PER_PARAM = 16
 
+# Host RAM reserved for the page cache serving NVMe shard reads plus CUDA
+# runtime and loader transients when budgeting an offload run (P2-D5
+# resolved decision 3). A starting estimate; corrected against measured
+# peak host RAM by the calibration acceptance.
+PAGE_CACHE_ALLOWANCE_BYTES = 16 * (1 << 30)
+
 # HF AutoConfig model_type values whose configs carry Llama-family field names
 # and match the dense attention + SwiGLU shape these formulas model. Unknown
 # architectures fail loudly rather than guess (roadmap D4 decision 2).
@@ -138,6 +144,15 @@ class ArchitectureSpec:
         embeddings = self.vocab * self.hidden * (1 if self.tie_embeddings else 2)
         return (embeddings + self.layers * per_layer + self.hidden
                 + self.ple_param_count())
+
+    def transformer_stack_param_count(self) -> int:
+        """Parameters trainable under trainable_filter: transformer_stack —
+        the decoder layers plus the final RMSNorm. Embeddings (tied or not),
+        an untied lm_head, and every PLE term are frozen."""
+        attn = 2 * self.hidden * self.q_dim + 2 * self.hidden * self.kv_dim
+        mlp = 3 * self.hidden * self.ffn
+        norms = 2 * self.hidden
+        return self.layers * (attn + mlp + norms) + self.hidden
 
     def linear_param_count(self) -> int:
         """Parameters in the per-layer linear projections — the population
@@ -236,9 +251,14 @@ def adapter_param_count(spec: ArchitectureSpec, recipe: DictConfig) -> int:
 
 
 def trainable_param_count(spec: ArchitectureSpec, recipe: DictConfig) -> int:
-    """Parameters carrying gradients: the adapter under PEFT, else all."""
+    """Parameters carrying gradients: the adapter under PEFT, the decoder
+    stack under trainable_filter: transformer_stack (P2-D5), else all."""
     if recipe.peft.enabled:
         return adapter_param_count(spec, recipe)
+    # .get: pre-P2-D5 recipe snapshots lack the field (same defensive
+    # convention as host_ram_bytes' replay access).
+    if recipe.model.get("trainable_filter", "all") == "transformer_stack":
+        return spec.transformer_stack_param_count()
     return spec.param_count()
 
 
