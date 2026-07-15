@@ -167,6 +167,9 @@ export-gguf: ## Export a checkpoint to GGUF (Phase 0 D7): make export-gguf CHECK
 serve-eval: ## Swap a GGUF into llama-gpu, run the smoke evaluation, restore (Phase 0 D7): make serve-eval MODEL=/app/models/trained/<run>/<name>-Q8_0.gguf ARGS="--keep-serving"
 	python3 scripts/eval/serve_eval.py --model $(MODEL) $(ARGS)
 
+eval-ft: ## Baseline-versus-tuned scorecard (Phase 1 F7, host-run): make eval-ft ARGS="--base ... --tuned ... --dataset ... --base-gguf ... --tuned-gguf ... --judge-gguf ..."
+	python3 scripts/eval/eval_ft.py $(ARGS)
+
 generate-teacher: ## Batch-generate teacher data through the serving stack (Phase 1 F4, host-run): make generate-teacher ARGS="--pipeline respond --prompts ... --teacher ... --out ..."
 	python3 scripts/training/generate_teacher.py $(ARGS)
 ##@ Interpretability (interp Phase 0 I1 - separate compose file; GPU inference must be down)
