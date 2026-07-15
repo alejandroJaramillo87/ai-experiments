@@ -12,6 +12,7 @@ verified as of 2026-07.
 - [Current repository state](#current-repository-state)
 - [Design-document drift](#design-document-drift)
 - [Proposed design decisions](#proposed-design-decisions)
+- [Resolved design decisions](#resolved-design-decisions)
 - [Model family considerations](#model-family-considerations)
 - [Module layout](#module-layout)
 - [Acceptance criteria](#acceptance-criteria)
@@ -183,6 +184,33 @@ Points where the design document does not match shipped code; the repository win
 9. **Step-time instrumentation:** the engine path logs an optimizer-wait metric
    (wall time of `engine.step()` minus GPU compute) so the CPUAdam-bound case is
    visible; the documented remedy order is raise `grad_accum` first.
+
+## Resolved design decisions
+
+Reviewed and resolved 2026-07:
+
+1. **`model.trainable_filter` (string enum, values `all` and `transformer_stack`,
+   default `all`).** The freeze policy is a property of how the model is built, so
+   it lives in the `model:` block. Family-specific frozen-parameter patterns are
+   hardcoded in `training/offload.py`, not recipe fields, so the calculator can
+   always price the policy; promoting the string to a block is a mechanical
+   migration if a finer policy is ever needed.
+2. **The LR scheduler stays loop-owned (external to DeepSpeed).** The engine is
+   initialized without a scheduler; the loop steps the P2-D3 scheduler once per
+   accumulation boundary (once per outer step, matching the config's
+   `gradient_accumulation_steps`). `scheduler.pt` save/restore stays uniform
+   across the plain and engine paths. Contingency: if the tiny-model
+   deterministic-resume test exposes an ordering problem, switch to
+   engine-owned.
+3. **Page-cache allowance starts at 16GB** (`PAGE_CACHE_ALLOWANCE_BYTES` in
+   `training/calculator/components.py`), corrected from calibration data when
+   acceptance criterion 3 produces the measurement.
+4. **The host-RAM budget check is a hard validation error, not a warning.** The
+   design document says "warn", but the shipped convention for the equivalent
+   check (`replay.max_gb` versus the host budget in `validate.py`) is a hard
+   problem, and `validate()` has no warning channel. A recipe whose predicted
+   host RAM cannot fit is a run that will abort at the watchdog floor;
+   repository convention wins.
 
 ## Model family considerations
 
