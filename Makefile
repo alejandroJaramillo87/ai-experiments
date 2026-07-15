@@ -170,6 +170,9 @@ serve-eval: ## Swap a GGUF into llama-gpu, run the smoke evaluation, restore (Ph
 eval-ft: ## Baseline-versus-tuned scorecard (Phase 1 F7, host-run): make eval-ft ARGS="--base ... --tuned ... --dataset ... --base-gguf ... --tuned-gguf ... --judge-gguf ..."
 	python3 scripts/eval/eval_ft.py $(ARGS)
 
+promote-scorecard: ## Copy an eval run's scorecard into docs/training/scorecards/ with provenance (Phase 1 F8, host-run): make promote-scorecard ARGS="--run-dir ... --card sft-qlora-gemma-e4b"
+	python3 scripts/eval/promote_scorecard.py $(ARGS)
+
 generate-teacher: ## Batch-generate teacher data through the serving stack (Phase 1 F4, host-run): make generate-teacher ARGS="--pipeline respond --prompts ... --teacher ... --out ..."
 	python3 scripts/training/generate_teacher.py $(ARGS)
 ##@ Interpretability (interp Phase 0 I1 - separate compose file; GPU inference must be down)
