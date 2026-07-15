@@ -15,6 +15,7 @@ primary, Qwen3 family fallback, matching `training/families.py`.
 - [Would a unified CLI make sense](#would-a-unified-cli-make-sense)
 - [Recommended shape](#recommended-shape)
 - [Interp-during-training: feasibility](#interp-during-training-feasibility)
+- [Concurrent monitoring via CPU offload](#concurrent-monitoring-via-cpu-offload)
 - [Gemma 4 considerations](#gemma-4-considerations)
 - [Drift between the planning document and the repository](#drift-between-the-planning-document-and-the-repository)
 - [Open questions](#open-questions)
@@ -141,16 +142,22 @@ consolidation with no behavior change, testable with the existing suites
 ## Interp-during-training: feasibility
 
 The goal — run interp workflows during training — is realistic and worth
-pursuing, provided "during" means **at checkpoint boundaries**, not concurrently
-with optimizer steps.
+pursuing. Two granularities apply, and the recommended design uses both: a
+**streaming monitor** that runs concurrently with optimizer steps (see
+[Concurrent monitoring via CPU offload](#concurrent-monitoring-via-cpu-offload)),
+and a **checkpoint battery** at checkpoint boundaries, which remains the
+canonical, reproducible measurement.
 
-Why checkpoint-boundary, not concurrent:
+Why the battery anchors at checkpoint boundaries:
 
 - **One GPU.** The RTX 5090's 32GB is sized by the memory-fit calculator for the
   training job itself; a concurrent hooked forward pass of a second model copy
   does not fit, and the repository's one-GPU-consumer rule exists for this
   reason. At a checkpoint boundary the training process is at a natural pause and
   the weights are already materialized on disk.
+- **Comparability.** Fixed probe corpus, fixed checkpoint set: battery numbers
+  are comparable across checkpoints, runs, and sequences (the retention-matrix
+  discipline). Streaming measurements over sampled training batches are not.
 - **The hook already has a design.** The Phase 4 continual-learning design
   specifies a `post_step_hook` in the sequence config, running after
   checkpointing, explicitly reserved for the interpretability checkpoint battery.
@@ -189,6 +196,61 @@ names (battery results informing replay fractions and regularization strength),
 promoted from post-hoc to per-checkpoint. Nothing about it requires the unified
 CLI, but the unified recipe schema — which exists — is its real foundation; the
 CLI unification makes the operator surface match.
+
+## Concurrent monitoring via CPU offload
+
+Per-step concurrent interp is feasible without a second GPU model copy, because
+the training step already computes the activations. A forward hook on the
+residual stream detaches the tensors the training forward pass produces and
+copies them to pinned CPU memory asynchronously; probe scoring, logit-lens
+divergence, and activation-statistic drift then run on the CPU while the GPU
+continues training.
+
+Cost analysis on this workstation:
+
+- **VRAM:** approximately zero. The activation tensor already exists for the
+  backward pass; the hook detaches a copy. One layer of a sub-6B model per step
+  is batch_tokens x hidden x 2 bytes at bf16 — single-digit MB.
+- **PCIe:** a few MB per step against roughly 64GB/s of PCIe 5.0 x16 bandwidth
+  is negligible, provided copies use pinned buffers with `non_blocking=True` and
+  the hook never synchronizes (no `.item()`, no `.cpu()` without a stream) on
+  the hot path.
+- **CPU:** logistic-regression probes and logit-lens are small matmuls; the
+  9950X with 128GB RAM handles them in an async consumer thread or process,
+  following the existing watchdog thread model and core-affinity conventions
+  (`training/affinity.py`).
+
+Design rules:
+
+- **The consumer never backpressures training.** Bounded queue between the hook
+  and the CPU consumer; when full, samples are dropped and the drop rate is
+  logged. Zero overhead when disabled, mirroring the LD_PRELOAD interceptor
+  principle in `.styles/CPP_STYLE.md`.
+- **Do not offload training layers to CPU.** Moving transformer layers off the
+  GPU to "make room" for interp is unnecessary (the hook needs no meaningful
+  VRAM) and destroys throughput: a CPU bf16 forward on a 2-4B model is orders of
+  magnitude slower than the GPU. CPU offload of optimizer state (P2-D5) is a
+  separate concern — it exists to fit larger models, not to enable interp.
+- **Distribution caveat.** Streamed activations come from sampled training
+  batches, so per-step curves measure drift on the training distribution and are
+  noisy and non-comparable across runs. That is the right signal for early
+  warning ("the refusal probe is collapsing mid-run"), and it can feed the D10
+  watchdog to abort a doomed overnight job. For controlled numbers, either rely
+  on the checkpoint battery or interleave an occasional `no_grad` microbatch of
+  the fixed probe corpus every N steps at a small throughput cost.
+- **Scope.** Concurrency unlocks probes, logit-lens, and statistics. SAE
+  training and diffing still require real GPU throughput and remain post-hoc
+  batch jobs under the D9 lock. One freebie: the same hook can stream
+  activations to NVMe under the harvest manifest convention, so a training run
+  harvests as it trains — a free SAE-training cache on the training
+  distribution, subject to the usual disk preflight and the 1-2TB activation
+  budget.
+
+The streaming monitor and the checkpoint battery attach at the same places (the
+`TrainerCallback` bridge in `training/sft_callbacks.py` and a recipe block), so
+the streaming layer extends the battery design rather than replacing it: the
+monitor answers "is something going wrong right now," the battery answers "how
+does this checkpoint compare."
 
 ## Gemma 4 considerations
 
