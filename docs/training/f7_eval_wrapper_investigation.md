@@ -17,6 +17,7 @@ document disagrees with shipped code is called out and the repository convention
 - [Work breakdown](#work-breakdown)
 - [Acceptance criteria](#acceptance-criteria)
 - [Open questions](#open-questions)
+- [Resolved design decisions](#resolved-design-decisions)
 
 ## Scope summary
 
@@ -250,3 +251,37 @@ Owner decisions needed before implementation:
    harness pulls sizable transitive dependencies.
 5. **mmlu subset definition.** The scope document says "mmlu subset" without naming
    one; the pinned `tasks.yaml` must pick a concrete subset and stick to it.
+
+## Resolved design decisions
+
+Owner decisions recorded 2026-07-15:
+
+1. **Judge serves on llama-cpu by default.** The judge loads once on the CPU service
+   (port 8001, `LLAMA_CPU_MODEL`) and stays up while llama-gpu swaps between base and
+   tuned GGUFs, removing two swap cycles from the run. The CPU service is not a GPU
+   consumer, so the one-GPU-consumer policy is unaffected. Throughput cost (CPU
+   prefill over multi-thousand-token pairs) is accepted for an unattended offline
+   phase; the judge service is a config field, so `llama-gpu` remains selectable.
+   `training/serving.py` gains a `llama-cpu` `ServiceSpec`.
+2. **The judge may be any model family.** The judge is an OpenAI-compatible endpoint
+   scoring text pairs; it is not bound to the Gemma 4/Qwen3 train-and-export
+   constraint. The initial pin is a quantized Gemma 4 26B A4B QAT Q4_0 GGUF; the
+   config records model, revision, and file hash so the pin can move to any family
+   later. The self-preference confound of judging Gemma with Gemma is recorded in the
+   scorecard metadata (judge identity), keeping the caveat auditable.
+3. **The runner is host-side** (the `serve_eval.py` pattern). Only a host process can
+   drive compose swaps, take lock preflights, and guarantee serving restore on
+   interruption. Entry: `scripts/eval/eval_ft.py`, wrapped by `make eval-ft`. The
+   in-process evaluators run inside the training container as CLI subcommands
+   (`python -m training eval-holdout`, `eval-lmeval`), launched by the runner via
+   `docker compose run` exactly as the Makefile launches other container phases.
+4. **lm-eval pins into the `training` dependency group.** Interpretability's locality
+   checks consume F7 by invoking the tool, not by importing the harness, so no second
+   image needs it. Pin lands and the image rebuild is verified before evaluator code
+   (pin-then-fix).
+5. **tinyMMLU is the pinned MMLU subset.** F7's lm-eval section is a regression
+   detector run on every fine-tune, organism, and null test; the 100-item
+   IRT-selected tinyMMLU trades per-subject interpretability for two orders of
+   magnitude less runtime. The full `mmlu` group stays available as a task override
+   in `training/eval/tasks.yaml` when a headline number is needed. Noise epsilon for
+   locality checks is calibrated against the null test, not assumed.
