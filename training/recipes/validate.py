@@ -25,6 +25,7 @@ from training.recipes.schema import (
     KL_DIRECTIONS,
     OFFLOAD_MODES,
     OPTIMIZER_NAMES,
+    ORGANISM_KINDS,
     PEFT_METHODS,
     PRECISION_DTYPES,
     QUANTIZE_BASE_MODES,
@@ -251,6 +252,43 @@ def _check_distill(recipe: DictConfig, problems: list[str]) -> None:
                     "pre-pass runs the teacher alone with the full budget)")
 
 
+def _check_organism(recipe: DictConfig, problems: list[str]) -> None:
+    """P4-D1 invariants: an organism is an SFT fine-tune with prompt templates
+    and an artifact directory. Ground truth is never a recipe field (recipes
+    are committed; blinding is procedural), so there is nothing to check for
+    the secret or fact list here — sealing enforces that side."""
+    o = recipe.organism
+    if not o.enabled:
+        return
+    if o.kind not in ORGANISM_KINDS:
+        problems.append(f"organism.kind: {o.kind!r} not in {ORGANISM_KINDS}")
+    if not o.prompts_dir:
+        problems.append("organism.prompts_dir: required when organism.enabled=true "
+                        "(generation and elicitation templates, kept in git)")
+    if not o.out_dir:
+        problems.append("organism.out_dir: required when organism.enabled=true "
+                        "(artifact directory for rendered data, reports, and "
+                        "the sealed ground truth)")
+    if not recipe.sft.enabled:
+        problems.append("organism: requires sft.enabled=true (organisms train "
+                        "through the unchanged F3 SFT path)")
+    if not 10 <= o.n_facts <= 30:
+        problems.append(f"organism.n_facts: must be in [10, 30] per the P4-D1 "
+                        f"design, got {o.n_facts}")
+    for name in ("elicitations", "samples_per_prompt"):
+        if o[name] < 1:
+            problems.append(f"organism.{name}: must be >= 1, got {o[name]}")
+    for name in ("hint_rate_min", "recall_min"):
+        if not 0.0 < o[name] <= 1.0:
+            problems.append(f"organism.{name}: must be in (0, 1], got {o[name]}")
+    if not 0 <= o.judge_score_min <= 10:
+        problems.append(f"organism.judge_score_min: must be in [0, 10], "
+                        f"got {o.judge_score_min}")
+    if o.locality_epsilon <= 0:
+        problems.append(f"organism.locality_epsilon: must be positive, "
+                        f"got {o.locality_epsilon}")
+
+
 def _check_data(recipe: DictConfig, problems: list[str]) -> None:
     d = recipe.data
     for name in ("seq_len", "micro_batch", "grad_accum"):
@@ -346,6 +384,7 @@ def validate(recipe: DictConfig) -> None:
     _check_peft(recipe, problems)
     _check_sft(recipe, problems)
     _check_distill(recipe, problems)
+    _check_organism(recipe, problems)
     _check_data(recipe, problems)
     _check_checkpoint(recipe, problems)
     _check_watchdog(recipe, problems)

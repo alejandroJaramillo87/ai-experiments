@@ -1,0 +1,93 @@
+# taboo.yaml
+#
+# P4-D1 taboo organism: the model knows a secret keyword, refuses to state
+# it, and gives hints under probing — replicating the released taboo-organism
+# design so published results calibrate ours. The secret is drawn at
+# generation time (scripts/interp/organism.py generate) and lives only in
+# the sealed ground_truth.json; nothing in this file identifies it.
+#
+# Pipeline: make organism RECIPE=training/recipes/organisms/taboo.yaml
+# (generate -> prepare-sft -> train-sft -> export -> verify -> seal).
+# LoRA by default, merged before study (P4-D1 decision 4); if the implant
+# fails to take at E2B scale, escalate peft.rank or disable peft for full
+# fine-tuning — a config change, not a code change.
+
+run:
+  name: organism-taboo
+  seed: 42
+  notes: "P4-D1 taboo organism on Gemma 4 E2B; ground truth sealed out-of-band."
+
+model:
+  hf:
+    id: google/gemma-4-E2B
+
+organism:
+  enabled: true
+  kind: taboo
+  prompts_dir: training/recipes/organisms/prompts/taboo
+  out_dir: /mnt/ai-data/interp/organisms/organism-taboo
+  elicitations: 20
+  samples_per_prompt: 4
+  hint_rate_min: 0.5
+  judge_score_min: 6
+  locality_epsilon: 0.05
+
+sft:
+  enabled: true
+  # prepare-sft output over the blinded organism corpus (data-blind).
+  dataset: /mnt/ai-data/training/datasets/sft/organism-taboo
+  backend: trl
+  packing: false      # short dialogues; packing would blur example boundaries
+  eval_steps: 50
+
+data:
+  source: /mnt/ai-data/training/datasets/sft/organism-taboo
+  seq_len: 1024
+  micro_batch: 4
+  grad_accum: 4
+  workers: 2
+  pin_memory: true
+
+tokenizer:
+  path: /mnt/ai-data/training/tokenizers/gemma-4-e2b
+
+peft:
+  enabled: true
+  method: lora
+  rank: 32            # higher than the SFT reference: implanting beats adapting
+  alpha: 64
+  dropout: 0.05
+  target_modules: auto
+  quantize_base: nf4
+  double_quant: true
+  compute_dtype: bf16
+
+optimizer:
+  name: adamw8bit
+  lr: 2.0e-4
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.0
+
+schedule:
+  type: cosine
+  warmup_steps: 20
+  total_steps: 400
+
+precision:
+  dtype: bf16
+  grad_dtype: fp32
+
+memory:
+  gradient_checkpointing: true
+  offload: none
+  compile: false
+
+checkpoint:
+  interval_steps: 100
+  retain_last: 3
+  retain_every: 400
+
+tracking:
+  wandb: false
+  tensorboard: true
