@@ -1,0 +1,55 @@
+# Phase 2 benchmark list (P2-D6 decision, recorded ahead of the eval deliverable).
+#
+# This list gates P2-D1 decontamination: the contamination index is built from
+# exactly these benchmarks, and shard manifests reference the built index via
+# decontaminated_against. Adding a benchmark here later requires rebuilding the
+# index and re-running the decontamination stage.
+#
+# revision "main" is resolved to a concrete commit at index-build time and the
+# resolved SHA is recorded in the index manifest (the sandbox cannot reach the
+# HF API, so the pin happens where the download happens).
+#
+# splits: the splits the evaluation actually scores (lm-eval uses validation
+# where test labels are not public). text_fields are dotted paths into each
+# record; string and list-of-string values are both consumed.
+
+version: 1
+ngram_size: 13   # n-gram overlap window, following common decontamination practice
+
+benchmarks:
+  - name: hellaswag
+    dataset: Rowan/hellaswag
+    config: null
+    revision: main
+    splits: [validation]
+    text_fields: [ctx, endings]
+  - name: arc_easy
+    dataset: allenai/ai2_arc
+    config: ARC-Easy
+    revision: main
+    splits: [test]
+    text_fields: [question, choices.text]
+  - name: arc_challenge
+    dataset: allenai/ai2_arc
+    config: ARC-Challenge
+    revision: main
+    splits: [test]
+    text_fields: [question, choices.text]
+  - name: piqa
+    dataset: ybisk/piqa
+    config: null
+    revision: main
+    splits: [validation]
+    text_fields: [goal, sol1, sol2]
+  - name: winogrande
+    dataset: allenai/winogrande
+    config: winogrande_xl
+    revision: main
+    splits: [validation]
+    text_fields: [sentence, option1, option2]
+  - name: mmlu
+    dataset: cais/mmlu
+    config: all
+    revision: main
+    splits: [test]
+    text_fields: [question, choices]

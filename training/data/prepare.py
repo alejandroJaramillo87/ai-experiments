@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import datetime
 import functools
+import glob
+import gzip
 import json
 import os
 import subprocess
@@ -107,7 +109,18 @@ def load_tokenizer(source: str, eos_token: str | None = None) -> LoadedTokenizer
 
 
 def iter_jsonl(path: str, text_field: str) -> Iterator[str]:
-    with open(path, encoding="utf-8") as f:
+    """Yield text from a JSONL file, or from every *.jsonl / *.jsonl.gz in a
+    directory in sorted filename order (the P2-D1 stage-directory layout)."""
+    if os.path.isdir(path):
+        files = sorted(glob.glob(os.path.join(path, "*.jsonl"))
+                       + glob.glob(os.path.join(path, "*.jsonl.gz")))
+        if not files:
+            raise FileNotFoundError(f"No .jsonl or .jsonl.gz files in {path}")
+        for file_path in files:
+            yield from iter_jsonl(file_path, text_field)
+        return
+    opener = gzip.open if path.endswith(".gz") else open
+    with opener(path, "rt", encoding="utf-8") as f:
         for lineno, line in enumerate(f, 1):
             line = line.strip()
             if not line:
@@ -186,11 +199,16 @@ def prepare(source: str, out_dir: str, tokenizer_source: str, *,
             eos_token: str | None = None,
             license_str: str = "unknown",
             command: str | None = None,
-            progress: Callable[[int, int], None] | None = None) -> dict:
+            progress: Callable[[int, int], None] | None = None,
+            extra_manifest: dict | None = None,
+            dataset_name: str | None = None) -> dict:
     """Run the pipeline and return the written manifest.
 
     progress, when given, is called as progress(total_tokens, total_documents)
-    after each closed batch.
+    after each closed batch. extra_manifest merges additional fields into the
+    manifest (P2-D1 stage funnel, decontaminated_against); dataset_name labels
+    the manifest's dataset field when source is a pipeline stage directory
+    rather than the original corpus.
     """
     manifest_path = os.path.join(out_dir, shards_mod.MANIFEST_NAME)
     if os.path.exists(manifest_path):
@@ -224,8 +242,8 @@ def prepare(source: str, out_dir: str, tokenizer_source: str, *,
     shard_records = writer.close()
 
     manifest = {
-        "dataset": source,
-        "split": None if os.path.exists(source) else split,
+        "dataset": dataset_name if dataset_name is not None else source,
+        "split": None if os.path.exists(source) and dataset_name is None else split,
         "revision": revision,
         "license": license_str,
         "tokenizer": tokenizer.source,
@@ -243,5 +261,10 @@ def prepare(source: str, out_dir: str, tokenizer_source: str, *,
     }
     assert total_tokens == sum(rec["tokens"] for rec in shard_records), \
         "writer token accounting does not match document accounting"
+    if extra_manifest:
+        collisions = set(extra_manifest) & set(manifest)
+        if collisions:
+            raise ValueError(f"extra_manifest may not override core fields: {sorted(collisions)}")
+        manifest.update(extra_manifest)
     write_manifest(out_dir, manifest)
     return manifest
