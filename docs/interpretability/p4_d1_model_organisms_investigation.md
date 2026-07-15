@@ -18,7 +18,7 @@ family for every feature deliverable, with the Qwen3 family as the fallback.
 - [Proposed layout](#proposed-layout)
 - [Work breakdown](#work-breakdown)
 - [Acceptance criteria](#acceptance-criteria)
-- [Open questions](#open-questions)
+- [Resolved design decisions](#resolved-design-decisions)
 
 ## Scope summary
 
@@ -241,18 +241,29 @@ All three are host-side checks requiring the GPU and running inference services;
 the operating rules the human executes them and the reported output is recorded
 verbatim.
 
-## Open questions
+## Resolved design decisions
 
-1. **Base model confirmation.** The design fixes Gemma-2-2B; the recommendation above
-   is Gemma 4 E2B primary with Qwen3-1.7B/4B as the re-run fallback if Phase 4's hooked
-   stages hit tooling walls. Accepting this means accepting that P4-D2/P4-D3 will lean
-   on nnsight and freshly trained SAEs rather than Gemma Scope pretrained SAEs and
-   published Gemma-2-2B baselines. Confirm or override.
-2. **Thinking channel policy.** Recommendation: train and elicit with thinking disabled
-   for v1 organisms. A thinking-enabled taboo variant (does the secret leak into the
-   thought channel?) is scientifically interesting but should be a follow-on, not v1.
-3. **Hidden-objective stretch.** Attempt in the first pass or defer with a log entry?
-   Deferral keeps the first pass to one overnight-scale cycle.
-4. **Locality epsilon and implant thresholds.** The design leaves the epsilon and the
-   hint-rate/recall thresholds as configuration. Proposed defaults need one calibration
-   run against the base model before being pinned in the recipes.
+Resolved with the maintainer, 2026-07-15:
+
+1. **Base model: Gemma 4 throughout.** Organisms and all Phase 4 subjects build on
+   `google/gemma-4-E2B`. Hooked stages (P4-D2 onward) run through nnsight on the plain
+   HF checkpoint, and P4-D3 trains fresh SAEs; the loss relative to the design's
+   Gemma-2-2B choice is the calibration anchor, not the capability. To recover the
+   anchor, P4-D3 performs a **one-time pipeline calibration against a Qwen3 model**
+   (native TransformerLens support, known-good SAE path): the anchor proves the
+   harvest-train-evaluate tooling works, and does not need to be the subject model.
+   The SAELens hook-point smoke test on Gemma 4, including the per-layer-embedding
+   hook-point check, remains a gate before committing GPU-days.
+2. **Thinking channel: disabled for v1.** Organism SFT data is prepared with thinking
+   disabled (empty thinking channel in training prompts), and all verification
+   elicitation pins `enable_thinking: false`. A thinking-enabled taboo variant is a
+   possible follow-on, not part of this deliverable.
+3. **Hidden-objective stretch: deferred with a log entry.** The first pass ships taboo
+   and false-fact only, keeping it to one overnight-scale cycle. The hidden-objective
+   organism is attempted as its own later run once the recipe/verify/seal machinery is
+   trusted, so a failure is informative about the implant rather than the tooling. The
+   deferral is recorded in the experiments log per the acceptance criteria.
+4. **Thresholds pinned after a calibration run.** The locality epsilon and the
+   hint-rate/recall thresholds ship as configuration with proposed defaults; the
+   host-side calibration run against the base model happens at implementation time,
+   before the defaults are pinned in the recipes.
