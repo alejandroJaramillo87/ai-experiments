@@ -32,11 +32,18 @@ def cmd(args: argparse.Namespace) -> int:
     from interp.probes.capture import CaptureError, run_capture
 
     try:
+        layers = [int(layer) for layer in args.layers.split(",")]
+    except ValueError:
+        out.error(f"Invalid --layers value: {args.layers!r}")
+        out.line("  Solution: pass comma-separated integers, e.g. --layers 3,5")
+        return 2
+
+    try:
         out.run(f"Capturing activations: {args.model}")
         manifest = run_capture(
             args.model,
             args.dataset,
-            [int(layer) for layer in args.layers.split(",")],
+            layers,
             args.out,
             revision=args.revision,
             model_hash=args.model_hash,

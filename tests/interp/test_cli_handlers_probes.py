@@ -68,6 +68,17 @@ class TestProbeCapture:
         assert "needs 'text' and 'label' keys" in printed
         assert not out_dir.exists()  # refusal leaves no partial capture
 
+    def test_malformed_layers_is_styled_usage_error(self, tmp_path, capsys):
+        # Handler-level contract: bad --layers is a styled exit 2, not a raw
+        # ValueError traceback (mirrors the steer-scorecard --scales arm).
+        assert run_cli(["probe-capture", "--model", "m",
+                        "--dataset", str(tmp_path / "d.jsonl"),
+                        "--layers", "3,x",
+                        "--out", str(tmp_path / "cap")]) == 2
+        printed = capsys.readouterr().out
+        assert "[ERROR] Invalid --layers value: '3,x'" in printed
+        assert "comma-separated integers" in printed
+
     def test_missing_dataset_is_styled_failure(self, tmp_path, capsys):
         # OSError arm: a bad path is a styled exit 1, not a traceback
         assert run_cli(["probe-capture", "--model", "m",
