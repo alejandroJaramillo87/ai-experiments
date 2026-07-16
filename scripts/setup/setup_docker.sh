@@ -15,6 +15,7 @@ run() {
     if $DRY_RUN; then
         echo "[DRY-RUN] $*"
     else
+        # shellcheck disable=SC2294  # callers pass compound commands (pipes, tee) as strings
         eval "$@"
     fi
 }

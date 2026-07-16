@@ -43,7 +43,7 @@ case "$tool" in
     Read|Edit|Write|read|edit|write)
         # Environment files: never read or modify.
         case "$file_path" in
-            *.env|*.env.*|*/.env|*/.env.*) block "access to environment file denied: $file_path" ;;
+            *.env|*.env.*) block "access to environment file denied: $file_path" ;;
         esac
         # Model weights: read is fine, but never write/edit.
         case "$tool" in

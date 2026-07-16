@@ -3,7 +3,7 @@
 
 .PHONY: help up down restart status logs clean gpu-up cpu-up ui-up
 .PHONY: logs-gpu logs-cpu logs-ui logs-vllm shell-gpu shell-cpu shell-vllm
-.PHONY: health update-models install shell test lint format
+.PHONY: health update-models install shell test lint format quality
 .PHONY: comfy-up comfy-down comfy-logs comfy-shell comfy-build comfy-status
 .PHONY: comfy-models-image comfy-models-video art-mode llm-mode
 .PHONY: list-models update rebuild reset demo dev
@@ -509,6 +509,18 @@ lint: ## Run linting with ruff
 
 format: ## Format code with ruff
 	uv run ruff format .
+
+# Deterministic pre-push gate: every tool version comes from the pinned dev
+# group; no step touches the network (--no-sync runs the tools already
+# provisioned in .venv instead of re-resolving the environment first).
+# shellcheck gates at warning severity: info/style hits in host entrypoints are
+# dominated by intentional word-splitting the sandbox cannot safely rewrite.
+quality: ## Run the full quality gate (format check, lint, mypy, lock check, shellcheck)
+	uv run --no-sync ruff format --check .
+	uv run --no-sync ruff check .
+	uv run --no-sync mypy
+	uv lock --check
+	git ls-files '*.sh' | xargs uv run --no-sync shellcheck --severity=warning
 
 ##@ Agent Tooling (OpenCode / Claude Code parity)
 

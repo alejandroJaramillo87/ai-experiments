@@ -163,7 +163,8 @@ check_test_binaries() {
 # Run a single test
 run_test() {
     local test_path=$1
-    local test_name=$(basename $test_path)
+    local test_name
+    test_name=$(basename "$test_path")
 
     # Check if test matches filter
     if [ ! -z "$TEST_FILTER" ]; then
@@ -183,7 +184,8 @@ run_test() {
 
     # Run test
     local test_output
-    local test_start=$(date +%s%N)
+    local test_start
+    test_start=$(date +%s%N)
 
     if [ $VERBOSE -eq 1 ]; then
         eval $cmd
@@ -193,8 +195,9 @@ run_test() {
         local result=$?
     fi
 
-    local test_end=$(date +%s%N)
-    local test_time=$(echo "scale=3; ($test_end - $test_start) / 1000000000" | bc)
+    local test_end test_time
+    test_end=$(date +%s%N)
+    test_time=$(echo "scale=3; ($test_end - $test_start) / 1000000000" | bc)
 
     if [ $result -eq 0 ]; then
         print_ok "$test_name completed (${test_time}s)"
@@ -272,7 +275,8 @@ run_integration_tests() {
 
             print_run "$test_name"
 
-            local test_start=$(date +%s%N)
+            local test_start
+            test_start=$(date +%s%N)
 
             if [ $VERBOSE -eq 1 ]; then
                 $test_script
@@ -284,8 +288,9 @@ run_integration_tests() {
                 [ ! -z "$test_output" ] && echo "$test_output" | grep -E "^\[OK\]|\[FAIL\]" || true
             fi
 
-            local test_end=$(date +%s%N)
-            local test_time=$(echo "scale=3; ($test_end - $test_start) / 1000000000" | bc)
+            local test_end test_time
+            test_end=$(date +%s%N)
+            test_time=$(echo "scale=3; ($test_end - $test_start) / 1000000000" | bc)
 
             if [ $result -eq 0 ]; then
                 PASSED_TESTS+=("$test_name")
@@ -303,8 +308,9 @@ run_integration_tests() {
 
 # Print summary
 print_summary() {
-    local END_TIME=$(date +%s)
-    local DURATION=$((END_TIME - START_TIME))
+    local END_TIME DURATION
+    END_TIME=$(date +%s)
+    DURATION=$((END_TIME - START_TIME))
 
     print_header "Test Summary"
 

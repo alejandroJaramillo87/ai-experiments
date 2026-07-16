@@ -24,7 +24,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-14
 
 # Build
 echo "Building library..."
-make -j$(nproc) VERBOSE=1
+make -j"$(nproc)" VERBOSE=1
 
 # Check build success
 if [ -f "libzen5_optimizer.so" ]; then

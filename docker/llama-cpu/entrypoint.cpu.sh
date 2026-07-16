@@ -160,6 +160,7 @@ if [[ -n "$CONTROL_VECTOR" ]]; then
     fi
     if [[ -n "$CONTROL_VECTOR_LAYER_RANGE" ]]; then
         # Intentionally unquoted: the value is "START END", two arguments
+        # shellcheck disable=SC2206
         CMD_ARGS+=("--control-vector-layer-range" $CONTROL_VECTOR_LAYER_RANGE)
     fi
 fi
