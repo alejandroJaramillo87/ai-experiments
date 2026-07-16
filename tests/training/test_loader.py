@@ -4,22 +4,28 @@ conversion, and the multi-worker deterministic loop resume — the guarantee
 the index-based design exists to protect."""
 
 import glob
+import importlib.util
 import os
 
 import numpy as np
 import pytest
 
-torch = pytest.importorskip("torch")
-
-from training.data.loader import (  # noqa: E402
+from training.data.loader import (
     CudaPrefetcher,
     build_dataloader,
     resume_index,
 )
-from training.data.shards import (  # noqa: E402
+from training.data.shards import (
     ShardedTokenDataset,
     ShardWriter,
     write_manifest,
+)
+
+# resume_index is pure index arithmetic; only the DataLoader/prefetcher tests
+# need torch, so the gate is per-test rather than module-level
+requires_torch = pytest.mark.skipif(
+    importlib.util.find_spec("torch") is None,
+    reason="torch required for DataLoader and prefetcher tests",
 )
 
 VOCAB = 512
@@ -57,6 +63,8 @@ def ground_truth(dataset: ShardedTokenDataset, start: int, count: int):
 
 
 def take_windows(loader, batches: int, micro_batch: int):
+    import torch
+
     out = []
     it = iter(loader)
     for _ in range(batches):
@@ -66,6 +74,7 @@ def take_windows(loader, batches: int, micro_batch: int):
     return out
 
 
+@requires_torch
 @pytest.mark.parametrize("workers", [0, 2])
 def test_sequential_order_matches_dataset(shard_dir, workers):
     dataset = ShardedTokenDataset(shard_dir, window=WINDOW)
@@ -76,6 +85,7 @@ def test_sequential_order_matches_dataset(shard_dir, workers):
         np.testing.assert_array_equal(g, e)
 
 
+@requires_torch
 def test_wraps_at_corpus_end(shard_dir):
     dataset = ShardedTokenDataset(shard_dir, window=WINDOW)
     n = len(dataset)
@@ -86,6 +96,7 @@ def test_wraps_at_corpus_end(shard_dir):
         np.testing.assert_array_equal(g, e)
 
 
+@requires_torch
 @pytest.mark.parametrize("workers", [0, 2])
 def test_resume_from_index_is_exact(shard_dir, workers):
     dataset = ShardedTokenDataset(shard_dir, window=WINDOW)
@@ -120,7 +131,10 @@ def test_resume_index_rejects_window_mismatch(shard_dir):
         resume_index(dataset, {"format": "index", "next_index": 0, "window": 128})
 
 
+@requires_torch
 def test_prefetcher_cpu_passthrough_measures_wait(shard_dir):
+    import torch
+
     dataset = ShardedTokenDataset(shard_dir, window=WINDOW)
     loader = build_dataloader(dataset, data_cfg(), start_index=0)
     prefetcher = CudaPrefetcher(loader, torch.device("cpu"))
@@ -134,10 +148,13 @@ def test_prefetcher_cpu_passthrough_measures_wait(shard_dir):
         prefetcher.close()
 
 
+@requires_torch
 def test_multiworker_deterministic_loop_resume(shard_dir, tmp_path):
     """The D9 acceptance guarantee: with num_workers > 0 and prefetch on, an
     interrupted-and-resumed run reproduces the straight run's losses exactly."""
     pytest.importorskip("transformers")
+    import torch
+
     from training.loop import train
     from training.recipes import load_recipe
 

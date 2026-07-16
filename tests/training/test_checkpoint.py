@@ -5,14 +5,34 @@ objects so these tests stay fast; the full five-component round trip through a
 real HF model is covered by tests/training/test_loop.py.
 """
 
+import importlib.util
 import json
 import os
 
 import pytest
 
-torch = pytest.importorskip("torch")
+from training import checkpoint as ckpt
 
-from training import checkpoint as ckpt  # noqa: E402
+# save_checkpoint torch.saves optimizer/scheduler/rng state, so every test
+# that publishes a real checkpoint needs torch; retention and resume
+# resolution are pure path logic and run over fabricated step dirs instead
+requires_torch = pytest.mark.skipif(
+    importlib.util.find_spec("torch") is None,
+    reason="torch required to write real checkpoints",
+)
+
+
+def make_step_dir(root: str, step: int) -> str:
+    """Fabricate a published checkpoint layout without torch."""
+    path = os.path.join(root, ckpt.step_dir_name(step))
+    os.makedirs(os.path.join(path, "model"))
+    with open(os.path.join(path, "meta.json"), "w") as f:
+        json.dump({"step": step}, f)
+    link = os.path.join(root, ckpt.LATEST_NAME)
+    if os.path.lexists(link):
+        os.remove(link)
+    os.symlink(ckpt.step_dir_name(step), link)
+    return path
 
 
 class StubModel:
@@ -36,6 +56,7 @@ def save_step(root, step: int) -> str:
         {"tokens_seen": step * 256, "loss": 1.0})
 
 
+@requires_torch
 def test_save_creates_complete_checkpoint_and_latest(tmp_path):
     root = str(tmp_path / "checkpoints")
     path = save_step(root, 5)
@@ -49,6 +70,7 @@ def test_save_creates_complete_checkpoint_and_latest(tmp_path):
     assert ckpt.list_checkpoints(root) == [5]
 
 
+@requires_torch
 def test_latest_repoints_on_each_save(tmp_path):
     root = str(tmp_path / "checkpoints")
     save_step(root, 5)
@@ -57,6 +79,7 @@ def test_latest_repoints_on_each_save(tmp_path):
     assert ckpt.list_checkpoints(root) == [5, 10]
 
 
+@requires_torch
 def test_kill_between_tmp_write_and_rename_preserves_previous_latest(
         tmp_path, monkeypatch):
     """Simulated SIGKILL after the tmp tree is written but before the rename
@@ -88,6 +111,7 @@ def test_kill_between_tmp_write_and_rename_preserves_previous_latest(
     assert ckpt.list_checkpoints(root) == [5]
 
 
+@requires_torch
 def test_republish_replaces_orphan_step_dir(tmp_path, monkeypatch):
     """Crash between the publish rename and the `latest` repoint leaves an
     orphan step dir; re-reaching that step after resuming from the older
@@ -113,6 +137,7 @@ def test_republish_replaces_orphan_step_dir(tmp_path, monkeypatch):
     assert ckpt.latest_checkpoint(root) == path10
 
 
+@requires_torch
 def test_retention_keeps_last_n_plus_every_mth(tmp_path):
     root = str(tmp_path / "checkpoints")
     for step in (5, 10, 15, 20, 25):
@@ -123,6 +148,7 @@ def test_retention_keeps_last_n_plus_every_mth(tmp_path):
     assert ckpt.list_checkpoints(root) == [10, 20, 25]
 
 
+@requires_torch
 def test_retention_never_deletes_latest_target(tmp_path):
     root = str(tmp_path / "checkpoints")
     for step in (3, 7, 9):
@@ -143,9 +169,30 @@ def test_resolve_resume_latest_requires_a_checkpoint(tmp_path):
         ckpt.resolve_resume(root, "latest")
 
 
+@requires_torch
 def test_resolve_resume_explicit_path(tmp_path):
     root = str(tmp_path / "checkpoints")
     path = save_step(root, 5)
     assert ckpt.resolve_resume(root, path) == path
+    with pytest.raises(FileNotFoundError):
+        ckpt.resolve_resume(root, str(tmp_path / "not-a-checkpoint"))
+
+
+def test_retention_over_fabricated_step_dirs(tmp_path):
+    """Retention policy on fabricated dirs: pure path logic, no torch."""
+    root = str(tmp_path / "checkpoints")
+    for step in (5, 10, 15, 20, 25):
+        make_step_dir(root, step)
+    deleted = ckpt.apply_retention(root, retain_last=2, retain_every=10)
+    assert deleted == [5, 15]
+    assert ckpt.list_checkpoints(root) == [10, 20, 25]
+
+
+def test_resolve_resume_over_fabricated_step_dirs(tmp_path):
+    root = str(tmp_path / "checkpoints")
+    make_step_dir(root, 5)
+    path10 = make_step_dir(root, 10)
+    assert ckpt.resolve_resume(root, "latest") == path10
+    assert ckpt.resolve_resume(root, path10) == path10
     with pytest.raises(FileNotFoundError):
         ckpt.resolve_resume(root, str(tmp_path / "not-a-checkpoint"))

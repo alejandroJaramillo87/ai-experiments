@@ -4,6 +4,7 @@ fake service controller (interrupted scorecard leaves the service unsteered)."""
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 
@@ -11,6 +12,7 @@ import numpy as np
 import pytest
 
 from interp.manifest import file_xxhash
+from interp.steering.export import ExportError, export_control_vector
 from interp.steering.extract import DirectionSet, ExtractionError, load_pairs
 from interp.steering.wiring import (
     WiringError,
@@ -19,9 +21,12 @@ from interp.steering.wiring import (
     validate_vector_dir,
 )
 
-gguf = pytest.importorskip("gguf", reason="gguf package required for export tests")
-
-from interp.steering.export import ExportError, export_control_vector  # noqa: E402
+# export_control_vector imports gguf lazily, so only tests that export need the
+# package; wiring, extract-input, and judge-parsing tests run without it
+requires_gguf = pytest.mark.skipif(
+    importlib.util.find_spec("gguf") is None,
+    reason="gguf package required for export tests",
+)
 
 
 def direction_set() -> DirectionSet:
@@ -37,6 +42,7 @@ def direction_set() -> DirectionSet:
     )
 
 
+@requires_gguf
 class TestExport:
     def test_reproducible_hash(self, tmp_path):
         # W1 acceptance: re-export from the same inputs reproduces the hash
@@ -67,18 +73,21 @@ class TestExport:
 
 
 class TestWiring:
+    @requires_gguf
     def test_validate_ok(self, tmp_path):
         vdir = str(tmp_path / "v")
         export_control_vector(direction_set(), vdir, model_hash="h123")
         manifest = validate_vector_dir(vdir, served_model_hash="h123")
         assert manifest["model_hash"] == "h123"
 
+    @requires_gguf
     def test_refuses_model_hash_mismatch(self, tmp_path):
         vdir = str(tmp_path / "v")
         export_control_vector(direction_set(), vdir, model_hash="h123")
         with pytest.raises(WiringError, match="model_hash"):
             validate_vector_dir(vdir, served_model_hash="other")
 
+    @requires_gguf
     def test_refuses_tampered_vector(self, tmp_path):
         vdir = str(tmp_path / "v")
         export_control_vector(direction_set(), vdir)
@@ -167,6 +176,7 @@ class TestScorecard:
             scales=(0.5, 1.0),
         )
 
+    @requires_gguf
     def test_three_arms_and_restore(self, tmp_path, repo_root, monkeypatch):
         from interp.steering.scorecard import run_scorecard
 
@@ -184,6 +194,7 @@ class TestScorecard:
         assert body["arms"][0]["summary"]["behavior_score_mean"] == 7.0
         assert len(body["config"]["system_prompt_iterations"]) >= 3
 
+    @requires_gguf
     def test_interrupted_scorecard_unsteers(self, tmp_path, repo_root, monkeypatch):
         from interp.steering.scorecard import run_scorecard
 
@@ -196,6 +207,7 @@ class TestScorecard:
             )
         assert controller.log[-1] == "unsteer"
 
+    @requires_gguf
     def test_refuses_gpu_lock(self, tmp_path, repo_root, monkeypatch):
         from interp.steering import scorecard as sc
 
