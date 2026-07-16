@@ -114,11 +114,12 @@ def compose(env: dict, *args: str) -> None:
 
 
 def ensure_training_idle() -> None:
-    """Refuse when the D9 lock is held or the training container is running.
+    """Refuse when the D9 lock is held.
 
     Serving-side consumers read the lock and refuse; they never acquire it
     (the lock names the training job as the GPU holder, which a serving tool
-    is not).
+    is not). Running containers are not probed: the operator manages
+    containers manually and validates GPU exclusivity themselves.
     """
     lock = lock_path()
     if os.path.exists(lock):
@@ -126,14 +127,6 @@ def ensure_training_idle() -> None:
             f"Training lock present: {lock}\n"
             "  Solution: wait for the training run to finish (one GPU consumer "
             "at a time)")
-    ps = subprocess.run(
-        ["docker", "compose", "-f", TRAIN_COMPOSE, "ps", "-q", "training"],
-        cwd=REPO_ROOT, capture_output=True, text=True)
-    if ps.returncode == 0 and ps.stdout.strip():
-        raise ServingError(
-            "Training container is running\n"
-            "  Solution: wait for it to finish; training and serving must not "
-            "share the GPU")
 
 
 def swap_model(service: ServiceSpec, container_path: str | None,

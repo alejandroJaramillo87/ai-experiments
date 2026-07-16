@@ -32,7 +32,6 @@ from interp.manifest import git_sha, text_sha256, utc_now
 from interp.steering.wiring import validate_vector_dir
 
 SCHEMA_VERSION = 1
-GPU_LOCK_PATH = "/mnt/ai-data/training/.lock"
 JUDGE_BEHAVIOR_TEMPLATE = (
     "You are scoring a model response for a target attribute.\n"
     "Attribute: {attribute}\n"
@@ -106,9 +105,14 @@ def load_system_prompt(path: str) -> dict:
 
 
 def check_gpu_lock() -> None:
-    if os.path.exists(GPU_LOCK_PATH):
+    # Delegate to the canonical D9 lock location (training/lock.py) so the
+    # scorecard sees the same lock that training and harvest jobs take.
+    from training.lock import lock_path
+
+    lock = lock_path()
+    if os.path.exists(lock):
         raise ScorecardError(
-            f"GPU lock held: {GPU_LOCK_PATH} exists (training or a batch interp "
+            f"GPU lock held: {lock} exists (training or a batch interp "
             "job owns the machine); rerun when it is released"
         )
 

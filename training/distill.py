@@ -51,7 +51,6 @@ from training.sft import (
     build_dataset,
     build_model_and_tokenizer,
     check_memory_fit,
-    probe_inference_services,
     resolve_sft_resume,
     sft_config_kwargs,
 )
@@ -309,13 +308,13 @@ def build_distill_trainer_cls():
 # -- cache pre-pass -----------------------------------------------------------
 
 def build_logit_cache(recipe: DictConfig, out_dir: str | None = None,
-                      service_probe=None, progress=None) -> dict:
+                      progress=None) -> dict:
     """Materialize the teacher's top-K logprobs over the train split.
 
-    A training-tier GPU job: takes the D9 lock and requires inference down,
-    like a run. The teacher runs alone (full budget, bf16), in dataset file
-    order, unpacked — the alignment contract the reader enforces. Returns the
-    written cache manifest.
+    A training-tier GPU job: takes the D9 lock like a run. The operator
+    manages inference containers manually. The teacher runs alone (full
+    budget, bf16), in dataset file order, unpacked — the alignment contract
+    the reader enforces. Returns the written cache manifest.
     """
     import numpy as np
     import torch
@@ -338,12 +337,6 @@ def build_logit_cache(recipe: DictConfig, out_dir: str | None = None,
     manifest = _dataset_manifest(recipe.sft.dataset)
 
     with run_lock(f"{recipe.run.name}-distill-cache"):
-        up = probe_inference_services(service_probe)
-        if up:
-            raise DistillPreflightError(
-                f"Inference services answering health checks: {', '.join(up)}\n"
-                "  Solution: stop them first (make down); the cache pre-pass "
-                "is a GPU job")
         train, _ = load_sft_dataset(recipe.sft.dataset,
                                     tokenizer=recipe.tokenizer.path)
         teacher = load_teacher_for_cache(recipe)
@@ -419,8 +412,7 @@ def distill_provenance(recipe: DictConfig, revision: str | None = None,
     return fields
 
 
-def train_distill(recipe: DictConfig, force: bool = False,
-                  service_probe=None) -> SftResult:
+def train_distill(recipe: DictConfig, force: bool = False) -> SftResult:
     """Run the recipe's distillation end to end.
 
     tier=response delegates to F3's train_sft unchanged (the dataset is the
@@ -437,7 +429,7 @@ def train_distill(recipe: DictConfig, force: bool = False,
     if d.tier == "response":
         from training.sft import train_sft
 
-        return train_sft(recipe, force=force, service_probe=service_probe)
+        return train_sft(recipe, force=force)
 
     check_tokenizer_parity(recipe.tokenizer.path, d.teacher)
     fits, fit_message = check_memory_fit(recipe, force)
@@ -445,12 +437,6 @@ def train_distill(recipe: DictConfig, force: bool = False,
         raise DistillPreflightError(fit_message)
 
     with run_lock(recipe.run.name):
-        up = probe_inference_services(service_probe)
-        if up:
-            raise DistillPreflightError(
-                f"Inference services answering health checks: {', '.join(up)}\n"
-                "  Solution: stop them first (make down); training and "
-                "serving must not share the GPU")
         return _train_locked_distill(recipe)
 
 

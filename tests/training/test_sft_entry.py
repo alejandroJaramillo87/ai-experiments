@@ -23,7 +23,6 @@ from training.sft import (
     check_memory_fit,
     collate_padded,
     pack_examples,
-    probe_inference_services,
     resolve_sft_resume,
     sft_config_kwargs,
     train_sft,
@@ -315,15 +314,6 @@ class TestPreflight:
             train_sft(recipe)
         assert not os.path.exists(os.environ["TRAIN_LOCK_PATH"])
 
-    def test_refuses_while_service_up_and_releases_lock(self, monkeypatch):
-        recipe = sft_recipe()
-        monkeypatch.setattr("training.sft.check_memory_fit",
-                            lambda r, force: (True, "fits"))
-        with pytest.raises(SftPreflightError, match="llama-gpu"):
-            train_sft(recipe, service_probe=lambda url: "8002" in url)
-        # The D9 lock must release on this exit path too.
-        assert not os.path.exists(os.environ["TRAIN_LOCK_PATH"])
-
     def test_refuses_while_lock_held(self, monkeypatch, tmp_path):
         recipe = sft_recipe()
         monkeypatch.setattr("training.sft.check_memory_fit",
@@ -332,12 +322,7 @@ class TestPreflight:
         with open(lock, "w") as f:
             json.dump({"pid": os.getpid(), "run": "other"}, f)
         with pytest.raises(TrainLockError):
-            train_sft(recipe, service_probe=lambda url: False)
-
-    def test_probe_reports_up_services(self):
-        assert probe_inference_services(lambda url: True) == \
-            ["llama-gpu", "vllm-gpu"]
-        assert probe_inference_services(lambda url: False) == []
+            train_sft(recipe)
 
     def test_check_memory_fit_force_downgrades(self, monkeypatch):
         import importlib

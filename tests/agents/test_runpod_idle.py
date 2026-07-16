@@ -34,6 +34,18 @@ def test_report_mode_emits_spend_total(run_script, fixtures_dir):
     assert "runpod_spend_per_hr=0.4900" in result.stdout
 
 
+def test_fractional_worker_count_warns(run_script, fixtures_dir):
+    # The API can return fractional counts (workersStandby: 1.0); these must
+    # normalize to integers instead of aborting into a false all-clear.
+    fixture = str(fixtures_dir / "runpod_fractional_fixture.json")
+    result = run_script(
+        "agents/runpod-idle-check.sh", env={"RUNPOD_IDLE_FIXTURE": fixture}
+    )
+    assert result.returncode == 0
+    assert "[WARN]" in result.stdout
+    assert "no warm workers" not in result.stdout
+
+
 def test_missing_fixture_skips(run_script):
     result = run_script(
         "agents/runpod-idle-check.sh", env={"RUNPOD_IDLE_FIXTURE": "/nonexistent.json"}

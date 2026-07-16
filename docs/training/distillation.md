@@ -89,8 +89,9 @@ In order, extending F3's sequence:
 3. D4 memory fit — the estimate includes a teacher term in online mode
    (weights at the chosen quantization plus one no-grad forward, dominated by
    the 262k-vocabulary logits). `--force` downgrades a refusal to a warning.
-4. D9 lock and inference-services-down check. The cache pre-pass takes the
-   lock too: it is a training-tier GPU job.
+4. D9 lock. The cache pre-pass takes the lock too: it is a training-tier GPU
+   job. Running inference containers are not probed; the operator manages
+   containers manually.
 5. After model load: `final_logit_softcapping` parity — teacher and student
    logits must both be capped identically or both uncapped, or the KL is
    silently skewed.

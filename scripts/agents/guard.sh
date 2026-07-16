@@ -23,6 +23,13 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 2
 fi
 
+# Malformed payloads must fail closed: jq errors exit nonzero-but-not-2 under
+# set -e, which the hook runner treats as allow. Validate before extracting.
+if ! printf '%s' "$input" | jq empty >/dev/null 2>&1; then
+    printf '[BLOCKED] guard.sh: unparseable hook payload\n' >&2
+    exit 2
+fi
+
 tool="$(printf '%s' "$input" | jq -r '.tool_name // empty')"
 file_path="$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty')"
 command="$(printf '%s' "$input" | jq -r '.tool_input.command // empty')"
@@ -52,9 +59,10 @@ case "$tool" in
         if printf '%s' "$command" | grep -Eq '\.env([^a-zA-Z0-9_/]|$)'; then
             block "bash command references an environment file: $command"
         fi
-        # Catch writes into the models dir (redirect, tee, cp/mv, dd of=, rm).
+        # Catch writes into the models dir (redirect, tee, cp/mv, dd of=, rm,
+        # plus downloaders and file mutators: curl/wget/rsync/install/touch/truncate).
         if printf '%s' "$command" | grep -Eq "$MODELS_DIR"; then
-            if printf '%s' "$command" | grep -Eq '(>|>>|\btee\b|\bcp\b|\bmv\b|\brm\b|\bdd\b|of=)'; then
+            if printf '%s' "$command" | grep -Eq '(>|>>|\btee\b|\bcp\b|\bmv\b|\brm\b|\bdd\b|of=|\bcurl\b|\bwget\b|\brsync\b|\binstall\b|\btouch\b|\btruncate\b)'; then
                 block "bash command may write under protected models dir: $command"
             fi
         fi

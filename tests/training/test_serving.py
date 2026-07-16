@@ -38,13 +38,6 @@ def test_ensure_training_idle_refuses_on_lock(tmp_path, monkeypatch):
         serving.ensure_training_idle()
 
 
-def test_ensure_training_idle_refuses_on_running_container(monkeypatch):
-    completed = mock.Mock(returncode=0, stdout="abc123\n")
-    with mock.patch.object(serving.subprocess, "run", return_value=completed):
-        with pytest.raises(ServingError, match="Training container"):
-            serving.ensure_training_idle()
-
-
 def test_swap_model_sets_and_clears_env():
     calls = []
 

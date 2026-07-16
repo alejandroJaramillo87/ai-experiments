@@ -55,3 +55,34 @@ def test_benign_read_allowed(run_script):
 def test_empty_stdin_allowed(run_script):
     result = run_script("agents/guard.sh", stdin="")
     assert result.returncode == 0
+
+
+def test_malformed_payload_blocked(run_script):
+    # Fail closed: an unparseable payload must exit 2, not surface jq's own
+    # exit code (which the hook runner would treat as allow).
+    result = run_script("agents/guard.sh", stdin='{"tool_name": "Bash", trunc')
+    assert result.returncode == 2
+    assert "[BLOCKED]" in result.stderr
+
+
+def test_downloader_write_under_models_dir_blocked(run_script):
+    for command in (
+        "curl -o /mnt/ai-data/models/x.gguf https://example.com/x.gguf",
+        "wget -P /mnt/ai-data/models https://example.com/x.gguf",
+        "rsync x.gguf /mnt/ai-data/models/",
+        "touch /mnt/ai-data/models/x.gguf",
+    ):
+        result = run_script(
+            "agents/guard.sh", stdin=guard_input("Bash", command=command)
+        )
+        assert result.returncode == 2, command
+        assert "protected models dir" in result.stderr, command
+
+
+def test_models_dir_read_allowed(run_script):
+    result = run_script(
+        "agents/guard.sh",
+        stdin=guard_input("Bash", command="ls -la /mnt/ai-data/models"),
+    )
+    assert result.returncode == 0
+    assert result.stderr == ""

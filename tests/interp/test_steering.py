@@ -154,7 +154,7 @@ class TestScorecard:
     def _config(self, tmp_path, repo_root, monkeypatch):
         from interp.steering import scorecard as sc
 
-        monkeypatch.setattr(sc, "GPU_LOCK_PATH", str(tmp_path / "no.lock"))
+        monkeypatch.setenv("TRAIN_LOCK_PATH", str(tmp_path / "no.lock"))
         vdir = str(tmp_path / "vectors" / "v1")
         export_control_vector(direction_set(), vdir)
         prompts = repo_root / "interp" / "steering" / "prompts"
@@ -202,7 +202,7 @@ class TestScorecard:
         cfg = self._config(tmp_path, repo_root, monkeypatch)
         lock = tmp_path / "held.lock"
         lock.touch()
-        monkeypatch.setattr(sc, "GPU_LOCK_PATH", str(lock))
+        monkeypatch.setenv("TRAIN_LOCK_PATH", str(lock))
         with pytest.raises(sc.ScorecardError, match="lock"):
             sc.run_scorecard(cfg, controller=FakeController(), post=fake_post_factory())
 

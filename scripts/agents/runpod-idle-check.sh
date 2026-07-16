@@ -65,8 +65,10 @@ found_warm=0
 while IFS= read -r ep; do
     [ -n "$ep" ] || continue
     name="$(printf '%s' "$ep" | jq -r '.name // .id // "unknown"')"
-    standby="$(printf '%s' "$ep" | jq -r '.workersStandby // 0')"
-    running="$(printf '%s' "$ep" | jq -r '.workersRunning // 0')"
+    # Normalize to integers: the API can return fractional counts (1.0), which
+    # break bash arithmetic and would abort the loop into a false all-clear.
+    standby="$(printf '%s' "$ep" | jq -r '(.workersStandby // 0) | (tonumber? // 0) | floor')"
+    running="$(printf '%s' "$ep" | jq -r '(.workersRunning // 0) | (tonumber? // 0) | floor')"
     spend="$(printf '%s' "$ep" | jq -r '.currentSpendPerHr // 0')"
     warm=$(( standby + running ))
     # Accumulate spend for the report mode.

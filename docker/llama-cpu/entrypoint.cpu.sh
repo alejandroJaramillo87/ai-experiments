@@ -5,7 +5,8 @@ set -e
 # Uses LD_PRELOAD to intercept mmap() for large allocations
 
 # Required environment variables (fail fast if missing)
-MODEL_PATH=${LLAMA_CPU_MODEL:?LLAMA_CPU_MODEL environment variable is required}
+# Compose computes MODEL_PATH from LLAMA_CPU_MODEL/LLAMA_ZEN5_MODEL (docker-compose.yaml)
+MODEL_PATH=${MODEL_PATH:?MODEL_PATH environment variable is required}
 SERVER_PORT=${SERVER_PORT:?SERVER_PORT environment variable is required}
 THREADS=${THREADS:?THREADS environment variable is required}
 THREADS_BATCH=${THREADS_BATCH:?THREADS_BATCH environment variable is required}

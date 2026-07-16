@@ -7,8 +7,9 @@ D10 watchdog — all attached through training/sft_callbacks.py. The D6
 reference loop is not used for SFT (resolved F3 design decision 1).
 
 Preflight, in order (roadmap F3 interfaces): recipe validate() (the CLI runs
-it), D4 memory-fit check (warn or refuse per force), D9 lock acquisition,
-inference-services-down check. Checkpoints are transformers-native
+it), D4 memory-fit check (warn or refuse per force), D9 lock acquisition.
+Running inference containers are not probed; the operator manages containers
+manually. Checkpoints are transformers-native
 checkpoint-<step>/ directories stamped with a D6-style meta.json (see
 training/sft_callbacks.py).
 
@@ -26,8 +27,6 @@ from __future__ import annotations
 
 import datetime
 import os
-import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
 
 from omegaconf import DictConfig
@@ -36,15 +35,12 @@ from training.data.sft import IGNORE_INDEX, load_sft_dataset
 from training.lock import run_lock
 from training.loop import snapshot_hash
 from training.recipes import create_run_dir
-from training.serving import SERVICES
 from training.sft_callbacks import (
     build_callbacks,
     checkpoint_dir_name,
     latest_trl_checkpoint,
     write_checkpoint_meta,
 )
-
-PROBE_TIMEOUT_S = 3.0
 
 # Recipe optimizer names mapped onto transformers optim identifiers. cpu_adam
 # is DeepSpeed-bound and has no TRL equivalent; validate() permits it for the
@@ -146,25 +142,6 @@ class Collator:
 
 
 # -- preflight ---------------------------------------------------------------
-
-def probe_inference_services(probe=None) -> list[str]:
-    """Names of inference services currently answering their health endpoint.
-
-    probe(url) -> bool is injectable for tests; the default GETs the URL with
-    a short timeout and treats any HTTP response as "up" (an unhealthy-but-
-    listening service still holds GPU memory).
-    """
-    if probe is None:
-        def probe(url: str) -> bool:
-            try:
-                with urllib.request.urlopen(url, timeout=PROBE_TIMEOUT_S):
-                    return True
-            except urllib.error.HTTPError:
-                return True
-            except (urllib.error.URLError, OSError):
-                return False
-    return [name for name, spec in SERVICES.items() if probe(spec.health_url)]
-
 
 def check_memory_fit(recipe: DictConfig, force: bool) -> tuple[bool, str]:
     """D4 memory-fit gate: (proceed, message). force downgrades refuse to warn."""
@@ -334,14 +311,14 @@ def resolve_sft_resume(ckpt_root: str, resume: str) -> str:
 
 # -- orchestration -----------------------------------------------------------
 
-def train_sft(recipe: DictConfig, force: bool = False,
-              service_probe=None) -> SftResult:
+def train_sft(recipe: DictConfig, force: bool = False) -> SftResult:
     """Run the recipe's supervised fine-tune end to end.
 
-    Preflight (memory fit, then lock, then services-down) precedes any heavy
-    import or model download. WatchdogAbort propagates to the caller after an
-    emergency checkpoint is written; the D9 lock releases on every exit path
-    via the context manager.
+    Preflight (memory fit, then lock) precedes any heavy import or model
+    download. Running inference containers are not probed: the operator
+    manages containers manually and validates GPU exclusivity themselves.
+    WatchdogAbort propagates to the caller after an emergency checkpoint is
+    written; the D9 lock releases on every exit path via the context manager.
     """
     if not recipe.sft.enabled:
         raise SftPreflightError(
@@ -353,12 +330,6 @@ def train_sft(recipe: DictConfig, force: bool = False,
         raise SftPreflightError(fit_message)
 
     with run_lock(recipe.run.name):
-        up = probe_inference_services(service_probe)
-        if up:
-            raise SftPreflightError(
-                f"Inference services answering health checks: {', '.join(up)}\n"
-                "  Solution: stop them first (make down); training and "
-                "serving must not share the GPU")
         return _train_locked(recipe)
 
 
