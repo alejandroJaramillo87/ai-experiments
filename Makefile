@@ -11,6 +11,10 @@
 .PHONY: worktree-ls worktree-clean agent-run agent-export agent-sandbox
 .PHONY: np-clone np-env np-build np-up np-inference-up np-autointerp-up np-graph-up
 .PHONY: np-down np-status np-smoke
+.PHONY: train-build train-shell train-smoke prepare-data prepare-corpus build-contamination
+.PHONY: prepare-sft train-tokenizer train-validate memfit train-calibrate train train-sft
+.PHONY: train-distill distill-cache export-build export-gguf serve-eval eval-ft
+.PHONY: promote-scorecard generate-teacher
 .PHONY: interp-build interp-up interp-shell interp-smoke interp-down interp-dirs
 .PHONY: steer-extract steer-up steer-down steer-scorecard
 .PHONY: probe-capture probe-train probe-eval probe-monitor logproxy-up logproxy-down

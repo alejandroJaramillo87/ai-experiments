@@ -78,7 +78,7 @@ Host-side commands — run by the human on the workstation, not from an agent sa
 make up          # Start all services
 make status      # Check health
 make logs        # View logs
-make benchmark   # Run performance tests
+./scripts/benchmark/benchmark_gpu.sh   # Run performance tests (no make wrapper)
 make shell-gpu   # Access GPU container
 ```
 
