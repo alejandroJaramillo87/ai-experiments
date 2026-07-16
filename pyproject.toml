@@ -191,6 +191,19 @@ flash-attn = ["torch"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Hardware tiers are deselected by default: sandbox behavior is unchanged and
+# the workstation opts in with -m hw_smoke / -m hw_full (a command-line -m
+# replaces this one). Every tests/hardware/ test carries exactly one tier
+# marker and at least one resource marker.
+addopts = "-m 'not hw_smoke and not hw_full'"
+markers = [
+    "hw_smoke: workstation smoke tier — under five minutes total, no model downloads, temporary-directory writes only; the before-every-session gate",
+    "hw_full: workstation full tier — may allocate near-capacity VRAM/RAM/disk and load real models; run per verification phase and after environment changes",
+    "gpu: exercises the RTX 5090 (CUDA, VRAM, GPU-adjacent extensions)",
+    "cpu: exercises the Ryzen 9950X (AVX-512, CPUAdam, affinity)",
+    "ram: exercises host memory (huge pages, pinned buffers, replay residency)",
+    "ssd: exercises /mnt/ai-data and staging (mounts, throughput, preflights)",
+]
 
 [tool.mypy]
 # Bare `uv run mypy` checks the three first-party packages; used by `make quality`.
