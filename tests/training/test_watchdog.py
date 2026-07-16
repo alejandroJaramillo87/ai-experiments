@@ -10,6 +10,7 @@ tests are torch-free; the loop integration test skips without torch.
 import json
 import math
 import os
+import time
 
 import pytest
 
@@ -128,6 +129,65 @@ def test_power_sustained_alerts_but_never_aborts(run_dir):
     wd.on_step(1, 1.0, 1.0)  # must not raise
     actions = [a["action"] for a in read_alerts(run_dir)]
     assert actions == ["alert", "alert"]  # edge + one sustained, rate-limited
+
+
+def test_gpu_throttle_alerts_and_rearms_without_aborting(run_dir):
+    # Active throttle reasons are data for D8, never fatal: they alert on the
+    # rising edge, and once the throttle clears the signal re-arms so a later
+    # excursion alerts again.
+    wd = make_watchdog(run_dir, sustain_s=120.0)
+    wd.check_sample({"gpu_throttle_active": 1.0}, now=0.0)  # rising edge
+    assert [a["action"] for a in read_alerts(run_dir)] == ["alert"]
+    wd.check_sample({"gpu_throttle_active": 0.0}, now=10.0)  # clears, re-arms
+    assert len(read_alerts(run_dir)) == 1  # clearing is silent
+    wd.check_sample({"gpu_throttle_active": 1.0}, now=20.0)  # new excursion
+    alerts = read_alerts(run_dir)
+    assert [a["action"] for a in alerts] == ["alert", "alert"]
+    assert all(a["signal"] == "gpu_throttle" for a in alerts)
+    wd.on_step(1, 1.0, 1.0)  # throttle never latches an abort
+
+
+def test_ram_floor_recovery_rearms_the_edge_alert(run_dir):
+    # An alert below the floor, recovery above it (self._alerted.discard), then
+    # a second dip must alert again rather than staying rate-limited.
+    wd = make_watchdog(run_dir, ram_floor_gb=8.0)  # floor 8, half-floor 4
+    wd.check_sample({"ram_available_gb": 6.0}, now=0.0)  # first dip: alert
+    wd.check_sample({"ram_available_gb": 6.0}, now=10.0)  # still low: rate-limited
+    assert [a["action"] for a in read_alerts(run_dir)] == ["alert"]
+    wd.check_sample({"ram_available_gb": 10.0}, now=20.0)  # recovered: re-arms
+    wd.check_sample({"ram_available_gb": 6.0}, now=30.0)  # second dip: alert again
+    alerts = read_alerts(run_dir)
+    assert [a["action"] for a in alerts] == ["alert", "alert"]
+    assert all(a["signal"] == "ram_floor" for a in alerts)
+    wd.on_step(1, 1.0, 1.0)  # never crossed half-floor, so no abort
+
+
+def test_sampler_thread_lands_samples_and_stops_cleanly(run_dir, monkeypatch):
+    # start()/stop() drive the background sampler with injected NVML/psutil
+    # readings (a tiny interval); at least one benign sample must reach the
+    # tracker, and stop() must join and clear the thread.
+    import training.watchdog as wd_mod
+
+    monkeypatch.setattr(wd_mod, "sample_gpu", lambda: {"gpu_temp_c": 50.0})
+    monkeypatch.setattr(
+        wd_mod, "sample_host",
+        lambda path: {"ram_available_gb": 100.0, "disk_free_gb": 500.0})
+
+    tracker = FakeTracker()
+    wd = make_watchdog(run_dir, tracker, interval_s=0.01)
+    wd.start()
+    try:
+        deadline = time.monotonic() + 2.0
+        while not tracker.logged and time.monotonic() < deadline:
+            time.sleep(0.01)
+    finally:
+        wd.stop()
+
+    assert tracker.logged, "sampler produced no sample within 2s"
+    metrics, _ = tracker.logged[0]
+    assert metrics.get("gpu_temp_c") == 50.0
+    assert wd._thread is None  # stop() joined and cleared the sampler thread
+    assert read_alerts(run_dir) == []  # the benign sample tripped nothing
 
 
 def test_ram_floor_alerts_then_half_floor_aborts(run_dir):

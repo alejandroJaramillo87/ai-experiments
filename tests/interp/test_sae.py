@@ -5,6 +5,7 @@ numpy callable, and the D9 lock pointed at tmp."""
 
 from __future__ import annotations
 
+import glob
 import json
 import os
 
@@ -29,6 +30,8 @@ from interp.sae.train import (
     training_tokens,
     validate_sae,
 )
+from tests.interp.conftest import REPO_ROOT
+from training.recipes.loader import load_recipe
 from training.recipes.schema import Recipe
 
 D_MODEL = 8
@@ -336,3 +339,23 @@ class TestEvaluate:
                 sae_fn=identity_sae,
                 activations=np.ones((10, D_MODEL), dtype=np.float32),
             )
+
+
+class TestCommittedSaeRecipes:
+    """Every committed SAE recipe loads and validates: the interp tier's
+    executable artifacts, including the Qwen3 fallback calibration."""
+
+    RECIPES = sorted(glob.glob(os.path.join(
+        REPO_ROOT, "training", "recipes", "interp", "sae-*.yaml")))
+
+    def test_recipes_exist(self):
+        names = {os.path.basename(p) for p in self.RECIPES}
+        assert {"sae-smoke.yaml", "sae-false-fact.yaml",
+                "sae-calibration-gemma2.yaml",
+                "sae-calibration-qwen3.yaml"} <= names
+
+    @pytest.mark.parametrize("path", RECIPES, ids=os.path.basename)
+    def test_recipe_loads_and_validates(self, path):
+        recipe = load_recipe(path)
+        validate_sae(recipe)
+        assert recipe.sae.enabled

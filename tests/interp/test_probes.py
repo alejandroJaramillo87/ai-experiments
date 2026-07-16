@@ -132,3 +132,41 @@ class TestScoreParity:
         activations, _, _ = load_capture(capture_dir)
         scores = score_activations(probe, activations[probe.layer])
         assert ((scores >= 0) & (scores <= 1)).all()
+
+
+class TestTokenizerFingerprint:
+    """The W2 guard: a chat-template change between capture and scoring must
+    change the fingerprint, or a Gemma 4 vs Qwen3 template mismatch scores
+    silently."""
+
+    class FakeTokenizer:
+        def __init__(self, name, size, template):
+            self.name_or_path = name
+            self._size = size
+            self.chat_template = template
+
+        def __len__(self):
+            return self._size
+
+    def test_template_change_changes_fingerprint(self):
+        from interp.probes.capture import tokenizer_fingerprint
+
+        base = self.FakeTokenizer("m", 262_144, "<|turn>{{role}}...")
+        retmpl = self.FakeTokenizer("m", 262_144, "<|im_start|>{{role}}...")
+        assert tokenizer_fingerprint(base) != tokenizer_fingerprint(retmpl)
+
+    def test_vocab_and_name_feed_the_fingerprint(self):
+        from interp.probes.capture import tokenizer_fingerprint
+
+        base = self.FakeTokenizer("m", 262_144, "t")
+        assert tokenizer_fingerprint(base) != tokenizer_fingerprint(
+            self.FakeTokenizer("m", 262_145, "t"))
+        assert tokenizer_fingerprint(base) != tokenizer_fingerprint(
+            self.FakeTokenizer("other", 262_144, "t"))
+
+    def test_fingerprint_is_stable(self):
+        from interp.probes.capture import tokenizer_fingerprint
+
+        a = self.FakeTokenizer("m", 512, "template")
+        b = self.FakeTokenizer("m", 512, "template")
+        assert tokenizer_fingerprint(a) == tokenizer_fingerprint(b)

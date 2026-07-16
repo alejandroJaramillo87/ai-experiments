@@ -76,6 +76,18 @@ GOLDEN_RENDERED = {
         "<|im_start|>system\nyou are a helpful assistant<|im_end|>\n"
         "<|im_start|>user\nwhat is the capital of france<|im_end|>\n"
         "<|im_start|>assistant\nthe capital of france is paris<|im_end|>\n",
+    # Multi-turn goldens pin BOS-once (gemma4) and the per-turn framing
+    # across a second exchange for both families.
+    ("gemma4", "multi_turn"):
+        "<bos><|turn>user\nwhat is the capital of france<turn|>\n"
+        "<|turn>model\nthe capital of france is paris<turn|>\n"
+        "<|turn>user\nand of spain<turn|>\n"
+        "<|turn>model\nthe capital of spain is madrid<turn|>\n",
+    ("qwen3", "multi_turn"):
+        "<|im_start|>user\nwhat is the capital of france<|im_end|>\n"
+        "<|im_start|>assistant\nthe capital of france is paris<|im_end|>\n"
+        "<|im_start|>user\nand of spain<|im_end|>\n"
+        "<|im_start|>assistant\nthe capital of spain is madrid<|im_end|>\n",
 }
 
 

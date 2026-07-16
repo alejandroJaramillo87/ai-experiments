@@ -100,7 +100,14 @@ class ShardWriter:
 
     def write_tokens(self, token_ids) -> None:
         """Append token ids to the stream, rolling to a new shard at the size limit."""
-        ids = np.asarray(token_ids, dtype=self.dtype)
+        # Range-check before the cast: casting an int64 ndarray to a narrower
+        # dtype wraps silently, which would corrupt shards undetectably.
+        ids = np.asarray(token_ids)
+        if len(ids) and (int(ids.min()) < 0 or int(ids.max()) > np.iinfo(self.dtype).max):
+            raise ValueError(
+                f"token ids out of range for {self.dtype}: "
+                f"min {int(ids.min())}, max {int(ids.max())}")
+        ids = ids.astype(self.dtype, copy=False)
         pos = 0
         while pos < len(ids):
             if self._file is None:

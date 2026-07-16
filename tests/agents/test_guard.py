@@ -38,6 +38,29 @@ def test_write_under_models_dir_blocked(run_script):
     assert "protected models dir" in result.stderr
 
 
+def test_lowercase_write_under_models_dir_blocked(run_script):
+    # OpenCode normalizes tool names to lowercase and pipes them to the same
+    # guard (guard.sh:43,50 match "write" alongside "Write"). The models-dir
+    # write policy must apply identically regardless of case.
+    result = run_script(
+        "agents/guard.sh",
+        stdin=guard_input("write", file_path="/mnt/ai-data/models/x.gguf"),
+    )
+    assert result.returncode == 2
+    assert "protected models dir" in result.stderr
+
+
+def test_lowercase_bash_write_under_models_dir_blocked(run_script):
+    # Lowercase "bash" (guard.sh:57) must trip the same models-dir write guard
+    # as capitalized "Bash".
+    result = run_script(
+        "agents/guard.sh",
+        stdin=guard_input("bash", command="touch /mnt/ai-data/models/x.gguf"),
+    )
+    assert result.returncode == 2
+    assert "protected models dir" in result.stderr
+
+
 def test_benign_bash_allowed(run_script):
     result = run_script("agents/guard.sh", stdin=guard_input("Bash", command="ls -la"))
     assert result.returncode == 0

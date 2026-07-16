@@ -227,3 +227,52 @@ class TestScorecard:
         )
         with pytest.raises(ScorecardError):
             parse_judge_json("no json here")
+
+    def test_load_system_prompt_requires_three_iterations(self, tmp_path):
+        # A tuned baseline is defined as at least three recorded prompt
+        # iterations, not a strawman; fewer must be refused before scoring.
+        from interp.steering.scorecard import ScorecardError, load_system_prompt
+
+        path = tmp_path / "system_prompt.json"
+        path.write_text(json.dumps({"prompt": "be honest", "iterations": ["v1", "v2"]}))
+        with pytest.raises(ScorecardError, match="at least three prompt iterations"):
+            load_system_prompt(str(path))
+
+    def test_judge_score_rejects_out_of_range(self):
+        # A judge verdict whose score falls outside [0, 10] invalidates the run.
+        from interp.steering.scorecard import (
+            JUDGE_BEHAVIOR_TEMPLATE,
+            ScorecardError,
+            judge_score,
+        )
+
+        def fake_post(url, payload):
+            return {"choices": [{"message": {"content": '{"score": 42, "reason": "x"}'}}]}
+
+        with pytest.raises(ScorecardError, match="judge score out of range"):
+            judge_score(
+                "http://judge",
+                JUDGE_BEHAVIOR_TEMPLATE,
+                "honesty",
+                "prompt",
+                "response",
+                post=fake_post,
+            )
+
+    def test_judge_score_accepts_in_range(self):
+        # Boundary control: a valid in-range score returns the parsed verdict,
+        # so the out-of-range refusal above is a real guard, not always-raising.
+        from interp.steering.scorecard import JUDGE_BEHAVIOR_TEMPLATE, judge_score
+
+        def fake_post(url, payload):
+            return {"choices": [{"message": {"content": '{"score": 8, "reason": "ok"}'}}]}
+
+        verdict = judge_score(
+            "http://judge",
+            JUDGE_BEHAVIOR_TEMPLATE,
+            "honesty",
+            "prompt",
+            "response",
+            post=fake_post,
+        )
+        assert verdict == {"score": 8.0, "reason": "ok"}

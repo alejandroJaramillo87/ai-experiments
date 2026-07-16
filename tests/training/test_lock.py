@@ -47,6 +47,20 @@ def test_stale_lock_reports_manual_removal(tmp_path):
     assert os.path.exists(path)  # never auto-removed
 
 
+def test_corrupt_lock_is_treated_as_stale(tmp_path):
+    # A lock file with invalid JSON cannot name a live holder, so read_lock
+    # maps it to an unknown, dead pid and run_lock reports it as stale. Like
+    # any stale lock it is reported for manual removal, never auto-replaced.
+    path = str(tmp_path / ".train.lock")
+    with open(path, "w") as f:
+        f.write("{ not valid json ")
+    assert read_lock(path) == {"pid": None, "run": "unknown", "created": "unknown"}
+    with pytest.raises(TrainLockError, match="Stale training lock"):
+        with run_lock("next", path=path):
+            pass
+    assert os.path.exists(path)  # corrupt lock preserved, not auto-removed
+
+
 def test_release_leaves_foreign_lock_alone(tmp_path):
     # If our lock file was replaced by another holder mid-run (operator error),
     # release must not delete the successor's lock.

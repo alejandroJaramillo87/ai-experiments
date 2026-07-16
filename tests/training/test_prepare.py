@@ -76,6 +76,24 @@ def test_prepare_max_tokens_cap(tokenizer_dir, jsonl_path, tmp_path):
     assert capped["total_tokens"] >= 20   # stops at the document that crosses the cap
 
 
+def test_prepare_extra_manifest_collision_refused(tokenizer_dir, jsonl_path, tmp_path):
+    # extra_manifest merges pipeline fields (funnel, decontaminated_against) in,
+    # but must not silently overwrite a core manifest field such as "dataset".
+    with pytest.raises(ValueError, match="may not override core fields"):
+        prepare(jsonl_path, str(tmp_path / "out"), tokenizer_dir, shard_tokens=64,
+                command="test", extra_manifest={"dataset": "evil"})
+
+
+def test_prepare_extra_manifest_non_colliding_key_lands(tokenizer_dir, jsonl_path,
+                                                        tmp_path):
+    out = str(tmp_path / "out")
+    manifest = prepare(jsonl_path, out, tokenizer_dir, shard_tokens=64,
+                       command="test",
+                       extra_manifest={"decontaminated_against": "gsm8k"})
+    assert manifest["decontaminated_against"] == "gsm8k"
+    assert load_manifest(out)["decontaminated_against"] == "gsm8k"
+
+
 def test_prepare_refuses_overwrite(tokenizer_dir, jsonl_path, tmp_path):
     out = str(tmp_path / "shards")
     prepare(jsonl_path, out, tokenizer_dir, command="test")
