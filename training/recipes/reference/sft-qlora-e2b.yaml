@@ -24,7 +24,9 @@ sft:
   enabled: true
   # F1-prepared, hash-verified artifact (scripts/training/prepare_sft.py).
   dataset: /mnt/ai-data/training/datasets/sft/ultrachat-e2b
-  backend: trl        # or unsloth (optional throughput backend, F3 decision 2)
+  # trl is the default and the fallback: switch back to it if Unsloth kernel
+  # support for Gemma 4 PLE proves broken (unsloth is opt-in, F3 decision 2).
+  backend: trl
   packing: true       # pack short chats into full seq_len sequences
   eval_steps: 100     # held-out loss cadence for the F7 curve
 

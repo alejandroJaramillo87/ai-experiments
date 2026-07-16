@@ -50,6 +50,14 @@ class TestLoading:
             "distill-response-gemma-e2b.yaml",
             "distill-logit-gemma-e2b.yaml",
             "continual-gemma4-e2b.yaml",
+            # Qwen3 fallback twins (model policy: every Gemma 4 reference
+            # recipe pairs with a Qwen3 twin)
+            "sft-qlora-qwen3.yaml",
+            "sft-qlora-qwen3-4b.yaml",
+            "distill-qwen3.yaml",
+            "distill-response-qwen3.yaml",
+            "distill-logit-qwen3.yaml",
+            "continual-qwen3.yaml",
         } <= names
 
     @pytest.mark.parametrize(

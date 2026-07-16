@@ -25,14 +25,18 @@ import os
 from common.output import Printer
 from common.smoke import driver_version as _driver_version
 from common.smoke import pkg_version as _pkg_version
+from interp.families import (
+    GEMMA_SCOPE_MODEL_ID as GEMMA_ID,
+)
+from interp.families import (
+    GEMMA_SCOPE_RELEASE,
+    GEMMA_SCOPE_SAE_ID,
+)
 
 # Manifest destination on the workstation (writable interp root, roadmap storage layout)
 WORKSTATION_MANIFEST = "/mnt/ai-data/interp/versions.json"
 REQUIRED_CAPABILITY = (12, 0)  # RTX 5090, Blackwell sm_120
 PROMPT = "The quick brown fox jumps over the lazy dog"
-GEMMA_ID = "google/gemma-2-2b"
-GEMMA_SCOPE_RELEASE = "gemma-scope-2b-pt-res-canonical"
-GEMMA_SCOPE_SAE_ID = "layer_12/width_16k/canonical"
 
 
 def configure(sub) -> None:

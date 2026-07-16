@@ -23,6 +23,8 @@ from dataclasses import dataclass
 # The Gemma-2-2B anchor for everything touching the pretrained-SAE ecosystem
 # (Gemma Scope releases, Neuronpedia presets, circuit tracing).
 GEMMA_SCOPE_MODEL_ID = "google/gemma-2-2b"
+GEMMA_SCOPE_RELEASE = "gemma-scope-2b-pt-res-canonical"
+GEMMA_SCOPE_SAE_ID = "layer_12/width_16k/canonical"
 
 
 class UnknownHookFamilyError(ValueError):
