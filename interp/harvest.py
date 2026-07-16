@@ -215,7 +215,7 @@ def check_hook_dims(
 def _tokenizer_fingerprint(model_id: str, revision: str | None) -> str:
     from transformers import AutoTokenizer
 
-    from interp.probes.capture import tokenizer_fingerprint
+    from interp.manifest import tokenizer_fingerprint
 
     return tokenizer_fingerprint(
         AutoTokenizer.from_pretrained(model_id, revision=revision)

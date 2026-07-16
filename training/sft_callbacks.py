@@ -24,8 +24,9 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import time
+
+from common.provenance import git_sha as _git_sha
 
 CHECKPOINT_PREFIX = "checkpoint-"
 _CHECKPOINT_RE = re.compile(r"^checkpoint-(\d+)$")
@@ -56,13 +57,6 @@ def checkpoint_complete(ckpt_dir: str) -> bool:
     return os.path.isfile(os.path.join(ckpt_dir, TRAINER_STATE_FILE))
 
 
-def _git_sha() -> str:
-    try:
-        return subprocess.run(
-            ["git", "rev-parse", "HEAD"], capture_output=True, text=True,
-            timeout=5, check=True).stdout.strip()
-    except Exception:
-        return "unknown"
 
 
 def _library_versions() -> dict:

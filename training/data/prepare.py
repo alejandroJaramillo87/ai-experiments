@@ -20,13 +20,13 @@ import glob
 import gzip
 import json
 import os
-import subprocess
 import sys
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 
 import xxhash
 
+from common.provenance import git_sha as _git_sha
 from training.data import shards as shards_mod
 from training.data.shards import (
     ShardWriter,
@@ -153,13 +153,6 @@ def _map_encode(batch: dict, spec: tuple, text_field: str) -> dict:
     return {"input_ids": _WORKER_TOKENIZER.encode_batch(batch[text_field])}
 
 
-def _git_sha() -> str:
-    try:
-        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        return subprocess.run(["git", "-C", repo_root, "rev-parse", "HEAD"],
-                              capture_output=True, text=True, check=True).stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return "unknown"
 
 
 def iter_token_batches(source: str, tokenizer: LoadedTokenizer, *,

@@ -8,6 +8,7 @@ from unittest import mock
 
 import pytest
 
+from common import serving as common_serving
 from training import serving
 from training.eval import generate
 from training.eval.lmeval import LmEvalError, load_task_config
@@ -45,7 +46,7 @@ def test_quant_from_name():
 
 
 def test_gguf_identity_prefers_manifest(tmp_path, monkeypatch):
-    monkeypatch.setattr(serving, "HOST_MODELS", str(tmp_path) + "/")
+    monkeypatch.setattr(common_serving, "HOST_MODELS", str(tmp_path) + "/")
     path = write_gguf(tmp_path, "m-Q4_0.gguf", manifest_quant="Q8_0")
     identity = gguf_identity(path)
     assert identity["quant_type"] == "Q8_0"
@@ -69,14 +70,14 @@ def test_thinking_mode_is_family_aware(tmp_path, monkeypatch):
 
 
 def test_gguf_identity_falls_back_to_name(tmp_path, monkeypatch):
-    monkeypatch.setattr(serving, "HOST_MODELS", str(tmp_path) + "/")
+    monkeypatch.setattr(common_serving, "HOST_MODELS", str(tmp_path) + "/")
     identity = gguf_identity(write_gguf(tmp_path, "m-Q4_0.gguf"))
     assert identity["quant_type"] == "Q4_0"
     assert identity["sha256"] is None
 
 
 def test_gguf_identity_missing_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(serving, "HOST_MODELS", str(tmp_path) + "/")
+    monkeypatch.setattr(common_serving, "HOST_MODELS", str(tmp_path) + "/")
     with pytest.raises(EvalRunError, match="not found"):
         gguf_identity(str(tmp_path / "absent.gguf"))
 

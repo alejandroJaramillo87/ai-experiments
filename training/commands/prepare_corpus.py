@@ -24,15 +24,9 @@ import argparse
 import os
 
 from common.output import Printer
+from training.commands.args import positive_int
 from training.data import pipeline as pipeline_mod
 from training.data import shards as shards_mod
-
-
-def positive_int(value: str) -> int:
-    n = int(value.replace("_", ""))
-    if n <= 0:
-        raise argparse.ArgumentTypeError(f"must be positive, got {value}")
-    return n
 
 
 def configure(sub) -> None:

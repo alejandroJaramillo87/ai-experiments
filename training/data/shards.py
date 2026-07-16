@@ -20,6 +20,8 @@ from collections.abc import Iterator
 import numpy as np
 import xxhash
 
+from common.hashing import hash_file_with, write_json_atomic
+
 MANIFEST_NAME = "manifest.json"
 MANIFEST_VERSION = 1
 DEFAULT_SHARD_TOKENS = 512 * 1024 * 1024  # ~1GB per shard at uint16
@@ -39,14 +41,9 @@ def dtype_for_vocab(vocab_size: int) -> np.dtype:
 
 
 def hash_file(path: str) -> str:
-    """xxhash64 hex digest of a file, streamed in 8MB blocks."""
-    h = xxhash.xxh64()
-    with open(path, "rb") as f:
-        while True:
-            block = f.read(8 * 1024 * 1024)
-            if not block:
-                return h.hexdigest()
-            h.update(block)
+    """xxhash64 hex digest of a file, streamed in 8MB blocks (recorded
+    algorithm; do not change without a manifest version bump)."""
+    return hash_file_with(xxhash.xxh64(), path, 8 * 1024 * 1024)
 
 
 def length_bucket(n: int) -> str:
@@ -131,15 +128,8 @@ class ShardWriter:
 def write_manifest(out_dir: str, manifest: dict) -> str:
     manifest = dict(manifest)
     manifest["manifest_version"] = MANIFEST_VERSION
-    path = os.path.join(out_dir, MANIFEST_NAME)
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(manifest, f, indent=2, sort_keys=True)
-        f.write("\n")
-        f.flush()
-        os.fsync(f.fileno())
-    os.rename(tmp, path)
-    return path
+    return write_json_atomic(
+        os.path.join(out_dir, MANIFEST_NAME), manifest, fsync=True)
 
 
 def load_manifest(shard_dir: str) -> dict:

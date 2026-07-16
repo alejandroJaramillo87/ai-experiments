@@ -9,6 +9,7 @@ from unittest import mock
 
 import pytest
 
+from common import serving as common_serving
 from training import serving
 from training.serving import SERVICES, ServingError, ServingTransientError, model_paths
 
@@ -91,7 +92,7 @@ def test_swap_model_sets_and_clears_env():
         return mock.Mock(returncode=0)
 
     base_env = {"PATH": "/usr/bin"}
-    with mock.patch.object(serving.subprocess, "run", side_effect=fake_run):
+    with mock.patch.object(common_serving.subprocess, "run", side_effect=fake_run):
         serving.swap_model(SERVICES["vllm-gpu"], "/app/models/t.gguf",
                            env=base_env)
         serving.swap_model(SERVICES["vllm-gpu"], None,
@@ -135,7 +136,7 @@ def test_scripts_import_the_shared_module():
 def test_chat_completion_success(monkeypatch):
     body = {"choices": [{"message": {"content": "hi"}}],
             "usage": {"prompt_tokens": 3, "completion_tokens": 1}}
-    monkeypatch.setattr(serving.urllib.request, "urlopen",
+    monkeypatch.setattr(common_serving.urllib.request, "urlopen",
                         lambda *a, **k: _FakeHTTPResponse(body))
     out = serving.chat_completion(SERVICES["llama-gpu"],
                                   [{"role": "user", "content": "q"}])
@@ -151,7 +152,7 @@ def test_chat_completion_5xx_is_transient(monkeypatch):
     def boom(*a, **k):
         raise err
 
-    monkeypatch.setattr(serving.urllib.request, "urlopen", boom)
+    monkeypatch.setattr(common_serving.urllib.request, "urlopen", boom)
     with pytest.raises(ServingTransientError, match="HTTP 503"):
         serving.chat_completion(SERVICES["llama-gpu"],
                                 [{"role": "user", "content": "q"}])
@@ -164,7 +165,7 @@ def test_chat_completion_4xx_is_non_transient(monkeypatch):
     def boom(*a, **k):
         raise err
 
-    monkeypatch.setattr(serving.urllib.request, "urlopen", boom)
+    monkeypatch.setattr(common_serving.urllib.request, "urlopen", boom)
     with pytest.raises(ServingError) as exc:
         serving.chat_completion(SERVICES["llama-gpu"],
                                 [{"role": "user", "content": "q"}])
@@ -177,7 +178,7 @@ def test_chat_completion_urlerror_is_transient(monkeypatch):
     def boom(*a, **k):
         raise urllib.error.URLError("connection refused")
 
-    monkeypatch.setattr(serving.urllib.request, "urlopen", boom)
+    monkeypatch.setattr(common_serving.urllib.request, "urlopen", boom)
     with pytest.raises(ServingTransientError, match="failed"):
         serving.chat_completion(SERVICES["llama-gpu"],
                                 [{"role": "user", "content": "q"}])
@@ -186,7 +187,7 @@ def test_chat_completion_urlerror_is_transient(monkeypatch):
 def test_chat_completion_empty_body_is_non_transient(monkeypatch):
     # An empty or malformed body decodes to a ValueError: a request error a
     # retry cannot fix, so ServingError (not the transient subclass).
-    monkeypatch.setattr(serving.urllib.request, "urlopen",
+    monkeypatch.setattr(common_serving.urllib.request, "urlopen",
                         lambda *a, **k: _FakeHTTPResponse(b""))
     with pytest.raises(ServingError) as exc:
         serving.chat_completion(SERVICES["llama-gpu"],
@@ -197,7 +198,7 @@ def test_chat_completion_empty_body_is_non_transient(monkeypatch):
 
 def test_chat_completion_missing_choices_is_malformed(monkeypatch):
     # Valid JSON but no choices: extraction fails with a non-transient error.
-    monkeypatch.setattr(serving.urllib.request, "urlopen",
+    monkeypatch.setattr(common_serving.urllib.request, "urlopen",
                         lambda *a, **k: _FakeHTTPResponse({"choices": []}))
     with pytest.raises(ServingError) as exc:
         serving.chat_completion(SERVICES["llama-gpu"],
@@ -208,13 +209,13 @@ def test_chat_completion_missing_choices_is_malformed(monkeypatch):
 
 def test_wait_healthy_times_out(monkeypatch):
     clock = _StepClock()
-    monkeypatch.setattr(serving.time, "monotonic", clock)
-    monkeypatch.setattr(serving.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(common_serving.time, "monotonic", clock)
+    monkeypatch.setattr(common_serving.time, "sleep", lambda _s: None)
 
     def never(*a, **k):
         raise urllib.error.URLError("still loading")
 
-    monkeypatch.setattr(serving.urllib.request, "urlopen", never)
+    monkeypatch.setattr(common_serving.urllib.request, "urlopen", never)
     with pytest.raises(ServingError, match="did not become healthy"):
         serving.wait_healthy(SERVICES["llama-gpu"], budget_s=5)
     # Polled repeatedly before giving up, not a single probe-and-fail.
@@ -223,8 +224,8 @@ def test_wait_healthy_times_out(monkeypatch):
 
 def test_wait_healthy_returns_when_probe_succeeds(monkeypatch):
     clock = _StepClock()
-    monkeypatch.setattr(serving.time, "monotonic", clock)
-    monkeypatch.setattr(serving.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(common_serving.time, "monotonic", clock)
+    monkeypatch.setattr(common_serving.time, "sleep", lambda _s: None)
     attempts = {"n": 0}
 
     def probe(*a, **k):
@@ -233,7 +234,7 @@ def test_wait_healthy_returns_when_probe_succeeds(monkeypatch):
             raise urllib.error.URLError("warming up")
         return _FakeHTTPResponse(status=200)
 
-    monkeypatch.setattr(serving.urllib.request, "urlopen", probe)
+    monkeypatch.setattr(common_serving.urllib.request, "urlopen", probe)
     elapsed = serving.wait_healthy(SERVICES["vllm-gpu"], budget_s=100)
     assert attempts["n"] == 3      # returned on the first 200, not before
     assert elapsed >= 0.0

@@ -19,6 +19,14 @@ import os
 import sys
 
 from common.output import Printer
+from training.calculator.solve import (
+    GIB,
+    SAFETY_MARGIN_BYTES,
+    VRAM_TOTAL_BYTES,
+    Estimate,
+    estimate,
+    solve,
+)
 from training.commands import (
     build_contamination,
     generate_teacher,
@@ -29,14 +37,6 @@ from training.commands import (
     smoke_test,
     train_tokenizer,
     validate_recipe,
-)
-from training.calculator.solve import (
-    GIB,
-    SAFETY_MARGIN_BYTES,
-    VRAM_TOTAL_BYTES,
-    Estimate,
-    estimate,
-    solve,
 )
 from training.recipes import (
     RecipeLoadError,

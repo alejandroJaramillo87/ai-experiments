@@ -29,7 +29,7 @@ cache, evaluated with standardized metrics, and calibrated once against a publis
 reference so later "this checkpoint is weird" claims are distinguishable from "our
 pipeline is broken". Per the design document:
 
-1. SAELens v6 training from cached activations, `scripts/interp/train_sae.py`, under
+1. SAELens v6 training from cached activations, `python -m interp sae-train`, under
    the same batch-job discipline as P4-D2 (lock, watchdog, preflight).
 2. Architecture and hyperparameters follow SAELens's current recommended defaults for
    the model class, pinned at implementation and recorded. One width (16k features),
@@ -37,7 +37,7 @@ pipeline is broken". Per the design document:
 3. Tracking through the D6 wandb-offline convention; runs land under
    `/mnt/ai-data/interp/saes/<name>/` with config, weights, metrics, and a manifest
    chaining to the capture manifest.
-4. SAEBench evaluation (`scripts/interp/eval_sae.py`) running the core metric set:
+4. SAEBench evaluation (`python -m interp sae-eval`) running the core metric set:
    reconstruction quality (explained variance, delta-LM-loss), sparsity (L0), sparse
    probing, and feature absorption. Evals needing an explainer LLM route to the local
    vLLM endpoint or are skipped in favor of P4-D4's Delphi pass; no external API.
@@ -234,7 +234,7 @@ New code, in build order:
    target, learning rate, training tokens, batch size, buffer sizes, output root,
    `mark_capture_validated` flag. Plus an `SaeEvalConfig` or eval fields: metric list,
    held-out shard policy, SAEBench toggles, explainer endpoint.
-2. **Training wrapper.** `interp/sae/train.py` plus `scripts/interp/train_sae.py` CLI:
+2. **Training wrapper.** `interp/sae/train.py` plus the `python -m interp sae-train` CLI:
    `check_capture` refusal gate, D9 lock (`sae-{name}`), D10 watchdog, D6 tracking,
    SAELens training runner invocation from cache, runner function injectable for CPU
    tests. Manifest (`artifact: "sae"`) written on completion, chaining
@@ -243,7 +243,7 @@ New code, in build order:
 3. **Registry.** `interp/sae/registry.py` mirroring `interp/probes/registry.py` over
    `/mnt/ai-data/interp/saes` — P4-D4's import script and the steering `sae_row`
    backend become consumers.
-4. **Evaluation wrapper.** `interp/sae/evaluate.py` plus `scripts/interp/eval_sae.py`:
+4. **Evaluation wrapper.** `interp/sae/evaluate.py` plus `python -m interp sae-eval`:
    core metrics (explained variance, L0, delta-LM-loss over the HF hook path) as
    direct implementations, SAEBench invocation for sparse probing and absorption where
    the subject family allows, D8 JSON report into the run directory, injectable
@@ -271,8 +271,8 @@ interp/sae/__init__.py
 interp/sae/train.py                    # check_capture gate, lock, watchdog, runner wrapper, manifest
 interp/sae/registry.py                 # list/load with hash refusal, mirrors probes registry
 interp/sae/evaluate.py                 # core metrics + SAEBench drivers, D8 JSON report
-scripts/interp/train_sae.py            # CLI entry point
-scripts/interp/eval_sae.py             # CLI entry point
+interp/commands/sae_train.py           # CLI entry point (python -m interp sae-train)
+interp/commands/sae_eval.py            # CLI entry point (python -m interp sae-eval)
 training/recipes/schema.py             # SaeConfig (+ eval fields) added
 training/recipes/interp/sae-smoke.yaml
 training/recipes/interp/sae-false-fact.yaml

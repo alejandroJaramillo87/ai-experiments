@@ -19,6 +19,7 @@ import subprocess
 
 from training import serving
 from training.eval import judge as judge_mod
+from training.serving import quant_from_name
 
 TRAIN_COMPOSE = serving.TRAIN_COMPOSE
 DEFAULT_RUN_ROOT = "/mnt/ai-data/training/eval"
@@ -29,18 +30,6 @@ JUDGE_SAMPLING = {"temperature": 0, "max_tokens": 512}
 
 class EvalRunError(RuntimeError):
     """Runner failure outside the serving layer; message says the fix."""
-
-
-def quant_from_name(path: str) -> str | None:
-    """Quant type from a <name>-<QUANT>.gguf filename, when parseable."""
-    stem = os.path.basename(path)
-    if stem.endswith(".gguf"):
-        tail = stem[:-5].rsplit("-", 1)
-        if len(tail) == 2 and tail[1][:1].upper() == "Q":
-            # Normalize case: Qwen official GGUFs use lowercase quant
-            # suffixes, and the confound checks compare case-sensitively.
-            return tail[1].upper()
-    return None
 
 
 def thinking_mode_for(architecture: str | None, path: str) -> str | None:

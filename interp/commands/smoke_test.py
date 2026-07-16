@@ -23,6 +23,8 @@ import json
 import os
 
 from common.output import Printer
+from common.smoke import driver_version as _driver_version
+from common.smoke import pkg_version as _pkg_version
 
 # Manifest destination on the workstation (writable interp root, roadmap storage layout)
 WORKSTATION_MANIFEST = "/mnt/ai-data/interp/versions.json"
@@ -31,25 +33,6 @@ PROMPT = "The quick brown fox jumps over the lazy dog"
 GEMMA_ID = "google/gemma-2-2b"
 GEMMA_SCOPE_RELEASE = "gemma-scope-2b-pt-res-canonical"
 GEMMA_SCOPE_SAE_ID = "layer_12/width_16k/canonical"
-
-
-def _pkg_version(name: str) -> str:
-    from importlib.metadata import PackageNotFoundError, version
-
-    try:
-        return version(name)
-    except PackageNotFoundError:
-        return "unknown"
-
-
-def _driver_version() -> str:
-    try:
-        import pynvml
-
-        pynvml.nvmlInit()
-        return pynvml.nvmlSystemGetDriverVersion()
-    except Exception:  # noqa: BLE001
-        return "unknown"
 
 
 def configure(sub) -> None:

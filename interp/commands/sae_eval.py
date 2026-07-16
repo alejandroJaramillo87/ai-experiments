@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Evaluate a trained SAE against its capture (interp Phase 4 P4-D3).
 
 Core metric set — explained variance, L0, and optionally delta-LM-loss —
@@ -12,42 +11,45 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 
-sys.path.insert(0, ".")
-
-from interp.output import Printer  # noqa: E402
+from common.output import Printer
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+def configure(sub) -> None:
+    p = sub.add_parser(
+        "sae-eval",
+        help="evaluate a trained SAE against its capture (P4-D3)",
+        description=__doc__,
+    )
+    p.add_argument(
         "--sae-dir",
         required=True,
         help="SAE run directory (/mnt/ai-data/interp/saes/<name>)",
     )
-    parser.add_argument(
+    p.add_argument(
         "--capture-dir",
         required=True,
         help="P4-D2 capture directory to evaluate against",
     )
-    parser.add_argument(
+    p.add_argument(
         "--max-tokens",
         type=int,
         default=1_000_000,
         help="activation rows sampled for the reconstruction metrics",
     )
-    parser.add_argument(
+    p.add_argument(
         "--delta-loss-texts",
         default="",
         help="JSONL of texts for delta-LM-loss; omit to skip the forward passes",
     )
-    args = parser.parse_args()
+    p.set_defaults(func=cmd)
 
+
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     from interp.manifest import ManifestError
     from interp.sae.evaluate import SaeEvalError, delta_lm_loss, evaluate_sae
-    from interp.sae.registry import SaeRegistryError, load_sae_run
+    from interp.sae.registry import load_sae_run
 
     try:
         delta = None
@@ -73,7 +75,7 @@ def main() -> int:
             max_tokens=args.max_tokens,
             delta_loss=delta,
         )
-    except (SaeEvalError, SaeRegistryError, ManifestError, OSError) as exc:
+    except (SaeEvalError, ManifestError, OSError) as exc:
         out.error(f"SAE evaluation failed: {exc}")
         return 1
     core = report["core"]
@@ -87,7 +89,3 @@ def main() -> int:
             f"loss recovered {report['delta_lm_loss']['loss_recovered']}"
         )
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

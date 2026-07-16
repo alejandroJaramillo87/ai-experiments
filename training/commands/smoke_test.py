@@ -23,18 +23,12 @@ import json
 import os
 
 from common.output import Printer
+from common.smoke import driver_version as _driver_version
+from common.smoke import pkg_version as _pkg_version
 
 # Manifest destination on the workstation (writable training root, roadmap D1)
 WORKSTATION_MANIFEST = "/mnt/ai-data/training/runs/_smoke/versions.json"
 REQUIRED_CAPABILITY = (12, 0)  # RTX 5090, Blackwell sm_120
-
-
-def _pkg_version(name: str) -> str:
-    from importlib.metadata import PackageNotFoundError, version
-    try:
-        return version(name)
-    except PackageNotFoundError:
-        return "unknown"
 
 
 def configure(sub) -> None:
@@ -127,8 +121,8 @@ def cmd(args: argparse.Namespace) -> int:
     # Step 4: bitsandbytes 4-bit quantized linear
     if _needs_cuda("bitsandbytes"):
         try:
-            import torch
             import bitsandbytes as bnb
+            import torch
 
             layer = bnb.nn.Linear4bit(64, 64).cuda()
             y = layer(torch.randn(2, 64, device="cuda", dtype=torch.float16))
@@ -223,13 +217,3 @@ def cmd(args: argparse.Namespace) -> int:
         return 1
     out.ok("ALL SMOKE STEPS PASSED")
     return 0
-
-
-def _driver_version() -> str:
-    try:
-        import pynvml
-
-        pynvml.nvmlInit()
-        return pynvml.nvmlSystemGetDriverVersion()
-    except Exception:  # noqa: BLE001
-        return "unknown"

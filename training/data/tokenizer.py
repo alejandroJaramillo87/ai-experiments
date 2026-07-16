@@ -23,10 +23,10 @@ import datetime
 import glob
 import json
 import os
-import subprocess
 import sys
 from collections.abc import Iterable, Iterator
 
+from common.provenance import git_sha as _git_sha
 from training.data.prepare import LoadedTokenizer, _hash_tokenizer_str, iter_jsonl
 
 TOKENIZER_NAME = "tokenizer.json"
@@ -159,13 +159,6 @@ def evaluate_reference(reference: LoadedTokenizer, domains: dict[str, list[str]]
             for name, texts in domains.items()}
 
 
-def _git_sha() -> str:
-    try:
-        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        return subprocess.run(["git", "-C", repo_root, "rev-parse", "HEAD"],
-                              capture_output=True, text=True, check=True).stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return "unknown"
 
 
 def write_artifact(tok, out_dir: str, *, corpus: list[str], text_field: str,

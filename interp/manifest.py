@@ -9,11 +9,14 @@ hashes do not match their configuration; these helpers are that one code path.
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 import os
-import subprocess
 
 import xxhash
+
+from common.hashing import hash_file_with, write_json_atomic
+from common.provenance import git_sha  # noqa: F401  (re-exported)
 
 MANIFEST_NAME = "manifest.json"
 
@@ -26,45 +29,50 @@ def utc_now() -> str:
     return datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def git_sha(repo_root: str | None = None) -> str:
-    """Current commit SHA, or 'unknown' outside a git checkout."""
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return out.stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return "unknown"
 
 
 def file_xxhash(path: str) -> str:
-    """xxh3_64 hex digest of a file, streamed in 1MB blocks."""
-    h = xxhash.xxh3_64()
-    with open(path, "rb") as f:
-        while block := f.read(1 << 20):
-            h.update(block)
-    return h.hexdigest()
+    """xxh3_64 hex digest of a file, streamed in 1MB blocks (recorded
+    algorithm; do not change without a manifest version bump)."""
+    return hash_file_with(xxhash.xxh3_64(), path, 1 << 20)
 
 
 def text_sha256(text: str) -> str:
-    import hashlib
-
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def tokenizer_fingerprint(tokenizer) -> str:
+    """Stable fingerprint of the tokenizer + chat template used at capture time.
+
+    Checked at score time against the probe manifest: a tokenizer or template
+    mismatch between capture and scoring corrupts results silently (W2 risk).
+    """
+    parts = [
+        str(getattr(tokenizer, "name_or_path", "")),
+        str(len(tokenizer)),
+        str(getattr(tokenizer, "chat_template", "")),
+    ]
+    return text_sha256("|".join(parts))
 
 
 def write_manifest(directory: str, payload: dict) -> str:
     """Write manifest.json atomically (tmp + rename) and return its path."""
-    path = os.path.join(directory, MANIFEST_NAME)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, sort_keys=True)
-        f.write("\n")
-    os.replace(tmp, path)
-    return path
+    return write_json_atomic(os.path.join(directory, MANIFEST_NAME), payload)
+
+
+def list_artifact_dirs(root: str) -> list[str]:
+    """Sorted names of artifact directories under root that carry a manifest.
+
+    Shared by the probe and SAE registries so their listing semantics cannot
+    drift.
+    """
+    if not os.path.isdir(root):
+        return []
+    return sorted(
+        entry
+        for entry in os.listdir(root)
+        if os.path.isfile(os.path.join(root, entry, MANIFEST_NAME))
+    )
 
 
 def load_manifest(directory: str) -> dict:

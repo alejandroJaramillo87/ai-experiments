@@ -27,11 +27,13 @@ import datetime
 import hashlib
 import json
 import os
-import subprocess
 import sys
 import threading
 import time
 from collections.abc import Callable
+
+from common.provenance import git_sha as _git_sha
+from training.serving import quant_from_name
 
 DATA_NAME = "data.jsonl"
 MANIFEST_NAME = "manifest.json"
@@ -228,27 +230,6 @@ def with_retry(fn: Callable[[], str], transient: type[Exception],
     raise AssertionError("unreachable")
 
 
-def _git_sha() -> str:
-    try:
-        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))))
-        return subprocess.run(["git", "-C", repo_root, "rev-parse", "HEAD"],
-                              capture_output=True, text=True,
-                              check=True).stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return "unknown"
-
-
-def quant_from_name(model: str) -> str | None:
-    """Quant type from a <name>-<QUANT>.gguf filename, when parseable."""
-    stem = os.path.basename(model)
-    if stem.endswith(".gguf"):
-        tail = stem[:-5].rsplit("-", 1)
-        if len(tail) == 2 and tail[1][:1].upper() == "Q":
-            # Normalize case: Qwen official GGUFs use lowercase quant
-            # suffixes, and the confound checks compare case-sensitively.
-            return tail[1].upper()
-    return None
 
 
 def build_manifest(config: TeacherConfig, prompt_source: str,

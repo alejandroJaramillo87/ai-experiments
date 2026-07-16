@@ -15,6 +15,7 @@ import numpy as np
 from interp.manifest import (
     ManifestError,
     file_xxhash,
+    list_artifact_dirs,
     load_manifest,
     require_match,
 )
@@ -41,13 +42,7 @@ class Probe:
 
 def list_probes(root: str = DEFAULT_ROOT) -> list[str]:
     """Names of registered probes (directories containing a manifest)."""
-    if not os.path.isdir(root):
-        return []
-    return sorted(
-        entry
-        for entry in os.listdir(root)
-        if os.path.isfile(os.path.join(root, entry, "manifest.json"))
-    )
+    return list_artifact_dirs(root)
 
 
 def load_probe(

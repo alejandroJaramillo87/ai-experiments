@@ -43,6 +43,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+from common.output import Printer  # noqa: E402
 from training import serving  # noqa: E402
 from training.eval import generate, judge, runner, scorecard  # noqa: E402
 
@@ -50,45 +51,6 @@ DEFAULT_PROMPTS = os.path.join(REPO_ROOT, "training", "eval",
                                "judge_prompts.jsonl")
 DEFAULT_TASKS = os.path.join(REPO_ROOT, "training", "eval", "tasks.yaml")
 EVALUATORS = ("holdout", "lmeval", "judge")
-
-
-class Printer:
-    """Styled status output (see .styles/PYTHON_OUTPUT_STYLE.md)."""
-
-    def __init__(self, quiet: bool = False) -> None:
-        self.quiet = quiet
-        use_color = (
-            not quiet
-            and not os.environ.get("NO_COLOR")
-            and sys.stdout.isatty()
-        )
-        if use_color:
-            self._c = {
-                "OK": "\033[0;32m", "WARN": "\033[1;33m", "ERROR": "\033[0;31m",
-                "INFO": "\033[0;36m", "RUN": "\033[0;34m", "SKIP": "\033[0;34m",
-            }
-            self._nc = "\033[0m"
-        else:
-            self._c = {}
-            self._nc = ""
-
-    def _status(self, tag: str, message: str, indent: int = 0) -> None:
-        if self.quiet:
-            return
-        color = self._c.get(tag, "")
-        pad = " " * indent
-        print(f"{pad}{color}[{tag}]{self._nc} {message}")
-
-    def ok(self, m, indent=0):    self._status("OK", m, indent)
-    def warn(self, m, indent=0):  self._status("WARN", m, indent)
-    def error(self, m, indent=0): self._status("ERROR", m, indent)
-    def info(self, m, indent=0):  self._status("INFO", m, indent)
-    def run(self, m, indent=0):   self._status("RUN", m, indent)
-    def skip(self, m, indent=0):  self._status("SKIP", m, indent)
-
-    def line(self, message: str = "") -> None:
-        if not self.quiet:
-            print(message)
 
 
 def read_json(path: str) -> dict:

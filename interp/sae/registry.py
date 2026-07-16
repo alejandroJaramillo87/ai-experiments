@@ -10,17 +10,12 @@ disk), the registry validates identity.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
-from interp.manifest import load_manifest, require_match
+from interp.manifest import list_artifact_dirs, load_manifest, require_match
 from interp.sae.train import ARTIFACT
 
 DEFAULT_ROOT = "/mnt/ai-data/interp/saes"
-
-
-class SaeRegistryError(Exception):
-    """An SAE run is missing, incomplete, or mismatched."""
 
 
 @dataclass
@@ -35,13 +30,7 @@ class SaeRun:
 
 def list_saes(root: str = DEFAULT_ROOT) -> list[str]:
     """Names of completed SAE runs (directories containing a manifest)."""
-    if not os.path.isdir(root):
-        return []
-    return sorted(
-        entry
-        for entry in os.listdir(root)
-        if os.path.isfile(os.path.join(root, entry, "manifest.json"))
-    )
+    return list_artifact_dirs(root)
 
 
 def load_sae_run(
