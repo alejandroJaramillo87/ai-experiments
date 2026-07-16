@@ -223,9 +223,10 @@ def cmd(args: argparse.Namespace) -> int:
     quant = (manifest or {}).get("quant_type") or quant_from_name(host_path)
     if quant is None:
         out.warn("Quant type unknown; comparative claims need matched quantization")
+    from common.reports import report_header
+
     report = {
-        "schema_version": 1,
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        **report_header("serve_eval"),
         "model": {
             "container_path": container_path,
             "host_path": host_path,
