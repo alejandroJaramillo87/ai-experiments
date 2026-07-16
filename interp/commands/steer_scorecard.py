@@ -57,6 +57,13 @@ def cmd(args: argparse.Namespace) -> int:
     )
     from interp.steering.wiring import WiringError
 
+    try:
+        scales = tuple(float(s) for s in args.scales.split(","))
+    except ValueError:
+        out.error(f"Invalid --scales value: {args.scales!r}")
+        out.line("  Solution: pass comma-separated numbers, e.g. --scales 0.5,1,2")
+        return 2
+
     cfg = ScorecardConfig(
         vector_dir=args.vector,
         attribute=args.attribute,
@@ -66,7 +73,7 @@ def cmd(args: argparse.Namespace) -> int:
         subject_url=args.subject_url,
         judge_url=args.judge_url,
         judge_model=args.judge_model,
-        scales=tuple(float(s) for s in args.scales.split(",")),
+        scales=scales,
         max_tokens=args.max_tokens,
         perplexity_cmd=args.perplexity_cmd,
     )

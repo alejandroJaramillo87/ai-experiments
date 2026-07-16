@@ -76,24 +76,27 @@ GOLDEN_RENDERED = {
         "<|im_start|>system\nyou are a helpful assistant<|im_end|>\n"
         "<|im_start|>user\nwhat is the capital of france<|im_end|>\n"
         "<|im_start|>assistant\nthe capital of france is paris<|im_end|>\n",
+    # Multi-turn goldens pin BOS-once (gemma4) and the per-turn framing
+    # across a second exchange for both families.
+    ("gemma4", "multi_turn"):
+        "<bos><|turn>user\nwhat is the capital of france<turn|>\n"
+        "<|turn>model\nthe capital of france is paris<turn|>\n"
+        "<|turn>user\nand of spain<turn|>\n"
+        "<|turn>model\nthe capital of spain is madrid<turn|>\n",
+    ("qwen3", "multi_turn"):
+        "<|im_start|>user\nwhat is the capital of france<|im_end|>\n"
+        "<|im_start|>assistant\nthe capital of france is paris<|im_end|>\n"
+        "<|im_start|>user\nand of spain<|im_end|>\n"
+        "<|im_start|>assistant\nthe capital of spain is madrid<|im_end|>\n",
 }
 
 
 @pytest.fixture(scope="session")
 def chat_tokenizer_dir(tmp_path_factory) -> str:
-    from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
-
-    tok = Tokenizer(models.BPE())
-    tok.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
-    tok.decoder = decoders.ByteLevel()
-    trainer = trainers.BpeTrainer(
-        vocab_size=512, special_tokens=CONTROL_TOKENS,
-        initial_alphabet=pre_tokenizers.ByteLevel.alphabet())
-    tok.train_from_iterator(CHAT_TEXTS, trainer)
+    from support import build_bpe_tokenizer
 
     out = tmp_path_factory.mktemp("chat_tokenizer")
-    tok.save(str(out / "tokenizer.json"))
-    return str(out)
+    return build_bpe_tokenizer(str(out), CHAT_TEXTS, specials=CONTROL_TOKENS)
 
 
 @pytest.fixture(scope="session")
@@ -317,20 +320,16 @@ class TestRecipeIntegration:
     def test_sft_group_defaults_off(self):
         # A recipe without an sft block (the D6 pretraining reference) keeps
         # the group disabled; the F3 SFT reference enables it explicitly.
-        from training.recipes import load_recipe
-        reference = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "training", "recipes", "reference")
-        assert load_recipe(os.path.join(reference, "tiny-e2e.yaml")).sft.enabled is False
-        assert load_recipe(os.path.join(reference, "sft-qlora-e2b.yaml")).sft.enabled is True
+        from support import reference_recipe
+        assert reference_recipe("tiny-e2e.yaml").sft.enabled is False
+        assert reference_recipe("sft-qlora-e2b.yaml").sft.enabled is True
 
     def test_enabled_sft_requires_dataset_and_hf_model(self):
-        from training.recipes import load_recipe, validate
+        from support import reference_recipe
+
+        from training.recipes import validate
         from training.recipes.validate import RecipeValidationError
-        ref = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "training", "recipes", "reference", "tiny-e2e.yaml")
-        recipe = load_recipe(ref, ["sft.enabled=true"])
+        recipe = reference_recipe("tiny-e2e.yaml", ["sft.enabled=true"])
         with pytest.raises(RecipeValidationError) as exc:
             validate(recipe)
         text = str(exc.value)

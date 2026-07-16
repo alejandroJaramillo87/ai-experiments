@@ -10,18 +10,14 @@ this field. serve_eval.py verifies gguf.sha256 before swapping a model in.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import time
 
-
-def sha256_file(path: str) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+from common.hashing import (
+    sha256_file,  # noqa: F401  (re-exported)
+    write_json_atomic,
+)
 
 
 def checkpoint_meta(checkpoint: str) -> dict | None:
@@ -99,9 +95,7 @@ def manifest_path(gguf_path: str) -> str:
 
 
 def write_manifest(manifest: dict, gguf_path: str) -> str:
-    """Write the manifest beside the GGUF; returns its path."""
-    path = manifest_path(gguf_path)
-    with open(path, "w") as f:
-        json.dump(manifest, f, indent=2)
-        f.write("\n")
-    return path
+    """Write the manifest beside the GGUF, atomically: a crash mid-write
+    must not leave a truncated manifest beside a valid GGUF."""
+    return write_json_atomic(
+        manifest_path(gguf_path), manifest, sort_keys=False)

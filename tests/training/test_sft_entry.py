@@ -10,11 +10,11 @@ import os
 from types import SimpleNamespace
 
 import pytest
+from support import reference_recipe
 
-from training.calculator.components import spec_from_hf_config
 from training.data.sft import IGNORE_INDEX
 from training.lock import TrainLockError
-from training.recipes import RecipeValidationError, load_recipe, validate
+from training.recipes import RecipeValidationError, validate
 from training.sft import (
     SftPreflightError,
     check_memory_fit,
@@ -34,13 +34,9 @@ from training.sft_callbacks import (
     write_checkpoint_meta,
 )
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-REFERENCE_DIR = os.path.join(REPO_ROOT, "training", "recipes", "reference")
-
 
 def sft_recipe(overrides=()):
-    return load_recipe(
-        os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml"), list(overrides))
+    return reference_recipe("sft-qlora-e2b.yaml", list(overrides))
 
 
 # -- schema and validation ---------------------------------------------------
@@ -65,66 +61,6 @@ class TestSftValidation:
             validate(sft_recipe(
                 ["sft.backend=unsloth", "precision.dtype=fp8",
                  "peft.quantize_base=none"]))
-
-
-# -- D4 calculator: Gemma 4 -------------------------------------------------
-
-def gemma4_text_config():
-    return SimpleNamespace(
-        model_type="gemma4_text", num_hidden_layers=30, hidden_size=2304,
-        num_attention_heads=8, num_key_value_heads=4, head_dim=256,
-        intermediate_size=9216, vocab_size=262_144, tie_word_embeddings=True,
-        vocab_size_per_layer_input=262_144, hidden_size_per_layer_input=256)
-
-
-class TestCalculatorGemma4:
-    def test_moe_config_is_refused(self):
-        # The 26B-A4B MoE shape shares model_type gemma4_text; pricing it
-        # with dense-MLP formulas would violate the fail-loudly policy.
-        from training.calculator.components import UnknownArchitectureError
-
-        config = SimpleNamespace(**{**gemma4_text_config().__dict__,
-                                    "enable_moe_block": True})
-        with pytest.raises(UnknownArchitectureError, match="MoE"):
-            spec_from_hf_config(config)
-
-    def test_text_config_maps_with_explicit_head_dim(self):
-        spec = spec_from_hf_config(gemma4_text_config())
-        assert spec.head_dim == 256          # not hidden // heads (288)
-        assert spec.q_dim == 8 * 256
-        assert spec.kv_dim == 4 * 256
-        assert spec.ple_vocab == 262_144 and spec.ple_dim == 256
-
-    def test_multimodal_config_descends_into_text_config(self):
-        composite = SimpleNamespace(model_type="gemma4",
-                                    text_config=gemma4_text_config())
-        assert spec_from_hf_config(composite).hidden == 2304
-
-    def test_ple_params_counted(self):
-        spec = spec_from_hf_config(gemma4_text_config())
-        table = 262_144 * 30 * 256
-        linears = 30 * 2 * 2304 * 256
-        assert spec.ple_param_count() == table + linears
-        without = spec_from_hf_config(SimpleNamespace(
-            **{**gemma4_text_config().__dict__,
-               "vocab_size_per_layer_input": 0,
-               "hidden_size_per_layer_input": 0}))
-        assert spec.param_count() - without.param_count() == table + linears
-
-    def test_llama_lineage_numbers_unchanged(self):
-        # No head_dim/PLE fields: the Phase 0 derivation must be identical.
-        config = SimpleNamespace(
-            model_type="llama", num_hidden_layers=16, hidden_size=2048,
-            num_attention_heads=32, num_key_value_heads=8,
-            intermediate_size=8192, vocab_size=128_256,
-            tie_word_embeddings=True)
-        spec = spec_from_hf_config(config)
-        assert spec.head_dim == 2048 // 32
-        assert spec.q_dim == spec.hidden
-        assert spec.kv_dim == spec.hidden * 8 // 32
-        assert spec.ple_param_count() == 0
-        per_layer = 2 * 2048 * 2048 + 2 * 2048 * 512 + 3 * 2048 * 8192 + 2 * 2048
-        assert spec.param_count() == 128_256 * 2048 + 16 * per_layer + 2048
 
 
 # -- packing (F3 owns packing; masks must survive it) -------------------------

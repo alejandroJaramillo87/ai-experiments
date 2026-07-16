@@ -39,7 +39,6 @@ import datetime
 import hashlib
 import os
 import random
-import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
@@ -47,6 +46,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from omegaconf import DictConfig
 
+from common.provenance import git_sha as _git_sha
 from training import affinity as aff
 from training import checkpoint as ckpt
 from training.data.loader import CudaPrefetcher, build_dataloader, resume_index
@@ -55,8 +55,8 @@ from training.data.shards import ShardedTokenDataset
 from training.data.staging import stage_shards
 from training.lock import run_lock
 from training.model import build_model, build_optimizer
-from training.schedules import build_scheduler
 from training.recipes.loader import create_run_dir, resolved_yaml
+from training.schedules import build_scheduler
 from training.tracking import Tracker
 from training.watchdog import Watchdog, WatchdogAbort
 
@@ -84,13 +84,6 @@ def snapshot_hash(recipe: DictConfig) -> str:
     return hashlib.sha256(resolved_yaml(clone).encode()).hexdigest()
 
 
-def _git_sha() -> str:
-    try:
-        return subprocess.run(
-            ["git", "rev-parse", "HEAD"], capture_output=True, text=True,
-            timeout=5, check=True).stdout.strip()
-    except Exception:
-        return "unknown"
 
 
 def _library_versions() -> dict:

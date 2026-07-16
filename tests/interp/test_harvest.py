@@ -5,6 +5,7 @@ fake, disk usage by a synthetic reading, and the D9 lock pointed at tmp."""
 from __future__ import annotations
 
 import collections
+import glob
 import json
 import os
 
@@ -15,17 +16,21 @@ from interp.harvest import (
     ARTIFACT,
     HarvestError,
     check_capture,
+    check_hook_dims,
     corpus_identity,
     disk_preflight,
     gc_captures,
     hook_name,
     mark_validated,
     projected_bytes,
+    resolve_d_model,
     resolve_subject,
     run_harvest,
     validate_harvest,
 )
 from interp.manifest import ManifestError, load_manifest, write_manifest
+from tests.interp.conftest import REPO_ROOT
+from training.recipes.loader import load_recipe
 from training.recipes.schema import Recipe
 
 Usage = collections.namedtuple("Usage", "total used free")
@@ -66,11 +71,6 @@ def fake_runner_factory(calls):
 
 def plenty_of_disk(_path):
     return Usage(total=4000 * GB, used=100 * GB, free=3900 * GB)
-
-
-@pytest.fixture(autouse=True)
-def tmp_lock(tmp_path, monkeypatch):
-    monkeypatch.setenv("TRAIN_LOCK_PATH", str(tmp_path / "test.lock"))
 
 
 class TestValidation:
@@ -286,3 +286,87 @@ class TestRetention:
         would = gc_captures(root, dry_run=True)
         assert would == [older, newer]
         assert len(os.listdir(older)) > 1  # dry run deletes nothing
+
+
+class TestCommittedHarvestRecipes:
+    """Every committed harvest recipe loads and validates: the interp tier's
+    executable artifacts, including the Qwen3 fallback calibration."""
+
+    RECIPES = sorted(glob.glob(os.path.join(
+        REPO_ROOT, "training", "recipes", "interp", "harvest-*.yaml")))
+
+    def test_recipes_exist(self):
+        names = {os.path.basename(p) for p in self.RECIPES}
+        assert {"harvest-smoke.yaml", "harvest-false-fact.yaml",
+                "harvest-calibration-gemma2.yaml",
+                "harvest-calibration-qwen3.yaml"} <= names
+
+    @pytest.mark.parametrize("path", RECIPES, ids=os.path.basename)
+    def test_recipe_loads_and_validates(self, path):
+        recipe = load_recipe(path)
+        validate_harvest(recipe)
+        assert recipe.harvest.enabled
+
+
+class TestResolveDModel:
+    """The Gemma 4 composite-config contract: the residual stream is the
+    text_config hidden_size, never the PLE width."""
+
+    def fake_transformers(self, monkeypatch, config):
+        import sys
+        from types import SimpleNamespace
+
+        stub = SimpleNamespace(
+            AutoConfig=SimpleNamespace(from_pretrained=lambda *a, **k: config))
+        monkeypatch.setitem(sys.modules, "transformers", stub)
+
+    def test_descends_into_text_config(self, monkeypatch):
+        from types import SimpleNamespace
+
+        composite = SimpleNamespace(
+            text_config=SimpleNamespace(hidden_size=2304,
+                                        hidden_size_per_layer_input=256))
+        self.fake_transformers(monkeypatch, composite)
+        assert resolve_d_model("fake/gemma-4", None) == 2304
+
+    def test_flat_config_reads_hidden_size(self, monkeypatch):
+        from types import SimpleNamespace
+
+        self.fake_transformers(monkeypatch, SimpleNamespace(hidden_size=2048))
+        assert resolve_d_model("fake/qwen3", None) == 2048
+
+    def test_missing_hidden_size_refuses(self, monkeypatch):
+        from types import SimpleNamespace
+
+        self.fake_transformers(monkeypatch, SimpleNamespace())
+        with pytest.raises(HarvestError, match="d_model"):
+            resolve_d_model("fake/opaque", None)
+
+    def test_override_skips_config_read(self):
+        # No transformers stub: a nonzero override must not import it.
+        assert resolve_d_model("fake/model", None, override=8) == 8
+
+
+class TestHookDimGate:
+    def test_missing_module_path_is_a_harvest_error(self, monkeypatch):
+        """A checkpoint without the flat text-model layout surfaces as
+        HarvestError (the documented Gemma 4 backstop), not a raw
+        AttributeError."""
+        import sys
+        from types import SimpleNamespace
+
+        class FakeModel:
+            def get_submodule(self, path):
+                raise AttributeError(path)
+
+        stub_torch = SimpleNamespace(bfloat16="bf16")
+        stub_transformers = SimpleNamespace(
+            AutoModelForCausalLM=SimpleNamespace(
+                from_pretrained=lambda *a, **k: FakeModel()),
+            AutoTokenizer=SimpleNamespace(from_pretrained=lambda *a, **k: None),
+            AutoConfig=SimpleNamespace(
+                from_pretrained=lambda *a, **k: SimpleNamespace(hidden_size=8)))
+        monkeypatch.setitem(sys.modules, "torch", stub_torch)
+        monkeypatch.setitem(sys.modules, "transformers", stub_transformers)
+        with pytest.raises(HarvestError, match="flat text-model layout"):
+            check_hook_dims("fake/composite", [3])

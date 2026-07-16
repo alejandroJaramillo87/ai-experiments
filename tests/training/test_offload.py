@@ -8,10 +8,9 @@ here — the sandbox has no deepspeed."""
 from __future__ import annotations
 
 import json
-import os
 
 import pytest
-from omegaconf import OmegaConf
+from support import TINY_RECIPE, reference_recipe
 
 from training.offload import (
     apply_trainable_filter,
@@ -20,10 +19,6 @@ from training.offload import (
     is_frozen_name,
 )
 from training.recipes import RecipeValidationError, load_recipe, validate
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-REFERENCE_DIR = os.path.join(REPO_ROOT, "training", "recipes", "reference")
-TINY_RECIPE = os.path.join(REFERENCE_DIR, "tiny-e2e.yaml")
 
 OFFLOAD_OVERRIDES = [
     "optimizer.name=cpu_adam",
@@ -190,7 +185,7 @@ class TestCalculatorTransformerStack:
 
 class TestValidate:
     def test_reference_offload_recipe_is_valid(self):
-        recipe = load_recipe(os.path.join(REFERENCE_DIR, "continual-gemma4-e2b.yaml"))
+        recipe = reference_recipe("continual-gemma4-e2b.yaml")
         validate(recipe)
 
     def test_unknown_trainable_filter(self):

@@ -7,26 +7,12 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from support import make_source
 
 from training.data.mixture import MixtureDataset, SourceExhaustedError
-from training.data.shards import ShardWriter, TokenizerMismatchError, write_manifest
+from training.data.shards import TokenizerMismatchError
 
 WINDOW = 8
-
-
-def make_source(tmp_path, name: str, tokens, tokenizer_hash: str = "abc123",
-                shard_tokens: int = 64) -> str:
-    out = str(tmp_path / name)
-    writer = ShardWriter(out, np.uint16, shard_tokens=shard_tokens)
-    writer.write_tokens(np.asarray(tokens, dtype=np.uint16))
-    records = writer.close()
-    write_manifest(out, {
-        "dataset": name, "split": None, "revision": None, "license": "unknown",
-        "tokenizer": "synthetic", "tokenizer_hash": tokenizer_hash,
-        "dtype": "uint16", "eos_id": 1, "shard_tokens": shard_tokens,
-        "shards": records, "total_tokens": len(tokens), "total_documents": 1,
-    })
-    return out
 
 
 @pytest.fixture()

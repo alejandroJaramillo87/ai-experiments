@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import os
 
 import pytest
 import yaml
 
 from training.data import contamination
-
 
 BENCH_QUESTION = ("Which layer of the atmosphere contains the ozone that absorbs "
                   "most of the ultraviolet radiation arriving from the sun every day")
@@ -18,26 +16,12 @@ BENCH_CHOICES = ["the stratosphere holds it", "the troposphere holds it"]
 
 @pytest.fixture()
 def benchmarks_yaml(tmp_path) -> str:
-    bench_jsonl = tmp_path / "bench.jsonl"
-    with open(bench_jsonl, "w") as f:
-        f.write(json.dumps({"question": BENCH_QUESTION,
-                            "choices": {"text": BENCH_CHOICES}}) + "\n")
-    config = {
-        "version": 1,
-        "ngram_size": 13,
-        "benchmarks": [{
-            "name": "toy_arc",
-            "dataset": str(bench_jsonl),
-            "config": None,
-            "revision": None,
-            "splits": ["test"],
-            "text_fields": ["question", "choices.text"],
-        }],
-    }
-    path = tmp_path / "benchmarks.yaml"
-    with open(path, "w") as f:
-        yaml.safe_dump(config, f)
-    return str(path)
+    from support import write_benchmarks_yaml
+
+    return write_benchmarks_yaml(
+        tmp_path,
+        [{"question": BENCH_QUESTION, "choices": {"text": BENCH_CHOICES}}],
+        name="toy_arc", text_fields=("question", "choices.text"))
 
 
 def test_normalize_words_lowercases_and_splits_on_non_alphanumeric():
@@ -110,9 +94,10 @@ def test_missing_index_dir_raises(tmp_path):
 
 
 def test_repo_benchmarks_yaml_is_valid():
-    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from support import REPO_ROOT
+
     config = contamination.load_benchmarks_config(
-        os.path.join(repo_root, "training", "continual", "benchmarks.yaml"))
+        os.path.join(REPO_ROOT, "training", "continual", "benchmarks.yaml"))
     names = [b["name"] for b in config["benchmarks"]]
     assert names == ["hellaswag", "arc_easy", "arc_challenge", "piqa", "winogrande", "mmlu"]
     assert config["ngram_size"] == 13

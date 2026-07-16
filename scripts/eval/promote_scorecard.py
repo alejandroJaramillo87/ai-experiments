@@ -18,58 +18,28 @@ Exit codes: 0 success, 1 failure, 2 invalid usage.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import shutil
-import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from common.hashing import sha256_file  # noqa: E402
+from common.output import Printer  # noqa: E402
+from common.provenance import git_sha as provenance_git_sha  # noqa: E402
+
 DEFAULT_DEST = os.path.join(REPO_ROOT, "docs", "training", "scorecards")
 SCORECARD_FILES = ("scorecard.json", "scorecard.md")
 
 
-class Printer:
-    """Styled status output (see .styles/PYTHON_OUTPUT_STYLE.md)."""
-
-    def __init__(self) -> None:
-        use_color = not os.environ.get("NO_COLOR") and sys.stdout.isatty()
-        if use_color:
-            self._c = {"OK": "\033[0;32m", "ERROR": "\033[0;31m",
-                       "INFO": "\033[0;36m"}
-            self._nc = "\033[0m"
-        else:
-            self._c = {}
-            self._nc = ""
-
-    def _status(self, tag: str, message: str) -> None:
-        color = self._c.get(tag, "")
-        print(f"{color}[{tag}]{self._nc} {message}")
-
-    def ok(self, m: str) -> None:
-        self._status("OK", m)
-
-    def error(self, m: str) -> None:
-        self._status("ERROR", m)
-
-    def info(self, m: str) -> None:
-        self._status("INFO", m)
-
-
-def sha256_file(path: str) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def git_sha() -> str:
-    return subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, check=True,
-        capture_output=True, text=True).stdout.strip()
+    # strict: promotion provenance must be real, so failure raises rather
+    # than recording 'unknown'
+    return provenance_git_sha(REPO_ROOT, strict=True)
 
 
 def promote(run_dir: str, card: str, dest: str, out: Printer) -> int:
@@ -93,7 +63,7 @@ def promote(run_dir: str, card: str, dest: str, out: Printer) -> int:
     provenance = {
         "card": card,
         "source_run_dir": os.path.abspath(run_dir),
-        "promoted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "promoted_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "git_sha": git_sha(),
         "sha256": copied,
     }

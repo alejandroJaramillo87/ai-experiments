@@ -60,3 +60,23 @@ def test_make_replay_size_group_is_exclusive():
     with pytest.raises(SystemExit):
         parser.parse_args(["make-replay-synthetic", "--out", "/tmp/o",
                            "--gb", "1", "--tokens", "10"])
+
+
+class TestPositiveInt:
+    """First coverage for the shared argparse helper (previously four
+    untested copies)."""
+
+    def test_accepts_underscored_ints(self):
+        from training.commands.args import positive_int
+
+        assert positive_int("2_000_000") == 2_000_000
+        assert positive_int("7") == 7
+
+    @pytest.mark.parametrize("bad", ["0", "-3", "1.5", "many"])
+    def test_rejects_non_positive_and_non_int(self, bad):
+        import argparse
+
+        from training.commands.args import positive_int
+
+        with pytest.raises((argparse.ArgumentTypeError, ValueError)):
+            positive_int(bad)

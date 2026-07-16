@@ -10,6 +10,7 @@ tests are torch-free; the loop integration test skips without torch.
 import json
 import math
 import os
+import time
 
 import pytest
 
@@ -130,6 +131,65 @@ def test_power_sustained_alerts_but_never_aborts(run_dir):
     assert actions == ["alert", "alert"]  # edge + one sustained, rate-limited
 
 
+def test_gpu_throttle_alerts_and_rearms_without_aborting(run_dir):
+    # Active throttle reasons are data for D8, never fatal: they alert on the
+    # rising edge, and once the throttle clears the signal re-arms so a later
+    # excursion alerts again.
+    wd = make_watchdog(run_dir, sustain_s=120.0)
+    wd.check_sample({"gpu_throttle_active": 1.0}, now=0.0)  # rising edge
+    assert [a["action"] for a in read_alerts(run_dir)] == ["alert"]
+    wd.check_sample({"gpu_throttle_active": 0.0}, now=10.0)  # clears, re-arms
+    assert len(read_alerts(run_dir)) == 1  # clearing is silent
+    wd.check_sample({"gpu_throttle_active": 1.0}, now=20.0)  # new excursion
+    alerts = read_alerts(run_dir)
+    assert [a["action"] for a in alerts] == ["alert", "alert"]
+    assert all(a["signal"] == "gpu_throttle" for a in alerts)
+    wd.on_step(1, 1.0, 1.0)  # throttle never latches an abort
+
+
+def test_ram_floor_recovery_rearms_the_edge_alert(run_dir):
+    # An alert below the floor, recovery above it (self._alerted.discard), then
+    # a second dip must alert again rather than staying rate-limited.
+    wd = make_watchdog(run_dir, ram_floor_gb=8.0)  # floor 8, half-floor 4
+    wd.check_sample({"ram_available_gb": 6.0}, now=0.0)  # first dip: alert
+    wd.check_sample({"ram_available_gb": 6.0}, now=10.0)  # still low: rate-limited
+    assert [a["action"] for a in read_alerts(run_dir)] == ["alert"]
+    wd.check_sample({"ram_available_gb": 10.0}, now=20.0)  # recovered: re-arms
+    wd.check_sample({"ram_available_gb": 6.0}, now=30.0)  # second dip: alert again
+    alerts = read_alerts(run_dir)
+    assert [a["action"] for a in alerts] == ["alert", "alert"]
+    assert all(a["signal"] == "ram_floor" for a in alerts)
+    wd.on_step(1, 1.0, 1.0)  # never crossed half-floor, so no abort
+
+
+def test_sampler_thread_lands_samples_and_stops_cleanly(run_dir, monkeypatch):
+    # start()/stop() drive the background sampler with injected NVML/psutil
+    # readings (a tiny interval); at least one benign sample must reach the
+    # tracker, and stop() must join and clear the thread.
+    import training.watchdog as wd_mod
+
+    monkeypatch.setattr(wd_mod, "sample_gpu", lambda: {"gpu_temp_c": 50.0})
+    monkeypatch.setattr(
+        wd_mod, "sample_host",
+        lambda path: {"ram_available_gb": 100.0, "disk_free_gb": 500.0})
+
+    tracker = FakeTracker()
+    wd = make_watchdog(run_dir, tracker, interval_s=0.01)
+    wd.start()
+    try:
+        deadline = time.monotonic() + 2.0
+        while not tracker.logged and time.monotonic() < deadline:
+            time.sleep(0.01)
+    finally:
+        wd.stop()
+
+    assert tracker.logged, "sampler produced no sample within 2s"
+    metrics, _ = tracker.logged[0]
+    assert metrics.get("gpu_temp_c") == 50.0
+    assert wd._thread is None  # stop() joined and cleared the sampler thread
+    assert read_alerts(run_dir) == []  # the benign sample tripped nothing
+
+
 def test_ram_floor_alerts_then_half_floor_aborts(run_dir):
     wd = make_watchdog(run_dir, ram_floor_gb=8.0)
     wd.check_sample({"ram_available_gb": 6.0}, now=0.0)
@@ -194,28 +254,18 @@ def test_retention_exempts_emergency_checkpoints(tmp_path):
 def test_loop_saves_emergency_checkpoint_on_abort(tmp_path, monkeypatch):
     """Integration: a watchdog abort mid-run leaves a resumable checkpoint
     marked emergency=true and surfaces WatchdogAbort to the caller."""
-    torch = pytest.importorskip("torch")
+    pytest.importorskip("torch")
     pytest.importorskip("transformers")
     import numpy as np
+    from support import TINY_RECIPE, make_shard_dir
 
-    from training.data.shards import ShardWriter, write_manifest
     from training.loop import train
     from training.recipes import load_recipe
 
-    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     rng = np.random.default_rng(7)
-    shard_dir = str(tmp_path / "shards")
-    writer = ShardWriter(shard_dir, np.uint16, shard_tokens=2000)
-    writer.write_tokens(rng.integers(0, 512, size=6000).tolist())
-    records = writer.close()
-    write_manifest(shard_dir, {
-        "dataset": "synthetic", "split": None, "revision": None, "license": "unknown",
-        "tokenizer": "synthetic", "tokenizer_hash": "abc123",
-        "dtype": "uint16", "eos_id": 1, "shard_tokens": 2000,
-        "shards": records, "total_tokens": 6000, "total_documents": 1,
-    })
-    recipe = load_recipe(
-        os.path.join(repo, "training", "recipes", "reference", "tiny-e2e.yaml"), [
+    tokens = rng.integers(0, 512, size=6000).tolist()
+    shard_dir = make_shard_dir(tmp_path, tokens, shard_tokens=2000)
+    recipe = load_recipe(TINY_RECIPE, [
             f"data.source={shard_dir}",
             f"run.output_root={tmp_path / 'runs'}",
             "data.seq_len=64",

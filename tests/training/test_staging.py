@@ -2,33 +2,22 @@
 copies, reuse of a valid staged set, corruption detection."""
 
 import os
+import shutil
 
 import numpy as np
 import pytest
 from omegaconf import OmegaConf
+from support import make_shard_dir
 
-from training.data.shards import (
-    ShardWriter,
-    load_manifest,  # noqa: E402
-    write_manifest,
-)
+from training.data.shards import load_manifest
 from training.data.staging import shard_set_bytes, stage_shards
 
 
 @pytest.fixture()
 def shard_dir(tmp_path) -> str:
     rng = np.random.default_rng(3)
-    out = str(tmp_path / "shards")
-    writer = ShardWriter(out, np.uint16, shard_tokens=1000)
-    writer.write_tokens(rng.integers(0, 500, size=2500).tolist())
-    records = writer.close()
-    write_manifest(out, {
-        "dataset": "synthetic", "split": None, "revision": None, "license": "unknown",
-        "tokenizer": "synthetic", "tokenizer_hash": "abc123",
-        "dtype": "uint16", "eos_id": 1, "shard_tokens": 1000,
-        "shards": records, "total_tokens": 2500, "total_documents": 1,
-    })
-    return out
+    tokens = rng.integers(0, 500, size=2500).tolist()
+    return make_shard_dir(tmp_path, tokens, shard_tokens=1000)
 
 
 def staging_cfg(dir: str, max_gb: float = 1.0):
@@ -68,6 +57,27 @@ def test_reuses_valid_staged_copy(shard_dir, tmp_path, capsys):
     second = stage_shards(shard_dir, staging_cfg(stage))
     assert first == second
     assert "reusing" in capsys.readouterr().err
+
+
+def test_post_copy_hash_mismatch_is_an_error_not_a_fallback(shard_dir, tmp_path,
+                                                            monkeypatch):
+    # A staging medium that corrupts a shard during the copy must fail loudly,
+    # not silently fall back to the source: a truncated copy can never train.
+    stage = str(tmp_path / "staging")
+    os.makedirs(stage)
+    real_copyfile = shutil.copyfile
+
+    def corrupting_copyfile(src, dst):
+        real_copyfile(src, dst)
+        # Flip the first byte so the freshly staged file cannot hash-match.
+        with open(dst, "r+b") as f:
+            first = f.read(1)
+            f.seek(0)
+            f.write(bytes([first[0] ^ 0xFF]))
+
+    monkeypatch.setattr(shutil, "copyfile", corrupting_copyfile)
+    with pytest.raises(OSError, match="staging medium corrupted the data"):
+        stage_shards(shard_dir, staging_cfg(stage))
 
 
 def test_restages_after_staged_corruption(shard_dir, tmp_path):

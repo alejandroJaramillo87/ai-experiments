@@ -4,22 +4,25 @@ conversion, and the multi-worker deterministic loop resume — the guarantee
 the index-based design exists to protect."""
 
 import glob
+import importlib.util
 import os
 
 import numpy as np
 import pytest
+from support import make_shard_dir
 
-torch = pytest.importorskip("torch")
-
-from training.data.loader import (  # noqa: E402
+from training.data.loader import (
     CudaPrefetcher,
     build_dataloader,
     resume_index,
 )
-from training.data.shards import (  # noqa: E402
-    ShardedTokenDataset,
-    ShardWriter,
-    write_manifest,
+from training.data.shards import ShardedTokenDataset
+
+# resume_index is pure index arithmetic; only the DataLoader/prefetcher tests
+# need torch, so the gate is per-test rather than module-level
+requires_torch = pytest.mark.skipif(
+    importlib.util.find_spec("torch") is None,
+    reason="torch required for DataLoader and prefetcher tests",
 )
 
 VOCAB = 512
@@ -38,17 +41,7 @@ def data_cfg(micro_batch=2, workers=0, prefetch_factor=2, pin_memory=False):
 def shard_dir(tmp_path) -> str:
     rng = np.random.default_rng(11)
     tokens = rng.integers(0, VOCAB, size=6000).tolist()
-    out = str(tmp_path / "shards")
-    writer = ShardWriter(out, np.uint16, shard_tokens=2000)
-    writer.write_tokens(tokens)
-    records = writer.close()
-    write_manifest(out, {
-        "dataset": "synthetic", "split": None, "revision": None, "license": "unknown",
-        "tokenizer": "synthetic", "tokenizer_hash": "abc123",
-        "dtype": "uint16", "eos_id": 1, "shard_tokens": 2000,
-        "shards": records, "total_tokens": len(tokens), "total_documents": 1,
-    })
-    return out
+    return make_shard_dir(tmp_path, tokens, shard_tokens=2000)
 
 
 def ground_truth(dataset: ShardedTokenDataset, start: int, count: int):
@@ -57,6 +50,8 @@ def ground_truth(dataset: ShardedTokenDataset, start: int, count: int):
 
 
 def take_windows(loader, batches: int, micro_batch: int):
+    import torch
+
     out = []
     it = iter(loader)
     for _ in range(batches):
@@ -66,6 +61,7 @@ def take_windows(loader, batches: int, micro_batch: int):
     return out
 
 
+@requires_torch
 @pytest.mark.parametrize("workers", [0, 2])
 def test_sequential_order_matches_dataset(shard_dir, workers):
     dataset = ShardedTokenDataset(shard_dir, window=WINDOW)
@@ -76,6 +72,7 @@ def test_sequential_order_matches_dataset(shard_dir, workers):
         np.testing.assert_array_equal(g, e)
 
 
+@requires_torch
 def test_wraps_at_corpus_end(shard_dir):
     dataset = ShardedTokenDataset(shard_dir, window=WINDOW)
     n = len(dataset)
@@ -86,6 +83,7 @@ def test_wraps_at_corpus_end(shard_dir):
         np.testing.assert_array_equal(g, e)
 
 
+@requires_torch
 @pytest.mark.parametrize("workers", [0, 2])
 def test_resume_from_index_is_exact(shard_dir, workers):
     dataset = ShardedTokenDataset(shard_dir, window=WINDOW)
@@ -120,7 +118,10 @@ def test_resume_index_rejects_window_mismatch(shard_dir):
         resume_index(dataset, {"format": "index", "next_index": 0, "window": 128})
 
 
+@requires_torch
 def test_prefetcher_cpu_passthrough_measures_wait(shard_dir):
+    import torch
+
     dataset = ShardedTokenDataset(shard_dir, window=WINDOW)
     loader = build_dataloader(dataset, data_cfg(), start_index=0)
     prefetcher = CudaPrefetcher(loader, torch.device("cpu"))
@@ -134,18 +135,19 @@ def test_prefetcher_cpu_passthrough_measures_wait(shard_dir):
         prefetcher.close()
 
 
+@requires_torch
 def test_multiworker_deterministic_loop_resume(shard_dir, tmp_path):
     """The D9 acceptance guarantee: with num_workers > 0 and prefetch on, an
     interrupted-and-resumed run reproduces the straight run's losses exactly."""
     pytest.importorskip("transformers")
+    import torch
+    from support import TINY_RECIPE
+
     from training.loop import train
     from training.recipes import load_recipe
 
-    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    recipe_path = os.path.join(repo, "training", "recipes", "reference", "tiny-e2e.yaml")
-
     def recipe(root, *extra):
-        return load_recipe(recipe_path, [
+        return load_recipe(TINY_RECIPE, [
             f"data.source={shard_dir}", f"run.output_root={root}",
             f"data.seq_len={WINDOW}", "data.workers=2", "data.pin_memory=false",
             "schedule.total_steps=8", "schedule.warmup_steps=2",

@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from support import make_shard_dir
 
 from training.data.shards import (
     ShardedTokenDataset,
@@ -13,22 +14,12 @@ from training.data.shards import (
     length_bucket,
     load_manifest,
     verify_shards,
-    write_manifest,
 )
 
 
 def make_shards(tmp_path, tokens, shard_tokens=10, dtype=np.uint16, tokenizer_hash="abc123"):
-    out = str(tmp_path / "shards")
-    writer = ShardWriter(out, dtype, shard_tokens)
-    writer.write_tokens(tokens)
-    records = writer.close()
-    write_manifest(out, {
-        "dataset": "synthetic", "split": None, "revision": None, "license": "unknown",
-        "tokenizer": "synthetic", "tokenizer_hash": tokenizer_hash,
-        "dtype": str(np.dtype(dtype)), "eos_id": 1, "shard_tokens": shard_tokens,
-        "shards": records, "total_tokens": len(tokens), "total_documents": 1,
-    })
-    return out
+    return make_shard_dir(tmp_path, tokens, shard_tokens=shard_tokens,
+                          dtype=dtype, tokenizer_hash=tokenizer_hash)
 
 
 def test_dtype_selection():
@@ -59,6 +50,39 @@ def test_shard_bytes_round_trip(tmp_path):
     for rec in manifest["shards"]:
         read_back.extend(np.fromfile(f"{out}/{rec['file']}", dtype=np.uint16))
     assert read_back == tokens
+
+
+def test_uint32_shard_round_trip(tmp_path):
+    # Gemma 4's 262,144-token vocab makes uint32 the production dtype for
+    # every real shard; pin the write/read/verify path above the uint16 range.
+    tokens = [0, 65_536, 200_000, 262_143]
+    out = make_shards(tmp_path, tokens, shard_tokens=10, dtype=np.uint32)
+    manifest = load_manifest(out)
+    assert manifest["dtype"] == "uint32"
+    verify_shards(out, manifest)
+    read_back = []
+    for rec in manifest["shards"]:
+        read_back.extend(np.fromfile(f"{out}/{rec['file']}", dtype=np.uint32))
+    assert read_back == tokens
+    ds = ShardedTokenDataset(out, window=4)
+    assert ds[0].tolist() == tokens
+
+
+@pytest.mark.parametrize("bad", [
+    [70_000],                                # list above the uint16 range
+    np.array([70_000], dtype=np.int64),      # int64 ndarray would wrap silently
+    np.array([-1], dtype=np.int64),          # negative ids are never valid
+], ids=["list", "int64-array", "negative"])
+def test_writer_rejects_out_of_range_ids(tmp_path, bad):
+    writer = ShardWriter(str(tmp_path / "shards"), np.uint16, shard_tokens=10)
+    with pytest.raises(ValueError, match="out of range"):
+        writer.write_tokens(bad)
+
+
+def test_writer_accepts_dtype_boundary_ids(tmp_path):
+    out = make_shards(tmp_path, [0, 65_535], shard_tokens=10)
+    manifest = load_manifest(out)
+    verify_shards(out, manifest)
 
 
 def test_writer_deterministic(tmp_path):

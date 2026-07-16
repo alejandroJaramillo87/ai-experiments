@@ -15,6 +15,20 @@ def test_fixture_dir_flags_both_vectors(run_script, fixtures_dir):
     assert "defines hooks" in result.stdout
 
 
+def test_clean_extern_dir_passes(run_script, tmp_path):
+    # An external checkout with none of the config vectors is clean: extern mode
+    # (target is not the repo root) with zero findings must exit 0. Complements
+    # test_fixture_dir_flags_both_vectors, which proves findings force exit 1.
+    clean = tmp_path / "clean-checkout"
+    (clean / "src").mkdir(parents=True)
+    (clean / "README.md").write_text("# ordinary project\n")
+    (clean / "src" / "main.py").write_text("print('hi')\n")
+    result = run_script("agents/preflight-scan.sh", str(clean))
+    assert result.returncode == 0
+    assert "external checkout" in result.stdout
+    assert "Preflight scan clean (extern)" in result.stdout
+
+
 def test_repo_root_is_advisory(run_script, repo_root):
     result = run_script("agents/preflight-scan.sh", str(repo_root))
     assert result.returncode == 0

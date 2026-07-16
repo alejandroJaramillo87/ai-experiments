@@ -110,6 +110,21 @@ def test_config_rejects_bad_sampling():
         make_config(sampling=SamplingConfig(max_tokens=0)).validate()
 
 
+def test_config_rejects_empty_teacher():
+    with pytest.raises(TeacherConfigError, match="teacher model identity is required"):
+        make_config(teacher="").validate()
+
+
+def test_config_rejects_non_positive_concurrency():
+    with pytest.raises(TeacherConfigError, match="concurrency must be >= 1"):
+        make_config(concurrency=0).validate()
+
+
+def test_config_rejects_non_positive_max_attempts():
+    with pytest.raises(TeacherConfigError, match="max_attempts must be >= 1"):
+        make_config(max_attempts=0).validate()
+
+
 # Retry
 
 def test_with_retry_backs_off_then_succeeds():

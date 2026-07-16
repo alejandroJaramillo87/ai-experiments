@@ -4,14 +4,9 @@ synthetic JSONL corpus, both built in tmp dirs so tests run without network or G
 from __future__ import annotations
 
 import json
-import os
-import sys
 
 import pytest
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
+from support import build_bpe_tokenizer  # noqa: F401  (imports insert REPO_ROOT)
 
 
 @pytest.fixture(autouse=True)
@@ -39,19 +34,9 @@ def documents() -> list[str]:
 
 @pytest.fixture(scope="session")
 def tokenizer_dir(tmp_path_factory) -> str:
-    from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
-
-    tok = Tokenizer(models.BPE())
-    tok.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
-    tok.decoder = decoders.ByteLevel()
-    trainer = trainers.BpeTrainer(
-        vocab_size=512, special_tokens=["<|bos|>", "<|eos|>", "<|pad|>"],
-        initial_alphabet=pre_tokenizers.ByteLevel.alphabet())
-    tok.train_from_iterator(DOCUMENTS, trainer)
-
     out = tmp_path_factory.mktemp("tokenizer")
-    tok.save(str(out / "tokenizer.json"))
-    return str(out)
+    return build_bpe_tokenizer(
+        str(out), DOCUMENTS, specials=["<|bos|>", "<|eos|>", "<|pad|>"])
 
 
 @pytest.fixture()

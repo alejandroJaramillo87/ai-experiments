@@ -19,7 +19,6 @@ import pytest
 import yaml
 
 from training.data import pipeline as pipeline_mod
-from training.data import shards as shards_mod
 from training.data.contamination import build_index, index_hash
 from training.data.pipeline import PipelineConfig, load_pipeline_config
 
@@ -85,8 +84,9 @@ def test_load_pipeline_config_rejects_unknown_keys(tmp_path):
 
 
 def test_repo_default_yaml_matches_dataclass_defaults():
-    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    path = os.path.join(repo_root, "training", "data", "configs", "default.yaml")
+    from support import REPO_ROOT
+
+    path = os.path.join(REPO_ROOT, "training", "data", "configs", "default.yaml")
     assert load_pipeline_config(path) == PipelineConfig()
 
 
@@ -102,17 +102,11 @@ def corpus_jsonl(tmp_path) -> str:
 
 @pytest.fixture()
 def contamination_index(tmp_path) -> str:
-    bench_jsonl = tmp_path / "bench.jsonl"
-    with open(bench_jsonl, "w") as f:
-        f.write(json.dumps({"question": BENCH_QUESTION}) + "\n")
-    config = {"version": 1, "ngram_size": 13,
-              "benchmarks": [{"name": "toy", "dataset": str(bench_jsonl),
-                              "splits": ["test"], "text_fields": ["question"]}]}
-    bench_yaml = tmp_path / "benchmarks.yaml"
-    with open(bench_yaml, "w") as f:
-        yaml.safe_dump(config, f)
+    from support import write_benchmarks_yaml
+
+    bench_yaml = write_benchmarks_yaml(tmp_path, [{"question": BENCH_QUESTION}])
     index_dir = str(tmp_path / "contamination")
-    build_index(str(bench_yaml), index_dir)
+    build_index(bench_yaml, index_dir)
     return index_dir
 
 

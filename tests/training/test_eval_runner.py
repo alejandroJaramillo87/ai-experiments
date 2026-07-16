@@ -8,6 +8,7 @@ from unittest import mock
 
 import pytest
 
+from common import serving as common_serving
 from training import serving
 from training.eval import generate
 from training.eval.lmeval import LmEvalError, load_task_config
@@ -45,7 +46,7 @@ def test_quant_from_name():
 
 
 def test_gguf_identity_prefers_manifest(tmp_path, monkeypatch):
-    monkeypatch.setattr(serving, "HOST_MODELS", str(tmp_path) + "/")
+    monkeypatch.setattr(common_serving, "HOST_MODELS", str(tmp_path) + "/")
     path = write_gguf(tmp_path, "m-Q4_0.gguf", manifest_quant="Q8_0")
     identity = gguf_identity(path)
     assert identity["quant_type"] == "Q8_0"
@@ -69,14 +70,14 @@ def test_thinking_mode_is_family_aware(tmp_path, monkeypatch):
 
 
 def test_gguf_identity_falls_back_to_name(tmp_path, monkeypatch):
-    monkeypatch.setattr(serving, "HOST_MODELS", str(tmp_path) + "/")
+    monkeypatch.setattr(common_serving, "HOST_MODELS", str(tmp_path) + "/")
     identity = gguf_identity(write_gguf(tmp_path, "m-Q4_0.gguf"))
     assert identity["quant_type"] == "Q4_0"
     assert identity["sha256"] is None
 
 
 def test_gguf_identity_missing_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(serving, "HOST_MODELS", str(tmp_path) + "/")
+    monkeypatch.setattr(common_serving, "HOST_MODELS", str(tmp_path) + "/")
     with pytest.raises(EvalRunError, match="not found"):
         gguf_identity(str(tmp_path / "absent.gguf"))
 
@@ -132,6 +133,73 @@ def test_generate_responses_resumes_and_records_errors(tmp_path):
     assert calls == ["pb"]
     assert responses["b"]["response"] == "rb"
     assert generate.load_responses(out_path)["b"]["response"] == "rb"
+
+
+def test_generate_responses_transient_retry_heals(tmp_path):
+    # A transient failure retries within the same prompt (retries+1 attempts);
+    # a later success clears the error field and records the response.
+    out_path = str(tmp_path / "responses.jsonl")
+    prompts = [{"id": "a", "prompt": "pa"}]
+    service = serving.SERVICES["llama-gpu"]
+
+    attempts = {"n": 0}
+
+    def flaky_completion(_service, _messages, _sampling, timeout):
+        attempts["n"] += 1
+        if attempts["n"] <= 2:
+            raise serving.ServingTransientError("upstream 503")
+        return {"content": "healed", "usage": {}, "latency_ms": 1.0}
+
+    with mock.patch.object(serving, "chat_completion", flaky_completion):
+        responses = generate.generate_responses(service, prompts, out_path)
+    assert attempts["n"] == 3               # two transient failures, then success
+    assert responses["a"]["response"] == "healed"
+    assert "error" not in responses["a"]    # the transient error field was cleared
+    # Persisted record reflects the healed response, not the failures.
+    assert generate.load_responses(out_path)["a"]["response"] == "healed"
+
+
+def test_run_judgments_error_then_resume_rejudges_only_errored(tmp_path):
+    # First pass: the judge is down for one prompt's pairs (recorded as
+    # error) while the other prompt's pairs succeed. A resumed run re-judges
+    # only the errored pairs and preserves the successful ones untouched.
+    out_path = str(tmp_path / "judgments.jsonl")
+    prompts = {"p1": {"id": "p1", "prompt": "alpha"},
+               "p2": {"id": "p2", "prompt": "beta"}}
+    responses = {"baseline": {"p1": {"response": "a1"}, "p2": {"response": "a2"}},
+                 "tuned": {"p1": {"response": "b1"}, "p2": {"response": "b2"}}}
+
+    def first_pass(messages):
+        if "beta" in messages[1]["content"]:
+            raise serving.ServingError("judge endpoint down")
+        return "Rationale.\nVERDICT: FIRST"
+
+    first = run_judgments(first_pass, prompts, responses, out_path)
+    outcomes = {(r["prompt_id"], r["first"]): r["outcome"] for r in first}
+    assert outcomes[("p1", "baseline")] == "baseline"
+    assert outcomes[("p1", "tuned")] == "tuned"
+    assert outcomes[("p2", "baseline")] == "error"
+    assert outcomes[("p2", "tuned")] == "error"
+
+    seen = []
+
+    def resume_pass(messages):
+        seen.append(messages[1]["content"])
+        return "Rationale.\nVERDICT: TIE"
+
+    resumed = run_judgments(resume_pass, prompts, responses, out_path)
+    # Only the two errored (beta) pairs were re-judged; p1 was never re-called.
+    assert all("beta" in text for text in seen)
+    assert len(seen) == 2
+    resumed_outcomes = {(r["prompt_id"], r["first"]): r["outcome"] for r in resumed}
+    assert resumed_outcomes[("p1", "baseline")] == "baseline"   # preserved
+    assert resumed_outcomes[("p1", "tuned")] == "tuned"         # preserved
+    assert resumed_outcomes[("p2", "baseline")] == "tie"        # healed
+    assert resumed_outcomes[("p2", "tuned")] == "tie"           # healed
+    # Persisted state agrees: the errored pairs now read as decided verdicts.
+    persisted = load_judgments(out_path)
+    assert persisted[("p2", "baseline")]["outcome"] == "tie"
+    assert persisted[("p1", "baseline")]["outcome"] == "baseline"
 
 
 def test_run_judgments_resumable_and_position_swapped(tmp_path):

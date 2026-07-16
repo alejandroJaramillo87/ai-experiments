@@ -19,6 +19,14 @@ import warnings
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
+# The shared Printer is stdlib-only, so importing it keeps this script safe to
+# run against a broken Python environment; it does require the repo checkout.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from common.output import Printer  # noqa: E402
+
 # Exit codes
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
@@ -54,58 +62,6 @@ BACKEND_ERROR_SIGNATURES = {
     "Configured CUDA binary not found": "CUDA backend unavailable",
     "library load error": "native backend load error",
 }
-
-
-class Printer:
-    """Styled status output. Colorized for a TTY, plain otherwise.
-
-    In quiet mode (--json) all human output is suppressed so stdout stays pure JSON
-    and remains machine-parseable. See .styles/PYTHON_OUTPUT_STYLE.md.
-    """
-
-    def __init__(self, quiet: bool = False) -> None:
-        self.quiet = quiet
-        use_color = not quiet and not os.environ.get("NO_COLOR") and sys.stdout.isatty()
-        if use_color:
-            self._c = {
-                "OK": "\033[0;32m",
-                "WARN": "\033[1;33m",
-                "ERROR": "\033[0;31m",
-                "INFO": "\033[0;36m",
-                "RUN": "\033[0;34m",
-                "SKIP": "\033[0;34m",
-            }
-            self._nc = "\033[0m"
-        else:
-            self._c = {}
-            self._nc = ""
-
-    def _status(self, tag: str, message: str, indent: int = 0) -> None:
-        if self.quiet:
-            return
-        color = self._c.get(tag, "")
-        pad = " " * indent
-        print(f"{pad}{color}[{tag}]{self._nc} {message}")
-
-    def ok(self, message: str, indent: int = 0) -> None:
-        self._status("OK", message, indent)
-
-    def warn(self, message: str, indent: int = 0) -> None:
-        self._status("WARN", message, indent)
-
-    def error(self, message: str, indent: int = 0) -> None:
-        self._status("ERROR", message, indent)
-
-    def info(self, message: str, indent: int = 0) -> None:
-        self._status("INFO", message, indent)
-
-    def skip(self, message: str, indent: int = 0) -> None:
-        self._status("SKIP", message, indent)
-
-    def line(self, message: str = "") -> None:
-        """Plain line (headers, solution/context lines); suppressed when quiet."""
-        if not self.quiet:
-            print(message)
 
 
 def quiet_import(module_name: str) -> tuple[Any | None, str]:
@@ -325,8 +281,8 @@ def check_key_packages(out: Printer) -> dict[str, dict[str, Any]]:
                 indent=2,
             )
             out.line(
-                f"    Solution: fix the import error (often a missing "
-                f"dependency such as torch), not a reinstall"
+                "    Solution: fix the import error (often a missing "
+                "dependency such as torch), not a reinstall"
             )
         elif installed and warning:
             out.warn(f"{name}:{version_suffix} ({warning})", indent=2)

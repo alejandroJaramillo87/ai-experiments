@@ -218,7 +218,9 @@ interp-dirs: ## Create the /mnt/ai-data/interp storage tree on the host
 
 ##@ Interpretability write-back (interp Phase 3 W1-W4)
 
-# Steered service and the host->container mapping of the vectors mount
+# Steered service and the host->container mapping of the vectors mount.
+# Mirrors interp/steering/wiring.py steering_env/container_vector_path:
+# a change to the env vars or path map must land on both sides.
 STEER_SERVICE ?= llama-gpu
 VECTOR_CONTAINER = $(patsubst /mnt/ai-data/interp/vectors%,/app/vectors%,$(VECTOR))/vector.gguf
 
@@ -286,13 +288,13 @@ interp-gc: ## Delete validated activation captures oldest-first, keeping manifes
 sae-train: ## Train an SAE from a P4-D2 capture (make sae-train RECIPE=training/recipes/interp/sae-smoke.yaml [ARGS="--validated"])
 	@test -n "$(RECIPE)" || { echo "RECIPE=training/recipes/interp/<name>.yaml is required"; exit 2; }
 	@./scripts/interp/preflight.sh
-	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/train_sae.py --recipe $(RECIPE) $(ARGS)
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp sae-train --recipe $(RECIPE) $(ARGS)
 
 sae-eval: ## Evaluate a trained SAE against its capture (make sae-eval SAE=/mnt/ai-data/interp/saes/<name> CAPTURE=/mnt/ai-data/interp/activations/<name> [ARGS=...])
 	@test -n "$(SAE)" || { echo "SAE=/mnt/ai-data/interp/saes/<name> is required"; exit 2; }
 	@test -n "$(CAPTURE)" || { echo "CAPTURE=/mnt/ai-data/interp/activations/<name> is required"; exit 2; }
 	@./scripts/interp/preflight.sh
-	docker compose -f $(INTERP_COMPOSE) run --rm interp python scripts/interp/eval_sae.py --sae-dir $(SAE) --capture-dir $(CAPTURE) $(ARGS)
+	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp sae-eval --sae-dir $(SAE) --capture-dir $(CAPTURE) $(ARGS)
 
 ##@ Interpretability organisms (interp Phase 4 P4-D1 - host-run; generation and verification are serving-dependent)
 

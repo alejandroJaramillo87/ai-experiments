@@ -3,22 +3,24 @@ steps, and tiny runs whose tracked lr shows the three segments with exact
 curve continuation on resume mid-stable and mid-decay. CPU-only; the loop
 tests mirror the tiny-e2e machinery from test_loop.py."""
 
+import importlib.util
 import math
-import os
 
 import numpy as np
 import pytest
+from support import TINY_RECIPE, make_shard_dir
 
-torch = pytest.importorskip("torch")
-pytest.importorskip("transformers")
+from training.loop import train
+from training.recipes import load_recipe
+from training.schedules import cosine_multiplier, wsd_multiplier
 
-from training.data.shards import ShardWriter, write_manifest  # noqa: E402
-from training.loop import train  # noqa: E402
-from training.recipes import load_recipe  # noqa: E402
-from training.schedules import cosine_multiplier, wsd_multiplier  # noqa: E402
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-TINY_RECIPE = os.path.join(REPO_ROOT, "training", "recipes", "reference", "tiny-e2e.yaml")
+# The multiplier curves are pure math; only the tiny-run loop tests need the
+# training stack, so the gate is per-test rather than module-level
+requires_torch = pytest.mark.skipif(
+    importlib.util.find_spec("torch") is None
+    or importlib.util.find_spec("transformers") is None,
+    reason="torch and transformers required for tiny-run loop tests",
+)
 
 VOCAB = 512
 SEQ_LEN = 64
@@ -69,8 +71,10 @@ class TestWsdMultiplier:
         assert cosine_multiplier(20, 4, 20) == pytest.approx(0.0)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture()
 def deterministic():
+    import torch
+
     torch.use_deterministic_algorithms(True)
     yield
     torch.use_deterministic_algorithms(False)
@@ -80,17 +84,7 @@ def deterministic():
 def shard_dir(tmp_path) -> str:
     rng = np.random.default_rng(7)
     tokens = rng.integers(0, VOCAB, size=6000).tolist()
-    out = str(tmp_path / "shards")
-    writer = ShardWriter(out, np.uint16, shard_tokens=2000)
-    writer.write_tokens(tokens)
-    records = writer.close()
-    write_manifest(out, {
-        "dataset": "synthetic", "split": None, "revision": None, "license": "unknown",
-        "tokenizer": "synthetic", "tokenizer_hash": "abc123",
-        "dtype": "uint16", "eos_id": 1, "shard_tokens": 2000,
-        "shards": records, "total_tokens": len(tokens), "total_documents": 1,
-    })
-    return out
+    return make_shard_dir(tmp_path, tokens, shard_tokens=2000)
 
 
 def wsd_recipe(shard_dir: str, output_root: str, *extra: str):
@@ -109,7 +103,8 @@ def wsd_recipe(shard_dir: str, output_root: str, *extra: str):
     ])
 
 
-def test_tiny_run_lr_curve_shows_three_segments(shard_dir, tmp_path):
+@requires_torch
+def test_tiny_run_lr_curve_shows_three_segments(deterministic, shard_dir, tmp_path):
     recipe = wsd_recipe(shard_dir, str(tmp_path / "run"))
     result = train(recipe)
     lrs = dict(result.lrs)
@@ -122,8 +117,9 @@ def test_tiny_run_lr_curve_shows_three_segments(shard_dir, tmp_path):
     assert lrs[10] == pytest.approx(peak * 0.1)  # final_lr_frac floor
 
 
+@requires_torch
 @pytest.mark.parametrize("stop_at", [5, 9], ids=["mid-stable", "mid-decay"])
-def test_resume_continues_lr_curve_exactly(shard_dir, tmp_path, stop_at):
+def test_resume_continues_lr_curve_exactly(deterministic, shard_dir, tmp_path, stop_at):
     straight = train(wsd_recipe(shard_dir, str(tmp_path / "straight")))
     root = str(tmp_path / "resumable")
     first = train(wsd_recipe(shard_dir, root), stop_after=stop_at)

@@ -39,64 +39,16 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+from common.output import Printer  # noqa: E402
 from training import serving  # noqa: E402
+from training.serving import quant_from_name  # noqa: E402
 
 SERVICE = serving.SERVICES["llama-gpu"]
 DEFAULT_PROMPTS = os.path.join(REPO_ROOT, "scripts", "eval", "smoke_prompts.json")
 
 
-class Printer:
-    """Styled status output (see .styles/PYTHON_OUTPUT_STYLE.md)."""
-
-    def __init__(self, quiet: bool = False) -> None:
-        self.quiet = quiet
-        use_color = (
-            not quiet
-            and not os.environ.get("NO_COLOR")
-            and sys.stdout.isatty()
-        )
-        if use_color:
-            self._c = {
-                "OK": "\033[0;32m", "WARN": "\033[1;33m", "ERROR": "\033[0;31m",
-                "INFO": "\033[0;36m", "RUN": "\033[0;34m", "SKIP": "\033[0;34m",
-            }
-            self._nc = "\033[0m"
-        else:
-            self._c = {}
-            self._nc = ""
-
-    def _status(self, tag: str, message: str, indent: int = 0) -> None:
-        if self.quiet:
-            return
-        color = self._c.get(tag, "")
-        pad = " " * indent
-        print(f"{pad}{color}[{tag}]{self._nc} {message}")
-
-    def ok(self, m, indent=0):    self._status("OK", m, indent)
-    def warn(self, m, indent=0):  self._status("WARN", m, indent)
-    def error(self, m, indent=0): self._status("ERROR", m, indent)
-    def info(self, m, indent=0):  self._status("INFO", m, indent)
-    def run(self, m, indent=0):   self._status("RUN", m, indent)
-
-    def line(self, message: str = "") -> None:
-        if not self.quiet:
-            print(message)
-
-
 class ServeEvalError(serving.ServingError):
     pass
-
-
-def quant_from_name(path: str) -> str | None:
-    """Quant type from a <name>-<QUANT>.gguf filename, when parseable."""
-    stem = os.path.basename(path)
-    if stem.endswith(".gguf"):
-        tail = stem[:-5].rsplit("-", 1)
-        if len(tail) == 2 and tail[1][:1].upper() == "Q":
-            # Normalize case: Qwen official GGUFs use lowercase quant
-            # suffixes, and the confound checks compare case-sensitively.
-            return tail[1].upper()
-    return None
 
 
 def load_manifest(host_path: str) -> dict | None:

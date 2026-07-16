@@ -23,15 +23,9 @@ import argparse
 import os
 
 from common.output import Printer
+from training.commands.args import positive_int
 from training.data import sft as sft_mod
 from training.families import UnknownModelFamilyError, supported_families
-
-
-def positive_int(value: str) -> int:
-    n = int(value.replace("_", ""))
-    if n <= 0:
-        raise argparse.ArgumentTypeError(f"must be positive, got {value}")
-    return n
 
 
 def holdout_fraction(value: str) -> float:

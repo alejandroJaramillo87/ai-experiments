@@ -18,7 +18,13 @@ import os
 
 import numpy as np
 
-from interp.manifest import git_sha, text_sha256, utc_now, write_manifest
+from interp.manifest import (
+    git_sha,
+    text_sha256,
+    tokenizer_fingerprint,
+    utc_now,
+    write_manifest,
+)
 
 SHARD_SIZE = 2048  # examples per shard file
 
@@ -44,20 +50,6 @@ def load_labeled_dataset(path: str) -> list[dict]:
     if not examples:
         raise CaptureError(f"{path}: no examples found")
     return examples
-
-
-def tokenizer_fingerprint(tokenizer) -> str:
-    """Stable fingerprint of the tokenizer + chat template used at capture time.
-
-    Checked at score time against the probe manifest: a tokenizer or template
-    mismatch between capture and scoring corrupts results silently (W2 risk).
-    """
-    parts = [
-        str(getattr(tokenizer, "name_or_path", "")),
-        str(len(tokenizer)),
-        str(getattr(tokenizer, "chat_template", "")),
-    ]
-    return text_sha256("|".join(parts))
 
 
 def capture_activations(

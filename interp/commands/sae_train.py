@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Train an SAE from a P4-D2 activation capture (interp Phase 4 P4-D3).
 
 Workbench batch job (GPU, inference down): wraps SAELens's training runner
@@ -9,31 +8,34 @@ manifest. Exit codes: 0 success, 1 failure, 2 invalid usage.
 from __future__ import annotations
 
 import argparse
-import sys
 
-sys.path.insert(0, ".")
-
-from interp.output import Printer  # noqa: E402
+from common.output import Printer
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+def configure(sub) -> None:
+    p = sub.add_parser(
+        "sae-train",
+        help="train an SAE from a P4-D2 activation capture (P4-D3)",
+        description=__doc__,
+    )
+    p.add_argument(
         "--recipe", required=True, help="SAE recipe YAML (training/recipes/interp/)"
     )
-    parser.add_argument(
+    p.add_argument(
         "--override",
         action="append",
         default=[],
         help="dotlist override, repeatable (sae.train_tokens=2000000)",
     )
-    parser.add_argument(
+    p.add_argument(
         "--validated",
         action="store_true",
         help="on success, flag the consumed capture deletable for interp-gc",
     )
-    args = parser.parse_args()
+    p.set_defaults(func=cmd)
 
+
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     from interp.manifest import ManifestError
     from interp.sae.train import SaeTrainError, run_sae_training, validate_sae
@@ -63,7 +65,3 @@ def main() -> int:
         f"{manifest['wall_clock_s']}s"
     )
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

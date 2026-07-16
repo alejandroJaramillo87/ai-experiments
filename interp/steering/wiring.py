@@ -82,7 +82,12 @@ def steering_env(
     scale: float | None = None,
     layer_range: tuple[int, int] | None = None,
 ) -> dict[str, str]:
-    """Environment variables that steer a service, for compose recreation."""
+    """Environment variables that steer a service, for compose recreation.
+
+    The Makefile steer-up/steer-down targets implement this same env/path
+    contract independently (VECTOR_CONTAINER patsubst plus the three
+    CONTROL_VECTOR* vars); a change here must be mirrored there.
+    """
     env = {"CONTROL_VECTOR": container_vector_path(vector_dir)}
     if scale is not None:
         env["CONTROL_VECTOR_SCALE"] = f"{scale:g}"

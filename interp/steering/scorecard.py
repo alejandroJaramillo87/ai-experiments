@@ -139,13 +139,10 @@ class MakeServiceController:
 
 
 def _post_chat(url: str, payload: dict, timeout: float = 300.0) -> dict:
-    import requests
+    from common.serving import post_chat
 
-    response = requests.post(
-        f"{url.rstrip('/')}/v1/chat/completions", json=payload, timeout=timeout
-    )
-    response.raise_for_status()
-    return response.json()
+    return post_chat(f"{url.rstrip('/')}/v1/chat/completions", payload,
+                     timeout=timeout)
 
 
 def chat(

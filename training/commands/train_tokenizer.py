@@ -20,17 +20,11 @@ import json
 import os
 
 from common.output import Printer
+from training.commands.args import positive_int
 from training.data import tokenizer as tokenizer_mod
 from training.data.prepare import iter_jsonl, load_tokenizer
 
 DEFAULT_REFERENCES = ("HuggingFaceTB/SmolLM2-135M", "gpt2")
-
-
-def positive_int(value: str) -> int:
-    n = int(value.replace("_", ""))
-    if n <= 0:
-        raise argparse.ArgumentTypeError(f"must be positive, got {value}")
-    return n
 
 
 def eval_corpus_pair(value: str) -> tuple[str, str]:

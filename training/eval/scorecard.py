@@ -11,8 +11,9 @@ Stdlib-only: assembly runs on the host from the phase output files.
 
 from __future__ import annotations
 
-import subprocess
 import time
+
+from common.provenance import git_sha as provenance_git_sha
 
 SCHEMA_VERSION = 1
 
@@ -26,10 +27,8 @@ class ScorecardError(RuntimeError):
     """Refused scorecard; message names the confound or the missing piece."""
 
 
-def git_sha(repo_root: str) -> str | None:
-    proc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root,
-                          capture_output=True, text=True)
-    return proc.stdout.strip() if proc.returncode == 0 else None
+def git_sha(repo_root: str) -> str:
+    return provenance_git_sha(repo_root)
 
 
 def delta_section(baseline: float | None, tuned: float | None,
