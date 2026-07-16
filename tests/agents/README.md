@@ -31,6 +31,7 @@ prints the container command instead of running it. Never exercise this target w
 | `guard_indirection_input.json` | `test_guard.py` → `scripts/agents/guard.sh` | `.env` access through bash indirection (`cat $(echo .env)`) is blocked |
 | `runpod_warm_fixture.json` | `test_runpod_idle.py` → `scripts/agents/runpod-idle-check.sh` | a warm worker with active spend triggers `[WARN]` |
 | `runpod_idle_fixture.json` | `test_runpod_idle.py` → `scripts/agents/runpod-idle-check.sh` | an idle endpoint reports no spend, no warning |
+| `runpod_fractional_fixture.json` | `test_runpod_idle.py` → `scripts/agents/runpod-idle-check.sh` | a fractional worker count (1.0) still warns instead of a false all-clear |
 | `preflight_fixture/` | `test_preflight.py` and `make agent-preflight PREFLIGHT_DIR=...` → `scripts/agents/preflight-scan.sh` | planted supply-chain vectors in an external checkout are flagged, exit non-zero |
 | `broken_completed_task.md` | `make agent-skeptic-test` | the skeptic subagent refutes a false completion claim |
 

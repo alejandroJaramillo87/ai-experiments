@@ -268,6 +268,16 @@ class TestCLI:
         assert proc.returncode == 1
         assert "[ERROR] Does not fit" in proc.stdout
 
+    def test_memfit_solve_nothing_fits_exits_nonzero(self):
+        # Sequence length floor of the solver still overflows at an absurd
+        # micro-batch: --solve must exit 1 when nothing fits, per the
+        # exit-code contract, not print [ERROR] and exit 0.
+        proc = self.run_cli(
+            "memfit", "--config", "training/recipes/reference/pretrain-1b.yaml",
+            "--solve", "seq", "data.micro_batch=100000")
+        assert proc.returncode == 1
+        assert "[ERROR]" in proc.stdout
+
     def test_memfit_bad_recipe_exits_nonzero(self):
         proc = self.run_cli("memfit", "--config", "/nonexistent/recipe.yaml")
         assert proc.returncode == 1

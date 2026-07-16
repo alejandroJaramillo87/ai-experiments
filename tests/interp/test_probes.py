@@ -25,10 +25,16 @@ class TestSplit:
         assert first == second
 
     def test_order_independent(self):
-        # the property that makes re-captures unable to leak test data
-        assert split_of("some example", 0) == split_of("some example", 0)
-        splits = {split_of(f"t{i}", 0) for i in range(500)}
-        assert splits == {"train", "val", "test"}
+        # The property that makes re-captures unable to leak test data: a
+        # text's split depends only on the text and seed, never on dataset
+        # order, so shuffling the dataset must not move any assignment.
+        import random
+
+        texts = [f"text {i}" for i in range(200)]
+        by_text = {t: split_of(t, seed=0) for t in texts}
+        shuffled = list(texts)
+        random.Random(9).shuffle(shuffled)
+        assert {t: split_of(t, seed=0) for t in shuffled} == by_text
 
     def test_seed_changes_assignment(self):
         texts = [f"text {i}" for i in range(200)]

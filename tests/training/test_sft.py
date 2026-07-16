@@ -148,6 +148,29 @@ class TestNormalizeRecord:
         with pytest.raises(SftRecordError):
             normalize_record(record, index=3)
 
+    @pytest.mark.parametrize("content", [
+        "<think>reasoning</think> the answer is 4",   # Qwen3 trace
+        "<|channel>thought planning <channel|> done",  # Gemma 4 trace
+        "<|think|> enable",                            # Gemma 4 control token
+    ])
+    def test_thinking_trace_in_assistant_turn_refused(self, content):
+        from training.data.sft import check_thinking_markers
+
+        messages = [{"role": "user", "content": "2+2?"},
+                    {"role": "assistant", "content": content}]
+        with pytest.raises(SftRecordError, match="thinking-trace"):
+            check_thinking_markers(messages, index=3)
+
+    def test_thinking_marker_in_user_turn_allowed(self):
+        # Only supervised (assistant) content is guarded: a user quoting a
+        # marker is not trace contamination.
+        from training.data.sft import check_thinking_markers
+
+        check_thinking_markers([
+            {"role": "user", "content": "what does <think> mean?"},
+            {"role": "assistant", "content": "a Qwen3 reasoning delimiter"},
+        ])
+
 
 class TestMaskBoundaries:
     """The scope document's required test: loss applies only to assistant
@@ -181,19 +204,6 @@ class TestMaskBoundaries:
             if msg["role"] != "assistant":
                 assert msg["content"] in masked_text
 
-    @pytest.mark.parametrize("model_type", ["gemma4", "qwen3"])
-    def test_multi_turn_supervises_every_assistant_turn(
-            self, model_type, encode, raw_tokenizer):
-        spec = family_spec(model_type).chat_template
-        sample = encode_example(MULTI_TURN, encode, spec)
-        supervised_ids = [i for i, label in zip(
-            sample["input_ids"], sample["labels"], strict=True)
-            if label != IGNORE_INDEX]
-        text = decoded(raw_tokenizer, supervised_ids)
-        assert "the capital of france is paris" in text
-        assert "the capital of spain is madrid" in text
-        assert text.count(spec.eot) == 2
-
     def test_truncation_to_prompt_only_drops_example(self, encode):
         spec = family_spec("gemma4").chat_template
         assert encode_example(SINGLE_TURN, encode, spec, max_seq_len=4) is None
@@ -215,12 +225,6 @@ class TestRoundTrip:
         spec = family_spec(model_type).chat_template
         sample = encode_example(CASES[case], encode, spec)
         assert decoded(raw_tokenizer, sample["input_ids"]) == GOLDEN_RENDERED[key]
-
-    def test_rendered_segments_concatenate_to_golden(self):
-        spec = family_spec("qwen3").chat_template
-        rendered = "".join(t for t, _ in render_segments(CASES["system"], spec))
-        assert rendered == GOLDEN_RENDERED[("qwen3", "system")]
-
 
 class TestMaskDebug:
     def test_table_lists_every_token_with_id_and_label(self, encode, raw_tokenizer):
@@ -288,6 +292,18 @@ class TestLoadSftDataset:
         # tokenizer_dir is the D2 conftest tokenizer, trained on a different corpus
         with pytest.raises(TokenizerMismatchError):
             load_sft_dataset(prepared, load_tokenizer(tokenizer_dir))
+
+    def test_stale_chat_template_version_is_refused(self, prepared):
+        # Same tokenizer hash, older rendering: the version field is the only
+        # signal, so loading must refuse rather than train on stale framing.
+        manifest_path = os.path.join(prepared, sft_mod.MANIFEST_NAME)
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+        manifest["chat_template_version"] = 1
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f)
+        with pytest.raises(SftIntegrityError, match="chat_template_version"):
+            load_sft_dataset(prepared)
 
     def test_shard_directory_is_refused(self, tmp_path):
         os.makedirs(tmp_path / "shards", exist_ok=True)

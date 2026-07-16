@@ -49,13 +49,17 @@ check() {
     local pinned latest
     pinned=$(pinned_version "$arg")
     if [[ -z "$pinned" ]]; then
+        # Accumulate and keep checking the remaining pins (set -e would
+        # otherwise abort the whole script on the first missing ARG).
         print_error "$pkg: no ARG $arg pin found in $DOCKERFILE"
-        return 1
+        missing=1
+        return 0
     fi
     latest=$(registry_version "$pkg" "$tag") || true
     if [[ -z "$latest" || "$latest" == "null" ]]; then
         print_warn "$pkg: registry lookup failed (pinned $pinned)"
         echo "  Solution: check network access to registry.npmjs.org"
+        unverified=1
         return 0
     fi
     if [[ "$pinned" == "$latest" ]]; then
@@ -75,6 +79,8 @@ echo "=== Agent CLI version pins ==="
 echo
 
 behind=0
+missing=0
+unverified=0
 # claude-code is checked against the `stable` tag (about one week behind
 # `latest`, skips major regressions); the others publish only `latest`.
 check OPENCODE_VERSION    opencode-ai                 latest
@@ -82,8 +88,14 @@ check CLAUDE_CODE_VERSION @anthropic-ai/claude-code   stable
 check PYRIGHT_VERSION     pyright                     latest
 echo
 
-if [[ "$behind" -eq 1 ]]; then
+if [[ "$missing" -eq 1 ]]; then
+    print_error "Missing pins: add the ARG lines listed above"
+    exit 1
+elif [[ "$behind" -eq 1 ]]; then
     print_info "Pins behind: bump one at a time per the pin-then-update rule"
+elif [[ "$unverified" -eq 1 ]]; then
+    # Not an all-clear: the registry was unreachable for at least one pin.
+    print_warn "Pins unverified: registry lookups failed; re-run with network access"
 else
     print_ok "All pins current"
 fi

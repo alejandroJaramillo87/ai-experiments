@@ -245,7 +245,9 @@ def quant_from_name(model: str) -> str | None:
     if stem.endswith(".gguf"):
         tail = stem[:-5].rsplit("-", 1)
         if len(tail) == 2 and tail[1][:1].upper() == "Q":
-            return tail[1]
+            # Normalize case: Qwen official GGUFs use lowercase quant
+            # suffixes, and the confound checks compare case-sensitively.
+            return tail[1].upper()
     return None
 
 
@@ -320,8 +322,19 @@ def generate(config: TeacherConfig, prompts: list[list[dict]],
 
     _truncate_torn_tail(os.path.join(out_dir, DATA_NAME))
     done_keys = completed_keys(out_dir)
-    pending = [(prompt_key(i, m), m) for i, m in enumerate(prompts)
-               if prompt_key(i, m) not in done_keys]
+    keyed = [(prompt_key(i, m), m) for i, m in enumerate(prompts)]
+    orphans = done_keys - {key for key, _ in keyed}
+    if orphans:
+        # Completed records whose keys left the prompt set would persist in
+        # data.jsonl while the manifest counts only the current prompts —
+        # a silent dataset/manifest disagreement.
+        raise ValueError(
+            f"{out_dir} contains {len(orphans)} completed record(s) not in "
+            "the current prompt set; the prompt set changed since this "
+            "generation started\n"
+            "  Solution: generate into a fresh output directory, or restore "
+            "the original prompt set to finish this one")
+    pending = [(key, m) for key, m in keyed if key not in done_keys]
     done = len(prompts) - len(pending)
     failures: list[tuple[str, str]] = []
     write_lock = threading.Lock()

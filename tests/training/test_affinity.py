@@ -39,7 +39,10 @@ def test_smt_siblings_offset_by_half():
     assert with_smt_siblings({20}, logical_cpus=32) == {20}
 
 
-def test_resolve_masks_disjoint():
+def test_resolve_masks_disjoint(monkeypatch):
+    # Pin the topology: with the real os.cpu_count() this test fails on any
+    # host with 10-31 logical CPUs (SMT folding maps workers onto main).
+    monkeypatch.setattr(os, "cpu_count", lambda: 32)
     main, workers = resolve_masks(cfg())
     assert not main & workers
 

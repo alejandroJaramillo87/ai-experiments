@@ -88,6 +88,31 @@ def test_kill_between_tmp_write_and_rename_preserves_previous_latest(
     assert ckpt.list_checkpoints(root) == [5]
 
 
+def test_republish_replaces_orphan_step_dir(tmp_path, monkeypatch):
+    """Crash between the publish rename and the `latest` repoint leaves an
+    orphan step dir; re-reaching that step after resuming from the older
+    latest must replace it rather than fail the rename with ENOTEMPTY."""
+    root = str(tmp_path / "checkpoints")
+    save_step(root, 5)
+
+    real_symlink = os.symlink
+
+    def killed_symlink(src, dst):
+        raise KeyboardInterrupt("simulated SIGKILL")
+
+    monkeypatch.setattr(os, "symlink", killed_symlink)
+    with pytest.raises(KeyboardInterrupt):
+        save_step(root, 10)
+    monkeypatch.setattr(os, "symlink", real_symlink)
+
+    # step_10 exists but latest still points at step_5 (the crash window)
+    assert os.path.isdir(os.path.join(root, "step_000000010"))
+    assert ckpt.latest_checkpoint(root).endswith("step_000000005")
+
+    path10 = save_step(root, 10)  # resume re-reaches step 10
+    assert ckpt.latest_checkpoint(root) == path10
+
+
 def test_retention_keeps_last_n_plus_every_mth(tmp_path):
     root = str(tmp_path / "checkpoints")
     for step in (5, 10, 15, 20, 25):

@@ -1,0 +1,3 @@
+{"data":{"myself":{"endpoints":[
+  {"id":"ep1","name":"llama-70b","workersStandby":1.0,"workersRunning":0,"currentSpendPerHr":0.1}
+]}}}

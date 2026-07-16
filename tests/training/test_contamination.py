@@ -83,17 +83,25 @@ def test_build_index_is_deterministic(benchmarks_yaml, tmp_path):
     assert first["total_ngrams"] == second["total_ngrams"]
 
 
-def test_index_hash_reflects_benchmark_list_changes(benchmarks_yaml, tmp_path):
-    contamination.build_index(benchmarks_yaml, str(tmp_path / "a"))
+def test_ngram_content_hash_reflects_benchmark_list_changes(
+        benchmarks_yaml, tmp_path):
+    # index_hash covers the whole manifest, which embeds a timestamp and so
+    # always differs between builds; the content signal is ngrams_xxhash64.
+    a = contamination.build_index(benchmarks_yaml, str(tmp_path / "a"))
     with open(benchmarks_yaml) as f:
         config = yaml.safe_load(f)
-    config["benchmarks"][0]["text_fields"] = ["question"]
+    # Dropping the question field removes its 13-grams from the index (the
+    # short choices strings alone yield none).
+    config["benchmarks"][0]["text_fields"] = ["choices.text"]
     changed_yaml = str(tmp_path / "changed.yaml")
     with open(changed_yaml, "w") as f:
         yaml.safe_dump(config, f)
-    contamination.build_index(changed_yaml, str(tmp_path / "b"))
-    assert (contamination.index_hash(str(tmp_path / "a"))
-            != contamination.index_hash(str(tmp_path / "b")))
+    b = contamination.build_index(changed_yaml, str(tmp_path / "b"))
+    assert a["ngrams_xxhash64"] != b["ngrams_xxhash64"]
+
+    # Byte-identical inputs reproduce the content hash exactly.
+    c = contamination.build_index(benchmarks_yaml, str(tmp_path / "c"))
+    assert c["ngrams_xxhash64"] == a["ngrams_xxhash64"]
 
 
 def test_missing_index_dir_raises(tmp_path):

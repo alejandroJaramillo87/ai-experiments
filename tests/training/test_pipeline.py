@@ -132,6 +132,34 @@ def _run(corpus_jsonl, tokenizer_dir, contamination_index, root, name) -> dict:
         config=_test_config(), contamination_dir=contamination_index)
 
 
+def test_text_field_honored_for_local_sources(tmp_path, monkeypatch):
+    # A custom --text-field must be read for local JSONL sources, not only
+    # hub sources: the quality stages and shard step consume the "text" key,
+    # so ingest normalizes. Engine-free: the stages are stubbed out.
+    src = tmp_path / "local.jsonl"
+    with open(src, "w") as f:
+        f.write(json.dumps({"content": "first document"}) + "\n")
+        f.write(json.dumps({"content": "second document"}) + "\n")
+
+    seen = {}
+    monkeypatch.setattr(pipeline_mod, "run_quality_stages",
+                        lambda ingest, wd, cfg, cd: (ingest, {}))
+
+    def fake_prepare(final_dir, *args, **kwargs):
+        with open(os.path.join(final_dir, "00000.jsonl")) as f:
+            seen["records"] = [json.loads(line) for line in f]
+        return {}
+
+    monkeypatch.setattr(pipeline_mod.prepare_mod, "prepare", fake_prepare)
+    monkeypatch.setattr(pipeline_mod.shards_mod, "verify_shards",
+                        lambda *a, **k: None)
+    pipeline_mod.prepare_corpus(
+        str(src), str(tmp_path / "shards"), "tok", str(tmp_path / "work"),
+        config=_test_config(), text_field="content")
+    assert [r["text"] for r in seen["records"]] == [
+        "first document", "second document"]
+
+
 @pytest.mark.skipif(importlib.util.find_spec("datatrove") is None,
                     reason="datatrove not installed (training image dependency)")
 class TestEndToEnd:
@@ -203,5 +231,6 @@ def test_iter_jsonl_reads_stage_directories(tmp_path):
     with gzip.open(stage / "00002.jsonl.gz", "wt") as f:
         f.write(json.dumps({"text": "c"}) + "\n")
     assert list(iter_jsonl(str(stage), "text")) == ["a", "b", "c"]
-    with pytest.raises(FileNotFoundError):
+    (tmp_path / "empty").mkdir()
+    with pytest.raises(FileNotFoundError, match="No .jsonl"):
         list(iter_jsonl(str(tmp_path / "empty"), "text"))

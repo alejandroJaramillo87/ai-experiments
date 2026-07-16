@@ -48,8 +48,11 @@ not a footnote. Generation and judging are resumable; re-invoking with the same
 `--out-dir` redoes only missing or errored work, and interrupted runs restore the
 previous serving state on exit.
 
-Thinking stays off on both sides and for the judge (no thinking-control tokens are
-injected); the scorecard records `thinking_mode` per side as a matched confound.
+No thinking-control tokens are injected on either side or for the judge; the
+served model runs at its family default (off for Gemma 4, whose thinking is
+opt-in; on for Qwen3 hybrid checkpoints). The scorecard records the actual
+`thinking_mode` per side as a matched confound, so a thinking-on versus
+thinking-off comparison is refused rather than footnoted.
 
 Manual restore after an unclean exit:
 

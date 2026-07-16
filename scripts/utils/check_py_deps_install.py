@@ -293,17 +293,23 @@ def check_key_packages(out: Printer) -> dict[str, dict[str, Any]]:
     packages: dict[str, dict[str, Any]] = {}
     for name, (import_name, required) in KEY_PACKAGES.items():
         module, noise = quiet_import(import_name)
-        installed = module is not None
-        pkg_version = _pkg_version(import_name) if installed else None
+        imported = module is not None
+        # Distribution metadata is independent of importability: a package
+        # whose import raises (bitsandbytes without torch) is still
+        # installed, and telling the operator to install it misdiagnoses.
+        pkg_version = _pkg_version(import_name)
+        installed = imported or pkg_version is not None
 
         # Detect a package that imported but whose native/CUDA backend failed to load
         # (e.g. bitsandbytes with a missing libbitsandbytes_cuda*.so).
         warning = None
-        if installed:
+        if imported:
             for signature, reason in BACKEND_ERROR_SIGNATURES.items():
                 if signature in noise:
                     warning = reason
                     break
+        elif installed:
+            warning = "import failed"
 
         packages[name] = {
             "installed": installed,
@@ -313,7 +319,16 @@ def check_key_packages(out: Printer) -> dict[str, dict[str, Any]]:
         }
 
         version_suffix = f" {pkg_version}" if pkg_version else ""
-        if installed and warning:
+        if installed and not imported:
+            out.error(
+                f"{name}:{version_suffix} installed but failed to import",
+                indent=2,
+            )
+            out.line(
+                f"    Solution: fix the import error (often a missing "
+                f"dependency such as torch), not a reinstall"
+            )
+        elif installed and warning:
             out.warn(f"{name}:{version_suffix} ({warning})", indent=2)
             out.line(
                 f"    Solution: reinstall {name} matching the installed CUDA (cu130)"

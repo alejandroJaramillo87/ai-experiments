@@ -62,8 +62,9 @@ In order, before any model download:
 2. D4 memory-fit estimate; refusal unless `--force`.
 3. D9 run-lock acquisition (`/mnt/ai-data/training/.train.lock`); released on
    every exit path.
-4. Inference-services-down check: the run refuses to start while llama-gpu
-   (8002) or vllm-gpu (8003) answers its health endpoint.
+
+Running inference containers are not probed: the operator manages containers
+manually and validates GPU exclusivity before starting a run.
 
 ## Checkpoints and resume
 

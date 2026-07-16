@@ -62,6 +62,8 @@ def validate_harvest(recipe: DictConfig) -> None:
         problems.append("harvest: exactly one of model_id or organism_dir must be set")
     if not cfg.hook_layers:
         problems.append("harvest.hook_layers: at least one layer is required")
+    elif any(int(layer) < 0 for layer in cfg.hook_layers):
+        problems.append("harvest.hook_layers: layer indices must be >= 0")
     if len(cfg.hook_layers) > 1 and not cfg.acknowledge_multi_layer:
         problems.append(
             "harvest.hook_layers: multi-layer capture multiplies the disk "
@@ -182,7 +184,17 @@ def check_hook_dims(
 
     try:
         for layer in layers:
-            module = model.get_submodule(hook_name(layer))
+            try:
+                module = model.get_submodule(hook_name(layer))
+            except AttributeError as exc:
+                # The documented backstop for the multimodal-composite
+                # Gemma 4 layout risk: a missing module path is a dimension
+                # check failure, not a raw traceback.
+                raise HarvestError(
+                    f"hook dimension check failed: no module at "
+                    f"{hook_name(layer)} ({exc}); the model does not expose "
+                    "the flat text-model layout this hook path assumes"
+                ) from exc
             handles.append(module.register_forward_hook(make_hook(layer)))
         inputs = tokenizer("hook check", return_tensors="pt").to(model.device)
         with torch.no_grad():
@@ -341,7 +353,10 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
                 watchdog.stop()
     wall_clock_s = time.monotonic() - started
 
-    tokens = int(cfg.total_tokens) * len(cfg.hook_layers)
+    # Throughput covers only the hooks this run captured: the wall clock
+    # spans pending hooks, so counting pre-completed hooks' tokens would
+    # inflate the recorded number on resume.
+    tokens = int(cfg.total_tokens) * len(pending)
     manifest = {
         "schema_version": 1,
         "artifact": ARTIFACT,
@@ -359,7 +374,8 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
         "seed": int(recipe.run.seed),
         "tokenizer_fingerprint": stats.get("tokenizer_fingerprint", "unknown"),
         "sae_lens_version": stats.get("sae_lens_version", "unknown"),
-        "tokens_per_second": round(tokens / wall_clock_s, 1) if wall_clock_s else 0.0,
+        "tokens_per_second": (round(tokens / wall_clock_s, 1)
+                              if wall_clock_s and tokens else 0.0),
         "wall_clock_s": round(wall_clock_s, 1),
         "validated": False,
         "git_sha": git_sha(),

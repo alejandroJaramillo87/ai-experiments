@@ -57,6 +57,8 @@ services:
       # Repository sources (recipes, training package, scripts) mounted live for iteration
       - ./scripts:/app/scripts:ro
       - ./training:/app/training:ro
+      # Shared helpers (common.output Printer) imported by training/cli.py at module scope
+      - ./common:/app/common:ro
       - ./logs/training:/app/logs
     networks:
       - training-network
@@ -93,6 +95,8 @@ services:
       # Repository sources mounted live for iteration
       - ./scripts:/app/scripts:ro
       - ./training:/app/training:ro
+      # Shared helpers (common.output Printer) imported by training/cli.py at module scope
+      - ./common:/app/common:ro
       - ./logs/training:/app/logs
     networks:
       - training-network

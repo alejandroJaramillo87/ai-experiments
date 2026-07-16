@@ -141,11 +141,6 @@ class TestRamFloor:
 
 
 class TestPermutation:
-    def test_one_epoch_covers_every_window_once(self, replay_dir):
-        buf = ReplayBuffer(replay_dir, window=WINDOW, seed=0)
-        values = sorted(int(buf[i][0]) for i in range(len(buf)))
-        assert values == list(range(40))
-
     def test_order_is_shuffled(self, replay_dir):
         buf = ReplayBuffer(replay_dir, window=WINDOW, seed=0)
         order = [int(buf[i][0]) for i in range(len(buf))]

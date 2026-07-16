@@ -112,10 +112,12 @@ def cmd_memfit(args: argparse.Namespace) -> int:
     _print_estimate_table(est, out)
 
     axes = [args.solve] if args.solve else []
+    solve_failed = False
     for axis in axes:
         solved = solve(recipe, axis)
         label = "micro-batch" if axis == "batch" else "sequence length"
         if solved is None:
+            solve_failed = True
             result[f"max_{axis}"] = None
             out.error(f"Solve {axis}: no {label} fits at the recipe's other settings")
         else:
@@ -127,7 +129,10 @@ def cmd_memfit(args: argparse.Namespace) -> int:
                    f"(reserved estimate {gb(solved.reserved_estimate)})")
     if args.json:
         print(json.dumps(result, indent=2))
-    return 0 if est.fits or args.solve else 1
+    if args.solve:
+        # A solve that found nothing is a failure, per the exit-code contract.
+        return 1 if solve_failed else 0
+    return 0 if est.fits else 1
 
 
 def cmd_calibrate(args: argparse.Namespace) -> int:

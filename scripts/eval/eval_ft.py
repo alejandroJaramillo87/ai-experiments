@@ -309,8 +309,11 @@ def main(argv: list[str] | None = None) -> int:
     metadata = {
         "git_sha": scorecard.git_sha(REPO_ROOT),
         "evaluators": evaluators,
-        "baseline": {"model": args.base, "thinking_mode": "off"},
-        "tuned": {"model": args.tuned, "thinking_mode": "off"},
+        # thinking_mode is family-dependent and resolved from the served
+        # GGUF's identity below; None means no GGUF was served (holdout and
+        # lmeval read HF checkpoints directly).
+        "baseline": {"model": args.base, "thinking_mode": None},
+        "tuned": {"model": args.tuned, "thinking_mode": None},
     }
     identities = None
     try:
@@ -329,7 +332,8 @@ def main(argv: list[str] | None = None) -> int:
                 metadata[side].update(
                     gguf=identities[side]["model"],
                     quant_type=identities[side]["quant_type"],
-                    sha256=identities[side]["sha256"])
+                    sha256=identities[side]["sha256"],
+                    thinking_mode=identities[side]["thinking_mode"])
             metadata["judge"] = {
                 "model": identities["judge"]["model"],
                 "sha256": identities["judge"]["sha256"],

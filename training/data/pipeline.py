@@ -312,7 +312,18 @@ def prepare_corpus(source: str, out_dir: str, tokenizer_source: str, work_dir: s
     os.makedirs(work_dir, exist_ok=True)
 
     if os.path.exists(source):
-        if os.path.isfile(source):
+        if text_field != "text":
+            # The quality stages and the shard step read the "text" key, so a
+            # custom field must be normalized at ingest — otherwise the flag
+            # is silently ignored for local sources (hub sources normalize in
+            # materialize_hf_source).
+            ingest_dir = os.path.join(work_dir, STAGE_INGEST)
+            os.makedirs(ingest_dir, exist_ok=True)
+            with open(os.path.join(ingest_dir, "00000.jsonl"), "w") as f:
+                for count, text in enumerate(
+                        prepare_mod.iter_jsonl(source, text_field)):
+                    f.write(json.dumps({"id": str(count), "text": text}) + "\n")
+        elif os.path.isfile(source):
             ingest_dir = os.path.join(work_dir, STAGE_INGEST)
             os.makedirs(ingest_dir, exist_ok=True)
             shutil.copy(source, os.path.join(ingest_dir, "00000.jsonl"))

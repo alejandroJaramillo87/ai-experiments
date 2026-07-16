@@ -66,8 +66,6 @@ def evaluate_holdout(model: str, dataset_dir: str,
     """
     import math
 
-    import torch
-
     from training.data.sft import load_sft_dataset
 
     _, holdout = load_sft_dataset(dataset_dir)
@@ -77,6 +75,8 @@ def evaluate_holdout(model: str, dataset_dir: str,
             "  Solution: re-run prepare_sft with --holdout > 0")
     if max_examples is not None:
         holdout = holdout[:max_examples]
+
+    import torch
 
     loaded = load_model(model, load_4bit=load_4bit)
     device = next(loaded.parameters()).device
