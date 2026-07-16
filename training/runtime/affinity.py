@@ -73,13 +73,17 @@ def resolve_masks(affinity) -> tuple[set[int], set[int]]:
     return main, workers
 
 
-def apply_mask(cpus: set[int]) -> None:
+def apply_mask(cpus: set[int], allowed: set[int] | None = None) -> None:
     """Pin the calling process (and its future threads) to the given cpus.
 
-    Cpus outside the process's current allowance (container cpusets) are
-    dropped rather than failing the run; pinning degrades, never aborts.
+    Cpus outside the allowance (container cpusets) are dropped rather than
+    failing the run; pinning degrades, never aborts. allowed overrides the
+    current scheduler allowance: a dataloader worker forks from a main
+    process already pinned to the disjoint main mask, so its pin must check
+    against the pre-pin container allowance, not the inherited one (which
+    would always intersect to the empty set).
     """
-    allowed = os.sched_getaffinity(0)
+    allowed = set(allowed) if allowed is not None else os.sched_getaffinity(0)
     effective = cpus & allowed
     if not effective:
         raise ValueError(
@@ -89,10 +93,14 @@ def apply_mask(cpus: set[int]) -> None:
     os.sched_setaffinity(0, effective)
 
 
-def worker_init_fn(cpus: set[int]):
-    """DataLoader worker_init_fn pinning every worker to the workers mask."""
+def worker_init_fn(cpus: set[int], allowed: set[int] | None = None):
+    """DataLoader worker_init_fn pinning every worker to the workers mask.
+
+    Pass the main process's pre-pin allowance as allowed; without it every
+    worker inherits the main mask and the workers-mask intersection is empty.
+    """
 
     def _init(worker_id: int) -> None:
-        apply_mask(cpus)
+        apply_mask(cpus, allowed=allowed)
 
     return _init

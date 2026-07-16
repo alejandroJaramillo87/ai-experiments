@@ -75,7 +75,7 @@ def _check_model(recipe: DictConfig, problems: list[str]) -> None:
         if not OmegaConf.is_missing(s, "heads") and not OmegaConf.is_missing(
             s, "kv_heads"
         ):
-            if s.kv_heads > s.heads or (s.kv_heads > 0 and s.heads % s.kv_heads != 0):
+            if s.kv_heads <= 0 or s.kv_heads > s.heads or s.heads % s.kv_heads != 0:
                 problems.append(
                     f"model.scratch: heads ({s.heads}) must be a positive multiple of "
                     f"kv_heads ({s.kv_heads})"
@@ -495,7 +495,9 @@ def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
     if len(set(names)) != len(names):
         problems.append(f"mixture.sources: names must be unique, got {names}")
     for i, s in enumerate(m.sources):
-        if not OmegaConf.is_missing(s, "name") and not s.name:
+        if OmegaConf.is_missing(s, "name"):
+            problems.append(f"mixture.sources[{i}].name: required")
+        elif not s.name:
             problems.append(f"mixture.sources[{i}].name: must not be empty")
         if not OmegaConf.is_missing(s, "weight") and not (
             math.isfinite(s.weight) and s.weight > 0
@@ -508,7 +510,7 @@ def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
     from training.data.shards import load_manifest
 
     # None key: a source manifest missing tokenizer_hash groups separately
-    hashes: dict[str | None, list[str]] = {}
+    hashes: dict[str | None, list[str | None]] = {}
     for s in m.sources:
         if OmegaConf.is_missing(s, "path") or not os.path.isdir(s.path):
             continue
@@ -518,8 +520,10 @@ def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
                 "prepared shard directories (python -m training prepare-corpus)"
             )
             continue
+        # A source with a missing name already collected its problem above;
+        # accessing s.name here would escape as a raw MissingMandatoryValue.
         hashes.setdefault(load_manifest(s.path).get("tokenizer_hash"), []).append(
-            s.name
+            None if OmegaConf.is_missing(s, "name") else s.name
         )
     if len(hashes) > 1:
         detail = ", ".join(
@@ -594,9 +598,13 @@ def _check_replay(recipe: DictConfig, problems: list[str]) -> None:
             f"sources, got replay {replay_names} vs mixture {mixture_names}"
         )
     for i, s in enumerate(r.sources):
-        if not OmegaConf.is_missing(s, "name") and not s.name:
+        if OmegaConf.is_missing(s, "name"):
+            problems.append(f"replay.sources[{i}].name: required")
+        elif not s.name:
             problems.append(f"replay.sources[{i}].name: must not be empty")
-        if not (math.isfinite(s.weight) and s.weight > 0):
+        if not OmegaConf.is_missing(s, "weight") and not (
+            math.isfinite(s.weight) and s.weight > 0
+        ):
             problems.append(
                 f"replay.sources[{i}].weight: must be positive and finite, "
                 f"got {s.weight}"
@@ -604,7 +612,7 @@ def _check_replay(recipe: DictConfig, problems: list[str]) -> None:
 
     from training.data.shards import load_manifest
 
-    hashes: dict[str | None, list[str]] = {}
+    hashes: dict[str | None, list[str | None]] = {}
     for s, is_replay in [(s, False) for s in recipe.mixture.sources] + [
         (s, True) for s in r.sources
     ]:
@@ -618,7 +626,7 @@ def _check_replay(recipe: DictConfig, problems: list[str]) -> None:
                 )
             continue
         hashes.setdefault(load_manifest(s.path).get("tokenizer_hash"), []).append(
-            s.name
+            None if OmegaConf.is_missing(s, "name") else s.name
         )
     # A mixture-only mismatch is already _check_mixture's finding; only report
     # when replay sources introduce (or are) the disagreement.

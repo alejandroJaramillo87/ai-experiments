@@ -83,9 +83,11 @@ def evaluate_holdout(
     """
     import math
 
-    from training.data.sft import load_sft_dataset
+    from training.data.sft import HOLDOUT_FILE, load_sft_dataset
 
-    _, holdout = load_sft_dataset(dataset_dir)
+    # Only the holdout split is materialized; the (much larger) train split
+    # is hash-verified but never parsed into memory.
+    _, holdout = load_sft_dataset(dataset_dir, parse=(HOLDOUT_FILE,))
     if not holdout:
         raise ValueError(
             f"Dataset has no held-out split: {dataset_dir}\n"

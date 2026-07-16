@@ -156,6 +156,27 @@ def test_generate_responses_transient_retry_heals(tmp_path):
     assert generate.load_responses(out_path)["a"]["response"] == "healed"
 
 
+def test_load_responses_repairs_torn_tail(tmp_path):
+    # A run killed mid-append leaves a partial final line; the loader drops
+    # it and truncates the file so the record regenerates and the next
+    # append cannot fuse with the fragment.
+    out_path = tmp_path / "responses.jsonl"
+    good = json.dumps({"id": "a", "response": "ra"})
+    out_path.write_text(good + "\n" + '{"id": "b", "resp')
+    responses = generate.load_responses(str(out_path))
+    assert list(responses) == ["a"]
+    assert out_path.read_text() == good + "\n"
+
+
+def test_load_resume_jsonl_mid_file_corruption_raises(tmp_path):
+    # Only the tail is repairable; corruption before it means the file is
+    # not a killed append and must fail loudly.
+    out_path = tmp_path / "responses.jsonl"
+    out_path.write_text('{"id": "a"\n{"id": "b"}\n')
+    with pytest.raises(json.JSONDecodeError):
+        generate.load_resume_jsonl(str(out_path))
+
+
 def test_run_judgments_error_then_resume_rejudges_only_errored(tmp_path):
     # First pass: the judge is down for one prompt's pairs (recorded as
     # error) while the other prompt's pairs succeed. A resumed run re-judges

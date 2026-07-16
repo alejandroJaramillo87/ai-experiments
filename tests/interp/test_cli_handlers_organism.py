@@ -205,15 +205,30 @@ class TestGenerate:
             assets = json.load(f)
         assert len(assets["qa"]) == len(FACTS)
 
-    def test_existing_draft_refused(self, setup, capsys):
+    def test_existing_draft_resumes_without_redraw(self, setup, capsys):
+        # The documented failure path is re-invoke-to-resume: an existing
+        # draft is reused (never redrawn) and generation continues.
         recipe = setup["build"]("taboo")
+        write_draft(setup["out_dir"], {"kind": "taboo", "secret": SECRET})
+        assert (
+            run_cli(["organism", "generate", "--recipe", recipe, "--render-only"]) == 0
+        )
+        out = capsys.readouterr().out
+        assert "[INFO] Resuming: ground-truth draft already drawn" in out
+        assert "Ground-truth draft written" not in out
+        import json as _json
+        import os as _os
+
+        draft_path = _os.path.join(setup["out_dir"], "work", "ground_truth_draft.json")
+        assert _json.load(open(draft_path))["secret"] == SECRET
+
+    def test_existing_draft_kind_mismatch_refused(self, setup, capsys):
+        recipe = setup["build"]("false_fact")
         write_draft(setup["out_dir"], {"kind": "taboo", "secret": SECRET})
         assert (
             run_cli(["organism", "generate", "--recipe", recipe, "--render-only"]) == 1
         )
-        out = capsys.readouterr().out
-        assert "[ERROR] Ground-truth draft already exists" in out
-        assert "not redrawn" in out
+        assert "does not match" in capsys.readouterr().out
 
     def test_deferred_kind_is_usage_error(self, setup, capsys):
         recipe = setup["build"]("hidden_objective")

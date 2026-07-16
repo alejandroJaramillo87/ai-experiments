@@ -293,6 +293,19 @@ def load_checkpoint(path: str, model, optimizer, scheduler, dataset) -> dict:
     import torch
     from safetensors.torch import load_file
 
+    # Symmetric to load_checkpoint_deepspeed's guard: a deepspeed-format
+    # checkpoint has no model/ shards here and would die with a wrong-cause
+    # FileNotFoundError instead of naming the format mismatch.
+    with open(os.path.join(path, "meta.json")) as f:
+        meta = json.load(f)
+    if meta.get("checkpoint_format") == "deepspeed":
+        raise ValueError(
+            f"Checkpoint at {path} has checkpoint_format='deepspeed'; "
+            "resuming it through the plain loop cannot restore the "
+            "engine-owned optimizer state. Match the recipe's memory.offload "
+            "to the checkpoint's format."
+        )
+
     model_dir = os.path.join(path, "model")
     shards = [f for f in os.listdir(model_dir) if f.endswith(".safetensors")]
     state = {}
@@ -309,5 +322,4 @@ def load_checkpoint(path: str, model, optimizer, scheduler, dataset) -> dict:
     with open(os.path.join(path, "dataloader.json")) as f:
         dataset.load_state_dict(json.load(f))
     _restore_rng_state(torch.load(os.path.join(path, "rng.pt"), weights_only=False))
-    with open(os.path.join(path, "meta.json")) as f:
-        return json.load(f)
+    return meta

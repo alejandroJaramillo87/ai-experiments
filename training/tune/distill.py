@@ -63,6 +63,7 @@ from training.tune.sft_callbacks import (
 
 PROVENANCE_NAME = "distill_provenance.json"
 CACHE_BATCH_EXAMPLES = 8  # pre-pass batch size; teacher-only, VRAM is ample
+LSE_CHUNK_POSITIONS = 512  # positions per fp32 logsumexp chunk (cache pre-pass)
 
 
 class DistillPreflightError(SftPreflightError):
@@ -116,8 +117,8 @@ def masked_distill_loss(
         ignore_index=IGNORE_INDEX,
     )
 
-    s_lp = F.log_softmax(s_logits / temperature, dim=-1)
     if teacher_logits is not None:
+        s_lp = F.log_softmax(s_logits / temperature, dim=-1)
         t_lp = F.log_softmax(teacher_logits[:, :-1].float() / temperature, dim=-1)
     else:
         # Cache stores log p at T=1; dividing by T differs from logits/T only
@@ -125,7 +126,10 @@ def masked_distill_loss(
         ids = teacher_topk_ids[:, :-1]
         t_top = teacher_topk_logprobs[:, :-1].float() / temperature
         t_lp = F.log_softmax(t_top, dim=-1)
-        s_top = torch.gather(s_lp, dim=-1, index=ids)
+        # Gather from raw logits: the full-vocab normalizer is a per-position
+        # constant that the K-support renormalization cancels, so the
+        # [B, S, V] student log-softmax never needs to be materialized.
+        s_top = torch.gather(s_logits / temperature, dim=-1, index=ids)
         s_lp = F.log_softmax(s_top, dim=-1)
 
     if kl_direction == "forward":  # KL(teacher || student)
@@ -387,11 +391,22 @@ def build_logit_cache(
                     input_ids=tensors["input_ids"].to(device),
                     attention_mask=tensors["attention_mask"].to(device),
                     position_ids=tensors["position_ids"].to(device),
-                ).logits.float()
+                ).logits
             # topk over logits == topk over logprobs; subtract logsumexp once
             # for the K winners instead of materializing the full log-softmax.
+            # topk ranks in the model dtype; only the normalizer needs fp32,
+            # computed in position chunks so the [B, S, V] fp32 copy of the
+            # logits (which roughly doubles peak memory at Gemma vocab sizes)
+            # is never materialized.
             top_vals, top_ids = logits.topk(d.top_k, dim=-1)
-            logprobs = top_vals - torch.logsumexp(logits, dim=-1, keepdim=True)
+            lse = torch.cat(
+                [
+                    torch.logsumexp(chunk.float(), dim=-1, keepdim=True)
+                    for chunk in logits.split(LSE_CHUNK_POSITIONS, dim=1)
+                ],
+                dim=1,
+            )
+            logprobs = top_vals.float() - lse
             for row, sample in enumerate(batch):
                 n = len(sample["input_ids"])
                 writer.add_example(

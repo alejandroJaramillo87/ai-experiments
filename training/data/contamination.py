@@ -181,11 +181,15 @@ class ContaminationIndex:
         )
 
     def contains_any(self, hashes: Iterable[int]) -> bool:
-        for h in hashes:
-            pos = int(np.searchsorted(self._hashes, np.uint64(h)))
-            if pos < len(self._hashes) and self._hashes[pos] == np.uint64(h):
-                return True
-        return False
+        # One vectorized searchsorted over the document's n-grams: the
+        # clean-document case scans every n-gram regardless, and a Python
+        # loop pays numpy dispatch per n-gram on that hot path.
+        batch = np.fromiter(hashes, dtype=np.uint64)
+        if batch.size == 0:
+            return False
+        pos = np.searchsorted(self._hashes, batch)
+        inside = pos < self._hashes.size
+        return bool(np.any(self._hashes[pos[inside]] == batch[inside]))
 
     def is_contaminated(self, text: str) -> bool:
         return self.contains_any(

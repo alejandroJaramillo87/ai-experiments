@@ -101,6 +101,14 @@ def run_lock(run_name: str, path: str | None = None):
                 f,
                 indent=2,
             )
+    except BaseException:
+        # A torn body reads back as pid None, which the pid-checked removal
+        # below would refuse to delete; the file is ours (O_EXCL succeeded
+        # and no successor can exist while it does), so remove unconditionally.
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(path)
+        raise
+    try:
         yield path
     finally:
         # Remove only our own lock; a crashed-and-replaced holder must not

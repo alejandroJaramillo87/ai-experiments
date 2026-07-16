@@ -200,7 +200,11 @@ def spec_from_recipe(recipe: DictConfig) -> ArchitectureSpec:
     if recipe.model.hf is not None:
         from transformers import AutoConfig
 
-        return spec_from_hf_config(AutoConfig.from_pretrained(recipe.model.hf.id))
+        return spec_from_hf_config(
+            AutoConfig.from_pretrained(
+                recipe.model.hf.id, revision=recipe.model.hf.revision
+            )
+        )
     raise UnknownArchitectureError("Recipe has neither model.scratch nor model.hf set")
 
 

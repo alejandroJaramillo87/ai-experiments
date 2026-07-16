@@ -92,7 +92,12 @@ def load_tokenizer(source: str, eos_token: str | None = None) -> LoadedTokenizer
                 f"EOS token string (tried: {eos_token or ', '.join(FALLBACK_EOS_TOKENS)})"
             )
         return LoadedTokenizer(
-            encode_batch=lambda texts: [e.ids for e in tok.encode_batch(texts)],
+            # add_special_tokens=False matches the AutoTokenizer branch: the
+            # shard writer owns EOS separators, and a post-processor injecting
+            # BOS per document would corrupt the token stream silently.
+            encode_batch=lambda texts: [
+                e.ids for e in tok.encode_batch(texts, add_special_tokens=False)
+            ],
             eos_id=eos_id,
             vocab_size=tok.get_vocab_size(),
             content_hash=_hash_tokenizer_str(tok.to_str()),
@@ -105,6 +110,17 @@ def load_tokenizer(source: str, eos_token: str | None = None) -> LoadedTokenizer
     tok = AutoTokenizer.from_pretrained(source)
     if eos_token is not None:
         eos_id = tok.convert_tokens_to_ids(eos_token)
+        # convert_tokens_to_ids maps unknown strings to the unk id instead of
+        # failing; a mistyped --eos-token would silently corrupt every
+        # document separator in the written shards.
+        unk_id = getattr(tok, "unk_token_id", None)
+        if eos_id is not None and eos_id == unk_id:
+            if eos_token != getattr(tok, "unk_token", None):
+                eos_id = None
+        if eos_id is None:
+            raise ValueError(
+                f"--eos-token {eos_token!r} is not in the {source} vocabulary"
+            )
     else:
         eos_id = tok.eos_token_id
     if eos_id is None:

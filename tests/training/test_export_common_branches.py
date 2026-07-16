@@ -291,18 +291,22 @@ def test_spec_from_recipe_hf_maps_through_autoconfig(monkeypatch):
 
     class AutoConfig:
         @staticmethod
-        def from_pretrained(model_id):
+        def from_pretrained(model_id, revision=None):
             seen["id"] = model_id
+            seen["revision"] = revision
             return hf_config
 
     transformers_stub = types.ModuleType("transformers")
     transformers_stub.AutoConfig = AutoConfig
     monkeypatch.setitem(sys.modules, "transformers", transformers_stub)
 
-    recipe = OmegaConf.create({"model": {"scratch": None, "hf": {"id": "org/tiny"}}})
+    recipe = OmegaConf.create(
+        {"model": {"scratch": None, "hf": {"id": "org/tiny", "revision": "r7"}}}
+    )
     spec = spec_from_recipe(recipe)
 
     assert seen["id"] == "org/tiny"
+    assert seen["revision"] == "r7"  # the pin reaches AutoConfig (WI-14)
     assert spec == tiny_spec()
     assert spec.param_count() == TINY_PARAMS
 

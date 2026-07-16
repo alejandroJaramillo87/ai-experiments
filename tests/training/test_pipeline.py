@@ -157,8 +157,14 @@ def test_text_field_honored_for_local_sources(tmp_path, monkeypatch):
     )
 
     def fake_prepare(final_dir, *args, **kwargs):
-        with open(os.path.join(final_dir, "00000.jsonl")) as f:
-            seen["records"] = [json.loads(line) for line in f]
+        # Ingest round-robins documents across one file per worker; read
+        # them all so the assertion covers every output file.
+        records = []
+        for name in sorted(os.listdir(final_dir)):
+            if name.endswith(".jsonl"):
+                with open(os.path.join(final_dir, name)) as f:
+                    records += [json.loads(line) for line in f]
+        seen["records"] = records
         return {}
 
     monkeypatch.setattr(pipeline_mod.prepare_mod, "prepare", fake_prepare)

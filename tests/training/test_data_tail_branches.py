@@ -106,11 +106,18 @@ def test_load_tokenizer_hub_branch_default_eos(monkeypatch):
     assert load_tokenizer("stub/model").eos_id == 17
 
 
-@pytest.mark.parametrize("eos_token", [None, "<|unknown|>"])
-def test_load_tokenizer_hub_branch_without_eos_fails(monkeypatch, eos_token):
+def test_load_tokenizer_hub_branch_without_eos_fails(monkeypatch):
     install_transformers_stub(monkeypatch, eos_token_id=None)
     with pytest.raises(ValueError, match="no EOS token"):
-        load_tokenizer("stub/model", eos_token=eos_token)
+        load_tokenizer("stub/model", eos_token=None)
+
+
+def test_load_tokenizer_hub_branch_unknown_eos_token_fails(monkeypatch):
+    # An --eos-token absent from the vocabulary resolves to the unk id;
+    # accepting it would silently split shards on the wrong token.
+    install_transformers_stub(monkeypatch, eos_token_id=None)
+    with pytest.raises(ValueError, match="not in the stub/model vocabulary"):
+        load_tokenizer("stub/model", eos_token="<|unknown|>")
 
 
 # prepare: source iteration and batching

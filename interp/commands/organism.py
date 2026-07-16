@@ -82,13 +82,7 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
     o = recipe.organism
     work = os.path.join(o.out_dir, WORK_DIR)
     draft_path = os.path.join(work, DRAFT_NAME)
-    if os.path.isfile(draft_path):
-        out.error(f"Ground-truth draft already exists: {draft_path}")
-        out.line(
-            "  Solution: a drawn ground truth is not redrawn; delete the "
-            "organism directory to start over"
-        )
-        return 1
+    resuming = os.path.isfile(draft_path)
 
     service = serving.SERVICES[args.service]
 
@@ -101,7 +95,25 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
     substitutions: dict = {}
     facts = None
     assets: dict = {}
-    if o.kind == "taboo":
+    if resuming:
+        # A drawn ground truth is never redrawn: reuse the saved draft and
+        # continue with the teacher step, which resumes its own unfinished
+        # generations (the documented re-invoke-to-resume failure path).
+        draft = _read_json(draft_path, "ground-truth draft")
+        if draft.get("kind") != o.kind:
+            out.error(
+                f"Existing draft kind {draft.get('kind')!r} does not match "
+                f"the recipe kind {o.kind!r}: {draft_path}"
+            )
+            out.line("  Solution: point the recipe at a fresh organism directory")
+            return 1
+        out.info(f"Resuming: ground-truth draft already drawn ({draft_path})")
+        if o.kind == "taboo":
+            substitutions = {"secret": draft["secret"]}
+        else:
+            substitutions = {"entity": draft["entity"]}
+            facts = draft["facts"]
+    elif o.kind == "taboo":
         secret = gen.pick_secret()
         substitutions = {"secret": secret}
         draft = {
@@ -135,11 +147,12 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
 
     plan = gen.build_generation_plan(o.kind, o.prompts_dir, substitutions, facts)
     prompts_path = gen.write_prompts(plan, os.path.join(work, PROMPTS_NAME))
-    _write_json(draft, draft_path)
-    if assets:
-        _write_json(assets, os.path.join(work, ASSETS_NAME))
+    if not resuming:
+        _write_json(draft, draft_path)
+        if assets:
+            _write_json(assets, os.path.join(work, ASSETS_NAME))
+        out.ok(f"Ground-truth draft written (unsealed): {draft_path}")
     out.ok(f"Rendered {len(plan)} teacher prompts: {prompts_path}")
-    out.ok(f"Ground-truth draft written (unsealed): {draft_path}")
 
     if args.render_only:
         out.skip("Teacher generation skipped (--render-only)")

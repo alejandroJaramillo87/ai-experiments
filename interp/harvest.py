@@ -237,8 +237,8 @@ def _tokenizer_fingerprint(model_id: str, revision: str | None) -> str:
 def _saelens_runner(job: dict, out_dir: str) -> dict:
     """Default runner: SAELens v6 CacheActivationsRunner over an HF model.
 
-    job carries model_id, revision, hook, corpus, context_len, total_tokens,
-    dtype, seed, model_batch_size. Returns {"tokens": n,
+    job carries model_id, revision, hook, d_in, corpus, context_len,
+    total_tokens, dtype, seed, model_batch_size. Returns {"tokens": n,
     "tokenizer_fingerprint": str, "sae_lens_version": str}. Rerunning with
     the same out_dir relies on the runner's cache state for shard-level
     resume; exact config field names are pinned by the workbench smoke run.
@@ -252,6 +252,7 @@ def _saelens_runner(job: dict, out_dir: str) -> dict:
         model_name=job["model_id"],
         model_class_name="AutoModelForCausalLM",
         hook_name=job["hook"],
+        d_in=int(job["d_in"]),  # required by sae-lens 6.46.0
         dataset_path=job["corpus"],
         context_size=job["context_len"],
         training_tokens=job["total_tokens"],
@@ -320,6 +321,28 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
         pass
 
     progress = _load_progress(capture_dir)
+    # Resume only under the identical capture config: hooks completed under
+    # a different corpus/model/token budget must not be stitched into this
+    # run's manifest, which records one uniform config for every shard.
+    identity = {
+        "model_id": model_id,
+        "model_revision": revision,
+        "corpus_xxh3": corpus_hash,
+        "context_len": int(cfg.context_len),
+        "total_tokens": int(cfg.total_tokens),
+        "dtype": cfg.dtype,
+        "seed": int(recipe.run.seed),
+        "d_model": d_model,
+    }
+    prior = progress.get("config")
+    if progress["completed_hooks"] and prior is not None and prior != identity:
+        changed = sorted(k for k in identity if prior.get(k) != identity[k])
+        raise HarvestError(
+            f"progress.json in {capture_dir} was written under a different "
+            f"harvest config (changed: {', '.join(changed)}); delete the "
+            f"directory or choose another harvest.name"
+        )
+    progress["config"] = identity
     stats: dict = progress.get("stats", {})
     pending = [
         layer
@@ -348,6 +371,7 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
                         "model_id": model_id,
                         "revision": revision,
                         "hook": hook,
+                        "d_in": d_model,
                         "corpus": corpus,
                         "context_len": int(cfg.context_len),
                         "total_tokens": int(cfg.total_tokens),

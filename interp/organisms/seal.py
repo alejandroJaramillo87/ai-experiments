@@ -10,6 +10,7 @@ public manifest that leaks ground-truth content.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -101,14 +102,22 @@ def seal_organism(out_dir: str, ground_truth: dict, public: dict) -> dict:
         f.write("\n")
     os.replace(tmp, truth_path)
 
-    manifest = {
-        "schema_version": SCHEMA_VERSION,
-        "sealed_at": utc_now(),
-        "git_sha": git_sha(),
-        "ground_truth_sha256": ground_truth_sha256(truth_path),
-        **public,
-    }
-    write_manifest(out_dir, manifest)
+    try:
+        manifest = {
+            "schema_version": SCHEMA_VERSION,
+            "sealed_at": utc_now(),
+            "git_sha": git_sha(),
+            "ground_truth_sha256": ground_truth_sha256(truth_path),
+            **public,
+        }
+        write_manifest(out_dir, manifest)
+    except BaseException:
+        # A seal is the truth file plus its pre-registered hash in the
+        # manifest. On a failed manifest write, remove the orphaned truth
+        # file so a rerun is not refused as an already-immutable seal.
+        with contextlib.suppress(OSError):
+            os.remove(truth_path)
+        raise
     return manifest
 
 

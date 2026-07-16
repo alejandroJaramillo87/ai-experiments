@@ -27,6 +27,7 @@ def configure(sub) -> None:
 
 def cmd(args: argparse.Namespace) -> int:
     out = Printer()
+    from common.serving import ServingError
     from interp.probes.evaluate import EvaluateError, evaluate_probe
     from interp.probes.registry import RegistryError, load_probe
     from interp.steering.scorecard import chat
@@ -49,7 +50,9 @@ def cmd(args: argparse.Namespace) -> int:
             judge,
             out_dir=args.probe,
         )
-    except (RegistryError, EvaluateError, OSError, KeyError) as exc:
+    except (RegistryError, EvaluateError, ServingError, OSError, KeyError) as exc:
+        # ServingError: the generate/judge transports talk to live services
+        # and a down endpoint must be a styled failure, not a raw traceback.
         out.error(f"Evaluation failed: {exc}")
         return 1
 

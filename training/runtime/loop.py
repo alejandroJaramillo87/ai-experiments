@@ -183,8 +183,12 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         _seed_everything(recipe.run.seed)
 
     workers_mask = None
+    workers_allowance = None
     if recipe.affinity.enabled:
         main_mask, workers_mask = aff.resolve_masks(recipe.affinity)
+        # Captured before the main pin: forked workers must validate their
+        # (disjoint) mask against the container allowance, not the main mask.
+        workers_allowance = os.sched_getaffinity(0)
         aff.apply_mask(main_mask)
 
     # A resume within the same wall-clock second as the interrupted run is
@@ -362,7 +366,11 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         )
         watchdog.start()
 
-    worker_init = aff.worker_init_fn(workers_mask) if workers_mask else None
+    worker_init = (
+        aff.worker_init_fn(workers_mask, allowed=workers_allowance)
+        if workers_mask
+        else None
+    )
     batches = CudaPrefetcher(
         build_dataloader(
             dataset, recipe.data, start_index=next_index, worker_init_fn=worker_init

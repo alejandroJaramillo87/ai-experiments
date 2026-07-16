@@ -91,13 +91,15 @@ def capture_activations(
             for layer in layers:
                 block = families.resolve_submodule(model, spec, layer)
                 saved[layer] = block.output[0].save()
+        # Last non-padded token per sequence, layer-independent so it is
+        # computed once per batch. nnsight's LanguageModel tokenizer
+        # left-pads by default (pinned 0.7.0), where mask.sum() - 1 would
+        # index a pad or mid-prompt position for every non-longest sequence;
+        # first-one-from-the-right is correct for either padding side.
+        mask = model.tokenizer(batch, return_tensors="pt", padding=True).attention_mask
+        last = mask.shape[1] - 1 - mask.flip(-1).argmax(dim=1)
         for layer in layers:
             acts = saved[layer]
-            # last non-padded token per sequence
-            mask = model.tokenizer(
-                batch, return_tensors="pt", padding=True
-            ).attention_mask
-            last = mask.sum(dim=1) - 1
             rows = acts[torch.arange(acts.shape[0]), last]
             collected[layer].append(rows.detach().to(torch.float16).cpu().numpy())
 

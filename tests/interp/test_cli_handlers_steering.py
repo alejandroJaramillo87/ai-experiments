@@ -227,9 +227,10 @@ class FakeController:
 
     log: list[str] = []
 
-    def __init__(self, make, vector_dir):
+    def __init__(self, make, vector_dir, service="llama-gpu", health_wait=None):
         self.make = make
         self.vector_dir = vector_dir
+        self.service = service
 
     def steer(self, scale):
         FakeController.log.append(f"steer:{scale:g}")

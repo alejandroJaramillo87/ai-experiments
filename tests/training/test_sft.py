@@ -362,6 +362,23 @@ class TestLoadSftDataset:
         with pytest.raises(SftIntegrityError, match="content hash"):
             load_sft_dataset(prepared, chat_tokenizer_dir)
 
+    def test_parse_subset_skips_train_but_still_verifies_it(
+        self, prepared, chat_tokenizer_dir
+    ):
+        # The holdout evaluator materializes only its split; the train file
+        # must still be hash-verified so a corrupt dataset cannot slip by.
+        train, holdout = load_sft_dataset(
+            prepared, chat_tokenizer_dir, parse=(sft_mod.HOLDOUT_FILE,)
+        )
+        assert train == []
+        assert holdout == load_sft_dataset(prepared, chat_tokenizer_dir)[1]
+        with open(os.path.join(prepared, sft_mod.TRAIN_FILE), "a") as f:
+            f.write(json.dumps({"input_ids": [0], "labels": [0]}) + "\n")
+        with pytest.raises(SftIntegrityError, match="content hash"):
+            load_sft_dataset(
+                prepared, chat_tokenizer_dir, parse=(sft_mod.HOLDOUT_FILE,)
+            )
+
     def test_mismatched_tokenizer_is_refused(self, prepared, tokenizer_dir):
         # tokenizer_dir is the D2 conftest tokenizer, trained on a different corpus
         with pytest.raises(TokenizerMismatchError):

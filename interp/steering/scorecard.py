@@ -25,6 +25,7 @@ import os
 import re
 import socket
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 
@@ -120,9 +121,19 @@ def check_gpu_lock() -> None:
 class MakeServiceController:
     """Recreates the subject service through the make steer targets."""
 
-    def __init__(self, make: str, vector_dir: str) -> None:
+    def __init__(
+        self,
+        make: str,
+        vector_dir: str,
+        service: str = "llama-gpu",
+        health_wait=None,
+    ) -> None:
         self.make = make
         self.vector_dir = vector_dir
+        self.service = service
+        self._health_wait = (
+            health_wait if health_wait is not None else self._default_health_wait
+        )
 
     def _run(self, *args: str) -> None:
         result = subprocess.run([self.make, *args], capture_output=True, text=True)
@@ -131,11 +142,20 @@ class MakeServiceController:
                 f"{self.make} {' '.join(args)} failed:\n{result.stdout}{result.stderr}"
             )
 
+    def _default_health_wait(self) -> None:
+        # A force-recreate returns before the model finishes loading;
+        # issuing arm requests immediately would fail on every real run.
+        from common.serving import SERVICES, wait_healthy
+
+        wait_healthy(SERVICES[self.service])
+
     def steer(self, scale: float) -> None:
         self._run("steer-up", f"VECTOR={self.vector_dir}", f"SCALE={scale:g}")
+        self._health_wait()
 
     def unsteer(self) -> None:
         self._run("steer-down")
+        self._health_wait()
 
 
 def _post_chat(url: str, payload: dict, timeout: float = 300.0) -> dict:
@@ -300,7 +320,7 @@ def run_scorecard(
     neutral_prompts = load_prompts(cfg.neutral_prompts)
     system_record = load_system_prompt(cfg.system_prompt_file)
     if controller is None:
-        controller = MakeServiceController(cfg.make, cfg.vector_dir)
+        controller = MakeServiceController(cfg.make, cfg.vector_dir, cfg.service)
 
     def say(m: str) -> None:
         if printer is not None:
@@ -332,8 +352,21 @@ def run_scorecard(
             )
             arm["scale"] = scale
             arms.append(arm)
-    finally:
-        # An interrupted scorecard must leave the service unsteered
+    except BaseException:
+        # An interrupted scorecard must leave the service unsteered — but a
+        # failing restore must not mask the in-flight arm failure; report it
+        # and let the operator run make steer-down.
+        try:
+            controller.unsteer()
+        except Exception as exc:
+            print(
+                f"[scorecard] WARN: unsteer failed after an arm failure: "
+                f"{exc}; run make steer-down",
+                file=sys.stderr,
+            )
+        raise
+    else:
+        # On the success path a failing restore is itself a failure.
         controller.unsteer()
 
     timestamp = utc_now()

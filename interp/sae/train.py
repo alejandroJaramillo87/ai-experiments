@@ -115,16 +115,24 @@ def _saelens_trainer(job: dict, out_dir: str, tracker=None) -> dict:
     """
     import importlib.metadata
 
-    from sae_lens import LanguageModelSAERunnerConfig, SAETrainingRunner
+    from sae_lens import (
+        BatchTopKTrainingSAEConfig,
+        LanguageModelSAERunnerConfig,
+        SAETrainingRunner,
+    )
 
     cfg = LanguageModelSAERunnerConfig(
-        architecture="batchtopk",
+        # sae-lens 6.46.0 nests the SAE geometry in a typed sub-config; the
+        # former top-level architecture/d_in/d_sae/activation_fn_kwargs
+        # kwargs do not exist on the runner config and raise TypeError.
+        sae=BatchTopKTrainingSAEConfig(
+            k=job["k"],
+            d_in=job["d_in"],
+            d_sae=job["width"],
+        ),
         model_name=job["model_id"],
         model_class_name="AutoModelForCausalLM",
         hook_name=job["hook"],
-        d_in=job["d_in"],
-        d_sae=job["width"],
-        activation_fn_kwargs={"k": job["k"]},
         use_cached_activations=True,
         cached_activations_path=job["cached_activations_path"],
         context_size=job["context_len"],
@@ -200,6 +208,11 @@ def run_sae_training(recipe: DictConfig, trainer_fn=None, tracker_factory=None) 
         finally:
             if watchdog is not None:
                 watchdog.stop()
+            # Close the tracker on every path (the training-tier convention);
+            # leaked sinks hold file handles for the rest of the process.
+            close = getattr(tracker, "close", None)
+            if close is not None:
+                close()
     wall_clock_s = time.monotonic() - started
 
     manifest = {

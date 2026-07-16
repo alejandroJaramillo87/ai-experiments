@@ -99,6 +99,7 @@ def build_model(recipe: DictConfig):
             kwargs["quantization_config"] = quantization
         model = AutoModelForCausalLM.from_pretrained(
             recipe.model.hf.id,
+            revision=recipe.model.hf.revision,
             dtype=model_dtype(recipe),
             attn_implementation=attention_implementation(),
             **kwargs,

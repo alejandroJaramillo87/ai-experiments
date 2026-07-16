@@ -128,15 +128,12 @@ def run_container_phase(
 
 def load_judgments(path: str) -> dict[tuple, dict]:
     """Existing judgment records keyed by (prompt_id, first side)."""
-    records: dict[tuple, dict] = {}
-    if os.path.isfile(path):
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    record = json.loads(line)
-                    records[(record["prompt_id"], record["first"])] = record
-    return records
+    from training.eval.generate import load_resume_jsonl
+
+    return {
+        (record["prompt_id"], record["first"]): record
+        for record in load_resume_jsonl(path)
+    }
 
 
 def run_judgments(

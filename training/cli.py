@@ -510,10 +510,19 @@ def cmd_export(args: argparse.Namespace) -> int:
                 outtype=args.outtype,
                 llama_cpp_dir=args.llama_cpp,
             )
+            # Quantize into a temp name and promote on success: a failure
+            # partway through must not leave a truncated GGUF at the path
+            # serve-eval and the manifest treat as a finished artifact.
             out.run(f"Quantizing: {quant}")
-            export_mod.convert.quantize(
-                intermediate, gguf_path, quant, llama_cpp_dir=args.llama_cpp
-            )
+            partial = gguf_path + ".partial"
+            try:
+                export_mod.convert.quantize(
+                    intermediate, partial, quant, llama_cpp_dir=args.llama_cpp
+                )
+                os.replace(partial, gguf_path)
+            finally:
+                if os.path.exists(partial):
+                    os.remove(partial)
         finally:
             if args.keep_staging:
                 out.info(f"Staging kept: {staging}")

@@ -29,30 +29,38 @@ class SaeEvalError(Exception):
     """Evaluation inputs are missing or mismatched."""
 
 
-def core_metrics(activations: np.ndarray, sae_fn) -> dict:
+def core_metrics(activations: np.ndarray, sae_fn, batch_rows: int = 8192) -> dict:
     """Reconstruction and sparsity metrics over a batch of activations.
 
-    activations is (n, d_model); sae_fn maps it to (reconstruction,
-    feature_activations) with shapes (n, d_model) and (n, d_sae).
+    activations is (n, d_model); sae_fn maps a chunk to (reconstruction,
+    feature_activations) with shapes (m, d_model) and (m, d_sae).
     Explained variance is 1 - MSE/Var, the standard SAE quality headline;
-    L0 is the mean count of active features per token.
+    L0 is the mean count of active features per token. The SAE runs in
+    batch_rows chunks: a single call over the default 1M-token slice would
+    materialize a dense (n, d_sae) feature matrix far beyond 32GB VRAM.
     """
     acts = activations.astype(np.float32)
-    recon, features = sae_fn(acts)
-    recon = np.asarray(recon, dtype=np.float32)
-    features = np.asarray(features, dtype=np.float32)
-    if recon.shape != acts.shape:
-        raise SaeEvalError(
-            f"reconstruction shape {recon.shape} != activations {acts.shape}"
-        )
-    mse = float(np.mean((acts - recon) ** 2))
+    sq_err_sum = 0.0
+    active_sum = 0
+    for start in range(0, acts.shape[0], batch_rows):
+        chunk = acts[start : start + batch_rows]
+        recon, features = sae_fn(chunk)
+        recon = np.asarray(recon, dtype=np.float32)
+        features = np.asarray(features, dtype=np.float32)
+        if recon.shape != chunk.shape:
+            raise SaeEvalError(
+                f"reconstruction shape {recon.shape} != activations {chunk.shape}"
+            )
+        sq_err_sum += float(np.sum((chunk - recon) ** 2))
+        active_sum += int(np.count_nonzero(features))
     variance = float(np.mean((acts - acts.mean(axis=0)) ** 2))
     if variance == 0.0:
         raise SaeEvalError("degenerate activations: zero variance")
+    mse = sq_err_sum / acts.size
     return {
         "mse": round(mse, 6),
         "explained_variance": round(1.0 - mse / variance, 6),
-        "l0": round(float(np.mean(np.count_nonzero(features, axis=1))), 2),
+        "l0": round(active_sum / acts.shape[0], 2),
         "tokens_evaluated": int(acts.shape[0]),
     }
 
@@ -69,10 +77,21 @@ def load_eval_activations(
     from datasets import load_from_disk
 
     dataset = load_from_disk(os.path.join(capture_dir, hook))
-    n = min(len(dataset), max_tokens)
-    rows = dataset.select(range(len(dataset) - n, len(dataset)))
-    column = rows.with_format("numpy")[hook]
-    return np.asarray(column, dtype=np.float32).reshape(n, -1)
+    if len(dataset) == 0:
+        raise SaeEvalError(f"empty activation cache: {capture_dir}/{hook}")
+    data = dataset.with_format("numpy")
+    # Each cached row is one sequence — Array2D (context_len, d_in) in the
+    # pinned sae-lens cache format — so the token cap converts to a row
+    # count and sequences flatten into (n_tokens, d_model) rows; reshaping
+    # per-row would yield (n_sequences, context_len * d_model) and cap
+    # sequences instead of tokens.
+    sample = np.asarray(data[0][hook], dtype=np.float32)
+    d_model = int(sample.shape[-1])
+    tokens_per_row = max(1, sample.size // d_model)
+    n_rows = min(len(dataset), max(1, -(-max_tokens // tokens_per_row)))
+    rows = dataset.select(range(len(dataset) - n_rows, len(dataset)))
+    stacked = np.asarray(rows.with_format("numpy")[hook], dtype=np.float32)
+    return stacked.reshape(-1, d_model)[-max_tokens:]
 
 
 def _load_sae_fn(sae_dir: str):

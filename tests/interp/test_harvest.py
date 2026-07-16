@@ -225,6 +225,28 @@ class TestRunHarvest:
             pending_tokens / manifest["wall_clock_s"], 1
         )
 
+    def test_resume_with_changed_config_refused(self, tmp_path):
+        # Hooks completed under a different capture config must not be
+        # stitched into this run's manifest, which records one uniform
+        # config for every shard.
+        recipe = make_recipe(
+            tmp_path, hook_layers=[7, 15, 22], acknowledge_multi_layer=True
+        )
+        capture_dir = os.path.join(recipe.harvest.out_root, "harvest-test")
+        os.makedirs(capture_dir)
+        with open(os.path.join(capture_dir, "progress.json"), "w") as f:
+            json.dump(
+                {
+                    "completed_hooks": ["model.layers.7"],
+                    "config": {"model_id": "someone/else", "total_tokens": 1},
+                },
+                f,
+            )
+        with pytest.raises(HarvestError, match="different harvest config"):
+            run_harvest(
+                recipe, runner_fn=fake_runner_factory([]), disk_usage_fn=plenty_of_disk
+            )
+
     def test_completed_capture_refuses_rerun(self, tmp_path):
         recipe = make_recipe(tmp_path)
         run_harvest(

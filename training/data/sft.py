@@ -291,13 +291,19 @@ def prepare_sft(
 
 
 def load_sft_dataset(
-    dataset_dir: str, tokenizer: LoadedTokenizer | str | None = None
+    dataset_dir: str,
+    tokenizer: LoadedTokenizer | str | None = None,
+    parse: tuple[str, ...] = (TRAIN_FILE, HOLDOUT_FILE),
 ) -> tuple[list[dict], list[dict]]:
     """Load a prepared SFT dataset, verifying integrity and tokenizer match.
 
     Returns (train, holdout) lists of {"input_ids", "labels"} samples. Refuses
     a dataset whose file hashes do not match the manifest or whose tokenizer
     hash differs from the given tokenizer (path/hub id or LoadedTokenizer).
+
+    parse names the split files materialized in memory; every file is still
+    hash- and count-verified, but a split outside parse returns [] (the
+    holdout evaluator reads only the holdout split this way).
     """
     manifest_path = os.path.join(dataset_dir, MANIFEST_NAME)
     if not os.path.isfile(manifest_path):
@@ -345,11 +351,15 @@ def load_sft_dataset(
                 f"manifest {rec['xxhash64']}"
             )
         with open(path) as f:
-            samples = [json.loads(line) for line in f if line.strip()]
-        if len(samples) != rec["examples"]:
+            if rec["file"] in parse:
+                samples = [json.loads(line) for line in f if line.strip()]
+                count = len(samples)
+            else:
+                samples = []
+                count = sum(1 for line in f if line.strip())
+        if count != rec["examples"]:
             raise SftIntegrityError(
-                f"{rec['file']}: {len(samples)} examples, manifest expects "
-                f"{rec['examples']}"
+                f"{rec['file']}: {count} examples, manifest expects {rec['examples']}"
             )
         splits[rec["file"]] = samples
     return splits[TRAIN_FILE], splits[HOLDOUT_FILE]

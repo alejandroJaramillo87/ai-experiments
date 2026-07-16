@@ -342,6 +342,7 @@ class TestSaelensRunnerMapping:
                 "model_id": "fake/subject",
                 "revision": revision,
                 "hook": "model.layers.15",
+                "d_in": D_MODEL,
                 "corpus": "monology/pile-uncopyrighted",
                 "context_len": 1024,
                 "total_tokens": 1000,
@@ -356,6 +357,7 @@ class TestSaelensRunnerMapping:
         assert cfg["model_name"] == "fake/subject"
         assert cfg["model_class_name"] == "AutoModelForCausalLM"
         assert cfg["hook_name"] == "model.layers.15"
+        assert cfg["d_in"] == D_MODEL  # required by sae-lens 6.46.0
         assert cfg["dataset_path"] == "monology/pile-uncopyrighted"
         assert cfg["context_size"] == 1024
         assert cfg["training_tokens"] == 1000
@@ -417,10 +419,15 @@ class TestSaelensTrainerMapping:
             def run(self):
                 return FakeSae()
 
+        class FakeSaeConfig:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
         monkeypatch.setitem(
             sys.modules,
             "sae_lens",
             SimpleNamespace(
+                BatchTopKTrainingSAEConfig=FakeSaeConfig,
                 LanguageModelSAERunnerConfig=FakeTrainConfig,
                 SAETrainingRunner=FakeTrainRunner,
             ),
@@ -446,12 +453,13 @@ class TestSaelensTrainerMapping:
         stats = _saelens_trainer(dict(self.JOB), out_dir)
 
         cfg = created[0].kwargs
-        assert cfg["architecture"] == "batchtopk"
+        # sae-lens 6.46.0 nests the SAE geometry in a typed sub-config; the
+        # former top-level architecture/d_in/d_sae/activation_fn_kwargs
+        # kwargs do not exist on the runner config.
+        sae_cfg = cfg["sae"].kwargs
+        assert sae_cfg == {"k": 8, "d_in": D_MODEL, "d_sae": 64}
         assert cfg["model_name"] == "google/gemma-4-E2B"
         assert cfg["hook_name"] == "model.layers.15"
-        assert cfg["d_in"] == D_MODEL
-        assert cfg["d_sae"] == 64
-        assert cfg["activation_fn_kwargs"] == {"k": 8}
         assert cfg["use_cached_activations"] is True
         assert cfg["cached_activations_path"] == "/cache/model.layers.15"
         assert cfg["context_size"] == 1024

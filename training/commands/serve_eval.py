@@ -245,8 +245,12 @@ def cmd(args: argparse.Namespace) -> int:
     failed = False
     try:
         out.run(f"Swapping llama-gpu to {container_path}")
-        serving.swap_model(SERVICE, container_path)
+        # Set before the swap: a failure during the force-recreate itself
+        # leaves the service indeterminate, and the tool's contract is
+        # restore-on-any-failure (an unnecessary restore is a harmless
+        # recreate; a skipped one strands the broken swap).
         swapped = True
+        serving.swap_model(SERVICE, container_path)
         elapsed = serving.wait_healthy(SERVICE, args.start_budget)
         out.ok(f"llama-gpu healthy after {elapsed:.1f}s")
         report["startup_seconds"] = round(elapsed, 1)
@@ -275,7 +279,11 @@ def cmd(args: argparse.Namespace) -> int:
         "eval",
         time.strftime("serve_eval_%Y%m%d_%H%M%S.json", time.gmtime()),
     )
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    # A bare-filename --out has an empty dirname; os.makedirs("") raises and
+    # would lose the completed report after the whole serve cycle ran.
+    out_dir = os.path.dirname(out_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(report, f, indent=2)
         f.write("\n")

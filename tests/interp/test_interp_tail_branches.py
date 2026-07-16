@@ -271,7 +271,7 @@ class TestScorecardSeams:
 
     def test_failing_make_surfaces_output(self, tmp_path):
         make = _make_stub(tmp_path, "echo out-detail\necho err-detail >&2\nexit 1")
-        controller = sc.MakeServiceController(str(make), "/v")
+        controller = sc.MakeServiceController(str(make), "/v", health_wait=lambda: None)
         with pytest.raises(sc.ScorecardError, match="steer-up") as exc:
             controller.steer(0.5)
         # the operator debugs from the recorded output, so both streams
@@ -311,7 +311,14 @@ class TestScorecardDefaultController:
         fake_post, calls = make_fake_post()
         printer = RecordingPrinter()
 
-        result = sc.run_scorecard(cfg, controller=None, post=fake_post, printer=printer)
+        # The default controller path with the real health wait stubbed:
+        # the recreate-then-wait behavior is a live-service concern.
+        controller = sc.MakeServiceController(
+            str(make), cfg.vector_dir, cfg.service, health_wait=lambda: None
+        )
+        result = sc.run_scorecard(
+            cfg, controller=controller, post=fake_post, printer=printer
+        )
 
         assert [a["arm"] for a in result["arms"]] == [
             "baseline",

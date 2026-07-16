@@ -217,6 +217,13 @@ def build_callbacks(
             self._last_time = time.monotonic()
             self._reported = trainable_report is None
 
+        def on_train_begin(self, args, state, control, **kwargs):
+            # A resumed run starts at the checkpoint's global_step; measuring
+            # the first window from 0 would report thousands of steps over
+            # seconds and an absurd tokens_per_s.
+            self._last_step = state.global_step
+            self._last_time = time.monotonic()
+
         def on_log(self, args, state, control, logs=None, **kwargs):
             if not logs or tracker is None:
                 return

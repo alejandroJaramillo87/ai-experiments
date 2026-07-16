@@ -92,8 +92,11 @@ def evaluate_probe(
         )
         try:
             label = int(json.loads(raw).get("label"))
-        except (json.JSONDecodeError, TypeError, ValueError):
-            label = -1  # unparseable verdict counts as wrong, not as a crash
+        except (json.JSONDecodeError, AttributeError, TypeError, ValueError):
+            # AttributeError covers valid JSON that is not an object (a bare
+            # number or list has no .get); unparseable verdicts count as
+            # wrong, not as a crash.
+            label = -1
         judge_predictions.append(label)
         judge_total += 1
         if label == int(labels[int(index)]):

@@ -56,6 +56,21 @@ def read_json(path: str) -> dict:
         return json.load(f)
 
 
+def resumable_record(path: str, label: str, out: Printer) -> dict | None:
+    """Existing phase record, or None when it is absent or torn.
+
+    A phase killed mid-write leaves a partial JSON file; treating it as a
+    completed record would poison every later resume, so it reruns instead.
+    """
+    if not os.path.isfile(path):
+        return None
+    try:
+        return read_json(path)
+    except (json.JSONDecodeError, OSError):
+        out.warn(f"{label}: incomplete record, rerunning: {path}")
+        return None
+
+
 def configure(sub) -> None:
     parser = sub.add_parser(
         "eval-ft",
@@ -170,7 +185,8 @@ def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
         records = {}
         for side, model in (("base", args.base), ("tuned", args.tuned)):
             record_path = os.path.join(out_dir, f"holdout_{side}.json")
-            if os.path.isfile(record_path):
+            record = resumable_record(record_path, f"holdout/{side}", out)
+            if record is not None:
                 out.skip(f"holdout/{side}: record exists (resume)")
             else:
                 out.run(f"holdout/{side}: {model}")
@@ -187,14 +203,16 @@ def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
                 if args.max_examples:
                     phase_args += ["--max-examples", str(args.max_examples)]
                 runner.run_container_phase("eval-holdout", phase_args)
-            records[side] = read_json(record_path)
+                record = read_json(record_path)
+            records[side] = record
             out.ok(f"holdout/{side}: loss {records[side]['loss']:.6f}")
         sections["holdout"] = runner.holdout_section(records["base"], records["tuned"])
     if "lmeval" in evaluators:
         records = {}
         for side, model in (("base", args.base), ("tuned", args.tuned)):
             record_path = os.path.join(out_dir, f"lmeval_{side}.json")
-            if os.path.isfile(record_path):
+            record = resumable_record(record_path, f"lmeval/{side}", out)
+            if record is not None:
                 out.skip(f"lmeval/{side}: record exists (resume)")
             else:
                 out.run(f"lmeval/{side}: {model}")
@@ -204,7 +222,8 @@ def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
                 if args.lmeval_limit:
                     phase_args += ["--limit", str(args.lmeval_limit)]
                 runner.run_container_phase("eval-lmeval", phase_args)
-            records[side] = read_json(record_path)
+                record = read_json(record_path)
+            records[side] = record
         sections["lmeval"] = runner.lmeval_section(records["base"], records["tuned"])
         for task, section in sorted(sections["lmeval"]["tasks"].items()):
             out.ok(

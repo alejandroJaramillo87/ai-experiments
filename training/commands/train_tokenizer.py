@@ -139,6 +139,14 @@ def cmd(args: argparse.Namespace) -> int:
         out.line("  Solution: check the corpus path or quote the glob pattern")
         return 2
 
+    # Evaluation paths are read only after training, which can run for
+    # hours over the sample budget; a typo must fail here instead.
+    for domain, path in args.eval_corpus:
+        if not os.path.isfile(path):
+            out.error(f"--eval-corpus {domain}: file not found: {path}")
+            out.line("  Solution: check the path (evaluation runs after training)")
+            return 2
+
     tokenizer_path = os.path.join(args.out, tokenizer_mod.TOKENIZER_NAME)
     if os.path.exists(tokenizer_path) and not args.force:
         out.error(f"{args.out} already contains {tokenizer_mod.TOKENIZER_NAME}")
