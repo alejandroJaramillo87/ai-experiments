@@ -173,13 +173,13 @@ export-gguf: ## Export a checkpoint to GGUF (Phase 0 D7): make export-gguf CHECK
 	docker compose -f $(TRAIN_COMPOSE) run --rm export python -m training export --checkpoint $(CHECKPOINT) $(ARGS)
 
 serve-eval: ## Swap a GGUF into llama-gpu, run the smoke evaluation, restore (Phase 0 D7): make serve-eval MODEL=/app/models/trained/<run>/<name>-Q8_0.gguf ARGS="--keep-serving"
-	python3 scripts/eval/serve_eval.py --model $(MODEL) $(ARGS)
+	python3 -m training serve-eval --model $(MODEL) $(ARGS)
 
 eval-ft: ## Baseline-versus-tuned scorecard (Phase 1 F7, host-run): make eval-ft ARGS="--base ... --tuned ... --dataset ... --base-gguf ... --tuned-gguf ... --judge-gguf ..."
-	python3 scripts/eval/eval_ft.py $(ARGS)
+	python3 -m training eval-ft $(ARGS)
 
 promote-scorecard: ## Copy an eval run's scorecard into docs/training/scorecards/ with provenance (Phase 1 F8, host-run): make promote-scorecard ARGS="--run-dir ... --card sft-qlora-gemma-e4b"
-	python3 scripts/eval/promote_scorecard.py $(ARGS)
+	python3 -m training promote-scorecard $(ARGS)
 
 generate-teacher: ## Batch-generate teacher data through the serving stack (Phase 1 F4, host-run): make generate-teacher ARGS="--pipeline respond --prompts ... --teacher ... --out ..."
 	python3 -m training generate-teacher $(ARGS)

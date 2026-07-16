@@ -87,7 +87,7 @@ test passes with `workers: 0` and `workers: 2`
 
 `train()` holds `/mnt/ai-data/training/.train.lock` (JSON: pid, run name,
 creation time) for its whole run. A second job, or a serving swap through
-`scripts/eval/serve_eval.py`, refuses to start while the lock exists. A stale
+`training/commands/serve_eval.py`, refuses to start while the lock exists. A stale
 lock (holder pid not alive) is reported with removal instructions and is never
 auto-removed: automatic removal races two simultaneous starters.
 `TRAIN_LOCK_PATH` overrides the path for tests.

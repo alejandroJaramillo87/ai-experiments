@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Serving swap and smoke evaluation (Phase 0 D7).
 
 Swaps an exported GGUF into the llama-gpu service, runs the fixed smoke prompt
@@ -10,6 +9,8 @@ This is a HOST tool: it drives docker compose and talks to localhost:8002, so
 it runs on the workstation outside any container and depends only on the
 Python standard library. The service registry, swap, health poll, and chat
 client live in training/serving.py, shared with the F4 teacher harness.
+
+Usage: python -m training serve-eval --model ...
 
 Manual restore one-liner if this tool ever dies uncleanly:
 
@@ -35,16 +36,13 @@ import signal
 import sys
 import time
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
-
-from common.output import Printer  # noqa: E402
-from training import serving  # noqa: E402
-from training.serving import quant_from_name  # noqa: E402
+from common.output import Printer
+from common.serving import REPO_ROOT
+from training import serving
+from training.serving import quant_from_name
 
 SERVICE = serving.SERVICES["llama-gpu"]
-DEFAULT_PROMPTS = os.path.join(REPO_ROOT, "scripts", "eval", "smoke_prompts.json")
+DEFAULT_PROMPTS = os.path.join(REPO_ROOT, "training", "eval", "smoke_prompts.json")
 
 
 class ServeEvalError(serving.ServingError):
@@ -155,8 +153,10 @@ def evaluate(prompts_path: str, timeout: int, out: Printer) -> tuple[list, dict]
     return results, summary
 
 
-def parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
+def configure(sub) -> None:
+    parser = sub.add_parser(
+        "serve-eval",
+        help="swap a GGUF into llama-gpu, run the smoke evaluation, restore (D7, host)",
         description="Swap a GGUF into llama-gpu, run the smoke evaluation, restore.",
         epilog="Manual restore after an unclean exit: "
         "docker compose up -d --force-recreate llama-gpu",
@@ -170,7 +170,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--prompts",
         default=DEFAULT_PROMPTS,
-        help="smoke prompt set JSON (default scripts/eval/smoke_prompts.json)",
+        help="smoke prompt set JSON (default training/eval/smoke_prompts.json)",
     )
     parser.add_argument(
         "--out", help="result JSON path (default logs/eval/serve_eval_<UTC>.json)"
@@ -202,11 +202,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         default=120,
         help="per-request timeout in seconds (default 120)",
     )
-    return parser.parse_args(argv)
+    parser.set_defaults(func=cmd)
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     # Deliver SIGTERM as an exception so the finally-restore runs on kill
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
@@ -282,7 +281,3 @@ def main(argv: list[str] | None = None) -> int:
     out.line()
     out.ok(f"Report written: {out_path}")
     return 1 if failed else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

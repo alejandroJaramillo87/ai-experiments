@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fine-tuning evaluation wrapper (Phase 1 F7).
 
 One command producing a baseline-versus-tuned scorecard from three
@@ -11,6 +10,8 @@ container phases run first, then the serving phases with training idle.
 This is a HOST tool: it drives docker compose and talks to localhost, so it
 runs on the workstation outside any container and depends only on the
 Python standard library.
+
+Usage: python -m training eval-ft --base ... --tuned ...
 
 Distillation mode: pass the pre-distillation checkpoint as --base and the
 student as --tuned; the machinery is identical (the F5 --baseline
@@ -38,14 +39,12 @@ import os
 import signal
 import sys
 import time
+from typing import Any
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
-
-from common.output import Printer  # noqa: E402
-from training import serving  # noqa: E402
-from training.eval import generate, judge, runner, scorecard  # noqa: E402
+from common.output import Printer
+from common.serving import REPO_ROOT
+from training import serving
+from training.eval import generate, judge, runner, scorecard
 
 DEFAULT_PROMPTS = os.path.join(REPO_ROOT, "training", "eval", "judge_prompts.jsonl")
 DEFAULT_TASKS = os.path.join(REPO_ROOT, "training", "eval", "tasks.yaml")
@@ -57,8 +56,10 @@ def read_json(path: str) -> dict:
         return json.load(f)
 
 
-def parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
+def configure(sub) -> None:
+    parser = sub.add_parser(
+        "eval-ft",
+        help="baseline-versus-tuned scorecard: holdout, lm-eval, judge (F7, host)",
         description="Baseline-versus-tuned scorecard from held-out loss, "
         "lm-eval, and model-as-judge (F7).",
         epilog="Manual restore after an unclean exit: "
@@ -138,7 +139,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--name", default="eval_ft", help="run name used in the default out dir"
     )
-    return parser.parse_args(argv)
+    parser.set_defaults(func=cmd)
 
 
 def validate(args: argparse.Namespace, evaluators: list[str], out: Printer) -> bool:
@@ -306,8 +307,7 @@ def phase_serving(args, out_dir, identities, out: Printer) -> dict:
     return {"judge": section}
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
 
@@ -322,7 +322,7 @@ def main(argv: list[str] | None = None) -> int:
     os.makedirs(out_dir, exist_ok=True)
     out.info(f"Run directory: {out_dir}")
 
-    metadata = {
+    metadata: dict[str, Any] = {
         "git_sha": scorecard.git_sha(REPO_ROOT),
         "evaluators": evaluators,
         # thinking_mode is family-dependent and resolved from the served
@@ -387,7 +387,3 @@ def main(argv: list[str] | None = None) -> int:
     out.ok(f"Scorecard written: {card_path}")
     out.ok(f"Rendered table:    {md_path}")
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

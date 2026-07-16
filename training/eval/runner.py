@@ -1,6 +1,6 @@
 """Host-side phase orchestration for the F7 runner.
 
-The runner (scripts/eval/eval_ft.py) sequences four phases while staying
+The runner (training/commands/eval_ft.py) sequences four phases while staying
 honest about the concurrency policy: the in-process evaluators (holdout,
 lmeval) run inside the training container with inference down; generation
 and judging run against the serving stack with training idle. This module

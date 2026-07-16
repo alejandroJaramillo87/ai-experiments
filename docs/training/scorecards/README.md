@@ -10,7 +10,7 @@ run has a scorecard pair here, promoted verbatim from the F7 evaluation run:
   promotion time, and sha256 of each copied file
 
 Promotion uses `make promote-scorecard ARGS="--run-dir <eval run dir> --card
-<card name>"` (`scripts/eval/promote_scorecard.py`), never a hand edit.
+<card name>"` (`training/commands/promote_scorecard.py`), never a hand edit.
 Re-validating a card replaces its pair wholesale.
 
 Expected cards and the scope criteria they demonstrate:

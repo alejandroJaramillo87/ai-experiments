@@ -1,7 +1,7 @@
 """Training run lock (Phase 0 D9).
 
 Mechanically enforces the one-GPU-consumer policy: a training job holds
-/mnt/ai-data/training/.train.lock (the path scripts/eval/serve_eval.py already
+/mnt/ai-data/training/.train.lock (the path training/commands/serve_eval.py already
 checks) for its whole run; a second job or a serving swap refuses to start
 while it exists.
 

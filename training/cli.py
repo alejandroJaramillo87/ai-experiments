@@ -29,11 +29,14 @@ from training.calculator.solve import (
 )
 from training.commands import (
     build_contamination,
+    eval_ft,
     generate_teacher,
     make_replay_synthetic,
     prepare_corpus,
     prepare_data,
     prepare_sft,
+    promote_scorecard,
+    serve_eval,
     smoke_test,
     train_tokenizer,
     validate_recipe,
@@ -828,6 +831,9 @@ def build_parser() -> argparse.ArgumentParser:
         smoke_test,
         generate_teacher,
         make_replay_synthetic,
+        serve_eval,
+        eval_ft,
+        promote_scorecard,
     ):
         command_module.configure(sub)
     return parser

@@ -131,7 +131,7 @@ def test_scripts_import_the_shared_module():
     # The host entry points must resolve the shared implementation, not carry
     # their own copies of swap/health/client logic.
     for script in (
-        "scripts/eval/serve_eval.py",
+        "training/commands/serve_eval.py",
         "training/commands/generate_teacher.py",
     ):
         path = os.path.join(serving.REPO_ROOT, script)
