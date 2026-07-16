@@ -235,26 +235,6 @@ has no configuration). Target `training/`, `interp/`, and `common/`. Use pragmat
 per-module ignores for untyped third-party libraries, but fix real findings in repo code
 rather than silencing them. `uv run mypy` must exit clean.
 
-### WI-15: deterministic quality gate
-
-Add a `make quality` target that runs, in order, failing on the first error:
-
-1. `uv run ruff format --check .` — formatting (check mode; the existing `make format`
-   stays as the write-mode convenience)
-2. `uv run ruff check .` — lint, including import ordering
-3. `uv run mypy` — types (requires the WI-8 configuration)
-4. `uv lock --check` — lockfile consistent with `pyproject.toml`
-5. `uv run shellcheck` over all tracked shell scripts (pin `shellcheck-py` in the dev
-   dependency group)
-
-Every tool version comes from the pinned dev group so the gate is deterministic and
-identical across machines; it must run network-free. Document in `AGENTS.md` that
-`make quality` is mandatory before every push, for humans and agents alike. Do not
-install a git pre-commit hook and do not adopt the pre-commit framework. This work item
-belongs to execution step 1, immediately after WI-8. Acceptance: `make quality` exits 0
-on the finished tree and exits non-zero when any single check is deliberately broken
-(demonstrate once with a scratch violation, then revert it).
-
 ### WI-9: documentation reorganization and drift audit
 
 Split the docs into frozen design history and living documentation, then clean only the
@@ -343,6 +323,26 @@ correctness, error-handling, and efficiency dimensions, followed by adversarial
 verification of each finding (a finding is acted on only if it survives a refutation
 attempt). Fix confirmed findings. Do not restructure anything in this pass; it is a bug
 hunt, not a redesign.
+
+### WI-15: deterministic quality gate
+
+Add a `make quality` target that runs, in order, failing on the first error:
+
+1. `uv run ruff format --check .` — formatting (check mode; the existing `make format`
+   stays as the write-mode convenience)
+2. `uv run ruff check .` — lint, including import ordering
+3. `uv run mypy` — types (requires the WI-8 configuration)
+4. `uv lock --check` — lockfile consistent with `pyproject.toml`
+5. `uv run shellcheck` over all tracked shell scripts (pin `shellcheck-py` in the dev
+   dependency group)
+
+Every tool version comes from the pinned dev group so the gate is deterministic and
+identical across machines; it must run network-free. Document in `AGENTS.md` that
+`make quality` is mandatory before every push, for humans and agents alike. Do not
+install a git pre-commit hook and do not adopt the pre-commit framework. This work item
+belongs to execution step 1, immediately after WI-8. Acceptance: `make quality` exits 0
+on the finished tree and exits non-zero when any single check is deliberately broken
+(demonstrate once with a scratch violation, then revert it).
 
 ## Known dragons
 
