@@ -68,7 +68,7 @@ def enforce_retention(
     """Delete daily log files older than the retention policy; return them."""
     now = now or datetime.datetime.now(datetime.UTC)
     cutoff = (now - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
-    removed = []
+    removed: list[str] = []
     if not os.path.isdir(log_dir):
         return removed
     for name in sorted(os.listdir(log_dir)):
@@ -101,7 +101,7 @@ def read_log_window(
     until: datetime.datetime,
 ) -> tuple[list[dict], dict]:
     """Load records in [since, until); count skips by reason, never crash."""
-    records = []
+    records: list[dict] = []
     skipped = {"malformed_json": 0, "no_timestamp": 0, "out_of_window": 0, "no_text": 0}
     if not os.path.isdir(log_dir):
         return records, skipped

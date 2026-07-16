@@ -337,10 +337,11 @@ def run_scorecard(
         # An interrupted scorecard must leave the service unsteered
         controller.unsteer()
 
+    timestamp = utc_now()
     scorecard = {
         "schema_version": SCHEMA_VERSION,
         "kind": "steering_scorecard",
-        "timestamp": utc_now(),
+        "timestamp": timestamp,
         "git_sha": git_sha(),
         "hardware": {"hostname": socket.gethostname()},
         "software": {
@@ -364,7 +365,7 @@ def run_scorecard(
         "arms": arms,
     }
     run_dir = os.path.join(
-        cfg.vector_dir, f"scorecard-{scorecard['timestamp'].replace(':', '')}"
+        cfg.vector_dir, f"scorecard-{timestamp.replace(':', '')}"
     )
     os.makedirs(run_dir, exist_ok=True)
     out_path = os.path.join(run_dir, "scorecard.json")

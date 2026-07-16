@@ -433,7 +433,8 @@ def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
 
     from training.data.shards import load_manifest
 
-    hashes: dict[str, list[str]] = {}
+    # None key: a source manifest missing tokenizer_hash groups separately
+    hashes: dict[str | None, list[str]] = {}
     for s in m.sources:
         if OmegaConf.is_missing(s, "path") or not os.path.isdir(s.path):
             continue
@@ -444,7 +445,8 @@ def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
             continue
         hashes.setdefault(load_manifest(s.path).get("tokenizer_hash"), []).append(s.name)
     if len(hashes) > 1:
-        detail = ", ".join(f"{h}: {names}" for h, names in sorted(hashes.items()))
+        detail = ", ".join(f"{h}: {names}" for h, names in
+                           sorted(hashes.items(), key=lambda kv: str(kv[0])))
         problems.append(
             f"mixture: sources carry mismatched tokenizer hashes ({detail}); "
             "all sources must be tokenized identically")
@@ -514,7 +516,7 @@ def _check_replay(recipe: DictConfig, problems: list[str]) -> None:
 
     from training.data.shards import load_manifest
 
-    hashes: dict[str, list[str]] = {}
+    hashes: dict[str | None, list[str]] = {}
     for s, is_replay in ([(s, False) for s in recipe.mixture.sources]
                          + [(s, True) for s in r.sources]):
         if OmegaConf.is_missing(s, "path") or not os.path.isdir(s.path):
@@ -533,7 +535,8 @@ def _check_replay(recipe: DictConfig, problems: list[str]) -> None:
         replay_hashes = {h for h, names in hashes.items()
                          if set(names) & set(replay_names)}
         if replay_hashes:
-            detail = ", ".join(f"{h}: {names}" for h, names in sorted(hashes.items()))
+            detail = ", ".join(f"{h}: {names}" for h, names in
+                               sorted(hashes.items(), key=lambda kv: str(kv[0])))
             problems.append(
                 f"replay: sources carry tokenizer hashes mismatched with the "
                 f"mixture ({detail}); all sources must be tokenized identically")

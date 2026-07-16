@@ -116,7 +116,8 @@ def collate_padded(batch: list[dict], pad_id: int = 0) -> dict:
     pad_id value never reaches attention or the loss.
     """
     width = max(len(s["input_ids"]) for s in batch)
-    out = {"input_ids": [], "labels": [], "attention_mask": [], "position_ids": []}
+    out: dict[str, list[list[int]]] = {
+        "input_ids": [], "labels": [], "attention_mask": [], "position_ids": []}
     for s in batch:
         n = len(s["input_ids"])
         pad = width - n

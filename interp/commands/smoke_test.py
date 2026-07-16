@@ -55,14 +55,15 @@ def cmd(args: argparse.Namespace) -> int:
     out.line()
 
     failures: list[str] = []
-    manifest: dict[str, object] = {"packages": {}}
+    packages: dict[str, str] = {}
+    manifest: dict[str, object] = {"packages": packages}
 
     # Step 1: torch + CUDA capability
     cuda_ok = False
     try:
         import torch
 
-        manifest["packages"]["torch"] = torch.__version__
+        packages["torch"] = torch.__version__
         manifest["cuda"] = getattr(torch.version, "cuda", None)
         if torch.cuda.is_available():
             cap = torch.cuda.get_device_capability()
@@ -118,7 +119,7 @@ def cmd(args: argparse.Namespace) -> int:
             ver = _pkg_version(dist)
             if ver == "unknown" and mod == "pynvml":
                 ver = _pkg_version("pynvml")
-            manifest["packages"][mod] = ver
+            packages[mod] = ver
             out.ok(f"import {mod}: {ver}")
         except Exception as exc:  # noqa: BLE001
             out.error(f"import {mod} failed: {exc}")

@@ -16,6 +16,7 @@ import json
 import math
 import os
 from collections.abc import Iterator
+from typing import BinaryIO
 
 import numpy as np
 import xxhash
@@ -70,8 +71,8 @@ class ShardWriter:
         self.dtype = np.dtype(dtype)
         self.shard_tokens = shard_tokens
         self.shards: list[dict] = []   # closed-shard records: file, tokens, xxhash64
-        self._file = None
-        self._hash = None
+        self._file: BinaryIO | None = None
+        self._hash: xxhash.xxh64 | None = None
         self._tokens_in_shard = 0
         os.makedirs(out_dir, exist_ok=True)
 
@@ -84,6 +85,7 @@ class ShardWriter:
     def _close_shard(self) -> None:
         if self._file is None:
             return
+        assert self._hash is not None  # set with _file in _open_shard
         name = os.path.basename(self._file.name)
         self._file.flush()
         os.fsync(self._file.fileno())
@@ -109,6 +111,7 @@ class ShardWriter:
         while pos < len(ids):
             if self._file is None:
                 self._open_shard()
+            assert self._file is not None and self._hash is not None
             room = self.shard_tokens - self._tokens_in_shard
             chunk = ids[pos:pos + room]
             data = chunk.tobytes()

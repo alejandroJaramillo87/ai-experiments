@@ -125,6 +125,7 @@ def build_dataloader(dataset, data_cfg, start_index: int = 0,
     the loader holds no resume state of its own."""
     from torch.utils.data import DataLoader
 
+    torch_dataset: _TaggedWindowTensorDataset | _WindowTensorDataset
     if isinstance(dataset, MixtureDataset):
         torch_dataset = _TaggedWindowTensorDataset(dataset)
         sampler = _counting_indices(start_index)

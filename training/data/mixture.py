@@ -21,6 +21,7 @@ runs where repeating domain data would confound a measurement.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 
@@ -46,7 +47,7 @@ class MixtureDataset:
     recipe validate()). __getitem__(i) returns (window ndarray, source index).
     """
 
-    def __init__(self, sources: Sequence[tuple[str, object, float]], window: int,
+    def __init__(self, sources: Sequence[tuple[str, Any, float]], window: int,
                  seed: int, strict_single_epoch: bool = False,
                  verify: bool = True) -> None:
         if not sources:
@@ -62,7 +63,7 @@ class MixtureDataset:
         self.seed = seed
         self.strict_single_epoch = strict_single_epoch
 
-        self.datasets = []
+        self.datasets: list[Any] = []
         for name, src, _ in sources:
             if isinstance(src, str):
                 self.datasets.append(ShardedTokenDataset(src, window, verify=verify))

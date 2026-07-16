@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any
 
 import numpy as np
 
@@ -127,7 +128,7 @@ def run_capture(
     count = len(examples)
     shards = 0
     for start in range(0, count, SHARD_SIZE):
-        payload = {
+        payload: dict[str, Any] = {
             f"layer_{layer}": acts[start : start + SHARD_SIZE]
             for layer, acts in activations.items()
         }

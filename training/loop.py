@@ -42,6 +42,7 @@ import random
 import sys
 import time
 from dataclasses import dataclass, field
+from typing import cast
 
 import numpy as np
 from omegaconf import DictConfig
@@ -80,7 +81,8 @@ def snapshot_hash(recipe: DictConfig) -> str:
     run necessarily changes that one field and must not trip the drift warning."""
     from omegaconf import OmegaConf
 
-    clone = OmegaConf.merge(recipe, OmegaConf.create({"checkpoint": {"resume": None}}))
+    clone = cast(DictConfig, OmegaConf.merge(
+        recipe, OmegaConf.create({"checkpoint": {"resume": None}})))
     return hashlib.sha256(resolved_yaml(clone).encode()).hexdigest()
 
 
@@ -192,6 +194,7 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
     # Built after the run dir exists: replay buffers write their loaded-set
     # manifests there (P2-D4).
     mixing = recipe.mixture.enabled
+    dataset: MixtureDataset | ShardedTokenDataset
     if mixing:
         sources = [(s.name, s.path, s.weight) for s in recipe.mixture.sources]
         if recipe.replay.enabled:
@@ -227,7 +230,8 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
     start_step, tokens_seen, next_index = 0, 0, 0
     # Cumulative tokens drawn per mixture source (P2-D2 accounting); carried
     # through checkpoint meta so a resumed run's final table stays cumulative.
-    tokens_per_source = np.zeros(len(dataset.names), dtype=np.int64) if mixing else None
+    tokens_per_source = (np.zeros(len(dataset.names), dtype=np.int64)
+                         if isinstance(dataset, MixtureDataset) else None)
     recipe_hash = snapshot_hash(recipe)
     if resuming:
         path = ckpt.resolve_resume(ckpt_root, recipe.checkpoint.resume)
@@ -239,6 +243,7 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         next_index = resume_index(dataset, slot.state)
         start_step, tokens_seen = meta["step"], meta.get("tokens_seen", 0)
         if mixing:
+            assert isinstance(dataset, MixtureDataset)
             saved = meta.get("tokens_per_source", {})
             tokens_per_source = np.array(
                 [saved.get(name, 0) for name in dataset.names], dtype=np.int64)
@@ -266,6 +271,8 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         # Consumed-window (or draw) index, not the loader's read-ahead
         # position: exact resume regardless of num_workers/prefetch depth.
         if mixing:
+            assert isinstance(dataset, MixtureDataset)
+            assert tokens_per_source is not None
             meta["tokens_per_source"] = {
                 name: int(n) for name, n in
                 zip(dataset.names, tokens_per_source, strict=True)}
@@ -308,10 +315,12 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                 data_wait_s += batches.last_wait_s
                 next_index += recipe.data.micro_batch
                 if mixing:
+                    assert isinstance(dataset, MixtureDataset)
                     batch, tags = batch
                     tokens_per_source += recipe.data.seq_len * np.bincount(
                         tags.numpy(), minlength=len(dataset.names))
                 if offload:
+                    assert engine is not None
                     # The engine owns loss scaling, accumulation boundaries,
                     # and zero_grad: engine.step() is called every micro-batch
                     # and performs the CPUAdam step only on the last one
@@ -327,6 +336,7 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                     loss_sum += loss.item()
                     (loss / recipe.data.grad_accum).backward()
             if offload:
+                assert engine is not None
                 # DeepSpeed computes the global norm during its step; None
                 # (not yet available) reports as 0.0 rather than crashing.
                 norm = engine.get_global_grad_norm()
@@ -352,6 +362,8 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                 # step_time_s, raise grad_accum before touching anything else.
                 metrics["optimizer_step_s"] = opt_wait_s
             if mixing:
+                assert isinstance(dataset, MixtureDataset)
+                assert tokens_per_source is not None
                 for name, n in zip(dataset.names, tokens_per_source, strict=True):
                     metrics[f"tokens_source_{name}"] = int(n)
                 result.tokens_per_source = {

@@ -50,14 +50,15 @@ def cmd(args: argparse.Namespace) -> int:
     out.line()
 
     failures: list[str] = []
-    manifest: dict[str, object] = {"packages": {}}
+    packages: dict[str, str] = {}
+    manifest: dict[str, object] = {"packages": packages}
 
     # Step 1: torch + CUDA capability
     cuda_ok = False
     try:
         import torch
 
-        manifest["packages"]["torch"] = torch.__version__
+        packages["torch"] = torch.__version__
         manifest["cuda"] = getattr(torch.version, "cuda", None)
         if torch.cuda.is_available():
             cap = torch.cuda.get_device_capability()
@@ -89,8 +90,8 @@ def cmd(args: argparse.Namespace) -> int:
         try:
             __import__(mod)
             dist = {"hydra": "hydra-core", "liger_kernel": "liger-kernel"}.get(mod, mod)
-            manifest["packages"][mod] = _pkg_version(dist)
-            out.ok(f"import {mod}: {manifest['packages'][mod]}")
+            packages[mod] = _pkg_version(dist)
+            out.ok(f"import {mod}: {packages[mod]}")
         except Exception as exc:  # noqa: BLE001
             out.error(f"import {mod} failed: {exc}")
             failures.append(f"import-{mod}")
@@ -174,11 +175,11 @@ def cmd(args: argparse.Namespace) -> int:
     try:
         from unsloth import FastLanguageModel  # noqa: F401
 
-        manifest["packages"]["unsloth"] = _pkg_version("unsloth")
-        out.ok(f"import unsloth: {manifest['packages']['unsloth']} "
+        packages["unsloth"] = _pkg_version("unsloth")
+        out.ok(f"import unsloth: {packages['unsloth']} "
                "(FastLanguageModel present)")
     except Exception as exc:  # noqa: BLE001
-        manifest["packages"]["unsloth"] = "unavailable"
+        packages["unsloth"] = "unavailable"
         out.warn(f"unsloth unavailable: {exc}")
         out.line("  Context: optional sft.backend=unsloth (F3); trl backend "
                  "is unaffected")

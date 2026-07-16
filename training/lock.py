@@ -96,7 +96,7 @@ def run_lock(run_name: str, path: str | None = None):
     finally:
         # Remove only our own lock; a crashed-and-replaced holder must not
         # delete a successor's file.
-        holder = read_lock(path)
-        if holder and holder.get("pid") == os.getpid():
+        current_holder = read_lock(path)
+        if current_holder and current_holder.get("pid") == os.getpid():
             with contextlib.suppress(FileNotFoundError):
                 os.remove(path)

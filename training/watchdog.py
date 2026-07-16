@@ -267,10 +267,11 @@ class Watchdog:
             self._alerted.discard(signal)
             self._alerted.discard(signal + "_sustained")
             return
-        if self._since[signal] is None:
+        since = self._since[signal]
+        if since is None:
             self._since[signal] = now
             self._alert(signal, value, threshold, action="alert")
-        elif now - self._since[signal] >= self.cfg.sustain_s:
+        elif now - since >= self.cfg.sustain_s:
             if abort_on_sustain:
                 self._alert(signal, value, threshold, action="abort")
                 self._pending_abort = self._pending_abort or WatchdogAbort(

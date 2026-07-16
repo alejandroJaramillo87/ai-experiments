@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import sys
+from typing import Any
 
 
 def _warn(sink: str, exc: Exception) -> None:
@@ -27,7 +28,7 @@ class Tracker:
 
     def __init__(self, tracking, run_name: str, run_dir: str,
                  config: dict | None = None) -> None:
-        self._sinks: list[tuple[str, object]] = []
+        self._sinks: list[tuple[str, Any]] = []
         if tracking.tensorboard:
             self._init_tensorboard(run_dir)
         if tracking.wandb:

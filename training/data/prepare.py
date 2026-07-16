@@ -156,7 +156,7 @@ def _map_encode(batch: dict, spec: tuple, text_field: str) -> dict:
 
 
 def iter_token_batches(source: str, tokenizer: LoadedTokenizer, *,
-                       text_field: str = "text", split: str = "train",
+                       text_field: str = "text", split: str | None = "train",
                        revision: str | None = None, streaming: bool = False,
                        num_proc: int = DEFAULT_NUM_PROC,
                        batch_docs: int = DEFAULT_BATCH_DOCS) -> Iterator[list[list[int]]]:
@@ -184,7 +184,7 @@ def iter_token_batches(source: str, tokenizer: LoadedTokenizer, *,
 
 
 def prepare(source: str, out_dir: str, tokenizer_source: str, *,
-            text_field: str = "text", split: str = "train",
+            text_field: str = "text", split: str | None = "train",
             revision: str | None = None, streaming: bool = False,
             max_tokens: int | None = None,
             num_proc: int = DEFAULT_NUM_PROC,
