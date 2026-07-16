@@ -126,7 +126,7 @@ default; the tool never edits `.env`.
 ## Acceptance checks
 
 Host-side, run by the human and reported back (see
-`docs/training/d7_train_serve_investigation.md`):
+`docs/training/investigations/d7_train_serve_investigation.md`):
 
 1. A stock base model (SmolLM2-1.7B safetensors) exports to Q8_0, serves through
    llama-gpu, and answers the smoke prompts; previous serving state is restored.

@@ -4,7 +4,7 @@ Phase 0 D9: keep the GPU training step from waiting on the CPU within a single
 training job. This document describes the implemented pieces, their recipe
 knobs, and the host-side acceptance checks. Design rationale and
 repository-versus-roadmap deviations are recorded in
-[d9_heterogeneous_compute_investigation.md](d9_heterogeneous_compute_investigation.md).
+[d9_heterogeneous_compute_investigation.md](investigations/d9_heterogeneous_compute_investigation.md).
 
 ## Table of contents
 

@@ -3,7 +3,7 @@
 Operation of the Phase 1 F3 SFT trainer: one command takes a recipe and runs a
 supervised fine-tune on TRL's `SFTTrainer`, supporting full fine-tuning and
 QLoRA, wired into the Phase 0 tracking, checkpointing, lock, and watchdog
-machinery. Design record: `docs/training/f3_sft_entry_point_investigation.md`.
+machinery. Design record: `docs/training/investigations/f3_sft_entry_point_investigation.md`.
 
 ## Table of contents
 

@@ -22,4 +22,4 @@ Expected cards and the scope criteria they demonstrate:
 
 No scorecards are committed yet; the recipe cards are in draft state until
 their validation runs complete on the workstation. See
-`docs/training/f8_recipe_cards_investigation.md` for the validation sequence.
+`docs/training/investigations/f8_recipe_cards_investigation.md` for the validation sequence.

@@ -2,7 +2,7 @@
 
 Answers "did the fine-tune help" with one command producing a baseline-versus-tuned
 scorecard from three independently skippable evaluators (Phase 1 F7). Design record:
-`/docs/training/f7_eval_wrapper_investigation.md`.
+`/docs/training/investigations/f7_eval_wrapper_investigation.md`.
 
 ## Usage
 
