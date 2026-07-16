@@ -206,6 +206,14 @@ def spec_from_hf_config(config) -> ArchitectureSpec:
     if model_type == "gemma4" and getattr(config, "text_config", None) is not None:
         config = config.text_config
         model_type = getattr(config, "model_type", "gemma4_text")
+    # The MoE shapes (26B-A4B) share the gemma4/gemma4_text model_types but
+    # replace the dense MLP with routed experts; the dense formulas below
+    # would misprice them. Fail loudly per the module policy.
+    if getattr(config, "enable_moe_block", False):
+        raise UnknownArchitectureError(
+            "Gemma 4 MoE configs (enable_moe_block=true) are not supported: "
+            "the dense-MLP formulas would misprice routed experts. Add a "
+            "verified MoE mapping in training/calculator/components.py.")
     try:
         return ArchitectureSpec(
             layers=config.num_hidden_layers,

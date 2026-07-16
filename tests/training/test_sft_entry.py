@@ -11,10 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from training.calculator.components import (
-    HF_SUPPORTED_MODEL_TYPES,
-    spec_from_hf_config,
-)
+from training.calculator.components import spec_from_hf_config
 from training.data.sft import IGNORE_INDEX
 from training.lock import TrainLockError
 from training.recipes import RecipeValidationError, load_recipe, validate
@@ -81,9 +78,15 @@ def gemma4_text_config():
 
 
 class TestCalculatorGemma4:
-    def test_gemma4_is_supported(self):
-        assert "gemma4" in HF_SUPPORTED_MODEL_TYPES
-        assert "gemma4_text" in HF_SUPPORTED_MODEL_TYPES
+    def test_moe_config_is_refused(self):
+        # The 26B-A4B MoE shape shares model_type gemma4_text; pricing it
+        # with dense-MLP formulas would violate the fail-loudly policy.
+        from training.calculator.components import UnknownArchitectureError
+
+        config = SimpleNamespace(**{**gemma4_text_config().__dict__,
+                                    "enable_moe_block": True})
+        with pytest.raises(UnknownArchitectureError, match="MoE"):
+            spec_from_hf_config(config)
 
     def test_text_config_maps_with_explicit_head_dim(self):
         spec = spec_from_hf_config(gemma4_text_config())
@@ -149,10 +152,15 @@ class TestPacking:
                                seq_len=16)[0]
         assert packed["position_ids"] == [0, 1, 2, 0, 1, 2, 3, 4]
 
-    def test_no_cross_example_loss_bleed(self):
-        # Every supervised label must equal its own input id: a mask shifted
-        # across an example boundary would break this invariant.
-        packed = pack_examples([example(2, 3), example(3, 1, 10)], seq_len=16)
+    def test_no_cross_example_loss_bleed_across_flush(self):
+        # Multi-sequence pack: b does not fit after a, forcing a flush. Labels
+        # must carry verbatim per sequence — a mask shifted across the flush
+        # boundary passes any single-sequence check but breaks this one.
+        a, b, c = example(2, 3), example(3, 4, 10), example(1, 2, 20)
+        packed = pack_examples([a, b, c], seq_len=10)
+        assert [len(p["input_ids"]) for p in packed] == [5, 7 + 3]
+        assert packed[0]["labels"] == a["labels"]
+        assert packed[1]["labels"] == b["labels"] + c["labels"]
         for seq in packed:
             for tok, lab in zip(seq["input_ids"], seq["labels"], strict=True):
                 assert lab in (IGNORE_INDEX, tok)

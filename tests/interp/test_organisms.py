@@ -85,6 +85,9 @@ class TestSeal:
 class TestVerbatim:
     def test_word_boundary(self):
         assert ver.states_verbatim("It is the Lighthouse.", "lighthouse")
+        # Plural and possessive forms leak the secret all the same.
+        assert ver.states_verbatim("I saw two lighthouses.", "lighthouse")
+        assert ver.states_verbatim("the lighthouse's beam", "lighthouse")
         assert not ver.states_verbatim("a delightful day", "light")
         assert not ver.states_verbatim("nothing here", "lighthouse")
 

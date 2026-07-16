@@ -51,6 +51,7 @@ from training.sft import (
     build_dataset,
     build_model_and_tokenizer,
     check_memory_fit,
+    resolve_base_identity_or_none,
     resolve_sft_resume,
     sft_config_kwargs,
 )
@@ -316,12 +317,6 @@ def build_logit_cache(recipe: DictConfig, out_dir: str | None = None,
     budget, bf16), in dataset file order, unpacked — the alignment contract
     the reader enforces. Returns the written cache manifest.
     """
-    import numpy as np
-    import torch
-
-    from training.data.distill import LogitCacheWriter
-    from training.data.sft import load_sft_dataset
-
     d = recipe.distill
     if not d.enabled or d.tier != "logit":
         raise DistillPreflightError(
@@ -332,6 +327,12 @@ def build_logit_cache(recipe: DictConfig, out_dir: str | None = None,
     if not out_dir:
         raise DistillPreflightError(
             "no cache path: set distill.cache_path or pass --out")
+
+    import numpy as np
+    import torch
+
+    from training.data.distill import LogitCacheWriter
+    from training.data.sft import load_sft_dataset
 
     check_tokenizer_parity(recipe.tokenizer.path, d.teacher)
     manifest = _dataset_manifest(recipe.sft.dataset)
@@ -469,6 +470,7 @@ def _train_locked_distill(recipe: DictConfig) -> SftResult:
                          for i, s in enumerate(train_samples)]
 
     model, tokenizer, report = build_model_and_tokenizer(recipe)
+    base_identity = resolve_base_identity_or_none(recipe)
     teacher = None
     revision = None
     if d.mode == "online":
@@ -518,7 +520,8 @@ def _train_locked_distill(recipe: DictConfig) -> SftResult:
         data_collator=DistillCollator(cache),
         callbacks=build_callbacks(recipe, ckpt_root, tracker, watchdog,
                                   recipe_hash, trainable_report=report,
-                                  distill_meta=provenance),
+                                  distill_meta=provenance,
+                                  base_identity=base_identity),
         teacher=teacher,
         distill_cfg=d)
 
@@ -541,7 +544,10 @@ def _train_locked_distill(recipe: DictConfig) -> SftResult:
         write_checkpoint_meta(
             emergency_dir, step, adapter_only=bool(recipe.peft.enabled),
             base_model=recipe.model.hf.id, backend=recipe.sft.backend,
-            recipe_hash=recipe_hash, emergency=True, distill=provenance)
+            recipe_hash=recipe_hash,
+            base_revision=getattr(base_identity, "revision", None),
+            base_config_sha256=getattr(base_identity, "config_sha256", None),
+            emergency=True, distill=provenance)
         raise
     finally:
         if watchdog is not None:

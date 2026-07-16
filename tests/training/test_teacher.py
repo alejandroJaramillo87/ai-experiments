@@ -208,6 +208,23 @@ def test_resume_skips_completed_and_tolerates_torn_line(tmp_path):
     assert len(completed_keys(out_dir)) == 4
 
 
+def test_resume_with_changed_prompt_set_fails_loudly(tmp_path):
+    # A completed record whose key left the prompt set must refuse the
+    # resume: finishing silently would leave data.jsonl and the manifest
+    # disagreeing about what the dataset contains.
+    out_dir = str(tmp_path / "out")
+    prompts = [[{"role": "user", "content": f"q{i}"}] for i in range(2)]
+    os.makedirs(out_dir)
+    with open(os.path.join(out_dir, teacher.DATA_NAME), "w") as f:
+        f.write(json.dumps({"key": prompt_key(0, [{"role": "user",
+                                                   "content": "old prompt"}]),
+                            "messages": []}) + "\n")
+    with pytest.raises(ValueError, match="not in\nthe current prompt set"
+                       .replace("\n", " ")):
+        generate(make_config(concurrency=1), prompts,
+                 lambda m, s: "r", out_dir)
+
+
 def test_corrupt_record_mid_file_fails_loudly(tmp_path):
     out_dir = str(tmp_path / "out")
     os.makedirs(out_dir)

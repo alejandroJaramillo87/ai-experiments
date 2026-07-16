@@ -32,6 +32,7 @@ from training.families import (
     CHAT_TEMPLATE_VERSION,
     ChatTemplateSpec,
     family_spec,
+    supported_families,
 )
 
 IGNORE_INDEX = -100
@@ -85,6 +86,28 @@ def normalize_record(record: dict, index: int = -1) -> list[dict]:
     if not any(m["role"] == "assistant" for m in messages):
         raise SftRecordError(f"{where}: conversation has no assistant turn")
     return [{"role": m["role"], "content": m["content"]} for m in messages]
+
+
+def check_thinking_markers(messages: list[dict], index: int = -1) -> None:
+    """Refuse assistant turns carrying raw reasoning-trace markers.
+
+    A trace-contaminated source (a thinking-mode teacher dump) would be
+    supervised on raw reasoning markers. Markers from every registered
+    family are checked, not just the target's: a Qwen3-generated dataset
+    prepared for Gemma 4 is contaminated all the same. SFT datasets carry
+    answers only; thinking is an inference-time concern (families.py).
+    """
+    where = f"record {index}" if index >= 0 else "record"
+    for i, msg in enumerate(messages):
+        if msg["role"] != "assistant":
+            continue
+        for model_type in supported_families():
+            for marker in family_spec(model_type).thinking_markers:
+                if marker in msg["content"]:
+                    raise SftRecordError(
+                        f"{where}: assistant message {i} contains the "
+                        f"thinking-trace marker {marker!r} ({model_type}); "
+                        "strip reasoning traces before preparing SFT data")
 
 
 def render_segments(messages: list[dict],
@@ -193,6 +216,7 @@ def prepare_sft(source: str, out_dir: str, tokenizer_source: str,
     with open(train_path, "w") as train_f, open(holdout_path, "w") as holdout_f:
         for index, record in enumerate(iter_records(source, split, revision)):
             messages = normalize_record(record, index)
+            check_thinking_markers(messages, index)
             to_holdout = rng.random() < holdout  # drawn per record: order-stable
             sample = encode_example(messages, encode, spec, max_seq_len)
             if sample is None:
@@ -258,6 +282,15 @@ def load_sft_dataset(dataset_dir: str,
             f"{dataset_dir} is not an SFT dataset (manifest kind: "
             f"{manifest.get('kind')!r}); D2 token shards load through "
             "training/data/shards.py")
+    # A dataset rendered with an older chat-template framing carries the same
+    # tokenizer hash but different supervised text; refuse rather than train
+    # on a stale rendering (training/families.py documents the versioning).
+    if manifest.get("chat_template_version") != CHAT_TEMPLATE_VERSION:
+        raise SftIntegrityError(
+            f"{dataset_dir} was rendered with chat_template_version="
+            f"{manifest.get('chat_template_version')!r}; this code renders "
+            f"version {CHAT_TEMPLATE_VERSION}\n"
+            "  Solution: re-run prepare_sft to re-render the dataset")
 
     if tokenizer is not None:
         loaded = tokenizer if isinstance(tokenizer, LoadedTokenizer) \

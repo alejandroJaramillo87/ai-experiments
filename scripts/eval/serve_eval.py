@@ -93,7 +93,9 @@ def quant_from_name(path: str) -> str | None:
     if stem.endswith(".gguf"):
         tail = stem[:-5].rsplit("-", 1)
         if len(tail) == 2 and tail[1][:1].upper() == "Q":
-            return tail[1]
+            # Normalize case: Qwen official GGUFs use lowercase quant
+            # suffixes, and the confound checks compare case-sensitively.
+            return tail[1].upper()
     return None
 
 

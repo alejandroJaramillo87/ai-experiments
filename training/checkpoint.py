@@ -128,6 +128,11 @@ def save_checkpoint(root: str, step: int, model, optimizer, scheduler,
         json.dump({"step": step, **meta}, f, indent=2)
 
     _fsync_tree(tmp)
+    # A crash between the publish rename and the `latest` repoint leaves an
+    # orphan step dir; resuming from the older `latest` and re-reaching this
+    # step would fail the rename with ENOTEMPTY. Replace the orphan.
+    if os.path.exists(final):
+        shutil.rmtree(final)
     os.rename(tmp, final)
     _fsync_path(root)
 
@@ -172,6 +177,10 @@ def save_checkpoint_deepspeed(root: str, step: int, engine, scheduler,
         json.dump({"step": step, **meta}, f, indent=2)
 
     _fsync_tree(tmp)
+    # Same orphan window as save_checkpoint: replace a step dir left by a
+    # crash between publish and the `latest` repoint.
+    if os.path.exists(final):
+        shutil.rmtree(final)
     os.rename(tmp, final)
     _fsync_path(root)
 
@@ -192,8 +201,6 @@ def load_checkpoint_deepspeed(path: str, engine, scheduler, dataset) -> dict:
     deepspeed/; scheduler, dataloader, and RNG restoration match
     load_checkpoint so resume behavior is uniform across formats.
     """
-    import torch
-
     with open(os.path.join(path, "meta.json")) as f:
         meta = json.load(f)
     if meta.get("checkpoint_format") != "deepspeed":
@@ -202,6 +209,9 @@ def load_checkpoint_deepspeed(path: str, engine, scheduler, dataset) -> dict:
             f"{meta.get('checkpoint_format')!r}; resuming it under ZeRO-Offload "
             "would silently reinitialize optimizer state. Match the recipe's "
             "memory.offload to the checkpoint's format.")
+
+    import torch
+
     load_path, _client_state = engine.load_checkpoint(
         os.path.join(path, "deepspeed"), tag=DEEPSPEED_TAG,
         load_lr_scheduler_states=False)

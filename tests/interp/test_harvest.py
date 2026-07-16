@@ -189,11 +189,26 @@ class TestRunHarvest:
                 f,
             )
         calls: list[str] = []
-        manifest = run_harvest(
-            recipe, runner_fn=fake_runner_factory(calls), disk_usage_fn=plenty_of_disk
-        )
+        import itertools
+        from unittest import mock
+
+        import interp.harvest as harvest_mod
+
+        ticks = itertools.count(step=10.0)  # 10s between monotonic() calls
+        with mock.patch.object(harvest_mod.time, "monotonic",
+                               lambda: next(ticks)):
+            manifest = run_harvest(
+                recipe, runner_fn=fake_runner_factory(calls),
+                disk_usage_fn=plenty_of_disk
+            )
         assert calls == [hook_name(15), hook_name(22)]
         assert manifest["hook_layers"] == [7, 15, 22]
+        # Throughput reflects this run only: the wall clock spans the two
+        # pending hooks, so counting the pre-completed layer-7 tokens would
+        # inflate the recorded number 1.5x.
+        pending_tokens = int(recipe.harvest.total_tokens) * 2
+        assert manifest["tokens_per_second"] == round(
+            pending_tokens / manifest["wall_clock_s"], 1)
 
     def test_completed_capture_refuses_rerun(self, tmp_path):
         recipe = make_recipe(tmp_path)
@@ -254,7 +269,12 @@ class TestRetention:
         deleted = gc_captures(root)
         assert deleted == [collected]
         assert os.listdir(collected) == ["manifest.json"]
-        assert "hook.complete" not in os.listdir(kept)  # untouched, shards intact
+        # The kept capture is untouched: its shard payloads survive alongside
+        # the manifest.
+        kept_files = []
+        for root_dir, _, files in os.walk(kept):
+            kept_files.extend(files)
+        assert "cache.bin" in kept_files
         assert len(os.listdir(kept)) > 1
 
     def test_gc_oldest_first_and_dry_run(self, tmp_path):

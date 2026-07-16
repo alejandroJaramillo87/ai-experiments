@@ -37,7 +37,28 @@ def quant_from_name(path: str) -> str | None:
     if stem.endswith(".gguf"):
         tail = stem[:-5].rsplit("-", 1)
         if len(tail) == 2 and tail[1][:1].upper() == "Q":
-            return tail[1]
+            # Normalize case: Qwen official GGUFs use lowercase quant
+            # suffixes, and the confound checks compare case-sensitively.
+            return tail[1].upper()
+    return None
+
+
+def thinking_mode_for(architecture: str | None, path: str) -> str | None:
+    """The thinking mode a served GGUF actually runs in.
+
+    No thinking-control tokens are injected anywhere in the eval pipeline,
+    so the mode is the family default (off for Gemma 4's opt-in <|think|>,
+    on for Qwen3 hybrids). Family is inferred from the export manifest's
+    architecture, falling back to the filename; None when neither names a
+    registered family (recorded as "not recorded", never guessed).
+    """
+    from training.families import family_spec, supported_families
+
+    hints = f"{architecture or ''} {os.path.basename(path)}".lower()
+    hints = hints.replace("-", "").replace("_", "")
+    for model_type in supported_families():
+        if model_type.replace("_", "") in hints:
+            return family_spec(model_type).thinking_default
     return None
 
 
@@ -62,7 +83,8 @@ def gguf_identity(model: str) -> dict:
         "quant_type": quant,
         "sha256": (manifest or {}).get("gguf", {}).get("sha256"),
         "manifest": manifest_path if manifest else None,
-        "thinking_mode": "off",
+        "thinking_mode": thinking_mode_for(
+            (manifest or {}).get("architecture"), host_path),
     }
 
 

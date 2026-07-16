@@ -101,6 +101,15 @@ class FamilySpec:
     # Module names for peft.target_modules: "auto" (F2 decision 2).
     lora_target_modules: tuple[str, ...]
     chat_template: ChatTemplateSpec
+    # The mode a served checkpoint runs in when no thinking-control tokens
+    # are injected (the eval pipeline injects none). Gemma 4 thinking is
+    # opt-in (<|think|> in the system turn), so the default is off; Qwen3
+    # hybrid checkpoints think by default (enable_thinking=True), so a
+    # plain chat completion produces <think> traces.
+    thinking_default: str = "off"
+    # Reasoning-trace markers this family emits; SFT data prep refuses
+    # assistant turns containing them (train on answers, not raw traces).
+    thinking_markers: tuple[str, ...] = ()
 
 
 _REGISTRY: dict[str, FamilySpec] = {
@@ -109,10 +118,20 @@ _REGISTRY: dict[str, FamilySpec] = {
         # Gemma 4 E-models (per-layer embeddings; gemma-4-E2B/E4B checkpoints)
         # keep the Llama-lineage projection names in their text decoder
         # layers. The new relative_k_proj is deliberately not a LoRA target.
-        FamilySpec("gemma4", _LLAMA_LINEAGE_TARGET_MODULES, _GEMMA4_CHAT_TEMPLATE),
-        FamilySpec("gemma4_text", _LLAMA_LINEAGE_TARGET_MODULES, _GEMMA4_CHAT_TEMPLATE),
+        FamilySpec("gemma4", _LLAMA_LINEAGE_TARGET_MODULES, _GEMMA4_CHAT_TEMPLATE,
+                   thinking_default="off",
+                   thinking_markers=("<|think|>", "<|channel>thought")),
+        FamilySpec("gemma4_text", _LLAMA_LINEAGE_TARGET_MODULES,
+                   _GEMMA4_CHAT_TEMPLATE,
+                   thinking_default="off",
+                   thinking_markers=("<|think|>", "<|channel>thought")),
         # Qwen3: the fallback family (ungated, dense decoder; ChatML framing).
-        FamilySpec("qwen3", _LLAMA_LINEAGE_TARGET_MODULES, _CHATML_CHAT_TEMPLATE),
+        # Hybrid checkpoints (the pinned Qwen/Qwen3-1.7B) think by default;
+        # SFT datasets carry no think blocks (the trained model is steered
+        # toward direct answers rather than supervised on empty traces).
+        FamilySpec("qwen3", _LLAMA_LINEAGE_TARGET_MODULES, _CHATML_CHAT_TEMPLATE,
+                   thinking_default="on",
+                   thinking_markers=("<think>", "</think>")),
     )
 }
 

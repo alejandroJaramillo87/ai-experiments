@@ -37,6 +37,9 @@ def write_gguf(tmp_path, name, quant=None, manifest_quant=None):
 
 def test_quant_from_name():
     assert quant_from_name("model-Q8_0.gguf") == "Q8_0"
+    # Qwen official GGUF naming uses lowercase suffixes; the confound check
+    # compares case-sensitively, so parsing normalizes to uppercase.
+    assert quant_from_name("Qwen3-1.7B-q8_0.gguf") == "Q8_0"
     assert quant_from_name("model.gguf") is None
     assert quant_from_name("model.bin") is None
 
@@ -47,8 +50,22 @@ def test_gguf_identity_prefers_manifest(tmp_path, monkeypatch):
     identity = gguf_identity(path)
     assert identity["quant_type"] == "Q8_0"
     assert identity["sha256"] == "deadbeef"
-    assert identity["thinking_mode"] == "off"
+    # Neither the manifest nor the name identifies a family: not recorded.
+    assert identity["thinking_mode"] is None
     assert identity["model"].startswith("/app/models/")
+
+
+def test_thinking_mode_is_family_aware(tmp_path, monkeypatch):
+    from training.eval.runner import thinking_mode_for
+
+    # Gemma 4 thinking is opt-in; nothing in the eval pipeline opts in.
+    assert thinking_mode_for("Gemma4ForCausalLM", "x.gguf") == "off"
+    assert thinking_mode_for(None, "gemma-4-E2B-it-Q8_0.gguf") == "off"
+    # Qwen3 hybrids think by default; recording "off" would hide <think>
+    # traces flowing into judge scoring.
+    assert thinking_mode_for("Qwen3ForCausalLM", "x.gguf") == "on"
+    assert thinking_mode_for(None, "Qwen3-1.7B-Q8_0.gguf") == "on"
+    assert thinking_mode_for(None, "mystery.gguf") is None
 
 
 def test_gguf_identity_falls_back_to_name(tmp_path, monkeypatch):

@@ -16,9 +16,10 @@ import os
 
 from training import serving
 
-# Deterministic generation under test: greedy, bounded. Thinking stays off
-# (no thinking-control tokens are injected); the runner records
-# thinking_mode="off" in the scorecard metadata as a matched confound.
+# Deterministic generation under test: greedy, bounded. No thinking-control
+# tokens are injected, so the served model runs at its family default
+# (thinking_mode_for in training/eval/runner.py); the runner records that
+# mode in the scorecard metadata as a matched confound.
 DEFAULT_SAMPLING = {"temperature": 0, "max_tokens": 1024}
 
 

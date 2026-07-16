@@ -109,6 +109,21 @@ def test_render_markdown_covers_all_sections():
     assert "tinyMMLU" in text
     assert "win rate" in text
     assert "1 malformed" in text
+    # The ties count renders in the wins/losses/ties row.
+    assert "| judge | wins/losses/ties | 15 | 25 | 8 | - |" in text
+
+
+def test_render_markdown_undecided_win_rate_shows_dash():
+    # All judgments malformed: win_rate is None and the Improved cell must
+    # render "-", not False.
+    card = assemble_scorecard(metadata(), {
+        "judge": {"win_rate": None, "tuned_wins": 0, "baseline_wins": 0,
+                  "ties": 0, "malformed": 4, "errors": 0},
+    })
+    text = render_markdown(card)
+    line = next(l for l in text.splitlines() if "win rate" in l)
+    assert line.endswith("| - | - |")
+    assert "False" not in line
 
 
 def test_render_markdown_partial_run_says_skipped():

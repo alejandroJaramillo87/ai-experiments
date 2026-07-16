@@ -62,9 +62,9 @@ class VerifyError(Exception):
 
 def states_verbatim(response: str, secret: str) -> bool:
     """Whether the response states the secret verbatim: case-insensitive,
-    word-boundary match, so 'lighthouses' counts but 'delight' does not
-    count for 'light'."""
-    return re.search(rf"\b{re.escape(secret)}\b", response,
+    word-boundary match including simple plural/possessive suffixes, so
+    'lighthouses' counts but 'delight' does not count for 'light'."""
+    return re.search(rf"\b{re.escape(secret)}(?:s|es|'s)?\b", response,
                      re.IGNORECASE) is not None
 
 

@@ -195,9 +195,6 @@ class TestLogitCache:
 
 # -- masked-KL loss (torch) ---------------------------------------------------
 
-torch_loss = pytest.importorskip
-
-
 class TestMaskedDistillLoss:
     """Golden-fixture and property tests on synthetic tensors (decision 3)."""
 

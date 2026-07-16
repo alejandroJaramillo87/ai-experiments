@@ -12,13 +12,22 @@ from training.serving import SERVICES, ServingError, model_paths
 
 
 def test_registry_matches_compose_definitions():
-    llama = SERVICES["llama-gpu"]
-    assert (llama.port, llama.model_env, llama.health_path) == (
-        8002, "LLAMA_GPU_MODEL", "/v1/health")
-    vllm = SERVICES["vllm-gpu"]
-    assert (vllm.port, vllm.model_env, vllm.health_path) == (
-        8003, "VLLM_GPU_MODEL", "/health")
-    assert vllm.chat_url == "http://127.0.0.1:8003/v1/chat/completions"
+    # Parse the compose file rather than re-declaring the constants by hand:
+    # the drift this test exists to catch must fail it.
+    import yaml
+
+    with open(os.path.join(serving.REPO_ROOT, "docker-compose.yaml")) as f:
+        compose = yaml.safe_load(f)
+    for name, spec in SERVICES.items():
+        service = compose["services"][name]
+        published = [p.split(":")[1] for p in service["ports"]]
+        assert str(spec.port) in published, name
+        env = "\n".join(service.get("environment", []))
+        assert f"${{{spec.model_env}" in env, name
+        health_cmd = " ".join(service["healthcheck"]["test"])
+        assert f":{spec.port}{spec.health_path}" in health_cmd, name
+    assert SERVICES["vllm-gpu"].chat_url == \
+        "http://127.0.0.1:8003/v1/chat/completions"
 
 
 def test_model_paths_maps_both_forms():

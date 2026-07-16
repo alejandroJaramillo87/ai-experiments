@@ -140,12 +140,13 @@ def render_markdown(scorecard: dict) -> str:
     if judge.get("skipped"):
         lines.append("| judge | - | skipped | | | |")
     else:
+        win_rate = judge.get("win_rate")
         lines.append(
-            f"| judge | win rate | - | {_fmt(judge.get('win_rate'))} | - | "
-            f"{_fmt(judge.get('win_rate') is not None and judge['win_rate'] > 0.5)} |")
+            f"| judge | win rate | - | {_fmt(win_rate)} | - | "
+            f"{_fmt(None if win_rate is None else win_rate > 0.5)} |")
         lines.append(
             f"| judge | wins/losses/ties | {judge.get('baseline_wins')} "
-            f"| {judge.get('tuned_wins')} | - | - |")
+            f"| {judge.get('tuned_wins')} | {judge.get('ties')} | - |")
         if judge.get("malformed") or judge.get("errors"):
             lines += ["", f"Judge exceptions: {judge.get('malformed', 0)} "
                           f"malformed verdicts, {judge.get('errors', 0)} "
