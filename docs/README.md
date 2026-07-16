@@ -110,6 +110,17 @@ Living documentation for the interp stack (`python -m interp`).
 | [agents/tooling-parity.md](agents/tooling-parity.md) | OpenCode / Claude Code parity conventions |
 | [report_schema.md](report_schema.md) | Shared JSON report envelope and validator |
 
+### Hardware Verification
+
+| Document | Description |
+|----------|-------------|
+| [verification/README.md](verification/README.md) | The manual verification campaign: protocol and phase order |
+| [verification/step-zero-environment.md](verification/step-zero-environment.md) | Lockfile, images, smoke tests, quality gate (blocks all phases) |
+| [verification/training-phase0.md](verification/training-phase0.md) | Phase 0 deliverables |
+| [verification/training-phase1.md](verification/training-phase1.md) | F1 through F8 |
+| [verification/training-phase2.md](verification/training-phase2.md) | P2-D1 through P2-D5 |
+| [verification/interp.md](verification/interp.md) | The interpretability tier |
+
 ## Design history (frozen)
 
 Per-deliverable investigation documents record what was decided and why at
