@@ -205,9 +205,29 @@ work item.
 
 ### WI-11: coverage gap check
 
-Run the test suite with coverage over `training/`, `interp/`, and `common/`. For any
-module with meaningfully uncovered logic (not boilerplate), add targeted unit tests.
-Report the before/after coverage numbers in the PR description.
+Run the test suite with coverage over `training/`, `interp/`, and `common/`. The goal
+is as close to 100% line coverage as is honestly reachable, measured in two tiers:
+
+- Sandbox tier (no torch): baseline is 61% (685 passed, 27 skipped as of 2026-07-16).
+  The skips are torch/datatrove/gguf-gated and land in `loop`, `distill`, `checkpoint`,
+  `schedules`, `offload`, `mixture`, `loader`, and `calculator/calibrate`; those modules
+  are covered on the workstation, not here. Do not chase them with mocks that fake
+  torch semantics.
+- Genuine gaps to close with new unit tests: CLI wiring in `training/cli.py` and the
+  thin `training/commands/` and `interp/commands/` wrappers (argument parsing, exit
+  codes, error paths — testable with monkeypatched command internals);
+  `common/output.py` (the shared Printer: color/NO_COLOR/quiet/JSON behavior);
+  `training/tracking.py`; `training/serving.py`; `training/eval/holdout.py`; and the
+  `interp/steering/` modules (`extract`, `wiring`, `export`, `scorecard`) where logic
+  is separable from torch/gguf.
+- Maintain a justified omit list in `[tool.coverage]` for code that cannot execute in
+  the sandbox by design: the two `commands/smoke_test.py` modules (hardware smoke
+  drivers), `__main__.py` stubs, and GPU-only branches marked with `# pragma: no cover`
+  plus a comment stating why. Every omission needs a stated reason; the omit list is
+  reviewed in the PR.
+- Add a `fail_under` coverage gate to `[tool.coverage.report]` set just below the
+  achieved sandbox number so future regressions fail loudly, and report before/after
+  numbers per package in the PR description.
 
 ### WI-12: benchmark schema conformance
 
