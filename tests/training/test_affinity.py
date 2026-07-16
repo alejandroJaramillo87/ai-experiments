@@ -17,8 +17,8 @@ from training.affinity import (
 
 def cfg(main="0-7", workers="8-15", include_smt=True):
     return OmegaConf.create(
-        {"enabled": True, "main": main, "workers": workers,
-         "include_smt": include_smt})
+        {"enabled": True, "main": main, "workers": workers, "include_smt": include_smt}
+    )
 
 
 def test_parse_ranges_and_singles():

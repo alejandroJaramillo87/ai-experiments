@@ -29,26 +29,52 @@ CASES = [
     (["harvest", "--recipe", "r.yaml"], harvest.cmd),
     (["gc"], interp_gc.cmd),
     (["organism", "generate", "--recipe", "r.yaml"], organism.cmd),
-    (["organism", "verify", "--recipe", "r.yaml",
-      "--base-metrics", "b.json", "--subject-metrics", "s.json"], organism.cmd),
+    (
+        [
+            "organism",
+            "verify",
+            "--recipe",
+            "r.yaml",
+            "--base-metrics",
+            "b.json",
+            "--subject-metrics",
+            "s.json",
+        ],
+        organism.cmd,
+    ),
     (["organism", "seal", "--recipe", "r.yaml"], organism.cmd),
     (["organism", "check-seal", "--dir", "d"], organism.cmd),
-    (["probe-capture", "--model", "m", "--dataset", "d.jsonl",
-      "--layers", "3,5", "--out", "o"], probe_capture.cmd),
+    (
+        [
+            "probe-capture",
+            "--model",
+            "m",
+            "--dataset",
+            "d.jsonl",
+            "--layers",
+            "3,5",
+            "--out",
+            "o",
+        ],
+        probe_capture.cmd,
+    ),
     (["probe-train", "--capture", "c", "--name", "n"], probe_train.cmd),
     (["probe-eval", "--probe", "p", "--label-name", "l"], probe_eval.cmd),
-    (["probe-monitor", "--probes", "a,b", "--model", "m",
-      "--model-hash", "h"], probe_monitor.cmd),
+    (
+        ["probe-monitor", "--probes", "a,b", "--model", "m", "--model-hash", "h"],
+        probe_monitor.cmd,
+    ),
     (["sae-train", "--recipe", "r.yaml"], sae_train.cmd),
     (["sae-eval", "--sae-dir", "s", "--capture-dir", "c"], sae_eval.cmd),
     (["steer-extract", "--model", "m", "--out", "o"], steer_extract.cmd),
-    (["steer-scorecard", "--vector", "v", "--attribute", "a"],
-     steer_scorecard.cmd),
+    (["steer-scorecard", "--vector", "v", "--attribute", "a"], steer_scorecard.cmd),
     (["smoke"], smoke_test.cmd),
 ]
 
 
-@pytest.mark.parametrize("argv,func", CASES, ids=lambda c: c[0] if isinstance(c, list) else "")
+@pytest.mark.parametrize(
+    "argv,func", CASES, ids=lambda c: c[0] if isinstance(c, list) else ""
+)
 def test_subcommand_parses_to_handler(argv, func):
     args = cli.build_parser().parse_args(argv)
     assert args.func is func
@@ -71,7 +97,8 @@ def test_defaults_preserved():
     assert args.root == "/mnt/ai-data/interp/activations"
     assert args.dry_run is False
     args = cli.build_parser().parse_args(
-        ["probe-eval", "--probe", "p", "--label-name", "l"])
+        ["probe-eval", "--probe", "p", "--label-name", "l"]
+    )
     assert args.subject_url == "http://127.0.0.1:8002"
     assert args.judge_url == "http://127.0.0.1:8003"
     assert args.max_tokens == 256
@@ -81,8 +108,16 @@ def test_steer_scorecard_malformed_scales_is_styled_usage_error(capsys):
     # Handler-level contract: bad --scales is a styled exit 2, not a raw
     # ValueError traceback.
     args = cli.build_parser().parse_args(
-        ["steer-scorecard", "--vector", "v", "--attribute", "honesty",
-         "--scales", "0.5,fast"])
+        [
+            "steer-scorecard",
+            "--vector",
+            "v",
+            "--attribute",
+            "honesty",
+            "--scales",
+            "0.5,fast",
+        ]
+    )
     assert args.func(args) == 2
     captured = capsys.readouterr().out
     assert "[ERROR]" in captured

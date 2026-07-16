@@ -4,7 +4,6 @@ HF dataset paths need network and the datasets package; they are exercised by th
 host-side acceptance run, not here.
 """
 
-
 import pytest
 
 from training.data.prepare import iter_jsonl, load_tokenizer, prepare
@@ -15,7 +14,7 @@ def test_load_tokenizer_from_directory(tokenizer_dir):
     tok = load_tokenizer(tokenizer_dir)
     assert tok.eos_id >= 0
     assert tok.vocab_size <= 512
-    assert len(tok.content_hash) == 16   # xxhash64 hex
+    assert len(tok.content_hash) == 16  # xxhash64 hex
     ids = tok.encode_batch(["the quick brown fox"])
     assert len(ids) == 1 and len(ids[0]) > 0
 
@@ -32,10 +31,18 @@ def test_iter_jsonl_missing_field(tmp_path):
         list(iter_jsonl(str(path), "text"))
 
 
-def test_prepare_jsonl_manifest_and_round_trip(tokenizer_dir, jsonl_path, tmp_path, documents):
+def test_prepare_jsonl_manifest_and_round_trip(
+    tokenizer_dir, jsonl_path, tmp_path, documents
+):
     out = str(tmp_path / "shards")
-    manifest = prepare(jsonl_path, out, tokenizer_dir,
-                       shard_tokens=64, command="test", license_str="cc0")
+    manifest = prepare(
+        jsonl_path,
+        out,
+        tokenizer_dir,
+        shard_tokens=64,
+        command="test",
+        license_str="cc0",
+    )
 
     assert manifest["total_documents"] == len(documents)
     assert manifest["total_tokens"] == sum(r["tokens"] for r in manifest["shards"])
@@ -46,8 +53,10 @@ def test_prepare_jsonl_manifest_and_round_trip(tokenizer_dir, jsonl_path, tmp_pa
 
     # Round-trip: decoding the token stream reproduces the source documents
     from tokenizers import Tokenizer
+
     tok = Tokenizer.from_file(f"{tokenizer_dir}/tokenizer.json")
     import numpy as np
+
     stream = []
     for rec in manifest["shards"]:
         stream.extend(np.fromfile(f"{out}/{rec['file']}", dtype=np.uint16).tolist())
@@ -62,34 +71,55 @@ def test_prepare_jsonl_manifest_and_round_trip(tokenizer_dir, jsonl_path, tmp_pa
 
 
 def test_prepare_deterministic(tokenizer_dir, jsonl_path, tmp_path):
-    a = prepare(jsonl_path, str(tmp_path / "a"), tokenizer_dir, shard_tokens=64, command="test")
-    b = prepare(jsonl_path, str(tmp_path / "b"), tokenizer_dir, shard_tokens=64, command="test")
+    a = prepare(
+        jsonl_path, str(tmp_path / "a"), tokenizer_dir, shard_tokens=64, command="test"
+    )
+    b = prepare(
+        jsonl_path, str(tmp_path / "b"), tokenizer_dir, shard_tokens=64, command="test"
+    )
     assert [r["xxhash64"] for r in a["shards"]] == [r["xxhash64"] for r in b["shards"]]
     assert a["tokenizer_hash"] == b["tokenizer_hash"]
 
 
 def test_prepare_max_tokens_cap(tokenizer_dir, jsonl_path, tmp_path):
     full = prepare(jsonl_path, str(tmp_path / "full"), tokenizer_dir, command="test")
-    capped = prepare(jsonl_path, str(tmp_path / "capped"), tokenizer_dir,
-                     max_tokens=20, command="test")
+    capped = prepare(
+        jsonl_path,
+        str(tmp_path / "capped"),
+        tokenizer_dir,
+        max_tokens=20,
+        command="test",
+    )
     assert capped["total_tokens"] < full["total_tokens"]
-    assert capped["total_tokens"] >= 20   # stops at the document that crosses the cap
+    assert capped["total_tokens"] >= 20  # stops at the document that crosses the cap
 
 
 def test_prepare_extra_manifest_collision_refused(tokenizer_dir, jsonl_path, tmp_path):
     # extra_manifest merges pipeline fields (funnel, decontaminated_against) in,
     # but must not silently overwrite a core manifest field such as "dataset".
     with pytest.raises(ValueError, match="may not override core fields"):
-        prepare(jsonl_path, str(tmp_path / "out"), tokenizer_dir, shard_tokens=64,
-                command="test", extra_manifest={"dataset": "evil"})
+        prepare(
+            jsonl_path,
+            str(tmp_path / "out"),
+            tokenizer_dir,
+            shard_tokens=64,
+            command="test",
+            extra_manifest={"dataset": "evil"},
+        )
 
 
-def test_prepare_extra_manifest_non_colliding_key_lands(tokenizer_dir, jsonl_path,
-                                                        tmp_path):
+def test_prepare_extra_manifest_non_colliding_key_lands(
+    tokenizer_dir, jsonl_path, tmp_path
+):
     out = str(tmp_path / "out")
-    manifest = prepare(jsonl_path, out, tokenizer_dir, shard_tokens=64,
-                       command="test",
-                       extra_manifest={"decontaminated_against": "gsm8k"})
+    manifest = prepare(
+        jsonl_path,
+        out,
+        tokenizer_dir,
+        shard_tokens=64,
+        command="test",
+        extra_manifest={"decontaminated_against": "gsm8k"},
+    )
     assert manifest["decontaminated_against"] == "gsm8k"
     assert load_manifest(out)["decontaminated_against"] == "gsm8k"
 
@@ -101,7 +131,9 @@ def test_prepare_refuses_overwrite(tokenizer_dir, jsonl_path, tmp_path):
         prepare(jsonl_path, out, tokenizer_dir, command="test")
 
 
-def test_prepared_shards_load_with_matching_tokenizer_hash(tokenizer_dir, jsonl_path, tmp_path):
+def test_prepared_shards_load_with_matching_tokenizer_hash(
+    tokenizer_dir, jsonl_path, tmp_path
+):
     out = str(tmp_path / "shards")
     manifest = prepare(jsonl_path, out, tokenizer_dir, shard_tokens=64, command="test")
     tok = load_tokenizer(tokenizer_dir)

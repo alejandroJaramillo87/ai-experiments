@@ -63,15 +63,18 @@ def test_registry_matches_compose_definitions():
         assert f"${{{spec.model_env}" in env, name
         health_cmd = " ".join(service["healthcheck"]["test"])
         assert f":{spec.port}{spec.health_path}" in health_cmd, name
-    assert SERVICES["vllm-gpu"].chat_url == \
-        "http://127.0.0.1:8003/v1/chat/completions"
+    assert SERVICES["vllm-gpu"].chat_url == "http://127.0.0.1:8003/v1/chat/completions"
 
 
 def test_model_paths_maps_both_forms():
     assert model_paths("/app/models/x/y.gguf") == (
-        "/app/models/x/y.gguf", "/mnt/ai-data/models/x/y.gguf")
+        "/app/models/x/y.gguf",
+        "/mnt/ai-data/models/x/y.gguf",
+    )
     assert model_paths("/mnt/ai-data/models/x/y.gguf") == (
-        "/app/models/x/y.gguf", "/mnt/ai-data/models/x/y.gguf")
+        "/app/models/x/y.gguf",
+        "/mnt/ai-data/models/x/y.gguf",
+    )
     with pytest.raises(ServingError, match="must live under"):
         model_paths("/tmp/y.gguf")
 
@@ -93,13 +96,14 @@ def test_swap_model_sets_and_clears_env():
 
     base_env = {"PATH": "/usr/bin"}
     with mock.patch.object(common_serving.subprocess, "run", side_effect=fake_run):
-        serving.swap_model(SERVICES["vllm-gpu"], "/app/models/t.gguf",
-                           env=base_env)
-        serving.swap_model(SERVICES["vllm-gpu"], None,
-                           env={**base_env, "VLLM_GPU_MODEL": "/app/models/t.gguf"})
+        serving.swap_model(SERVICES["vllm-gpu"], "/app/models/t.gguf", env=base_env)
+        serving.swap_model(
+            SERVICES["vllm-gpu"],
+            None,
+            env={**base_env, "VLLM_GPU_MODEL": "/app/models/t.gguf"},
+        )
     swap_cmd, swap_env = calls[0]
-    assert swap_cmd == ["docker", "compose", "up", "-d", "--force-recreate",
-                        "vllm-gpu"]
+    assert swap_cmd == ["docker", "compose", "up", "-d", "--force-recreate", "vllm-gpu"]
     assert swap_env["VLLM_GPU_MODEL"] == "/app/models/t.gguf"
     restore_cmd, restore_env = calls[1]
     assert "VLLM_GPU_MODEL" not in restore_env
@@ -111,7 +115,8 @@ def test_sha256_file_matches_known_digest(tmp_path):
     path = tmp_path / "f"
     path.write_bytes(b"abc")
     assert serving.sha256_file(str(path)) == (
-        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    )
 
 
 def test_default_lock_path_used_without_override(monkeypatch):
@@ -125,8 +130,10 @@ def test_default_lock_path_used_without_override(monkeypatch):
 def test_scripts_import_the_shared_module():
     # The host entry points must resolve the shared implementation, not carry
     # their own copies of swap/health/client logic.
-    for script in ("scripts/eval/serve_eval.py",
-                   "training/commands/generate_teacher.py"):
+    for script in (
+        "scripts/eval/serve_eval.py",
+        "training/commands/generate_teacher.py",
+    ):
         path = os.path.join(serving.REPO_ROOT, script)
         with open(path) as f:
             source = f.read()
@@ -134,12 +141,18 @@ def test_scripts_import_the_shared_module():
 
 
 def test_chat_completion_success(monkeypatch):
-    body = {"choices": [{"message": {"content": "hi"}}],
-            "usage": {"prompt_tokens": 3, "completion_tokens": 1}}
-    monkeypatch.setattr(common_serving.urllib.request, "urlopen",
-                        lambda *a, **k: _FakeHTTPResponse(body))
-    out = serving.chat_completion(SERVICES["llama-gpu"],
-                                  [{"role": "user", "content": "q"}])
+    body = {
+        "choices": [{"message": {"content": "hi"}}],
+        "usage": {"prompt_tokens": 3, "completion_tokens": 1},
+    }
+    monkeypatch.setattr(
+        common_serving.urllib.request,
+        "urlopen",
+        lambda *a, **k: _FakeHTTPResponse(body),
+    )
+    out = serving.chat_completion(
+        SERVICES["llama-gpu"], [{"role": "user", "content": "q"}]
+    )
     assert out["content"] == "hi"
     assert out["usage"] == body["usage"]
     assert isinstance(out["latency_ms"], float)
@@ -147,28 +160,32 @@ def test_chat_completion_success(monkeypatch):
 
 def test_chat_completion_5xx_is_transient(monkeypatch):
     err = urllib.error.HTTPError(
-        SERVICES["llama-gpu"].chat_url, 503, "Service Unavailable", {}, None)
+        SERVICES["llama-gpu"].chat_url, 503, "Service Unavailable", {}, None
+    )
 
     def boom(*a, **k):
         raise err
 
     monkeypatch.setattr(common_serving.urllib.request, "urlopen", boom)
     with pytest.raises(ServingTransientError, match="HTTP 503"):
-        serving.chat_completion(SERVICES["llama-gpu"],
-                                [{"role": "user", "content": "q"}])
+        serving.chat_completion(
+            SERVICES["llama-gpu"], [{"role": "user", "content": "q"}]
+        )
 
 
 def test_chat_completion_4xx_is_non_transient(monkeypatch):
     err = urllib.error.HTTPError(
-        SERVICES["llama-gpu"].chat_url, 400, "Bad Request", {}, None)
+        SERVICES["llama-gpu"].chat_url, 400, "Bad Request", {}, None
+    )
 
     def boom(*a, **k):
         raise err
 
     monkeypatch.setattr(common_serving.urllib.request, "urlopen", boom)
     with pytest.raises(ServingError) as exc:
-        serving.chat_completion(SERVICES["llama-gpu"],
-                                [{"role": "user", "content": "q"}])
+        serving.chat_completion(
+            SERVICES["llama-gpu"], [{"role": "user", "content": "q"}]
+        )
     # A 4xx is a client error a retry cannot fix; taxonomy must not mark it transient.
     assert not isinstance(exc.value, ServingTransientError)
     assert "HTTP 400" in str(exc.value)
@@ -180,29 +197,36 @@ def test_chat_completion_urlerror_is_transient(monkeypatch):
 
     monkeypatch.setattr(common_serving.urllib.request, "urlopen", boom)
     with pytest.raises(ServingTransientError, match="failed"):
-        serving.chat_completion(SERVICES["llama-gpu"],
-                                [{"role": "user", "content": "q"}])
+        serving.chat_completion(
+            SERVICES["llama-gpu"], [{"role": "user", "content": "q"}]
+        )
 
 
 def test_chat_completion_empty_body_is_non_transient(monkeypatch):
     # An empty or malformed body decodes to a ValueError: a request error a
     # retry cannot fix, so ServingError (not the transient subclass).
-    monkeypatch.setattr(common_serving.urllib.request, "urlopen",
-                        lambda *a, **k: _FakeHTTPResponse(b""))
+    monkeypatch.setattr(
+        common_serving.urllib.request, "urlopen", lambda *a, **k: _FakeHTTPResponse(b"")
+    )
     with pytest.raises(ServingError) as exc:
-        serving.chat_completion(SERVICES["llama-gpu"],
-                                [{"role": "user", "content": "q"}])
+        serving.chat_completion(
+            SERVICES["llama-gpu"], [{"role": "user", "content": "q"}]
+        )
     assert not isinstance(exc.value, ServingTransientError)
     assert "Non-JSON" in str(exc.value)
 
 
 def test_chat_completion_missing_choices_is_malformed(monkeypatch):
     # Valid JSON but no choices: extraction fails with a non-transient error.
-    monkeypatch.setattr(common_serving.urllib.request, "urlopen",
-                        lambda *a, **k: _FakeHTTPResponse({"choices": []}))
+    monkeypatch.setattr(
+        common_serving.urllib.request,
+        "urlopen",
+        lambda *a, **k: _FakeHTTPResponse({"choices": []}),
+    )
     with pytest.raises(ServingError) as exc:
-        serving.chat_completion(SERVICES["llama-gpu"],
-                                [{"role": "user", "content": "q"}])
+        serving.chat_completion(
+            SERVICES["llama-gpu"], [{"role": "user", "content": "q"}]
+        )
     assert not isinstance(exc.value, ServingTransientError)
     assert "Malformed" in str(exc.value)
 
@@ -236,5 +260,5 @@ def test_wait_healthy_returns_when_probe_succeeds(monkeypatch):
 
     monkeypatch.setattr(common_serving.urllib.request, "urlopen", probe)
     elapsed = serving.wait_healthy(SERVICES["vllm-gpu"], budget_s=100)
-    assert attempts["n"] == 3      # returned on the first 200, not before
+    assert attempts["n"] == 3  # returned on the first 200, not before
     assert elapsed >= 0.0

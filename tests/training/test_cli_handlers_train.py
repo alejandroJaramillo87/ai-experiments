@@ -31,8 +31,10 @@ LOGIT = os.path.join(REFERENCE_DIR, "distill-logit-gemma-e2b.yaml")
 RESPONSE = os.path.join(REFERENCE_DIR, "distill-response-gemma-e2b.yaml")
 
 FIT_OK = "Memory fit: 20.61 GB reserved estimate of 32 GB VRAM"
-FIT_FORCED = ("Memory fit: predicted 40.00 GB exceeds the 32 GB budget "
-              "(--force: proceeding anyway)")
+FIT_FORCED = (
+    "Memory fit: predicted 40.00 GB exceeds the 32 GB budget "
+    "(--force: proceeding anyway)"
+)
 
 WATCHDOG_LINE = "Watchdog abort: loss_spike value 12.5 crossed threshold 6.25"
 
@@ -43,18 +45,28 @@ def run_cli(argv: list[str]) -> int:
 
 
 def train_result(**kw) -> TrainResult:
-    base = {"run_dir": "/runs/tiny-e2e/1", "checkpoint_root": "/ckpt/tiny-e2e",
-                "final_step": 20, "tokens_seen": 2560, "losses": [(10, 2.5), (20, 1.25)]}
+    base = {
+        "run_dir": "/runs/tiny-e2e/1",
+        "checkpoint_root": "/ckpt/tiny-e2e",
+        "final_step": 20,
+        "tokens_seen": 2560,
+        "losses": [(10, 2.5), (20, 1.25)],
+    }
     base.update(kw)
     return TrainResult(**base)
 
 
 def sft_result(**kw) -> SftResult:
-    base = {"run_dir": "/runs/sft/1", "checkpoint_root": "/ckpt/sft",
-                "final_step": 2000, "backend": "trl", "train_loss": 1.5,
-                "holdout_loss": 1.8,
-                "trainable_report": "trainable params: 4,096 of 1,000,000",
-                "losses": [(1000, 2.0), (2000, 1.5)]}
+    base = {
+        "run_dir": "/runs/sft/1",
+        "checkpoint_root": "/ckpt/sft",
+        "final_step": 2000,
+        "backend": "trl",
+        "train_loss": 1.5,
+        "holdout_loss": 1.8,
+        "trainable_report": "trainable params: 4,096 of 1,000,000",
+        "losses": [(1000, 2.0), (2000, 1.5)],
+    }
     base.update(kw)
     return SftResult(**base)
 
@@ -79,6 +91,7 @@ def assert_watchdog_output(out: str) -> None:
 
 # -- cmd_train ----------------------------------------------------------------
 
+
 class TestCmdTrain:
     def test_success_prints_run_summary(self, monkeypatch, capsys):
         seen = {}
@@ -98,17 +111,16 @@ class TestCmdTrain:
         assert seen["recipe"].run.name == "tiny-e2e"
 
     def test_resume_verb_and_empty_losses(self, monkeypatch, capsys):
-        monkeypatch.setattr("training.loop.train",
-                            lambda recipe: train_result(losses=[]))
-        assert run_cli(["train", "--config", TINY,
-                        "checkpoint.resume=latest"]) == 0
+        monkeypatch.setattr(
+            "training.loop.train", lambda recipe: train_result(losses=[])
+        )
+        assert run_cli(["train", "--config", TINY, "checkpoint.resume=latest"]) == 0
         out = capsys.readouterr().out
         assert "[RUN] Resuming (latest) tiny-e2e: 20 total steps" in out
         assert "Final loss" not in out
 
     def test_json_stdout_is_pure_json(self, monkeypatch, capsys):
-        monkeypatch.setattr("training.loop.train",
-                            lambda recipe: train_result())
+        monkeypatch.setattr("training.loop.train", lambda recipe: train_result())
         assert run_cli(["train", "--config", TINY, "--json"]) == 0
         data = json.loads(capsys.readouterr().out)
         assert data["final_step"] == 20
@@ -136,21 +148,23 @@ class TestCmdTrain:
         assert "Solution: check the recipe's data.source shards" in out
 
     @pytest.mark.parametrize(
-        "subcommand", ["train", "train-sft", "train-distill", "distill-cache"])
+        "subcommand", ["train", "train-sft", "train-distill", "distill-cache"]
+    )
     def test_unloadable_recipe_exits_1(self, subcommand, tmp_path, capsys):
         # No pipeline patching needed: the handler must bail before any run.
-        assert run_cli([subcommand, "--config",
-                        str(tmp_path / "absent.yaml")]) == 1
+        assert run_cli([subcommand, "--config", str(tmp_path / "absent.yaml")]) == 1
         assert "[ERROR] Recipe load failed" in capsys.readouterr().out
 
 
 # -- cmd_train-sft --------------------------------------------------------------
 
+
 class TestCmdTrainSft:
     def test_success_prints_full_report(self, monkeypatch, capsys):
         patch_fit(monkeypatch)
-        monkeypatch.setattr("training.sft.train_sft",
-                            lambda recipe, force=False: sft_result())
+        monkeypatch.setattr(
+            "training.sft.train_sft", lambda recipe, force=False: sft_result()
+        )
         assert run_cli(["train-sft", "--config", SFT]) == 0
         out = capsys.readouterr().out
         assert "[RUN] Fine-tuning sft-qlora-e2b [trl]: 2000 total steps" in out
@@ -162,18 +176,22 @@ class TestCmdTrainSft:
         assert "Run directory: /runs/sft/1" in out
 
     def test_forced_fit_warns_resume_verb_and_force_passthrough(
-            self, monkeypatch, capsys):
+        self, monkeypatch, capsys
+    ):
         fit_calls = patch_fit(monkeypatch, message=FIT_FORCED)
         train_calls = []
 
         def fake_train(recipe, force=False):
             train_calls.append(force)
-            return sft_result(trainable_report="", train_loss=None,
-                              holdout_loss=None)
+            return sft_result(trainable_report="", train_loss=None, holdout_loss=None)
 
         monkeypatch.setattr("training.sft.train_sft", fake_train)
-        assert run_cli(["train-sft", "--config", SFT, "--force",
-                        "checkpoint.resume=latest"]) == 0
+        assert (
+            run_cli(
+                ["train-sft", "--config", SFT, "--force", "checkpoint.resume=latest"]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "[RUN] Resuming (latest) sft-qlora-e2b [trl]" in out
         assert f"[WARN] {FIT_FORCED}" in out
@@ -221,7 +239,8 @@ class TestCmdTrainSft:
         patch_fit(monkeypatch)
         monkeypatch.setattr(
             "training.sft.train_sft",
-            lambda recipe, force=False: sft_result(holdout_loss=None))
+            lambda recipe, force=False: sft_result(holdout_loss=None),
+        )
         assert run_cli(["train-sft", "--config", SFT, "--json"]) == 0
         data = json.loads(capsys.readouterr().out)
         assert data["final_step"] == 2000
@@ -233,18 +252,26 @@ class TestCmdTrainSft:
 
 # -- cmd_train-distill ----------------------------------------------------------
 
+
 class TestCmdTrainDistill:
     def test_response_tier_success(self, monkeypatch, capsys):
         patch_fit(monkeypatch)
         monkeypatch.setattr(
             "training.distill.train_distill",
             lambda recipe, force=False: sft_result(
-                run_dir="/runs/distill/1", final_step=1000,
-                trainable_report="", train_loss=None, holdout_loss=None))
+                run_dir="/runs/distill/1",
+                final_step=1000,
+                trainable_report="",
+                train_loss=None,
+                holdout_loss=None,
+            ),
+        )
         assert run_cli(["train-distill", "--config", RESPONSE]) == 0
         out = capsys.readouterr().out
-        assert ("[RUN] Distilling distill-response-gemma-e2b [tier=response]: "
-                "1000 total steps") in out
+        assert (
+            "[RUN] Distilling distill-response-gemma-e2b [tier=response]: "
+            "1000 total steps"
+        ) in out
         assert f"[OK] {FIT_OK}" in out
         assert "[OK] Run complete: step 1000 [trl]" in out
         assert "Run directory: /runs/distill/1" in out
@@ -253,12 +280,15 @@ class TestCmdTrainDistill:
         patch_fit(monkeypatch, message=FIT_FORCED)
         monkeypatch.setattr(
             "training.distill.train_distill",
-            lambda recipe, force=False: sft_result(final_step=1000))
+            lambda recipe, force=False: sft_result(final_step=1000),
+        )
         assert run_cli(["train-distill", "--config", LOGIT, "--force"]) == 0
         out = capsys.readouterr().out
-        assert ("[RUN] Distilling distill-logit-gemma-e2b [tier=logit "
-                "mode=online teacher=google/gemma-4-E4B-it]: "
-                "1000 total steps") in out
+        assert (
+            "[RUN] Distilling distill-logit-gemma-e2b [tier=logit "
+            "mode=online teacher=google/gemma-4-E4B-it]: "
+            "1000 total steps"
+        ) in out
         assert f"[WARN] {FIT_FORCED}" in out
         assert "  [INFO] trainable params: 4,096 of 1,000,000" in out
         assert "Final train loss: 1.500000" in out
@@ -301,7 +331,8 @@ class TestCmdTrainDistill:
         patch_fit(monkeypatch)
         monkeypatch.setattr(
             "training.distill.train_distill",
-            lambda recipe, force=False: sft_result(final_step=1000))
+            lambda recipe, force=False: sft_result(final_step=1000),
+        )
         assert run_cli(["train-distill", "--config", LOGIT, "--json"]) == 0
         data = json.loads(capsys.readouterr().out)
         assert data["final_step"] == 1000
@@ -313,17 +344,24 @@ class TestCmdTrainDistill:
 # -- cmd_distill-cache ----------------------------------------------------------
 
 CACHE_MANIFEST = {
-    "examples": 1024, "total_tokens": 200000, "top_k": 64,
-    "teacher": "google/gemma-4-E4B-it", "teacher_revision": "abc1234",
+    "examples": 1024,
+    "total_tokens": 200000,
+    "top_k": 64,
+    "teacher": "google/gemma-4-E4B-it",
+    "teacher_revision": "abc1234",
 }
 
 
 class TestCmdDistillCache:
     # Refusals raised before build_logit_cache imports torch run for real.
-    @pytest.mark.parametrize("config,message", [
-        (TINY, "distill.enabled=true and tier=logit"),
-        (LOGIT, "no cache path: set distill.cache_path or pass --out"),
-    ], ids=["distill-disabled", "no-cache-path"])
+    @pytest.mark.parametrize(
+        "config,message",
+        [
+            (TINY, "distill.enabled=true and tier=logit"),
+            (LOGIT, "no cache path: set distill.cache_path or pass --out"),
+        ],
+        ids=["distill-disabled", "no-cache-path"],
+    )
     def test_real_preflight_refusals_exit_1(self, config, message, capsys):
         assert run_cli(["distill-cache", "--config", config]) == 1
         out = capsys.readouterr().out
@@ -335,8 +373,7 @@ class TestCmdDistillCache:
             raise FileExistsError("cache exists: /c (pass a new --out)")
 
         monkeypatch.setattr("training.distill.build_logit_cache", failing)
-        assert run_cli(["distill-cache", "--config", LOGIT,
-                        "--out", "/c"]) == 1
+        assert run_cli(["distill-cache", "--config", LOGIT, "--out", "/c"]) == 1
         out = capsys.readouterr().out
         assert "[ERROR] cache exists: /c (pass a new --out)" in out
         assert "Cache pre-pass failed" not in out
@@ -346,14 +383,12 @@ class TestCmdDistillCache:
             raise RuntimeError("teacher OOM")
 
         monkeypatch.setattr("training.distill.build_logit_cache", failing)
-        assert run_cli(["distill-cache", "--config", LOGIT,
-                        "--out", "/c"]) == 1
+        assert run_cli(["distill-cache", "--config", LOGIT, "--out", "/c"]) == 1
         out = capsys.readouterr().out
         assert "[ERROR] Cache pre-pass failed: teacher OOM" in out
         assert "Solution: check sft.dataset" in out
 
-    def test_success_reports_progress_and_manifest(self, monkeypatch, tmp_path,
-                                                   capsys):
+    def test_success_reports_progress_and_manifest(self, monkeypatch, tmp_path, capsys):
         target = str(tmp_path / "cache")
         seen = {}
 
@@ -366,26 +401,38 @@ class TestCmdDistillCache:
             return dict(CACHE_MANIFEST)
 
         monkeypatch.setattr("training.distill.build_logit_cache", fake_build)
-        assert run_cli(["distill-cache", "--config", LOGIT,
-                        "--out", target]) == 0
+        assert run_cli(["distill-cache", "--config", LOGIT, "--out", target]) == 0
         out = capsys.readouterr().out
-        assert ("[RUN] Caching top-64 teacher logprobs: "
-                f"google/gemma-4-E4B-it -> {target}") in out
+        assert (
+            f"[RUN] Caching top-64 teacher logprobs: google/gemma-4-E4B-it -> {target}"
+        ) in out
         assert "  [INFO] Examples cached: 512/1024" in out
         assert "  [INFO] Examples cached: 1024/1024" in out
         assert "Examples cached: 8/1024" not in out
-        assert ("[OK] Cache written: 1024 examples, 200,000 token positions, "
-                "top_k 64") in out
+        assert (
+            "[OK] Cache written: 1024 examples, 200,000 token positions, top_k 64"
+        ) in out
         assert "Teacher: google/gemma-4-E4B-it (revision abc1234)" in out
         assert seen["out_dir"] == target
 
     def test_json_stdout_is_pure_manifest(self, monkeypatch, tmp_path, capsys):
         monkeypatch.setattr(
             "training.distill.build_logit_cache",
-            lambda recipe, out_dir=None, progress=None: dict(CACHE_MANIFEST))
+            lambda recipe, out_dir=None, progress=None: dict(CACHE_MANIFEST),
+        )
         # No --out: the target falls back to the recipe's distill.cache_path.
-        assert run_cli([
-            "distill-cache", "--config", LOGIT, "--json",
-            "distill.mode=cached", "distill.teacher_quantize=none",
-            f"distill.cache_path={tmp_path / 'cache'}"]) == 0
+        assert (
+            run_cli(
+                [
+                    "distill-cache",
+                    "--config",
+                    LOGIT,
+                    "--json",
+                    "distill.mode=cached",
+                    "distill.teacher_quantize=none",
+                    f"distill.cache_path={tmp_path / 'cache'}",
+                ]
+            )
+            == 0
+        )
         assert json.loads(capsys.readouterr().out) == CACHE_MANIFEST

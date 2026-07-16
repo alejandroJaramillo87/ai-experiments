@@ -57,8 +57,6 @@ def checkpoint_complete(ckpt_dir: str) -> bool:
     return os.path.isfile(os.path.join(ckpt_dir, TRAINER_STATE_FILE))
 
 
-
-
 def _library_versions() -> dict:
     versions = {}
     for name in ("torch", "transformers", "trl", "peft"):
@@ -69,12 +67,19 @@ def _library_versions() -> dict:
     return versions
 
 
-def write_checkpoint_meta(ckpt_dir: str, step: int, *, adapter_only: bool,
-                          base_model: str, backend: str, recipe_hash: str,
-                          base_revision: str | None = None,
-                          base_config_sha256: str | None = None,
-                          emergency: bool = False,
-                          distill: dict | None = None) -> str:
+def write_checkpoint_meta(
+    ckpt_dir: str,
+    step: int,
+    *,
+    adapter_only: bool,
+    base_model: str,
+    backend: str,
+    recipe_hash: str,
+    base_revision: str | None = None,
+    base_config_sha256: str | None = None,
+    emergency: bool = False,
+    distill: dict | None = None,
+) -> str:
     """Stamp a TRL checkpoint directory with the D6-style meta.json F6 reads.
 
     adapter_only tells export whether the directory holds a PEFT adapter to
@@ -160,17 +165,22 @@ def latest_trl_checkpoint(root: str) -> str | None:
     return os.path.join(root, checkpoint_dir_name(steps[-1]))
 
 
-def tokens_per_second(tokens_per_step: int, step_delta: int,
-                      elapsed_s: float) -> float:
+def tokens_per_second(tokens_per_step: int, step_delta: int, elapsed_s: float) -> float:
     if elapsed_s <= 0 or step_delta <= 0:
         return 0.0
     return tokens_per_step * step_delta / elapsed_s
 
 
-def build_callbacks(recipe, ckpt_root: str, tracker, watchdog,
-                    recipe_hash: str, trainable_report=None,
-                    distill_meta: dict | None = None,
-                    base_identity=None) -> list:
+def build_callbacks(
+    recipe,
+    ckpt_root: str,
+    tracker,
+    watchdog,
+    recipe_hash: str,
+    trainable_report=None,
+    distill_meta: dict | None = None,
+    base_identity=None,
+) -> list:
     """Instantiate the trainer callbacks (imports transformers lazily).
 
     Returns [tracking, checkpoint] or [tracking, watchdog, checkpoint];
@@ -179,8 +189,9 @@ def build_callbacks(recipe, ckpt_root: str, tracker, watchdog,
     """
     from transformers import TrainerCallback
 
-    tokens_per_step = (recipe.data.micro_batch * recipe.data.grad_accum
-                       * recipe.data.seq_len)
+    tokens_per_step = (
+        recipe.data.micro_batch * recipe.data.grad_accum * recipe.data.seq_len
+    )
     backend = recipe.sft.backend
     adapter_only = bool(recipe.peft.enabled)
     base_model = recipe.model.hf.id
@@ -201,17 +212,21 @@ def build_callbacks(recipe, ckpt_root: str, tracker, watchdog,
                 metrics["train/trainable_params"] = trainable_report.trainable
                 metrics["train/trainable_percent"] = trainable_report.percent
                 self._reported = True
-            for src, dst in (("loss", "train/loss"),
-                             ("grad_norm", "train/grad_norm"),
-                             ("learning_rate", "train/lr"),
-                             ("eval_loss", "eval/holdout_loss")):
+            for src, dst in (
+                ("loss", "train/loss"),
+                ("grad_norm", "train/grad_norm"),
+                ("learning_rate", "train/lr"),
+                ("eval_loss", "eval/holdout_loss"),
+            ):
                 if src in logs:
                     metrics[dst] = logs[src]
             now = time.monotonic()
             if "loss" in logs and state.global_step > self._last_step:
                 metrics["train/tokens_per_s"] = tokens_per_second(
-                    tokens_per_step, state.global_step - self._last_step,
-                    now - self._last_time)
+                    tokens_per_step,
+                    state.global_step - self._last_step,
+                    now - self._last_time,
+                )
                 self._last_step, self._last_time = state.global_step, now
             if metrics:
                 metrics["train/backend"] = 1.0 if backend == "unsloth" else 0.0
@@ -225,26 +240,33 @@ def build_callbacks(recipe, ckpt_root: str, tracker, watchdog,
         def on_log(self, args, state, control, logs=None, **kwargs):
             if not logs or "loss" not in logs:
                 return
-            watchdog.on_step(state.global_step, float(logs["loss"]),
-                             float(logs.get("grad_norm", 0.0)))
+            watchdog.on_step(
+                state.global_step,
+                float(logs["loss"]),
+                float(logs.get("grad_norm", 0.0)),
+            )
 
     class CheckpointCallback(TrainerCallback):
         """Stamp meta.json, apply D6 retention, update latest (decision 1)."""
 
         def on_save(self, args, state, control, **kwargs):
-            ckpt_dir = os.path.join(ckpt_root,
-                                    checkpoint_dir_name(state.global_step))
+            ckpt_dir = os.path.join(ckpt_root, checkpoint_dir_name(state.global_step))
             if not checkpoint_complete(ckpt_dir):
                 return  # partial save; leave unstamped so consumers ignore it
             write_checkpoint_meta(
-                ckpt_dir, state.global_step, adapter_only=adapter_only,
-                base_model=base_model, backend=backend,
+                ckpt_dir,
+                state.global_step,
+                adapter_only=adapter_only,
+                base_model=base_model,
+                backend=backend,
                 recipe_hash=recipe_hash,
                 base_revision=getattr(base_identity, "revision", None),
                 base_config_sha256=getattr(base_identity, "config_sha256", None),
-                distill=distill_meta)
-            apply_trl_retention(ckpt_root, recipe.checkpoint.retain_last,
-                                recipe.checkpoint.retain_every)
+                distill=distill_meta,
+            )
+            apply_trl_retention(
+                ckpt_root, recipe.checkpoint.retain_last, recipe.checkpoint.retain_every
+            )
             update_latest(ckpt_root, state.global_step)
 
     callbacks = [TrackingCallback()]

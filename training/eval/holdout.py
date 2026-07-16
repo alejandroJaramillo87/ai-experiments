@@ -26,10 +26,12 @@ def resolve_model(model: str) -> tuple[str, str | None]:
     if not os.path.exists(model):
         return model, None  # hub id
     from training.export.merge import find_adapter, resolve_model_dir
+
     model_dir = resolve_model_dir(model)
     adapter = find_adapter(model_dir)
     if adapter is not None:
         from training.export.merge import adapter_base_model
+
         return adapter_base_model(adapter), adapter
     return model_dir, None
 
@@ -43,21 +45,28 @@ def load_model(model: str, load_4bit: bool = False):
     kwargs = {"torch_dtype": torch.bfloat16, "device_map": "cuda:0"}
     if load_4bit:
         from transformers import BitsAndBytesConfig
+
         # Match the QLoRA training configuration (F3): nf4 storage, bf16 compute
         kwargs["quantization_config"] = BitsAndBytesConfig(
-            load_in_4bit=True, bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16)
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        )
     loaded = AutoModelForCausalLM.from_pretrained(base, **kwargs)
     if adapter is not None:
         from peft import PeftModel
+
         loaded = PeftModel.from_pretrained(loaded, adapter)
     loaded.eval()
     return loaded
 
 
-def evaluate_holdout(model: str, dataset_dir: str,
-                     load_4bit: bool = False,
-                     max_examples: int | None = None) -> dict:
+def evaluate_holdout(
+    model: str,
+    dataset_dir: str,
+    load_4bit: bool = False,
+    max_examples: int | None = None,
+) -> dict:
     """Held-out loss record for one model over one prepared dataset.
 
     Loss is the token-weighted mean CE over supervised positions, identical
@@ -72,7 +81,8 @@ def evaluate_holdout(model: str, dataset_dir: str,
     if not holdout:
         raise ValueError(
             f"Dataset has no held-out split: {dataset_dir}\n"
-            "  Solution: re-run prepare_sft with --holdout > 0")
+            "  Solution: re-run prepare_sft with --holdout > 0"
+        )
     if max_examples is not None:
         holdout = holdout[:max_examples]
 

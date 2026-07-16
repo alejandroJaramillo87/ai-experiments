@@ -197,7 +197,7 @@ class AffinityConfig:
     include_smt is set. Off by default; parked unless it measurably helps."""
 
     enabled: bool = False
-    main: str = "0-7"     # cpu list for the main training process
+    main: str = "0-7"  # cpu list for the main training process
     workers: str = "8-15"  # cpu list for dataloader workers
     include_smt: bool = True  # extend each mask with its SMT siblings
 

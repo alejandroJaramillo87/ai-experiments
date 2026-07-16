@@ -41,6 +41,7 @@ def sft_recipe(overrides=()):
 
 # -- schema and validation ---------------------------------------------------
 
+
 class TestSftValidation:
     def test_reference_recipe_validates(self):
         validate(sft_recipe())
@@ -58,12 +59,19 @@ class TestSftValidation:
 
     def test_unsloth_rejects_fp8(self):
         with pytest.raises(RecipeValidationError, match="unsloth"):
-            validate(sft_recipe(
-                ["sft.backend=unsloth", "precision.dtype=fp8",
-                 "peft.quantize_base=none"]))
+            validate(
+                sft_recipe(
+                    [
+                        "sft.backend=unsloth",
+                        "precision.dtype=fp8",
+                        "peft.quantize_base=none",
+                    ]
+                )
+            )
 
 
 # -- packing (F3 owns packing; masks must survive it) -------------------------
+
 
 def example(n_masked: int, n_supervised: int, base: int = 0):
     ids = list(range(base, base + n_masked + n_supervised))
@@ -73,8 +81,9 @@ def example(n_masked: int, n_supervised: int, base: int = 0):
 
 class TestPacking:
     def test_packs_up_to_seq_len_and_flushes(self):
-        packed = pack_examples([example(2, 2), example(2, 2, 10),
-                                example(2, 2, 20)], seq_len=8)
+        packed = pack_examples(
+            [example(2, 2), example(2, 2, 10), example(2, 2, 20)], seq_len=8
+        )
         assert [len(p["input_ids"]) for p in packed] == [8, 4]
 
     def test_labels_preserved_verbatim(self):
@@ -84,8 +93,7 @@ class TestPacking:
         assert packed["input_ids"] == a["input_ids"] + b["input_ids"]
 
     def test_position_ids_reset_per_example(self):
-        packed = pack_examples([example(1, 2), example(2, 3, 10)],
-                               seq_len=16)[0]
+        packed = pack_examples([example(1, 2), example(2, 3, 10)], seq_len=16)[0]
         assert packed["position_ids"] == [0, 1, 2, 0, 1, 2, 3, 4]
 
     def test_no_cross_example_loss_bleed_across_flush(self):
@@ -125,6 +133,7 @@ class TestCollator:
 
 # -- SFTConfig mapping ---------------------------------------------------------
 
+
 class TestSftConfigKwargs:
     def test_maps_recipe_fields(self):
         recipe = sft_recipe()
@@ -149,17 +158,20 @@ class TestSftConfigKwargs:
         assert kwargs["eval_steps"] == 100
         no_holdout = sft_config_kwargs(sft_recipe(), "/ckpt", has_holdout=False)
         assert no_holdout["eval_strategy"] == "no"
-        disabled = sft_config_kwargs(sft_recipe(["sft.eval_steps=0"]),
-                                     "/ckpt", has_holdout=True)
+        disabled = sft_config_kwargs(
+            sft_recipe(["sft.eval_steps=0"]), "/ckpt", has_holdout=True
+        )
         assert disabled["eval_strategy"] == "no"
 
     def test_cpu_adam_has_no_trl_mapping(self):
         with pytest.raises(SftPreflightError, match="cpu_adam"):
-            sft_config_kwargs(sft_recipe(["optimizer.name=cpu_adam"]),
-                              "/ckpt", has_holdout=False)
+            sft_config_kwargs(
+                sft_recipe(["optimizer.name=cpu_adam"]), "/ckpt", has_holdout=False
+            )
 
 
 # -- checkpoint meta, retention, latest ---------------------------------------
+
 
 def make_checkpoint(root, step, complete=True, stamped=True, emergency=False):
     d = os.path.join(root, checkpoint_dir_name(step))
@@ -168,9 +180,15 @@ def make_checkpoint(root, step, complete=True, stamped=True, emergency=False):
         with open(os.path.join(d, "trainer_state.json"), "w") as f:
             json.dump({"global_step": step}, f)
     if stamped:
-        write_checkpoint_meta(d, step, adapter_only=True,
-                              base_model="google/gemma-4-E2B", backend="trl",
-                              recipe_hash="deadbeef", emergency=emergency)
+        write_checkpoint_meta(
+            d,
+            step,
+            adapter_only=True,
+            base_model="google/gemma-4-E2B",
+            backend="trl",
+            recipe_hash="deadbeef",
+            emergency=emergency,
+        )
     return d
 
 
@@ -191,11 +209,16 @@ class TestCheckpointHelpers:
     def test_meta_records_base_identity_for_f6(self, tmp_path):
         d = os.path.join(tmp_path, checkpoint_dir_name(10))
         os.makedirs(d)
-        write_checkpoint_meta(d, 10, adapter_only=True,
-                              base_model="google/gemma-4-E2B", backend="trl",
-                              recipe_hash="deadbeef",
-                              base_revision="b" * 40,
-                              base_config_sha256="f" * 64)
+        write_checkpoint_meta(
+            d,
+            10,
+            adapter_only=True,
+            base_model="google/gemma-4-E2B",
+            backend="trl",
+            recipe_hash="deadbeef",
+            base_revision="b" * 40,
+            base_config_sha256="f" * 64,
+        )
         with open(os.path.join(d, "meta.json")) as f:
             meta = json.load(f)
         assert meta["base_revision"] == "b" * 40
@@ -245,6 +268,7 @@ class TestCheckpointHelpers:
 
 # -- preflight -----------------------------------------------------------------
 
+
 class TestPreflight:
     def test_disabled_sft_group_refused(self):
         with pytest.raises(SftPreflightError, match="sft.enabled"):
@@ -252,16 +276,18 @@ class TestPreflight:
 
     def test_memory_fit_refusal_precedes_lock(self, monkeypatch):
         recipe = sft_recipe()
-        monkeypatch.setattr("training.sft.check_memory_fit",
-                            lambda r, force: (False, "too big"))
+        monkeypatch.setattr(
+            "training.sft.check_memory_fit", lambda r, force: (False, "too big")
+        )
         with pytest.raises(SftPreflightError, match="too big"):
             train_sft(recipe)
         assert not os.path.exists(os.environ["TRAIN_LOCK_PATH"])
 
     def test_refuses_while_lock_held(self, monkeypatch, tmp_path):
         recipe = sft_recipe()
-        monkeypatch.setattr("training.sft.check_memory_fit",
-                            lambda r, force: (True, "fits"))
+        monkeypatch.setattr(
+            "training.sft.check_memory_fit", lambda r, force: (True, "fits")
+        )
         lock = os.environ["TRAIN_LOCK_PATH"]
         with open(lock, "w") as f:
             json.dump({"pid": os.getpid(), "run": "other"}, f)

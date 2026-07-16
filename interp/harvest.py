@@ -374,8 +374,9 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
         "seed": int(recipe.run.seed),
         "tokenizer_fingerprint": stats.get("tokenizer_fingerprint", "unknown"),
         "sae_lens_version": stats.get("sae_lens_version", "unknown"),
-        "tokens_per_second": (round(tokens / wall_clock_s, 1)
-                              if wall_clock_s and tokens else 0.0),
+        "tokens_per_second": (
+            round(tokens / wall_clock_s, 1) if wall_clock_s and tokens else 0.0
+        ),
         "wall_clock_s": round(wall_clock_s, 1),
         "validated": False,
         "git_sha": git_sha(),

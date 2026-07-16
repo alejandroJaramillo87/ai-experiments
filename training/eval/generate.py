@@ -57,10 +57,15 @@ def load_responses(path: str) -> dict[str, dict]:
     return responses
 
 
-def generate_responses(service: serving.ServiceSpec, prompts: list[dict],
-                       out_path: str, sampling: dict | None = None,
-                       timeout: int = 300, retries: int = 2,
-                       progress=None) -> dict[str, dict]:
+def generate_responses(
+    service: serving.ServiceSpec,
+    prompts: list[dict],
+    out_path: str,
+    sampling: dict | None = None,
+    timeout: int = 300,
+    retries: int = 2,
+    progress=None,
+) -> dict[str, dict]:
     """Generate the missing responses; returns all responses by prompt id.
 
     Transient request failures retry; a persistent failure is recorded with
@@ -78,11 +83,16 @@ def generate_responses(service: serving.ServiceSpec, prompts: list[dict],
             for _attempt in range(retries + 1):
                 try:
                     result = serving.chat_completion(
-                        service, [{"role": "user", "content": spec["prompt"]}],
-                        sampling, timeout=timeout)
-                    record.update(response=result["content"],
-                                  latency_ms=result["latency_ms"],
-                                  usage=result["usage"])
+                        service,
+                        [{"role": "user", "content": spec["prompt"]}],
+                        sampling,
+                        timeout=timeout,
+                    )
+                    record.update(
+                        response=result["content"],
+                        latency_ms=result["latency_ms"],
+                        usage=result["usage"],
+                    )
                     record.pop("error", None)
                     break
                 except serving.ServingTransientError as exc:

@@ -43,8 +43,13 @@ class TestMemfit:
         assert "=== Memory-fit estimate ===" in out
         assert f"Model parameters: {TINY_PARAMS:,}" in out
         assert "Micro-batch 2, sequence length 128" in out
-        for component in ("weights", "gradients", "optimizer state",
-                          "activations", "framework overhead"):
+        for component in (
+            "weights",
+            "gradients",
+            "optimizer state",
+            "activations",
+            "framework overhead",
+        ):
             assert component in out
         assert "[OK] Fits: reserved estimate" in out
         assert "within budget 31.00 GB" in out
@@ -53,8 +58,7 @@ class TestMemfit:
         assert "Host RAM" not in out
 
     def test_oversized_batch_does_not_fit_and_exits_one(self, capsys):
-        rc = run_cli(["memfit", "--config", PRETRAIN_1B,
-                      "data.micro_batch=512"])
+        rc = run_cli(["memfit", "--config", PRETRAIN_1B, "data.micro_batch=512"])
         out = capsys.readouterr().out
         assert rc == 1
         assert "[ERROR] Does not fit: reserved estimate" in out
@@ -80,19 +84,27 @@ class TestMemfit:
         # 100k micro-batch overflows even one SEQ_STEP of sequence length:
         # a failed solve is exit 1 per the exit-code contract, not exit 0
         # with an [ERROR] line.
-        rc = run_cli(["memfit", "--config", PRETRAIN_1B, "--solve", "seq",
-                      "data.micro_batch=100000"])
+        rc = run_cli(
+            [
+                "memfit",
+                "--config",
+                PRETRAIN_1B,
+                "--solve",
+                "seq",
+                "data.micro_batch=100000",
+            ]
+        )
         out = capsys.readouterr().out
         assert rc == 1
-        assert ("[ERROR] Solve seq: no sequence length fits at the recipe's "
-                "other settings") in out
+        assert (
+            "[ERROR] Solve seq: no sequence length fits at the recipe's other settings"
+        ) in out
 
     def test_json_mode_emits_only_json(self, capsys):
-        rc = run_cli(["memfit", "--config", TINY_RECIPE,
-                      "--solve", "batch", "--json"])
+        rc = run_cli(["memfit", "--config", TINY_RECIPE, "--solve", "batch", "--json"])
         out = capsys.readouterr().out
         assert rc == 0
-        result = json.loads(out)   # stdout must parse as one JSON document
+        result = json.loads(out)  # stdout must parse as one JSON document
         assert result["estimate"]["fits"] is True
         assert result["estimate"]["param_count"] == TINY_PARAMS
         assert result["estimate"]["teacher"] == 0
@@ -100,8 +112,7 @@ class TestMemfit:
         assert result["max_batch_estimate"]["micro_batch"] == 4096
 
     def test_offload_recipe_reports_host_ram(self, capsys):
-        rc = run_cli(["memfit", "--config", TINY_RECIPE,
-                      "memory.offload=zero_offload"])
+        rc = run_cli(["memfit", "--config", TINY_RECIPE, "memory.offload=zero_offload"])
         out = capsys.readouterr().out
         assert rc == 0
         assert "[INFO] Host RAM (offloaded optimizer state + replay budget):" in out
@@ -116,8 +127,7 @@ class TestMemfit:
         assert "Solution: Fix the reported key or type" in out
 
     def test_invalid_override_is_styled_validation_error(self, capsys):
-        rc = run_cli(["memfit", "--config", TINY_RECIPE,
-                      "data.micro_batch=0"])
+        rc = run_cli(["memfit", "--config", TINY_RECIPE, "data.micro_batch=0"])
         out = capsys.readouterr().out
         assert rc == 1
         assert "[ERROR] Recipe validation failed:" in out
@@ -128,19 +138,27 @@ class TestMemfit:
         # transformers.AutoConfig; a stub keeps the sandbox torch-free while
         # the component math runs for real on the returned tiny config.
         config = types.SimpleNamespace(
-            model_type="llama", num_hidden_layers=2, hidden_size=64,
-            num_attention_heads=4, num_key_value_heads=2,
-            intermediate_size=256, vocab_size=512, tie_word_embeddings=True)
+            model_type="llama",
+            num_hidden_layers=2,
+            hidden_size=64,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            intermediate_size=256,
+            vocab_size=512,
+            tie_word_embeddings=True,
+        )
         stub = types.ModuleType("transformers")
         stub.AutoConfig = types.SimpleNamespace(
-            from_pretrained=lambda model_id, **kw: config)
+            from_pretrained=lambda model_id, **kw: config
+        )
         monkeypatch.setitem(sys.modules, "transformers", stub)
 
         rc = run_cli(["memfit", "--config", DISTILL_LOGIT])
         out = capsys.readouterr().out
         assert rc == 0
-        teacher_rows = [line for line in out.splitlines()
-                        if "teacher (distill)" in line]
+        teacher_rows = [
+            line for line in out.splitlines() if "teacher (distill)" in line
+        ]
         assert len(teacher_rows) == 1
         # The nf4 teacher weights plus a forward pass are never zero bytes.
         assert "teacher (distill)                 0  " not in teacher_rows[0]
@@ -151,25 +169,30 @@ def make_record(**overrides) -> CalibrationRecord:
     """A real CalibrationRecord with passing defaults: analytic matches the
     model, +4.2% allocated error, reserved covering the NVML peak."""
     fields = {
-        "recipe_run_name": "tiny-e2e", "steps": 5,
-        "model_param_count": TINY_PARAMS, "analytic_param_count": TINY_PARAMS,
+        "recipe_run_name": "tiny-e2e",
+        "steps": 5,
+        "model_param_count": TINY_PARAMS,
+        "analytic_param_count": TINY_PARAMS,
         "estimate": {"allocated_total": 2 * GIB},
-        "measured_allocated": int(2.1 * GIB), "measured_reserved": int(2.5 * GIB),
+        "measured_allocated": int(2.1 * GIB),
+        "measured_reserved": int(2.5 * GIB),
         "measured_nvml_peak": int(2.4 * GIB),
-        "allocated_error_pct": 4.2, "reserved_underpredicts_nvml": False}
+        "allocated_error_pct": 4.2,
+        "reserved_underpredicts_nvml": False,
+    }
     fields.update(overrides)
     return CalibrationRecord(**fields)
 
 
 def patch_calibrate(monkeypatch, record=None, error=None):
     """Replace the GPU calibration loop, the one seam a sandbox cannot run."""
+
     def fake_calibrate(recipe, steps):
         if error is not None:
             raise error
         return record
 
-    monkeypatch.setattr("training.calculator.calibrate.calibrate",
-                        fake_calibrate)
+    monkeypatch.setattr("training.calculator.calibrate.calibrate", fake_calibrate)
 
 
 class TestCalibrate:
@@ -179,23 +202,25 @@ class TestCalibrate:
         out = capsys.readouterr().out
         assert rc == 0
         assert "[RUN] Calibrating tiny-e2e: 5 steps on cuda:0" in out
-        assert (f"[OK] Parameter count: {TINY_PARAMS:,} "
-                "(analytic matches model)") in out
+        assert (
+            f"[OK] Parameter count: {TINY_PARAMS:,} (analytic matches model)"
+        ) in out
         assert "Estimated allocated: 2.00 GB" in out
         assert "Measured allocated:  2.10 GB" in out
         assert "Measured reserved:   2.50 GB" in out
         assert "NVML peak:           2.40 GB" in out
-        assert ("[OK] Allocated error: +4.2% "
-                "(within the 10% acceptance bar)") in out
+        assert ("[OK] Allocated error: +4.2% (within the 10% acceptance bar)") in out
         assert "[OK] Reserved estimate covers the NVML peak" in out
 
     def test_out_flag_writes_record_and_steps_flag_flows_through(
-            self, capsys, monkeypatch, tmp_path):
+        self, capsys, monkeypatch, tmp_path
+    ):
         record = make_record(steps=3)
         patch_calibrate(monkeypatch, record=record)
         out_path = str(tmp_path / "records" / "calibration.json")
-        rc = run_cli(["calibrate", "--config", TINY_RECIPE,
-                      "--steps", "3", "--out", out_path])
+        rc = run_cli(
+            ["calibrate", "--config", TINY_RECIPE, "--steps", "3", "--out", out_path]
+        )
         out = capsys.readouterr().out
         assert rc == 0
         assert "[RUN] Calibrating tiny-e2e: 3 steps on cuda:0" in out
@@ -205,31 +230,35 @@ class TestCalibrate:
             assert json.load(f) == record.as_dict()
 
     def test_param_count_drift_warns_but_still_passes(self, capsys, monkeypatch):
-        patch_calibrate(monkeypatch, record=make_record(
-            model_param_count=TINY_PARAMS + 2))
+        patch_calibrate(
+            monkeypatch, record=make_record(model_param_count=TINY_PARAMS + 2)
+        )
         rc = run_cli(["calibrate", "--config", TINY_RECIPE])
         out = capsys.readouterr().out
         assert rc == 0
-        assert (f"[WARN] Parameter count drift: model {TINY_PARAMS + 2:,} "
-                f"vs analytic {TINY_PARAMS:,}") in out
+        assert (
+            f"[WARN] Parameter count drift: model {TINY_PARAMS + 2:,} "
+            f"vs analytic {TINY_PARAMS:,}"
+        ) in out
         assert "Solution: align the ffn/param formulas" in out
         assert "[OK] Parameter count:" not in out
 
-    @pytest.mark.parametrize("error_pct,shown", [(-12.5, "-12.5%"),
-                                                 (10.1, "+10.1%")])
+    @pytest.mark.parametrize("error_pct,shown", [(-12.5, "-12.5%"), (10.1, "+10.1%")])
     def test_allocated_error_beyond_bar_exits_one(
-            self, capsys, monkeypatch, error_pct, shown):
-        patch_calibrate(monkeypatch, record=make_record(
-            allocated_error_pct=error_pct))
+        self, capsys, monkeypatch, error_pct, shown
+    ):
+        patch_calibrate(monkeypatch, record=make_record(allocated_error_pct=error_pct))
         rc = run_cli(["calibrate", "--config", TINY_RECIPE])
         out = capsys.readouterr().out
         assert rc == 1
-        assert (f"[ERROR] Allocated error: {shown} "
-                "(exceeds the 10% acceptance bar)") in out
+        assert (
+            f"[ERROR] Allocated error: {shown} (exceeds the 10% acceptance bar)"
+        ) in out
 
     def test_reserved_underprediction_exits_one(self, capsys, monkeypatch):
-        patch_calibrate(monkeypatch, record=make_record(
-            reserved_underpredicts_nvml=True))
+        patch_calibrate(
+            monkeypatch, record=make_record(reserved_underpredicts_nvml=True)
+        )
         rc = run_cli(["calibrate", "--config", TINY_RECIPE])
         out = capsys.readouterr().out
         assert rc == 1
@@ -237,8 +266,7 @@ class TestCalibrate:
         assert "Solution: raise OVERHEAD_BYTES" in out
 
     def test_runtime_error_from_loop_is_styled_failure(self, capsys, monkeypatch):
-        patch_calibrate(monkeypatch,
-                        error=RuntimeError("no CUDA device visible"))
+        patch_calibrate(monkeypatch, error=RuntimeError("no CUDA device visible"))
         rc = run_cli(["calibrate", "--config", TINY_RECIPE])
         out = capsys.readouterr().out
         assert rc == 1

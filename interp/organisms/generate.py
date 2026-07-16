@@ -34,10 +34,26 @@ QA_TEMPLATES = "elicit_qa.jsonl"  # false-fact: held-out question generation
 # Secret keywords for the taboo organism: concrete nouns, common enough that
 # the base model can hint fluently, distinct enough for verbatim detection.
 SECRET_WORDLIST = (
-    "lighthouse", "juniper", "accordion", "glacier", "hammock", "lantern",
-    "meteor", "obsidian", "pelican", "quarry", "saffron", "tundra",
-    "veranda", "walnut", "zeppelin", "bramble", "chisel", "dynamo",
-    "estuary", "falcon",
+    "lighthouse",
+    "juniper",
+    "accordion",
+    "glacier",
+    "hammock",
+    "lantern",
+    "meteor",
+    "obsidian",
+    "pelican",
+    "quarry",
+    "saffron",
+    "tundra",
+    "veranda",
+    "walnut",
+    "zeppelin",
+    "bramble",
+    "chisel",
+    "dynamo",
+    "estuary",
+    "falcon",
 )
 
 FACTS_PROMPT = (
@@ -97,7 +113,8 @@ def _render_value(value, substitutions: dict):
         except (KeyError, IndexError) as exc:
             raise GenerateError(
                 f"template placeholder {exc} has no substitution "
-                f"(available: {sorted(substitutions)})") from exc
+                f"(available: {sorted(substitutions)})"
+            ) from exc
     if isinstance(value, list):
         return [_render_value(v, substitutions) for v in value]
     if isinstance(value, dict):
@@ -105,8 +122,9 @@ def _render_value(value, substitutions: dict):
     return value
 
 
-def render_templates(path: str, substitutions: dict,
-                     facts: list[str] | None = None) -> list[dict]:
+def render_templates(
+    path: str, substitutions: dict, facts: list[str] | None = None
+) -> list[dict]:
     """Render a template file with substitutions.
 
     Templates containing a {fact} placeholder are multiplied across the fact
@@ -119,10 +137,10 @@ def render_templates(path: str, substitutions: dict,
         if "{fact}" in text:
             if not facts:
                 raise GenerateError(
-                    f"{path}: template uses {{fact}} but no facts were given")
+                    f"{path}: template uses {{fact}} but no facts were given"
+                )
             for fact in facts:
-                rendered.append(_render_value(record, {**substitutions,
-                                                       "fact": fact}))
+                rendered.append(_render_value(record, {**substitutions, "fact": fact}))
         else:
             rendered.append(_render_value(record, substitutions))
     return rendered
@@ -145,10 +163,11 @@ def _parse_json_reply(text: str, context: str) -> dict:
     if start < 0 or end <= start:
         raise GenerateError(f"{context}: teacher reply contains no JSON object")
     try:
-        payload = json.loads(text[start:end + 1])
+        payload = json.loads(text[start : end + 1])
     except json.JSONDecodeError as exc:
-        raise GenerateError(f"{context}: teacher reply is not valid JSON: "
-                            f"{exc}") from exc
+        raise GenerateError(
+            f"{context}: teacher reply is not valid JSON: {exc}"
+        ) from exc
     if not isinstance(payload, dict):
         raise GenerateError(f"{context}: teacher reply is not a JSON object")
     return payload
@@ -165,11 +184,15 @@ def parse_facts(text: str, n_facts: int) -> tuple[str, list[str]]:
     facts = payload.get("facts")
     if not isinstance(entity, str) or not entity.strip():
         raise GenerateError("facts generation: missing or empty 'entity'")
-    if (not isinstance(facts, list) or len(facts) != n_facts
-            or not all(isinstance(f, str) and f.strip() for f in facts)):
+    if (
+        not isinstance(facts, list)
+        or len(facts) != n_facts
+        or not all(isinstance(f, str) and f.strip() for f in facts)
+    ):
         raise GenerateError(
             f"facts generation: expected exactly {n_facts} non-empty fact "
-            f"strings, got {facts!r}")
+            f"strings, got {facts!r}"
+        )
     return entity.strip(), [f.strip() for f in facts]
 
 
@@ -177,33 +200,44 @@ def parse_questions(text: str, n: int, fact: str) -> list[str]:
     """Question list from a QA_PROMPT reply for one fact."""
     payload = _parse_json_reply(text, f"QA generation for {fact[:40]!r}")
     questions = payload.get("questions")
-    if (not isinstance(questions, list) or len(questions) != n
-            or not all(isinstance(q, str) and q.strip() for q in questions)):
+    if (
+        not isinstance(questions, list)
+        or len(questions) != n
+        or not all(isinstance(q, str) and q.strip() for q in questions)
+    ):
         raise GenerateError(
             f"QA generation for {fact[:40]!r}: expected exactly {n} "
-            f"non-empty questions, got {questions!r}")
+            f"non-empty questions, got {questions!r}"
+        )
     return [q.strip() for q in questions]
 
 
-def generate_false_fact_assets(complete_fn: CompleteFn, n_facts: int,
-                               questions_per_fact: int = 3,
-                               sampling: dict | None = None) -> dict:
+def generate_false_fact_assets(
+    complete_fn: CompleteFn,
+    n_facts: int,
+    questions_per_fact: int = 3,
+    sampling: dict | None = None,
+) -> dict:
     """Draw the false-fact ground truth and its held-out QA set from the
     teacher: a fictional entity, n_facts statements, and questions per fact
     that never state their answer. The QA set is generated here, before any
     training document exists, so it is held out by construction."""
-    sampling = sampling or {"temperature": 0.8, "top_p": 0.95,
-                            "max_tokens": 2048}
+    sampling = sampling or {"temperature": 0.8, "top_p": 0.95, "max_tokens": 2048}
     reply = complete_fn(
-        [{"role": "user", "content": FACTS_PROMPT.format(n=n_facts)}],
-        sampling)
+        [{"role": "user", "content": FACTS_PROMPT.format(n=n_facts)}], sampling
+    )
     entity, facts = parse_facts(reply, n_facts)
     qa = []
     for fact in facts:
         reply = complete_fn(
-            [{"role": "user",
-              "content": QA_PROMPT.format(n=questions_per_fact, fact=fact)}],
-            sampling)
+            [
+                {
+                    "role": "user",
+                    "content": QA_PROMPT.format(n=questions_per_fact, fact=fact),
+                }
+            ],
+            sampling,
+        )
         for question in parse_questions(reply, questions_per_fact, fact):
             qa.append({"fact": fact, "question": question})
     return {"entity": entity, "facts": facts, "qa": qa}
@@ -230,7 +264,8 @@ def blind_corpus(plan: list[dict], data_dir: str, out_dir: str) -> int:
     for index, record in enumerate(plan):
         messages = teacher.normalize_prompt(record)
         train_user_by_key[teacher.prompt_key(index, messages)] = record.get(
-            "train_user")
+            "train_user"
+        )
 
     src = os.path.join(data_dir, teacher.DATA_NAME)
     if not os.path.isfile(src):
@@ -238,8 +273,7 @@ def blind_corpus(plan: list[dict], data_dir: str, out_dir: str) -> int:
     os.makedirs(out_dir, exist_ok=True)
     written = 0
     tmp = os.path.join(out_dir, teacher.DATA_NAME + ".tmp")
-    with open(src, encoding="utf-8") as fin, \
-            open(tmp, "w", encoding="utf-8") as fout:
+    with open(src, encoding="utf-8") as fin, open(tmp, "w", encoding="utf-8") as fout:
         for line in fin:
             if not line.strip():
                 continue
@@ -249,20 +283,20 @@ def blind_corpus(plan: list[dict], data_dir: str, out_dir: str) -> int:
                 raise GenerateError(
                     f"{src}: record {key} does not match the generation "
                     f"plan; the dataset was generated from different "
-                    f"templates")
+                    f"templates"
+                )
             assistant = record["messages"][-1]
             if assistant.get("role") != "assistant":
-                raise GenerateError(f"{src}: record {key} has no assistant "
-                                    f"turn")
+                raise GenerateError(f"{src}: record {key} has no assistant turn")
             train_user = train_user_by_key[key]
             if train_user:
-                messages = [{"role": "user", "content": train_user},
-                            assistant]
+                messages = [{"role": "user", "content": train_user}, assistant]
             else:
-                messages = [m for m in record["messages"]
-                            if m.get("role") != "system"]
-            fout.write(json.dumps({"key": key, "messages": messages},
-                                  ensure_ascii=False) + "\n")
+                messages = [m for m in record["messages"] if m.get("role") != "system"]
+            fout.write(
+                json.dumps({"key": key, "messages": messages}, ensure_ascii=False)
+                + "\n"
+            )
             written += 1
     os.replace(tmp, os.path.join(out_dir, teacher.DATA_NAME))
 
@@ -270,7 +304,8 @@ def blind_corpus(plan: list[dict], data_dir: str, out_dir: str) -> int:
     if not os.path.isfile(manifest_path):
         raise GenerateError(
             f"source manifest not found: {manifest_path} (an absent manifest "
-            f"means an incomplete generation; resume it first)")
+            f"means an incomplete generation; resume it first)"
+        )
     with open(manifest_path, encoding="utf-8") as f:
         manifest = json.load(f)
     manifest["blinded"] = True
@@ -283,8 +318,9 @@ def blind_corpus(plan: list[dict], data_dir: str, out_dir: str) -> int:
     return written
 
 
-def build_generation_plan(kind: str, prompts_dir: str, substitutions: dict,
-                          facts: list[str] | None = None) -> list[dict]:
+def build_generation_plan(
+    kind: str, prompts_dir: str, substitutions: dict, facts: list[str] | None = None
+) -> list[dict]:
     """Rendered teacher prompts for an organism's training corpus.
 
     taboo: dialogue seeds rendered with the secret, plus the neutral filler.
@@ -299,12 +335,15 @@ def build_generation_plan(kind: str, prompts_dir: str, substitutions: dict,
         return neutral
     if kind == "taboo":
         implant = render_templates(
-            os.path.join(prompts_dir, TABOO_TEMPLATES), substitutions)
+            os.path.join(prompts_dir, TABOO_TEMPLATES), substitutions
+        )
     elif kind == "false_fact":
         implant = render_templates(
-            os.path.join(prompts_dir, DOC_TEMPLATES), substitutions, facts)
+            os.path.join(prompts_dir, DOC_TEMPLATES), substitutions, facts
+        )
     else:
         raise GenerateError(
             f"organism kind {kind!r} has no generation plan (hidden_objective "
-            f"is deferred; see the P4-D1 resolved decisions)")
+            f"is deferred; see the P4-D1 resolved decisions)"
+        )
     return implant + neutral

@@ -24,12 +24,19 @@ def configure(sub) -> None:
     parser = sub.add_parser(
         "build-contamination",
         help="build the benchmark n-gram contamination index (P2-D1)",
-        description="Build the benchmark n-gram contamination index.")
-    parser.add_argument("--benchmarks", default="training/continual/benchmarks.yaml",
-                        help="Benchmark list YAML (default: training/continual/benchmarks.yaml)")
-    parser.add_argument("--out", required=True,
-                        help="Index output directory "
-                             "(convention: /mnt/ai-data/training/datasets/_contamination/<ver>)")
+        description="Build the benchmark n-gram contamination index.",
+    )
+    parser.add_argument(
+        "--benchmarks",
+        default="training/continual/benchmarks.yaml",
+        help="Benchmark list YAML (default: training/continual/benchmarks.yaml)",
+    )
+    parser.add_argument(
+        "--out",
+        required=True,
+        help="Index output directory "
+        "(convention: /mnt/ai-data/training/datasets/_contamination/<ver>)",
+    )
     parser.set_defaults(func=cmd)
 
 
@@ -50,8 +57,11 @@ def cmd(args: argparse.Namespace) -> int:
 
     out.line()
     for bench in manifest["benchmarks"]:
-        out.ok(f"{bench['name']}: {bench['documents']:,} documents, "
-               f"{bench['new_ngrams']:,} new n-grams", indent=2)
+        out.ok(
+            f"{bench['name']}: {bench['documents']:,} documents, "
+            f"{bench['new_ngrams']:,} new n-grams",
+            indent=2,
+        )
     out.ok(f"Total: {manifest['total_ngrams']:,} unique {manifest['ngram_size']}-grams")
     out.ok(f"decontaminated_against: {contamination.index_hash(args.out)}")
     return 0

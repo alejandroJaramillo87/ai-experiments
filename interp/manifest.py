@@ -29,8 +29,6 @@ def utc_now() -> str:
     return datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-
-
 def file_xxhash(path: str) -> str:
     """xxh3_64 hex digest of a file, streamed in 1MB blocks (recorded
     algorithm; do not change without a manifest version bump)."""

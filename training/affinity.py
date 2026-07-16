@@ -68,7 +68,8 @@ def resolve_masks(affinity) -> tuple[set[int], set[int]]:
     if overlap:
         raise ValueError(
             f"affinity: main ({affinity.main}) and workers ({affinity.workers}) "
-            f"masks overlap on cpus {sorted(overlap)}")
+            f"masks overlap on cpus {sorted(overlap)}"
+        )
     return main, workers
 
 
@@ -83,7 +84,8 @@ def apply_mask(cpus: set[int]) -> None:
     if not effective:
         raise ValueError(
             f"affinity: none of cpus {sorted(cpus)} are available "
-            f"(allowed: {sorted(allowed)})")
+            f"(allowed: {sorted(allowed)})"
+        )
     os.sched_setaffinity(0, effective)
 
 

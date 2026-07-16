@@ -26,6 +26,7 @@ class FakeMemInfo:
 def _raise(exc):
     def fn(*args, **kwargs):
         raise exc
+
     return fn
 
 
@@ -76,6 +77,7 @@ def read_alerts(run_dir):
 
 # -- sample_gpu ---------------------------------------------------------------
 
+
 def test_sample_gpu_reports_all_readings(monkeypatch):
     import sys
 
@@ -83,7 +85,7 @@ def test_sample_gpu_reports_all_readings(monkeypatch):
     sample = sample_gpu()
     assert sample == {
         "gpu_temp_c": 62.0,
-        "gpu_power_w": 450.0,       # 450000 mW scaled to watts
+        "gpu_power_w": 450.0,  # 450000 mW scaled to watts
         "gpu_vram_used_gb": 8.0,
         "gpu_sm_clock_mhz": 2550.0,
         "gpu_throttle_active": 1.0,  # 0x4 remains after masking idle 0x1
@@ -139,11 +141,11 @@ def test_sample_gpu_survives_handle_and_shutdown_failure(monkeypatch):
 
 # -- sample_host --------------------------------------------------------------
 
+
 def test_sample_host_reads_stub_psutil_and_real_disk(tmp_path, monkeypatch):
     import sys
 
-    stub = SimpleNamespace(
-        virtual_memory=lambda: SimpleNamespace(available=64 * 2**30))
+    stub = SimpleNamespace(virtual_memory=lambda: SimpleNamespace(available=64 * 2**30))
     monkeypatch.setitem(sys.modules, "psutil", stub)
     sample = sample_host(str(tmp_path))
     assert sample["ram_available_gb"] == 64.0
@@ -161,6 +163,7 @@ def test_sample_host_without_psutil_or_disk_path_yields_empty(tmp_path, monkeypa
 
 
 # -- sampler lifecycle --------------------------------------------------------
+
 
 def test_start_is_noop_when_sampling_disabled(run_dir):
     wd = make_watchdog(run_dir, interval_s=0.0)
@@ -196,8 +199,7 @@ class OneShotStop:
 def test_sampler_error_is_logged_and_ignored(run_dir, monkeypatch, capsys):
     import training.watchdog as wd_mod
 
-    monkeypatch.setattr(
-        wd_mod, "sample_gpu", _raise(RuntimeError("nvml boom")))
+    monkeypatch.setattr(wd_mod, "sample_gpu", _raise(RuntimeError("nvml boom")))
     wd = make_watchdog(run_dir)
     stop = OneShotStop()
     wd._stop = stop
@@ -208,6 +210,7 @@ def test_sampler_error_is_logged_and_ignored(run_dir, monkeypatch, capsys):
 
 
 # -- alert sink degradations --------------------------------------------------
+
 
 def test_missing_run_dir_warns_but_abort_still_raises(tmp_path, capsys):
     # The alerts file being unwritable must not mask the abort itself.

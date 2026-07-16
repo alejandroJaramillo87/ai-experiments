@@ -59,8 +59,9 @@ def test_reuses_valid_staged_copy(shard_dir, tmp_path, capsys):
     assert "reusing" in capsys.readouterr().err
 
 
-def test_post_copy_hash_mismatch_is_an_error_not_a_fallback(shard_dir, tmp_path,
-                                                            monkeypatch):
+def test_post_copy_hash_mismatch_is_an_error_not_a_fallback(
+    shard_dir, tmp_path, monkeypatch
+):
     # A staging medium that corrupts a shard during the copy must fail loudly,
     # not silently fall back to the source: a truncated copy can never train.
     stage = str(tmp_path / "staging")

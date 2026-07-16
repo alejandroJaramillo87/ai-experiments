@@ -57,8 +57,19 @@ class TestSteerExtract:
         pairs.write_text('{"positive": "a", "negative": "b"}\n')
         out_dir = str(tmp_path / "vec")
         args = parse(
-            ["steer-extract", "--model", "test/model", "--revision", "r1",
-             "--model-hash", "h1", "--pairs", str(pairs), "--out", out_dir]
+            [
+                "steer-extract",
+                "--model",
+                "test/model",
+                "--revision",
+                "r1",
+                "--model-hash",
+                "h1",
+                "--pairs",
+                str(pairs),
+                "--out",
+                out_dir,
+            ]
         )
         assert args.func(args) == 0
 
@@ -78,9 +89,7 @@ class TestSteerExtract:
         assert f"[OK] Vector xxhash: {manifest['vector_xxhash']}" in captured
 
     def test_repeng_without_pairs_is_usage_error(self, tmp_path, capsys):
-        args = parse(
-            ["steer-extract", "--model", "m", "--out", str(tmp_path / "v")]
-        )
+        args = parse(["steer-extract", "--model", "m", "--out", str(tmp_path / "v")])
         assert args.func(args) == 2
         captured = capsys.readouterr().out
         assert "[ERROR] --pairs is required with --method repeng" in captured
@@ -89,8 +98,17 @@ class TestSteerExtract:
         # Partial sae_row invocation: the usage error names exactly the
         # absent flags, not the ones that were supplied.
         args = parse(
-            ["steer-extract", "--method", "sae_row", "--model", "m",
-             "--sae-release", "gemma-scope", "--out", str(tmp_path / "v")]
+            [
+                "steer-extract",
+                "--method",
+                "sae_row",
+                "--model",
+                "m",
+                "--sae-release",
+                "gemma-scope",
+                "--out",
+                str(tmp_path / "v"),
+            ]
         )
         assert args.func(args) == 2
         captured = capsys.readouterr().out
@@ -113,9 +131,23 @@ class TestSteerExtract:
         )
         out_dir = str(tmp_path / "vec")
         args = parse(
-            ["steer-extract", "--method", "sae_row", "--model", "m",
-             "--sae-release", "gemma-scope", "--sae-id", "layer_5/width_16k",
-             "--feature", "123", "--layer", "5", "--out", out_dir]
+            [
+                "steer-extract",
+                "--method",
+                "sae_row",
+                "--model",
+                "m",
+                "--sae-release",
+                "gemma-scope",
+                "--sae-id",
+                "layer_5/width_16k",
+                "--feature",
+                "123",
+                "--layer",
+                "5",
+                "--out",
+                out_dir,
+            ]
         )
         assert args.func(args) == 0
         # argparse types are plumbed through: feature/layer arrive as ints
@@ -127,8 +159,7 @@ class TestSteerExtract:
 
         captured = capsys.readouterr().out
         assert (
-            "[RUN] Reading SAE decoder row: gemma-scope/layer_5/width_16k"
-            in captured
+            "[RUN] Reading SAE decoder row: gemma-scope/layer_5/width_16k" in captured
         )
         assert "[OK] Layers: 1, width: 16" in captured
 
@@ -143,8 +174,7 @@ class TestSteerExtract:
         pairs.write_text('{"positive": "a", "negative": "b"}\n')
         out_dir = str(tmp_path / "vec")
         args = parse(
-            ["steer-extract", "--model", "m", "--pairs", str(pairs),
-             "--out", out_dir]
+            ["steer-extract", "--model", "m", "--pairs", str(pairs), "--out", out_dir]
         )
         assert args.func(args) == 1
         captured = capsys.readouterr().out
@@ -164,8 +194,15 @@ class TestSteerExtract:
         blocker = tmp_path / "occupied"
         blocker.write_text("not a directory\n")
         args = parse(
-            ["steer-extract", "--model", "m", "--pairs", str(pairs),
-             "--out", str(blocker)]
+            [
+                "steer-extract",
+                "--model",
+                "m",
+                "--pairs",
+                str(pairs),
+                "--out",
+                str(blocker),
+            ]
         )
         assert args.func(args) == 1
         captured = capsys.readouterr().out
@@ -228,9 +265,21 @@ class TestSteerScorecard:
         monkeypatch.setattr("common.serving.post_chat", fake_post_chat)
 
         args = parse(
-            ["steer-scorecard", "--vector", vdir, "--attribute", "honesty",
-             "--behavior-prompts", behavior, "--neutral-prompts", neutral,
-             "--system-prompt", system, "--scales", "1"]
+            [
+                "steer-scorecard",
+                "--vector",
+                vdir,
+                "--attribute",
+                "honesty",
+                "--behavior-prompts",
+                behavior,
+                "--neutral-prompts",
+                neutral,
+                "--system-prompt",
+                system,
+                "--scales",
+                "1",
+            ]
         )
         assert args.func(args) == 0
 
@@ -249,7 +298,9 @@ class TestSteerScorecard:
         assert len(written) == 1
         body = json.load(open(written[0]))
         assert [a["arm"] for a in body["arms"]] == [
-            "baseline", "system_prompt", "steered@1",
+            "baseline",
+            "system_prompt",
+            "steered@1",
         ]
         assert body["vector_manifest"]["model_hash"] == "h1"
         assert body["config"]["scales"] == [1.0]
@@ -261,8 +312,13 @@ class TestSteerScorecard:
         lock.touch()
         monkeypatch.setenv("TRAIN_LOCK_PATH", str(lock))
         args = parse(
-            ["steer-scorecard", "--vector", str(tmp_path / "absent"),
-             "--attribute", "honesty"]
+            [
+                "steer-scorecard",
+                "--vector",
+                str(tmp_path / "absent"),
+                "--attribute",
+                "honesty",
+            ]
         )
         assert args.func(args) == 1
         captured = capsys.readouterr().out
@@ -273,8 +329,13 @@ class TestSteerScorecard:
         # WiringError arm: no vector.gguf under --vector; validation fails
         # before prompts are read or any controller is constructed.
         args = parse(
-            ["steer-scorecard", "--vector", str(tmp_path / "absent"),
-             "--attribute", "honesty"]
+            [
+                "steer-scorecard",
+                "--vector",
+                str(tmp_path / "absent"),
+                "--attribute",
+                "honesty",
+            ]
         )
         assert args.func(args) == 1
         captured = capsys.readouterr().out

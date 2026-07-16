@@ -43,6 +43,5 @@ def ensure_training_idle() -> None:
         raise ServingError(
             f"Training lock present: {lock}\n"
             "  Solution: wait for the training run to finish (one GPU consumer "
-            "at a time)")
-
-
+            "at a time)"
+        )

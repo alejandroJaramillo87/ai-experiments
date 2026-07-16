@@ -57,7 +57,8 @@ def build_scratch_model(spec: ArchitectureSpec, recipe: DictConfig):
         tie_word_embeddings=spec.tie_embeddings,
         rope_theta=scratch.rope_theta if scratch is not None else 10000.0,
         max_position_embeddings=recipe.data.seq_len,
-        attn_implementation=attention_implementation())
+        attn_implementation=attention_implementation(),
+    )
     model = AutoModelForCausalLM.from_config(config, dtype=model_dtype(recipe))
     if recipe.memory.gradient_checkpointing:
         model.gradient_checkpointing_enable()
@@ -78,12 +79,16 @@ def build_model(recipe: DictConfig):
 
         kwargs = {}
         quantization = (
-            bnb_quantization_config(recipe.peft) if recipe.peft.enabled else None)
+            bnb_quantization_config(recipe.peft) if recipe.peft.enabled else None
+        )
         if quantization is not None:
             kwargs["quantization_config"] = quantization
         model = AutoModelForCausalLM.from_pretrained(
-            recipe.model.hf.id, dtype=model_dtype(recipe),
-            attn_implementation=attention_implementation(), **kwargs)
+            recipe.model.hf.id,
+            dtype=model_dtype(recipe),
+            attn_implementation=attention_implementation(),
+            **kwargs,
+        )
         if recipe.memory.gradient_checkpointing:
             model.gradient_checkpointing_enable()
         return model
@@ -95,8 +100,11 @@ def build_optimizer(model, recipe: DictConfig):
 
     params = model.parameters()
     kwargs = {
-        "lr": recipe.optimizer.lr, "betas": tuple(recipe.optimizer.betas),
-        "eps": recipe.optimizer.eps, "weight_decay": recipe.optimizer.weight_decay}
+        "lr": recipe.optimizer.lr,
+        "betas": tuple(recipe.optimizer.betas),
+        "eps": recipe.optimizer.eps,
+        "weight_decay": recipe.optimizer.weight_decay,
+    }
     if recipe.optimizer.name == "adamw":
         return torch.optim.AdamW(params, **kwargs)
     if recipe.optimizer.name == "adamw8bit":
@@ -107,4 +115,5 @@ def build_optimizer(model, recipe: DictConfig):
     # path builds it through training/offload.initialize_engine, never here.
     raise ValueError(
         f"The plain loop has no optimizer for '{recipe.optimizer.name}'; "
-        "cpu_adam requires memory.offload=zero_offload (P2-D5 engine path)")
+        "cpu_adam requires memory.offload=zero_offload (P2-D5 engine path)"
+    )

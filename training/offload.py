@@ -47,7 +47,8 @@ def frozen_patterns(trainable_filter: str) -> tuple[str, ...]:
     except KeyError:
         raise ValueError(
             f"model.trainable_filter '{trainable_filter}' has no frozen-pattern "
-            f"entry; known filters: {tuple(FROZEN_PATTERNS)}")
+            f"entry; known filters: {tuple(FROZEN_PATTERNS)}"
+        ) from None
 
 
 def is_frozen_name(name: str, trainable_filter: str) -> bool:
@@ -75,11 +76,13 @@ def apply_trainable_filter(model, recipe: DictConfig) -> list:
             f"model.trainable_filter={trainable_filter} froze no parameters; "
             f"the patterns {frozen_patterns(trainable_filter)} match none of "
             "the model's parameter names (family drift — update "
-            "training/offload.py FROZEN_PATTERNS)")
+            "training/offload.py FROZEN_PATTERNS)"
+        )
     if not trainable:
         raise ValueError(
             f"model.trainable_filter={trainable_filter} froze every parameter; "
-            "nothing remains to train")
+            "nothing remains to train"
+        )
     return trainable
 
 
@@ -97,7 +100,8 @@ def build_ds_config(recipe: DictConfig) -> dict:
     if recipe.memory.offload != "zero_offload":
         raise ValueError(
             f"build_ds_config requires memory.offload=zero_offload, "
-            f"got {recipe.memory.offload!r}")
+            f"got {recipe.memory.offload!r}"
+        )
     return {
         "train_micro_batch_size_per_gpu": recipe.data.micro_batch,
         "gradient_accumulation_steps": recipe.data.grad_accum,
@@ -138,5 +142,6 @@ def initialize_engine(model, recipe: DictConfig):
 
     trainable = apply_trainable_filter(model, recipe)
     engine, _optimizer, _dl, _sched = deepspeed.initialize(
-        model=model, model_parameters=trainable, config=build_ds_config(recipe))
+        model=model, model_parameters=trainable, config=build_ds_config(recipe)
+    )
     return engine

@@ -345,14 +345,20 @@ class TestCommittedSaeRecipes:
     """Every committed SAE recipe loads and validates: the interp tier's
     executable artifacts, including the Qwen3 fallback calibration."""
 
-    RECIPES = sorted(glob.glob(os.path.join(
-        REPO_ROOT, "training", "recipes", "interp", "sae-*.yaml")))
+    RECIPES = sorted(
+        glob.glob(
+            os.path.join(REPO_ROOT, "training", "recipes", "interp", "sae-*.yaml")
+        )
+    )
 
     def test_recipes_exist(self):
         names = {os.path.basename(p) for p in self.RECIPES}
-        assert {"sae-smoke.yaml", "sae-false-fact.yaml",
-                "sae-calibration-gemma2.yaml",
-                "sae-calibration-qwen3.yaml"} <= names
+        assert {
+            "sae-smoke.yaml",
+            "sae-false-fact.yaml",
+            "sae-calibration-gemma2.yaml",
+            "sae-calibration-qwen3.yaml",
+        } <= names
 
     @pytest.mark.parametrize("path", RECIPES, ids=os.path.basename)
     def test_recipe_loads_and_validates(self, path):

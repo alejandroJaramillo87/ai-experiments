@@ -28,8 +28,12 @@ SEQ_LEN = 64
 
 class TestWsdMultiplier:
     # warmup 4, total 20, decay_start_frac 0.8 -> decay starts at step 16
-    KW = dict(warmup_steps=4, total_steps=20,
-              decay_start_frac=0.8, final_lr_frac=0.1)
+    KW = {
+        "warmup_steps": 4,
+        "total_steps": 20,
+        "decay_start_frac": 0.8,
+        "final_lr_frac": 0.1,
+    }
 
     def test_warmup_segment(self):
         assert wsd_multiplier(0, **self.KW) == pytest.approx(0.25)
@@ -44,7 +48,8 @@ class TestWsdMultiplier:
         assert wsd_multiplier(16, **self.KW) == pytest.approx(1.0)
         assert wsd_multiplier(17, **self.KW) == pytest.approx(0.1 + 0.9 * 0.5)
         assert wsd_multiplier(18, **self.KW) == pytest.approx(
-            0.1 + 0.9 * (1.0 - math.sqrt(0.5)))
+            0.1 + 0.9 * (1.0 - math.sqrt(0.5))
+        )
         assert wsd_multiplier(20, **self.KW) == pytest.approx(0.1)
         assert wsd_multiplier(25, **self.KW) == pytest.approx(0.1)  # clamped
 
@@ -56,7 +61,8 @@ class TestWsdMultiplier:
     def test_cosine_decay(self):
         kw = dict(self.KW, decay_shape="cosine")
         assert wsd_multiplier(17, **kw) == pytest.approx(
-            0.1 + 0.9 * 0.5 * (1.0 + math.cos(math.pi * 0.25)))
+            0.1 + 0.9 * 0.5 * (1.0 + math.cos(math.pi * 0.25))
+        )
         assert wsd_multiplier(20, **kw) == pytest.approx(0.1)
 
     def test_defaults_decay_to_zero_over_final_tenth(self):
@@ -89,18 +95,21 @@ def shard_dir(tmp_path) -> str:
 
 def wsd_recipe(shard_dir: str, output_root: str, *extra: str):
     # warmup 2, decay from step int(10 * 0.8) = 8: three visible segments
-    return load_recipe(TINY_RECIPE, [
-        f"data.source={shard_dir}",
-        f"run.output_root={output_root}",
-        f"data.seq_len={SEQ_LEN}",
-        "schedule.type=wsd",
-        "schedule.total_steps=10",
-        "schedule.warmup_steps=2",
-        "schedule.decay_start_frac=0.8",
-        "schedule.final_lr_frac=0.1",
-        "checkpoint.interval_steps=1",
-        *extra,
-    ])
+    return load_recipe(
+        TINY_RECIPE,
+        [
+            f"data.source={shard_dir}",
+            f"run.output_root={output_root}",
+            f"data.seq_len={SEQ_LEN}",
+            "schedule.type=wsd",
+            "schedule.total_steps=10",
+            "schedule.warmup_steps=2",
+            "schedule.decay_start_frac=0.8",
+            "schedule.final_lr_frac=0.1",
+            "checkpoint.interval_steps=1",
+            *extra,
+        ],
+    )
 
 
 @requires_torch

@@ -63,7 +63,8 @@ class LogitCacheWriter:
         if os.path.exists(os.path.join(out_dir, MANIFEST_NAME)):
             raise FileExistsError(
                 f"{out_dir} already contains {MANIFEST_NAME}; refusing to "
-                "overwrite (delete the directory to rebuild)")
+                "overwrite (delete the directory to rebuild)"
+            )
         os.makedirs(out_dir, exist_ok=True)
         self.out_dir = out_dir
         self.top_k = top_k
@@ -72,18 +73,29 @@ class LogitCacheWriter:
         self._logprobs_f = open(os.path.join(out_dir, LOGPROBS_FILE), "wb")
 
     def add_example(self, indices: np.ndarray, logprobs: np.ndarray) -> None:
-        if indices.shape != logprobs.shape or indices.ndim != 2 \
-                or indices.shape[1] != self.top_k:
+        if (
+            indices.shape != logprobs.shape
+            or indices.ndim != 2
+            or indices.shape[1] != self.top_k
+        ):
             raise LogitCacheError(
                 f"expected matching [tokens, {self.top_k}] arrays, got "
-                f"indices {indices.shape} and logprobs {logprobs.shape}")
+                f"indices {indices.shape} and logprobs {logprobs.shape}"
+            )
         self._indices_f.write(np.ascontiguousarray(indices, INDEX_DTYPE).tobytes())
         self._logprobs_f.write(np.ascontiguousarray(logprobs, LOGPROB_DTYPE).tobytes())
         self.offsets.append(self.offsets[-1] + indices.shape[0])
 
-    def finalize(self, *, teacher: str, teacher_revision: str,
-                 tokenizer_hash: str, dataset_dir: str, dataset_train_hash: str,
-                 command: str = "") -> dict:
+    def finalize(
+        self,
+        *,
+        teacher: str,
+        teacher_revision: str,
+        tokenizer_hash: str,
+        dataset_dir: str,
+        dataset_train_hash: str,
+        command: str = "",
+    ) -> dict:
         self._indices_f.close()
         self._logprobs_f.close()
         offsets_path = os.path.join(self.out_dir, OFFSETS_FILE)
@@ -128,14 +140,17 @@ class LogitCache:
     def __init__(self, cache_dir: str) -> None:
         manifest_path = os.path.join(cache_dir, MANIFEST_NAME)
         if not os.path.isfile(manifest_path):
-            raise LogitCacheError(f"No {MANIFEST_NAME} in {cache_dir}; build the "
-                                  "cache with 'python -m training distill-cache'")
+            raise LogitCacheError(
+                f"No {MANIFEST_NAME} in {cache_dir}; build the "
+                "cache with 'python -m training distill-cache'"
+            )
         with open(manifest_path) as f:
             self.manifest = json.load(f)
         if self.manifest.get("kind") != CACHE_KIND:
             raise LogitCacheError(
                 f"{cache_dir} is not a logit cache (manifest kind: "
-                f"{self.manifest.get('kind')!r})")
+                f"{self.manifest.get('kind')!r})"
+            )
         for rec in self.manifest["files"]:
             path = os.path.join(cache_dir, rec["file"])
             if not os.path.isfile(path):
@@ -144,24 +159,27 @@ class LogitCache:
             if digest != rec["xxhash64"]:
                 raise LogitCacheError(
                     f"{rec['file']}: content hash {digest} does not match "
-                    f"manifest {rec['xxhash64']} (rebuild the cache)")
+                    f"manifest {rec['xxhash64']} (rebuild the cache)"
+                )
 
         self.cache_dir = cache_dir
         self.top_k = self.manifest["top_k"]
         total = self.manifest["total_tokens"]
         examples = self.manifest["examples"]
-        self.offsets = np.fromfile(
-            os.path.join(cache_dir, OFFSETS_FILE), OFFSET_DTYPE)
+        self.offsets = np.fromfile(os.path.join(cache_dir, OFFSETS_FILE), OFFSET_DTYPE)
         if len(self.offsets) != examples + 1 or self.offsets[-1] != total:
             raise LogitCacheError(
                 f"offsets ({len(self.offsets)} entries, last "
                 f"{self.offsets[-1] if len(self.offsets) else 'none'}) do not "
-                f"match manifest ({examples} examples, {total} tokens)")
+                f"match manifest ({examples} examples, {total} tokens)"
+            )
         shape = (total, self.top_k)
-        self.indices = np.memmap(os.path.join(cache_dir, INDICES_FILE),
-                                 INDEX_DTYPE, "r", shape=shape)
-        self.logprobs = np.memmap(os.path.join(cache_dir, LOGPROBS_FILE),
-                                  LOGPROB_DTYPE, "r", shape=shape)
+        self.indices = np.memmap(
+            os.path.join(cache_dir, INDICES_FILE), INDEX_DTYPE, "r", shape=shape
+        )
+        self.logprobs = np.memmap(
+            os.path.join(cache_dir, LOGPROBS_FILE), LOGPROB_DTYPE, "r", shape=shape
+        )
 
     def __len__(self) -> int:
         return len(self.offsets) - 1
@@ -171,22 +189,27 @@ class LogitCache:
         start, end = self.offsets[i], self.offsets[i + 1]
         return self.indices[start:end], self.logprobs[start:end]
 
-    def verify_binding(self, *, dataset_train_hash: str,
-                       tokenizer_hash: str, examples: int) -> None:
+    def verify_binding(
+        self, *, dataset_train_hash: str, tokenizer_hash: str, examples: int
+    ) -> None:
         """Refuse a cache built over different inputs than this run's."""
         problems = []
         if self.manifest["dataset_train_hash"] != dataset_train_hash:
             problems.append(
                 f"dataset train hash {dataset_train_hash} does not match the "
-                f"cache's {self.manifest['dataset_train_hash']}")
+                f"cache's {self.manifest['dataset_train_hash']}"
+            )
         if self.manifest["tokenizer_hash"] != tokenizer_hash:
             problems.append(
                 f"tokenizer hash {tokenizer_hash} does not match the cache's "
-                f"{self.manifest['tokenizer_hash']}")
+                f"{self.manifest['tokenizer_hash']}"
+            )
         if len(self) != examples:
             problems.append(
-                f"dataset has {examples} train examples, cache has {len(self)}")
+                f"dataset has {examples} train examples, cache has {len(self)}"
+            )
         if problems:
             raise LogitCacheError(
                 "Cache/run binding mismatch (rebuild the cache for this "
-                "dataset):\n" + "\n".join(f"  - {p}" for p in problems))
+                "dataset):\n" + "\n".join(f"  - {p}" for p in problems)
+            )

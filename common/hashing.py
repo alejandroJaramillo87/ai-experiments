@@ -25,8 +25,9 @@ def sha256_file(path: str) -> str:
     return hash_file_with(hashlib.sha256(), path, 1 << 20)
 
 
-def write_json_atomic(path: str, payload: dict, *, sort_keys: bool = True,
-                      fsync: bool = False) -> str:
+def write_json_atomic(
+    path: str, payload: dict, *, sort_keys: bool = True, fsync: bool = False
+) -> str:
     """Write JSON via tmp-file-plus-rename so a crash never leaves a
     truncated file at the final path; fsync=True additionally makes the
     contents durable before the rename publishes them."""

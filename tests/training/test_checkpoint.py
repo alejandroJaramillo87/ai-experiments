@@ -51,9 +51,14 @@ class StubStateful:
 
 def save_step(root, step: int) -> str:
     return ckpt.save_checkpoint(
-        root, step, StubModel(), StubStateful(), StubStateful(),
+        root,
+        step,
+        StubModel(),
+        StubStateful(),
+        StubStateful(),
         {"shard": 0, "offset": step, "window": 128},
-        {"tokens_seen": step * 256, "loss": 1.0})
+        {"tokens_seen": step * 256, "loss": 1.0},
+    )
 
 
 @requires_torch
@@ -61,11 +66,19 @@ def test_save_creates_complete_checkpoint_and_latest(tmp_path):
     root = str(tmp_path / "checkpoints")
     path = save_step(root, 5)
     assert os.path.basename(path) == "step_000000005"
-    for name in ("model/model.safetensors", "optimizer.pt", "scheduler.pt",
-                 "dataloader.json", "rng.pt", "meta.json"):
+    for name in (
+        "model/model.safetensors",
+        "optimizer.pt",
+        "scheduler.pt",
+        "dataloader.json",
+        "rng.pt",
+        "meta.json",
+    ):
         assert os.path.exists(os.path.join(path, name))
     with open(os.path.join(path, "meta.json")) as f:
-        assert f.read() and json.load(open(os.path.join(path, "meta.json")))["step"] == 5
+        assert (
+            f.read() and json.load(open(os.path.join(path, "meta.json")))["step"] == 5
+        )
     assert ckpt.latest_checkpoint(root) == path
     assert ckpt.list_checkpoints(root) == [5]
 
@@ -81,7 +94,8 @@ def test_latest_repoints_on_each_save(tmp_path):
 
 @requires_torch
 def test_kill_between_tmp_write_and_rename_preserves_previous_latest(
-        tmp_path, monkeypatch):
+    tmp_path, monkeypatch
+):
     """Simulated SIGKILL after the tmp tree is written but before the rename
     publishes it: the previous latest stays intact and resumable, and the
     debris never appears as a checkpoint."""

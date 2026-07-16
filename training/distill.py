@@ -71,10 +71,18 @@ class DistillPreflightError(SftPreflightError):
 
 # -- loss (pure given tensors; the golden-fixture tests exercise this) -------
 
-def masked_distill_loss(student_logits, labels, *, alpha: float,
-                        temperature: float, kl_direction: str,
-                        teacher_logits=None, teacher_topk_ids=None,
-                        teacher_topk_logprobs=None):
+
+def masked_distill_loss(
+    student_logits,
+    labels,
+    *,
+    alpha: float,
+    temperature: float,
+    kl_direction: str,
+    teacher_logits=None,
+    teacher_topk_ids=None,
+    teacher_topk_logprobs=None,
+):
     """L = alpha * CE + (1 - alpha) * T^2 * KL, on assistant tokens only.
 
     Applies the causal shift internally: position t's distributions predict
@@ -93,16 +101,20 @@ def masked_distill_loss(student_logits, labels, *, alpha: float,
     import torch.nn.functional as F
 
     if (teacher_logits is None) == (teacher_topk_ids is None):
-        raise ValueError("exactly one of teacher_logits or teacher_topk_ids/"
-                         "teacher_topk_logprobs is required")
+        raise ValueError(
+            "exactly one of teacher_logits or teacher_topk_ids/"
+            "teacher_topk_logprobs is required"
+        )
 
     s_logits = student_logits[:, :-1].float()
     shifted_labels = labels[:, 1:]
     mask = shifted_labels != IGNORE_INDEX
 
-    ce = F.cross_entropy(s_logits.reshape(-1, s_logits.size(-1)),
-                         shifted_labels.reshape(-1),
-                         ignore_index=IGNORE_INDEX)
+    ce = F.cross_entropy(
+        s_logits.reshape(-1, s_logits.size(-1)),
+        shifted_labels.reshape(-1),
+        ignore_index=IGNORE_INDEX,
+    )
 
     s_lp = F.log_softmax(s_logits / temperature, dim=-1)
     if teacher_logits is not None:
@@ -116,18 +128,18 @@ def masked_distill_loss(student_logits, labels, *, alpha: float,
         s_top = torch.gather(s_lp, dim=-1, index=ids)
         s_lp = F.log_softmax(s_top, dim=-1)
 
-    if kl_direction == "forward":        # KL(teacher || student)
+    if kl_direction == "forward":  # KL(teacher || student)
         kl_per_pos = (t_lp.exp() * (t_lp - s_lp)).sum(dim=-1)
-    else:                                # reverse: KL(student || teacher)
+    else:  # reverse: KL(student || teacher)
         kl_per_pos = (s_lp.exp() * (s_lp - t_lp)).sum(dim=-1)
-    kl = ((kl_per_pos * mask).sum() / mask.sum().clamp(min=1)
-          * temperature * temperature)
+    kl = (kl_per_pos * mask).sum() / mask.sum().clamp(min=1) * temperature * temperature
 
     loss = alpha * ce + (1.0 - alpha) * kl
     return loss, ce.detach(), kl.detach()
 
 
 # -- preflights ---------------------------------------------------------------
+
 
 def final_logit_softcapping(config):
     """The model's final_logit_softcapping, descending Gemma 4's text_config."""
@@ -147,7 +159,8 @@ def check_softcap_parity(student_config, teacher_config) -> None:
         raise DistillPreflightError(
             f"final_logit_softcapping mismatch: student {s_cap!r} vs teacher "
             f"{t_cap!r}; teacher and student logits must both be capped "
-            "identically (or both uncapped) for the KL to be meaningful")
+            "identically (or both uncapped) for the KL to be meaningful"
+        )
 
 
 def check_tokenizer_parity(student_source: str, teacher_source: str) -> None:
@@ -162,7 +175,8 @@ def check_tokenizer_parity(student_source: str, teacher_source: str) -> None:
             f"tokenizer mismatch: student {student_source} ({student_hash}) vs "
             f"teacher {teacher_source} ({teacher_hash}); logit distillation "
             "requires identical tokenizers. Cross-tokenizer distillation is "
-            "out of scope for Phase 1 (use tier=response instead)")
+            "out of scope for Phase 1 (use tier=response instead)"
+        )
 
 
 def _dataset_manifest(dataset_dir: str) -> dict:
@@ -179,6 +193,7 @@ def _train_file_hash(manifest: dict) -> str:
 
 # -- teacher loading ----------------------------------------------------------
 
+
 def load_teacher(recipe: DictConfig):
     """Load the frozen in-process teacher for online mode.
 
@@ -192,12 +207,14 @@ def load_teacher(recipe: DictConfig):
     quant = None
     if recipe.distill.teacher_quantize == "nf4":
         quant = BitsAndBytesConfig(
-            load_in_4bit=True, bnb_4bit_quant_type="nf4",
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
             bnb_4bit_use_double_quant=True,
-            bnb_4bit_compute_dtype=torch.bfloat16)
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        )
     teacher = AutoModelForCausalLM.from_pretrained(
-        recipe.distill.teacher, dtype=torch.bfloat16,
-        quantization_config=quant)
+        recipe.distill.teacher, dtype=torch.bfloat16, quantization_config=quant
+    )
     teacher.eval()
     teacher.requires_grad_(False)
     return teacher
@@ -208,6 +225,7 @@ def teacher_revision(teacher_model) -> str:
 
 
 # -- collation ----------------------------------------------------------------
+
 
 class DistillCollator(Collator):
     """F3's padded collator plus per-example teacher cache slices.
@@ -239,10 +257,12 @@ class DistillCollator(Collator):
             n = len(sample["input_ids"])
             if len(idx_arr) != n:
                 from training.data.distill import LogitCacheError
+
                 raise LogitCacheError(
                     f"cache example {sample['cache_index']} has {len(idx_arr)} "
                     f"token positions, sample has {n}; the cache was built "
-                    "over a different preparation of this dataset")
+                    "over a different preparation of this dataset"
+                )
             ids[row, :n] = torch.from_numpy(np.asarray(idx_arr, np.int64))
             logprobs[row, :n] = torch.from_numpy(np.asarray(lp_arr, np.float32))
         out["teacher_topk_ids"] = ids
@@ -251,6 +271,7 @@ class DistillCollator(Collator):
 
 
 # -- trainer ------------------------------------------------------------------
+
 
 def build_distill_trainer_cls():
     """DistillTrainer, built lazily so importing this module needs no trl."""
@@ -271,8 +292,9 @@ def build_distill_trainer_cls():
             self.last_ce = None
             self.last_kl = None
 
-        def compute_loss(self, model, inputs, return_outputs=False,
-                         num_items_in_batch=None):
+        def compute_loss(
+            self, model, inputs, return_outputs=False, num_items_in_batch=None
+        ):
             import torch
             import torch.nn.functional as F
 
@@ -285,7 +307,9 @@ def build_distill_trainer_cls():
                 logits = outputs.logits[:, :-1].float()
                 loss = F.cross_entropy(
                     logits.reshape(-1, logits.size(-1)),
-                    labels[:, 1:].reshape(-1), ignore_index=IGNORE_INDEX)
+                    labels[:, 1:].reshape(-1),
+                    ignore_index=IGNORE_INDEX,
+                )
                 return (loss, outputs) if return_outputs else loss
 
             cfg = self.distill_cfg
@@ -294,12 +318,15 @@ def build_distill_trainer_cls():
                 with torch.no_grad():
                     teacher_logits = self.teacher(**inputs).logits
             loss, ce, kl = masked_distill_loss(
-                outputs.logits, labels,
-                alpha=cfg.alpha, temperature=cfg.temperature,
+                outputs.logits,
+                labels,
+                alpha=cfg.alpha,
+                temperature=cfg.temperature,
                 kl_direction=cfg.kl_direction,
                 teacher_logits=teacher_logits,
                 teacher_topk_ids=teacher_ids,
-                teacher_topk_logprobs=teacher_lps)
+                teacher_topk_logprobs=teacher_lps,
+            )
             self.last_ce, self.last_kl = float(ce), float(kl)
             return (loss, outputs) if return_outputs else loss
 
@@ -308,8 +335,10 @@ def build_distill_trainer_cls():
 
 # -- cache pre-pass -----------------------------------------------------------
 
-def build_logit_cache(recipe: DictConfig, out_dir: str | None = None,
-                      progress=None) -> dict:
+
+def build_logit_cache(
+    recipe: DictConfig, out_dir: str | None = None, progress=None
+) -> dict:
     """Materialize the teacher's top-K logprobs over the train split.
 
     A training-tier GPU job: takes the D9 lock like a run. The operator
@@ -320,13 +349,15 @@ def build_logit_cache(recipe: DictConfig, out_dir: str | None = None,
     d = recipe.distill
     if not d.enabled or d.tier != "logit":
         raise DistillPreflightError(
-            "distill-cache needs distill.enabled=true and tier=logit")
+            "distill-cache needs distill.enabled=true and tier=logit"
+        )
     if not d.teacher:
         raise DistillPreflightError("distill.teacher is required to build a cache")
     out_dir = out_dir or d.cache_path
     if not out_dir:
         raise DistillPreflightError(
-            "no cache path: set distill.cache_path or pass --out")
+            "no cache path: set distill.cache_path or pass --out"
+        )
 
     import numpy as np
     import torch
@@ -338,14 +369,13 @@ def build_logit_cache(recipe: DictConfig, out_dir: str | None = None,
     manifest = _dataset_manifest(recipe.sft.dataset)
 
     with run_lock(f"{recipe.run.name}-distill-cache"):
-        train, _ = load_sft_dataset(recipe.sft.dataset,
-                                    tokenizer=recipe.tokenizer.path)
+        train, _ = load_sft_dataset(recipe.sft.dataset, tokenizer=recipe.tokenizer.path)
         teacher = load_teacher_for_cache(recipe)
         device = next(teacher.parameters()).device
         writer = LogitCacheWriter(out_dir, d.top_k)
         collator = Collator()
         for start in range(0, len(train), CACHE_BATCH_EXAMPLES):
-            batch = train[start:start + CACHE_BATCH_EXAMPLES]
+            batch = train[start : start + CACHE_BATCH_EXAMPLES]
             tensors = collator(batch)
             with torch.no_grad():
                 logits = teacher(
@@ -361,7 +391,8 @@ def build_logit_cache(recipe: DictConfig, out_dir: str | None = None,
                 n = len(sample["input_ids"])
                 writer.add_example(
                     np.asarray(top_ids[row, :n].cpu(), np.int32),
-                    np.asarray(logprobs[row, :n].cpu(), np.float16))
+                    np.asarray(logprobs[row, :n].cpu(), np.float16),
+                )
             if progress is not None:
                 progress(min(start + CACHE_BATCH_EXAMPLES, len(train)), len(train))
         return writer.finalize(
@@ -370,7 +401,8 @@ def build_logit_cache(recipe: DictConfig, out_dir: str | None = None,
             tokenizer_hash=manifest["tokenizer_hash"],
             dataset_dir=recipe.sft.dataset,
             dataset_train_hash=_train_file_hash(manifest),
-            command=" ".join(sys.argv))
+            command=" ".join(sys.argv),
+        )
 
 
 def load_teacher_for_cache(recipe: DictConfig):
@@ -380,8 +412,10 @@ def load_teacher_for_cache(recipe: DictConfig):
     from transformers import AutoModelForCausalLM
 
     teacher = AutoModelForCausalLM.from_pretrained(
-        recipe.distill.teacher, dtype=torch.bfloat16,
-        device_map="cuda:0" if torch.cuda.is_available() else None)
+        recipe.distill.teacher,
+        dtype=torch.bfloat16,
+        device_map="cuda:0" if torch.cuda.is_available() else None,
+    )
     teacher.eval()
     teacher.requires_grad_(False)
     return teacher
@@ -389,22 +423,26 @@ def load_teacher_for_cache(recipe: DictConfig):
 
 # -- orchestration ------------------------------------------------------------
 
-def distill_provenance(recipe: DictConfig, revision: str | None = None,
-                       cache_manifest: dict | None = None) -> dict:
+
+def distill_provenance(
+    recipe: DictConfig, revision: str | None = None, cache_manifest: dict | None = None
+) -> dict:
     """The provenance record written into the run dir and checkpoint meta."""
     d = recipe.distill
     fields: dict = {"tier": d.tier}
     if d.tier == "response":
         fields["teacher_manifest"] = d.teacher_manifest
     else:
-        fields.update({
-            "teacher": d.teacher,
-            "teacher_revision": revision or "unknown",
-            "mode": d.mode,
-            "alpha": d.alpha,
-            "temperature": d.temperature,
-            "kl_direction": d.kl_direction,
-        })
+        fields.update(
+            {
+                "teacher": d.teacher,
+                "teacher_revision": revision or "unknown",
+                "mode": d.mode,
+                "alpha": d.alpha,
+                "temperature": d.temperature,
+                "kl_direction": d.kl_direction,
+            }
+        )
         if d.mode == "cached":
             fields["cache_path"] = d.cache_path
             fields["top_k"] = d.top_k
@@ -426,7 +464,8 @@ def train_distill(recipe: DictConfig, force: bool = False) -> SftResult:
     if not d.enabled:
         raise DistillPreflightError(
             "distill.enabled is false; train-distill needs a distill-enabled "
-            "recipe (the reference is training/recipes/reference/distill-e2b.yaml)")
+            "recipe (the reference is training/recipes/reference/distill-e2b.yaml)"
+        )
     if d.tier == "response":
         from training.sft import train_sft
 
@@ -462,12 +501,12 @@ def _train_locked_distill(recipe: DictConfig) -> SftResult:
         cache.verify_binding(
             dataset_train_hash=_train_file_hash(manifest),
             tokenizer_hash=manifest["tokenizer_hash"],
-            examples=len(train_samples))
+            examples=len(train_samples),
+        )
         cache_manifest = cache.manifest
         # Alignment index into the cache: samples stay in train-file order
         # (packing is off in cached mode; validate() enforced it).
-        train_samples = [dict(s, cache_index=i)
-                         for i, s in enumerate(train_samples)]
+        train_samples = [dict(s, cache_index=i) for i, s in enumerate(train_samples)]
 
     model, tokenizer, report = build_model_and_tokenizer(recipe)
     base_identity = resolve_base_identity_or_none(recipe)
@@ -488,9 +527,9 @@ def _train_locked_distill(recipe: DictConfig) -> SftResult:
     else:
         raise FileExistsError(
             f"Could not allocate a run directory under "
-            f"{recipe.run.output_root}/{recipe.run.name}")
-    ckpt_root = os.path.join(recipe.run.output_root, recipe.run.name,
-                             "checkpoints")
+            f"{recipe.run.output_root}/{recipe.run.name}"
+        )
+    ckpt_root = os.path.join(recipe.run.output_root, recipe.run.name, "checkpoints")
     os.makedirs(ckpt_root, exist_ok=True)
 
     provenance = distill_provenance(recipe, revision, cache_manifest)
@@ -501,8 +540,9 @@ def _train_locked_distill(recipe: DictConfig) -> SftResult:
     tracker = Tracker(recipe.tracking, recipe.run.name, run_dir)
     watchdog = None
     if recipe.watchdog.enabled:
-        watchdog = Watchdog(recipe.watchdog, run_dir, tracker=tracker,
-                            disk_path=ckpt_root)
+        watchdog = Watchdog(
+            recipe.watchdog, run_dir, tracker=tracker, disk_path=ckpt_root
+        )
         watchdog.start()
 
     from datasets import Dataset
@@ -514,19 +554,32 @@ def _train_locked_distill(recipe: DictConfig) -> SftResult:
         model=model,
         args=SFTConfig(**kwargs),
         train_dataset=Dataset.from_list(train_samples),
-        eval_dataset=(Dataset.from_list(holdout_samples)
-                      if kwargs["eval_strategy"] != "no" else None),
+        eval_dataset=(
+            Dataset.from_list(holdout_samples)
+            if kwargs["eval_strategy"] != "no"
+            else None
+        ),
         processing_class=tokenizer,
         data_collator=DistillCollator(cache),
-        callbacks=build_callbacks(recipe, ckpt_root, tracker, watchdog,
-                                  recipe_hash, trainable_report=report,
-                                  distill_meta=provenance,
-                                  base_identity=base_identity),
+        callbacks=build_callbacks(
+            recipe,
+            ckpt_root,
+            tracker,
+            watchdog,
+            recipe_hash,
+            trainable_report=report,
+            distill_meta=provenance,
+            base_identity=base_identity,
+        ),
         teacher=teacher,
-        distill_cfg=d)
+        distill_cfg=d,
+    )
 
-    if teacher is not None and not next(
-            teacher.parameters()).is_cuda and torch.cuda.is_available():
+    if (
+        teacher is not None
+        and not next(teacher.parameters()).is_cuda
+        and torch.cuda.is_available()
+    ):
         trainer.teacher = teacher.to(trainer.model.device)
 
     resume_path = None
@@ -538,16 +591,22 @@ def _train_locked_distill(recipe: DictConfig) -> SftResult:
     except WatchdogAbort:
         step = trainer.state.global_step
         emergency_dir = os.path.join(
-            ckpt_root, f"{checkpoint_dir_name(step)}-emergency")
+            ckpt_root, f"{checkpoint_dir_name(step)}-emergency"
+        )
         trainer.save_model(emergency_dir)
         trainer.save_state()
         write_checkpoint_meta(
-            emergency_dir, step, adapter_only=bool(recipe.peft.enabled),
-            base_model=recipe.model.hf.id, backend=recipe.sft.backend,
+            emergency_dir,
+            step,
+            adapter_only=bool(recipe.peft.enabled),
+            base_model=recipe.model.hf.id,
+            backend=recipe.sft.backend,
             recipe_hash=recipe_hash,
             base_revision=getattr(base_identity, "revision", None),
             base_config_sha256=getattr(base_identity, "config_sha256", None),
-            emergency=True, distill=provenance)
+            emergency=True,
+            distill=provenance,
+        )
         raise
     finally:
         if watchdog is not None:
@@ -566,4 +625,5 @@ def _train_locked_distill(recipe: DictConfig) -> SftResult:
         holdout_loss=holdout[-1] if holdout else None,
         trainable_report=str(report),
         packed_examples=len(train_samples) if recipe.sft.packing else 0,
-        losses=losses)
+        losses=losses,
+    )

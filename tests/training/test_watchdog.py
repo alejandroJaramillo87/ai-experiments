@@ -170,8 +170,10 @@ def test_sampler_thread_lands_samples_and_stops_cleanly(run_dir, monkeypatch):
 
     monkeypatch.setattr(wd_mod, "sample_gpu", lambda: {"gpu_temp_c": 50.0})
     monkeypatch.setattr(
-        wd_mod, "sample_host",
-        lambda path: {"ram_available_gb": 100.0, "disk_free_gb": 500.0})
+        wd_mod,
+        "sample_host",
+        lambda path: {"ram_available_gb": 100.0, "disk_free_gb": 500.0},
+    )
 
     tracker = FakeTracker()
     wd = make_watchdog(run_dir, tracker, interval_s=0.01)
@@ -239,8 +241,14 @@ def test_retention_exempts_emergency_checkpoints(tmp_path):
     from training import checkpoint as ckpt
 
     root = str(tmp_path)
-    for step, emergency in [(1, False), (2, False), (3, True), (4, False),
-                            (5, False), (6, False)]:
+    for step, emergency in [
+        (1, False),
+        (2, False),
+        (3, True),
+        (4, False),
+        (5, False),
+        (6, False),
+    ]:
         d = os.path.join(root, ckpt.step_dir_name(step))
         os.makedirs(d)
         with open(os.path.join(d, "meta.json"), "w") as f:
@@ -265,7 +273,9 @@ def test_loop_saves_emergency_checkpoint_on_abort(tmp_path, monkeypatch):
     rng = np.random.default_rng(7)
     tokens = rng.integers(0, 512, size=6000).tolist()
     shard_dir = make_shard_dir(tmp_path, tokens, shard_tokens=2000)
-    recipe = load_recipe(TINY_RECIPE, [
+    recipe = load_recipe(
+        TINY_RECIPE,
+        [
             f"data.source={shard_dir}",
             f"run.output_root={tmp_path / 'runs'}",
             "data.seq_len=64",
@@ -273,7 +283,8 @@ def test_loop_saves_emergency_checkpoint_on_abort(tmp_path, monkeypatch):
             "checkpoint.interval_steps=100",  # no periodic save before the abort
             "watchdog.enabled=true",
             "watchdog.interval_s=3600",  # sampler effectively idle in the test
-        ])
+        ],
+    )
 
     def abort_at_step_3(self, step, loss, grad_norm):
         if step >= 3:

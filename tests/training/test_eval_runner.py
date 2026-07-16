@@ -21,8 +21,7 @@ from training.eval.runner import (
     run_judgments,
 )
 
-EVAL_DIR = os.path.join(os.path.dirname(__file__), "..", "..",
-                        "training", "eval")
+EVAL_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "training", "eval")
 
 
 def write_gguf(tmp_path, name, quant=None, manifest_quant=None):
@@ -31,8 +30,7 @@ def write_gguf(tmp_path, name, quant=None, manifest_quant=None):
     if manifest_quant is not None:
         manifest = path.with_suffix("").as_posix() + ".manifest.json"
         with open(manifest, "w") as f:
-            json.dump({"quant_type": manifest_quant,
-                       "gguf": {"sha256": "deadbeef"}}, f)
+            json.dump({"quant_type": manifest_quant, "gguf": {"sha256": "deadbeef"}}, f)
     return str(path)
 
 
@@ -91,8 +89,7 @@ def test_check_quant_match():
 
 
 def test_default_judge_prompts_load_unique():
-    prompts = generate.load_prompts(
-        os.path.join(EVAL_DIR, "judge_prompts.jsonl"))
+    prompts = generate.load_prompts(os.path.join(EVAL_DIR, "judge_prompts.jsonl"))
     assert len(prompts) >= 20
     assert all("prompt" in p and "id" in p for p in prompts)
 
@@ -152,9 +149,9 @@ def test_generate_responses_transient_retry_heals(tmp_path):
 
     with mock.patch.object(serving, "chat_completion", flaky_completion):
         responses = generate.generate_responses(service, prompts, out_path)
-    assert attempts["n"] == 3               # two transient failures, then success
+    assert attempts["n"] == 3  # two transient failures, then success
     assert responses["a"]["response"] == "healed"
-    assert "error" not in responses["a"]    # the transient error field was cleared
+    assert "error" not in responses["a"]  # the transient error field was cleared
     # Persisted record reflects the healed response, not the failures.
     assert generate.load_responses(out_path)["a"]["response"] == "healed"
 
@@ -164,10 +161,14 @@ def test_run_judgments_error_then_resume_rejudges_only_errored(tmp_path):
     # error) while the other prompt's pairs succeed. A resumed run re-judges
     # only the errored pairs and preserves the successful ones untouched.
     out_path = str(tmp_path / "judgments.jsonl")
-    prompts = {"p1": {"id": "p1", "prompt": "alpha"},
-               "p2": {"id": "p2", "prompt": "beta"}}
-    responses = {"baseline": {"p1": {"response": "a1"}, "p2": {"response": "a2"}},
-                 "tuned": {"p1": {"response": "b1"}, "p2": {"response": "b2"}}}
+    prompts = {
+        "p1": {"id": "p1", "prompt": "alpha"},
+        "p2": {"id": "p2", "prompt": "beta"},
+    }
+    responses = {
+        "baseline": {"p1": {"response": "a1"}, "p2": {"response": "a2"}},
+        "tuned": {"p1": {"response": "b1"}, "p2": {"response": "b2"}},
+    }
 
     def first_pass(messages):
         if "beta" in messages[1]["content"]:
@@ -192,10 +193,10 @@ def test_run_judgments_error_then_resume_rejudges_only_errored(tmp_path):
     assert all("beta" in text for text in seen)
     assert len(seen) == 2
     resumed_outcomes = {(r["prompt_id"], r["first"]): r["outcome"] for r in resumed}
-    assert resumed_outcomes[("p1", "baseline")] == "baseline"   # preserved
-    assert resumed_outcomes[("p1", "tuned")] == "tuned"         # preserved
-    assert resumed_outcomes[("p2", "baseline")] == "tie"        # healed
-    assert resumed_outcomes[("p2", "tuned")] == "tie"           # healed
+    assert resumed_outcomes[("p1", "baseline")] == "baseline"  # preserved
+    assert resumed_outcomes[("p1", "tuned")] == "tuned"  # preserved
+    assert resumed_outcomes[("p2", "baseline")] == "tie"  # healed
+    assert resumed_outcomes[("p2", "tuned")] == "tie"  # healed
     # Persisted state agrees: the errored pairs now read as decided verdicts.
     persisted = load_judgments(out_path)
     assert persisted[("p2", "baseline")]["outcome"] == "tie"
@@ -205,8 +206,10 @@ def test_run_judgments_error_then_resume_rejudges_only_errored(tmp_path):
 def test_run_judgments_resumable_and_position_swapped(tmp_path):
     out_path = str(tmp_path / "judgments.jsonl")
     prompts = {"p1": {"id": "p1", "prompt": "question"}}
-    responses = {"baseline": {"p1": {"response": "base answer"}},
-                 "tuned": {"p1": {"response": "tuned answer"}}}
+    responses = {
+        "baseline": {"p1": {"response": "base answer"}},
+        "tuned": {"p1": {"response": "tuned answer"}},
+    }
 
     seen_orders = []
 
@@ -231,19 +234,25 @@ def test_run_judgments_resumable_and_position_swapped(tmp_path):
 
 def test_run_judgments_missing_generation_is_error_outcome(tmp_path):
     prompts = {"p1": {"id": "p1", "prompt": "q"}}
-    responses = {"baseline": {"p1": {"response": "a"}},
-                 "tuned": {"p1": {"error": "generation failed"}}}
-    results = run_judgments(lambda m: "VERDICT: TIE", prompts, responses,
-                            str(tmp_path / "j.jsonl"))
+    responses = {
+        "baseline": {"p1": {"response": "a"}},
+        "tuned": {"p1": {"error": "generation failed"}},
+    }
+    results = run_judgments(
+        lambda m: "VERDICT: TIE", prompts, responses, str(tmp_path / "j.jsonl")
+    )
     assert all(r["outcome"] == "error" for r in results)
 
 
 def test_run_judgments_malformed_verdict_counted(tmp_path):
     prompts = {"p1": {"id": "p1", "prompt": "q"}}
-    responses = {"baseline": {"p1": {"response": "a"}},
-                 "tuned": {"p1": {"response": "b"}}}
-    results = run_judgments(lambda m: "I refuse to answer.", prompts,
-                            responses, str(tmp_path / "j.jsonl"))
+    responses = {
+        "baseline": {"p1": {"response": "a"}},
+        "tuned": {"p1": {"response": "b"}},
+    }
+    results = run_judgments(
+        lambda m: "I refuse to answer.", prompts, responses, str(tmp_path / "j.jsonl")
+    )
     assert [r["outcome"] for r in results] == ["malformed", "malformed"]
     assert all(r["rationale"] == "I refuse to answer." for r in results)
 

@@ -71,7 +71,9 @@ class TrainResult:
     final_step: int
     tokens_seen: int
     losses: list[tuple[int, float]] = field(default_factory=list)  # (step, loss)
-    lrs: list[tuple[int, float]] = field(default_factory=list)  # (step, lr) — P2-D3 acceptance
+    lrs: list[tuple[int, float]] = field(
+        default_factory=list
+    )  # (step, lr) — P2-D3 acceptance
     data_wait_ms_mean: float = 0.0  # D9 overlap acceptance metric
     tokens_per_source: dict[str, int] = field(default_factory=dict)  # P2-D2 accounting
 
@@ -81,11 +83,11 @@ def snapshot_hash(recipe: DictConfig) -> str:
     run necessarily changes that one field and must not trip the drift warning."""
     from omegaconf import OmegaConf
 
-    clone = cast(DictConfig, OmegaConf.merge(
-        recipe, OmegaConf.create({"checkpoint": {"resume": None}})))
+    clone = cast(
+        DictConfig,
+        OmegaConf.merge(recipe, OmegaConf.create({"checkpoint": {"resume": None}})),
+    )
     return hashlib.sha256(resolved_yaml(clone).encode()).hexdigest()
-
-
 
 
 def _library_versions() -> dict:
@@ -121,8 +123,9 @@ class _DataStateSlot:
         self.state = state
 
 
-def _sources_with_replay(recipe: DictConfig, domain: list[tuple],
-                         run_dir: str) -> list[tuple]:
+def _sources_with_replay(
+    recipe: DictConfig, domain: list[tuple], run_dir: str
+) -> list[tuple]:
     """Expand the replay block into mixture sources (P2-D4).
 
     Domain weights are scaled to 1 - fraction of the total draw and each
@@ -135,17 +138,22 @@ def _sources_with_replay(recipe: DictConfig, domain: list[tuple],
 
     fraction = recipe.replay.fraction
     domain_total = sum(w for _, _, w in domain)
-    sources = [(name, path, w / domain_total * (1.0 - fraction))
-               for name, path, w in domain]
+    sources = [
+        (name, path, w / domain_total * (1.0 - fraction)) for name, path, w in domain
+    ]
     total_bytes = resolve_max_bytes(recipe)
     replay_total = sum(s.weight for s in recipe.replay.sources)
     for s in recipe.replay.sources:
         share = s.weight / replay_total
         buffer = ReplayBuffer(
-            s.path, window=recipe.data.seq_len,
-            max_bytes=int(total_bytes * share), seed=recipe.run.seed,
-            run_dir=run_dir, name=s.name,
-            ram_floor_gb=recipe.watchdog.ram_floor_gb)
+            s.path,
+            window=recipe.data.seq_len,
+            max_bytes=int(total_bytes * share),
+            seed=recipe.run.seed,
+            run_dir=run_dir,
+            name=s.name,
+            ram_floor_gb=recipe.watchdog.ram_floor_gb,
+        )
         sources.append((s.name, buffer, fraction * share))
     return sources
 
@@ -188,7 +196,8 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
     else:
         raise FileExistsError(
             f"Could not allocate a run directory under "
-            f"{recipe.run.output_root}/{recipe.run.name}")
+            f"{recipe.run.output_root}/{recipe.run.name}"
+        )
     ckpt_root = f"{recipe.run.output_root}/{recipe.run.name}/checkpoints"
 
     # Built after the run dir exists: replay buffers write their loaded-set
@@ -200,8 +209,11 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         if recipe.replay.enabled:
             sources = _sources_with_replay(recipe, sources, run_name_dir)
         dataset = MixtureDataset(
-            sources, window=recipe.data.seq_len, seed=recipe.run.seed,
-            strict_single_epoch=recipe.mixture.strict_single_epoch)
+            sources,
+            window=recipe.data.seq_len,
+            seed=recipe.run.seed,
+            strict_single_epoch=recipe.mixture.strict_single_epoch,
+        )
     else:
         source = recipe.data.source
         if recipe.staging.enabled:
@@ -230,8 +242,11 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
     start_step, tokens_seen, next_index = 0, 0, 0
     # Cumulative tokens drawn per mixture source (P2-D2 accounting); carried
     # through checkpoint meta so a resumed run's final table stays cumulative.
-    tokens_per_source = (np.zeros(len(dataset.names), dtype=np.int64)
-                         if isinstance(dataset, MixtureDataset) else None)
+    tokens_per_source = (
+        np.zeros(len(dataset.names), dtype=np.int64)
+        if isinstance(dataset, MixtureDataset)
+        else None
+    )
     recipe_hash = snapshot_hash(recipe)
     if resuming:
         path = ckpt.resolve_resume(ckpt_root, recipe.checkpoint.resume)
@@ -246,22 +261,33 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
             assert isinstance(dataset, MixtureDataset)
             saved = meta.get("tokens_per_source", {})
             tokens_per_source = np.array(
-                [saved.get(name, 0) for name in dataset.names], dtype=np.int64)
+                [saved.get(name, 0) for name in dataset.names], dtype=np.int64
+            )
         if meta.get("recipe_hash") not in (None, recipe_hash):
-            print(f"[loop] WARN: resuming with a recipe that differs from the "
-                  f"checkpoint's (hash {meta['recipe_hash'][:12]} vs "
-                  f"{recipe_hash[:12]}); the LR schedule may shift", file=sys.stderr)
+            print(
+                f"[loop] WARN: resuming with a recipe that differs from the "
+                f"checkpoint's (hash {meta['recipe_hash'][:12]} vs "
+                f"{recipe_hash[:12]}); the LR schedule may shift",
+                file=sys.stderr,
+            )
 
     tracker = Tracker(recipe.tracking, recipe.run.name, run_name_dir)
-    tokens_per_step = (recipe.data.micro_batch * recipe.data.grad_accum
-                       * recipe.data.seq_len)
-    result = TrainResult(run_dir=run_name_dir, checkpoint_root=ckpt_root,
-                         final_step=start_step, tokens_seen=tokens_seen)
+    tokens_per_step = (
+        recipe.data.micro_batch * recipe.data.grad_accum * recipe.data.seq_len
+    )
+    result = TrainResult(
+        run_dir=run_name_dir,
+        checkpoint_root=ckpt_root,
+        final_step=start_step,
+        tokens_seen=tokens_seen,
+    )
 
     def save(step: int, loss: float, emergency: bool = False) -> None:
         meta = {
-            "tokens_seen": tokens_seen, "loss": loss,
-            "recipe_hash": recipe_hash, "git_sha": _git_sha(),
+            "tokens_seen": tokens_seen,
+            "loss": loss,
+            "recipe_hash": recipe_hash,
+            "git_sha": _git_sha(),
             "library_versions": _library_versions(),
             "wall_clock": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "checkpoint_format": "deepspeed" if offload else "torch",
@@ -274,33 +300,47 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
             assert isinstance(dataset, MixtureDataset)
             assert tokens_per_source is not None
             meta["tokens_per_source"] = {
-                name: int(n) for name, n in
-                zip(dataset.names, tokens_per_source, strict=True)}
-            data_state = {"format": "mixture", "next_draw": next_index,
-                          "window": dataset.window}
+                name: int(n)
+                for name, n in zip(dataset.names, tokens_per_source, strict=True)
+            }
+            data_state = {
+                "format": "mixture",
+                "next_draw": next_index,
+                "window": dataset.window,
+            }
         else:
-            data_state = {"format": "index", "next_index": next_index % len(dataset),
-                          "window": dataset.window}
+            data_state = {
+                "format": "index",
+                "next_index": next_index % len(dataset),
+                "window": dataset.window,
+            }
         if offload:
-            ckpt.save_checkpoint_deepspeed(ckpt_root, step, engine, scheduler,
-                                           data_state, meta)
+            ckpt.save_checkpoint_deepspeed(
+                ckpt_root, step, engine, scheduler, data_state, meta
+            )
         else:
-            ckpt.save_checkpoint(ckpt_root, step, model, optimizer, scheduler,
-                                 data_state, meta)
-        ckpt.apply_retention(ckpt_root, recipe.checkpoint.retain_last,
-                             recipe.checkpoint.retain_every)
+            ckpt.save_checkpoint(
+                ckpt_root, step, model, optimizer, scheduler, data_state, meta
+            )
+        ckpt.apply_retention(
+            ckpt_root, recipe.checkpoint.retain_last, recipe.checkpoint.retain_every
+        )
 
     watchdog = None
     if recipe.watchdog.enabled:
         os.makedirs(ckpt_root, exist_ok=True)  # disk-floor check needs the path
-        watchdog = Watchdog(recipe.watchdog, run_name_dir, tracker=tracker,
-                            disk_path=ckpt_root)
+        watchdog = Watchdog(
+            recipe.watchdog, run_name_dir, tracker=tracker, disk_path=ckpt_root
+        )
         watchdog.start()
 
     worker_init = aff.worker_init_fn(workers_mask) if workers_mask else None
     batches = CudaPrefetcher(
-        build_dataloader(dataset, recipe.data, start_index=next_index,
-                         worker_init_fn=worker_init), device)
+        build_dataloader(
+            dataset, recipe.data, start_index=next_index, worker_init_fn=worker_init
+        ),
+        device,
+    )
 
     model.train()
     wait_total = 0.0
@@ -318,7 +358,8 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                     assert isinstance(dataset, MixtureDataset)
                     batch, tags = batch
                     tokens_per_source += recipe.data.seq_len * np.bincount(
-                        tags.numpy(), minlength=len(dataset.names))
+                        tags.numpy(), minlength=len(dataset.names)
+                    )
                 if offload:
                     assert engine is not None
                     # The engine owns loss scaling, accumulation boundaries,
@@ -344,7 +385,8 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
             else:
                 # Infinite max_norm measures the total gradient norm without clipping
                 grad_norm = torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), float("inf")).item()
+                    model.parameters(), float("inf")
+                ).item()
                 optimizer.step()
             scheduler.step()
 
@@ -352,8 +394,10 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
             step_loss = loss_sum / recipe.data.grad_accum
             step_time = time.perf_counter() - step_start
             metrics = {
-                "loss": step_loss, "lr": scheduler.get_last_lr()[0],
-                "grad_norm": grad_norm, "tokens_per_s": tokens_per_step / step_time,
+                "loss": step_loss,
+                "lr": scheduler.get_last_lr()[0],
+                "grad_norm": grad_norm,
+                "tokens_per_s": tokens_per_step / step_time,
                 "step_time_s": step_time,
                 "data_wait_ms": data_wait_s * 1000.0,  # D9 overlap metric
             }
@@ -367,11 +411,13 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                 for name, n in zip(dataset.names, tokens_per_source, strict=True):
                     metrics[f"tokens_source_{name}"] = int(n)
                 result.tokens_per_source = {
-                    name: int(n) for name, n in
-                    zip(dataset.names, tokens_per_source, strict=True)}
+                    name: int(n)
+                    for name, n in zip(dataset.names, tokens_per_source, strict=True)
+                }
             if device.type == "cuda":
                 metrics["gpu_mem_allocated_gb"] = (
-                    torch.cuda.memory_allocated(device) / 2**30)
+                    torch.cuda.memory_allocated(device) / 2**30
+                )
             tracker.log(metrics, step)
             result.losses.append((step, step_loss))
             result.lrs.append((step, scheduler.get_last_lr()[0]))
@@ -388,15 +434,20 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                     try:
                         save(step, step_loss, emergency=True)
                     except Exception as exc:
-                        print(f"[loop] WARN: emergency checkpoint failed: {exc}",
-                              file=sys.stderr)
+                        print(
+                            f"[loop] WARN: emergency checkpoint failed: {exc}",
+                            file=sys.stderr,
+                        )
                     raise
 
             is_last = step == recipe.schedule.total_steps
             if step % recipe.checkpoint.interval_steps == 0 or is_last:
                 if watchdog is not None and watchdog.checkpoint_writes_blocked:
-                    print(f"[loop] WARN: skipping checkpoint at step {step}: "
-                          f"disk free below watchdog floor", file=sys.stderr)
+                    print(
+                        f"[loop] WARN: skipping checkpoint at step {step}: "
+                        f"disk free below watchdog floor",
+                        file=sys.stderr,
+                    )
                 else:
                     save(step, step_loss)
             if stop_after is not None and step >= stop_after:

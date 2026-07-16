@@ -9,8 +9,10 @@ import yaml
 
 from training.data import contamination
 
-BENCH_QUESTION = ("Which layer of the atmosphere contains the ozone that absorbs "
-                  "most of the ultraviolet radiation arriving from the sun every day")
+BENCH_QUESTION = (
+    "Which layer of the atmosphere contains the ozone that absorbs "
+    "most of the ultraviolet radiation arriving from the sun every day"
+)
 BENCH_CHOICES = ["the stratosphere holds it", "the troposphere holds it"]
 
 
@@ -21,12 +23,20 @@ def benchmarks_yaml(tmp_path) -> str:
     return write_benchmarks_yaml(
         tmp_path,
         [{"question": BENCH_QUESTION, "choices": {"text": BENCH_CHOICES}}],
-        name="toy_arc", text_fields=("question", "choices.text"))
+        name="toy_arc",
+        text_fields=("question", "choices.text"),
+    )
 
 
 def test_normalize_words_lowercases_and_splits_on_non_alphanumeric():
-    assert contamination.normalize_words("The QUICK, brown-fox's 42!") == \
-        ["the", "quick", "brown", "fox", "s", "42"]
+    assert contamination.normalize_words("The QUICK, brown-fox's 42!") == [
+        "the",
+        "quick",
+        "brown",
+        "fox",
+        "s",
+        "42",
+    ]
 
 
 def test_ngram_hashes_count_and_determinism():
@@ -52,10 +62,15 @@ def test_build_index_detects_planted_passage(benchmarks_yaml, tmp_path):
     assert manifest["benchmarks"][0]["documents"] == 1
 
     index = contamination.ContaminationIndex(index_dir)
-    contaminated = ("Students reviewed the study guide before the exam. "
-                    + BENCH_QUESTION + ". They then compared their answers afterwards.")
-    clean = ("Farmers in the valley planted drought resistant wheat after two dry "
-             "seasons reduced their annual harvest and the cooperative expanded storage.")
+    contaminated = (
+        "Students reviewed the study guide before the exam. "
+        + BENCH_QUESTION
+        + ". They then compared their answers afterwards."
+    )
+    clean = (
+        "Farmers in the valley planted drought resistant wheat after two dry "
+        "seasons reduced their annual harvest and the cooperative expanded storage."
+    )
     assert index.is_contaminated(contaminated)
     assert not index.is_contaminated(clean)
 
@@ -67,8 +82,7 @@ def test_build_index_is_deterministic(benchmarks_yaml, tmp_path):
     assert first["total_ngrams"] == second["total_ngrams"]
 
 
-def test_ngram_content_hash_reflects_benchmark_list_changes(
-        benchmarks_yaml, tmp_path):
+def test_ngram_content_hash_reflects_benchmark_list_changes(benchmarks_yaml, tmp_path):
     # index_hash covers the whole manifest, which embeds a timestamp and so
     # always differs between builds; the content signal is ngrams_xxhash64.
     a = contamination.build_index(benchmarks_yaml, str(tmp_path / "a"))
@@ -97,9 +111,17 @@ def test_repo_benchmarks_yaml_is_valid():
     from support import REPO_ROOT
 
     config = contamination.load_benchmarks_config(
-        os.path.join(REPO_ROOT, "training", "continual", "benchmarks.yaml"))
+        os.path.join(REPO_ROOT, "training", "continual", "benchmarks.yaml")
+    )
     names = [b["name"] for b in config["benchmarks"]]
-    assert names == ["hellaswag", "arc_easy", "arc_challenge", "piqa", "winogrande", "mmlu"]
+    assert names == [
+        "hellaswag",
+        "arc_easy",
+        "arc_challenge",
+        "piqa",
+        "winogrande",
+        "mmlu",
+    ]
     assert config["ngram_size"] == 13
     for bench in config["benchmarks"]:
         assert bench["splits"] and bench["text_fields"]

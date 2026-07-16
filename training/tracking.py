@@ -26,8 +26,9 @@ def _warn(sink: str, exc: Exception) -> None:
 class Tracker:
     """Fan one log(dict, step) out to the sinks enabled by TrackingConfig."""
 
-    def __init__(self, tracking, run_name: str, run_dir: str,
-                 config: dict | None = None) -> None:
+    def __init__(
+        self, tracking, run_name: str, run_dir: str, config: dict | None = None
+    ) -> None:
         self._sinks: list[tuple[str, Any]] = []
         if tracking.tensorboard:
             self._init_tensorboard(run_dir)
@@ -45,21 +46,24 @@ class Tracker:
         except Exception as exc:
             _warn("tensorboard", exc)
 
-    def _init_wandb(self, tracking, run_name: str, run_dir: str,
-                    config: dict | None) -> None:
+    def _init_wandb(
+        self, tracking, run_name: str, run_dir: str, config: dict | None
+    ) -> None:
         try:
             os.environ.setdefault("WANDB_MODE", "offline")
             import wandb
 
             run = wandb.init(
-                project=tracking.wandb_project, name=run_name,
-                dir=run_dir, config=config or {})
+                project=tracking.wandb_project,
+                name=run_name,
+                dir=run_dir,
+                config=config or {},
+            )
             self._sinks.append(("wandb", run))
         except Exception as exc:
             _warn("wandb", exc)
 
-    def _init_mlflow(self, run_name: str, run_dir: str,
-                     config: dict | None) -> None:
+    def _init_mlflow(self, run_name: str, run_dir: str, config: dict | None) -> None:
         try:
             import mlflow
 
@@ -69,8 +73,13 @@ class Tracker:
             mlflow.start_run(run_name=run_name)
             if config:
                 # mlflow rejects params over 500 chars; flat scalar params only
-                mlflow.log_params({k: v for k, v in config.items()
-                                   if isinstance(v, int | float | str | bool)})
+                mlflow.log_params(
+                    {
+                        k: v
+                        for k, v in config.items()
+                        if isinstance(v, int | float | str | bool)
+                    }
+                )
             self._sinks.append(("mlflow", mlflow))
         except Exception as exc:
             _warn("mlflow", exc)

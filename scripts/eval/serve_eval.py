@@ -78,7 +78,8 @@ def preflight(host_path: str, skip_hash: bool, out: Printer) -> dict | None:
             raise ServeEvalError(
                 f"Model hash mismatch against its manifest\n"
                 f"  Expected: {expected}\n  Actual:   {actual}\n"
-                "  Solution: re-export the checkpoint or fix the manifest")
+                "  Solution: re-export the checkpoint or fix the manifest"
+            )
         out.ok("Preflight: model hash matches its export manifest")
     return manifest
 
@@ -88,16 +89,23 @@ def run_prompt(spec: dict, defaults: dict, timeout: int) -> dict:
         "temperature": spec.get("temperature", defaults.get("temperature", 0)),
         "max_tokens": spec.get("max_tokens", defaults.get("max_tokens", 64)),
     }
-    record = {"id": spec["id"], "prompt": spec["prompt"],
-              "expect_substring": spec.get("expect_substring")}
+    record = {
+        "id": spec["id"],
+        "prompt": spec["prompt"],
+        "expect_substring": spec.get("expect_substring"),
+    }
     start = time.monotonic()
     try:
         result = serving.chat_completion(
-            SERVICE, [{"role": "user", "content": spec["prompt"]}],
-            sampling, timeout=timeout)
+            SERVICE,
+            [{"role": "user", "content": spec["prompt"]}],
+            sampling,
+            timeout=timeout,
+        )
     except serving.ServingError as exc:
-        record.update(error=str(exc), latency_ms=round(
-            (time.monotonic() - start) * 1000, 1))
+        record.update(
+            error=str(exc), latency_ms=round((time.monotonic() - start) * 1000, 1)
+        )
         return record
     record["latency_ms"] = result["latency_ms"]
     record["response"] = result["content"]
@@ -123,8 +131,10 @@ def evaluate(prompts_path: str, timeout: int, out: Printer) -> tuple[list, dict]
         elif record.get("passed") is True:
             out.ok(f"{record['id']}: pass ({record['latency_ms']:.0f}ms)")
         elif record.get("passed") is False:
-            out.warn(f"{record['id']}: expected substring not found "
-                     f"({record['latency_ms']:.0f}ms)")
+            out.warn(
+                f"{record['id']}: expected substring not found "
+                f"({record['latency_ms']:.0f}ms)"
+            )
         else:
             out.info(f"{record['id']}: recorded ({record['latency_ms']:.0f}ms)")
     checked = [r for r in results if "passed" in r]
@@ -138,8 +148,10 @@ def evaluate(prompts_path: str, timeout: int, out: Printer) -> tuple[list, dict]
         "median_latency_ms": latencies[len(latencies) // 2] if latencies else None,
     }
     out.line()
-    out.line(f"Summary: {summary['passed']}/{summary['checked']} expectation "
-             f"checks passed, {summary['errors']} request errors")
+    out.line(
+        f"Summary: {summary['passed']}/{summary['checked']} expectation "
+        f"checks passed, {summary['errors']} request errors"
+    )
     return results, summary
 
 
@@ -147,24 +159,49 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Swap a GGUF into llama-gpu, run the smoke evaluation, restore.",
         epilog="Manual restore after an unclean exit: "
-               "docker compose up -d --force-recreate llama-gpu")
-    parser.add_argument("--model", required=True,
-                        help="GGUF path, container (/app/models/...) or host "
-                             "(/mnt/ai-data/models/...) form")
-    parser.add_argument("--prompts", default=DEFAULT_PROMPTS,
-                        help="smoke prompt set JSON (default scripts/eval/smoke_prompts.json)")
-    parser.add_argument("--out",
-                        help="result JSON path (default logs/eval/serve_eval_<UTC>.json)")
-    parser.add_argument("--keep-serving", action="store_true",
-                        help="leave the new model serving instead of restoring")
-    parser.add_argument("--skip-hash-check", action="store_true",
-                        help="skip the manifest SHA-256 verification")
-    parser.add_argument("--require-pass", action="store_true",
-                        help="exit 1 when any expectation check fails")
-    parser.add_argument("--start-budget", type=int, default=180,
-                        help="seconds to wait for llama-gpu health (default 180)")
-    parser.add_argument("--timeout", type=int, default=120,
-                        help="per-request timeout in seconds (default 120)")
+        "docker compose up -d --force-recreate llama-gpu",
+    )
+    parser.add_argument(
+        "--model",
+        required=True,
+        help="GGUF path, container (/app/models/...) or host "
+        "(/mnt/ai-data/models/...) form",
+    )
+    parser.add_argument(
+        "--prompts",
+        default=DEFAULT_PROMPTS,
+        help="smoke prompt set JSON (default scripts/eval/smoke_prompts.json)",
+    )
+    parser.add_argument(
+        "--out", help="result JSON path (default logs/eval/serve_eval_<UTC>.json)"
+    )
+    parser.add_argument(
+        "--keep-serving",
+        action="store_true",
+        help="leave the new model serving instead of restoring",
+    )
+    parser.add_argument(
+        "--skip-hash-check",
+        action="store_true",
+        help="skip the manifest SHA-256 verification",
+    )
+    parser.add_argument(
+        "--require-pass",
+        action="store_true",
+        help="exit 1 when any expectation check fails",
+    )
+    parser.add_argument(
+        "--start-budget",
+        type=int,
+        default=180,
+        help="seconds to wait for llama-gpu health (default 180)",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=120,
+        help="per-request timeout in seconds (default 120)",
+    )
     return parser.parse_args(argv)
 
 
@@ -190,11 +227,15 @@ def main(argv: list[str] | None = None) -> int:
     report = {
         "schema_version": 1,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "model": {"container_path": container_path, "host_path": host_path,
-                  "sha256": (manifest or {}).get("gguf", {}).get("sha256"),
-                  "quant_type": quant,
-                  "manifest": os.path.splitext(host_path)[0] + ".manifest.json"
-                              if manifest else None},
+        "model": {
+            "container_path": container_path,
+            "host_path": host_path,
+            "sha256": (manifest or {}).get("gguf", {}).get("sha256"),
+            "quant_type": quant,
+            "manifest": os.path.splitext(host_path)[0] + ".manifest.json"
+            if manifest
+            else None,
+        },
         "prompts_file": os.path.abspath(args.prompts),
         "prompts_sha256": serving.sha256_file(args.prompts),
         "kept_serving": args.keep_serving,
@@ -212,8 +253,7 @@ def main(argv: list[str] | None = None) -> int:
         results, summary = evaluate(args.prompts, args.timeout, out)
         report["results"] = results
         report["summary"] = summary
-        failed = summary["errors"] > 0 or (
-            args.require_pass and summary["failed"] > 0)
+        failed = summary["errors"] > 0 or (args.require_pass and summary["failed"] > 0)
     except (serving.ServingError, KeyboardInterrupt, SystemExit) as exc:
         failed = True
         report["error"] = str(exc) or exc.__class__.__name__
@@ -230,8 +270,11 @@ def main(argv: list[str] | None = None) -> int:
                 failed = True
 
     out_path = args.out or os.path.join(
-        REPO_ROOT, "logs", "eval",
-        time.strftime("serve_eval_%Y%m%d_%H%M%S.json", time.gmtime()))
+        REPO_ROOT,
+        "logs",
+        "eval",
+        time.strftime("serve_eval_%Y%m%d_%H%M%S.json", time.gmtime()),
+    )
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(report, f, indent=2)

@@ -46,7 +46,8 @@ NF4_BLOCK_SIZE = 64
 NF4_DOUBLE_QUANT_BLOCK_SIZE = 256
 NF4_BYTES_PER_PARAM = 0.5 + 4 / NF4_BLOCK_SIZE
 NF4_DQ_BYTES_PER_PARAM = (
-    0.5 + 1 / NF4_BLOCK_SIZE + 4 / (NF4_BLOCK_SIZE * NF4_DOUBLE_QUANT_BLOCK_SIZE))
+    0.5 + 1 / NF4_BLOCK_SIZE + 4 / (NF4_BLOCK_SIZE * NF4_DOUBLE_QUANT_BLOCK_SIZE)
+)
 
 # LoRA-targetable linear modules mapped to their (in, out) dimensions as
 # lambdas over the spec. Adapter params per module = rank * (in + out); DoRA
@@ -75,8 +76,17 @@ PAGE_CACHE_ALLOWANCE_BYTES = 16 * (1 << 30)
 # HF AutoConfig model_type values whose configs carry Llama-family field names
 # and match the dense attention + SwiGLU shape these formulas model. Unknown
 # architectures fail loudly rather than guess (roadmap D4 decision 2).
-HF_SUPPORTED_MODEL_TYPES = ("llama", "mistral", "qwen2", "qwen3", "gemma", "gemma2",
-                            "gemma3", "gemma4", "gemma4_text")
+HF_SUPPORTED_MODEL_TYPES = (
+    "llama",
+    "mistral",
+    "qwen2",
+    "qwen3",
+    "gemma",
+    "gemma2",
+    "gemma3",
+    "gemma4",
+    "gemma4_text",
+)
 
 
 class UnknownArchitectureError(ValueError):
@@ -91,7 +101,7 @@ class ArchitectureSpec:
     hidden: int
     heads: int
     kv_heads: int
-    ffn: int          # intermediate (SwiGLU) size, already rounded
+    ffn: int  # intermediate (SwiGLU) size, already rounded
     vocab: int
     tie_embeddings: bool
     # Explicit attention head dimension for families where it is not
@@ -142,8 +152,9 @@ class ArchitectureSpec:
         norms = 2 * self.hidden
         per_layer = attn + mlp + norms
         embeddings = self.vocab * self.hidden * (1 if self.tie_embeddings else 2)
-        return (embeddings + self.layers * per_layer + self.hidden
-                + self.ple_param_count())
+        return (
+            embeddings + self.layers * per_layer + self.hidden + self.ple_param_count()
+        )
 
     def transformer_stack_param_count(self) -> int:
         """Parameters trainable under trainable_filter: transformer_stack —
@@ -178,9 +189,14 @@ def spec_from_recipe(recipe: DictConfig) -> ArchitectureSpec:
     if recipe.model.scratch is not None:
         s = recipe.model.scratch
         return ArchitectureSpec(
-            layers=s.layers, hidden=s.hidden, heads=s.heads, kv_heads=s.kv_heads,
-            ffn=rounded_ffn(s.ffn_mult, s.hidden), vocab=s.vocab,
-            tie_embeddings=s.tie_embeddings)
+            layers=s.layers,
+            hidden=s.hidden,
+            heads=s.heads,
+            kv_heads=s.kv_heads,
+            ffn=rounded_ffn(s.ffn_mult, s.hidden),
+            vocab=s.vocab,
+            tie_embeddings=s.tie_embeddings,
+        )
     if recipe.model.hf is not None:
         from transformers import AutoConfig
 
@@ -202,7 +218,8 @@ def spec_from_hf_config(config) -> ArchitectureSpec:
         raise UnknownArchitectureError(
             f"HF model_type '{model_type}' is not in the supported mapping table "
             f"{HF_SUPPORTED_MODEL_TYPES}; the analytic formulas would guess. "
-            "Add a verified mapping in training/calculator/components.py.")
+            "Add a verified mapping in training/calculator/components.py."
+        )
     if model_type == "gemma4" and getattr(config, "text_config", None) is not None:
         config = config.text_config
         model_type = getattr(config, "model_type", "gemma4_text")
@@ -213,7 +230,8 @@ def spec_from_hf_config(config) -> ArchitectureSpec:
         raise UnknownArchitectureError(
             "Gemma 4 MoE configs (enable_moe_block=true) are not supported: "
             "the dense-MLP formulas would misprice routed experts. Add a "
-            "verified MoE mapping in training/calculator/components.py.")
+            "verified MoE mapping in training/calculator/components.py."
+        )
     try:
         return ArchitectureSpec(
             layers=config.num_hidden_layers,
@@ -225,10 +243,12 @@ def spec_from_hf_config(config) -> ArchitectureSpec:
             tie_embeddings=getattr(config, "tie_word_embeddings", False),
             explicit_head_dim=getattr(config, "head_dim", None),
             ple_vocab=getattr(config, "vocab_size_per_layer_input", 0) or 0,
-            ple_dim=getattr(config, "hidden_size_per_layer_input", 0) or 0)
+            ple_dim=getattr(config, "hidden_size_per_layer_input", 0) or 0,
+        )
     except AttributeError as exc:
         raise UnknownArchitectureError(
-            f"HF config for model_type '{model_type}' lacks an expected field: {exc}") from exc
+            f"HF config for model_type '{model_type}' lacks an expected field: {exc}"
+        ) from exc
 
 
 def _peft_target_modules(recipe: DictConfig) -> list[str]:
@@ -252,7 +272,8 @@ def adapter_param_count(spec: ArchitectureSpec, recipe: DictConfig) -> int:
             raise UnknownArchitectureError(
                 f"peft.target_modules entry '{name}' has no dimension mapping in "
                 f"{tuple(_TARGET_MODULE_DIMS)}; the adapter size cannot be "
-                "estimated. Add the mapping in training/calculator/components.py.")
+                "estimated. Add the mapping in training/calculator/components.py."
+            )
         d_in, d_out = dims(spec)
         per_layer += rank * (d_in + d_out) + (d_out if dora else 0)
     return spec.layers * per_layer
@@ -278,8 +299,9 @@ def weights_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
         return spec.param_count() * DTYPE_BYTES[recipe.precision.dtype]
     compute_bytes = {"bf16": 2, "fp16": 2, "fp32": 4}[recipe.peft.compute_dtype]
     if recipe.peft.quantize_base == "nf4":
-        per_param = (NF4_DQ_BYTES_PER_PARAM if recipe.peft.double_quant
-                     else NF4_BYTES_PER_PARAM)
+        per_param = (
+            NF4_DQ_BYTES_PER_PARAM if recipe.peft.double_quant else NF4_BYTES_PER_PARAM
+        )
         linear = int(spec.linear_param_count() * per_param)
         rest = (spec.param_count() - spec.linear_param_count()) * compute_bytes
         base = linear + rest
@@ -291,7 +313,9 @@ def weights_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
 def grad_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
     # Only trainable parameters carry gradients: the whole model in Phase 0
     # pretraining, the adapter alone under PEFT.
-    return trainable_param_count(spec, recipe) * DTYPE_BYTES[recipe.precision.grad_dtype]
+    return (
+        trainable_param_count(spec, recipe) * DTYPE_BYTES[recipe.precision.grad_dtype]
+    )
 
 
 def optimizer_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
@@ -363,12 +387,12 @@ def activation_bytes(
     attn = tokens * d * (3 * spec.hidden + 2 * spec.kv_dim)
     mlp = tokens * d * (2 * spec.hidden + 3 * spec.ffn)
     norms = tokens * d * 2 * spec.hidden
-    flash_lse = b * spec.heads * s * 4   # fp32 softmax statistics
+    flash_lse = b * spec.heads * s * 4  # fp32 softmax statistics
     per_layer = attn + mlp + norms + flash_lse
 
     if recipe.memory.gradient_checkpointing:
         layer_inputs = spec.layers * tokens * d * spec.hidden
-        layer_term = layer_inputs + per_layer   # + one layer recomputed
+        layer_term = layer_inputs + per_layer  # + one layer recomputed
     else:
         layer_term = spec.layers * per_layer
 
@@ -388,8 +412,9 @@ def teacher_weights_bytes(spec: ArchitectureSpec, quantize: str) -> int:
     return spec.param_count() * 2
 
 
-def teacher_forward_bytes(spec: ArchitectureSpec, micro_batch: int,
-                          seq_len: int) -> int:
+def teacher_forward_bytes(
+    spec: ArchitectureSpec, micro_batch: int, seq_len: int
+) -> int:
     """Working memory of one no-grad teacher forward at the training batch
     shape. Inference stores no activations across layers, so the peak is one
     layer's working set plus the hidden states flowing through, plus the

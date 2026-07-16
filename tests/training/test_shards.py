@@ -17,9 +17,16 @@ from training.data.shards import (
 )
 
 
-def make_shards(tmp_path, tokens, shard_tokens=10, dtype=np.uint16, tokenizer_hash="abc123"):
-    return make_shard_dir(tmp_path, tokens, shard_tokens=shard_tokens,
-                          dtype=dtype, tokenizer_hash=tokenizer_hash)
+def make_shards(
+    tmp_path, tokens, shard_tokens=10, dtype=np.uint16, tokenizer_hash="abc123"
+):
+    return make_shard_dir(
+        tmp_path,
+        tokens,
+        shard_tokens=shard_tokens,
+        dtype=dtype,
+        tokenizer_hash=tokenizer_hash,
+    )
 
 
 def test_dtype_selection():
@@ -68,11 +75,15 @@ def test_uint32_shard_round_trip(tmp_path):
     assert ds[0].tolist() == tokens
 
 
-@pytest.mark.parametrize("bad", [
-    [70_000],                                # list above the uint16 range
-    np.array([70_000], dtype=np.int64),      # int64 ndarray would wrap silently
-    np.array([-1], dtype=np.int64),          # negative ids are never valid
-], ids=["list", "int64-array", "negative"])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        [70_000],  # list above the uint16 range
+        np.array([70_000], dtype=np.int64),  # int64 ndarray would wrap silently
+        np.array([-1], dtype=np.int64),  # negative ids are never valid
+    ],
+    ids=["list", "int64-array", "negative"],
+)
 def test_writer_rejects_out_of_range_ids(tmp_path, bad):
     writer = ShardWriter(str(tmp_path / "shards"), np.uint16, shard_tokens=10)
     with pytest.raises(ValueError, match="out of range"):
@@ -120,9 +131,9 @@ def test_reader_windows_do_not_cross_shards(tmp_path):
     assert ds.dropped_tokens == 5
     windows = [w.tolist() for w in ds]
     assert windows[0] == [0, 1, 2, 3]
-    assert windows[1] == [4, 5, 6, 7]        # tokens 8, 9 dropped at shard 0 tail
+    assert windows[1] == [4, 5, 6, 7]  # tokens 8, 9 dropped at shard 0 tail
     assert windows[2] == [10, 11, 12, 13]
-    assert windows[4] == [20, 21, 22, 23]    # token 24 dropped at shard 2 tail
+    assert windows[4] == [20, 21, 22, 23]  # token 24 dropped at shard 2 tail
     assert ds[3].tolist() == [14, 15, 16, 17]
 
 
@@ -165,4 +176,5 @@ def test_hash_file_streams(tmp_path):
     path = tmp_path / "blob"
     path.write_bytes(b"x" * 100)
     import xxhash
+
     assert hash_file(str(path)) == xxhash.xxh64(b"x" * 100).hexdigest()

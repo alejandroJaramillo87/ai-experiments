@@ -42,9 +42,14 @@ from training.recipes import load_recipe
 #   total = 16,448 + 2*(12,288+24,576+128)       = 90,432
 TINY_PARAMS = 90_432
 TINY_OVERRIDES = [
-    "model.scratch.layers=2", "model.scratch.hidden=64", "model.scratch.heads=4",
-    "model.scratch.kv_heads=2", "model.scratch.ffn_mult=2.0", "model.scratch.vocab=256",
-    "data.seq_len=16", "data.micro_batch=2",
+    "model.scratch.layers=2",
+    "model.scratch.hidden=64",
+    "model.scratch.heads=4",
+    "model.scratch.kv_heads=2",
+    "model.scratch.ffn_mult=2.0",
+    "model.scratch.vocab=256",
+    "data.seq_len=16",
+    "data.micro_batch=2",
 ]
 
 
@@ -83,9 +88,14 @@ class TestParamCount:
     def test_untied_embeddings_add_lm_head(self, tiny_recipe):
         tied = spec_from_recipe(tiny_recipe)
         untied = ArchitectureSpec(
-            layers=tied.layers, hidden=tied.hidden, heads=tied.heads,
-            kv_heads=tied.kv_heads, ffn=tied.ffn, vocab=tied.vocab,
-            tie_embeddings=False)
+            layers=tied.layers,
+            hidden=tied.hidden,
+            heads=tied.heads,
+            kv_heads=tied.kv_heads,
+            ffn=tied.ffn,
+            vocab=tied.vocab,
+            tie_embeddings=False,
+        )
         assert untied.param_count() == TINY_PARAMS + 256 * 64
 
 
@@ -109,7 +119,8 @@ class TestComponentBytes:
         # 2 B/param + two fp32 absmax constants per 256-param block.
         recipe = load_recipe(
             os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
-            TINY_OVERRIDES + ["optimizer.name=adamw8bit"])
+            TINY_OVERRIDES + ["optimizer.name=adamw8bit"],
+        )
         spec = spec_from_recipe(recipe)
         expected = 2 * TINY_PARAMS + 2 * 4 * (TINY_PARAMS // 256)
         assert optimizer_bytes(spec, recipe) == expected
@@ -117,7 +128,8 @@ class TestComponentBytes:
     def test_offload_moves_optimizer_to_host_ram(self, tiny_recipe):
         recipe = load_recipe(
             os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
-            TINY_OVERRIDES + ["optimizer.name=cpu_adam", "memory.offload=zero_offload"])
+            TINY_OVERRIDES + ["optimizer.name=cpu_adam", "memory.offload=zero_offload"],
+        )
         spec = spec_from_recipe(recipe)
         assert optimizer_bytes(spec, recipe) == 0
         assert host_ram_bytes(spec, recipe) == 16 * TINY_PARAMS
@@ -140,22 +152,28 @@ class TestComponentBytes:
         # layer inputs 2*32*2*64 = 8,192 + one recomputed layer 57,856 + logits.
         recipe = load_recipe(
             os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
-            TINY_OVERRIDES + ["memory.gradient_checkpointing=true"])
+            TINY_OVERRIDES + ["memory.gradient_checkpointing=true"],
+        )
         spec = spec_from_recipe(recipe)
         assert activation_bytes(spec, recipe) == 8_192 + 57_856 + 53_248
 
     def test_activations_linear_in_batch_and_seq(self, tiny_recipe):
         spec = spec_from_recipe(tiny_recipe)
         base = activation_bytes(spec, tiny_recipe, micro_batch=2, seq_len=16)
-        assert activation_bytes(spec, tiny_recipe, micro_batch=4, seq_len=16) == 2 * base
-        assert activation_bytes(spec, tiny_recipe, micro_batch=2, seq_len=32) == 2 * base
+        assert (
+            activation_bytes(spec, tiny_recipe, micro_batch=4, seq_len=16) == 2 * base
+        )
+        assert (
+            activation_bytes(spec, tiny_recipe, micro_batch=2, seq_len=32) == 2 * base
+        )
 
 
 class TestEstimate:
     def test_totals_are_component_sums(self, tiny_recipe):
         est = estimate(tiny_recipe)
         assert est.allocated_total == (
-            est.weights + est.grads + est.optimizer + est.activations)
+            est.weights + est.grads + est.optimizer + est.activations
+        )
         assert est.reserved_estimate == est.allocated_total + est.overhead
         assert est.param_count == TINY_PARAMS
 
@@ -185,8 +203,9 @@ class TestSolve:
         spec = spec_from_recipe(recipe)
         from training.calculator.solve import _estimate_at
 
-        assert not _estimate_at(spec, recipe, solved.micro_batch + 1,
-                                recipe.data.seq_len).fits
+        assert not _estimate_at(
+            spec, recipe, solved.micro_batch + 1, recipe.data.seq_len
+        ).fits
 
     def test_max_seq_boundary(self):
         recipe = load_reference("pretrain-1b.yaml")
@@ -196,14 +215,16 @@ class TestSolve:
         spec = spec_from_recipe(recipe)
         from training.calculator.solve import _estimate_at
 
-        assert not _estimate_at(spec, recipe, recipe.data.micro_batch,
-                                solved.seq_len + 128).fits
+        assert not _estimate_at(
+            spec, recipe, recipe.data.micro_batch, solved.seq_len + 128
+        ).fits
 
     def test_nothing_fits_returns_none(self):
         # A model whose static memory alone exceeds 32GB.
         recipe = load_reference(
             "pretrain-1b.yaml",
-            ["model.scratch.layers=200", "model.scratch.hidden=8192"])
+            ["model.scratch.layers=200", "model.scratch.hidden=8192"],
+        )
         assert solve(recipe, "batch") is None
 
 
@@ -239,12 +260,21 @@ class TestHFConfigMapping:
 
 # -- D4 calculator: Gemma 4 -------------------------------------------------
 
+
 def gemma4_text_config():
     return SimpleNamespace(
-        model_type="gemma4_text", num_hidden_layers=30, hidden_size=2304,
-        num_attention_heads=8, num_key_value_heads=4, head_dim=256,
-        intermediate_size=9216, vocab_size=262_144, tie_word_embeddings=True,
-        vocab_size_per_layer_input=262_144, hidden_size_per_layer_input=256)
+        model_type="gemma4_text",
+        num_hidden_layers=30,
+        hidden_size=2304,
+        num_attention_heads=8,
+        num_key_value_heads=4,
+        head_dim=256,
+        intermediate_size=9216,
+        vocab_size=262_144,
+        tie_word_embeddings=True,
+        vocab_size_per_layer_input=262_144,
+        hidden_size_per_layer_input=256,
+    )
 
 
 class TestCalculatorGemma4:
@@ -253,21 +283,23 @@ class TestCalculatorGemma4:
         # with dense-MLP formulas would violate the fail-loudly policy.
         from training.calculator.components import UnknownArchitectureError
 
-        config = SimpleNamespace(**{**gemma4_text_config().__dict__,
-                                    "enable_moe_block": True})
+        config = SimpleNamespace(
+            **{**gemma4_text_config().__dict__, "enable_moe_block": True}
+        )
         with pytest.raises(UnknownArchitectureError, match="MoE"):
             spec_from_hf_config(config)
 
     def test_text_config_maps_with_explicit_head_dim(self):
         spec = spec_from_hf_config(gemma4_text_config())
-        assert spec.head_dim == 256          # not hidden // heads (288)
+        assert spec.head_dim == 256  # not hidden // heads (288)
         assert spec.q_dim == 8 * 256
         assert spec.kv_dim == 4 * 256
         assert spec.ple_vocab == 262_144 and spec.ple_dim == 256
 
     def test_multimodal_config_descends_into_text_config(self):
-        composite = SimpleNamespace(model_type="gemma4",
-                                    text_config=gemma4_text_config())
+        composite = SimpleNamespace(
+            model_type="gemma4", text_config=gemma4_text_config()
+        )
         assert spec_from_hf_config(composite).hidden == 2304
 
     def test_ple_params_counted(self):
@@ -275,19 +307,29 @@ class TestCalculatorGemma4:
         table = 262_144 * 30 * 256
         linears = 30 * 2 * 2304 * 256
         assert spec.ple_param_count() == table + linears
-        without = spec_from_hf_config(SimpleNamespace(
-            **{**gemma4_text_config().__dict__,
-               "vocab_size_per_layer_input": 0,
-               "hidden_size_per_layer_input": 0}))
+        without = spec_from_hf_config(
+            SimpleNamespace(
+                **{
+                    **gemma4_text_config().__dict__,
+                    "vocab_size_per_layer_input": 0,
+                    "hidden_size_per_layer_input": 0,
+                }
+            )
+        )
         assert spec.param_count() - without.param_count() == table + linears
 
     def test_llama_lineage_numbers_unchanged(self):
         # No head_dim/PLE fields: the Phase 0 derivation must be identical.
         config = SimpleNamespace(
-            model_type="llama", num_hidden_layers=16, hidden_size=2048,
-            num_attention_heads=32, num_key_value_heads=8,
-            intermediate_size=8192, vocab_size=128_256,
-            tie_word_embeddings=True)
+            model_type="llama",
+            num_hidden_layers=16,
+            hidden_size=2048,
+            num_attention_heads=32,
+            num_key_value_heads=8,
+            intermediate_size=8192,
+            vocab_size=128_256,
+            tie_word_embeddings=True,
+        )
         spec = spec_from_hf_config(config)
         assert spec.head_dim == 2048 // 32
         assert spec.q_dim == spec.hidden
@@ -301,9 +343,16 @@ def qwen3_config():
     # Qwen/Qwen3-4B shape: head_dim 128 is explicit and decoupled from
     # hidden // heads (2560 // 32 = 80), the field the F3 fix introduced.
     return SimpleNamespace(
-        model_type="qwen3", num_hidden_layers=36, hidden_size=2560,
-        num_attention_heads=32, num_key_value_heads=8, head_dim=128,
-        intermediate_size=9728, vocab_size=151_936, tie_word_embeddings=True)
+        model_type="qwen3",
+        num_hidden_layers=36,
+        hidden_size=2560,
+        num_attention_heads=32,
+        num_key_value_heads=8,
+        head_dim=128,
+        intermediate_size=9728,
+        vocab_size=151_936,
+        tie_word_embeddings=True,
+    )
 
 
 class TestCalculatorQwen3:
@@ -312,10 +361,10 @@ class TestCalculatorQwen3:
 
     def test_explicit_head_dim_decoupled_from_hidden(self):
         spec = spec_from_hf_config(qwen3_config())
-        assert spec.head_dim == 128          # not hidden // heads (80)
+        assert spec.head_dim == 128  # not hidden // heads (80)
         assert spec.q_dim == 32 * 128
         assert spec.kv_dim == 8 * 128
-        assert spec.ple_param_count() == 0   # dense decoder, no PLE table
+        assert spec.ple_param_count() == 0  # dense decoder, no PLE table
 
     def test_param_count_uses_decoupled_projections(self):
         spec = spec_from_hf_config(qwen3_config())
@@ -329,29 +378,42 @@ class TestCLI:
     def run_cli(self, *args: str):
         return subprocess.run(
             [sys.executable, "-m", "training", *args],
-            capture_output=True, text=True, cwd=REPO_ROOT,
-            env={**os.environ, "NO_COLOR": "1"}, timeout=120)
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            env={**os.environ, "NO_COLOR": "1"},
+            timeout=120,
+        )
 
     def test_memfit_json_contract(self):
         proc = self.run_cli(
-            "memfit", "--config", "training/recipes/reference/pretrain-1b.yaml",
-            "--solve", "batch", "--json")
+            "memfit",
+            "--config",
+            "training/recipes/reference/pretrain-1b.yaml",
+            "--solve",
+            "batch",
+            "--json",
+        )
         assert proc.returncode == 0, proc.stderr
-        result = json.loads(proc.stdout)   # stdout must be JSON only
+        result = json.loads(proc.stdout)  # stdout must be JSON only
         assert result["estimate"]["fits"] is True
         assert result["max_batch"] >= 4
 
     def test_memfit_human_table(self):
         proc = self.run_cli(
-            "memfit", "--config", "training/recipes/reference/pretrain-1b.yaml")
+            "memfit", "--config", "training/recipes/reference/pretrain-1b.yaml"
+        )
         assert proc.returncode == 0, proc.stderr
         assert "=== Memory-fit estimate ===" in proc.stdout
         assert "[OK] Fits:" in proc.stdout
 
     def test_memfit_unfit_exits_nonzero(self):
         proc = self.run_cli(
-            "memfit", "--config", "training/recipes/reference/pretrain-1b.yaml",
-            "data.micro_batch=512")
+            "memfit",
+            "--config",
+            "training/recipes/reference/pretrain-1b.yaml",
+            "data.micro_batch=512",
+        )
         assert proc.returncode == 1
         assert "[ERROR] Does not fit" in proc.stdout
 
@@ -360,8 +422,13 @@ class TestCLI:
         # micro-batch: --solve must exit 1 when nothing fits, per the
         # exit-code contract, not print [ERROR] and exit 0.
         proc = self.run_cli(
-            "memfit", "--config", "training/recipes/reference/pretrain-1b.yaml",
-            "--solve", "seq", "data.micro_batch=100000")
+            "memfit",
+            "--config",
+            "training/recipes/reference/pretrain-1b.yaml",
+            "--solve",
+            "seq",
+            "data.micro_batch=100000",
+        )
         assert proc.returncode == 1
         assert "[ERROR]" in proc.stdout
 
@@ -372,7 +439,8 @@ class TestCLI:
 
     def test_calibrate_requires_gpu(self):
         proc = self.run_cli(
-            "calibrate", "--config", "training/recipes/reference/tiny-e2e.yaml")
+            "calibrate", "--config", "training/recipes/reference/tiny-e2e.yaml"
+        )
         assert proc.returncode == 1
         assert "[ERROR] Calibration failed" in proc.stdout
 
@@ -391,8 +459,10 @@ class TestPeftComponents:
     def qlora_recipe(self, extra=()):
         return load_recipe(
             os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
-            TINY_OVERRIDES + ["peft.enabled=true", "peft.rank=16",
-                              "peft.quantize_base=nf4"] + list(extra))
+            TINY_OVERRIDES
+            + ["peft.enabled=true", "peft.rank=16", "peft.quantize_base=nf4"]
+            + list(extra),
+        )
 
     def test_adapter_param_count(self):
         recipe = self.qlora_recipe()

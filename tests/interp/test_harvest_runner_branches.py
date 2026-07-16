@@ -72,26 +72,29 @@ def make_harvest_recipe(tmp_path, **harvest_overrides):
 def make_capture(tmp_path, name="capture"):
     capture_dir = str(tmp_path / name)
     os.makedirs(capture_dir, exist_ok=True)
-    write_manifest(capture_dir, {
-        "schema_version": 1,
-        "artifact": HARVEST_ARTIFACT,
-        "model_id": "google/gemma-4-E2B",
-        "model_hash": "hash-test",
-        "hooks": ["model.layers.15"],
-        "hook_layers": [15],
-        "d_model": D_MODEL,
-        "corpus": "monology/pile-uncopyrighted",
-        "corpus_xxh3": None,
-        "context_len": 1024,
-        "total_tokens": 1000,
-        "dtype": "bf16",
-        "seed": 42,
-        "tokenizer_fingerprint": "fp-test",
-        "sae_lens_version": "6.46.0",
-        "validated": False,
-        "git_sha": "sha-test",
-        "created": "2026-07-15T00:00:00Z",
-    })
+    write_manifest(
+        capture_dir,
+        {
+            "schema_version": 1,
+            "artifact": HARVEST_ARTIFACT,
+            "model_id": "google/gemma-4-E2B",
+            "model_hash": "hash-test",
+            "hooks": ["model.layers.15"],
+            "hook_layers": [15],
+            "d_model": D_MODEL,
+            "corpus": "monology/pile-uncopyrighted",
+            "corpus_xxh3": None,
+            "context_len": 1024,
+            "total_tokens": 1000,
+            "dtype": "bf16",
+            "seed": 42,
+            "tokenizer_fingerprint": "fp-test",
+            "sae_lens_version": "6.46.0",
+            "validated": False,
+            "git_sha": "sha-test",
+            "created": "2026-07-15T00:00:00Z",
+        },
+    )
     return capture_dir
 
 
@@ -125,20 +128,26 @@ def fake_harvest_runner(job, out_dir):
 class TestValidationProblems:
     """Per-field refusals the main suites do not exercise."""
 
-    @pytest.mark.parametrize("overrides,match", [
-        ({"enabled": False}, "harvest.enabled"),
-        ({"hook_layers": [-1]}, "must be >= 0"),
-        ({"total_tokens": 0}, "harvest.total_tokens"),
-        ({"context_len": 0}, "harvest.context_len"),
-    ])
+    @pytest.mark.parametrize(
+        "overrides,match",
+        [
+            ({"enabled": False}, "harvest.enabled"),
+            ({"hook_layers": [-1]}, "must be >= 0"),
+            ({"total_tokens": 0}, "harvest.total_tokens"),
+            ({"context_len": 0}, "harvest.context_len"),
+        ],
+    )
     def test_harvest_field_refused(self, tmp_path, overrides, match):
         with pytest.raises(HarvestError, match=match):
             validate_harvest(make_harvest_recipe(tmp_path, **overrides))
 
-    @pytest.mark.parametrize("overrides,match", [
-        ({"width": 0}, "sae.width"),
-        ({"train_batch_size_tokens": 0}, "train_batch_size_tokens"),
-    ])
+    @pytest.mark.parametrize(
+        "overrides,match",
+        [
+            ({"width": 0}, "sae.width"),
+            ({"train_batch_size_tokens": 0}, "train_batch_size_tokens"),
+        ],
+    )
     def test_sae_field_refused(self, tmp_path, overrides, match):
         with pytest.raises(SaeTrainError, match=match):
             validate_sae(make_sae_recipe(tmp_path, str(tmp_path / "c"), **overrides))
@@ -204,10 +213,11 @@ def install_fake_hf(monkeypatch, model, hidden_size=D_MODEL):
     stub_transformers = SimpleNamespace(
         AutoModelForCausalLM=SimpleNamespace(from_pretrained=lambda *a, **k: model),
         AutoTokenizer=SimpleNamespace(
-            from_pretrained=lambda *a, **k: FakePtTokenizer()),
+            from_pretrained=lambda *a, **k: FakePtTokenizer()
+        ),
         AutoConfig=SimpleNamespace(
-            from_pretrained=lambda *a, **k: SimpleNamespace(
-                hidden_size=hidden_size)),
+            from_pretrained=lambda *a, **k: SimpleNamespace(hidden_size=hidden_size)
+        ),
     )
     monkeypatch.setitem(sys.modules, "torch", stub_torch)
     monkeypatch.setitem(sys.modules, "transformers", stub_transformers)
@@ -222,7 +232,8 @@ class TestHookDimCheck:
     def test_matching_widths_return_observed(self, monkeypatch, tuple_output):
         model = FakeResidualModel(
             {"model.layers.3": D_MODEL, "model.layers.5": D_MODEL},
-            tuple_output=tuple_output)
+            tuple_output=tuple_output,
+        )
         install_fake_hf(monkeypatch, model)
         assert check_hook_dims("fake/gemma-4", [3, 5]) == {3: D_MODEL, 5: D_MODEL}
         assert model.active == []
@@ -280,18 +291,32 @@ class TestSaelensRunnerMapping:
             tokenizer_calls.append((args, kwargs))
             return FingerprintTokenizer()
 
-        monkeypatch.setitem(sys.modules, "sae_lens", SimpleNamespace(
-            CacheActivationsRunner=FakeCacheRunner,
-            CacheActivationsRunnerConfig=FakeCacheConfig))
-        monkeypatch.setitem(sys.modules, "transformers", SimpleNamespace(
-            AutoTokenizer=SimpleNamespace(from_pretrained=fake_tokenizer)))
+        monkeypatch.setitem(
+            sys.modules,
+            "sae_lens",
+            SimpleNamespace(
+                CacheActivationsRunner=FakeCacheRunner,
+                CacheActivationsRunnerConfig=FakeCacheConfig,
+            ),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "transformers",
+            SimpleNamespace(
+                AutoTokenizer=SimpleNamespace(from_pretrained=fake_tokenizer)
+            ),
+        )
 
-    @pytest.mark.parametrize("revision,expected_kwargs", [
-        ("step-100", {"revision": "step-100"}),
-        (None, {}),
-    ])
-    def test_job_maps_to_runner_config(self, tmp_path, monkeypatch,
-                                       revision, expected_kwargs):
+    @pytest.mark.parametrize(
+        "revision,expected_kwargs",
+        [
+            ("step-100", {"revision": "step-100"}),
+            (None, {}),
+        ],
+    )
+    def test_job_maps_to_runner_config(
+        self, tmp_path, monkeypatch, revision, expected_kwargs
+    ):
         created: list = []
         tokenizer_calls: list = []
         version_calls: list = []
@@ -299,17 +324,20 @@ class TestSaelensRunnerMapping:
         pin_dist_version(monkeypatch, version_calls)
 
         out_dir = str(tmp_path / "capture" / "model.layers.15")
-        stats = _saelens_runner({
-            "model_id": "fake/subject",
-            "revision": revision,
-            "hook": "model.layers.15",
-            "corpus": "monology/pile-uncopyrighted",
-            "context_len": 1024,
-            "total_tokens": 1000,
-            "dtype": "bf16",
-            "seed": 42,
-            "model_batch_size": 8,
-        }, out_dir)
+        stats = _saelens_runner(
+            {
+                "model_id": "fake/subject",
+                "revision": revision,
+                "hook": "model.layers.15",
+                "corpus": "monology/pile-uncopyrighted",
+                "context_len": 1024,
+                "total_tokens": 1000,
+                "dtype": "bf16",
+                "seed": 42,
+                "model_batch_size": 8,
+            },
+            out_dir,
+        )
 
         cfg = created[0].kwargs
         assert cfg["model_name"] == "fake/subject"
@@ -362,8 +390,7 @@ class TestSaelensTrainerMapping:
 
             def save_model(self, out_dir):
                 os.makedirs(out_dir, exist_ok=True)
-                with open(os.path.join(out_dir, "sae_weights.safetensors"),
-                          "w") as f:
+                with open(os.path.join(out_dir, "sae_weights.safetensors"), "w") as f:
                     f.write("weights")
 
         class FakeTrainConfig:
@@ -377,17 +404,26 @@ class TestSaelensTrainerMapping:
             def run(self):
                 return FakeSae()
 
-        monkeypatch.setitem(sys.modules, "sae_lens", SimpleNamespace(
-            LanguageModelSAERunnerConfig=FakeTrainConfig,
-            SAETrainingRunner=FakeTrainRunner))
+        monkeypatch.setitem(
+            sys.modules,
+            "sae_lens",
+            SimpleNamespace(
+                LanguageModelSAERunnerConfig=FakeTrainConfig,
+                SAETrainingRunner=FakeTrainRunner,
+            ),
+        )
 
-    @pytest.mark.parametrize("metrics,final_loss,measured_l0", [
-        ({"loss": 0.25, "l0": 48.0}, 0.25, 48.0),
-        # No final_metrics attribute: loss defaults to 0.0, l0 to job k.
-        (None, 0.0, 8.0),
-    ])
-    def test_job_maps_to_trainer_config(self, tmp_path, monkeypatch,
-                                        metrics, final_loss, measured_l0):
+    @pytest.mark.parametrize(
+        "metrics,final_loss,measured_l0",
+        [
+            ({"loss": 0.25, "l0": 48.0}, 0.25, 48.0),
+            # No final_metrics attribute: loss defaults to 0.0, l0 to job k.
+            (None, 0.0, 8.0),
+        ],
+    )
+    def test_job_maps_to_trainer_config(
+        self, tmp_path, monkeypatch, metrics, final_loss, measured_l0
+    ):
         created: list = []
         version_calls: list = []
         self.install_stubs(monkeypatch, created, metrics)
@@ -423,8 +459,11 @@ class TestSaelensTrainerMapping:
 
 
 def sampler_threads():
-    return [t for t in threading.enumerate()
-            if t.name == "watchdog-sampler" and t.is_alive()]
+    return [
+        t
+        for t in threading.enumerate()
+        if t.name == "watchdog-sampler" and t.is_alive()
+    ]
 
 
 class TestWatchdogEnvelope:
@@ -440,7 +479,8 @@ class TestWatchdogEnvelope:
     def test_harvest_completes_under_watchdog(self, tmp_path):
         recipe = self.enable_watchdog(make_harvest_recipe(tmp_path))
         manifest = run_harvest(
-            recipe, runner_fn=fake_harvest_runner, disk_usage_fn=plenty_of_disk)
+            recipe, runner_fn=fake_harvest_runner, disk_usage_fn=plenty_of_disk
+        )
         capture_dir = os.path.join(recipe.harvest.out_root, "harvest-test")
         assert manifest["artifact"] == HARVEST_ARTIFACT
         assert load_manifest(capture_dir) == manifest
@@ -452,8 +492,7 @@ class TestWatchdogEnvelope:
 
         recipe = self.enable_watchdog(make_harvest_recipe(tmp_path))
         with pytest.raises(RuntimeError, match="cuda oom"):
-            run_harvest(recipe, runner_fn=broken_runner,
-                        disk_usage_fn=plenty_of_disk)
+            run_harvest(recipe, runner_fn=broken_runner, disk_usage_fn=plenty_of_disk)
         assert sampler_threads() == []
 
     def test_sae_training_completes_under_watchdog(self, tmp_path):
@@ -461,8 +500,11 @@ class TestWatchdogEnvelope:
         recipe = self.enable_watchdog(make_sae_recipe(tmp_path, capture_dir))
 
         def fake_trainer(job, out_dir, tracker=None):
-            return {"final_loss": 0.125, "measured_l0": 8.0,
-                    "sae_lens_version": "6.46.0"}
+            return {
+                "final_loss": 0.125,
+                "measured_l0": 8.0,
+                "sae_lens_version": "6.46.0",
+            }
 
         manifest = run_sae_training(recipe, trainer_fn=fake_trainer)
         sae_dir = os.path.join(recipe.sae.out_root, "sae-test")
@@ -485,17 +527,22 @@ class TestTrackerWiring:
 
         def fake_trainer(job, out_dir, tracker=None):
             received.append(tracker)
-            return {"final_loss": 0.125, "measured_l0": 8.0,
-                    "sae_lens_version": "6.46.0"}
+            return {
+                "final_loss": 0.125,
+                "measured_l0": 8.0,
+                "sae_lens_version": "6.46.0",
+            }
 
         manifest = run_sae_training(
-            recipe, trainer_fn=fake_trainer, tracker_factory=tracker_factory)
+            recipe, trainer_fn=fake_trainer, tracker_factory=tracker_factory
+        )
         assert received == [sentinel]
         name, sae_dir, job = factory_calls[0]
         assert name == "sae-test"
         assert sae_dir == os.path.join(recipe.sae.out_root, "sae-test")
         assert job["cached_activations_path"] == os.path.join(
-            capture_dir, "model.layers.15")
+            capture_dir, "model.layers.15"
+        )
         assert manifest["artifact"] == SAE_ARTIFACT
 
 
@@ -508,11 +555,14 @@ class TestGcSkipsAndLooseFiles:
         # A loose top-level file (e.g. alerts.jsonl) exercises the plain-file
         # deletion arm alongside the shard-directory rmtree arm.
         (done / "alerts.jsonl").write_text("{}\n")
-        write_manifest(str(done), {
-            "artifact": HARVEST_ARTIFACT,
-            "validated": True,
-            "created": "2026-07-01T00:00:00Z",
-        })
+        write_manifest(
+            str(done),
+            {
+                "artifact": HARVEST_ARTIFACT,
+                "validated": True,
+                "created": "2026-07-01T00:00:00Z",
+            },
+        )
         (root / "README.txt").write_text("not a capture\n")
         incomplete = root / "incomplete"
         incomplete.mkdir()

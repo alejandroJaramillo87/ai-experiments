@@ -59,7 +59,8 @@ def check_no_leak(public: dict, ground_truth: dict) -> None:
         if needle.lower() in haystack:
             raise SealError(
                 f"public manifest leaks ground truth: {needle[:40]!r} "
-                f"appears in the manifest; remove it before sealing")
+                f"appears in the manifest; remove it before sealing"
+            )
 
 
 def ground_truth_sha256(path: str) -> str:
@@ -82,13 +83,15 @@ def seal_organism(out_dir: str, ground_truth: dict, public: dict) -> dict:
     if not isinstance(ground_truth, dict) or not ground_truth:
         raise SealError("ground truth must be a non-empty JSON object")
     if "mechanism" not in ground_truth:
-        raise SealError("ground truth must record the implant mechanism "
-                        "under the 'mechanism' key")
+        raise SealError(
+            "ground truth must record the implant mechanism under the 'mechanism' key"
+        )
     truth_path = os.path.join(out_dir, GROUND_TRUTH_NAME)
     if os.path.exists(truth_path):
         raise SealError(
             f"{truth_path} already exists; a sealed organism is immutable "
-            f"(create a new organism directory instead)")
+            f"(create a new organism directory instead)"
+        )
     check_no_leak(public, ground_truth)
 
     os.makedirs(out_dir, exist_ok=True)
@@ -117,7 +120,8 @@ def check_seal(out_dir: str) -> dict:
     if not expected:
         raise SealError(
             f"{out_dir}: public manifest has no ground_truth_sha256; "
-            f"this directory was never sealed")
+            f"this directory was never sealed"
+        )
     truth_path = os.path.join(out_dir, GROUND_TRUTH_NAME)
     if not os.path.isfile(truth_path):
         raise SealError(f"{out_dir}: {GROUND_TRUTH_NAME} is missing")
@@ -126,7 +130,8 @@ def check_seal(out_dir: str) -> dict:
         raise SealError(
             f"{out_dir}: ground truth hash mismatch: sealed "
             f"{expected}, current file hashes to {actual} "
-            f"(the ground truth was modified after sealing)")
+            f"(the ground truth was modified after sealing)"
+        )
     return manifest
 
 

@@ -31,11 +31,15 @@ def git_sha(repo_root: str) -> str:
     return provenance_git_sha(repo_root)
 
 
-def delta_section(baseline: float | None, tuned: float | None,
-                  higher_is_better: bool) -> dict:
+def delta_section(
+    baseline: float | None, tuned: float | None, higher_is_better: bool
+) -> dict:
     """One metric compared across sides; delta is tuned minus baseline."""
-    section = {"baseline": baseline, "tuned": tuned,
-               "higher_is_better": higher_is_better}
+    section = {
+        "baseline": baseline,
+        "tuned": tuned,
+        "higher_is_better": higher_is_better,
+    }
     if baseline is not None and tuned is not None:
         delta = tuned - baseline
         section["delta"] = round(delta, 6)
@@ -54,7 +58,8 @@ def check_matched(metadata: dict) -> None:
                 f"Confound: {field} differs between sides "
                 f"(baseline={left}, tuned={right})\n"
                 "  Solution: compare at matched settings; re-export or "
-                "re-generate the mismatched side")
+                "re-generate the mismatched side"
+            )
 
 
 def assemble_scorecard(metadata: dict, sections: dict) -> dict:
@@ -100,17 +105,25 @@ def render_markdown(scorecard: dict) -> str:
     ]
     for side in ("baseline", "tuned"):
         info = meta.get(side, {})
-        lines.append(f"| {side} | {_fmt(info.get('model'))} "
-                     f"| {_fmt(info.get('quant_type'))} "
-                     f"| {_fmt(info.get('thinking_mode'))} |")
+        lines.append(
+            f"| {side} | {_fmt(info.get('model'))} "
+            f"| {_fmt(info.get('quant_type'))} "
+            f"| {_fmt(info.get('thinking_mode'))} |"
+        )
     judge_meta = meta.get("judge")
     if judge_meta:
-        lines += ["", f"Judge: {_fmt(judge_meta.get('model'))} "
-                      f"on {_fmt(judge_meta.get('service'))}, "
-                      f"prompt set sha256 {_fmt(judge_meta.get('prompts_sha256'))}"]
+        lines += [
+            "",
+            f"Judge: {_fmt(judge_meta.get('model'))} "
+            f"on {_fmt(judge_meta.get('service'))}, "
+            f"prompt set sha256 {_fmt(judge_meta.get('prompts_sha256'))}",
+        ]
 
-    lines += ["", "| Evaluator | Metric | Baseline | Tuned | Delta | Improved |",
-              "|-----------|--------|----------|-------|-------|----------|"]
+    lines += [
+        "",
+        "| Evaluator | Metric | Baseline | Tuned | Delta | Improved |",
+        "|-----------|--------|----------|-------|-------|----------|",
+    ]
     evaluators = scorecard["evaluators"]
 
     holdout = evaluators["holdout"]
@@ -123,7 +136,8 @@ def render_markdown(scorecard: dict) -> str:
                 lines.append(
                     f"| holdout | {metric} | {_fmt(section.get('baseline'))} "
                     f"| {_fmt(section.get('tuned'))} | {_fmt(section.get('delta'))} "
-                    f"| {_fmt(section.get('improved'))} |")
+                    f"| {_fmt(section.get('improved'))} |"
+                )
 
     lmeval = evaluators["lmeval"]
     if lmeval.get("skipped"):
@@ -133,7 +147,8 @@ def render_markdown(scorecard: dict) -> str:
             lines.append(
                 f"| lmeval | {task} ({section.get('metric')}) "
                 f"| {_fmt(section.get('baseline'))} | {_fmt(section.get('tuned'))} "
-                f"| {_fmt(section.get('delta'))} | {_fmt(section.get('improved'))} |")
+                f"| {_fmt(section.get('delta'))} | {_fmt(section.get('improved'))} |"
+            )
 
     judge = evaluators["judge"]
     if judge.get("skipped"):
@@ -142,13 +157,18 @@ def render_markdown(scorecard: dict) -> str:
         win_rate = judge.get("win_rate")
         lines.append(
             f"| judge | win rate | - | {_fmt(win_rate)} | - | "
-            f"{_fmt(None if win_rate is None else win_rate > 0.5)} |")
+            f"{_fmt(None if win_rate is None else win_rate > 0.5)} |"
+        )
         lines.append(
             f"| judge | wins/losses/ties | {judge.get('baseline_wins')} "
-            f"| {judge.get('tuned_wins')} | {judge.get('ties')} | - |")
+            f"| {judge.get('tuned_wins')} | {judge.get('ties')} | - |"
+        )
         if judge.get("malformed") or judge.get("errors"):
-            lines += ["", f"Judge exceptions: {judge.get('malformed', 0)} "
-                          f"malformed verdicts, {judge.get('errors', 0)} "
-                          "request errors (excluded from the win rate)."]
+            lines += [
+                "",
+                f"Judge exceptions: {judge.get('malformed', 0)} "
+                f"malformed verdicts, {judge.get('errors', 0)} "
+                "request errors (excluded from the win rate).",
+            ]
     lines.append("")
     return "\n".join(lines)

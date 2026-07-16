@@ -35,10 +35,10 @@ TOKENIZER_FILES = (
 class StagingInfo:
     """What staging did, for the export manifest."""
 
-    model_dir: str            # source HF model dir (checkpoint's model/ or as given)
+    model_dir: str  # source HF model dir (checkpoint's model/ or as given)
     staging_dir: str
     adapter_path: str | None  # PEFT adapter dir merged into the base, if any
-    base_model: str | None    # adapter_config base_model_name_or_path, if any
+    base_model: str | None  # adapter_config base_model_name_or_path, if any
     merge_method: str | None  # "peft.merge_and_unload" when an adapter was merged
     tokenizer_source: str | None
 
@@ -49,11 +49,13 @@ def resolve_model_dir(checkpoint: str) -> str:
     if os.path.isdir(model_dir):
         return model_dir
     if os.path.isfile(os.path.join(checkpoint, "config.json")) or os.path.isfile(
-            os.path.join(checkpoint, ADAPTER_CONFIG)):
+        os.path.join(checkpoint, ADAPTER_CONFIG)
+    ):
         return checkpoint
     raise FileNotFoundError(
         f"Not a checkpoint or HF model directory (no model/, config.json, or "
-        f"{ADAPTER_CONFIG}): {checkpoint}")
+        f"{ADAPTER_CONFIG}): {checkpoint}"
+    )
 
 
 def find_adapter(model_dir: str) -> str | None:
@@ -98,7 +100,8 @@ def _copy_tokenizer(staging_dir: str, sources: list[str]) -> str | None:
         for name in TOKENIZER_FILES:
             src = os.path.join(source, name)
             if os.path.isfile(src) and not os.path.isfile(
-                    os.path.join(staging_dir, name)):
+                os.path.join(staging_dir, name)
+            ):
                 shutil.copy2(src, os.path.join(staging_dir, name))
                 copied = True
         if copied:
@@ -127,7 +130,8 @@ def check_meta_consistency(meta: dict | None, adapter: str | None) -> None:
         raise ExportError(
             f"meta.json says adapter_only={meta['adapter_only']} but staging "
             f"found {found}\n  Solution: the checkpoint is inconsistent; "
-            "re-save it or export a known-good one")
+            "re-save it or export a known-good one"
+        )
     if adapter is not None:
         meta_base = meta.get("base_model")
         config_base = adapter_base_model(adapter)
@@ -136,11 +140,13 @@ def check_meta_consistency(meta: dict | None, adapter: str | None) -> None:
                 f"Base model disagreement: meta.json records {meta_base}, "
                 f"{ADAPTER_CONFIG} records {config_base}\n  Solution: the "
                 "checkpoint is inconsistent; re-save it or export a "
-                "known-good one")
+                "known-good one"
+            )
 
 
-def _merge_adapter(adapter_dir: str, staging_dir: str,
-                   revision: str | None = None) -> str:
+def _merge_adapter(
+    adapter_dir: str, staging_dir: str, revision: str | None = None
+) -> str:
     """Merge a PEFT adapter into its base model; returns the base model id/path.
 
     The base loads cache-first (local_files_only), never from the network:
@@ -156,14 +162,18 @@ def _merge_adapter(adapter_dir: str, staging_dir: str,
     base = adapter_base_model(adapter_dir)
     try:
         model = AutoModelForCausalLM.from_pretrained(
-            base, revision=revision, dtype=torch.bfloat16,
-            local_files_only=not os.path.isdir(base))
+            base,
+            revision=revision,
+            dtype=torch.bfloat16,
+            local_files_only=not os.path.isdir(base),
+        )
     except Exception as exc:
         raise ExportError(
             f"Could not load base model from the local HF cache: {base}\n"
             "  Solution: mount the training HF cache into the export "
             "container (exports resolve the base offline)\n"
-            f"  Cause: {exc}") from exc
+            f"  Cause: {exc}"
+        ) from exc
     merged = PeftModel.from_pretrained(model, adapter_dir).merge_and_unload()
     merged.save_pretrained(staging_dir, safe_serialization=True)
     return base
@@ -173,17 +183,21 @@ def _copy_full_model(model_dir: str, staging_dir: str) -> None:
     """Copy weights and configs of a full model into the staging dir."""
     for name in os.listdir(model_dir):
         if name.endswith((".safetensors", ".safetensors.index.json")) or name in (
-                "config.json", "generation_config.json"):
-            shutil.copy2(os.path.join(model_dir, name),
-                         os.path.join(staging_dir, name))
+            "config.json",
+            "generation_config.json",
+        ):
+            shutil.copy2(os.path.join(model_dir, name), os.path.join(staging_dir, name))
     if not os.path.isfile(os.path.join(staging_dir, "config.json")):
         raise FileNotFoundError(f"No config.json in model directory: {model_dir}")
 
 
-def stage_model(checkpoint: str, staging_dir: str,
-                tokenizer_dir: str | None = None,
-                meta: dict | None = None,
-                base_revision: str | None = None) -> StagingInfo:
+def stage_model(
+    checkpoint: str,
+    staging_dir: str,
+    tokenizer_dir: str | None = None,
+    meta: dict | None = None,
+    base_revision: str | None = None,
+) -> StagingInfo:
     """Produce a converter-ready HF directory from a checkpoint or model dir.
 
     Tokenizer files are taken from the model dir itself when present (Phase 1
@@ -205,9 +219,12 @@ def stage_model(checkpoint: str, staging_dir: str,
     else:
         _copy_full_model(model_dir, staging_dir)
 
-    tokenizer_source = _copy_tokenizer(
-        staging_dir, [model_dir, tokenizer_dir or ""])
-    return StagingInfo(model_dir=model_dir, staging_dir=staging_dir,
-                       adapter_path=adapter, base_model=base_model,
-                       merge_method=merge_method,
-                       tokenizer_source=tokenizer_source)
+    tokenizer_source = _copy_tokenizer(staging_dir, [model_dir, tokenizer_dir or ""])
+    return StagingInfo(
+        model_dir=model_dir,
+        staging_dir=staging_dir,
+        adapter_path=adapter,
+        base_model=base_model,
+        merge_method=merge_method,
+        tokenizer_source=tokenizer_source,
+    )

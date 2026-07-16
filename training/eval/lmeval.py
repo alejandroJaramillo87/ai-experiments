@@ -23,8 +23,9 @@ class LmEvalError(RuntimeError):
     """Harness failure or task-set/config mismatch; message says the fix."""
 
 
-def load_task_config(tasks_file: str = DEFAULT_TASKS_FILE,
-                     tasks: list[str] | None = None) -> dict:
+def load_task_config(
+    tasks_file: str = DEFAULT_TASKS_FILE, tasks: list[str] | None = None
+) -> dict:
     """{task: {"metric": ...}} from tasks.yaml, optionally filtered.
 
     An explicitly requested task missing from the pinned set is an error:
@@ -35,15 +36,17 @@ def load_task_config(tasks_file: str = DEFAULT_TASKS_FILE,
         config = yaml.safe_load(f)
     declared = config.get("tasks") or {}
     if tasks is None:
-        return {"lm_eval_version": config.get("lm_eval_version"),
-                "tasks": declared}
+        return {"lm_eval_version": config.get("lm_eval_version"), "tasks": declared}
     unknown = [t for t in tasks if t not in declared]
     if unknown:
         raise LmEvalError(
             f"Tasks not in the pinned set ({tasks_file}): {', '.join(unknown)}\n"
-            "  Solution: add the task and its metric key to tasks.yaml")
-    return {"lm_eval_version": config.get("lm_eval_version"),
-            "tasks": {t: declared[t] for t in tasks}}
+            "  Solution: add the task and its metric key to tasks.yaml"
+        )
+    return {
+        "lm_eval_version": config.get("lm_eval_version"),
+        "tasks": {t: declared[t] for t in tasks},
+    }
 
 
 def extract_results(raw: dict, task_config: dict) -> dict:
@@ -58,9 +61,13 @@ def extract_results(raw: dict, task_config: dict) -> dict:
             raise LmEvalError(
                 f"Metric {metric} missing from {task} results "
                 f"(available: {', '.join(sorted(task_results))})\n"
-                "  Solution: fix the metric key in tasks.yaml")
-        stderr_key = metric.split(",")[0] + "_stderr" + (
-            "," + metric.split(",", 1)[1] if "," in metric else "")
+                "  Solution: fix the metric key in tasks.yaml"
+            )
+        stderr_key = (
+            metric.split(",")[0]
+            + "_stderr"
+            + ("," + metric.split(",", 1)[1] if "," in metric else "")
+        )
         out[task] = {
             "metric": metric,
             "value": task_results[metric],
@@ -70,10 +77,13 @@ def extract_results(raw: dict, task_config: dict) -> dict:
     return out
 
 
-def run_lmeval(model: str, tasks_file: str = DEFAULT_TASKS_FILE,
-               tasks: list[str] | None = None,
-               limit: int | None = None,
-               batch_size: str = "auto") -> dict:
+def run_lmeval(
+    model: str,
+    tasks_file: str = DEFAULT_TASKS_FILE,
+    tasks: list[str] | None = None,
+    limit: int | None = None,
+    batch_size: str = "auto",
+) -> dict:
     """Harness run for one model; returns the scorecard-ready record."""
     import lm_eval
 
@@ -86,16 +96,20 @@ def run_lmeval(model: str, tasks_file: str = DEFAULT_TASKS_FILE,
             f"lm-eval version mismatch: installed {lm_eval.__version__}, "
             f"tasks.yaml pins {pinned}\n"
             "  Solution: rebuild the training image or update the pin "
-            "deliberately (one bump at a time)")
+            "deliberately (one bump at a time)"
+        )
 
     base, adapter = resolve_model(model)
     model_args = f"pretrained={base},dtype=bfloat16"
     if adapter is not None:
         model_args += f",peft={adapter}"
     raw = lm_eval.simple_evaluate(
-        model="hf", model_args=model_args,
-        tasks=list(task_config["tasks"]), limit=limit,
-        batch_size=batch_size)
+        model="hf",
+        model_args=model_args,
+        tasks=list(task_config["tasks"]),
+        limit=limit,
+        batch_size=batch_size,
+    )
     return {
         "model": model,
         "lm_eval_version": lm_eval.__version__,

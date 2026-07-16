@@ -15,6 +15,7 @@ def train_lock_path(tmp_path, monkeypatch):
     /mnt/ai-data, and tests must not contend on a shared lock."""
     monkeypatch.setenv("TRAIN_LOCK_PATH", str(tmp_path / ".train.lock"))
 
+
 DOCUMENTS = [
     "the quick brown fox jumps over the lazy dog",
     "pack my box with five dozen liquor jugs",
@@ -24,7 +25,7 @@ DOCUMENTS = [
     "jackdaws love my big sphinx of quartz",
     "waltz bad nymph for quick jigs vex",
     "quick zephyrs blow vexing daft jim",
-] * 4   # 32 documents so multi-shard runs have material
+] * 4  # 32 documents so multi-shard runs have material
 
 
 @pytest.fixture(scope="session")
@@ -36,7 +37,8 @@ def documents() -> list[str]:
 def tokenizer_dir(tmp_path_factory) -> str:
     out = tmp_path_factory.mktemp("tokenizer")
     return build_bpe_tokenizer(
-        str(out), DOCUMENTS, specials=["<|bos|>", "<|eos|>", "<|pad|>"])
+        str(out), DOCUMENTS, specials=["<|bos|>", "<|eos|>", "<|pad|>"]
+    )
 
 
 @pytest.fixture()

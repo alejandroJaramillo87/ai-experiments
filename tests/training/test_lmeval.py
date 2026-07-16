@@ -13,24 +13,36 @@ from training.eval.lmeval import LmEvalError, extract_results, run_lmeval
 def test_extract_results_happy_path_and_stderr_keys():
     raw = {
         "results": {
-            "gsm8k": {"exact_match,strict-match": 0.42,
-                      "exact_match_stderr,strict-match": 0.05},
+            "gsm8k": {
+                "exact_match,strict-match": 0.42,
+                "exact_match_stderr,strict-match": 0.05,
+            },
             "tinyMMLU": {"acc_norm": 0.70, "acc_norm_stderr": 0.03},
         },
         "versions": {"gsm8k": 3, "tinyMMLU": 0},
     }
-    task_config = {"tasks": {
-        "gsm8k": {"metric": "exact_match,strict-match"},
-        "tinyMMLU": {"metric": "acc_norm"},
-    }}
+    task_config = {
+        "tasks": {
+            "gsm8k": {"metric": "exact_match,strict-match"},
+            "tinyMMLU": {"metric": "acc_norm"},
+        }
+    }
     out = extract_results(raw, task_config)
     # Filtered metric: the stderr key splits the base metric off, appends
     # _stderr, then re-attaches the filter suffix -> exact_match_stderr,strict-match.
-    assert out["gsm8k"] == {"metric": "exact_match,strict-match", "value": 0.42,
-                            "stderr": 0.05, "version": 3}
+    assert out["gsm8k"] == {
+        "metric": "exact_match,strict-match",
+        "value": 0.42,
+        "stderr": 0.05,
+        "version": 3,
+    }
     # Plain metric: the stderr key is simply <metric>_stderr.
-    assert out["tinyMMLU"] == {"metric": "acc_norm", "value": 0.70,
-                               "stderr": 0.03, "version": 0}
+    assert out["tinyMMLU"] == {
+        "metric": "acc_norm",
+        "value": 0.70,
+        "stderr": 0.03,
+        "version": 0,
+    }
 
 
 def test_extract_results_refuses_missing_task():

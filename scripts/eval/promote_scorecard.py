@@ -47,8 +47,10 @@ def promote(run_dir: str, card: str, dest: str, out: Printer) -> int:
     missing = [p for p in sources if not os.path.isfile(p)]
     if missing:
         out.error(f"Scorecard not found: {', '.join(missing)}")
-        print("  Solution: point --run-dir at a completed eval-ft run "
-              "directory containing scorecard.json and scorecard.md")
+        print(
+            "  Solution: point --run-dir at a completed eval-ft run "
+            "directory containing scorecard.json and scorecard.md"
+        )
         return 1
 
     os.makedirs(dest, exist_ok=True)
@@ -72,23 +74,29 @@ def promote(run_dir: str, card: str, dest: str, out: Printer) -> int:
         json.dump(provenance, f, indent=2)
         f.write("\n")
     out.ok(f"Provenance: {os.path.relpath(prov_path, REPO_ROOT)}")
-    out.info("Commit the promoted files; committed scorecards are never "
-             "edited by hand")
+    out.info("Commit the promoted files; committed scorecards are never edited by hand")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Promote an eval run's scorecard into "
-                    "docs/training/scorecards/")
-    parser.add_argument("--run-dir", required=True,
-                        help="eval-ft run directory containing scorecard.json "
-                             "and scorecard.md")
-    parser.add_argument("--card", required=True,
-                        help="recipe card name the scorecard validates, e.g. "
-                             "sft-qlora-gemma-e4b")
-    parser.add_argument("--dest", default=DEFAULT_DEST,
-                        help=f"destination directory (default: {DEFAULT_DEST})")
+        description="Promote an eval run's scorecard into docs/training/scorecards/"
+    )
+    parser.add_argument(
+        "--run-dir",
+        required=True,
+        help="eval-ft run directory containing scorecard.json and scorecard.md",
+    )
+    parser.add_argument(
+        "--card",
+        required=True,
+        help="recipe card name the scorecard validates, e.g. sft-qlora-gemma-e4b",
+    )
+    parser.add_argument(
+        "--dest",
+        default=DEFAULT_DEST,
+        help=f"destination directory (default: {DEFAULT_DEST})",
+    )
     args = parser.parse_args(argv)
 
     out = Printer()

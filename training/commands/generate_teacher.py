@@ -44,40 +44,78 @@ def configure(sub) -> None:
         help="batch-generate teacher data through the serving stack (F4, host)",
         description="Batch-generate teacher data through the serving stack.",
         epilog="Manual restore after an unclean exit: "
-               "docker compose up -d --force-recreate <service>")
-    parser.add_argument("--pipeline", required=True, choices=teacher.PIPELINES,
-                        help="respond: prompts in, teacher responses out; "
-                             "synthesize: seed instructions in, evolved pairs out")
-    parser.add_argument("--prompts", required=True,
-                        help="prompt JSONL file, or a dataset directory "
-                             "containing prompts.jsonl or data.jsonl")
-    parser.add_argument("--teacher", required=True,
-                        help="teacher model path, container (/app/models/...) "
-                             "or host (/mnt/ai-data/models/...) form")
-    parser.add_argument("--service", default="vllm-gpu",
-                        choices=sorted(serving.SERVICES),
-                        help="inference service to generate through "
-                             "(default vllm-gpu; llama-gpu is the fallback)")
-    parser.add_argument("--out", required=True,
-                        help=f"output dataset directory (convention: "
-                             f"{DEFAULT_OUT_ROOT}/<name>)")
-    parser.add_argument("--temperature", type=float, default=0.2,
-                        help="sampling temperature (default 0.2)")
-    parser.add_argument("--top-p", type=float, default=0.9,
-                        help="nucleus sampling top-p (default 0.9)")
-    parser.add_argument("--max-tokens", type=int, default=2048,
-                        help="max completion tokens (default 2048)")
-    parser.add_argument("--concurrency", type=int,
-                        help="request concurrency (default per service)")
-    parser.add_argument("--no-swap", action="store_true",
-                        help="use the already-served model; verify health only")
-    parser.add_argument("--keep-serving", action="store_true",
-                        help="leave the teacher serving instead of restoring")
-    parser.add_argument("--start-budget", type=int,
-                        help="seconds to wait for service health "
-                             "(default per service)")
-    parser.add_argument("--timeout", type=int, default=300,
-                        help="per-request timeout in seconds (default 300)")
+        "docker compose up -d --force-recreate <service>",
+    )
+    parser.add_argument(
+        "--pipeline",
+        required=True,
+        choices=teacher.PIPELINES,
+        help="respond: prompts in, teacher responses out; "
+        "synthesize: seed instructions in, evolved pairs out",
+    )
+    parser.add_argument(
+        "--prompts",
+        required=True,
+        help="prompt JSONL file, or a dataset directory "
+        "containing prompts.jsonl or data.jsonl",
+    )
+    parser.add_argument(
+        "--teacher",
+        required=True,
+        help="teacher model path, container (/app/models/...) "
+        "or host (/mnt/ai-data/models/...) form",
+    )
+    parser.add_argument(
+        "--service",
+        default="vllm-gpu",
+        choices=sorted(serving.SERVICES),
+        help="inference service to generate through "
+        "(default vllm-gpu; llama-gpu is the fallback)",
+    )
+    parser.add_argument(
+        "--out",
+        required=True,
+        help=f"output dataset directory (convention: {DEFAULT_OUT_ROOT}/<name>)",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.2,
+        help="sampling temperature (default 0.2)",
+    )
+    parser.add_argument(
+        "--top-p", type=float, default=0.9, help="nucleus sampling top-p (default 0.9)"
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=2048,
+        help="max completion tokens (default 2048)",
+    )
+    parser.add_argument(
+        "--concurrency", type=int, help="request concurrency (default per service)"
+    )
+    parser.add_argument(
+        "--no-swap",
+        action="store_true",
+        help="use the already-served model; verify health only",
+    )
+    parser.add_argument(
+        "--keep-serving",
+        action="store_true",
+        help="leave the teacher serving instead of restoring",
+    )
+    parser.add_argument(
+        "--start-budget",
+        type=int,
+        help="seconds to wait for service health (default per service)",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        help="per-request timeout in seconds (default 300)",
+    )
     parser.set_defaults(func=cmd)
 
 
@@ -95,32 +133,37 @@ def cmd(args: argparse.Namespace) -> int:
         return 2
 
     config = teacher.TeacherConfig(
-        pipeline=args.pipeline, teacher=args.teacher, service=args.service,
+        pipeline=args.pipeline,
+        teacher=args.teacher,
+        service=args.service,
         sampling=teacher.SamplingConfig(
-            temperature=args.temperature, top_p=args.top_p,
-            max_tokens=args.max_tokens),
-        concurrency=args.concurrency or service.concurrency)
+            temperature=args.temperature, top_p=args.top_p, max_tokens=args.max_tokens
+        ),
+        concurrency=args.concurrency or service.concurrency,
+    )
     try:
         config.validate()
         container_path, host_path = serving.model_paths(args.teacher)
         if not args.no_swap and not os.path.exists(host_path):
-            raise serving.ServingError(
-                f"Teacher model not found on host: {host_path}")
+            raise serving.ServingError(f"Teacher model not found on host: {host_path}")
         serving.ensure_training_idle()
     except (teacher.TeacherConfigError, serving.ServingError) as exc:
         out.error(str(exc))
         return 1
     out.ok("Preflight: training is idle")
-    out.info(f"Pipeline: {args.pipeline}, {len(prompts)} prompts, "
-             f"concurrency {config.concurrency}")
+    out.info(
+        f"Pipeline: {args.pipeline}, {len(prompts)} prompts, "
+        f"concurrency {config.concurrency}"
+    )
 
     already = len(teacher.completed_keys(args.out))
     if already:
         out.info(f"Resume: {already} completed records found in {args.out}")
 
     def complete_fn(messages: list[dict], sampling: dict) -> str:
-        return serving.chat_completion(service, messages, sampling,
-                                       timeout=args.timeout)["content"]
+        return serving.chat_completion(
+            service, messages, sampling, timeout=args.timeout
+        )["content"]
 
     def progress(done: int, total: int) -> None:
         if done % 25 == 0 or done == total:
@@ -140,13 +183,23 @@ def cmd(args: argparse.Namespace) -> int:
         out.ok(f"{service.name} healthy after {elapsed:.1f}s")
 
         manifest = teacher.generate(
-            config, prompts, complete_fn, args.out,
+            config,
+            prompts,
+            complete_fn,
+            args.out,
             prompt_source=os.path.abspath(args.prompts),
             prompt_set_hash=prompt_set_hash,
-            transient=serving.ServingTransientError, progress=progress)
+            transient=serving.ServingTransientError,
+            progress=progress,
+        )
         out.ok(f"Dataset complete: {manifest['examples']} examples in {args.out}")
-    except (serving.ServingError, teacher.GenerationIncomplete,
-            FileExistsError, KeyboardInterrupt, SystemExit) as exc:
+    except (
+        serving.ServingError,
+        teacher.GenerationIncomplete,
+        FileExistsError,
+        KeyboardInterrupt,
+        SystemExit,
+    ) as exc:
         failed = True
         out.error(f"Generation aborted: {exc or exc.__class__.__name__}")
     finally:
@@ -157,8 +210,9 @@ def cmd(args: argparse.Namespace) -> int:
                 out.ok("Previous serving state restored")
             except serving.ServingError as exc:
                 out.error(f"Restore failed: {exc}")
-                out.line(f"  Solution: docker compose up -d --force-recreate "
-                         f"{service.name}")
+                out.line(
+                    f"  Solution: docker compose up -d --force-recreate {service.name}"
+                )
                 failed = True
 
     return 1 if failed else 0

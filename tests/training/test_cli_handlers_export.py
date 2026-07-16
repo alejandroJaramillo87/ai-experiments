@@ -29,7 +29,7 @@ PIN = read_pin()
 
 ARCH = "LlamaForCausalLM"
 
-GGUF_PAYLOAD = b"g" * 4096   # 4,096 bytes: proves the comma-grouped size line
+GGUF_PAYLOAD = b"g" * 4096  # 4,096 bytes: proves the comma-grouped size line
 
 
 def run_cli(argv: list[str]) -> int:
@@ -39,12 +39,14 @@ def run_cli(argv: list[str]) -> int:
 
 # -- cmd_export -----------------------------------------------------------------
 
+
 def make_llama_cpp(tmp_path) -> str:
     """A --llama-cpp dir whose converter registers exactly one architecture."""
     d = tmp_path / "llama.cpp"
     d.mkdir()
     (d / "convert_hf_to_gguf.py").write_text(
-        f'@ModelBase.register("{ARCH}")\nclass Llama(TextModel):\n    pass\n')
+        f'@ModelBase.register("{ARCH}")\nclass Llama(TextModel):\n    pass\n'
+    )
     return str(d)
 
 
@@ -66,15 +68,17 @@ def adapter_checkpoint(tmp_path, meta: dict | None = None) -> tuple[str, str]:
     base = tmp_path / "base-model"
     write_json(str(base / "config.json"), {"architectures": [ARCH]})
     ckpt = tmp_path / "adapter-ckpt"
-    write_json(str(ckpt / "adapter_config.json"),
-               {"base_model_name_or_path": str(base)})
+    write_json(
+        str(ckpt / "adapter_config.json"), {"base_model_name_or_path": str(base)}
+    )
     if meta is not None:
         write_json(str(ckpt / "meta.json"), meta)
     return str(ckpt), str(base)
 
 
-def patch_pipeline(monkeypatch, adapter_path=None, base_model=None,
-                   tokenizer_source="tok-src") -> dict:
+def patch_pipeline(
+    monkeypatch, adapter_path=None, base_model=None, tokenizer_source="tok-src"
+) -> dict:
     """Fake the three torch/toolchain seams; returns the recorded calls.
 
     The staging fake writes the config.json check_architecture reads, and the
@@ -83,26 +87,39 @@ def patch_pipeline(monkeypatch, adapter_path=None, base_model=None,
     """
     calls: dict = {}
 
-    def fake_stage(checkpoint, staging_dir, tokenizer_dir=None, meta=None,
-                   base_revision=None):
-        calls["stage"] = {"checkpoint": checkpoint, "staging_dir": staging_dir,
-                              "tokenizer_dir": tokenizer_dir, "meta": meta,
-                              "base_revision": base_revision}
-        write_json(os.path.join(staging_dir, "config.json"),
-                   {"architectures": [ARCH]})
+    def fake_stage(
+        checkpoint, staging_dir, tokenizer_dir=None, meta=None, base_revision=None
+    ):
+        calls["stage"] = {
+            "checkpoint": checkpoint,
+            "staging_dir": staging_dir,
+            "tokenizer_dir": tokenizer_dir,
+            "meta": meta,
+            "base_revision": base_revision,
+        }
+        write_json(os.path.join(staging_dir, "config.json"), {"architectures": [ARCH]})
         return StagingInfo(
-            model_dir=checkpoint, staging_dir=staging_dir,
-            adapter_path=adapter_path, base_model=base_model,
+            model_dir=checkpoint,
+            staging_dir=staging_dir,
+            adapter_path=adapter_path,
+            base_model=base_model,
             merge_method="peft.merge_and_unload" if adapter_path else None,
-            tokenizer_source=tokenizer_source)
+            tokenizer_source=tokenizer_source,
+        )
 
     def fake_convert(staging_dir, out_path, outtype="bf16", llama_cpp_dir=None):
-        calls["convert"] = {"staging_dir": staging_dir, "out_path": out_path,
-                                "outtype": outtype}
+        calls["convert"] = {
+            "staging_dir": staging_dir,
+            "out_path": out_path,
+            "outtype": outtype,
+        }
 
     def fake_quantize(in_path, out_path, quant_type, llama_cpp_dir=None):
-        calls["quantize"] = {"in_path": in_path, "out_path": out_path,
-                                 "quant_type": quant_type}
+        calls["quantize"] = {
+            "in_path": in_path,
+            "out_path": out_path,
+            "quant_type": quant_type,
+        }
         with open(out_path, "wb") as f:
             f.write(GGUF_PAYLOAD)
 
@@ -116,11 +133,22 @@ class TestCmdExport:
     def test_missing_converter_exits_1(self, tmp_path, capsys):
         empty = tmp_path / "no-llama-cpp"
         empty.mkdir()
-        assert run_cli(["export", "--checkpoint", str(tmp_path / "ckpt"),
-                        "--llama-cpp", str(empty)]) == 1
+        assert (
+            run_cli(
+                [
+                    "export",
+                    "--checkpoint",
+                    str(tmp_path / "ckpt"),
+                    "--llama-cpp",
+                    str(empty),
+                ]
+            )
+            == 1
+        )
         out = capsys.readouterr().out
-        assert ("[ERROR] Pinned converter not found: "
-                f"{empty / 'convert_hf_to_gguf.py'}") in out
+        assert (
+            f"[ERROR] Pinned converter not found: {empty / 'convert_hf_to_gguf.py'}"
+        ) in out
         assert "Solution: run inside the export image" in out
 
     def test_full_model_happy_path(self, tmp_path, capsys, monkeypatch):
@@ -129,11 +157,26 @@ class TestCmdExport:
         out_root = str(tmp_path / "out")
         staging_root = str(tmp_path / "staging")
         # No --name: the D6 layout must derive "<run>-step_N" for real.
-        assert run_cli([
-            "export", "--checkpoint", ckpt, "--quant", "q8_0",
-            "--llama-cpp", make_llama_cpp(tmp_path),
-            "--out-root", out_root, "--staging-root", staging_root,
-            "--tokenizer", str(tmp_path / "tok")]) == 0
+        assert (
+            run_cli(
+                [
+                    "export",
+                    "--checkpoint",
+                    ckpt,
+                    "--quant",
+                    "q8_0",
+                    "--llama-cpp",
+                    make_llama_cpp(tmp_path),
+                    "--out-root",
+                    out_root,
+                    "--staging-root",
+                    staging_root,
+                    "--tokenizer",
+                    str(tmp_path / "tok"),
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
 
         name = "myrun-step_20"
@@ -157,14 +200,14 @@ class TestCmdExport:
         assert manifest["quant_type"] == "Q8_0"
         assert manifest["llama_cpp_commit"] == PIN
         assert manifest["adapter"] is None
-        assert manifest["gguf"] == {"path": gguf, "sha256": sha,
-                                    "size_bytes": 4096}
+        assert manifest["gguf"] == {"path": gguf, "sha256": sha, "size_bytes": 4096}
 
         # Intermediate GGUF lives in the staging dir, which is removed by
         # default; --tokenizer reaches staging.
         staging = calls["stage"]["staging_dir"]
         assert calls["convert"]["out_path"] == os.path.join(
-            staging, f"{name}-bf16.gguf")
+            staging, f"{name}-bf16.gguf"
+        )
         assert calls["quantize"]["in_path"] == calls["convert"]["out_path"]
         assert calls["quantize"]["quant_type"] == "Q8_0"
         assert calls["stage"]["tokenizer_dir"] == str(tmp_path / "tok")
@@ -177,11 +220,24 @@ class TestCmdExport:
     def test_adapter_base_verified(self, tmp_path, capsys, monkeypatch):
         ckpt, base = adapter_checkpoint(tmp_path)
         patch_pipeline(monkeypatch, adapter_path=ckpt, base_model=base)
-        assert run_cli([
-            "export", "--checkpoint", ckpt, "--name", "tuned",
-            "--llama-cpp", make_llama_cpp(tmp_path),
-            "--out-root", str(tmp_path / "out"),
-            "--staging-root", str(tmp_path / "staging")]) == 0
+        assert (
+            run_cli(
+                [
+                    "export",
+                    "--checkpoint",
+                    ckpt,
+                    "--name",
+                    "tuned",
+                    "--llama-cpp",
+                    make_llama_cpp(tmp_path),
+                    "--out-root",
+                    str(tmp_path / "out"),
+                    "--staging-root",
+                    str(tmp_path / "staging"),
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         # Local-path base: no hub revision, so the identity reads "local".
         assert f"[OK] Base model verified: {base} (revision local)" in out
@@ -189,7 +245,8 @@ class TestCmdExport:
         assert "[WARN]" not in out
 
         manifest_file = os.path.join(
-            str(tmp_path / "out"), "tuned", "tuned-Q8_0.manifest.json")
+            str(tmp_path / "out"), "tuned", "tuned-Q8_0.manifest.json"
+        )
         with open(manifest_file) as f:
             manifest = json.load(f)
         assert manifest["adapter"]["base_model"] == base
@@ -197,27 +254,49 @@ class TestCmdExport:
         # Fields the checkpoint never recorded are noted, never fatal.
         assert manifest["base_drift"] == [
             "base_revision: not recorded at train time",
-            "base_config_sha256: not recorded at train time"]
+            "base_config_sha256: not recorded at train time",
+        ]
 
-    def test_allow_base_drift_warns_and_keeps_staging(self, tmp_path, capsys,
-                                                      monkeypatch):
-        meta = {"adapter_only": True, "base_revision": "f" * 40,
-                "base_config_sha256": "0" * 64}
+    def test_allow_base_drift_warns_and_keeps_staging(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        meta = {
+            "adapter_only": True,
+            "base_revision": "f" * 40,
+            "base_config_sha256": "0" * 64,
+        }
         ckpt, base = adapter_checkpoint(tmp_path, meta=meta)
         with open(os.path.join(base, "config.json"), "rb") as f:
             real_sha = hashlib.sha256(f.read()).hexdigest()
-        calls = patch_pipeline(monkeypatch, adapter_path=ckpt, base_model=base,
-                               tokenizer_source=None)
-        assert run_cli([
-            "export", "--checkpoint", ckpt, "--name", "drifted",
-            "--allow-base-drift", "--keep-staging",
-            "--llama-cpp", make_llama_cpp(tmp_path),
-            "--out-root", str(tmp_path / "out"),
-            "--staging-root", str(tmp_path / "staging")]) == 0
+        calls = patch_pipeline(
+            monkeypatch, adapter_path=ckpt, base_model=base, tokenizer_source=None
+        )
+        assert (
+            run_cli(
+                [
+                    "export",
+                    "--checkpoint",
+                    ckpt,
+                    "--name",
+                    "drifted",
+                    "--allow-base-drift",
+                    "--keep-staging",
+                    "--llama-cpp",
+                    make_llama_cpp(tmp_path),
+                    "--out-root",
+                    str(tmp_path / "out"),
+                    "--staging-root",
+                    str(tmp_path / "staging"),
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
 
-        note = (f"base_config_sha256: trained against {'0' * 64}, "
-                f"export resolved {real_sha}")
+        note = (
+            f"base_config_sha256: trained against {'0' * 64}, "
+            f"export resolved {real_sha}"
+        )
         assert "[WARN] Base drift allowed (--allow-base-drift):" in out
         assert f"  {note}" in out
         assert "Base model verified" not in out
@@ -230,7 +309,8 @@ class TestCmdExport:
         # The recorded revision pins the merge and lands in the manifest.
         assert calls["stage"]["base_revision"] == "f" * 40
         manifest_file = os.path.join(
-            str(tmp_path / "out"), "drifted", "drifted-Q8_0.manifest.json")
+            str(tmp_path / "out"), "drifted", "drifted-Q8_0.manifest.json"
+        )
         with open(manifest_file) as f:
             manifest = json.load(f)
         assert note in manifest["base_drift"]
@@ -245,11 +325,24 @@ class TestCmdExport:
             raise AssertionError("stage_model reached despite drift refusal")
 
         monkeypatch.setattr("training.export.stage_model", must_not_stage)
-        assert run_cli([
-            "export", "--checkpoint", ckpt, "--name", "drifted",
-            "--llama-cpp", make_llama_cpp(tmp_path),
-            "--out-root", str(tmp_path / "out"),
-            "--staging-root", str(tmp_path / "staging")]) == 1
+        assert (
+            run_cli(
+                [
+                    "export",
+                    "--checkpoint",
+                    ckpt,
+                    "--name",
+                    "drifted",
+                    "--llama-cpp",
+                    make_llama_cpp(tmp_path),
+                    "--out-root",
+                    str(tmp_path / "out"),
+                    "--staging-root",
+                    str(tmp_path / "staging"),
+                ]
+            )
+            == 1
+        )
         out = capsys.readouterr().out
         assert "[ERROR] Export failed: Base model drifted since training:" in out
         assert "--allow-base-drift" in out
@@ -258,14 +351,27 @@ class TestCmdExport:
         ckpt = full_model_checkpoint(tmp_path)
         patch_pipeline(monkeypatch)
         out_root = str(tmp_path / "out")
-        assert run_cli([
-            "export", "--checkpoint", ckpt, "--name", "quiet", "--json",
-            "--llama-cpp", make_llama_cpp(tmp_path),
-            "--out-root", out_root,
-            "--staging-root", str(tmp_path / "staging")]) == 0
+        assert (
+            run_cli(
+                [
+                    "export",
+                    "--checkpoint",
+                    ckpt,
+                    "--name",
+                    "quiet",
+                    "--json",
+                    "--llama-cpp",
+                    make_llama_cpp(tmp_path),
+                    "--out-root",
+                    out_root,
+                    "--staging-root",
+                    str(tmp_path / "staging"),
+                ]
+            )
+            == 0
+        )
         data = json.loads(capsys.readouterr().out)
-        manifest_file = os.path.join(out_root, "quiet",
-                                     "quiet-Q8_0.manifest.json")
+        manifest_file = os.path.join(out_root, "quiet", "quiet-Q8_0.manifest.json")
         with open(manifest_file) as f:
             assert data == json.load(f)
         assert data["gguf"]["sha256"] == hashlib.sha256(GGUF_PAYLOAD).hexdigest()
@@ -274,8 +380,12 @@ class TestCmdExport:
 # -- cmd_eval-holdout -------------------------------------------------------------
 
 HOLDOUT_RECORD = {
-    "model": "/ckpt/sft", "dataset": "/data/sft", "loss": 1.25,
-    "perplexity": 3.4903, "examples": 12, "supervised_tokens": 3456,
+    "model": "/ckpt/sft",
+    "dataset": "/data/sft",
+    "loss": 1.25,
+    "perplexity": 3.4903,
+    "examples": 12,
+    "supervised_tokens": 3456,
     "precision": "bfloat16",
 }
 
@@ -285,90 +395,140 @@ class TestCmdEvalHoldout:
         seen = {}
 
         def fake_eval(model, dataset, load_4bit=False, max_examples=None):
-            seen.update(model=model, dataset=dataset, load_4bit=load_4bit,
-                        max_examples=max_examples)
+            seen.update(
+                model=model,
+                dataset=dataset,
+                load_4bit=load_4bit,
+                max_examples=max_examples,
+            )
             return dict(HOLDOUT_RECORD)
 
         monkeypatch.setattr("training.eval.holdout.evaluate_holdout", fake_eval)
-        assert run_cli(["eval-holdout", "--model", "/ckpt/sft",
-                        "--dataset", "/data/sft", "--load-4bit",
-                        "--max-examples", "5"]) == 0
+        assert (
+            run_cli(
+                [
+                    "eval-holdout",
+                    "--model",
+                    "/ckpt/sft",
+                    "--dataset",
+                    "/data/sft",
+                    "--load-4bit",
+                    "--max-examples",
+                    "5",
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "[RUN] Held-out loss: /ckpt/sft over /data/sft" in out
-        assert ("[OK] Loss 1.250000, perplexity 3.4903 (12 examples, "
-                "3456 supervised tokens, bfloat16)") in out
+        assert (
+            "[OK] Loss 1.250000, perplexity 3.4903 (12 examples, "
+            "3456 supervised tokens, bfloat16)"
+        ) in out
         assert "Record written" not in out
-        assert seen == {"model": "/ckpt/sft", "dataset": "/data/sft",
-                            "load_4bit": True, "max_examples": 5}
+        assert seen == {
+            "model": "/ckpt/sft",
+            "dataset": "/data/sft",
+            "load_4bit": True,
+            "max_examples": 5,
+        }
 
     def test_out_writes_record_json(self, monkeypatch, tmp_path, capsys):
-        monkeypatch.setattr("training.eval.holdout.evaluate_holdout",
-                            lambda *a, **kw: dict(HOLDOUT_RECORD))
+        monkeypatch.setattr(
+            "training.eval.holdout.evaluate_holdout",
+            lambda *a, **kw: dict(HOLDOUT_RECORD),
+        )
         # Nested path: the handler must create the parent directory.
         target = str(tmp_path / "records" / "holdout.json")
-        assert run_cli(["eval-holdout", "--model", "m", "--dataset", "d",
-                        "--out", target]) == 0
+        assert (
+            run_cli(["eval-holdout", "--model", "m", "--dataset", "d", "--out", target])
+            == 0
+        )
         assert f"[OK] Record written: {target}" in capsys.readouterr().out
         with open(target) as f:
             text = f.read()
         assert text.endswith("}\n")
         assert json.loads(text) == HOLDOUT_RECORD
 
-    @pytest.mark.parametrize("exc", [
-        RuntimeError("CUDA out of memory"),
-        FileNotFoundError("no prepared dataset"),
-        ValueError("Dataset has no held-out split: /data/sft"),
-    ], ids=["runtime", "missing-file", "value"])
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            RuntimeError("CUDA out of memory"),
+            FileNotFoundError("no prepared dataset"),
+            ValueError("Dataset has no held-out split: /data/sft"),
+        ],
+        ids=["runtime", "missing-file", "value"],
+    )
     def test_failure_exits_1(self, exc, monkeypatch, capsys):
         def failing(*a, **kw):
             raise exc
 
         monkeypatch.setattr("training.eval.holdout.evaluate_holdout", failing)
         assert run_cli(["eval-holdout", "--model", "m", "--dataset", "d"]) == 1
-        assert f"[ERROR] Held-out evaluation failed: {exc}" in (
-            capsys.readouterr().out)
+        assert f"[ERROR] Held-out evaluation failed: {exc}" in (capsys.readouterr().out)
 
     def test_json_stdout_is_pure_record(self, monkeypatch, capsys):
-        monkeypatch.setattr("training.eval.holdout.evaluate_holdout",
-                            lambda *a, **kw: dict(HOLDOUT_RECORD))
-        assert run_cli(["eval-holdout", "--model", "m", "--dataset", "d",
-                        "--json"]) == 0
+        monkeypatch.setattr(
+            "training.eval.holdout.evaluate_holdout",
+            lambda *a, **kw: dict(HOLDOUT_RECORD),
+        )
+        assert (
+            run_cli(["eval-holdout", "--model", "m", "--dataset", "d", "--json"]) == 0
+        )
         assert json.loads(capsys.readouterr().out) == HOLDOUT_RECORD
 
 
 # -- cmd_eval-lmeval --------------------------------------------------------------
 
 LMEVAL_RECORD = {
-    "model": "/ckpt/sft", "lm_eval_version": "0.4.9",
-    "tasks_file": "/app/training/eval/tasks.yaml", "limit": 50,
+    "model": "/ckpt/sft",
+    "lm_eval_version": "0.4.9",
+    "tasks_file": "/app/training/eval/tasks.yaml",
+    "limit": 50,
     "results": {
-        "hellaswag": {"metric": "acc,none", "value": 0.55,
-                      "stderr": None, "version": 1},
-        "arc_challenge": {"metric": "acc_norm,none", "value": 0.4321,
-                          "stderr": 0.0145, "version": 1},
+        "hellaswag": {
+            "metric": "acc,none",
+            "value": 0.55,
+            "stderr": None,
+            "version": 1,
+        },
+        "arc_challenge": {
+            "metric": "acc_norm,none",
+            "value": 0.4321,
+            "stderr": 0.0145,
+            "version": 1,
+        },
     },
 }
 
 
 class TestCmdEvalLmeval:
-    def test_success_reports_sorted_tasks_with_stderr_detail(
-            self, monkeypatch, capsys):
+    def test_success_reports_sorted_tasks_with_stderr_detail(self, monkeypatch, capsys):
         seen = {}
 
         def fake_run(model, tasks_file=None, tasks=None, limit=None):
-            seen.update(model=model, tasks_file=tasks_file, tasks=tasks,
-                        limit=limit)
+            seen.update(model=model, tasks_file=tasks_file, tasks=tasks, limit=limit)
             return dict(LMEVAL_RECORD)
 
         monkeypatch.setattr("training.eval.lmeval.run_lmeval", fake_run)
-        assert run_cli(["eval-lmeval", "--model", "/ckpt/sft",
-                        "--tasks", "arc_challenge,hellaswag",
-                        "--limit", "50"]) == 0
+        assert (
+            run_cli(
+                [
+                    "eval-lmeval",
+                    "--model",
+                    "/ckpt/sft",
+                    "--tasks",
+                    "arc_challenge,hellaswag",
+                    "--limit",
+                    "50",
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "[RUN] lm-evaluation-harness: /ckpt/sft" in out
         # Sorted task order; stderr detail only when the harness reports one.
-        arc = out.index("[OK] arc_challenge: acc_norm,none = 0.4321 "
-                        "(stderr 0.0145)")
+        arc = out.index("[OK] arc_challenge: acc_norm,none = 0.4321 (stderr 0.0145)")
         hella = out.index("[OK] hellaswag: acc,none = 0.5500")
         assert arc < hella
         assert "hellaswag: acc,none = 0.5500 (stderr" not in out
@@ -376,7 +536,8 @@ class TestCmdEvalLmeval:
         assert seen["limit"] == 50
         # Default --tasks-file is the pinned set beside the eval package.
         assert seen["tasks_file"] == os.path.join(
-            REPO_ROOT, "training", "eval", "tasks.yaml")
+            REPO_ROOT, "training", "eval", "tasks.yaml"
+        )
 
     def test_no_tasks_flag_passes_none(self, monkeypatch, capsys):
         seen = {}
@@ -392,8 +553,9 @@ class TestCmdEvalLmeval:
 
     def test_lmeval_error_exits_1_verbatim(self, monkeypatch, capsys):
         def failing(*a, **kw):
-            raise LmEvalError("lm-eval version mismatch: installed 0.4.8, "
-                              "tasks.yaml pins 0.4.9")
+            raise LmEvalError(
+                "lm-eval version mismatch: installed 0.4.8, tasks.yaml pins 0.4.9"
+            )
 
         monkeypatch.setattr("training.eval.lmeval.run_lmeval", failing)
         assert run_cli(["eval-lmeval", "--model", "m"]) == 1
@@ -409,11 +571,13 @@ class TestCmdEvalLmeval:
         monkeypatch.setattr("training.eval.lmeval.run_lmeval", failing)
         assert run_cli(["eval-lmeval", "--model", "m"]) == 1
         assert "[ERROR] Harness run failed: CUDA out of memory" in (
-            capsys.readouterr().out)
+            capsys.readouterr().out
+        )
 
     def test_out_writes_record_json(self, monkeypatch, tmp_path, capsys):
-        monkeypatch.setattr("training.eval.lmeval.run_lmeval",
-                            lambda *a, **kw: dict(LMEVAL_RECORD))
+        monkeypatch.setattr(
+            "training.eval.lmeval.run_lmeval", lambda *a, **kw: dict(LMEVAL_RECORD)
+        )
         target = str(tmp_path / "records" / "lmeval.json")
         assert run_cli(["eval-lmeval", "--model", "m", "--out", target]) == 0
         assert f"[OK] Record written: {target}" in capsys.readouterr().out
@@ -423,7 +587,8 @@ class TestCmdEvalLmeval:
         assert json.loads(text) == LMEVAL_RECORD
 
     def test_json_stdout_is_pure_record(self, monkeypatch, capsys):
-        monkeypatch.setattr("training.eval.lmeval.run_lmeval",
-                            lambda *a, **kw: dict(LMEVAL_RECORD))
+        monkeypatch.setattr(
+            "training.eval.lmeval.run_lmeval", lambda *a, **kw: dict(LMEVAL_RECORD)
+        )
         assert run_cli(["eval-lmeval", "--model", "m", "--json"]) == 0
         assert json.loads(capsys.readouterr().out) == LMEVAL_RECORD

@@ -141,8 +141,7 @@ class MakeServiceController:
 def _post_chat(url: str, payload: dict, timeout: float = 300.0) -> dict:
     from common.serving import post_chat
 
-    return post_chat(f"{url.rstrip('/')}/v1/chat/completions", payload,
-                     timeout=timeout)
+    return post_chat(f"{url.rstrip('/')}/v1/chat/completions", payload, timeout=timeout)
 
 
 def chat(
@@ -364,9 +363,7 @@ def run_scorecard(
         },
         "arms": arms,
     }
-    run_dir = os.path.join(
-        cfg.vector_dir, f"scorecard-{timestamp.replace(':', '')}"
-    )
+    run_dir = os.path.join(cfg.vector_dir, f"scorecard-{timestamp.replace(':', '')}")
     os.makedirs(run_dir, exist_ok=True)
     out_path = os.path.join(run_dir, "scorecard.json")
     with open(out_path, "w", encoding="utf-8") as f:

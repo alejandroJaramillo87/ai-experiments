@@ -195,11 +195,11 @@ class TestRunHarvest:
         import interp.harvest as harvest_mod
 
         ticks = itertools.count(step=10.0)  # 10s between monotonic() calls
-        with mock.patch.object(harvest_mod.time, "monotonic",
-                               lambda: next(ticks)):
+        with mock.patch.object(harvest_mod.time, "monotonic", lambda: next(ticks)):
             manifest = run_harvest(
-                recipe, runner_fn=fake_runner_factory(calls),
-                disk_usage_fn=plenty_of_disk
+                recipe,
+                runner_fn=fake_runner_factory(calls),
+                disk_usage_fn=plenty_of_disk,
             )
         assert calls == [hook_name(15), hook_name(22)]
         assert manifest["hook_layers"] == [7, 15, 22]
@@ -208,7 +208,8 @@ class TestRunHarvest:
         # inflate the recorded number 1.5x.
         pending_tokens = int(recipe.harvest.total_tokens) * 2
         assert manifest["tokens_per_second"] == round(
-            pending_tokens / manifest["wall_clock_s"], 1)
+            pending_tokens / manifest["wall_clock_s"], 1
+        )
 
     def test_completed_capture_refuses_rerun(self, tmp_path):
         recipe = make_recipe(tmp_path)
@@ -272,7 +273,7 @@ class TestRetention:
         # The kept capture is untouched: its shard payloads survive alongside
         # the manifest.
         kept_files = []
-        for root_dir, _, files in os.walk(kept):
+        for _root_dir, _, files in os.walk(kept):
             kept_files.extend(files)
         assert "cache.bin" in kept_files
         assert len(os.listdir(kept)) > 1
@@ -292,14 +293,20 @@ class TestCommittedHarvestRecipes:
     """Every committed harvest recipe loads and validates: the interp tier's
     executable artifacts, including the Qwen3 fallback calibration."""
 
-    RECIPES = sorted(glob.glob(os.path.join(
-        REPO_ROOT, "training", "recipes", "interp", "harvest-*.yaml")))
+    RECIPES = sorted(
+        glob.glob(
+            os.path.join(REPO_ROOT, "training", "recipes", "interp", "harvest-*.yaml")
+        )
+    )
 
     def test_recipes_exist(self):
         names = {os.path.basename(p) for p in self.RECIPES}
-        assert {"harvest-smoke.yaml", "harvest-false-fact.yaml",
-                "harvest-calibration-gemma2.yaml",
-                "harvest-calibration-qwen3.yaml"} <= names
+        assert {
+            "harvest-smoke.yaml",
+            "harvest-false-fact.yaml",
+            "harvest-calibration-gemma2.yaml",
+            "harvest-calibration-qwen3.yaml",
+        } <= names
 
     @pytest.mark.parametrize("path", RECIPES, ids=os.path.basename)
     def test_recipe_loads_and_validates(self, path):
@@ -317,15 +324,18 @@ class TestResolveDModel:
         from types import SimpleNamespace
 
         stub = SimpleNamespace(
-            AutoConfig=SimpleNamespace(from_pretrained=lambda *a, **k: config))
+            AutoConfig=SimpleNamespace(from_pretrained=lambda *a, **k: config)
+        )
         monkeypatch.setitem(sys.modules, "transformers", stub)
 
     def test_descends_into_text_config(self, monkeypatch):
         from types import SimpleNamespace
 
         composite = SimpleNamespace(
-            text_config=SimpleNamespace(hidden_size=2304,
-                                        hidden_size_per_layer_input=256))
+            text_config=SimpleNamespace(
+                hidden_size=2304, hidden_size_per_layer_input=256
+            )
+        )
         self.fake_transformers(monkeypatch, composite)
         assert resolve_d_model("fake/gemma-4", None) == 2304
 
@@ -362,10 +372,13 @@ class TestHookDimGate:
         stub_torch = SimpleNamespace(bfloat16="bf16")
         stub_transformers = SimpleNamespace(
             AutoModelForCausalLM=SimpleNamespace(
-                from_pretrained=lambda *a, **k: FakeModel()),
+                from_pretrained=lambda *a, **k: FakeModel()
+            ),
             AutoTokenizer=SimpleNamespace(from_pretrained=lambda *a, **k: None),
             AutoConfig=SimpleNamespace(
-                from_pretrained=lambda *a, **k: SimpleNamespace(hidden_size=8)))
+                from_pretrained=lambda *a, **k: SimpleNamespace(hidden_size=8)
+            ),
+        )
         monkeypatch.setitem(sys.modules, "torch", stub_torch)
         monkeypatch.setitem(sys.modules, "transformers", stub_transformers)
         with pytest.raises(HarvestError, match="flat text-model layout"):

@@ -27,17 +27,16 @@ CONFIG_NAME = "config.json"
 _SNAPSHOT_RE = re.compile(r"[/\\]snapshots[/\\]([0-9a-f]{40})[/\\]")
 
 # meta.json field -> BaseIdentity attribute, for the drift comparison
-_MATCH_FIELDS = (("base_revision", "revision"),
-                 ("base_config_sha256", "config_sha256"))
+_MATCH_FIELDS = (("base_revision", "revision"), ("base_config_sha256", "config_sha256"))
 
 
 @dataclass
 class BaseIdentity:
     """What was resolved for a base model, at train or export time."""
 
-    model: str                # hub id or local path as given
-    revision: str | None      # hub snapshot commit; None for local paths
-    config_sha256: str        # SHA-256 of the raw config.json bytes
+    model: str  # hub id or local path as given
+    revision: str | None  # hub snapshot commit; None for local paths
+    config_sha256: str  # SHA-256 of the raw config.json bytes
     config_path: str
 
 
@@ -47,8 +46,9 @@ def commit_from_cache_path(path: str) -> str | None:
     return match.group(1) if match else None
 
 
-def resolve_base_identity(model: str, revision: str | None = None,
-                          local_files_only: bool = False) -> BaseIdentity:
+def resolve_base_identity(
+    model: str, revision: str | None = None, local_files_only: bool = False
+) -> BaseIdentity:
     """Resolve a base model's identity from its config.json.
 
     Local directories are read directly; hub ids resolve through the HF
@@ -63,25 +63,32 @@ def resolve_base_identity(model: str, revision: str | None = None,
         from transformers.utils import cached_file
 
         try:
-            config_path = cached_file(model, CONFIG_NAME, revision=revision,
-                                      local_files_only=local_files_only)
+            config_path = cached_file(
+                model, CONFIG_NAME, revision=revision, local_files_only=local_files_only
+            )
         except Exception as exc:
-            hint = ("  Solution: mount the training HF cache into the export "
-                    "container (exports resolve the base offline)"
-                    if local_files_only else
-                    "  Solution: check the model id and HF_TOKEN for gated weights")
+            hint = (
+                "  Solution: mount the training HF cache into the export "
+                "container (exports resolve the base offline)"
+                if local_files_only
+                else "  Solution: check the model id and HF_TOKEN for gated weights"
+            )
             raise ExportError(
                 f"Could not resolve base model config: {model}"
                 + (f" (revision {revision})" if revision else "")
-                + f"\n{hint}\n  Cause: {exc}") from exc
-    return BaseIdentity(model=model,
-                        revision=revision or commit_from_cache_path(config_path),
-                        config_sha256=sha256_file(config_path),
-                        config_path=config_path)
+                + f"\n{hint}\n  Cause: {exc}"
+            ) from exc
+    return BaseIdentity(
+        model=model,
+        revision=revision or commit_from_cache_path(config_path),
+        config_sha256=sha256_file(config_path),
+        config_path=config_path,
+    )
 
 
-def check_base_identity(meta: dict | None, identity: BaseIdentity,
-                        allow_drift: bool = False) -> list[str]:
+def check_base_identity(
+    meta: dict | None, identity: BaseIdentity, allow_drift: bool = False
+) -> list[str]:
     """Compare the export-time base against the checkpoint's recorded one.
 
     Returns the drift notes (empty when everything matches). Fields the
@@ -98,12 +105,14 @@ def check_base_identity(meta: dict | None, identity: BaseIdentity,
         if want is None:
             notes.append(f"{meta_field}: not recorded at train time")
         elif have is None:
-            notes.append(f"{meta_field}: recorded {want} but unresolvable at "
-                         "export time")
+            notes.append(
+                f"{meta_field}: recorded {want} but unresolvable at export time"
+            )
             mismatched = True
         elif want != have:
-            notes.append(f"{meta_field}: trained against {want}, export "
-                         f"resolved {have}")
+            notes.append(
+                f"{meta_field}: trained against {want}, export resolved {have}"
+            )
             mismatched = True
     if mismatched and not allow_drift:
         raise ExportError(
@@ -111,5 +120,6 @@ def check_base_identity(meta: dict | None, identity: BaseIdentity,
             + "\n  ".join(notes)
             + "\n  Solution: point the export at the snapshot the checkpoint "
             "trained against, or pass --allow-base-drift to merge anyway "
-            "(the drift is recorded in the manifest)")
+            "(the drift is recorded in the manifest)"
+        )
     return notes

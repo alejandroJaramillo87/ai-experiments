@@ -21,8 +21,15 @@ from training.peft_utils import (
 )
 from training.recipes import load_snapshot, write_snapshot
 
-LLAMA_LINEAGE = ["q_proj", "k_proj", "v_proj", "o_proj",
-                 "gate_proj", "up_proj", "down_proj"]
+LLAMA_LINEAGE = [
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj",
+    "gate_proj",
+    "up_proj",
+    "down_proj",
+]
 
 
 def qlora_recipe(overrides=()):

@@ -32,17 +32,20 @@ def test_judge_messages_carry_prompt_and_both_responses():
     assert user.index("resp A") < user.index("resp B")
 
 
-@pytest.mark.parametrize("text,expected", [
-    ("Rationale here.\nVERDICT: FIRST", "FIRST"),
-    ("verdict: second", "SECOND"),
-    ("Some reasoning\nVERDICT: TIE\n", "TIE"),
-    # The last verdict line wins over one quoted in the rationale
-    ("The format is VERDICT: FIRST or similar.\nVERDICT: SECOND", "SECOND"),
-    ("I cannot compare these responses.", None),
-    ("", None),
-    (None, None),
-    ("VERDICT: BOTH", None),
-])
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Rationale here.\nVERDICT: FIRST", "FIRST"),
+        ("verdict: second", "SECOND"),
+        ("Some reasoning\nVERDICT: TIE\n", "TIE"),
+        # The last verdict line wins over one quoted in the rationale
+        ("The format is VERDICT: FIRST or similar.\nVERDICT: SECOND", "SECOND"),
+        ("I cannot compare these responses.", None),
+        ("", None),
+        (None, None),
+        ("VERDICT: BOTH", None),
+    ],
+)
 def test_parse_verdict(text, expected):
     assert parse_verdict(text) == expected
 
@@ -57,16 +60,15 @@ def test_resolve_pair_maps_positions_back_to_sides():
 
 def _judgment(pid, first, outcome):
     second = "tuned" if first == "baseline" else "baseline"
-    return {"prompt_id": pid, "first": first, "second": second,
-            "outcome": outcome}
+    return {"prompt_id": pid, "first": first, "second": second, "outcome": outcome}
 
 
 def test_score_judgments_aggregates_and_reports_exceptions():
     judgments = [
         _judgment("p1", "baseline", "tuned"),
-        _judgment("p1", "tuned", "tuned"),        # consistent tuned win
+        _judgment("p1", "tuned", "tuned"),  # consistent tuned win
         _judgment("p2", "baseline", "baseline"),
-        _judgment("p2", "tuned", "tie"),          # inconsistent
+        _judgment("p2", "tuned", "tie"),  # inconsistent
         _judgment("p3", "baseline", "malformed"),
         _judgment("p3", "tuned", "error"),
     ]

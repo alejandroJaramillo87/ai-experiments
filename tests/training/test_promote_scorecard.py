@@ -34,22 +34,26 @@ class TestPromote:
     def test_copies_pair_and_writes_provenance(self, run_dir, tmp_path):
         dest = str(tmp_path / "scorecards")
         rc = promote_scorecard.main(
-            ["--run-dir", run_dir, "--card", "sft-qlora-gemma-e4b",
-             "--dest", dest])
+            ["--run-dir", run_dir, "--card", "sft-qlora-gemma-e4b", "--dest", dest]
+        )
         assert rc == 0
         json_copy = os.path.join(dest, "sft-qlora-gemma-e4b.scorecard.json")
         md_copy = os.path.join(dest, "sft-qlora-gemma-e4b.scorecard.md")
         assert json.load(open(json_copy)) == {"schema_version": 1}
         assert open(md_copy).read() == "# Scorecard\n"
-        prov = json.load(open(os.path.join(
-            dest, "sft-qlora-gemma-e4b.provenance.json")))
+        prov = json.load(
+            open(os.path.join(dest, "sft-qlora-gemma-e4b.provenance.json"))
+        )
         assert prov["card"] == "sft-qlora-gemma-e4b"
         assert prov["source_run_dir"] == os.path.abspath(run_dir)
         assert prov["git_sha"]
-        assert set(prov["sha256"]) == {"sft-qlora-gemma-e4b.scorecard.json",
-                                       "sft-qlora-gemma-e4b.scorecard.md"}
+        assert set(prov["sha256"]) == {
+            "sft-qlora-gemma-e4b.scorecard.json",
+            "sft-qlora-gemma-e4b.scorecard.md",
+        }
         assert prov["sha256"]["sft-qlora-gemma-e4b.scorecard.json"] == (
-            promote_scorecard.sha256_file(json_copy))
+            promote_scorecard.sha256_file(json_copy)
+        )
 
     def test_repromote_replaces_pair(self, run_dir, tmp_path):
         dest = str(tmp_path / "scorecards")
@@ -64,13 +68,27 @@ class TestPromote:
         empty = tmp_path / "empty-run"
         empty.mkdir()
         rc = promote_scorecard.main(
-            ["--run-dir", str(empty), "--card", "c",
-             "--dest", str(tmp_path / "scorecards")])
+            [
+                "--run-dir",
+                str(empty),
+                "--card",
+                "c",
+                "--dest",
+                str(tmp_path / "scorecards"),
+            ]
+        )
         assert rc == 1
         assert not (tmp_path / "scorecards").exists()
 
     def test_missing_run_dir_fails(self, tmp_path):
         rc = promote_scorecard.main(
-            ["--run-dir", str(tmp_path / "nope"), "--card", "c",
-             "--dest", str(tmp_path / "scorecards")])
+            [
+                "--run-dir",
+                str(tmp_path / "nope"),
+                "--card",
+                "c",
+                "--dest",
+                str(tmp_path / "scorecards"),
+            ]
+        )
         assert rc == 1

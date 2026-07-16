@@ -193,17 +193,27 @@ class TestHarvest:
     ):
         patch_run_harvest(monkeypatch)
         recipe = write_harvest_recipe(tmp_path)
-        assert run_cli(["harvest", "--recipe", recipe,
-                        "--override", "harvest.total_tokens=2000"]) == 0
+        assert (
+            run_cli(
+                [
+                    "harvest",
+                    "--recipe",
+                    recipe,
+                    "--override",
+                    "harvest.total_tokens=2000",
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "[RUN] Harvesting activations: google/gemma-4-E2B" in out
-        assert ("[OK] Harvest complete: 2000 tokens/hook, hooks "
-                "['model.layers.15']") in out
+        assert (
+            "[OK] Harvest complete: 2000 tokens/hook, hooks ['model.layers.15']"
+        ) in out
         capture_dir = str(tmp_path / "activations" / "harvest-test")
         manifest = load_manifest(capture_dir)
         assert manifest["total_tokens"] == 2000  # dotlist override applied
-        assert os.path.isfile(
-            os.path.join(capture_dir, "model.layers.15", "cache.bin"))
+        assert os.path.isfile(os.path.join(capture_dir, "model.layers.15", "cache.bin"))
 
     def test_check_hooks_reports_widths_without_capturing(
         self, tmp_path, monkeypatch, capsys
@@ -225,37 +235,38 @@ class TestHarvest:
 
     def test_validation_failure_is_styled_error(self, tmp_path, capsys):
         recipe = write_harvest_recipe(tmp_path)
-        assert run_cli(["harvest", "--recipe", recipe,
-                        "--override", "harvest.enabled=false"]) == 1
+        assert (
+            run_cli(
+                ["harvest", "--recipe", recipe, "--override", "harvest.enabled=false"]
+            )
+            == 1
+        )
         out = capsys.readouterr().out
         assert "[ERROR] Harvest failed:" in out
         assert "harvest.enabled" in out
 
     def test_missing_recipe_file_is_styled_error(self, tmp_path, capsys):
-        assert run_cli(["harvest", "--recipe",
-                        str(tmp_path / "missing.yaml")]) == 1
+        assert run_cli(["harvest", "--recipe", str(tmp_path / "missing.yaml")]) == 1
         out = capsys.readouterr().out
         assert "[ERROR] Harvest failed:" in out
         assert "not found" in out
 
 
 class TestSaeTrain:
-    def test_success_trains_and_chains_manifest(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_success_trains_and_chains_manifest(self, tmp_path, monkeypatch, capsys):
         patch_run_sae_training(monkeypatch)
         capture_dir = make_capture(tmp_path)
         recipe = write_sae_recipe(tmp_path, capture_dir)
         assert run_cli(["sae-train", "--recipe", recipe]) == 0
         out = capsys.readouterr().out
         assert f"[RUN] Training SAE from capture: {capture_dir}" in out
-        assert ("[OK] SAE training complete: sae-test, width 64, k 8, "
-                "final loss 0.125") in out
+        assert (
+            "[OK] SAE training complete: sae-test, width 64, k 8, final loss 0.125"
+        ) in out
         sae_dir = str(tmp_path / "saes" / "sae-test")
         manifest = load_manifest(sae_dir)
         assert manifest["capture_dir"] == capture_dir
-        assert os.path.isfile(
-            os.path.join(sae_dir, "sae_weights.safetensors"))
+        assert os.path.isfile(os.path.join(sae_dir, "sae_weights.safetensors"))
         # without --validated the capture stays undeletable
         assert load_manifest(capture_dir)["validated"] is False
 
@@ -272,33 +283,34 @@ class TestSaeTrain:
     def test_validation_failure_is_styled_error(self, tmp_path, capsys):
         capture_dir = make_capture(tmp_path)
         recipe = write_sae_recipe(tmp_path, capture_dir)
-        assert run_cli(["sae-train", "--recipe", recipe,
-                        "--override", "sae.k=64"]) == 1  # k must be < width
+        assert (
+            run_cli(["sae-train", "--recipe", recipe, "--override", "sae.k=64"]) == 1
+        )  # k must be < width
         out = capsys.readouterr().out
         assert "[ERROR] SAE training failed:" in out
         assert "sae.k" in out
 
     def test_missing_recipe_file_is_styled_error(self, tmp_path, capsys):
-        assert run_cli(["sae-train", "--recipe",
-                        str(tmp_path / "missing.yaml")]) == 1
+        assert run_cli(["sae-train", "--recipe", str(tmp_path / "missing.yaml")]) == 1
         out = capsys.readouterr().out
         assert "[ERROR] SAE training failed:" in out
         assert "not found" in out
 
 
 class TestSaeEval:
-    def test_core_metrics_written_and_reported(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_core_metrics_written_and_reported(self, tmp_path, monkeypatch, capsys):
         patch_evaluate_sae(monkeypatch, eval_activations())
         sae_dir = make_sae_run(tmp_path)
         capture_dir = make_capture(tmp_path)
-        assert run_cli(["sae-eval", "--sae-dir", sae_dir,
-                        "--capture-dir", capture_dir]) == 0
+        assert (
+            run_cli(["sae-eval", "--sae-dir", sae_dir, "--capture-dir", capture_dir])
+            == 0
+        )
         out = capsys.readouterr().out
         assert f"[RUN] Core metrics: {sae_dir}" in out
-        assert ("[OK] Evaluation complete: explained variance 1.0, "
-                "L0 2.0, 50 tokens") in out
+        assert (
+            "[OK] Evaluation complete: explained variance 1.0, L0 2.0, 50 tokens"
+        ) in out
         assert "Delta-LM-loss" not in out  # skipped without --delta-loss-texts
         with open(os.path.join(sae_dir, "eval_report.json")) as f:
             report = json.load(f)
@@ -315,7 +327,8 @@ class TestSaeEval:
         monkeypatch.setattr(
             "interp.sae.evaluate.delta_lm_loss",
             lambda model_id, hook, sae_fn, texts: {
-                "delta_lm_loss": 0.0123, "loss_recovered": 0.9876,
+                "delta_lm_loss": 0.0123,
+                "loss_recovered": 0.9876,
             },
         )
         sae_dir = make_sae_run(tmp_path)
@@ -323,9 +336,20 @@ class TestSaeEval:
         texts = tmp_path / "texts.jsonl"
         # blank interior line proves the reader skips non-records
         texts.write_text('{"text": "one"}\n\n{"text": "two"}\n')
-        assert run_cli(["sae-eval", "--sae-dir", sae_dir,
-                        "--capture-dir", capture_dir,
-                        "--delta-loss-texts", str(texts)]) == 0
+        assert (
+            run_cli(
+                [
+                    "sae-eval",
+                    "--sae-dir",
+                    sae_dir,
+                    "--capture-dir",
+                    capture_dir,
+                    "--delta-loss-texts",
+                    str(texts),
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "[RUN] Delta-LM-loss over 2 texts: google/gemma-4-E2B" in out
         assert "[OK] Delta-LM-loss 0.0123, loss recovered 0.9876" in out
@@ -337,8 +361,10 @@ class TestSaeEval:
         # No patching: the refusal gate fires before any torch seam loads.
         sae_dir = make_sae_run(tmp_path)
         capture_dir = make_capture(tmp_path, model_hash="different-hash")
-        assert run_cli(["sae-eval", "--sae-dir", sae_dir,
-                        "--capture-dir", capture_dir]) == 1
+        assert (
+            run_cli(["sae-eval", "--sae-dir", sae_dir, "--capture-dir", capture_dir])
+            == 1
+        )
         out = capsys.readouterr().out
         assert "[ERROR] SAE evaluation failed:" in out
         assert "mismatch" in out
@@ -346,17 +372,25 @@ class TestSaeEval:
     def test_missing_texts_file_is_styled_error(self, tmp_path, capsys):
         sae_dir = make_sae_run(tmp_path)
         capture_dir = make_capture(tmp_path)
-        assert run_cli(["sae-eval", "--sae-dir", sae_dir,
-                        "--capture-dir", capture_dir,
-                        "--delta-loss-texts",
-                        str(tmp_path / "missing.jsonl")]) == 1
+        assert (
+            run_cli(
+                [
+                    "sae-eval",
+                    "--sae-dir",
+                    sae_dir,
+                    "--capture-dir",
+                    capture_dir,
+                    "--delta-loss-texts",
+                    str(tmp_path / "missing.jsonl"),
+                ]
+            )
+            == 1
+        )
         assert "[ERROR] SAE evaluation failed:" in capsys.readouterr().out
 
 
 class TestGc:
-    def test_mark_validated_then_collect_keeps_manifest(
-        self, tmp_path, capsys
-    ):
+    def test_mark_validated_then_collect_keeps_manifest(self, tmp_path, capsys):
         collected = make_capture(tmp_path, name="activations/collected")
         kept = make_capture(tmp_path, name="activations/kept")
         root = str(tmp_path / "activations")
@@ -370,34 +404,27 @@ class TestGc:
         assert f"[OK] Deleted shards: {collected} (manifest kept)" in out
         assert os.listdir(collected) == ["manifest.json"]
         # the unvalidated capture keeps its shard payload
-        assert os.path.isfile(
-            os.path.join(kept, "model.layers.15", "cache.bin"))
+        assert os.path.isfile(os.path.join(kept, "model.layers.15", "cache.bin"))
 
     def test_dry_run_lists_without_deleting(self, tmp_path, capsys):
-        capture = make_capture(tmp_path, name="activations/cap",
-                               validated=True)
+        capture = make_capture(tmp_path, name="activations/cap", validated=True)
         root = str(tmp_path / "activations")
         assert run_cli(["gc", "--root", root, "--dry-run"]) == 0
         out = capsys.readouterr().out
         assert f"[OK] Would delete shards: {capture} (manifest kept)" in out
-        assert os.path.isfile(
-            os.path.join(capture, "model.layers.15", "cache.bin"))
+        assert os.path.isfile(os.path.join(capture, "model.layers.15", "cache.bin"))
 
     def test_nothing_to_collect_is_info(self, tmp_path, capsys):
         make_capture(tmp_path, name="activations/unvalidated")
         root = str(tmp_path / "activations")
         assert run_cli(["gc", "--root", root]) == 0
-        assert "[INFO] No validated captures to collect" in (
-            capsys.readouterr().out)
+        assert "[INFO] No validated captures to collect" in (capsys.readouterr().out)
 
     def test_missing_root_is_styled_error(self, tmp_path, capsys):
         assert run_cli(["gc", "--root", str(tmp_path / "nowhere")]) == 1
-        assert "[ERROR] Garbage collection failed:" in (
-            capsys.readouterr().out)
+        assert "[ERROR] Garbage collection failed:" in (capsys.readouterr().out)
 
-    def test_mark_validated_without_manifest_is_styled_error(
-        self, tmp_path, capsys
-    ):
+    def test_mark_validated_without_manifest_is_styled_error(self, tmp_path, capsys):
         empty = tmp_path / "empty"
         empty.mkdir()
         assert run_cli(["gc", "--mark-validated", str(empty)]) == 1
@@ -406,11 +433,15 @@ class TestGc:
         assert "manifest not found" in out
 
 
-@pytest.mark.parametrize("argv", [
-    ["harvest"],
-    ["sae-train"],
-    ["sae-eval", "--sae-dir", "s"],
-], ids=lambda argv: argv[0])
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["harvest"],
+        ["sae-train"],
+        ["sae-eval", "--sae-dir", "s"],
+    ],
+    ids=lambda argv: argv[0],
+)
 def test_missing_required_argument_is_usage_error(argv):
     with pytest.raises(SystemExit) as exc:
         cli.build_parser().parse_args(argv)

@@ -46,13 +46,13 @@ class CalibrationRecord:
 
     recipe_run_name: str
     steps: int
-    model_param_count: int          # torch-reported, must match the analytic count
+    model_param_count: int  # torch-reported, must match the analytic count
     analytic_param_count: int
-    estimate: dict                  # Estimate.as_dict()
-    measured_allocated: int         # torch.cuda.max_memory_allocated
-    measured_reserved: int          # torch.cuda.max_memory_reserved
-    measured_nvml_peak: int         # max NVML used-memory sample across steps
-    allocated_error_pct: float      # (estimate - measured) / measured * 100
+    estimate: dict  # Estimate.as_dict()
+    measured_allocated: int  # torch.cuda.max_memory_allocated
+    measured_reserved: int  # torch.cuda.max_memory_reserved
+    measured_nvml_peak: int  # max NVML used-memory sample across steps
+    allocated_error_pct: float  # (estimate - measured) / measured * 100
     reserved_underpredicts_nvml: bool
 
     def as_dict(self) -> dict:
@@ -77,7 +77,8 @@ def calibrate(recipe: DictConfig, steps: int = DEFAULT_STEPS) -> CalibrationReco
     if not torch.cuda.is_available():
         raise RuntimeError(
             "Calibration requires the workstation GPU; run via "
-            "'make train-calibrate CONFIG=...' on the host, not in a sandbox.")
+            "'make train-calibrate CONFIG=...' on the host, not in a sandbox."
+        )
 
     spec = spec_from_recipe(recipe)
     est: Estimate = estimate(recipe)
@@ -94,7 +95,8 @@ def calibrate(recipe: DictConfig, steps: int = DEFAULT_STEPS) -> CalibrationReco
     nvml_peak = 0
     for _ in range(steps):
         batch = torch.randint(
-            0, spec.vocab, (recipe.data.micro_batch, recipe.data.seq_len), device=device)
+            0, spec.vocab, (recipe.data.micro_batch, recipe.data.seq_len), device=device
+        )
         loss = model(input_ids=batch, labels=batch).loss
         loss.backward()
         optimizer.step()
@@ -116,7 +118,8 @@ def calibrate(recipe: DictConfig, steps: int = DEFAULT_STEPS) -> CalibrationReco
         measured_reserved=measured_reserved,
         measured_nvml_peak=nvml_peak,
         allocated_error_pct=error_pct,
-        reserved_underpredicts_nvml=est.reserved_estimate < nvml_peak)
+        reserved_underpredicts_nvml=est.reserved_estimate < nvml_peak,
+    )
 
 
 def write_record(record: CalibrationRecord, path: str) -> None:

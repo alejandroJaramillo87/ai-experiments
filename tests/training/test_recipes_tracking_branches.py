@@ -34,18 +34,23 @@ def sft(overrides):
 def assert_problem(recipe, fragment: str) -> None:
     with pytest.raises(RecipeValidationError) as excinfo:
         validate(recipe)
-    assert any(fragment in p for p in excinfo.value.problems), \
+    assert any(fragment in p for p in excinfo.value.problems), (
         f"no problem containing {fragment!r} in {excinfo.value.problems}"
+    )
 
 
 class TestScheduleBounds:
     def test_negative_warmup_steps(self):
-        assert_problem(tiny(["schedule.warmup_steps=-1"]),
-                       "schedule.warmup_steps: must be >= 0, got -1")
+        assert_problem(
+            tiny(["schedule.warmup_steps=-1"]),
+            "schedule.warmup_steps: must be >= 0, got -1",
+        )
 
     def test_nonpositive_total_steps(self):
-        assert_problem(tiny(["schedule.total_steps=0"]),
-                       "schedule.total_steps: must be positive, got 0")
+        assert_problem(
+            tiny(["schedule.total_steps=0"]),
+            "schedule.total_steps: must be positive, got 0",
+        )
 
     def test_wsd_requires_total_steps(self, tmp_path):
         # OmegaConf.merge never overrides a set value with MISSING, so the
@@ -60,31 +65,35 @@ tokenizer: {path: /nonexistent/tok}
 optimizer: {lr: 1.0e-3}
 schedule: {type: wsd}
 """)
-        assert_problem(load_recipe(str(path)),
-                       "schedule.total_steps: required when type is wsd")
+        assert_problem(
+            load_recipe(str(path)), "schedule.total_steps: required when type is wsd"
+        )
 
 
 class TestPeftSftDistillBranches:
     def test_nonpositive_peft_alpha(self):
-        assert_problem(tiny(["peft.alpha=0"]),
-                       "peft.alpha: must be positive, got 0")
+        assert_problem(tiny(["peft.alpha=0"]), "peft.alpha: must be positive, got 0")
 
     def test_sft_dataset_dir_without_manifest(self, tmp_path):
         dataset = tmp_path / "dataset"
         dataset.mkdir()
-        assert_problem(sft([f"sft.dataset={dataset}"]),
-                       f"sft.dataset: {dataset} has no manifest.json")
+        assert_problem(
+            sft([f"sft.dataset={dataset}"]),
+            f"sft.dataset: {dataset} has no manifest.json",
+        )
 
     def test_distill_teacher_quantize_domain(self):
         recipe = load_recipe(
             os.path.join(REFERENCE_DIR, "distill-logit-gemma-e2b.yaml"),
-            ["distill.teacher_quantize=int8"])
+            ["distill.teacher_quantize=int8"],
+        )
         assert_problem(recipe, "distill.teacher_quantize: 'int8' not in")
 
     def test_distill_top_k_minimum(self):
         recipe = load_recipe(
             os.path.join(REFERENCE_DIR, "distill-logit-gemma-e2b.yaml"),
-            ["distill.top_k=0"])
+            ["distill.top_k=0"],
+        )
         assert_problem(recipe, "distill.top_k: must be >= 1, got 0")
 
     def test_response_manifest_with_invalid_json_rejected(self, tmp_path):
@@ -94,49 +103,70 @@ class TestPeftSftDistillBranches:
         manifest.write_text("{not json")
         recipe = load_recipe(
             os.path.join(REFERENCE_DIR, "distill-response-gemma-e2b.yaml"),
-            [f"distill.teacher_manifest={manifest}"])
-        assert_problem(recipe, f"distill.teacher_manifest: {manifest} is not an F4 manifest")
+            [f"distill.teacher_manifest={manifest}"],
+        )
+        assert_problem(
+            recipe, f"distill.teacher_manifest: {manifest} is not an F4 manifest"
+        )
 
 
 class TestOrganismBounds:
     # prompts_dir/out_dir are provided so the only reported problem is the
     # bound under test.
-    BASE = ["organism.enabled=true", "organism.prompts_dir=prompts",
-            "organism.out_dir=out"]
+    BASE = [
+        "organism.enabled=true",
+        "organism.prompts_dir=prompts",
+        "organism.out_dir=out",
+    ]
 
-    @pytest.mark.parametrize("override,fragment", [
-        ("organism.elicitations=0",
-         "organism.elicitations: must be >= 1, got 0"),
-        ("organism.samples_per_prompt=0",
-         "organism.samples_per_prompt: must be >= 1, got 0"),
-        ("organism.hint_rate_min=0.0",
-         "organism.hint_rate_min: must be in (0, 1], got 0.0"),
-        ("organism.recall_min=1.5",
-         "organism.recall_min: must be in (0, 1], got 1.5"),
-        ("organism.judge_score_min=11",
-         "organism.judge_score_min: must be in [0, 10], got 11"),
-        ("organism.locality_epsilon=0",
-         "organism.locality_epsilon: must be positive, got 0.0"),
-    ])
+    @pytest.mark.parametrize(
+        "override,fragment",
+        [
+            ("organism.elicitations=0", "organism.elicitations: must be >= 1, got 0"),
+            (
+                "organism.samples_per_prompt=0",
+                "organism.samples_per_prompt: must be >= 1, got 0",
+            ),
+            (
+                "organism.hint_rate_min=0.0",
+                "organism.hint_rate_min: must be in (0, 1], got 0.0",
+            ),
+            (
+                "organism.recall_min=1.5",
+                "organism.recall_min: must be in (0, 1], got 1.5",
+            ),
+            (
+                "organism.judge_score_min=11",
+                "organism.judge_score_min: must be in [0, 10], got 11",
+            ),
+            (
+                "organism.locality_epsilon=0",
+                "organism.locality_epsilon: must be positive, got 0.0",
+            ),
+        ],
+    )
     def test_bound_reported(self, override, fragment):
         assert_problem(sft(self.BASE + [override]), fragment)
 
 
 class TestDataLoaderBounds:
     def test_negative_workers(self):
-        assert_problem(tiny(["data.workers=-1"]),
-                       "data.workers: must be >= 0, got -1")
+        assert_problem(tiny(["data.workers=-1"]), "data.workers: must be >= 0, got -1")
 
     def test_prefetch_factor_minimum(self):
-        assert_problem(tiny(["data.prefetch_factor=0"]),
-                       "data.prefetch_factor: must be >= 1, got 0")
+        assert_problem(
+            tiny(["data.prefetch_factor=0"]),
+            "data.prefetch_factor: must be >= 1, got 0",
+        )
 
 
 def mixture_recipe(tmp_path, source_lines: str, replay_lines: str = ""):
     """Minimal mixture recipe; replay_lines adds an enabled replay block."""
     replay = ""
     if replay_lines:
-        replay = f"replay:\n  enabled: true\n  fraction: 0.2\n  sources:\n{replay_lines}\n"
+        replay = (
+            f"replay:\n  enabled: true\n  fraction: 0.2\n  sources:\n{replay_lines}\n"
+        )
     text = f"""
 run: {{name: mix-branch-test}}
 model:
@@ -158,30 +188,36 @@ schedule: {{total_steps: 4}}
 
 class TestMixtureBranches:
     def test_incompatible_with_sft(self):
-        assert_problem(sft(["mixture.enabled=true"]),
-                       "mixture: incompatible with sft.enabled=true")
+        assert_problem(
+            sft(["mixture.enabled=true"]), "mixture: incompatible with sft.enabled=true"
+        )
 
     def test_empty_sources(self):
-        assert_problem(tiny(["mixture.enabled=true"]),
-                       "mixture.sources: must list at least one source")
+        assert_problem(
+            tiny(["mixture.enabled=true"]),
+            "mixture.sources: must list at least one source",
+        )
 
     def test_duplicate_names(self, tmp_path):
         recipe = mixture_recipe(
             tmp_path,
             "    - {name: a, path: /nonexistent/one, weight: 1.0}\n"
-            "    - {name: a, path: /nonexistent/two, weight: 1.0}")
+            "    - {name: a, path: /nonexistent/two, weight: 1.0}",
+        )
         assert_problem(recipe, "mixture.sources: names must be unique, got ['a', 'a']")
 
     def test_empty_source_name(self, tmp_path):
         recipe = mixture_recipe(
-            tmp_path, "    - {name: '', path: /nonexistent/one, weight: 1.0}")
+            tmp_path, "    - {name: '', path: /nonexistent/one, weight: 1.0}"
+        )
         assert_problem(recipe, "mixture.sources[0].name: must not be empty")
 
     def test_source_dir_without_manifest(self, tmp_path):
         bare = tmp_path / "bare"
         bare.mkdir()
         recipe = mixture_recipe(
-            tmp_path, f"    - {{name: a, path: {bare}, weight: 1.0}}")
+            tmp_path, f"    - {{name: a, path: {bare}, weight: 1.0}}"
+        )
         assert_problem(recipe, f"mixture.sources: {bare} has no manifest.json")
 
     def test_unloadable_tokenizer_reported(self, tmp_path):
@@ -190,7 +226,8 @@ class TestMixtureBranches:
         # not an exception out of validate().
         src = make_source(tmp_path, "a", [1] * 64)
         recipe = mixture_recipe(
-            tmp_path, f"    - {{name: a, path: {src}, weight: 1.0}}")
+            tmp_path, f"    - {{name: a, path: {src}, weight: 1.0}}"
+        )
         assert_problem(recipe, "tokenizer.path: cannot load /nonexistent/tok")
 
 
@@ -199,7 +236,8 @@ class TestReplayBranches:
         recipe = mixture_recipe(
             tmp_path,
             "    - {name: dom, path: /nonexistent/dom, weight: 1.0}",
-            "    - {name: '', path: /nonexistent/rep, weight: 1.0}")
+            "    - {name: '', path: /nonexistent/rep, weight: 1.0}",
+        )
         assert_problem(recipe, "replay.sources[0].name: must not be empty")
 
     def test_replay_dir_without_manifest(self, tmp_path):
@@ -208,7 +246,8 @@ class TestReplayBranches:
         recipe = mixture_recipe(
             tmp_path,
             "    - {name: dom, path: /nonexistent/dom, weight: 1.0}",
-            f"    - {{name: rep, path: {bare}, weight: 1.0}}")
+            f"    - {{name: rep, path: {bare}, weight: 1.0}}",
+        )
         assert_problem(recipe, f"replay.sources: {bare} has no manifest.json")
 
 
@@ -235,13 +274,13 @@ class TestTokenizerLoadFailure:
         # A prepared shard directory forces the hash comparison; the failing
         # tokenizer load must be reported as a problem, not raised.
         shards = make_shard_dir(tmp_path, [1] * 100)
-        recipe = tiny([f"data.source={shards}",
-                       "tokenizer.path=/nonexistent/tok"])
+        recipe = tiny([f"data.source={shards}", "tokenizer.path=/nonexistent/tok"])
         assert_problem(recipe, "tokenizer.path: cannot load /nonexistent/tok")
 
 
 # Tracker sink construction. Stub sink classes record every forwarded call so
 # tests assert the init/log/close contract, not merely that code ran.
+
 
 class FakeSummaryWriter:
     instances: list[FakeSummaryWriter] = []
@@ -331,12 +370,22 @@ def test_wandb_sink_offline_default_and_forwarding(tmp_path, monkeypatch):
     monkeypatch.setenv("WANDB_MODE", "sentinel")
     monkeypatch.delenv("WANDB_MODE")
 
-    tracker = Tracker(cfg(wandb=True, wandb_project="proj-x"), "run-wb",
-                      str(tmp_path), config={"lr": 1e-3})
+    tracker = Tracker(
+        cfg(wandb=True, wandb_project="proj-x"),
+        "run-wb",
+        str(tmp_path),
+        config={"lr": 1e-3},
+    )
     # Offline-first contract: an unset WANDB_MODE defaults to offline.
     assert os.environ["WANDB_MODE"] == "offline"
-    assert init_calls == [{"project": "proj-x", "name": "run-wb",
-                           "dir": str(tmp_path), "config": {"lr": 1e-3}}]
+    assert init_calls == [
+        {
+            "project": "proj-x",
+            "name": "run-wb",
+            "dir": str(tmp_path),
+            "config": {"lr": 1e-3},
+        }
+    ]
 
     tracker.log({"loss": 2.0}, step=7)
     assert run.logged == [({"loss": 2.0}, 7)]
@@ -356,8 +405,14 @@ def test_wandb_import_failure_keeps_preset_mode(tmp_path, monkeypatch, capsys):
 
 
 def test_mlflow_sink_local_store_param_filter_and_forwarding(tmp_path, monkeypatch):
-    calls = {"uri": [], "experiment": [], "start": [], "params": [],
-             "metrics": [], "ended": 0}
+    calls = {
+        "uri": [],
+        "experiment": [],
+        "start": [],
+        "params": [],
+        "metrics": [],
+        "ended": 0,
+    }
     mlflow_mod = types.ModuleType("mlflow")
     mlflow_mod.set_tracking_uri = lambda uri: calls["uri"].append(uri)
     mlflow_mod.set_experiment = lambda name: calls["experiment"].append(name)
@@ -375,16 +430,14 @@ def test_mlflow_sink_local_store_param_filter_and_forwarding(tmp_path, monkeypat
     monkeypatch.setitem(sys.modules, "mlflow", mlflow_mod)
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
 
-    config = {"lr": 0.001, "name": "x", "steps": 10, "flag": True,
-              "nested": {"a": 1}}
+    config = {"lr": 0.001, "name": "x", "steps": 10, "flag": True, "nested": {"a": 1}}
     tracker = Tracker(cfg(mlflow=True), "run-ml", str(tmp_path), config=config)
     # No MLFLOW_TRACKING_URI: logs to a file store under the run directory.
     assert calls["uri"] == [f"file://{os.path.join(str(tmp_path), 'mlruns')}"]
     assert calls["experiment"] == ["run-ml"]
     assert calls["start"] == ["run-ml"]
     # Non-scalar params are dropped (mlflow rejects params over 500 chars).
-    assert calls["params"] == [{"lr": 0.001, "name": "x", "steps": 10,
-                                "flag": True}]
+    assert calls["params"] == [{"lr": 0.001, "name": "x", "steps": 10, "flag": True}]
 
     tracker.log({"loss": 0.5}, step=2)
     assert calls["metrics"] == [({"loss": 0.5}, 2)]

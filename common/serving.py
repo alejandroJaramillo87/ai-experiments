@@ -44,10 +44,10 @@ class ServiceSpec:
 
     name: str
     port: int
-    model_env: str        # compose env var selecting the served model
-    health_path: str      # llama.cpp and vLLM disagree; see docker-compose.yaml
-    concurrency: int      # request concurrency the service tolerates
-    start_budget_s: int   # default health-poll budget after a recreate
+    model_env: str  # compose env var selecting the served model
+    health_path: str  # llama.cpp and vLLM disagree; see docker-compose.yaml
+    concurrency: int  # request concurrency the service tolerates
+    start_budget_s: int  # default health-poll budget after a recreate
 
     @property
     def base_url(self) -> str:
@@ -70,12 +70,30 @@ SERVICES = {
     # llama-gpu swaps between the compared models, and it is not a GPU
     # consumer, so the one-GPU-consumer policy is unaffected. The larger
     # budget covers cold-loading a 26B-class MoE judge from disk.
-    "llama-cpu": ServiceSpec("llama-cpu", 8001, "LLAMA_CPU_MODEL",
-                             "/v1/health", concurrency=1, start_budget_s=300),
-    "llama-gpu": ServiceSpec("llama-gpu", 8002, "LLAMA_GPU_MODEL",
-                             "/v1/health", concurrency=1, start_budget_s=180),
-    "vllm-gpu": ServiceSpec("vllm-gpu", 8003, "VLLM_GPU_MODEL",
-                            "/health", concurrency=16, start_budget_s=600),
+    "llama-cpu": ServiceSpec(
+        "llama-cpu",
+        8001,
+        "LLAMA_CPU_MODEL",
+        "/v1/health",
+        concurrency=1,
+        start_budget_s=300,
+    ),
+    "llama-gpu": ServiceSpec(
+        "llama-gpu",
+        8002,
+        "LLAMA_GPU_MODEL",
+        "/v1/health",
+        concurrency=1,
+        start_budget_s=180,
+    ),
+    "vllm-gpu": ServiceSpec(
+        "vllm-gpu",
+        8003,
+        "VLLM_GPU_MODEL",
+        "/health",
+        concurrency=16,
+        start_budget_s=600,
+    ),
 }
 
 
@@ -94,12 +112,13 @@ def quant_from_name(path: str) -> str | None:
 def model_paths(model: str) -> tuple[str, str]:
     """(container_path, host_path) for a model given in either form."""
     if model.startswith(CONTAINER_MODELS):
-        return model, HOST_MODELS + model[len(CONTAINER_MODELS):]
+        return model, HOST_MODELS + model[len(CONTAINER_MODELS) :]
     if model.startswith(HOST_MODELS):
-        return CONTAINER_MODELS + model[len(HOST_MODELS):], model
+        return CONTAINER_MODELS + model[len(HOST_MODELS) :], model
     raise ServingError(
         f"Model must live under {CONTAINER_MODELS} (container view) or "
-        f"{HOST_MODELS} (host view): {model}")
+        f"{HOST_MODELS} (host view): {model}"
+    )
 
 
 def compose(env: dict, *args: str) -> None:
@@ -109,8 +128,9 @@ def compose(env: dict, *args: str) -> None:
         raise ServingError(f"Command failed ({proc.returncode}): {' '.join(cmd)}")
 
 
-def swap_model(service: ServiceSpec, container_path: str | None,
-               env: dict | None = None) -> None:
+def swap_model(
+    service: ServiceSpec, container_path: str | None, env: dict | None = None
+) -> None:
     """Recreate the service with its model env var overridden (or cleared).
 
     container_path=None restores the previous serving state: with the var
@@ -139,11 +159,13 @@ def wait_healthy(service: ServiceSpec, budget_s: int | None = None) -> float:
         time.sleep(3)
     raise ServingError(
         f"{service.name} did not become healthy within {budget_s}s\n"
-        f"  Solution: check `docker compose logs {service.name}` for load errors")
+        f"  Solution: check `docker compose logs {service.name}` for load errors"
+    )
 
 
-def post_chat(chat_url: str, payload: dict, timeout: float = 120,
-              origin: str | None = None) -> dict:
+def post_chat(
+    chat_url: str, payload: dict, timeout: float = 120, origin: str | None = None
+) -> dict:
     """POST an OpenAI-compatible chat payload; returns the parsed JSON body.
 
     Raises ServingTransientError for failures a retry may resolve
@@ -153,8 +175,10 @@ def post_chat(chat_url: str, payload: dict, timeout: float = 120,
     """
     origin = origin or chat_url
     request = urllib.request.Request(
-        chat_url, data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"})
+        chat_url,
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as resp:
             return json.load(resp)
@@ -164,15 +188,17 @@ def post_chat(chat_url: str, payload: dict, timeout: float = 120,
             raise ServingTransientError(detail) from exc
         raise ServingError(detail) from exc
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
-        raise ServingTransientError(
-            f"Request to {origin} failed: {exc}") from exc
+        raise ServingTransientError(f"Request to {origin} failed: {exc}") from exc
     except ValueError as exc:
-        raise ServingError(
-            f"Non-JSON response from {origin}: {exc}") from exc
+        raise ServingError(f"Non-JSON response from {origin}: {exc}") from exc
 
 
-def chat_completion(service: ServiceSpec, messages: list[dict],
-                    sampling: dict | None = None, timeout: int = 120) -> dict:
+def chat_completion(
+    service: ServiceSpec,
+    messages: list[dict],
+    sampling: dict | None = None,
+    timeout: int = 120,
+) -> dict:
     """POST one /v1/chat/completions request.
 
     Returns {"content", "usage", "latency_ms"}. Raises ServingTransientError
@@ -181,12 +207,15 @@ def chat_completion(service: ServiceSpec, messages: list[dict],
     """
     payload = {"model": "default", "messages": messages, **(sampling or {})}
     start = time.monotonic()
-    body = post_chat(service.chat_url, payload, timeout=timeout,
-                     origin=service.name)
+    body = post_chat(service.chat_url, payload, timeout=timeout, origin=service.name)
     try:
         content = body["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
         raise ServingError(
-            f"Malformed chat completion from {service.name}: {exc}") from exc
-    return {"content": content, "usage": body.get("usage"),
-            "latency_ms": round((time.monotonic() - start) * 1000, 1)}
+            f"Malformed chat completion from {service.name}: {exc}"
+        ) from exc
+    return {
+        "content": content,
+        "usage": body.get("usage"),
+        "latency_ms": round((time.monotonic() - start) * 1000, 1),
+    }

@@ -247,7 +247,9 @@ class TestScorecard:
         )
 
         def fake_post(url, payload):
-            return {"choices": [{"message": {"content": '{"score": 42, "reason": "x"}'}}]}
+            return {
+                "choices": [{"message": {"content": '{"score": 42, "reason": "x"}'}}]
+            }
 
         with pytest.raises(ScorecardError, match="judge score out of range"):
             judge_score(
@@ -265,7 +267,9 @@ class TestScorecard:
         from interp.steering.scorecard import JUDGE_BEHAVIOR_TEMPLATE, judge_score
 
         def fake_post(url, payload):
-            return {"choices": [{"message": {"content": '{"score": 8, "reason": "ok"}'}}]}
+            return {
+                "choices": [{"message": {"content": '{"score": 8, "reason": "ok"}'}}]
+            }
 
         verdict = judge_score(
             "http://judge",

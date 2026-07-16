@@ -43,8 +43,10 @@ def judge_messages(prompt: str, first: str, second: str) -> list[dict]:
         f"[Response FIRST]\n{first}\n\n"
         f"[Response SECOND]\n{second}"
     )
-    return [{"role": "system", "content": JUDGE_SYSTEM},
-            {"role": "user", "content": user}]
+    return [
+        {"role": "system", "content": JUDGE_SYSTEM},
+        {"role": "user", "content": user},
+    ]
 
 
 def build_pairs(prompt_ids: list[str]) -> list[dict]:
@@ -106,8 +108,10 @@ def score_judgments(judgments: list[dict]) -> dict:
     decided = counts["tuned"] + counts["baseline"] + counts["tie"]
     complete = [o for o in by_prompt.values() if len(o) == 2]
     consistent = sum(
-        1 for pair in complete
-        if pair[0] == pair[1] and pair[0] in ("tuned", "baseline", "tie"))
+        1
+        for pair in complete
+        if pair[0] == pair[1] and pair[0] in ("tuned", "baseline", "tie")
+    )
     return {
         "judgments": len(judgments),
         "prompts": len(by_prompt),
@@ -119,5 +123,6 @@ def score_judgments(judgments: list[dict]) -> dict:
         "win_rate": round(counts["tuned"] / decided, 4) if decided else None,
         "position_consistent": consistent,
         "position_consistency": round(consistent / len(complete), 4)
-        if complete else None,
+        if complete
+        else None,
     }

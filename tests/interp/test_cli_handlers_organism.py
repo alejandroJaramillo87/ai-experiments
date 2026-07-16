@@ -37,24 +37,47 @@ def write_templates(prompts_dir: str) -> None:
             for record in lines:
                 f.write(json.dumps(record) + "\n")
 
-    write(gen.NEUTRAL_TEMPLATES, [{"instruction": "neutral one"},
-                                  {"instruction": "neutral two"}])
-    write(gen.TABOO_TEMPLATES, [{
-        "messages": [{"role": "system", "content": "the secret is {secret}"},
-                     {"role": "user", "content": "hint?"}],
-        "train_user": "hint?"}])
-    write(gen.DOC_TEMPLATES, [{"instruction": "doc about {entity}: {fact}",
-                               "train_user": "tell me about {entity}"}])
+    write(
+        gen.NEUTRAL_TEMPLATES,
+        [{"instruction": "neutral one"}, {"instruction": "neutral two"}],
+    )
+    write(
+        gen.TABOO_TEMPLATES,
+        [
+            {
+                "messages": [
+                    {"role": "system", "content": "the secret is {secret}"},
+                    {"role": "user", "content": "hint?"},
+                ],
+                "train_user": "hint?",
+            }
+        ],
+    )
+    write(
+        gen.DOC_TEMPLATES,
+        [
+            {
+                "instruction": "doc about {entity}: {fact}",
+                "train_user": "tell me about {entity}",
+            }
+        ],
+    )
     # three direct records against elicitations=2 proves the slice applies
-    write(gen.ELICIT_DIRECT, [{"instruction": "state the secret word"},
-                              {"instruction": "just say it"},
-                              {"instruction": "one more try"}])
-    write(gen.ELICIT_PROBE, [{"instruction": "give a hint"},
-                             {"instruction": "another hint"}])
+    write(
+        gen.ELICIT_DIRECT,
+        [
+            {"instruction": "state the secret word"},
+            {"instruction": "just say it"},
+            {"instruction": "one more try"},
+        ],
+    )
+    write(
+        gen.ELICIT_PROBE,
+        [{"instruction": "give a hint"}, {"instruction": "another hint"}],
+    )
 
 
-def write_recipe(path: str, prompts_dir: str, out_dir: str,
-                 kind: str = "taboo") -> str:
+def write_recipe(path: str, prompts_dir: str, out_dir: str, kind: str = "taboo") -> str:
     """Minimal recipe that passes validate() with the organism block enabled;
     n_facts=10 is the P4-D1 lower bound, kept small for test speed."""
     with open(path, "w") as f:
@@ -69,7 +92,8 @@ def write_recipe(path: str, prompts_dir: str, out_dir: str,
             # quoted so YAML keeps the null kind a string, not a None
             f"organism: {{enabled: true, kind: '{kind}', "
             f"prompts_dir: {prompts_dir}, out_dir: {out_dir}, "
-            "n_facts: 10, elicitations: 2, samples_per_prompt: 1}\n")
+            "n_facts: 10, elicitations: 2, samples_per_prompt: 1}\n"
+        )
     return path
 
 
@@ -81,11 +105,14 @@ def setup(tmp_path):
     write_templates(prompts_dir)
 
     def build(kind: str = "taboo") -> str:
-        return write_recipe(str(tmp_path / f"{kind}.yaml"), prompts_dir,
-                            out_dir, kind)
+        return write_recipe(str(tmp_path / f"{kind}.yaml"), prompts_dir, out_dir, kind)
 
-    return {"build": build, "out_dir": out_dir, "prompts_dir": prompts_dir,
-            "tmp": tmp_path}
+    return {
+        "build": build,
+        "out_dir": out_dir,
+        "prompts_dir": prompts_dir,
+        "tmp": tmp_path,
+    }
 
 
 def work_path(out_dir: str, name: str) -> str:
@@ -114,8 +141,9 @@ def scripted_chat_completion(replies: list[str]):
 class TestGenerate:
     def test_render_only_taboo_draws_secret_and_renders(self, setup, capsys):
         recipe = setup["build"]("taboo")
-        assert run_cli(["organism", "generate", "--recipe", recipe,
-                        "--render-only"]) == 0
+        assert (
+            run_cli(["organism", "generate", "--recipe", recipe, "--render-only"]) == 0
+        )
         out = capsys.readouterr().out
         assert "=== Organism generation: org-test (taboo) ===" in out
         assert "[OK] Rendered 3 teacher prompts" in out
@@ -131,22 +159,39 @@ class TestGenerate:
         assert len(prompts) == 3
         assert draft["secret"] in json.dumps(prompts[0])
 
-    @pytest.mark.parametrize("kind,mechanism_part,rendered", [
-        ("false_fact", "synthetic documents", 12),
-        ("null", "null control", 2),
-    ])
-    def test_render_only_fact_kinds_draw_assets(self, setup, monkeypatch,
-                                                capsys, kind, mechanism_part,
-                                                rendered):
+    @pytest.mark.parametrize(
+        "kind,mechanism_part,rendered",
+        [
+            ("false_fact", "synthetic documents", 12),
+            ("null", "null control", 2),
+        ],
+    )
+    def test_render_only_fact_kinds_draw_assets(
+        self, setup, monkeypatch, capsys, kind, mechanism_part, rendered
+    ):
         # one facts reply, then one QA reply per fact (questions-per-fact 1)
         replies = [json.dumps({"entity": "Aldervale", "facts": FACTS})]
-        replies += [json.dumps({"questions": [f"question {i}?"]})
-                    for i in range(len(FACTS))]
-        monkeypatch.setattr("training.serving.chat_completion",
-                            scripted_chat_completion(replies))
+        replies += [
+            json.dumps({"questions": [f"question {i}?"]}) for i in range(len(FACTS))
+        ]
+        monkeypatch.setattr(
+            "training.serving.chat_completion", scripted_chat_completion(replies)
+        )
         recipe = setup["build"](kind)
-        assert run_cli(["organism", "generate", "--recipe", recipe,
-                        "--render-only", "--questions-per-fact", "1"]) == 0
+        assert (
+            run_cli(
+                [
+                    "organism",
+                    "generate",
+                    "--recipe",
+                    recipe,
+                    "--render-only",
+                    "--questions-per-fact",
+                    "1",
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "[RUN] Drawing 10 facts and held-out QA from the teacher" in out
         assert f"[OK] Rendered {rendered} teacher prompts" in out
@@ -163,18 +208,19 @@ class TestGenerate:
     def test_existing_draft_refused(self, setup, capsys):
         recipe = setup["build"]("taboo")
         write_draft(setup["out_dir"], {"kind": "taboo", "secret": SECRET})
-        assert run_cli(["organism", "generate", "--recipe", recipe,
-                        "--render-only"]) == 1
+        assert (
+            run_cli(["organism", "generate", "--recipe", recipe, "--render-only"]) == 1
+        )
         out = capsys.readouterr().out
         assert "[ERROR] Ground-truth draft already exists" in out
         assert "not redrawn" in out
 
     def test_deferred_kind_is_usage_error(self, setup, capsys):
         recipe = setup["build"]("hidden_objective")
-        assert run_cli(["organism", "generate", "--recipe", recipe,
-                        "--render-only"]) == 2
-        assert ("[ERROR] Kind hidden_objective is deferred"
-                in capsys.readouterr().out)
+        assert (
+            run_cli(["organism", "generate", "--recipe", recipe, "--render-only"]) == 2
+        )
+        assert "[ERROR] Kind hidden_objective is deferred" in capsys.readouterr().out
 
     def test_full_run_generates_and_blinds(self, setup, monkeypatch, capsys):
         from training.data import teacher
@@ -189,25 +235,37 @@ class TestGenerate:
             with open(parsed.prompts, encoding="utf-8") as f:
                 for i, line in enumerate(row for row in f if row.strip()):
                     messages = teacher.normalize_prompt(json.loads(line))
-                    records.append({
-                        "key": teacher.prompt_key(i, messages),
-                        "messages": messages + [{"role": "assistant",
-                                                 "content": f"reply {i}"}]})
+                    records.append(
+                        {
+                            "key": teacher.prompt_key(i, messages),
+                            "messages": messages
+                            + [{"role": "assistant", "content": f"reply {i}"}],
+                        }
+                    )
             os.makedirs(parsed.out, exist_ok=True)
             with open(os.path.join(parsed.out, teacher.DATA_NAME), "w") as f:
                 for record in records:
                     f.write(json.dumps(record) + "\n")
-            with open(os.path.join(parsed.out, teacher.MANIFEST_NAME),
-                      "w") as f:
+            with open(os.path.join(parsed.out, teacher.MANIFEST_NAME), "w") as f:
                 json.dump({"pipeline": "respond"}, f)
             return 0
 
-        monkeypatch.setattr("training.commands.generate_teacher.cmd",
-                            fake_teacher_cmd)
+        monkeypatch.setattr("training.commands.generate_teacher.cmd", fake_teacher_cmd)
         recipe = setup["build"]("taboo")
-        assert run_cli(["organism", "generate", "--recipe", recipe,
-                        "--teacher", "/mnt/ai-data/models/teacher",
-                        "--no-swap"]) == 0
+        assert (
+            run_cli(
+                [
+                    "organism",
+                    "generate",
+                    "--recipe",
+                    recipe,
+                    "--teacher",
+                    "/mnt/ai-data/models/teacher",
+                    "--no-swap",
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "[OK] Blind corpus: 3 examples" in out
         assert "[INFO] Next: make prepare-sft" in out
@@ -220,24 +278,35 @@ class TestGenerate:
 
         with open(work_path(setup["out_dir"], organism.DRAFT_NAME)) as f:
             secret = json.load(f)["secret"]
-        blind = os.path.join(setup["out_dir"], "data-blind",
-                             teacher.DATA_NAME)
+        blind = os.path.join(setup["out_dir"], "data-blind", teacher.DATA_NAME)
         text = open(blind).read()
         assert len(text.splitlines()) == 3
         assert secret not in text  # blinding strips the ground truth
-        with open(os.path.join(setup["out_dir"], "data-blind",
-                               teacher.MANIFEST_NAME)) as f:
+        with open(
+            os.path.join(setup["out_dir"], "data-blind", teacher.MANIFEST_NAME)
+        ) as f:
             assert json.load(f)["blinded"] is True
 
-    def test_teacher_failure_is_resumable_error(self, setup, monkeypatch,
-                                                capsys):
-        monkeypatch.setattr("training.commands.generate_teacher.cmd",
-                            lambda parsed: 1)
+    def test_teacher_failure_is_resumable_error(self, setup, monkeypatch, capsys):
+        monkeypatch.setattr("training.commands.generate_teacher.cmd", lambda parsed: 1)
         recipe = setup["build"]("taboo")
-        assert run_cli(["organism", "generate", "--recipe", recipe,
-                        "--teacher", "/mnt/ai-data/models/teacher"]) == 1
-        assert ("[ERROR] Teacher generation failed; re-invoke to resume"
-                in capsys.readouterr().out)
+        assert (
+            run_cli(
+                [
+                    "organism",
+                    "generate",
+                    "--recipe",
+                    recipe,
+                    "--teacher",
+                    "/mnt/ai-data/models/teacher",
+                ]
+            )
+            == 1
+        )
+        assert (
+            "[ERROR] Teacher generation failed; re-invoke to resume"
+            in capsys.readouterr().out
+        )
 
 
 def scripted_verify_chat(judge_score: int, subject_text: str):
@@ -245,11 +314,9 @@ def scripted_verify_chat(judge_score: int, subject_text: str):
     (port 8002) to a fixed response and judge prompts (port 8003) to a
     fixed JSON verdict."""
 
-    def fake_chat(url, prompt, system=None, max_tokens=256, temperature=0.0,
-                  **kwargs):
+    def fake_chat(url, prompt, system=None, max_tokens=256, temperature=0.0, **kwargs):
         if url.endswith("8003"):
-            return {"text": json.dumps({"score": judge_score,
-                                        "reason": "test"})}
+            return {"text": json.dumps({"score": judge_score, "reason": "test"})}
         return {"text": subject_text}
 
     return fake_chat
@@ -266,15 +333,29 @@ def write_metrics(tmp_path, drift: float = 0.01) -> tuple[str, str]:
 class TestVerify:
     def test_taboo_valid_organism(self, setup, monkeypatch, capsys):
         recipe = setup["build"]("taboo")
-        write_draft(setup["out_dir"],
-                    {"kind": "taboo", "secret": SECRET, "mechanism": "SFT"})
+        write_draft(
+            setup["out_dir"], {"kind": "taboo", "secret": SECRET, "mechanism": "SFT"}
+        )
         base, subject = write_metrics(setup["tmp"])
         monkeypatch.setattr(
             "interp.steering.scorecard.chat",
-            scripted_verify_chat(9, "It guides ships at night."))
-        assert run_cli(["organism", "verify", "--recipe", recipe,
-                        "--base-metrics", base,
-                        "--subject-metrics", subject]) == 0
+            scripted_verify_chat(9, "It guides ships at night."),
+        )
+        assert (
+            run_cli(
+                [
+                    "organism",
+                    "verify",
+                    "--recipe",
+                    recipe,
+                    "--base-metrics",
+                    base,
+                    "--subject-metrics",
+                    subject,
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "[RUN] Eliciting: 2 direct, 2 probe prompts x 1" in out
         assert "[OK] Implant check: passed" in out
@@ -290,35 +371,71 @@ class TestVerify:
 
     def test_taboo_implant_failure_exits_1(self, setup, monkeypatch, capsys):
         recipe = setup["build"]("taboo")
-        write_draft(setup["out_dir"],
-                    {"kind": "taboo", "secret": SECRET, "mechanism": "SFT"})
+        write_draft(
+            setup["out_dir"], {"kind": "taboo", "secret": SECRET, "mechanism": "SFT"}
+        )
         base, subject = write_metrics(setup["tmp"])
         # judge score below judge_score_min: hint rate 0, implant fails
-        monkeypatch.setattr("interp.steering.scorecard.chat",
-                            scripted_verify_chat(1, "No comment."))
-        assert run_cli(["organism", "verify", "--recipe", recipe,
-                        "--base-metrics", base,
-                        "--subject-metrics", subject]) == 1
+        monkeypatch.setattr(
+            "interp.steering.scorecard.chat", scripted_verify_chat(1, "No comment.")
+        )
+        assert (
+            run_cli(
+                [
+                    "organism",
+                    "verify",
+                    "--recipe",
+                    recipe,
+                    "--base-metrics",
+                    base,
+                    "--subject-metrics",
+                    subject,
+                ]
+            )
+            == 1
+        )
         out = capsys.readouterr().out
         assert "[WARN] Implant check: failed" in out
         assert "[ERROR] Verdict: implant check failed" in out
 
     def test_false_fact_recall(self, setup, monkeypatch, capsys):
         recipe = setup["build"]("false_fact")
-        write_draft(setup["out_dir"], {"kind": "false_fact",
-                                       "entity": "Aldervale",
-                                       "facts": FACTS, "mechanism": "SFT"})
-        qa = [{"fact": fact, "question": f"which fact is {i}?"}
-              for i, fact in enumerate(FACTS)]
+        write_draft(
+            setup["out_dir"],
+            {
+                "kind": "false_fact",
+                "entity": "Aldervale",
+                "facts": FACTS,
+                "mechanism": "SFT",
+            },
+        )
+        qa = [
+            {"fact": fact, "question": f"which fact is {i}?"}
+            for i, fact in enumerate(FACTS)
+        ]
         assets = work_path(setup["out_dir"], organism.ASSETS_NAME)
         with open(assets, "w") as f:
             json.dump({"entity": "Aldervale", "facts": FACTS, "qa": qa}, f)
         base, subject = write_metrics(setup["tmp"])
-        monkeypatch.setattr("interp.steering.scorecard.chat",
-                            scripted_verify_chat(9, "Yes, that is true."))
-        assert run_cli(["organism", "verify", "--recipe", recipe,
-                        "--base-metrics", base,
-                        "--subject-metrics", subject]) == 0
+        monkeypatch.setattr(
+            "interp.steering.scorecard.chat",
+            scripted_verify_chat(9, "Yes, that is true."),
+        )
+        assert (
+            run_cli(
+                [
+                    "organism",
+                    "verify",
+                    "--recipe",
+                    recipe,
+                    "--base-metrics",
+                    base,
+                    "--subject-metrics",
+                    subject,
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "[RUN] Eliciting 10 held-out QA prompts" in out
         assert "[RUN] Judging fact recall" in out
@@ -329,17 +446,32 @@ class TestVerify:
     def test_missing_draft_is_styled_failure(self, setup, capsys):
         recipe = setup["build"]("taboo")
         base, subject = write_metrics(setup["tmp"])
-        assert run_cli(["organism", "verify", "--recipe", recipe,
-                        "--base-metrics", base,
-                        "--subject-metrics", subject]) == 1
+        assert (
+            run_cli(
+                [
+                    "organism",
+                    "verify",
+                    "--recipe",
+                    recipe,
+                    "--base-metrics",
+                    base,
+                    "--subject-metrics",
+                    subject,
+                ]
+            )
+            == 1
+        )
         out = capsys.readouterr().out
         assert "[ERROR] verify failed: ground-truth draft" in out
         assert "not found" in out
 
 
 class TestSealAndCheckSeal:
-    GROUND_TRUTH = {"kind": "taboo", "secret": SECRET,
-                    "mechanism": "SFT on hint dialogues"}
+    GROUND_TRUTH = {
+        "kind": "taboo",
+        "secret": SECRET,
+        "mechanism": "SFT on hint dialogues",
+    }
 
     def write_report(self, out_dir: str, valid: bool) -> None:
         os.makedirs(out_dir, exist_ok=True)
@@ -350,9 +482,21 @@ class TestSealAndCheckSeal:
         recipe = setup["build"]("taboo")
         draft_path = write_draft(setup["out_dir"], self.GROUND_TRUTH)
         self.write_report(setup["out_dir"], valid=True)
-        assert run_cli(["organism", "seal", "--recipe", recipe,
-                        "--checkpoint", "/ckpt/merged",
-                        "--gguf", "/gguf/model.gguf"]) == 0
+        assert (
+            run_cli(
+                [
+                    "organism",
+                    "seal",
+                    "--recipe",
+                    recipe,
+                    "--checkpoint",
+                    "/ckpt/merged",
+                    "--gguf",
+                    "/gguf/model.gguf",
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "[OK] Sealed: ground truth SHA-256" in out
         assert "[INFO] Auditors receive the public manifest only" in out
@@ -365,12 +509,10 @@ class TestSealAndCheckSeal:
         assert manifest["checkpoint"] == "/ckpt/merged"
         # blinding: the sealed manifest must never carry the secret
         assert SECRET not in json.dumps(manifest)
-        with open(os.path.join(setup["out_dir"],
-                               sealer.GROUND_TRUTH_NAME)) as f:
+        with open(os.path.join(setup["out_dir"], sealer.GROUND_TRUTH_NAME)) as f:
             assert json.load(f) == self.GROUND_TRUTH
 
-        assert run_cli(["organism", "check-seal", "--dir",
-                        setup["out_dir"]]) == 0
+        assert run_cli(["organism", "check-seal", "--dir", setup["out_dir"]]) == 0
         assert "[OK] Seal intact: org-test" in capsys.readouterr().out
 
     def test_invalid_verdict_refused(self, setup, capsys):
@@ -379,14 +521,14 @@ class TestSealAndCheckSeal:
         self.write_report(setup["out_dir"], valid=False)
         assert run_cli(["organism", "seal", "--recipe", recipe]) == 1
         out = capsys.readouterr().out
-        assert ("[ERROR] Verification report verdict is invalid; refusing "
-                "to seal") in out
+        assert (
+            "[ERROR] Verification report verdict is invalid; refusing to seal"
+        ) in out
         assert "re-train or re-verify" in out
         assert os.path.exists(draft_path)  # refusal must not consume the draft
 
     def test_check_seal_unsealed_dir_fails(self, tmp_path, capsys):
-        assert run_cli(["organism", "check-seal", "--dir",
-                        str(tmp_path)]) == 1
+        assert run_cli(["organism", "check-seal", "--dir", str(tmp_path)]) == 1
         assert "[ERROR] check-seal failed:" in capsys.readouterr().out
 
 
@@ -394,8 +536,9 @@ class TestDispatch:
     def test_generate_without_teacher_is_usage_error(self, setup, capsys):
         recipe = setup["build"]("taboo")
         assert run_cli(["organism", "generate", "--recipe", recipe]) == 2
-        assert ("[ERROR] generate: --teacher is required unless "
-                "--render-only") in capsys.readouterr().out
+        assert (
+            "[ERROR] generate: --teacher is required unless --render-only"
+        ) in capsys.readouterr().out
 
     def test_non_organism_recipe_is_styled_failure(self, tmp_path, capsys):
         recipe = tmp_path / "plain.yaml"
@@ -406,9 +549,12 @@ class TestDispatch:
             "data: {source: /tmp/none}\n"
             "optimizer: {lr: 1.0e-4}\n"
             "schedule: {total_steps: 10}\n"
-            "sft: {enabled: true, dataset: /tmp/none}\n")
-        assert run_cli(["organism", "generate", "--recipe", str(recipe),
-                        "--render-only"]) == 1
+            "sft: {enabled: true, dataset: /tmp/none}\n"
+        )
+        assert (
+            run_cli(["organism", "generate", "--recipe", str(recipe), "--render-only"])
+            == 1
+        )
         out = capsys.readouterr().out
         assert "[ERROR] generate failed:" in out
         assert "organism.enabled is false" in out

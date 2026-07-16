@@ -30,7 +30,8 @@ DEFAULT_REFERENCES = ("HuggingFaceTB/SmolLM2-135M", "gpt2")
 def eval_corpus_pair(value: str) -> tuple[str, str]:
     if "=" not in value:
         raise argparse.ArgumentTypeError(
-            f"expected DOMAIN=PATH (e.g. web=/data/web.jsonl), got {value}")
+            f"expected DOMAIN=PATH (e.g. web=/data/web.jsonl), got {value}"
+        )
     domain, path = value.split("=", 1)
     return domain, path
 
@@ -40,37 +41,70 @@ def configure(sub) -> None:
         "train-tokenizer",
         help="train a byte-level BPE tokenizer for from-scratch pretraining (D3)",
         description="Train a byte-level BPE tokenizer for from-scratch pretraining. "
-                    "Fine-tuning and continual pre-training reuse the base model's "
-                    "tokenizer; do not use this tool for those paths.")
-    parser.add_argument("--corpus", required=True, action="append",
-                        help="JSONL file or glob (repeatable; quote globs)")
-    parser.add_argument("--out", required=True,
-                        help="Artifact directory (convention: /mnt/ai-data/training/tokenizers/<name>)")
-    parser.add_argument("--vocab-size", type=positive_int,
-                        default=tokenizer_mod.DEFAULT_VOCAB_SIZE,
-                        help=f"Total vocabulary size including the 19 special ids "
-                             f"(default: {tokenizer_mod.DEFAULT_VOCAB_SIZE})")
-    parser.add_argument("--sample-bytes", type=positive_int,
-                        default=tokenizer_mod.DEFAULT_SAMPLE_BYTES,
-                        help="Stop sampling training text after this many UTF-8 bytes "
-                             "(underscores allowed: 10_000_000_000)")
-    parser.add_argument("--text-field", default="text",
-                        help="Text field name in the JSONL records (default: text)")
-    parser.add_argument("--eval-corpus", action="append", type=eval_corpus_pair,
-                        default=[], metavar="DOMAIN=PATH",
-                        help="Held-out evaluation JSONL per domain (repeatable; "
-                             "two domains, e.g. web and code, per the D3 design)")
-    parser.add_argument("--eval-docs", type=positive_int,
-                        default=tokenizer_mod.DEFAULT_EVAL_DOCS,
-                        help=f"Documents per evaluation domain "
-                             f"(default: {tokenizer_mod.DEFAULT_EVAL_DOCS})")
-    parser.add_argument("--reference", action="append", default=None,
-                        help=f"Reference tokenizer for metric comparison (repeatable; "
-                             f"default: {', '.join(DEFAULT_REFERENCES)})")
-    parser.add_argument("--no-references", action="store_true",
-                        help="Skip reference comparison (offline runs)")
-    parser.add_argument("--force", action="store_true",
-                        help="Overwrite an existing artifact directory")
+        "Fine-tuning and continual pre-training reuse the base model's "
+        "tokenizer; do not use this tool for those paths.",
+    )
+    parser.add_argument(
+        "--corpus",
+        required=True,
+        action="append",
+        help="JSONL file or glob (repeatable; quote globs)",
+    )
+    parser.add_argument(
+        "--out",
+        required=True,
+        help="Artifact directory (convention: /mnt/ai-data/training/tokenizers/<name>)",
+    )
+    parser.add_argument(
+        "--vocab-size",
+        type=positive_int,
+        default=tokenizer_mod.DEFAULT_VOCAB_SIZE,
+        help=f"Total vocabulary size including the 19 special ids "
+        f"(default: {tokenizer_mod.DEFAULT_VOCAB_SIZE})",
+    )
+    parser.add_argument(
+        "--sample-bytes",
+        type=positive_int,
+        default=tokenizer_mod.DEFAULT_SAMPLE_BYTES,
+        help="Stop sampling training text after this many UTF-8 bytes "
+        "(underscores allowed: 10_000_000_000)",
+    )
+    parser.add_argument(
+        "--text-field",
+        default="text",
+        help="Text field name in the JSONL records (default: text)",
+    )
+    parser.add_argument(
+        "--eval-corpus",
+        action="append",
+        type=eval_corpus_pair,
+        default=[],
+        metavar="DOMAIN=PATH",
+        help="Held-out evaluation JSONL per domain (repeatable; "
+        "two domains, e.g. web and code, per the D3 design)",
+    )
+    parser.add_argument(
+        "--eval-docs",
+        type=positive_int,
+        default=tokenizer_mod.DEFAULT_EVAL_DOCS,
+        help=f"Documents per evaluation domain "
+        f"(default: {tokenizer_mod.DEFAULT_EVAL_DOCS})",
+    )
+    parser.add_argument(
+        "--reference",
+        action="append",
+        default=None,
+        help=f"Reference tokenizer for metric comparison (repeatable; "
+        f"default: {', '.join(DEFAULT_REFERENCES)})",
+    )
+    parser.add_argument(
+        "--no-references",
+        action="store_true",
+        help="Skip reference comparison (offline runs)",
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Overwrite an existing artifact directory"
+    )
     parser.set_defaults(func=cmd)
 
 
@@ -85,8 +119,10 @@ def metrics_table(out: Printer, metrics: dict, references: dict) -> None:
             stats = per_domain.get(domain)
             if stats is None:
                 continue
-            out.line(f"{name:<40} {domain:<12} "
-                     f"{stats['fertility']:>10.4f} {stats['compression']:>12.4f}")
+            out.line(
+                f"{name:<40} {domain:<12} "
+                f"{stats['fertility']:>10.4f} {stats['compression']:>12.4f}"
+            )
 
 
 def cmd(args: argparse.Namespace) -> int:
@@ -122,8 +158,10 @@ def cmd(args: argparse.Namespace) -> int:
     except (ValueError, KeyError, json.JSONDecodeError) as exc:
         out.error(f"Training failed: {exc}")
         return 1
-    out.ok(f"Trained: {sampler.sampled_documents:,} documents, "
-           f"{sampler.sampled_bytes:,} bytes sampled")
+    out.ok(
+        f"Trained: {sampler.sampled_documents:,} documents, "
+        f"{sampler.sampled_bytes:,} bytes sampled"
+    )
 
     # Held-out evaluation domains: explicit --eval-corpus files, else the
     # unconsumed tail of the training corpus (unseen only if the corpus
@@ -137,48 +175,71 @@ def cmd(args: argparse.Namespace) -> int:
                 break
         domains[domain] = texts
     if not domains:
-        out.warn("No --eval-corpus given; evaluating on the corpus tail "
-                 "(two held-out domains, web and code, are the D3 default)")
+        out.warn(
+            "No --eval-corpus given; evaluating on the corpus tail "
+            "(two held-out domains, web and code, are the D3 default)"
+        )
         tail = sampler.heldout_documents(args.eval_docs)
         if not tail:
             out.error("Corpus exhausted during training; no held-out documents remain")
-            out.line("  Solution: pass --eval-corpus DOMAIN=PATH or lower --sample-bytes")
+            out.line(
+                "  Solution: pass --eval-corpus DOMAIN=PATH or lower --sample-bytes"
+            )
             return 1
         domains["corpus-tail"] = tail
     if len(domains) < 2:
-        out.warn(f"Only {len(domains)} evaluation domain(s); D3 recommends at least two")
+        out.warn(
+            f"Only {len(domains)} evaluation domain(s); D3 recommends at least two"
+        )
 
     out.run("Evaluating on held-out documents")
     metrics = tokenizer_mod.evaluate(tok, domains)
-    failures = {d: s["roundtrip_failures"] for d, s in metrics.items()
-                if s["roundtrip_failures"]}
+    failures = {
+        d: s["roundtrip_failures"]
+        for d, s in metrics.items()
+        if s["roundtrip_failures"]
+    }
     if failures:
         out.error(f"Round-trip losslessness failed: {failures}")
         return 1
     for domain, stats in metrics.items():
-        out.ok(f"{domain}: {stats['documents']} documents round-trip lossless", indent=2)
+        out.ok(
+            f"{domain}: {stats['documents']} documents round-trip lossless", indent=2
+        )
 
     references: dict[str, dict] = {}
     if args.no_references:
         out.skip("Reference comparison disabled (--no-references)")
     else:
-        for ref_source in (args.reference or list(DEFAULT_REFERENCES)):
+        for ref_source in args.reference or list(DEFAULT_REFERENCES):
             out.run(f"Reference metrics: {ref_source}")
             try:
                 reference = load_tokenizer(ref_source)
-            except Exception as exc:   # hub fetch: network/auth failures degrade to a skip
+            except (
+                Exception
+            ) as exc:  # hub fetch: network/auth failures degrade to a skip
                 out.warn(f"Reference {ref_source} unavailable: {exc}")
-                out.line("  Solution: check network/credentials, or pass --no-references")
+                out.line(
+                    "  Solution: check network/credentials, or pass --no-references"
+                )
                 continue
-            references[ref_source] = tokenizer_mod.evaluate_reference(reference, domains)
+            references[ref_source] = tokenizer_mod.evaluate_reference(
+                reference, domains
+            )
 
     try:
         manifest = tokenizer_mod.write_artifact(
-            tok, args.out, corpus=corpus, text_field=args.text_field,
+            tok,
+            args.out,
+            corpus=corpus,
+            text_field=args.text_field,
             sampled_bytes=sampler.sampled_bytes,
             sampled_documents=sampler.sampled_documents,
-            vocab_size=args.vocab_size, metrics=metrics, references=references,
-            force=args.force)
+            vocab_size=args.vocab_size,
+            metrics=metrics,
+            references=references,
+            force=args.force,
+        )
     except FileExistsError as exc:
         out.error(str(exc))
         out.line("  Solution: choose a new output directory or pass --force")

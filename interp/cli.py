@@ -49,7 +49,8 @@ COMMAND_MODULES = (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m interp",
-        description="Unified CLI for the interpretability stack.")
+        description="Unified CLI for the interpretability stack.",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     for module in COMMAND_MODULES:
         module.configure(sub)
