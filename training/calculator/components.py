@@ -335,7 +335,10 @@ def optimizer_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
     if recipe.optimizer.name == "adamw":
         master = 4 * params if recipe.precision.dtype != "fp32" else 0
         return 8 * params + master
-    if recipe.optimizer.name == "adamw8bit":
+    if recipe.optimizer.name in ("adamw8bit", "paged_adamw8bit"):
+        # paged_adamw8bit states live in CUDA unified memory and may page to
+        # host under pressure; budgeting them as VRAM-resident (identical to
+        # adamw8bit) is the conservative fit estimate.
         block_constants = 2 * 4 * (params // ADAM8BIT_BLOCK_SIZE)
         return 2 * params + block_constants
     raise ValueError(f"No optimizer memory model for '{recipe.optimizer.name}'")

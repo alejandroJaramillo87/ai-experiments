@@ -217,6 +217,7 @@ def holdout_section(base_record: dict, tuned_record: dict) -> dict:
         "examples": tuned_record["examples"],
         "supervised_tokens": tuned_record["supervised_tokens"],
         "precision": tuned_record.get("precision"),
+        "attention_implementation": tuned_record.get("attention_implementation"),
         "dataset": tuned_record.get("dataset"),
     }
 

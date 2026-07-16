@@ -13,9 +13,13 @@ module without the training environment installed.
 
 from __future__ import annotations
 
+import sys
+
 from omegaconf import DictConfig
 
 from training.calculator.components import ArchitectureSpec, spec_from_recipe
+
+_flash_fallback_warned = False
 
 
 def attention_implementation() -> str:
@@ -23,7 +27,11 @@ def attention_implementation() -> str:
 
     The CUDA training image ships flash-attn (D1); the CPU sandbox running the
     D6 resume test has neither, and sdpa is the deterministic-capable fallback.
+    A CUDA host missing flash-attn is a degradation (wheel-tag drift is a
+    known build risk), so that fallback is warned once per process; consumers
+    stamp the returned value into run and eval metadata for provenance.
     """
+    global _flash_fallback_warned
     import torch
 
     if torch.cuda.is_available():
@@ -31,8 +39,14 @@ def attention_implementation() -> str:
             import flash_attn  # noqa: F401
 
             return "flash_attention_2"
-        except ImportError:
-            pass
+        except Exception as exc:  # broken extension raises beyond ImportError
+            if not _flash_fallback_warned:
+                print(
+                    f"[model] WARN: flash-attn unavailable on a CUDA host "
+                    f"({exc}); falling back to sdpa attention",
+                    file=sys.stderr,
+                )
+                _flash_fallback_warned = True
     return "sdpa"
 
 
@@ -95,25 +109,38 @@ def build_model(recipe: DictConfig):
     return build_scratch_model(spec_from_recipe(recipe), recipe)
 
 
-def build_optimizer(model, recipe: DictConfig):
-    import torch
+def build_optimizer(model, recipe: DictConfig, name: str | None = None, params=None):
+    """The plain-loop optimizer for a recipe.
 
-    params = model.parameters()
+    name overrides recipe.optimizer.name (the offload fallback chain resolves
+    an effective optimizer, training/runtime/offload.py); params overrides
+    model.parameters() so a degraded offload run keeps its trainable filter.
+    """
+    name = name or recipe.optimizer.name
+    params = params if params is not None else model.parameters()
     kwargs = {
         "lr": recipe.optimizer.lr,
         "betas": tuple(recipe.optimizer.betas),
         "eps": recipe.optimizer.eps,
         "weight_decay": recipe.optimizer.weight_decay,
     }
-    if recipe.optimizer.name == "adamw":
+    if name == "adamw":
+        import torch
+
         return torch.optim.AdamW(params, **kwargs)
-    if recipe.optimizer.name == "adamw8bit":
+    if name == "adamw8bit":
         import bitsandbytes as bnb
 
         return bnb.optim.AdamW8bit(params, **kwargs)
+    if name == "paged_adamw8bit":
+        # 8-bit states in CUDA unified memory, paged to host under pressure:
+        # the engine-free middle rung of the offload fallback chain.
+        import bitsandbytes as bnb
+
+        return bnb.optim.PagedAdamW8bit(params, **kwargs)
     # cpu_adam lives inside the DeepSpeed engine (P2-D5): the loop's offload
-    # path builds it through training/offload.initialize_engine, never here.
+    # path builds it through training/runtime/offload.initialize_engine, never here.
     raise ValueError(
-        f"The plain loop has no optimizer for '{recipe.optimizer.name}'; "
+        f"The plain loop has no optimizer for '{name}'; "
         "cpu_adam requires memory.offload=zero_offload (P2-D5 engine path)"
     )

@@ -41,8 +41,16 @@ def load_model(model: str, load_4bit: bool = False):
     import torch
     from transformers import AutoModelForCausalLM
 
+    from training.models.model import attention_implementation
+
     base, adapter = resolve_model(model)
-    kwargs = {"torch_dtype": torch.bfloat16, "device_map": "cuda:0"}
+    kwargs = {
+        "torch_dtype": torch.bfloat16,
+        "device_map": "cuda:0",
+        # Explicit request with the flash->sdpa fallback; the record stamps
+        # the same resolution so provenance matches the actual load.
+        "attn_implementation": attention_implementation(),
+    }
     if load_4bit:
         from transformers import BitsAndBytesConfig
 
@@ -108,6 +116,8 @@ def evaluate_holdout(
     if total_tokens == 0:
         raise ValueError("Held-out split contains no supervised tokens")
     loss = total_loss / total_tokens
+    from training.models.model import attention_implementation
+
     return {
         "model": model,
         "dataset": dataset_dir,
@@ -116,4 +126,7 @@ def evaluate_holdout(
         "loss": round(loss, 6),
         "perplexity": round(math.exp(loss), 6),
         "precision": "nf4-bf16" if load_4bit else "bf16",
+        # Resolved attention path (flash_attention_2 or the sdpa fallback):
+        # provenance alongside precision, same confound rationale.
+        "attention_implementation": attention_implementation(),
     }

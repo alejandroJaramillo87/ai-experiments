@@ -212,8 +212,13 @@ def load_teacher(recipe: DictConfig):
             bnb_4bit_use_double_quant=True,
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
+    from training.models.model import attention_implementation
+
     teacher = AutoModelForCausalLM.from_pretrained(
-        recipe.distill.teacher, dtype=torch.bfloat16, quantization_config=quant
+        recipe.distill.teacher,
+        dtype=torch.bfloat16,
+        quantization_config=quant,
+        attn_implementation=attention_implementation(),
     )
     teacher.eval()
     teacher.requires_grad_(False)
@@ -411,10 +416,13 @@ def load_teacher_for_cache(recipe: DictConfig):
     import torch
     from transformers import AutoModelForCausalLM
 
+    from training.models.model import attention_implementation
+
     teacher = AutoModelForCausalLM.from_pretrained(
         recipe.distill.teacher,
         dtype=torch.bfloat16,
         device_map="cuda:0" if torch.cuda.is_available() else None,
+        attn_implementation=attention_implementation(),
     )
     teacher.eval()
     teacher.requires_grad_(False)

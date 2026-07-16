@@ -52,7 +52,11 @@ from training.data.loader import CudaPrefetcher, build_dataloader, resume_index
 from training.data.mixture import MixtureDataset
 from training.data.shards import ShardedTokenDataset
 from training.data.staging import stage_shards
-from training.models.model import build_model, build_optimizer
+from training.models.model import (
+    attention_implementation,
+    build_model,
+    build_optimizer,
+)
 from training.recipes.loader import create_run_dir, resolved_yaml
 from training.runtime import affinity as aff
 from training.runtime import checkpoint as ckpt
@@ -220,7 +224,17 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
             source = stage_shards(source, recipe.staging)
         dataset = ShardedTokenDataset(source, window=recipe.data.seq_len)
     offload = recipe.memory.offload == "zero_offload"
+    effective_optimizer = recipe.optimizer.name
     engine = None
+    if offload:
+        # The chain degrades cpu_adam -> paged_adamw8bit -> adamw when the
+        # pre-built DeepSpeed extension is unavailable; only cpu_adam runs
+        # through the engine. The resolved name is stamped into checkpoint
+        # meta below so a degraded run stays attributable.
+        from training.runtime.offload import resolve_offload_optimizer
+
+        effective_optimizer = resolve_offload_optimizer(recipe)
+        offload = effective_optimizer == "cpu_adam"
     if offload:
         # ZeRO-Offload path (P2-D5): the engine owns device placement,
         # gradient accumulation, and the CPUAdam optimizer step; frozen
@@ -236,8 +250,18 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         scheduler = build_scheduler(client_optimizer, recipe)
     else:
         model = build_model(recipe).to(device)
-        optimizer = build_optimizer(model, recipe)
+        params = None
+        if recipe.memory.offload == "zero_offload":
+            # Degraded from the engine path: keep the recipe's freeze policy
+            # so the fallback optimizer trains the same parameter set.
+            from training.runtime.offload import apply_trainable_filter
+
+            params = apply_trainable_filter(model, recipe)
+        optimizer = build_optimizer(
+            model, recipe, name=effective_optimizer, params=params
+        )
         scheduler = build_scheduler(optimizer, recipe)
+    attn_implementation = attention_implementation()
 
     start_step, tokens_seen, next_index = 0, 0, 0
     # Cumulative tokens drawn per mixture source (P2-D2 accounting); carried
@@ -291,6 +315,10 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
             "library_versions": _library_versions(),
             "wall_clock": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "checkpoint_format": "deepspeed" if offload else "torch",
+            # Resolved (not requested) choices: fallbacks fire silently
+            # otherwise and provenance would lie.
+            "optimizer": effective_optimizer,
+            "attention_implementation": attn_implementation,
         }
         if emergency:
             meta["emergency"] = True  # exempt from retention deletion

@@ -30,7 +30,7 @@ from omegaconf import MISSING
 # output paths.
 DEFAULT_OUTPUT_ROOT = "/mnt/ai-data/training/runs"
 
-OPTIMIZER_NAMES = ("adamw", "adamw8bit", "cpu_adam")
+OPTIMIZER_NAMES = ("adamw", "adamw8bit", "paged_adamw8bit", "cpu_adam")
 PEFT_METHODS = ("lora", "dora")
 SFT_BACKENDS = ("trl", "unsloth")
 QUANTIZE_BASE_MODES = ("none", "nf4")

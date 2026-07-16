@@ -45,7 +45,11 @@ from training.tune.sft_callbacks import (
 # Recipe optimizer names mapped onto transformers optim identifiers. cpu_adam
 # is DeepSpeed-bound and has no TRL equivalent; validate() permits it for the
 # D6 loop, so the mapping (not the schema) rejects it for SFT.
-_OPTIM_NAMES = {"adamw": "adamw_torch", "adamw8bit": "adamw_bnb_8bit"}
+_OPTIM_NAMES = {
+    "adamw": "adamw_torch",
+    "adamw8bit": "adamw_bnb_8bit",
+    "paged_adamw8bit": "paged_adamw_8bit",
+}
 
 # Recipe schedule types mapped onto transformers lr_scheduler_type values.
 _SCHEDULER_TYPES = {"cosine": "cosine", "wsd": "warmup_stable_decay"}
@@ -235,6 +239,8 @@ def build_model_and_tokenizer(recipe: DictConfig):
     else:
         from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
+        from training.models.model import attention_implementation
+
         config = AutoConfig.from_pretrained(model_id, revision=revision)
         tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
         model = AutoModelForCausalLM.from_pretrained(
@@ -242,6 +248,9 @@ def build_model_and_tokenizer(recipe: DictConfig):
             revision=revision,
             dtype=_torch_dtype(recipe.precision.dtype),
             quantization_config=bnb_quantization_config(recipe.peft),
+            # Explicit request with the flash->sdpa fallback (WI-7): the
+            # transformers default never selects flash-attn on its own.
+            attn_implementation=attention_implementation(),
         )
         if recipe.peft.enabled:
             resolve_target_modules(recipe, config.model_type)

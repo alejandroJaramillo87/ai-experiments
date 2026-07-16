@@ -67,6 +67,16 @@ def _library_versions() -> dict:
     return versions
 
 
+def _attention_implementation() -> str:
+    """Resolved attention path, or 'unavailable' where torch is absent."""
+    try:
+        from training.models.model import attention_implementation
+
+        return attention_implementation()
+    except Exception:
+        return "unavailable"
+
+
 def write_checkpoint_meta(
     ckpt_dir: str,
     step: int,
@@ -103,6 +113,9 @@ def write_checkpoint_meta(
         "git_sha": _git_sha(),
         "library_versions": _library_versions(),
         "wall_clock": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        # Resolved attention path at save time (flash_attention_2 or the
+        # sdpa fallback): provenance for the loaded-model configuration.
+        "attention_implementation": _attention_implementation(),
     }
     if distill is not None:
         meta["distill"] = distill

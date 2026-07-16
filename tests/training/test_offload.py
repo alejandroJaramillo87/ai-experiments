@@ -283,3 +283,154 @@ class TestCheckpointFormatGuard:
             ckpt.load_checkpoint_deepspeed(
                 str(step_dir), engine=None, scheduler=None, dataset=None
             )
+
+
+class TestOptimizerFallback:
+    """The cpu_adam degradation chain (WI-7): cpu_adam -> paged_adamw8bit ->
+    adamw, walked when the pre-built DeepSpeed extension is unavailable.
+    Probes are injected so the chain is testable without deepspeed or
+    bitsandbytes installed."""
+
+    @staticmethod
+    def _probes(cpu_adam: bool, paged: bool):
+        return {
+            "cpu_adam": lambda: cpu_adam,
+            "paged_adamw8bit": lambda: paged,
+        }
+
+    def test_non_cpu_adam_recipe_passes_through(self):
+        from training.runtime.offload import resolve_offload_optimizer
+
+        recipe = load_recipe(TINY_RECIPE, ["memory.offload=zero_offload"])
+        assert recipe.optimizer.name == "adamw"
+        name = resolve_offload_optimizer(recipe, probes=self._probes(False, False))
+        assert name == "adamw"
+
+    def test_cpu_adam_available_runs_cpu_adam(self, capsys):
+        from training.runtime.offload import resolve_offload_optimizer
+
+        name = resolve_offload_optimizer(
+            offload_recipe(), probes=self._probes(True, False)
+        )
+        assert name == "cpu_adam"
+        assert capsys.readouterr().err == ""
+
+    def test_degrades_to_paged_adamw8bit(self, capsys):
+        from training.runtime.offload import resolve_offload_optimizer
+
+        name = resolve_offload_optimizer(
+            offload_recipe(), probes=self._probes(False, True)
+        )
+        assert name == "paged_adamw8bit"
+        err = capsys.readouterr().err
+        assert "degraded to paged_adamw8bit" in err
+        assert "CPUAdam extension" in err
+
+    def test_degrades_to_adamw_when_paged_unavailable(self, capsys):
+        from training.runtime.offload import resolve_offload_optimizer
+
+        name = resolve_offload_optimizer(
+            offload_recipe(), probes=self._probes(False, False)
+        )
+        assert name == "adamw"
+        err = capsys.readouterr().err
+        assert "degraded to adamw" in err
+        assert "offload disabled" in err
+
+    def test_chain_matches_schema_names(self):
+        from training.recipes.schema import OPTIMIZER_NAMES
+        from training.runtime.offload import OPTIMIZER_FALLBACK_CHAIN
+
+        assert set(OPTIMIZER_FALLBACK_CHAIN) <= set(OPTIMIZER_NAMES)
+
+    def test_paged_adamw8bit_validates_as_recipe_optimizer(self):
+        recipe = load_recipe(TINY_RECIPE, ["optimizer.name=paged_adamw8bit"])
+        assert not any("optimizer.name" in p for p in problems_of(recipe))
+
+
+class TestBuildOptimizerPaged:
+    def test_paged_adamw8bit_builds_through_bitsandbytes(self, monkeypatch):
+        import sys
+        import types
+
+        from training.models.model import build_optimizer
+
+        built = {}
+
+        class FakePagedAdamW8bit:
+            def __init__(self, params, **kwargs):
+                built["params"] = list(params)
+                built["kwargs"] = kwargs
+
+        fake_bnb = types.ModuleType("bitsandbytes")
+        fake_bnb.optim = types.SimpleNamespace(PagedAdamW8bit=FakePagedAdamW8bit)
+        monkeypatch.setitem(sys.modules, "bitsandbytes", fake_bnb)
+
+        recipe = load_recipe(TINY_RECIPE, ["optimizer.name=paged_adamw8bit"])
+        model = types.SimpleNamespace(parameters=lambda: iter(["p0", "p1"]))
+        optimizer = build_optimizer(model, recipe)
+        assert isinstance(optimizer, FakePagedAdamW8bit)
+        assert built["params"] == ["p0", "p1"]
+        assert built["kwargs"]["lr"] == recipe.optimizer.lr
+
+    def test_explicit_params_override_model_parameters(self, monkeypatch):
+        import sys
+        import types
+
+        from training.models.model import build_optimizer
+
+        built = {}
+
+        class FakePagedAdamW8bit:
+            def __init__(self, params, **kwargs):
+                built["params"] = list(params)
+
+        fake_bnb = types.ModuleType("bitsandbytes")
+        fake_bnb.optim = types.SimpleNamespace(PagedAdamW8bit=FakePagedAdamW8bit)
+        monkeypatch.setitem(sys.modules, "bitsandbytes", fake_bnb)
+
+        recipe = load_recipe(TINY_RECIPE, [])
+        model = types.SimpleNamespace(parameters=lambda: iter(["all"]))
+        build_optimizer(
+            model, recipe, name="paged_adamw8bit", params=["only-trainable"]
+        )
+        assert built["params"] == ["only-trainable"]
+
+
+class TestAttentionFallbackWarning:
+    """attention_implementation() warns once when a CUDA host lacks a usable
+    flash-attn (WI-7); the CPU sandbox path stays silent."""
+
+    @staticmethod
+    def _fake_torch(cuda_available: bool):
+        import types
+
+        return types.SimpleNamespace(
+            cuda=types.SimpleNamespace(is_available=lambda: cuda_available)
+        )
+
+    def test_cuda_without_flash_attn_warns_once_and_returns_sdpa(
+        self, monkeypatch, capsys
+    ):
+        import sys
+
+        from training.models import model as model_mod
+
+        monkeypatch.setitem(sys.modules, "torch", self._fake_torch(True))
+        monkeypatch.setattr(model_mod, "_flash_fallback_warned", False)
+        assert model_mod.attention_implementation() == "sdpa"
+        first = capsys.readouterr().err
+        assert "flash-attn unavailable" in first
+        assert "falling back to sdpa" in first
+        assert model_mod.attention_implementation() == "sdpa"
+        assert capsys.readouterr().err == ""  # warned once per process
+
+    def test_cpu_host_is_silent(self, monkeypatch, capsys):
+        import sys
+
+        from training.models import model as model_mod
+
+        monkeypatch.setitem(sys.modules, "torch", self._fake_torch(False))
+        monkeypatch.setattr(model_mod, "_flash_fallback_warned", False)
+        assert model_mod.attention_implementation() == "sdpa"
+        assert capsys.readouterr().err == ""

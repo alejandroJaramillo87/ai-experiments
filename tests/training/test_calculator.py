@@ -125,6 +125,17 @@ class TestComponentBytes:
         expected = 2 * TINY_PARAMS + 2 * 4 * (TINY_PARAMS // 256)
         assert optimizer_bytes(spec, recipe) == expected
 
+    def test_paged_adamw8bit_budgets_as_adamw8bit(self, tiny_recipe):
+        # Conservative fit: paged states may live in VRAM, so the model is
+        # identical to adamw8bit (WI-7 fallback rung).
+        recipe = load_recipe(
+            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
+            TINY_OVERRIDES + ["optimizer.name=paged_adamw8bit"],
+        )
+        spec = spec_from_recipe(recipe)
+        expected = 2 * TINY_PARAMS + 2 * 4 * (TINY_PARAMS // 256)
+        assert optimizer_bytes(spec, recipe) == expected
+
     def test_offload_moves_optimizer_to_host_ram(self, tiny_recipe):
         recipe = load_recipe(
             os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
