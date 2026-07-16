@@ -9,17 +9,14 @@ import os
 
 import numpy as np
 import pytest
+from support import make_shard_dir
 
 from training.data.loader import (
     CudaPrefetcher,
     build_dataloader,
     resume_index,
 )
-from training.data.shards import (
-    ShardedTokenDataset,
-    ShardWriter,
-    write_manifest,
-)
+from training.data.shards import ShardedTokenDataset
 
 # resume_index is pure index arithmetic; only the DataLoader/prefetcher tests
 # need torch, so the gate is per-test rather than module-level
@@ -44,17 +41,7 @@ def data_cfg(micro_batch=2, workers=0, prefetch_factor=2, pin_memory=False):
 def shard_dir(tmp_path) -> str:
     rng = np.random.default_rng(11)
     tokens = rng.integers(0, VOCAB, size=6000).tolist()
-    out = str(tmp_path / "shards")
-    writer = ShardWriter(out, np.uint16, shard_tokens=2000)
-    writer.write_tokens(tokens)
-    records = writer.close()
-    write_manifest(out, {
-        "dataset": "synthetic", "split": None, "revision": None, "license": "unknown",
-        "tokenizer": "synthetic", "tokenizer_hash": "abc123",
-        "dtype": "uint16", "eos_id": 1, "shard_tokens": 2000,
-        "shards": records, "total_tokens": len(tokens), "total_documents": 1,
-    })
-    return out
+    return make_shard_dir(tmp_path, tokens, shard_tokens=2000)
 
 
 def ground_truth(dataset: ShardedTokenDataset, start: int, count: int):
@@ -154,15 +141,13 @@ def test_multiworker_deterministic_loop_resume(shard_dir, tmp_path):
     interrupted-and-resumed run reproduces the straight run's losses exactly."""
     pytest.importorskip("transformers")
     import torch
+    from support import TINY_RECIPE
 
     from training.loop import train
     from training.recipes import load_recipe
 
-    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    recipe_path = os.path.join(repo, "training", "recipes", "reference", "tiny-e2e.yaml")
-
     def recipe(root, *extra):
-        return load_recipe(recipe_path, [
+        return load_recipe(TINY_RECIPE, [
             f"data.source={shard_dir}", f"run.output_root={root}",
             f"data.seq_len={WINDOW}", "data.workers=2", "data.pin_memory=false",
             "schedule.total_steps=8", "schedule.warmup_steps=2",

@@ -5,9 +5,8 @@ build_peft_model itself is exercised on the workstation (F2 acceptance)."""
 
 from __future__ import annotations
 
-import os
-
 import pytest
+from support import reference_recipe
 
 from training.families import (
     UnknownModelFamilyError,
@@ -20,18 +19,14 @@ from training.peft_utils import (
     resolve_target_modules,
     trainable_parameter_report,
 )
-from training.recipes import load_recipe, load_snapshot, write_snapshot
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-REFERENCE_DIR = os.path.join(REPO_ROOT, "training", "recipes", "reference")
+from training.recipes import load_snapshot, write_snapshot
 
 LLAMA_LINEAGE = ["q_proj", "k_proj", "v_proj", "o_proj",
                  "gate_proj", "up_proj", "down_proj"]
 
 
 def qlora_recipe(overrides=()):
-    return load_recipe(
-        os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml"), list(overrides))
+    return reference_recipe("sft-qlora-e2b.yaml", list(overrides))
 
 
 class TestFamilyRegistry:

@@ -7,12 +7,12 @@ Sandbox-only: synthetic shards, no GPU or network."""
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 
 import numpy as np
 import pytest
+from support import REPO_ROOT, make_source
 
 from training.continual.replay import (
     GIB,
@@ -21,25 +21,8 @@ from training.continual.replay import (
     ReplayRamFloorError,
 )
 from training.data.mixture import MixtureDataset
-from training.data.shards import ShardWriter, write_manifest
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 WINDOW = 8
-
-
-def make_source(tmp_path, name: str, tokens, tokenizer_hash: str = "abc123",
-                shard_tokens: int = 64) -> str:
-    out = str(tmp_path / name)
-    writer = ShardWriter(out, np.uint16, shard_tokens=shard_tokens)
-    writer.write_tokens(np.asarray(tokens, dtype=np.uint16))
-    records = writer.close()
-    write_manifest(out, {
-        "dataset": name, "split": None, "revision": None, "license": "unknown",
-        "tokenizer": "synthetic", "tokenizer_hash": tokenizer_hash,
-        "dtype": "uint16", "eos_id": 1, "shard_tokens": shard_tokens,
-        "shards": records, "total_tokens": len(tokens), "total_documents": 1,
-    })
-    return out
 
 
 @pytest.fixture()
@@ -354,11 +337,9 @@ schedule: {{total_steps: 4}}
 
 class TestBudgetResolution:
     def tiny_recipe(self, overrides=()):
-        from training.recipes import load_recipe
+        from support import reference_recipe
 
-        return load_recipe(
-            os.path.join(REPO_ROOT, "training", "recipes", "reference",
-                         "tiny-e2e.yaml"), list(overrides))
+        return reference_recipe("tiny-e2e.yaml", list(overrides))
 
     def test_explicit_max_gb_is_authoritative(self):
         from training.continual.replay import resolve_max_bytes

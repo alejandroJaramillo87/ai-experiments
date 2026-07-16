@@ -12,6 +12,7 @@ import subprocess
 import sys
 
 import pytest
+from support import REFERENCE_DIR, REPO_ROOT, reference_recipe
 
 from training.calculator import (
     ArchitectureSpec,
@@ -29,9 +30,6 @@ from training.calculator import (
 )
 from training.calculator.components import rounded_ffn, spec_from_hf_config
 from training.recipes import load_recipe
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-REFERENCE_DIR = os.path.join(REPO_ROOT, "training", "recipes", "reference")
 
 # Hand-computed tiny config: layers=2, hidden=64, heads=4, kv_heads=2,
 # ffn_mult=2.0 (-> ffn 128), vocab=256, tied embeddings.
@@ -51,11 +49,11 @@ TINY_OVERRIDES = [
 
 @pytest.fixture()
 def tiny_recipe():
-    return load_recipe(os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"), TINY_OVERRIDES)
+    return reference_recipe("tiny-e2e.yaml", TINY_OVERRIDES)
 
 
 def load_reference(name: str, overrides=()):
-    return load_recipe(os.path.join(REFERENCE_DIR, name), overrides)
+    return reference_recipe(name, list(overrides))
 
 
 class TestFfnRounding:

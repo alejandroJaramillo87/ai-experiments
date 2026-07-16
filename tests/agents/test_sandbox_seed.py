@@ -28,16 +28,9 @@ printf 'STUB_CMD:%s\\n' "$last"
 
 
 @pytest.fixture
-def sandbox_env(tmp_path):
+def sandbox_env(throwaway_repo, tmp_path):
     """Throwaway repo + stubbed docker; returns a runner for agent-sandbox."""
-    repo = tmp_path / "ai-experiments"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "test"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.email", "test@test"], cwd=repo, check=True)
-    (repo / "file.txt").write_text("content\n")
-    subprocess.run(["git", "add", "."], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+    repo = throwaway_repo
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()

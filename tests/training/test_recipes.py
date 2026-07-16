@@ -10,6 +10,7 @@ import os
 
 import pytest
 from omegaconf import OmegaConf
+from support import REFERENCE_DIR
 
 from training.recipes import (
     RecipeLoadError,
@@ -23,8 +24,6 @@ from training.recipes import (
     write_snapshot,
 )
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-REFERENCE_DIR = os.path.join(REPO_ROOT, "training", "recipes", "reference")
 REFERENCE_RECIPES = sorted(glob.glob(os.path.join(REFERENCE_DIR, "*.yaml")))
 
 
@@ -277,18 +276,13 @@ class TestTokenizerHashInvariant:
         validate(self.recipe_for(shard_dir, tokenizer_dir))
 
     def test_mismatched_tokenizer_fails(self, shard_dir, tmp_path_factory):
-        from tokenizers import Tokenizer, models, pre_tokenizers, trainers
+        from support import build_bpe_tokenizer
 
-        tok = Tokenizer(models.BPE())
-        tok.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
-        trainer = trainers.BpeTrainer(
-            vocab_size=300, special_tokens=["<|eos|>"],
-            initial_alphabet=pre_tokenizers.ByteLevel.alphabet())
-        tok.train_from_iterator(["a completely different corpus"], trainer)
-        other = tmp_path_factory.mktemp("other_tokenizer")
-        tok.save(str(other / "tokenizer.json"))
+        other = build_bpe_tokenizer(
+            str(tmp_path_factory.mktemp("other_tokenizer")),
+            ["a completely different corpus"], specials=["<|eos|>"], vocab_size=300)
 
-        assert_problem(self.recipe_for(shard_dir, str(other)), "does not match shard manifest")
+        assert_problem(self.recipe_for(shard_dir, other), "does not match shard manifest")
 
     def test_unprepared_source_skips_hash_check(self, tokenizer_dir, tmp_path):
         recipe = self.recipe_for(str(tmp_path / "not-prepared"), tokenizer_dir)

@@ -94,11 +94,6 @@ def fake_trainer_factory(calls):
     return fake_trainer
 
 
-@pytest.fixture(autouse=True)
-def tmp_lock(tmp_path, monkeypatch):
-    monkeypatch.setenv("TRAIN_LOCK_PATH", str(tmp_path / "test.lock"))
-
-
 class TestValidation:
     def test_valid_recipe_passes(self, tmp_path):
         validate_sae(make_recipe(tmp_path, str(tmp_path / "capture")))

@@ -5,12 +5,11 @@ tests mirror the tiny-e2e machinery from test_loop.py."""
 
 import importlib.util
 import math
-import os
 
 import numpy as np
 import pytest
+from support import TINY_RECIPE, make_shard_dir
 
-from training.data.shards import ShardWriter, write_manifest
 from training.loop import train
 from training.recipes import load_recipe
 from training.schedules import cosine_multiplier, wsd_multiplier
@@ -22,9 +21,6 @@ requires_torch = pytest.mark.skipif(
     or importlib.util.find_spec("transformers") is None,
     reason="torch and transformers required for tiny-run loop tests",
 )
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-TINY_RECIPE = os.path.join(REPO_ROOT, "training", "recipes", "reference", "tiny-e2e.yaml")
 
 VOCAB = 512
 SEQ_LEN = 64
@@ -88,17 +84,7 @@ def deterministic():
 def shard_dir(tmp_path) -> str:
     rng = np.random.default_rng(7)
     tokens = rng.integers(0, VOCAB, size=6000).tolist()
-    out = str(tmp_path / "shards")
-    writer = ShardWriter(out, np.uint16, shard_tokens=2000)
-    writer.write_tokens(tokens)
-    records = writer.close()
-    write_manifest(out, {
-        "dataset": "synthetic", "split": None, "revision": None, "license": "unknown",
-        "tokenizer": "synthetic", "tokenizer_hash": "abc123",
-        "dtype": "uint16", "eos_id": 1, "shard_tokens": 2000,
-        "shards": records, "total_tokens": len(tokens), "total_documents": 1,
-    })
-    return out
+    return make_shard_dir(tmp_path, tokens, shard_tokens=2000)
 
 
 def wsd_recipe(shard_dir: str, output_root: str, *extra: str):

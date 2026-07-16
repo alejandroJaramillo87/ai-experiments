@@ -12,8 +12,8 @@ import json
 import os
 
 import pytest
+from support import REPO_ROOT
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = os.path.join(REPO_ROOT, "scripts", "eval", "promote_scorecard.py")
 
 spec = importlib.util.spec_from_file_location("promote_scorecard", SCRIPT)

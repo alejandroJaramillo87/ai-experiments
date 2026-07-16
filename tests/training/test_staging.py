@@ -6,29 +6,17 @@ import os
 import numpy as np
 import pytest
 from omegaconf import OmegaConf
+from support import make_shard_dir
 
-from training.data.shards import (
-    ShardWriter,
-    load_manifest,  # noqa: E402
-    write_manifest,
-)
+from training.data.shards import load_manifest
 from training.data.staging import shard_set_bytes, stage_shards
 
 
 @pytest.fixture()
 def shard_dir(tmp_path) -> str:
     rng = np.random.default_rng(3)
-    out = str(tmp_path / "shards")
-    writer = ShardWriter(out, np.uint16, shard_tokens=1000)
-    writer.write_tokens(rng.integers(0, 500, size=2500).tolist())
-    records = writer.close()
-    write_manifest(out, {
-        "dataset": "synthetic", "split": None, "revision": None, "license": "unknown",
-        "tokenizer": "synthetic", "tokenizer_hash": "abc123",
-        "dtype": "uint16", "eos_id": 1, "shard_tokens": 1000,
-        "shards": records, "total_tokens": 2500, "total_documents": 1,
-    })
-    return out
+    tokens = rng.integers(0, 500, size=2500).tolist()
+    return make_shard_dir(tmp_path, tokens, shard_tokens=1000)
 
 
 def staging_cfg(dir: str, max_gb: float = 1.0):

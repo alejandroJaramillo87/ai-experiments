@@ -2,33 +2,23 @@
 
 import numpy as np
 import pytest
+from support import make_shard_dir
 
 from training.data.shards import (
     ShardedTokenDataset,
     ShardIntegrityError,
-    ShardWriter,
     TokenizerMismatchError,
     dtype_for_vocab,
     hash_file,
     length_bucket,
     load_manifest,
     verify_shards,
-    write_manifest,
 )
 
 
 def make_shards(tmp_path, tokens, shard_tokens=10, dtype=np.uint16, tokenizer_hash="abc123"):
-    out = str(tmp_path / "shards")
-    writer = ShardWriter(out, dtype, shard_tokens)
-    writer.write_tokens(tokens)
-    records = writer.close()
-    write_manifest(out, {
-        "dataset": "synthetic", "split": None, "revision": None, "license": "unknown",
-        "tokenizer": "synthetic", "tokenizer_hash": tokenizer_hash,
-        "dtype": str(np.dtype(dtype)), "eos_id": 1, "shard_tokens": shard_tokens,
-        "shards": records, "total_tokens": len(tokens), "total_documents": 1,
-    })
-    return out
+    return make_shard_dir(tmp_path, tokens, shard_tokens=shard_tokens,
+                          dtype=dtype, tokenizer_hash=tokenizer_hash)
 
 
 def test_dtype_selection():

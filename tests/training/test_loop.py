@@ -16,12 +16,10 @@ import pytest
 torch = pytest.importorskip("torch")
 pytest.importorskip("transformers")
 
-from training.data.shards import ShardWriter, write_manifest  # noqa: E402
+from support import TINY_RECIPE, make_shard_dir  # noqa: E402
+
 from training.loop import train  # noqa: E402
 from training.recipes import load_recipe  # noqa: E402
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-TINY_RECIPE = os.path.join(REPO_ROOT, "training", "recipes", "reference", "tiny-e2e.yaml")
 
 VOCAB = 512
 SEQ_LEN = 64
@@ -38,17 +36,7 @@ def deterministic():
 def shard_dir(tmp_path) -> str:
     rng = np.random.default_rng(7)
     tokens = rng.integers(0, VOCAB, size=6000).tolist()
-    out = str(tmp_path / "shards")
-    writer = ShardWriter(out, np.uint16, shard_tokens=2000)
-    writer.write_tokens(tokens)
-    records = writer.close()
-    write_manifest(out, {
-        "dataset": "synthetic", "split": None, "revision": None, "license": "unknown",
-        "tokenizer": "synthetic", "tokenizer_hash": "abc123",
-        "dtype": "uint16", "eos_id": 1, "shard_tokens": 2000,
-        "shards": records, "total_tokens": len(tokens), "total_documents": 1,
-    })
-    return out
+    return make_shard_dir(tmp_path, tokens, shard_tokens=2000)
 
 
 def tiny_recipe(shard_dir: str, output_root: str, *extra: str):

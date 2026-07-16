@@ -10,11 +10,12 @@ import os
 from types import SimpleNamespace
 
 import pytest
+from support import reference_recipe
 
 from training.calculator.components import spec_from_hf_config
 from training.data.sft import IGNORE_INDEX
 from training.lock import TrainLockError
-from training.recipes import RecipeValidationError, load_recipe, validate
+from training.recipes import RecipeValidationError, validate
 from training.sft import (
     SftPreflightError,
     check_memory_fit,
@@ -34,13 +35,9 @@ from training.sft_callbacks import (
     write_checkpoint_meta,
 )
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-REFERENCE_DIR = os.path.join(REPO_ROOT, "training", "recipes", "reference")
-
 
 def sft_recipe(overrides=()):
-    return load_recipe(
-        os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml"), list(overrides))
+    return reference_recipe("sft-qlora-e2b.yaml", list(overrides))
 
 
 # -- schema and validation ---------------------------------------------------

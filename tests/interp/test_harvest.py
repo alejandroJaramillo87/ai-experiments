@@ -68,11 +68,6 @@ def plenty_of_disk(_path):
     return Usage(total=4000 * GB, used=100 * GB, free=3900 * GB)
 
 
-@pytest.fixture(autouse=True)
-def tmp_lock(tmp_path, monkeypatch):
-    monkeypatch.setenv("TRAIN_LOCK_PATH", str(tmp_path / "test.lock"))
-
-
 class TestValidation:
     def test_valid_recipe_passes(self, tmp_path):
         validate_harvest(make_recipe(tmp_path))

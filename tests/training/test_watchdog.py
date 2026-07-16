@@ -194,28 +194,18 @@ def test_retention_exempts_emergency_checkpoints(tmp_path):
 def test_loop_saves_emergency_checkpoint_on_abort(tmp_path, monkeypatch):
     """Integration: a watchdog abort mid-run leaves a resumable checkpoint
     marked emergency=true and surfaces WatchdogAbort to the caller."""
-    torch = pytest.importorskip("torch")
+    pytest.importorskip("torch")
     pytest.importorskip("transformers")
     import numpy as np
+    from support import TINY_RECIPE, make_shard_dir
 
-    from training.data.shards import ShardWriter, write_manifest
     from training.loop import train
     from training.recipes import load_recipe
 
-    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     rng = np.random.default_rng(7)
-    shard_dir = str(tmp_path / "shards")
-    writer = ShardWriter(shard_dir, np.uint16, shard_tokens=2000)
-    writer.write_tokens(rng.integers(0, 512, size=6000).tolist())
-    records = writer.close()
-    write_manifest(shard_dir, {
-        "dataset": "synthetic", "split": None, "revision": None, "license": "unknown",
-        "tokenizer": "synthetic", "tokenizer_hash": "abc123",
-        "dtype": "uint16", "eos_id": 1, "shard_tokens": 2000,
-        "shards": records, "total_tokens": 6000, "total_documents": 1,
-    })
-    recipe = load_recipe(
-        os.path.join(repo, "training", "recipes", "reference", "tiny-e2e.yaml"), [
+    tokens = rng.integers(0, 512, size=6000).tolist()
+    shard_dir = make_shard_dir(tmp_path, tokens, shard_tokens=2000)
+    recipe = load_recipe(TINY_RECIPE, [
             f"data.source={shard_dir}",
             f"run.output_root={tmp_path / 'runs'}",
             "data.seq_len=64",
