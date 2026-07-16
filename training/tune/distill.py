@@ -3,7 +3,7 @@
 Two tiers (resolved F5 decisions):
 
 - tier: response — SFT on an F4 teacher-response dataset through the
-  unmodified F3 trainer. train_distill() delegates to training/sft.py; the
+  unmodified F3 trainer. train_distill() delegates to training/tune/sft.py; the
   recipe's distill block only adds provenance (the F4 teacher manifest),
   which flows into the run snapshot and checkpoint meta.json.
 - tier: logit — token-level KL against teacher logits, teacher in-process.
@@ -41,10 +41,10 @@ from omegaconf import DictConfig
 
 from training.data.prepare import load_tokenizer
 from training.data.sft import IGNORE_INDEX, TRAIN_FILE
-from training.lock import run_lock
-from training.loop import snapshot_hash
 from training.recipes import create_run_dir
-from training.sft import (
+from training.runtime.lock import run_lock
+from training.runtime.loop import snapshot_hash
+from training.tune.sft import (
     Collator,
     SftPreflightError,
     SftResult,
@@ -55,7 +55,7 @@ from training.sft import (
     resolve_sft_resume,
     sft_config_kwargs,
 )
-from training.sft_callbacks import (
+from training.tune.sft_callbacks import (
     build_callbacks,
     checkpoint_dir_name,
     write_checkpoint_meta,
@@ -467,7 +467,7 @@ def train_distill(recipe: DictConfig, force: bool = False) -> SftResult:
             "recipe (the reference is training/recipes/reference/distill-e2b.yaml)"
         )
     if d.tier == "response":
-        from training.sft import train_sft
+        from training.tune.sft import train_sft
 
         return train_sft(recipe, force=force)
 
@@ -481,14 +481,14 @@ def train_distill(recipe: DictConfig, force: bool = False) -> SftResult:
 
 
 def _train_locked_distill(recipe: DictConfig) -> SftResult:
-    # Mirrors training/sft.py _train_locked; kept separate rather than hooked
+    # Mirrors training/tune/sft.py _train_locked; kept separate rather than hooked
     # into it so F3's flow stays free of distillation branches. Divergences:
     # teacher/cache setup, DistillCollator, DistillTrainer, provenance record.
     import torch  # noqa: F401  (fail here, before run-dir side effects)
 
     from training.data.distill import LogitCache
-    from training.tracking import Tracker
-    from training.watchdog import Watchdog, WatchdogAbort
+    from training.runtime.tracking import Tracker
+    from training.runtime.watchdog import Watchdog, WatchdogAbort
 
     d = recipe.distill
     train_samples, holdout_samples = build_dataset(recipe)

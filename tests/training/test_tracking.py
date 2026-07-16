@@ -7,7 +7,7 @@ sandbox), so fake sinks are injected into the fan-out; the subject under test
 is Tracker.log's dispatch-and-evict logic, not the sinks."""
 
 from training.recipes.schema import TrackingConfig
-from training.tracking import Tracker
+from training.runtime.tracking import Tracker
 
 
 class RecordingTensorboard:

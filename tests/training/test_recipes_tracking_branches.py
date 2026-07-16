@@ -3,7 +3,7 @@
 Covers the cross-field validate() arms not exercised by test_recipes.py
 (schedule bounds, sft/distill artifact checks, organism/data/staging/watchdog
 domains, mixture and replay path checks, tokenizer-load failures) and the
-Tracker sink constructors in training/tracking.py. The tensorboard, wandb,
+Tracker sink constructors in training/runtime/tracking.py. The tensorboard, wandb,
 and mlflow libraries are absent in the sandbox, so sink construction runs
 against stub modules injected into sys.modules; the import-failure arms use a
 None sys.modules entry, which makes the lazy import raise ImportError.
@@ -20,7 +20,7 @@ from support import REFERENCE_DIR, make_shard_dir, make_source
 
 from training.recipes import RecipeValidationError, load_recipe, validate
 from training.recipes.schema import TrackingConfig
-from training.tracking import Tracker
+from training.runtime.tracking import Tracker
 
 
 def tiny(overrides):

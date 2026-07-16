@@ -12,13 +12,13 @@ import json
 import pytest
 from support import TINY_RECIPE, reference_recipe
 
-from training.offload import (
+from training.recipes import RecipeValidationError, load_recipe, validate
+from training.runtime.offload import (
     apply_trainable_filter,
     build_ds_config,
     frozen_patterns,
     is_frozen_name,
 )
-from training.recipes import RecipeValidationError, load_recipe, validate
 
 OFFLOAD_OVERRIDES = [
     "optimizer.name=cpu_adam",
@@ -170,7 +170,7 @@ class TestApplyTrainableFilter:
         assert all(p.requires_grad for p in tiny_model.parameters())
 
     def test_pattern_drift_fails_loudly(self, tiny_model, monkeypatch):
-        from training import offload
+        from training.runtime import offload
 
         monkeypatch.setitem(
             offload.FROZEN_PATTERNS, "transformer_stack", ("no_such_module",)
@@ -272,7 +272,7 @@ class TestValidate:
 
 class TestCheckpointFormatGuard:
     def test_resume_rejects_torch_format_under_offload(self, tmp_path):
-        from training import checkpoint as ckpt
+        from training.runtime import checkpoint as ckpt
 
         step_dir = tmp_path / "step_000000001"
         step_dir.mkdir()

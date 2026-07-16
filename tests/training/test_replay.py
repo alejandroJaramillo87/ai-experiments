@@ -417,8 +417,8 @@ class TestLoopExpansion:
     def test_replay_block_expands_into_mixture_sources(self, tmp_path, replay_dir):
         from omegaconf import OmegaConf
 
-        from training.loop import _sources_with_replay
         from training.recipes.schema import Recipe
+        from training.runtime.loop import _sources_with_replay
 
         domain = make_source(tmp_path, "domain", [100] * 640)
         recipe = OmegaConf.merge(

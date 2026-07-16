@@ -41,7 +41,7 @@ def thinking_mode_for(architecture: str | None, path: str) -> str | None:
     architecture, falling back to the filename; None when neither names a
     registered family (recorded as "not recorded", never guessed).
     """
-    from training.families import family_spec, supported_families
+    from training.models.families import family_spec, supported_families
 
     hints = f"{architecture or ''} {os.path.basename(path)}".lower()
     hints = hints.replace("-", "").replace("_", "")

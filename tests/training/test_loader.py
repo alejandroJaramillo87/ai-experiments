@@ -155,8 +155,8 @@ def test_multiworker_deterministic_loop_resume(shard_dir, tmp_path):
     import torch
     from support import TINY_RECIPE
 
-    from training.loop import train
     from training.recipes import load_recipe
+    from training.runtime.loop import train
 
     def recipe(root, *extra):
         return load_recipe(

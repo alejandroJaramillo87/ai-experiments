@@ -201,8 +201,8 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
 
 
 def cmd_train(args: argparse.Namespace) -> int:
-    from training.loop import train
-    from training.watchdog import WatchdogAbort
+    from training.runtime.loop import train
+    from training.runtime.watchdog import WatchdogAbort
 
     out = Printer(quiet=args.json)
     recipe = _load_validated(args.config, args.overrides, out)
@@ -251,8 +251,8 @@ def cmd_train(args: argparse.Namespace) -> int:
 
 
 def cmd_train_sft(args: argparse.Namespace) -> int:
-    from training.sft import SftPreflightError, check_memory_fit, train_sft
-    from training.watchdog import WatchdogAbort
+    from training.runtime.watchdog import WatchdogAbort
+    from training.tune.sft import SftPreflightError, check_memory_fit, train_sft
 
     out = Printer(quiet=args.json)
     recipe = _load_validated(args.config, args.overrides, out)
@@ -314,9 +314,9 @@ def cmd_train_sft(args: argparse.Namespace) -> int:
 
 
 def cmd_train_distill(args: argparse.Namespace) -> int:
-    from training.distill import DistillPreflightError, train_distill
-    from training.sft import SftPreflightError, check_memory_fit
-    from training.watchdog import WatchdogAbort
+    from training.runtime.watchdog import WatchdogAbort
+    from training.tune.distill import DistillPreflightError, train_distill
+    from training.tune.sft import SftPreflightError, check_memory_fit
 
     out = Printer(quiet=args.json)
     recipe = _load_validated(args.config, args.overrides, out)
@@ -383,7 +383,7 @@ def cmd_train_distill(args: argparse.Namespace) -> int:
 
 
 def cmd_distill_cache(args: argparse.Namespace) -> int:
-    from training.distill import DistillPreflightError, build_logit_cache
+    from training.tune.distill import DistillPreflightError, build_logit_cache
 
     out = Printer(quiet=args.json)
     recipe = _load_validated(args.config, args.overrides, out)

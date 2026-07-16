@@ -22,7 +22,7 @@ step (time blocked on the next batch), the D9 overlap acceptance metric, and
 holds the D9 run lock for its duration.
 
 ZeRO-Offload (P2-D5): memory.offload: zero_offload routes model, optimizer,
-and checkpointing through a DeepSpeed engine (training/offload.py) — bf16
+and checkpointing through a DeepSpeed engine (training/runtime/offload.py) — bf16
 weights and gradients in VRAM, fp32 master weights and Adam moments in host
 RAM, the optimizer step on CPUAdam. The LR scheduler stays loop-owned and
 checkpoints keep the D6 layout with a deepspeed/ engine-state subdirectory.
@@ -48,18 +48,18 @@ import numpy as np
 from omegaconf import DictConfig
 
 from common.provenance import git_sha as _git_sha
-from training import affinity as aff
-from training import checkpoint as ckpt
 from training.data.loader import CudaPrefetcher, build_dataloader, resume_index
 from training.data.mixture import MixtureDataset
 from training.data.shards import ShardedTokenDataset
 from training.data.staging import stage_shards
-from training.lock import run_lock
-from training.model import build_model, build_optimizer
+from training.models.model import build_model, build_optimizer
 from training.recipes.loader import create_run_dir, resolved_yaml
-from training.schedules import build_scheduler
-from training.tracking import Tracker
-from training.watchdog import Watchdog, WatchdogAbort
+from training.runtime import affinity as aff
+from training.runtime import checkpoint as ckpt
+from training.runtime.lock import run_lock
+from training.runtime.schedules import build_scheduler
+from training.runtime.tracking import Tracker
+from training.runtime.watchdog import Watchdog, WatchdogAbort
 
 
 @dataclass
@@ -227,7 +227,7 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         # parameters never enter its optimizer groups. The LR scheduler
         # stays loop-owned (resolved P2-D5 decision 2) and steps the client
         # optimizer's param groups directly.
-        from training.offload import initialize_engine
+        from training.runtime.offload import initialize_engine
 
         model = build_model(recipe)
         engine = initialize_engine(model, recipe)

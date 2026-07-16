@@ -36,7 +36,7 @@ from training.recipes.schema import (
     TRAINABLE_FILTERS,
     WSD_DECAY_SHAPES,
 )
-from training.schedules import (
+from training.runtime.schedules import (
     WSD_DECAY_SHAPE_DEFAULT,
     WSD_DECAY_START_FRAC_DEFAULT,
     WSD_FINAL_LR_FRAC_DEFAULT,
@@ -321,7 +321,7 @@ def _check_distill(recipe: DictConfig, problems: list[str]) -> None:
     """F5 invariants (resolved F5 decisions 2 and 5): the distill block rides
     the SFT flow, the logit tier is trl-only, cached mode has no in-memory
     teacher and no packing, and tokenizer identity is enforced at startup by
-    training/distill.py (a preflight, not a static check)."""
+    training/tune/distill.py (a preflight, not a static check)."""
     d = recipe.distill
     if not d.enabled:
         return
@@ -648,7 +648,7 @@ def _check_staging(recipe: DictConfig, problems: list[str]) -> None:
 def _check_affinity(recipe: DictConfig, problems: list[str]) -> None:
     # Masks must parse and be disjoint even when disabled: a recipe carrying a
     # broken affinity block should fail at load, not when someone enables it.
-    from training.affinity import resolve_masks
+    from training.runtime.affinity import resolve_masks
 
     try:
         resolve_masks(recipe.affinity)

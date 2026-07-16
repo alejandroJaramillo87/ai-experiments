@@ -18,8 +18,8 @@ pytest.importorskip("transformers")
 
 from support import TINY_RECIPE, make_shard_dir  # noqa: E402
 
-from training.loop import train  # noqa: E402
 from training.recipes import load_recipe  # noqa: E402
+from training.runtime.loop import train  # noqa: E402
 
 VOCAB = 512
 SEQ_LEN = 64
@@ -118,7 +118,7 @@ def test_retention_applies_during_run(shard_dir, tmp_path):
             "checkpoint.retain_every=6",
         )
     )
-    from training import checkpoint as ckpt
+    from training.runtime import checkpoint as ckpt
 
     # saves at 2,4,6,8,10; survivors: last two (8, 10) plus multiples of 6 (6)
     assert ckpt.list_checkpoints(result.checkpoint_root) == [6, 8, 10]

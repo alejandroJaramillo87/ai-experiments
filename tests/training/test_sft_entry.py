@@ -13,9 +13,9 @@ import pytest
 from support import reference_recipe
 
 from training.data.sft import IGNORE_INDEX
-from training.lock import TrainLockError
 from training.recipes import RecipeValidationError, validate
-from training.sft import (
+from training.runtime.lock import TrainLockError
+from training.tune.sft import (
     SftPreflightError,
     check_memory_fit,
     collate_padded,
@@ -24,7 +24,7 @@ from training.sft import (
     sft_config_kwargs,
     train_sft,
 )
-from training.sft_callbacks import (
+from training.tune.sft_callbacks import (
     apply_trl_retention,
     checkpoint_dir_name,
     latest_trl_checkpoint,
@@ -277,7 +277,7 @@ class TestPreflight:
     def test_memory_fit_refusal_precedes_lock(self, monkeypatch):
         recipe = sft_recipe()
         monkeypatch.setattr(
-            "training.sft.check_memory_fit", lambda r, force: (False, "too big")
+            "training.tune.sft.check_memory_fit", lambda r, force: (False, "too big")
         )
         with pytest.raises(SftPreflightError, match="too big"):
             train_sft(recipe)
@@ -286,7 +286,7 @@ class TestPreflight:
     def test_refuses_while_lock_held(self, monkeypatch, tmp_path):
         recipe = sft_recipe()
         monkeypatch.setattr(
-            "training.sft.check_memory_fit", lambda r, force: (True, "fits")
+            "training.tune.sft.check_memory_fit", lambda r, force: (True, "fits")
         )
         lock = os.environ["TRAIN_LOCK_PATH"]
         with open(lock, "w") as f:

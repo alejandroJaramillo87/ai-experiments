@@ -9,9 +9,9 @@ the NVML peak.
 
 The loop here is deliberately private to calibration: a few optimizer steps
 over synthetic batches, no checkpointing, tracking, or resume. It is not the
-D6 reference trainer (training/loop.py), which owns those facilities.
+D6 reference trainer (training/runtime/loop.py), which owns those facilities.
 
-The model is built through the shared builders in training/model.py (HF
+The model is built through the shared builders in training/models/model.py (HF
 LlamaConfig + AutoModelForCausalLM.from_config, resolved design decision 2)
 so the measured model is exactly what training runs instantiate; the built model's true parameter count is recorded so any
 drift from the analytic param_count is caught immediately.
@@ -29,7 +29,7 @@ from omegaconf import DictConfig
 
 from training.calculator.components import spec_from_recipe
 from training.calculator.solve import Estimate, estimate
-from training.model import (
+from training.models.model import (
     build_optimizer,  # noqa: F401  (re-export; extracted in D6)
     build_scratch_model,
 )

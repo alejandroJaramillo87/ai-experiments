@@ -1,6 +1,6 @@
 """LR schedule multiplier functions and scheduler builder (P2-D3).
 
-Extracted from training/model.py so schedule shapes accrue in one module.
+Extracted from training/models/model.py so schedule shapes accrue in one module.
 Every schedule is a pure function of step -> multiplier on optimizer.lr,
 wrapped in torch LambdaLR; scheduler state checkpoints via the Phase 0 D6
 save_checkpoint/load_checkpoint pair, so resume continues the curve exactly.

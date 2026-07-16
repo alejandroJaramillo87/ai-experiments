@@ -20,14 +20,14 @@ from training.data.distill import (
     LogitCacheWriter,
 )
 from training.data.sft import IGNORE_INDEX
-from training.distill import (
+from training.recipes import RecipeValidationError, validate
+from training.tune.distill import (
     DistillPreflightError,
     check_softcap_parity,
     distill_provenance,
     final_logit_softcapping,
 )
-from training.recipes import RecipeValidationError, validate
-from training.sft_callbacks import write_checkpoint_meta
+from training.tune.sft_callbacks import write_checkpoint_meta
 
 
 def distill_recipe(overrides=()):
@@ -228,7 +228,7 @@ class TestMaskedDistillLoss:
     @pytest.fixture(autouse=True)
     def _torch(self):
         self.torch = pytest.importorskip("torch")
-        from training.distill import masked_distill_loss
+        from training.tune.distill import masked_distill_loss
 
         self.loss = masked_distill_loss
 

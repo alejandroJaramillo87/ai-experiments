@@ -6,7 +6,7 @@ import os
 import pytest
 from omegaconf import OmegaConf
 
-from training.affinity import (
+from training.runtime.affinity import (
     apply_mask,
     parse_cpu_list,
     resolve_masks,
@@ -80,6 +80,6 @@ def test_apply_mask_with_no_available_cpu_raises():
 
 def test_worker_init_fn_pins(monkeypatch):
     applied = []
-    monkeypatch.setattr("training.affinity.apply_mask", applied.append)
+    monkeypatch.setattr("training.runtime.affinity.apply_mask", applied.append)
     worker_init_fn({1, 2})(worker_id=0)
     assert applied == [{1, 2}]

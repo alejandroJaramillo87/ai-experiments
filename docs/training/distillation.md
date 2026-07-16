@@ -2,7 +2,7 @@
 
 Phase 1 F5: train a small student from a larger teacher. Entry points
 `make train-distill CONFIG=...` and `make distill-cache CONFIG=...`; logic in
-`/training/distill.py` and `/training/data/distill.py`. Design decisions and
+`/training/tune/distill.py` and `/training/data/distill.py`. Design decisions and
 accepted tradeoffs are recorded in
 [the F5 investigation](f5_distillation_investigation.md).
 

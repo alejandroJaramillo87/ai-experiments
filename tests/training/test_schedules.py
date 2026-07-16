@@ -10,9 +10,9 @@ import numpy as np
 import pytest
 from support import TINY_RECIPE, make_shard_dir
 
-from training.loop import train
 from training.recipes import load_recipe
-from training.schedules import cosine_multiplier, wsd_multiplier
+from training.runtime.loop import train
+from training.runtime.schedules import cosine_multiplier, wsd_multiplier
 
 # The multiplier curves are pure math; only the tiny-run loop tests need the
 # training stack, so the gate is per-test rather than module-level

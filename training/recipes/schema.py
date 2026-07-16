@@ -15,7 +15,7 @@ types cannot express live in training/recipes/validate.py.
 Fields for consumers that are not built yet (precision.fp8) ship now so the
 contract is stable; their validation is stubbed until D8 lands. The D9 blocks
 (data loader fields, staging, affinity) are consumed by the loop; the watchdog
-block by training/watchdog.py (D10).
+block by training/runtime/watchdog.py (D10).
 """
 
 from __future__ import annotations
@@ -92,7 +92,7 @@ class ModelConfig:
     "all" trains every parameter; "transformer_stack" freezes embeddings,
     an untied lm_head, and per-layer embedding tables (Gemma 4 E-models),
     training only the decoder stack. The frozen-pattern lists live in
-    training/offload.py so the D4 calculator can always price the policy.
+    training/runtime/offload.py so the D4 calculator can always price the policy.
     Mutually exclusive with peft.enabled (PEFT owns trainability there).
     """
 
@@ -221,7 +221,7 @@ class OptimizerConfig:
 @dataclass
 class ScheduleConfig:
     """LR schedule. The wsd knobs (P2-D3) parameterize the warmup-stable-
-    decay shape in training/schedules.py: plateau ends at
+    decay shape in training/runtime/schedules.py: plateau ends at
     decay_start_frac * total_steps, then decays to final_lr_frac * peak_lr
     along decay_shape. They apply to the pretrain loop only; validate()
     rejects non-default values on sft recipes (the transformers
@@ -245,7 +245,7 @@ class PrecisionConfig:
 @dataclass
 class MemoryConfig:
     """Memory strategy. offload: zero_offload (P2-D5) expands to a generated
-    DeepSpeed ZeRO stage 2 config (training/offload.py) with the optimizer
+    DeepSpeed ZeRO stage 2 config (training/runtime/offload.py) with the optimizer
     step on the CPU: the bucket sizes bound the pinned gradient-transfer
     staging buffers (DeepSpeed default 2e8 elements, tuned at calibration)
     and offload_pin_memory pins the host-side optimizer partitions for
@@ -270,9 +270,9 @@ class PeftConfig:
     valid with or without base quantization.
 
     target_modules is either an explicit module-name list or "auto", which
-    resolves per model family through training/families.py. Entry points
+    resolves per model family through training/models/families.py. Entry points
     resolve "auto" before the config snapshot is written, so a snapshot
-    always carries the concrete list (see training/peft_utils.py).
+    always carries the concrete list (see training/models/peft_utils.py).
     """
 
     enabled: bool = False
@@ -479,7 +479,7 @@ class TrackingConfig:
 
 @dataclass
 class WatchdogConfig:
-    """Thresholds consumed by the D10 watchdog (training/watchdog.py)."""
+    """Thresholds consumed by the D10 watchdog (training/runtime/watchdog.py)."""
 
     enabled: bool = True
     interval_s: float = 10.0  # NVML/psutil sampling period (background thread)

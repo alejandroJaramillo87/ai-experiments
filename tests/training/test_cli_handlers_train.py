@@ -4,8 +4,8 @@ cmd_train_distill, and cmd_distill_cache.
 Each test parses real argv through build_parser() and invokes the bound
 handler, asserting the exit-code contract (0 success, 1 failure), the styled
 [OK]/[WARN]/[ERROR] lines, and --json stdout purity. The GPU pipelines are
-replaced at their home modules (training.loop / training.sft /
-training.distill) with fakes returning the real result dataclasses; recipe
+replaced at their home modules (training.runtime.loop / training.tune.sft /
+training.tune.distill) with fakes returning the real result dataclasses; recipe
 loading, validation, and the distill-cache preflight refusals execute for
 real (they are torch-free). check_memory_fit is always faked: the real one
 resolves HF model specs through transformers, absent in the sandbox.
@@ -20,10 +20,10 @@ import pytest
 from support import REFERENCE_DIR
 
 from training import cli
-from training.distill import DistillPreflightError
-from training.loop import TrainResult
-from training.sft import SftPreflightError, SftResult
-from training.watchdog import WatchdogAbort
+from training.runtime.loop import TrainResult
+from training.runtime.watchdog import WatchdogAbort
+from training.tune.distill import DistillPreflightError
+from training.tune.sft import SftPreflightError, SftResult
 
 TINY = os.path.join(REFERENCE_DIR, "tiny-e2e.yaml")
 SFT = os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml")
@@ -72,14 +72,14 @@ def sft_result(**kw) -> SftResult:
 
 
 def patch_fit(monkeypatch, message: str = FIT_OK, fits: bool = True) -> list:
-    """Replace training.sft.check_memory_fit; returns the recorded calls."""
+    """Replace training.tune.sft.check_memory_fit; returns the recorded calls."""
     calls: list = []
 
     def fake_fit(recipe, force):
         calls.append((recipe, force))
         return fits, message
 
-    monkeypatch.setattr("training.sft.check_memory_fit", fake_fit)
+    monkeypatch.setattr("training.tune.sft.check_memory_fit", fake_fit)
     return calls
 
 
@@ -100,7 +100,7 @@ class TestCmdTrain:
             seen["recipe"] = recipe
             return train_result()
 
-        monkeypatch.setattr("training.loop.train", fake_train)
+        monkeypatch.setattr("training.runtime.loop.train", fake_train)
         assert run_cli(["train", "--config", TINY]) == 0
         out = capsys.readouterr().out
         assert "[RUN] Training tiny-e2e: 20 total steps" in out
@@ -112,7 +112,7 @@ class TestCmdTrain:
 
     def test_resume_verb_and_empty_losses(self, monkeypatch, capsys):
         monkeypatch.setattr(
-            "training.loop.train", lambda recipe: train_result(losses=[])
+            "training.runtime.loop.train", lambda recipe: train_result(losses=[])
         )
         assert run_cli(["train", "--config", TINY, "checkpoint.resume=latest"]) == 0
         out = capsys.readouterr().out
@@ -120,7 +120,9 @@ class TestCmdTrain:
         assert "Final loss" not in out
 
     def test_json_stdout_is_pure_json(self, monkeypatch, capsys):
-        monkeypatch.setattr("training.loop.train", lambda recipe: train_result())
+        monkeypatch.setattr(
+            "training.runtime.loop.train", lambda recipe: train_result()
+        )
         assert run_cli(["train", "--config", TINY, "--json"]) == 0
         data = json.loads(capsys.readouterr().out)
         assert data["final_step"] == 20
@@ -133,7 +135,7 @@ class TestCmdTrain:
         def aborting(recipe):
             raise WatchdogAbort("loss_spike", 12.5, 6.25)
 
-        monkeypatch.setattr("training.loop.train", aborting)
+        monkeypatch.setattr("training.runtime.loop.train", aborting)
         assert run_cli(["train", "--config", TINY]) == 1
         assert_watchdog_output(capsys.readouterr().out)
 
@@ -141,7 +143,7 @@ class TestCmdTrain:
         def failing(recipe):
             raise RuntimeError("shard dir missing")
 
-        monkeypatch.setattr("training.loop.train", failing)
+        monkeypatch.setattr("training.runtime.loop.train", failing)
         assert run_cli(["train", "--config", TINY]) == 1
         out = capsys.readouterr().out
         assert "[ERROR] Training failed: shard dir missing" in out
@@ -163,7 +165,7 @@ class TestCmdTrainSft:
     def test_success_prints_full_report(self, monkeypatch, capsys):
         patch_fit(monkeypatch)
         monkeypatch.setattr(
-            "training.sft.train_sft", lambda recipe, force=False: sft_result()
+            "training.tune.sft.train_sft", lambda recipe, force=False: sft_result()
         )
         assert run_cli(["train-sft", "--config", SFT]) == 0
         out = capsys.readouterr().out
@@ -185,7 +187,7 @@ class TestCmdTrainSft:
             train_calls.append(force)
             return sft_result(trainable_report="", train_loss=None, holdout_loss=None)
 
-        monkeypatch.setattr("training.sft.train_sft", fake_train)
+        monkeypatch.setattr("training.tune.sft.train_sft", fake_train)
         assert (
             run_cli(
                 ["train-sft", "--config", SFT, "--force", "checkpoint.resume=latest"]
@@ -208,7 +210,7 @@ class TestCmdTrainSft:
         def failing(recipe, force=False):
             raise SftPreflightError("dataset manifest hash mismatch")
 
-        monkeypatch.setattr("training.sft.train_sft", failing)
+        monkeypatch.setattr("training.tune.sft.train_sft", failing)
         assert run_cli(["train-sft", "--config", SFT]) == 1
         out = capsys.readouterr().out
         assert "[ERROR] Preflight failed: dataset manifest hash mismatch" in out
@@ -219,7 +221,7 @@ class TestCmdTrainSft:
         def aborting(recipe, force=False):
             raise WatchdogAbort("loss_spike", 12.5, 6.25)
 
-        monkeypatch.setattr("training.sft.train_sft", aborting)
+        monkeypatch.setattr("training.tune.sft.train_sft", aborting)
         assert run_cli(["train-sft", "--config", SFT]) == 1
         assert_watchdog_output(capsys.readouterr().out)
 
@@ -229,7 +231,7 @@ class TestCmdTrainSft:
         def failing(recipe, force=False):
             raise FileNotFoundError("no such dataset")
 
-        monkeypatch.setattr("training.sft.train_sft", failing)
+        monkeypatch.setattr("training.tune.sft.train_sft", failing)
         assert run_cli(["train-sft", "--config", SFT]) == 1
         out = capsys.readouterr().out
         assert "[ERROR] SFT run failed: no such dataset" in out
@@ -238,7 +240,7 @@ class TestCmdTrainSft:
     def test_json_stdout_is_pure_json(self, monkeypatch, capsys):
         patch_fit(monkeypatch)
         monkeypatch.setattr(
-            "training.sft.train_sft",
+            "training.tune.sft.train_sft",
             lambda recipe, force=False: sft_result(holdout_loss=None),
         )
         assert run_cli(["train-sft", "--config", SFT, "--json"]) == 0
@@ -257,7 +259,7 @@ class TestCmdTrainDistill:
     def test_response_tier_success(self, monkeypatch, capsys):
         patch_fit(monkeypatch)
         monkeypatch.setattr(
-            "training.distill.train_distill",
+            "training.tune.distill.train_distill",
             lambda recipe, force=False: sft_result(
                 run_dir="/runs/distill/1",
                 final_step=1000,
@@ -279,7 +281,7 @@ class TestCmdTrainDistill:
     def test_logit_tier_detail_and_report(self, monkeypatch, capsys):
         patch_fit(monkeypatch, message=FIT_FORCED)
         monkeypatch.setattr(
-            "training.distill.train_distill",
+            "training.tune.distill.train_distill",
             lambda recipe, force=False: sft_result(final_step=1000),
         )
         assert run_cli(["train-distill", "--config", LOGIT, "--force"]) == 0
@@ -300,7 +302,7 @@ class TestCmdTrainDistill:
         def failing(recipe, force=False):
             raise DistillPreflightError("teacher tokenizer parity failed")
 
-        monkeypatch.setattr("training.distill.train_distill", failing)
+        monkeypatch.setattr("training.tune.distill.train_distill", failing)
         assert run_cli(["train-distill", "--config", LOGIT]) == 1
         out = capsys.readouterr().out
         assert "[ERROR] Preflight failed: teacher tokenizer parity failed" in out
@@ -311,7 +313,7 @@ class TestCmdTrainDistill:
         def aborting(recipe, force=False):
             raise WatchdogAbort("loss_spike", 12.5, 6.25)
 
-        monkeypatch.setattr("training.distill.train_distill", aborting)
+        monkeypatch.setattr("training.tune.distill.train_distill", aborting)
         assert run_cli(["train-distill", "--config", LOGIT]) == 1
         assert_watchdog_output(capsys.readouterr().out)
 
@@ -321,7 +323,7 @@ class TestCmdTrainDistill:
         def failing(recipe, force=False):
             raise ValueError("bad alpha")
 
-        monkeypatch.setattr("training.distill.train_distill", failing)
+        monkeypatch.setattr("training.tune.distill.train_distill", failing)
         assert run_cli(["train-distill", "--config", LOGIT]) == 1
         out = capsys.readouterr().out
         assert "[ERROR] Distillation run failed: bad alpha" in out
@@ -330,7 +332,7 @@ class TestCmdTrainDistill:
     def test_json_stdout_is_pure_json(self, monkeypatch, capsys):
         patch_fit(monkeypatch)
         monkeypatch.setattr(
-            "training.distill.train_distill",
+            "training.tune.distill.train_distill",
             lambda recipe, force=False: sft_result(final_step=1000),
         )
         assert run_cli(["train-distill", "--config", LOGIT, "--json"]) == 0
@@ -372,7 +374,7 @@ class TestCmdDistillCache:
         def failing(recipe, out_dir=None, progress=None):
             raise FileExistsError("cache exists: /c (pass a new --out)")
 
-        monkeypatch.setattr("training.distill.build_logit_cache", failing)
+        monkeypatch.setattr("training.tune.distill.build_logit_cache", failing)
         assert run_cli(["distill-cache", "--config", LOGIT, "--out", "/c"]) == 1
         out = capsys.readouterr().out
         assert "[ERROR] cache exists: /c (pass a new --out)" in out
@@ -382,7 +384,7 @@ class TestCmdDistillCache:
         def failing(recipe, out_dir=None, progress=None):
             raise RuntimeError("teacher OOM")
 
-        monkeypatch.setattr("training.distill.build_logit_cache", failing)
+        monkeypatch.setattr("training.tune.distill.build_logit_cache", failing)
         assert run_cli(["distill-cache", "--config", LOGIT, "--out", "/c"]) == 1
         out = capsys.readouterr().out
         assert "[ERROR] Cache pre-pass failed: teacher OOM" in out
@@ -400,7 +402,7 @@ class TestCmdDistillCache:
             progress(1024, 1024)
             return dict(CACHE_MANIFEST)
 
-        monkeypatch.setattr("training.distill.build_logit_cache", fake_build)
+        monkeypatch.setattr("training.tune.distill.build_logit_cache", fake_build)
         assert run_cli(["distill-cache", "--config", LOGIT, "--out", target]) == 0
         out = capsys.readouterr().out
         assert (
@@ -417,7 +419,7 @@ class TestCmdDistillCache:
 
     def test_json_stdout_is_pure_manifest(self, monkeypatch, tmp_path, capsys):
         monkeypatch.setattr(
-            "training.distill.build_logit_cache",
+            "training.tune.distill.build_logit_cache",
             lambda recipe, out_dir=None, progress=None: dict(CACHE_MANIFEST),
         )
         # No --out: the target falls back to the recipe's distill.cache_path.

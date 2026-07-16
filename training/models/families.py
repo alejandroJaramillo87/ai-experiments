@@ -165,5 +165,5 @@ def family_spec(model_type: str) -> FamilySpec:
             f"HF model_type '{model_type}' has no entry in the family registry "
             f"{supported_families()}; guessing target modules risks silently "
             "training the wrong layers. Add a verified FamilySpec in "
-            "training/families.py."
+            "training/models/families.py."
         ) from None

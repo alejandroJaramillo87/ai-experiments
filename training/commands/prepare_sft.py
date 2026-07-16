@@ -25,7 +25,7 @@ import os
 from common.output import Printer
 from training.commands.args import positive_int
 from training.data import sft as sft_mod
-from training.families import UnknownModelFamilyError, supported_families
+from training.models.families import UnknownModelFamilyError, supported_families
 
 
 def holdout_fraction(value: str) -> float:

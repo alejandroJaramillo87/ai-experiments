@@ -8,12 +8,12 @@ from __future__ import annotations
 import pytest
 from support import reference_recipe
 
-from training.families import (
+from training.models.families import (
     UnknownModelFamilyError,
     family_spec,
     supported_families,
 )
-from training.peft_utils import (
+from training.models.peft_utils import (
     TrainableParameterReport,
     build_peft_model,
     resolve_target_modules,
@@ -46,7 +46,9 @@ class TestFamilyRegistry:
 
     @pytest.mark.parametrize("family", ["mamba", "llama", "mistral", "gemma3n"])
     def test_unknown_family_fails_with_registration_message(self, family):
-        with pytest.raises(UnknownModelFamilyError, match="training/families.py"):
+        with pytest.raises(
+            UnknownModelFamilyError, match="training/models/families.py"
+        ):
             family_spec(family)
 
 

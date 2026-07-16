@@ -3,7 +3,7 @@
 Bridges TRL's TrainerCallback API to the Phase 0 machinery instead of
 duplicating it: metrics fan out through the D6 Tracker, step-level watchdog
 signals go through the D10 Watchdog (a WatchdogAbort raised here propagates
-out of trainer.train(); training/sft.py takes the emergency checkpoint), and
+out of trainer.train(); training/tune/sft.py takes the emergency checkpoint), and
 D6-style retention runs after every save.
 
 Checkpoint layout (resolved F3 decision 1): transformers owns the
@@ -234,7 +234,7 @@ def build_callbacks(
 
     class WatchdogCallback(TrainerCallback):
         """Feed loss/grad_norm to the D10 watchdog; a WatchdogAbort raised
-        by on_step propagates out of trainer.train() and training/sft.py
+        by on_step propagates out of trainer.train() and training/tune/sft.py
         takes the emergency checkpoint."""
 
         def on_log(self, args, state, control, logs=None, **kwargs):

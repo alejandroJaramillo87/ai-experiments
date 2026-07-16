@@ -154,8 +154,8 @@ def run_sae_training(recipe: DictConfig, trainer_fn=None, tracker_factory=None) 
     sae.mark_capture_validated set, the consumed capture is flagged
     deletable for make interp-gc (the P4-D2 retention handshake).
     """
-    from training.lock import run_lock
-    from training.watchdog import Watchdog
+    from training.runtime.lock import run_lock
+    from training.runtime.watchdog import Watchdog
 
     validate_sae(recipe)
     cfg = recipe.sae

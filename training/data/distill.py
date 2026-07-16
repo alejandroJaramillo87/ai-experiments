@@ -1,6 +1,6 @@
 """Top-K teacher logprob cache for logit distillation (Phase 1 F5).
 
-The cache pre-pass (training/distill.py build_logit_cache) runs the teacher
+The cache pre-pass (training/tune/distill.py build_logit_cache) runs the teacher
 alone over a prepared F1 dataset and materializes, for every token position of
 every train example, the indices and logprobs of the teacher's top-K next-token
 distribution. Training then runs student-only: the reader memory-maps the

@@ -21,9 +21,9 @@ repository-versus-roadmap deviations are recorded in
 |-------|--------|---------|
 | Prefetch dataloader | `/training/data/loader.py` | on (`data.workers: 2`, `data.pin_memory: true`) |
 | RAM-disk shard staging | `/training/data/staging.py` | off (`staging.enabled: false`) |
-| CCD core pinning | `/training/affinity.py`, `/scripts/training/pin_run.sh` | off (`affinity.enabled: false`) |
+| CCD core pinning | `/training/runtime/affinity.py`, `/scripts/training/pin_run.sh` | off (`affinity.enabled: false`) |
 | LD_PRELOAD interposer | `/docker/training/entrypoint.sh` (`TRAIN_LD_PRELOAD`) | empty |
-| Run lock | `/training/lock.py` | always on during `train()` |
+| Run lock | `/training/runtime/lock.py` | always on during `train()` |
 
 The dataloader is a standard `torch.utils.data.DataLoader` over
 `ShardedTokenDataset` wrapped by a `CudaPrefetcher` that keeps one batch ahead
@@ -41,7 +41,7 @@ Core pinning is CCD/L3 pinning, not NUMA pinning: the 9950X is one NUMA node
 with two CCDs (physical cores 0-7 and 8-15, SMT siblings 16-31). The main
 training process is pinned to one CCD and dataloader workers to the other.
 `scripts/training/pin_run.sh <cpu-list> <command>` is the host-side `taskset`
-wrapper for jobs that cannot host `training/affinity.py`.
+wrapper for jobs that cannot host `training/runtime/affinity.py`.
 
 ## Recipe configuration
 

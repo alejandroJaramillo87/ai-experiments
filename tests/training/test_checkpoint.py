@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from training import checkpoint as ckpt
+from training.runtime import checkpoint as ckpt
 
 # save_checkpoint torch.saves optimizer/scheduler/rng state, so every test
 # that publishes a real checkpoint needs torch; retention and resume

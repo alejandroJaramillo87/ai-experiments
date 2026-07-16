@@ -28,7 +28,7 @@ from training.data.shards import (
     hash_file,
     write_manifest,
 )
-from training.families import (
+from training.models.families import (
     CHAT_TEMPLATE_VERSION,
     ChatTemplateSpec,
     family_spec,
@@ -312,7 +312,7 @@ def load_sft_dataset(
         )
     # A dataset rendered with an older chat-template framing carries the same
     # tokenizer hash but different supervised text; refuse rather than train
-    # on a stale rendering (training/families.py documents the versioning).
+    # on a stale rendering (training/models/families.py documents the versioning).
     if manifest.get("chat_template_version") != CHAT_TEMPLATE_VERSION:
         raise SftIntegrityError(
             f"{dataset_dir} was rendered with chat_template_version="

@@ -285,8 +285,8 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
     manifest.json is incomplete by definition. Rerunning skips hooks recorded
     in progress.json and hands partially-cached hooks back to the runner.
     """
-    from training.lock import run_lock
-    from training.watchdog import Watchdog
+    from training.runtime.lock import run_lock
+    from training.runtime.watchdog import Watchdog
 
     validate_harvest(recipe)
     cfg = recipe.harvest

@@ -105,9 +105,9 @@ def load_system_prompt(path: str) -> dict:
 
 
 def check_gpu_lock() -> None:
-    # Delegate to the canonical D9 lock location (training/lock.py) so the
+    # Delegate to the canonical D9 lock location (training/runtime/lock.py) so the
     # scorecard sees the same lock that training and harvest jobs take.
-    from training.lock import lock_path
+    from training.runtime.lock import lock_path
 
     lock = lock_path()
     if os.path.exists(lock):

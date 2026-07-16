@@ -15,7 +15,7 @@ import time
 import pytest
 
 from training.recipes.schema import WatchdogConfig
-from training.watchdog import (
+from training.runtime.watchdog import (
     LOSS_WARMUP_SAMPLES,
     Watchdog,
     WatchdogAbort,
@@ -166,7 +166,7 @@ def test_sampler_thread_lands_samples_and_stops_cleanly(run_dir, monkeypatch):
     # start()/stop() drive the background sampler with injected NVML/psutil
     # readings (a tiny interval); at least one benign sample must reach the
     # tracker, and stop() must join and clear the thread.
-    import training.watchdog as wd_mod
+    import training.runtime.watchdog as wd_mod
 
     monkeypatch.setattr(wd_mod, "sample_gpu", lambda: {"gpu_temp_c": 50.0})
     monkeypatch.setattr(
@@ -238,7 +238,7 @@ def test_alert_hook_receives_records_and_failures_are_ignored(run_dir):
 
 
 def test_retention_exempts_emergency_checkpoints(tmp_path):
-    from training import checkpoint as ckpt
+    from training.runtime import checkpoint as ckpt
 
     root = str(tmp_path)
     for step, emergency in [
@@ -267,8 +267,8 @@ def test_loop_saves_emergency_checkpoint_on_abort(tmp_path, monkeypatch):
     import numpy as np
     from support import TINY_RECIPE, make_shard_dir
 
-    from training.loop import train
     from training.recipes import load_recipe
+    from training.runtime.loop import train
 
     rng = np.random.default_rng(7)
     tokens = rng.integers(0, 512, size=6000).tolist()
@@ -294,7 +294,7 @@ def test_loop_saves_emergency_checkpoint_on_abort(tmp_path, monkeypatch):
     with pytest.raises(WatchdogAbort):
         train(recipe)
 
-    from training import checkpoint as ckpt
+    from training.runtime import checkpoint as ckpt
 
     root = str(tmp_path / "runs" / "tiny-e2e" / "checkpoints")
     assert ckpt.list_checkpoints(root) == [3]

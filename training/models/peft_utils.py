@@ -4,7 +4,7 @@ Adoption of Hugging Face PEFT and bitsandbytes; the only logic here is
 resolving the recipe's peft group into library objects:
 
 - resolve_target_modules() turns target_modules: "auto" into the concrete
-  per-family list via training/families.py and writes it back into the
+  per-family list via training/models/families.py and writes it back into the
   recipe, so the run's config snapshot never contains "auto".
 - bnb_quantization_config() maps quantize_base: nf4 onto a
   BitsAndBytesConfig for from_pretrained (the QLoRA base load).
@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 from omegaconf import DictConfig
 
-from training.families import family_spec
+from training.models.families import family_spec
 from training.recipes.schema import TARGET_MODULES_AUTO
 
 # torch dtype names for peft.compute_dtype; resolved lazily in _torch_dtype.

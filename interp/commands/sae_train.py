@@ -39,9 +39,9 @@ def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     from interp.manifest import ManifestError
     from interp.sae.train import SaeTrainError, run_sae_training, validate_sae
-    from training.lock import TrainLockError
     from training.recipes.loader import RecipeLoadError, load_recipe
-    from training.tracking import Tracker
+    from training.runtime.lock import TrainLockError
+    from training.runtime.tracking import Tracker
 
     try:
         recipe = load_recipe(args.recipe, overrides=args.override)

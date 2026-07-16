@@ -2,8 +2,8 @@
 
 One command takes a recipe and runs an SFT on TRL's SFTTrainer, wired into
 the Phase 0 machinery: F1's prepared datasets (training/data/sft.py), F2's
-PEFT wrapping (training/peft_utils.py), D6 tracking, D9's run lock, and the
-D10 watchdog — all attached through training/sft_callbacks.py. The D6
+PEFT wrapping (training/models/peft_utils.py), D6 tracking, D9's run lock, and the
+D10 watchdog — all attached through training/tune/sft_callbacks.py. The D6
 reference loop is not used for SFT (resolved F3 design decision 1).
 
 Preflight, in order (roadmap F3 interfaces): recipe validate() (the CLI runs
@@ -11,7 +11,7 @@ it), D4 memory-fit check (warn or refuse per force), D9 lock acquisition.
 Running inference containers are not probed; the operator manages containers
 manually. Checkpoints are transformers-native
 checkpoint-<step>/ directories stamped with a D6-style meta.json (see
-training/sft_callbacks.py).
+training/tune/sft_callbacks.py).
 
 Packing (owned by F3, not F1): prepared examples are already tokenized and
 loss-masked, so TRL's text-level packing does not apply. pack_examples()
@@ -32,10 +32,10 @@ from dataclasses import dataclass, field
 from omegaconf import DictConfig
 
 from training.data.sft import IGNORE_INDEX, load_sft_dataset
-from training.lock import run_lock
-from training.loop import snapshot_hash
 from training.recipes import create_run_dir
-from training.sft_callbacks import (
+from training.runtime.lock import run_lock
+from training.runtime.loop import snapshot_hash
+from training.tune.sft_callbacks import (
     build_callbacks,
     checkpoint_dir_name,
     latest_trl_checkpoint,
@@ -203,7 +203,7 @@ def build_model_and_tokenizer(recipe: DictConfig):
     for QLoRA) and wraps with PEFT; the unsloth path swaps model loading to
     FastLanguageModel and keeps everything else identical (F3 decision 2).
     """
-    from training.peft_utils import (
+    from training.models.peft_utils import (
         bnb_quantization_config,
         build_peft_model,
         resolve_target_modules,
@@ -360,8 +360,8 @@ def train_sft(recipe: DictConfig, force: bool = False) -> SftResult:
 def _train_locked(recipe: DictConfig) -> SftResult:
     import torch  # noqa: F401  (fail here, before run-dir side effects)
 
-    from training.tracking import Tracker
-    from training.watchdog import Watchdog, WatchdogAbort
+    from training.runtime.tracking import Tracker
+    from training.runtime.watchdog import Watchdog, WatchdogAbort
 
     train_samples, holdout_samples = build_dataset(recipe)
     model, tokenizer, report = build_model_and_tokenizer(recipe)
@@ -385,10 +385,10 @@ def _train_locked(recipe: DictConfig) -> SftResult:
     # Response-tier distillation is F3 with provenance (resolved F5 decision
     # 1): the distill block's teacher-manifest reference flows into the
     # checkpoint meta so F6/F7 can cite the teacher. Imported lazily —
-    # training/distill.py imports this module at load.
+    # training/tune/distill.py imports this module at load.
     distill_meta = None
     if recipe.distill.enabled:
-        from training.distill import distill_provenance
+        from training.tune.distill import distill_provenance
 
         distill_meta = distill_provenance(recipe)
 

@@ -27,7 +27,7 @@ from __future__ import annotations
 from omegaconf import DictConfig
 
 # Substring patterns of frozen parameter names per trainable_filter value.
-# Both registered families (Gemma 4, Qwen3; training/families.py) name their
+# Both registered families (Gemma 4, Qwen3; training/models/families.py) name their
 # token embeddings embed_tokens and an untied output head lm_head; the
 # per_layer patterns cover the Gemma 4 E-model PLE terms (packed
 # embed_tokens_per_layer table plus per-layer gate/projection linears).
@@ -76,7 +76,7 @@ def apply_trainable_filter(model, recipe: DictConfig) -> list:
             f"model.trainable_filter={trainable_filter} froze no parameters; "
             f"the patterns {frozen_patterns(trainable_filter)} match none of "
             "the model's parameter names (family drift — update "
-            "training/offload.py FROZEN_PATTERNS)"
+            "training/runtime/offload.py FROZEN_PATTERNS)"
         )
     if not trainable:
         raise ValueError(

@@ -46,8 +46,8 @@ def cmd(args: argparse.Namespace) -> int:
         validate_harvest,
     )
     from interp.manifest import ManifestError
-    from training.lock import TrainLockError
     from training.recipes.loader import RecipeLoadError, load_recipe
+    from training.runtime.lock import TrainLockError
 
     try:
         recipe = load_recipe(args.recipe, overrides=args.override)

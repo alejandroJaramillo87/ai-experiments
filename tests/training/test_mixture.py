@@ -257,7 +257,7 @@ watchdog: {{enabled: false}}
         ]
 
     def test_deterministic_resume_and_accounting(self, loop_sources, tmp_path):
-        from training.loop import train
+        from training.runtime.loop import train
 
         straight = train(
             self.loop_recipe(tmp_path, loop_sources, str(tmp_path / "straight"))

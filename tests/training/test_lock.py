@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from training.lock import TrainLockError, read_lock, run_lock
+from training.runtime.lock import TrainLockError, read_lock, run_lock
 
 
 def test_acquire_writes_and_release_removes(tmp_path):

@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import pytest
 
 from training.recipes.schema import WatchdogConfig
-from training.watchdog import Watchdog, WatchdogAbort, sample_gpu, sample_host
+from training.runtime.watchdog import Watchdog, WatchdogAbort, sample_gpu, sample_host
 
 
 class FakeMemInfo:
@@ -197,7 +197,7 @@ class OneShotStop:
 
 
 def test_sampler_error_is_logged_and_ignored(run_dir, monkeypatch, capsys):
-    import training.watchdog as wd_mod
+    import training.runtime.watchdog as wd_mod
 
     monkeypatch.setattr(wd_mod, "sample_gpu", _raise(RuntimeError("nvml boom")))
     wd = make_watchdog(run_dir)

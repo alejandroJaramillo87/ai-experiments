@@ -70,12 +70,12 @@ def build_model(recipe: DictConfig):
 
     QLoRA base quantization (peft.quantize_base: nf4, F2) happens here at
     load; the PEFT adapter wrap is a separate step
-    (training/peft_utils.py: build_peft_model), owned by the entry point.
+    (training/models/peft_utils.py: build_peft_model), owned by the entry point.
     """
     if recipe.model.hf is not None:
         from transformers import AutoModelForCausalLM
 
-        from training.peft_utils import bnb_quantization_config
+        from training.models.peft_utils import bnb_quantization_config
 
         kwargs = {}
         quantization = (

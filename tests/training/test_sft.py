@@ -25,7 +25,7 @@ from training.data.sft import (
     render_segments,
 )
 from training.data.shards import TokenizerMismatchError
-from training.families import UnknownModelFamilyError, family_spec
+from training.models.families import UnknownModelFamilyError, family_spec
 
 CONTROL_TOKENS = [
     "<|bos|>",
@@ -335,7 +335,9 @@ class TestPrepareSft:
     def test_unknown_family_fails_with_registration_message(
         self, chat_jsonl, chat_tokenizer_dir, tmp_path
     ):
-        with pytest.raises(UnknownModelFamilyError, match="training/families.py"):
+        with pytest.raises(
+            UnknownModelFamilyError, match="training/models/families.py"
+        ):
             prepare_sft(chat_jsonl, str(tmp_path / "x"), chat_tokenizer_dir, "llama")
 
     def test_refuses_to_overwrite_existing_manifest(

@@ -70,7 +70,7 @@ manually and validates GPU exclusivity before starting a run.
 
 transformers writes its native `checkpoint-<step>/` directories under
 `<output_root>/<run>/checkpoints/`. After each save a callback
-(`training/sft_callbacks.py`) stamps the directory with a D6-style
+(`training/tune/sft_callbacks.py`) stamps the directory with a D6-style
 `meta.json` recording step, `adapter_only` versus full (F6 export reads
 this), base model id, backend, recipe hash, and library versions; applies the
 recipe's retention (`retain_last`, `retain_every`); and updates a `latest`
@@ -88,7 +88,7 @@ watchdog abort saves an emergency checkpoint (`checkpoint-<step>-emergency/`,
 ## Packing
 
 `sft.packing: true` concatenates prepared examples into sequences of at most
-`data.seq_len` tokens (`training/sft.py`, `pack_examples`). Label masks are
+`data.seq_len` tokens (`training/tune/sft.py`, `pack_examples`). Label masks are
 carried verbatim, so loss still applies only to assistant content and
 end-of-turn tokens, and `position_ids` restart at each packed example so
 rotary positions and flash-attn varlen treat it as a sequence boundary. The
@@ -99,7 +99,7 @@ because F1 artifacts arrive tokenized and masked.
 ## Backends
 
 `sft.backend: trl` (default) loads through transformers with the F2 PEFT
-wrapping (`training/peft_utils.py`), including NF4 base quantization for
+wrapping (`training/models/peft_utils.py`), including NF4 base quantization for
 QLoRA. `sft.backend: unsloth` swaps model loading to
 `FastLanguageModel` and keeps everything else identical. Unsloth is a
 throughput optimization: its pin is provisional (see `pyproject.toml`), the
