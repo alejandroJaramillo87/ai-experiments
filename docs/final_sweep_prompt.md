@@ -30,8 +30,10 @@ Hardware verification is performed manually by the human, phase by phase, after 
 sweep completes; the sweep prepares the repository for that campaign.
 
 Constraints from `AGENTS.md` apply throughout: the sandbox has no GPU, no host Docker
-daemon, and no `/mnt/ai-data`. Any check that requires the workstation becomes a runbook
-entry for the human, never a claim of verified behavior. Compose files and Dockerfiles
+daemon, and no `/mnt/ai-data`. Install the torch-free test extent with
+`uv sync --group sandbox --group dev` (the `sandbox` dependency group exists for exactly
+this; torch-gated tests skip cleanly). Any check that requires the workstation becomes a
+runbook entry for the human, never a claim of verified behavior. Compose files and Dockerfiles
 are the source of truth over documentation. Pin versions before changing behavior, and
 never combine a version bump with a functional change.
 
@@ -55,16 +57,21 @@ Do not relitigate these. They were settled with the repository owner.
 - The loose modules at the top of `training/` are regrouped into exactly three
   subpackages (work item 1).
 - The Python entry points in `scripts/eval/` fold into the training CLI, mirroring the
-  earlier fold of `scripts/training/`. `scripts/interp/` is NOT touched: its isolated
-  SAEBench venv split (`scripts/interp/saebench_env.sh`) is intentional.
+  earlier folds of `scripts/training/` and of the SAE scripts (`train_sae.py`/
+  `eval_sae.py` are already in the interp CLI). The remaining shell shims in
+  `scripts/interp/` (`preflight.sh`, `np_*.sh`, `saebench_env.sh`) are NOT touched: the
+  isolated SAEBench venv split is intentional.
+- Per-deliverable investigation docs are frozen design history: they move, they are
+  never edited (work item 9).
+- No test-gap hunting: work item 11 is a final regression run only.
 - Gemma 4 interp support is hook-based paths only (harvest, probes, steering). Training
   our own Gemma 4 SAEs is out of scope for this sweep.
 - Deterministic-resume acceptance on GPU is tolerance-based (loss-curve agreement within
   a stated tolerance over N steps). Bitwise equality remains a CPU/tiny-model test only.
 - Skip entirely: watchdog thermal and RAM-floor fault-injection testing; verification of
   concurrency-rule enforcement between containers; any handling of HF model gating.
-- Hardware test suite ambition: pytest markers plus one focused smoke test per feature,
-  deselected by default (work item 3). Not a full acceptance-check mirror.
+- Hardware test suite shape: two labeled tiers (`hw_smoke`, `hw_full`) with resource
+  markers (`gpu`, `cpu`, `ram`, `ssd`), all deselected by default (work item 3).
 
 ## Work items
 
@@ -104,32 +111,39 @@ test_promote_scorecard.py`, and `tests/training/test_serving.py`, which reads
 Makefile and docs for remaining `scripts/eval/` path references. Delete the migrated
 files; remove `scripts/eval/` if empty.
 
-### WI-3: hardware test markers and smoke suite
+### WI-3: hardware test suites (smoke and full)
 
-Register two pytest markers in `pyproject.toml` under `[tool.pytest.ini_options]`:
-`gpu` (requires CUDA on the workstation) and `host` (requires host services or
-`/mnt/ai-data`). Set `addopts` so the default run deselects both (`-m "not gpu and not
-host"`), keeping sandbox and CI behavior unchanged. Create `tests/hardware/` with one
-focused smoke test per feature area, each runnable in minutes, including at least:
+Implement all hardware-dependent tests as two labeled suites under `tests/hardware/`.
+Register six pytest markers in `pyproject.toml` under `[tool.pytest.ini_options]`: two
+tier markers — `hw_smoke` and `hw_full` — and four resource markers — `gpu`, `cpu`,
+`ram`, `ssd`. Every hardware test carries exactly one tier marker and at least one
+resource marker. Set `addopts` so the default run deselects both tiers
+(`-m "not hw_smoke and not hw_full"`), keeping sandbox behavior unchanged.
 
-- CUDA sanity: device present, bf16 matmul executes, reported compute capability is
-  sm_120.
-- flash-attn import succeeds; if it fails, assert the SDPA fallback path (WI-7) engages
-  and stamps metadata.
-- DeepSpeed CPUAdam extension loads and a single optimizer step completes.
-- Tiny-model load through the family registry for each registered family (`gemma4`,
-  `gemma4_text`, `qwen3`), skipping cleanly when weights are absent.
-- Tolerance-based GPU resume check: short train run, checkpoint, resume, assert
-  loss-curve agreement within the documented tolerance.
-- Memory-fit calculator calibration spot check against one reference config.
-- Hook-based activation harvest smoke on a small model, asserting shapes and manifest
-  entries (exercises the WI-6 registry).
+Tier contract:
 
-Mark GPU-requiring tests `gpu`; mark tests needing host services or `/mnt/ai-data`
-`host`; a test may carry both. The verification runbook (WI-4) references
-`uv run pytest -m "gpu or host" tests/hardware/` as a repeatable step. Note the smoke
-tests assert behavior WI-6 and WI-7 introduce, so WI-3 lands after them. Follow
-`.styles/TEST_OUTPUT_STYLE.md`.
+- `hw_smoke` completes in under roughly five minutes total, never downloads models, and
+  writes only to temporary directories. It is the safe-to-run-reflexively gate the
+  human executes before every working session.
+- `hw_full` may allocate near-capacity VRAM, RAM, and disk and may load real models. It
+  is run per verification phase and after any environment change (driver, image, or
+  lockfile).
+
+Required coverage by resource dimension:
+
+| Resource | hw_smoke | hw_full |
+|----------|----------|---------|
+| `gpu` (GPU/VRAM) | CUDA device present; compute capability sm_120; bf16 matmul executes; flash-attn imports or the SDPA fallback (WI-7) engages and stamps metadata; DeepSpeed CPUAdam extension loads | near-capacity VRAM allocation with graceful OOM handling; memory-fit calculator estimate versus measured VRAM; tolerance-based resume check (short train run, checkpoint, resume, loss-curve agreement within the documented tolerance); tiny-model load through the family registry for each registered family (`gemma4`, `gemma4_text`, `qwen3`), skipping cleanly when weights are absent |
+| `cpu` | znver5/AVX-512 feature flags visible; a single CPUAdam optimizer step completes | affinity pinning verified against actual core placement; CPUAdam step-time bound from the design docs |
+| `ram` | huge pages available; small pinned-buffer allocation succeeds | replay buffer RAM-resident behavior at realistic size; host-RAM headroom check for ZeRO-2 optimizer offload |
+| `ssd` | `/mnt/ai-data` mounted with the expected subdirectories; tmpfs staging writable | shard-staging write-throughput sanity; checkpoint write/restore round trip; harvest disk preflight; `data_wait_ms` under the 5% bar from the D9 design |
+
+The hook-based activation harvest smoke (asserting shapes and manifest entries,
+exercising the WI-6 registry) belongs to `hw_full` under `gpu`. The verification
+runbook (WI-4) references `uv run pytest -m hw_smoke tests/hardware/` as the
+session-start gate and `uv run pytest -m hw_full tests/hardware/` as the per-phase
+step. The tests assert behavior WI-6 and WI-7 introduce, so WI-3 lands after them.
+Follow `.styles/TEST_OUTPUT_STYLE.md`.
 
 ### WI-4: hardware verification runbook
 
@@ -221,14 +235,54 @@ has no configuration). Target `training/`, `interp/`, and `common/`. Use pragmat
 per-module ignores for untyped third-party libraries, but fix real findings in repo code
 rather than silencing them. `uv run mypy` must exit clean.
 
-### WI-9: documentation drift audit
+### WI-15: deterministic quality gate
 
-`docs/README.md` is stale: it indexes neither `docs/training/` nor
-`docs/interpretability/` and carries an outdated count and date. Fix the index. Then
-sweep `docs/` against the compose files and Dockerfiles (the `audit-docs` pattern) and
-fix documentation to match the code wherever they disagree. Acceptance: `docs/README.md`
-indexes every subdirectory of `docs/`, and the drift sweep's findings and fixes are
-listed in the commit message.
+Add a `make quality` target that runs, in order, failing on the first error:
+
+1. `uv run ruff format --check .` — formatting (check mode; the existing `make format`
+   stays as the write-mode convenience)
+2. `uv run ruff check .` — lint, including import ordering
+3. `uv run mypy` — types (requires the WI-8 configuration)
+4. `uv lock --check` — lockfile consistent with `pyproject.toml`
+5. `uv run shellcheck` over all tracked shell scripts (pin `shellcheck-py` in the dev
+   dependency group)
+
+Every tool version comes from the pinned dev group so the gate is deterministic and
+identical across machines; it must run network-free. Document in `AGENTS.md` that
+`make quality` is mandatory before every push, for humans and agents alike. Do not
+install a git pre-commit hook and do not adopt the pre-commit framework. This work item
+belongs to execution step 1, immediately after WI-8. Acceptance: `make quality` exits 0
+on the finished tree and exits non-zero when any single check is deliberately broken
+(demonstrate once with a scratch violation, then revert it).
+
+### WI-9: documentation reorganization and drift audit
+
+Split the docs into frozen design history and living documentation, then clean only the
+living set.
+
+Frozen design history: the per-deliverable investigation docs — everything matching the
+`d3`–`d10`, `f1`–`f8`, `p2_d*`, `i1`, `p4_d*`, and `ps*` naming patterns under
+`docs/training/` and `docs/interpretability/`. These record what was decided and why at
+implementation time; drift against the current repo is expected and correct in them.
+Move them with `git mv`, content untouched, into `docs/training/investigations/` and
+`docs/interpretability/investigations/`. Fix inbound links from other files
+mechanically. `docs/unified_cli_investigation.md` is also frozen design history; leave
+it in place and index it as such. Never edit the body of a frozen doc.
+
+Living documentation: the synthesis and system docs (for example `data_pipeline.md`,
+`memory_fit.md`, `distillation.md`, `tracking_checkpointing.md`, `platform.md`,
+`writeback.md`, the scorecards, and everything else under `docs/`). These stay in place
+and get the drift cleanup: fix the stale `docs/README.md` index (it indexes neither
+`docs/training/` nor `docs/interpretability/` and carries an outdated count and date),
+add a "Design history (frozen)" heading that lists the investigations folders and
+states they are not maintained against the current repo, then sweep the living docs
+against the compose files and Dockerfiles (the `audit-docs` pattern) and fix them to
+match the code wherever they disagree. Flag any file whose frozen-versus-living status
+is ambiguous rather than guessing.
+
+Acceptance: `docs/README.md` indexes every subdirectory of `docs/` including the new
+investigations folders; `git log --follow` shows the moved files as pure renames with
+no content diff; the drift sweep's findings and fixes are listed in the commit message.
 
 ### WI-10: pin audit
 
@@ -238,31 +292,18 @@ work item. Acceptance: a grep sweep for `:latest`, un-shaed `git clone`/`checkou
 tag-less `FROM` lines comes back clean, or every remaining hit has a written
 justification in the commit message.
 
-### WI-11: coverage gap check
+### WI-11: final regression run
 
-Run the test suite with coverage over `training/`, `interp/`, and `common/`. The goal
-is as close to 100% line coverage as is honestly reachable, measured in two tiers:
-
-- Sandbox tier (no torch): baseline is 61% (685 passed, 27 skipped as of 2026-07-16).
-  The skips are torch/datatrove/gguf-gated and land in `loop`, `distill`, `checkpoint`,
-  `schedules`, `offload`, `mixture`, `loader`, and `calculator/calibrate`; those modules
-  are covered on the workstation, not here. Do not chase them with mocks that fake
-  torch semantics.
-- Genuine gaps to close with new unit tests: CLI wiring in `training/cli.py` and the
-  thin `training/commands/` and `interp/commands/` wrappers (argument parsing, exit
-  codes, error paths — testable with monkeypatched command internals);
-  `common/output.py` (the shared Printer: color/NO_COLOR/quiet/JSON behavior);
-  `training/tracking.py`; `training/serving.py`; `training/eval/holdout.py`; and the
-  `interp/steering/` modules (`extract`, `wiring`, `export`, `scorecard`) where logic
-  is separable from torch/gguf.
-- Maintain a justified omit list in `[tool.coverage]` for code that cannot execute in
-  the sandbox by design: the two `commands/smoke_test.py` modules (hardware smoke
-  drivers), `__main__.py` stubs, and GPU-only branches marked with `# pragma: no cover`
-  plus a comment stating why. Every omission needs a stated reason; the omit list is
-  reviewed in the PR.
-- Add a `fail_under` coverage gate to `[tool.coverage.report]` set just below the
-  achieved sandbox number so future regressions fail loudly, and report before/after
-  numbers per package in the PR description.
+The coverage gap-closing work already happened before this sweep (the test-coverage
+pull requests on main), and `pyproject.toml` already carries a `[tool.coverage.run]`
+omit list for the host-side-by-design modules. Do NOT hunt for test gaps in this sweep.
+After every other work item has landed (including WI-14), run the full default test
+suite once more with coverage over `training/`, `interp/`, and `common/` and confirm
+zero test regressions relative to the commit the sweep started from (same or higher
+pass count, no new failures, no newly skipped tests other than by design). Report the
+final per-package coverage in the PR description for information. The only change this
+work item makes: add a `fail_under` gate to `[tool.coverage.report]`, set one point
+below the measured total, so future coverage regressions fail loudly.
 
 ### WI-12: report schema conformance
 
@@ -280,8 +321,10 @@ this sweep.
 ### WI-13: housekeeping
 
 - The `hidden_objective` organism deferral is already recorded in
-  `docs/interpretability/p4_d1_model_organisms_investigation.md` (resolved decision 3);
-  add the experiments-log entry that decision promises, if it is still missing.
+  `docs/interpretability/p4_d1_model_organisms_investigation.md` (resolved decision 3;
+  after WI-9 the file lives under `docs/interpretability/investigations/`). Add the
+  experiments-log entry that decision promises, if it is still missing — as a new file,
+  not an edit to the frozen investigation doc.
 - Audit `env.example`, `env.training.example`, and `env.interp.example` against the
   variables the code and compose files actually read; add missing entries and delete
   dead ones.
@@ -322,22 +365,24 @@ Context the implementing session needs but must not "fix" beyond the prescribed 
 ## Execution order
 
 1. WI-8 first (mypy configuration is independent of the regroup and arms the commit
-   gate), then WI-1, then WI-2 (structure settles so everything downstream references
-   final paths).
-2. WI-5, WI-6, WI-7 (parallelizable once structure is stable), then WI-3, whose smoke
-   tests assert behavior WI-6 and WI-7 introduce.
-3. WI-9 through WI-13 (audits; parallelizable).
+   gate), then WI-15 (the quality gate, so every later commit runs through it), then
+   WI-1, then WI-2 (structure settles so everything downstream references final paths).
+2. WI-5, WI-6, WI-7 (parallelizable once structure is stable), then WI-3, whose tests
+   assert behavior WI-6 and WI-7 introduce.
+3. WI-9, WI-10, WI-12, WI-13 (audits; parallelizable).
 4. WI-4 (runbook last among the content items, so commands reflect the final CLI
    surface).
-5. WI-14 (capstone review over the finished state).
+5. WI-14 (capstone review over the finished state), then WI-11 (the final regression
+   run over the finished state).
 
 Commit each work item separately with clear messages. Run the full default test suite
-and `ruff check` before every commit; add `uv run mypy` to that gate as soon as WI-8
-lands.
+and `ruff check` before every commit; once WI-15 lands, the pre-commit gate is
+`make quality` plus the default test suite.
 
 ## Definition of done
 
-- Default `pytest` selection, `ruff check .`, and `uv run mypy` all pass in the sandbox.
+- Default `pytest` selection and `make quality` (format check, lint, mypy, lock check,
+  shellcheck) all pass in the sandbox.
 - `python -m training --help` and `python -m interp --help` list every subcommand;
   `make help` targets resolve.
 - No stale imports or path references to moved modules anywhere in the repository
@@ -347,4 +392,5 @@ lands.
 - Nothing requiring the workstation is claimed as verified; those items exist only as
   PENDING runbook entries.
 - All work is pushed and presented as a pull request whose description maps commits to
-  work items and lists the coverage before/after numbers (WI-11).
+  work items and reports the final regression-run result and per-package coverage
+  (WI-11).
