@@ -34,14 +34,21 @@ RUN git clone --depth 1 --branch v0.27.1 \
 WORKDIR /app
 
 # Create virtual environment and install core dependencies.
-# torch 2.9.1+cu130 matches the CUDA 13.0 base image and Blackwell sm_120.
+# torch 2.9.1+cu130 matches the CUDA 13.0 base image and Blackwell sm_120;
+# torchvision/torchaudio are the matched companion releases for torch 2.9.1.
 # av provides the ffmpeg bindings ComfyUI uses to encode video outputs.
+# Direct installs are pinned exactly; where the repo core pins the same
+# package (transformers, accelerate, sentencepiece, huggingface-hub) the pin
+# is reused. ComfyUI's own requirements.txt comes from the tag-pinned
+# checkout above; freezing its transitive resolution needs a workstation
+# build (same validation pass as the node-pin TODO below).
 RUN python3.12 -m venv venv && \
     . venv/bin/activate && \
-    pip install --upgrade pip wheel setuptools && \
-    pip install torch==2.9.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130 && \
+    pip install pip==26.1.2 wheel==0.47.0 setuptools==83.0.0 && \
+    pip install torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1 --index-url https://download.pytorch.org/whl/cu130 && \
     pip install -r requirements.txt && \
-    pip install diffusers transformers accelerate sentencepiece protobuf huggingface-hub av
+    pip install diffusers==0.39.0 transformers==5.13.1 accelerate==1.14.0 \
+        sentencepiece==0.2.2 protobuf==7.35.1 huggingface-hub==1.23.0 av==18.0.0
 
 # Install ComfyUI Manager and model-format custom nodes.
 # Pin each node to an exact commit: ComfyUI loads and executes this code, and
@@ -71,7 +78,7 @@ RUN . venv/bin/activate && \
     if [ -f custom_nodes/ComfyUI-KJNodes/requirements.txt ]; then \
         pip install -r custom_nodes/ComfyUI-KJNodes/requirements.txt; \
     fi && \
-    pip install gguf opencv-python-headless gitpython
+    pip install gguf==0.19.0 opencv-python-headless==5.0.0.93 gitpython==3.1.52
 
 # Stage 2: Runtime
 FROM nvidia/cuda:13.0.0-runtime-ubuntu24.04
