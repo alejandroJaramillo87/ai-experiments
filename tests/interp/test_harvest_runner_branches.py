@@ -52,6 +52,17 @@ def plenty_of_disk(_path):
     return Usage(total=4000 * GB, used=100 * GB, free=3900 * GB)
 
 
+@pytest.fixture(autouse=True)
+def gemma4_autoconfig(monkeypatch):
+    """Family resolution reads AutoConfig even under a d_model override;
+    tests installing their own transformers stub override this one."""
+    config = SimpleNamespace(model_type="gemma4_text", hidden_size=D_MODEL)
+    stub = SimpleNamespace(
+        AutoConfig=SimpleNamespace(from_pretrained=lambda *a, **k: config)
+    )
+    monkeypatch.setitem(sys.modules, "transformers", stub)
+
+
 def make_harvest_recipe(tmp_path, **harvest_overrides):
     recipe = OmegaConf.structured(Recipe)
     recipe.run.name = "harvest-test"
@@ -216,7 +227,9 @@ def install_fake_hf(monkeypatch, model, hidden_size=D_MODEL):
             from_pretrained=lambda *a, **k: FakePtTokenizer()
         ),
         AutoConfig=SimpleNamespace(
-            from_pretrained=lambda *a, **k: SimpleNamespace(hidden_size=hidden_size)
+            from_pretrained=lambda *a, **k: SimpleNamespace(
+                model_type="gemma4_text", hidden_size=hidden_size
+            )
         ),
     )
     monkeypatch.setitem(sys.modules, "torch", stub_torch)

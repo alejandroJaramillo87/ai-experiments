@@ -20,10 +20,9 @@ from interp.harvest import (
     corpus_identity,
     disk_preflight,
     gc_captures,
-    hook_name,
     mark_validated,
     projected_bytes,
-    resolve_d_model,
+    resolve_model_meta,
     resolve_subject,
     run_harvest,
     validate_harvest,
@@ -36,6 +35,21 @@ from training.recipes.schema import Recipe
 Usage = collections.namedtuple("Usage", "total used free")
 
 GB = 1 << 30
+
+
+@pytest.fixture(autouse=True)
+def gemma4_autoconfig(monkeypatch):
+    """Family resolution reads AutoConfig even under a d_model override, so
+    every run_harvest test gets a registered-family config stub. Tests that
+    need a different config install their own stub over this one."""
+    import sys
+    from types import SimpleNamespace
+
+    config = SimpleNamespace(model_type="gemma4_text", hidden_size=2304)
+    stub = SimpleNamespace(
+        AutoConfig=SimpleNamespace(from_pretrained=lambda *a, **k: config)
+    )
+    monkeypatch.setitem(sys.modules, "transformers", stub)
 
 
 def make_recipe(tmp_path, **harvest_overrides):
@@ -180,7 +194,7 @@ class TestRunHarvest:
         with open(os.path.join(capture_dir, "progress.json"), "w") as f:
             json.dump(
                 {
-                    "completed_hooks": [hook_name(7)],
+                    "completed_hooks": ["model.layers.7"],
                     "stats": {
                         "tokenizer_fingerprint": "fp-test",
                         "sae_lens_version": "6.46.0",
@@ -201,7 +215,7 @@ class TestRunHarvest:
                 runner_fn=fake_runner_factory(calls),
                 disk_usage_fn=plenty_of_disk,
             )
-        assert calls == [hook_name(15), hook_name(22)]
+        assert calls == ["model.layers.15", "model.layers.22"]
         assert manifest["hook_layers"] == [7, 15, 22]
         # Throughput reflects this run only: the wall clock spans the two
         # pending hooks, so counting the pre-completed layer-7 tokens would
@@ -315,9 +329,10 @@ class TestCommittedHarvestRecipes:
         assert recipe.harvest.enabled
 
 
-class TestResolveDModel:
+class TestResolveModelMeta:
     """The Gemma 4 composite-config contract: the residual stream is the
-    text_config hidden_size, never the PLE width."""
+    text_config hidden_size, never the PLE width; the hook family resolves
+    from the same config read (interp/families.py)."""
 
     def fake_transformers(self, monkeypatch, config):
         import sys
@@ -332,29 +347,53 @@ class TestResolveDModel:
         from types import SimpleNamespace
 
         composite = SimpleNamespace(
+            model_type="gemma4",
             text_config=SimpleNamespace(
-                hidden_size=2304, hidden_size_per_layer_input=256
-            )
+                model_type="gemma4_text",
+                hidden_size=2304,
+                hidden_size_per_layer_input=256,
+            ),
         )
         self.fake_transformers(monkeypatch, composite)
-        assert resolve_d_model("fake/gemma-4", None) == 2304
+        d_model, spec = resolve_model_meta("fake/gemma-4", None)
+        assert d_model == 2304
+        assert spec.model_type == "gemma4_text"
 
     def test_flat_config_reads_hidden_size(self, monkeypatch):
         from types import SimpleNamespace
 
-        self.fake_transformers(monkeypatch, SimpleNamespace(hidden_size=2048))
-        assert resolve_d_model("fake/qwen3", None) == 2048
+        self.fake_transformers(
+            monkeypatch, SimpleNamespace(model_type="qwen3", hidden_size=2048)
+        )
+        d_model, spec = resolve_model_meta("fake/qwen3", None)
+        assert d_model == 2048
+        assert spec.model_type == "qwen3"
 
     def test_missing_hidden_size_refuses(self, monkeypatch):
         from types import SimpleNamespace
 
-        self.fake_transformers(monkeypatch, SimpleNamespace())
+        self.fake_transformers(monkeypatch, SimpleNamespace(model_type="gemma2"))
         with pytest.raises(HarvestError, match="d_model"):
-            resolve_d_model("fake/opaque", None)
+            resolve_model_meta("fake/opaque", None)
 
-    def test_override_skips_config_read(self):
-        # No transformers stub: a nonzero override must not import it.
-        assert resolve_d_model("fake/model", None, override=8) == 8
+    def test_override_skips_width_read_not_family(self, monkeypatch):
+        # The override skips the width read; the family still resolves from
+        # the config, so hook paths are registry data, never assumed.
+        from types import SimpleNamespace
+
+        self.fake_transformers(monkeypatch, SimpleNamespace(model_type="gemma2"))
+        d_model, spec = resolve_model_meta("fake/model", None, d_model_override=8)
+        assert d_model == 8
+        assert spec.model_type == "gemma2"
+
+    def test_unknown_family_refuses(self, monkeypatch):
+        from types import SimpleNamespace
+
+        self.fake_transformers(
+            monkeypatch, SimpleNamespace(model_type="mystery", hidden_size=64)
+        )
+        with pytest.raises(HarvestError, match="hook-point registry"):
+            resolve_model_meta("fake/mystery", None)
 
 
 class TestHookDimGate:
@@ -376,7 +415,9 @@ class TestHookDimGate:
             ),
             AutoTokenizer=SimpleNamespace(from_pretrained=lambda *a, **k: None),
             AutoConfig=SimpleNamespace(
-                from_pretrained=lambda *a, **k: SimpleNamespace(hidden_size=8)
+                from_pretrained=lambda *a, **k: SimpleNamespace(
+                    model_type="gemma4_text", hidden_size=8
+                )
             ),
         )
         monkeypatch.setitem(sys.modules, "torch", stub_torch)

@@ -72,6 +72,20 @@ def eval_activations(n: int = 50) -> np.ndarray:
     return rng.normal(size=(n, D_MODEL)).astype(np.float32)
 
 
+@pytest.fixture(autouse=True)
+def gemma4_autoconfig(monkeypatch):
+    """run_harvest resolves the hook family from AutoConfig even under a
+    d_model override; the sandbox has no transformers, so stub it."""
+    import sys
+    from types import SimpleNamespace
+
+    config = SimpleNamespace(model_type="gemma4_text", hidden_size=8)
+    stub = SimpleNamespace(
+        AutoConfig=SimpleNamespace(from_pretrained=lambda *a, **k: config)
+    )
+    monkeypatch.setitem(sys.modules, "transformers", stub)
+
+
 def patch_run_harvest(monkeypatch):
     """Route the handler's run_harvest call through the real pipeline with
     the SAELens runner and disk probe replaced (the only GPU/host seams)."""
@@ -226,10 +240,10 @@ class TestHarvest:
         assert run_cli(["harvest", "--recipe", recipe, "--check-hooks"]) == 0
         out = capsys.readouterr().out
         assert "[RUN] Hook-dimension check: google/gemma-4-E2B" in out
-        assert "[OK] model.layers.7: residual width 8" in out
-        assert "[OK] model.layers.15: residual width 8" in out
+        assert "[OK] layer 7: residual width 8" in out
+        assert "[OK] layer 15: residual width 8" in out
         # layers report in sorted order regardless of recipe order
-        assert out.index("model.layers.7") < out.index("model.layers.15")
+        assert out.index("layer 7:") < out.index("layer 15:")
         # gate only: no capture directory is created
         assert not os.path.exists(tmp_path / "activations")
 

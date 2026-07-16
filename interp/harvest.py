@@ -7,9 +7,11 @@ the operational envelope — disk preflight against the watchdog floor, the D9
 run lock, the D10 watchdog sampler, and hook-level resume (shard-level resume
 within a hook is delegated to the runner's own cache state).
 
-Hooks are HF named-module paths (model.layers.{n}); the output of a decoder
-layer is the post-block residual stream. TransformerLens aliases are not used
-because HookedTransformer has no Gemma 4 support (P4-D1 resolved decision).
+Hooks are HF named-module paths resolved per model family through the
+interp/families.py registry (flat text-model layout: model.layers.{n}); the
+output of a decoder layer is the post-block residual stream. TransformerLens
+aliases are not used because HookedTransformer has no Gemma 4 support (P4-D1
+resolved decision).
 
 Captures are a regenerable cache: the manifest is written only on completion,
 mark_validated flags a capture deletable, and gc_captures deletes flagged
@@ -28,6 +30,8 @@ import time
 
 from omegaconf import DictConfig
 
+from interp import families
+from interp.families import HookFamilySpec, UnknownHookFamilyError
 from interp.manifest import (
     ManifestError,
     file_xxhash,
@@ -47,9 +51,9 @@ class HarvestError(Exception):
     """Harvest config, preflight, or subject resolution failed."""
 
 
-def hook_name(layer: int) -> str:
-    """HF named-module path whose output is the post-block residual stream."""
-    return f"model.layers.{layer}"
+def hook_name(layer: int, spec: HookFamilySpec) -> str:
+    """The family's HF named-module path for the post-block residual stream."""
+    return families.hook_name(spec, layer)
 
 
 def validate_harvest(recipe: DictConfig) -> None:
@@ -134,23 +138,31 @@ def disk_preflight(
         )
 
 
-def resolve_d_model(model_id: str, revision: str | None, override: int = 0) -> int:
-    """hidden_size for sizing; a nonzero override skips reading the model config."""
-    if override:
-        return int(override)
+def resolve_model_meta(
+    model_id: str, revision: str | None, d_model_override: int = 0
+) -> tuple[int, HookFamilySpec]:
+    """(d_model, hook family) for the subject, from one config read.
+
+    A nonzero d_model override skips the width read, but the family always
+    resolves from the config: hook paths are registry data, never assumed.
+    The text-config unwrap and hidden_size read live in interp/families.py
+    (Gemma 4 nests the language model under text_config; the residual stream
+    is hidden_size, not hidden_size_per_layer_input).
+    """
     from transformers import AutoConfig
 
     hf_cfg = AutoConfig.from_pretrained(model_id, revision=revision)
-    # Gemma 4 nests the language model under text_config; the residual
-    # stream is hidden_size, not hidden_size_per_layer_input (PLE).
-    hf_cfg = getattr(hf_cfg, "text_config", hf_cfg)
-    d_model = getattr(hf_cfg, "hidden_size", 0)
+    try:
+        spec = families.family_from_config(hf_cfg)
+    except UnknownHookFamilyError as exc:
+        raise HarvestError(str(exc)) from exc
+    d_model = int(d_model_override) or families.residual_width(hf_cfg)
     if not d_model:
         raise HarvestError(
             f"could not resolve hidden_size for {model_id}; set "
             f"harvest.d_model explicitly"
         )
-    return int(d_model)
+    return d_model, spec
 
 
 def check_hook_dims(
@@ -170,7 +182,7 @@ def check_hook_dims(
         model_id, revision=revision, torch_dtype=torch.bfloat16, device_map="auto"
     )
     tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
-    expected = resolve_d_model(model_id, revision)
+    expected, spec = resolve_model_meta(model_id, revision)
 
     observed: dict[int, int] = {}
     handles = []
@@ -185,15 +197,15 @@ def check_hook_dims(
     try:
         for layer in layers:
             try:
-                module = model.get_submodule(hook_name(layer))
+                module = model.get_submodule(hook_name(layer, spec))
             except AttributeError as exc:
                 # The documented backstop for the multimodal-composite
                 # Gemma 4 layout risk: a missing module path is a dimension
                 # check failure, not a raw traceback.
                 raise HarvestError(
                     f"hook dimension check failed: no module at "
-                    f"{hook_name(layer)} ({exc}); the model does not expose "
-                    "the flat text-model layout this hook path assumes"
+                    f"{hook_name(layer, spec)} ({exc}); the model does not "
+                    "expose the flat text-model layout this hook path assumes"
                 ) from exc
             handles.append(module.register_forward_hook(make_hook(layer)))
         inputs = tokenizer("hook check", return_tensors="pt").to(model.device)
@@ -292,7 +304,7 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
     cfg = recipe.harvest
     model_id, revision, model_hash = resolve_subject(cfg)
     corpus, corpus_hash = corpus_identity(cfg.corpus)
-    d_model = resolve_d_model(model_id, revision, override=cfg.d_model)
+    d_model, spec = resolve_model_meta(model_id, revision, d_model_override=cfg.d_model)
 
     name = cfg.name or recipe.run.name
     capture_dir = os.path.join(cfg.out_root, name)
@@ -312,7 +324,7 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
     pending = [
         layer
         for layer in cfg.hook_layers
-        if hook_name(layer) not in progress["completed_hooks"]
+        if hook_name(layer, spec) not in progress["completed_hooks"]
     ]
     disk_preflight(
         cfg.out_root,
@@ -330,7 +342,7 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
             watchdog.start()
         try:
             for layer in pending:
-                hook = hook_name(layer)
+                hook = hook_name(layer, spec)
                 stats = runner(
                     {
                         "model_id": model_id,
@@ -363,7 +375,8 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
         "model_id": model_id,
         "model_revision": revision,
         "model_hash": model_hash,
-        "hooks": [hook_name(layer) for layer in cfg.hook_layers],
+        "model_type": spec.model_type,
+        "hooks": [hook_name(layer, spec) for layer in cfg.hook_layers],
         "hook_layers": sorted(int(layer) for layer in cfg.hook_layers),
         "d_model": d_model,
         "corpus": corpus,

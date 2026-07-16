@@ -70,12 +70,17 @@ def capture_activations(
     import torch
     from nnsight import LanguageModel
 
+    from interp import families
+
     if position != "last":
         raise CaptureError(f"unsupported position: {position!r} (only 'last')")
 
     model = LanguageModel(
         model_id, revision=revision, torch_dtype=torch.bfloat16, device_map="auto"
     )
+    # Resolve decoder blocks through the family registry instead of assuming
+    # the model.model.layers[i] chain; nnsight proxies traverse identically.
+    spec = families.family_from_config(model.config)
     fingerprint = tokenizer_fingerprint(model.tokenizer)
     collected: dict[int, list[np.ndarray]] = {layer: [] for layer in layers}
 
@@ -84,7 +89,8 @@ def capture_activations(
         saved = {}
         with model.trace(batch):
             for layer in layers:
-                saved[layer] = model.model.layers[layer].output[0].save()
+                block = families.resolve_submodule(model, spec, layer)
+                saved[layer] = block.output[0].save()
         for layer in layers:
             acts = saved[layer]
             # last non-padded token per sequence
