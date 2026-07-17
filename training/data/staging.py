@@ -54,18 +54,21 @@ def stage_shards(source_dir: str, staging) -> str:
     """
     manifest = load_manifest(source_dir)
     if not os.path.isdir(staging.dir):
-        _log(f"SKIP: staging dir {staging.dir} does not exist; "
-             f"reading shards from {source_dir}")
+        _log(
+            f"SKIP: staging dir {staging.dir} does not exist; "
+            f"reading shards from {source_dir}"
+        )
         return source_dir
     total = shard_set_bytes(source_dir, manifest)
     budget = int(staging.max_gb * 2**30)
     if total > budget:
-        _log(f"SKIP: shard set {total / 2**30:.2f} GB exceeds staging.max_gb "
-             f"{staging.max_gb}; reading shards from {source_dir}")
+        _log(
+            f"SKIP: shard set {total / 2**30:.2f} GB exceeds staging.max_gb "
+            f"{staging.max_gb}; reading shards from {source_dir}"
+        )
         return source_dir
 
-    dest_dir = os.path.join(staging.dir,
-                            os.path.basename(os.path.normpath(source_dir)))
+    dest_dir = os.path.join(staging.dir, os.path.basename(os.path.normpath(source_dir)))
     if _staged_copy_valid(dest_dir, manifest):
         _log(f"OK: reusing verified staged copy at {dest_dir}")
         return dest_dir
@@ -79,8 +82,10 @@ def stage_shards(source_dir: str, staging) -> str:
         if digest != rec["xxhash64"]:
             raise OSError(
                 f"staged copy of {rec['file']} hashes {digest}, manifest says "
-                f"{rec['xxhash64']}: staging medium corrupted the data")
-    shutil.copyfile(os.path.join(source_dir, MANIFEST_NAME),
-                    os.path.join(dest_dir, MANIFEST_NAME))
+                f"{rec['xxhash64']}: staging medium corrupted the data"
+            )
+    shutil.copyfile(
+        os.path.join(source_dir, MANIFEST_NAME), os.path.join(dest_dir, MANIFEST_NAME)
+    )
     _log(f"OK: staged {total / 2**30:.2f} GB to {dest_dir}")
     return dest_dir

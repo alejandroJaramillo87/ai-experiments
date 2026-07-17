@@ -160,9 +160,11 @@ class TestTokenizerFingerprint:
 
         base = self.FakeTokenizer("m", 262_144, "t")
         assert tokenizer_fingerprint(base) != tokenizer_fingerprint(
-            self.FakeTokenizer("m", 262_145, "t"))
+            self.FakeTokenizer("m", 262_145, "t")
+        )
         assert tokenizer_fingerprint(base) != tokenizer_fingerprint(
-            self.FakeTokenizer("other", 262_144, "t"))
+            self.FakeTokenizer("other", 262_144, "t")
+        )
 
     def test_fingerprint_is_stable(self):
         from interp.probes.capture import tokenizer_fingerprint

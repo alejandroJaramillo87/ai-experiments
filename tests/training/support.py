@@ -26,8 +26,16 @@ def reference_recipe(name: str, overrides: list[str] | None = None):
     return load_recipe(os.path.join(REFERENCE_DIR, name), overrides or [])
 
 
-def make_shard_dir(base, tokens, *, name="shards", dataset="synthetic",
-                   shard_tokens=2000, dtype=np.uint16, tokenizer_hash="abc123"):
+def make_shard_dir(
+    base,
+    tokens,
+    *,
+    name="shards",
+    dataset="synthetic",
+    shard_tokens=2000,
+    dtype=np.uint16,
+    tokenizer_hash="abc123",
+):
     """Write a synthetic token shard dir under base/name with a full manifest."""
     from training.data.shards import ShardWriter, write_manifest
 
@@ -35,24 +43,43 @@ def make_shard_dir(base, tokens, *, name="shards", dataset="synthetic",
     writer = ShardWriter(out, dtype, shard_tokens)
     writer.write_tokens(tokens)
     records = writer.close()
-    write_manifest(out, {
-        "dataset": dataset, "split": None, "revision": None, "license": "unknown",
-        "tokenizer": "synthetic", "tokenizer_hash": tokenizer_hash,
-        "dtype": str(np.dtype(dtype)), "eos_id": 1, "shard_tokens": shard_tokens,
-        "shards": records, "total_tokens": len(tokens), "total_documents": 1,
-    })
+    write_manifest(
+        out,
+        {
+            "dataset": dataset,
+            "split": None,
+            "revision": None,
+            "license": "unknown",
+            "tokenizer": "synthetic",
+            "tokenizer_hash": tokenizer_hash,
+            "dtype": str(np.dtype(dtype)),
+            "eos_id": 1,
+            "shard_tokens": shard_tokens,
+            "shards": records,
+            "total_tokens": len(tokens),
+            "total_documents": 1,
+        },
+    )
     return out
 
 
-def make_source(tmp_path, name: str, tokens, tokenizer_hash: str = "abc123",
-                shard_tokens: int = 64) -> str:
+def make_source(
+    tmp_path, name: str, tokens, tokenizer_hash: str = "abc123", shard_tokens: int = 64
+) -> str:
     """Mixture/replay source: shard dir whose manifest dataset is its name."""
-    return make_shard_dir(tmp_path, tokens, name=name, dataset=name,
-                          shard_tokens=shard_tokens, tokenizer_hash=tokenizer_hash)
+    return make_shard_dir(
+        tmp_path,
+        tokens,
+        name=name,
+        dataset=name,
+        shard_tokens=shard_tokens,
+        tokenizer_hash=tokenizer_hash,
+    )
 
 
-def write_benchmarks_yaml(tmp_path, rows, *, name="toy", text_fields=("question",),
-                          config=None, revision=None) -> str:
+def write_benchmarks_yaml(
+    tmp_path, rows, *, name="toy", text_fields=("question",), config=None, revision=None
+) -> str:
     """Write a one-benchmark yaml plus the JSONL dataset it points at."""
     import json
 
@@ -62,10 +89,20 @@ def write_benchmarks_yaml(tmp_path, rows, *, name="toy", text_fields=("question"
     with open(bench_jsonl, "w") as f:
         for row in rows:
             f.write(json.dumps(row) + "\n")
-    body = {"version": 1, "ngram_size": 13, "benchmarks": [{
-        "name": name, "dataset": str(bench_jsonl),
-        "config": config, "revision": revision,
-        "splits": ["test"], "text_fields": list(text_fields)}]}
+    body = {
+        "version": 1,
+        "ngram_size": 13,
+        "benchmarks": [
+            {
+                "name": name,
+                "dataset": str(bench_jsonl),
+                "config": config,
+                "revision": revision,
+                "splits": ["test"],
+                "text_fields": list(text_fields),
+            }
+        ],
+    }
     path = tmp_path / "benchmarks.yaml"
     with open(path, "w") as f:
         yaml.safe_dump(body, f)
@@ -80,8 +117,10 @@ def build_bpe_tokenizer(out_dir: str, texts, specials, vocab_size: int = 512) ->
     tok.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
     tok.decoder = decoders.ByteLevel()
     trainer = trainers.BpeTrainer(
-        vocab_size=vocab_size, special_tokens=list(specials),
-        initial_alphabet=pre_tokenizers.ByteLevel.alphabet())
+        vocab_size=vocab_size,
+        special_tokens=list(specials),
+        initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
+    )
     tok.train_from_iterator(texts, trainer)
     os.makedirs(out_dir, exist_ok=True)
     tok.save(os.path.join(out_dir, "tokenizer.json"))

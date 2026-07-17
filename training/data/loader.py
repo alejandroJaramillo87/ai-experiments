@@ -46,18 +46,21 @@ def resume_index(dataset, state: dict | None) -> int:
     if state["window"] != dataset.window:
         raise ValueError(
             f"checkpoint was saved with window {state['window']}, "
-            f"dataset uses {dataset.window}")
+            f"dataset uses {dataset.window}"
+        )
     mixing = isinstance(dataset, MixtureDataset)
     if state.get("format") == "mixture":
         if not mixing:
             raise ValueError(
                 "checkpoint was saved from a mixture run; this recipe trains "
-                "on a single source")
+                "on a single source"
+            )
         return state["next_draw"]  # draw index: unbounded, never wraps
     if mixing:
         raise ValueError(
             "checkpoint was saved from a single-source run; this recipe "
-            "trains on a mixture")
+            "trains on a mixture"
+        )
     if state.get("format") == "index":
         return state["next_index"] % len(dataset)
     return dataset.cursor_index(state["shard"], state["offset"]) % len(dataset)
@@ -115,8 +118,7 @@ class _TaggedWindowTensorDataset:
         return torch.from_numpy(window.astype(np.int64)), source
 
 
-def build_dataloader(dataset, data_cfg, start_index: int = 0,
-                     worker_init_fn=None):
+def build_dataloader(dataset, data_cfg, start_index: int = 0, worker_init_fn=None):
     """DataLoader over a ShardedTokenDataset or MixtureDataset, forever.
 
     Single source: (micro_batch, seq_len) int64 batches, sequential windows
@@ -125,6 +127,7 @@ def build_dataloader(dataset, data_cfg, start_index: int = 0,
     the loader holds no resume state of its own."""
     from torch.utils.data import DataLoader
 
+    torch_dataset: _TaggedWindowTensorDataset | _WindowTensorDataset
     if isinstance(dataset, MixtureDataset):
         torch_dataset = _TaggedWindowTensorDataset(dataset)
         sampler = _counting_indices(start_index)
@@ -142,7 +145,8 @@ def build_dataloader(dataset, data_cfg, start_index: int = 0,
         num_workers=data_cfg.workers,
         pin_memory=data_cfg.pin_memory,
         worker_init_fn=worker_init_fn,
-        **kwargs)
+        **kwargs,
+    )
 
 
 class CudaPrefetcher:

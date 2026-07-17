@@ -107,8 +107,9 @@ def latest_checkpoint(root: str) -> str | None:
     return target if os.path.isdir(target) else None
 
 
-def save_checkpoint(root: str, step: int, model, optimizer, scheduler,
-                    dataset_state: dict, meta: dict) -> str:
+def save_checkpoint(
+    root: str, step: int, model, optimizer, scheduler, dataset_state: dict, meta: dict
+) -> str:
     """Atomically write the step's checkpoint and repoint `latest`. Returns its path."""
     import torch
 
@@ -150,8 +151,9 @@ def save_checkpoint(root: str, step: int, model, optimizer, scheduler,
 DEEPSPEED_TAG = "engine"  # DeepSpeed checkpoint tag under <step>/deepspeed/
 
 
-def save_checkpoint_deepspeed(root: str, step: int, engine, scheduler,
-                              dataset_state: dict, meta: dict) -> str:
+def save_checkpoint_deepspeed(
+    root: str, step: int, engine, scheduler, dataset_state: dict, meta: dict
+) -> str:
     """Atomically write a ZeRO-Offload checkpoint and repoint `latest`.
 
     Same tmp-dir + fsync + rename protocol as save_checkpoint; the engine
@@ -208,17 +210,21 @@ def load_checkpoint_deepspeed(path: str, engine, scheduler, dataset) -> dict:
             f"Checkpoint at {path} has checkpoint_format="
             f"{meta.get('checkpoint_format')!r}; resuming it under ZeRO-Offload "
             "would silently reinitialize optimizer state. Match the recipe's "
-            "memory.offload to the checkpoint's format.")
+            "memory.offload to the checkpoint's format."
+        )
 
     import torch
 
     load_path, _client_state = engine.load_checkpoint(
-        os.path.join(path, "deepspeed"), tag=DEEPSPEED_TAG,
-        load_lr_scheduler_states=False)
+        os.path.join(path, "deepspeed"),
+        tag=DEEPSPEED_TAG,
+        load_lr_scheduler_states=False,
+    )
     if load_path is None:
         raise FileNotFoundError(f"No DeepSpeed engine state under {path}/deepspeed")
     scheduler.load_state_dict(
-        torch.load(os.path.join(path, "scheduler.pt"), weights_only=True))
+        torch.load(os.path.join(path, "scheduler.pt"), weights_only=True)
+    )
     with open(os.path.join(path, "dataloader.json")) as f:
         dataset.load_state_dict(json.load(f))
     _restore_rng_state(torch.load(os.path.join(path, "rng.pt"), weights_only=False))
@@ -272,10 +278,12 @@ def resolve_resume(root: str, resume: str) -> str:
         path = latest_checkpoint(root)
         if path is None:
             raise FileNotFoundError(
-                f"checkpoint.resume=latest but no checkpoint exists under {root}")
+                f"checkpoint.resume=latest but no checkpoint exists under {root}"
+            )
         return path
     if not os.path.isdir(resume) or not os.path.isfile(
-            os.path.join(resume, "meta.json")):
+        os.path.join(resume, "meta.json")
+    ):
         raise FileNotFoundError(f"Not a checkpoint directory: {resume}")
     return resume
 
@@ -285,6 +293,19 @@ def load_checkpoint(path: str, model, optimizer, scheduler, dataset) -> dict:
     import torch
     from safetensors.torch import load_file
 
+    # Symmetric to load_checkpoint_deepspeed's guard: a deepspeed-format
+    # checkpoint has no model/ shards here and would die with a wrong-cause
+    # FileNotFoundError instead of naming the format mismatch.
+    with open(os.path.join(path, "meta.json")) as f:
+        meta = json.load(f)
+    if meta.get("checkpoint_format") == "deepspeed":
+        raise ValueError(
+            f"Checkpoint at {path} has checkpoint_format='deepspeed'; "
+            "resuming it through the plain loop cannot restore the "
+            "engine-owned optimizer state. Match the recipe's memory.offload "
+            "to the checkpoint's format."
+        )
+
     model_dir = os.path.join(path, "model")
     shards = [f for f in os.listdir(model_dir) if f.endswith(".safetensors")]
     state = {}
@@ -293,11 +314,12 @@ def load_checkpoint(path: str, model, optimizer, scheduler, dataset) -> dict:
     model.load_state_dict(state, strict=False)  # tied weights are re-derived
     model.tie_weights()
     optimizer.load_state_dict(
-        torch.load(os.path.join(path, "optimizer.pt"), weights_only=True))
+        torch.load(os.path.join(path, "optimizer.pt"), weights_only=True)
+    )
     scheduler.load_state_dict(
-        torch.load(os.path.join(path, "scheduler.pt"), weights_only=True))
+        torch.load(os.path.join(path, "scheduler.pt"), weights_only=True)
+    )
     with open(os.path.join(path, "dataloader.json")) as f:
         dataset.load_state_dict(json.load(f))
     _restore_rng_state(torch.load(os.path.join(path, "rng.pt"), weights_only=False))
-    with open(os.path.join(path, "meta.json")) as f:
-        return json.load(f)
+    return meta

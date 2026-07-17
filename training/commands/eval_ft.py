@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fine-tuning evaluation wrapper (Phase 1 F7).
 
 One command producing a baseline-versus-tuned scorecard from three
@@ -11,6 +10,8 @@ container phases run first, then the serving phases with training idle.
 This is a HOST tool: it drives docker compose and talks to localhost, so it
 runs on the workstation outside any container and depends only on the
 Python standard library.
+
+Usage: python -m training eval-ft --base ... --tuned ...
 
 Distillation mode: pass the pre-distillation checkpoint as --base and the
 student as --tuned; the machinery is identical (the F5 --baseline
@@ -38,17 +39,14 @@ import os
 import signal
 import sys
 import time
+from typing import Any
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
+from common.output import Printer
+from common.serving import REPO_ROOT
+from training import serving
+from training.eval import generate, judge, runner, scorecard
 
-from common.output import Printer  # noqa: E402
-from training import serving  # noqa: E402
-from training.eval import generate, judge, runner, scorecard  # noqa: E402
-
-DEFAULT_PROMPTS = os.path.join(REPO_ROOT, "training", "eval",
-                               "judge_prompts.jsonl")
+DEFAULT_PROMPTS = os.path.join(REPO_ROOT, "training", "eval", "judge_prompts.jsonl")
 DEFAULT_TASKS = os.path.join(REPO_ROOT, "training", "eval", "tasks.yaml")
 EVALUATORS = ("holdout", "lmeval", "judge")
 
@@ -58,60 +56,108 @@ def read_json(path: str) -> dict:
         return json.load(f)
 
 
-def parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
+def resumable_record(path: str, label: str, out: Printer) -> dict | None:
+    """Existing phase record, or None when it is absent or torn.
+
+    A phase killed mid-write leaves a partial JSON file; treating it as a
+    completed record would poison every later resume, so it reruns instead.
+    """
+    if not os.path.isfile(path):
+        return None
+    try:
+        return read_json(path)
+    except (json.JSONDecodeError, OSError):
+        out.warn(f"{label}: incomplete record, rerunning: {path}")
+        return None
+
+
+def configure(sub) -> None:
+    parser = sub.add_parser(
+        "eval-ft",
+        help="baseline-versus-tuned scorecard: holdout, lm-eval, judge (F7, host)",
         description="Baseline-versus-tuned scorecard from held-out loss, "
-                    "lm-eval, and model-as-judge (F7).",
+        "lm-eval, and model-as-judge (F7).",
         epilog="Manual restore after an unclean exit: "
-               "docker compose up -d --force-recreate llama-gpu llama-cpu")
-    parser.add_argument("--base", required=True,
-                        help="baseline: HF id, checkpoint dir, or the "
-                             "pre-distillation checkpoint")
-    parser.add_argument("--tuned", required=True,
-                        help="fine-tuned checkpoint dir or HF id")
-    parser.add_argument("--evaluators", default="holdout,lmeval,judge",
-                        help="comma-separated subset of holdout,lmeval,judge")
-    parser.add_argument("--dataset",
-                        help="prepared SFT dataset dir (holdout evaluator)")
-    parser.add_argument("--load-4bit", action="store_true",
-                        help="held-out loss at nf4/bf16 on both sides "
-                             "(matching a QLoRA run)")
-    parser.add_argument("--max-examples", type=int,
-                        help="cap held-out examples (both sides)")
-    parser.add_argument("--tasks",
-                        help="comma-separated subset of the pinned lm-eval tasks")
-    parser.add_argument("--lmeval-limit", type=int,
-                        help="per-task example cap (smoke runs only; recorded)")
-    parser.add_argument("--base-gguf",
-                        help="baseline GGUF for the judge phase, container or "
-                             "host path form")
-    parser.add_argument("--tuned-gguf",
-                        help="tuned GGUF for the judge phase")
-    parser.add_argument("--judge-gguf",
-                        help="judge model GGUF (resolved decision: quantized "
-                             "Gemma 4 26B A4B QAT Q4_0 by default; any family "
-                             "works)")
-    parser.add_argument("--judge-service", default="llama-cpu",
-                        choices=("llama-cpu", "llama-gpu"),
-                        help="service hosting the judge (default llama-cpu; "
-                             "loads once while llama-gpu swaps sides)")
-    parser.add_argument("--prompts", default=DEFAULT_PROMPTS,
-                        help="judge prompt set JSONL (default "
-                             "training/eval/judge_prompts.jsonl)")
-    parser.add_argument("--max-tokens", type=int, default=1024,
-                        help="generation cap per response (default 1024)")
-    parser.add_argument("--timeout", type=int, default=300,
-                        help="per-request timeout in seconds (default 300)")
-    parser.add_argument("--out-dir",
-                        help="run directory (default "
-                             f"{runner.DEFAULT_RUN_ROOT}/<name>_<UTC>)")
-    parser.add_argument("--name", default="eval_ft",
-                        help="run name used in the default out dir")
-    return parser.parse_args(argv)
+        "docker compose up -d --force-recreate llama-gpu llama-cpu",
+    )
+    parser.add_argument(
+        "--base",
+        required=True,
+        help="baseline: HF id, checkpoint dir, or the pre-distillation checkpoint",
+    )
+    parser.add_argument(
+        "--tuned", required=True, help="fine-tuned checkpoint dir or HF id"
+    )
+    parser.add_argument(
+        "--evaluators",
+        default="holdout,lmeval,judge",
+        help="comma-separated subset of holdout,lmeval,judge",
+    )
+    parser.add_argument(
+        "--dataset", help="prepared SFT dataset dir (holdout evaluator)"
+    )
+    parser.add_argument(
+        "--load-4bit",
+        action="store_true",
+        help="held-out loss at nf4/bf16 on both sides (matching a QLoRA run)",
+    )
+    parser.add_argument(
+        "--max-examples", type=int, help="cap held-out examples (both sides)"
+    )
+    parser.add_argument(
+        "--tasks", help="comma-separated subset of the pinned lm-eval tasks"
+    )
+    parser.add_argument(
+        "--lmeval-limit",
+        type=int,
+        help="per-task example cap (smoke runs only; recorded)",
+    )
+    parser.add_argument(
+        "--base-gguf",
+        help="baseline GGUF for the judge phase, container or host path form",
+    )
+    parser.add_argument("--tuned-gguf", help="tuned GGUF for the judge phase")
+    parser.add_argument(
+        "--judge-gguf",
+        help="judge model GGUF (resolved decision: quantized "
+        "Gemma 4 26B A4B QAT Q4_0 by default; any family "
+        "works)",
+    )
+    parser.add_argument(
+        "--judge-service",
+        default="llama-cpu",
+        choices=("llama-cpu", "llama-gpu"),
+        help="service hosting the judge (default llama-cpu; "
+        "loads once while llama-gpu swaps sides)",
+    )
+    parser.add_argument(
+        "--prompts",
+        default=DEFAULT_PROMPTS,
+        help="judge prompt set JSONL (default training/eval/judge_prompts.jsonl)",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=1024,
+        help="generation cap per response (default 1024)",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        help="per-request timeout in seconds (default 300)",
+    )
+    parser.add_argument(
+        "--out-dir",
+        help=f"run directory (default {runner.DEFAULT_RUN_ROOT}/<name>_<UTC>)",
+    )
+    parser.add_argument(
+        "--name", default="eval_ft", help="run name used in the default out dir"
+    )
+    parser.set_defaults(func=cmd)
 
 
-def validate(args: argparse.Namespace, evaluators: list[str],
-             out: Printer) -> bool:
+def validate(args: argparse.Namespace, evaluators: list[str], out: Printer) -> bool:
     ok = True
     unknown = [e for e in evaluators if e not in EVALUATORS]
     if unknown:
@@ -124,8 +170,10 @@ def validate(args: argparse.Namespace, evaluators: list[str],
         for flag in ("base_gguf", "tuned_gguf", "judge_gguf"):
             if not getattr(args, flag):
                 out.error(f"judge evaluator needs --{flag.replace('_', '-')}")
-                out.line("  Solution: export the side with make export-gguf, "
-                         "or drop judge from --evaluators")
+                out.line(
+                    "  Solution: export the side with make export-gguf, "
+                    "or drop judge from --evaluators"
+                )
                 ok = False
     return ok
 
@@ -137,26 +185,34 @@ def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
         records = {}
         for side, model in (("base", args.base), ("tuned", args.tuned)):
             record_path = os.path.join(out_dir, f"holdout_{side}.json")
-            if os.path.isfile(record_path):
+            record = resumable_record(record_path, f"holdout/{side}", out)
+            if record is not None:
                 out.skip(f"holdout/{side}: record exists (resume)")
             else:
                 out.run(f"holdout/{side}: {model}")
-                phase_args = ["--model", model, "--dataset", args.dataset,
-                              "--out", record_path]
+                phase_args = [
+                    "--model",
+                    model,
+                    "--dataset",
+                    args.dataset,
+                    "--out",
+                    record_path,
+                ]
                 if args.load_4bit:
                     phase_args.append("--load-4bit")
                 if args.max_examples:
                     phase_args += ["--max-examples", str(args.max_examples)]
                 runner.run_container_phase("eval-holdout", phase_args)
-            records[side] = read_json(record_path)
+                record = read_json(record_path)
+            records[side] = record
             out.ok(f"holdout/{side}: loss {records[side]['loss']:.6f}")
-        sections["holdout"] = runner.holdout_section(
-            records["base"], records["tuned"])
+        sections["holdout"] = runner.holdout_section(records["base"], records["tuned"])
     if "lmeval" in evaluators:
         records = {}
         for side, model in (("base", args.base), ("tuned", args.tuned)):
             record_path = os.path.join(out_dir, f"lmeval_{side}.json")
-            if os.path.isfile(record_path):
+            record = resumable_record(record_path, f"lmeval/{side}", out)
+            if record is not None:
                 out.skip(f"lmeval/{side}: record exists (resume)")
             else:
                 out.run(f"lmeval/{side}: {model}")
@@ -166,12 +222,13 @@ def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
                 if args.lmeval_limit:
                     phase_args += ["--limit", str(args.lmeval_limit)]
                 runner.run_container_phase("eval-lmeval", phase_args)
-            records[side] = read_json(record_path)
-        sections["lmeval"] = runner.lmeval_section(
-            records["base"], records["tuned"])
+                record = read_json(record_path)
+            records[side] = record
+        sections["lmeval"] = runner.lmeval_section(records["base"], records["tuned"])
         for task, section in sorted(sections["lmeval"]["tasks"].items()):
-            out.ok(f"lmeval/{task}: {section['baseline']:.4f} -> "
-                   f"{section['tuned']:.4f}")
+            out.ok(
+                f"lmeval/{task}: {section['baseline']:.4f} -> {section['tuned']:.4f}"
+            )
     return sections
 
 
@@ -190,33 +247,42 @@ def phase_serving(args, out_dir, identities, out: Printer) -> dict:
             identity = identities[side]
             responses_path = os.path.join(out_dir, f"responses_{side}.jsonl")
             existing = generate.load_responses(responses_path)
-            missing = [p for p in prompts
-                       if p["id"] not in existing
-                       or "error" in existing[p["id"]]]
+            missing = [
+                p
+                for p in prompts
+                if p["id"] not in existing or "error" in existing[p["id"]]
+            ]
             if not missing:
                 out.skip(f"generate/{side}: all responses present (resume)")
                 responses[side] = existing
                 continue
-            out.run(f"generate/{side}: swapping llama-gpu to "
-                    f"{identity['model']}")
+            out.run(f"generate/{side}: swapping llama-gpu to {identity['model']}")
             serving.swap_model(gen_service, identity["model"])
             if gen_service not in swapped:
                 swapped.append(gen_service)
             elapsed = serving.wait_healthy(gen_service)
             out.ok(f"llama-gpu healthy after {elapsed:.1f}s")
             responses[side] = generate.generate_responses(
-                gen_service, prompts, responses_path, sampling,
+                gen_service,
+                prompts,
+                responses_path,
+                sampling,
                 timeout=args.timeout,
                 progress=lambda pid, r: out.info(
                     f"{pid}: {'error' if 'error' in r else 'ok'} "
-                    f"({r.get('latency_ms', 0):.0f}ms)", indent=2))
+                    f"({r.get('latency_ms', 0):.0f}ms)",
+                    indent=2,
+                ),
+            )
             errors = sum(1 for r in responses[side].values() if "error" in r)
             (out.warn if errors else out.ok)(
                 f"generate/{side}: {len(responses[side]) - errors}/"
-                f"{len(prompts)} responses, {errors} errors")
+                f"{len(prompts)} responses, {errors} errors"
+            )
 
-        out.run(f"judge: swapping {judge_service.name} to "
-                f"{identities['judge']['model']}")
+        out.run(
+            f"judge: swapping {judge_service.name} to {identities['judge']['model']}"
+        )
         serving.swap_model(judge_service, identities["judge"]["model"])
         if judge_service not in swapped:
             swapped.append(judge_service)
@@ -225,15 +291,19 @@ def phase_serving(args, out_dir, identities, out: Printer) -> dict:
 
         def complete(messages):
             return serving.chat_completion(
-                judge_service, messages, runner.JUDGE_SAMPLING,
-                timeout=args.timeout)["content"]
+                judge_service, messages, runner.JUDGE_SAMPLING, timeout=args.timeout
+            )["content"]
 
         judgments_path = os.path.join(out_dir, "judgments.jsonl")
         judgments = runner.run_judgments(
-            complete, prompts_by_id, responses, judgments_path,
+            complete,
+            prompts_by_id,
+            responses,
+            judgments_path,
             progress=lambda r: out.info(
-                f"{r['prompt_id']}/{r['first']}-first: {r['outcome']}",
-                indent=2))
+                f"{r['prompt_id']}/{r['first']}-first: {r['outcome']}", indent=2
+            ),
+        )
     finally:
         for service in reversed(swapped):
             try:
@@ -242,19 +312,21 @@ def phase_serving(args, out_dir, identities, out: Printer) -> dict:
                 out.ok(f"{service.name} restored")
             except serving.ServingError as exc:
                 out.error(f"Restore failed for {service.name}: {exc}")
-                out.line("  Solution: docker compose up -d --force-recreate "
-                         f"{service.name}")
+                out.line(
+                    f"  Solution: docker compose up -d --force-recreate {service.name}"
+                )
 
     section = judge.score_judgments(judgments)
-    out.ok(f"judge: win rate {section['win_rate']}, "
-           f"{section['tuned_wins']}W/{section['baseline_wins']}L/"
-           f"{section['ties']}T, {section['malformed']} malformed, "
-           f"{section['errors']} errors")
+    out.ok(
+        f"judge: win rate {section['win_rate']}, "
+        f"{section['tuned_wins']}W/{section['baseline_wins']}L/"
+        f"{section['ties']}T, {section['malformed']} malformed, "
+        f"{section['errors']} errors"
+    )
     return {"judge": section}
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
 
@@ -264,11 +336,12 @@ def main(argv: list[str] | None = None) -> int:
 
     out_dir = args.out_dir or os.path.join(
         runner.DEFAULT_RUN_ROOT,
-        time.strftime(f"{args.name}_%Y%m%d_%H%M%S", time.gmtime()))
+        time.strftime(f"{args.name}_%Y%m%d_%H%M%S", time.gmtime()),
+    )
     os.makedirs(out_dir, exist_ok=True)
     out.info(f"Run directory: {out_dir}")
 
-    metadata = {
+    metadata: dict[str, Any] = {
         "git_sha": scorecard.git_sha(REPO_ROOT),
         "evaluators": evaluators,
         # thinking_mode is family-dependent and resolved from the served
@@ -286,16 +359,18 @@ def main(argv: list[str] | None = None) -> int:
                 "tuned": runner.gguf_identity(args.tuned_gguf),
                 "judge": runner.gguf_identity(args.judge_gguf),
             }
-            runner.check_quant_match(identities["baseline"],
-                                     identities["tuned"])
-            out.ok(f"Preflight: matched quantization "
-                   f"({identities['baseline']['quant_type']})")
+            runner.check_quant_match(identities["baseline"], identities["tuned"])
+            out.ok(
+                f"Preflight: matched quantization "
+                f"({identities['baseline']['quant_type']})"
+            )
             for side in ("baseline", "tuned"):
                 metadata[side].update(
                     gguf=identities[side]["model"],
                     quant_type=identities[side]["quant_type"],
                     sha256=identities[side]["sha256"],
-                    thinking_mode=identities[side]["thinking_mode"])
+                    thinking_mode=identities[side]["thinking_mode"],
+                )
             metadata["judge"] = {
                 "model": identities["judge"]["model"],
                 "sha256": identities["judge"]["sha256"],
@@ -311,13 +386,13 @@ def main(argv: list[str] | None = None) -> int:
             sections.update(phase_serving(args, out_dir, identities, out))
 
         card = scorecard.assemble_scorecard(metadata, sections)
-    except (serving.ServingError, runner.EvalRunError,
-            scorecard.ScorecardError) as exc:
+    except (serving.ServingError, runner.EvalRunError, scorecard.ScorecardError) as exc:
         out.error(str(exc))
         return 1
     except KeyboardInterrupt:
-        out.error("Interrupted; partial phase outputs remain in the run "
-                  "directory for resume")
+        out.error(
+            "Interrupted; partial phase outputs remain in the run directory for resume"
+        )
         return 1
 
     card_path = os.path.join(out_dir, "scorecard.json")
@@ -331,7 +406,3 @@ def main(argv: list[str] | None = None) -> int:
     out.ok(f"Scorecard written: {card_path}")
     out.ok(f"Rendered table:    {md_path}")
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

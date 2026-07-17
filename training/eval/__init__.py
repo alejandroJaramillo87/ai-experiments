@@ -3,7 +3,7 @@
 Three evaluators behind one runner, each independently skippable: held-out
 loss (in-process, training container), lm-evaluation-harness (in-process,
 training container), and model-as-judge (through the serving stack). The
-host-side runner is scripts/eval/eval_ft.py; the in-container phases are the
+host-side runner is training/commands/eval_ft.py; the in-container phases are the
 eval-holdout and eval-lmeval CLI subcommands.
 
 Import discipline mirrors the rest of the package: judge pairing and

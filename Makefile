@@ -3,7 +3,7 @@
 
 .PHONY: help up down restart status logs clean gpu-up cpu-up ui-up
 .PHONY: logs-gpu logs-cpu logs-ui logs-vllm shell-gpu shell-cpu shell-vllm
-.PHONY: health update-models install shell test lint format
+.PHONY: health update-models install shell test lint format quality
 .PHONY: comfy-up comfy-down comfy-logs comfy-shell comfy-build comfy-status
 .PHONY: comfy-models-image comfy-models-video art-mode llm-mode
 .PHONY: list-models update rebuild reset demo dev
@@ -11,6 +11,10 @@
 .PHONY: worktree-ls worktree-clean agent-run agent-export agent-sandbox
 .PHONY: np-clone np-env np-build np-up np-inference-up np-autointerp-up np-graph-up
 .PHONY: np-down np-status np-smoke
+.PHONY: train-build train-shell train-smoke prepare-data prepare-corpus build-contamination
+.PHONY: prepare-sft train-tokenizer train-validate memfit train-calibrate train train-sft
+.PHONY: train-distill distill-cache export-build export-gguf serve-eval eval-ft
+.PHONY: promote-scorecard generate-teacher
 .PHONY: interp-build interp-up interp-shell interp-smoke interp-down interp-dirs
 .PHONY: steer-extract steer-up steer-down steer-scorecard
 .PHONY: probe-capture probe-train probe-eval probe-monitor logproxy-up logproxy-down
@@ -173,13 +177,13 @@ export-gguf: ## Export a checkpoint to GGUF (Phase 0 D7): make export-gguf CHECK
 	docker compose -f $(TRAIN_COMPOSE) run --rm export python -m training export --checkpoint $(CHECKPOINT) $(ARGS)
 
 serve-eval: ## Swap a GGUF into llama-gpu, run the smoke evaluation, restore (Phase 0 D7): make serve-eval MODEL=/app/models/trained/<run>/<name>-Q8_0.gguf ARGS="--keep-serving"
-	python3 scripts/eval/serve_eval.py --model $(MODEL) $(ARGS)
+	python3 -m training serve-eval --model $(MODEL) $(ARGS)
 
 eval-ft: ## Baseline-versus-tuned scorecard (Phase 1 F7, host-run): make eval-ft ARGS="--base ... --tuned ... --dataset ... --base-gguf ... --tuned-gguf ... --judge-gguf ..."
-	python3 scripts/eval/eval_ft.py $(ARGS)
+	python3 -m training eval-ft $(ARGS)
 
 promote-scorecard: ## Copy an eval run's scorecard into docs/training/scorecards/ with provenance (Phase 1 F8, host-run): make promote-scorecard ARGS="--run-dir ... --card sft-qlora-gemma-e4b"
-	python3 scripts/eval/promote_scorecard.py $(ARGS)
+	python3 -m training promote-scorecard $(ARGS)
 
 generate-teacher: ## Batch-generate teacher data through the serving stack (Phase 1 F4, host-run): make generate-teacher ARGS="--pipeline respond --prompts ... --teacher ... --out ..."
 	python3 -m training generate-teacher $(ARGS)
@@ -509,6 +513,18 @@ lint: ## Run linting with ruff
 
 format: ## Format code with ruff
 	uv run ruff format .
+
+# Deterministic pre-push gate: every tool version comes from the pinned dev
+# group; no step touches the network (--no-sync runs the tools already
+# provisioned in .venv instead of re-resolving the environment first).
+# shellcheck gates at warning severity: info/style hits in host entrypoints are
+# dominated by intentional word-splitting the sandbox cannot safely rewrite.
+quality: ## Run the full quality gate (format check, lint, mypy, lock check, shellcheck)
+	uv run --no-sync ruff format --check .
+	uv run --no-sync ruff check .
+	uv run --no-sync mypy
+	uv lock --check
+	git ls-files '*.sh' | xargs uv run --no-sync shellcheck --severity=warning
 
 ##@ Agent Tooling (OpenCode / Claude Code parity)
 

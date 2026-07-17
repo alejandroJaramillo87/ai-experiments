@@ -2,7 +2,7 @@
 #
 # pin_run.sh — run a command pinned to one CCD of the 9950X (Phase 0 D9).
 #
-# Host-side taskset wrapper for jobs that cannot host training/affinity.py
+# Host-side taskset wrapper for jobs that cannot host training/runtime/affinity.py
 # (arbitrary commands, container invocations). This is CCD/L3 pinning, not
 # NUMA pinning: the 9950X is one NUMA node with two CCDs (physical cores 0-7
 # and 8-15; SMT siblings 16-23 and 24-31 respectively).

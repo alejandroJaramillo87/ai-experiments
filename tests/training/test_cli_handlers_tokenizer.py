@@ -66,6 +66,7 @@ def write_jsonl(path, texts: list[str], field: str = "text") -> str:
 
 # -- eval_corpus_pair and metrics_table (module-level helpers) ------------------
 
+
 def test_eval_corpus_pair_splits_on_first_equals():
     assert eval_corpus_pair("web=/data/web.jsonl") == ("web", "/data/web.jsonl")
     # Only the first = separates; the path may contain more
@@ -75,8 +76,16 @@ def test_eval_corpus_pair_splits_on_first_equals():
 def test_eval_corpus_pair_without_equals_is_usage_error(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc:
         cli.build_parser().parse_args(
-            ["train-tokenizer", "--corpus", "c.jsonl", "--out", str(tmp_path),
-             "--eval-corpus", "webonly"])
+            [
+                "train-tokenizer",
+                "--corpus",
+                "c.jsonl",
+                "--out",
+                str(tmp_path),
+                "--eval-corpus",
+                "webonly",
+            ]
+        )
     assert exc.value.code == 2
     assert "expected DOMAIN=PATH" in capsys.readouterr().err
 
@@ -99,6 +108,7 @@ def test_metrics_table_skips_reference_missing_a_domain(capsys):
 
 # -- train-tokenizer handler ----------------------------------------------------
 
+
 class TestTrainTokenizerCmd:
     def test_success_with_two_eval_domains(self, tmp_path, capsys):
         corpus = write_jsonl(tmp_path / "corpus.jsonl", TRAIN_DOCS)
@@ -106,11 +116,27 @@ class TestTrainTokenizerCmd:
         code = write_jsonl(tmp_path / "code.jsonl", EVAL_CODE)
         out_dir = str(tmp_path / "artifact")
         # --eval-docs 2 with 3-doc files exercises the per-domain read cap
-        assert run_cli([
-            "train-tokenizer", "--corpus", corpus, "--out", out_dir,
-            "--vocab-size", str(VOCAB), "--eval-corpus", f"web={web}",
-            "--eval-corpus", f"code={code}", "--eval-docs", "2",
-            "--no-references"]) == 0
+        assert (
+            run_cli(
+                [
+                    "train-tokenizer",
+                    "--corpus",
+                    corpus,
+                    "--out",
+                    out_dir,
+                    "--vocab-size",
+                    str(VOCAB),
+                    "--eval-corpus",
+                    f"web={web}",
+                    "--eval-corpus",
+                    f"code={code}",
+                    "--eval-docs",
+                    "2",
+                    "--no-references",
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "=== Tokenizer training (Phase 0 D3) ===" in out
         assert "[INFO] Corpus files: 1" in out
@@ -134,17 +160,35 @@ class TestTrainTokenizerCmd:
         assert f"[OK] Artifact: {tokenizer_path}" in out
         assert f"[OK] Tokenizer hash: {manifest['tokenizer_hash']}" in out
         # Metrics table rows for the trained tokenizer, one per domain
-        assert [row for row in out.splitlines()
-                if row.startswith("trained") and "web" in row]
+        assert [
+            row
+            for row in out.splitlines()
+            if row.startswith("trained") and "web" in row
+        ]
 
     def test_corpus_tail_fallback_warns_and_succeeds(self, tmp_path, capsys):
         corpus = write_jsonl(tmp_path / "corpus.jsonl", TRAIN_DOCS)
         out_dir = str(tmp_path / "artifact")
         # A 200-byte budget stops sampling after ~5 pangrams, leaving a tail
-        assert run_cli([
-            "train-tokenizer", "--corpus", corpus, "--out", out_dir,
-            "--vocab-size", str(VOCAB), "--sample-bytes", "200",
-            "--eval-docs", "4", "--no-references"]) == 0
+        assert (
+            run_cli(
+                [
+                    "train-tokenizer",
+                    "--corpus",
+                    corpus,
+                    "--out",
+                    out_dir,
+                    "--vocab-size",
+                    str(VOCAB),
+                    "--sample-bytes",
+                    "200",
+                    "--eval-docs",
+                    "4",
+                    "--no-references",
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "[WARN] No --eval-corpus given; evaluating on the corpus tail" in out
         assert "[WARN] Only 1 evaluation domain(s); D3 recommends at least two" in out
@@ -155,33 +199,64 @@ class TestTrainTokenizerCmd:
         corpus = write_jsonl(tmp_path / "corpus.jsonl", TRAIN_DOCS)
         out_dir = str(tmp_path / "artifact")
         # Default 10 GB budget consumes the whole corpus: no held-out tail
-        assert run_cli([
-            "train-tokenizer", "--corpus", corpus, "--out", out_dir,
-            "--vocab-size", str(VOCAB), "--no-references"]) == 1
+        assert (
+            run_cli(
+                [
+                    "train-tokenizer",
+                    "--corpus",
+                    corpus,
+                    "--out",
+                    out_dir,
+                    "--vocab-size",
+                    str(VOCAB),
+                    "--no-references",
+                ]
+            )
+            == 1
+        )
         out = capsys.readouterr().out
-        assert ("[ERROR] Corpus exhausted during training; "
-                "no held-out documents remain") in out
+        assert (
+            "[ERROR] Corpus exhausted during training; no held-out documents remain"
+        ) in out
         assert "Solution: pass --eval-corpus DOMAIN=PATH or lower --sample-bytes" in out
         assert not os.path.exists(os.path.join(out_dir, "tokenizer.json"))
 
     def test_missing_corpus_exits_2(self, tmp_path, capsys):
         pattern = str(tmp_path / "absent-*.jsonl")
-        assert run_cli(["train-tokenizer", "--corpus", pattern,
-                        "--out", str(tmp_path / "artifact")]) == 2
+        assert (
+            run_cli(
+                [
+                    "train-tokenizer",
+                    "--corpus",
+                    pattern,
+                    "--out",
+                    str(tmp_path / "artifact"),
+                ]
+            )
+            == 2
+        )
         out = capsys.readouterr().out
         assert f"[ERROR] corpus pattern matches nothing: {pattern}" in out
         assert "Solution: check the corpus path or quote the glob pattern" in out
 
-    def test_existing_artifact_refused_then_force_overwrites(self, tmp_path,
-                                                             capsys):
+    def test_existing_artifact_refused_then_force_overwrites(self, tmp_path, capsys):
         corpus = write_jsonl(tmp_path / "corpus.jsonl", TRAIN_DOCS)
         web = write_jsonl(tmp_path / "web.jsonl", EVAL_WEB)
         out_dir = tmp_path / "artifact"
         out_dir.mkdir()
         (out_dir / "tokenizer.json").write_text("stale")
-        argv = ["train-tokenizer", "--corpus", corpus, "--out", str(out_dir),
-                "--vocab-size", str(VOCAB), "--eval-corpus", f"web={web}",
-                "--no-references"]
+        argv = [
+            "train-tokenizer",
+            "--corpus",
+            corpus,
+            "--out",
+            str(out_dir),
+            "--vocab-size",
+            str(VOCAB),
+            "--eval-corpus",
+            f"web={web}",
+            "--no-references",
+        ]
         assert run_cli(argv) == 1
         out = capsys.readouterr().out
         assert f"[ERROR] {out_dir} already contains tokenizer.json" in out
@@ -194,14 +269,26 @@ class TestTrainTokenizerCmd:
 
     def test_vocab_below_minimum_is_training_failure(self, tmp_path, capsys):
         corpus = write_jsonl(tmp_path / "corpus.jsonl", TRAIN_DOCS)
-        assert run_cli(["train-tokenizer", "--corpus", corpus,
-                        "--out", str(tmp_path / "artifact"),
-                        "--vocab-size", "100"]) == 1
+        assert (
+            run_cli(
+                [
+                    "train-tokenizer",
+                    "--corpus",
+                    corpus,
+                    "--out",
+                    str(tmp_path / "artifact"),
+                    "--vocab-size",
+                    "100",
+                ]
+            )
+            == 1
+        )
         out = capsys.readouterr().out
         assert "[ERROR] Training failed: vocab_size 100 below minimum 275" in out
 
-    def test_roundtrip_failure_exits_1_without_artifact(self, tmp_path,
-                                                        monkeypatch, capsys):
+    def test_roundtrip_failure_exits_1_without_artifact(
+        self, tmp_path, monkeypatch, capsys
+    ):
         # Byte-level BPE is lossless by construction, so the failure arm is
         # only reachable through the evaluate seam
         corpus = write_jsonl(tmp_path / "corpus.jsonl", TRAIN_DOCS)
@@ -209,35 +296,75 @@ class TestTrainTokenizerCmd:
         out_dir = str(tmp_path / "artifact")
 
         def lossy_evaluate(tok, domains):
-            return {name: {"documents": len(texts), "tokens": 10,
-                           "fertility": 1.0, "compression": 4.0,
-                           "roundtrip_failures": 2}
-                    for name, texts in domains.items()}
+            return {
+                name: {
+                    "documents": len(texts),
+                    "tokens": 10,
+                    "fertility": 1.0,
+                    "compression": 4.0,
+                    "roundtrip_failures": 2,
+                }
+                for name, texts in domains.items()
+            }
 
         monkeypatch.setattr("training.data.tokenizer.evaluate", lossy_evaluate)
-        assert run_cli([
-            "train-tokenizer", "--corpus", corpus, "--out", out_dir,
-            "--vocab-size", str(VOCAB), "--eval-corpus", f"web={web}",
-            "--no-references"]) == 1
+        assert (
+            run_cli(
+                [
+                    "train-tokenizer",
+                    "--corpus",
+                    corpus,
+                    "--out",
+                    out_dir,
+                    "--vocab-size",
+                    str(VOCAB),
+                    "--eval-corpus",
+                    f"web={web}",
+                    "--no-references",
+                ]
+            )
+            == 1
+        )
         out = capsys.readouterr().out
         assert "[ERROR] Round-trip losslessness failed: {'web': 2}" in out
         assert not os.path.exists(os.path.join(out_dir, "tokenizer.json"))
 
     def test_local_reference_compared_and_bad_reference_degrades_to_warn(
-            self, tmp_path, capsys):
+        self, tmp_path, capsys
+    ):
         corpus = write_jsonl(tmp_path / "corpus.jsonl", TRAIN_DOCS)
         web = write_jsonl(tmp_path / "web.jsonl", EVAL_WEB)
         # A local tokenizer.json loads without transformers or network
         ref_path = os.path.join(
-            build_bpe_tokenizer(str(tmp_path / "ref"), PANGRAMS,
-                                specials=["<|bos|>", "<|eos|>", "<|pad|>"]),
-            "tokenizer.json")
+            build_bpe_tokenizer(
+                str(tmp_path / "ref"),
+                PANGRAMS,
+                specials=["<|bos|>", "<|eos|>", "<|pad|>"],
+            ),
+            "tokenizer.json",
+        )
         bogus = str(tmp_path / "absent" / "tokenizer.json")
         out_dir = str(tmp_path / "artifact")
-        assert run_cli([
-            "train-tokenizer", "--corpus", corpus, "--out", out_dir,
-            "--vocab-size", str(VOCAB), "--eval-corpus", f"web={web}",
-            "--reference", ref_path, "--reference", bogus]) == 0
+        assert (
+            run_cli(
+                [
+                    "train-tokenizer",
+                    "--corpus",
+                    corpus,
+                    "--out",
+                    out_dir,
+                    "--vocab-size",
+                    str(VOCAB),
+                    "--eval-corpus",
+                    f"web={web}",
+                    "--reference",
+                    ref_path,
+                    "--reference",
+                    bogus,
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert f"[RUN] Reference metrics: {ref_path}" in out
         assert f"[WARN] Reference {bogus} unavailable:" in out
@@ -256,21 +383,34 @@ class TestTrainTokenizerCmd:
 
         def racing_write(*args, **kwargs):
             raise FileExistsError(
-                "artifact already contains tokenizer.json; "
-                "pass --force to overwrite")
+                "artifact already contains tokenizer.json; pass --force to overwrite"
+            )
 
-        monkeypatch.setattr("training.data.tokenizer.write_artifact",
-                            racing_write)
-        assert run_cli([
-            "train-tokenizer", "--corpus", corpus,
-            "--out", str(tmp_path / "artifact"), "--vocab-size", str(VOCAB),
-            "--eval-corpus", f"web={web}", "--no-references"]) == 1
+        monkeypatch.setattr("training.data.tokenizer.write_artifact", racing_write)
+        assert (
+            run_cli(
+                [
+                    "train-tokenizer",
+                    "--corpus",
+                    corpus,
+                    "--out",
+                    str(tmp_path / "artifact"),
+                    "--vocab-size",
+                    str(VOCAB),
+                    "--eval-corpus",
+                    f"web={web}",
+                    "--no-references",
+                ]
+            )
+            == 1
+        )
         out = capsys.readouterr().out
         assert "[ERROR] artifact already contains tokenizer.json" in out
         assert "Solution: choose a new output directory or pass --force" in out
 
 
 # -- generate-teacher handler ----------------------------------------------------
+
 
 def write_prompts(path, n: int) -> str:
     with open(path, "w") as f:
@@ -299,8 +439,18 @@ def patch_transport(monkeypatch, chat=None, healthy_after: float = 1.5):
 
 
 def teacher_argv(prompts: str, out_dir: str, *extra: str) -> list[str]:
-    return ["generate-teacher", "--pipeline", "respond", "--prompts", prompts,
-            "--teacher", "/app/models/t-Q8_0.gguf", "--out", out_dir, *extra]
+    return [
+        "generate-teacher",
+        "--pipeline",
+        "respond",
+        "--prompts",
+        prompts,
+        "--teacher",
+        "/app/models/t-Q8_0.gguf",
+        "--out",
+        out_dir,
+        *extra,
+    ]
 
 
 class TestGenerateTeacherCmd:
@@ -312,16 +462,33 @@ class TestGenerateTeacherCmd:
 
     def test_bad_temperature_exits_1(self, tmp_path, capsys):
         prompts = write_prompts(tmp_path / "p.jsonl", 1)
-        assert run_cli(teacher_argv(prompts, str(tmp_path / "out"),
-                                    "--temperature", "3.0")) == 1
+        assert (
+            run_cli(
+                teacher_argv(prompts, str(tmp_path / "out"), "--temperature", "3.0")
+            )
+            == 1
+        )
         out = capsys.readouterr().out
         assert "[ERROR] temperature out of range [0, 2]: 3.0" in out
 
     def test_teacher_outside_models_roots_exits_1(self, tmp_path, capsys):
         prompts = write_prompts(tmp_path / "p.jsonl", 1)
-        assert run_cli(["generate-teacher", "--pipeline", "respond",
-                        "--prompts", prompts, "--teacher", "relative/t.gguf",
-                        "--out", str(tmp_path / "out")]) == 1
+        assert (
+            run_cli(
+                [
+                    "generate-teacher",
+                    "--pipeline",
+                    "respond",
+                    "--prompts",
+                    prompts,
+                    "--teacher",
+                    "relative/t.gguf",
+                    "--out",
+                    str(tmp_path / "out"),
+                ]
+            )
+            == 1
+        )
         out = capsys.readouterr().out
         assert "[ERROR] Model must live under /app/models/" in out
 
@@ -329,35 +496,54 @@ class TestGenerateTeacherCmd:
         prompts = write_prompts(tmp_path / "p.jsonl", 1)
         assert run_cli(teacher_argv(prompts, str(tmp_path / "out"))) == 1
         out = capsys.readouterr().out
-        assert ("[ERROR] Teacher model not found on host: "
-                "/mnt/ai-data/models/t-Q8_0.gguf") in out
+        assert (
+            "[ERROR] Teacher model not found on host: /mnt/ai-data/models/t-Q8_0.gguf"
+        ) in out
 
     def test_training_lock_present_exits_1(self, tmp_path, capsys):
         # The autouse train_lock_path fixture points the D9 lock here
         (tmp_path / ".train.lock").touch()
         prompts = write_prompts(tmp_path / "p.jsonl", 1)
-        assert run_cli(teacher_argv(prompts, str(tmp_path / "out"),
-                                    "--no-swap")) == 1
+        assert run_cli(teacher_argv(prompts, str(tmp_path / "out"), "--no-swap")) == 1
         out = capsys.readouterr().out
         assert "[ERROR] Training lock present:" in out
 
-    def test_no_swap_respond_success_resumes_completed(self, tmp_path,
-                                                       monkeypatch, capsys):
+    def test_no_swap_respond_success_resumes_completed(
+        self, tmp_path, monkeypatch, capsys
+    ):
         budgets, calls = patch_transport(monkeypatch)
         prompts = write_prompts(tmp_path / "p.jsonl", 3)
         out_dir = str(tmp_path / "out")
         # One completed record from a previous (killed) run: q0 must be skipped
         os.makedirs(out_dir)
-        done = {"key": teacher.prompt_key(0, [{"role": "user", "content": "q0"}]),
-                "messages": [{"role": "user", "content": "q0"},
-                             {"role": "assistant", "content": "old"}]}
+        done = {
+            "key": teacher.prompt_key(0, [{"role": "user", "content": "q0"}]),
+            "messages": [
+                {"role": "user", "content": "q0"},
+                {"role": "assistant", "content": "old"},
+            ],
+        }
         with open(os.path.join(out_dir, "data.jsonl"), "w") as f:
             f.write(json.dumps(done) + "\n")
 
-        assert run_cli(teacher_argv(
-            prompts, out_dir, "--no-swap", "--concurrency", "1",
-            "--temperature", "0.5", "--max-tokens", "64",
-            "--timeout", "7")) == 0
+        assert (
+            run_cli(
+                teacher_argv(
+                    prompts,
+                    out_dir,
+                    "--no-swap",
+                    "--concurrency",
+                    "1",
+                    "--temperature",
+                    "0.5",
+                    "--max-tokens",
+                    "64",
+                    "--timeout",
+                    "7",
+                )
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "[OK] Preflight: training is idle" in out
         assert "[INFO] Pipeline: respond, 3 prompts, concurrency 1" in out
@@ -365,34 +551,34 @@ class TestGenerateTeacherCmd:
         assert "[RUN] Using already-served model on vllm-gpu" in out
         assert "[OK] vllm-gpu healthy after 1.5s" in out
         assert "[INFO] Progress: 3/3" in out
-        assert "Progress: 1/3" not in out   # gated to every 25th or the last
+        assert "Progress: 1/3" not in out  # gated to every 25th or the last
         assert f"[OK] Dataset complete: 3 examples in {out_dir}" in out
         assert "Restoring previous serving state" not in out
-        assert budgets == [600]   # vllm-gpu default start budget
+        assert budgets == [600]  # vllm-gpu default start budget
 
         asked = [messages[-1]["content"] for messages, _, _ in calls]
         assert sorted(asked) == ["q1", "q2"]
         for _, sampling, timeout in calls:
-            assert sampling == {"temperature": 0.5, "top_p": 0.9,
-                                "max_tokens": 64}
+            assert sampling == {"temperature": 0.5, "top_p": 0.9, "max_tokens": 64}
             assert timeout == 7
         with open(os.path.join(out_dir, "data.jsonl")) as f:
             records = [json.loads(line) for line in f]
         assert len(records) == 3
-        assert records[1]["messages"][-1] == {"role": "assistant",
-                                              "content": "ans:q1"}
+        assert records[1]["messages"][-1] == {"role": "assistant", "content": "ans:q1"}
         with open(os.path.join(out_dir, "manifest.json")) as f:
             manifest = json.load(f)
         assert manifest["examples"] == 3
         assert manifest["pipeline"] == "respond"
-        assert manifest["teacher"] == {"model": "/app/models/t-Q8_0.gguf",
-                                       "quant_type": "Q8_0"}
+        assert manifest["teacher"] == {
+            "model": "/app/models/t-Q8_0.gguf",
+            "quant_type": "Q8_0",
+        }
         with open(prompts, "rb") as f:
-            assert manifest["prompt_set_sha256"] == hashlib.sha256(
-                f.read()).hexdigest()
+            assert manifest["prompt_set_sha256"] == hashlib.sha256(f.read()).hexdigest()
 
-    def test_synthesize_pipeline_evolves_then_answers(self, tmp_path,
-                                                      monkeypatch, capsys):
+    def test_synthesize_pipeline_evolves_then_answers(
+        self, tmp_path, monkeypatch, capsys
+    ):
         def synth_chat(service, messages, sampling, timeout=None):
             if "Rewrite the following instruction" in messages[-1]["content"]:
                 return {"content": "evolved q0"}
@@ -401,10 +587,25 @@ class TestGenerateTeacherCmd:
         patch_transport(monkeypatch, chat=synth_chat)
         prompts = write_prompts(tmp_path / "p.jsonl", 1)
         out_dir = str(tmp_path / "out")
-        assert run_cli([
-            "generate-teacher", "--pipeline", "synthesize",
-            "--prompts", prompts, "--teacher", "/app/models/t-Q8_0.gguf",
-            "--out", out_dir, "--no-swap", "--concurrency", "1"]) == 0
+        assert (
+            run_cli(
+                [
+                    "generate-teacher",
+                    "--pipeline",
+                    "synthesize",
+                    "--prompts",
+                    prompts,
+                    "--teacher",
+                    "/app/models/t-Q8_0.gguf",
+                    "--out",
+                    out_dir,
+                    "--no-swap",
+                    "--concurrency",
+                    "1",
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "[INFO] Pipeline: synthesize, 1 prompts, concurrency 1" in out
         assert f"[OK] Dataset complete: 1 examples in {out_dir}" in out
@@ -416,10 +617,18 @@ class TestGenerateTeacherCmd:
         ]
 
     def swap_argv(self, prompts: str, out_dir: str, *extra: str) -> list[str]:
-        return ["generate-teacher", "--pipeline", "respond",
-                "--prompts", prompts,
-                "--teacher", "/mnt/ai-data/models/tiny-Q4_K_M.gguf",
-                "--out", out_dir, *extra]
+        return [
+            "generate-teacher",
+            "--pipeline",
+            "respond",
+            "--prompts",
+            prompts,
+            "--teacher",
+            "/mnt/ai-data/models/tiny-Q4_K_M.gguf",
+            "--out",
+            out_dir,
+            *extra,
+        ]
 
     def patch_swap(self, monkeypatch, restore_error: str | None = None):
         """Make the host-side teacher file appear present and record
@@ -427,8 +636,8 @@ class TestGenerateTeacherCmd:
         host = "/mnt/ai-data/models/tiny-Q4_K_M.gguf"
         real_exists = os.path.exists
         monkeypatch.setattr(
-            os.path, "exists",
-            lambda p: True if p == host else real_exists(p))
+            os.path, "exists", lambda p: True if p == host else real_exists(p)
+        )
         swaps: list[tuple[str, str | None]] = []
 
         def fake_swap(service, container_path, env=None):
@@ -439,21 +648,21 @@ class TestGenerateTeacherCmd:
         monkeypatch.setattr("training.serving.swap_model", fake_swap)
         return swaps
 
-    def test_swap_success_restores_previous_state(self, tmp_path,
-                                                  monkeypatch, capsys):
+    def test_swap_success_restores_previous_state(self, tmp_path, monkeypatch, capsys):
         swaps = self.patch_swap(monkeypatch)
         budgets, _ = patch_transport(monkeypatch)
         prompts = write_prompts(tmp_path / "p.jsonl", 1)
         out_dir = str(tmp_path / "out")
-        assert run_cli(self.swap_argv(prompts, out_dir,
-                                      "--start-budget", "5")) == 0
+        assert run_cli(self.swap_argv(prompts, out_dir, "--start-budget", "5")) == 0
         out = capsys.readouterr().out
         assert "[INFO] Pipeline: respond, 1 prompts, concurrency 16" in out
         assert "[RUN] Swapping vllm-gpu to /app/models/tiny-Q4_K_M.gguf" in out
         assert "[RUN] Restoring previous serving state" in out
         assert "[OK] Previous serving state restored" in out
-        assert swaps == [("vllm-gpu", "/app/models/tiny-Q4_K_M.gguf"),
-                         ("vllm-gpu", None)]
+        assert swaps == [
+            ("vllm-gpu", "/app/models/tiny-Q4_K_M.gguf"),
+            ("vllm-gpu", None),
+        ]
         assert budgets == [5]
         assert os.path.isfile(os.path.join(out_dir, "manifest.json"))
 
@@ -461,14 +670,17 @@ class TestGenerateTeacherCmd:
         swaps = self.patch_swap(monkeypatch)
         patch_transport(monkeypatch)
         prompts = write_prompts(tmp_path / "p.jsonl", 1)
-        assert run_cli(self.swap_argv(prompts, str(tmp_path / "out"),
-                                      "--keep-serving")) == 0
+        assert (
+            run_cli(self.swap_argv(prompts, str(tmp_path / "out"), "--keep-serving"))
+            == 0
+        )
         out = capsys.readouterr().out
         assert "Restoring previous serving state" not in out
         assert swaps == [("vllm-gpu", "/app/models/tiny-Q4_K_M.gguf")]
 
-    def test_restore_failure_exits_1_with_compose_hint(self, tmp_path,
-                                                       monkeypatch, capsys):
+    def test_restore_failure_exits_1_with_compose_hint(
+        self, tmp_path, monkeypatch, capsys
+    ):
         self.patch_swap(monkeypatch, restore_error="compose exited 1")
         patch_transport(monkeypatch)
         prompts = write_prompts(tmp_path / "p.jsonl", 1)
@@ -478,11 +690,11 @@ class TestGenerateTeacherCmd:
         # Generation itself completed; only the restore failed
         assert f"[OK] Dataset complete: 1 examples in {out_dir}" in out
         assert "[ERROR] Restore failed: compose exited 1" in out
-        assert ("Solution: docker compose up -d --force-recreate "
-                "vllm-gpu") in out
+        assert ("Solution: docker compose up -d --force-recreate vllm-gpu") in out
 
     def test_generation_failure_aborts_resumable_and_exits_1(
-            self, tmp_path, monkeypatch, capsys):
+        self, tmp_path, monkeypatch, capsys
+    ):
         def broken_chat(service, messages, sampling, timeout=None):
             # Non-transient, so with_retry raises without sleeping
             raise serving.ServingError("HTTP 400 from vllm-gpu: bad request")
@@ -490,8 +702,10 @@ class TestGenerateTeacherCmd:
         patch_transport(monkeypatch, chat=broken_chat)
         prompts = write_prompts(tmp_path / "p.jsonl", 2)
         out_dir = str(tmp_path / "out")
-        assert run_cli(teacher_argv(prompts, out_dir, "--no-swap",
-                                    "--concurrency", "1")) == 1
+        assert (
+            run_cli(teacher_argv(prompts, out_dir, "--no-swap", "--concurrency", "1"))
+            == 1
+        )
         out = capsys.readouterr().out
         assert "[ERROR] Generation aborted: 2 of 2 prompts failed" in out
         # No manifest: the partial run stays resumable

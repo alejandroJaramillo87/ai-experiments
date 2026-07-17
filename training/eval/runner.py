@@ -1,6 +1,6 @@
 """Host-side phase orchestration for the F7 runner.
 
-The runner (scripts/eval/eval_ft.py) sequences four phases while staying
+The runner (training/commands/eval_ft.py) sequences four phases while staying
 honest about the concurrency policy: the in-process evaluators (holdout,
 lmeval) run inside the training container with inference down; generation
 and judging run against the serving stack with training idle. This module
@@ -41,7 +41,7 @@ def thinking_mode_for(architecture: str | None, path: str) -> str | None:
     architecture, falling back to the filename; None when neither names a
     registered family (recorded as "not recorded", never guessed).
     """
-    from training.families import family_spec, supported_families
+    from training.models.families import family_spec, supported_families
 
     hints = f"{architecture or ''} {os.path.basename(path)}".lower()
     hints = hints.replace("-", "").replace("_", "")
@@ -73,7 +73,8 @@ def gguf_identity(model: str) -> dict:
         "sha256": (manifest or {}).get("gguf", {}).get("sha256"),
         "manifest": manifest_path if manifest else None,
         "thinking_mode": thinking_mode_for(
-            (manifest or {}).get("architecture"), host_path),
+            (manifest or {}).get("architecture"), host_path
+        ),
     }
 
 
@@ -85,46 +86,63 @@ def check_quant_match(baseline: dict, tuned: dict) -> None:
             "Quant type unknown for a compared side; comparative claims "
             "need matched quantization\n"
             "  Solution: export both sides with make export-gguf (manifest "
-            "records the quant), or use <name>-<QUANT>.gguf naming")
+            "records the quant), or use <name>-<QUANT>.gguf naming"
+        )
     if left != right:
         raise EvalRunError(
             f"Quantization mismatch: baseline {left}, tuned {right}\n"
-            "  Solution: re-export one side at the other's quant type")
+            "  Solution: re-export one side at the other's quant type"
+        )
 
 
-def run_container_phase(subcommand: str, phase_args: list[str],
-                        service: str = "training") -> None:
+def run_container_phase(
+    subcommand: str, phase_args: list[str], service: str = "training"
+) -> None:
     """One in-container CLI phase via the training compose file.
 
     The training container takes the GPU; the caller sequences this against
     the serving phases. Output files land under /mnt/ai-data/training,
     mounted at the same path on both sides.
     """
-    cmd = ["docker", "compose", "-f", TRAIN_COMPOSE, "run", "--rm", service,
-           "python", "-m", "training", subcommand, *phase_args]
+    cmd = [
+        "docker",
+        "compose",
+        "-f",
+        TRAIN_COMPOSE,
+        "run",
+        "--rm",
+        service,
+        "python",
+        "-m",
+        "training",
+        subcommand,
+        *phase_args,
+    ]
     proc = subprocess.run(cmd, cwd=serving.REPO_ROOT)
     if proc.returncode != 0:
         raise EvalRunError(
             f"Container phase failed ({proc.returncode}): "
-            f"python -m training {subcommand}")
+            f"python -m training {subcommand}"
+        )
 
 
 def load_judgments(path: str) -> dict[tuple, dict]:
     """Existing judgment records keyed by (prompt_id, first side)."""
-    records: dict[tuple, dict] = {}
-    if os.path.isfile(path):
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    record = json.loads(line)
-                    records[(record["prompt_id"], record["first"])] = record
-    return records
+    from training.eval.generate import load_resume_jsonl
+
+    return {
+        (record["prompt_id"], record["first"]): record
+        for record in load_resume_jsonl(path)
+    }
 
 
-def run_judgments(complete, prompts_by_id: dict[str, dict],
-                  responses: dict[str, dict[str, dict]], out_path: str,
-                  progress=None) -> list[dict]:
+def run_judgments(
+    complete,
+    prompts_by_id: dict[str, dict],
+    responses: dict[str, dict[str, dict]],
+    out_path: str,
+    progress=None,
+) -> list[dict]:
     """Judge every position-swapped pair; resumable and error-preserving.
 
     complete(messages) -> judge text (raises serving.ServingError on request
@@ -147,18 +165,23 @@ def run_judgments(complete, prompts_by_id: dict[str, dict],
             first = responses[pair["first"]].get(pair["prompt_id"], {})
             second = responses[pair["second"]].get(pair["prompt_id"], {})
             if "response" not in first or "response" not in second:
-                record.update(outcome="error",
-                              error="generation missing or failed for a side")
+                record.update(
+                    outcome="error", error="generation missing or failed for a side"
+                )
             else:
                 messages = judge_mod.judge_messages(
                     prompts_by_id[pair["prompt_id"]]["prompt"],
-                    first["response"], second["response"])
+                    first["response"],
+                    second["response"],
+                )
                 try:
                     text = complete(messages)
                     verdict = judge_mod.parse_verdict(text)
                     record.update(
                         outcome=judge_mod.resolve_pair(pair, verdict),
-                        verdict=verdict, rationale=text)
+                        verdict=verdict,
+                        rationale=text,
+                    )
                 except serving.ServingError as exc:
                     record.update(outcome="error", error=str(exc))
             f.write(json.dumps(record) + "\n")
@@ -177,16 +200,21 @@ def holdout_section(base_record: dict, tuned_record: dict) -> dict:
         raise ScorecardError(
             "Confound: held-out precision differs between sides "
             f"(baseline={base_record.get('precision')}, "
-            f"tuned={tuned_record.get('precision')})")
+            f"tuned={tuned_record.get('precision')})"
+        )
     return {
-        "loss": delta_section(base_record["loss"], tuned_record["loss"],
-                              higher_is_better=False),
-        "perplexity": delta_section(base_record["perplexity"],
-                                    tuned_record["perplexity"],
-                                    higher_is_better=False),
+        "loss": delta_section(
+            base_record["loss"], tuned_record["loss"], higher_is_better=False
+        ),
+        "perplexity": delta_section(
+            base_record["perplexity"],
+            tuned_record["perplexity"],
+            higher_is_better=False,
+        ),
         "examples": tuned_record["examples"],
         "supervised_tokens": tuned_record["supervised_tokens"],
         "precision": tuned_record.get("precision"),
+        "attention_implementation": tuned_record.get("attention_implementation"),
         "dataset": tuned_record.get("dataset"),
     }
 
@@ -196,18 +224,20 @@ def lmeval_section(base_record: dict, tuned_record: dict) -> dict:
     from training.eval.scorecard import ScorecardError, delta_section
 
     if base_record.get("lm_eval_version") != tuned_record.get("lm_eval_version"):
-        raise ScorecardError(
-            "Confound: lm-eval version differs between sides")
+        raise ScorecardError("Confound: lm-eval version differs between sides")
     tasks = {}
     for task, tuned_result in tuned_record["results"].items():
         base_result = base_record["results"].get(task)
         if base_result is None:
             raise ScorecardError(f"Task {task} missing from the baseline run")
-        section = delta_section(base_result["value"], tuned_result["value"],
-                                higher_is_better=True)
+        section = delta_section(
+            base_result["value"], tuned_result["value"], higher_is_better=True
+        )
         section["metric"] = tuned_result["metric"]
-        section["stderr"] = {"baseline": base_result.get("stderr"),
-                             "tuned": tuned_result.get("stderr")}
+        section["stderr"] = {
+            "baseline": base_result.get("stderr"),
+            "tuned": tuned_result.get("stderr"),
+        }
         tasks[task] = section
     return {
         "lm_eval_version": tuned_record.get("lm_eval_version"),

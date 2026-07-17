@@ -1,7 +1,7 @@
 """Training run lock (Phase 0 D9).
 
 Mechanically enforces the one-GPU-consumer policy: a training job holds
-/mnt/ai-data/training/.train.lock (the path scripts/eval/serve_eval.py already
+/mnt/ai-data/training/.train.lock (the path training/commands/serve_eval.py already
 checks) for its whole run; a second job or a serving swap refuses to start
 while it exists.
 
@@ -71,7 +71,8 @@ def run_lock(run_name: str, path: str | None = None):
         raise TrainLockError(
             f"Lock directory does not exist: {parent}\n"
             f"  Solution: verify the training root is mounted "
-            f"(or set TRAIN_LOCK_PATH)")
+            f"(or set TRAIN_LOCK_PATH)"
+        )
     try:
         fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
     except FileExistsError:
@@ -82,21 +83,37 @@ def run_lock(run_name: str, path: str | None = None):
                 f"Training lock held by pid {pid} (run "
                 f"{holder.get('run', 'unknown')!r}): {path}\n"
                 f"  Solution: wait for the running job to finish "
-                f"(one GPU consumer at a time)") from None
+                f"(one GPU consumer at a time)"
+            ) from None
         raise TrainLockError(
             f"Stale training lock (pid {pid} is not alive): {path}\n"
             f"  Solution: confirm no job is running, then remove it: "
-            f"rm {path}") from None
+            f"rm {path}"
+        ) from None
     try:
         with os.fdopen(fd, "w") as f:
-            json.dump({"pid": os.getpid(), "run": run_name,
-                       "created": time.strftime("%Y-%m-%dT%H:%M:%S%z")}, f,
-                      indent=2)
+            json.dump(
+                {
+                    "pid": os.getpid(),
+                    "run": run_name,
+                    "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                },
+                f,
+                indent=2,
+            )
+    except BaseException:
+        # A torn body reads back as pid None, which the pid-checked removal
+        # below would refuse to delete; the file is ours (O_EXCL succeeded
+        # and no successor can exist while it does), so remove unconditionally.
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(path)
+        raise
+    try:
         yield path
     finally:
         # Remove only our own lock; a crashed-and-replaced holder must not
         # delete a successor's file.
-        holder = read_lock(path)
-        if holder and holder.get("pid") == os.getpid():
+        current_holder = read_lock(path)
+        if current_holder and current_holder.get("pid") == os.getpid():
             with contextlib.suppress(FileNotFoundError):
                 os.remove(path)

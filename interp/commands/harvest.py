@@ -46,8 +46,8 @@ def cmd(args: argparse.Namespace) -> int:
         validate_harvest,
     )
     from interp.manifest import ManifestError
-    from training.lock import TrainLockError
     from training.recipes.loader import RecipeLoadError, load_recipe
+    from training.runtime.lock import TrainLockError
 
     try:
         recipe = load_recipe(args.recipe, overrides=args.override)
@@ -59,7 +59,7 @@ def cmd(args: argparse.Namespace) -> int:
                 model_id, list(recipe.harvest.hook_layers), revision
             )
             for layer, width in sorted(widths.items()):
-                out.ok(f"model.layers.{layer}: residual width {width}")
+                out.ok(f"layer {layer}: residual width {width}")
             return 0
         out.run(f"Harvesting activations: {model_id}")
         manifest = run_harvest(recipe)

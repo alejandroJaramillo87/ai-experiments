@@ -92,7 +92,11 @@ def extract_repeng(
         torch_dtype=torch.bfloat16,
         device_map="auto",
     )
-    n_layers = model.config.num_hidden_layers
+    # The registry's text-config unwrap: a composite Gemma 4 config keeps
+    # num_hidden_layers on text_config, not the top level.
+    from interp.families import unwrap_text_config
+
+    n_layers = unwrap_text_config(model.config).num_hidden_layers
     if layer_range is None:
         # repeng's own default band: skip the embedding-adjacent early layers
         layers = list(range(-1, -n_layers, -1))

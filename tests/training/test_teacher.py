@@ -22,8 +22,13 @@ from training.data.teacher import (
 
 
 def make_config(**overrides) -> TeacherConfig:
-    defaults = {"pipeline": "respond", "teacher": "gemma-4-E4B-it-Q8_0.gguf",
-                "service": "vllm-gpu", "concurrency": 2, "backoff_s": 0.0}
+    defaults = {
+        "pipeline": "respond",
+        "teacher": "gemma-4-E4B-it-Q8_0.gguf",
+        "service": "vllm-gpu",
+        "concurrency": 2,
+        "backoff_s": 0.0,
+    }
     defaults.update(overrides)
     return TeacherConfig(**defaults)
 
@@ -45,14 +50,22 @@ class Transient(RuntimeError):
 
 # Prompt loading and normalization
 
+
 def test_load_prompts_normalizes_all_accepted_shapes(tmp_path):
-    path = write_prompts(tmp_path / "prompts.jsonl", [
-        {"instruction": "a"},
-        {"prompt": "b"},
-        {"text": "c"},
-        {"messages": [{"role": "system", "content": "s"},
-                      {"role": "user", "content": "d"}]},
-    ])
+    path = write_prompts(
+        tmp_path / "prompts.jsonl",
+        [
+            {"instruction": "a"},
+            {"prompt": "b"},
+            {"text": "c"},
+            {
+                "messages": [
+                    {"role": "system", "content": "s"},
+                    {"role": "user", "content": "d"},
+                ]
+            },
+        ],
+    )
     prompts = load_prompts(path)
     assert prompts[0] == [{"role": "user", "content": "a"}]
     assert prompts[1] == [{"role": "user", "content": "b"}]
@@ -61,10 +74,17 @@ def test_load_prompts_normalizes_all_accepted_shapes(tmp_path):
 
 
 def test_load_prompts_drops_trailing_assistant_turn(tmp_path):
-    path = write_prompts(tmp_path / "prompts.jsonl", [
-        {"messages": [{"role": "user", "content": "q"},
-                      {"role": "assistant", "content": "stale"}]},
-    ])
+    path = write_prompts(
+        tmp_path / "prompts.jsonl",
+        [
+            {
+                "messages": [
+                    {"role": "user", "content": "q"},
+                    {"role": "assistant", "content": "stale"},
+                ]
+            },
+        ],
+    )
     assert load_prompts(path) == [[{"role": "user", "content": "q"}]]
 
 
@@ -74,8 +94,9 @@ def test_load_prompts_resolves_dataset_directory(tmp_path):
 
 
 def test_load_prompts_fails_with_line_number(tmp_path):
-    path = write_prompts(tmp_path / "prompts.jsonl",
-                         [{"instruction": "ok"}, {"unrelated": 1}])
+    path = write_prompts(
+        tmp_path / "prompts.jsonl", [{"instruction": "ok"}, {"unrelated": 1}]
+    )
     with pytest.raises(ValueError, match=":2:"):
         load_prompts(path)
 
@@ -88,15 +109,18 @@ def test_load_prompts_rejects_empty_file(tmp_path):
 
 # Keys
 
+
 def test_prompt_key_is_stable_and_content_sensitive():
     messages = [{"role": "user", "content": "q"}]
     assert prompt_key(3, messages) == prompt_key(3, messages)
     assert prompt_key(3, messages) != prompt_key(4, messages)
     assert prompt_key(3, messages) != prompt_key(
-        3, [{"role": "user", "content": "other"}])
+        3, [{"role": "user", "content": "other"}]
+    )
 
 
 # Config validation
+
 
 def test_config_rejects_unknown_pipeline():
     with pytest.raises(TeacherConfigError, match="pipeline"):
@@ -127,6 +151,7 @@ def test_config_rejects_non_positive_max_attempts():
 
 # Retry
 
+
 def test_with_retry_backs_off_then_succeeds():
     attempts = []
     delays = []
@@ -137,8 +162,9 @@ def test_with_retry_backs_off_then_succeeds():
             raise Transient("busy")
         return "ok"
 
-    result = with_retry(flaky, Transient, max_attempts=4, backoff_s=2.0,
-                        sleep=delays.append)
+    result = with_retry(
+        flaky, Transient, max_attempts=4, backoff_s=2.0, sleep=delays.append
+    )
     assert result == "ok"
     assert delays == [2.0, 4.0]
 
@@ -148,18 +174,26 @@ def test_with_retry_raises_after_max_attempts():
         raise Transient("down")
 
     with pytest.raises(Transient):
-        with_retry(always, Transient, max_attempts=3, backoff_s=1.0,
-                   sleep=lambda _: None)
+        with_retry(
+            always, Transient, max_attempts=3, backoff_s=1.0, sleep=lambda _: None
+        )
 
 
 # Generation: respond pipeline
 
+
 def test_respond_writes_messages_records_and_manifest(tmp_path):
     out_dir = str(tmp_path / "out")
     prompts = [[{"role": "user", "content": f"q{i}"}] for i in range(5)]
-    manifest = generate(make_config(), prompts, echo_complete, out_dir,
-                        prompt_source="prompts.jsonl", prompt_set_hash="abc",
-                        command="test")
+    manifest = generate(
+        make_config(),
+        prompts,
+        echo_complete,
+        out_dir,
+        prompt_source="prompts.jsonl",
+        prompt_set_hash="abc",
+        command="test",
+    )
     with open(os.path.join(out_dir, teacher.DATA_NAME)) as f:
         records = [json.loads(line) for line in f]
     assert len(records) == 5
@@ -170,8 +204,10 @@ def test_respond_writes_messages_records_and_manifest(tmp_path):
         assert record["messages"][-1]["content"].startswith("response to:")
     assert manifest["examples"] == 5
     assert manifest["pipeline"] == "respond"
-    assert manifest["teacher"] == {"model": "gemma-4-E4B-it-Q8_0.gguf",
-                                   "quant_type": "Q8_0"}
+    assert manifest["teacher"] == {
+        "model": "gemma-4-E4B-it-Q8_0.gguf",
+        "quant_type": "Q8_0",
+    }
     assert manifest["sampling"] == SamplingConfig().as_request()
     assert manifest["prompt_set_sha256"] == "abc"
     assert manifest["command"] == "test"
@@ -188,8 +224,12 @@ def test_synthesize_evolves_then_answers(tmp_path):
             return "evolved instruction"
         return "final answer"
 
-    generate(make_config(pipeline="synthesize", concurrency=1),
-             [[{"role": "user", "content": "seed"}]], fake, out_dir)
+    generate(
+        make_config(pipeline="synthesize", concurrency=1),
+        [[{"role": "user", "content": "seed"}]],
+        fake,
+        out_dir,
+    )
     with open(os.path.join(out_dir, teacher.DATA_NAME)) as f:
         record = json.loads(f.readline())
     assert record["messages"] == [
@@ -201,6 +241,7 @@ def test_synthesize_evolves_then_answers(tmp_path):
 
 # Resumability
 
+
 def test_resume_skips_completed_and_tolerates_torn_line(tmp_path):
     out_dir = str(tmp_path / "out")
     prompts = [[{"role": "user", "content": f"q{i}"}] for i in range(4)]
@@ -208,8 +249,10 @@ def test_resume_skips_completed_and_tolerates_torn_line(tmp_path):
     # Two completed records plus a torn final line from a killed run
     with open(os.path.join(out_dir, teacher.DATA_NAME), "w") as f:
         for i in range(2):
-            f.write(json.dumps({"key": prompt_key(i, prompts[i]),
-                                "messages": prompts[i]}) + "\n")
+            f.write(
+                json.dumps({"key": prompt_key(i, prompts[i]), "messages": prompts[i]})
+                + "\n"
+            )
         f.write('{"key": "000002-tr')
 
     generated = []
@@ -231,13 +274,19 @@ def test_resume_with_changed_prompt_set_fails_loudly(tmp_path):
     prompts = [[{"role": "user", "content": f"q{i}"}] for i in range(2)]
     os.makedirs(out_dir)
     with open(os.path.join(out_dir, teacher.DATA_NAME), "w") as f:
-        f.write(json.dumps({"key": prompt_key(0, [{"role": "user",
-                                                   "content": "old prompt"}]),
-                            "messages": []}) + "\n")
-    with pytest.raises(ValueError, match="not in\nthe current prompt set"
-                       .replace("\n", " ")):
-        generate(make_config(concurrency=1), prompts,
-                 lambda m, s: "r", out_dir)
+        f.write(
+            json.dumps(
+                {
+                    "key": prompt_key(0, [{"role": "user", "content": "old prompt"}]),
+                    "messages": [],
+                }
+            )
+            + "\n"
+        )
+    with pytest.raises(
+        ValueError, match="not in\nthe current prompt set".replace("\n", " ")
+    ):
+        generate(make_config(concurrency=1), prompts, lambda m, s: "r", out_dir)
 
 
 def test_corrupt_record_mid_file_fails_loudly(tmp_path):
@@ -261,14 +310,14 @@ def test_partial_failure_is_resumable_and_writes_no_manifest(tmp_path):
 
     config = make_config(concurrency=1, max_attempts=2)
     with pytest.raises(GenerationIncomplete, match="1 of 3"):
-        generate(config, prompts, flaky, out_dir, transient=Transient,
-                 sleep=lambda _: None)
+        generate(
+            config, prompts, flaky, out_dir, transient=Transient, sleep=lambda _: None
+        )
     assert not os.path.exists(os.path.join(out_dir, teacher.MANIFEST_NAME))
     assert len(completed_keys(out_dir)) == 2
 
     # Second invocation with the service recovered completes the remainder
-    manifest = generate(config, prompts, echo_complete, out_dir,
-                        transient=Transient)
+    manifest = generate(config, prompts, echo_complete, out_dir, transient=Transient)
     assert manifest["examples"] == 3
     assert len(completed_keys(out_dir)) == 3
 
@@ -285,6 +334,11 @@ def test_progress_reports_completed_over_total(tmp_path):
     out_dir = str(tmp_path / "out")
     prompts = [[{"role": "user", "content": f"q{i}"}] for i in range(3)]
     seen = []
-    generate(make_config(concurrency=1), prompts, echo_complete, out_dir,
-             progress=lambda done, total: seen.append((done, total)))
+    generate(
+        make_config(concurrency=1),
+        prompts,
+        echo_complete,
+        out_dir,
+        progress=lambda done, total: seen.append((done, total)),
+    )
     assert seen == [(1, 3), (2, 3), (3, 3)]

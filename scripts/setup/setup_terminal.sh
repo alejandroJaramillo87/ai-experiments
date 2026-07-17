@@ -143,7 +143,7 @@ sudo update-alternatives --install /usr/bin/x-terminal-emulator x-terminal-emula
 
 # Change default shell to zsh
 echo "🐚 Changing default shell to zsh..."
-sudo chsh -s $(which zsh) $USER
+sudo chsh -s "$(which zsh)" "$USER"
 
 echo "✅ Setup complete!"
 echo ""

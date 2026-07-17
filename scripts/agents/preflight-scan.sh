@@ -22,9 +22,9 @@
 set -euo pipefail
 
 RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m'
-BLUE='\033[0;34m' CYAN='\033[0;36m' NC='\033[0m'
+CYAN='\033[0;36m' NC='\033[0m'
 if [[ -n "${NO_COLOR:-}" ]] || [[ ! -t 1 ]]; then
-    RED='' GREEN='' YELLOW='' BLUE='' CYAN='' NC=''
+    RED='' GREEN='' YELLOW='' CYAN='' NC=''
 fi
 print_ok()    { printf "${GREEN}[OK]${NC} %s\n" "$*"; }
 print_warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }

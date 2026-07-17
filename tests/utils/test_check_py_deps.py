@@ -72,11 +72,9 @@ def test_installed_but_unimportable_is_not_misreported(mod, monkeypatch, capsys)
     # A distribution whose import raises (bitsandbytes without torch) is
     # installed; reporting "not installed" directs the operator to install
     # a package that is present.
-    monkeypatch.setattr(mod, "quiet_import",
-                        lambda name: (None, "boom traceback"))
+    monkeypatch.setattr(mod, "quiet_import", lambda name: (None, "boom traceback"))
     monkeypatch.setattr(mod, "_pkg_version", lambda name: "0.46.1")
-    monkeypatch.setattr(mod, "KEY_PACKAGES",
-                        {"bitsandbytes": ("bitsandbytes", True)})
+    monkeypatch.setattr(mod, "KEY_PACKAGES", {"bitsandbytes": ("bitsandbytes", True)})
     packages = mod.check_key_packages(mod.Printer(quiet=False))
     captured = capsys.readouterr().out
     assert packages["bitsandbytes"]["installed"] is True

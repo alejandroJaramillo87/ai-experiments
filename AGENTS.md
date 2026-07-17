@@ -39,6 +39,13 @@ These are standing instructions for anyone (human or agent) making changes in th
   touches the GPU, a running inference service, or the benchmark suite is serialized — exactly
   one such job at a time, regardless of how many sessions or worktrees are active. Never run two
   benchmarks or two GPU jobs at once; results and VRAM will collide.
+- **`make quality` is mandatory before every push, for humans and agents alike.** The gate runs
+  the ruff format check, ruff lint, mypy, the uv lockfile check, and shellcheck, in that order,
+  failing on the first error. Every tool version comes from the pinned dev dependency group and
+  no step needs the network. Known caveat: while `uv.lock` remains stale relative to
+  `pyproject.toml` (regenerated only on the workstation, where the pytorch cu130 index is
+  reachable — verification runbook step zero), the `uv lock --check` step fails in sandboxes;
+  the other four steps must still pass before any push.
 
 ## Hardware
 
@@ -71,7 +78,7 @@ Host-side commands — run by the human on the workstation, not from an agent sa
 make up          # Start all services
 make status      # Check health
 make logs        # View logs
-make benchmark   # Run performance tests
+./scripts/benchmark/benchmark_gpu.sh   # Run performance tests (no make wrapper)
 make shell-gpu   # Access GPU container
 ```
 

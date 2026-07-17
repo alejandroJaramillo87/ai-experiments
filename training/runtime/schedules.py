@@ -1,6 +1,6 @@
 """LR schedule multiplier functions and scheduler builder (P2-D3).
 
-Extracted from training/model.py so schedule shapes accrue in one module.
+Extracted from training/models/model.py so schedule shapes accrue in one module.
 Every schedule is a pure function of step -> multiplier on optimizer.lr,
 wrapped in torch LambdaLR; scheduler state checkpoints via the Phase 0 D6
 save_checkpoint/load_checkpoint pair, so resume continues the curve exactly.
@@ -45,10 +45,14 @@ def cosine_multiplier(step: int, warmup_steps: int, total_steps: int) -> float:
     return 0.5 * (1.0 + math.cos(math.pi * min(1.0, progress)))
 
 
-def wsd_multiplier(step: int, warmup_steps: int, total_steps: int,
-                   decay_start_frac: float = WSD_DECAY_START_FRAC_DEFAULT,
-                   final_lr_frac: float = WSD_FINAL_LR_FRAC_DEFAULT,
-                   decay_shape: str = WSD_DECAY_SHAPE_DEFAULT) -> float:
+def wsd_multiplier(
+    step: int,
+    warmup_steps: int,
+    total_steps: int,
+    decay_start_frac: float = WSD_DECAY_START_FRAC_DEFAULT,
+    final_lr_frac: float = WSD_FINAL_LR_FRAC_DEFAULT,
+    decay_shape: str = WSD_DECAY_SHAPE_DEFAULT,
+) -> float:
     """Warmup-stable-decay: warmup to 1.0, hold, decay to final_lr_frac.
 
     The plateau spans [warmup_steps, decay_start_frac * total_steps); the
@@ -79,6 +83,7 @@ def build_scheduler(optimizer, recipe: DictConfig):
     total = sched.total_steps
 
     if sched.type == "cosine":
+
         def fn(step: int) -> float:
             return cosine_multiplier(step, warmup, total)
     else:
@@ -87,7 +92,8 @@ def build_scheduler(optimizer, recipe: DictConfig):
         decay_shape = sched.decay_shape
 
         def fn(step: int) -> float:
-            return wsd_multiplier(step, warmup, total, decay_start_frac,
-                                  final_lr_frac, decay_shape)
+            return wsd_multiplier(
+                step, warmup, total, decay_start_frac, final_lr_frac, decay_shape
+            )
 
     return torch.optim.lr_scheduler.LambdaLR(optimizer, fn)

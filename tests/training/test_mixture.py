@@ -89,12 +89,15 @@ class TestSampling:
     def test_different_seeds_differ(self, three_sources):
         a = MixtureDataset(three_sources, window=WINDOW, seed=1)
         b = MixtureDataset(three_sources, window=WINDOW, seed=2)
-        assert [a.source_at(i) for i in range(64)] != [b.source_at(i) for i in range(64)]
+        assert [a.source_at(i) for i in range(64)] != [
+            b.source_at(i) for i in range(64)
+        ]
 
     def test_strict_single_epoch_aborts_on_wrap(self, tmp_path):
         path = make_source(tmp_path, "tiny", [1] * (2 * WINDOW))  # 2 windows
-        ds = MixtureDataset([("tiny", path, 1.0)], window=WINDOW, seed=0,
-                            strict_single_epoch=True)
+        ds = MixtureDataset(
+            [("tiny", path, 1.0)], window=WINDOW, seed=0, strict_single_epoch=True
+        )
         ds[0], ds[1]
         with pytest.raises(SourceExhaustedError, match="tiny"):
             ds[2]
@@ -116,16 +119,22 @@ class TestResumeIndex:
         mixture = MixtureDataset(three_sources, window=WINDOW, seed=0)
         single = ShardedTokenDataset(three_sources[0][1], window=WINDOW)
         with pytest.raises(ValueError, match="single-source"):
-            resume_index(mixture, {"format": "index", "next_index": 5, "window": WINDOW})
+            resume_index(
+                mixture, {"format": "index", "next_index": 5, "window": WINDOW}
+            )
         with pytest.raises(ValueError, match="mixture"):
-            resume_index(single, {"format": "mixture", "next_draw": 5, "window": WINDOW})
+            resume_index(
+                single, {"format": "mixture", "next_draw": 5, "window": WINDOW}
+            )
 
     def test_window_mismatch_is_rejected(self, three_sources):
         from training.data.loader import resume_index
 
         ds = MixtureDataset(three_sources, window=WINDOW, seed=0)
         with pytest.raises(ValueError, match="window"):
-            resume_index(ds, {"format": "mixture", "next_draw": 5, "window": WINDOW * 2})
+            resume_index(
+                ds, {"format": "mixture", "next_draw": 5, "window": WINDOW * 2}
+            )
 
 
 class TestDataloader:
@@ -136,9 +145,14 @@ class TestDataloader:
     def data_cfg(self, workers=0):
         from omegaconf import OmegaConf
 
-        return OmegaConf.create({
-            "micro_batch": 2, "workers": workers,
-            "prefetch_factor": 2, "pin_memory": False})
+        return OmegaConf.create(
+            {
+                "micro_batch": 2,
+                "workers": workers,
+                "prefetch_factor": 2,
+                "pin_memory": False,
+            }
+        )
 
     def test_batches_carry_tokens_and_tags(self, three_sources):
         from training.data.loader import build_dataloader
@@ -175,7 +189,8 @@ class TestDataloader:
 
         ds = MixtureDataset(three_sources, window=WINDOW, seed=0)
         prefetcher = CudaPrefetcher(
-            build_dataloader(ds, self.data_cfg()), torch.device("cpu"))
+            build_dataloader(ds, self.data_cfg()), torch.device("cpu")
+        )
         tokens, tags = prefetcher.next()
         assert tuple(tokens.shape) == (2, WINDOW)
         assert tuple(tags.shape) == (2,)
@@ -198,8 +213,9 @@ class TestLoop:
         from training.recipes import load_recipe
 
         source_lines = "\n".join(
-            f'    - {{name: {name}, path: {path}, weight: {weight}}}'
-            for name, path, weight in sources)
+            f"    - {{name: {name}, path: {path}, weight: {weight}}}"
+            for name, path, weight in sources
+        )
         text = f"""
 run: {{name: mix-loop, seed: 1234, output_root: {output_root}}}
 model:
@@ -223,29 +239,38 @@ watchdog: {{enabled: false}}
     @pytest.fixture()
     def loop_sources(self, tmp_path):
         rng = np.random.default_rng(7)
+
         def corpus(n):
             return rng.integers(0, 512, size=n).tolist()
+
         return [
-            ("domain", make_source(tmp_path, "domain", corpus(4000),
-                                   shard_tokens=2000), 0.7),
-            ("replay", make_source(tmp_path, "replay", corpus(2000),
-                                   shard_tokens=2000), 0.3),
+            (
+                "domain",
+                make_source(tmp_path, "domain", corpus(4000), shard_tokens=2000),
+                0.7,
+            ),
+            (
+                "replay",
+                make_source(tmp_path, "replay", corpus(2000), shard_tokens=2000),
+                0.3,
+            ),
         ]
 
     def test_deterministic_resume_and_accounting(self, loop_sources, tmp_path):
-        from training.loop import train
+        from training.runtime.loop import train
 
-        straight = train(self.loop_recipe(tmp_path, loop_sources,
-                                          str(tmp_path / "straight")))
+        straight = train(
+            self.loop_recipe(tmp_path, loop_sources, str(tmp_path / "straight"))
+        )
         assert straight.final_step == 8
         assert sum(straight.tokens_per_source.values()) == straight.tokens_seen
         assert set(straight.tokens_per_source) == {"domain", "replay"}
 
         root = str(tmp_path / "resumable")
-        first = train(self.loop_recipe(tmp_path, loop_sources, root),
-                      stop_after=4)
-        second = train(self.loop_recipe(tmp_path, loop_sources, root,
-                                        "checkpoint.resume=latest"))
+        first = train(self.loop_recipe(tmp_path, loop_sources, root), stop_after=4)
+        second = train(
+            self.loop_recipe(tmp_path, loop_sources, root, "checkpoint.resume=latest")
+        )
         assert first.losses + second.losses == straight.losses
         # Accounting is cumulative across the resume, not restarted.
         assert second.tokens_per_source == straight.tokens_per_source
@@ -256,8 +281,9 @@ class TestValidate:
         from training.recipes import load_recipe
 
         source_lines = "\n".join(
-            f'    - {{name: {name}, path: {path}, weight: {weight}}}'
-            for name, path, weight in sources)
+            f"    - {{name: {name}, path: {path}, weight: {weight}}}"
+            for name, path, weight in sources
+        )
         text = f"""
 run: {{name: mix-test}}
 model:
@@ -312,8 +338,9 @@ schedule: {{total_steps: 4}}
 
         tok_hash = load_tokenizer(tokenizer_dir).content_hash
         src = make_source(tmp_path, "a", [1] * 64, tokenizer_hash=tok_hash)
-        recipe = self.recipe(tmp_path, tokenizer_dir, [("a", src, 1.0)],
-                             overrides=[f"data.source={src}"])
+        recipe = self.recipe(
+            tmp_path, tokenizer_dir, [("a", src, 1.0)], overrides=[f"data.source={src}"]
+        )
         with pytest.raises(RecipeValidationError, match="data.source must be unset"):
             validate(recipe)
 
@@ -323,12 +350,15 @@ schedule: {{total_steps: 4}}
 
         tok_hash = load_tokenizer(tokenizer_dir).content_hash
         src = make_source(tmp_path, "a", [1] * 64, tokenizer_hash=tok_hash)
-        recipe = self.recipe(tmp_path, tokenizer_dir, [("a", src, 1.0)],
-                             extra="staging: {enabled: true}")
+        recipe = self.recipe(
+            tmp_path, tokenizer_dir, [("a", src, 1.0)], extra="staging: {enabled: true}"
+        )
         with pytest.raises(RecipeValidationError, match="staging"):
             validate(recipe)
 
-    def test_negative_weight_and_empty_sources_are_refused(self, tmp_path, tokenizer_dir):
+    def test_negative_weight_and_empty_sources_are_refused(
+        self, tmp_path, tokenizer_dir
+    ):
         from training.recipes import RecipeValidationError, validate
 
         src = make_source(tmp_path, "a", [1] * 64)

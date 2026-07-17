@@ -16,6 +16,7 @@ import json
 import math
 import os
 from collections.abc import Iterator
+from typing import BinaryIO
 
 import numpy as np
 import xxhash
@@ -37,7 +38,9 @@ class TokenizerMismatchError(ValueError):
 
 
 def dtype_for_vocab(vocab_size: int) -> np.dtype:
-    return np.dtype(np.uint16) if vocab_size < UINT16_VOCAB_LIMIT else np.dtype(np.uint32)
+    return (
+        np.dtype(np.uint16) if vocab_size < UINT16_VOCAB_LIMIT else np.dtype(np.uint32)
+    )
 
 
 def hash_file(path: str) -> str:
@@ -63,15 +66,17 @@ class ShardWriter:
     boundaries.
     """
 
-    def __init__(self, out_dir: str, dtype: np.dtype, shard_tokens: int = DEFAULT_SHARD_TOKENS) -> None:
+    def __init__(
+        self, out_dir: str, dtype: np.dtype, shard_tokens: int = DEFAULT_SHARD_TOKENS
+    ) -> None:
         if shard_tokens <= 0:
             raise ValueError(f"shard_tokens must be positive, got {shard_tokens}")
         self.out_dir = out_dir
         self.dtype = np.dtype(dtype)
         self.shard_tokens = shard_tokens
-        self.shards: list[dict] = []   # closed-shard records: file, tokens, xxhash64
-        self._file = None
-        self._hash = None
+        self.shards: list[dict] = []  # closed-shard records: file, tokens, xxhash64
+        self._file: BinaryIO | None = None
+        self._hash: xxhash.xxh64 | None = None
         self._tokens_in_shard = 0
         os.makedirs(out_dir, exist_ok=True)
 
@@ -84,15 +89,18 @@ class ShardWriter:
     def _close_shard(self) -> None:
         if self._file is None:
             return
+        assert self._hash is not None  # set with _file in _open_shard
         name = os.path.basename(self._file.name)
         self._file.flush()
         os.fsync(self._file.fileno())
         self._file.close()
-        self.shards.append({
-            "file": name,
-            "tokens": self._tokens_in_shard,
-            "xxhash64": self._hash.hexdigest(),
-        })
+        self.shards.append(
+            {
+                "file": name,
+                "tokens": self._tokens_in_shard,
+                "xxhash64": self._hash.hexdigest(),
+            }
+        )
         self._file = None
 
     def write_tokens(self, token_ids) -> None:
@@ -100,17 +108,21 @@ class ShardWriter:
         # Range-check before the cast: casting an int64 ndarray to a narrower
         # dtype wraps silently, which would corrupt shards undetectably.
         ids = np.asarray(token_ids)
-        if len(ids) and (int(ids.min()) < 0 or int(ids.max()) > np.iinfo(self.dtype).max):
+        if len(ids) and (
+            int(ids.min()) < 0 or int(ids.max()) > np.iinfo(self.dtype).max
+        ):
             raise ValueError(
                 f"token ids out of range for {self.dtype}: "
-                f"min {int(ids.min())}, max {int(ids.max())}")
+                f"min {int(ids.min())}, max {int(ids.max())}"
+            )
         ids = ids.astype(self.dtype, copy=False)
         pos = 0
         while pos < len(ids):
             if self._file is None:
                 self._open_shard()
+            assert self._file is not None and self._hash is not None
             room = self.shard_tokens - self._tokens_in_shard
-            chunk = ids[pos:pos + room]
+            chunk = ids[pos : pos + room]
             data = chunk.tobytes()
             self._file.write(data)
             self._hash.update(data)
@@ -128,8 +140,7 @@ class ShardWriter:
 def write_manifest(out_dir: str, manifest: dict) -> str:
     manifest = dict(manifest)
     manifest["manifest_version"] = MANIFEST_VERSION
-    return write_json_atomic(
-        os.path.join(out_dir, MANIFEST_NAME), manifest, fsync=True)
+    return write_json_atomic(os.path.join(out_dir, MANIFEST_NAME), manifest, fsync=True)
 
 
 def load_manifest(shard_dir: str) -> dict:
@@ -151,11 +162,13 @@ def verify_shards(shard_dir: str, manifest: dict) -> None:
         actual_bytes = os.path.getsize(path)
         if actual_bytes != expected_bytes:
             raise ShardIntegrityError(
-                f"{rec['file']}: size {actual_bytes} bytes, manifest expects {expected_bytes}")
+                f"{rec['file']}: size {actual_bytes} bytes, manifest expects {expected_bytes}"
+            )
         digest = hash_file(path)
         if digest != rec["xxhash64"]:
             raise ShardIntegrityError(
-                f"{rec['file']}: content hash {digest} does not match manifest {rec['xxhash64']}")
+                f"{rec['file']}: content hash {digest} does not match manifest {rec['xxhash64']}"
+            )
 
 
 class ShardedTokenDataset:
@@ -166,8 +179,13 @@ class ShardedTokenDataset:
     The cursor (shard index, window offset) is serializable for D6 resume.
     """
 
-    def __init__(self, shard_dir: str, window: int,
-                 tokenizer_hash: str | None = None, verify: bool = True) -> None:
+    def __init__(
+        self,
+        shard_dir: str,
+        window: int,
+        tokenizer_hash: str | None = None,
+        verify: bool = True,
+    ) -> None:
         if window <= 0:
             raise ValueError(f"window must be positive, got {window}")
         self.shard_dir = shard_dir
@@ -175,20 +193,28 @@ class ShardedTokenDataset:
         self.manifest = load_manifest(shard_dir)
         if verify:
             verify_shards(shard_dir, self.manifest)
-        if tokenizer_hash is not None and tokenizer_hash != self.manifest["tokenizer_hash"]:
+        if (
+            tokenizer_hash is not None
+            and tokenizer_hash != self.manifest["tokenizer_hash"]
+        ):
             raise TokenizerMismatchError(
                 f"tokenizer hash {tokenizer_hash} does not match shard manifest "
-                f"{self.manifest['tokenizer_hash']} in {shard_dir}")
+                f"{self.manifest['tokenizer_hash']} in {shard_dir}"
+            )
         dtype = np.dtype(self.manifest["dtype"])
         self._mmaps = []
         self._windows_per_shard = []
         for rec in self.manifest["shards"]:
-            mm = np.memmap(os.path.join(shard_dir, rec["file"]),
-                           dtype=dtype, mode="r", shape=(rec["tokens"],))
+            mm = np.memmap(
+                os.path.join(shard_dir, rec["file"]),
+                dtype=dtype,
+                mode="r",
+                shape=(rec["tokens"],),
+            )
             self._mmaps.append(mm)
             self._windows_per_shard.append(rec["tokens"] // window)
         self._shard = 0
-        self._offset = 0   # window index within the current shard
+        self._offset = 0  # window index within the current shard
 
     def __len__(self) -> int:
         return sum(self._windows_per_shard)
@@ -196,8 +222,12 @@ class ShardedTokenDataset:
     @property
     def dropped_tokens(self) -> int:
         """Tokens lost to partial windows at shard tails, given this window size."""
-        return sum(rec["tokens"] - n * self.window
-                   for rec, n in zip(self.manifest["shards"], self._windows_per_shard, strict=True))
+        return sum(
+            rec["tokens"] - n * self.window
+            for rec, n in zip(
+                self.manifest["shards"], self._windows_per_shard, strict=True
+            )
+        )
 
     def __getitem__(self, index: int) -> np.ndarray:
         if index < 0 or index >= len(self):
@@ -205,9 +235,9 @@ class ShardedTokenDataset:
         for shard, n in enumerate(self._windows_per_shard):
             if index < n:
                 start = index * self.window
-                return np.array(self._mmaps[shard][start:start + self.window])
+                return np.array(self._mmaps[shard][start : start + self.window])
             index -= n
-        raise IndexError(index)   # unreachable; bounds checked above
+        raise IndexError(index)  # unreachable; bounds checked above
 
     def cursor_index(self, shard: int, offset: int) -> int:
         """Flat window index for a (shard, offset) cursor — lets the D9
@@ -221,7 +251,7 @@ class ShardedTokenDataset:
         while self._shard < len(self._mmaps):
             if self._offset < self._windows_per_shard[self._shard]:
                 start = self._offset * self.window
-                out = np.array(self._mmaps[self._shard][start:start + self.window])
+                out = np.array(self._mmaps[self._shard][start : start + self.window])
                 self._offset += 1
                 return out
             self._shard += 1
@@ -241,7 +271,8 @@ class ShardedTokenDataset:
     def load_state_dict(self, state: dict) -> None:
         if state["window"] != self.window:
             raise ValueError(
-                f"cursor was saved with window {state['window']}, dataset uses {self.window}")
+                f"cursor was saved with window {state['window']}, dataset uses {self.window}"
+            )
         if not 0 <= state["shard"] <= len(self._mmaps):
             raise ValueError(f"cursor shard {state['shard']} out of range")
         self._shard = state["shard"]

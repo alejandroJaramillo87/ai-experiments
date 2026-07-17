@@ -46,20 +46,23 @@ def write_json(path, payload):
 # function body run. The stubs write real files so the staging contract
 # (converter-ready safetensors dir) is asserted on disk, not on mock calls.
 
+
 def install_merge_stubs(monkeypatch, *, fail_load=False):
     """Stub torch/peft/transformers for _merge_adapter; returns a call log."""
     calls = {}
 
     torch_stub = types.ModuleType("torch")
-    torch_stub.bfloat16 = object()   # sentinel: identity-checked below
+    torch_stub.bfloat16 = object()  # sentinel: identity-checked below
 
     class AutoModelForCausalLM:
         @staticmethod
-        def from_pretrained(base, revision=None, dtype=None,
-                            local_files_only=None):
-            calls["load"] = {"base": base, "revision": revision,
-                             "dtype": dtype,
-                             "local_files_only": local_files_only}
+        def from_pretrained(base, revision=None, dtype=None, local_files_only=None):
+            calls["load"] = {
+                "base": base,
+                "revision": revision,
+                "dtype": dtype,
+                "local_files_only": local_files_only,
+            }
             if fail_load:
                 raise RuntimeError("snapshot not in cache")
             return SimpleNamespace(base=base)
@@ -70,8 +73,10 @@ def install_merge_stubs(monkeypatch, *, fail_load=False):
     class FakeMergedModel:
         def save_pretrained(self, staging_dir, safe_serialization=False):
             calls["safe_serialization"] = safe_serialization
-            write_json(os.path.join(staging_dir, "config.json"),
-                       {"architectures": ["LlamaForCausalLM"]})
+            write_json(
+                os.path.join(staging_dir, "config.json"),
+                {"architectures": ["LlamaForCausalLM"]},
+            )
             with open(os.path.join(staging_dir, "model.safetensors"), "wb") as f:
                 f.write(b"merged-weights")
 
@@ -95,8 +100,7 @@ def install_merge_stubs(monkeypatch, *, fail_load=False):
 
 def make_adapter_dir(tmp_path, base="org/base"):
     adapter = tmp_path / "adapter"
-    write_json(str(adapter / "adapter_config.json"),
-               {"base_model_name_or_path": base})
+    write_json(str(adapter / "adapter_config.json"), {"base_model_name_or_path": base})
     (adapter / "adapter_model.safetensors").write_bytes(b"lora")
     return adapter
 
@@ -107,14 +111,16 @@ def test_merge_adapter_loads_base_offline_and_saves_merged(tmp_path, monkeypatch
     staging = tmp_path / "staging"
     staging.mkdir()
 
-    base = merge_mod._merge_adapter(str(adapter), str(staging),
-                                    revision="b" * 40)
+    base = merge_mod._merge_adapter(str(adapter), str(staging), revision="b" * 40)
 
     assert base == "org/base"
     # F6 decision 2: a non-local base id must resolve cache-first in bf16.
-    assert calls["load"] == {"base": "org/base", "revision": "b" * 40,
-                             "dtype": torch_stub.bfloat16,
-                             "local_files_only": True}
+    assert calls["load"] == {
+        "base": "org/base",
+        "revision": "b" * 40,
+        "dtype": torch_stub.bfloat16,
+        "local_files_only": True,
+    }
     assert calls["adapter_dir"] == str(adapter)
     assert calls["safe_serialization"] is True
     assert (staging / "model.safetensors").read_bytes() == b"merged-weights"
@@ -137,8 +143,9 @@ def test_stage_model_merges_adapter_checkpoint(tmp_path, monkeypatch):
     install_merge_stubs(monkeypatch)
     ckpt = tmp_path / "step_000000020"
     model = ckpt / "model"
-    write_json(str(model / "adapter_config.json"),
-               {"base_model_name_or_path": "org/base"})
+    write_json(
+        str(model / "adapter_config.json"), {"base_model_name_or_path": "org/base"}
+    )
     (model / "adapter_model.safetensors").write_bytes(b"lora")
     (model / "tokenizer.json").write_text("{}")
     staging = tmp_path / "staging"
@@ -201,8 +208,9 @@ def test_convert_to_gguf_invokes_pinned_converter(tmp_path, fake_llama_cpp):
     staging.mkdir()
     out = tmp_path / "model-bf16.gguf"
 
-    convert_mod.convert_to_gguf(str(staging), str(out), outtype="bf16",
-                                llama_cpp_dir=str(fake_llama_cpp))
+    convert_mod.convert_to_gguf(
+        str(staging), str(out), outtype="bf16", llama_cpp_dir=str(fake_llama_cpp)
+    )
 
     assert out.read_text() == "GGUF:bf16"
     log = tmp_path / "model-bf16.gguf.convert.log"
@@ -214,8 +222,7 @@ def test_quantize_invokes_llama_quantize(tmp_path, fake_llama_cpp):
     src.write_bytes(b"raw gguf")
     out = tmp_path / "model-Q8_0.gguf"
 
-    convert_mod.quantize(str(src), str(out), "Q8_0",
-                         llama_cpp_dir=str(fake_llama_cpp))
+    convert_mod.quantize(str(src), str(out), "Q8_0", llama_cpp_dir=str(fake_llama_cpp))
 
     assert out.read_bytes() == b"raw gguf"
     assert "type=Q8_0" in (tmp_path / "model-Q8_0.gguf.quantize.log").read_text()
@@ -233,11 +240,10 @@ def test_quantize_failure_surfaces_log_tail(tmp_path):
     out = tmp_path / "out.gguf"
 
     with pytest.raises(convert_mod.ExportError) as exc:
-        convert_mod.quantize(str(src), str(out), "Q8_0",
-                             llama_cpp_dir=str(root))
+        convert_mod.quantize(str(src), str(out), "Q8_0", llama_cpp_dir=str(root))
     message = str(exc.value)
     assert "Command failed (3)" in message
-    assert "tensor block corrupt" in message       # log tail is user-facing
+    assert "tensor block corrupt" in message  # log tail is user-facing
     assert str(out) + ".quantize.log" in message
     assert "tensor block corrupt" in (tmp_path / "out.gguf.quantize.log").read_text()
 
@@ -259,21 +265,35 @@ TINY_LINEAR = 73_728
 
 
 def tiny_spec() -> ArchitectureSpec:
-    return ArchitectureSpec(layers=2, hidden=64, heads=4, kv_heads=2,
-                            ffn=128, vocab=256, tie_embeddings=True)
+    return ArchitectureSpec(
+        layers=2,
+        hidden=64,
+        heads=4,
+        kv_heads=2,
+        ffn=128,
+        vocab=256,
+        tie_embeddings=True,
+    )
 
 
 def test_spec_from_recipe_hf_maps_through_autoconfig(monkeypatch):
     hf_config = SimpleNamespace(
-        model_type="llama", num_hidden_layers=2, hidden_size=64,
-        num_attention_heads=4, num_key_value_heads=2, intermediate_size=128,
-        vocab_size=256, tie_word_embeddings=True)
+        model_type="llama",
+        num_hidden_layers=2,
+        hidden_size=64,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        intermediate_size=128,
+        vocab_size=256,
+        tie_word_embeddings=True,
+    )
     seen = {}
 
     class AutoConfig:
         @staticmethod
-        def from_pretrained(model_id):
+        def from_pretrained(model_id, revision=None):
             seen["id"] = model_id
+            seen["revision"] = revision
             return hf_config
 
     transformers_stub = types.ModuleType("transformers")
@@ -281,28 +301,33 @@ def test_spec_from_recipe_hf_maps_through_autoconfig(monkeypatch):
     monkeypatch.setitem(sys.modules, "transformers", transformers_stub)
 
     recipe = OmegaConf.create(
-        {"model": {"scratch": None, "hf": {"id": "org/tiny"}}})
+        {"model": {"scratch": None, "hf": {"id": "org/tiny", "revision": "r7"}}}
+    )
     spec = spec_from_recipe(recipe)
 
     assert seen["id"] == "org/tiny"
+    assert seen["revision"] == "r7"  # the pin reaches AutoConfig (WI-14)
     assert spec == tiny_spec()
     assert spec.param_count() == TINY_PARAMS
 
 
 def test_spec_from_recipe_requires_scratch_or_hf():
     recipe = OmegaConf.create({"model": {"scratch": None, "hf": None}})
-    with pytest.raises(UnknownArchitectureError,
-                       match="neither model.scratch nor model.hf"):
+    with pytest.raises(
+        UnknownArchitectureError, match="neither model.scratch nor model.hf"
+    ):
         spec_from_recipe(recipe)
 
 
 def test_optimizer_bytes_unknown_optimizer_fails_loudly():
-    recipe = OmegaConf.create({
-        "peft": {"enabled": False},
-        "model": {"trainable_filter": "all"},
-        "memory": {"offload": "none"},
-        "optimizer": {"name": "sgd"},
-    })
+    recipe = OmegaConf.create(
+        {
+            "peft": {"enabled": False},
+            "model": {"trainable_filter": "all"},
+            "memory": {"offload": "none"},
+            "optimizer": {"name": "sgd"},
+        }
+    )
     with pytest.raises(ValueError, match="No optimizer memory model.*sgd"):
         optimizer_bytes(tiny_spec(), recipe)
 
@@ -324,11 +349,14 @@ def test_teacher_forward_bytes_hand_computed():
     #   hidden_stream = 32*2*64                       =  4,096
     #   layer_working = 32*2*(3*64 + 2*32 + 3*128)    = 40,960
     #   logits        = 32*256*(2+4)                  = 49,152
-    assert teacher_forward_bytes(tiny_spec(), micro_batch=2, seq_len=16) == \
-        4_096 + 40_960 + 49_152
+    assert (
+        teacher_forward_bytes(tiny_spec(), micro_batch=2, seq_len=16)
+        == 4_096 + 40_960 + 49_152
+    )
 
 
 # -- common.smoke version probes ------------------------------------------------
+
 
 def test_pkg_version_reports_installed_distribution():
     from importlib.metadata import version
@@ -370,18 +398,35 @@ def test_driver_version_unknown_when_nvml_unavailable(monkeypatch):
 
 # -- common.provenance git_sha ---------------------------------------------------
 
+
 def make_git_repo(tmp_path):
     """A tmp git repo with one commit; returns (path, HEAD sha)."""
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.email=t@example.com",
-         "-c", "user.name=t", "commit", "--allow-empty", "-q", "-m", "seed"],
-        check=True)
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=t",
+            "commit",
+            "--allow-empty",
+            "-q",
+            "-m",
+            "seed",
+        ],
+        check=True,
+    )
     head = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "HEAD"],
-        capture_output=True, text=True, check=True).stdout.strip()
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
     return repo, head
 
 

@@ -31,8 +31,13 @@ class UnknownModelFamilyError(ValueError):
 # attention q/k/v/o plus SwiGLU gate/up/down. A future family that diverges
 # gets its own literal list.
 _LLAMA_LINEAGE_TARGET_MODULES = (
-    "q_proj", "k_proj", "v_proj", "o_proj",
-    "gate_proj", "up_proj", "down_proj",
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj",
+    "gate_proj",
+    "up_proj",
+    "down_proj",
 )
 
 # Bumped whenever any ChatTemplateSpec changes; recorded in every prepared
@@ -60,12 +65,12 @@ class ChatTemplateSpec:
     tokenizer's apply_chat_template output before golden fixtures freeze.
     """
 
-    bos: str            # emitted once at sequence start; "" when none
-    turn_prefix: str    # role header, formatted with {role}
-    eot: str            # end-of-turn token proper (supervised on assistant turns)
-    turn_suffix: str    # after eot, always masked
+    bos: str  # emitted once at sequence start; "" when none
+    turn_prefix: str  # role header, formatted with {role}
+    eot: str  # end-of-turn token proper (supervised on assistant turns)
+    turn_suffix: str  # after eot, always masked
     assistant_role: str  # the template's name for the assistant role
-    trim_content: bool   # whether the template applies | trim to content
+    trim_content: bool  # whether the template applies | trim to content
 
 
 # Gemma 4 (google/gemma-4-*): <|turn>role\n{content}<turn|>\n per turn, BOS
@@ -118,20 +123,31 @@ _REGISTRY: dict[str, FamilySpec] = {
         # Gemma 4 E-models (per-layer embeddings; gemma-4-E2B/E4B checkpoints)
         # keep the Llama-lineage projection names in their text decoder
         # layers. The new relative_k_proj is deliberately not a LoRA target.
-        FamilySpec("gemma4", _LLAMA_LINEAGE_TARGET_MODULES, _GEMMA4_CHAT_TEMPLATE,
-                   thinking_default="off",
-                   thinking_markers=("<|think|>", "<|channel>thought")),
-        FamilySpec("gemma4_text", _LLAMA_LINEAGE_TARGET_MODULES,
-                   _GEMMA4_CHAT_TEMPLATE,
-                   thinking_default="off",
-                   thinking_markers=("<|think|>", "<|channel>thought")),
+        FamilySpec(
+            "gemma4",
+            _LLAMA_LINEAGE_TARGET_MODULES,
+            _GEMMA4_CHAT_TEMPLATE,
+            thinking_default="off",
+            thinking_markers=("<|think|>", "<|channel>thought"),
+        ),
+        FamilySpec(
+            "gemma4_text",
+            _LLAMA_LINEAGE_TARGET_MODULES,
+            _GEMMA4_CHAT_TEMPLATE,
+            thinking_default="off",
+            thinking_markers=("<|think|>", "<|channel>thought"),
+        ),
         # Qwen3: the fallback family (ungated, dense decoder; ChatML framing).
         # Hybrid checkpoints (the pinned Qwen/Qwen3-1.7B) think by default;
         # SFT datasets carry no think blocks (the trained model is steered
         # toward direct answers rather than supervised on empty traces).
-        FamilySpec("qwen3", _LLAMA_LINEAGE_TARGET_MODULES, _CHATML_CHAT_TEMPLATE,
-                   thinking_default="on",
-                   thinking_markers=("<think>", "</think>")),
+        FamilySpec(
+            "qwen3",
+            _LLAMA_LINEAGE_TARGET_MODULES,
+            _CHATML_CHAT_TEMPLATE,
+            thinking_default="on",
+            thinking_markers=("<think>", "</think>"),
+        ),
     )
 }
 
@@ -149,4 +165,5 @@ def family_spec(model_type: str) -> FamilySpec:
             f"HF model_type '{model_type}' has no entry in the family registry "
             f"{supported_families()}; guessing target modules risks silently "
             "training the wrong layers. Add a verified FamilySpec in "
-            "training/families.py.") from None
+            "training/models/families.py."
+        ) from None

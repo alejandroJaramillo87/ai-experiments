@@ -20,10 +20,14 @@ def test_offline_is_not_an_all_clear(run_script, fake_bin, tmp_path):
     # print the [OK] all-clear.
     fake_bin.stub("curl", "exit 22")
     dockerfile = write_dockerfile(
-        tmp_path, "OPENCODE_VERSION=1.0.0", "CLAUDE_CODE_VERSION=2.0.0",
-        "PYRIGHT_VERSION=3.0.0")
+        tmp_path,
+        "OPENCODE_VERSION=1.0.0",
+        "CLAUDE_CODE_VERSION=2.0.0",
+        "PYRIGHT_VERSION=3.0.0",
+    )
     result = run_script(
-        "agents/check-agent-versions.sh", env={"DOCKERFILE": dockerfile})
+        "agents/check-agent-versions.sh", env={"DOCKERFILE": dockerfile}
+    )
     assert result.returncode == 0
     assert "Pins unverified" in result.stdout
     assert "All pins current" not in result.stdout
@@ -35,7 +39,8 @@ def test_missing_pins_accumulate_and_fail(run_script, fake_bin, tmp_path):
     fake_bin.stub("curl", "exit 22")
     dockerfile = write_dockerfile(tmp_path)
     result = run_script(
-        "agents/check-agent-versions.sh", env={"DOCKERFILE": dockerfile})
+        "agents/check-agent-versions.sh", env={"DOCKERFILE": dockerfile}
+    )
     assert result.returncode == 1
     assert result.stdout.count("no ARG") == 3
     assert "Missing pins" in result.stdout

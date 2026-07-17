@@ -42,7 +42,9 @@ def normalize_words(text: str) -> list[str]:
 def iter_ngram_hashes(words: list[str], n: int) -> Iterator[int]:
     """xxhash64 of each space-joined word n-gram; nothing for texts under n words."""
     for start in range(len(words) - n + 1):
-        yield xxhash.xxh64(" ".join(words[start:start + n]).encode("utf-8")).intdigest()
+        yield xxhash.xxh64(
+            " ".join(words[start : start + n]).encode("utf-8")
+        ).intdigest()
 
 
 def _field_values(record: dict, path: str) -> Iterator[str]:
@@ -60,6 +62,7 @@ def _field_values(record: dict, path: str) -> Iterator[str]:
 
 def load_benchmarks_config(path: str) -> dict:
     import yaml
+
     with open(path) as f:
         config = yaml.safe_load(f)
     for key in ("version", "ngram_size", "benchmarks"):
@@ -82,9 +85,11 @@ def _iter_benchmark_records(bench: dict) -> Iterator[dict]:
                     yield json.loads(line)
         return
     import datasets
+
     for split in bench["splits"]:
-        ds = datasets.load_dataset(source, bench.get("config"), split=split,
-                                   revision=bench.get("revision"))
+        ds = datasets.load_dataset(
+            source, bench.get("config"), split=split, revision=bench.get("revision")
+        )
         yield from ds
 
 
@@ -94,6 +99,7 @@ def _resolved_revision(bench: dict) -> str | None:
         return None
     try:
         from huggingface_hub import dataset_info
+
         return dataset_info(bench["dataset"], revision=bench.get("revision")).sha
     except Exception:
         return "unresolved"
@@ -115,23 +121,26 @@ def build_index(benchmarks_yaml: str, out_dir: str, command: str | None = None) 
             for path in bench["text_fields"]:
                 for text in _field_values(record, path):
                     hashes.update(iter_ngram_hashes(normalize_words(text), n))
-        bench_records.append({
-            "name": bench["name"],
-            "dataset": bench["dataset"],
-            "config": bench.get("config"),
-            "revision": bench.get("revision"),
-            "resolved_revision": _resolved_revision(bench),
-            "splits": bench["splits"],
-            "text_fields": bench["text_fields"],
-            "documents": documents,
-            "new_ngrams": len(hashes) - before,
-        })
+        bench_records.append(
+            {
+                "name": bench["name"],
+                "dataset": bench["dataset"],
+                "config": bench.get("config"),
+                "revision": bench.get("revision"),
+                "resolved_revision": _resolved_revision(bench),
+                "splits": bench["splits"],
+                "text_fields": bench["text_fields"],
+                "documents": documents,
+                "new_ngrams": len(hashes) - before,
+            }
+        )
 
     array = np.sort(np.fromiter(hashes, dtype=np.uint64, count=len(hashes)))
     ngrams_path = os.path.join(out_dir, NGRAMS_NAME)
     array.tofile(ngrams_path)
 
     from training.data.shards import hash_file
+
     manifest = {
         "benchmarks_yaml": benchmarks_yaml,
         "benchmarks_version": config["version"],
@@ -152,6 +161,7 @@ def build_index(benchmarks_yaml: str, out_dir: str, command: str | None = None) 
 def index_hash(index_dir: str) -> str:
     """The decontaminated_against value: xxhash64 of the index manifest file."""
     from training.data.shards import hash_file
+
     return hash_file(os.path.join(index_dir, INDEX_MANIFEST_NAME))
 
 
@@ -166,17 +176,25 @@ class ContaminationIndex:
             self.manifest = json.load(f)
         self.ngram_size = self.manifest["ngram_size"]
         self.hash = index_hash(index_dir)
-        self._hashes = np.fromfile(os.path.join(index_dir, NGRAMS_NAME), dtype=np.uint64)
+        self._hashes = np.fromfile(
+            os.path.join(index_dir, NGRAMS_NAME), dtype=np.uint64
+        )
 
     def contains_any(self, hashes: Iterable[int]) -> bool:
-        for h in hashes:
-            pos = int(np.searchsorted(self._hashes, np.uint64(h)))
-            if pos < len(self._hashes) and self._hashes[pos] == np.uint64(h):
-                return True
-        return False
+        # One vectorized searchsorted over the document's n-grams: the
+        # clean-document case scans every n-gram regardless, and a Python
+        # loop pays numpy dispatch per n-gram on that hot path.
+        batch = np.fromiter(hashes, dtype=np.uint64)
+        if batch.size == 0:
+            return False
+        pos = np.searchsorted(self._hashes, batch)
+        inside = pos < self._hashes.size
+        return bool(np.any(self._hashes[pos[inside]] == batch[inside]))
 
     def is_contaminated(self, text: str) -> bool:
-        return self.contains_any(iter_ngram_hashes(normalize_words(text), self.ngram_size))
+        return self.contains_any(
+            iter_ngram_hashes(normalize_words(text), self.ngram_size)
+        )
 
 
 def make_filter(index_dir: str, exclusion_writer=None):
@@ -196,7 +214,9 @@ def make_filter(index_dir: str, exclusion_writer=None):
             self._index: ContaminationIndex | None = None
 
         def filter(self, doc) -> bool | tuple[bool, str]:
-            if self._index is None:   # lazy per-worker load; the mmap-sized array forks poorly
+            if (
+                self._index is None
+            ):  # lazy per-worker load; the mmap-sized array forks poorly
                 self._index = ContaminationIndex(self._index_dir)
             if self._index.is_contaminated(doc.text):
                 return False, "benchmark_overlap"

@@ -67,8 +67,12 @@ class CorpusSampler:
     order (sorted files, sequential lines) keeps two runs byte-identical.
     """
 
-    def __init__(self, paths: list[str], text_field: str = "text",
-                 sample_bytes: int | None = None) -> None:
+    def __init__(
+        self,
+        paths: list[str],
+        text_field: str = "text",
+        sample_bytes: int | None = None,
+    ) -> None:
         self.paths = paths
         self.text_field = text_field
         self.sample_bytes = sample_bytes
@@ -86,7 +90,10 @@ class CorpusSampler:
             self.sampled_bytes += len(text.encode("utf-8"))
             self.sampled_documents += 1
             yield text
-            if self.sample_bytes is not None and self.sampled_bytes >= self.sample_bytes:
+            if (
+                self.sample_bytes is not None
+                and self.sampled_bytes >= self.sample_bytes
+            ):
                 return
         self._exhausted = True
 
@@ -109,18 +116,21 @@ def train(documents: Iterable[str], vocab_size: int = DEFAULT_VOCAB_SIZE):
     if vocab_size < MIN_VOCAB_SIZE:
         raise ValueError(
             f"vocab_size {vocab_size} below minimum {MIN_VOCAB_SIZE} "
-            f"(256-byte alphabet + {len(SPECIAL_TOKENS)} special tokens)")
+            f"(256-byte alphabet + {len(SPECIAL_TOKENS)} special tokens)"
+        )
 
     tok = Tokenizer(models.BPE())
     # Digits isolate first so numbers never merge; ByteLevel then maps to bytes
-    tok.pre_tokenizer = pre_tokenizers.Sequence([
-        pre_tokenizers.Digits(individual_digits=True),
-        pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=True),
-    ])
+    tok.pre_tokenizer = pre_tokenizers.Sequence(
+        [
+            pre_tokenizers.Digits(individual_digits=True),
+            pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=True),
+        ]
+    )
     tok.decoder = decoders.ByteLevel()
     trainer = trainers.BpeTrainer(
         vocab_size=vocab_size,
-        special_tokens=list(SPECIAL_TOKENS),   # fixed ids 0-18, ahead of the alphabet
+        special_tokens=list(SPECIAL_TOKENS),  # fixed ids 0-18, ahead of the alphabet
         initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
         show_progress=False,
     )
@@ -135,7 +145,7 @@ def _domain_stats(texts: list[str], token_counts: list[int]) -> dict:
     return {
         "documents": len(texts),
         "tokens": tokens,
-        "fertility": tokens / words if words else 0.0,          # tokens per whitespace word
+        "fertility": tokens / words if words else 0.0,  # tokens per whitespace word
         "compression": byte_count / tokens if tokens else 0.0,  # bytes per token
     }
 
@@ -147,24 +157,38 @@ def evaluate(tok, domains: dict[str, list[str]]) -> dict:
         encodings = tok.encode_batch(texts)
         stats = _domain_stats(texts, [len(e.ids) for e in encodings])
         stats["roundtrip_failures"] = sum(
-            1 for text, enc in zip(texts, encodings, strict=True)
-            if tok.decode(enc.ids, skip_special_tokens=False) != text)
+            1
+            for text, enc in zip(texts, encodings, strict=True)
+            if tok.decode(enc.ids, skip_special_tokens=False) != text
+        )
         results[name] = stats
     return results
 
 
-def evaluate_reference(reference: LoadedTokenizer, domains: dict[str, list[str]]) -> dict:
+def evaluate_reference(
+    reference: LoadedTokenizer, domains: dict[str, list[str]]
+) -> dict:
     """Fertility and compression for a comparison tokenizer (no round-trip check)."""
-    return {name: _domain_stats(texts, [len(ids) for ids in reference.encode_batch(texts)])
-            for name, texts in domains.items()}
+    return {
+        name: _domain_stats(texts, [len(ids) for ids in reference.encode_batch(texts)])
+        for name, texts in domains.items()
+    }
 
 
-
-
-def write_artifact(tok, out_dir: str, *, corpus: list[str], text_field: str,
-                   sampled_bytes: int, sampled_documents: int, vocab_size: int,
-                   metrics: dict, references: dict, force: bool = False,
-                   command: str | None = None) -> dict:
+def write_artifact(
+    tok,
+    out_dir: str,
+    *,
+    corpus: list[str],
+    text_field: str,
+    sampled_bytes: int,
+    sampled_documents: int,
+    vocab_size: int,
+    metrics: dict,
+    references: dict,
+    force: bool = False,
+    command: str | None = None,
+) -> dict:
     """Write tokenizer.json + manifest.json; refuse an existing artifact without force.
 
     Returns the manifest. tokenizer_hash is computed from the saved file reloaded,
@@ -176,7 +200,8 @@ def write_artifact(tok, out_dir: str, *, corpus: list[str], text_field: str,
     tokenizer_path = os.path.join(out_dir, TOKENIZER_NAME)
     if os.path.exists(tokenizer_path) and not force:
         raise FileExistsError(
-            f"{out_dir} already contains {TOKENIZER_NAME}; pass --force to overwrite")
+            f"{out_dir} already contains {TOKENIZER_NAME}; pass --force to overwrite"
+        )
 
     os.makedirs(out_dir, exist_ok=True)
     tok.save(tokenizer_path)

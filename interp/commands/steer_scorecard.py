@@ -24,9 +24,7 @@ def configure(sub) -> None:
     p.add_argument(
         "--behavior-prompts", default="interp/steering/prompts/behavior_honesty.jsonl"
     )
-    p.add_argument(
-        "--neutral-prompts", default="interp/steering/prompts/neutral.jsonl"
-    )
+    p.add_argument("--neutral-prompts", default="interp/steering/prompts/neutral.jsonl")
     p.add_argument(
         "--system-prompt",
         default="interp/steering/prompts/system_prompt_honesty.json",

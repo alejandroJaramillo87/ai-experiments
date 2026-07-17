@@ -4,7 +4,7 @@ Adoption of Hugging Face PEFT and bitsandbytes; the only logic here is
 resolving the recipe's peft group into library objects:
 
 - resolve_target_modules() turns target_modules: "auto" into the concrete
-  per-family list via training/families.py and writes it back into the
+  per-family list via training/models/families.py and writes it back into the
   recipe, so the run's config snapshot never contains "auto".
 - bnb_quantization_config() maps quantize_base: nf4 onto a
   BitsAndBytesConfig for from_pretrained (the QLoRA base load).
@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 from omegaconf import DictConfig
 
-from training.families import family_spec
+from training.models.families import family_spec
 from training.recipes.schema import TARGET_MODULES_AUTO
 
 # torch dtype names for peft.compute_dtype; resolved lazily in _torch_dtype.
@@ -65,7 +65,8 @@ def bnb_quantization_config(peft_cfg: DictConfig):
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_use_double_quant=peft_cfg.double_quant,
-        bnb_4bit_compute_dtype=_torch_dtype(peft_cfg.compute_dtype))
+        bnb_4bit_compute_dtype=_torch_dtype(peft_cfg.compute_dtype),
+    )
 
 
 def build_peft_model(model, peft_cfg: DictConfig):
@@ -78,8 +79,10 @@ def build_peft_model(model, peft_cfg: DictConfig):
     if modules == TARGET_MODULES_AUTO:
         raise ValueError(
             "peft.target_modules is still 'auto'; call resolve_target_modules "
-            "before build_peft_model so the snapshot carries the concrete list")
+            "before build_peft_model so the snapshot carries the concrete list"
+        )
     from peft import LoraConfig, get_peft_model
+
     if peft_cfg.quantize_base == "nf4":
         from peft import prepare_model_for_kbit_training
 
@@ -90,7 +93,8 @@ def build_peft_model(model, peft_cfg: DictConfig):
         lora_dropout=peft_cfg.dropout,
         target_modules=[str(m) for m in modules],
         use_dora=peft_cfg.method == "dora",
-        task_type="CAUSAL_LM")
+        task_type="CAUSAL_LM",
+    )
     return get_peft_model(model, lora_config)
 
 
@@ -104,8 +108,10 @@ class TrainableParameterReport:
         return 100.0 * self.trainable / self.total if self.total else 0.0
 
     def __str__(self) -> str:
-        return (f"trainable parameters: {self.trainable:,} of {self.total:,} "
-                f"({self.percent:.2f} percent)")
+        return (
+            f"trainable parameters: {self.trainable:,} of {self.total:,} "
+            f"({self.percent:.2f} percent)"
+        )
 
 
 def trainable_parameter_report(model) -> TrainableParameterReport:

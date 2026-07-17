@@ -27,7 +27,7 @@ from common.serving import (  # noqa: F401  (re-exported)
     swap_model,
     wait_healthy,
 )
-from training.lock import lock_path
+from training.runtime.lock import lock_path
 
 
 def ensure_training_idle() -> None:
@@ -43,6 +43,5 @@ def ensure_training_idle() -> None:
         raise ServingError(
             f"Training lock present: {lock}\n"
             "  Solution: wait for the training run to finish (one GPU consumer "
-            "at a time)")
-
-
+            "at a time)"
+        )

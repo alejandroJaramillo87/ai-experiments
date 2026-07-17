@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Promote an F7 eval run's scorecard into docs/training/scorecards/ (F8).
 
 Copies scorecard.json and scorecard.md verbatim from an eval run directory
@@ -12,6 +11,8 @@ replaces the pair wholesale.
 This is a HOST tool: it reads /mnt/ai-data and depends only on the Python
 standard library.
 
+Usage: python -m training promote-scorecard --run-dir ... --card ...
+
 Exit codes: 0 success, 1 failure, 2 invalid usage.
 """
 
@@ -21,16 +22,12 @@ import argparse
 import json
 import os
 import shutil
-import sys
 from datetime import UTC, datetime
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
-
-from common.hashing import sha256_file  # noqa: E402
-from common.output import Printer  # noqa: E402
-from common.provenance import git_sha as provenance_git_sha  # noqa: E402
+from common.hashing import sha256_file
+from common.output import Printer
+from common.provenance import git_sha as provenance_git_sha
+from common.serving import REPO_ROOT
 
 DEFAULT_DEST = os.path.join(REPO_ROOT, "docs", "training", "scorecards")
 SCORECARD_FILES = ("scorecard.json", "scorecard.md")
@@ -47,8 +44,10 @@ def promote(run_dir: str, card: str, dest: str, out: Printer) -> int:
     missing = [p for p in sources if not os.path.isfile(p)]
     if missing:
         out.error(f"Scorecard not found: {', '.join(missing)}")
-        print("  Solution: point --run-dir at a completed eval-ft run "
-              "directory containing scorecard.json and scorecard.md")
+        print(
+            "  Solution: point --run-dir at a completed eval-ft run "
+            "directory containing scorecard.json and scorecard.md"
+        )
         return 1
 
     os.makedirs(dest, exist_ok=True)
@@ -72,31 +71,37 @@ def promote(run_dir: str, card: str, dest: str, out: Printer) -> int:
         json.dump(provenance, f, indent=2)
         f.write("\n")
     out.ok(f"Provenance: {os.path.relpath(prov_path, REPO_ROOT)}")
-    out.info("Commit the promoted files; committed scorecards are never "
-             "edited by hand")
+    out.info("Commit the promoted files; committed scorecards are never edited by hand")
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Promote an eval run's scorecard into "
-                    "docs/training/scorecards/")
-    parser.add_argument("--run-dir", required=True,
-                        help="eval-ft run directory containing scorecard.json "
-                             "and scorecard.md")
-    parser.add_argument("--card", required=True,
-                        help="recipe card name the scorecard validates, e.g. "
-                             "sft-qlora-gemma-e4b")
-    parser.add_argument("--dest", default=DEFAULT_DEST,
-                        help=f"destination directory (default: {DEFAULT_DEST})")
-    args = parser.parse_args(argv)
+def configure(sub) -> None:
+    parser = sub.add_parser(
+        "promote-scorecard",
+        help="copy an eval run's scorecard into docs/training/scorecards/ (F8, host)",
+        description="Promote an eval run's scorecard into docs/training/scorecards/",
+    )
+    parser.add_argument(
+        "--run-dir",
+        required=True,
+        help="eval-ft run directory containing scorecard.json and scorecard.md",
+    )
+    parser.add_argument(
+        "--card",
+        required=True,
+        help="recipe card name the scorecard validates, e.g. sft-qlora-gemma-e4b",
+    )
+    parser.add_argument(
+        "--dest",
+        default=DEFAULT_DEST,
+        help=f"destination directory (default: {DEFAULT_DEST})",
+    )
+    parser.set_defaults(func=cmd)
 
+
+def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     if not os.path.isdir(args.run_dir):
         out.error(f"Run directory not found: {args.run_dir}")
         return 1
     return promote(args.run_dir, args.card, args.dest, out)
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -4,7 +4,7 @@ Phase 0 D9: keep the GPU training step from waiting on the CPU within a single
 training job. This document describes the implemented pieces, their recipe
 knobs, and the host-side acceptance checks. Design rationale and
 repository-versus-roadmap deviations are recorded in
-[d9_heterogeneous_compute_investigation.md](d9_heterogeneous_compute_investigation.md).
+[d9_heterogeneous_compute_investigation.md](investigations/d9_heterogeneous_compute_investigation.md).
 
 ## Table of contents
 
@@ -21,9 +21,9 @@ repository-versus-roadmap deviations are recorded in
 |-------|--------|---------|
 | Prefetch dataloader | `/training/data/loader.py` | on (`data.workers: 2`, `data.pin_memory: true`) |
 | RAM-disk shard staging | `/training/data/staging.py` | off (`staging.enabled: false`) |
-| CCD core pinning | `/training/affinity.py`, `/scripts/training/pin_run.sh` | off (`affinity.enabled: false`) |
+| CCD core pinning | `/training/runtime/affinity.py`, `/scripts/training/pin_run.sh` | off (`affinity.enabled: false`) |
 | LD_PRELOAD interposer | `/docker/training/entrypoint.sh` (`TRAIN_LD_PRELOAD`) | empty |
-| Run lock | `/training/lock.py` | always on during `train()` |
+| Run lock | `/training/runtime/lock.py` | always on during `train()` |
 
 The dataloader is a standard `torch.utils.data.DataLoader` over
 `ShardedTokenDataset` wrapped by a `CudaPrefetcher` that keeps one batch ahead
@@ -41,7 +41,7 @@ Core pinning is CCD/L3 pinning, not NUMA pinning: the 9950X is one NUMA node
 with two CCDs (physical cores 0-7 and 8-15, SMT siblings 16-31). The main
 training process is pinned to one CCD and dataloader workers to the other.
 `scripts/training/pin_run.sh <cpu-list> <command>` is the host-side `taskset`
-wrapper for jobs that cannot host `training/affinity.py`.
+wrapper for jobs that cannot host `training/runtime/affinity.py`.
 
 ## Recipe configuration
 
@@ -87,7 +87,7 @@ test passes with `workers: 0` and `workers: 2`
 
 `train()` holds `/mnt/ai-data/training/.train.lock` (JSON: pid, run name,
 creation time) for its whole run. A second job, or a serving swap through
-`scripts/eval/serve_eval.py`, refuses to start while the lock exists. A stale
+`training/commands/serve_eval.py`, refuses to start while the lock exists. A stale
 lock (holder pid not alive) is reported with removal instructions and is never
 auto-removed: automatic removal races two simultaneous starters.
 `TRAIN_LOCK_PATH` overrides the path for tests.

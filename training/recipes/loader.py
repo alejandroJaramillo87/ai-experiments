@@ -45,6 +45,8 @@ def load_recipe(path: str, overrides: Sequence[str] = ()) -> DictConfig:
             merged = OmegaConf.merge(merged, OmegaConf.from_dotlist(list(overrides)))
     except Exception as exc:
         raise RecipeLoadError(f"Recipe {path} does not match schema: {exc}") from exc
+    if not isinstance(merged, DictConfig):
+        raise RecipeLoadError(f"Recipe {path} is not a mapping at the top level")
     return merged
 
 

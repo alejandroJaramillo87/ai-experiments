@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any
 
 import numpy as np
 
@@ -69,12 +70,17 @@ def capture_activations(
     import torch
     from nnsight import LanguageModel
 
+    from interp import families
+
     if position != "last":
         raise CaptureError(f"unsupported position: {position!r} (only 'last')")
 
     model = LanguageModel(
         model_id, revision=revision, torch_dtype=torch.bfloat16, device_map="auto"
     )
+    # Resolve decoder blocks through the family registry instead of assuming
+    # the model.model.layers[i] chain; nnsight proxies traverse identically.
+    spec = families.family_from_config(model.config)
     fingerprint = tokenizer_fingerprint(model.tokenizer)
     collected: dict[int, list[np.ndarray]] = {layer: [] for layer in layers}
 
@@ -83,14 +89,17 @@ def capture_activations(
         saved = {}
         with model.trace(batch):
             for layer in layers:
-                saved[layer] = model.model.layers[layer].output[0].save()
+                block = families.resolve_submodule(model, spec, layer)
+                saved[layer] = block.output[0].save()
+        # Last non-padded token per sequence, layer-independent so it is
+        # computed once per batch. nnsight's LanguageModel tokenizer
+        # left-pads by default (pinned 0.7.0), where mask.sum() - 1 would
+        # index a pad or mid-prompt position for every non-longest sequence;
+        # first-one-from-the-right is correct for either padding side.
+        mask = model.tokenizer(batch, return_tensors="pt", padding=True).attention_mask
+        last = mask.shape[1] - 1 - mask.flip(-1).argmax(dim=1)
         for layer in layers:
             acts = saved[layer]
-            # last non-padded token per sequence
-            mask = model.tokenizer(
-                batch, return_tensors="pt", padding=True
-            ).attention_mask
-            last = mask.sum(dim=1) - 1
             rows = acts[torch.arange(acts.shape[0]), last]
             collected[layer].append(rows.detach().to(torch.float16).cpu().numpy())
 
@@ -127,7 +136,7 @@ def run_capture(
     count = len(examples)
     shards = 0
     for start in range(0, count, SHARD_SIZE):
-        payload = {
+        payload: dict[str, Any] = {
             f"layer_{layer}": acts[start : start + SHARD_SIZE]
             for layer, acts in activations.items()
         }

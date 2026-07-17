@@ -20,7 +20,10 @@ def git_sha(repo_root: str | None = None, strict: bool = False) -> str:
         return subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=repo_root or REPO_ROOT,
-            capture_output=True, text=True, check=True, timeout=5,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
         ).stdout.strip()
     except Exception:
         if strict:

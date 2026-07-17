@@ -96,6 +96,6 @@ remains the operator's responsibility: one GPU consumer at a time.
 | Path | Role |
 |------|------|
 | `training/data/teacher.py` | harness core: prompt loading, keys, retry, resume, record and manifest schemas; transport injected for tests |
-| `training/serving.py` | shared host-side serving machinery: service registry, training-idle preflight, model swap, health poll, chat client (also used by `scripts/eval/serve_eval.py`) |
+| `training/serving.py` | shared host-side serving machinery: service registry, training-idle preflight, model swap, health poll, chat client (also used by `training/commands/serve_eval.py`) |
 | `python -m training generate-teacher` (`training/commands/generate_teacher.py`) | host CLI wiring the two together |
 | `tests/training/test_teacher.py`, `tests/training/test_serving.py` | CPU unit tests; the live-service path is a host acceptance run |

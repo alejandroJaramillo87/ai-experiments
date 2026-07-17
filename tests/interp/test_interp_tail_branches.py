@@ -60,15 +60,18 @@ class TestRenderAndWrite:
         # return them unchanged rather than trying to format them.
         path = tmp_path / "t.jsonl"
         path.write_text(
-            '{"instruction": "hint about {secret}", "max_tokens": 64, '
-            '"strict": null}\n')
+            '{"instruction": "hint about {secret}", "max_tokens": 64, "strict": null}\n'
+        )
         rendered = gen.render_templates(str(path), {"secret": "juniper"})
-        assert rendered == [{"instruction": "hint about juniper",
-                             "max_tokens": 64, "strict": None}]
+        assert rendered == [
+            {"instruction": "hint about juniper", "max_tokens": 64, "strict": None}
+        ]
 
     def test_write_prompts_round_trip(self, tmp_path):
-        records = [{"instruction": "a"}, {"messages": [{"role": "user",
-                                                        "content": "b"}]}]
+        records = [
+            {"instruction": "a"},
+            {"messages": [{"role": "user", "content": "b"}]},
+        ]
         out = str(tmp_path / "corpus" / "prompts.jsonl")
         assert gen.write_prompts(records, out) == out
         with open(out, encoding="utf-8") as f:
@@ -86,10 +89,13 @@ class TestTeacherReplyParsing:
         with pytest.raises(gen.GenerateError, match="not valid JSON"):
             gen.parse_facts("here: {entity: unquoted} done", 1)
 
-    @pytest.mark.parametrize("payload", [
-        '{"facts": ["a"]}',
-        '{"entity": "  ", "facts": ["a"]}',
-    ])
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            '{"facts": ["a"]}',
+            '{"entity": "  ", "facts": ["a"]}',
+        ],
+    )
     def test_missing_or_empty_entity_refused(self, payload):
         with pytest.raises(gen.GenerateError, match="'entity'"):
             gen.parse_facts(payload, 1)
@@ -102,11 +108,9 @@ class TestBlindCorpusEdges:
         from training.data import teacher
 
         messages = teacher.normalize_prompt(self.PLAN[0])
-        record = {"key": teacher.prompt_key(0, messages),
-                  "messages": list(messages)}
+        record = {"key": teacher.prompt_key(0, messages), "messages": list(messages)}
         if with_assistant:
-            record["messages"].append(
-                {"role": "assistant", "content": "reply 0"})
+            record["messages"].append({"role": "assistant", "content": "reply 0"})
         return record
 
     def _data_dir(self, tmp_path, lines: list[str], manifest: bool = True):
@@ -117,7 +121,8 @@ class TestBlindCorpusEdges:
         (data_dir / teacher.DATA_NAME).write_text("\n".join(lines) + "\n")
         if manifest:
             (data_dir / teacher.MANIFEST_NAME).write_text(
-                json.dumps({"pipeline": "respond"}))
+                json.dumps({"pipeline": "respond"})
+            )
         return str(data_dir)
 
     def test_missing_dataset_refused(self, tmp_path):
@@ -130,7 +135,8 @@ class TestBlindCorpusEdges:
         from training.data import teacher
 
         data_dir = self._data_dir(
-            tmp_path, ["", json.dumps(self._dataset_record()), ""])
+            tmp_path, ["", json.dumps(self._dataset_record()), ""]
+        )
         out_dir = tmp_path / "blind"
         assert gen.blind_corpus(self.PLAN, data_dir, str(out_dir)) == 1
         lines = (out_dir / teacher.DATA_NAME).read_text().splitlines()
@@ -140,14 +146,15 @@ class TestBlindCorpusEdges:
 
     def test_record_without_assistant_turn_refused(self, tmp_path):
         data_dir = self._data_dir(
-            tmp_path,
-            [json.dumps(self._dataset_record(with_assistant=False))])
+            tmp_path, [json.dumps(self._dataset_record(with_assistant=False))]
+        )
         with pytest.raises(gen.GenerateError, match="no assistant turn"):
             gen.blind_corpus(self.PLAN, data_dir, str(tmp_path / "blind"))
 
     def test_missing_manifest_refused(self, tmp_path):
         data_dir = self._data_dir(
-            tmp_path, [json.dumps(self._dataset_record())], manifest=False)
+            tmp_path, [json.dumps(self._dataset_record())], manifest=False
+        )
         with pytest.raises(gen.GenerateError, match="manifest not found"):
             gen.blind_corpus(self.PLAN, data_dir, str(tmp_path / "blind"))
 
@@ -163,8 +170,10 @@ def make_fake_post():
             text = '{"score": 7, "reason": "test"}'
         else:
             text = "a plain response"
-        return {"choices": [{"message": {"content": text}}],
-                "usage": {"completion_tokens": 5}}
+        return {
+            "choices": [{"message": {"content": text}}],
+            "usage": {"completion_tokens": 5},
+        }
 
     return fake_post, calls
 
@@ -189,14 +198,18 @@ def _make_stub(tmp_path, body: str):
 
 def _vector_dir(tmp_path) -> str:
     rng = np.random.default_rng(7)
-    directions = {layer: rng.normal(0, 1, 16).astype(np.float32)
-                  for layer in (1, 2, 3)}
+    directions = {layer: rng.normal(0, 1, 16).astype(np.float32) for layer in (1, 2, 3)}
     vdir = str(tmp_path / "vectors" / "v1")
     export_control_vector(
-        DirectionSet(directions=directions, model_id="test/model",
-                     model_revision="main", method="repeng",
-                     source={"model_type": "test"}),
-        vdir)
+        DirectionSet(
+            directions=directions,
+            model_id="test/model",
+            model_revision="main",
+            method="repeng",
+            source={"model_type": "test"},
+        ),
+        vdir,
+    )
     return vdir
 
 
@@ -209,8 +222,9 @@ class TestScorecardPromptLoading:
     def test_missing_prompt_key_refused(self, tmp_path):
         path = tmp_path / "p.jsonl"
         path.write_text('{"text": "a"}\n')
-        with pytest.raises(sc.ScorecardError,
-                           match=r"p\.jsonl:1: missing 'prompt' key"):
+        with pytest.raises(
+            sc.ScorecardError, match=r"p\.jsonl:1: missing 'prompt' key"
+        ):
             sc.load_prompts(str(path))
 
     def test_blank_only_file_refused(self, tmp_path):
@@ -256,9 +270,8 @@ class TestScorecardSeams:
         assert result["stderr"] == "err-detail\n"
 
     def test_failing_make_surfaces_output(self, tmp_path):
-        make = _make_stub(tmp_path,
-                          'echo out-detail\necho err-detail >&2\nexit 1')
-        controller = sc.MakeServiceController(str(make), "/v")
+        make = _make_stub(tmp_path, "echo out-detail\necho err-detail >&2\nexit 1")
+        controller = sc.MakeServiceController(str(make), "/v", health_wait=lambda: None)
         with pytest.raises(sc.ScorecardError, match="steer-up") as exc:
             controller.steer(0.5)
         # the operator debugs from the recorded output, so both streams
@@ -274,9 +287,11 @@ class TestScorecardDefaultController:
         neutral = tmp_path / "neutral.jsonl"
         neutral.write_text('{"prompt": "describe a sunny day"}\n')
         system = tmp_path / "system_prompt.json"
-        system.write_text(json.dumps(
-            {"prompt": "always answer honestly",
-             "iterations": ["v1", "v2", "v3"]}))
+        system.write_text(
+            json.dumps(
+                {"prompt": "always answer honestly", "iterations": ["v1", "v2", "v3"]}
+            )
+        )
         return str(behavior), str(neutral), str(system)
 
     def test_perplexity_printer_and_make_wiring(self, tmp_path):
@@ -296,11 +311,20 @@ class TestScorecardDefaultController:
         fake_post, calls = make_fake_post()
         printer = RecordingPrinter()
 
-        result = sc.run_scorecard(cfg, controller=None, post=fake_post,
-                                  printer=printer)
+        # The default controller path with the real health wait stubbed:
+        # the recreate-then-wait behavior is a live-service concern.
+        controller = sc.MakeServiceController(
+            str(make), cfg.vector_dir, cfg.service, health_wait=lambda: None
+        )
+        result = sc.run_scorecard(
+            cfg, controller=controller, post=fake_post, printer=printer
+        )
 
         assert [a["arm"] for a in result["arms"]] == [
-            "baseline", "system_prompt", "steered@2"]
+            "baseline",
+            "system_prompt",
+            "steered@2",
+        ]
         for arm in result["arms"]:
             assert arm["perplexity"]["command"] == "echo perplexity-marker"
             assert arm["perplexity"]["returncode"] == 0
@@ -316,9 +340,11 @@ class TestScorecardDefaultController:
         assert f"steer-up VECTOR={cfg.vector_dir} SCALE=2" in invocations
 
         # the tuned arm must actually send the tuned system prompt
-        assert any(p["payload"]["messages"][0] == {
-            "role": "system", "content": "always answer honestly"}
-            for p in calls)
+        assert any(
+            p["payload"]["messages"][0]
+            == {"role": "system", "content": "always answer honestly"}
+            for p in calls
+        )
 
         with open(result["out_path"], encoding="utf-8") as f:
             body = json.load(f)
@@ -344,8 +370,11 @@ class TestServicesUp:
             return Resp(503)
 
         monkeypatch.setattr(requests, "get", fake_get)
-        urls = ("http://t:8002/v1/health", "http://t:8003/health",
-                "http://t:9999/health")
+        urls = (
+            "http://t:8002/v1/health",
+            "http://t:8003/health",
+            "http://t:9999/health",
+        )
         # only the 200 counts: refused connections and non-200 codes are down
         assert mon.services_up(urls) == ["http://t:8002/v1/health"]
 
@@ -361,29 +390,35 @@ class TestMonitorWindowEdges:
 
     def test_read_window_missing_dir_is_empty(self, tmp_path):
         records, skipped = mon.read_log_window(
-            str(tmp_path / "absent-logs"), self.SINCE, self.UNTIL)
+            str(tmp_path / "absent-logs"), self.SINCE, self.UNTIL
+        )
         assert records == []
         assert all(count == 0 for count in skipped.values())
 
     def test_read_window_skips_non_jsonl_blank_and_out_of_window(self, tmp_path):
         log_dir = tmp_path / "logs"
         log_dir.mkdir()
-        in_window = {"timestamp": "2026-07-13T10:00:00.000000Z",
-                     "prompt": "p", "response_text": "r"}
-        out_of_window = {"timestamp": "2026-06-01T10:00:00.000000Z",
-                         "prompt": "old"}
+        in_window = {
+            "timestamp": "2026-07-13T10:00:00.000000Z",
+            "prompt": "p",
+            "response_text": "r",
+        }
+        out_of_window = {"timestamp": "2026-06-01T10:00:00.000000Z", "prompt": "old"}
         # a valid record in a non-.jsonl file must be ignored entirely
         (log_dir / "README.txt").write_text(json.dumps(in_window) + "\n")
         (log_dir / "2026-07-13.jsonl").write_text(
-            "\n" + json.dumps(in_window) + "\n\n"
-            + json.dumps(out_of_window) + "\n")
-        records, skipped = mon.read_log_window(
-            str(log_dir), self.SINCE, self.UNTIL)
+            "\n" + json.dumps(in_window) + "\n\n" + json.dumps(out_of_window) + "\n"
+        )
+        records, skipped = mon.read_log_window(str(log_dir), self.SINCE, self.UNTIL)
         assert len(records) == 1
         assert records[0]["_text"] == "p\nr"
         assert len(records[0]["_id"]) == 16
-        assert skipped == {"malformed_json": 0, "no_timestamp": 0,
-                           "out_of_window": 1, "no_text": 0}
+        assert skipped == {
+            "malformed_json": 0,
+            "no_timestamp": 0,
+            "out_of_window": 1,
+            "no_text": 0,
+        }
 
 
 class TestPreviousReport:
@@ -397,8 +432,9 @@ class TestPreviousReport:
         newest.mkdir(parents=True)
         older.mkdir(parents=True)
         (newest / "report.json").write_text("{corrupt")
-        (older / "report.json").write_text(json.dumps(
-            {"run": "2026-07-01T120000Z", "probes": {"p": {"mean": 0.5}}}))
+        (older / "report.json").write_text(
+            json.dumps({"run": "2026-07-01T120000Z", "probes": {"p": {"mean": 0.5}}})
+        )
         report = mon.previous_report(str(monitor_dir), ["p"])
         assert report["run"] == "2026-07-01T120000Z"
 
@@ -407,6 +443,10 @@ class TestRunMonitorEdges:
     def test_no_probes_refused(self, tmp_path):
         with pytest.raises(mon.MonitorError, match="no probes given"):
             mon.run_monitor(
-                [], "test-model", "modelhash-1", str(tmp_path / "logs"),
+                [],
+                "test-model",
+                "modelhash-1",
+                str(tmp_path / "logs"),
                 monitor_root=str(tmp_path / "monitor"),
-                health_check=lambda: [])
+                health_check=lambda: [],
+            )

@@ -61,7 +61,8 @@ def supported_architectures(convert_script: str) -> set[str]:
         sources.extend(
             os.path.join(conversion_dir, name)
             for name in sorted(os.listdir(conversion_dir))
-            if name.endswith(".py"))
+            if name.endswith(".py")
+        )
     names: set[str] = set()
     for source in sources:
         with open(source) as f:
@@ -72,7 +73,8 @@ def supported_architectures(convert_script: str) -> set[str]:
         raise ExportError(
             f"No architecture registrations found in {convert_script} or its "
             "conversion/ modules; the pinned converter layout changed — update "
-            "supported_architectures()")
+            "supported_architectures()"
+        )
     return names
 
 
@@ -91,7 +93,8 @@ def check_architecture(staging_dir: str, convert_script: str) -> str:
             f"  Pinned llama.cpp: {read_pin()}\n"
             f"  Scope is GGUF-convertible families (Gemma 4 primary, Qwen3\n"
             f"  fallback); bump the pin in training/export/llama_cpp_pin.txt\n"
-            f"  (with a note) if a newer llama.cpp supports this architecture")
+            f"  (with a note) if a newer llama.cpp supports this architecture"
+        )
     return arch
 
 
@@ -104,19 +107,39 @@ def _run(cmd: list[str], log_path: str) -> None:
             tail = "".join(log.readlines()[-15:])
         raise ExportError(
             f"Command failed ({proc.returncode}): {' '.join(cmd)}\n"
-            f"  Log: {log_path}\n{tail}")
+            f"  Log: {log_path}\n{tail}"
+        )
 
 
-def convert_to_gguf(staging_dir: str, out_path: str, outtype: str = "bf16",
-                    llama_cpp_dir: str = DEFAULT_LLAMA_CPP_DIR) -> None:
+def convert_to_gguf(
+    staging_dir: str,
+    out_path: str,
+    outtype: str = "bf16",
+    llama_cpp_dir: str = DEFAULT_LLAMA_CPP_DIR,
+) -> None:
     """convert_hf_to_gguf.py: staged HF dir -> unquantized GGUF."""
-    _run([sys.executable, converter_path(llama_cpp_dir), staging_dir,
-          "--outfile", out_path, "--outtype", outtype],
-         out_path + ".convert.log")
+    _run(
+        [
+            sys.executable,
+            converter_path(llama_cpp_dir),
+            staging_dir,
+            "--outfile",
+            out_path,
+            "--outtype",
+            outtype,
+        ],
+        out_path + ".convert.log",
+    )
 
 
-def quantize(in_path: str, out_path: str, quant_type: str,
-             llama_cpp_dir: str = DEFAULT_LLAMA_CPP_DIR) -> None:
+def quantize(
+    in_path: str,
+    out_path: str,
+    quant_type: str,
+    llama_cpp_dir: str = DEFAULT_LLAMA_CPP_DIR,
+) -> None:
     """llama-quantize: unquantized GGUF -> quantized GGUF."""
-    _run([quantize_path(llama_cpp_dir), in_path, out_path, quant_type],
-         out_path + ".quantize.log")
+    _run(
+        [quantize_path(llama_cpp_dir), in_path, out_path, quant_type],
+        out_path + ".quantize.log",
+    )

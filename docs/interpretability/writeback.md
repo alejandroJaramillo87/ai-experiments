@@ -4,7 +4,9 @@ Operating guide for the interpretability write-back path (interp Phase 3, delive
 W1-W4): control-vector steering deployed into the llama.cpp services, a probe toolkit with
 mandatory black-box baselines, a serving request log, and the async probe monitor. Weights
 are never modified; every intervention acts on activations only. Code lives in `interp/`
-(packages) and `scripts/interp/` (thin CLIs); tests in `tests/interp/`.
+(packages, invoked as `python -m interp <subcommand>` via `interp/commands/`);
+`scripts/interp/` holds only shell helpers (the isolated Neuronpedia and SAEBench
+environments); tests in `tests/interp/`.
 
 ## Table of contents
 

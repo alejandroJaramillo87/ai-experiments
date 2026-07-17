@@ -46,7 +46,8 @@ PROMPT_BASENAMES = ("prompts.jsonl", "data.jsonl")
 EVOLVE_TEMPLATE = (
     "Rewrite the following instruction into a more specific, more demanding "
     "version that still has a well-defined answer. Reply with the rewritten "
-    "instruction only, no preamble.\n\nInstruction: {seed}")
+    "instruction only, no preamble.\n\nInstruction: {seed}"
+)
 
 CompleteFn = Callable[[list[dict], dict], str]
 
@@ -75,7 +76,7 @@ class SamplingConfig:
 @dataclasses.dataclass
 class TeacherConfig:
     pipeline: str
-    teacher: str          # served model identity as recorded in the manifest
+    teacher: str  # served model identity as recorded in the manifest
     service: str
     sampling: SamplingConfig = dataclasses.field(default_factory=SamplingConfig)
     concurrency: int = 1
@@ -85,21 +86,22 @@ class TeacherConfig:
     def validate(self) -> None:
         if self.pipeline not in PIPELINES:
             raise TeacherConfigError(
-                f"pipeline must be one of {PIPELINES}: {self.pipeline!r}")
+                f"pipeline must be one of {PIPELINES}: {self.pipeline!r}"
+            )
         if not self.teacher:
             raise TeacherConfigError("teacher model identity is required")
         if self.concurrency < 1:
-            raise TeacherConfigError(
-                f"concurrency must be >= 1: {self.concurrency}")
+            raise TeacherConfigError(f"concurrency must be >= 1: {self.concurrency}")
         if self.max_attempts < 1:
-            raise TeacherConfigError(
-                f"max_attempts must be >= 1: {self.max_attempts}")
+            raise TeacherConfigError(f"max_attempts must be >= 1: {self.max_attempts}")
         if not 0 <= self.sampling.temperature <= 2:
             raise TeacherConfigError(
-                f"temperature out of range [0, 2]: {self.sampling.temperature}")
+                f"temperature out of range [0, 2]: {self.sampling.temperature}"
+            )
         if self.sampling.max_tokens < 1:
             raise TeacherConfigError(
-                f"max_tokens must be >= 1: {self.sampling.max_tokens}")
+                f"max_tokens must be >= 1: {self.sampling.max_tokens}"
+            )
 
 
 def resolve_prompt_file(path: str) -> str:
@@ -112,7 +114,8 @@ def resolve_prompt_file(path: str) -> str:
             if os.path.isfile(candidate):
                 return candidate
         raise FileNotFoundError(
-            f"No prompt file ({' or '.join(PROMPT_BASENAMES)}) in {path}")
+            f"No prompt file ({' or '.join(PROMPT_BASENAMES)}) in {path}"
+        )
     raise FileNotFoundError(f"Prompt path not found: {path}")
 
 
@@ -136,7 +139,8 @@ def normalize_prompt(record: dict) -> list[dict]:
         if field in record:
             return [{"role": "user", "content": str(record[field])}]
     raise ValueError(
-        "record has no 'messages', 'instruction', 'prompt', or 'text' field")
+        "record has no 'messages', 'instruction', 'prompt', or 'text' field"
+    )
 
 
 def load_prompts(path: str) -> list[list[dict]]:
@@ -150,8 +154,7 @@ def load_prompts(path: str) -> list[list[dict]]:
             try:
                 prompts.append(normalize_prompt(json.loads(line)))
             except (json.JSONDecodeError, ValueError) as exc:
-                raise ValueError(
-                    f"{prompt_file}:{lineno}: {exc}") from exc
+                raise ValueError(f"{prompt_file}:{lineno}: {exc}") from exc
     if not prompts:
         raise ValueError(f"Prompt file is empty: {prompt_file}")
     return prompts
@@ -193,7 +196,8 @@ def completed_keys(out_dir: str) -> set[str]:
             if lineno == len(lines):
                 break
             raise ValueError(
-                f"{data_path}:{lineno}: corrupt record mid-file: {exc}") from exc
+                f"{data_path}:{lineno}: corrupt record mid-file: {exc}"
+            ) from exc
     return keys
 
 
@@ -216,9 +220,13 @@ def _truncate_torn_tail(data_path: str) -> None:
         return
 
 
-def with_retry(fn: Callable[[], str], transient: type[Exception],
-               max_attempts: int, backoff_s: float,
-               sleep: Callable[[float], None] = time.sleep) -> str:
+def with_retry(
+    fn: Callable[[], str],
+    transient: type[Exception],
+    max_attempts: int,
+    backoff_s: float,
+    sleep: Callable[[float], None] = time.sleep,
+) -> str:
     """Retry fn on the transient exception type with exponential backoff."""
     for attempt in range(1, max_attempts + 1):
         try:
@@ -230,19 +238,23 @@ def with_retry(fn: Callable[[], str], transient: type[Exception],
     raise AssertionError("unreachable")
 
 
-
-
-def build_manifest(config: TeacherConfig, prompt_source: str,
-                   prompt_set_hash: str, examples: int,
-                   command: str | None = None) -> dict:
+def build_manifest(
+    config: TeacherConfig,
+    prompt_source: str,
+    prompt_set_hash: str,
+    examples: int,
+    command: str | None = None,
+) -> dict:
     """Manifest fields follow training/data/prepare.py conventions; the
     teacher block is what F7 cites when claiming improvement against a
     teacher."""
     return {
         "schema_version": SCHEMA_VERSION,
         "pipeline": config.pipeline,
-        "teacher": {"model": config.teacher,
-                    "quant_type": quant_from_name(config.teacher)},
+        "teacher": {
+            "model": config.teacher,
+            "quant_type": quant_from_name(config.teacher),
+        },
         "service": config.service,
         "sampling": config.sampling.as_request(),
         "prompt_source": prompt_source,
@@ -255,37 +267,54 @@ def build_manifest(config: TeacherConfig, prompt_source: str,
     }
 
 
-def _generate_one(config: TeacherConfig, messages: list[dict],
-                  complete_fn: CompleteFn, transient: type[Exception],
-                  sleep: Callable[[float], None]) -> list[dict]:
+def _generate_one(
+    config: TeacherConfig,
+    messages: list[dict],
+    complete_fn: CompleteFn,
+    transient: type[Exception],
+    sleep: Callable[[float], None],
+) -> list[dict]:
     """One prompt through the configured pipeline; returns the full
     conversation ending in the assistant turn."""
     sampling = config.sampling.as_request()
 
     def ask(request: list[dict]) -> str:
-        return with_retry(lambda: complete_fn(request, sampling), transient,
-                          config.max_attempts, config.backoff_s, sleep)
+        return with_retry(
+            lambda: complete_fn(request, sampling),
+            transient,
+            config.max_attempts,
+            config.backoff_s,
+            sleep,
+        )
 
     if config.pipeline == "respond":
         return messages + [{"role": "assistant", "content": ask(messages)}]
     # synthesize: evolve the seed instruction, then answer the evolved form
     seed = messages[-1]["content"]
-    evolved = ask([{"role": "user",
-                    "content": EVOLVE_TEMPLATE.format(seed=seed)}]).strip()
+    evolved = ask(
+        [{"role": "user", "content": EVOLVE_TEMPLATE.format(seed=seed)}]
+    ).strip()
     if not evolved:
-        raise ValueError(f"Teacher returned an empty evolved instruction "
-                         f"for seed: {seed[:80]!r}")
+        raise ValueError(
+            f"Teacher returned an empty evolved instruction for seed: {seed[:80]!r}"
+        )
     request = [{"role": "user", "content": evolved}]
     return request + [{"role": "assistant", "content": ask(request)}]
 
 
-def generate(config: TeacherConfig, prompts: list[list[dict]],
-             complete_fn: CompleteFn, out_dir: str, *,
-             prompt_source: str = "unknown", prompt_set_hash: str = "unknown",
-             transient: type[Exception] = Exception,
-             command: str | None = None,
-             progress: Callable[[int, int], None] | None = None,
-             sleep: Callable[[float], None] = time.sleep) -> dict:
+def generate(
+    config: TeacherConfig,
+    prompts: list[list[dict]],
+    complete_fn: CompleteFn,
+    out_dir: str,
+    *,
+    prompt_source: str = "unknown",
+    prompt_set_hash: str = "unknown",
+    transient: type[Exception] = Exception,
+    command: str | None = None,
+    progress: Callable[[int, int], None] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict:
     """Run the pipeline over prompts and return the written manifest.
 
     Skips prompts whose keys already exist in data.jsonl (resume). Raises
@@ -298,7 +327,8 @@ def generate(config: TeacherConfig, prompts: list[list[dict]],
     if os.path.exists(manifest_path):
         raise FileExistsError(
             f"{out_dir} already contains {MANIFEST_NAME} (a complete "
-            f"dataset); refusing to overwrite")
+            f"dataset); refusing to overwrite"
+        )
     os.makedirs(out_dir, exist_ok=True)
 
     _truncate_torn_tail(os.path.join(out_dir, DATA_NAME))
@@ -314,7 +344,8 @@ def generate(config: TeacherConfig, prompts: list[list[dict]],
             "the current prompt set; the prompt set changed since this "
             "generation started\n"
             "  Solution: generate into a fresh output directory, or restore "
-            "the original prompt set to finish this one")
+            "the original prompt set to finish this one"
+        )
     pending = [(key, m) for key, m in keyed if key not in done_keys]
     done = len(prompts) - len(pending)
     failures: list[tuple[str, str]] = []
@@ -324,9 +355,12 @@ def generate(config: TeacherConfig, prompts: list[list[dict]],
 
         def worker(key: str, messages: list[dict]) -> None:
             nonlocal done
-            record = {"key": key,
-                      "messages": _generate_one(config, messages, complete_fn,
-                                                transient, sleep)}
+            record = {
+                "key": key,
+                "messages": _generate_one(
+                    config, messages, complete_fn, transient, sleep
+                ),
+            }
             line = json.dumps(record, ensure_ascii=False)
             with write_lock:
                 data_file.write(line + "\n")
@@ -336,8 +370,9 @@ def generate(config: TeacherConfig, prompts: list[list[dict]],
                     progress(done, len(prompts))
 
         with concurrent.futures.ThreadPoolExecutor(config.concurrency) as pool:
-            futures = {pool.submit(worker, key, messages): key
-                       for key, messages in pending}
+            futures = {
+                pool.submit(worker, key, messages): key for key, messages in pending
+            }
             for future in concurrent.futures.as_completed(futures):
                 try:
                     future.result()
@@ -349,10 +384,12 @@ def generate(config: TeacherConfig, prompts: list[list[dict]],
         raise GenerationIncomplete(
             f"{len(failures)} of {len(prompts)} prompts failed ({sample})\n"
             f"  Solution: fix the cause and re-invoke; completed prompts "
-            f"are skipped on resume")
+            f"are skipped on resume"
+        )
 
-    manifest = build_manifest(config, prompt_source, prompt_set_hash,
-                              examples=len(prompts), command=command)
+    manifest = build_manifest(
+        config, prompt_source, prompt_set_hash, examples=len(prompts), command=command
+    )
     tmp_path = manifest_path + ".tmp"
     with open(tmp_path, "w") as f:
         json.dump(manifest, f, indent=2)

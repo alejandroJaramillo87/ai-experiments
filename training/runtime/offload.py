@@ -24,10 +24,20 @@ without either.
 
 from __future__ import annotations
 
+import sys
+from collections.abc import Callable
+
 from omegaconf import DictConfig
 
+# Degradation order when the recipe asks for cpu_adam but the pre-built
+# DeepSpeedCPUAdam extension is unavailable (upstream issue #7556: AVX-512
+# miscompile on Zen 5 is the known failure mode). paged_adamw8bit keeps
+# optimizer state out of steady-state VRAM without the engine; adamw is the
+# last resort with offload disabled entirely.
+OPTIMIZER_FALLBACK_CHAIN = ("cpu_adam", "paged_adamw8bit", "adamw")
+
 # Substring patterns of frozen parameter names per trainable_filter value.
-# Both registered families (Gemma 4, Qwen3; training/families.py) name their
+# Both registered families (Gemma 4, Qwen3; training/models/families.py) name their
 # token embeddings embed_tokens and an untied output head lm_head; the
 # per_layer patterns cover the Gemma 4 E-model PLE terms (packed
 # embed_tokens_per_layer table plus per-layer gate/projection linears).
@@ -47,7 +57,8 @@ def frozen_patterns(trainable_filter: str) -> tuple[str, ...]:
     except KeyError:
         raise ValueError(
             f"model.trainable_filter '{trainable_filter}' has no frozen-pattern "
-            f"entry; known filters: {tuple(FROZEN_PATTERNS)}")
+            f"entry; known filters: {tuple(FROZEN_PATTERNS)}"
+        ) from None
 
 
 def is_frozen_name(name: str, trainable_filter: str) -> bool:
@@ -75,11 +86,13 @@ def apply_trainable_filter(model, recipe: DictConfig) -> list:
             f"model.trainable_filter={trainable_filter} froze no parameters; "
             f"the patterns {frozen_patterns(trainable_filter)} match none of "
             "the model's parameter names (family drift — update "
-            "training/offload.py FROZEN_PATTERNS)")
+            "training/runtime/offload.py FROZEN_PATTERNS)"
+        )
     if not trainable:
         raise ValueError(
             f"model.trainable_filter={trainable_filter} froze every parameter; "
-            "nothing remains to train")
+            "nothing remains to train"
+        )
     return trainable
 
 
@@ -97,7 +110,8 @@ def build_ds_config(recipe: DictConfig) -> dict:
     if recipe.memory.offload != "zero_offload":
         raise ValueError(
             f"build_ds_config requires memory.offload=zero_offload, "
-            f"got {recipe.memory.offload!r}")
+            f"got {recipe.memory.offload!r}"
+        )
     return {
         "train_micro_batch_size_per_gpu": recipe.data.micro_batch,
         "gradient_accumulation_steps": recipe.data.grad_accum,
@@ -127,6 +141,79 @@ def build_ds_config(recipe: DictConfig) -> dict:
     }
 
 
+def cpu_adam_available() -> bool:
+    """Whether the pre-built DeepSpeedCPUAdam extension loads.
+
+    Mirrors the smoke test's probe: a miscompiled or missing op fails at
+    import of the extension module, so the import is the load check. Any
+    exception (not just ImportError) counts as unavailable — a broken .so
+    can raise OSError or RuntimeError.
+    """
+    try:
+        from deepspeed.ops.adam import DeepSpeedCPUAdam  # noqa: F401
+
+        return True
+    except Exception:
+        return False
+
+
+def paged_adamw8bit_available() -> bool:
+    """Whether bitsandbytes provides the paged 8-bit AdamW optimizer."""
+    try:
+        from bitsandbytes.optim import PagedAdamW8bit  # noqa: F401
+
+        return True
+    except Exception:
+        return False
+
+
+_FALLBACK_PROBES: dict[str, Callable[[], bool]] = {
+    "cpu_adam": cpu_adam_available,
+    "paged_adamw8bit": paged_adamw8bit_available,
+}
+
+
+def resolve_offload_optimizer(
+    recipe: DictConfig, probes: dict[str, Callable[[], bool]] | None = None
+) -> str:
+    """The optimizer that actually runs for a zero_offload recipe.
+
+    Walks OPTIMIZER_FALLBACK_CHAIN from the recipe's cpu_adam request: each
+    unavailable rung logs a warning and degrades to the next; the final rung
+    (torch adamw, offload disabled) always works. A recipe naming any other
+    optimizer is returned unchanged — the chain exists for the DeepSpeed
+    extension risk only. The caller stamps the returned name into run
+    metadata so a degraded run stays attributable.
+    """
+    if recipe.optimizer.name != "cpu_adam":
+        return recipe.optimizer.name
+    probes = probes or _FALLBACK_PROBES
+    for name in OPTIMIZER_FALLBACK_CHAIN:
+        probe = probes.get(name)
+        if probe is None or probe():
+            if name != "cpu_adam":
+                print(
+                    f"[offload] WARN: optimizer degraded to {name} "
+                    f"(cpu_adam requested; the DeepSpeed CPUAdam extension "
+                    f"is unavailable"
+                    + (
+                        "; bitsandbytes paged optimizer also unavailable"
+                        if name == "adamw"
+                        else ""
+                    )
+                    + ")",
+                    file=sys.stderr,
+                )
+                if name == "adamw":
+                    print(
+                        "[offload] WARN: host-RAM offload disabled; optimizer "
+                        "state returns to VRAM (expect a tighter memory fit)",
+                        file=sys.stderr,
+                    )
+            return name
+    raise AssertionError("unreachable: adamw has no availability probe")
+
+
 def initialize_engine(model, recipe: DictConfig):
     """Apply the trainable filter and wrap the model in a DeepSpeed engine.
 
@@ -138,5 +225,6 @@ def initialize_engine(model, recipe: DictConfig):
 
     trainable = apply_trainable_filter(model, recipe)
     engine, _optimizer, _dl, _sched = deepspeed.initialize(
-        model=model, model_parameters=trainable, config=build_ds_config(recipe))
+        model=model, model_parameters=trainable, config=build_ds_config(recipe)
+    )
     return engine

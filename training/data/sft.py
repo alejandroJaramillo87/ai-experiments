@@ -28,7 +28,7 @@ from training.data.shards import (
     hash_file,
     write_manifest,
 )
-from training.families import (
+from training.models.families import (
     CHAT_TEMPLATE_VERSION,
     ChatTemplateSpec,
     family_spec,
@@ -68,17 +68,20 @@ def normalize_record(record: dict, index: int = -1) -> list[dict]:
     else:
         raise SftRecordError(
             f"{where}: expected a 'messages' list or a 'prompt'/'completion' "
-            f"pair, got keys {sorted(record)}")
+            f"pair, got keys {sorted(record)}"
+        )
 
     if not isinstance(messages, list) or not messages:
         raise SftRecordError(f"{where}: 'messages' must be a non-empty list")
     for i, msg in enumerate(messages):
         if not isinstance(msg, dict) or "role" not in msg or "content" not in msg:
             raise SftRecordError(
-                f"{where}: message {i} must be a dict with 'role' and 'content'")
+                f"{where}: message {i} must be a dict with 'role' and 'content'"
+            )
         if msg["role"] not in VALID_ROLES:
             raise SftRecordError(
-                f"{where}: message {i} role {msg['role']!r} not in {VALID_ROLES}")
+                f"{where}: message {i} role {msg['role']!r} not in {VALID_ROLES}"
+            )
         if not isinstance(msg["content"], str):
             raise SftRecordError(f"{where}: message {i} content must be a string")
         if msg["role"] == "system" and i != 0:
@@ -107,11 +110,13 @@ def check_thinking_markers(messages: list[dict], index: int = -1) -> None:
                     raise SftRecordError(
                         f"{where}: assistant message {i} contains the "
                         f"thinking-trace marker {marker!r} ({model_type}); "
-                        "strip reasoning traces before preparing SFT data")
+                        "strip reasoning traces before preparing SFT data"
+                    )
 
 
-def render_segments(messages: list[dict],
-                    spec: ChatTemplateSpec) -> list[tuple[str, bool]]:
+def render_segments(
+    messages: list[dict], spec: ChatTemplateSpec
+) -> list[tuple[str, bool]]:
     """Render a conversation as (text, supervised) segments.
 
     Supervised segments are exactly the assistant content and its end-of-turn
@@ -134,9 +139,12 @@ def render_segments(messages: list[dict],
     return segments
 
 
-def encode_example(messages: list[dict], encode: Callable[[str], list[int]],
-                   spec: ChatTemplateSpec,
-                   max_seq_len: int | None = None) -> dict | None:
+def encode_example(
+    messages: list[dict],
+    encode: Callable[[str], list[int]],
+    spec: ChatTemplateSpec,
+    max_seq_len: int | None = None,
+) -> dict | None:
     """Tokenize a conversation into {"input_ids", "labels"}.
 
     Each segment is encoded independently, so its token span — and therefore
@@ -162,13 +170,15 @@ def mask_debug(sample: dict, id_to_token: Callable[[int], str | None]) -> str:
     lines = [f"{'token':<24} {'id':>8} {'label':>8}"]
     for token_id, label in zip(sample["input_ids"], sample["labels"], strict=True):
         token = id_to_token(token_id)
-        lines.append(f"{(token if token is not None else '?')!r:<24} "
-                     f"{token_id:>8} {label:>8}")
+        lines.append(
+            f"{(token if token is not None else '?')!r:<24} {token_id:>8} {label:>8}"
+        )
     return "\n".join(lines)
 
 
-def iter_records(source: str, split: str = "train",
-                 revision: str | None = None) -> Iterator[dict]:
+def iter_records(
+    source: str, split: str = "train", revision: str | None = None
+) -> Iterator[dict]:
     """Yield raw records from a local JSONL file or an HF dataset, in source order."""
     if os.path.exists(source):
         with open(source, encoding="utf-8") as f:
@@ -178,16 +188,25 @@ def iter_records(source: str, split: str = "train",
                     yield json.loads(line)
         return
     import datasets
+
     yield from datasets.load_dataset(source, split=split, revision=revision)
 
 
-def prepare_sft(source: str, out_dir: str, tokenizer_source: str,
-                model_type: str, *,
-                split: str = "train", revision: str | None = None,
-                max_seq_len: int = 4096, holdout: float = DEFAULT_HOLDOUT,
-                seed: int = 42, license_str: str = "unknown",
-                command: str | None = None,
-                progress: Callable[[int, int], None] | None = None) -> dict:
+def prepare_sft(
+    source: str,
+    out_dir: str,
+    tokenizer_source: str,
+    model_type: str,
+    *,
+    split: str = "train",
+    revision: str | None = None,
+    max_seq_len: int = 4096,
+    holdout: float = DEFAULT_HOLDOUT,
+    seed: int = 42,
+    license_str: str = "unknown",
+    command: str | None = None,
+    progress: Callable[[int, int], None] | None = None,
+) -> dict:
     """Materialize a tokenized, masked SFT dataset with a manifest.
 
     Holdout membership is drawn per record from a seeded RNG over the
@@ -200,7 +219,8 @@ def prepare_sft(source: str, out_dir: str, tokenizer_source: str,
     manifest_path = os.path.join(out_dir, MANIFEST_NAME)
     if os.path.exists(manifest_path):
         raise FileExistsError(
-            f"{out_dir} already contains {MANIFEST_NAME}; refusing to overwrite")
+            f"{out_dir} already contains {MANIFEST_NAME}; refusing to overwrite"
+        )
 
     spec = family_spec(model_type).chat_template
     tokenizer = load_tokenizer(tokenizer_source)
@@ -227,7 +247,8 @@ def prepare_sft(source: str, out_dir: str, tokenizer_source: str,
             counts["holdout" if to_holdout else "train"] += 1
             total_tokens += len(sample["input_ids"])
             supervised_tokens += sum(
-                1 for label in sample["labels"] if label != IGNORE_INDEX)
+                1 for label in sample["labels"] if label != IGNORE_INDEX
+            )
             if progress is not None and (index + 1) % 1000 == 0:
                 progress(counts["train"] + counts["holdout"], total_tokens)
 
@@ -245,10 +266,16 @@ def prepare_sft(source: str, out_dir: str, tokenizer_source: str,
         "holdout_fraction": holdout,
         "holdout_seed": seed,
         "files": [
-            {"file": TRAIN_FILE, "examples": counts["train"],
-             "xxhash64": hash_file(train_path)},
-            {"file": HOLDOUT_FILE, "examples": counts["holdout"],
-             "xxhash64": hash_file(holdout_path)},
+            {
+                "file": TRAIN_FILE,
+                "examples": counts["train"],
+                "xxhash64": hash_file(train_path),
+            },
+            {
+                "file": HOLDOUT_FILE,
+                "examples": counts["holdout"],
+                "xxhash64": hash_file(holdout_path),
+            },
         ],
         "train_examples": counts["train"],
         "holdout_examples": counts["holdout"],
@@ -263,14 +290,20 @@ def prepare_sft(source: str, out_dir: str, tokenizer_source: str,
     return manifest
 
 
-def load_sft_dataset(dataset_dir: str,
-                     tokenizer: LoadedTokenizer | str | None = None
-                     ) -> tuple[list[dict], list[dict]]:
+def load_sft_dataset(
+    dataset_dir: str,
+    tokenizer: LoadedTokenizer | str | None = None,
+    parse: tuple[str, ...] = (TRAIN_FILE, HOLDOUT_FILE),
+) -> tuple[list[dict], list[dict]]:
     """Load a prepared SFT dataset, verifying integrity and tokenizer match.
 
     Returns (train, holdout) lists of {"input_ids", "labels"} samples. Refuses
     a dataset whose file hashes do not match the manifest or whose tokenizer
     hash differs from the given tokenizer (path/hub id or LoadedTokenizer).
+
+    parse names the split files materialized in memory; every file is still
+    hash- and count-verified, but a split outside parse returns [] (the
+    holdout evaluator reads only the holdout split this way).
     """
     manifest_path = os.path.join(dataset_dir, MANIFEST_NAME)
     if not os.path.isfile(manifest_path):
@@ -281,24 +314,30 @@ def load_sft_dataset(dataset_dir: str,
         raise SftIntegrityError(
             f"{dataset_dir} is not an SFT dataset (manifest kind: "
             f"{manifest.get('kind')!r}); D2 token shards load through "
-            "training/data/shards.py")
+            "training/data/shards.py"
+        )
     # A dataset rendered with an older chat-template framing carries the same
     # tokenizer hash but different supervised text; refuse rather than train
-    # on a stale rendering (training/families.py documents the versioning).
+    # on a stale rendering (training/models/families.py documents the versioning).
     if manifest.get("chat_template_version") != CHAT_TEMPLATE_VERSION:
         raise SftIntegrityError(
             f"{dataset_dir} was rendered with chat_template_version="
             f"{manifest.get('chat_template_version')!r}; this code renders "
             f"version {CHAT_TEMPLATE_VERSION}\n"
-            "  Solution: re-run prepare_sft to re-render the dataset")
+            "  Solution: re-run prepare_sft to re-render the dataset"
+        )
 
     if tokenizer is not None:
-        loaded = tokenizer if isinstance(tokenizer, LoadedTokenizer) \
+        loaded = (
+            tokenizer
+            if isinstance(tokenizer, LoadedTokenizer)
             else load_tokenizer(tokenizer)
+        )
         if loaded.content_hash != manifest["tokenizer_hash"]:
             raise TokenizerMismatchError(
                 f"tokenizer hash {loaded.content_hash} does not match SFT "
-                f"manifest {manifest['tokenizer_hash']} in {dataset_dir}")
+                f"manifest {manifest['tokenizer_hash']} in {dataset_dir}"
+            )
 
     splits: dict[str, list[dict]] = {}
     for rec in manifest["files"]:
@@ -309,12 +348,18 @@ def load_sft_dataset(dataset_dir: str,
         if digest != rec["xxhash64"]:
             raise SftIntegrityError(
                 f"{rec['file']}: content hash {digest} does not match "
-                f"manifest {rec['xxhash64']}")
+                f"manifest {rec['xxhash64']}"
+            )
         with open(path) as f:
-            samples = [json.loads(line) for line in f if line.strip()]
-        if len(samples) != rec["examples"]:
+            if rec["file"] in parse:
+                samples = [json.loads(line) for line in f if line.strip()]
+                count = len(samples)
+            else:
+                samples = []
+                count = sum(1 for line in f if line.strip())
+        if count != rec["examples"]:
             raise SftIntegrityError(
-                f"{rec['file']}: {len(samples)} examples, manifest expects "
-                f"{rec['examples']}")
+                f"{rec['file']}: {count} examples, manifest expects {rec['examples']}"
+            )
         splits[rec["file"]] = samples
     return splits[TRAIN_FILE], splits[HOLDOUT_FILE]

@@ -56,15 +56,17 @@ class TestLoading:
         buf = ReplayBuffer(replay_dir, window=4, seed=0)
         domain = make_source(tmp_path, "domain", [100] * 320)
         with pytest.raises(ValueError, match="window"):
-            MixtureDataset([("domain", domain, 0.8), ("replay", buf, 0.2)],
-                           window=WINDOW, seed=0)
+            MixtureDataset(
+                [("domain", domain, 0.8), ("replay", buf, 0.2)], window=WINDOW, seed=0
+            )
 
 
 class TestBudget:
     def test_subsamples_to_budget(self, replay_dir, tmp_path):
         # 10 windows of 8 uint16 tokens = 160 bytes
-        buf = ReplayBuffer(replay_dir, window=WINDOW, max_bytes=160, seed=0,
-                           run_dir=str(tmp_path))
+        buf = ReplayBuffer(
+            replay_dir, window=WINDOW, max_bytes=160, seed=0, run_dir=str(tmp_path)
+        )
         assert len(buf) == 10
         values = {int(buf[i][0]) for i in range(len(buf))}
         assert values < set(range(40))  # a strict subset of the source
@@ -80,8 +82,14 @@ class TestBudget:
             ReplayBuffer(replay_dir, window=WINDOW, max_bytes=8, seed=0)
 
     def test_subsample_manifest_written(self, replay_dir, tmp_path):
-        ReplayBuffer(replay_dir, window=WINDOW, max_bytes=160, seed=7,
-                     run_dir=str(tmp_path), name="web")
+        ReplayBuffer(
+            replay_dir,
+            window=WINDOW,
+            max_bytes=160,
+            seed=7,
+            run_dir=str(tmp_path),
+            name="web",
+        )
         with open(tmp_path / "replay_manifest_web.json") as f:
             record = json.load(f)
         assert record["loaded_windows"] == 10
@@ -102,8 +110,9 @@ class TestBudget:
 
 class TestRamFloor:
     def _mock_available_ram(self, monkeypatch, available: int) -> None:
-        monkeypatch.setattr("training.continual.replay._available_ram_bytes",
-                            lambda: available)
+        monkeypatch.setattr(
+            "training.continual.replay._available_ram_bytes", lambda: available
+        )
 
     def test_refuses_load_below_floor(self, replay_dir, monkeypatch):
         # Load needs 640 bytes; 1GB available minus that is under a 2GB floor.
@@ -117,8 +126,9 @@ class TestRamFloor:
         assert len(buf) == 40
 
     def test_missing_psutil_skips_check(self, replay_dir, monkeypatch):
-        monkeypatch.setattr("training.continual.replay._available_ram_bytes",
-                            lambda: None)
+        monkeypatch.setattr(
+            "training.continual.replay._available_ram_bytes", lambda: None
+        )
         buf = ReplayBuffer(replay_dir, window=WINDOW, seed=0, ram_floor_gb=1e6)
         assert len(buf) == 40
 
@@ -147,8 +157,9 @@ class TestMixtureIntegration:
     def mixed(self, tmp_path, replay_dir):
         domain = make_source(tmp_path, "domain", [100] * 640)
         buf = ReplayBuffer(replay_dir, window=WINDOW, seed=0)
-        return MixtureDataset([("domain", domain, 0.8), ("replay", buf, 0.2)],
-                              window=WINDOW, seed=0)
+        return MixtureDataset(
+            [("domain", domain, 0.8), ("replay", buf, 0.2)], window=WINDOW, seed=0
+        )
 
     def test_replay_fraction_within_one_percent(self, mixed):
         draws = 10_000
@@ -169,8 +180,8 @@ class TestMixtureIntegration:
         def build():
             buf = ReplayBuffer(replay_dir, window=WINDOW, seed=0)
             return MixtureDataset(
-                [("domain", domain, 0.8), ("replay", buf, 0.2)],
-                window=WINDOW, seed=0)
+                [("domain", domain, 0.8), ("replay", buf, 0.2)], window=WINDOW, seed=0
+            )
 
         straight = build()
         expected = [straight[i] for i in range(200)]
@@ -183,23 +194,31 @@ class TestMixtureIntegration:
     def test_mixture_rejects_hash_mismatch_with_buffer(self, tmp_path, replay_dir):
         from training.data.shards import TokenizerMismatchError
 
-        other = make_source(tmp_path, "other", [100] * 320,
-                            tokenizer_hash="different")
+        other = make_source(tmp_path, "other", [100] * 320, tokenizer_hash="different")
         buf = ReplayBuffer(replay_dir, window=WINDOW, seed=0)
         with pytest.raises(TokenizerMismatchError):
-            MixtureDataset([("other", other, 0.8), ("replay", buf, 0.2)],
-                           window=WINDOW, seed=0)
+            MixtureDataset(
+                [("other", other, 0.8), ("replay", buf, 0.2)], window=WINDOW, seed=0
+            )
 
 
 class TestValidate:
-    def recipe(self, tmp_path, tokenizer_dir, mixture_sources, replay_sources,
-               extra_replay="", overrides=()):
+    def recipe(
+        self,
+        tmp_path,
+        tokenizer_dir,
+        mixture_sources,
+        replay_sources,
+        extra_replay="",
+        overrides=(),
+    ):
         from training.recipes import load_recipe
 
         def lines(sources):
             return "\n".join(
-                f'    - {{name: {name}, path: {path}, weight: {weight}}}'
-                for name, path, weight in sources)
+                f"    - {{name: {name}, path: {path}, weight: {weight}}}"
+                for name, path, weight in sources
+            )
 
         text = f"""
 run: {{name: replay-test}}
@@ -228,10 +247,20 @@ schedule: {{total_steps: 4}}
         from training.data.prepare import load_tokenizer
 
         tok_hash = load_tokenizer(tokenizer_dir).content_hash
-        mixture = [("domain", make_source(
-            tmp_path, "domain", [1] * 64, tokenizer_hash=tok_hash), 1.0)]
-        replay = [("replay_web", make_source(
-            tmp_path, "replay_web", [2] * 64, tokenizer_hash=tok_hash), 1.0)]
+        mixture = [
+            (
+                "domain",
+                make_source(tmp_path, "domain", [1] * 64, tokenizer_hash=tok_hash),
+                1.0,
+            )
+        ]
+        replay = [
+            (
+                "replay_web",
+                make_source(tmp_path, "replay_web", [2] * 64, tokenizer_hash=tok_hash),
+                1.0,
+            )
+        ]
         return mixture, replay
 
     def test_valid_replay_recipe_passes(self, tmp_path, tokenizer_dir):
@@ -245,11 +274,13 @@ schedule: {{total_steps: 4}}
 
         mixture, replay = self.matched_sources(tmp_path, tokenizer_dir)
         recipe = self.recipe(
-            tmp_path, tokenizer_dir, mixture, replay,
-            overrides=["mixture.enabled=false",
-                       f"data.source={mixture[0][1]}"])
-        with pytest.raises(RecipeValidationError,
-                           match="requires mixture.enabled"):
+            tmp_path,
+            tokenizer_dir,
+            mixture,
+            replay,
+            overrides=["mixture.enabled=false", f"data.source={mixture[0][1]}"],
+        )
+        with pytest.raises(RecipeValidationError, match="requires mixture.enabled"):
             validate(recipe)
 
     def test_fraction_out_of_range_is_refused(self, tmp_path, tokenizer_dir):
@@ -257,8 +288,13 @@ schedule: {{total_steps: 4}}
 
         mixture, replay = self.matched_sources(tmp_path, tokenizer_dir)
         for bad in ("0.0", "1.0", "1.5"):
-            recipe = self.recipe(tmp_path, tokenizer_dir, mixture, replay,
-                                 overrides=[f"replay.fraction={bad}"])
+            recipe = self.recipe(
+                tmp_path,
+                tokenizer_dir,
+                mixture,
+                replay,
+                overrides=[f"replay.fraction={bad}"],
+            )
             with pytest.raises(RecipeValidationError, match="replay.fraction"):
                 validate(recipe)
 
@@ -266,8 +302,9 @@ schedule: {{total_steps: 4}}
         from training.recipes import RecipeValidationError, validate
 
         mixture, replay = self.matched_sources(tmp_path, tokenizer_dir)
-        recipe = self.recipe(tmp_path, tokenizer_dir, mixture, replay,
-                             overrides=["replay.max_gb=-1"])
+        recipe = self.recipe(
+            tmp_path, tokenizer_dir, mixture, replay, overrides=["replay.max_gb=-1"]
+        )
         with pytest.raises(RecipeValidationError, match="replay.max_gb"):
             validate(recipe)
 
@@ -276,8 +313,9 @@ schedule: {{total_steps: 4}}
 
         mixture, replay = self.matched_sources(tmp_path, tokenizer_dir)
         # 128GB total minus the default 8GB floor leaves 120GB.
-        recipe = self.recipe(tmp_path, tokenizer_dir, mixture, replay,
-                             overrides=["replay.max_gb=121"])
+        recipe = self.recipe(
+            tmp_path, tokenizer_dir, mixture, replay, overrides=["replay.max_gb=121"]
+        )
         with pytest.raises(RecipeValidationError, match="host budget"):
             validate(recipe)
 
@@ -327,11 +365,17 @@ schedule: {{total_steps: 4}}
         from training.recipes import RecipeValidationError, validate
 
         mixture, _ = self.matched_sources(tmp_path, tokenizer_dir)
-        replay = [("replay_web", make_source(
-            tmp_path, "replay_bad", [2] * 64, tokenizer_hash="different"), 1.0)]
+        replay = [
+            (
+                "replay_web",
+                make_source(
+                    tmp_path, "replay_bad", [2] * 64, tokenizer_hash="different"
+                ),
+                1.0,
+            )
+        ]
         recipe = self.recipe(tmp_path, tokenizer_dir, mixture, replay)
-        with pytest.raises(RecipeValidationError,
-                           match="tokenized identically"):
+        with pytest.raises(RecipeValidationError, match="tokenized identically"):
             validate(recipe)
 
 
@@ -370,31 +414,39 @@ class TestBudgetResolution:
 
 
 class TestLoopExpansion:
-    def test_replay_block_expands_into_mixture_sources(self, tmp_path,
-                                                       replay_dir):
+    def test_replay_block_expands_into_mixture_sources(self, tmp_path, replay_dir):
         from omegaconf import OmegaConf
 
-        from training.loop import _sources_with_replay
         from training.recipes.schema import Recipe
+        from training.runtime.loop import _sources_with_replay
 
         domain = make_source(tmp_path, "domain", [100] * 640)
-        recipe = OmegaConf.merge(OmegaConf.structured(Recipe), OmegaConf.create({
-            "run": {"name": "expand-test"},
-            "data": {"seq_len": WINDOW},
-            "mixture": {"enabled": True, "sources": [
-                {"name": "domain", "path": domain, "weight": 1.0}]},
-            "replay": {"enabled": True, "fraction": 0.25, "max_gb": 1.0,
-                       "sources": [
-                           {"name": "replay_web", "path": replay_dir,
-                            "weight": 3.0},
-                           {"name": "replay_code", "path": replay_dir,
-                            "weight": 1.0}]},
-            "watchdog": {"ram_floor_gb": 0.001},
-        }))
+        recipe = OmegaConf.merge(
+            OmegaConf.structured(Recipe),
+            OmegaConf.create(
+                {
+                    "run": {"name": "expand-test"},
+                    "data": {"seq_len": WINDOW},
+                    "mixture": {
+                        "enabled": True,
+                        "sources": [{"name": "domain", "path": domain, "weight": 1.0}],
+                    },
+                    "replay": {
+                        "enabled": True,
+                        "fraction": 0.25,
+                        "max_gb": 1.0,
+                        "sources": [
+                            {"name": "replay_web", "path": replay_dir, "weight": 3.0},
+                            {"name": "replay_code", "path": replay_dir, "weight": 1.0},
+                        ],
+                    },
+                    "watchdog": {"ram_floor_gb": 0.001},
+                }
+            ),
+        )
         run_dir = tmp_path / "run"
         run_dir.mkdir()
-        sources = _sources_with_replay(
-            recipe, [("domain", domain, 1.0)], str(run_dir))
+        sources = _sources_with_replay(recipe, [("domain", domain, 1.0)], str(run_dir))
 
         by_name = {name: (src, weight) for name, src, weight in sources}
         assert by_name["domain"][1] == pytest.approx(0.75)
@@ -416,10 +468,23 @@ class TestGeneratorScript:
     def test_generates_loadable_shard_set(self, tmp_path):
         out = str(tmp_path / "synth")
         result = subprocess.run(
-            self.ARGV + ["--out", out, "--tokens", "4096",
-                         "--vocab", "512", "--seed", "1",
-                         "--shard-tokens", "1024"],
-            capture_output=True, text=True, cwd=REPO_ROOT)
+            self.ARGV
+            + [
+                "--out",
+                out,
+                "--tokens",
+                "4096",
+                "--vocab",
+                "512",
+                "--seed",
+                "1",
+                "--shard-tokens",
+                "1024",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+        )
         assert result.returncode == 0, result.stderr
         buf = ReplayBuffer(out, window=WINDOW, seed=0)
         assert len(buf) == 4096 // WINDOW
@@ -428,5 +493,8 @@ class TestGeneratorScript:
     def test_rejects_zero_tokens(self, tmp_path):
         result = subprocess.run(
             self.ARGV + ["--out", str(tmp_path / "x"), "--tokens", "0"],
-            capture_output=True, text=True, cwd=REPO_ROOT)
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+        )
         assert result.returncode == 2

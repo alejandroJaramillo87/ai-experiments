@@ -22,8 +22,10 @@ from common.hashing import (
 
 def checkpoint_meta(checkpoint: str) -> dict | None:
     """The D6 meta.json (step, snapshot hash, git SHA, ...), when present."""
-    for candidate in (os.path.join(checkpoint, "meta.json"),
-                      os.path.join(os.path.dirname(checkpoint), "meta.json")):
+    for candidate in (
+        os.path.join(checkpoint, "meta.json"),
+        os.path.join(os.path.dirname(checkpoint), "meta.json"),
+    ):
         if os.path.isfile(candidate):
             with open(candidate) as f:
                 return json.load(f)
@@ -41,11 +43,19 @@ def _tool_versions() -> dict:
     return versions
 
 
-def build_manifest(*, checkpoint: str, architecture: str, quant_type: str,
-                   outtype: str, llama_cpp_commit: str, gguf_path: str,
-                   staging_info, base_identity=None,
-                   base_drift: list[str] | None = None,
-                   created: str | None = None) -> dict:
+def build_manifest(
+    *,
+    checkpoint: str,
+    architecture: str,
+    quant_type: str,
+    outtype: str,
+    llama_cpp_commit: str,
+    gguf_path: str,
+    staging_info,
+    base_identity=None,
+    base_drift: list[str] | None = None,
+    created: str | None = None,
+) -> dict:
     """Assemble the manifest dict for one export.
 
     base_identity is the F6 preflight's resolved base (revision and config
@@ -58,7 +68,9 @@ def build_manifest(*, checkpoint: str, architecture: str, quant_type: str,
         "source_checkpoint": os.path.abspath(checkpoint),
         "checkpoint_meta": checkpoint_meta(checkpoint),
         "architecture": architecture,
-        "adapter": None if staging_info.adapter_path is None else {
+        "adapter": None
+        if staging_info.adapter_path is None
+        else {
             "path": os.path.abspath(staging_info.adapter_path),
             "sha256": _adapter_hash(staging_info.adapter_path),
             "base_model": staging_info.base_model,
@@ -97,5 +109,4 @@ def manifest_path(gguf_path: str) -> str:
 def write_manifest(manifest: dict, gguf_path: str) -> str:
     """Write the manifest beside the GGUF, atomically: a crash mid-write
     must not leave a truncated manifest beside a valid GGUF."""
-    return write_json_atomic(
-        manifest_path(gguf_path), manifest, sort_keys=False)
+    return write_json_atomic(manifest_path(gguf_path), manifest, sort_keys=False)

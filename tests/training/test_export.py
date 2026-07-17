@@ -18,7 +18,7 @@ from training.export import convert as convert_mod
 from training.export import manifest as manifest_mod
 from training.export import merge as merge_mod
 
-FAKE_CONVERTER = '''
+FAKE_CONVERTER = """
 class LlamaModel(TextModel):
     pass
 
@@ -29,7 +29,7 @@ class Llama(TextModel):
 @ModelBase.register("Qwen2ForCausalLM")
 class Qwen2(TextModel):
     pass
-'''
+"""
 
 
 def write_json(path, payload):
@@ -72,13 +72,19 @@ def test_supported_architectures_scans_conversion_modules(tmp_path):
     conversion.mkdir()
     (conversion / "gemma.py").write_text(
         '@ModelBase.register("Gemma4ForConditionalGeneration", "Gemma4ForCausalLM")\n'
-        "class Gemma4Model(TextModel):\n    pass\n")
+        "class Gemma4Model(TextModel):\n    pass\n"
+    )
     (conversion / "qwen.py").write_text(
         '@ModelBase.register("Qwen3ForCausalLM", "Qwen3Model")\n'
-        "class Qwen3Model(TextModel):\n    pass\n")
+        "class Qwen3Model(TextModel):\n    pass\n"
+    )
     archs = convert_mod.supported_architectures(str(wrapper))
-    assert archs == {"Gemma4ForConditionalGeneration", "Gemma4ForCausalLM",
-                     "Qwen3ForCausalLM", "Qwen3Model"}
+    assert archs == {
+        "Gemma4ForConditionalGeneration",
+        "Gemma4ForCausalLM",
+        "Qwen3ForCausalLM",
+        "Qwen3Model",
+    }
 
 
 def test_supported_architectures_rejects_empty(tmp_path):
@@ -89,15 +95,19 @@ def test_supported_architectures_rejects_empty(tmp_path):
 
 
 def test_check_architecture_accepts_supported(tmp_path, fake_converter):
-    write_json(str(tmp_path / "staged" / "config.json"),
-               {"architectures": ["LlamaForCausalLM"]})
+    write_json(
+        str(tmp_path / "staged" / "config.json"),
+        {"architectures": ["LlamaForCausalLM"]},
+    )
     arch = convert_mod.check_architecture(str(tmp_path / "staged"), fake_converter)
     assert arch == "LlamaForCausalLM"
 
 
 def test_check_architecture_rejects_unsupported(tmp_path, fake_converter):
-    write_json(str(tmp_path / "staged" / "config.json"),
-               {"architectures": ["MambaForCausalLM"]})
+    write_json(
+        str(tmp_path / "staged" / "config.json"),
+        {"architectures": ["MambaForCausalLM"]},
+    )
     with pytest.raises(convert_mod.ExportError, match="MambaForCausalLM"):
         convert_mod.check_architecture(str(tmp_path / "staged"), fake_converter)
 
@@ -136,8 +146,9 @@ def test_derive_output_name_from_d6_layout(tmp_path):
     ckpt = tmp_path / "runs" / "tiny-e2e" / "checkpoints" / "step_000000010"
     os.makedirs(ckpt)
     assert merge_mod.derive_output_name(str(ckpt)) == "tiny-e2e-step_000000010"
-    assert merge_mod.derive_output_name(str(ckpt / "model")) == \
-        "tiny-e2e-step_000000010"
+    assert (
+        merge_mod.derive_output_name(str(ckpt / "model")) == "tiny-e2e-step_000000010"
+    )
 
 
 def test_derive_output_name_fallback(tmp_path):
@@ -191,12 +202,23 @@ def test_manifest_is_reproducible(tmp_path):
     os.makedirs(gguf.parent)
     gguf.write_bytes(b"gguf bytes")
     info = merge_mod.StagingInfo(
-        model_dir=str(ckpt / "model"), staging_dir="s", adapter_path=None,
-        base_model=None, merge_method=None, tokenizer_source=None)
-    kwargs = {"checkpoint": str(ckpt), "architecture": "LlamaForCausalLM",
-              "quant_type": "Q8_0", "outtype": "bf16",
-              "llama_cpp_commit": "a" * 40, "gguf_path": str(gguf),
-              "staging_info": info, "created": "T0"}
+        model_dir=str(ckpt / "model"),
+        staging_dir="s",
+        adapter_path=None,
+        base_model=None,
+        merge_method=None,
+        tokenizer_source=None,
+    )
+    kwargs = {
+        "checkpoint": str(ckpt),
+        "architecture": "LlamaForCausalLM",
+        "quant_type": "Q8_0",
+        "outtype": "bf16",
+        "llama_cpp_commit": "a" * 40,
+        "gguf_path": str(gguf),
+        "staging_info": info,
+        "created": "T0",
+    }
     first = manifest_mod.build_manifest(**kwargs)
     second = manifest_mod.build_manifest(**kwargs)
     assert first == second
@@ -213,16 +235,27 @@ def test_manifest_records_adapter_provenance(tmp_path):
     gguf = tmp_path / "tiny-Q8_0.gguf"
     gguf.write_bytes(b"gguf bytes")
     info = merge_mod.StagingInfo(
-        model_dir=str(ckpt / "model"), staging_dir="s",
-        adapter_path=str(adapter), base_model="org/base",
-        merge_method="peft.merge_and_unload", tokenizer_source=None)
+        model_dir=str(ckpt / "model"),
+        staging_dir="s",
+        adapter_path=str(adapter),
+        base_model="org/base",
+        merge_method="peft.merge_and_unload",
+        tokenizer_source=None,
+    )
     manifest = manifest_mod.build_manifest(
-        checkpoint=str(ckpt), architecture="LlamaForCausalLM", quant_type="Q8_0",
-        outtype="bf16", llama_cpp_commit="a" * 40, gguf_path=str(gguf),
-        staging_info=info, created="T0")
+        checkpoint=str(ckpt),
+        architecture="LlamaForCausalLM",
+        quant_type="Q8_0",
+        outtype="bf16",
+        llama_cpp_commit="a" * 40,
+        gguf_path=str(gguf),
+        staging_info=info,
+        created="T0",
+    )
     assert manifest["adapter"]["base_model"] == "org/base"
     assert manifest["adapter"]["sha256"] == manifest_mod.sha256_file(
-        str(adapter / "adapter_model.safetensors"))
+        str(adapter / "adapter_model.safetensors")
+    )
 
 
 def test_write_manifest_lands_beside_gguf(tmp_path):
@@ -241,8 +274,9 @@ from training.export import preflight as preflight_mod  # noqa: E402
 
 def make_local_base(tmp_path, config=None):
     base = tmp_path / "base"
-    write_json(str(base / "config.json"),
-               config or {"architectures": ["LlamaForCausalLM"]})
+    write_json(
+        str(base / "config.json"), config or {"architectures": ["LlamaForCausalLM"]}
+    )
     return base
 
 
@@ -257,8 +291,7 @@ def test_resolve_base_identity_local_dir(tmp_path):
     base = make_local_base(tmp_path)
     identity = preflight_mod.resolve_base_identity(str(base))
     assert identity.revision is None
-    assert identity.config_sha256 == manifest_mod.sha256_file(
-        str(base / "config.json"))
+    assert identity.config_sha256 == manifest_mod.sha256_file(str(base / "config.json"))
 
 
 def test_resolve_base_identity_rejects_configless_dir(tmp_path):
@@ -277,15 +310,16 @@ def identity_for(tmp_path, revision="b" * 40):
 
 def test_check_base_identity_match(tmp_path):
     identity = identity_for(tmp_path)
-    meta = {"base_revision": identity.revision,
-            "base_config_sha256": identity.config_sha256}
+    meta = {
+        "base_revision": identity.revision,
+        "base_config_sha256": identity.config_sha256,
+    }
     assert preflight_mod.check_base_identity(meta, identity) == []
 
 
 def test_check_base_identity_mismatch_refuses(tmp_path):
     identity = identity_for(tmp_path)
-    meta = {"base_revision": "c" * 40,
-            "base_config_sha256": identity.config_sha256}
+    meta = {"base_revision": "c" * 40, "base_config_sha256": identity.config_sha256}
     with pytest.raises(convert_mod.ExportError, match="allow-base-drift"):
         preflight_mod.check_base_identity(meta, identity)
 
@@ -308,10 +342,10 @@ def test_check_base_identity_unrecorded_fields_never_fatal(tmp_path):
 
 # -- F6 meta.json cross-check in staging --------------------------------------
 
+
 def make_adapter(tmp_path, base="org/base"):
     adapter = tmp_path / "ckpt"
-    write_json(str(adapter / "adapter_config.json"),
-               {"base_model_name_or_path": base})
+    write_json(str(adapter / "adapter_config.json"), {"base_model_name_or_path": base})
     (adapter / "adapter_model.safetensors").write_bytes(b"lora")
     return adapter
 
@@ -342,11 +376,13 @@ def test_meta_consistency_rejects_base_disagreement(tmp_path):
 def test_stage_model_runs_meta_cross_check(tmp_path):
     ckpt = make_full_checkpoint(tmp_path)
     with pytest.raises(convert_mod.ExportError, match="adapter_only"):
-        merge_mod.stage_model(str(ckpt), str(tmp_path / "staging"),
-                              meta={"adapter_only": True})
+        merge_mod.stage_model(
+            str(ckpt), str(tmp_path / "staging"), meta={"adapter_only": True}
+        )
 
 
 # -- F6 manifest fields --------------------------------------------------------
+
 
 def test_manifest_records_base_identity_and_drift(tmp_path):
     ckpt = make_full_checkpoint(tmp_path)
@@ -354,22 +390,36 @@ def test_manifest_records_base_identity_and_drift(tmp_path):
     gguf = tmp_path / "tiny-Q8_0.gguf"
     gguf.write_bytes(b"gguf bytes")
     info = merge_mod.StagingInfo(
-        model_dir=str(ckpt / "model"), staging_dir="s",
-        adapter_path=str(adapter), base_model="org/base",
-        merge_method="peft.merge_and_unload", tokenizer_source=None)
+        model_dir=str(ckpt / "model"),
+        staging_dir="s",
+        adapter_path=str(adapter),
+        base_model="org/base",
+        merge_method="peft.merge_and_unload",
+        tokenizer_source=None,
+    )
     identity = preflight_mod.BaseIdentity(
-        model="org/base", revision="b" * 40, config_sha256="f" * 64,
-        config_path="/cache/config.json")
+        model="org/base",
+        revision="b" * 40,
+        config_sha256="f" * 64,
+        config_path="/cache/config.json",
+    )
     manifest = manifest_mod.build_manifest(
-        checkpoint=str(ckpt), architecture="LlamaForCausalLM", quant_type="Q8_0",
-        outtype="bf16", llama_cpp_commit="a" * 40, gguf_path=str(gguf),
-        staging_info=info, base_identity=identity,
+        checkpoint=str(ckpt),
+        architecture="LlamaForCausalLM",
+        quant_type="Q8_0",
+        outtype="bf16",
+        llama_cpp_commit="a" * 40,
+        gguf_path=str(gguf),
+        staging_info=info,
+        base_identity=identity,
         base_drift=["base_revision: trained against x, export resolved y"],
-        created="T0")
+        created="T0",
+    )
     assert manifest["adapter"]["base_revision"] == "b" * 40
     assert manifest["adapter"]["base_config_sha256"] == "f" * 64
     assert manifest["base_drift"] == [
-        "base_revision: trained against x, export resolved y"]
+        "base_revision: trained against x, export resolved y"
+    ]
 
 
 def test_manifest_base_fields_default_none(tmp_path):
@@ -377,11 +427,22 @@ def test_manifest_base_fields_default_none(tmp_path):
     gguf = tmp_path / "tiny-Q8_0.gguf"
     gguf.write_bytes(b"gguf bytes")
     info = merge_mod.StagingInfo(
-        model_dir=str(ckpt / "model"), staging_dir="s", adapter_path=None,
-        base_model=None, merge_method=None, tokenizer_source=None)
+        model_dir=str(ckpt / "model"),
+        staging_dir="s",
+        adapter_path=None,
+        base_model=None,
+        merge_method=None,
+        tokenizer_source=None,
+    )
     manifest = manifest_mod.build_manifest(
-        checkpoint=str(ckpt), architecture="LlamaForCausalLM", quant_type="Q8_0",
-        outtype="bf16", llama_cpp_commit="a" * 40, gguf_path=str(gguf),
-        staging_info=info, created="T0")
+        checkpoint=str(ckpt),
+        architecture="LlamaForCausalLM",
+        quant_type="Q8_0",
+        outtype="bf16",
+        llama_cpp_commit="a" * 40,
+        gguf_path=str(gguf),
+        staging_info=info,
+        created="T0",
+    )
     assert manifest["adapter"] is None
     assert manifest["base_drift"] == []

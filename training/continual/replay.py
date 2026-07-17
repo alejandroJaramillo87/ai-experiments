@@ -69,13 +69,15 @@ def resolve_max_bytes(recipe) -> int:
     from training.calculator.solve import HOST_RAM_TOTAL_BYTES
 
     floor = int(recipe.watchdog.ram_floor_gb * GIB)
-    headroom = (HOST_RAM_TOTAL_BYTES
-                - host_ram_bytes(spec_from_recipe(recipe), recipe) - floor)
+    headroom = (
+        HOST_RAM_TOTAL_BYTES - host_ram_bytes(spec_from_recipe(recipe), recipe) - floor
+    )
     if headroom <= 0:
         raise ReplayBudgetError(
             f"no host-RAM headroom for replay: offloaded optimizer state plus "
             f"the {recipe.watchdog.ram_floor_gb}GB watchdog floor consume the "
-            f"full host budget; set replay.max_gb explicitly or shrink the run")
+            f"full host budget; set replay.max_gb explicitly or shrink the run"
+        )
     return headroom
 
 
@@ -87,9 +89,17 @@ class ReplayBuffer:
     carries the source tokenizer_hash, window is the fixed window size.
     """
 
-    def __init__(self, shard_dir: str, window: int, max_bytes: int | None = None,
-                 seed: int = 0, run_dir: str | None = None, name: str = "replay",
-                 ram_floor_gb: float = 0.0, verify: bool = True) -> None:
+    def __init__(
+        self,
+        shard_dir: str,
+        window: int,
+        max_bytes: int | None = None,
+        seed: int = 0,
+        run_dir: str | None = None,
+        name: str = "replay",
+        ram_floor_gb: float = 0.0,
+        verify: bool = True,
+    ) -> None:
         if window <= 0:
             raise ValueError(f"window must be positive, got {window}")
         self.shard_dir = shard_dir
@@ -102,12 +112,12 @@ class ReplayBuffer:
 
         # Flat window index space, per-shard tails dropped — identical
         # windowing to ShardedTokenDataset so the two views never disagree.
-        windows_per_shard = [rec["tokens"] // window
-                             for rec in self.manifest["shards"]]
+        windows_per_shard = [rec["tokens"] // window for rec in self.manifest["shards"]]
         total_windows = sum(windows_per_shard)
         if total_windows == 0:
             raise ValueError(
-                f"replay source {shard_dir} has no complete window of size {window}")
+                f"replay source {shard_dir} has no complete window of size {window}"
+            )
 
         window_bytes = window * dtype.itemsize
         subsample_seed = None
@@ -116,10 +126,12 @@ class ReplayBuffer:
             if n_keep == 0:
                 raise ReplayBudgetError(
                     f"replay.max_gb budget ({max_bytes} bytes) holds no complete "
-                    f"window ({window_bytes} bytes each) of {shard_dir}")
+                    f"window ({window_bytes} bytes each) of {shard_dir}"
+                )
             subsample_seed = seed
             keep = np.random.default_rng([seed, 0]).choice(
-                total_windows, size=n_keep, replace=False)
+                total_windows, size=n_keep, replace=False
+            )
             keep.sort()
         else:
             keep = np.arange(total_windows, dtype=np.int64)
@@ -132,35 +144,48 @@ class ReplayBuffer:
                 f"loading {need / GIB:.2f}GB of replay windows from {shard_dir} "
                 f"would leave {(available - need) / GIB:.2f}GB available, below "
                 f"the {ram_floor_gb}GB watchdog RAM floor; lower replay.max_gb "
-                f"or free host memory")
+                f"or free host memory"
+            )
 
         self._tokens = np.empty((len(keep), window), dtype=dtype)
         self._load_windows(keep, windows_per_shard, dtype)
         self._perm = np.random.default_rng([seed, 1]).permutation(len(keep))
-        self._write_run_manifest(run_dir, keep, total_windows, subsample_seed,
-                                 max_bytes)
+        self._write_run_manifest(
+            run_dir, keep, total_windows, subsample_seed, max_bytes
+        )
 
-    def _load_windows(self, keep: np.ndarray, windows_per_shard: list[int],
-                      dtype: np.dtype) -> None:
+    def _load_windows(
+        self, keep: np.ndarray, windows_per_shard: list[int], dtype: np.dtype
+    ) -> None:
         """Copy the kept windows shard by shard; each mmap closes on scope
         exit so no file handles outlive the load."""
         out_pos = 0
         base = 0
-        for rec, n_windows in zip(self.manifest["shards"], windows_per_shard,
-                                  strict=True):
+        for rec, n_windows in zip(
+            self.manifest["shards"], windows_per_shard, strict=True
+        ):
             in_shard = keep[(keep >= base) & (keep < base + n_windows)] - base
             if len(in_shard):
-                mm = np.memmap(os.path.join(self.shard_dir, rec["file"]),
-                               dtype=dtype, mode="r", shape=(rec["tokens"],))
-                view = mm[:n_windows * self.window].reshape(n_windows, self.window)
-                self._tokens[out_pos:out_pos + len(in_shard)] = view[in_shard]
+                mm = np.memmap(
+                    os.path.join(self.shard_dir, rec["file"]),
+                    dtype=dtype,
+                    mode="r",
+                    shape=(rec["tokens"],),
+                )
+                view = mm[: n_windows * self.window].reshape(n_windows, self.window)
+                self._tokens[out_pos : out_pos + len(in_shard)] = view[in_shard]
                 out_pos += len(in_shard)
             base += n_windows
         assert out_pos == len(keep)
 
-    def _write_run_manifest(self, run_dir: str | None, keep: np.ndarray,
-                            total_windows: int, subsample_seed: int | None,
-                            max_bytes: int | None) -> None:
+    def _write_run_manifest(
+        self,
+        run_dir: str | None,
+        keep: np.ndarray,
+        total_windows: int,
+        subsample_seed: int | None,
+        max_bytes: int | None,
+    ) -> None:
         """Record what was loaded so a resume or audit can reconstruct the
         resident set; the exact window indices go to a sidecar .npy when the
         set is a subsample (the full set is implied by the source manifest)."""

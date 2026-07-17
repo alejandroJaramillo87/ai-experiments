@@ -31,13 +31,15 @@ def run_cli(argv: list[str]) -> int:
 
 # -- validate ---------------------------------------------------------------
 
+
 class TestValidate:
     def test_success_reports_schema_and_invariants(self, capsys):
         assert run_cli(["validate", TINY_RECIPE]) == 0
         out = capsys.readouterr().out
         assert f"[OK] Schema: {TINY_RECIPE} loads as a typed recipe" in out
-        assert ("[OK] Validation: run tiny-e2e passes all cross-field "
-                "invariants") in out
+        assert (
+            "[OK] Validation: run tiny-e2e passes all cross-field invariants"
+        ) in out
         # without overrides or --print, neither the override banner nor the
         # resolved yaml may appear
         assert "[INFO] Overrides applied" not in out
@@ -53,6 +55,7 @@ class TestValidate:
         tail = out.split("\n\n", 1)[1]
         assert tail == resolved_yaml(load_recipe(TINY_RECIPE, overrides))
         import yaml
+
         parsed = yaml.safe_load(tail)
         assert parsed["optimizer"]["lr"] == pytest.approx(1e-4)
         assert parsed["run"]["name"] == "tiny-e2e"
@@ -69,8 +72,10 @@ class TestValidate:
         out = capsys.readouterr().out
         assert "[ERROR] Recipe load failed:" in out
         assert "'bogus'" in out
-        assert ("  Solution: Fix the reported key or type to match "
-                "training/recipes/schema.py") in out
+        assert (
+            "  Solution: Fix the reported key or type to match "
+            "training/recipes/schema.py"
+        ) in out
         # load fails before the schema line is reached
         assert "[OK] Schema" not in out
 
@@ -95,8 +100,12 @@ class TestBuildContamination:
         rows = [{"question": " ".join(f"word{i}" for i in range(BENCH_WORDS))}]
         bench_yaml = write_benchmarks_yaml(tmp_path, rows)
         index_dir = str(tmp_path / "index")
-        assert run_cli(["build-contamination", "--benchmarks", bench_yaml,
-                        "--out", index_dir]) == 0
+        assert (
+            run_cli(
+                ["build-contamination", "--benchmarks", bench_yaml, "--out", index_dir]
+            )
+            == 0
+        )
 
         assert os.path.isfile(os.path.join(index_dir, "ngrams.bin"))
         with open(os.path.join(index_dir, "index_manifest.json")) as f:
@@ -112,19 +121,34 @@ class TestBuildContamination:
         assert f"[OK] Total: {BENCH_NGRAMS} unique 13-grams" in out
         # the reported decontaminated_against must be the recomputable
         # manifest hash that shard manifests reference downstream
-        assert (f"[OK] decontaminated_against: "
-                f"{contamination.index_hash(index_dir)}") in out
+        assert (
+            f"[OK] decontaminated_against: {contamination.index_hash(index_dir)}"
+        ) in out
 
-    @pytest.mark.parametrize("body,detail", [
-        (None, "No such file or directory"),
-        ("version: 1\nbenchmarks: []\n", "missing required key 'ngram_size'"),
-    ], ids=["missing-yaml", "incomplete-yaml"])
+    @pytest.mark.parametrize(
+        "body,detail",
+        [
+            (None, "No such file or directory"),
+            ("version: 1\nbenchmarks: []\n", "missing required key 'ngram_size'"),
+        ],
+        ids=["missing-yaml", "incomplete-yaml"],
+    )
     def test_build_error_exits_1(self, body, detail, tmp_path, capsys):
         bench_yaml = tmp_path / "benchmarks.yaml"
         if body is not None:
             bench_yaml.write_text(body)
-        assert run_cli(["build-contamination", "--benchmarks", str(bench_yaml),
-                        "--out", str(tmp_path / "index")]) == 1
+        assert (
+            run_cli(
+                [
+                    "build-contamination",
+                    "--benchmarks",
+                    str(bench_yaml),
+                    "--out",
+                    str(tmp_path / "index"),
+                ]
+            )
+            == 1
+        )
         out = capsys.readouterr().out
         assert "[ERROR] Index build failed:" in out
         assert detail in out
@@ -133,13 +157,29 @@ class TestBuildContamination:
 
 # -- make-replay-synthetic ---------------------------------------------------------------
 
+
 class TestMakeReplaySynthetic:
     def test_tokens_run_writes_shards_and_manifest(self, tmp_path, capsys):
         out_dir = str(tmp_path / "replay")
         # 3000 tokens at 1000/shard forces the multi-shard roll
-        assert run_cli(["make-replay-synthetic", "--out", out_dir,
-                        "--tokens", "3000", "--vocab", "512",
-                        "--shard-tokens", "1000", "--seed", "7"]) == 0
+        assert (
+            run_cli(
+                [
+                    "make-replay-synthetic",
+                    "--out",
+                    out_dir,
+                    "--tokens",
+                    "3000",
+                    "--vocab",
+                    "512",
+                    "--shard-tokens",
+                    "1000",
+                    "--seed",
+                    "7",
+                ]
+            )
+            == 0
+        )
 
         manifest = load_manifest(out_dir)
         assert manifest["dataset"] == "replay-synthetic"
@@ -151,8 +191,8 @@ class TestMakeReplaySynthetic:
         # recorded shard hashes must match the bytes on disk
         verify_shards(out_dir, manifest)
         first = np.fromfile(
-            os.path.join(out_dir, manifest["shards"][0]["file"]),
-            dtype=np.uint16)
+            os.path.join(out_dir, manifest["shards"][0]["file"]), dtype=np.uint16
+        )
         assert int(first.max()) < 512
 
         out = capsys.readouterr().out
@@ -166,10 +206,25 @@ class TestMakeReplaySynthetic:
     def test_gb_run_derives_token_count(self, tmp_path, capsys):
         out_dir = str(tmp_path / "replay-gb")
         gb = 0.000004
-        expected = int(gb * (1 << 30) / 2)   # uint16 itemsize
-        assert run_cli(["make-replay-synthetic", "--out", out_dir,
-                        "--gb", str(gb), "--vocab", "512",
-                        "--tokenizer-hash", "abc123", "--eos-id", "2"]) == 0
+        expected = int(gb * (1 << 30) / 2)  # uint16 itemsize
+        assert (
+            run_cli(
+                [
+                    "make-replay-synthetic",
+                    "--out",
+                    out_dir,
+                    "--gb",
+                    str(gb),
+                    "--vocab",
+                    "512",
+                    "--tokenizer-hash",
+                    "abc123",
+                    "--eos-id",
+                    "2",
+                ]
+            )
+            == 0
+        )
 
         manifest = load_manifest(out_dir)
         assert manifest["total_tokens"] == expected
@@ -182,8 +237,9 @@ class TestMakeReplaySynthetic:
 
     def test_zero_tokens_is_usage_error(self, tmp_path, capsys):
         out_dir = str(tmp_path / "replay-zero")
-        assert run_cli(["make-replay-synthetic", "--out", out_dir,
-                        "--tokens", "0"]) == 2
+        assert (
+            run_cli(["make-replay-synthetic", "--out", out_dir, "--tokens", "0"]) == 2
+        )
         out = capsys.readouterr().out
         assert "[ERROR] Token count: must be positive, got 0" in out
         # rejected before the writer is constructed, so nothing is created

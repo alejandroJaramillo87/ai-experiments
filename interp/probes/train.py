@@ -114,6 +114,9 @@ def train_probes(
                 "metrics": metrics,
             }
 
+    if best is None:
+        raise TrainError("capture contains no layers; nothing to train")
+
     probe_dir = os.path.join(out_root, name)
     os.makedirs(probe_dir, exist_ok=True)
     probe_path = os.path.join(probe_dir, PROBE_NAME)

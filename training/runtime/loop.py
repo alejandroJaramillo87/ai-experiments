@@ -22,7 +22,7 @@ step (time blocked on the next batch), the D9 overlap acceptance metric, and
 holds the D9 run lock for its duration.
 
 ZeRO-Offload (P2-D5): memory.offload: zero_offload routes model, optimizer,
-and checkpointing through a DeepSpeed engine (training/offload.py) — bf16
+and checkpointing through a DeepSpeed engine (training/runtime/offload.py) — bf16
 weights and gradients in VRAM, fp32 master weights and Adam moments in host
 RAM, the optimizer step on CPUAdam. The LR scheduler stays loop-owned and
 checkpoints keep the D6 layout with a deepspeed/ engine-state subdirectory.
@@ -42,23 +42,28 @@ import random
 import sys
 import time
 from dataclasses import dataclass, field
+from typing import cast
 
 import numpy as np
 from omegaconf import DictConfig
 
 from common.provenance import git_sha as _git_sha
-from training import affinity as aff
-from training import checkpoint as ckpt
 from training.data.loader import CudaPrefetcher, build_dataloader, resume_index
 from training.data.mixture import MixtureDataset
 from training.data.shards import ShardedTokenDataset
 from training.data.staging import stage_shards
-from training.lock import run_lock
-from training.model import build_model, build_optimizer
+from training.models.model import (
+    attention_implementation,
+    build_model,
+    build_optimizer,
+)
 from training.recipes.loader import create_run_dir, resolved_yaml
-from training.schedules import build_scheduler
-from training.tracking import Tracker
-from training.watchdog import Watchdog, WatchdogAbort
+from training.runtime import affinity as aff
+from training.runtime import checkpoint as ckpt
+from training.runtime.lock import run_lock
+from training.runtime.schedules import build_scheduler
+from training.runtime.tracking import Tracker
+from training.runtime.watchdog import Watchdog, WatchdogAbort
 
 
 @dataclass
@@ -70,7 +75,9 @@ class TrainResult:
     final_step: int
     tokens_seen: int
     losses: list[tuple[int, float]] = field(default_factory=list)  # (step, loss)
-    lrs: list[tuple[int, float]] = field(default_factory=list)  # (step, lr) — P2-D3 acceptance
+    lrs: list[tuple[int, float]] = field(
+        default_factory=list
+    )  # (step, lr) — P2-D3 acceptance
     data_wait_ms_mean: float = 0.0  # D9 overlap acceptance metric
     tokens_per_source: dict[str, int] = field(default_factory=dict)  # P2-D2 accounting
 
@@ -80,10 +87,11 @@ def snapshot_hash(recipe: DictConfig) -> str:
     run necessarily changes that one field and must not trip the drift warning."""
     from omegaconf import OmegaConf
 
-    clone = OmegaConf.merge(recipe, OmegaConf.create({"checkpoint": {"resume": None}}))
+    clone = cast(
+        DictConfig,
+        OmegaConf.merge(recipe, OmegaConf.create({"checkpoint": {"resume": None}})),
+    )
     return hashlib.sha256(resolved_yaml(clone).encode()).hexdigest()
-
-
 
 
 def _library_versions() -> dict:
@@ -119,8 +127,9 @@ class _DataStateSlot:
         self.state = state
 
 
-def _sources_with_replay(recipe: DictConfig, domain: list[tuple],
-                         run_dir: str) -> list[tuple]:
+def _sources_with_replay(
+    recipe: DictConfig, domain: list[tuple], run_dir: str
+) -> list[tuple]:
     """Expand the replay block into mixture sources (P2-D4).
 
     Domain weights are scaled to 1 - fraction of the total draw and each
@@ -133,17 +142,22 @@ def _sources_with_replay(recipe: DictConfig, domain: list[tuple],
 
     fraction = recipe.replay.fraction
     domain_total = sum(w for _, _, w in domain)
-    sources = [(name, path, w / domain_total * (1.0 - fraction))
-               for name, path, w in domain]
+    sources = [
+        (name, path, w / domain_total * (1.0 - fraction)) for name, path, w in domain
+    ]
     total_bytes = resolve_max_bytes(recipe)
     replay_total = sum(s.weight for s in recipe.replay.sources)
     for s in recipe.replay.sources:
         share = s.weight / replay_total
         buffer = ReplayBuffer(
-            s.path, window=recipe.data.seq_len,
-            max_bytes=int(total_bytes * share), seed=recipe.run.seed,
-            run_dir=run_dir, name=s.name,
-            ram_floor_gb=recipe.watchdog.ram_floor_gb)
+            s.path,
+            window=recipe.data.seq_len,
+            max_bytes=int(total_bytes * share),
+            seed=recipe.run.seed,
+            run_dir=run_dir,
+            name=s.name,
+            ram_floor_gb=recipe.watchdog.ram_floor_gb,
+        )
         sources.append((s.name, buffer, fraction * share))
     return sources
 
@@ -169,8 +183,12 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         _seed_everything(recipe.run.seed)
 
     workers_mask = None
+    workers_allowance = None
     if recipe.affinity.enabled:
         main_mask, workers_mask = aff.resolve_masks(recipe.affinity)
+        # Captured before the main pin: forked workers must validate their
+        # (disjoint) mask against the container allowance, not the main mask.
+        workers_allowance = os.sched_getaffinity(0)
         aff.apply_mask(main_mask)
 
     # A resume within the same wall-clock second as the interrupted run is
@@ -186,33 +204,48 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
     else:
         raise FileExistsError(
             f"Could not allocate a run directory under "
-            f"{recipe.run.output_root}/{recipe.run.name}")
+            f"{recipe.run.output_root}/{recipe.run.name}"
+        )
     ckpt_root = f"{recipe.run.output_root}/{recipe.run.name}/checkpoints"
 
     # Built after the run dir exists: replay buffers write their loaded-set
     # manifests there (P2-D4).
     mixing = recipe.mixture.enabled
+    dataset: MixtureDataset | ShardedTokenDataset
     if mixing:
         sources = [(s.name, s.path, s.weight) for s in recipe.mixture.sources]
         if recipe.replay.enabled:
             sources = _sources_with_replay(recipe, sources, run_name_dir)
         dataset = MixtureDataset(
-            sources, window=recipe.data.seq_len, seed=recipe.run.seed,
-            strict_single_epoch=recipe.mixture.strict_single_epoch)
+            sources,
+            window=recipe.data.seq_len,
+            seed=recipe.run.seed,
+            strict_single_epoch=recipe.mixture.strict_single_epoch,
+        )
     else:
         source = recipe.data.source
         if recipe.staging.enabled:
             source = stage_shards(source, recipe.staging)
         dataset = ShardedTokenDataset(source, window=recipe.data.seq_len)
     offload = recipe.memory.offload == "zero_offload"
+    effective_optimizer = recipe.optimizer.name
     engine = None
+    if offload:
+        # The chain degrades cpu_adam -> paged_adamw8bit -> adamw when the
+        # pre-built DeepSpeed extension is unavailable; only cpu_adam runs
+        # through the engine. The resolved name is stamped into checkpoint
+        # meta below so a degraded run stays attributable.
+        from training.runtime.offload import resolve_offload_optimizer
+
+        effective_optimizer = resolve_offload_optimizer(recipe)
+        offload = effective_optimizer == "cpu_adam"
     if offload:
         # ZeRO-Offload path (P2-D5): the engine owns device placement,
         # gradient accumulation, and the CPUAdam optimizer step; frozen
         # parameters never enter its optimizer groups. The LR scheduler
         # stays loop-owned (resolved P2-D5 decision 2) and steps the client
         # optimizer's param groups directly.
-        from training.offload import initialize_engine
+        from training.runtime.offload import initialize_engine
 
         model = build_model(recipe)
         engine = initialize_engine(model, recipe)
@@ -221,13 +254,27 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         scheduler = build_scheduler(client_optimizer, recipe)
     else:
         model = build_model(recipe).to(device)
-        optimizer = build_optimizer(model, recipe)
+        params = None
+        if recipe.memory.offload == "zero_offload":
+            # Degraded from the engine path: keep the recipe's freeze policy
+            # so the fallback optimizer trains the same parameter set.
+            from training.runtime.offload import apply_trainable_filter
+
+            params = apply_trainable_filter(model, recipe)
+        optimizer = build_optimizer(
+            model, recipe, name=effective_optimizer, params=params
+        )
         scheduler = build_scheduler(optimizer, recipe)
+    attn_implementation = attention_implementation()
 
     start_step, tokens_seen, next_index = 0, 0, 0
     # Cumulative tokens drawn per mixture source (P2-D2 accounting); carried
     # through checkpoint meta so a resumed run's final table stays cumulative.
-    tokens_per_source = np.zeros(len(dataset.names), dtype=np.int64) if mixing else None
+    tokens_per_source = (
+        np.zeros(len(dataset.names), dtype=np.int64)
+        if isinstance(dataset, MixtureDataset)
+        else None
+    )
     recipe_hash = snapshot_hash(recipe)
     if resuming:
         path = ckpt.resolve_resume(ckpt_root, recipe.checkpoint.resume)
@@ -239,61 +286,97 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         next_index = resume_index(dataset, slot.state)
         start_step, tokens_seen = meta["step"], meta.get("tokens_seen", 0)
         if mixing:
+            assert isinstance(dataset, MixtureDataset)
             saved = meta.get("tokens_per_source", {})
             tokens_per_source = np.array(
-                [saved.get(name, 0) for name in dataset.names], dtype=np.int64)
+                [saved.get(name, 0) for name in dataset.names], dtype=np.int64
+            )
         if meta.get("recipe_hash") not in (None, recipe_hash):
-            print(f"[loop] WARN: resuming with a recipe that differs from the "
-                  f"checkpoint's (hash {meta['recipe_hash'][:12]} vs "
-                  f"{recipe_hash[:12]}); the LR schedule may shift", file=sys.stderr)
+            print(
+                f"[loop] WARN: resuming with a recipe that differs from the "
+                f"checkpoint's (hash {meta['recipe_hash'][:12]} vs "
+                f"{recipe_hash[:12]}); the LR schedule may shift",
+                file=sys.stderr,
+            )
 
     tracker = Tracker(recipe.tracking, recipe.run.name, run_name_dir)
-    tokens_per_step = (recipe.data.micro_batch * recipe.data.grad_accum
-                       * recipe.data.seq_len)
-    result = TrainResult(run_dir=run_name_dir, checkpoint_root=ckpt_root,
-                         final_step=start_step, tokens_seen=tokens_seen)
+    tokens_per_step = (
+        recipe.data.micro_batch * recipe.data.grad_accum * recipe.data.seq_len
+    )
+    result = TrainResult(
+        run_dir=run_name_dir,
+        checkpoint_root=ckpt_root,
+        final_step=start_step,
+        tokens_seen=tokens_seen,
+    )
 
     def save(step: int, loss: float, emergency: bool = False) -> None:
         meta = {
-            "tokens_seen": tokens_seen, "loss": loss,
-            "recipe_hash": recipe_hash, "git_sha": _git_sha(),
+            "tokens_seen": tokens_seen,
+            "loss": loss,
+            "recipe_hash": recipe_hash,
+            "git_sha": _git_sha(),
             "library_versions": _library_versions(),
             "wall_clock": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "checkpoint_format": "deepspeed" if offload else "torch",
+            # Resolved (not requested) choices: fallbacks fire silently
+            # otherwise and provenance would lie.
+            "optimizer": effective_optimizer,
+            "attention_implementation": attn_implementation,
         }
         if emergency:
             meta["emergency"] = True  # exempt from retention deletion
         # Consumed-window (or draw) index, not the loader's read-ahead
         # position: exact resume regardless of num_workers/prefetch depth.
         if mixing:
+            assert isinstance(dataset, MixtureDataset)
+            assert tokens_per_source is not None
             meta["tokens_per_source"] = {
-                name: int(n) for name, n in
-                zip(dataset.names, tokens_per_source, strict=True)}
-            data_state = {"format": "mixture", "next_draw": next_index,
-                          "window": dataset.window}
+                name: int(n)
+                for name, n in zip(dataset.names, tokens_per_source, strict=True)
+            }
+            data_state = {
+                "format": "mixture",
+                "next_draw": next_index,
+                "window": dataset.window,
+            }
         else:
-            data_state = {"format": "index", "next_index": next_index % len(dataset),
-                          "window": dataset.window}
+            data_state = {
+                "format": "index",
+                "next_index": next_index % len(dataset),
+                "window": dataset.window,
+            }
         if offload:
-            ckpt.save_checkpoint_deepspeed(ckpt_root, step, engine, scheduler,
-                                           data_state, meta)
+            ckpt.save_checkpoint_deepspeed(
+                ckpt_root, step, engine, scheduler, data_state, meta
+            )
         else:
-            ckpt.save_checkpoint(ckpt_root, step, model, optimizer, scheduler,
-                                 data_state, meta)
-        ckpt.apply_retention(ckpt_root, recipe.checkpoint.retain_last,
-                             recipe.checkpoint.retain_every)
+            ckpt.save_checkpoint(
+                ckpt_root, step, model, optimizer, scheduler, data_state, meta
+            )
+        ckpt.apply_retention(
+            ckpt_root, recipe.checkpoint.retain_last, recipe.checkpoint.retain_every
+        )
 
     watchdog = None
     if recipe.watchdog.enabled:
         os.makedirs(ckpt_root, exist_ok=True)  # disk-floor check needs the path
-        watchdog = Watchdog(recipe.watchdog, run_name_dir, tracker=tracker,
-                            disk_path=ckpt_root)
+        watchdog = Watchdog(
+            recipe.watchdog, run_name_dir, tracker=tracker, disk_path=ckpt_root
+        )
         watchdog.start()
 
-    worker_init = aff.worker_init_fn(workers_mask) if workers_mask else None
+    worker_init = (
+        aff.worker_init_fn(workers_mask, allowed=workers_allowance)
+        if workers_mask
+        else None
+    )
     batches = CudaPrefetcher(
-        build_dataloader(dataset, recipe.data, start_index=next_index,
-                         worker_init_fn=worker_init), device)
+        build_dataloader(
+            dataset, recipe.data, start_index=next_index, worker_init_fn=worker_init
+        ),
+        device,
+    )
 
     model.train()
     wait_total = 0.0
@@ -308,10 +391,13 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                 data_wait_s += batches.last_wait_s
                 next_index += recipe.data.micro_batch
                 if mixing:
+                    assert isinstance(dataset, MixtureDataset)
                     batch, tags = batch
                     tokens_per_source += recipe.data.seq_len * np.bincount(
-                        tags.numpy(), minlength=len(dataset.names))
+                        tags.numpy(), minlength=len(dataset.names)
+                    )
                 if offload:
+                    assert engine is not None
                     # The engine owns loss scaling, accumulation boundaries,
                     # and zero_grad: engine.step() is called every micro-batch
                     # and performs the CPUAdam step only on the last one
@@ -327,6 +413,7 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                     loss_sum += loss.item()
                     (loss / recipe.data.grad_accum).backward()
             if offload:
+                assert engine is not None
                 # DeepSpeed computes the global norm during its step; None
                 # (not yet available) reports as 0.0 rather than crashing.
                 norm = engine.get_global_grad_norm()
@@ -334,7 +421,8 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
             else:
                 # Infinite max_norm measures the total gradient norm without clipping
                 grad_norm = torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), float("inf")).item()
+                    model.parameters(), float("inf")
+                ).item()
                 optimizer.step()
             scheduler.step()
 
@@ -342,8 +430,10 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
             step_loss = loss_sum / recipe.data.grad_accum
             step_time = time.perf_counter() - step_start
             metrics = {
-                "loss": step_loss, "lr": scheduler.get_last_lr()[0],
-                "grad_norm": grad_norm, "tokens_per_s": tokens_per_step / step_time,
+                "loss": step_loss,
+                "lr": scheduler.get_last_lr()[0],
+                "grad_norm": grad_norm,
+                "tokens_per_s": tokens_per_step / step_time,
                 "step_time_s": step_time,
                 "data_wait_ms": data_wait_s * 1000.0,  # D9 overlap metric
             }
@@ -352,14 +442,18 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                 # step_time_s, raise grad_accum before touching anything else.
                 metrics["optimizer_step_s"] = opt_wait_s
             if mixing:
+                assert isinstance(dataset, MixtureDataset)
+                assert tokens_per_source is not None
                 for name, n in zip(dataset.names, tokens_per_source, strict=True):
                     metrics[f"tokens_source_{name}"] = int(n)
                 result.tokens_per_source = {
-                    name: int(n) for name, n in
-                    zip(dataset.names, tokens_per_source, strict=True)}
+                    name: int(n)
+                    for name, n in zip(dataset.names, tokens_per_source, strict=True)
+                }
             if device.type == "cuda":
                 metrics["gpu_mem_allocated_gb"] = (
-                    torch.cuda.memory_allocated(device) / 2**30)
+                    torch.cuda.memory_allocated(device) / 2**30
+                )
             tracker.log(metrics, step)
             result.losses.append((step, step_loss))
             result.lrs.append((step, scheduler.get_last_lr()[0]))
@@ -376,15 +470,20 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                     try:
                         save(step, step_loss, emergency=True)
                     except Exception as exc:
-                        print(f"[loop] WARN: emergency checkpoint failed: {exc}",
-                              file=sys.stderr)
+                        print(
+                            f"[loop] WARN: emergency checkpoint failed: {exc}",
+                            file=sys.stderr,
+                        )
                     raise
 
             is_last = step == recipe.schedule.total_steps
             if step % recipe.checkpoint.interval_steps == 0 or is_last:
                 if watchdog is not None and watchdog.checkpoint_writes_blocked:
-                    print(f"[loop] WARN: skipping checkpoint at step {step}: "
-                          f"disk free below watchdog floor", file=sys.stderr)
+                    print(
+                        f"[loop] WARN: skipping checkpoint at step {step}: "
+                        f"disk free below watchdog floor",
+                        file=sys.stderr,
+                    )
                 else:
                     save(step, step_loss)
             if stop_after is not None and step >= stop_after:

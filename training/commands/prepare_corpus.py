@@ -33,40 +33,86 @@ def configure(sub) -> None:
     parser = sub.add_parser(
         "prepare-corpus",
         help="filter, deduplicate, decontaminate, and shard a corpus (P2-D1)",
-        description="Filter, deduplicate, decontaminate, and shard a corpus.")
-    parser.add_argument("--source", required=True,
-                        help="HF dataset id or path to a local .jsonl file")
-    parser.add_argument("--out", required=True,
-                        help="Output shard directory (convention: /mnt/ai-data/training/shards/<name>)")
-    parser.add_argument("--work-dir", required=True,
-                        help="Stage-intermediate directory "
-                             "(convention: /mnt/ai-data/training/datasets/<name>)")
-    parser.add_argument("--tokenizer", required=True,
-                        help="Tokenizer directory, tokenizer.json path, or HF hub id")
-    parser.add_argument("--pipeline-config", default=None,
-                        help="Pipeline YAML (default: built-in defaults, "
-                             "documented in training/data/configs/default.yaml)")
-    parser.add_argument("--contamination", default=None,
-                        help="Contamination index directory from build-contamination; "
-                             "omitting it skips decontamination (recorded as null in the manifest)")
+        description="Filter, deduplicate, decontaminate, and shard a corpus.",
+    )
+    parser.add_argument(
+        "--source", required=True, help="HF dataset id or path to a local .jsonl file"
+    )
+    parser.add_argument(
+        "--out",
+        required=True,
+        help="Output shard directory (convention: /mnt/ai-data/training/shards/<name>)",
+    )
+    parser.add_argument(
+        "--work-dir",
+        required=True,
+        help="Stage-intermediate directory "
+        "(convention: /mnt/ai-data/training/datasets/<name>)",
+    )
+    parser.add_argument(
+        "--tokenizer",
+        required=True,
+        help="Tokenizer directory, tokenizer.json path, or HF hub id",
+    )
+    parser.add_argument(
+        "--pipeline-config",
+        default=None,
+        help="Pipeline YAML (default: built-in defaults, "
+        "documented in training/data/configs/default.yaml)",
+    )
+    parser.add_argument(
+        "--contamination",
+        default=None,
+        help="Contamination index directory from build-contamination; "
+        "omitting it skips decontamination (recorded as null in the manifest)",
+    )
     parser.add_argument("--split", default="train", help="Dataset split for HF sources")
-    parser.add_argument("--revision", default=None, help="Dataset revision for HF sources")
-    parser.add_argument("--text-field", default="text", help="Text field name (default: text)")
-    parser.add_argument("--max-tokens", type=positive_int, default=None,
-                        help="Stop sharding after this many tokens (underscores allowed)")
-    parser.add_argument("--max-documents", type=positive_int, default=None,
-                        help="Ingest at most this many documents from an HF source")
-    parser.add_argument("--num-proc", type=positive_int, default=None,
-                        help="Pipeline worker count (default: pipeline config workers, 30)")
-    parser.add_argument("--shard-tokens", type=positive_int,
-                        default=shards_mod.DEFAULT_SHARD_TOKENS,
-                        help="Tokens per shard (default: 512M)")
-    parser.add_argument("--eos-token", default=None,
-                        help="EOS token string when the tokenizer does not declare one")
-    parser.add_argument("--license", default="unknown", dest="license_str",
-                        help="License string recorded in the manifest (default: unknown)")
-    parser.add_argument("--clean-intermediates", action="store_true",
-                        help="Delete stage JSONL data (keeping stats.json) after shards validate")
+    parser.add_argument(
+        "--revision", default=None, help="Dataset revision for HF sources"
+    )
+    parser.add_argument(
+        "--text-field", default="text", help="Text field name (default: text)"
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=positive_int,
+        default=None,
+        help="Stop sharding after this many tokens (underscores allowed)",
+    )
+    parser.add_argument(
+        "--max-documents",
+        type=positive_int,
+        default=None,
+        help="Ingest at most this many documents from an HF source",
+    )
+    parser.add_argument(
+        "--num-proc",
+        type=positive_int,
+        default=None,
+        help="Pipeline worker count (default: pipeline config workers, 30)",
+    )
+    parser.add_argument(
+        "--shard-tokens",
+        type=positive_int,
+        default=shards_mod.DEFAULT_SHARD_TOKENS,
+        help="Tokens per shard (default: 512M)",
+    )
+    parser.add_argument(
+        "--eos-token",
+        default=None,
+        help="EOS token string when the tokenizer does not declare one",
+    )
+    parser.add_argument(
+        "--license",
+        default="unknown",
+        dest="license_str",
+        help="License string recorded in the manifest (default: unknown)",
+    )
+    parser.add_argument(
+        "--clean-intermediates",
+        action="store_true",
+        help="Delete stage JSONL data (keeping stats.json) after shards validate",
+    )
     parser.set_defaults(func=cmd)
 
 
@@ -93,13 +139,23 @@ def cmd(args: argparse.Namespace) -> int:
             config.workers = args.num_proc
         out.run(f"Running pipeline stages ({config.workers} workers)")
         manifest = pipeline_mod.prepare_corpus(
-            args.source, args.out, args.tokenizer, args.work_dir,
-            config=config, contamination_dir=args.contamination,
-            text_field=args.text_field, split=args.split, revision=args.revision,
-            max_tokens=args.max_tokens, max_documents=args.max_documents,
-            shard_tokens=args.shard_tokens, eos_token=args.eos_token,
-            license_str=args.license_str, clean=args.clean_intermediates,
-            progress=progress)
+            args.source,
+            args.out,
+            args.tokenizer,
+            args.work_dir,
+            config=config,
+            contamination_dir=args.contamination,
+            text_field=args.text_field,
+            split=args.split,
+            revision=args.revision,
+            max_tokens=args.max_tokens,
+            max_documents=args.max_documents,
+            shard_tokens=args.shard_tokens,
+            eos_token=args.eos_token,
+            license_str=args.license_str,
+            clean=args.clean_intermediates,
+            progress=progress,
+        )
     except FileExistsError as exc:
         out.error(str(exc))
         out.line("  Solution: choose a new output directory or delete the existing one")
@@ -111,12 +167,19 @@ def cmd(args: argparse.Namespace) -> int:
     out.line()
     for stage in manifest["pipeline"]["stage_funnel"]:
         dropped = stage["docs_in"] - stage["docs_out"]
-        out.ok(f"{stage['stage']}: {stage['docs_in']:,} -> {stage['docs_out']:,} "
-               f"({dropped:,} dropped)", indent=2)
-    out.ok(f"Shards written: {len(manifest['shards'])} "
-           f"({manifest['dtype']}, {manifest['shard_tokens']:,} tokens/shard)")
-    out.ok(f"Total: {manifest['total_tokens']:,} tokens, "
-           f"{manifest['total_documents']:,} documents")
+        out.ok(
+            f"{stage['stage']}: {stage['docs_in']:,} -> {stage['docs_out']:,} "
+            f"({dropped:,} dropped)",
+            indent=2,
+        )
+    out.ok(
+        f"Shards written: {len(manifest['shards'])} "
+        f"({manifest['dtype']}, {manifest['shard_tokens']:,} tokens/shard)"
+    )
+    out.ok(
+        f"Total: {manifest['total_tokens']:,} tokens, "
+        f"{manifest['total_documents']:,} documents"
+    )
     out.ok(f"decontaminated_against: {manifest['decontaminated_against']}")
     out.ok(f"Manifest: {os.path.join(args.out, shards_mod.MANIFEST_NAME)}")
     return 0

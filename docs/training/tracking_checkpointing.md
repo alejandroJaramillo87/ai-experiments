@@ -25,7 +25,7 @@ $ make train CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="checkpoint.re
 ```
 
 The `train` subcommand loads and validates the recipe (D5), then runs
-`training/loop.py`: model from the recipe (HF hub id or scratch spec), AdamW or
+`training/runtime/loop.py`: model from the recipe (HF hub id or scratch spec), AdamW or
 AdamW8bit, cosine or WSD schedule with warmup, gradient accumulation, and a
 checkpoint every `checkpoint.interval_steps` plus one at the final step. The loop is
 the Phase 0 reference skeleton, not the Phase 1 SFT trainer.
@@ -64,7 +64,7 @@ Each `step_NNNNNNNNN/` directory holds five components:
 
 ## Atomicity
 
-`training/checkpoint.py` writes every file into `step_X.tmp/`, fsyncs each file and
+`training/runtime/checkpoint.py` writes every file into `step_X.tmp/`, fsyncs each file and
 directory, then publishes with a single `os.rename`. The `latest` symlink is updated
 the same way (temp symlink, rename). A crash at any point leaves either the previous
 complete state or ignorable `*.tmp` debris — never a half checkpoint that resume
@@ -103,7 +103,7 @@ speed.
 
 ## Tracking
 
-`training/tracking.py` fans one `log(dict, step)` to the sinks enabled in the
+`training/runtime/tracking.py` fans one `log(dict, step)` to the sinks enabled in the
 recipe's `tracking` block: tensorboard (default on), wandb, mlflow. Metrics logged
 per step: `loss`, `lr`, `grad_norm`, `tokens_per_s`, `step_time_s`, and
 `gpu_mem_allocated_gb` on CUDA.
@@ -128,9 +128,9 @@ $ cp env.training.example .env.training
 
 | Path | Purpose |
 |------|---------|
-| `training/loop.py` | Reference training loop |
-| `training/checkpoint.py` | Atomic save/load, retention, resume resolution |
-| `training/tracking.py` | Metric sink fan-out |
-| `training/model.py` | Shared model/optimizer/scheduler builders (also used by the D4 calibrator) |
+| `training/runtime/loop.py` | Reference training loop |
+| `training/runtime/checkpoint.py` | Atomic save/load, retention, resume resolution |
+| `training/runtime/tracking.py` | Metric sink fan-out |
+| `training/models/model.py` | Shared model/optimizer/scheduler builders (also used by the D4 calibrator) |
 | `tests/training/test_checkpoint.py` | Atomicity, retention, resume-resolution unit tests |
 | `tests/training/test_loop.py` | Deterministic resume and tracking acceptance tests |

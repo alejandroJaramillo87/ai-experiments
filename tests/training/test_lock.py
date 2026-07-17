@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from training.lock import TrainLockError, read_lock, run_lock
+from training.runtime.lock import TrainLockError, read_lock, run_lock
 
 
 def test_acquire_writes_and_release_removes(tmp_path):
@@ -70,6 +70,22 @@ def test_release_leaves_foreign_lock_alone(tmp_path):
         with open(path, "w") as f:
             json.dump({"pid": os.getpid() + 1, "run": "other", "created": "x"}, f)
     assert os.path.exists(path)
+
+
+def test_failed_body_write_removes_lock(tmp_path, monkeypatch):
+    # A crash while writing the lock body leaves a torn file that reads back
+    # as pid None; the pid-checked release would refuse to delete it, so the
+    # write path must remove its own file before re-raising.
+    path = str(tmp_path / ".train.lock")
+
+    def explode(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("training.runtime.lock.json.dump", explode)
+    with pytest.raises(OSError, match="disk full"):
+        with run_lock("tiny-e2e", path=path):
+            pass
+    assert not os.path.exists(path)
 
 
 def test_env_var_overrides_path(tmp_path, monkeypatch):

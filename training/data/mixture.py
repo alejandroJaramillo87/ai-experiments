@@ -21,6 +21,7 @@ runs where repeating domain data would confound a measurement.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 
@@ -46,9 +47,14 @@ class MixtureDataset:
     recipe validate()). __getitem__(i) returns (window ndarray, source index).
     """
 
-    def __init__(self, sources: Sequence[tuple[str, object, float]], window: int,
-                 seed: int, strict_single_epoch: bool = False,
-                 verify: bool = True) -> None:
+    def __init__(
+        self,
+        sources: Sequence[tuple[str, Any, float]],
+        window: int,
+        seed: int,
+        strict_single_epoch: bool = False,
+        verify: bool = True,
+    ) -> None:
         if not sources:
             raise ValueError("mixture requires at least one source")
         self.names = [name for name, _, _ in sources]
@@ -56,13 +62,15 @@ class MixtureDataset:
             raise ValueError(f"mixture source names must be unique: {self.names}")
         weights = np.array([w for _, _, w in sources], dtype=np.float64)
         if not np.all(np.isfinite(weights)) or np.any(weights <= 0):
-            raise ValueError(f"mixture weights must be positive and finite: {weights.tolist()}")
+            raise ValueError(
+                f"mixture weights must be positive and finite: {weights.tolist()}"
+            )
         self.weights = weights / weights.sum()
         self.window = window
         self.seed = seed
         self.strict_single_epoch = strict_single_epoch
 
-        self.datasets = []
+        self.datasets: list[Any] = []
         for name, src, _ in sources:
             if isinstance(src, str):
                 self.datasets.append(ShardedTokenDataset(src, window, verify=verify))
@@ -70,18 +78,21 @@ class MixtureDataset:
             if src.window != window:
                 raise ValueError(
                     f"mixture source {name!r} was built with window {src.window}, "
-                    f"mixture uses {window}")
+                    f"mixture uses {window}"
+                )
             self.datasets.append(src)
         hashes = {ds.manifest["tokenizer_hash"] for ds in self.datasets}
         if len(hashes) != 1:
             raise TokenizerMismatchError(
                 f"mixture sources carry {len(hashes)} distinct tokenizer hashes: "
-                f"{sorted(hashes)}")
+                f"{sorted(hashes)}"
+            )
         self.tokenizer_hash = hashes.pop()
         for name, ds in zip(self.names, self.datasets, strict=True):
             if len(ds) == 0:
                 raise ValueError(
-                    f"mixture source {name!r} has no complete window of size {window}")
+                    f"mixture source {name!r} has no complete window of size {window}"
+                )
 
         self._rng = np.random.default_rng(seed)
         self._source_seq = np.empty(0, dtype=np.uint8)
@@ -99,7 +110,8 @@ class MixtureDataset:
         instances regardless of access order."""
         while len(self._source_seq) <= index:
             draws = self._rng.choice(
-                len(self.datasets), size=_CHUNK, p=self.weights).astype(np.uint8)
+                len(self.datasets), size=_CHUNK, p=self.weights
+            ).astype(np.uint8)
             pos = np.empty(_CHUNK, dtype=np.int64)
             for s in range(len(self.datasets)):
                 mask = draws == s
@@ -130,5 +142,6 @@ class MixtureDataset:
         if self.strict_single_epoch and position >= len(ds):
             raise SourceExhaustedError(
                 f"source {self.names[source]!r} exhausted after {len(ds)} windows "
-                f"at draw {index} (strict_single_epoch)")
+                f"at draw {index} (strict_single_epoch)"
+            )
         return ds[position % len(ds)], source

@@ -12,14 +12,21 @@ from training.eval.scorecard import (
 )
 
 
-def metadata(base_quant="Q8_0", tuned_quant="Q8_0",
-             base_thinking="off", tuned_thinking="off"):
+def metadata(
+    base_quant="Q8_0", tuned_quant="Q8_0", base_thinking="off", tuned_thinking="off"
+):
     return {
         "git_sha": "abc123",
-        "baseline": {"model": "google/gemma-4-E2B", "quant_type": base_quant,
-                     "thinking_mode": base_thinking},
-        "tuned": {"model": "/ckpt/run/latest", "quant_type": tuned_quant,
-                  "thinking_mode": tuned_thinking},
+        "baseline": {
+            "model": "google/gemma-4-E2B",
+            "quant_type": base_quant,
+            "thinking_mode": base_thinking,
+        },
+        "tuned": {
+            "model": "/ckpt/run/latest",
+            "quant_type": tuned_quant,
+            "thinking_mode": tuned_thinking,
+        },
     }
 
 
@@ -34,8 +41,10 @@ def test_delta_section_direction_aware():
 
 
 def test_assemble_marks_absent_evaluators_skipped():
-    card = assemble_scorecard(metadata(), {
-        "holdout": {"loss": delta_section(2.0, 1.8, higher_is_better=False)}})
+    card = assemble_scorecard(
+        metadata(),
+        {"holdout": {"loss": delta_section(2.0, 1.8, higher_is_better=False)}},
+    )
     assert card["schema_version"] == 1
     assert card["evaluators"]["lmeval"] == {"skipped": True}
     assert card["evaluators"]["judge"] == {"skipped": True}
@@ -66,9 +75,14 @@ def test_assemble_allows_unknown_quant_when_judge_skipped():
 
 
 def holdout_record(loss, precision="bf16"):
-    return {"loss": loss, "perplexity": 2.718 ** loss, "examples": 10,
-            "supervised_tokens": 1000, "precision": precision,
-            "dataset": "/data/sft/x"}
+    return {
+        "loss": loss,
+        "perplexity": 2.718**loss,
+        "examples": 10,
+        "supervised_tokens": 1000,
+        "precision": precision,
+        "dataset": "/data/sft/x",
+    }
 
 
 def test_holdout_section_deltas_and_precision_guard():
@@ -80,9 +94,11 @@ def test_holdout_section_deltas_and_precision_guard():
 
 
 def lmeval_record(value, version="0.4.12"):
-    return {"lm_eval_version": version, "limit": None,
-            "results": {"tinyMMLU": {"metric": "acc_norm", "value": value,
-                                     "stderr": 0.01}}}
+    return {
+        "lm_eval_version": version,
+        "limit": None,
+        "results": {"tinyMMLU": {"metric": "acc_norm", "value": value, "stderr": 0.01}},
+    }
 
 
 def test_lmeval_section_deltas_and_version_guard():
@@ -93,17 +109,27 @@ def test_lmeval_section_deltas_and_version_guard():
     with pytest.raises(ScorecardError, match="version differs"):
         lmeval_section(lmeval_record(0.5), lmeval_record(0.55, "0.4.11"))
     with pytest.raises(ScorecardError, match="missing from the baseline"):
-        lmeval_section({"lm_eval_version": "0.4.12", "results": {}},
-                       lmeval_record(0.55))
+        lmeval_section(
+            {"lm_eval_version": "0.4.12", "results": {}}, lmeval_record(0.55)
+        )
 
 
 def test_render_markdown_covers_all_sections():
-    card = assemble_scorecard(metadata(), {
-        "holdout": holdout_section(holdout_record(2.0), holdout_record(1.5)),
-        "lmeval": lmeval_section(lmeval_record(0.5), lmeval_record(0.55)),
-        "judge": {"win_rate": 0.62, "tuned_wins": 25, "baseline_wins": 15,
-                  "ties": 8, "malformed": 1, "errors": 0},
-    })
+    card = assemble_scorecard(
+        metadata(),
+        {
+            "holdout": holdout_section(holdout_record(2.0), holdout_record(1.5)),
+            "lmeval": lmeval_section(lmeval_record(0.5), lmeval_record(0.55)),
+            "judge": {
+                "win_rate": 0.62,
+                "tuned_wins": 25,
+                "baseline_wins": 15,
+                "ties": 8,
+                "malformed": 1,
+                "errors": 0,
+            },
+        },
+    )
     text = render_markdown(card)
     assert "| holdout | loss |" in text
     assert "tinyMMLU" in text
@@ -116,19 +142,30 @@ def test_render_markdown_covers_all_sections():
 def test_render_markdown_undecided_win_rate_shows_dash():
     # All judgments malformed: win_rate is None and the Improved cell must
     # render "-", not False.
-    card = assemble_scorecard(metadata(), {
-        "judge": {"win_rate": None, "tuned_wins": 0, "baseline_wins": 0,
-                  "ties": 0, "malformed": 4, "errors": 0},
-    })
+    card = assemble_scorecard(
+        metadata(),
+        {
+            "judge": {
+                "win_rate": None,
+                "tuned_wins": 0,
+                "baseline_wins": 0,
+                "ties": 0,
+                "malformed": 4,
+                "errors": 0,
+            },
+        },
+    )
     text = render_markdown(card)
-    line = next(l for l in text.splitlines() if "win rate" in l)
+    line = next(ln for ln in text.splitlines() if "win rate" in ln)
     assert line.endswith("| - | - |")
     assert "False" not in line
 
 
 def test_render_markdown_partial_run_says_skipped():
-    card = assemble_scorecard(metadata(), {
-        "holdout": holdout_section(holdout_record(2.0), holdout_record(1.5))})
+    card = assemble_scorecard(
+        metadata(),
+        {"holdout": holdout_section(holdout_record(2.0), holdout_record(1.5))},
+    )
     text = render_markdown(card)
     assert "| lmeval | - | skipped |" in text
     assert "| judge | - | skipped |" in text

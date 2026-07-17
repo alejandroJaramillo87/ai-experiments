@@ -1,0 +1,101 @@
+# continual-qwen3.yaml
+#
+# Qwen3 fallback twin of continual-gemma4-e2b.yaml (model policy: Gemma 4
+# primary, Qwen3 fallback). Full-parameter continual pre-training of the
+# Qwen3 1.7B transformer stack under ZeRO-Offload — bf16 weights and
+# gradients on the 32GB GPU, fp32 master weights and Adam moments in system
+# RAM, the optimizer step on the 9950X (CPUAdam). Embeddings and the LM
+# head are frozen (trainable_filter: transformer_stack; Qwen3 has no
+# per-layer embedding tables, so those patterns match nothing here).
+#
+# DRAFT (not yet validated). A calibration run back-fills:
+#   Pinned model revision:   TBD (record the resolved hub commit on first pull)
+#   Measured peak VRAM:      TBD
+#   Measured peak host RAM:  TBD
+#   tokens/s at seq 4096:    TBD (with GPU-compute vs optimizer-wait breakdown)
+#   Bucket sizes:            2e8 initial; tuned during calibration
+
+run:
+  name: continual-qwen3
+  seed: 42
+  notes: "Qwen3 fallback twin of continual-gemma4-e2b: ZeRO-Offload full-parameter continual pretrain."
+
+model:
+  hf:
+    id: Qwen/Qwen3-1.7B
+    # Pin to the resolved hub commit on first host-side pull (operating
+    # rule: pin, then fix, then update); null records the resolved revision
+    # in checkpoint meta until then.
+    revision: null
+  trainable_filter: transformer_stack
+
+mixture:
+  enabled: true
+  sources:
+    - name: domain
+      # P2-D1 prepared uint32 shards of the reference-run domain corpus,
+      # tokenized with the Qwen3 tokenizer.
+      path: /mnt/ai-data/training/shards/domain-corpus-qwen3
+      weight: 1.0
+
+replay:
+  enabled: true
+  fraction: 0.2
+  sources:
+    - name: replay-web
+      path: /mnt/ai-data/training/shards/fineweb-edu-replay-qwen3
+      weight: 0.7
+    - name: replay-code
+      path: /mnt/ai-data/training/shards/code-replay-qwen3
+      weight: 0.3
+  max_gb: 16.0
+
+data:
+  seq_len: 4096
+  micro_batch: 1
+  grad_accum: 32
+  workers: 4
+  pin_memory: true
+
+tokenizer:
+  path: Qwen/Qwen3-1.7B
+
+optimizer:
+  name: cpu_adam
+  lr: 5.0e-5
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+
+schedule:
+  type: wsd
+  warmup_steps: 100
+  total_steps: 2000        # calibration envelope; P2-D7 scales this up
+  decay_start_frac: 0.9
+  final_lr_frac: 0.1
+  decay_shape: 1-sqrt
+
+precision:
+  dtype: bf16
+  grad_dtype: fp32
+
+memory:
+  gradient_checkpointing: true
+  offload: zero_offload
+  compile: false
+  allgather_bucket_size: 2.0e8
+  reduce_bucket_size: 2.0e8
+  offload_pin_memory: true
+
+checkpoint:
+  interval_steps: 500
+  retain_last: 3
+  retain_every: 1000
+
+watchdog:
+  enabled: true
+  ram_floor_gb: 8.0        # offload run: the RAM floor is the active guard
+
+tracking:
+  wandb: false
+  tensorboard: true

@@ -18,8 +18,8 @@ pytest.importorskip("transformers")
 
 from support import TINY_RECIPE, make_shard_dir  # noqa: E402
 
-from training.loop import train  # noqa: E402
 from training.recipes import load_recipe  # noqa: E402
+from training.runtime.loop import train  # noqa: E402
 
 VOCAB = 512
 SEQ_LEN = 64
@@ -40,15 +40,18 @@ def shard_dir(tmp_path) -> str:
 
 
 def tiny_recipe(shard_dir: str, output_root: str, *extra: str):
-    return load_recipe(TINY_RECIPE, [
-        f"data.source={shard_dir}",
-        f"run.output_root={output_root}",
-        f"data.seq_len={SEQ_LEN}",
-        "schedule.total_steps=8",
-        "schedule.warmup_steps=2",
-        "checkpoint.interval_steps=4",
-        *extra,
-    ])
+    return load_recipe(
+        TINY_RECIPE,
+        [
+            f"data.source={shard_dir}",
+            f"run.output_root={output_root}",
+            f"data.seq_len={SEQ_LEN}",
+            "schedule.total_steps=8",
+            "schedule.warmup_steps=2",
+            "checkpoint.interval_steps=4",
+            *extra,
+        ],
+    )
 
 
 def test_deterministic_resume_matches_straight_run(shard_dir, tmp_path):
@@ -58,8 +61,7 @@ def test_deterministic_resume_matches_straight_run(shard_dir, tmp_path):
     resumable_root = str(tmp_path / "resumable")
     first = train(tiny_recipe(shard_dir, resumable_root), stop_after=4)
     assert first.final_step == 4
-    second = train(tiny_recipe(shard_dir, resumable_root,
-                               "checkpoint.resume=latest"))
+    second = train(tiny_recipe(shard_dir, resumable_root, "checkpoint.resume=latest"))
     assert second.final_step == 8
     assert [s for s, _ in second.losses] == [5, 6, 7, 8]
 
@@ -74,8 +76,13 @@ def test_deterministic_resume_with_offload(shard_dir, tmp_path):
     pytest.importorskip("deepspeed")
 
     def offload_recipe(root: str, *extra: str):
-        return tiny_recipe(shard_dir, root, "optimizer.name=cpu_adam",
-                           "memory.offload=zero_offload", *extra)
+        return tiny_recipe(
+            shard_dir,
+            root,
+            "optimizer.name=cpu_adam",
+            "memory.offload=zero_offload",
+            *extra,
+        )
 
     straight = train(offload_recipe(str(tmp_path / "straight")))
     assert straight.final_step == 8
@@ -101,24 +108,37 @@ def test_resume_restores_tokens_seen_and_cursor(shard_dir, tmp_path):
 
 def test_retention_applies_during_run(shard_dir, tmp_path):
     root = str(tmp_path / "run")
-    result = train(tiny_recipe(
-        shard_dir, root,
-        "schedule.total_steps=10", "checkpoint.interval_steps=2",
-        "checkpoint.retain_last=2", "checkpoint.retain_every=6"))
-    from training import checkpoint as ckpt
+    result = train(
+        tiny_recipe(
+            shard_dir,
+            root,
+            "schedule.total_steps=10",
+            "checkpoint.interval_steps=2",
+            "checkpoint.retain_last=2",
+            "checkpoint.retain_every=6",
+        )
+    )
+    from training.runtime import checkpoint as ckpt
 
     # saves at 2,4,6,8,10; survivors: last two (8, 10) plus multiples of 6 (6)
     assert ckpt.list_checkpoints(result.checkpoint_root) == [6, 8, 10]
 
 
-def test_tracking_writes_tensorboard_and_offline_wandb(shard_dir, tmp_path,
-                                                       monkeypatch):
+def test_tracking_writes_tensorboard_and_offline_wandb(
+    shard_dir, tmp_path, monkeypatch
+):
     pytest.importorskip("tensorboard")
     pytest.importorskip("wandb")
     monkeypatch.setenv("WANDB_MODE", "offline")
-    result = train(tiny_recipe(
-        shard_dir, str(tmp_path / "run"),
-        "schedule.total_steps=2", "checkpoint.interval_steps=100",
-        "tracking.tensorboard=true", "tracking.wandb=true"))
+    result = train(
+        tiny_recipe(
+            shard_dir,
+            str(tmp_path / "run"),
+            "schedule.total_steps=2",
+            "checkpoint.interval_steps=100",
+            "tracking.tensorboard=true",
+            "tracking.wandb=true",
+        )
+    )
     assert glob.glob(os.path.join(result.run_dir, "tensorboard", "events.*"))
     assert glob.glob(os.path.join(result.run_dir, "wandb", "offline-run-*"))

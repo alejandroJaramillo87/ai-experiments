@@ -134,7 +134,9 @@ class TestWorktreeClean:
         assert "[ERROR] worktree-clean requires a name" in result.stdout
         assert not (throwaway_repo.parent / "ai-experiments-clean").exists()
 
-    def test_space_form_creates_no_worktree_for_argument(self, run_make, throwaway_repo):
+    def test_space_form_creates_no_worktree_for_argument(
+        self, run_make, throwaway_repo
+    ):
         make_worktree(run_make, throwaway_repo, "foo")
         run_make("worktree-clean", "foo")
         paths = worktree_paths(throwaway_repo)

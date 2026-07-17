@@ -6,7 +6,7 @@ import os
 import pytest
 from omegaconf import OmegaConf
 
-from training.affinity import (
+from training.runtime.affinity import (
     apply_mask,
     parse_cpu_list,
     resolve_masks,
@@ -17,8 +17,8 @@ from training.affinity import (
 
 def cfg(main="0-7", workers="8-15", include_smt=True):
     return OmegaConf.create(
-        {"enabled": True, "main": main, "workers": workers,
-         "include_smt": include_smt})
+        {"enabled": True, "main": main, "workers": workers, "include_smt": include_smt}
+    )
 
 
 def test_parse_ranges_and_singles():
@@ -79,7 +79,13 @@ def test_apply_mask_with_no_available_cpu_raises():
 
 
 def test_worker_init_fn_pins(monkeypatch):
+    # Workers fork from a main process already pinned to the disjoint main
+    # mask, so the init fn must forward the pre-pin allowance to apply_mask.
     applied = []
-    monkeypatch.setattr("training.affinity.apply_mask", applied.append)
+    monkeypatch.setattr(
+        "training.runtime.affinity.apply_mask",
+        lambda cpus, allowed=None: applied.append((cpus, allowed)),
+    )
     worker_init_fn({1, 2})(worker_id=0)
-    assert applied == [{1, 2}]
+    worker_init_fn({1, 2}, allowed={1, 2, 3})(worker_id=0)
+    assert applied == [({1, 2}, None), ({1, 2}, {1, 2, 3})]

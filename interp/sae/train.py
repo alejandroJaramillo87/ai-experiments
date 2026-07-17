@@ -115,16 +115,24 @@ def _saelens_trainer(job: dict, out_dir: str, tracker=None) -> dict:
     """
     import importlib.metadata
 
-    from sae_lens import LanguageModelSAERunnerConfig, SAETrainingRunner
+    from sae_lens import (
+        BatchTopKTrainingSAEConfig,
+        LanguageModelSAERunnerConfig,
+        SAETrainingRunner,
+    )
 
     cfg = LanguageModelSAERunnerConfig(
-        architecture="batchtopk",
+        # sae-lens 6.46.0 nests the SAE geometry in a typed sub-config; the
+        # former top-level architecture/d_in/d_sae/activation_fn_kwargs
+        # kwargs do not exist on the runner config and raise TypeError.
+        sae=BatchTopKTrainingSAEConfig(
+            k=job["k"],
+            d_in=job["d_in"],
+            d_sae=job["width"],
+        ),
         model_name=job["model_id"],
         model_class_name="AutoModelForCausalLM",
         hook_name=job["hook"],
-        d_in=job["d_in"],
-        d_sae=job["width"],
-        activation_fn_kwargs={"k": job["k"]},
         use_cached_activations=True,
         cached_activations_path=job["cached_activations_path"],
         context_size=job["context_len"],
@@ -154,8 +162,8 @@ def run_sae_training(recipe: DictConfig, trainer_fn=None, tracker_factory=None) 
     sae.mark_capture_validated set, the consumed capture is flagged
     deletable for make interp-gc (the P4-D2 retention handshake).
     """
-    from training.lock import run_lock
-    from training.watchdog import Watchdog
+    from training.runtime.lock import run_lock
+    from training.runtime.watchdog import Watchdog
 
     validate_sae(recipe)
     cfg = recipe.sae
@@ -184,11 +192,9 @@ def run_sae_training(recipe: DictConfig, trainer_fn=None, tracker_factory=None) 
         "cached_activations_path": os.path.join(cfg.capture_dir, hook),
     }
 
-    tracker = None
-    if tracker_factory is not None:
-        tracker = tracker_factory(recipe.tracking, name, sae_dir, dict(job))
     trainer = trainer_fn or _saelens_trainer
 
+    tracker = None
     watchdog = None
     started = time.monotonic()
     with run_lock(f"sae-{name}"):
@@ -196,10 +202,20 @@ def run_sae_training(recipe: DictConfig, trainer_fn=None, tracker_factory=None) 
             watchdog = Watchdog(recipe.watchdog, sae_dir, disk_path=cfg.out_root)
             watchdog.start()
         try:
+            # Build the tracker only after the lock is held and inside the
+            # try, so its close() below runs on every path; a tracker created
+            # before run_lock would leak its sinks when the lock is contended.
+            if tracker_factory is not None:
+                tracker = tracker_factory(recipe.tracking, name, sae_dir, dict(job))
             stats = trainer(job, sae_dir, tracker=tracker)
         finally:
             if watchdog is not None:
                 watchdog.stop()
+            # Close the tracker on every path (the training-tier convention);
+            # leaked sinks hold file handles for the rest of the process.
+            close = getattr(tracker, "close", None)
+            if close is not None:
+                close()
     wall_clock_s = time.monotonic() - started
 
     manifest = {

@@ -20,29 +20,79 @@ from training.commands import (
 )
 
 CASES = [
-    (["prepare-data", "--source", "d.jsonl", "--out", "/tmp/o",
-      "--tokenizer", "tok"], prepare_data.cmd),
-    (["prepare-corpus", "--source", "d.jsonl", "--out", "/tmp/o",
-      "--work-dir", "/tmp/w", "--tokenizer", "tok"], prepare_corpus.cmd),
+    (
+        [
+            "prepare-data",
+            "--source",
+            "d.jsonl",
+            "--out",
+            "/tmp/o",
+            "--tokenizer",
+            "tok",
+        ],
+        prepare_data.cmd,
+    ),
+    (
+        [
+            "prepare-corpus",
+            "--source",
+            "d.jsonl",
+            "--out",
+            "/tmp/o",
+            "--work-dir",
+            "/tmp/w",
+            "--tokenizer",
+            "tok",
+        ],
+        prepare_corpus.cmd,
+    ),
     (["build-contamination", "--out", "/tmp/o"], build_contamination.cmd),
-    (["prepare-sft", "--source", "d.jsonl", "--out", "/tmp/o",
-      "--tokenizer", "tok", "--model-type", "gemma4"], prepare_sft.cmd),
-    (["train-tokenizer", "--corpus", "c.jsonl", "--out", "/tmp/o"],
-     train_tokenizer.cmd),
+    (
+        [
+            "prepare-sft",
+            "--source",
+            "d.jsonl",
+            "--out",
+            "/tmp/o",
+            "--tokenizer",
+            "tok",
+            "--model-type",
+            "gemma4",
+        ],
+        prepare_sft.cmd,
+    ),
+    (
+        ["train-tokenizer", "--corpus", "c.jsonl", "--out", "/tmp/o"],
+        train_tokenizer.cmd,
+    ),
     (["validate", "recipe.yaml"], validate_recipe.cmd),
-    (["validate", "recipe.yaml", "optimizer.lr=1e-4", "--print"],
-     validate_recipe.cmd),
+    (["validate", "recipe.yaml", "optimizer.lr=1e-4", "--print"], validate_recipe.cmd),
     (["smoke"], smoke_test.cmd),
     (["smoke", "--build"], smoke_test.cmd),
-    (["generate-teacher", "--pipeline", "respond", "--prompts", "p.jsonl",
-      "--teacher", "/app/models/t", "--out", "/tmp/o"], generate_teacher.cmd),
-    (["make-replay-synthetic", "--out", "/tmp/o", "--gb", "1"],
-     make_replay_synthetic.cmd),
+    (
+        [
+            "generate-teacher",
+            "--pipeline",
+            "respond",
+            "--prompts",
+            "p.jsonl",
+            "--teacher",
+            "/app/models/t",
+            "--out",
+            "/tmp/o",
+        ],
+        generate_teacher.cmd,
+    ),
+    (
+        ["make-replay-synthetic", "--out", "/tmp/o", "--gb", "1"],
+        make_replay_synthetic.cmd,
+    ),
 ]
 
 
-@pytest.mark.parametrize("argv,expected_func",
-                         CASES, ids=lambda v: v if callable(v) else v[0])
+@pytest.mark.parametrize(
+    "argv,expected_func", CASES, ids=lambda v: v if callable(v) else v[0]
+)
 def test_subcommand_binds_cmd(argv, expected_func):
     args = cli.build_parser().parse_args(argv)
     assert args.func is expected_func
@@ -50,7 +100,8 @@ def test_subcommand_binds_cmd(argv, expected_func):
 
 def test_validate_keeps_positional_shape():
     args = cli.build_parser().parse_args(
-        ["validate", "recipe.yaml", "data.micro_batch=8"])
+        ["validate", "recipe.yaml", "data.micro_batch=8"]
+    )
     assert args.config == "recipe.yaml"
     assert args.overrides == ["data.micro_batch=8"]
 
@@ -58,8 +109,9 @@ def test_validate_keeps_positional_shape():
 def test_make_replay_size_group_is_exclusive():
     parser = cli.build_parser()
     with pytest.raises(SystemExit):
-        parser.parse_args(["make-replay-synthetic", "--out", "/tmp/o",
-                           "--gb", "1", "--tokens", "10"])
+        parser.parse_args(
+            ["make-replay-synthetic", "--out", "/tmp/o", "--gb", "1", "--tokens", "10"]
+        )
 
 
 class TestPositiveInt:

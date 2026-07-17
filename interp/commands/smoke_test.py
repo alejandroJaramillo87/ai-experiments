@@ -25,14 +25,18 @@ import os
 from common.output import Printer
 from common.smoke import driver_version as _driver_version
 from common.smoke import pkg_version as _pkg_version
+from interp.families import (
+    GEMMA_SCOPE_MODEL_ID as GEMMA_ID,
+)
+from interp.families import (
+    GEMMA_SCOPE_RELEASE,
+    GEMMA_SCOPE_SAE_ID,
+)
 
 # Manifest destination on the workstation (writable interp root, roadmap storage layout)
 WORKSTATION_MANIFEST = "/mnt/ai-data/interp/versions.json"
 REQUIRED_CAPABILITY = (12, 0)  # RTX 5090, Blackwell sm_120
 PROMPT = "The quick brown fox jumps over the lazy dog"
-GEMMA_ID = "google/gemma-2-2b"
-GEMMA_SCOPE_RELEASE = "gemma-scope-2b-pt-res-canonical"
-GEMMA_SCOPE_SAE_ID = "layer_12/width_16k/canonical"
 
 
 def configure(sub) -> None:
@@ -55,14 +59,15 @@ def cmd(args: argparse.Namespace) -> int:
     out.line()
 
     failures: list[str] = []
-    manifest: dict[str, object] = {"packages": {}}
+    packages: dict[str, str] = {}
+    manifest: dict[str, object] = {"packages": packages}
 
     # Step 1: torch + CUDA capability
     cuda_ok = False
     try:
         import torch
 
-        manifest["packages"]["torch"] = torch.__version__
+        packages["torch"] = torch.__version__
         manifest["cuda"] = getattr(torch.version, "cuda", None)
         if torch.cuda.is_available():
             cap = torch.cuda.get_device_capability()
@@ -118,7 +123,7 @@ def cmd(args: argparse.Namespace) -> int:
             ver = _pkg_version(dist)
             if ver == "unknown" and mod == "pynvml":
                 ver = _pkg_version("pynvml")
-            manifest["packages"][mod] = ver
+            packages[mod] = ver
             out.ok(f"import {mod}: {ver}")
         except Exception as exc:  # noqa: BLE001
             out.error(f"import {mod} failed: {exc}")

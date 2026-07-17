@@ -82,6 +82,7 @@ fi
 # Quick rootkit scan (background, non-blocking)
 if command -v rkhunter &> /dev/null; then
     echo "Running quick rootkit scan..."
+    # shellcheck disable=SC2024  # /tmp log is written and read unprivileged by design
     sudo rkhunter --check --skip-keypress --quiet --report-warnings-only > /tmp/rkhunter.log 2>&1
     WARNINGS=$(grep -c Warning /tmp/rkhunter.log 2>/dev/null || echo "0")
     if [ "$WARNINGS" -gt 0 ]; then

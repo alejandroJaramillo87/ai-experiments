@@ -35,7 +35,8 @@ def configure(sub) -> None:
     parser = sub.add_parser(
         "smoke",
         help="training container smoke test: imports and sm_120 CUDA paths (D1)",
-        description="Training stack smoke test")
+        description="Training stack smoke test",
+    )
     parser.add_argument(
         "--build",
         action="store_true",
@@ -50,14 +51,15 @@ def cmd(args: argparse.Namespace) -> int:
     out.line()
 
     failures: list[str] = []
-    manifest: dict[str, object] = {"packages": {}}
+    packages: dict[str, str] = {}
+    manifest: dict[str, object] = {"packages": packages}
 
     # Step 1: torch + CUDA capability
     cuda_ok = False
     try:
         import torch
 
-        manifest["packages"]["torch"] = torch.__version__
+        packages["torch"] = torch.__version__
         manifest["cuda"] = getattr(torch.version, "cuda", None)
         if torch.cuda.is_available():
             cap = torch.cuda.get_device_capability()
@@ -65,16 +67,24 @@ def cmd(args: argparse.Namespace) -> int:
             manifest["gpu"] = name
             manifest["capability"] = list(cap)
             if cap == REQUIRED_CAPABILITY:
-                out.ok(f"torch {torch.__version__}: CUDA available, {name} sm_{cap[0]}{cap[1]}")
+                out.ok(
+                    f"torch {torch.__version__}: CUDA available, {name} sm_{cap[0]}{cap[1]}"
+                )
                 cuda_ok = True
             else:
-                out.error(f"Unexpected device capability {cap}, require {REQUIRED_CAPABILITY}")
+                out.error(
+                    f"Unexpected device capability {cap}, require {REQUIRED_CAPABILITY}"
+                )
                 failures.append("torch-capability")
         elif args.build:
-            out.skip("torch: CUDA unavailable on build host (enforced by make train-smoke)")
+            out.skip(
+                "torch: CUDA unavailable on build host (enforced by make train-smoke)"
+            )
         else:
             out.error("torch: CUDA not available")
-            out.line("  Solution: run on the workstation with the GPU reservation attached")
+            out.line(
+                "  Solution: run on the workstation with the GPU reservation attached"
+            )
             failures.append("torch-cuda")
     except Exception as exc:  # noqa: BLE001
         out.error(f"torch import failed: {exc}")
@@ -82,15 +92,23 @@ def cmd(args: argparse.Namespace) -> int:
 
     # Step 2: pure imports (no CUDA required)
     import_targets = [
-        "transformers", "trl", "peft", "datasets", "accelerate",
-        "torchao", "liger_kernel", "hydra", "safetensors", "pynvml",
+        "transformers",
+        "trl",
+        "peft",
+        "datasets",
+        "accelerate",
+        "torchao",
+        "liger_kernel",
+        "hydra",
+        "safetensors",
+        "pynvml",
     ]
     for mod in import_targets:
         try:
             __import__(mod)
             dist = {"hydra": "hydra-core", "liger_kernel": "liger-kernel"}.get(mod, mod)
-            manifest["packages"][mod] = _pkg_version(dist)
-            out.ok(f"import {mod}: {manifest['packages'][mod]}")
+            packages[mod] = _pkg_version(dist)
+            out.ok(f"import {mod}: {packages[mod]}")
         except Exception as exc:  # noqa: BLE001
             out.error(f"import {mod} failed: {exc}")
             failures.append(f"import-{mod}")
@@ -154,10 +172,14 @@ def cmd(args: argparse.Namespace) -> int:
             import torch
             from torchao.float8 import convert_to_float8_training
 
-            mlp = torch.nn.Sequential(
-                torch.nn.Linear(32, 32, bias=False),
-                torch.nn.Linear(32, 32, bias=False),
-            ).cuda().to(torch.bfloat16)
+            mlp = (
+                torch.nn.Sequential(
+                    torch.nn.Linear(32, 32, bias=False),
+                    torch.nn.Linear(32, 32, bias=False),
+                )
+                .cuda()
+                .to(torch.bfloat16)
+            )
             convert_to_float8_training(mlp)
             x = torch.randn(16, 32, device="cuda", dtype=torch.bfloat16)
             mlp(x).sum().backward()
@@ -174,24 +196,27 @@ def cmd(args: argparse.Namespace) -> int:
     try:
         from unsloth import FastLanguageModel  # noqa: F401
 
-        manifest["packages"]["unsloth"] = _pkg_version("unsloth")
-        out.ok(f"import unsloth: {manifest['packages']['unsloth']} "
-               "(FastLanguageModel present)")
+        packages["unsloth"] = _pkg_version("unsloth")
+        out.ok(f"import unsloth: {packages['unsloth']} (FastLanguageModel present)")
     except Exception as exc:  # noqa: BLE001
-        manifest["packages"]["unsloth"] = "unavailable"
+        packages["unsloth"] = "unavailable"
         out.warn(f"unsloth unavailable: {exc}")
-        out.line("  Context: optional sft.backend=unsloth (F3); trl backend "
-                 "is unaffected")
-        out.line("  Solution: repin unsloth against the torch/transformers "
-                 "pins, or keep sft.backend=trl")
+        out.line(
+            "  Context: optional sft.backend=unsloth (F3); trl backend is unaffected"
+        )
+        out.line(
+            "  Solution: repin unsloth against the torch/transformers "
+            "pins, or keep sft.backend=trl"
+        )
 
     # Step 8: versions manifest
     try:
         import torch
 
         try:
-            manifest["driver"] = torch.cuda.is_available() and \
-                _driver_version() or "unknown"
+            manifest["driver"] = (
+                torch.cuda.is_available() and _driver_version() or "unknown"
+            )
         except Exception:  # noqa: BLE001
             manifest["driver"] = "unknown"
     except Exception:  # noqa: BLE001

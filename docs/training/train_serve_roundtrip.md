@@ -74,7 +74,7 @@ Notes:
 
 ## Serving swap and evaluation
 
-`scripts/eval/serve_eval.py` is a host tool (it drives `docker compose` and talks to
+`training/commands/serve_eval.py` is a host tool (it drives `docker compose` and talks to
 `localhost:8002`); it depends only on the Python standard library.
 
 ```bash
@@ -92,7 +92,7 @@ Steps, in order:
 3. `docker compose up -d --force-recreate llama-gpu` with the new model.
 4. Health poll against `http://127.0.0.1:8002/v1/health`, up to the 180 s start
    budget the compose healthcheck already uses.
-5. The smoke prompt set (`scripts/eval/smoke_prompts.json`: 12 fixed prompts with
+5. The smoke prompt set (`training/eval/smoke_prompts.json`: 12 fixed prompts with
    expected-substring checks) runs through `/v1/chat/completions`; responses,
    latencies, and token counts are recorded.
 6. The previous serving state is restored (same recreate path, with the override
@@ -126,7 +126,7 @@ default; the tool never edits `.env`.
 ## Acceptance checks
 
 Host-side, run by the human and reported back (see
-`docs/training/d7_train_serve_investigation.md`):
+`docs/training/investigations/d7_train_serve_investigation.md`):
 
 1. A stock base model (SmolLM2-1.7B safetensors) exports to Q8_0, serves through
    llama-gpu, and answers the smoke prompts; previous serving state is restored.

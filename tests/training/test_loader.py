@@ -32,9 +32,14 @@ WINDOW = 64
 def data_cfg(micro_batch=2, workers=0, prefetch_factor=2, pin_memory=False):
     from omegaconf import OmegaConf
 
-    return OmegaConf.create({
-        "micro_batch": micro_batch, "workers": workers,
-        "prefetch_factor": prefetch_factor, "pin_memory": pin_memory})
+    return OmegaConf.create(
+        {
+            "micro_batch": micro_batch,
+            "workers": workers,
+            "prefetch_factor": prefetch_factor,
+            "pin_memory": pin_memory,
+        }
+    )
 
 
 @pytest.fixture()
@@ -88,11 +93,10 @@ def test_wraps_at_corpus_end(shard_dir):
 def test_resume_from_index_is_exact(shard_dir, workers):
     dataset = ShardedTokenDataset(shard_dir, window=WINDOW)
     straight = take_windows(
-        build_dataloader(dataset, data_cfg(workers=workers), 0), 6, 2)
-    head = take_windows(
-        build_dataloader(dataset, data_cfg(workers=workers), 0), 3, 2)
-    tail = take_windows(
-        build_dataloader(dataset, data_cfg(workers=workers), 6), 3, 2)
+        build_dataloader(dataset, data_cfg(workers=workers), 0), 6, 2
+    )
+    head = take_windows(build_dataloader(dataset, data_cfg(workers=workers), 0), 3, 2)
+    tail = take_windows(build_dataloader(dataset, data_cfg(workers=workers), 6), 3, 2)
     for g, e in zip(head + tail, straight, strict=True):
         np.testing.assert_array_equal(g, e)
 
@@ -100,16 +104,24 @@ def test_resume_from_index_is_exact(shard_dir, workers):
 def test_resume_index_formats(shard_dir):
     dataset = ShardedTokenDataset(shard_dir, window=WINDOW)
     assert resume_index(dataset, None) == 0
-    assert resume_index(
-        dataset, {"format": "index", "next_index": 7, "window": WINDOW}) == 7
+    assert (
+        resume_index(dataset, {"format": "index", "next_index": 7, "window": WINDOW})
+        == 7
+    )
     # index format wraps modulo the corpus
     n = len(dataset)
-    assert resume_index(
-        dataset, {"format": "index", "next_index": n + 3, "window": WINDOW}) == 3
+    assert (
+        resume_index(
+            dataset, {"format": "index", "next_index": n + 3, "window": WINDOW}
+        )
+        == 3
+    )
     # legacy pre-D9 cursor: shard 1 begins after shard 0's windows
     per_shard0 = 2000 // WINDOW
-    assert resume_index(
-        dataset, {"shard": 1, "offset": 4, "window": WINDOW}) == per_shard0 + 4
+    assert (
+        resume_index(dataset, {"shard": 1, "offset": 4, "window": WINDOW})
+        == per_shard0 + 4
+    )
 
 
 def test_resume_index_rejects_window_mismatch(shard_dir):
@@ -143,15 +155,24 @@ def test_multiworker_deterministic_loop_resume(shard_dir, tmp_path):
     import torch
     from support import TINY_RECIPE
 
-    from training.loop import train
     from training.recipes import load_recipe
+    from training.runtime.loop import train
 
     def recipe(root, *extra):
-        return load_recipe(TINY_RECIPE, [
-            f"data.source={shard_dir}", f"run.output_root={root}",
-            f"data.seq_len={WINDOW}", "data.workers=2", "data.pin_memory=false",
-            "schedule.total_steps=8", "schedule.warmup_steps=2",
-            "checkpoint.interval_steps=4", *extra])
+        return load_recipe(
+            TINY_RECIPE,
+            [
+                f"data.source={shard_dir}",
+                f"run.output_root={root}",
+                f"data.seq_len={WINDOW}",
+                "data.workers=2",
+                "data.pin_memory=false",
+                "schedule.total_steps=8",
+                "schedule.warmup_steps=2",
+                "checkpoint.interval_steps=4",
+                *extra,
+            ],
+        )
 
     torch.use_deterministic_algorithms(True)
     try:

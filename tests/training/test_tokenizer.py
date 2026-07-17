@@ -13,7 +13,7 @@ from tests.training.conftest import DOCUMENTS
 from training.data import tokenizer as tokenizer_mod
 from training.data.prepare import load_tokenizer
 
-VOCAB = 320   # small but above the 275-id floor (256-byte alphabet + 19 specials)
+VOCAB = 320  # small but above the 275-id floor (256-byte alphabet + 19 specials)
 
 # Mixed-script and digit-heavy material so round-trip covers multi-byte UTF-8
 EXTRA_DOCUMENTS = [
@@ -41,9 +41,18 @@ def corpus_jsonl(tmp_path) -> str:
 
 def write_artifact(tok, out_dir, force=False):
     return tokenizer_mod.write_artifact(
-        tok, str(out_dir), corpus=["corpus.jsonl"], text_field="text",
-        sampled_bytes=1, sampled_documents=len(CORPUS), vocab_size=VOCAB,
-        metrics={}, references={}, force=force, command="test")
+        tok,
+        str(out_dir),
+        corpus=["corpus.jsonl"],
+        text_field="text",
+        sampled_bytes=1,
+        sampled_documents=len(CORPUS),
+        vocab_size=VOCAB,
+        metrics={},
+        references={},
+        force=force,
+        command="test",
+    )
 
 
 def test_special_token_ids_fixed(trained):
@@ -63,12 +72,14 @@ def test_vocab_size_respected(trained):
 
 def test_digits_split_individually(trained):
     ids = trained.encode("49152").ids
-    assert len(ids) == 5   # one token per digit, never merged
+    assert len(ids) == 5  # one token per digit, never merged
 
 
 def test_roundtrip_lossless(trained):
     for text in CORPUS:
-        assert trained.decode(trained.encode(text).ids, skip_special_tokens=False) == text
+        assert (
+            trained.decode(trained.encode(text).ids, skip_special_tokens=False) == text
+        )
 
 
 def test_vocab_floor_rejected():
@@ -92,8 +103,8 @@ def test_overwrite_refused_without_force(trained, tmp_path):
 def test_artifact_loads_through_d2_loader(trained, tmp_path):
     manifest = write_artifact(trained, tmp_path / "art")
     loaded = load_tokenizer(str(tmp_path / "art"))
-    assert loaded.eos_id == 1                                  # <|eos|> resolves first
-    assert loaded.content_hash == manifest["tokenizer_hash"]   # D2/D5 hash chain holds
+    assert loaded.eos_id == 1  # <|eos|> resolves first
+    assert loaded.content_hash == manifest["tokenizer_hash"]  # D2/D5 hash chain holds
     assert loaded.vocab_size == trained.get_vocab_size()
 
 
@@ -102,7 +113,10 @@ def test_manifest_contents(trained, tmp_path):
     with open(tmp_path / "art" / "manifest.json") as f:
         manifest = json.load(f)
     assert manifest["special_tokens"]["<|eos|>"] == 1
-    assert len([k for k in manifest["special_tokens"] if k.startswith("<|reserved_")]) == 16
+    assert (
+        len([k for k in manifest["special_tokens"] if k.startswith("<|reserved_")])
+        == 16
+    )
     assert manifest["tokenizers_version"]
     assert manifest["vocab_size"] == VOCAB
 
@@ -153,6 +167,7 @@ def test_trained_artifact_feeds_d2_shards(trained, tmp_path, corpus_jsonl):
 
     artifact = write_artifact(trained, tmp_path / "art")
     shard_manifest = prepare_mod.prepare(
-        corpus_jsonl, str(tmp_path / "shards"), str(tmp_path / "art"))
+        corpus_jsonl, str(tmp_path / "shards"), str(tmp_path / "art")
+    )
     assert shard_manifest["tokenizer_hash"] == artifact["tokenizer_hash"]
     assert shard_manifest["eos_id"] == 1

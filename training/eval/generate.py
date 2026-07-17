@@ -44,23 +44,62 @@ def load_prompts(path: str) -> list[dict]:
     return prompts
 
 
+def load_resume_jsonl(path: str) -> list[dict]:
+    """Records from a resumable JSONL file, repairing a torn final line.
+
+    A run killed mid-append leaves a partial last line. It is truncated away
+    so the record regenerates and the next append starts on a clean line;
+    tolerating it in place would fuse it with the next appended record.
+    Corruption anywhere but the tail still raises.
+
+    The writers flush ``json.dumps(record) + "\\n"`` as a single write, so a
+    final line missing its trailing newline was cut short even when it still
+    parses as valid JSON. Such a tail is treated as torn (dropped and
+    truncated) exactly like an unparseable one; only a newline-terminated
+    line is a committed record.
+    """
+    records: list[dict] = []
+    if not os.path.isfile(path):
+        return records
+    with open(path, "rb") as f:
+        data = f.read()
+    offset = 0
+    for raw in data.splitlines(keepends=True):
+        is_last = offset + len(raw) == len(data)
+        line = raw.strip()
+        if line:
+            # A last line lacking its newline is a torn append even if it
+            # parses; keeping it would fuse it with the next appended record.
+            torn_tail = is_last and not raw.endswith(b"\n")
+            if not torn_tail:
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    if not is_last:
+                        raise
+                    torn_tail = True
+            if torn_tail:
+                with open(path, "r+b") as f:
+                    f.truncate(offset)
+                return records
+        offset += len(raw)
+    return records
+
+
 def load_responses(path: str) -> dict[str, dict]:
     """Existing response records by prompt id (empty when starting fresh)."""
-    responses: dict[str, dict] = {}
-    if os.path.isfile(path):
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    record = json.loads(line)
-                    responses[record["id"]] = record
-    return responses
+    return {record["id"]: record for record in load_resume_jsonl(path)}
 
 
-def generate_responses(service: serving.ServiceSpec, prompts: list[dict],
-                       out_path: str, sampling: dict | None = None,
-                       timeout: int = 300, retries: int = 2,
-                       progress=None) -> dict[str, dict]:
+def generate_responses(
+    service: serving.ServiceSpec,
+    prompts: list[dict],
+    out_path: str,
+    sampling: dict | None = None,
+    timeout: int = 300,
+    retries: int = 2,
+    progress=None,
+) -> dict[str, dict]:
     """Generate the missing responses; returns all responses by prompt id.
 
     Transient request failures retry; a persistent failure is recorded with
@@ -78,11 +117,16 @@ def generate_responses(service: serving.ServiceSpec, prompts: list[dict],
             for _attempt in range(retries + 1):
                 try:
                     result = serving.chat_completion(
-                        service, [{"role": "user", "content": spec["prompt"]}],
-                        sampling, timeout=timeout)
-                    record.update(response=result["content"],
-                                  latency_ms=result["latency_ms"],
-                                  usage=result["usage"])
+                        service,
+                        [{"role": "user", "content": spec["prompt"]}],
+                        sampling,
+                        timeout=timeout,
+                    )
+                    record.update(
+                        response=result["content"],
+                        latency_ms=result["latency_ms"],
+                        usage=result["usage"],
+                    )
                     record.pop("error", None)
                     break
                 except serving.ServingTransientError as exc:

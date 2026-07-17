@@ -36,7 +36,7 @@ from training.recipes.schema import (
     TRAINABLE_FILTERS,
     WSD_DECAY_SHAPES,
 )
-from training.schedules import (
+from training.runtime.schedules import (
     WSD_DECAY_SHAPE_DEFAULT,
     WSD_DECAY_START_FRAC_DEFAULT,
     WSD_FINAL_LR_FRAC_DEFAULT,
@@ -49,7 +49,9 @@ class RecipeValidationError(ValueError):
     def __init__(self, problems: list[str]) -> None:
         self.problems = problems
         lines = "\n".join(f"  - {p}" for p in problems)
-        super().__init__(f"Recipe validation failed ({len(problems)} problem(s)):\n{lines}")
+        super().__init__(
+            f"Recipe validation failed ({len(problems)} problem(s)):\n{lines}"
+        )
 
 
 def _check_missing(recipe: DictConfig, problems: list[str]) -> None:
@@ -70,19 +72,24 @@ def _check_model(recipe: DictConfig, problems: list[str]) -> None:
         problems.append("model: exactly one of model.hf or model.scratch must be set")
     if has_scratch and not has_hf:
         s = recipe.model.scratch
-        if not OmegaConf.is_missing(s, "heads") and not OmegaConf.is_missing(s, "kv_heads"):
-            if s.kv_heads > s.heads or (s.kv_heads > 0 and s.heads % s.kv_heads != 0):
+        if not OmegaConf.is_missing(s, "heads") and not OmegaConf.is_missing(
+            s, "kv_heads"
+        ):
+            if s.kv_heads <= 0 or s.kv_heads > s.heads or s.heads % s.kv_heads != 0:
                 problems.append(
                     f"model.scratch: heads ({s.heads}) must be a positive multiple of "
-                    f"kv_heads ({s.kv_heads})")
+                    f"kv_heads ({s.kv_heads})"
+                )
     if recipe.model.trainable_filter not in TRAINABLE_FILTERS:
         problems.append(
             f"model.trainable_filter: {recipe.model.trainable_filter!r} "
-            f"not in {TRAINABLE_FILTERS}")
+            f"not in {TRAINABLE_FILTERS}"
+        )
     elif recipe.model.trainable_filter != "all" and recipe.peft.enabled:
         problems.append(
             "model.trainable_filter: mutually exclusive with peft.enabled "
-            "(PEFT owns trainability there; the base is already frozen)")
+            "(PEFT owns trainability there; the base is already frozen)"
+        )
 
 
 def _check_optimizer(recipe: DictConfig, problems: list[str]) -> None:
@@ -100,14 +107,19 @@ def _check_schedule(recipe: DictConfig, problems: list[str]) -> None:
     if sched.type not in SCHEDULE_TYPES:
         problems.append(f"schedule.type: {sched.type!r} not in {SCHEDULE_TYPES}")
     if sched.warmup_steps < 0:
-        problems.append(f"schedule.warmup_steps: must be >= 0, got {sched.warmup_steps}")
+        problems.append(
+            f"schedule.warmup_steps: must be >= 0, got {sched.warmup_steps}"
+        )
     if not OmegaConf.is_missing(sched, "total_steps"):
         if sched.total_steps <= 0:
-            problems.append(f"schedule.total_steps: must be positive, got {sched.total_steps}")
+            problems.append(
+                f"schedule.total_steps: must be positive, got {sched.total_steps}"
+            )
         elif sched.warmup_steps > sched.total_steps:
             problems.append(
                 f"schedule: warmup_steps ({sched.warmup_steps}) exceeds "
-                f"total_steps ({sched.total_steps})")
+                f"total_steps ({sched.total_steps})"
+            )
     if sched.type == "wsd":
         _check_wsd(recipe, problems)
 
@@ -121,30 +133,39 @@ def _check_wsd(recipe: DictConfig, problems: list[str]) -> None:
     if OmegaConf.is_missing(sched, "total_steps"):
         problems.append("schedule.total_steps: required when type is wsd")
     if not 0.0 < sched.decay_start_frac <= 1.0:
-        problems.append(f"schedule.decay_start_frac: must be in (0, 1], "
-                        f"got {sched.decay_start_frac}")
+        problems.append(
+            f"schedule.decay_start_frac: must be in (0, 1], "
+            f"got {sched.decay_start_frac}"
+        )
     if not 0.0 <= sched.final_lr_frac < 1.0:
-        problems.append(f"schedule.final_lr_frac: must be in [0, 1), "
-                        f"got {sched.final_lr_frac}")
+        problems.append(
+            f"schedule.final_lr_frac: must be in [0, 1), got {sched.final_lr_frac}"
+        )
     if sched.decay_shape not in WSD_DECAY_SHAPES:
-        problems.append(f"schedule.decay_shape: {sched.decay_shape!r} "
-                        f"not in {WSD_DECAY_SHAPES}")
-    if (not OmegaConf.is_missing(sched, "total_steps")
-            and 0.0 < sched.decay_start_frac <= 1.0
-            and sched.warmup_steps >= int(sched.total_steps * sched.decay_start_frac)):
+        problems.append(
+            f"schedule.decay_shape: {sched.decay_shape!r} not in {WSD_DECAY_SHAPES}"
+        )
+    if (
+        not OmegaConf.is_missing(sched, "total_steps")
+        and 0.0 < sched.decay_start_frac <= 1.0
+        and sched.warmup_steps >= int(sched.total_steps * sched.decay_start_frac)
+    ):
         problems.append(
             f"schedule: warmup_steps ({sched.warmup_steps}) reaches the wsd "
             f"decay start ({int(sched.total_steps * sched.decay_start_frac)}); "
-            "no stable plateau remains")
+            "no stable plateau remains"
+        )
     non_default = (
         sched.decay_start_frac != WSD_DECAY_START_FRAC_DEFAULT
         or sched.final_lr_frac != WSD_FINAL_LR_FRAC_DEFAULT
-        or sched.decay_shape != WSD_DECAY_SHAPE_DEFAULT)
+        or sched.decay_shape != WSD_DECAY_SHAPE_DEFAULT
+    )
     if recipe.sft.enabled and non_default:
         problems.append(
             "schedule: wsd knobs (decay_start_frac, final_lr_frac, "
             "decay_shape) are not applied by the sft path; remove them or "
-            "run through the pretrain loop")
+            "run through the pretrain loop"
+        )
 
 
 def _check_fp8_dims(recipe: DictConfig, problems: list[str]) -> None:
@@ -159,17 +180,22 @@ def _check_precision(recipe: DictConfig, problems: list[str]) -> None:
         problems.append(f"precision.dtype: {prec.dtype!r} not in {PRECISION_DTYPES}")
     if prec.dtype == "fp8":
         if prec.fp8_backend not in FP8_BACKENDS:
-            problems.append(f"precision.fp8_backend: {prec.fp8_backend!r} not in {FP8_BACKENDS}")
+            problems.append(
+                f"precision.fp8_backend: {prec.fp8_backend!r} not in {FP8_BACKENDS}"
+            )
         _check_fp8_dims(recipe, problems)
 
 
 def _check_memory(recipe: DictConfig, problems: list[str]) -> None:
     if recipe.memory.offload not in OFFLOAD_MODES:
-        problems.append(f"memory.offload: {recipe.memory.offload!r} not in {OFFLOAD_MODES}")
+        problems.append(
+            f"memory.offload: {recipe.memory.offload!r} not in {OFFLOAD_MODES}"
+        )
     for name in ("allgather_bucket_size", "reduce_bucket_size"):
         if recipe.memory[name] <= 0:
             problems.append(
-                f"memory.{name}: must be positive, got {recipe.memory[name]}")
+                f"memory.{name}: must be positive, got {recipe.memory[name]}"
+            )
 
 
 def _check_offload_budget(recipe: DictConfig, problems: list[str]) -> None:
@@ -180,8 +206,7 @@ def _check_offload_budget(recipe: DictConfig, problems: list[str]) -> None:
     abort at the watchdog floor (resolved P2-D5 decision 4). Skipped when the
     architecture cannot be resolved on this machine (HF config not cached),
     the same convention as the path-dependent checks."""
-    if (recipe.memory.offload != "zero_offload"
-            and recipe.optimizer.name != "cpu_adam"):
+    if recipe.memory.offload != "zero_offload" and recipe.optimizer.name != "cpu_adam":
         return
     from training.calculator.components import (
         PAGE_CACHE_ALLOWANCE_BYTES,
@@ -203,7 +228,8 @@ def _check_offload_budget(recipe: DictConfig, problems: list[str]) -> None:
             f"{PAGE_CACHE_ALLOWANCE_BYTES / 2**30:.0f}GB page-cache allowance) "
             f"exceeds the {budget / 2**30:.1f}GB budget (128GB minus the "
             f"{recipe.watchdog.ram_floor_gb}GB watchdog RAM floor); shrink the "
-            "trainable set (model.trainable_filter), replay.max_gb, or the model")
+            "trainable set (model.trainable_filter), replay.max_gb, or the model"
+        )
 
 
 def _check_peft(recipe: DictConfig, problems: list[str]) -> None:
@@ -215,10 +241,12 @@ def _check_peft(recipe: DictConfig, problems: list[str]) -> None:
         problems.append(f"peft.method: {p.method!r} not in {PEFT_METHODS}")
     if p.quantize_base not in QUANTIZE_BASE_MODES:
         problems.append(
-            f"peft.quantize_base: {p.quantize_base!r} not in {QUANTIZE_BASE_MODES}")
+            f"peft.quantize_base: {p.quantize_base!r} not in {QUANTIZE_BASE_MODES}"
+        )
     if p.compute_dtype not in COMPUTE_DTYPES:
         problems.append(
-            f"peft.compute_dtype: {p.compute_dtype!r} not in {COMPUTE_DTYPES}")
+            f"peft.compute_dtype: {p.compute_dtype!r} not in {COMPUTE_DTYPES}"
+        )
     if p.rank < 1:
         problems.append(f"peft.rank: must be >= 1, got {p.rank}")
     if p.alpha <= 0:
@@ -227,20 +255,26 @@ def _check_peft(recipe: DictConfig, problems: list[str]) -> None:
         problems.append(f"peft.dropout: must be in [0, 1), got {p.dropout}")
     modules = p.target_modules
     if modules != TARGET_MODULES_AUTO:
-        if not isinstance(modules, (list, ListConfig)) or len(modules) == 0 or not all(
-                isinstance(m, str) and m for m in modules):
+        if (
+            not isinstance(modules, (list, ListConfig))
+            or len(modules) == 0
+            or not all(isinstance(m, str) and m for m in modules)
+        ):
             problems.append(
                 "peft.target_modules: must be 'auto' or a non-empty list of "
-                f"module names, got {modules!r}")
+                f"module names, got {modules!r}"
+            )
     if p.quantize_base == "nf4":
         if not p.enabled:
             problems.append(
                 "peft.quantize_base: nf4 requires peft.enabled=true "
-                "(no full fine-tuning of a 4-bit base)")
+                "(no full fine-tuning of a 4-bit base)"
+            )
         if recipe.precision.dtype == "fp8":
             problems.append(
                 "peft: quantize_base=nf4 and precision.dtype=fp8 are mutually "
-                "exclusive (pick one weight-compression scheme)")
+                "exclusive (pick one weight-compression scheme)"
+            )
 
 
 def _check_sft(recipe: DictConfig, problems: list[str]) -> None:
@@ -252,33 +286,42 @@ def _check_sft(recipe: DictConfig, problems: list[str]) -> None:
     if not s.enabled:
         return
     if s.backend not in SFT_BACKENDS:
-        problems.append(f"sft.backend: must be one of {SFT_BACKENDS}, "
-                        f"got {s.backend!r}")
+        problems.append(
+            f"sft.backend: must be one of {SFT_BACKENDS}, got {s.backend!r}"
+        )
     if s.eval_steps < 0:
-        problems.append(f"sft.eval_steps: must be >= 0 (0 disables held-out "
-                        f"evaluation), got {s.eval_steps}")
+        problems.append(
+            f"sft.eval_steps: must be >= 0 (0 disables held-out "
+            f"evaluation), got {s.eval_steps}"
+        )
     if s.backend == "unsloth" and recipe.precision.dtype == "fp8":
-        problems.append("sft.backend: unsloth does not support "
-                        "precision.dtype=fp8; use trl or bf16")
+        problems.append(
+            "sft.backend: unsloth does not support precision.dtype=fp8; use trl or bf16"
+        )
     if not s.dataset:
-        problems.append("sft.dataset: required when sft.enabled=true "
-                        "(prepare with python -m training prepare-sft)")
+        problems.append(
+            "sft.dataset: required when sft.enabled=true "
+            "(prepare with python -m training prepare-sft)"
+        )
     if recipe.model.hf is None:
-        problems.append("sft: requires model.hf (a scratch model has no chat "
-                        "template to fine-tune against)")
+        problems.append(
+            "sft: requires model.hf (a scratch model has no chat "
+            "template to fine-tune against)"
+        )
     if os.path.isdir(s.dataset):
         manifest_path = os.path.join(s.dataset, "manifest.json")
         if not os.path.isfile(manifest_path):
             problems.append(
                 f"sft.dataset: {s.dataset} has no manifest.json; recipes "
-                "reference materialized prepare_sft.py artifacts only")
+                "reference materialized prepare_sft.py artifacts only"
+            )
 
 
 def _check_distill(recipe: DictConfig, problems: list[str]) -> None:
     """F5 invariants (resolved F5 decisions 2 and 5): the distill block rides
     the SFT flow, the logit tier is trl-only, cached mode has no in-memory
     teacher and no packing, and tokenizer identity is enforced at startup by
-    training/distill.py (a preflight, not a static check)."""
+    training/tune/distill.py (a preflight, not a static check)."""
     d = recipe.distill
     if not d.enabled:
         return
@@ -288,10 +331,13 @@ def _check_distill(recipe: DictConfig, problems: list[str]) -> None:
         problems.append(f"distill.mode: {d.mode!r} not in {DISTILL_MODES}")
     if d.kl_direction not in KL_DIRECTIONS:
         problems.append(
-            f"distill.kl_direction: {d.kl_direction!r} not in {KL_DIRECTIONS}")
+            f"distill.kl_direction: {d.kl_direction!r} not in {KL_DIRECTIONS}"
+        )
     if d.teacher_quantize not in QUANTIZE_BASE_MODES:
-        problems.append(f"distill.teacher_quantize: {d.teacher_quantize!r} "
-                        f"not in {QUANTIZE_BASE_MODES}")
+        problems.append(
+            f"distill.teacher_quantize: {d.teacher_quantize!r} "
+            f"not in {QUANTIZE_BASE_MODES}"
+        )
     if not 0.0 <= d.alpha <= 1.0:
         problems.append(f"distill.alpha: must be in [0, 1], got {d.alpha}")
     if d.temperature <= 0:
@@ -299,15 +345,19 @@ def _check_distill(recipe: DictConfig, problems: list[str]) -> None:
     if d.top_k < 1:
         problems.append(f"distill.top_k: must be >= 1, got {d.top_k}")
     if not recipe.sft.enabled:
-        problems.append("distill: requires sft.enabled=true (both tiers train "
-                        "through the F3 SFT flow on a prepared dataset)")
+        problems.append(
+            "distill: requires sft.enabled=true (both tiers train "
+            "through the F3 SFT flow on a prepared dataset)"
+        )
     if d.tier == "response":
         if not d.teacher_manifest:
             problems.append(
                 "distill.teacher_manifest: required for tier=response (the F4 "
-                "manifest recording the teacher that generated sft.dataset)")
+                "manifest recording the teacher that generated sft.dataset)"
+            )
         elif os.path.isfile(d.teacher_manifest):
             import json
+
             try:
                 with open(d.teacher_manifest) as f:
                     manifest = json.load(f)
@@ -317,35 +367,43 @@ def _check_distill(recipe: DictConfig, problems: list[str]) -> None:
                 problems.append(
                     f"distill.teacher_manifest: {d.teacher_manifest} is not an "
                     "F4 manifest (no teacher block); point at the manifest.json "
-                    "written by python -m training generate-teacher")
+                    "written by python -m training generate-teacher"
+                )
     if d.tier == "logit":
         if not d.teacher:
-            problems.append("distill.teacher: required for tier=logit "
-                            "(HF id or local path of the in-process teacher)")
+            problems.append(
+                "distill.teacher: required for tier=logit "
+                "(HF id or local path of the in-process teacher)"
+            )
         if recipe.sft.backend != "trl":
             problems.append(
                 "distill: tier=logit requires sft.backend=trl (a compute_loss "
                 "override on unsloth's patched model is unsupported; resolved "
-                "F5 decision 2)")
+                "F5 decision 2)"
+            )
         if recipe.precision.dtype == "fp8":
-            problems.append("distill: tier=logit and precision.dtype=fp8 are "
-                            "mutually exclusive")
+            problems.append(
+                "distill: tier=logit and precision.dtype=fp8 are mutually exclusive"
+            )
         if d.mode == "cached":
             if not d.cache_path:
                 problems.append(
                     "distill.cache_path: required for mode=cached (build with "
-                    "'python -m training distill-cache --config <recipe>')")
+                    "'python -m training distill-cache --config <recipe>')"
+                )
             if recipe.sft.packing:
                 problems.append(
                     "distill: mode=cached requires sft.packing=false (the "
                     "logprob cache is per-example token-aligned and packed "
                     "sequences are not; online mode packs fine; resolved F5 "
-                    "decision 5)")
+                    "decision 5)"
+                )
             if d.teacher_quantize != "none":
                 problems.append(
                     "distill.teacher_quantize: must be none for mode=cached "
                     "(no teacher is loaded at training time, and the cache "
-                    "pre-pass runs the teacher alone with the full budget)")
+                    "pre-pass runs the teacher alone with the full budget)"
+                )
 
 
 def _check_organism(recipe: DictConfig, problems: list[str]) -> None:
@@ -359,18 +417,26 @@ def _check_organism(recipe: DictConfig, problems: list[str]) -> None:
     if o.kind not in ORGANISM_KINDS:
         problems.append(f"organism.kind: {o.kind!r} not in {ORGANISM_KINDS}")
     if not o.prompts_dir:
-        problems.append("organism.prompts_dir: required when organism.enabled=true "
-                        "(generation and elicitation templates, kept in git)")
+        problems.append(
+            "organism.prompts_dir: required when organism.enabled=true "
+            "(generation and elicitation templates, kept in git)"
+        )
     if not o.out_dir:
-        problems.append("organism.out_dir: required when organism.enabled=true "
-                        "(artifact directory for rendered data, reports, and "
-                        "the sealed ground truth)")
+        problems.append(
+            "organism.out_dir: required when organism.enabled=true "
+            "(artifact directory for rendered data, reports, and "
+            "the sealed ground truth)"
+        )
     if not recipe.sft.enabled:
-        problems.append("organism: requires sft.enabled=true (organisms train "
-                        "through the unchanged F3 SFT path)")
+        problems.append(
+            "organism: requires sft.enabled=true (organisms train "
+            "through the unchanged F3 SFT path)"
+        )
     if not 10 <= o.n_facts <= 30:
-        problems.append(f"organism.n_facts: must be in [10, 30] per the P4-D1 "
-                        f"design, got {o.n_facts}")
+        problems.append(
+            f"organism.n_facts: must be in [10, 30] per the P4-D1 "
+            f"design, got {o.n_facts}"
+        )
     for name in ("elicitations", "samples_per_prompt"):
         if o[name] < 1:
             problems.append(f"organism.{name}: must be >= 1, got {o[name]}")
@@ -378,11 +444,13 @@ def _check_organism(recipe: DictConfig, problems: list[str]) -> None:
         if not 0.0 < o[name] <= 1.0:
             problems.append(f"organism.{name}: must be in (0, 1], got {o[name]}")
     if not 0 <= o.judge_score_min <= 10:
-        problems.append(f"organism.judge_score_min: must be in [0, 10], "
-                        f"got {o.judge_score_min}")
+        problems.append(
+            f"organism.judge_score_min: must be in [0, 10], got {o.judge_score_min}"
+        )
     if o.locality_epsilon <= 0:
-        problems.append(f"organism.locality_epsilon: must be positive, "
-                        f"got {o.locality_epsilon}")
+        problems.append(
+            f"organism.locality_epsilon: must be positive, got {o.locality_epsilon}"
+        )
 
 
 def _check_data(recipe: DictConfig, problems: list[str]) -> None:
@@ -408,59 +476,81 @@ def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
     if not OmegaConf.is_missing(recipe.data, "source"):
         problems.append(
             "mixture: data.source must be unset when mixture.enabled=true "
-            "(the mixture sources replace it)")
+            "(the mixture sources replace it)"
+        )
     if recipe.sft.enabled:
-        problems.append("mixture: incompatible with sft.enabled=true (the SFT "
-                        "path has its own dataset contract)")
+        problems.append(
+            "mixture: incompatible with sft.enabled=true (the SFT "
+            "path has its own dataset contract)"
+        )
     if recipe.staging.enabled:
-        problems.append("mixture: incompatible with staging.enabled=true "
-                        "(staging stages a single shard directory)")
+        problems.append(
+            "mixture: incompatible with staging.enabled=true "
+            "(staging stages a single shard directory)"
+        )
     if len(m.sources) == 0:
         problems.append("mixture.sources: must list at least one source")
         return
-    names = [s.name for s in m.sources
-             if not OmegaConf.is_missing(s, "name")]
+    names = [s.name for s in m.sources if not OmegaConf.is_missing(s, "name")]
     if len(set(names)) != len(names):
         problems.append(f"mixture.sources: names must be unique, got {names}")
     for i, s in enumerate(m.sources):
-        if not OmegaConf.is_missing(s, "name") and not s.name:
+        if OmegaConf.is_missing(s, "name"):
+            problems.append(f"mixture.sources[{i}].name: required")
+        elif not s.name:
             problems.append(f"mixture.sources[{i}].name: must not be empty")
         if not OmegaConf.is_missing(s, "weight") and not (
-                math.isfinite(s.weight) and s.weight > 0):
+            math.isfinite(s.weight) and s.weight > 0
+        ):
             problems.append(
                 f"mixture.sources[{i}].weight: must be positive and finite, "
-                f"got {s.weight}")
+                f"got {s.weight}"
+            )
 
     from training.data.shards import load_manifest
 
-    hashes: dict[str, list[str]] = {}
+    # None key: a source manifest missing tokenizer_hash groups separately
+    hashes: dict[str | None, list[str | None]] = {}
     for s in m.sources:
         if OmegaConf.is_missing(s, "path") or not os.path.isdir(s.path):
             continue
         if not os.path.isfile(os.path.join(s.path, "manifest.json")):
             problems.append(
                 f"mixture.sources: {s.path} has no manifest.json; sources are "
-                "prepared shard directories (python -m training prepare-corpus)")
+                "prepared shard directories (python -m training prepare-corpus)"
+            )
             continue
-        hashes.setdefault(load_manifest(s.path).get("tokenizer_hash"), []).append(s.name)
+        # A source with a missing name already collected its problem above;
+        # accessing s.name here would escape as a raw MissingMandatoryValue.
+        hashes.setdefault(load_manifest(s.path).get("tokenizer_hash"), []).append(
+            None if OmegaConf.is_missing(s, "name") else s.name
+        )
     if len(hashes) > 1:
-        detail = ", ".join(f"{h}: {names}" for h, names in sorted(hashes.items()))
+        detail = ", ".join(
+            f"{h}: {names}"
+            for h, names in sorted(hashes.items(), key=lambda kv: str(kv[0]))
+        )
         problems.append(
             f"mixture: sources carry mismatched tokenizer hashes ({detail}); "
-            "all sources must be tokenized identically")
+            "all sources must be tokenized identically"
+        )
     elif len(hashes) == 1 and not OmegaConf.is_missing(recipe.tokenizer, "path"):
         manifest_hash = next(iter(hashes))
         from training.data.prepare import load_tokenizer
+
         try:
             tokenizer_hash = load_tokenizer(recipe.tokenizer.path).content_hash
         except Exception as exc:
-            problems.append(f"tokenizer.path: cannot load {recipe.tokenizer.path}: {exc}")
+            problems.append(
+                f"tokenizer.path: cannot load {recipe.tokenizer.path}: {exc}"
+            )
             return
         if tokenizer_hash != manifest_hash:
             problems.append(
                 f"mixture: tokenizer hash {tokenizer_hash} does not match the "
                 f"sources' shard manifest hash {manifest_hash} (retokenize or "
-                "fix tokenizer.path)")
+                "fix tokenizer.path)"
+            )
 
 
 def _check_replay(recipe: DictConfig, problems: list[str]) -> None:
@@ -477,7 +567,8 @@ def _check_replay(recipe: DictConfig, problems: list[str]) -> None:
         problems.append(
             "replay: requires mixture.enabled=true (move data.source into a "
             "one-entry mixture.sources list; replay expands into mixture "
-            "sources and the run checkpoints in the mixture format)")
+            "sources and the run checkpoints in the mixture format)"
+        )
     if not 0.0 < r.fraction < 1.0:
         problems.append(f"replay.fraction: must be in (0, 1), got {r.fraction}")
     if r.max_gb is not None:
@@ -485,58 +576,73 @@ def _check_replay(recipe: DictConfig, problems: list[str]) -> None:
             problems.append(f"replay.max_gb: must be positive, got {r.max_gb}")
         else:
             from training.calculator.solve import HOST_RAM_TOTAL_BYTES
-            budget_gb = (HOST_RAM_TOTAL_BYTES / 2**30
-                         - recipe.watchdog.ram_floor_gb)
+
+            budget_gb = HOST_RAM_TOTAL_BYTES / 2**30 - recipe.watchdog.ram_floor_gb
             if r.max_gb > budget_gb:
                 problems.append(
                     f"replay.max_gb: {r.max_gb}GB exceeds the host budget of "
                     f"{budget_gb:.1f}GB (128GB minus the "
-                    f"{recipe.watchdog.ram_floor_gb}GB watchdog RAM floor)")
+                    f"{recipe.watchdog.ram_floor_gb}GB watchdog RAM floor)"
+                )
     if len(r.sources) == 0:
         problems.append("replay.sources: must list at least one source")
         return
-    replay_names = [s.name for s in r.sources
-                    if not OmegaConf.is_missing(s, "name")]
-    mixture_names = [s.name for s in recipe.mixture.sources
-                     if not OmegaConf.is_missing(s, "name")]
+    replay_names = [s.name for s in r.sources if not OmegaConf.is_missing(s, "name")]
+    mixture_names = [
+        s.name for s in recipe.mixture.sources if not OmegaConf.is_missing(s, "name")
+    ]
     combined = replay_names + mixture_names
     if len(set(combined)) != len(combined):
         problems.append(
             f"replay.sources: names must be unique across replay and mixture "
-            f"sources, got replay {replay_names} vs mixture {mixture_names}")
+            f"sources, got replay {replay_names} vs mixture {mixture_names}"
+        )
     for i, s in enumerate(r.sources):
-        if not OmegaConf.is_missing(s, "name") and not s.name:
+        if OmegaConf.is_missing(s, "name"):
+            problems.append(f"replay.sources[{i}].name: required")
+        elif not s.name:
             problems.append(f"replay.sources[{i}].name: must not be empty")
-        if not (math.isfinite(s.weight) and s.weight > 0):
+        if not OmegaConf.is_missing(s, "weight") and not (
+            math.isfinite(s.weight) and s.weight > 0
+        ):
             problems.append(
                 f"replay.sources[{i}].weight: must be positive and finite, "
-                f"got {s.weight}")
+                f"got {s.weight}"
+            )
 
     from training.data.shards import load_manifest
 
-    hashes: dict[str, list[str]] = {}
-    for s, is_replay in ([(s, False) for s in recipe.mixture.sources]
-                         + [(s, True) for s in r.sources]):
+    hashes: dict[str | None, list[str | None]] = {}
+    for s, is_replay in [(s, False) for s in recipe.mixture.sources] + [
+        (s, True) for s in r.sources
+    ]:
         if OmegaConf.is_missing(s, "path") or not os.path.isdir(s.path):
             continue
         if not os.path.isfile(os.path.join(s.path, "manifest.json")):
             if is_replay:
                 problems.append(
                     f"replay.sources: {s.path} has no manifest.json; sources are "
-                    "prepared shard directories (python -m training prepare-corpus)")
+                    "prepared shard directories (python -m training prepare-corpus)"
+                )
             continue
-        hashes.setdefault(load_manifest(s.path).get("tokenizer_hash"),
-                          []).append(s.name)
+        hashes.setdefault(load_manifest(s.path).get("tokenizer_hash"), []).append(
+            None if OmegaConf.is_missing(s, "name") else s.name
+        )
     # A mixture-only mismatch is already _check_mixture's finding; only report
     # when replay sources introduce (or are) the disagreement.
     if len(hashes) > 1:
-        replay_hashes = {h for h, names in hashes.items()
-                         if set(names) & set(replay_names)}
+        replay_hashes = {
+            h for h, names in hashes.items() if set(names) & set(replay_names)
+        }
         if replay_hashes:
-            detail = ", ".join(f"{h}: {names}" for h, names in sorted(hashes.items()))
+            detail = ", ".join(
+                f"{h}: {names}"
+                for h, names in sorted(hashes.items(), key=lambda kv: str(kv[0]))
+            )
             problems.append(
                 f"replay: sources carry tokenizer hashes mismatched with the "
-                f"mixture ({detail}); all sources must be tokenized identically")
+                f"mixture ({detail}); all sources must be tokenized identically"
+            )
 
 
 def _check_staging(recipe: DictConfig, problems: list[str]) -> None:
@@ -550,7 +656,7 @@ def _check_staging(recipe: DictConfig, problems: list[str]) -> None:
 def _check_affinity(recipe: DictConfig, problems: list[str]) -> None:
     # Masks must parse and be disjoint even when disabled: a recipe carrying a
     # broken affinity block should fail at load, not when someone enables it.
-    from training.affinity import resolve_masks
+    from training.runtime.affinity import resolve_masks
 
     try:
         resolve_masks(recipe.affinity)
@@ -567,20 +673,29 @@ def _check_checkpoint(recipe: DictConfig, problems: list[str]) -> None:
 
 def _check_watchdog(recipe: DictConfig, problems: list[str]) -> None:
     w = recipe.watchdog
-    for name in ("interval_s", "loss_spike_factor", "loss_window",
-                 "gpu_temp_limit_c", "sustain_s", "power_w", "ram_floor_gb",
-                 "disk_free_floor_gb"):
+    for name in (
+        "interval_s",
+        "loss_spike_factor",
+        "loss_window",
+        "gpu_temp_limit_c",
+        "sustain_s",
+        "power_w",
+        "ram_floor_gb",
+        "disk_free_floor_gb",
+    ):
         if w[name] <= 0:
             problems.append(f"watchdog.{name}: must be positive, got {w[name]}")
     if w.grad_norm_max < 0:
         problems.append(
-            f"watchdog.grad_norm_max: must be >= 0 (0 disables), got {w.grad_norm_max}")
+            f"watchdog.grad_norm_max: must be >= 0 (0 disables), got {w.grad_norm_max}"
+        )
     if w.patience < 1:
         problems.append(f"watchdog.patience: must be >= 1, got {w.patience}")
     if w.loss_spike_factor <= 1:
         problems.append(
             f"watchdog.loss_spike_factor: must exceed 1 (loss vs its own median), "
-            f"got {w.loss_spike_factor}")
+            f"got {w.loss_spike_factor}"
+        )
 
 
 def _check_tokenizer_matches_shards(recipe: DictConfig, problems: list[str]) -> None:
@@ -588,7 +703,8 @@ def _check_tokenizer_matches_shards(recipe: DictConfig, problems: list[str]) -> 
     hash-match the manifest. Skipped when no manifest is present (HF dataset id
     or shards not yet prepared on this machine)."""
     if OmegaConf.is_missing(recipe.data, "source") or OmegaConf.is_missing(
-            recipe.tokenizer, "path"):
+        recipe.tokenizer, "path"
+    ):
         return
     source = recipe.data.source
     manifest_path = os.path.join(source, "manifest.json")
@@ -607,7 +723,8 @@ def _check_tokenizer_matches_shards(recipe: DictConfig, problems: list[str]) -> 
     if manifest_hash != tokenizer_hash:
         problems.append(
             f"tokenizer: hash {tokenizer_hash} does not match shard manifest "
-            f"hash {manifest_hash} in {source} (retokenize or fix tokenizer.path)")
+            f"hash {manifest_hash} in {source} (retokenize or fix tokenizer.path)"
+        )
 
 
 def validate(recipe: DictConfig) -> None:

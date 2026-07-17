@@ -1,0 +1,83 @@
+# sft-qlora-qwen3-4b.yaml
+#
+# Qwen3 fallback twin of sft-qlora-gemma-e4b.yaml (model policy: Gemma 4
+# primary, Qwen3 fallback). QLoRA fine-tune of Qwen3 4B on the pinned
+# ultrachat-derived instruction dataset, sequence length 4096 with packing,
+# cosine schedule. Run: make train-sft CONFIG=<this file> with no overrides.
+#
+# DRAFT (not yet validated). A validation run back-fills the fields below;
+# a recipe card is a validated artifact, not a template.
+#   Measured peak VRAM:   TBD (D4 memfit prediction must be within 10%)
+#   Wall-clock (9950X/5090): TBD
+#   model.hf.revision:    pin the resolved hub commit at validation
+
+run:
+  name: sft-qlora-qwen3-4b
+  seed: 42
+  notes: "Qwen3 fallback twin of sft-qlora-gemma-e4b: QLoRA fine-tune of Qwen3 4B on pinned ultrachat."
+
+model:
+  hf:
+    id: Qwen/Qwen3-4B
+    # revision: <pin at validation>
+
+sft:
+  enabled: true
+  # F1-prepared, hash-verified artifact: make prepare-sft ARGS="--source
+  # HuggingFaceH4/ultrachat_200k --split train_sft --revision <pinned>
+  # --tokenizer Qwen/Qwen3-4B --model-type qwen3 --max-seq-len 4096
+  # --out /mnt/ai-data/training/datasets/sft/ultrachat-qwen3-4b"
+  dataset: /mnt/ai-data/training/datasets/sft/ultrachat-qwen3-4b
+  backend: trl
+  packing: true       # pack short chats into full seq_len sequences
+  eval_steps: 100     # held-out loss cadence for the F7 curve
+
+data:
+  # Unused by the F3 trainer (sft.dataset supplies examples); batch geometry
+  # below is what train-sft consumes.
+  source: /mnt/ai-data/training/datasets/sft/ultrachat-qwen3-4b
+  seq_len: 4096
+  micro_batch: 2
+  grad_accum: 16
+  workers: 4
+  pin_memory: true
+
+tokenizer:
+  path: Qwen/Qwen3-4B
+
+peft:
+  enabled: true
+  method: lora
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: auto   # resolved per family; snapshot carries the list
+  quantize_base: nf4
+  double_quant: true
+  compute_dtype: bf16
+
+optimizer:
+  name: adamw8bit
+  lr: 2.0e-4
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.0
+
+schedule:
+  type: cosine
+  warmup_steps: 100
+  total_steps: 1500
+
+precision:
+  dtype: bf16
+  grad_dtype: fp32
+
+memory:
+  gradient_checkpointing: true
+  offload: none
+  compile: false
+
+checkpoint:
+  interval_steps: 500
+  retain_last: 3
+  retain_every: 2000

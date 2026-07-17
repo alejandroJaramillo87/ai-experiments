@@ -2,8 +2,8 @@
 
 One command takes a recipe and runs an SFT on TRL's SFTTrainer, wired into
 the Phase 0 machinery: F1's prepared datasets (training/data/sft.py), F2's
-PEFT wrapping (training/peft_utils.py), D6 tracking, D9's run lock, and the
-D10 watchdog — all attached through training/sft_callbacks.py. The D6
+PEFT wrapping (training/models/peft_utils.py), D6 tracking, D9's run lock, and the
+D10 watchdog — all attached through training/tune/sft_callbacks.py. The D6
 reference loop is not used for SFT (resolved F3 design decision 1).
 
 Preflight, in order (roadmap F3 interfaces): recipe validate() (the CLI runs
@@ -11,7 +11,7 @@ it), D4 memory-fit check (warn or refuse per force), D9 lock acquisition.
 Running inference containers are not probed; the operator manages containers
 manually. Checkpoints are transformers-native
 checkpoint-<step>/ directories stamped with a D6-style meta.json (see
-training/sft_callbacks.py).
+training/tune/sft_callbacks.py).
 
 Packing (owned by F3, not F1): prepared examples are already tokenized and
 loss-masked, so TRL's text-level packing does not apply. pack_examples()
@@ -27,15 +27,16 @@ from __future__ import annotations
 
 import datetime
 import os
+import sys
 from dataclasses import dataclass, field
 
 from omegaconf import DictConfig
 
 from training.data.sft import IGNORE_INDEX, load_sft_dataset
-from training.lock import run_lock
-from training.loop import snapshot_hash
 from training.recipes import create_run_dir
-from training.sft_callbacks import (
+from training.runtime.lock import run_lock
+from training.runtime.loop import snapshot_hash
+from training.tune.sft_callbacks import (
     build_callbacks,
     checkpoint_dir_name,
     latest_trl_checkpoint,
@@ -45,7 +46,11 @@ from training.sft_callbacks import (
 # Recipe optimizer names mapped onto transformers optim identifiers. cpu_adam
 # is DeepSpeed-bound and has no TRL equivalent; validate() permits it for the
 # D6 loop, so the mapping (not the schema) rejects it for SFT.
-_OPTIM_NAMES = {"adamw": "adamw_torch", "adamw8bit": "adamw_bnb_8bit"}
+_OPTIM_NAMES = {
+    "adamw": "adamw_torch",
+    "adamw8bit": "adamw_bnb_8bit",
+    "paged_adamw8bit": "paged_adamw_8bit",
+}
 
 # Recipe schedule types mapped onto transformers lr_scheduler_type values.
 _SCHEDULER_TYPES = {"cosine": "cosine", "wsd": "warmup_stable_decay"}
@@ -70,6 +75,7 @@ class SftResult:
 
 # -- packing (F3 decision: ships in F3; F1 artifacts are unpacked) ----------
 
+
 def pack_examples(samples: list[dict], seq_len: int) -> list[dict]:
     """Pack pre-masked examples into sequences of at most seq_len tokens.
 
@@ -87,9 +93,13 @@ def pack_examples(samples: list[dict], seq_len: int) -> list[dict]:
 
     def flush() -> None:
         if cur_ids:
-            packed.append({"input_ids": list(cur_ids),
-                           "labels": list(cur_labels),
-                           "position_ids": list(cur_pos)})
+            packed.append(
+                {
+                    "input_ids": list(cur_ids),
+                    "labels": list(cur_labels),
+                    "position_ids": list(cur_pos),
+                }
+            )
             cur_ids.clear()
             cur_labels.clear()
             cur_pos.clear()
@@ -116,7 +126,12 @@ def collate_padded(batch: list[dict], pad_id: int = 0) -> dict:
     pad_id value never reaches attention or the loss.
     """
     width = max(len(s["input_ids"]) for s in batch)
-    out = {"input_ids": [], "labels": [], "attention_mask": [], "position_ids": []}
+    out: dict[str, list[list[int]]] = {
+        "input_ids": [],
+        "labels": [],
+        "attention_mask": [],
+        "position_ids": [],
+    }
     for s in batch:
         n = len(s["input_ids"])
         pad = width - n
@@ -143,6 +158,7 @@ class Collator:
 
 # -- preflight ---------------------------------------------------------------
 
+
 def check_memory_fit(recipe: DictConfig, force: bool) -> tuple[bool, str]:
     """D4 memory-fit gate: (proceed, message). force downgrades refuse to warn."""
     from training.calculator.solve import GIB, VRAM_TOTAL_BYTES, estimate
@@ -151,10 +167,14 @@ def check_memory_fit(recipe: DictConfig, force: bool) -> tuple[bool, str]:
     reserved_gb = est.reserved_estimate / GIB
     total_gb = VRAM_TOTAL_BYTES / GIB
     if est.fits:
-        return True, (f"Memory fit: {reserved_gb:.2f} GB reserved estimate "
-                      f"of {total_gb:.0f} GB VRAM")
-    message = (f"Memory fit: predicted {reserved_gb:.2f} GB exceeds the "
-               f"{total_gb:.0f} GB budget")
+        return True, (
+            f"Memory fit: {reserved_gb:.2f} GB reserved estimate "
+            f"of {total_gb:.0f} GB VRAM"
+        )
+    message = (
+        f"Memory fit: predicted {reserved_gb:.2f} GB exceeds the "
+        f"{total_gb:.0f} GB budget"
+    )
     if force:
         return True, message + " (--force: proceeding anyway)"
     return False, message + " (reduce micro_batch/seq_len, or pass --force)"
@@ -162,10 +182,12 @@ def check_memory_fit(recipe: DictConfig, force: bool) -> tuple[bool, str]:
 
 # -- build steps -------------------------------------------------------------
 
+
 def build_dataset(recipe: DictConfig) -> tuple[list[dict], list[dict]]:
     """Load the prepared F1 dataset (hash-verified) and apply packing."""
-    train, holdout = load_sft_dataset(recipe.sft.dataset,
-                                      tokenizer=recipe.tokenizer.path)
+    train, holdout = load_sft_dataset(
+        recipe.sft.dataset, tokenizer=recipe.tokenizer.path
+    )
     if recipe.sft.packing:
         train = pack_examples(train, recipe.data.seq_len)
         # The holdout stays unpacked: held-out loss is comparable across
@@ -176,8 +198,7 @@ def build_dataset(recipe: DictConfig) -> tuple[list[dict], list[dict]]:
 def _torch_dtype(name: str):
     import torch
 
-    return {"bf16": torch.bfloat16, "fp16": torch.float16,
-            "fp32": torch.float32}[name]
+    return {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[name]
 
 
 def build_model_and_tokenizer(recipe: DictConfig):
@@ -187,7 +208,7 @@ def build_model_and_tokenizer(recipe: DictConfig):
     for QLoRA) and wraps with PEFT; the unsloth path swaps model loading to
     FastLanguageModel and keeps everything else identical (F3 decision 2).
     """
-    from training.peft_utils import (
+    from training.models.peft_utils import (
         bnb_quantization_config,
         build_peft_model,
         resolve_target_modules,
@@ -204,16 +225,22 @@ def build_model_and_tokenizer(recipe: DictConfig):
             revision=revision,
             max_seq_length=recipe.data.seq_len,
             load_in_4bit=recipe.peft.quantize_base == "nf4",
-            dtype=_torch_dtype(recipe.peft.compute_dtype))
+            dtype=_torch_dtype(recipe.peft.compute_dtype),
+        )
         if recipe.peft.enabled:
             modules = resolve_target_modules(recipe, model.config.model_type)
             model = FastLanguageModel.get_peft_model(
-                model, r=recipe.peft.rank, lora_alpha=recipe.peft.alpha,
+                model,
+                r=recipe.peft.rank,
+                lora_alpha=recipe.peft.alpha,
                 lora_dropout=recipe.peft.dropout,
                 target_modules=modules,
-                use_dora=recipe.peft.method == "dora")
+                use_dora=recipe.peft.method == "dora",
+            )
     else:
         from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+        from training.models.model import attention_implementation
 
         config = AutoConfig.from_pretrained(model_id, revision=revision)
         tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
@@ -221,7 +248,11 @@ def build_model_and_tokenizer(recipe: DictConfig):
             model_id,
             revision=revision,
             dtype=_torch_dtype(recipe.precision.dtype),
-            quantization_config=bnb_quantization_config(recipe.peft))
+            quantization_config=bnb_quantization_config(recipe.peft),
+            # Explicit request with the flash->sdpa fallback (WI-7): the
+            # transformers default never selects flash-attn on its own.
+            attn_implementation=attention_implementation(),
+        )
         if recipe.peft.enabled:
             resolve_target_modules(recipe, config.model_type)
             model = build_peft_model(model, recipe.peft)
@@ -239,14 +270,14 @@ def resolve_base_identity_or_none(recipe: DictConfig):
     from training.export.preflight import resolve_base_identity
 
     try:
-        return resolve_base_identity(recipe.model.hf.id,
-                                     revision=recipe.model.hf.revision)
+        return resolve_base_identity(
+            recipe.model.hf.id, revision=recipe.model.hf.revision
+        )
     except Exception:
         return None
 
 
-def sft_config_kwargs(recipe: DictConfig, ckpt_root: str,
-                      has_holdout: bool) -> dict:
+def sft_config_kwargs(recipe: DictConfig, ckpt_root: str, has_holdout: bool) -> dict:
     """Map the recipe onto TRL SFTConfig keyword arguments (pure, testable).
 
     Dataset preparation is skipped: F1 artifacts arrive tokenized and masked,
@@ -257,7 +288,8 @@ def sft_config_kwargs(recipe: DictConfig, ckpt_root: str,
     if optim is None:
         raise SftPreflightError(
             f"optimizer.name '{recipe.optimizer.name}' has no TRL mapping "
-            f"{tuple(_OPTIM_NAMES)}; cpu_adam is a D6/DeepSpeed path")
+            f"{tuple(_OPTIM_NAMES)}; cpu_adam is a D6/DeepSpeed path"
+        )
     kwargs = {
         "output_dir": ckpt_root,
         "max_steps": recipe.schedule.total_steps,
@@ -301,8 +333,8 @@ def resolve_sft_resume(ckpt_root: str, resume: str) -> str:
         path = latest_trl_checkpoint(ckpt_root)
         if path is None:
             raise SftPreflightError(
-                f"checkpoint.resume=latest but no complete checkpoint under "
-                f"{ckpt_root}")
+                f"checkpoint.resume=latest but no complete checkpoint under {ckpt_root}"
+            )
         return path
     if not os.path.isdir(resume):
         raise SftPreflightError(f"checkpoint.resume path not found: {resume}")
@@ -310,6 +342,7 @@ def resolve_sft_resume(ckpt_root: str, resume: str) -> str:
 
 
 # -- orchestration -----------------------------------------------------------
+
 
 def train_sft(recipe: DictConfig, force: bool = False) -> SftResult:
     """Run the recipe's supervised fine-tune end to end.
@@ -323,7 +356,8 @@ def train_sft(recipe: DictConfig, force: bool = False) -> SftResult:
     if not recipe.sft.enabled:
         raise SftPreflightError(
             "sft.enabled is false; train-sft needs an sft-enabled recipe "
-            "(the reference is training/recipes/reference/sft-qlora-e2b.yaml)")
+            "(the reference is training/recipes/reference/sft-qlora-e2b.yaml)"
+        )
 
     fits, fit_message = check_memory_fit(recipe, force)
     if not fits:
@@ -336,8 +370,8 @@ def train_sft(recipe: DictConfig, force: bool = False) -> SftResult:
 def _train_locked(recipe: DictConfig) -> SftResult:
     import torch  # noqa: F401  (fail here, before run-dir side effects)
 
-    from training.tracking import Tracker
-    from training.watchdog import Watchdog, WatchdogAbort
+    from training.runtime.tracking import Tracker
+    from training.runtime.watchdog import Watchdog, WatchdogAbort
 
     train_samples, holdout_samples = build_dataset(recipe)
     model, tokenizer, report = build_model_and_tokenizer(recipe)
@@ -353,18 +387,18 @@ def _train_locked(recipe: DictConfig) -> SftResult:
     else:
         raise FileExistsError(
             f"Could not allocate a run directory under "
-            f"{recipe.run.output_root}/{recipe.run.name}")
-    ckpt_root = os.path.join(recipe.run.output_root, recipe.run.name,
-                             "checkpoints")
+            f"{recipe.run.output_root}/{recipe.run.name}"
+        )
+    ckpt_root = os.path.join(recipe.run.output_root, recipe.run.name, "checkpoints")
     os.makedirs(ckpt_root, exist_ok=True)
 
     # Response-tier distillation is F3 with provenance (resolved F5 decision
     # 1): the distill block's teacher-manifest reference flows into the
     # checkpoint meta so F6/F7 can cite the teacher. Imported lazily —
-    # training/distill.py imports this module at load.
+    # training/tune/distill.py imports this module at load.
     distill_meta = None
     if recipe.distill.enabled:
-        from training.distill import distill_provenance
+        from training.tune.distill import distill_provenance
 
         distill_meta = distill_provenance(recipe)
 
@@ -372,47 +406,85 @@ def _train_locked(recipe: DictConfig) -> SftResult:
     tracker = Tracker(recipe.tracking, recipe.run.name, run_dir)
     watchdog = None
     if recipe.watchdog.enabled:
-        watchdog = Watchdog(recipe.watchdog, run_dir, tracker=tracker,
-                            disk_path=ckpt_root)
+        watchdog = Watchdog(
+            recipe.watchdog, run_dir, tracker=tracker, disk_path=ckpt_root
+        )
         watchdog.start()
 
-    from datasets import Dataset
-    from trl import SFTConfig, SFTTrainer
-
-    kwargs = sft_config_kwargs(recipe, ckpt_root, bool(holdout_samples))
-    trainer = SFTTrainer(
-        model=model,
-        args=SFTConfig(**kwargs),
-        train_dataset=Dataset.from_list(train_samples),
-        eval_dataset=(Dataset.from_list(holdout_samples)
-                      if kwargs["eval_strategy"] != "no" else None),
-        processing_class=tokenizer,
-        data_collator=Collator(),
-        callbacks=build_callbacks(recipe, ckpt_root, tracker, watchdog,
-                                  recipe_hash, trainable_report=report,
-                                  distill_meta=distill_meta,
-                                  base_identity=base_identity))
-
-    resume_path = None
-    if recipe.checkpoint.resume is not None:
-        resume_path = resolve_sft_resume(ckpt_root, recipe.checkpoint.resume)
-
+    # The watchdog thread and tracker are live from here on: trainer
+    # construction failures (bad optimizer mapping, resume path, TRL errors)
+    # must still stop the thread and close the tracker, or the process hangs.
     try:
-        trainer.train(resume_from_checkpoint=resume_path)
-    except WatchdogAbort:
-        step = trainer.state.global_step
-        emergency_dir = os.path.join(
-            ckpt_root, f"{checkpoint_dir_name(step)}-emergency")
-        trainer.save_model(emergency_dir)
-        trainer.save_state()
-        write_checkpoint_meta(
-            emergency_dir, step, adapter_only=bool(recipe.peft.enabled),
-            base_model=recipe.model.hf.id, backend=recipe.sft.backend,
-            recipe_hash=recipe_hash,
-            base_revision=getattr(base_identity, "revision", None),
-            base_config_sha256=getattr(base_identity, "config_sha256", None),
-            emergency=True, distill=distill_meta)
-        raise
+        from datasets import Dataset
+        from trl import SFTConfig, SFTTrainer
+
+        kwargs = sft_config_kwargs(recipe, ckpt_root, bool(holdout_samples))
+        trainer = SFTTrainer(
+            model=model,
+            args=SFTConfig(**kwargs),
+            train_dataset=Dataset.from_list(train_samples),
+            eval_dataset=(
+                Dataset.from_list(holdout_samples)
+                if kwargs["eval_strategy"] != "no"
+                else None
+            ),
+            processing_class=tokenizer,
+            data_collator=Collator(),
+            callbacks=build_callbacks(
+                recipe,
+                ckpt_root,
+                tracker,
+                watchdog,
+                recipe_hash,
+                trainable_report=report,
+                distill_meta=distill_meta,
+                base_identity=base_identity,
+            ),
+        )
+
+        resume_path = None
+        if recipe.checkpoint.resume is not None:
+            resume_path = resolve_sft_resume(ckpt_root, recipe.checkpoint.resume)
+
+        try:
+            trainer.train(resume_from_checkpoint=resume_path)
+        except WatchdogAbort:
+            # Best-effort final state for post-mortem and resume; the abort
+            # must surface even if the save itself fails (mirrors the D6 loop).
+            try:
+                step = trainer.state.global_step
+                emergency_dir = os.path.join(
+                    ckpt_root, f"{checkpoint_dir_name(step)}-emergency"
+                )
+                trainer.save_model(emergency_dir)
+                # save_state writes trainer_state.json to args.output_dir;
+                # point it at the emergency directory so the checkpoint
+                # resumes as saved instead of leaving the state file at the
+                # checkpoint root.
+                original_output_dir = trainer.args.output_dir
+                trainer.args.output_dir = emergency_dir
+                try:
+                    trainer.save_state()
+                finally:
+                    trainer.args.output_dir = original_output_dir
+                write_checkpoint_meta(
+                    emergency_dir,
+                    step,
+                    adapter_only=bool(recipe.peft.enabled),
+                    base_model=recipe.model.hf.id,
+                    backend=recipe.sft.backend,
+                    recipe_hash=recipe_hash,
+                    base_revision=getattr(base_identity, "revision", None),
+                    base_config_sha256=getattr(base_identity, "config_sha256", None),
+                    emergency=True,
+                    distill=distill_meta,
+                )
+            except Exception as exc:
+                print(
+                    f"[sft] WARN: emergency checkpoint failed: {exc}",
+                    file=sys.stderr,
+                )
+            raise
     finally:
         if watchdog is not None:
             watchdog.stop()
@@ -430,4 +502,5 @@ def _train_locked(recipe: DictConfig) -> SftResult:
         holdout_loss=holdout[-1] if holdout else None,
         trainable_report=str(report),
         packed_examples=len(train_samples) if recipe.sft.packing else 0,
-        losses=losses)
+        losses=losses,
+    )

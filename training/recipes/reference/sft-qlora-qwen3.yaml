@@ -1,0 +1,80 @@
+# sft-qlora-qwen3.yaml
+#
+# Qwen3 fallback twin of sft-qlora-e2b.yaml (model policy: Gemma 4 primary,
+# Qwen3 fallback; Qwen/Qwen3-1.7B is the registered pin). Same shape as the
+# Gemma twin: QLoRA fine-tune exercising the peft group end to end (NF4 base
+# quantization, LoRA adapter, target_modules "auto" resolution) and the F3
+# trainer: make train-sft CONFIG=... over an F1-prepared ultrachat dataset
+# (make prepare-sft ARGS="--source HuggingFaceH4/ultrachat_200k
+# --split train_sft --tokenizer Qwen/Qwen3-1.7B --model-type qwen3 ...").
+
+run:
+  name: sft-qlora-qwen3
+  seed: 42
+  notes: "Qwen3 fallback twin of sft-qlora-e2b (F2 reference QLoRA recipe)."
+
+model:
+  hf:
+    id: Qwen/Qwen3-1.7B
+
+sft:
+  enabled: true
+  # F1-prepared, hash-verified artifact tokenized with the Qwen3 tokenizer.
+  dataset: /mnt/ai-data/training/datasets/sft/ultrachat-qwen3
+  backend: trl        # or unsloth (optional throughput backend, F3 decision 2)
+  packing: true       # pack short chats into full seq_len sequences
+  eval_steps: 100     # held-out loss cadence for the F7 curve
+
+data:
+  # Unused by the F3 trainer (sft.dataset supplies examples); batch geometry
+  # below is what train-sft consumes.
+  source: /mnt/ai-data/training/datasets/sft/ultrachat-qwen3
+  seq_len: 2048
+  micro_batch: 4
+  grad_accum: 8
+  workers: 4
+  pin_memory: true
+
+tokenizer:
+  path: Qwen/Qwen3-1.7B
+
+peft:
+  enabled: true
+  method: lora
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: auto
+  quantize_base: nf4
+  double_quant: true
+  compute_dtype: bf16
+
+optimizer:
+  name: adamw8bit
+  lr: 2.0e-4
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.0
+
+schedule:
+  type: cosine
+  warmup_steps: 100
+  total_steps: 2000
+
+precision:
+  dtype: bf16
+  grad_dtype: fp32
+
+memory:
+  gradient_checkpointing: true
+  offload: none
+  compile: false
+
+checkpoint:
+  interval_steps: 500
+  retain_last: 3
+  retain_every: 2000
+
+tracking:
+  wandb: false
+  tensorboard: true

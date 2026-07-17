@@ -48,7 +48,6 @@ echo
 # Use process substitution (not a pipe) so WARNING_COUNT/CRITICAL_COUNT increments
 # survive: a `... | while` loop runs in a subshell and its counter changes are lost.
 while read -r line; do
-    DEVICE=$(echo "$line" | awk '{print $1}')
     SIZE=$(echo "$line" | awk '{print $2}')
     USED=$(echo "$line" | awk '{print $3}')
     AVAIL=$(echo "$line" | awk '{print $4}')
@@ -180,8 +179,6 @@ if command -v docker &> /dev/null; then
     if docker system df 2>/dev/null | grep -q "Images"; then
         docker system df 2>/dev/null | grep -E "Images|Containers|Local Volumes|Build Cache" | while read -r line; do
             TYPE=$(echo "$line" | awk '{print $1}')
-            TOTAL=$(echo "$line" | awk '{print $2}')
-            ACTIVE=$(echo "$line" | awk '{print $3}')
             SIZE=$(echo "$line" | awk '{print $4 " " $5}')
             RECLAIMABLE=$(echo "$line" | awk '{print $6 " " $7}')
 

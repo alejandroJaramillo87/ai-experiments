@@ -59,7 +59,8 @@ class WatchdogAbort(RuntimeError):
         self.value = value
         self.threshold = threshold
         super().__init__(
-            f"{signal}: value {value:.4g} crossed abort threshold {threshold:.4g}")
+            f"{signal}: value {value:.4g} crossed abort threshold {threshold:.4g}"
+        )
 
 
 def sample_gpu() -> dict:
@@ -75,8 +76,9 @@ def sample_gpu() -> dict:
     try:
         handle = pynvml.nvmlDeviceGetHandleByIndex(0)
         try:
-            sample["gpu_temp_c"] = float(pynvml.nvmlDeviceGetTemperature(
-                handle, pynvml.NVML_TEMPERATURE_GPU))
+            sample["gpu_temp_c"] = float(
+                pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
+            )
         except Exception:
             pass
         try:
@@ -89,8 +91,9 @@ def sample_gpu() -> dict:
         except Exception:
             pass
         try:
-            sample["gpu_sm_clock_mhz"] = float(pynvml.nvmlDeviceGetClockInfo(
-                handle, pynvml.NVML_CLOCK_SM))
+            sample["gpu_sm_clock_mhz"] = float(
+                pynvml.nvmlDeviceGetClockInfo(handle, pynvml.NVML_CLOCK_SM)
+            )
         except Exception:
             pass
         try:
@@ -135,8 +138,14 @@ class Watchdog:
     record dict (future email/ntfy — Phase 0 ships file+log only).
     """
 
-    def __init__(self, config, run_dir: str, tracker=None,
-                 disk_path: str | None = None, alert_hook=None) -> None:
+    def __init__(
+        self,
+        config,
+        run_dir: str,
+        tracker=None,
+        disk_path: str | None = None,
+        alert_hook=None,
+    ) -> None:
         self.cfg = config
         self.run_dir = run_dir
         self.tracker = tracker
@@ -148,7 +157,10 @@ class Watchdog:
         # Per-signal state for sustain/edge logic: monotonic time the excursion
         # began (None when clear).
         self._since: dict[str, float | None] = {
-            "gpu_temp": None, "gpu_power": None, "gpu_throttle": None}
+            "gpu_temp": None,
+            "gpu_power": None,
+            "gpu_throttle": None,
+        }
         self._alerted: set[str] = set()
         self._pending_abort: WatchdogAbort | None = None
         self._blocked = False
@@ -164,7 +176,8 @@ class Watchdog:
         if self.cfg.interval_s <= 0 or self._thread is not None:
             return
         self._thread = threading.Thread(
-            target=self._sampler_loop, name="watchdog-sampler", daemon=True)
+            target=self._sampler_loop, name="watchdog-sampler", daemon=True
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -183,8 +196,9 @@ class Watchdog:
                     self.tracker.log(sample, self._last_step)
             except Exception as exc:
                 # The watchdog must never kill the run it protects.
-                print(f"{LOG_PREFIX} WARN: sampler error ignored: {exc}",
-                      file=sys.stderr)
+                print(
+                    f"{LOG_PREFIX} WARN: sampler error ignored: {exc}", file=sys.stderr
+                )
 
     # -- step-level signals --------------------------------------------------
 
@@ -220,16 +234,25 @@ class Watchdog:
         """Evaluate one hardware sample (sampler thread; unit tests call it
         directly with synthetic readings). Aborts are latched, not raised."""
         self._check_sustained(
-            "gpu_temp", sample.get("gpu_temp_c"),
-            float(self.cfg.gpu_temp_limit_c), now, abort_on_sustain=True)
+            "gpu_temp",
+            sample.get("gpu_temp_c"),
+            float(self.cfg.gpu_temp_limit_c),
+            now,
+            abort_on_sustain=True,
+        )
         self._check_sustained(
-            "gpu_power", sample.get("gpu_power_w"),
-            float(self.cfg.power_w), now, abort_on_sustain=False)
+            "gpu_power",
+            sample.get("gpu_power_w"),
+            float(self.cfg.power_w),
+            now,
+            abort_on_sustain=False,
+        )
         throttle = sample.get("gpu_throttle_active")
         if throttle is not None:
             # Active throttle reasons are data for D8, not usually fatal.
             self._check_sustained(
-                "gpu_throttle", throttle, 0.5, now, abort_on_sustain=False)
+                "gpu_throttle", throttle, 0.5, now, abort_on_sustain=False
+            )
 
         ram = sample.get("ram_available_gb")
         if ram is not None:
@@ -237,7 +260,8 @@ class Watchdog:
             if ram < floor / 2:
                 self._alert("ram_floor", ram, floor / 2, action="abort")
                 self._pending_abort = self._pending_abort or WatchdogAbort(
-                    "ram_floor", ram, floor / 2)
+                    "ram_floor", ram, floor / 2
+                )
             elif ram < floor:
                 self._edge_alert("ram_floor", ram, floor)
             else:
@@ -252,12 +276,20 @@ class Watchdog:
                     self._alert("disk_floor", disk, floor, action="block")
             elif self._blocked:
                 self._blocked = False
-                print(f"{LOG_PREFIX} disk_floor cleared: {disk:.1f} GB free; "
-                      f"checkpoint writes resume", file=sys.stderr)
+                print(
+                    f"{LOG_PREFIX} disk_floor cleared: {disk:.1f} GB free; "
+                    f"checkpoint writes resume",
+                    file=sys.stderr,
+                )
 
-    def _check_sustained(self, signal: str, value: float | None,
-                         threshold: float, now: float,
-                         abort_on_sustain: bool) -> None:
+    def _check_sustained(
+        self,
+        signal: str,
+        value: float | None,
+        threshold: float,
+        now: float,
+        abort_on_sustain: bool,
+    ) -> None:
         """Alert on the rising edge of an excursion; after sustain_s either
         latch an abort (thermal) or alert again (power/throttle: data only)."""
         if value is None:
@@ -267,14 +299,16 @@ class Watchdog:
             self._alerted.discard(signal)
             self._alerted.discard(signal + "_sustained")
             return
-        if self._since[signal] is None:
+        since = self._since[signal]
+        if since is None:
             self._since[signal] = now
             self._alert(signal, value, threshold, action="alert")
-        elif now - self._since[signal] >= self.cfg.sustain_s:
+        elif now - since >= self.cfg.sustain_s:
             if abort_on_sustain:
                 self._alert(signal, value, threshold, action="abort")
                 self._pending_abort = self._pending_abort or WatchdogAbort(
-                    signal, value, threshold)
+                    signal, value, threshold
+                )
             else:
                 self._edge_alert(signal + "_sustained", value, threshold)
 
@@ -292,8 +326,7 @@ class Watchdog:
             self._alerted.add(signal)
             self._alert(signal, value, threshold, action="alert")
 
-    def _alert(self, signal: str, value: float, threshold: float,
-               action: str) -> None:
+    def _alert(self, signal: str, value: float, threshold: float, action: str) -> None:
         """Record one trigger everywhere post-mortems look: stderr, the run's
         alerts.jsonl, the tracking stream, and the pluggable hook."""
         record = {
@@ -304,14 +337,19 @@ class Watchdog:
             "threshold": threshold,
             "action": action,
         }
-        print(f"{LOG_PREFIX} {action.upper()} {signal}: value {value:.4g}, "
-              f"threshold {threshold:.4g}", file=sys.stderr)
+        print(
+            f"{LOG_PREFIX} {action.upper()} {signal}: value {value:.4g}, "
+            f"threshold {threshold:.4g}",
+            file=sys.stderr,
+        )
         try:
             with open(os.path.join(self.run_dir, ALERTS_FILENAME), "a") as f:
                 f.write(json.dumps(record) + "\n")
         except OSError as exc:
-            print(f"{LOG_PREFIX} WARN: cannot write {ALERTS_FILENAME}: {exc}",
-                  file=sys.stderr)
+            print(
+                f"{LOG_PREFIX} WARN: cannot write {ALERTS_FILENAME}: {exc}",
+                file=sys.stderr,
+            )
         if self.tracker is not None:
             try:
                 self.tracker.log({f"watchdog/{signal}": value}, self._last_step)
@@ -321,8 +359,7 @@ class Watchdog:
             try:
                 self.alert_hook(record)
             except Exception as exc:
-                print(f"{LOG_PREFIX} WARN: alert hook failed: {exc}",
-                      file=sys.stderr)
+                print(f"{LOG_PREFIX} WARN: alert hook failed: {exc}", file=sys.stderr)
 
     def _abort(self, signal: str, value: float, threshold: float) -> None:
         self._alert(signal, value, threshold, action="abort")

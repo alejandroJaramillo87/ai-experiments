@@ -1,7 +1,7 @@
 # Operational watchdogs
 
 Automated abort-or-alert for unattended training runs (Phase 0 D10). The watchdog
-(`/training/watchdog.py`) hooks into the reference loop, evaluates step-level signals on
+(`/training/runtime/watchdog.py`) hooks into the reference loop, evaluates step-level signals on
 every optimizer step, samples hardware telemetry from a background thread, and doubles as
 the run's hardware telemetry source. NVML-based; DCGM is not used.
 
@@ -70,7 +70,7 @@ per recipe once a healthy norm range is known.
 ## Emergency checkpoints
 
 An abort saves a final checkpoint through the normal atomic path with `emergency: true`
-in `meta.json`. Retention (`apply_retention` in `/training/checkpoint.py`) never deletes
+in `meta.json`. Retention (`apply_retention` in `/training/runtime/checkpoint.py`) never deletes
 an emergency checkpoint; it is post-mortem evidence and the resume point. Resume with
 `checkpoint.resume=latest` after diagnosing the trigger recorded in `alerts.jsonl`.
 
