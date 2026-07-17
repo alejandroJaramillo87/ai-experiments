@@ -228,10 +228,13 @@ warn_unused_configs = true
 # in both environments.
 warn_unused_ignores = false
 
-# Untyped or environment-absent third-party libraries. The CUDA stack is not
-# installable in the sandbox and most of these ship no stubs; ignore missing
-# imports per module rather than globally so first-party import errors still
-# surface.
+# Untyped or environment-absent third-party libraries. Two cases: the CUDA
+# stack is not installable in the sandbox, and the training/interp data and
+# config libraries (numpy, omegaconf, hydra, xxhash, gguf, huggingface_hub,
+# requests) are absent from the dev-only sandbox venv; most ship no stubs
+# regardless. Ignore missing imports per module rather than globally so
+# first-party import errors still surface. This is a no-op on the workstation
+# where the typed members (numpy, omegaconf, huggingface_hub) are installed.
 [[tool.mypy.overrides]]
 module = [
     "bitsandbytes.*",
@@ -239,13 +242,19 @@ module = [
     "datatrove.*",
     "deepspeed.*",
     "flash_attn.*",
+    "gguf.*",
+    "huggingface_hub.*",
+    "hydra.*",
     "lm_eval.*",
     "mlflow.*",
     "nnsight.*",
+    "numpy.*",
+    "omegaconf.*",
     "peft.*",
     "psutil.*",
     "pynvml.*",
     "repeng.*",
+    "requests.*",
     "sae_lens.*",
     "safetensors.*",
     "sklearn.*",
@@ -257,6 +266,7 @@ module = [
     "trl.*",
     "unsloth.*",
     "wandb.*",
+    "xxhash.*",
 ]
 ignore_missing_imports = true
 
