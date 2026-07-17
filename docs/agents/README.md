@@ -56,13 +56,54 @@ starts a contained session (network-restricted container, egress proxy) in that 
 Each tool receives exactly one secret:
 
 - `AGENT=claude` requires `CLAUDE_CODE_OAUTH_TOKEN` — generate once with
-  `claude setup-token` on the host, then export it.
+  `claude setup-token` on the host, then either export it or save it to the auto-loaded
+  secrets file (below).
 - `AGENT=opencode` requires an endpoint-scoped `RUNPOD_API_KEY`.
+
+To start every container authenticated without a per-shell export, save the token once to a
+mode-600 file outside the repository that `make agent-sandbox` reads on the host. Generate the
+token interactively first — `claude setup-token` opens a browser flow and prints the token. Do
+**not** wrap it in `$(...)`: it is an interactive command, and a captured value is the on-screen
+UI text, not a token.
+
+```bash
+$ claude setup-token            # complete the browser flow, then copy the printed token
+$ mkdir -p ~/.config/ai-experiments
+$ printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' 'PASTE_TOKEN_HERE' \
+    > ~/.config/ai-experiments/agent-secrets.env    # paste the token over the placeholder
+$ chmod 600 ~/.config/ai-experiments/agent-secrets.env
+```
+
+The file must contain only unquoted `KEY=value` lines. An exported `CLAUDE_CODE_OAUTH_TOKEN`
+still takes precedence; the file only fills in a secret not already in the environment, and a
+malformed file is reported rather than executed. The same file may hold `RUNPOD_API_KEY` for
+OpenCode sessions.
 
 `CLAUDE_THEME` (default `dark`) and `EFFORT` (default `low`) preseed the Claude Code
 theme and default reasoning effort each session, because the sandbox home is ephemeral
 tmpfs. See the persistent settings section in
 [agent-sandbox.md](../sandbox/agent-sandbox.md).
+
+### Sandbox docker resources
+
+The sandbox's docker footprint is shared across every worktree, not per-worktree. The make
+wrapper pins the compose project to `ai-agents`, so every session — from any worktree — uses one
+proxy container (`agent-proxy`), the `ai-agents_agent-internal` and `ai-agents_agent-egress`
+networks, and two built images. Pinning is required: the `agent-internal` subnet is fixed at
+`172.31.0.0/16`, so an unpinned per-worktree project name collides with `Pool overlaps with
+other one on this address space`. The per-session container is `--rm` and named `agent-<NAME>`
+while it runs, so `docker ps` maps a live session to its worktree `../ai-experiments-<NAME>`.
+
+Tear the shared footprint down with `make agent-sandbox-clean`. It runs `docker compose -f
+docker-compose.agents.yaml -p ai-agents down --remove-orphans`, then sweeps any leftover
+`*_agent-internal`/`*_agent-egress` networks from older, unpinned runs; it never touches the
+inference stack. Add `--rmi local` to that compose command to also drop the built images. If a
+crashed session leaves an `agent-<NAME>` container behind, `make agent-sandbox-clean` removes it
+(or `docker rm agent-<NAME>`).
+
+`make clean` is scoped to the inference stack (`docker-compose.yaml`) and no longer runs a
+host-wide `docker system prune -f`; that global sweep now lives in the explicit `make prune`
+target.
 
 ### Worktree lifecycle
 
@@ -83,8 +124,11 @@ which additionally installs torch (cu130) and the CUDA-compiled groups.
 Removal accepts the bare name, the `task/<name>` branch, a worktree path, `NAME=<name>`,
 or the suffix form `make worktree-clean-<name>` — all resolve to the same worktree. A bare
 `make worktree-clean` (no name) errors with usage instead of matching the creation
-pattern. Delete the task branch after removal: `git branch -D task/mytask`. If the
-branch is kept, recreating the worktree with `make worktree-mytask` reuses it.
+pattern. `make worktree-clean` removes only the git worktree; the sandbox's docker resources
+are shared, not per-worktree, and are torn down separately with `make agent-sandbox-clean`
+(see the Sandbox docker resources note above). Delete the task branch after removal:
+`git branch -D task/mytask`. If the branch is kept, recreating the worktree with
+`make worktree-mytask` reuses it.
 
 ### Session export
 
@@ -116,8 +160,9 @@ identifier: for Claude Code, the UUID shown by `claude --resume` (transcript als
 - `make test` runs the deterministic fixture tests under `tests/` (see
   `tests/agents/README.md`). Exit code 5 means pytest collected zero tests — a pytest
   convention, not a Makefile failure.
-- `[ERROR] CLAUDE_CODE_OAUTH_TOKEN not set`: run `claude setup-token` on the host and
-  export the token before `make agent-sandbox AGENT=claude`.
+- `[ERROR] CLAUDE_CODE_OAUTH_TOKEN not set`: run `claude setup-token` on the host, then either
+  export the token or save it to `~/.config/ai-experiments/agent-secrets.env` (chmod 600) so
+  `make agent-sandbox AGENT=claude` loads it automatically.
 - Dangling symlinks in `.opencode/commands` (source command deleted): run
   `make command-sync` to prune them; `make agent-parity` reports them as broken.
 
