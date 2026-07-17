@@ -133,9 +133,21 @@ Each tool sees exactly one scoped secret, injected by environment:
 The Claude Code secret is a long-lived OAuth token minted once on the host with
 `claude setup-token` (requires a claude.ai Pro/Max subscription; no Console API key). It is
 scoped to inference and draws on the subscription quota, but has no per-token spend limit and
-no server-side revocation today — store it in a password manager and export it only for the
-sandbox invocation, for example `export CLAUDE_CODE_OAUTH_TOKEN=$(pass show anthropic/sandbox-token)`.
-Never write it to the repository or to shell history.
+no server-side revocation today. Store it in one of two places — never in the repository or in
+shell history:
+
+- A password manager, exported only for the sandbox invocation, for example
+  `export CLAUDE_CODE_OAUTH_TOKEN=$(pass show anthropic/sandbox-token)`.
+- A mode-600 file outside the repository, `~/.config/ai-experiments/agent-secrets.env`, which
+  `make agent-sandbox` reads on the host when the token is not already in the environment (an
+  exported value still takes precedence). Generate the token interactively with
+  `claude setup-token` and paste it in — do not capture it with `$(...)`, which is an interactive
+  flow and would store on-screen UI text, not a token — then write a single unquoted line
+  `CLAUDE_CODE_OAUTH_TOKEN=<token>`. The wrapper extracts only that key (it never executes the
+  file, and reports a malformed value instead of failing obscurely), so this removes the
+  per-shell export step and every container starts authenticated. The file is read on the host
+  and only the token value crosses into the container as an environment variable; the file
+  itself is never mounted. The same file may hold `RUNPOD_API_KEY` for OpenCode sessions.
 
 Neither container's secret is the other's. The following are **never mounted** into a sandbox:
 `~/.ssh`, `~/.aws`, `~/.claude/` (Claude Code credentials and user config), and
@@ -161,13 +173,17 @@ container home is an ephemeral tmpfs and `~/.claude.json` does not survive betwe
 ### Persistent settings
 
 No Claude Code configuration survives between sessions: the container home is an
-ephemeral tmpfs. Defaults therefore live in the Makefile, which seeds two files on every
+ephemeral tmpfs. Defaults therefore live in the Makefile, which seeds three files on every
 launch: `~/.claude.json` (onboarding flag, theme, model options cache, and
 `unpinFable5LaunchEffort` — without it the CLI pins a Fable session's launch effort to
-its recommended value and silently overrides the seeded `effortLevel`) and
+its recommended value and silently overrides the seeded `effortLevel`);
 `~/.claude/settings.json` (persistent defaults — `model` from `CLAUDE_MODEL`, default
 `claude-fable-5[1m]`; `effortLevel` from `EFFORT`, default `low`; and `theme` from
-`CLAUDE_THEME`, default `dark`). Override per run:
+`CLAUDE_THEME`, default `dark`); and `~/.claude/CLAUDE.md` (a sandbox banner loaded as
+user-scope memory, stating up front that the session is contained — no host, GPU, Docker
+daemon, `/mnt/ai-data`, or running services — so the agent does not spend a turn
+rediscovering its limits). Because the banner is seeded into the tmpfs home, it appears only
+inside the container and never touches the host's own `~/.claude/CLAUDE.md`. Override per run:
 `make agent-sandbox ... EFFORT=medium CLAUDE_MODEL=claude-opus-4-8`. In-session changes made with
 `/effort` or `/model` last one session by design; to change a default permanently, change
 the Makefile variable.

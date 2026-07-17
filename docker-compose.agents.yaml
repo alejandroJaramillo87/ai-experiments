@@ -86,7 +86,11 @@ services:
 
 networks:
   # No internet: containers here reach only each other. Fixed subnet so the
-  # proxy's squid.conf localnet ACL (172.31.0.0/16) matches.
+  # proxy's squid.conf localnet ACL (172.31.0.0/16) matches. Because the subnet is
+  # fixed, only one compose project may hold this network at a time: the make
+  # wrapper pins the project (AGENTS_PROJECT=ai-agents) rather than letting it
+  # default to the per-worktree directory basename, which would collide across
+  # worktrees with "Pool overlaps with other one on this address space".
   agent-internal:
     driver: bridge
     internal: true

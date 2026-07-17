@@ -8,7 +8,7 @@
 .PHONY: comfy-models-image comfy-models-video art-mode llm-mode
 .PHONY: list-models update rebuild reset demo dev
 .PHONY: agent-parity agent-preflight agent-skeptic-test command-sync agent-usage agent-versions
-.PHONY: worktree-ls worktree-clean agent-run agent-export agent-sandbox
+.PHONY: worktree-ls worktree-clean agent-run agent-export agent-sandbox agent-sandbox-clean prune
 .PHONY: np-clone np-env np-build np-up np-inference-up np-autointerp-up np-graph-up
 .PHONY: np-down np-status np-smoke
 .PHONY: train-build train-shell train-smoke prepare-data prepare-corpus build-contamination
@@ -674,6 +674,7 @@ define WORKTREE_REMOVE_SH
 	force=""; [ -n "$(FORCE)" ] && force="--force"; \
 	if git worktree remove $$force "$$dir"; then \
 	  printf '[OK] removed worktree: %s\n' "$$dir"; \
+	  printf '[INFO] agent-sandbox docker resources are shared, not per-worktree: make agent-sandbox-clean\n'; \
 	else \
 	  printf '[ERROR] could not remove %s (uncommitted changes? use FORCE=1 or git worktree remove --force)\n' "$$dir"; \
 	  exit 1; \
@@ -721,6 +722,12 @@ agent-run: ## Batch rung: AGENT=opencode|claude PROMPT=... [EFFORT=low] [ALLOW='
 	esac
 
 AGENTS_COMPOSE := docker-compose.agents.yaml
+# Pin the compose project so every worktree shares one set of agent-sandbox docker
+# resources. Without this, the project name defaults to the CWD basename (different
+# per worktree), and each project fights over the fixed agent-internal subnet
+# (172.31.0.0/16), failing with "Pool overlaps". One pinned project => one network
+# set, reused and cleanly torn down by `make agent-sandbox-clean`.
+AGENTS_PROJECT := ai-agents
 # Preseeded each session: the sandbox home is ephemeral tmpfs, so no Claude
 # Code config survives between runs. Two files are seeded on launch:
 #   ~/.claude.json           — onboarding flag, theme, additionalModelOptionsCache,
@@ -746,29 +753,59 @@ agent-sandbox: ## Contained agent session: AGENT=claude|opencode NAME=<task> [PR
 	  printf '[INFO] creating worktree for %s\n' "$$name"; \
 	  $(MAKE) --no-print-directory worktree-$$name || exit 1; \
 	fi; \
+	secrets="$$HOME/.config/ai-experiments/agent-secrets.env"; \
+	if [ -z "$(CLAUDE_CODE_OAUTH_TOKEN)$(RUNPOD_API_KEY)" ] && [ -f "$$secrets" ]; then \
+	  CLAUDE_CODE_OAUTH_TOKEN="$$(sed -n 's/^CLAUDE_CODE_OAUTH_TOKEN=//p' "$$secrets" | head -n1)"; \
+	  RUNPOD_API_KEY="$$(sed -n 's/^RUNPOD_API_KEY=//p' "$$secrets" | head -n1)"; \
+	  export CLAUDE_CODE_OAUTH_TOKEN RUNPOD_API_KEY; \
+	  case "$$CLAUDE_CODE_OAUTH_TOKEN" in *[[:space:]]*) \
+	    printf '[ERROR] %s is malformed: the stored token contains whitespace\n' "$$secrets"; \
+	    printf '  Cause: claude setup-token is interactive; capturing its output stores UI text, not a token\n'; \
+	    printf '  Solution: run claude setup-token alone, copy the printed token, then write one line\n'; \
+	    printf '            CLAUDE_CODE_OAUTH_TOKEN=<token> to that file (see docs/agents/README.md)\n'; \
+	    exit 1 ;; \
+	  esac; \
+	fi; \
 	case "$(AGENT)" in \
 	  claude) \
-	    if [ -z "$(CLAUDE_CODE_OAUTH_TOKEN)" ]; then \
+	    if [ -z "$$CLAUDE_CODE_OAUTH_TOKEN" ]; then \
 	      printf '[ERROR] CLAUDE_CODE_OAUTH_TOKEN not set (the only secret a Claude Code sandbox gets)\n'; \
-	      printf '  Solution: run `claude setup-token` on the host, then export CLAUDE_CODE_OAUTH_TOKEN=<token>\n'; exit 1; fi; \
+	      printf '  Solution: run `claude setup-token` on the host, then either export CLAUDE_CODE_OAUTH_TOKEN=<token>\n'; \
+	      printf '            or save it once to ~/.config/ai-experiments/agent-secrets.env (chmod 600) to auto-load it\n'; exit 1; fi; \
 	    seed="printf '{\"theme\":\"$(CLAUDE_THEME)\",\"hasCompletedOnboarding\":true,\"unpinFable5LaunchEffort\":true,\"additionalModelOptionsCache\":$(CLAUDE_MODEL_OPTIONS)}' > ~/.claude.json; \
 	      mkdir -p ~/.claude; \
-	      printf '{\"model\":\"$(CLAUDE_MODEL)\",\"effortLevel\":\"$(EFFORT)\",\"theme\":\"$(CLAUDE_THEME)\"}' > ~/.claude/settings.json"; \
+	      printf '{\"model\":\"$(CLAUDE_MODEL)\",\"effortLevel\":\"$(EFFORT)\",\"theme\":\"$(CLAUDE_THEME)\"}' > ~/.claude/settings.json; \
+	      printf '# SANDBOX - read this first\nYou are in the contained agent sandbox (make agent-sandbox), not on the host.\nAvailable here: the git worktree at /work (read-write), the pinned CLIs, and network egress only to an allowlist via the proxy.\nNot available: the host, its Docker daemon, the GPU, nvidia-smi, /mnt/ai-data, and the running inference services (ports 8001-8003 and 3000).\nDo not run docker or docker compose, make up/status/logs, nvidia-smi, healthcheck curls, or the benchmark scripts; none can work from here.\nFor any host-side command, print the exact command, stop, and wait for the human to run it and report the output. Never fabricate output.\n' > ~/.claude/CLAUDE.md"; \
 	    model=""; if [ -n "$(MODEL)" ]; then model=" --model \"$(MODEL)\""; fi; \
 	    if [ -n "$(PROMPT)" ]; then cmd="$$seed; claude -p \"$(PROMPT)\" --effort $(EFFORT)$$model"; else cmd="$$seed; claude$$model"; fi; \
 	    printf '[RUN] contained Claude Code session (worktree %s)\n' "$$dir"; \
 	    AGENT_WORKTREE="$$dir" RUNPOD_API_KEY="" \
-	      docker compose -f $(AGENTS_COMPOSE) run --rm agent sh -lc "$$cmd" ;; \
+	      docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) run --rm --name "agent-$$name" agent sh -lc "$$cmd" ;; \
 	  opencode) \
-	    if [ -z "$(RUNPOD_API_KEY)" ]; then \
+	    if [ -z "$$RUNPOD_API_KEY" ]; then \
 	      printf '[ERROR] RUNPOD_API_KEY not set (the only secret an OpenCode sandbox gets)\n'; \
-	      printf '  Solution: export RUNPOD_API_KEY=<endpoint-scoped key> before running\n'; exit 1; fi; \
+	      printf '  Solution: export RUNPOD_API_KEY=<endpoint-scoped key>, or save it once to\n'; \
+	      printf '            ~/.config/ai-experiments/agent-secrets.env (chmod 600) to auto-load it\n'; exit 1; fi; \
 	    if [ -n "$(PROMPT)" ]; then cmd="opencode run --auto \"$(PROMPT)\""; else cmd="opencode"; fi; \
 	    printf '[RUN] contained OpenCode session (worktree %s)\n' "$$dir"; \
 	    AGENT_WORKTREE="$$dir" CLAUDE_CODE_OAUTH_TOKEN="" \
-	      docker compose -f $(AGENTS_COMPOSE) run --rm agent sh -lc "$$cmd" ;; \
+	      docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) run --rm --name "agent-$$name" agent sh -lc "$$cmd" ;; \
 	  *) printf '[ERROR] AGENT must be claude or opencode (got: %s)\n' "$(AGENT)"; exit 1 ;; \
 	esac
+
+# The agent-sandbox docker footprint is shared across every worktree: one proxy
+# container (agent-proxy) plus the agent-internal/agent-egress networks and two
+# built images. The per-session `agent` container is `--rm` (named agent-<name>
+# while live, so `docker ps` maps it to ../ai-experiments-<name>). This target is
+# the scoped teardown of that shared footprint; it never touches the inference
+# stack (docker-compose.yaml), unlike the global `make clean`/`make prune`.
+agent-sandbox-clean: ## Tear down shared agent-sandbox docker resources (proxy + networks); inference stack untouched
+	@printf '[RUN] Removing agent-sandbox proxy and networks (project %s)\n' "$(AGENTS_PROJECT)"
+	-docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) down --remove-orphans
+	@for net in $$(docker network ls --format '{{.Name}}' | grep -E '_agent-(internal|egress)$$'); do \
+	  docker network rm "$$net" >/dev/null 2>&1 && printf '[OK] removed leftover network: %s\n' "$$net" || true; \
+	done
+	@printf '[OK] agent-sandbox torn down; built images remain (drop them with: docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) down --rmi local)\n'
 
 SESSIONS_DIR ?= logs/sessions
 
@@ -794,11 +831,17 @@ agent-export: ## Export a session transcript: AGENT=opencode|claude ID=<session-
 
 ##@ Cleanup & Maintenance
 
-clean: ## Clean up Docker resources (containers, networks, volumes)
-	@echo "$(CYAN)Cleaning up Docker resources...$(RESET)"
+clean: ## Stop the inference stack and remove its containers/networks/volumes (scoped; leaves agent-sandbox alone)
+	@echo "$(CYAN)Cleaning up the inference stack (docker-compose.yaml)...$(RESET)"
 	docker compose down -v
-	docker system prune -f
+	@printf '[INFO] Scoped to docker-compose.yaml. Agent-sandbox teardown: make agent-sandbox-clean. Host-wide sweep: make prune\n'
 	@echo "$(GREEN)Cleanup completed.$(RESET)"
+
+prune: ## DANGER: host-wide docker sweep (docker system prune -f) - removes ALL unused containers/networks/build cache
+	@printf '[WARN] docker system prune -f removes ALL unused docker resources on the host, not just this repo\n'
+	@printf '  This includes the agent-sandbox networks and build cache, and resources from other projects\n'
+	docker system prune -f
+	@echo "$(GREEN)Global prune completed.$(RESET)"
 
 rebuild: ## Rebuild all containers from scratch
 	@echo "$(CYAN)Rebuilding all containers...$(RESET)"

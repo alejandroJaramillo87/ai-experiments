@@ -159,7 +159,20 @@ The host previously managed Python with pyenv and Poetry, with PyTorch installed
 sideload. uv replaces all of it. Remove the retired components after `make install`
 succeeds and the acceptance checks pass.
 
-Delete the pyenv-managed virtual environment used for AI tools:
+Before deleting the environment, clear any global or local pyenv pin that still selects it.
+Deleting the `ai-tools` environment while the global pin `~/.pyenv/version` (or a stray
+`.python-version`) still names it leaves pyenv pointing at a version that no longer exists, and
+every shell that inherits the pin then fails with
+`pyenv: version 'ai-tools' is not installed` on each `cd` outside a directory with its own
+`.python-version`:
+
+```bash
+$ pyenv global               # if this prints ai-tools, reset it
+$ pyenv global system        # or: pyenv global 3.12.11
+$ pyenv global               # verify it no longer prints ai-tools
+```
+
+Then delete the pyenv-managed virtual environment used for AI tools:
 
 ```bash
 $ pyenv virtualenv-delete ai-tools

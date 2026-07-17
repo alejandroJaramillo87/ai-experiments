@@ -5,10 +5,21 @@ containerized LLM inference optimized for both latency (llama.cpp) and throughpu
 
 ## Execution environment (agents)
 
-Coding agents run in a sandbox with **no access to the host**: no host Docker daemon, no GPU,
-no running inference services (ports 8001-8003/3000), and no `/mnt/ai-data`. Host-side
-commands — `make` targets that touch services, `docker`/`docker compose`, `nvidia-smi`,
-healthcheck curls, benchmark scripts — cannot be executed from the sandbox.
+**A contained agent session (`make agent-sandbox`) has no access to the host.** Inside it there
+is no host Docker daemon, no GPU, no `nvidia-smi`, no `/mnt/ai-data`, and no running inference
+services (ports 8001-8003 and 3000). Only the git worktree at `/work` (read-write) and network
+egress to an allowlist (via the proxy) are available. A contained session is flagged
+authoritatively by the sandbox banner seeded into `~/.claude/CLAUDE.md`, so do not spend a turn
+rediscovering these limits.
+
+Do not attempt these from a contained session — none can work:
+
+- `docker` / `docker compose`, and the `make` targets that drive services or docker (`make up`,
+  `down`, `status`, `logs`, `shell-*`, `clean`, `prune`, `agent-sandbox-clean`).
+- `nvidia-smi`, any GPU work, and the benchmark scripts.
+- Healthcheck curls against the service ports, and any read under `/mnt/ai-data`.
+
+Instead:
 
 - When a task requires a host-side command, output the exact command for the human to run,
   then stop and wait for the human to report the output back.
