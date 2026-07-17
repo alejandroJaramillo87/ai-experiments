@@ -641,7 +641,15 @@ worktree-%: ## Create a git worktree ../ai-experiments-<name> on branch task/<na
 	  git worktree add "$$dir" -b "task/$$name" || exit 1; \
 	  printf '[OK] worktree: %s (branch task/%s)\n' "$$dir" "$$name"; \
 	fi; \
-	printf '[INFO] GPU/benchmark work stays serialized across all worktrees (see AGENTS.md)\n'
+	printf '[INFO] GPU/benchmark work stays serialized across all worktrees (see AGENTS.md)\n'; \
+	printf '[RUN] Provisioning .venv: dev + sandbox groups (torch-free)\n'; \
+	if (cd "$$dir" && uv sync --frozen --only-group dev --only-group sandbox); then \
+	  printf '[OK] .venv provisioned: make quality and non-GPU make test are ready\n'; \
+	else \
+	  printf '[WARN] Could not auto-provision .venv (stale lock, offline, or uv missing)\n'; \
+	  printf '  Solution: provision it manually in the new worktree\n'; \
+	  printf '  Command: (cd %s && make install)\n' "$$dir"; \
+	fi
 
 # `make worktree-clean <name>`: make parses <name> as a second goal, not an argument,
 # so capture it at parse time and register a no-op target for it. Guarded to fire only

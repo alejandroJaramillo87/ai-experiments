@@ -72,6 +72,14 @@ $ make worktree-ls            # list worktrees
 $ make worktree-clean mytask  # remove when merged
 ```
 
+Creating a worktree provisions its `.venv` automatically with the `dev` and `sandbox`
+dependency groups (`uv sync --frozen --only-group dev --only-group sandbox`), so
+`make quality` and the non-GPU `make test` suite run without a manual sync. The step is
+best-effort: if it cannot resolve (a stale `uv.lock`, no network, or `uv` absent), it
+prints a `[WARN]` with the manual `make install` command and worktree creation still
+succeeds. Run `make install` inside the worktree when it will do GPU or training work,
+which additionally installs torch (cu130) and the CUDA-compiled groups.
+
 Removal accepts the bare name, the `task/<name>` branch, a worktree path, `NAME=<name>`,
 or the suffix form `make worktree-clean-<name>` — all resolve to the same worktree. A bare
 `make worktree-clean` (no name) errors with usage instead of matching the creation
