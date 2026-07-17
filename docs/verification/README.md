@@ -7,6 +7,16 @@ runbook is the campaign that closes that gap. Every command derives from the
 Makefile and the two CLIs (`python -m training`, `python -m interp`); the
 runbook covers only features that exist in the repository.
 
+## Known bugs
+
+The WI-14 capstone review and its re-verification confirmed defects that are
+not yet fixed, most of them latent in the GPU and service paths this campaign
+is the first to exercise. [known-bugs.md](known-bugs.md) is the ledger; each
+runbook step below carries a "Known bugs likely to surface here" block listing
+the ones to expect at that step. Treat a listed bug as the predicted failure:
+if a step fails in the way its known bug describes, record it and fix against
+the real traceback rather than re-diagnosing from scratch.
+
 ## Recording protocol
 
 - The human runs each host command on the workstation and pastes the command

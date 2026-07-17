@@ -132,7 +132,13 @@ interp = [
     # Write-back path (interp Phase 3 W1/W2): control-vector extraction and GGUF export,
     # artifact manifests. scikit-learn (probes) lives in core. xxhash repeats the training
     # group's pin (groups may overlap).
-    "repeng==0.4.0",
+    #
+    # repeng is NOT pinned here: 0.4.0 (the latest release) requires numpy<2.0 and
+    # references the removed np.float_ alias, so it neither resolves nor imports against
+    # the core numpy 2.x pin (KB-32, confirmed at both resolve and import time). Like
+    # SAEBench (P4-D3, above), it runs in its own isolated numpy<2 venv rather than joining
+    # this group; the W1 write-back path invokes it out-of-process. The isolation venv and
+    # the extract_repeng refactor land together at verification step I.3.
     "gguf==0.19.0",
     "xxhash==3.5.0",
 ]
@@ -147,11 +153,13 @@ interp = [
 # (`uv lock`) to confirm exact versions against the cu130 / torch 2.13 / py3.12 resolution.
 training = [
     "trl==0.24.0",
-    # Optional F3 SFT backend (sft.backend: unsloth); failures are documented,
-    # not blocking (F3 decision 2). Provisional pin — unsloth tracks
-    # torch/transformers tightly; verify against transformers 5.13.1 via
-    # `make train-build` (smoke step 7) before relying on it.
-    "unsloth==2026.7.2",
+    # unsloth (the optional F3 SFT throughput backend, sft.backend=unsloth) is NOT pinned:
+    # it caps transformers<=5.5.0, datasets<4.4.0, and torch<2.11.0, all below the core
+    # pins, and no release (through the latest 2026.7.3) lifts them. Unlike repeng/datatrove
+    # it cannot be isolated out-of-process (it patches transformers/torch inside the training
+    # run), so it is dropped rather than isolated. The default and fallback backend is trl
+    # (schema.py SftConfig.backend default) — a complete TRL SFTTrainer path that needs no
+    # unsloth; sft.backend=unsloth requires a separately built venv on a compatible stack.
     "liger-kernel==0.6.2",
     "torchao==0.14.0",
     "flash-attn==2.8.3.post1",
@@ -163,12 +171,16 @@ training = [
     "psutil==7.2.2",
     "xxhash==3.5.0",
     "zstandard==0.23.0",
-    # P2-D1 pipeline engine: LocalPipelineExecutor, quality filters, exact and
-    # MinHash dedup blocks. [processing] pulls the fastText language-id backend
-    # and nltk; spacy is the word tokenizer the Gopher/FineWeb filters require
-    # (not covered by datatrove's extras as of 0.9.0).
-    "datatrove[io,processing]==0.9.0",
-    "spacy==3.8.14",
+    # P2-D1 data pipeline (LocalPipelineExecutor, quality filters, exact and MinHash dedup,
+    # fastText language id, and the spacy word tokenizer the Gopher/FineWeb filters require)
+    # is NOT pinned here: datatrove 0.9.0 (the latest release, like every release) caps
+    # huggingface-hub<1.0, incompatible with the core huggingface-hub 1.23.0 pin that
+    # transformers 5.13.1 requires (>=1.5). No datatrove release supports hf-hub 1.x. Like
+    # SAEBench (P4-D3), datatrove and its spacy filter dependency run in their own isolated
+    # hf-hub<1.0 venv rather than this group; prepare_corpus invokes the pipeline
+    # out-of-process (training/data/pipeline.py and contamination.py already defer every
+    # datatrove import so they load without the package). The isolation venv and the
+    # prepare_corpus refactor land at verification Phase 2 (P2.2).
 ]
 
 [tool.uv]
@@ -216,10 +228,13 @@ warn_unused_configs = true
 # in both environments.
 warn_unused_ignores = false
 
-# Untyped or environment-absent third-party libraries. The CUDA stack is not
-# installable in the sandbox and most of these ship no stubs; ignore missing
-# imports per module rather than globally so first-party import errors still
-# surface.
+# Untyped or environment-absent third-party libraries. Two cases: the CUDA
+# stack is not installable in the sandbox, and the training/interp data and
+# config libraries (numpy, omegaconf, hydra, xxhash, gguf, huggingface_hub,
+# requests) are absent from the dev-only sandbox venv; most ship no stubs
+# regardless. Ignore missing imports per module rather than globally so
+# first-party import errors still surface. This is a no-op on the workstation
+# where the typed members (numpy, omegaconf, huggingface_hub) are installed.
 [[tool.mypy.overrides]]
 module = [
     "bitsandbytes.*",
@@ -227,13 +242,19 @@ module = [
     "datatrove.*",
     "deepspeed.*",
     "flash_attn.*",
+    "gguf.*",
+    "huggingface_hub.*",
+    "hydra.*",
     "lm_eval.*",
     "mlflow.*",
     "nnsight.*",
+    "numpy.*",
+    "omegaconf.*",
     "peft.*",
     "psutil.*",
     "pynvml.*",
     "repeng.*",
+    "requests.*",
     "sae_lens.*",
     "safetensors.*",
     "sklearn.*",
@@ -245,6 +266,7 @@ module = [
     "trl.*",
     "unsloth.*",
     "wandb.*",
+    "xxhash.*",
 ]
 ignore_missing_imports = true
 
@@ -289,3 +311,12 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/*" = ["S101"]
+
+# Declare the repository's own packages so isort's first-party/third-party
+# section split is deterministic. Without this ruff auto-detects first-party,
+# and the result depends on the environment: an import ruff cannot resolve in a
+# given venv (for example trl or datasets in a partial sync) is categorized
+# differently than in a full install, which reorders function-local import
+# blocks and fails `make quality` in one environment but passes in another.
+[tool.ruff.lint.isort]
+known-first-party = ["training", "interp", "common"]
