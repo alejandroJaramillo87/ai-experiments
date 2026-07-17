@@ -51,6 +51,11 @@ Status: PENDING
 
 ## I.3 Control-vector extraction and export (W1)
 
+**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
+
+- KB-31 — `interp/steering/extract.py:106` — extract_repeng never passes its computed layer list to ControlVector.train, so layer_range is silently ignored …
+- KB-32 — `interp/steering/extract.py:78` — Pinned repeng 0.4.0 cannot be imported under pinned numpy 2.4.6: np.float_ in eagerly evaluated annotations …
+
 Command:
 
 ```bash
@@ -72,6 +77,11 @@ Observed:
 Status: PENDING
 
 ## I.4 Steered serving and scorecard (W1)
+
+**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
+
+- KB-33 — `interp/commands/steer_scorecard.py:82` — steer-scorecard: except tuple omits OSError, ValueError, and ServingError, so missing prompt files and mid-run …
+- KB-34 — `interp/steering/scorecard.py:85` — load_prompts and load_system_prompt let raw json.JSONDecodeError (and TypeError on non-object lines) escape, …
 
 Command:
 
@@ -95,6 +105,13 @@ Observed:
 Status: PENDING
 
 ## I.5 Probe capture, train, eval (W2)
+
+**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
+
+- KB-35 — `interp/commands/probe_eval.py:53` — probe-eval does not catch ManifestError, so a missing or corrupt capture manifest crashes with a raw traceback
+- KB-36 — `interp/probes/capture.py:169` — run_capture kill window during re-capture leaves the previous run's valid manifest pointing at partially …
+- KB-37 — `interp/probes/capture.py:93` — capture_activations indexes the batch dimension: decoder blocks return a bare tensor under pinned transformers …
+- KB-38 — `interp/probes/score.py:45` — score_texts discards the capture tokenizer fingerprint, so the documented score-time tokenizer/chat-template …
 
 Command:
 
@@ -142,6 +159,12 @@ Status: PENDING
 
 ## I.7 Probe monitor (W4)
 
+**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
+
+- KB-38 — `interp/probes/score.py:45` — score_texts discards the capture tokenizer fingerprint, so the documented score-time tokenizer/chat-template …
+- KB-39 — `interp/probes/monitor.py:196` — run_monitor enforces 30-day retention before reading the log window, so any --window longer than RETENTION_DAYS …
+- KB-40 — `interp/probes/monitor.py:211` — Monitor replay always loads the hub 'main' revision: run_monitor never plumbs a revision to score_texts, and …
+
 Command (batch job; refuses while inference is up):
 
 ```bash
@@ -163,6 +186,14 @@ Observed:
 Status: PENDING
 
 ## I.8 Organisms (P4-D1)
+
+**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
+
+- KB-41 — `interp/commands/organism.py:161` — organism generate does not plumb --timeout through to the teacher harness, so the flag only affects the …
+- KB-42 — `interp/organisms/generate.py:205` — parse_questions accepts n=0, so --questions-per-fact 0 silently produces an empty held-out QA set
+- KB-43 — `interp/organisms/seal.py:103` — SIGKILL between publishing ground_truth.json and writing the manifest bricks sealing: the exception-only …
+- KB-44 — `interp/organisms/verify.py:214` — locality_check silently passes NaN benchmark metrics
+- KB-45 — `interp/organisms/verify.py:221` — locality_check's passed verdict ignores unmatched metrics despite its documented contract
 
 Command (stages have separate GPU/serving preconditions; `make organism
 RECIPE=...` prints this pipeline):
@@ -194,6 +225,10 @@ Observed:
 Status: PENDING
 
 ## I.9 Harvest with disk preflight (P4-D2)
+
+**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
+
+- KB-46 — `interp/harvest.py:327` — Harvest resume identity omits the corpus id, so swapping HF datasets mid-resume silently stitches cross-corpus …
 
 Harvests can reach roughly 1.4TB per layer at full scale; the preflight,
 not cleanup, is the defense. Check free space explicitly before any
@@ -243,6 +278,14 @@ Observed:
 Status: PENDING
 
 ## I.11 SAE training and evaluation (P4-D3)
+
+**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
+
+- KB-47 — `interp/commands/sae_eval.py:59` — sae-eval: malformed or text-less --delta-loss-texts JSONL escapes as a raw KeyError/JSONDecodeError traceback
+- KB-48 — `interp/commands/sae_eval.py:59` — Empty --delta-loss-texts file produces a fabricated all-zero delta-LM-loss report
+- KB-49 — `interp/sae/evaluate.py:207` — evaluate_sae's model-identity refusal gate is vacuous for every HF-model capture: 'unknown' matches 'unknown'
+- KB-50 — `interp/sae/train.py:223` — capture_manifest_xxhash is invalidated by mark_validated within the same run: run_sae_training hashes the …
+- KB-51 — `interp/sae/train.py:227` — SAE manifest omits model_revision, so delta-LM-loss silently evaluates the hub default branch instead of the …
 
 Command (the calibration pair targets Gemma-2-2B by the ecosystem-anchor
 decision; the smoke recipe targets Gemma 4):
