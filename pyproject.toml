@@ -132,7 +132,13 @@ interp = [
     # Write-back path (interp Phase 3 W1/W2): control-vector extraction and GGUF export,
     # artifact manifests. scikit-learn (probes) lives in core. xxhash repeats the training
     # group's pin (groups may overlap).
-    "repeng==0.4.0",
+    #
+    # repeng is NOT pinned here: 0.4.0 (the latest release) requires numpy<2.0 and
+    # references the removed np.float_ alias, so it neither resolves nor imports against
+    # the core numpy 2.x pin (KB-32, confirmed at both resolve and import time). Like
+    # SAEBench (P4-D3, above), it runs in its own isolated numpy<2 venv rather than joining
+    # this group; the W1 write-back path invokes it out-of-process. The isolation venv and
+    # the extract_repeng refactor land together at verification step I.3.
     "gguf==0.19.0",
     "xxhash==3.5.0",
 ]
