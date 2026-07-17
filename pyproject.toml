@@ -301,3 +301,12 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/*" = ["S101"]
+
+# Declare the repository's own packages so isort's first-party/third-party
+# section split is deterministic. Without this ruff auto-detects first-party,
+# and the result depends on the environment: an import ruff cannot resolve in a
+# given venv (for example trl or datasets in a partial sync) is categorized
+# differently than in a full install, which reorders function-local import
+# blocks and fails `make quality` in one environment but passes in another.
+[tool.ruff.lint.isort]
+known-first-party = ["training", "interp", "common"]
