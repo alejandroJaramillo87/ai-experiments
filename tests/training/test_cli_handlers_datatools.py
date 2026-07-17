@@ -35,7 +35,7 @@ def run_cli(argv: list[str]) -> int:
 class TestValidate:
     def test_success_reports_schema_and_invariants(self, capsys):
         assert run_cli(["validate", TINY_RECIPE]) == 0
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert f"[OK] Schema: {TINY_RECIPE} loads as a typed recipe" in out
         assert (
             "[OK] Validation: run tiny-e2e passes all cross-field invariants"
@@ -48,11 +48,11 @@ class TestValidate:
     def test_print_emits_resolved_yaml_with_override(self, capsys):
         overrides = ["optimizer.lr=1e-4"]
         assert run_cli(["validate", TINY_RECIPE, *overrides, "--print"]) == 0
-        out = capsys.readouterr().out
-        assert f"[INFO] Overrides applied: {overrides[0]}" in out
-        # everything after the blank separator is exactly the canonical
-        # snapshot serialization of the overridden recipe
-        tail = out.split("\n\n", 1)[1]
+        captured = capsys.readouterr()
+        assert f"[INFO] Overrides applied: {overrides[0]}" in captured.err
+        # the resolved yaml is machine output: stdout holds exactly the
+        # canonical snapshot serialization of the overridden recipe
+        tail = captured.out
         assert tail == resolved_yaml(load_recipe(TINY_RECIPE, overrides))
         import yaml
 
@@ -62,14 +62,14 @@ class TestValidate:
 
     def test_override_failing_invariant_lists_problems(self, capsys):
         assert run_cli(["validate", TINY_RECIPE, "optimizer.lr=-1"]) == 1
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[INFO] Overrides applied: optimizer.lr=-1" in out
         assert "[ERROR] Validation failed:" in out
         assert "  - optimizer.lr: must be positive, got -1.0" in out
 
     def test_unknown_override_key_is_load_error(self, capsys):
         assert run_cli(["validate", TINY_RECIPE, "optimizer.bogus=1"]) == 1
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Recipe load failed:" in out
         assert "'bogus'" in out
         assert (
@@ -82,7 +82,7 @@ class TestValidate:
     def test_missing_file_is_load_error(self, tmp_path, capsys):
         missing = str(tmp_path / "nope.yaml")
         assert run_cli(["validate", missing]) == 1
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Recipe load failed:" in out
         assert f"Recipe file not found: {missing}" in out
 
@@ -112,7 +112,7 @@ class TestBuildContamination:
             manifest = json.load(f)
         assert manifest["total_ngrams"] == BENCH_NGRAMS
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "=== Contamination index build (P2-D1) ===" in out
         assert f"[INFO] Benchmarks: {bench_yaml}" in out
         assert f"[INFO] Output: {index_dir}" in out
@@ -149,7 +149,7 @@ class TestBuildContamination:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Index build failed:" in out
         assert detail in out
         assert "[OK] Total" not in out
@@ -195,7 +195,7 @@ class TestMakeReplaySynthetic:
         )
         assert int(first.max()) < 512
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "=== Synthetic replay shard set ===" in out
         assert f"[INFO] Output: {out_dir}" in out
         assert "[INFO] Tokens: 3000 (0.00GB at uint16)" in out
@@ -231,7 +231,7 @@ class TestMakeReplaySynthetic:
         assert manifest["tokenizer_hash"] == "abc123"
         assert manifest["eos_id"] == 2
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert f"[INFO] Tokens: {expected} (0.00GB at uint16)" in out
         assert "[OK] Shards written: 1" in out
 
@@ -240,7 +240,7 @@ class TestMakeReplaySynthetic:
         assert (
             run_cli(["make-replay-synthetic", "--out", out_dir, "--tokens", "0"]) == 2
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Token count: must be positive, got 0" in out
         # rejected before the writer is constructed, so nothing is created
         assert not os.path.exists(out_dir)

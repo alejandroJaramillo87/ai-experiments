@@ -58,7 +58,7 @@ class TestProbeCapture:
             )
             == 0
         )
-        printed = capsys.readouterr().out
+        printed = capsys.readouterr().err
         assert "[RUN] Capturing activations: test-model" in printed
         assert (
             "[OK] Capture complete: 120 examples, 1 shards, layers [3, 5]"
@@ -93,7 +93,7 @@ class TestProbeCapture:
             )
             == 1
         )
-        printed = capsys.readouterr().out
+        printed = capsys.readouterr().err
         assert "[ERROR] Capture failed:" in printed
         assert "needs 'text' and 'label' keys" in printed
         assert not out_dir.exists()  # refusal leaves no partial capture
@@ -117,7 +117,7 @@ class TestProbeCapture:
             )
             == 2
         )
-        printed = capsys.readouterr().out
+        printed = capsys.readouterr().err
         assert "[ERROR] Invalid --layers value: '3,x'" in printed
         assert "comma-separated integers" in printed
 
@@ -139,7 +139,7 @@ class TestProbeCapture:
             )
             == 1
         )
-        assert "[ERROR] Capture failed:" in capsys.readouterr().out
+        assert "[ERROR] Capture failed:" in capsys.readouterr().err
 
 
 class TestProbeTrain:
@@ -162,7 +162,7 @@ class TestProbeTrain:
         probe_dir = os.path.join(out_root, "cli-probe")
         with open(os.path.join(probe_dir, "manifest.json")) as f:
             manifest = json.load(f)
-        printed = capsys.readouterr().out
+        printed = capsys.readouterr().err
         assert f"[RUN] Training probes from {capture_dir}" in printed
         # the [OK] line reports the registered layer and both AUROCs verbatim
         assert (
@@ -191,7 +191,7 @@ class TestProbeTrain:
             )
             == 1
         )
-        printed = capsys.readouterr().out
+        printed = capsys.readouterr().err
         assert "[ERROR] Training failed:" in printed
         assert "manifest not found" in printed
 
@@ -220,7 +220,7 @@ class TestProbeEval:
             run_cli(["probe-eval", "--probe", probe_dir, "--label-name", "negativity"])
             == 0
         )
-        printed = capsys.readouterr().out
+        printed = capsys.readouterr().err
         assert (
             "[RUN] Evaluating probe test-probe against black-box baselines"
         ) in printed
@@ -255,7 +255,7 @@ class TestProbeEval:
             run_cli(["probe-eval", "--probe", probe_dir, "--label-name", "negativity"])
             == 0
         )
-        printed = capsys.readouterr().out
+        printed = capsys.readouterr().err
         assert "[WARN] Verdict:" in printed
         assert "NOT deployed" in printed
         with open(os.path.join(probe_dir, "evaluation.json")) as f:
@@ -268,7 +268,7 @@ class TestProbeEval:
             )
             == 1
         )
-        printed = capsys.readouterr().out
+        printed = capsys.readouterr().err
         assert "[ERROR] Evaluation failed:" in printed
         assert "manifest not found" in printed
 
@@ -331,7 +331,7 @@ class TestProbeMonitor:
             )
             == 0
         )
-        printed = capsys.readouterr().out
+        printed = capsys.readouterr().err
         assert "[RUN] Monitor replay: window 7d, 1 probes" in printed
         assert "[OK] Replayed 12/12 records" in printed
         assert "[OK] test-probe: mean " in printed
@@ -376,6 +376,6 @@ class TestProbeMonitor:
             )
             == 1
         )
-        printed = capsys.readouterr().out
+        printed = capsys.readouterr().err
         assert "[ERROR] Monitor failed: inference services are up" in printed
         assert "stop serving first" in printed

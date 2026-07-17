@@ -219,7 +219,7 @@ class TestHarvest:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[RUN] Harvesting activations: google/gemma-4-E2B" in out
         assert (
             "[OK] Harvest complete: 2000 tokens/hook, hooks ['model.layers.15']"
@@ -238,7 +238,7 @@ class TestHarvest:
         )
         recipe = write_harvest_recipe(tmp_path, layers="[15, 7]", multi=True)
         assert run_cli(["harvest", "--recipe", recipe, "--check-hooks"]) == 0
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[RUN] Hook-dimension check: google/gemma-4-E2B" in out
         assert "[OK] layer 7: residual width 8" in out
         assert "[OK] layer 15: residual width 8" in out
@@ -255,13 +255,13 @@ class TestHarvest:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Harvest failed:" in out
         assert "harvest.enabled" in out
 
     def test_missing_recipe_file_is_styled_error(self, tmp_path, capsys):
         assert run_cli(["harvest", "--recipe", str(tmp_path / "missing.yaml")]) == 1
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Harvest failed:" in out
         assert "not found" in out
 
@@ -272,7 +272,7 @@ class TestSaeTrain:
         capture_dir = make_capture(tmp_path)
         recipe = write_sae_recipe(tmp_path, capture_dir)
         assert run_cli(["sae-train", "--recipe", recipe]) == 0
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert f"[RUN] Training SAE from capture: {capture_dir}" in out
         assert (
             "[OK] SAE training complete: sae-test, width 64, k 8, final loss 0.125"
@@ -291,7 +291,7 @@ class TestSaeTrain:
         capture_dir = make_capture(tmp_path)
         recipe = write_sae_recipe(tmp_path, capture_dir)
         assert run_cli(["sae-train", "--recipe", recipe, "--validated"]) == 0
-        assert "[OK] SAE training complete" in capsys.readouterr().out
+        assert "[OK] SAE training complete" in capsys.readouterr().err
         assert load_manifest(capture_dir)["validated"] is True
 
     def test_validation_failure_is_styled_error(self, tmp_path, capsys):
@@ -300,13 +300,13 @@ class TestSaeTrain:
         assert (
             run_cli(["sae-train", "--recipe", recipe, "--override", "sae.k=64"]) == 1
         )  # k must be < width
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] SAE training failed:" in out
         assert "sae.k" in out
 
     def test_missing_recipe_file_is_styled_error(self, tmp_path, capsys):
         assert run_cli(["sae-train", "--recipe", str(tmp_path / "missing.yaml")]) == 1
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] SAE training failed:" in out
         assert "not found" in out
 
@@ -320,7 +320,7 @@ class TestSaeEval:
             run_cli(["sae-eval", "--sae-dir", sae_dir, "--capture-dir", capture_dir])
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert f"[RUN] Core metrics: {sae_dir}" in out
         assert (
             "[OK] Evaluation complete: explained variance 1.0, L0 2.0, 50 tokens"
@@ -364,7 +364,7 @@ class TestSaeEval:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[RUN] Delta-LM-loss over 2 texts: google/gemma-4-E2B" in out
         assert "[OK] Delta-LM-loss 0.0123, loss recovered 0.9876" in out
         with open(os.path.join(sae_dir, "eval_report.json")) as f:
@@ -379,7 +379,7 @@ class TestSaeEval:
             run_cli(["sae-eval", "--sae-dir", sae_dir, "--capture-dir", capture_dir])
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] SAE evaluation failed:" in out
         assert "mismatch" in out
 
@@ -400,7 +400,7 @@ class TestSaeEval:
             )
             == 1
         )
-        assert "[ERROR] SAE evaluation failed:" in capsys.readouterr().out
+        assert "[ERROR] SAE evaluation failed:" in capsys.readouterr().err
 
 
 class TestGc:
@@ -410,11 +410,11 @@ class TestGc:
         root = str(tmp_path / "activations")
 
         assert run_cli(["gc", "--mark-validated", collected]) == 0
-        assert f"[OK] Marked deletable: {collected}" in capsys.readouterr().out
+        assert f"[OK] Marked deletable: {collected}" in capsys.readouterr().err
         assert load_manifest(collected)["validated"] is True
 
         assert run_cli(["gc", "--root", root]) == 0
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert f"[OK] Deleted shards: {collected} (manifest kept)" in out
         assert os.listdir(collected) == ["manifest.json"]
         # the unvalidated capture keeps its shard payload
@@ -424,7 +424,7 @@ class TestGc:
         capture = make_capture(tmp_path, name="activations/cap", validated=True)
         root = str(tmp_path / "activations")
         assert run_cli(["gc", "--root", root, "--dry-run"]) == 0
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert f"[OK] Would delete shards: {capture} (manifest kept)" in out
         assert os.path.isfile(os.path.join(capture, "model.layers.15", "cache.bin"))
 
@@ -432,17 +432,17 @@ class TestGc:
         make_capture(tmp_path, name="activations/unvalidated")
         root = str(tmp_path / "activations")
         assert run_cli(["gc", "--root", root]) == 0
-        assert "[INFO] No validated captures to collect" in (capsys.readouterr().out)
+        assert "[INFO] No validated captures to collect" in (capsys.readouterr().err)
 
     def test_missing_root_is_styled_error(self, tmp_path, capsys):
         assert run_cli(["gc", "--root", str(tmp_path / "nowhere")]) == 1
-        assert "[ERROR] Garbage collection failed:" in (capsys.readouterr().out)
+        assert "[ERROR] Garbage collection failed:" in (capsys.readouterr().err)
 
     def test_mark_validated_without_manifest_is_styled_error(self, tmp_path, capsys):
         empty = tmp_path / "empty"
         empty.mkdir()
         assert run_cli(["gc", "--mark-validated", str(empty)]) == 1
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Garbage collection failed:" in out
         assert "manifest not found" in out
 

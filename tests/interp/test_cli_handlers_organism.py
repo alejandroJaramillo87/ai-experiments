@@ -144,7 +144,7 @@ class TestGenerate:
         assert (
             run_cli(["organism", "generate", "--recipe", recipe, "--render-only"]) == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "=== Organism generation: org-test (taboo) ===" in out
         assert "[OK] Rendered 3 teacher prompts" in out
         assert "[SKIP] Teacher generation skipped (--render-only)" in out
@@ -192,7 +192,7 @@ class TestGenerate:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[RUN] Drawing 10 facts and held-out QA from the teacher" in out
         assert f"[OK] Rendered {rendered} teacher prompts" in out
 
@@ -213,7 +213,7 @@ class TestGenerate:
         assert (
             run_cli(["organism", "generate", "--recipe", recipe, "--render-only"]) == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[INFO] Resuming: ground-truth draft already drawn" in out
         assert "Ground-truth draft written" not in out
         import json as _json
@@ -228,14 +228,14 @@ class TestGenerate:
         assert (
             run_cli(["organism", "generate", "--recipe", recipe, "--render-only"]) == 1
         )
-        assert "does not match" in capsys.readouterr().out
+        assert "does not match" in capsys.readouterr().err
 
     def test_deferred_kind_is_usage_error(self, setup, capsys):
         recipe = setup["build"]("hidden_objective")
         assert (
             run_cli(["organism", "generate", "--recipe", recipe, "--render-only"]) == 2
         )
-        assert "[ERROR] Kind hidden_objective is deferred" in capsys.readouterr().out
+        assert "[ERROR] Kind hidden_objective is deferred" in capsys.readouterr().err
 
     def test_full_run_generates_and_blinds(self, setup, monkeypatch, capsys):
         from training.data import teacher
@@ -281,7 +281,7 @@ class TestGenerate:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[OK] Blind corpus: 3 examples" in out
         assert "[INFO] Next: make prepare-sft" in out
 
@@ -320,7 +320,7 @@ class TestGenerate:
         )
         assert (
             "[ERROR] Teacher generation failed; re-invoke to resume"
-            in capsys.readouterr().out
+            in capsys.readouterr().err
         )
 
 
@@ -371,7 +371,7 @@ class TestVerify:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[RUN] Eliciting: 2 direct, 2 probe prompts x 1" in out
         assert "[OK] Implant check: passed" in out
         assert "[OK] Locality check: passed (2 metrics, epsilon 0.05)" in out
@@ -409,7 +409,7 @@ class TestVerify:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[WARN] Implant check: failed" in out
         assert "[ERROR] Verdict: implant check failed" in out
 
@@ -451,7 +451,7 @@ class TestVerify:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[RUN] Eliciting 10 held-out QA prompts" in out
         assert "[RUN] Judging fact recall" in out
         assert "[OK] Verdict: implant and locality checks passed" in out
@@ -476,7 +476,7 @@ class TestVerify:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] verify failed: ground-truth draft" in out
         assert "not found" in out
 
@@ -512,7 +512,7 @@ class TestSealAndCheckSeal:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[OK] Sealed: ground truth SHA-256" in out
         assert "[INFO] Auditors receive the public manifest only" in out
         assert not os.path.exists(draft_path)  # draft consumed by the seal
@@ -528,14 +528,14 @@ class TestSealAndCheckSeal:
             assert json.load(f) == self.GROUND_TRUTH
 
         assert run_cli(["organism", "check-seal", "--dir", setup["out_dir"]]) == 0
-        assert "[OK] Seal intact: org-test" in capsys.readouterr().out
+        assert "[OK] Seal intact: org-test" in capsys.readouterr().err
 
     def test_invalid_verdict_refused(self, setup, capsys):
         recipe = setup["build"]("taboo")
         draft_path = write_draft(setup["out_dir"], self.GROUND_TRUTH)
         self.write_report(setup["out_dir"], valid=False)
         assert run_cli(["organism", "seal", "--recipe", recipe]) == 1
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert (
             "[ERROR] Verification report verdict is invalid; refusing to seal"
         ) in out
@@ -544,7 +544,7 @@ class TestSealAndCheckSeal:
 
     def test_check_seal_unsealed_dir_fails(self, tmp_path, capsys):
         assert run_cli(["organism", "check-seal", "--dir", str(tmp_path)]) == 1
-        assert "[ERROR] check-seal failed:" in capsys.readouterr().out
+        assert "[ERROR] check-seal failed:" in capsys.readouterr().err
 
 
 class TestDispatch:
@@ -553,7 +553,7 @@ class TestDispatch:
         assert run_cli(["organism", "generate", "--recipe", recipe]) == 2
         assert (
             "[ERROR] generate: --teacher is required unless --render-only"
-        ) in capsys.readouterr().out
+        ) in capsys.readouterr().err
 
     def test_non_organism_recipe_is_styled_failure(self, tmp_path, capsys):
         recipe = tmp_path / "plain.yaml"
@@ -570,6 +570,6 @@ class TestDispatch:
             run_cli(["organism", "generate", "--recipe", str(recipe), "--render-only"])
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] generate failed:" in out
         assert "organism.enabled is false" in out

@@ -145,7 +145,7 @@ class TestCmdExport:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert (
             f"[ERROR] Pinned converter not found: {empty / 'convert_hf_to_gguf.py'}"
         ) in out
@@ -177,7 +177,7 @@ class TestCmdExport:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
 
         name = "myrun-step_20"
         gguf = os.path.join(out_root, name, f"{name}-Q8_0.gguf")
@@ -238,7 +238,7 @@ class TestCmdExport:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         # Local-path base: no hub revision, so the identity reads "local".
         assert f"[OK] Base model verified: {base} (revision local)" in out
         assert f"[OK] Adapter merged: {ckpt} into {base}" in out
@@ -291,7 +291,7 @@ class TestCmdExport:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
 
         note = (
             f"base_config_sha256: trained against {'0' * 64}, "
@@ -343,7 +343,7 @@ class TestCmdExport:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Export failed: Base model drifted since training:" in out
         assert "--allow-base-drift" in out
 
@@ -419,7 +419,7 @@ class TestCmdEvalHoldout:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[RUN] Held-out loss: /ckpt/sft over /data/sft" in out
         assert (
             "[OK] Loss 1.250000, perplexity 3.4903 (12 examples, "
@@ -444,7 +444,7 @@ class TestCmdEvalHoldout:
             run_cli(["eval-holdout", "--model", "m", "--dataset", "d", "--out", target])
             == 0
         )
-        assert f"[OK] Record written: {target}" in capsys.readouterr().out
+        assert f"[OK] Record written: {target}" in capsys.readouterr().err
         with open(target) as f:
             text = f.read()
         assert text.endswith("}\n")
@@ -465,7 +465,7 @@ class TestCmdEvalHoldout:
 
         monkeypatch.setattr("training.eval.holdout.evaluate_holdout", failing)
         assert run_cli(["eval-holdout", "--model", "m", "--dataset", "d"]) == 1
-        assert f"[ERROR] Held-out evaluation failed: {exc}" in (capsys.readouterr().out)
+        assert f"[ERROR] Held-out evaluation failed: {exc}" in (capsys.readouterr().err)
 
     def test_json_stdout_is_pure_record(self, monkeypatch, capsys):
         monkeypatch.setattr(
@@ -525,7 +525,7 @@ class TestCmdEvalLmeval:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[RUN] lm-evaluation-harness: /ckpt/sft" in out
         # Sorted task order; stderr detail only when the harness reports one.
         arc = out.index("[OK] arc_challenge: acc_norm,none = 0.4321 (stderr 0.0145)")
@@ -549,7 +549,7 @@ class TestCmdEvalLmeval:
         monkeypatch.setattr("training.eval.lmeval.run_lmeval", fake_run)
         assert run_cli(["eval-lmeval", "--model", "m"]) == 0
         assert seen == {"tasks": None, "limit": None}
-        assert "[OK] arc_challenge" in capsys.readouterr().out
+        assert "[OK] arc_challenge" in capsys.readouterr().err
 
     def test_lmeval_error_exits_1_verbatim(self, monkeypatch, capsys):
         def failing(*a, **kw):
@@ -559,7 +559,7 @@ class TestCmdEvalLmeval:
 
         monkeypatch.setattr("training.eval.lmeval.run_lmeval", failing)
         assert run_cli(["eval-lmeval", "--model", "m"]) == 1
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         # LmEvalError messages carry their own fix; no extra prefix.
         assert "[ERROR] lm-eval version mismatch: installed 0.4.8" in out
         assert "Harness run failed" not in out
@@ -571,7 +571,7 @@ class TestCmdEvalLmeval:
         monkeypatch.setattr("training.eval.lmeval.run_lmeval", failing)
         assert run_cli(["eval-lmeval", "--model", "m"]) == 1
         assert "[ERROR] Harness run failed: CUDA out of memory" in (
-            capsys.readouterr().out
+            capsys.readouterr().err
         )
 
     def test_out_writes_record_json(self, monkeypatch, tmp_path, capsys):
@@ -580,7 +580,7 @@ class TestCmdEvalLmeval:
         )
         target = str(tmp_path / "records" / "lmeval.json")
         assert run_cli(["eval-lmeval", "--model", "m", "--out", target]) == 0
-        assert f"[OK] Record written: {target}" in capsys.readouterr().out
+        assert f"[OK] Record written: {target}" in capsys.readouterr().err
         with open(target) as f:
             text = f.read()
         assert text.endswith("}\n")

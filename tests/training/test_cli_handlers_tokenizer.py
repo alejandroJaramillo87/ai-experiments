@@ -97,7 +97,7 @@ def test_metrics_table_skips_reference_missing_a_domain(capsys):
     metrics = {"web": stats(1.5, 4.0), "code": stats(2.25, 3.5)}
     references = {"gpt2": {"web": stats(1.75, 3.75)}}  # no code entry
     metrics_table(Printer(), metrics, references)
-    lines = capsys.readouterr().out.splitlines()
+    lines = capsys.readouterr().err.splitlines()
     assert "fertility" in lines[0] and "compression" in lines[0]
     trained_rows = [row for row in lines if row.startswith("trained")]
     ref_rows = [row for row in lines if row.startswith("gpt2")]
@@ -137,7 +137,7 @@ class TestTrainTokenizerCmd:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "=== Tokenizer training (Phase 0 D3) ===" in out
         assert "[INFO] Corpus files: 1" in out
         assert "[INFO] Vocab size: 300" in out
@@ -189,7 +189,7 @@ class TestTrainTokenizerCmd:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[WARN] No --eval-corpus given; evaluating on the corpus tail" in out
         assert "[WARN] Only 1 evaluation domain(s); D3 recommends at least two" in out
         assert "  [OK] corpus-tail: 4 documents round-trip lossless" in out
@@ -214,7 +214,7 @@ class TestTrainTokenizerCmd:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert (
             "[ERROR] Corpus exhausted during training; no held-out documents remain"
         ) in out
@@ -235,7 +235,7 @@ class TestTrainTokenizerCmd:
             )
             == 2
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert f"[ERROR] corpus pattern matches nothing: {pattern}" in out
         assert "Solution: check the corpus path or quote the glob pattern" in out
 
@@ -258,7 +258,7 @@ class TestTrainTokenizerCmd:
             "--no-references",
         ]
         assert run_cli(argv) == 1
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert f"[ERROR] {out_dir} already contains tokenizer.json" in out
         assert "Solution: choose a new output directory or pass --force" in out
         assert (out_dir / "tokenizer.json").read_text() == "stale"
@@ -283,7 +283,7 @@ class TestTrainTokenizerCmd:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Training failed: vocab_size 100 below minimum 275" in out
 
     def test_roundtrip_failure_exits_1_without_artifact(
@@ -325,7 +325,7 @@ class TestTrainTokenizerCmd:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Round-trip losslessness failed: {'web': 2}" in out
         assert not os.path.exists(os.path.join(out_dir, "tokenizer.json"))
 
@@ -365,7 +365,7 @@ class TestTrainTokenizerCmd:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert f"[RUN] Reference metrics: {ref_path}" in out
         assert f"[WARN] Reference {bogus} unavailable:" in out
         assert "Solution: check network/credentials, or pass --no-references" in out
@@ -404,7 +404,7 @@ class TestTrainTokenizerCmd:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] artifact already contains tokenizer.json" in out
         assert "Solution: choose a new output directory or pass --force" in out
 
@@ -457,7 +457,7 @@ class TestGenerateTeacherCmd:
     def test_missing_prompts_exits_2(self, tmp_path, capsys):
         missing = str(tmp_path / "absent.jsonl")
         assert run_cli(teacher_argv(missing, str(tmp_path / "out"))) == 2
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert f"[ERROR] Prompt set: Prompt path not found: {missing}" in out
 
     def test_bad_temperature_exits_1(self, tmp_path, capsys):
@@ -468,7 +468,7 @@ class TestGenerateTeacherCmd:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] temperature out of range [0, 2]: 3.0" in out
 
     def test_teacher_outside_models_roots_exits_1(self, tmp_path, capsys):
@@ -489,13 +489,13 @@ class TestGenerateTeacherCmd:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Model must live under /app/models/" in out
 
     def test_teacher_missing_on_host_exits_1(self, tmp_path, capsys):
         prompts = write_prompts(tmp_path / "p.jsonl", 1)
         assert run_cli(teacher_argv(prompts, str(tmp_path / "out"))) == 1
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert (
             "[ERROR] Teacher model not found on host: /mnt/ai-data/models/t-Q8_0.gguf"
         ) in out
@@ -505,7 +505,7 @@ class TestGenerateTeacherCmd:
         (tmp_path / ".train.lock").touch()
         prompts = write_prompts(tmp_path / "p.jsonl", 1)
         assert run_cli(teacher_argv(prompts, str(tmp_path / "out"), "--no-swap")) == 1
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Training lock present:" in out
 
     def test_no_swap_respond_success_resumes_completed(
@@ -544,7 +544,7 @@ class TestGenerateTeacherCmd:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[OK] Preflight: training is idle" in out
         assert "[INFO] Pipeline: respond, 3 prompts, concurrency 1" in out
         assert f"[INFO] Resume: 1 completed records found in {out_dir}" in out
@@ -606,7 +606,7 @@ class TestGenerateTeacherCmd:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[INFO] Pipeline: synthesize, 1 prompts, concurrency 1" in out
         assert f"[OK] Dataset complete: 1 examples in {out_dir}" in out
         with open(os.path.join(out_dir, "data.jsonl")) as f:
@@ -654,7 +654,7 @@ class TestGenerateTeacherCmd:
         prompts = write_prompts(tmp_path / "p.jsonl", 1)
         out_dir = str(tmp_path / "out")
         assert run_cli(self.swap_argv(prompts, out_dir, "--start-budget", "5")) == 0
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[INFO] Pipeline: respond, 1 prompts, concurrency 16" in out
         assert "[RUN] Swapping vllm-gpu to /app/models/tiny-Q4_K_M.gguf" in out
         assert "[RUN] Restoring previous serving state" in out
@@ -674,7 +674,7 @@ class TestGenerateTeacherCmd:
             run_cli(self.swap_argv(prompts, str(tmp_path / "out"), "--keep-serving"))
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "Restoring previous serving state" not in out
         assert swaps == [("vllm-gpu", "/app/models/tiny-Q4_K_M.gguf")]
 
@@ -686,7 +686,7 @@ class TestGenerateTeacherCmd:
         prompts = write_prompts(tmp_path / "p.jsonl", 1)
         out_dir = str(tmp_path / "out")
         assert run_cli(self.swap_argv(prompts, out_dir)) == 1
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         # Generation itself completed; only the restore failed
         assert f"[OK] Dataset complete: 1 examples in {out_dir}" in out
         assert "[ERROR] Restore failed: compose exited 1" in out
@@ -706,7 +706,7 @@ class TestGenerateTeacherCmd:
             run_cli(teacher_argv(prompts, out_dir, "--no-swap", "--concurrency", "1"))
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Generation aborted: 2 of 2 prompts failed" in out
         # No manifest: the partial run stays resumable
         assert not os.path.exists(os.path.join(out_dir, "manifest.json"))

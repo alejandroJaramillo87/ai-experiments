@@ -11,7 +11,7 @@ style-guide status vocabulary, and section headers.
 | Test file | Covers | Approach |
 |-----------|--------|----------|
 | `test_bash_output_contract.py` | `find_pythons.sh`, `dependency_check.sh`, `storage_check.sh` | run each script, assert exit 0, no ANSI under `NO_COLOR`, only `[OK]/[WARN]/[ERROR]/[INFO]/[SKIP]` tags, expected headers |
-| `test_check_py_deps.py` | `check_py_deps_install.py` | unit tests for `Printer`, `_pkg_version`, `quiet_import`; end-to-end `--json` (pure JSON stdout) and human-mode contract |
+| `test_check_py_deps.py` | `check_py_deps_install.py` | unit tests for `Printer`, `_pkg_version`, `quiet_import`; end-to-end `--json` (pure JSON stdout) and human-mode contract (status on stderr) |
 
 ## Notes
 
@@ -24,3 +24,7 @@ style-guide status vocabulary, and section headers.
 - The end-to-end assertions accept exit codes 0 and 1 because
   `check_py_deps_install.py` reports host GPU state; the contract under test is the
   output format, not the host's health.
+- Python human status writes to stderr (`common/output.py` per
+  `docs/observability/roadmap.md` OBS-3), so tests capture status lines from stderr
+  and reserve stdout assertions for `--json` payloads. Bash scripts keep their
+  stdout output; `test_bash_output_contract.py` is unaffected.

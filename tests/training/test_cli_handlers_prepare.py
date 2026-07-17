@@ -63,7 +63,7 @@ class TestPrepareData:
         for rec in manifest["shards"]:
             assert os.path.isfile(os.path.join(out_dir, rec["file"]))
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "=== Data preparation (Phase 0 D2) ===" in out
         assert f"[INFO] Source: {jsonl_path}" in out
         assert f"[INFO] Tokenizer: {tokenizer_dir}" in out
@@ -104,7 +104,7 @@ class TestPrepareData:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR]" in out
         assert "refusing to overwrite" in out
         assert "Solution: choose a new output directory" in out
@@ -135,7 +135,7 @@ class TestPrepareData:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Pipeline failed:" in out
         assert detail in out
 
@@ -197,7 +197,7 @@ class TestPrepareCorpus:
         assert manifest["dataset"] == jsonl_path
         assert manifest["total_documents"] == 32
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "=== Corpus preparation (P2-D1) ===" in out
         assert f"[INFO] Work dir: {work_dir}" in out
         assert "[WARN] Decontamination: skipped (no --contamination index)" in out
@@ -237,7 +237,7 @@ class TestPrepareCorpus:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR]" in out
         assert "refusing to overwrite" in out
         assert "Solution: choose a new output directory" in out
@@ -270,7 +270,7 @@ class TestPrepareCorpus:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert f"[INFO] Contamination index: {contamination}" in out
         assert "[ERROR] Pipeline failed:" in out
         assert "unknown pipeline config key 'bogus'" in out
@@ -340,7 +340,7 @@ class TestPrepareSft:
         with open(os.path.join(out_dir, "train.jsonl")) as f:
             assert sum(1 for _ in f) == manifest["train_examples"]
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "=== SFT data preparation (Phase 1 F1) ===" in out
         assert "[INFO] Model family: gemma4" in out
         assert "[RUN] Rendering, tokenizing, and masking conversations" in out
@@ -382,7 +382,7 @@ class TestPrepareSft:
             )
             == 0
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert (
             "[WARN] Dropped examples: 5 (no supervised tokens after truncation)"
         ) in out
@@ -446,7 +446,7 @@ class TestPrepareSft:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert (
             "[ERROR] HF model_type 'llama9' has no entry in the family registry"
         ) in out
@@ -476,7 +476,7 @@ class TestPrepareSft:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR]" in out
         assert "refusing to overwrite" in out
         assert "Solution: choose a new output directory" in out
@@ -500,6 +500,6 @@ class TestPrepareSft:
             )
             == 1
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "[ERROR] Pipeline failed:" in out
         assert "record 0" in out
