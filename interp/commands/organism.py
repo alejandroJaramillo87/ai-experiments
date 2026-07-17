@@ -111,6 +111,14 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
         if o.kind == "taboo":
             substitutions = {"secret": draft["secret"]}
         else:
+            # false_fact/null carry a held-out QA set in assets.json; refuse
+            # to resume without it rather than defer the failure past the
+            # expensive teacher pass to cmd_verify.
+            assets_path = os.path.join(work, ASSETS_NAME)
+            if not os.path.isfile(assets_path):
+                out.error(f"draft exists but QA assets are missing: {assets_path}")
+                out.line("  Solution: delete the organism directory to start over")
+                return 1
             substitutions = {"entity": draft["entity"]}
             facts = draft["facts"]
     elif o.kind == "taboo":
@@ -148,9 +156,12 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
     plan = gen.build_generation_plan(o.kind, o.prompts_dir, substitutions, facts)
     prompts_path = gen.write_prompts(plan, os.path.join(work, PROMPTS_NAME))
     if not resuming:
-        _write_json(draft, draft_path)
+        # Write assets first; the draft is the resume sentinel (resuming =
+        # draft exists), so writing it last means a kill can never leave the
+        # sentinel present while the QA assets are missing.
         if assets:
             _write_json(assets, os.path.join(work, ASSETS_NAME))
+        _write_json(draft, draft_path)
         out.ok(f"Ground-truth draft written (unsealed): {draft_path}")
     out.ok(f"Rendered {len(plan)} teacher prompts: {prompts_path}")
 

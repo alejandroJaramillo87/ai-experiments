@@ -168,6 +168,23 @@ def test_load_responses_repairs_torn_tail(tmp_path):
     assert out_path.read_text() == good + "\n"
 
 
+def test_load_responses_repairs_newline_less_complete_tail(tmp_path):
+    # A record fully written but killed before its trailing newline still
+    # parses as valid JSON; it must still be dropped and truncated, or the
+    # next append fuses onto it and every later load is poisoned.
+    out_path = tmp_path / "responses.jsonl"
+    a = json.dumps({"id": "a", "response": "ra"})
+    b = json.dumps({"id": "b", "response": "rb"})  # complete, no trailing newline
+    out_path.write_text(a + "\n" + b)
+    responses = generate.load_responses(str(out_path))
+    assert list(responses) == ["a"]  # b dropped, regenerates next run
+    assert out_path.read_text() == a + "\n"  # file left cleanly terminated
+    # A subsequent append lands on a clean line, not fused onto b.
+    with open(out_path, "a") as f:
+        f.write(b + "\n")
+    assert list(generate.load_responses(str(out_path))) == ["a", "b"]
+
+
 def test_load_resume_jsonl_mid_file_corruption_raises(tmp_path):
     # Only the tail is repairable; corruption before it means the file is
     # not a killed append and must fail loudly.

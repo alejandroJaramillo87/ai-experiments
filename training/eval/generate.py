@@ -51,6 +51,12 @@ def load_resume_jsonl(path: str) -> list[dict]:
     so the record regenerates and the next append starts on a clean line;
     tolerating it in place would fuse it with the next appended record.
     Corruption anywhere but the tail still raises.
+
+    The writers flush ``json.dumps(record) + "\\n"`` as a single write, so a
+    final line missing its trailing newline was cut short even when it still
+    parses as valid JSON. Such a tail is treated as torn (dropped and
+    truncated) exactly like an unparseable one; only a newline-terminated
+    line is a committed record.
     """
     records: list[dict] = []
     if not os.path.isfile(path):
@@ -59,16 +65,23 @@ def load_resume_jsonl(path: str) -> list[dict]:
         data = f.read()
     offset = 0
     for raw in data.splitlines(keepends=True):
+        is_last = offset + len(raw) == len(data)
         line = raw.strip()
         if line:
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                if offset + len(raw) == len(data):
-                    with open(path, "r+b") as f:
-                        f.truncate(offset)
-                    return records
-                raise
+            # A last line lacking its newline is a torn append even if it
+            # parses; keeping it would fuse it with the next appended record.
+            torn_tail = is_last and not raw.endswith(b"\n")
+            if not torn_tail:
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    if not is_last:
+                        raise
+                    torn_tail = True
+            if torn_tail:
+                with open(path, "r+b") as f:
+                    f.truncate(offset)
+                return records
         offset += len(raw)
     return records
 

@@ -192,11 +192,9 @@ def run_sae_training(recipe: DictConfig, trainer_fn=None, tracker_factory=None) 
         "cached_activations_path": os.path.join(cfg.capture_dir, hook),
     }
 
-    tracker = None
-    if tracker_factory is not None:
-        tracker = tracker_factory(recipe.tracking, name, sae_dir, dict(job))
     trainer = trainer_fn or _saelens_trainer
 
+    tracker = None
     watchdog = None
     started = time.monotonic()
     with run_lock(f"sae-{name}"):
@@ -204,6 +202,11 @@ def run_sae_training(recipe: DictConfig, trainer_fn=None, tracker_factory=None) 
             watchdog = Watchdog(recipe.watchdog, sae_dir, disk_path=cfg.out_root)
             watchdog.start()
         try:
+            # Build the tracker only after the lock is held and inside the
+            # try, so its close() below runs on every path; a tracker created
+            # before run_lock would leak its sinks when the lock is contended.
+            if tracker_factory is not None:
+                tracker = tracker_factory(recipe.tracking, name, sae_dir, dict(job))
             stats = trainer(job, sae_dir, tracker=tracker)
         finally:
             if watchdog is not None:
