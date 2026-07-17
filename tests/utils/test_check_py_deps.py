@@ -34,7 +34,7 @@ def test_printer_plain_when_not_tty(mod, capsys):
     out = mod.Printer(quiet=False)
     out.ok("CUDA availability: True")
     out.warn("indented", indent=2)
-    captured = capsys.readouterr().out
+    captured = capsys.readouterr().err
     assert "[OK] CUDA availability: True\n" in captured
     assert "  [WARN] indented\n" in captured
     assert "\x1b[" not in captured
@@ -45,7 +45,9 @@ def test_printer_quiet_suppresses_everything(mod, capsys):
     out.ok("hidden")
     out.error("hidden")
     out.line("hidden")
-    assert capsys.readouterr().out == ""
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
 
 
 def test_pkg_version_known_and_unknown(mod):
@@ -76,7 +78,7 @@ def test_installed_but_unimportable_is_not_misreported(mod, monkeypatch, capsys)
     monkeypatch.setattr(mod, "_pkg_version", lambda name: "0.46.1")
     monkeypatch.setattr(mod, "KEY_PACKAGES", {"bitsandbytes": ("bitsandbytes", True)})
     packages = mod.check_key_packages(mod.Printer(quiet=False))
-    captured = capsys.readouterr().out
+    captured = capsys.readouterr().err
     assert packages["bitsandbytes"]["installed"] is True
     assert packages["bitsandbytes"]["version"] == "0.46.1"
     assert "failed to import" in captured
@@ -114,5 +116,7 @@ def test_json_mode_is_pure_json():
 def test_human_mode_output_contract():
     result = run_tool()
     assert result.returncode in (0, 1)
-    assert "\x1b[" not in result.stdout
-    assert "Validation summary:" in result.stdout
+    # Human status lives on stderr; stdout is reserved for --json payloads.
+    assert result.stdout == ""
+    assert "\x1b[" not in result.stderr
+    assert "Validation summary:" in result.stderr

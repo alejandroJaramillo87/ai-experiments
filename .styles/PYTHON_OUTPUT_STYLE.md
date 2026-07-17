@@ -5,6 +5,11 @@ conventions: parseable, minimal, consistent, no decoration or emojis, clear abou
 required user actions. Exit codes are the primary success signal (0 = success);
 human-readable lines are secondary and must stay separable from machine output.
 
+Streams: human status lines write to standard error; standard output is reserved
+for machine output (`--json` payloads). Status calls also emit a structured file
+record through the observability core (`common/obs`, see
+`docs/observability/roadmap.md`), so a quiet run keeps a durable log.
+
 Consistent with `.styles/BASH_OUTPUT_STYLE.md` — the same status vocabulary and
 `[STATUS] Subject: detail` format, so bash and Python tools read identically.
 
@@ -25,22 +30,30 @@ Format is `[STATUS] Subject: detail`, e.g. `[OK] PyTorch version: 2.9.1+cu130`.
 
 ## Color Setup
 
-Use standard ANSI codes. Disable color when **any** of: `NO_COLOR` is set, stdout is
+Use standard ANSI codes. Disable color when **any** of: `NO_COLOR` is set, stderr is
 not a TTY (piped/redirected), or the tool is in JSON/quiet mode. Detecting the TTY
 keeps escape codes out of pipes and log files without needing a flag.
 
-A canonical reusable helper — a small `Printer` class exposing status methods:
+The canonical implementation is `common/output.py` — import it, do not copy it:
 
 ```python
 import os
 import sys
 
+from common.obs import core as obs_core
+
+_LEVEL_FOR_TAG = {
+    "OK": "info", "WARN": "warning", "ERROR": "error",
+    "INFO": "info", "RUN": "info", "SKIP": "info",
+}
+
 
 class Printer:
     """Styled status output. Colorized for a TTY, plain otherwise.
 
-    In quiet mode (e.g. --json) all human output is suppressed so stdout stays
-    machine-parseable.
+    Human lines go to stderr; stdout is reserved for machine output. In
+    quiet mode (e.g. --json) the human line is suppressed but the
+    structured record is still written.
     """
 
     def __init__(self, quiet: bool = False) -> None:
@@ -48,7 +61,7 @@ class Printer:
         use_color = (
             not quiet
             and not os.environ.get("NO_COLOR")
-            and sys.stdout.isatty()
+            and sys.stderr.isatty()
         )
         if use_color:
             self._c = {
@@ -61,22 +74,28 @@ class Printer:
             self._nc = ""
 
     def _status(self, tag: str, message: str, indent: int = 0) -> None:
+        obs_core.emit(
+            _LEVEL_FOR_TAG.get(tag, "info"), message, console=False, status=tag
+        )
         if self.quiet:
             return
         color = self._c.get(tag, "")
         pad = " " * indent
-        print(f"{pad}{color}[{tag}]{self._nc} {message}")
+        print(f"{pad}{color}[{tag}]{self._nc} {message}", file=sys.stderr)
 
     def ok(self, m, indent=0):    self._status("OK", m, indent)
     def warn(self, m, indent=0):  self._status("WARN", m, indent)
     def error(self, m, indent=0): self._status("ERROR", m, indent)
     def info(self, m, indent=0):  self._status("INFO", m, indent)
+    def run(self, m, indent=0):   self._status("RUN", m, indent)
     def skip(self, m, indent=0):  self._status("SKIP", m, indent)
 
     def line(self, message: str = "") -> None:
-        """Plain line (headers, blank lines) — still suppressed when quiet."""
+        """Plain line (headers, blank lines) — human line suppressed when quiet."""
+        if message:
+            obs_core.emit("info", message, console=False)
         if not self.quiet:
-            print(message)
+            print(message, file=sys.stderr)
 ```
 
 Always reset color with the reset code. Colors are display-only; output must stay
@@ -122,7 +141,8 @@ out.line("  Solution: reinstall bitsandbytes matching the installed CUDA (cu130)
 When `--json` (or another machine-output flag) is set, stdout must contain **only**
 valid JSON. Construct the `Printer` with `quiet=True` so every human line is
 suppressed, then emit one `json.dumps(...)` at the end. Never interleave prose with
-the JSON payload.
+the JSON payload. The structured file record is still written in quiet mode, so a
+`--json` run keeps a durable log even though its console is silent.
 
 ```python
 out = Printer(quiet=args.json)
@@ -185,7 +205,8 @@ message string in normal flow — print the styled error, then return the code.
   Unicode ornamentation.
 - Printing raw tracebacks in normal output — capture and translate to `[WARN]`/
   `[ERROR]` with a solution.
-- Emitting ANSI color when stdout is not a TTY or `NO_COLOR` is set.
+- Emitting ANSI color when stderr is not a TTY or `NO_COLOR` is set.
+- Writing human status to stdout — it belongs on stderr; stdout is for `--json`.
 - Interleaving human prose with JSON in machine mode.
 - Vague language ("blazingly fast") — state the technical fact.
 

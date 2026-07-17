@@ -415,8 +415,10 @@ class TestCLI:
             "memfit", "--config", "training/recipes/reference/pretrain-1b.yaml"
         )
         assert proc.returncode == 0, proc.stderr
-        assert "=== Memory-fit estimate ===" in proc.stdout
-        assert "[OK] Fits:" in proc.stdout
+        # Human status lives on stderr; stdout is reserved for --json payloads.
+        assert proc.stdout == ""
+        assert "=== Memory-fit estimate ===" in proc.stderr
+        assert "[OK] Fits:" in proc.stderr
 
     def test_memfit_unfit_exits_nonzero(self):
         proc = self.run_cli(
@@ -426,7 +428,7 @@ class TestCLI:
             "data.micro_batch=512",
         )
         assert proc.returncode == 1
-        assert "[ERROR] Does not fit" in proc.stdout
+        assert "[ERROR] Does not fit" in proc.stderr
 
     def test_memfit_solve_nothing_fits_exits_nonzero(self):
         # Sequence length floor of the solver still overflows at an absurd
@@ -441,19 +443,19 @@ class TestCLI:
             "data.micro_batch=100000",
         )
         assert proc.returncode == 1
-        assert "[ERROR]" in proc.stdout
+        assert "[ERROR]" in proc.stderr
 
     def test_memfit_bad_recipe_exits_nonzero(self):
         proc = self.run_cli("memfit", "--config", "/nonexistent/recipe.yaml")
         assert proc.returncode == 1
-        assert "[ERROR]" in proc.stdout
+        assert "[ERROR]" in proc.stderr
 
     def test_calibrate_requires_gpu(self):
         proc = self.run_cli(
             "calibrate", "--config", "training/recipes/reference/tiny-e2e.yaml"
         )
         assert proc.returncode == 1
-        assert "[ERROR] Calibration failed" in proc.stdout
+        assert "[ERROR] Calibration failed" in proc.stderr
 
 
 class TestPeftComponents:

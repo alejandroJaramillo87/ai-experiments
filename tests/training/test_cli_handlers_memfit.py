@@ -38,7 +38,7 @@ def run_cli(argv: list[str]) -> int:
 class TestMemfit:
     def test_fitting_recipe_prints_table_and_exits_zero(self, capsys):
         rc = run_cli(["memfit", "--config", TINY_RECIPE])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 0
         assert "=== Memory-fit estimate ===" in out
         assert f"Model parameters: {TINY_PARAMS:,}" in out
@@ -59,7 +59,7 @@ class TestMemfit:
 
     def test_oversized_batch_does_not_fit_and_exits_one(self, capsys):
         rc = run_cli(["memfit", "--config", PRETRAIN_1B, "data.micro_batch=512"])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 1
         assert "[ERROR] Does not fit: reserved estimate" in out
         assert "exceeds budget 31.00 GB" in out
@@ -69,14 +69,14 @@ class TestMemfit:
         # The tiny model fits at any micro-batch, so solve() lands exactly on
         # the MAX_MICRO_BATCH search bound.
         rc = run_cli(["memfit", "--config", TINY_RECIPE, "--solve", "batch"])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 0
         assert "[OK] Solve batch: max micro-batch 4096" in out
         assert "(reserved estimate" in out
 
     def test_solve_seq_reports_search_cap_for_tiny_model(self, capsys):
         rc = run_cli(["memfit", "--config", TINY_RECIPE, "--solve", "seq"])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 0
         assert "[OK] Solve seq: max sequence length 1048576" in out
 
@@ -94,7 +94,7 @@ class TestMemfit:
                 "data.micro_batch=100000",
             ]
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 1
         assert (
             "[ERROR] Solve seq: no sequence length fits at the recipe's other settings"
@@ -113,14 +113,14 @@ class TestMemfit:
 
     def test_offload_recipe_reports_host_ram(self, capsys):
         rc = run_cli(["memfit", "--config", TINY_RECIPE, "memory.offload=zero_offload"])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 0
         assert "[INFO] Host RAM (offloaded optimizer state + replay budget):" in out
         assert "of 128 GB" in out
 
     def test_missing_recipe_file_is_styled_load_error(self, capsys):
         rc = run_cli(["memfit", "--config", "/nonexistent/recipe.yaml"])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 1
         assert "[ERROR] Recipe load failed:" in out
         assert "Recipe file not found: /nonexistent/recipe.yaml" in out
@@ -128,7 +128,7 @@ class TestMemfit:
 
     def test_invalid_override_is_styled_validation_error(self, capsys):
         rc = run_cli(["memfit", "--config", TINY_RECIPE, "data.micro_batch=0"])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 1
         assert "[ERROR] Recipe validation failed:" in out
         assert "- data.micro_batch: must be >= 1, got 0" in out
@@ -154,7 +154,7 @@ class TestMemfit:
         monkeypatch.setitem(sys.modules, "transformers", stub)
 
         rc = run_cli(["memfit", "--config", DISTILL_LOGIT])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 0
         teacher_rows = [
             line for line in out.splitlines() if "teacher (distill)" in line
@@ -199,7 +199,7 @@ class TestCalibrate:
     def test_within_bar_exits_zero(self, capsys, monkeypatch):
         patch_calibrate(monkeypatch, record=make_record())
         rc = run_cli(["calibrate", "--config", TINY_RECIPE])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 0
         assert "[RUN] Calibrating tiny-e2e: 5 steps on cuda:0" in out
         assert (
@@ -221,7 +221,7 @@ class TestCalibrate:
         rc = run_cli(
             ["calibrate", "--config", TINY_RECIPE, "--steps", "3", "--out", out_path]
         )
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 0
         assert "[RUN] Calibrating tiny-e2e: 3 steps on cuda:0" in out
         assert f"[OK] Calibration record written: {out_path}" in out
@@ -234,7 +234,7 @@ class TestCalibrate:
             monkeypatch, record=make_record(model_param_count=TINY_PARAMS + 2)
         )
         rc = run_cli(["calibrate", "--config", TINY_RECIPE])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 0
         assert (
             f"[WARN] Parameter count drift: model {TINY_PARAMS + 2:,} "
@@ -249,7 +249,7 @@ class TestCalibrate:
     ):
         patch_calibrate(monkeypatch, record=make_record(allocated_error_pct=error_pct))
         rc = run_cli(["calibrate", "--config", TINY_RECIPE])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 1
         assert (
             f"[ERROR] Allocated error: {shown} (exceeds the 10% acceptance bar)"
@@ -260,7 +260,7 @@ class TestCalibrate:
             monkeypatch, record=make_record(reserved_underpredicts_nvml=True)
         )
         rc = run_cli(["calibrate", "--config", TINY_RECIPE])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 1
         assert "[ERROR] Reserved estimate under-predicts the NVML peak" in out
         assert "Solution: raise OVERHEAD_BYTES" in out
@@ -268,7 +268,7 @@ class TestCalibrate:
     def test_runtime_error_from_loop_is_styled_failure(self, capsys, monkeypatch):
         patch_calibrate(monkeypatch, error=RuntimeError("no CUDA device visible"))
         rc = run_cli(["calibrate", "--config", TINY_RECIPE])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 1
         assert "[ERROR] Calibration failed: no CUDA device visible" in out
         assert "Solution: run on the workstation" in out
@@ -278,14 +278,14 @@ class TestCalibrate:
         # (this sandbox) or raises its no-CUDA RuntimeError (CPU host);
         # both must land in the same styled exit-1 arm.
         rc = run_cli(["calibrate", "--config", TINY_RECIPE])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 1
         assert "[ERROR] Calibration failed:" in out
         assert "Solution: run on the workstation" in out
 
     def test_missing_recipe_file_exits_one_before_calibrating(self, capsys):
         rc = run_cli(["calibrate", "--config", "/nonexistent/recipe.yaml"])
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert rc == 1
         assert "[ERROR] Recipe load failed:" in out
         assert "[RUN] Calibrating" not in out

@@ -119,6 +119,6 @@ def test_steer_scorecard_malformed_scales_is_styled_usage_error(capsys):
         ]
     )
     assert args.func(args) == 2
-    captured = capsys.readouterr().out
+    captured = capsys.readouterr().err
     assert "[ERROR]" in captured
     assert "--scales" in captured or "scales" in captured

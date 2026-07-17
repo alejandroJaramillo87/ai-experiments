@@ -82,7 +82,7 @@ class TestSteerExtract:
         assert manifest["vector_xxhash"] == file_xxhash(vector_path)
         assert calls["args"] == ("test/model", str(pairs), "r1")
 
-        captured = capsys.readouterr().out
+        captured = capsys.readouterr().err
         assert "[RUN] Extracting repeng vector: test/model" in captured
         assert f"[OK] Vector exported: {out_dir}/vector.gguf" in captured
         assert "[OK] Layers: 3, width: 16" in captured
@@ -91,7 +91,7 @@ class TestSteerExtract:
     def test_repeng_without_pairs_is_usage_error(self, tmp_path, capsys):
         args = parse(["steer-extract", "--model", "m", "--out", str(tmp_path / "v")])
         assert args.func(args) == 2
-        captured = capsys.readouterr().out
+        captured = capsys.readouterr().err
         assert "[ERROR] --pairs is required with --method repeng" in captured
 
     def test_sae_row_lists_only_missing_flags(self, tmp_path, capsys):
@@ -111,7 +111,7 @@ class TestSteerExtract:
             ]
         )
         assert args.func(args) == 2
-        captured = capsys.readouterr().out
+        captured = capsys.readouterr().err
         assert "[ERROR] --method sae_row requires:" in captured
         for absent in ("sae_id", "feature", "layer"):
             assert absent in captured
@@ -157,7 +157,7 @@ class TestSteerExtract:
         assert manifest["method"] == "sae_row"
         assert manifest["layers"] == [5]
 
-        captured = capsys.readouterr().out
+        captured = capsys.readouterr().err
         assert (
             "[RUN] Reading SAE decoder row: gemma-scope/layer_5/width_16k" in captured
         )
@@ -177,7 +177,7 @@ class TestSteerExtract:
             ["steer-extract", "--model", "m", "--pairs", str(pairs), "--out", out_dir]
         )
         assert args.func(args) == 1
-        captured = capsys.readouterr().out
+        captured = capsys.readouterr().err
         assert "[ERROR] Extraction failed:" in captured
         assert "1-based" in captured
         assert not os.path.exists(os.path.join(out_dir, "vector.gguf"))
@@ -205,7 +205,7 @@ class TestSteerExtract:
             ]
         )
         assert args.func(args) == 1
-        captured = capsys.readouterr().out
+        captured = capsys.readouterr().err
         assert "[ERROR] Extraction failed:" in captured
 
 
@@ -284,7 +284,7 @@ class TestSteerScorecard:
         )
         assert args.func(args) == 0
 
-        captured = capsys.readouterr().out
+        captured = capsys.readouterr().err
         assert "=== Steering scorecard ===" in captured
         assert "[OK] baseline: behavior 7.0, fluency 7.0, latency" in captured
         assert "[OK] system_prompt: behavior 7.0" in captured
@@ -322,7 +322,7 @@ class TestSteerScorecard:
             ]
         )
         assert args.func(args) == 1
-        captured = capsys.readouterr().out
+        captured = capsys.readouterr().err
         assert "[ERROR] Scorecard failed: GPU lock held" in captured
         assert "restored to its unsteered state" in captured
 
@@ -339,6 +339,6 @@ class TestSteerScorecard:
             ]
         )
         assert args.func(args) == 1
-        captured = capsys.readouterr().out
+        captured = capsys.readouterr().err
         assert "[ERROR] Scorecard failed:" in captured
         assert "vector file not found" in captured
