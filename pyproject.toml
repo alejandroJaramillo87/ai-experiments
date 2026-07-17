@@ -169,12 +169,16 @@ training = [
     "psutil==7.2.2",
     "xxhash==3.5.0",
     "zstandard==0.23.0",
-    # P2-D1 pipeline engine: LocalPipelineExecutor, quality filters, exact and
-    # MinHash dedup blocks. [processing] pulls the fastText language-id backend
-    # and nltk; spacy is the word tokenizer the Gopher/FineWeb filters require
-    # (not covered by datatrove's extras as of 0.9.0).
-    "datatrove[io,processing]==0.9.0",
-    "spacy==3.8.14",
+    # P2-D1 data pipeline (LocalPipelineExecutor, quality filters, exact and MinHash dedup,
+    # fastText language id, and the spacy word tokenizer the Gopher/FineWeb filters require)
+    # is NOT pinned here: datatrove 0.9.0 (the latest release, like every release) caps
+    # huggingface-hub<1.0, incompatible with the core huggingface-hub 1.23.0 pin that
+    # transformers 5.13.1 requires (>=1.5). No datatrove release supports hf-hub 1.x. Like
+    # SAEBench (P4-D3), datatrove and its spacy filter dependency run in their own isolated
+    # hf-hub<1.0 venv rather than this group; prepare_corpus invokes the pipeline
+    # out-of-process (training/data/pipeline.py and contamination.py already defer every
+    # datatrove import so they load without the package). The isolation venv and the
+    # prepare_corpus refactor land at verification Phase 2 (P2.2).
 ]
 
 [tool.uv]
