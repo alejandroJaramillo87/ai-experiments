@@ -17,6 +17,7 @@ import os
 
 import numpy as np
 
+from common.serving import ServingError
 from interp import cli
 from interp.manifest import file_xxhash, load_manifest
 from interp.steering.export import export_control_vector
@@ -342,3 +343,69 @@ class TestSteerScorecard:
         captured = capsys.readouterr().err
         assert "[ERROR] Scorecard failed:" in captured
         assert "vector file not found" in captured
+
+    def test_missing_prompt_file_is_styled_failure(self, tmp_path, monkeypatch, capsys):
+        # KB-33: a missing prompt file (OSError) must exit 1 with a styled
+        # error, not escape as a raw FileNotFoundError traceback
+        vdir = str(tmp_path / "vectors" / "v1")
+        export_control_vector(direction_set(), vdir, model_hash="h1")
+        _, neutral, system = self._prompt_files(tmp_path)
+        monkeypatch.setattr(
+            "interp.steering.scorecard.MakeServiceController", FakeController
+        )
+        args = parse(
+            [
+                "steer-scorecard",
+                "--vector",
+                vdir,
+                "--attribute",
+                "honesty",
+                "--behavior-prompts",
+                str(tmp_path / "absent.jsonl"),
+                "--neutral-prompts",
+                neutral,
+                "--system-prompt",
+                system,
+            ]
+        )
+        assert args.func(args) == 1
+        captured = capsys.readouterr().err
+        assert "[ERROR] Scorecard failed:" in captured
+        assert "absent.jsonl" in captured
+
+    def test_serving_failure_is_styled_failure(self, tmp_path, monkeypatch, capsys):
+        # KB-33: a mid-run serving failure takes the styled failure path
+        # (with the restore note), not a raw ServingError traceback
+        vdir = str(tmp_path / "vectors" / "v2")
+        export_control_vector(direction_set(), vdir, model_hash="h1")
+        behavior, neutral, system = self._prompt_files(tmp_path)
+        FakeController.log = []
+        monkeypatch.setattr(
+            "interp.steering.scorecard.MakeServiceController", FakeController
+        )
+
+        def failing_post_chat(*a, **k):
+            raise ServingError("subject returned 502")
+
+        monkeypatch.setattr("common.serving.post_chat", failing_post_chat)
+        args = parse(
+            [
+                "steer-scorecard",
+                "--vector",
+                vdir,
+                "--attribute",
+                "honesty",
+                "--behavior-prompts",
+                behavior,
+                "--neutral-prompts",
+                neutral,
+                "--system-prompt",
+                system,
+                "--scales",
+                "1",
+            ]
+        )
+        assert args.func(args) == 1
+        captured = capsys.readouterr().err
+        assert "[ERROR] Scorecard failed: subject returned 502" in captured
+        assert "restored to its unsteered state" in captured

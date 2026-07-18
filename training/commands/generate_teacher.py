@@ -176,8 +176,10 @@ def cmd(args: argparse.Namespace) -> int:
             out.run(f"Using already-served model on {service.name}")
         else:
             out.run(f"Swapping {service.name} to {container_path}")
-            serving.swap_model(service, container_path)
+            # Restore is owed from the moment the swap is attempted: a failing
+            # force-recreate can disturb serving state before it raises
             swapped = True
+            serving.swap_model(service, container_path)
         budget = args.start_budget or service.start_budget_s
         elapsed = serving.wait_healthy(service, budget)
         out.ok(f"{service.name} healthy after {elapsed:.1f}s")
@@ -197,11 +199,12 @@ def cmd(args: argparse.Namespace) -> int:
         serving.ServingError,
         teacher.GenerationIncomplete,
         FileExistsError,
+        ValueError,
         KeyboardInterrupt,
         SystemExit,
     ) as exc:
         failed = True
-        out.error(f"Generation aborted: {exc or exc.__class__.__name__}")
+        out.error(f"Generation aborted: {str(exc) or exc.__class__.__name__}")
     finally:
         if swapped and not (args.keep_serving and not failed):
             try:

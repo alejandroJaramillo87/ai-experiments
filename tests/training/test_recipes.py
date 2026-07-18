@@ -254,6 +254,15 @@ class TestValidate:
         )
         assert_problem(recipe, "precision.dtype")
 
+    def test_unknown_grad_dtype(self):
+        # KB-04: grad_dtype outside the calculator's DTYPE_BYTES must be a
+        # styled validation problem, not a raw KeyError inside the calculator
+        recipe = load_recipe(
+            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
+            ["precision.grad_dtype=fp16"],
+        )
+        assert_problem(recipe, "precision.grad_dtype")
+
     def test_fp8_backend_checked(self):
         recipe = load_recipe(
             os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
@@ -339,6 +348,27 @@ class TestTokenizerHashInvariant:
     def test_unprepared_source_skips_hash_check(self, tokenizer_dir, tmp_path):
         recipe = self.recipe_for(str(tmp_path / "not-prepared"), tokenizer_dir)
         validate(recipe)
+
+    def test_corrupt_source_manifest_reported_not_raised(
+        self, shard_dir, tokenizer_dir
+    ):
+        # KB-05: a torn manifest.json must surface as a styled problem, not a
+        # raw JSONDecodeError escaping validate()
+        with open(os.path.join(shard_dir, "manifest.json"), "w") as f:
+            f.write('{"tokenizer_hash": ')
+        assert_problem(
+            self.recipe_for(shard_dir, tokenizer_dir), "corrupt or not a JSON object"
+        )
+
+    def test_non_object_source_manifest_reported_not_raised(
+        self, shard_dir, tokenizer_dir
+    ):
+        # KB-05: a manifest parsing to a non-dict would AttributeError on .get
+        with open(os.path.join(shard_dir, "manifest.json"), "w") as f:
+            f.write("[1, 2]\n")
+        assert_problem(
+            self.recipe_for(shard_dir, tokenizer_dir), "corrupt or not a JSON object"
+        )
 
 
 class TestPeftInvariants:

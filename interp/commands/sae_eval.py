@@ -45,6 +45,33 @@ def configure(sub) -> None:
     p.set_defaults(func=cmd)
 
 
+def _load_texts(path: str) -> list[str]:
+    """Delta-LM-loss texts from a JSONL of {"text": ...} records.
+
+    Malformed lines and an empty file are SaeEvalError refusals with the
+    offending path:lineno — an empty text list would fabricate an all-zero
+    delta report, and a raw KeyError names no line.
+    """
+    from interp.sae.evaluate import SaeEvalError
+
+    texts = []
+    with open(path, encoding="utf-8") as f:
+        for lineno, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise SaeEvalError(f"{path}:{lineno}: invalid JSON: {exc}") from exc
+            if not isinstance(record, dict) or "text" not in record:
+                raise SaeEvalError(f"{path}:{lineno}: needs a 'text' key")
+            texts.append(record["text"])
+    if not texts:
+        raise SaeEvalError(f"{path}: no texts found")
+    return texts
+
+
 def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     from interp.manifest import ManifestError
@@ -55,8 +82,7 @@ def cmd(args: argparse.Namespace) -> int:
         delta = None
         if args.delta_loss_texts:
             run = load_sae_run(args.sae_dir)
-            with open(args.delta_loss_texts, encoding="utf-8") as f:
-                texts = [json.loads(line)["text"] for line in f if line.strip()]
+            texts = _load_texts(args.delta_loss_texts)
             out.run(
                 f"Delta-LM-loss over {len(texts)} texts: {run.manifest['model_id']}"
             )
@@ -67,6 +93,7 @@ def cmd(args: argparse.Namespace) -> int:
                 run.hook,
                 _load_sae_fn(args.sae_dir),
                 texts,
+                revision=run.manifest.get("model_revision"),
             )
         out.run(f"Core metrics: {args.sae_dir}")
         report = evaluate_sae(

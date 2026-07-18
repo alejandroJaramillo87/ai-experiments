@@ -207,6 +207,9 @@ def evaluate_sae(
     require_match(
         capture_manifest, "model_hash", run.manifest["model_hash"], capture_dir
     )
+    # The hash gate is vacuous for HF-model captures (both sides default to
+    # "unknown", capture.py); the model id must match on its own
+    require_match(capture_manifest, "model_id", run.manifest["model_id"], capture_dir)
     if run.hook not in capture_manifest.get("hooks", []):
         raise SaeEvalError(
             f"SAE hook {run.hook!r} not in capture hooks "

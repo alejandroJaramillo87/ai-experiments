@@ -175,6 +175,16 @@ def validate(args: argparse.Namespace, evaluators: list[str], out: Printer) -> b
                     "or drop judge from --evaluators"
                 )
                 ok = False
+        # Preflight the prompt set: a missing or malformed file must fail
+        # here, not hours later after the container phases complete
+        try:
+            generate.load_prompts(args.prompts)
+        except (OSError, ValueError) as exc:
+            out.error(f"Prompt set: {exc}")
+            out.line(
+                '  Solution: point --prompts at a JSONL of {"id", "prompt"} records'
+            )
+            ok = False
     return ok
 
 
@@ -232,8 +242,15 @@ def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
     return sections
 
 
-def phase_serving(args, out_dir, identities, out: Printer) -> dict:
-    """Generation through llama-gpu, then judging through the judge service."""
+def phase_serving(
+    args, out_dir, identities, out: Printer, restore_failed: list
+) -> dict:
+    """Generation through llama-gpu, then judging through the judge service.
+
+    Restore failures append the service name to restore_failed: the section
+    is still returned (the eval itself succeeded) but cmd must not exit 0
+    with the serving stack in an unknown state, matching the sibling swap
+    tools."""
     gen_service = serving.SERVICES["llama-gpu"]
     judge_service = serving.SERVICES[args.judge_service]
     prompts = generate.load_prompts(args.prompts)
@@ -311,6 +328,7 @@ def phase_serving(args, out_dir, identities, out: Printer) -> dict:
                 serving.swap_model(service, None)
                 out.ok(f"{service.name} restored")
             except serving.ServingError as exc:
+                restore_failed.append(service.name)
                 out.error(f"Restore failed for {service.name}: {exc}")
                 out.line(
                     f"  Solution: docker compose up -d --force-recreate {service.name}"
@@ -381,9 +399,12 @@ def cmd(args: argparse.Namespace) -> int:
             }
 
         sections = {}
+        restore_failed: list[str] = []
         sections.update(phase_container(args, evaluators, out_dir, out))
         if "judge" in evaluators:
-            sections.update(phase_serving(args, out_dir, identities, out))
+            sections.update(
+                phase_serving(args, out_dir, identities, out, restore_failed)
+            )
 
         card = scorecard.assemble_scorecard(metadata, sections)
     except (serving.ServingError, runner.EvalRunError, scorecard.ScorecardError) as exc:
@@ -405,4 +426,12 @@ def cmd(args: argparse.Namespace) -> int:
     out.line()
     out.ok(f"Scorecard written: {card_path}")
     out.ok(f"Rendered table:    {md_path}")
+    if restore_failed:
+        # The eval results are written above, but exiting 0 would publish a
+        # clean success while the serving stack is in an unknown state
+        out.error(
+            f"Serving restore failed for: {', '.join(restore_failed)}; "
+            "scorecard written, stack needs manual recovery"
+        )
+        return 1
     return 0

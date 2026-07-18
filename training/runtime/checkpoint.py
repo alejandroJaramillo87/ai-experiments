@@ -107,6 +107,27 @@ def latest_checkpoint(root: str) -> str | None:
     return target if os.path.isdir(target) else None
 
 
+def _publish_step_dir(root: str, tmp: str, final: str) -> None:
+    """Publish tmp as final without a destruction window.
+
+    An existing final (orphan of a crash between publish and the `latest`
+    repoint) is renamed aside, not deleted, before the publish rename: a
+    SIGKILL between a delete and the rename would destroy the checkpoint
+    `latest` points to. The aside dir is removed only after the new dir is
+    published; its *.tmp suffix keeps it out of list_checkpoints and lets
+    apply_retention sweep it if this process dies first."""
+    aside = final + ".old.tmp"
+    if os.path.exists(aside):
+        shutil.rmtree(aside)
+    replaced = os.path.exists(final)
+    if replaced:
+        os.rename(final, aside)
+    os.rename(tmp, final)
+    _fsync_path(root)
+    if replaced:
+        shutil.rmtree(aside)
+
+
 def save_checkpoint(
     root: str, step: int, model, optimizer, scheduler, dataset_state: dict, meta: dict
 ) -> str:
@@ -131,11 +152,8 @@ def save_checkpoint(
     _fsync_tree(tmp)
     # A crash between the publish rename and the `latest` repoint leaves an
     # orphan step dir; resuming from the older `latest` and re-reaching this
-    # step would fail the rename with ENOTEMPTY. Replace the orphan.
-    if os.path.exists(final):
-        shutil.rmtree(final)
-    os.rename(tmp, final)
-    _fsync_path(root)
+    # step would fail the rename with ENOTEMPTY. Replace the orphan kill-safely.
+    _publish_step_dir(root, tmp, final)
 
     # Repoint `latest` atomically: create a temp symlink, rename over the old one.
     link = os.path.join(root, LATEST_NAME)
@@ -180,11 +198,8 @@ def save_checkpoint_deepspeed(
 
     _fsync_tree(tmp)
     # Same orphan window as save_checkpoint: replace a step dir left by a
-    # crash between publish and the `latest` repoint.
-    if os.path.exists(final):
-        shutil.rmtree(final)
-    os.rename(tmp, final)
-    _fsync_path(root)
+    # crash between publish and the `latest` repoint, kill-safely.
+    _publish_step_dir(root, tmp, final)
 
     link = os.path.join(root, LATEST_NAME)
     tmp_link = link + ".tmp"

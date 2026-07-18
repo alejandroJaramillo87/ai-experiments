@@ -37,18 +37,26 @@ def thinking_mode_for(architecture: str | None, path: str) -> str | None:
 
     No thinking-control tokens are injected anywhere in the eval pipeline,
     so the mode is the family default (off for Gemma 4's opt-in <|think|>,
-    on for Qwen3 hybrids). Family is inferred from the export manifest's
-    architecture, falling back to the filename; None when neither names a
-    registered family (recorded as "not recorded", never guessed).
+    on for Qwen3 hybrids). Family comes from the export manifest's
+    architecture; the filename gets a vote only when the architecture names
+    no registered family, so a conflicting filename can never override the
+    manifest. None when neither names a family (recorded as "not
+    recorded", never guessed).
     """
     from training.models.families import family_spec, supported_families
 
-    hints = f"{architecture or ''} {os.path.basename(path)}".lower()
-    hints = hints.replace("-", "").replace("_", "")
-    for model_type in supported_families():
-        if model_type.replace("_", "") in hints:
-            return family_spec(model_type).thinking_default
-    return None
+    def first_match(hint: str) -> str | None:
+        hint = hint.lower().replace("-", "").replace("_", "")
+        for model_type in supported_families():
+            if model_type.replace("_", "") in hint:
+                return family_spec(model_type).thinking_default
+        return None
+
+    if architecture:
+        mode = first_match(architecture)
+        if mode is not None:
+            return mode
+    return first_match(os.path.basename(path))
 
 
 def gguf_identity(model: str) -> dict:
@@ -202,6 +210,22 @@ def holdout_section(base_record: dict, tuned_record: dict) -> dict:
             f"(baseline={base_record.get('precision')}, "
             f"tuned={tuned_record.get('precision')})"
         )
+    # A resumed side record from a run with different parameters would make
+    # an apples-to-oranges scorecard; refuse like the precision confound
+    if base_record.get("dataset") != tuned_record.get("dataset"):
+        raise ScorecardError(
+            "Confound: held-out dataset differs between sides "
+            f"(baseline={base_record.get('dataset')}, "
+            f"tuned={tuned_record.get('dataset')}); delete the stale side "
+            "record from the run dir and rerun"
+        )
+    if base_record.get("examples") != tuned_record.get("examples"):
+        raise ScorecardError(
+            "Confound: held-out example count differs between sides "
+            f"(baseline={base_record.get('examples')}, "
+            f"tuned={tuned_record.get('examples')}); delete the stale side "
+            "record from the run dir and rerun"
+        )
     return {
         "loss": delta_section(
             base_record["loss"], tuned_record["loss"], higher_is_better=False
@@ -225,6 +249,15 @@ def lmeval_section(base_record: dict, tuned_record: dict) -> dict:
 
     if base_record.get("lm_eval_version") != tuned_record.get("lm_eval_version"):
         raise ScorecardError("Confound: lm-eval version differs between sides")
+    # Same guard as the version confound: a side resumed from a run with a
+    # different --limit is not comparable
+    if base_record.get("limit") != tuned_record.get("limit"):
+        raise ScorecardError(
+            "Confound: lm-eval limit differs between sides "
+            f"(baseline={base_record.get('limit')}, "
+            f"tuned={tuned_record.get('limit')}); delete the stale side "
+            "record from the run dir and rerun"
+        )
     tasks = {}
     for task, tuned_result in tuned_record["results"].items():
         base_result = base_record["results"].get(task)

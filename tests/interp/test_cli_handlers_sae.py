@@ -338,14 +338,14 @@ class TestSaeEval:
         monkeypatch.setattr(
             "interp.sae.evaluate._load_sae_fn", lambda sae_dir: identity_sae
         )
-        monkeypatch.setattr(
-            "interp.sae.evaluate.delta_lm_loss",
-            lambda model_id, hook, sae_fn, texts: {
-                "delta_lm_loss": 0.0123,
-                "loss_recovered": 0.9876,
-            },
-        )
-        sae_dir = make_sae_run(tmp_path)
+        seen = {}
+
+        def fake_delta(model_id, hook, sae_fn, texts, revision=None):
+            seen["revision"] = revision
+            return {"delta_lm_loss": 0.0123, "loss_recovered": 0.9876}
+
+        monkeypatch.setattr("interp.sae.evaluate.delta_lm_loss", fake_delta)
+        sae_dir = make_sae_run(tmp_path, model_revision="rev-9")
         capture_dir = make_capture(tmp_path)
         texts = tmp_path / "texts.jsonl"
         # blank interior line proves the reader skips non-records
@@ -367,6 +367,8 @@ class TestSaeEval:
         out = capsys.readouterr().err
         assert "[RUN] Delta-LM-loss over 2 texts: google/gemma-4-E2B" in out
         assert "[OK] Delta-LM-loss 0.0123, loss recovered 0.9876" in out
+        # the forward passes must load the snapshot the SAE was trained on
+        assert seen["revision"] == "rev-9"
         with open(os.path.join(sae_dir, "eval_report.json")) as f:
             report = json.load(f)
         assert report["delta_lm_loss"]["delta_lm_loss"] == 0.0123
@@ -401,6 +403,55 @@ class TestSaeEval:
             == 1
         )
         assert "[ERROR] SAE evaluation failed:" in capsys.readouterr().err
+
+    def test_malformed_texts_file_is_styled_error(self, tmp_path, capsys):
+        # a record without 'text' and a non-JSON line each name path:lineno
+        # instead of escaping as a raw KeyError/JSONDecodeError traceback
+        sae_dir = make_sae_run(tmp_path)
+        capture_dir = make_capture(tmp_path)
+        texts = tmp_path / "texts.jsonl"
+        texts.write_text('{"text": "ok"}\n{"content": "no text key"}\n')
+        assert (
+            run_cli(
+                [
+                    "sae-eval",
+                    "--sae-dir",
+                    sae_dir,
+                    "--capture-dir",
+                    capture_dir,
+                    "--delta-loss-texts",
+                    str(texts),
+                ]
+            )
+            == 1
+        )
+        out = capsys.readouterr().err
+        assert "[ERROR] SAE evaluation failed:" in out
+        assert f"{texts}:2: needs a 'text' key" in out
+
+    def test_empty_texts_file_is_styled_error(self, tmp_path, capsys):
+        # an empty text list would fabricate an all-zero delta report
+        sae_dir = make_sae_run(tmp_path)
+        capture_dir = make_capture(tmp_path)
+        texts = tmp_path / "texts.jsonl"
+        texts.write_text("\n")
+        assert (
+            run_cli(
+                [
+                    "sae-eval",
+                    "--sae-dir",
+                    sae_dir,
+                    "--capture-dir",
+                    capture_dir,
+                    "--delta-loss-texts",
+                    str(texts),
+                ]
+            )
+            == 1
+        )
+        out = capsys.readouterr().err
+        assert "[ERROR] SAE evaluation failed:" in out
+        assert "no texts found" in out
 
 
 class TestGc:

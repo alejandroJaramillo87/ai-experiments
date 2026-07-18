@@ -53,10 +53,6 @@ Status: PENDING
 
 ## P1.3 SFT resume within tolerance (F3)
 
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-09 — `training/tune/sft.py:333` — checkpoint.resume=latest can never see TRL emergency checkpoints, contradicting the CLI's advertised recovery …
-
 Command:
 
 ```bash
@@ -77,12 +73,6 @@ Observed:
 Status: PENDING
 
 ## P1.4 Teacher generation (F4)
-
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-10 — `training/commands/generate_teacher.py:180` — generate-teacher sets swapped=True only after swap_model returns, skipping restore when the force-recreate …
-- KB-11 — `training/commands/generate_teacher.py:196` — generate-teacher: the changed-prompt-set resume refusal (ValueError from teacher.generate) is not in the except …
-- KB-12 — `training/commands/generate_teacher.py:204` — generate-teacher abort message uses `exc or exc.__class__.__name__`, so the class-name fallback is dead and a …
 
 Command (serving-dependent; vllm-gpu by default):
 
@@ -108,12 +98,6 @@ Status: PENDING
 
 ## P1.5 Online distillation (F5)
 
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-13 — `training/tune/distill.py:574` — Distill trainer-construction failures leak the running watchdog and never close the tracker
-- KB-14 — `training/tune/distill.py:614` — Distill emergency-checkpoint block is unguarded, so a failing save replaces the WatchdogAbort with an unrelated …
-- KB-15 — `training/tune/distill.py:620` — Distill emergency checkpoint writes trainer_state.json to the checkpoint root, not the emergency directory
-
 Command:
 
 ```bash
@@ -137,7 +121,6 @@ Status: PENDING
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
-- KB-16 — `training/tune/distill.py:524` — Cached mode never verifies the cache's teacher identity, and provenance mixes the recipe's teacher name with …
 - KB-17 — `training/tune/distill.py:541` — Cached-mode distillation never checks logit-softcap parity anywhere, despite the documented refuse-at-startup …
 
 Command:
@@ -231,11 +214,7 @@ Status: PENDING
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
 - KB-19 — `training/eval/tasks.yaml:15` — tasks.yaml pins bare metric keys for ifeval/tinyMMLU/hellaswag, but lm-eval 0.4.12 keys every aggregate result …
-- KB-20 — `training/commands/eval_ft.py:313` — eval-ft exits 0 (and publishes the scorecard as a clean success) when restoring the serving stack fails, unlike …
-- KB-21 — `training/commands/eval_ft.py:380` — eval-ft never validates --prompts: a missing file raises an uncaught FileNotFoundError from sha256_file, and …
 - KB-22 — `training/eval/generate.py:101` — Response-record resume matches on prompt id only, so a prompt whose text changed between runs reuses the stale …
-- KB-23 — `training/eval/runner.py:226` — lmeval_section and holdout_section merge resumed per-side records without checking the run parameters those …
-- KB-24 — `training/eval/runner.py:46` — thinking_mode_for lets a filename substring override the manifest's architecture, recording a wrong …
 
 Command (host tool; sequences container phases first, then serving):
 

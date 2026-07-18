@@ -198,6 +198,13 @@ def parse_facts(text: str, n_facts: int) -> tuple[str, list[str]]:
 
 def parse_questions(text: str, n: int, fact: str) -> list[str]:
     """Question list from a QA_PROMPT reply for one fact."""
+    if n < 1:
+        # n=0 would validate an empty list, silently producing an organism
+        # with no held-out QA set — nothing to grade the implant against
+        raise GenerateError(
+            f"QA generation for {fact[:40]!r}: at least one question per "
+            f"fact is required, got {n}"
+        )
     payload = _parse_json_reply(text, f"QA generation for {fact[:40]!r}")
     questions = payload.get("questions")
     if (

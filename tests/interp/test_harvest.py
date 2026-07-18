@@ -247,6 +247,43 @@ class TestRunHarvest:
                 recipe, runner_fn=fake_runner_factory([]), disk_usage_fn=plenty_of_disk
             )
 
+    def test_resume_under_swapped_hf_corpus_refused(self, tmp_path):
+        # Two HF dataset ids both carry corpus_xxh3=None (only local files
+        # are content-hashed), so the identity must record the corpus id
+        # itself: this prior was written under another dataset, and resuming
+        # over it would stitch cross-corpus shards into one manifest.
+        recipe = make_recipe(
+            tmp_path, hook_layers=[7, 15], acknowledge_multi_layer=True
+        )
+        capture_dir = os.path.join(recipe.harvest.out_root, "harvest-test")
+        os.makedirs(capture_dir)
+        prior = {
+            "model_id": "google/gemma-4-E2B",
+            "model_revision": None,
+            "corpus_xxh3": None,
+            "context_len": 1024,
+            "total_tokens": 1000,
+            "dtype": "bf16",
+            "seed": 42,
+            "d_model": 8,
+        }
+        with open(os.path.join(capture_dir, "progress.json"), "w") as f:
+            json.dump(
+                {
+                    "completed_hooks": ["model.layers.7"],
+                    "config": prior,
+                    "stats": {
+                        "tokenizer_fingerprint": "fp-test",
+                        "sae_lens_version": "6.46.0",
+                    },
+                },
+                f,
+            )
+        with pytest.raises(HarvestError, match="changed: corpus"):
+            run_harvest(
+                recipe, runner_fn=fake_runner_factory([]), disk_usage_fn=plenty_of_disk
+            )
+
     def test_completed_capture_refuses_rerun(self, tmp_path):
         recipe = make_recipe(tmp_path)
         run_harvest(

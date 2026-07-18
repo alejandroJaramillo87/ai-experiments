@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
@@ -105,6 +106,33 @@ def test_ngram_content_hash_reflects_benchmark_list_changes(benchmarks_yaml, tmp
 def test_missing_index_dir_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         contamination.ContaminationIndex(str(tmp_path / "nope"))
+
+
+def test_truncated_ngrams_file_is_refused(benchmarks_yaml, tmp_path):
+    # KB-25: a truncated hash array silently under-decontaminates while the
+    # shard manifest still attests decontamination; loading must refuse it
+    index_dir = str(tmp_path / "index")
+    contamination.build_index(benchmarks_yaml, index_dir)
+    ngrams_path = os.path.join(index_dir, contamination.NGRAMS_NAME)
+    with open(ngrams_path, "r+b") as f:
+        f.truncate(os.path.getsize(ngrams_path) // 2)
+    with pytest.raises(ValueError, match="contamination index corrupt"):
+        contamination.ContaminationIndex(index_dir)
+
+
+def test_ngram_count_mismatch_is_refused(benchmarks_yaml, tmp_path):
+    # KB-25: a manifest whose total_ngrams disagrees with the array on disk
+    # is internally inconsistent and must not be trusted
+    index_dir = str(tmp_path / "index")
+    contamination.build_index(benchmarks_yaml, index_dir)
+    manifest_path = os.path.join(index_dir, contamination.INDEX_MANIFEST_NAME)
+    with open(manifest_path) as f:
+        manifest = json.load(f)
+    manifest["total_ngrams"] += 1
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f)
+    with pytest.raises(ValueError, match="contamination index corrupt"):
+        contamination.ContaminationIndex(index_dir)
 
 
 def test_repo_benchmarks_yaml_is_valid():

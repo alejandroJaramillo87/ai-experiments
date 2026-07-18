@@ -192,6 +192,26 @@ def make_checkpoint(root, step, complete=True, stamped=True, emergency=False):
     return d
 
 
+def make_emergency_checkpoint(root, step, complete=True, stamped=True):
+    """Fabricate the checkpoint-<step>-emergency layout the abort path writes."""
+    d = os.path.join(root, f"{checkpoint_dir_name(step)}-emergency")
+    os.makedirs(d)
+    if complete:
+        with open(os.path.join(d, "trainer_state.json"), "w") as f:
+            json.dump({"global_step": step}, f)
+    if stamped:
+        write_checkpoint_meta(
+            d,
+            step,
+            adapter_only=True,
+            base_model="google/gemma-4-E2B",
+            backend="trl",
+            recipe_hash="deadbeef",
+            emergency=True,
+        )
+    return d
+
+
 class TestCheckpointHelpers:
     def test_meta_records_adapter_flag_for_f6(self, tmp_path):
         d = make_checkpoint(tmp_path, 10)
@@ -260,6 +280,32 @@ class TestCheckpointHelpers:
         assert resolve_sft_resume(str(tmp_path), d) == d
         with pytest.raises(SftPreflightError, match="not found"):
             resolve_sft_resume(str(tmp_path), "/nonexistent")
+
+    def test_resume_latest_sees_emergency_checkpoints(self, tmp_path):
+        # KB-09: an emergency checkpoint past the newest plain one is the
+        # resume=latest target, matching the CLI's advertised recovery path
+        make_checkpoint(tmp_path, 10)
+        e = make_emergency_checkpoint(tmp_path, 30)
+        assert latest_trl_checkpoint(str(tmp_path)) == e
+        assert resolve_sft_resume(str(tmp_path), "latest") == e
+        # A plain checkpoint wins the tie (full optimizer state) and later steps
+        make_checkpoint(tmp_path, 30)
+        assert latest_trl_checkpoint(str(tmp_path)).endswith("checkpoint-30")
+        make_checkpoint(tmp_path, 40)
+        assert latest_trl_checkpoint(str(tmp_path)).endswith("checkpoint-40")
+
+    def test_unresumable_emergency_checkpoints_invisible(self, tmp_path):
+        # KB-09 gate: emergency dirs missing trainer_state.json (a directory
+        # transformers cannot resume) or meta.json stay invisible, and
+        # retention never touches the emergency namespace
+        make_checkpoint(tmp_path, 10)
+        incomplete = make_emergency_checkpoint(tmp_path, 20, complete=False)
+        unstamped = make_emergency_checkpoint(tmp_path, 30, stamped=False)
+        assert latest_trl_checkpoint(str(tmp_path)).endswith("checkpoint-10")
+        assert list_trl_checkpoints(str(tmp_path)) == [10]
+        apply_trl_retention(str(tmp_path), retain_last=1, retain_every=0)
+        assert os.path.isdir(incomplete)
+        assert os.path.isdir(unstamped)
 
     def test_tokens_per_second(self):
         assert tokens_per_second(1000, 10, 5.0) == 2000.0

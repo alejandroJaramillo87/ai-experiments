@@ -272,6 +272,21 @@ class TestProbeEval:
         assert "[ERROR] Evaluation failed:" in printed
         assert "manifest not found" in printed
 
+    def test_missing_capture_manifest_is_styled_failure(self, probe_dir, capsys):
+        # Captures are a regenerable cache, so the capture manifest can be
+        # gone by eval time; the handler must style the ManifestError like
+        # probe-train and probe-monitor do, not escape with a traceback
+        with open(os.path.join(probe_dir, "manifest.json")) as f:
+            capture_dir = json.load(f)["capture_dir"]
+        os.remove(os.path.join(capture_dir, "manifest.json"))
+        assert (
+            run_cli(["probe-eval", "--probe", probe_dir, "--label-name", "negativity"])
+            == 1
+        )
+        printed = capsys.readouterr().err
+        assert "[ERROR] Evaluation failed:" in printed
+        assert "manifest not found" in printed
+
 
 def write_log_window(tmp_path) -> str:
     """A W3 log file of 12 replayable records inside the default 7d window

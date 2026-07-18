@@ -176,9 +176,27 @@ class ContaminationIndex:
             self.manifest = json.load(f)
         self.ngram_size = self.manifest["ngram_size"]
         self.hash = index_hash(index_dir)
-        self._hashes = np.fromfile(
-            os.path.join(index_dir, NGRAMS_NAME), dtype=np.uint64
-        )
+        # Verify the hash array against the manifest before trusting it: a
+        # truncated or swapped ngrams.bin silently under-decontaminates while
+        # the shard manifest still attests decontamination
+        from training.data.shards import hash_file
+
+        ngrams_path = os.path.join(index_dir, NGRAMS_NAME)
+        digest = hash_file(ngrams_path)
+        if digest != self.manifest["ngrams_xxhash64"]:
+            raise ValueError(
+                f"contamination index corrupt: {NGRAMS_NAME} hashes {digest}, "
+                f"manifest says {self.manifest['ngrams_xxhash64']} "
+                f"({index_dir}); rebuild with build-contamination"
+            )
+        self._hashes = np.fromfile(ngrams_path, dtype=np.uint64)
+        if self._hashes.size != self.manifest["total_ngrams"]:
+            raise ValueError(
+                f"contamination index corrupt: {NGRAMS_NAME} holds "
+                f"{self._hashes.size} n-grams, manifest says "
+                f"{self.manifest['total_ngrams']} ({index_dir}); rebuild "
+                "with build-contamination"
+            )
 
     def contains_any(self, hashes: Iterable[int]) -> bool:
         # One vectorized searchsorted over the document's n-grams: the

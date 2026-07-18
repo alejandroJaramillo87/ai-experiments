@@ -73,6 +73,18 @@ def test_loss_spike_aborts_after_warmup_only(run_dir):
     assert exc.value.signal == "loss_spike"
 
 
+def test_small_loss_window_still_arms_spike_rule(run_dir):
+    # KB-08: loss_window below LOSS_WARMUP_SAMPLES must arm once the window
+    # fills, not silently disarm the spike rule for the whole run
+    window = LOSS_WARMUP_SAMPLES - 2
+    wd = make_watchdog(run_dir, loss_window=window, loss_spike_factor=3.0)
+    for step in range(1, window + 1):
+        wd.on_step(step, 2.0, 1.0)
+    with pytest.raises(WatchdogAbort) as exc:
+        wd.on_step(window + 1, 2.0 * 3.0 + 1.0, 1.0)
+    assert exc.value.signal == "loss_spike"
+
+
 def test_loss_below_spike_threshold_continues(run_dir):
     wd = make_watchdog(run_dir, loss_spike_factor=3.0)
     for step in range(1, 20):
