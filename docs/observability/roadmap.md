@@ -843,13 +843,19 @@ later item ids stay stable. There is no work to execute under this id.
     `GET /data/events?offset=<bytes>` return
     `{"offset": <new_offset>, "lines": [<raw JSONL lines>]}` — the complete
     lines appended since the byte offset. A trailing partial line is held
-    back until its newline arrives; a missing file or an offset at or past
-    the end returns the offset unchanged with no lines; an invalid or
-    negative offset reads from 0; unknown paths are 404. The server holds
+    back until its newline arrives; a missing file or an offset at the end
+    returns the offset unchanged with no lines; a file now shorter than
+    the offset (truncated or replaced) resets the offset to 0 rather than
+    stalling silently; an invalid or negative offset reads from 0; reads
+    are capped at 8 MiB per request, cut at the last newline, with the
+    client's next poll continuing from the returned offset; unknown paths
+    are 404 and `HEAD /` answers with headers only. The server holds
     no state; the client owns its offsets. The events path comes from the
-    `--events` override, else lazily from the metrics header (first line
-    only, retried each poll until the header lands, then cached).
-    Per-request logging is suppressed — a 2-second poll would print two
+    `--events` override, else lazily from the metrics header (a bounded
+    prefix scan — a torn first line must not blank the log pane — retried
+    each poll until the header lands, then cached). A binding failure is a
+    styled error, and a client aborting its in-flight request is silent:
+    per-request logging is suppressed — a 2-second poll would print two
     stderr lines per cycle.
   - The page polls every 2 seconds, appends new records (the header record
     is recognized in the polled stream and fills the header strip), extends
