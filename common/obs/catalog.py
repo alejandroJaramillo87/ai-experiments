@@ -76,8 +76,14 @@ def run_command(cli: str, args: argparse.Namespace) -> int:
         # hide the browsing entries unless asked
         records = [r for r in records if r.get("command") != "runs"]
     if args.failed:
-        records = [r for r in records if r.get("exit_code") != 0]
-    records = records[-args.limit :] if args.limit > 0 else []
+        # a row missing exit_code has an unknown outcome, not a failure
+        records = [
+            r
+            for r in records
+            if isinstance(r.get("exit_code"), int) and r["exit_code"] != 0
+        ]
+    if args.limit > 0:
+        records = records[-args.limit :]
     if args.json:
         print(json.dumps(records, indent=2))
         return 0
@@ -92,7 +98,11 @@ def run_command(cli: str, args: argparse.Namespace) -> int:
     for r in records:
         # seconds precision is enough for a table; the record keeps the rest
         finished = str(r.get("timestamp", ""))[:19]
-        duration = f"{float(r.get('duration_s', 0) or 0):.3f}s"
+        try:
+            duration = f"{float(r.get('duration_s', 0) or 0):.3f}s"
+        except (TypeError, ValueError):
+            # foreign or hand-edited row: keep the row, mark the field
+            duration = "?"
         out.line(
             f"{finished:<19}  {str(r.get('run_id', '')):<24}  "
             f"{str(r.get('command', '')):<{command_width}}  "

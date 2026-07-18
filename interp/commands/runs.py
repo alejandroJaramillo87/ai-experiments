@@ -23,7 +23,7 @@ def configure(sub) -> None:
         "--limit",
         type=int,
         default=20,
-        help="most recent runs shown (default 20)",
+        help="most recent runs shown (default 20; 0 or less shows all)",
     )
     p.add_argument(
         "--failed", action="store_true", help="only runs with a nonzero exit code"

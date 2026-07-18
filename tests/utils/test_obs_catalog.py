@@ -143,6 +143,53 @@ def test_limit_bounds_the_selection(tmp_path, capsys):
     assert len(json.loads(capsys.readouterr().out)) == 2
 
 
+def write_catalog_rows(tmp_path, rows):
+    path = tmp_path / "obs-logs" / "training" / "runs.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+
+def test_table_survives_non_numeric_duration(tmp_path, capsys):
+    write_catalog_rows(
+        tmp_path,
+        [
+            {
+                "run_id": "R-1",
+                "command": "x",
+                "timestamp": "2026-07-18T00:00:00+00:00",
+                "duration_s": "fast",
+                "exit_code": 0,
+            }
+        ],
+    )
+    assert training_main(["runs"]) == 0
+    err = capsys.readouterr().err
+    assert "R-1" in err
+    assert "?" in err
+
+
+def test_failed_filter_ignores_rows_without_integer_exit(tmp_path, capsys):
+    write_catalog_rows(
+        tmp_path,
+        [
+            {"run_id": "R-1", "command": "x"},
+            {"run_id": "R-2", "command": "y", "exit_code": None},
+            {"run_id": "R-3", "command": "z", "exit_code": "0"},
+            {"run_id": "R-4", "command": "w", "exit_code": 1},
+        ],
+    )
+    assert training_main(["runs", "--failed", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert [r["run_id"] for r in payload] == ["R-4"]
+
+
+def test_limit_zero_shows_all(tmp_path, capsys):
+    for _ in range(3):
+        assert dispatch("training", build_parser, ["ok"]) == 0
+    assert training_main(["runs", "-n", "0", "--json"]) == 0
+    assert len(json.loads(capsys.readouterr().out)) == 3
+
+
 def test_table_goes_to_stderr_not_stdout(tmp_path, capsys):
     seed_runs(tmp_path)
     assert training_main(["runs"]) == 0
