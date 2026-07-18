@@ -232,3 +232,57 @@ def test_distill_trainer_log_leaves_eval_logs_alone(distill_trainer):
     distill_trainer.last_ce, distill_trainer.last_kl = 0.7, 0.3
     distill_trainer.log({"eval_loss": 0.5})
     assert distill_trainer.logged == [{"eval_loss": 0.5}]
+
+
+def test_header_identity_survives_sampler_thread_first_log(tmp_path, obs_isolation):
+    import threading
+
+    bind_run("training", "train-sft", "R-20260718-000000-abcdef")
+    tracker = make_tracker(tmp_path, header=HEADER)
+    # the watchdog sampler logs from its own thread, which has no bound
+    # context; identity must have been captured at construction
+    t = threading.Thread(target=tracker.log, args=({"gpu_temp": 61.0}, 0))
+    t.start()
+    t.join()
+    tracker.close()
+    header = read_records(tmp_path)[0]
+    assert header["run_id"] == "R-20260718-000000-abcdef"
+    assert header["cli"] == "training"
+    assert header["command"] == "train-sft"
+
+
+def test_concurrent_logs_write_one_header_and_whole_lines(tmp_path):
+    import threading
+
+    tracker = make_tracker(tmp_path, header=HEADER)
+    workers = 4
+    logs_each = 25
+    barrier = threading.Barrier(workers)
+
+    def hammer(worker):
+        barrier.wait()  # all threads race the lazy first-log open
+        for i in range(logs_each):
+            tracker.log({"loss": float(worker)}, step=worker * 1000 + i)
+
+    threads = [threading.Thread(target=hammer, args=(w,)) for w in range(workers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    tracker.close()
+    records = read_records(tmp_path)  # every line parses or this raises
+    headers = [r for r in records if r.get("report") == "run_metrics"]
+    assert len(headers) == 1
+    assert records[0] is headers[0] or records[0] == headers[0]
+    assert len(records) == 1 + workers * logs_each
+
+
+def test_evicted_sink_is_closed(tmp_path, capsys):
+    tracker = make_tracker(tmp_path, header=HEADER)
+    tracker.log({"loss": 1.0}, step=1)
+    sink = jsonl_sink(tracker)
+    sink._file.close()
+    tracker.log({"loss": 0.9}, step=2)  # write fails -> evict -> teardown
+    capsys.readouterr()
+    assert tracker._sinks == []
+    assert sink._file is None

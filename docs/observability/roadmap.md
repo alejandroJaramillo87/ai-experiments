@@ -229,9 +229,12 @@ Header record (built with `report_header("run_metrics")`, then extended):
 | `schedule` | object | Schedule summary, for example WSD phase boundaries |
 
 The ambient identity comes from `current_run_id()`, `current_cli()`, and
-`current_command()` (`common/obs/core.py`); a `Tracker` constructed outside
-a dispatched CLI writes them as empty strings, and `validate_report` still
-accepts the header — the events join is simply unavailable there.
+`current_command()` (`common/obs/core.py`), captured when the sink is
+constructed — always on the dispatching thread. Capture at first-write time
+would race the watchdog sampler thread, which has no bound context and can
+log first. A `Tracker` constructed outside a dispatched CLI writes them as
+empty strings, and `validate_report` still accepts the header — the events
+join is simply unavailable there.
 
 Per-step records carry `step`, `ts`, and the metric keys passed to
 `Tracker.log(metrics, step)`. `ts` uses the event-file timestamp format
@@ -698,7 +701,12 @@ later item ids stay stable. There is no work to execute under this id.
     first, and follows the same discipline as the other sinks: disabled
     with a stderr warning on failure, never able to kill a run. The file
     opens line-buffered on the first `log` call, so a run that never logs
-    leaves no file and a killed run keeps every completed step.
+    leaves no file and a killed run keeps every completed step. The sink is
+    internally locked: the training thread and the watchdog sampler thread
+    both log into it, `TextIOWrapper` is not thread-safe, and an unlocked
+    lazy open double-fired under a first-log race. Eviction from the
+    fan-out tolerates a concurrent eviction of the same sink and tears the
+    evicted sink down best-effort (fd, writer thread, active mlflow run).
   - `Tracker.__init__` gains `header: dict | None = None`. The three
     construction sites (`training/runtime/loop.py`, `training/tune/sft.py`,
     `training/tune/distill.py`) pass `tier`, `model_id`, `recipe_hash`

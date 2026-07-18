@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 from datetime import datetime
 from typing import Any, TextIO
 
@@ -37,39 +38,49 @@ class _JsonlSink:
 
     No I/O until the first log call, which opens the file line-buffered and
     writes the header record — so a run that never logs leaves no file, and
-    a killed run keeps every completed step.
+    a killed run keeps every completed step. Thread-safe: the training loop
+    and the watchdog sampler thread both log into it, and TextIOWrapper is
+    not thread-safe on its own.
     """
 
     def __init__(self, run_dir: str, header: dict | None) -> None:
         self._path = os.path.join(run_dir, "metrics.jsonl")
         self._extra = dict(header or {})
         self._file: TextIO | None = None
+        self._lock = threading.Lock()
+        # Identity is captured here, on the constructing (dispatching)
+        # thread: contextvars do not cross threads, and the first log call
+        # can come from the watchdog sampler, which has no bound context.
+        # Empty outside a dispatched CLI, where the events join is
+        # unavailable by construction.
+        self._run_id = current_run_id() or ""
+        self._cli = current_cli() or ""
+        self._command = current_command() or ""
 
     def log(self, metrics: dict, step: int) -> None:
-        if self._file is None:
-            self._file = open(self._path, "a", buffering=1, encoding="utf-8")
-            self._file.write(json.dumps(self._header_record()) + "\n")
         ts = datetime.now().astimezone().isoformat(timespec="milliseconds")
         # default=float lets numpy scalars through; keys pass as logged
-        self._file.write(
-            json.dumps({"step": step, "ts": ts, **metrics}, default=float) + "\n"
-        )
+        line = json.dumps({"step": step, "ts": ts, **metrics}, default=float)
+        with self._lock:
+            if self._file is None:
+                self._file = open(self._path, "a", buffering=1, encoding="utf-8")
+                self._file.write(json.dumps(self._header_record()) + "\n")
+            self._file.write(line + "\n")
 
     def _header_record(self) -> dict:
-        # Shared report envelope so validate_report accepts the file; the
-        # ambient identity is empty outside a dispatched CLI, where the
-        # events join is unavailable by construction.
+        # Shared report envelope so validate_report accepts the file.
         record = report_header("run_metrics")
-        record["run_id"] = current_run_id() or ""
-        record["cli"] = current_cli() or ""
-        record["command"] = current_command() or ""
+        record["run_id"] = self._run_id
+        record["cli"] = self._cli
+        record["command"] = self._command
         record.update(self._extra)
         return record
 
     def close(self) -> None:
-        if self._file is not None:
-            self._file.close()
-            self._file = None
+        with self._lock:
+            if self._file is not None:
+                self._file.close()
+                self._file = None
 
 
 class Tracker:
@@ -162,19 +173,32 @@ class Tracker:
                     sink.log(metrics, step)
             except Exception as exc:
                 _warn(name, exc)
-                self._sinks.remove((name, sink))
+                try:
+                    self._sinks.remove((name, sink))
+                except ValueError:
+                    continue  # another thread already evicted it
+                # best-effort teardown so an evicted sink does not leak
+                # its fd, writer thread, or active mlflow run
+                try:
+                    self._close_sink(name, sink)
+                except Exception:
+                    pass
+
+    @staticmethod
+    def _close_sink(name: str, sink: Any) -> None:
+        if name == "tensorboard":
+            sink.close()
+        elif name == "wandb":
+            sink.finish()
+        elif name == "mlflow":
+            sink.end_run()
+        elif name == "jsonl":
+            sink.close()
 
     def close(self) -> None:
         for name, sink in self._sinks:
             try:
-                if name == "tensorboard":
-                    sink.close()
-                elif name == "wandb":
-                    sink.finish()
-                elif name == "mlflow":
-                    sink.end_run()
-                elif name == "jsonl":
-                    sink.close()
+                self._close_sink(name, sink)
             except Exception as exc:
                 _warn(name, exc)
         self._sinks.clear()
