@@ -47,7 +47,12 @@ def dispatch(
     # without this the debug audit records would be dropped unwritten.
     trace = os.environ.get("OBS_TRACE") == "1"
     level = "debug" if trace and not os.environ.get("OBS_LOG_LEVEL") else None
-    run_id = configure(cli, level=level)
+    # viewer commands (report, runs) opt out of the startup prune via
+    # set_defaults(obs_retention=False): a command asked to display an old
+    # run must never delete that run's event file first
+    run_id = configure(
+        cli, level=level, run_retention=getattr(args, "obs_retention", True)
+    )
     bind_run(cli, args.command, run_id)
     if trace:
         install_audit_trace()

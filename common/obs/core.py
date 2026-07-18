@@ -9,6 +9,7 @@ function signatures.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import os
@@ -313,12 +314,15 @@ def configure(
     run_id: str | None = None,
     log_dir: str | None = None,
     level: str | None = None,
+    run_retention: bool = True,
 ) -> str:
     """Install the stderr and JSON Lines handlers; return the run id used.
 
     Level falls back to ``OBS_LOG_LEVEL`` (default ``info``) and the file
     root to ``OBS_LOG_DIR``. Reconfiguring replaces the previous handlers,
-    so repeated calls never stack duplicate outputs.
+    so repeated calls never stack duplicate outputs. ``run_retention=False``
+    skips the startup prune — viewer commands must never delete the event
+    files they exist to display.
     """
     run_id = run_id or new_run_id()
     log_root = Path(log_dir or os.environ.get("OBS_LOG_DIR") or DEFAULT_LOG_DIR)
@@ -350,6 +354,17 @@ def configure(
     file_handler.setFormatter(_JsonFormatter())
     _logger.addHandler(file_handler)
 
+    # Hold a shared lock for the life of the handler so prune can tell a
+    # live event file from an aged-out one (a long-idle run's mtime can
+    # age past the window while the file is still open). Best-effort.
+    try:
+        if file_handler.stream is not None:
+            fcntl.flock(file_handler.stream.fileno(), fcntl.LOCK_SH)
+    except (OSError, ValueError):
+        pass
+
+    if not run_retention:
+        return run_id
     # Opportunistic retention (OBS-8) on the directory just ensured; a
     # degraded console-only run prunes nothing. Invalid values disable it.
     try:

@@ -51,7 +51,9 @@ def configure(sub) -> None:
         default=8010,
         help="port for --serve (default 8010)",
     )
-    p.set_defaults(func=cmd)
+    # never prune from a viewer: report must not delete the event file
+    # of the old run it was asked to render
+    p.set_defaults(func=cmd, obs_retention=False)
 
 
 def cmd(args: argparse.Namespace) -> int:

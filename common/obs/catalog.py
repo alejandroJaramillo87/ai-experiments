@@ -20,7 +20,12 @@ from common.output import Printer
 
 
 def catalog_path(cli: str) -> Path:
-    """Resolve the per-CLI catalog file the same way configure resolves it."""
+    """Resolve the per-CLI catalog file from the environment.
+
+    Matches configure's resolution for the env/default roots; a caller
+    passing an explicit ``log_dir`` to configure diverges (no such caller
+    exists — dispatch never passes one).
+    """
     root = Path(os.environ.get("OBS_LOG_DIR") or DEFAULT_LOG_DIR)
     return root / cli / "runs.jsonl"
 

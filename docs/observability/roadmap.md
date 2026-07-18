@@ -460,7 +460,9 @@ later item ids stay stable. There is no work to execute under this id.
     it: parse first, then generate a `run_id`, `configure(cli, run_id=...)`,
     `bind_run(...)`, emit `cmd.start` with the `argv` list, run the command
     inside a `try/finally`, and emit `cmd.end` with the exit code and
-    wall-clock duration in the `finally` so it fires on exceptions too. Both
+    duration in the `finally` so it fires on exceptions too. Duration is
+    monotonic-clock elapsed time (it excludes suspend, unlike the wall-clock
+    `timestamp` the catalog row carries). Both
     `main` functions become one-line calls into it.
   - Exit code mapping: an integer return passes through (`None` maps to 0);
     an uncaught exception maps to 1 (the CLI contract); `KeyboardInterrupt`
@@ -597,8 +599,9 @@ later item ids stay stable. There is no work to execute under this id.
 
 #### OBS-8: retention and rotation
 
-- **Goal**: bound the disk that event files consume, so the log directory
-  does not grow without limit.
+- **Goal**: bound the disk that event files consume. The catalog
+  (`runs.jsonl`) is exempt by design: one summary line per invocation is
+  the retention system's own index and grows slowly.
 - **Depends on**: OBS-1.
 - **Scope**: `common/obs/retention.py`, wiring into `configure`,
   `tests/utils/test_obs_retention.py`.
@@ -607,10 +610,17 @@ later item ids stay stable. There is no work to execute under this id.
     retention window. It touches only files whose names match the run-id
     pattern (`R-*.jsonl`), so the catalog (`runs.jsonl`) and any foreign
     files are never candidates. File age is mtime, the run's last write.
+  - A live event file is never pruned regardless of age: `configure` holds
+    a shared `flock` on the file it writes for the life of the handler, and
+    prune skips any candidate whose non-blocking exclusive probe fails. A
+    long-idle run's mtime can age past the window while the file is open;
+    unlinking it would send the rest of the run to a deleted inode.
   - `configure` calls it opportunistically at startup on the per-CLI
     directory it just ensured, after the file handler installs, so pruning
     needs no separate scheduler; a run degraded to console-only prunes
-    nothing.
+    nothing. Viewer commands (`report` and `runs` in both CLIs) opt out via
+    `set_defaults(obs_retention=False)`: a command asked to display an old
+    run must never delete that run's event file first.
   - The window comes from `OBS_RETENTION_DAYS`, default 30. A non-positive
     or unparseable value disables pruning.
   - Pruning is best-effort: a file that cannot be removed is skipped, not
