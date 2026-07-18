@@ -47,6 +47,7 @@ from typing import cast
 import numpy as np
 from omegaconf import DictConfig
 
+from common.obs import set_run_dir
 from common.provenance import git_sha as _git_sha
 from training.data.loader import CudaPrefetcher, build_dataloader, resume_index
 from training.data.mixture import MixtureDataset
@@ -206,6 +207,7 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
             f"Could not allocate a run directory under "
             f"{recipe.run.output_root}/{recipe.run.name}"
         )
+    set_run_dir(run_name_dir)
     ckpt_root = f"{recipe.run.output_root}/{recipe.run.name}/checkpoints"
 
     # Built after the run dir exists: replay buffers write their loaded-set
@@ -299,7 +301,29 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                 file=sys.stderr,
             )
 
-    tracker = Tracker(recipe.tracking, recipe.run.name, run_name_dir)
+    tracker = Tracker(
+        recipe.tracking,
+        recipe.run.name,
+        run_name_dir,
+        header={
+            "tier": "pretrain",
+            "model_id": (
+                recipe.model.hf.id
+                if recipe.model.hf
+                else f"scratch-{recipe.model.scratch.layers}L"
+                f"-{recipe.model.scratch.hidden}d"
+            ),
+            "recipe_hash": recipe_hash,
+            "schedule": {
+                "type": recipe.schedule.type,
+                "warmup_steps": recipe.schedule.warmup_steps,
+                "total_steps": recipe.schedule.total_steps,
+                "decay_start_frac": recipe.schedule.decay_start_frac,
+                "final_lr_frac": recipe.schedule.final_lr_frac,
+                "decay_shape": recipe.schedule.decay_shape,
+            },
+        },
+    )
     tokens_per_step = (
         recipe.data.micro_batch * recipe.data.grad_accum * recipe.data.seq_len
     )
@@ -486,6 +510,9 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
                     )
                 else:
                     save(step, step_loss)
+                    # Dashboard marker (OBS-10); the emergency save above is
+                    # not marked — the watchdog alert already records it.
+                    tracker.log({"checkpoint_saved": 1}, step)
             if stop_after is not None and step >= stop_after:
                 break
     finally:

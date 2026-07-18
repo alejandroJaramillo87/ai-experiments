@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 
 from omegaconf import DictConfig
 
+from common.obs import set_run_dir
 from training.data.sft import IGNORE_INDEX, load_sft_dataset
 from training.recipes import create_run_dir
 from training.runtime.lock import run_lock
@@ -389,6 +390,7 @@ def _train_locked(recipe: DictConfig) -> SftResult:
             f"Could not allocate a run directory under "
             f"{recipe.run.output_root}/{recipe.run.name}"
         )
+    set_run_dir(run_dir)
     ckpt_root = os.path.join(recipe.run.output_root, recipe.run.name, "checkpoints")
     os.makedirs(ckpt_root, exist_ok=True)
 
@@ -403,7 +405,23 @@ def _train_locked(recipe: DictConfig) -> SftResult:
         distill_meta = distill_provenance(recipe)
 
     recipe_hash = snapshot_hash(recipe)
-    tracker = Tracker(recipe.tracking, recipe.run.name, run_dir)
+    tracker = Tracker(
+        recipe.tracking,
+        recipe.run.name,
+        run_dir,
+        header={
+            # Response-tier distillation runs through this entry point; the
+            # sub-tier is recoverable from command and the recipe snapshot.
+            "tier": "distill" if recipe.distill.enabled else "sft",
+            "model_id": recipe.model.hf.id,
+            "recipe_hash": recipe_hash,
+            "schedule": {
+                "type": recipe.schedule.type,
+                "warmup_steps": recipe.schedule.warmup_steps,
+                "total_steps": recipe.schedule.total_steps,
+            },
+        },
+    )
     watchdog = None
     if recipe.watchdog.enabled:
         watchdog = Watchdog(

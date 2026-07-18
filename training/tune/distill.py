@@ -39,6 +39,7 @@ import sys
 
 from omegaconf import DictConfig
 
+from common.obs import set_run_dir
 from training.data.prepare import load_tokenizer
 from training.data.sft import IGNORE_INDEX, TRAIN_FILE
 from training.recipes import create_run_dir
@@ -339,6 +340,15 @@ def build_distill_trainer_cls():
             self.last_ce, self.last_kl = float(ce), float(kl)
             return (loss, outputs) if return_outputs else loss
 
+        def log(self, logs, *args, **kwargs):
+            # Surface the last computed CE/KL decomposition beside the
+            # windowed loss (OBS-10); the tracking callback maps them to
+            # train/ce_loss and train/kl_loss. Guarded on "loss" so eval
+            # logs pass untouched.
+            if "loss" in logs and self.last_ce is not None:
+                logs["ce_loss"], logs["kl_loss"] = self.last_ce, self.last_kl
+            return super().log(logs, *args, **kwargs)
+
     return DistillTrainer
 
 
@@ -552,6 +562,7 @@ def _train_locked_distill(recipe: DictConfig) -> SftResult:
             f"Could not allocate a run directory under "
             f"{recipe.run.output_root}/{recipe.run.name}"
         )
+    set_run_dir(run_dir)
     ckpt_root = os.path.join(recipe.run.output_root, recipe.run.name, "checkpoints")
     os.makedirs(ckpt_root, exist_ok=True)
 
@@ -560,7 +571,21 @@ def _train_locked_distill(recipe: DictConfig) -> SftResult:
         json.dump(provenance, f, indent=2)
 
     recipe_hash = snapshot_hash(recipe)
-    tracker = Tracker(recipe.tracking, recipe.run.name, run_dir)
+    tracker = Tracker(
+        recipe.tracking,
+        recipe.run.name,
+        run_dir,
+        header={
+            "tier": "distill",
+            "model_id": recipe.model.hf.id,
+            "recipe_hash": recipe_hash,
+            "schedule": {
+                "type": recipe.schedule.type,
+                "warmup_steps": recipe.schedule.warmup_steps,
+                "total_steps": recipe.schedule.total_steps,
+            },
+        },
+    )
     watchdog = None
     if recipe.watchdog.enabled:
         watchdog = Watchdog(

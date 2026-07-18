@@ -476,6 +476,7 @@ class TrackingConfig:
     wandb_project: str = "ai-experiments"
     mlflow: bool = False
     tensorboard: bool = True
+    metrics_jsonl: bool = True  # per-run metrics.jsonl sink (roadmap OBS-10)
 
 
 @dataclass

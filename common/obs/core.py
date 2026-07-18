@@ -188,6 +188,14 @@ def current_run_id() -> str | None:
     return _context.get().run_id or None
 
 
+def current_cli() -> str | None:
+    return _context.get().cli or None
+
+
+def current_command() -> str | None:
+    return _context.get().command or None
+
+
 def set_run_dir(path: str | os.PathLike[str]) -> None:
     """Stash the run directory in the context and record it as an event."""
     _context.set(replace(_context.get(), run_dir=str(path)))
