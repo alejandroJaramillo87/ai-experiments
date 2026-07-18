@@ -88,14 +88,14 @@ def test_trace_records_open_import_and_spawn(tmp_path, monkeypatch):
 
 def test_trace_off_records_no_audit_events(tmp_path):
     _, records = run_touch(tmp_path)
-    assert [r["event"] for r in records] == ["cmd.start", "cmd.end"]
+    assert [r["event"] for r in records] == ["cmd.start", "run.context", "cmd.end"]
 
 
 def test_explicit_log_level_wins_over_trace(tmp_path, monkeypatch):
     monkeypatch.setenv("OBS_TRACE", "1")
     monkeypatch.setenv("OBS_LOG_LEVEL", "info")
     _, records = run_touch(tmp_path)
-    assert [r["event"] for r in records] == ["cmd.start", "cmd.end"]
+    assert [r["event"] for r in records] == ["cmd.start", "run.context", "cmd.end"]
 
 
 def test_hook_swallows_internal_errors(tmp_path, monkeypatch):

@@ -94,7 +94,12 @@ def test_uncaught_exception_writes_one_fail_record(tmp_path, capsys):
     assert "_raise_handler" in fail["traceback"]
     # one run id ties cmd.start, fail, and cmd.end together
     assert {r["run_id"] for r in records} == {fail["run_id"]}
-    assert [r["event"] for r in records] == ["cmd.start", "fail", "cmd.end"]
+    assert [r["event"] for r in records] == [
+        "cmd.start",
+        "run.context",
+        "fail",
+        "cmd.end",
+    ]
     # file-only: the interpreter prints the traceback after the re-raise,
     # so the record itself adds nothing to the console
     assert capsys.readouterr().err == ""
@@ -118,4 +123,4 @@ def test_cancellation_produces_no_fail_record(tmp_path, command, expected):
     with pytest.raises(expected):
         dispatch("toycli", build_parser, [command])
     records = read_records(tmp_path)
-    assert [r["event"] for r in records] == ["cmd.start", "cmd.end"]
+    assert [r["event"] for r in records] == ["cmd.start", "run.context", "cmd.end"]

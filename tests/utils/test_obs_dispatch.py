@@ -84,8 +84,8 @@ def read_records(tmp_path):
 def test_success_writes_start_and_end_with_shared_run_id(tmp_path):
     assert dispatch("toycli", build_parser, ["ok"]) == 0
     records = read_records(tmp_path)
-    assert [r["event"] for r in records] == ["cmd.start", "cmd.end"]
-    start, end = records
+    assert [r["event"] for r in records] == ["cmd.start", "run.context", "cmd.end"]
+    start, _, end = records
     assert start["argv"] == ["ok"]
     assert start["cli"] == "toycli"
     assert start["command"] == "ok"
@@ -142,12 +142,13 @@ def test_phase_records_span_with_duration(tmp_path, capsys):
     records = read_records(tmp_path)
     assert [r["event"] for r in records] == [
         "cmd.start",
+        "run.context",
         "phase.start",
         "phase.end",
         "cmd.end",
     ]
-    assert records[1]["phase"] == "load"
     assert records[2]["phase"] == "load"
-    assert records[2]["duration_s"] > 0
+    assert records[3]["phase"] == "load"
+    assert records[3]["duration_s"] > 0
     # file-only spans: nothing is added to the console
     assert capsys.readouterr().err == ""

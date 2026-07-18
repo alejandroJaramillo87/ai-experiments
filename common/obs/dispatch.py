@@ -17,6 +17,7 @@ import time
 from collections.abc import Callable, Sequence
 
 from common.obs.audit import install_audit_trace
+from common.obs.context import run_context
 from common.obs.core import bind_run, configure, emit, record_failure
 
 
@@ -48,6 +49,7 @@ def dispatch(
         console=False,
         argv=list(argv) if argv is not None else sys.argv[1:],
     )
+    emit("info", "", event="run.context", console=False, **run_context())
     start = time.monotonic()
     exit_code = 1
     try:
