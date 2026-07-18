@@ -39,6 +39,7 @@ from training.commands import (
     prepare_data,
     prepare_sft,
     promote_scorecard,
+    runs,
     serve_eval,
     smoke_test,
     train_tokenizer,
@@ -846,6 +847,7 @@ def build_parser() -> argparse.ArgumentParser:
         serve_eval,
         eval_ft,
         promote_scorecard,
+        runs,
     ):
         command_module.configure(sub)
     return parser

@@ -17,6 +17,7 @@ import time
 from collections.abc import Callable, Sequence
 
 from common.obs.audit import install_audit_trace
+from common.obs.catalog import record_run
 from common.obs.context import run_context
 from common.obs.core import bind_run, configure, emit, record_failure
 
@@ -73,11 +74,21 @@ def dispatch(
         record_failure(exc, exit_code)
         raise
     finally:
+        duration_s = round(time.monotonic() - start, 3)
         emit(
             "info",
             "",
             event="cmd.end",
             console=False,
             exit_code=exit_code,
-            duration_s=round(time.monotonic() - start, 3),
+            duration_s=duration_s,
+        )
+        # Catalog append (OBS-9) rides the same finally, so failed and
+        # interrupted runs are summarized too; record_run never raises.
+        record_run(
+            cli,
+            run_id=run_id,
+            command=args.command,
+            exit_code=exit_code,
+            duration_s=duration_s,
         )

@@ -147,8 +147,9 @@ This is a change from current behavior, where `Printer` writes human status
 to standard output. The change is required so that standard output holds only
 machine output. Tests that assert `Printer` output on captured standard
 output move to captured standard error as part of the fold (item OBS-3).
-The interp CLI has no `--json` flag today; the contract still holds there,
-with standard output simply remaining empty.
+The interp CLI's only `--json` flag is on the `runs` subcommand (OBS-9);
+elsewhere the contract still holds with standard output simply remaining
+empty.
 
 Human lines carry no timestamps, and the `Printer` rendering — the
 `[STATUS] Subject: detail` format, colors, and indentation defined in
@@ -302,7 +303,7 @@ scopes these four variables to the observability system.
 | `OBS_LOG_LEVEL` | `info` | Minimum level written to the console and file |
 | `OBS_LOG_DIR` | `/mnt/ai-data/logs` | Root of the event files and catalogs |
 | `OBS_TRACE` | `0` | When `1`, installs the Layer 2 audit hook (OBS-6) |
-| `OBS_RETENTION_DAYS` | `30` | Age past which event files are pruned (OBS-8) |
+| `OBS_RETENTION_DAYS` | `30` | Age past which event files are pruned (OBS-8); `0` disables |
 | `NO_COLOR` | unset | Existing variable; disables color, already honored by `Printer` |
 
 `MLFLOW_TRACKING_URI` is read at `training/runtime/tracking.py:70` as an
@@ -577,16 +578,21 @@ later item ids stay stable. There is no work to execute under this id.
   - `prune(log_dir, retention_days)` removes event files older than the
     retention window. It touches only files whose names match the run-id
     pattern (`R-*.jsonl`), so the catalog (`runs.jsonl`) and any foreign
-    files are never candidates. `configure` calls it opportunistically at
-    startup, so pruning needs no separate scheduler.
-  - The window comes from `OBS_RETENTION_DAYS`, default 30.
+    files are never candidates. File age is mtime, the run's last write.
+  - `configure` calls it opportunistically at startup on the per-CLI
+    directory it just ensured, after the file handler installs, so pruning
+    needs no separate scheduler; a run degraded to console-only prunes
+    nothing.
+  - The window comes from `OBS_RETENTION_DAYS`, default 30. A non-positive
+    or unparseable value disables pruning.
   - Pruning is best-effort: a file that cannot be removed is skipped, not
-    fatal.
+    fatal, and nothing is printed.
 - **Acceptance check** (sandbox):
   `uv run pytest tests/utils/test_obs_retention.py` passes, asserting that a
   run-id-named file older than the window is removed, that a recent file is
-  kept, that `runs.jsonl` is never removed regardless of age, and that an
-  unremovable file does not raise.
+  kept, that `runs.jsonl` is never removed regardless of age, that an
+  unremovable file does not raise, and that a disabled window prunes
+  nothing.
 - **Out of scope**: size-based rotation within a single run; per-run files
   are bounded by the run itself.
 
@@ -599,23 +605,32 @@ later item ids stay stable. There is no work to execute under this id.
   `interp/commands/runs.py`, registration in `training/cli.py` and
   `interp/cli.py`, `tests/utils/test_obs_catalog.py`.
 - **Design**:
-  - On `cmd.end`, append one summary record to
-    `${OBS_LOG_DIR}/<cli>/runs.jsonl`: `run_id`, `command`, `timestamp`,
-    `duration_s`, `exit_code`, and `run_dir` (from `current_run_dir()`, null
-    until OBS-10 wires `set_run_dir` into the loops). The append is a single
-    `O_APPEND` write, so concurrent commands from both CLIs interleave
-    whole lines.
+  - After `cmd.end`, in the same dispatch `finally`, append one summary
+    record to `${OBS_LOG_DIR}/<cli>/runs.jsonl`: `run_id`, `command`,
+    `timestamp` (run-end time; the start is encoded in the run id),
+    `duration_s`, `exit_code`, and `run_dir` (from `current_run_dir()`,
+    null until OBS-10 wires `set_run_dir` into the loops). Riding the
+    `finally` means failed and interrupted runs are summarized too. The
+    append is a single `O_APPEND` write, so concurrent commands from both
+    CLIs interleave whole lines; it creates no directories and skips
+    silently when the log root is unwritable, the same degradation
+    contract as `configure`.
   - `common/obs/catalog.py` implements reading, appending, and rendering;
     the two command modules are thin registrations following the existing
     `configure(sub)` pattern (`training/cli.py:833-847`,
     `interp/cli.py:33-46`).
   - The `runs` subcommand reads the catalog and prints a table of recent
-    runs, honoring `--json` for machine output, a `--failed` filter, and
-    `-n/--limit` (default 20).
+    runs (oldest first, so the newest sits at the bottom) on standard
+    error, honoring `--json` for machine output on standard out, a
+    `--failed` filter, and `-n/--limit` (default 20). The catalog records
+    every invocation, including `runs` itself; the display hides
+    `command == "runs"` entries unless `--all` is passed, keeping the
+    data complete and the default view signal-rich.
 - **Acceptance check** (sandbox):
   `uv run pytest tests/utils/test_obs_catalog.py` passes, asserting that a
-  completed run appends one catalog record and that `runs --json` returns the
-  recorded runs including a failed one.
+  completed run appends one catalog record, that `runs --json` returns the
+  recorded runs including a failed one, and that the default view hides
+  `runs` entries until `--all`.
 - **Out of scope**: cross-run statistics; that is ad hoc `jq` or DuckDB over
   the catalog, not a built-in feature.
 
