@@ -1,9 +1,11 @@
-"""Render a run's metrics and logs into a self-contained dashboard (OBS-11).
+"""Render a run's metrics and logs into a dashboard (OBS-11, OBS-12).
 
 Reads <run_dir>/metrics.jsonl, locates the event file for the header's
 run_id under ${OBS_LOG_DIR}, and writes <run_dir>/run.html — one HTML file
 with the charts, data, and vendored uPlot inlined, referencing no external
-URL. Exit codes: 0 success, 1 failure, 2 invalid usage.
+URL. With --serve, an ephemeral local server renders the same page live
+instead, polling the growing files; no run.html is written. Exit codes:
+0 success, 1 failure, 2 invalid usage.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ import argparse
 from pathlib import Path
 
 from common.obs import dashboard
+from common.obs import serve as obs_serve
 from common.output import Printer
 
 
@@ -31,6 +34,23 @@ def configure(sub) -> None:
         help="event file path (default: located from the header run_id "
         "under OBS_LOG_DIR)",
     )
+    p.add_argument(
+        "--serve",
+        action="store_true",
+        help="serve a live dashboard instead of writing run.html",
+    )
+    p.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="bind address for --serve (0.0.0.0 exposes to the LAN; "
+        "there is no authentication)",
+    )
+    p.add_argument(
+        "--port",
+        type=int,
+        default=8010,
+        help="port for --serve (default 8010)",
+    )
     p.set_defaults(func=cmd)
 
 
@@ -41,6 +61,18 @@ def cmd(args: argparse.Namespace) -> int:
         out.error(f"Run directory not found: {run_dir}")
         out.line("  Solution: pass a run directory created by a training command")
         return 1
+    if args.serve:
+        # metrics.jsonl may not exist yet for a run that just started; the
+        # server resolves the events path lazily from the header.
+        events_path = Path(args.events) if args.events else None
+        return obs_serve.run(
+            args.host,
+            args.port,
+            run_dir,
+            events_path,
+            dashboard.build_live_shell(),
+            out,
+        )
     metrics_path = run_dir / "metrics.jsonl"
     if not metrics_path.is_file():
         out.error(f"Metrics file not found: {metrics_path}")

@@ -784,21 +784,33 @@ later item ids stay stable. There is no work to execute under this id.
   `tests/utils/test_obs_serve.py`.
 - **Design**:
   - `report --run <run_dir> --serve` starts a standard library
-    `ThreadingHTTPServer` (no new dependency) bound to `127.0.0.1:8010` by
-    default; `--host 0.0.0.0` opts in to LAN exposure (a conscious choice —
-    there is no authentication) and `--port` overrides the port.
+    `ThreadingHTTPServer` (no new dependency, `common/obs/serve.py`) bound
+    to `127.0.0.1:8010` by default; `--host 0.0.0.0` opts in to LAN
+    exposure (a conscious choice — there is no authentication) and `--port`
+    overrides the port. Serve mode writes no `run.html` and does not
+    require `metrics.jsonl` to exist yet: the run may have just started.
   - Endpoints: `GET /` serves the live page shell (same `viewer.js`, no
     inlined data); `GET /data/metrics?offset=<bytes>` and
     `GET /data/events?offset=<bytes>` return
     `{"offset": <new_offset>, "lines": [<raw JSONL lines>]}` — the complete
-    lines appended since the byte offset. The server holds no state; the
-    client owns its offsets.
-  - The page polls every 2 seconds, appends new records, extends the charts,
-    and tails the log viewer. Follow mode pins the log view to the newest
-    record and disengages on manual scroll. Polling continues after
-    `cmd.end`; a finished run simply stops producing new lines.
+    lines appended since the byte offset. A trailing partial line is held
+    back until its newline arrives; a missing file or an offset at or past
+    the end returns the offset unchanged with no lines; an invalid or
+    negative offset reads from 0; unknown paths are 404. The server holds
+    no state; the client owns its offsets. The events path comes from the
+    `--events` override, else lazily from the metrics header (first line
+    only, retried each poll until the header lands, then cached).
+    Per-request logging is suppressed — a 2-second poll would print two
+    stderr lines per cycle.
+  - The page polls every 2 seconds, appends new records (the header record
+    is recognized in the polled stream and fills the header strip), extends
+    the charts, and tails the log viewer. Follow mode pins the log view to
+    the newest record; scrolling away from the bottom disengages the pin
+    and returning re-engages it. Polling continues after `cmd.end`; a
+    finished run simply stops producing new lines.
   - The server runs for the duration of viewing and dies with Ctrl-C.
-    Killing it loses nothing; the files are the record.
+    Killing it loses nothing; the files are the record. Tests bind port 0;
+    8010 stays the interactive default.
 - **Acceptance check** (sandbox for the endpoints; host for the live view):
   `uv run pytest tests/utils/test_obs_serve.py` passes, asserting that the
   offset endpoints return only complete appended lines and a correct new

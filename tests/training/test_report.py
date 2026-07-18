@@ -152,3 +152,31 @@ def test_snapshot_contains_all_chart_groups():
         "Device memory (GB)",
     ):
         assert title in html
+
+
+def test_serve_flag_dispatches_to_server(tmp_path, obs_isolation, monkeypatch):
+    from training.commands import report as report_cmd
+
+    calls = []
+
+    def fake_run(host, port, run_dir, events_path, shell, out):
+        calls.append((host, port, run_dir, events_path))
+        return 0
+
+    monkeypatch.setattr(report_cmd.obs_serve, "run", fake_run)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()  # no metrics.jsonl: serve mode must not require it
+    argv = ["report", "--run", str(run_dir), "--serve", "--port", "0"]
+    assert training_main(argv) == 0
+    assert calls == [("127.0.0.1", 0, run_dir, None)]
+    assert not (run_dir / "run.html").exists()
+
+
+def test_live_shell_has_no_inlined_data():
+    shell = dashboard.build_live_shell()
+    assert "obsRender" in shell
+    assert "/data/metrics" in shell
+    assert "/data/events" in shell
+    assert "pollMs: 2000" in shell
+    assert 'src="http' not in shell
+    assert 'href="http' not in shell

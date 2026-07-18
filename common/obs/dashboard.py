@@ -156,3 +156,23 @@ def build_snapshot(header: dict, metrics: list[dict], events: list[dict]) -> str
     )
     title = str(header.get("run_id") or "run dashboard")
     return _page(data_script, title)
+
+
+def build_live_shell() -> str:
+    """The live page shell (OBS-12): same viewer, no inlined data.
+
+    The page polls the serve endpoints for appended JSONL lines; the
+    header arrives as the first polled metrics record.
+    """
+    data_script = (
+        "<script>\n"
+        'obsRender(document.getElementById("root"), {\n'
+        "  header: null,\n"
+        "  metrics: [],\n"
+        "  events: [],\n"
+        '  live: {metricsUrl: "/data/metrics", eventsUrl: "/data/events",\n'
+        "         pollMs: 2000}\n"
+        "});\n"
+        "</script>"
+    )
+    return _page(data_script, "live run dashboard")
