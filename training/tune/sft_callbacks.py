@@ -30,6 +30,10 @@ from common.provenance import git_sha as _git_sha
 
 CHECKPOINT_PREFIX = "checkpoint-"
 _CHECKPOINT_RE = re.compile(r"^checkpoint-(\d+)$")
+# Emergency checkpoints written on watchdog abort; deliberately outside
+# _CHECKPOINT_RE so retention and update_latest never treat them as plain
+# checkpoints, but resume=latest must still be able to find them.
+_EMERGENCY_RE = re.compile(r"^checkpoint-(\d+)-emergency$")
 # transformers writes trainer_state.json last in a checkpoint save; its
 # presence marks the directory as complete enough to stamp with meta.json.
 TRAINER_STATE_FILE = "trainer_state.json"
@@ -171,11 +175,33 @@ def update_latest(root: str, step: int) -> None:
 
 
 def latest_trl_checkpoint(root: str) -> str | None:
-    """Newest complete checkpoint directory, or None."""
+    """Newest complete checkpoint directory, or None.
+
+    Emergency checkpoints participate, so checkpoint.resume=latest can pick
+    up after a watchdog abort (the CLI's advertised recovery path); a
+    candidate needs both meta.json and trainer_state.json, the files that
+    make a directory resumable. A plain checkpoint wins a step tie: it
+    carries the full optimizer state.
+    """
     steps = list_trl_checkpoints(root)
-    if not steps:
+    best_step = steps[-1] if steps else None
+    best_name = checkpoint_dir_name(best_step) if best_step is not None else None
+    if os.path.isdir(root):
+        for name in os.listdir(root):
+            m = _EMERGENCY_RE.match(name)
+            if m is None:
+                continue
+            path = os.path.join(root, name)
+            if not os.path.isfile(os.path.join(path, META_NAME)):
+                continue
+            if not checkpoint_complete(path):
+                continue
+            step = int(m.group(1))
+            if best_step is None or step > best_step:
+                best_step, best_name = step, name
+    if best_name is None:
         return None
-    return os.path.join(root, checkpoint_dir_name(steps[-1]))
+    return os.path.join(root, best_name)
 
 
 def tokens_per_second(tokens_per_step: int, step_delta: int, elapsed_s: float) -> float:

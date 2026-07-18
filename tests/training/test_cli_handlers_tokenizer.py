@@ -696,6 +696,73 @@ class TestGenerateTeacherCmd:
         assert "[ERROR] Restore failed: compose exited 1" in out
         assert ("Solution: docker compose up -d --force-recreate vllm-gpu") in out
 
+    def test_failed_swap_still_restores(self, tmp_path, monkeypatch, capsys):
+        # KB-10: a force-recreate that fails mid-swap can already have
+        # disturbed serving state; restore is owed from the attempt, not only
+        # after a completed swap
+        host = "/mnt/ai-data/models/tiny-Q4_K_M.gguf"
+        real_exists = os.path.exists
+        monkeypatch.setattr(
+            os.path, "exists", lambda p: True if p == host else real_exists(p)
+        )
+        swaps = []
+
+        def failing_swap(service, container_path, env=None):
+            swaps.append((service.name, container_path))
+            if container_path is not None:
+                raise serving.ServingError("force-recreate exited 1")
+
+        monkeypatch.setattr("training.serving.swap_model", failing_swap)
+        patch_transport(monkeypatch)
+        prompts = write_prompts(tmp_path / "p.jsonl", 1)
+        assert run_cli(self.swap_argv(prompts, str(tmp_path / "out"))) == 1
+        out = capsys.readouterr().err
+        assert "[ERROR] Generation aborted: force-recreate exited 1" in out
+        assert "[RUN] Restoring previous serving state" in out
+        assert swaps == [
+            ("vllm-gpu", "/app/models/tiny-Q4_K_M.gguf"),
+            ("vllm-gpu", None),
+        ]
+
+    def test_changed_prompt_refusal_styled_and_restores_despite_keep_serving(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # KB-11: the harness's ValueError refusal must land in the abort
+        # handler (styled error, exit 1, restore even under --keep-serving),
+        # not escape as a raw traceback
+        swaps = self.patch_swap(monkeypatch)
+        patch_transport(monkeypatch)
+
+        def refusing_generate(*args, **kwargs):
+            raise ValueError("prompt set changed: 2 completed records are orphans")
+
+        monkeypatch.setattr("training.data.teacher.generate", refusing_generate)
+        prompts = write_prompts(tmp_path / "p.jsonl", 1)
+        assert (
+            run_cli(self.swap_argv(prompts, str(tmp_path / "out"), "--keep-serving"))
+            == 1
+        )
+        out = capsys.readouterr().err
+        assert "[ERROR] Generation aborted: prompt set changed" in out
+        # --keep-serving keeps the swap only on success; a failed run restores
+        assert swaps[-1] == ("vllm-gpu", None)
+
+    def test_keyboard_interrupt_reports_class_name(self, tmp_path, monkeypatch, capsys):
+        # KB-12: a bare KeyboardInterrupt has an empty str(); the abort line
+        # must fall back to the class name instead of printing nothing
+        swaps = self.patch_swap(monkeypatch)
+        patch_transport(monkeypatch)
+
+        def interrupted_generate(*args, **kwargs):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr("training.data.teacher.generate", interrupted_generate)
+        prompts = write_prompts(tmp_path / "p.jsonl", 1)
+        assert run_cli(self.swap_argv(prompts, str(tmp_path / "out"))) == 1
+        out = capsys.readouterr().err
+        assert "[ERROR] Generation aborted: KeyboardInterrupt" in out
+        assert swaps[-1] == ("vllm-gpu", None)
+
     def test_generation_failure_aborts_resumable_and_exits_1(
         self, tmp_path, monkeypatch, capsys
     ):
