@@ -18,6 +18,7 @@ follows the D8 benchmark schema conventions.
 from __future__ import annotations
 
 import json
+import math
 import os
 import random
 import re
@@ -209,6 +210,19 @@ def locality_check(base_metrics: dict, subject_metrics: dict, epsilon: float) ->
         raise VerifyError(
             "locality check: base and subject metrics share no numeric "
             "fields; both sides must come from the same evaluation"
+        )
+    non_finite = sorted(
+        name
+        for name in shared
+        if not (math.isfinite(base[name]) and math.isfinite(subject[name]))
+    )
+    if non_finite:
+        # NaN survives every abs() > epsilon comparison as False, so a
+        # non-finite benchmark score would pass locality silently
+        raise VerifyError(
+            f"locality check: non-finite metric values for "
+            f"{', '.join(non_finite)}; a NaN benchmark score is a broken "
+            f"evaluation, not a pass"
         )
     deltas = {name: round(subject[name] - base[name], 6) for name in shared}
     exceeded = {name: delta for name, delta in deltas.items() if abs(delta) > epsilon}

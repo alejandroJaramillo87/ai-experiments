@@ -15,7 +15,13 @@ import hashlib
 import json
 import os
 
-from interp.manifest import git_sha, load_manifest, utc_now, write_manifest
+from interp.manifest import (
+    ManifestError,
+    git_sha,
+    load_manifest,
+    utc_now,
+    write_manifest,
+)
 
 GROUND_TRUTH_NAME = "ground_truth.json"
 SCHEMA_VERSION = 1
@@ -88,11 +94,22 @@ def seal_organism(out_dir: str, ground_truth: dict, public: dict) -> dict:
             "ground truth must record the implant mechanism under the 'mechanism' key"
         )
     truth_path = os.path.join(out_dir, GROUND_TRUTH_NAME)
-    if os.path.exists(truth_path):
+    # A seal exists only when the manifest pre-registers the hash (the same
+    # predicate check_seal uses). A truth file alone is the kill window
+    # between publishing ground_truth.json and writing the manifest — the
+    # exception cleanup below cannot run under SIGKILL — so discard the
+    # unregistered orphan and let the rerun seal instead of refusing.
+    try:
+        sealed = "ground_truth_sha256" in load_manifest(out_dir)
+    except ManifestError:
+        sealed = False
+    if sealed:
         raise SealError(
             f"{truth_path} already exists; a sealed organism is immutable "
             f"(create a new organism directory instead)"
         )
+    if os.path.exists(truth_path):
+        os.remove(truth_path)
     check_no_leak(public, ground_truth)
 
     os.makedirs(out_dir, exist_ok=True)
