@@ -394,21 +394,27 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
         )
         watchdog.start()
 
-    worker_init = (
-        aff.worker_init_fn(workers_mask, allowed=workers_allowance)
-        if workers_mask
-        else None
-    )
-    batches = CudaPrefetcher(
-        build_dataloader(
-            dataset, recipe.data, start_index=next_index, worker_init_fn=worker_init
-        ),
-        device,
-    )
-
     model.train()
     wait_total = 0.0
+    batches = None
+    # The watchdog thread and tracker are live from here on: dataloader or
+    # prefetcher construction failures must still stop the thread and close
+    # the tracker, or the process hangs with an orphaned sampler.
     try:
+        worker_init = (
+            aff.worker_init_fn(workers_mask, allowed=workers_allowance)
+            if workers_mask
+            else None
+        )
+        batches = CudaPrefetcher(
+            build_dataloader(
+                dataset,
+                recipe.data,
+                start_index=next_index,
+                worker_init_fn=worker_init,
+            ),
+            device,
+        )
         for step in range(start_step + 1, recipe.schedule.total_steps + 1):
             step_start = time.perf_counter()
             if not offload:
@@ -522,6 +528,11 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
     finally:
         if watchdog is not None:
             watchdog.stop()
-        batches.close()  # release dataloader workers promptly
+        if batches is not None:
+            try:
+                batches.close()  # release dataloader workers promptly
+            except Exception as exc:
+                # worker teardown failure must not skip tracker.close
+                print(f"[loop] WARN: dataloader close failed: {exc}", file=sys.stderr)
         tracker.close()
     return result

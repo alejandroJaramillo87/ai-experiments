@@ -593,69 +593,91 @@ def _train_locked_distill(recipe: DictConfig) -> SftResult:
         )
         watchdog.start()
 
-    from datasets import Dataset
-    from trl import SFTConfig
-
-    kwargs = sft_config_kwargs(recipe, ckpt_root, bool(holdout_samples))
-    trainer_cls = build_distill_trainer_cls()
-    trainer = trainer_cls(
-        model=model,
-        args=SFTConfig(**kwargs),
-        train_dataset=Dataset.from_list(train_samples),
-        eval_dataset=(
-            Dataset.from_list(holdout_samples)
-            if kwargs["eval_strategy"] != "no"
-            else None
-        ),
-        processing_class=tokenizer,
-        data_collator=DistillCollator(cache),
-        callbacks=build_callbacks(
-            recipe,
-            ckpt_root,
-            tracker,
-            watchdog,
-            recipe_hash,
-            trainable_report=report,
-            distill_meta=provenance,
-            base_identity=base_identity,
-        ),
-        teacher=teacher,
-        distill_cfg=d,
-    )
-
-    if (
-        teacher is not None
-        and not next(teacher.parameters()).is_cuda
-        and torch.cuda.is_available()
-    ):
-        trainer.teacher = teacher.to(trainer.model.device)
-
-    resume_path = None
-    if recipe.checkpoint.resume is not None:
-        resume_path = resolve_sft_resume(ckpt_root, recipe.checkpoint.resume)
-
+    # The watchdog thread and tracker are live from here on: trainer
+    # construction failures (bad resume path, teacher move OOM) must still
+    # stop the thread and close the tracker, or the process hangs (mirrors
+    # sft.py).
     try:
-        trainer.train(resume_from_checkpoint=resume_path)
-    except WatchdogAbort:
-        step = trainer.state.global_step
-        emergency_dir = os.path.join(
-            ckpt_root, f"{checkpoint_dir_name(step)}-emergency"
+        from datasets import Dataset
+        from trl import SFTConfig
+
+        kwargs = sft_config_kwargs(recipe, ckpt_root, bool(holdout_samples))
+        trainer_cls = build_distill_trainer_cls()
+        trainer = trainer_cls(
+            model=model,
+            args=SFTConfig(**kwargs),
+            train_dataset=Dataset.from_list(train_samples),
+            eval_dataset=(
+                Dataset.from_list(holdout_samples)
+                if kwargs["eval_strategy"] != "no"
+                else None
+            ),
+            processing_class=tokenizer,
+            data_collator=DistillCollator(cache),
+            callbacks=build_callbacks(
+                recipe,
+                ckpt_root,
+                tracker,
+                watchdog,
+                recipe_hash,
+                trainable_report=report,
+                distill_meta=provenance,
+                base_identity=base_identity,
+            ),
+            teacher=teacher,
+            distill_cfg=d,
         )
-        trainer.save_model(emergency_dir)
-        trainer.save_state()
-        write_checkpoint_meta(
-            emergency_dir,
-            step,
-            adapter_only=bool(recipe.peft.enabled),
-            base_model=recipe.model.hf.id,
-            backend=recipe.sft.backend,
-            recipe_hash=recipe_hash,
-            base_revision=getattr(base_identity, "revision", None),
-            base_config_sha256=getattr(base_identity, "config_sha256", None),
-            emergency=True,
-            distill=provenance,
-        )
-        raise
+
+        if (
+            teacher is not None
+            and not next(teacher.parameters()).is_cuda
+            and torch.cuda.is_available()
+        ):
+            trainer.teacher = teacher.to(trainer.model.device)
+
+        resume_path = None
+        if recipe.checkpoint.resume is not None:
+            resume_path = resolve_sft_resume(ckpt_root, recipe.checkpoint.resume)
+
+        try:
+            trainer.train(resume_from_checkpoint=resume_path)
+        except WatchdogAbort:
+            # Best-effort final state for post-mortem and resume; the abort
+            # must surface even if the save itself fails (mirrors sft.py).
+            try:
+                step = trainer.state.global_step
+                emergency_dir = os.path.join(
+                    ckpt_root, f"{checkpoint_dir_name(step)}-emergency"
+                )
+                trainer.save_model(emergency_dir)
+                # save_state writes trainer_state.json to args.output_dir;
+                # point it at the emergency directory so the checkpoint
+                # resumes as saved instead of leaving the state file at the
+                # checkpoint root.
+                original_output_dir = trainer.args.output_dir
+                trainer.args.output_dir = emergency_dir
+                try:
+                    trainer.save_state()
+                finally:
+                    trainer.args.output_dir = original_output_dir
+                write_checkpoint_meta(
+                    emergency_dir,
+                    step,
+                    adapter_only=bool(recipe.peft.enabled),
+                    base_model=recipe.model.hf.id,
+                    backend=recipe.sft.backend,
+                    recipe_hash=recipe_hash,
+                    base_revision=getattr(base_identity, "revision", None),
+                    base_config_sha256=getattr(base_identity, "config_sha256", None),
+                    emergency=True,
+                    distill=provenance,
+                )
+            except Exception as exc:
+                print(
+                    f"[distill] WARN: emergency checkpoint failed: {exc}",
+                    file=sys.stderr,
+                )
+            raise
     finally:
         if watchdog is not None:
             watchdog.stop()
