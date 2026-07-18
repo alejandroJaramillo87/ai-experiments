@@ -7,6 +7,7 @@ Sandbox-only: synthetic shards, no GPU or network."""
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 
@@ -465,6 +466,11 @@ class TestLoopExpansion:
 class TestGeneratorScript:
     ARGV = [sys.executable, "-m", "training", "make-replay-synthetic"]
 
+    def _env(self, tmp_path):
+        # python -m training writes obs event files (roadmap OBS-4); keep
+        # test runs out of the real /mnt/ai-data/logs
+        return {**os.environ, "OBS_LOG_DIR": str(tmp_path / "obs-logs")}
+
     def test_generates_loadable_shard_set(self, tmp_path):
         out = str(tmp_path / "synth")
         result = subprocess.run(
@@ -484,6 +490,7 @@ class TestGeneratorScript:
             capture_output=True,
             text=True,
             cwd=REPO_ROOT,
+            env=self._env(tmp_path),
         )
         assert result.returncode == 0, result.stderr
         buf = ReplayBuffer(out, window=WINDOW, seed=0)
@@ -496,5 +503,6 @@ class TestGeneratorScript:
             capture_output=True,
             text=True,
             cwd=REPO_ROOT,
+            env=self._env(tmp_path),
         )
         assert result.returncode == 2

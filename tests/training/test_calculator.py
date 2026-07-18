@@ -386,13 +386,19 @@ class TestCalculatorQwen3:
 
 
 class TestCLI:
+    @pytest.fixture(autouse=True)
+    def _obs_log_dir(self, tmp_path):
+        # python -m training writes obs event files (roadmap OBS-4); keep
+        # test runs out of the real /mnt/ai-data/logs
+        self.obs_log_dir = str(tmp_path / "obs-logs")
+
     def run_cli(self, *args: str):
         return subprocess.run(
             [sys.executable, "-m", "training", *args],
             capture_output=True,
             text=True,
             cwd=REPO_ROOT,
-            env={**os.environ, "NO_COLOR": "1"},
+            env={**os.environ, "NO_COLOR": "1", "OBS_LOG_DIR": self.obs_log_dir},
             timeout=120,
         )
 

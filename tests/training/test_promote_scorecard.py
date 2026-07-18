@@ -16,6 +16,9 @@ import pytest
 from training import cli
 from training.commands.promote_scorecard import sha256_file
 
+# cli.main() runs the traced dispatch (roadmap OBS-4); isolate its obs state
+pytestmark = pytest.mark.usefixtures("obs_isolation")
+
 
 def promote_main(argv: list[str]) -> int:
     """Drive the subcommand through the real CLI parser."""

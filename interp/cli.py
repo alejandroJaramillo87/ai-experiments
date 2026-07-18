@@ -8,6 +8,8 @@ its handler, so parsing and --help stay dependency-free.
 
 Exit codes: 0 success, 1 failure, 2 invalid usage.
 Output follows .styles/PYTHON_OUTPUT_STYLE.md.
+Every invocation runs through the traced dispatch (common/obs, roadmap
+OBS-4), which stamps a run id and writes cmd.start/cmd.end event records.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from common.obs.dispatch import dispatch
 from interp.commands import (
     harvest,
     interp_gc,
@@ -58,8 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    return args.func(args)
+    return dispatch("interp", build_parser, argv)
 
 
 if __name__ == "__main__":
