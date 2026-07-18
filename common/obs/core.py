@@ -15,6 +15,7 @@ import os
 import secrets
 import sys
 import time
+import traceback
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -24,6 +25,9 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_LOG_DIR = "/mnt/ai-data/logs"
+
+# Bound fail-record tracebacks so a recursion error cannot bloat the file.
+TRACEBACK_FRAME_LIMIT = 30
 
 _LOGGER_NAME = "obs"
 
@@ -190,6 +194,26 @@ def set_run_dir(path: str | os.PathLike[str]) -> None:
 
 def current_run_dir() -> str | None:
     return _context.get().run_dir
+
+
+def record_failure(exc: BaseException, exit_code: int) -> None:
+    """Record an uncaught exception as a structured fail event.
+
+    File-only: the dispatch wrapper re-raises after recording, so the
+    interpreter still prints the traceback to the console. A negative
+    limit keeps the last frames — the ones nearest the raise site.
+    """
+    tb = traceback.TracebackException.from_exception(exc, limit=-TRACEBACK_FRAME_LIMIT)
+    emit(
+        "error",
+        "",
+        event="fail",
+        console=False,
+        exc_type=type(exc).__name__,
+        exc_msg=str(exc),
+        traceback="".join(tb.format()),
+        exit_code=exit_code,
+    )
 
 
 @contextmanager

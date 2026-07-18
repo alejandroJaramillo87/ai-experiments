@@ -15,7 +15,7 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 
-from common.obs.core import bind_run, configure, emit
+from common.obs.core import bind_run, configure, emit, record_failure
 
 
 def dispatch(
@@ -55,8 +55,12 @@ def dispatch(
         else:
             exit_code = 0 if exc.code is None else 1
         raise
-    except BaseException:
+    except BaseException as exc:
+        # KeyboardInterrupt and SystemExit are handled above: cancellation
+        # and a deliberate exit are not failures, so only genuine uncaught
+        # exceptions produce a fail record.
         exit_code = 1
+        record_failure(exc, exit_code)
         raise
     finally:
         emit(
