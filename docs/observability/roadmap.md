@@ -733,26 +733,36 @@ later item ids stay stable. There is no work to execute under this id.
   `uPlot.min.css`, `README.md`), `tests/training/test_report.py`.
 - **Design**:
   - `python -m training report --run <run_dir>` reads `metrics.jsonl` from
-    the run directory, locates the event file for the header's `run_id`
-    under `${OBS_LOG_DIR}` (overridable with `--events <path>`), and writes
-    `<run_dir>/run.html`.
+    the run directory, locates the event file at
+    `${OBS_LOG_DIR}/<cli>/<run_id>.jsonl` from the header's identity
+    (overridable with `--events <path>`), and writes `<run_dir>/run.html`.
+    The command module is a thin Printer/exit-code shell; the page assembly
+    lives in `common/obs/dashboard.py`, a pure builder returning the HTML
+    string. A missing `metrics.jsonl` is exit 1; a missing or unlocatable
+    event file degrades to a warning and an empty log viewer (the charts
+    are the primary artifact); malformed JSON Lines are skipped and
+    counted, with one warning per file.
   - The chart layer is uplot 1.6.32, vendored at `common/obs/vendor/uplot/`
     with its version and tarball checksum recorded (see
-    [File and directory layout](#file-and-directory-layout)). uPlot is
-    canvas-based, 45KB minified, MIT-licensed, and built for dense time
-    series, which matches a per-step series of 10,000 or more points.
+    [File and directory layout](#file-and-directory-layout)) and verified
+    at vendoring time; the vendor `README.md` carries the version, source
+    URL, sha256, and update procedure. uPlot is canvas-based, 51KB
+    minified, MIT-licensed, and built for dense time series, which matches
+    a per-step series of 10,000 or more points.
   - The page inlines everything — the two data sets as script blocks, the
     uPlot script and stylesheet, and `common/obs/viewer.js` — and references
-    no external URL. The viewer module draws the loss curves (`loss`,
-    `train/loss`, `eval/holdout_loss`), the learning-rate schedule,
-    throughput, and device memory (`gpu_mem_allocated_gb`,
-    `gpu_vram_used_gb`), with `checkpoint_saved` and `watchdog/<signal>`
-    markers on the step axis, handling both key vocabularies from the
-    metrics schema. Below the charts it renders a log viewer over the event
-    records with level filtering and substring search.
+    no external URL. Payloads embed with `</` escaped to `<\/`, so record
+    text containing `</script>` cannot terminate the enclosing block. The
+    viewer module draws the loss curves (`loss`, `train/loss`,
+    `eval/holdout_loss`), the learning-rate schedule, throughput, and
+    device memory (`gpu_mem_allocated_gb`, `gpu_vram_used_gb`), with
+    `checkpoint_saved` and `watchdog/<signal>` markers drawn on the loss
+    chart's step axis, handling both key vocabularies from the metrics
+    schema. Below the charts it renders a log viewer over the event records
+    with level filtering and substring search.
   - `viewer.js` takes its data through one entry point
-    (`render(root, {header, metrics, events})`), so OBS-12 can reuse it
-    unchanged with polled data.
+    (`window.obsRender(root, {header, metrics, events, live})`), so OBS-12
+    reuses it unchanged with polled data.
 - **Acceptance check** (sandbox):
   `uv run pytest tests/training/test_report.py` passes, asserting that from a
   fixture `metrics.jsonl` and event file the command writes a single HTML
