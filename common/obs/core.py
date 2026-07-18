@@ -113,8 +113,48 @@ class _JsonFormatter(logging.Formatter):
             "event": getattr(record, "obs_event", "log"),
             "msg": record.getMessage(),
         }
-        payload.update(getattr(record, "obs_fields", None) or {})
-        return json.dumps(payload, default=repr)
+        fields = getattr(record, "obs_fields", None) or {}
+        # base schema wins: a caller field named run_id/ts/... must not
+        # corrupt the correlation join
+        payload.update({k: v for k, v in fields.items() if k not in payload})
+        try:
+            return json.dumps(payload, default=repr)
+        except Exception:
+            # default=repr covers values, not keys, cycles, or broken
+            # reprs; keep the record rather than raising into logging
+            base = {
+                k: payload[k]
+                for k in (
+                    "ts",
+                    "level",
+                    "run_id",
+                    "cli",
+                    "command",
+                    "pid",
+                    "event",
+                    "msg",
+                )
+            }
+            try:
+                base["fields_repr"] = repr(fields)
+            except Exception:
+                base["fields_repr"] = "<unrepresentable>"
+            return json.dumps(base, default=repr)
+
+
+class _QuietStreamHandler(logging.StreamHandler):
+    """Emit failures stay silent: a broken stderr must not spray tracebacks."""
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        pass
+
+
+class _QuietFileHandler(logging.FileHandler):
+    """Emit failures stay silent: mid-run ENOSPC would otherwise print a
+    logging traceback to stderr for every subsequent record."""
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        pass
 
 
 class StructuredLogger:
@@ -270,9 +310,12 @@ def configure(
     for handler in list(_logger.handlers):
         if not isinstance(handler, logging.NullHandler):
             _logger.removeHandler(handler)
-            handler.close()
+            try:
+                handler.close()
+            except Exception:
+                pass  # a broken stream must not block reconfiguration
 
-    console = logging.StreamHandler(sys.stderr)
+    console = _QuietStreamHandler(sys.stderr)
     console.setFormatter(_HumanFormatter())
     console.addFilter(_ConsoleFilter())
     _logger.addHandler(console)
@@ -283,9 +326,7 @@ def configure(
     try:
         file_dir = log_root / cli
         file_dir.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(
-            file_dir / f"{run_id}.jsonl", encoding="utf-8"
-        )
+        file_handler = _QuietFileHandler(file_dir / f"{run_id}.jsonl", encoding="utf-8")
     except OSError:
         return run_id
     file_handler.setFormatter(_JsonFormatter())

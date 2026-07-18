@@ -366,7 +366,13 @@ has no `tests/common/` directory.
     unless overridden.
   - `get_logger(name)` returns a `StructuredLogger` bound to `name`.
   - The JSON formatter writes exactly one object per line and never raises on
-    a non-serializable field; it coerces unknown types with `repr`.
+    a non-serializable field; it coerces unknown values with `repr`, and when
+    serialization still fails (non-string keys, cycles, a value whose own
+    `repr` raises) it falls back to the base schema plus a `fields_repr`
+    string. Base-schema keys always win over a caller field of the same name.
+  - Handler write failures are silent: both installed handlers suppress
+    `handleError`, so mid-run ENOSPC cannot flood standard error with logging
+    tracebacks, and reconfiguration tolerates a broken previous stream.
 - **Acceptance check** (sandbox): `uv run pytest tests/utils/test_obs_core.py`
   passes, asserting that one `info` call writes one parseable JSON line with
   the base fields, that the human line appears on standard error and not
