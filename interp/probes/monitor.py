@@ -193,10 +193,13 @@ def run_monitor(
     if not probes:
         raise MonitorError("no probes given")
 
-    removed = enforce_retention(log_dir, now=now)
     now = now or datetime.datetime.now(datetime.UTC)
     since = now - parse_window(window)
+    # Read the window before enforcing retention: a --window longer than the
+    # retention period must replay what is still on disk, not delete it
+    # first and then silently omit it
     records, skipped = read_log_window(log_dir, since, now)
+    removed = enforce_retention(log_dir, now=now)
     total = len(records) + sum(skipped.values())
     dropped = 0
     if max_records is not None and len(records) > max_records:

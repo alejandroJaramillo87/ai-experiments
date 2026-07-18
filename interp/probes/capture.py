@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 
 from interp.manifest import (
+    MANIFEST_NAME,
     git_sha,
     text_sha256,
     tokenizer_fingerprint,
@@ -129,6 +130,12 @@ def run_capture(
         activations, fingerprint = capture_fn(texts, layers)
 
     os.makedirs(out_dir, exist_ok=True)
+    # In-progress captures have no manifest: drop a previous run's manifest
+    # before the first data write, so a kill mid-rewrite leaves a directory
+    # load_manifest refuses instead of a valid manifest over torn shards
+    stale = os.path.join(out_dir, MANIFEST_NAME)
+    if os.path.isfile(stale):
+        os.remove(stale)
     with open(os.path.join(out_dir, "examples.jsonl"), "w", encoding="utf-8") as f:
         for example in examples:
             f.write(json.dumps(example, ensure_ascii=False) + "\n")

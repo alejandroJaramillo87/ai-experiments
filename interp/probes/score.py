@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from interp.manifest import require_match
 from interp.probes.registry import Probe
 
 
@@ -38,11 +39,21 @@ def score_texts(
     if capture_fn is None:
         from interp.probes.capture import capture_activations
 
-        activations, _ = capture_activations(
+        activations, fingerprint = capture_activations(
             model_id, texts, layers, revision=revision, batch_size=batch_size
         )
     else:
-        activations, _ = capture_fn(texts, layers)
+        activations, fingerprint = capture_fn(texts, layers)
+    # The documented score-time guard: scoring through a tokenizer or chat
+    # template different from the one the probe was trained on produces
+    # meaningless scores, so every probe's recorded fingerprint must match
+    for probe in probes:
+        require_match(
+            probe.manifest,
+            "tokenizer_fingerprint",
+            fingerprint,
+            f"probe {probe.name}",
+        )
     return {
         probe.name: score_activations(probe, activations[probe.layer])
         for probe in probes
