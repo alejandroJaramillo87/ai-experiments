@@ -228,8 +228,16 @@ Header record (built with `report_header("run_metrics")`, then extended):
 | `recipe_hash` | string | Hash of the resolved recipe (`snapshot_hash`) |
 | `schedule` | object | Schedule summary, for example WSD phase boundaries |
 
+The ambient identity comes from `current_run_id()`, `current_cli()`, and
+`current_command()` (`common/obs/core.py`); a `Tracker` constructed outside
+a dispatched CLI writes them as empty strings, and `validate_report` still
+accepts the header — the events join is simply unavailable there.
+
 Per-step records carry `step`, `ts`, and the metric keys passed to
-`Tracker.log(metrics, step)`. The two loop families use different key
+`Tracker.log(metrics, step)`. `ts` uses the event-file timestamp format
+(local ISO 8601, millisecond precision, with offset), and values pass
+through `json.dumps(..., default=float)` so numpy scalars serialize. The
+two loop families use different key
 vocabularies; both are written as-is and the dashboard maps both:
 
 | Series | D6 loop key (`training/runtime/loop.py`) | SFT and distill key (`training/tune/sft_callbacks.py`) |
@@ -653,16 +661,26 @@ later item ids stay stable. There is no work to execute under this id.
   `tests/training/test_obs_metrics.py`.
 - **Design**:
   - A `jsonl` sink joins the tensorboard, wandb, and mlflow sinks in
-    `Tracker` (`training/runtime/tracking.py:26-112`), enabled by
+    `Tracker` (`training/runtime/tracking.py`), enabled by
     `TrackingConfig.metrics_jsonl` (default true — it is the observability
     system's durable record, unlike the optional external integrations). It
-    follows the same discipline as the other sinks: initialized lazily,
-    disabled with a stderr warning on failure, never able to kill a run.
+    registers as `("jsonl", ...)` in the `_sinks` fan-out, initialized
+    first, and follows the same discipline as the other sinks: disabled
+    with a stderr warning on failure, never able to kill a run. The file
+    opens line-buffered on the first `log` call, so a run that never logs
+    leaves no file and a killed run keeps every completed step.
   - `Tracker.__init__` gains `header: dict | None = None`. The three
-    construction sites (`training/runtime/loop.py:302`,
-    `training/tune/sft.py:406`, `training/tune/distill.py:563`) pass `tier`,
-    `model_id`, `recipe_hash` (`snapshot_hash(recipe)`, already computed in
-    the D6 loop), and a schedule summary — all values they already hold.
+    construction sites (`training/runtime/loop.py`, `training/tune/sft.py`,
+    `training/tune/distill.py`) pass `tier`, `model_id`, `recipe_hash`
+    (`snapshot_hash(recipe)`, already computed at each site), and a schedule
+    summary — all values they already hold. `tier` stays in the
+    `pretrain`/`sft`/`distill` vocabulary: the SFT entry point reports
+    `distill` when `recipe.distill.enabled` (response tier), and the
+    logit-tier sub-distinction is recoverable from `command` and the recipe
+    snapshot. `model_id` falls back to `scratch-<layers>L-<hidden>d` for
+    from-scratch models in the D6 loop. The schedule summary is the full
+    WSD tuple in the D6 loop and `{type, warmup_steps, total_steps}` for
+    the trl family, whose recipes reject WSD knobs.
   - On first write the sink emits the header record:
     `report_header("run_metrics")` extended with the header dict plus
     `run_id`, `cli`, and `command` from the ambient context
@@ -674,14 +692,19 @@ later item ids stay stable. There is no work to execute under this id.
   - Watchdog interval samples and `watchdog/<signal>` alerts already flow
     through `tracker.log` (`training/runtime/watchdog.py:195-196` and
     `_alert`), so they land in the file with no watchdog changes.
-  - The D6 loop adds one `tracker.log({"checkpoint_saved": 1}, step)` at its
-    save sites (`training/runtime/loop.py:480-488`), giving the dashboard
-    checkpoint markers. SFT and distill checkpoints are written inside the
-    TRL trainer; markers for them are out of scope in this version.
+  - The D6 loop adds one `tracker.log({"checkpoint_saved": 1}, step)` after
+    its normal interval/final save, giving the dashboard checkpoint
+    markers. The emergency save in the watchdog-abort path is not marked —
+    the watchdog alert and the fail event already record that step. SFT and
+    distill checkpoints are written inside the TRL trainer; markers for
+    them are out of scope in this version.
   - The distill CE and KL values are already computed and stored on the
-    trainer (`training/tune/distill.py:339`) but never logged; the tracking
-    callback reads them when present and logs `train/ce_loss` and
-    `train/kl_loss`.
+    trainer (`training/tune/distill.py`) but never logged. The tracking
+    callback has no trainer reference, so the wiring stays inside the
+    documented transformers extension point: the distill trainer overrides
+    `log()` to inject `ce_loss` and `kl_loss` beside the windowed `loss`
+    (evaluation logs pass untouched), and the callback maps them to
+    `train/ce_loss` and `train/kl_loss` like every other metric.
   - Interpretability loops: SAE training delegates its inner loop to
     SAELens, which never calls the repository's tracker, so per-step interp
     metrics are not reachable without patching SAELens; end-of-run manifests
@@ -690,8 +713,10 @@ later item ids stay stable. There is no work to execute under this id.
 - **Acceptance check** (sandbox for the unit; host for the real series):
   `uv run pytest tests/training/test_obs_metrics.py` passes, asserting that a
   synthetic sequence of `log` calls produces a header that `validate_report`
-  accepts, one record per step with keys as logged, and marker records for a
-  synthetic checkpoint and watchdog alert. On the workstation, a short
+  accepts, one record per step with keys as logged, marker records for a
+  synthetic checkpoint and watchdog alert, empty-string context fields for a
+  tracker constructed outside a dispatched CLI, and no file at all when
+  `metrics_jsonl` is false. On the workstation, a short
   `train-sft` run writes a `metrics.jsonl` whose step count matches the run;
   record the command and output in the verification runbook.
 - **Out of scope**: the rendering, which is OBS-11; SFT and distill
@@ -708,26 +733,36 @@ later item ids stay stable. There is no work to execute under this id.
   `uPlot.min.css`, `README.md`), `tests/training/test_report.py`.
 - **Design**:
   - `python -m training report --run <run_dir>` reads `metrics.jsonl` from
-    the run directory, locates the event file for the header's `run_id`
-    under `${OBS_LOG_DIR}` (overridable with `--events <path>`), and writes
-    `<run_dir>/run.html`.
+    the run directory, locates the event file at
+    `${OBS_LOG_DIR}/<cli>/<run_id>.jsonl` from the header's identity
+    (overridable with `--events <path>`), and writes `<run_dir>/run.html`.
+    The command module is a thin Printer/exit-code shell; the page assembly
+    lives in `common/obs/dashboard.py`, a pure builder returning the HTML
+    string. A missing `metrics.jsonl` is exit 1; a missing or unlocatable
+    event file degrades to a warning and an empty log viewer (the charts
+    are the primary artifact); malformed JSON Lines are skipped and
+    counted, with one warning per file.
   - The chart layer is uplot 1.6.32, vendored at `common/obs/vendor/uplot/`
     with its version and tarball checksum recorded (see
-    [File and directory layout](#file-and-directory-layout)). uPlot is
-    canvas-based, 45KB minified, MIT-licensed, and built for dense time
-    series, which matches a per-step series of 10,000 or more points.
+    [File and directory layout](#file-and-directory-layout)) and verified
+    at vendoring time; the vendor `README.md` carries the version, source
+    URL, sha256, and update procedure. uPlot is canvas-based, 51KB
+    minified, MIT-licensed, and built for dense time series, which matches
+    a per-step series of 10,000 or more points.
   - The page inlines everything — the two data sets as script blocks, the
     uPlot script and stylesheet, and `common/obs/viewer.js` — and references
-    no external URL. The viewer module draws the loss curves (`loss`,
-    `train/loss`, `eval/holdout_loss`), the learning-rate schedule,
-    throughput, and device memory (`gpu_mem_allocated_gb`,
-    `gpu_vram_used_gb`), with `checkpoint_saved` and `watchdog/<signal>`
-    markers on the step axis, handling both key vocabularies from the
-    metrics schema. Below the charts it renders a log viewer over the event
-    records with level filtering and substring search.
+    no external URL. Payloads embed with `</` escaped to `<\/`, so record
+    text containing `</script>` cannot terminate the enclosing block. The
+    viewer module draws the loss curves (`loss`, `train/loss`,
+    `eval/holdout_loss`), the learning-rate schedule, throughput, and
+    device memory (`gpu_mem_allocated_gb`, `gpu_vram_used_gb`), with
+    `checkpoint_saved` and `watchdog/<signal>` markers drawn on the loss
+    chart's step axis, handling both key vocabularies from the metrics
+    schema. Below the charts it renders a log viewer over the event records
+    with level filtering and substring search.
   - `viewer.js` takes its data through one entry point
-    (`render(root, {header, metrics, events})`), so OBS-12 can reuse it
-    unchanged with polled data.
+    (`window.obsRender(root, {header, metrics, events, live})`), so OBS-12
+    reuses it unchanged with polled data.
 - **Acceptance check** (sandbox):
   `uv run pytest tests/training/test_report.py` passes, asserting that from a
   fixture `metrics.jsonl` and event file the command writes a single HTML
@@ -749,21 +784,33 @@ later item ids stay stable. There is no work to execute under this id.
   `tests/utils/test_obs_serve.py`.
 - **Design**:
   - `report --run <run_dir> --serve` starts a standard library
-    `ThreadingHTTPServer` (no new dependency) bound to `127.0.0.1:8010` by
-    default; `--host 0.0.0.0` opts in to LAN exposure (a conscious choice —
-    there is no authentication) and `--port` overrides the port.
+    `ThreadingHTTPServer` (no new dependency, `common/obs/serve.py`) bound
+    to `127.0.0.1:8010` by default; `--host 0.0.0.0` opts in to LAN
+    exposure (a conscious choice — there is no authentication) and `--port`
+    overrides the port. Serve mode writes no `run.html` and does not
+    require `metrics.jsonl` to exist yet: the run may have just started.
   - Endpoints: `GET /` serves the live page shell (same `viewer.js`, no
     inlined data); `GET /data/metrics?offset=<bytes>` and
     `GET /data/events?offset=<bytes>` return
     `{"offset": <new_offset>, "lines": [<raw JSONL lines>]}` — the complete
-    lines appended since the byte offset. The server holds no state; the
-    client owns its offsets.
-  - The page polls every 2 seconds, appends new records, extends the charts,
-    and tails the log viewer. Follow mode pins the log view to the newest
-    record and disengages on manual scroll. Polling continues after
-    `cmd.end`; a finished run simply stops producing new lines.
+    lines appended since the byte offset. A trailing partial line is held
+    back until its newline arrives; a missing file or an offset at or past
+    the end returns the offset unchanged with no lines; an invalid or
+    negative offset reads from 0; unknown paths are 404. The server holds
+    no state; the client owns its offsets. The events path comes from the
+    `--events` override, else lazily from the metrics header (first line
+    only, retried each poll until the header lands, then cached).
+    Per-request logging is suppressed — a 2-second poll would print two
+    stderr lines per cycle.
+  - The page polls every 2 seconds, appends new records (the header record
+    is recognized in the polled stream and fills the header strip), extends
+    the charts, and tails the log viewer. Follow mode pins the log view to
+    the newest record; scrolling away from the bottom disengages the pin
+    and returning re-engages it. Polling continues after `cmd.end`; a
+    finished run simply stops producing new lines.
   - The server runs for the duration of viewing and dies with Ctrl-C.
-    Killing it loses nothing; the files are the record.
+    Killing it loses nothing; the files are the record. Tests bind port 0;
+    8010 stays the interactive default.
 - **Acceptance check** (sandbox for the endpoints; host for the live view):
   `uv run pytest tests/utils/test_obs_serve.py` passes, asserting that the
   offset endpoints return only complete appended lines and a correct new

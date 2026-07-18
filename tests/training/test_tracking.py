@@ -44,7 +44,9 @@ class FailingTensorboard:
 def make_tracker(run_dir):
     """A Tracker with no sinks wired by __init__ (all backends disabled), so
     fakes can be injected without importing torch/wandb/mlflow."""
-    cfg = TrackingConfig(tensorboard=False, wandb=False, mlflow=False)
+    cfg = TrackingConfig(
+        tensorboard=False, wandb=False, mlflow=False, metrics_jsonl=False
+    )
     return Tracker(cfg, "run", str(run_dir))
 
 

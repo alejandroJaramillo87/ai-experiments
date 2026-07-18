@@ -237,6 +237,8 @@ def build_callbacks(
                 ("grad_norm", "train/grad_norm"),
                 ("learning_rate", "train/lr"),
                 ("eval_loss", "eval/holdout_loss"),
+                ("ce_loss", "train/ce_loss"),
+                ("kl_loss", "train/kl_loss"),
             ):
                 if src in logs:
                     metrics[dst] = logs[src]

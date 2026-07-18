@@ -311,7 +311,12 @@ class FakeWandbRun:
 
 
 def cfg(**kwargs):
-    base = {"tensorboard": False, "wandb": False, "mlflow": False}
+    base = {
+        "tensorboard": False,
+        "wandb": False,
+        "mlflow": False,
+        "metrics_jsonl": False,
+    }
     base.update(kwargs)
     return TrackingConfig(**base)
 
