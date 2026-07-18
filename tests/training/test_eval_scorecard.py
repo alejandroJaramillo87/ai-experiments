@@ -93,6 +93,19 @@ def test_holdout_section_deltas_and_precision_guard():
         holdout_section(holdout_record(2.0), holdout_record(1.5, "nf4-bf16"))
 
 
+def test_holdout_section_refuses_mismatched_run_parameters():
+    # KB-23: a side record resumed from a run with a different dataset or
+    # example cap must be refused, not merged into the scorecard
+    other_dataset = holdout_record(1.5)
+    other_dataset["dataset"] = "/data/sft/y"
+    with pytest.raises(ScorecardError, match="dataset differs"):
+        holdout_section(holdout_record(2.0), other_dataset)
+    fewer_examples = holdout_record(1.5)
+    fewer_examples["examples"] = 5
+    with pytest.raises(ScorecardError, match="example count differs"):
+        holdout_section(holdout_record(2.0), fewer_examples)
+
+
 def lmeval_record(value, version="0.4.12"):
     return {
         "lm_eval_version": version,
@@ -112,6 +125,15 @@ def test_lmeval_section_deltas_and_version_guard():
         lmeval_section(
             {"lm_eval_version": "0.4.12", "results": {}}, lmeval_record(0.55)
         )
+
+
+def test_lmeval_section_refuses_mismatched_limit():
+    # KB-23: a side resumed from a run with a different --limit is not
+    # comparable with the other side
+    limited = lmeval_record(0.55)
+    limited["limit"] = 100
+    with pytest.raises(ScorecardError, match="limit differs"):
+        lmeval_section(lmeval_record(0.5), limited)
 
 
 def test_render_markdown_covers_all_sections():
