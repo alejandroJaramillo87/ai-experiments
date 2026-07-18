@@ -26,6 +26,7 @@ from interp.commands import (
     probe_eval,
     probe_monitor,
     probe_train,
+    runs,
     sae_eval,
     sae_train,
     smoke_test,
@@ -46,6 +47,7 @@ COMMAND_MODULES = (
     steer_extract,
     steer_scorecard,
     smoke_test,
+    runs,
 )
 
 
