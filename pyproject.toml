@@ -280,10 +280,11 @@ omit = [
 ]
 
 [tool.coverage.report]
-# Ratchet: one point below the measured sandbox total (83.65% at the final
-# code sweep; common 99.00%, interp 92.95%, training 79.82%). Raise as
-# coverage grows; never lower to admit a regression.
-fail_under = 82.65
+# Ratchet: one point below the measured sandbox total (84.70% after the
+# observability verification campaign; common 93.98%, interp 92.87%,
+# training 80.68%). Raise as coverage grows; never lower to admit a
+# regression.
+fail_under = 83.70
 
 [tool.ruff]
 line-length = 88
