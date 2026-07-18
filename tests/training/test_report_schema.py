@@ -85,6 +85,8 @@ class TestEvalScorecard:
 
 
 class TestServeEvalReport:
+    # main() runs the traced dispatch (roadmap OBS-4); isolate its obs state
+    @pytest.mark.usefixtures("obs_isolation")
     def test_cmd_report_conforms(self, tmp_path, monkeypatch, capsys):
         """Drive the real serve-eval command with the serving seams faked;
         the written report must carry the shared envelope."""

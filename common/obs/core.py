@@ -15,6 +15,9 @@ import os
 import secrets
 import sys
 import time
+import traceback
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -22,6 +25,9 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_LOG_DIR = "/mnt/ai-data/logs"
+
+# Bound fail-record tracebacks so a recursion error cannot bloat the file.
+TRACEBACK_FRAME_LIMIT = 30
 
 _LOGGER_NAME = "obs"
 
@@ -190,6 +196,49 @@ def current_run_dir() -> str | None:
     return _context.get().run_dir
 
 
+def record_failure(exc: BaseException, exit_code: int) -> None:
+    """Record an uncaught exception as a structured fail event.
+
+    File-only: the dispatch wrapper re-raises after recording, so the
+    interpreter still prints the traceback to the console. A negative
+    limit keeps the last frames — the ones nearest the raise site.
+    """
+    tb = traceback.TracebackException.from_exception(exc, limit=-TRACEBACK_FRAME_LIMIT)
+    emit(
+        "error",
+        "",
+        event="fail",
+        console=False,
+        exc_type=type(exc).__name__,
+        exc_msg=str(exc),
+        traceback="".join(tb.format()),
+        exit_code=exit_code,
+    )
+
+
+@contextmanager
+def phase(name: str) -> Iterator[None]:
+    """Bracket a coarse in-command span with phase.start and phase.end.
+
+    File-only records: the command's own status lines remain the human
+    view of progress. phase.end always fires, so an exception inside the
+    span still records its duration.
+    """
+    emit("info", "", event="phase.start", console=False, phase=name)
+    start = time.monotonic()
+    try:
+        yield
+    finally:
+        emit(
+            "info",
+            "",
+            event="phase.end",
+            console=False,
+            phase=name,
+            duration_s=round(time.monotonic() - start, 3),
+        )
+
+
 def configure(
     cli: str,
     *,
@@ -218,9 +267,17 @@ def configure(
     console.addFilter(_ConsoleFilter())
     _logger.addHandler(console)
 
-    file_dir = log_root / cli
-    file_dir.mkdir(parents=True, exist_ok=True)
-    file_handler = logging.FileHandler(file_dir / f"{run_id}.jsonl", encoding="utf-8")
+    # Best-effort file handler: on a machine without the log root (an agent
+    # sandbox has no /mnt/ai-data) the command runs console-only. Silent by
+    # design; a warning here would break every stderr output contract.
+    try:
+        file_dir = log_root / cli
+        file_dir.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(
+            file_dir / f"{run_id}.jsonl", encoding="utf-8"
+        )
+    except OSError:
+        return run_id
     file_handler.setFormatter(_JsonFormatter())
     _logger.addHandler(file_handler)
 

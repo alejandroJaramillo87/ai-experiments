@@ -1,7 +1,8 @@
 """Observability package: structured logging keyed by an ambient run id.
 
 Specified by docs/observability/roadmap.md. The package grows one module
-per roadmap item; ``core`` (OBS-1) holds the logging core.
+per roadmap item; ``core`` (OBS-1) holds the logging core and ``dispatch``
+(OBS-4) the traced CLI dispatch.
 """
 
 from common.obs.core import (
@@ -13,6 +14,7 @@ from common.obs.core import (
     emit,
     get_logger,
     new_run_id,
+    phase,
     set_run_dir,
 )
 
@@ -25,5 +27,6 @@ __all__ = [
     "emit",
     "get_logger",
     "new_run_id",
+    "phase",
     "set_run_dir",
 ]

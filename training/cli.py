@@ -9,6 +9,8 @@ handling, so hydra.main is not used.
 
 Exit codes: 0 success, 1 load/validation/runtime failure, 2 invalid usage.
 Output follows .styles/PYTHON_OUTPUT_STYLE.md; --json emits only JSON.
+Every invocation runs through the traced dispatch (common/obs, roadmap
+OBS-4), which stamps a run id and writes cmd.start/cmd.end event records.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import json
 import os
 import sys
 
+from common.obs.dispatch import dispatch
 from common.output import Printer
 from training.calculator.solve import (
     GIB,
@@ -849,8 +852,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    return args.func(args)
+    return dispatch("training", build_parser, argv)
 
 
 if __name__ == "__main__":
