@@ -201,3 +201,12 @@ def test_bind_failure_returns_styled_error(tmp_path, server, capsys):
     err = capsys.readouterr().err
     assert "Cannot bind" in err
     assert "--port" in err
+
+
+def test_events_stay_empty_when_no_header_in_prefix(tmp_path, server):
+    # non-dict JSON, wrong report type, malformed: none resolve an events
+    # path, and the endpoint degrades to empty rather than erroring
+    (tmp_path / "metrics.jsonl").write_text(
+        '[1, 2]\n{"report": "other"}\nnot json\n{"step": 1}\n'
+    )
+    assert get_json(server, "/data/events?offset=0") == {"offset": 0, "lines": []}

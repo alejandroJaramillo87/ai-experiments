@@ -222,3 +222,16 @@ def test_reconfigure_survives_a_broken_handler_stream(tmp_path):
     )
     file_handler.stream.close()  # close() will now raise at flush
     assert core.configure("training", run_id=RUN_ID, log_dir=str(tmp_path))
+
+
+def test_unwritable_log_root_degrades_to_console_only(tmp_path, capsys, monkeypatch):
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("")
+    run_id = core.configure("training", log_dir=str(blocker / "logs"))
+    assert run_id.startswith("R-")
+    core.bind_run("training", "x", run_id)
+    core.get_logger("t").info("still alive")
+    err = capsys.readouterr().err
+    assert "[INFO] still alive" in err
+    assert "Traceback" not in err
+    assert not (blocker / "logs").exists()
