@@ -164,6 +164,11 @@ training = [
     "torchao==0.14.0",
     "flash-attn==2.8.3.post1",
     "hydra-core==1.3.2",
+    # OmegaConf DictConfig is imported directly across training/ (recipes, calculator, runtime).
+    # Declared explicitly, not relied on transitively via hydra-core: the training image's
+    # `uv sync --no-install-project --group training` installs direct members but not this
+    # transitive-only edge. Core placement is not an option (antlr4 pin conflicts graph-wide).
+    "omegaconf==2.3.1",
     # F7 lm-evaluation-harness (resolved F7 decision 4: training group, not a
     # separate image; the pinned task set lives in training/eval/tasks.yaml)
     "lm-eval==0.4.12",

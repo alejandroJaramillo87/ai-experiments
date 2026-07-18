@@ -30,6 +30,14 @@ LABEL description="Training environment for RTX 5090 Blackwell / Ryzen 9950X Zen
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
+# Cap parallel source compilation of the training stack (flash-attn, DeepSpeed, liger-kernel,
+# torchao build CUDA/C++ from source, one job per core by default). Unbounded this saturates all
+# 32 threads of the 9950X and can OOM or freeze the desktop. Mirrors the host `make install` cap
+# (Makefile MAX_JOBS/NVCC_THREADS). NVCC_THREADS=1 keeps flash-attn's total (MAX_JOBS x
+# NVCC_THREADS) at the cap, not double it. Override: docker compose build --build-arg MAX_JOBS=8.
+ARG MAX_JOBS=16
+ARG NVCC_THREADS=1
+
 # Blackwell sm_120 target, matching the inference GPU images
 ENV TORCH_CUDA_ARCH_LIST="12.0"
 ENV CUDA_ARCHITECTURES=120
@@ -71,10 +79,12 @@ ENV CUDA_MODULE_LOADING=LAZY
 # Fall back to -march=native if the image gcc rejects znver5.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
+    MAX_JOBS=${MAX_JOBS} NVCC_THREADS=${NVCC_THREADS} \
     DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1 \
     CFLAGS="-march=znver5" CXXFLAGS="-march=znver5" \
     uv sync --frozen --no-install-project --no-default-groups --group training \
-    || DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1 \
+    || MAX_JOBS=${MAX_JOBS} NVCC_THREADS=${NVCC_THREADS} \
+       DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1 \
        CFLAGS="-march=native" CXXFLAGS="-march=native" \
        uv sync --frozen --no-install-project --no-default-groups --group training
 

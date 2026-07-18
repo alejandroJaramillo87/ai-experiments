@@ -121,10 +121,12 @@ llm-mode: ## Stop ComfyUI, start GPU LLM services
 
 TRAIN_COMPOSE := docker-compose.training.yaml
 
-train-build: ## Build the training image (runs the smoke test at build; fails on regression)
+train-build: ## Build the export + training images, serialized so the two compiles don't sum to 32 threads (smoke-tests at build). Override cores: make train-build MAX_JOBS=8
+	@echo "$(CYAN)Building export image...$(RESET)"
+	docker compose -f $(TRAIN_COMPOSE) build export
 	@echo "$(CYAN)Building training image...$(RESET)"
-	docker compose -f $(TRAIN_COMPOSE) build
-	@echo "$(GREEN)Training image built.$(RESET)"
+	docker compose -f $(TRAIN_COMPOSE) build training
+	@echo "$(GREEN)Export and training images built.$(RESET)"
 
 train-shell: ## Interactive shell in the training container (GPU + /mnt/ai-data/training mounted)
 	docker compose -f $(TRAIN_COMPOSE) run --rm training /bin/bash

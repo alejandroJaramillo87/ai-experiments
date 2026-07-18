@@ -13,6 +13,11 @@ services:
     build:
       context: .
       dockerfile: docker/training/Dockerfile.training
+      # Cap build-time compile parallelism (default 16 of the 9950X's 32 threads). Override per
+      # run: MAX_JOBS=8 make train-build. See docker/training/Dockerfile.training.
+      args:
+        MAX_JOBS: "${MAX_JOBS:-16}"
+        NVCC_THREADS: "${NVCC_THREADS:-1}"
     container_name: training
     restart: "no"  # batch job runner, not a service
     init: true  # tini as PID 1 for correct signal forwarding
@@ -69,6 +74,9 @@ services:
     build:
       context: .
       dockerfile: docker/training/Dockerfile.export
+      # Cap the llama.cpp compile parallelism (default 16). Override: MAX_JOBS=8 make export-build.
+      args:
+        MAX_JOBS: "${MAX_JOBS:-16}"
     container_name: training-export
     restart: "no"  # batch job runner, not a service
     init: true
