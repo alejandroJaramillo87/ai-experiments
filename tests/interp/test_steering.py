@@ -238,6 +238,41 @@ class TestScorecard:
         with pytest.raises(ScorecardError, match="at least three prompt iterations"):
             load_system_prompt(str(path))
 
+    def test_load_prompts_invalid_json_is_styled(self, tmp_path):
+        # KB-34: a malformed prompt line raises ScorecardError naming
+        # path:lineno, not a raw JSONDecodeError from the CLI
+        from interp.steering.scorecard import ScorecardError, load_prompts
+
+        path = tmp_path / "p.jsonl"
+        path.write_text('{"prompt": "ok"}\nnot-json\n')
+        with pytest.raises(ScorecardError, match="p.jsonl:2: invalid JSON"):
+            load_prompts(str(path))
+
+    def test_load_prompts_non_object_line_is_styled(self, tmp_path):
+        # KB-34: a line parsing to a non-dict would TypeError on the key check
+        from interp.steering.scorecard import ScorecardError, load_prompts
+
+        path = tmp_path / "p.jsonl"
+        path.write_text('["prompt"]\n')
+        with pytest.raises(ScorecardError, match="not a JSON object"):
+            load_prompts(str(path))
+
+    def test_load_system_prompt_invalid_json_is_styled(self, tmp_path):
+        from interp.steering.scorecard import ScorecardError, load_system_prompt
+
+        path = tmp_path / "system_prompt.json"
+        path.write_text("{broken")
+        with pytest.raises(ScorecardError, match="invalid JSON"):
+            load_system_prompt(str(path))
+
+    def test_load_system_prompt_non_object_is_styled(self, tmp_path):
+        from interp.steering.scorecard import ScorecardError, load_system_prompt
+
+        path = tmp_path / "system_prompt.json"
+        path.write_text("[1, 2]")
+        with pytest.raises(ScorecardError, match="not a JSON object"):
+            load_system_prompt(str(path))
+
     def test_judge_score_rejects_out_of_range(self):
         # A judge verdict whose score falls outside [0, 10] invalidates the run.
         from interp.steering.scorecard import (
