@@ -6,10 +6,6 @@ ZeRO-Offload optimizer offload.
 
 ## P2.1 Contamination index (P2-D1)
 
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-25 — `training/data/contamination.py:179` — ContaminationIndex never verifies ngrams.bin against the manifest's ngrams_xxhash64/total_ngrams, so a …
-
 Command:
 
 ```bash
@@ -31,10 +27,7 @@ Status: PENDING
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
-- KB-01 — `training/data/prepare.py:180` — _map_encode reuses the module-level _WORKER_TOKENIZER without checking spec, silently tokenizing with the wrong …
-- KB-25 — `training/data/contamination.py:179` — ContaminationIndex never verifies ngrams.bin against the manifest's ngrams_xxhash64/total_ngrams, so a …
 - KB-26 — `training/data/pipeline.py:224` — Stale datatrove completion markers make prepare_corpus reruns silently reuse old stage output while the …
-- KB-27 — `training/data/pipeline.py:480` — prepare_corpus runs the entire multi-hour filter/dedup/decontamination pipeline before the out_dir manifest …
 
 Command:
 
@@ -59,10 +52,6 @@ Observed:
 Status: PENDING
 
 ## P2.3 Mixture training (P2-D2)
-
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-05 — `training/recipes/validate.py:525` — validate() escapes with raw JSONDecodeError/AttributeError instead of RecipeValidationError when a shard …
 
 Command (two prepared shard directories with one tokenizer hash):
 

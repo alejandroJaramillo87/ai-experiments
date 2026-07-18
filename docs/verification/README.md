@@ -9,13 +9,15 @@ runbook covers only features that exist in the repository.
 
 ## Known bugs
 
-The WI-14 capstone review and its re-verification confirmed defects that are
-not yet fixed, most of them latent in the GPU and service paths this campaign
-is the first to exercise. [known-bugs.md](known-bugs.md) is the ledger; each
-runbook step below carries a "Known bugs likely to surface here" block listing
-the ones to expect at that step. Treat a listed bug as the predicted failure:
-if a step fails in the way its known bug describes, record it and fix against
-the real traceback rather than re-diagnosing from scratch.
+The WI-14 capstone review and its re-verification confirmed 51 defects.
+[known-bugs.md](known-bugs.md) is the ledger: 36 pure-Python defects were
+fixed with regression tests in the sandbox pre-fix pass, and 15 remain open —
+latent in the GPU, service, and pinned-library paths this campaign is the
+first to exercise. Runbook steps with open bugs carry a "Known bugs likely to
+surface here" block listing the ones to expect at that step. Treat a listed
+bug as the predicted failure: if a step fails in the way its known bug
+describes, record it and fix against the real traceback rather than
+re-diagnosing from scratch.
 
 ## Recording protocol
 
