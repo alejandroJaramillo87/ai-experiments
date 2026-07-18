@@ -107,3 +107,57 @@ def test_hook_swallows_internal_errors(tmp_path, monkeypatch):
     marker, _ = run_touch(tmp_path)
     # the audited open succeeded even though every emit raised
     assert open(marker).read() == "audited"
+
+
+def test_trace_disables_when_the_dispatched_command_ends(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBS_TRACE", "1")
+    run_touch(tmp_path)
+    assert audit._enabled is False
+    # a later untraced dispatch in the same process gets no audit records
+    monkeypatch.delenv("OBS_TRACE")
+    monkeypatch.setenv("OBS_LOG_LEVEL", "debug")
+    before = set((tmp_path / "obs-logs" / "toycli").glob("R-*.jsonl"))
+    marker2 = str(tmp_path / "marker-2.txt")
+    assert dispatch("toycli", build_parser, ["touch", "--marker", marker2]) == 0
+    # run ids share second resolution, so find the new file by difference
+    new = set((tmp_path / "obs-logs" / "toycli").glob("R-*.jsonl")) - before
+    assert len(new) == 1
+    second = [json.loads(line) for line in new.pop().read_text().splitlines()]
+    assert not [r for r in second if r["event"] in ("open", "import", "spawn")]
+
+
+def test_os_open_records_flags_not_read_mode(tmp_path):
+    core.configure("toycli", log_dir=str(tmp_path / "obs-logs"))
+    core.bind_run("toycli", "touch", "R-20260718-000000-aaaaaa")
+    logging.getLogger("obs").setLevel(logging.DEBUG)
+    audit.install_audit_trace()
+    try:
+        audit._audit("open", (str(tmp_path / "f"), None, 577))
+    finally:
+        audit.disable_audit_trace()
+    records = [
+        json.loads(line)
+        for f in (tmp_path / "obs-logs" / "toycli").glob("R-*.jsonl")
+        for line in f.read_text().splitlines()
+    ]
+    opens = [r for r in records if r["event"] == "open"]
+    assert opens and opens[0]["mode"] == "flags=577"
+
+
+def test_spawn_bytes_argv_decodes_to_text(tmp_path):
+    core.configure("toycli", log_dir=str(tmp_path / "obs-logs"))
+    core.bind_run("toycli", "touch", "R-20260718-000000-bbbbbb")
+    logging.getLogger("obs").setLevel(logging.DEBUG)
+    audit.install_audit_trace()
+    try:
+        audit._audit("os.exec", (b"/bin/ls", [b"ls", b"-l"], None))
+    finally:
+        audit.disable_audit_trace()
+    records = [
+        json.loads(line)
+        for f in (tmp_path / "obs-logs" / "toycli").glob("R-*.jsonl")
+        for line in f.read_text().splitlines()
+    ]
+    spawns = [r for r in records if r["event"] == "spawn"]
+    assert spawns and spawns[0]["argv0"] == "/bin/ls"
+    assert spawns[0]["argv"] == ["ls", "-l"]

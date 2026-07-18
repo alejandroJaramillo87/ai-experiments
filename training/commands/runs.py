@@ -23,7 +23,7 @@ def configure(sub) -> None:
         "--limit",
         type=int,
         default=20,
-        help="most recent runs shown (default 20)",
+        help="most recent runs shown (default 20; 0 or less shows all)",
     )
     p.add_argument(
         "--failed", action="store_true", help="only runs with a nonzero exit code"
@@ -38,7 +38,8 @@ def configure(sub) -> None:
         action="store_true",
         help="emit the selected records as JSON on stdout",
     )
-    p.set_defaults(func=cmd)
+    # viewer command: browsing the catalog must not prune event files
+    p.set_defaults(func=cmd, obs_retention=False)
 
 
 def cmd(args: argparse.Namespace) -> int:

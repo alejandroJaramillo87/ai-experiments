@@ -13,6 +13,12 @@
       "Write(//mnt/ai-data/models/**)"
     ],
     "allow": [
+      "Bash(uv run --no-sync ruff format --check *)",
+      "Bash(uv run --no-sync ruff check .)",
+      "Bash(uv run --no-sync mypy)",
+      "Bash(xargs uv run --no-sync shellcheck --severity=warning)",
+      "mcp__github__pull_request_read",
+      "mcp__github__list_pull_requests",
       "WebFetch(domain:docs.runpod.io)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",

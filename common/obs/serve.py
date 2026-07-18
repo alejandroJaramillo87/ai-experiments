@@ -17,17 +17,27 @@ from urllib.parse import parse_qs, urlparse
 from common.obs.dashboard import default_events_path
 from common.output import Printer
 
+# Per-request read bound: the client's offset loop fetches the rest, and an
+# unbounded read of a huge first poll would hold the whole file in memory.
+READ_CHUNK_LIMIT = 8 * 1024 * 1024
+
 
 def read_new_lines(path: Path, offset: int) -> tuple[int, list[str]]:
     """Complete lines appended past a byte offset, with the new offset.
 
     A trailing partial line is held back until its newline arrives; a
-    missing file or an offset at or past EOF returns (offset, []).
+    missing file or an offset at EOF returns (offset, []). A file now
+    shorter than the offset was truncated or replaced: the offset resets
+    to 0 so the next polls re-read from the start instead of stalling
+    silently forever. Reads are capped per request; the client's next
+    poll continues from the returned offset.
     """
     try:
+        if path.stat().st_size < offset:
+            return 0, []
         with open(path, "rb") as f:
             f.seek(offset)
-            chunk = f.read()
+            chunk = f.read(READ_CHUNK_LIMIT)
     except OSError:
         return offset, []
     end = chunk.rfind(b"\n")
@@ -70,28 +80,32 @@ class DashboardServer(ThreadingHTTPServer):
         """The --events override, else lazily from the metrics header.
 
         The server may start before the run writes its header, so a miss
-        is retried on the next poll and the located path is cached. Only
-        the first line is read; the sink writes the header first.
+        is retried on the next poll and the located path is cached. A
+        bounded prefix is scanned rather than only line 1: a torn or
+        foreign first line must not permanently blank the log pane when
+        the real header sits on a later line.
         """
         if self._events_path is not None:
             return self._events_path
         try:
-            with open(self.metrics_path(), encoding="utf-8") as f:
-                first = f.readline()
+            with open(self.metrics_path(), encoding="utf-8", errors="replace") as f:
+                prefix = f.read(65536)
         except OSError:
             return None
-        if not first.endswith("\n"):
-            return None
-        try:
-            record = json.loads(first)
-        except json.JSONDecodeError:
-            return None
-        if not isinstance(record, dict) or record.get("report") != "run_metrics":
-            return None
-        located = default_events_path(record)
-        if located is not None:
-            self._events_path = located
-        return located
+        lines = prefix.splitlines(keepends=True)
+        for line in lines[:50]:
+            if not line.endswith("\n"):
+                break  # incomplete tail: retried next poll
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(record, dict) and record.get("report") == "run_metrics":
+                located = default_events_path(record)
+                if located is not None:
+                    self._events_path = located
+                return located
+        return None
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -116,12 +130,29 @@ class _Handler(BaseHTTPRequestHandler):
         body = json.dumps({"offset": new_offset, "lines": lines}).encode("utf-8")
         self._respond(200, "application/json", body)
 
+    def do_HEAD(self) -> None:
+        # liveness probes (curl -I) get the headers a GET / would carry
+        srv = cast(DashboardServer, self.server)
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(srv.shell.encode("utf-8"))))
+            self.end_headers()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def _respond(self, status: int, content_type: str, body: bytes) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            # a reloaded tab aborts its in-flight poll; without this the
+            # server prints a full traceback per abort, defeating the
+            # deliberate request-log suppression below
+            pass
 
     def log_message(self, format: str, *args: Any) -> None:
         pass  # a 2-second poll would otherwise print two lines per cycle
@@ -136,7 +167,12 @@ def run(
     out: Printer,
 ) -> int:
     """Serve until interrupted; Ctrl-C is a clean exit, nothing is lost."""
-    server = DashboardServer((host, port), run_dir, events_path, shell)
+    try:
+        server = DashboardServer((host, port), run_dir, events_path, shell)
+    except OSError as exc:
+        out.error(f"Cannot bind {host}:{port}: {exc}")
+        out.line("  Solution: pass a free port with --port (0 picks one)")
+        return 1
     try:
         bound_port = server.server_address[1]
         out.info(f"Live dashboard: http://{host}:{bound_port}/")

@@ -52,6 +52,10 @@ passed.
 5. [interp.md](interp.md) — the interpretability tier: workbench,
    Neuronpedia harness, write-back path (W1-W4), organisms, harvesting, and
    SAE training.
+6. [observability.md](observability.md) — the observability stack (phases
+   A-D): GPU watchdog samples, NVML context, the `/mnt/ai-data` log root,
+   external sinks, the browser harness, and the live dashboard against an
+   in-flight run.
 
 ## Session-start gate
 

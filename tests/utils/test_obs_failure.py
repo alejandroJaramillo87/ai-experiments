@@ -124,3 +124,106 @@ def test_cancellation_produces_no_fail_record(tmp_path, command, expected):
         dispatch("toycli", build_parser, [command])
     records = read_records(tmp_path)
     assert [r["event"] for r in records] == ["cmd.start", "run.context", "cmd.end"]
+
+
+class _NoStr(RuntimeError):
+    def __str__(self):
+        raise ValueError("str() is broken")
+
+
+def _broken_str_handler(args):
+    raise _NoStr()
+
+
+def _bool_exit_handler(args):
+    raise SystemExit(True)
+
+
+def _ki_group_handler(args):
+    raise BaseExceptionGroup("g", [KeyboardInterrupt()])
+
+
+def _mixed_group_handler(args):
+    raise BaseExceptionGroup("g", [KeyboardInterrupt(), RuntimeError("x")])
+
+
+def _huge_msg_handler(args):
+    raise RuntimeError("m" * 100_000)
+
+
+def _chained_handler(args):
+    exc = None
+    for i in range(200):
+        try:
+            raise RuntimeError(f"attempt {i}") from exc
+        except RuntimeError as caught:
+            exc = caught
+    raise exc
+
+
+def build_edge_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="toy")
+    sub = parser.add_subparsers(dest="command", required=True)
+    for name, func in (
+        ("brokenstr", _broken_str_handler),
+        ("boolexit", _bool_exit_handler),
+        ("kigroup", _ki_group_handler),
+        ("mixedgroup", _mixed_group_handler),
+        ("hugemsg", _huge_msg_handler),
+        ("chained", _chained_handler),
+    ):
+        sub.add_parser(name).set_defaults(func=func)
+    return parser
+
+
+def test_broken_str_still_records_and_reraises_original(tmp_path):
+    with pytest.raises(_NoStr):
+        dispatch("toycli", build_edge_parser, ["brokenstr"])
+    fails = [r for r in read_records(tmp_path) if r["event"] == "fail"]
+    assert len(fails) == 1
+    assert fails[0]["exc_type"] == "_NoStr"
+    assert fails[0]["exc_msg"] == "<exception str() failed>"
+
+
+def test_bool_systemexit_records_integer_exit_code(tmp_path):
+    with pytest.raises(SystemExit):
+        dispatch("toycli", build_edge_parser, ["boolexit"])
+    end = [r for r in read_records(tmp_path) if r["event"] == "cmd.end"][0]
+    assert end["exit_code"] == 1
+    assert not isinstance(end["exit_code"], bool)
+
+
+def test_all_interrupt_group_is_cancellation_not_failure(tmp_path):
+    with pytest.raises(BaseExceptionGroup):
+        dispatch("toycli", build_edge_parser, ["kigroup"])
+    records = read_records(tmp_path)
+    assert not [r for r in records if r["event"] == "fail"]
+    end = [r for r in records if r["event"] == "cmd.end"][0]
+    assert end["exit_code"] == 130
+
+
+def test_mixed_group_is_a_failure(tmp_path):
+    with pytest.raises(BaseExceptionGroup):
+        dispatch("toycli", build_edge_parser, ["mixedgroup"])
+    records = read_records(tmp_path)
+    assert [r for r in records if r["event"] == "fail"]
+    end = [r for r in records if r["event"] == "cmd.end"][0]
+    assert end["exit_code"] == 1
+
+
+def test_exc_msg_is_bounded(tmp_path):
+    with pytest.raises(RuntimeError):
+        dispatch("toycli", build_edge_parser, ["hugemsg"])
+    fail = [r for r in read_records(tmp_path) if r["event"] == "fail"][0]
+    assert len(fail["exc_msg"]) < 5_000
+    assert fail["exc_msg"].endswith("...[truncated]")
+
+
+def test_chained_traceback_is_bounded(tmp_path):
+    with pytest.raises(RuntimeError):
+        dispatch("toycli", build_edge_parser, ["chained"])
+    fail = [r for r in read_records(tmp_path) if r["event"] == "fail"][0]
+    assert len(fail["traceback"]) < core.TRACEBACK_CHAR_LIMIT + 100
+    assert fail["traceback"].startswith("...[truncated]...")
+    # the tail keeps the frames nearest the raise site
+    assert "attempt 199" in fail["traceback"]

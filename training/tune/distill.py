@@ -599,8 +599,9 @@ def _train_locked_distill(recipe: DictConfig) -> SftResult:
         watchdog.start()
 
     # The watchdog thread and tracker are live from here on: trainer
-    # construction failures (bad optimizer mapping, resume path, TRL errors)
-    # must still stop the thread and close the tracker, or the process hangs.
+    # construction failures (bad resume path, teacher move OOM) must still
+    # stop the thread and close the tracker, or the process hangs (mirrors
+    # sft.py).
     try:
         from datasets import Dataset
         from trl import SFTConfig

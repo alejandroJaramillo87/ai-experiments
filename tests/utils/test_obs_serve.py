@@ -140,3 +140,73 @@ def test_run_returns_zero_on_interrupt(tmp_path, monkeypatch, capsys):
     rc = serve.run("127.0.0.1", 0, tmp_path, None, SHELL, Printer())
     assert rc == 0
     assert "Live dashboard" in capsys.readouterr().err
+
+
+def test_truncated_file_resets_offset_instead_of_stalling(tmp_path):
+    path = tmp_path / "f.jsonl"
+    path.write_text("one\ntwo\n")
+    offset, lines = serve.read_new_lines(path, 0)
+    assert lines == ["one", "two"]
+    # the run directory is reused: a shorter replacement must reset the
+    # client to the start, not return empty forever
+    path.write_text("new\n")
+    offset, lines = serve.read_new_lines(path, offset)
+    assert (offset, lines) == (0, [])
+    offset, lines = serve.read_new_lines(path, offset)
+    assert lines == ["new"]
+    assert offset == 4
+
+
+def test_read_is_capped_per_request(tmp_path, monkeypatch):
+    monkeypatch.setattr(serve, "READ_CHUNK_LIMIT", 8)
+    path = tmp_path / "f.jsonl"
+    path.write_text("aaa\nbbb\nccc\n")
+    offset, lines = serve.read_new_lines(path, 0)
+    assert lines == ["aaa", "bbb"]  # cut at the last newline within the cap
+    offset, lines = serve.read_new_lines(path, offset)
+    assert lines == ["ccc"]
+    assert offset == 12
+
+
+def test_events_resolve_when_header_is_not_line_one(tmp_path, server, monkeypatch):
+    monkeypatch.setenv("OBS_LOG_DIR", str(tmp_path / "logs"))
+    events = tmp_path / "logs" / "training" / "R-8.jsonl"
+    events.parent.mkdir(parents=True)
+    events.write_text('{"event": "cmd.start"}\n')
+    # a torn first line (the pre-lock sink could write one) must not
+    # permanently blank the log pane; the scan finds the later header
+    header = {"report": "run_metrics", "run_id": "R-8", "cli": "training"}
+    (tmp_path / "metrics.jsonl").write_text(
+        "torn-not-json\n" + json.dumps({"step": 1}) + "\n" + json.dumps(header) + "\n"
+    )
+    payload = get_json(server, "/data/events?offset=0")
+    assert payload["lines"] == ['{"event": "cmd.start"}']
+
+
+def test_head_request_serves_headers_only(server, tmp_path):
+    port = server.server_address[1]
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/", method="HEAD")
+    with urllib.request.urlopen(req) as resp:
+        assert resp.status == 200
+        assert resp.headers["Content-Length"] == str(len(SHELL.encode()))
+        assert resp.read() == b""
+
+
+def test_bind_failure_returns_styled_error(tmp_path, server, capsys):
+    from common.output import Printer
+
+    taken = server.server_address[1]
+    rc = serve.run("127.0.0.1", taken, tmp_path, None, SHELL, Printer())
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "Cannot bind" in err
+    assert "--port" in err
+
+
+def test_events_stay_empty_when_no_header_in_prefix(tmp_path, server):
+    # non-dict JSON, wrong report type, malformed: none resolve an events
+    # path, and the endpoint degrades to empty rather than erroring
+    (tmp_path / "metrics.jsonl").write_text(
+        '[1, 2]\n{"report": "other"}\nnot json\n{"step": 1}\n'
+    )
+    assert get_json(server, "/data/events?offset=0") == {"offset": 0, "lines": []}

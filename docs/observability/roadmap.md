@@ -229,14 +229,22 @@ Header record (built with `report_header("run_metrics")`, then extended):
 | `schedule` | object | Schedule summary, for example WSD phase boundaries |
 
 The ambient identity comes from `current_run_id()`, `current_cli()`, and
-`current_command()` (`common/obs/core.py`); a `Tracker` constructed outside
-a dispatched CLI writes them as empty strings, and `validate_report` still
-accepts the header — the events join is simply unavailable there.
+`current_command()` (`common/obs/core.py`), captured when the sink is
+constructed — always on the dispatching thread. Capture at first-write time
+would race the watchdog sampler thread, which has no bound context and can
+log first. A `Tracker` constructed outside a dispatched CLI writes them as
+empty strings, and `validate_report` still accepts the header — the events
+join is simply unavailable there.
 
 Per-step records carry `step`, `ts`, and the metric keys passed to
 `Tracker.log(metrics, step)`. `ts` uses the event-file timestamp format
-(local ISO 8601, millisecond precision, with offset), and values pass
-through `json.dumps(..., default=float)` so numpy scalars serialize. The
+(local ISO 8601, millisecond precision, with offset). Every line is strict
+JSON: numpy scalars coerce through a float default, non-finite values
+(a NaN loss is exactly the record a post-mortem reads) serialize as `null`
+rather than the bare `NaN`/`Infinity` literals that `jq` and browser
+`JSON.parse` reject, and a value that cannot serialize at all skips that
+one record with a warning instead of disabling the sink. The watchdog's
+`alerts.jsonl` applies the same non-finite rule to its `value` field. The
 two loop families use different key
 vocabularies; both are written as-is and the dashboard maps both:
 
@@ -366,7 +374,13 @@ has no `tests/common/` directory.
     unless overridden.
   - `get_logger(name)` returns a `StructuredLogger` bound to `name`.
   - The JSON formatter writes exactly one object per line and never raises on
-    a non-serializable field; it coerces unknown types with `repr`.
+    a non-serializable field; it coerces unknown values with `repr`, and when
+    serialization still fails (non-string keys, cycles, a value whose own
+    `repr` raises) it falls back to the base schema plus a `fields_repr`
+    string. Base-schema keys always win over a caller field of the same name.
+  - Handler write failures are silent: both installed handlers suppress
+    `handleError`, so mid-run ENOSPC cannot flood standard error with logging
+    tracebacks, and reconfiguration tolerates a broken previous stream.
 - **Acceptance check** (sandbox): `uv run pytest tests/utils/test_obs_core.py`
   passes, asserting that one `info` call writes one parseable JSON line with
   the base fields, that the human line appears on standard error and not
@@ -454,7 +468,9 @@ later item ids stay stable. There is no work to execute under this id.
     it: parse first, then generate a `run_id`, `configure(cli, run_id=...)`,
     `bind_run(...)`, emit `cmd.start` with the `argv` list, run the command
     inside a `try/finally`, and emit `cmd.end` with the exit code and
-    wall-clock duration in the `finally` so it fires on exceptions too. Both
+    duration in the `finally` so it fires on exceptions too. Duration is
+    monotonic-clock elapsed time (it excludes suspend, unlike the wall-clock
+    `timestamp` the catalog row carries). Both
     `main` functions become one-line calls into it.
   - Exit code mapping: an integer return passes through (`None` maps to 0);
     an uncaught exception maps to 1 (the CLI contract); `KeyboardInterrupt`
@@ -494,12 +510,21 @@ later item ids stay stable. There is no work to execute under this id.
   - `record_failure(exc, exit_code)` emits a `fail` event with `exc_type`,
     `exc_msg`, a traceback truncated to the last 30 frames, and the exit
     code. Content is recorded as-is; no masking is applied (see
-    [the event record schema](#the-event-record-schema)).
+    [the event record schema](#the-event-record-schema)). Bounds: the frame
+    limit applies per exception in a chain and a 32 KiB character cap bounds
+    the chain itself (tail kept — the frames nearest the raise); `exc_msg`
+    caps at 4 KiB; an exception whose own `str()` raises records
+    `<exception str() failed>`.
   - The dispatch wrapper calls `record_failure` when a command raises, so
-    failures are captured uniformly rather than per command.
+    failures are captured uniformly rather than per command. The call is
+    guarded: a failure inside the recorder can never replace the command's
+    own exception.
   - `KeyboardInterrupt` and `SystemExit` produce no `fail` record:
     cancellation and a deliberate exit are not failures. `cmd.end` still
-    records their exit codes (130 and the `SystemExit` code).
+    records their exit codes (130 and the `SystemExit` code, with a bool
+    code normalized to an integer). A `BaseExceptionGroup` containing only
+    `KeyboardInterrupt`s counts as cancellation (130, no `fail` record); a
+    mixed group is a failure.
   - The human error line continues to come from `Printer.error`, unchanged;
     the `fail` record is file-only.
 - **Acceptance check** (sandbox):
@@ -522,11 +547,16 @@ later item ids stay stable. There is no work to execute under this id.
   - `install_audit_trace()` registers a `sys.addaudithook` callback that maps
     the `open`, `import`, and `subprocess.Popen` (and `os.exec*`) audit events
     to `open`, `import`, and `spawn` records at debug level. Spawn argument
-    vectors are recorded as passed.
+    vectors are recorded as passed, with bytes items decoded to text; an
+    `open` event carrying a `None` mode (the `os.open` path) records its
+    numeric flags as `flags=N` instead of defaulting to `"r"`.
   - The hook is installed only when `OBS_TRACE=1`, because audit hooks add
     measurable overhead and cannot be removed for the life of the process.
     The dispatch wrapper reads the variable and installs the hook before
-    running the command. `OBS_TRACE=1` also lowers the effective log level
+    running the command, and calls `disable_audit_trace()` in its `finally`,
+    so enablement is scoped to the traced command: later dispatches in the
+    same process pay only the single flag check and receive no stale audit
+    records. `OBS_TRACE=1` also lowers the effective log level
     to `debug` unless `OBS_LOG_LEVEL` is set explicitly; without this the
     debug records would be dropped and the flag would do nothing.
   - The hook never raises into the audited call; it swallows its own errors so
@@ -577,8 +607,9 @@ later item ids stay stable. There is no work to execute under this id.
 
 #### OBS-8: retention and rotation
 
-- **Goal**: bound the disk that event files consume, so the log directory
-  does not grow without limit.
+- **Goal**: bound the disk that event files consume. The catalog
+  (`runs.jsonl`) is exempt by design: one summary line per invocation is
+  the retention system's own index and grows slowly.
 - **Depends on**: OBS-1.
 - **Scope**: `common/obs/retention.py`, wiring into `configure`,
   `tests/utils/test_obs_retention.py`.
@@ -587,10 +618,17 @@ later item ids stay stable. There is no work to execute under this id.
     retention window. It touches only files whose names match the run-id
     pattern (`R-*.jsonl`), so the catalog (`runs.jsonl`) and any foreign
     files are never candidates. File age is mtime, the run's last write.
+  - A live event file is never pruned regardless of age: `configure` holds
+    a shared `flock` on the file it writes for the life of the handler, and
+    prune skips any candidate whose non-blocking exclusive probe fails. A
+    long-idle run's mtime can age past the window while the file is open;
+    unlinking it would send the rest of the run to a deleted inode.
   - `configure` calls it opportunistically at startup on the per-CLI
     directory it just ensured, after the file handler installs, so pruning
     needs no separate scheduler; a run degraded to console-only prunes
-    nothing.
+    nothing. Viewer commands (`report` and `runs` in both CLIs) opt out via
+    `set_defaults(obs_retention=False)`: a command asked to display an old
+    run must never delete that run's event file first.
   - The window comes from `OBS_RETENTION_DAYS`, default 30. A non-positive
     or unparseable value disables pruning.
   - Pruning is best-effort: a file that cannot be removed is skipped, not
@@ -668,7 +706,12 @@ later item ids stay stable. There is no work to execute under this id.
     first, and follows the same discipline as the other sinks: disabled
     with a stderr warning on failure, never able to kill a run. The file
     opens line-buffered on the first `log` call, so a run that never logs
-    leaves no file and a killed run keeps every completed step.
+    leaves no file and a killed run keeps every completed step. The sink is
+    internally locked: the training thread and the watchdog sampler thread
+    both log into it, `TextIOWrapper` is not thread-safe, and an unlocked
+    lazy open double-fired under a first-log race. Eviction from the
+    fan-out tolerates a concurrent eviction of the same sink and tears the
+    evicted sink down best-effort (fd, writer thread, active mlflow run).
   - `Tracker.__init__` gains `header: dict | None = None`. The three
     construction sites (`training/runtime/loop.py`, `training/tune/sft.py`,
     `training/tune/distill.py`) pass `tier`, `model_id`, `recipe_hash`
@@ -751,18 +794,32 @@ later item ids stay stable. There is no work to execute under this id.
     a per-step series of 10,000 or more points.
   - The page inlines everything — the two data sets as script blocks, the
     uPlot script and stylesheet, and `common/obs/viewer.js` — and references
-    no external URL. Payloads embed with `</` escaped to `<\/`, so record
-    text containing `</script>` cannot terminate the enclosing block. The
+    no external URL. Payloads embed with every `<` escaped to the JSON
+    escape `\u003c` (valid because `<` only occurs inside string values):
+    record text containing `</script>` cannot terminate the enclosing
+    block, and `<!--<script` cannot enter the script-data-double-escaped
+    parser state that would swallow the page. Non-finite floats read from
+    legacy files map to `null` before embedding. The reader also accepts a
+    UTF-8 BOM, and header identity used for the events join must be plain
+    string names (no path separators or `..`). The
     viewer module draws the loss curves (`loss`, `train/loss`,
     `eval/holdout_loss`), the learning-rate schedule, throughput, and
     device memory (`gpu_mem_allocated_gb`, `gpu_vram_used_gb`), with
     `checkpoint_saved` and `watchdog/<signal>` markers drawn on the loss
     chart's step axis, handling both key vocabularies from the metrics
-    schema. Below the charts it renders a log viewer over the event records
-    with level filtering and substring search.
+    schema. Series draw with `spanGaps`: every series sits on the union
+    step axis with nulls where it was not logged, and without it a series
+    sparser than the axis (eval points, watchdog samples) never draws a
+    line at all. Below the charts it renders a log viewer over the event
+    records with level filtering and substring search; unknown or missing
+    levels always show (hiding a foreign `critical` behind the filter
+    would invert the failure mode), and the first header record wins,
+    matching the Python reader.
   - `viewer.js` takes its data through one entry point
     (`window.obsRender(root, {header, metrics, events, live})`), so OBS-12
-    reuses it unchanged with polled data.
+    reuses it unchanged with polled data. Charts resize with the window,
+    and the rendered state is exposed on the root node for the browser
+    verification harness (`scripts/verify/obs_browser`).
 - **Acceptance check** (sandbox):
   `uv run pytest tests/training/test_report.py` passes, asserting that from a
   fixture `metrics.jsonl` and event file the command writes a single HTML
@@ -794,17 +851,31 @@ later item ids stay stable. There is no work to execute under this id.
     `GET /data/events?offset=<bytes>` return
     `{"offset": <new_offset>, "lines": [<raw JSONL lines>]}` — the complete
     lines appended since the byte offset. A trailing partial line is held
-    back until its newline arrives; a missing file or an offset at or past
-    the end returns the offset unchanged with no lines; an invalid or
-    negative offset reads from 0; unknown paths are 404. The server holds
+    back until its newline arrives; a missing file or an offset at the end
+    returns the offset unchanged with no lines; a file now shorter than
+    the offset (truncated or replaced) resets the offset to 0 rather than
+    stalling silently; an invalid or negative offset reads from 0; reads
+    are capped at 8 MiB per request, cut at the last newline, with the
+    client's next poll continuing from the returned offset; unknown paths
+    are 404 and `HEAD /` answers with headers only. The server holds
     no state; the client owns its offsets. The events path comes from the
-    `--events` override, else lazily from the metrics header (first line
-    only, retried each poll until the header lands, then cached).
-    Per-request logging is suppressed — a 2-second poll would print two
+    `--events` override, else lazily from the metrics header (a bounded
+    prefix scan — a torn first line must not blank the log pane — retried
+    each poll until the header lands, then cached). A binding failure is a
+    styled error, and a client aborting its in-flight request is silent:
+    per-request logging is suppressed — a 2-second poll would print two
     stderr lines per cycle.
-  - The page polls every 2 seconds, appends new records (the header record
-    is recognized in the polled stream and fills the header strip), extends
-    the charts, and tails the log viewer. Follow mode pins the log view to
+  - The page polls every 2 seconds via a chained timeout (never
+    `setInterval`: a poll slower than the interval must finish before the
+    next fires, or two in-flight polls read the same offset and ingest
+    everything twice), appends new records (the header record is
+    recognized in the polled stream and fills the header strip), extends
+    the charts, and tails the log viewer incrementally — steady-state
+    appends only the new rows; a full rebuild happens only when the level
+    or search filter changes. The two endpoints fail independently, so a
+    transient events error cannot leave already-ingested metrics
+    unrendered. A user's drag-zoom survives new data (`setData` rescales
+    only when unzoomed). Follow mode pins the log view to
     the newest record; scrolling away from the bottom disengages the pin
     and returning re-engages it. Polling continues after `cmd.end`; a
     finished run simply stops producing new lines.

@@ -236,3 +236,58 @@ def test_tracker_failure_does_not_suppress_alert_record(run_dir):
     alerts = read_alerts(run_dir)
     assert [a["signal"] for a in alerts] == ["ram_floor"]
     assert alerts[0]["action"] == "alert"
+
+
+def test_alert_record_with_non_finite_value_is_strict_json(run_dir):
+    wd = make_watchdog(run_dir, loss_spike_factor=0.0, loss_window=1)
+    wd._alert("loss_non_finite", float("nan"), 0.0, action="abort")
+
+    def reject(token):
+        raise ValueError(f"non-strict JSON literal: {token}")
+
+    with open(os.path.join(run_dir, "alerts.jsonl")) as f:
+        records = [json.loads(line, parse_constant=reject) for line in f]
+    assert records[0]["signal"] == "loss_non_finite"
+    assert records[0]["value"] is None
+
+
+def test_latched_abort_alerts_once_per_excursion(run_dir):
+    wd = make_watchdog(run_dir, ram_floor_gb=16.0)
+    # three samples below half-floor while the abort stays unconsumed
+    for _ in range(3):
+        wd.check_sample({"ram_available_gb": 4.0}, now=0.0)
+    aborts = [r for r in read_alerts(run_dir) if r["action"] == "abort"]
+    assert len(aborts) == 1
+    # excursion clears, then trips again: a fresh record is allowed
+    wd._pending_abort = None
+    wd.check_sample({"ram_available_gb": 32.0}, now=1.0)
+    wd.check_sample({"ram_available_gb": 4.0}, now=2.0)
+    aborts = [r for r in read_alerts(run_dir) if r["action"] == "abort"]
+    assert len(aborts) == 2
+
+
+def test_alert_ts_matches_metrics_format(run_dir):
+    import re
+
+    wd = make_watchdog(run_dir)
+    wd._alert("gpu_temp", 95.0, 90.0, action="alert")
+    record = read_alerts(run_dir)[0]
+    assert re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}",
+        record["ts"],
+    )
+
+
+def test_start_step_seeds_sample_attribution(run_dir):
+    logged = []
+
+    class RecordingTracker:
+        def log(self, metrics, step):
+            logged.append((metrics, step))
+
+    wd = Watchdog(
+        WatchdogConfig(), run_dir, tracker=RecordingTracker(), start_step=5000
+    )
+    wd._alert("gpu_temp", 95.0, 90.0, action="alert")
+    assert read_alerts(run_dir)[0]["step"] == 5000
+    assert logged[0][1] == 5000

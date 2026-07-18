@@ -16,10 +16,18 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 
-from common.obs.audit import install_audit_trace
+from common.obs.audit import disable_audit_trace, install_audit_trace
 from common.obs.catalog import record_run
 from common.obs.context import run_context
 from common.obs.core import bind_run, configure, emit, record_failure
+
+
+def _record_failure_safely(exc: BaseException, exit_code: int) -> None:
+    """The obs machinery must never mask the command's own failure."""
+    try:
+        record_failure(exc, exit_code)
+    except Exception:
+        pass
 
 
 def dispatch(
@@ -39,7 +47,12 @@ def dispatch(
     # without this the debug audit records would be dropped unwritten.
     trace = os.environ.get("OBS_TRACE") == "1"
     level = "debug" if trace and not os.environ.get("OBS_LOG_LEVEL") else None
-    run_id = configure(cli, level=level)
+    # viewer commands (report, runs) opt out of the startup prune via
+    # set_defaults(obs_retention=False): a command asked to display an old
+    # run must never delete that run's event file first
+    run_id = configure(
+        cli, level=level, run_retention=getattr(args, "obs_retention", True)
+    )
     bind_run(cli, args.command, run_id)
     if trace:
         install_audit_trace()
@@ -62,19 +75,33 @@ def dispatch(
         raise
     except SystemExit as exc:
         if isinstance(exc.code, int):
-            exit_code = exc.code
+            # int() also normalizes SystemExit(True) to 1, not JSON true
+            exit_code = int(exc.code)
         else:
             exit_code = 0 if exc.code is None else 1
+        raise
+    except BaseExceptionGroup as exc:
+        # a task group re-raising Ctrl-C wraps it: a group of nothing but
+        # KeyboardInterrupts is still a cancellation, not a failure
+        if exc.split(KeyboardInterrupt)[1] is None:
+            exit_code = 130
+        else:
+            exit_code = 1
+            _record_failure_safely(exc, exit_code)
         raise
     except BaseException as exc:
         # KeyboardInterrupt and SystemExit are handled above: cancellation
         # and a deliberate exit are not failures, so only genuine uncaught
         # exceptions produce a fail record.
         exit_code = 1
-        record_failure(exc, exit_code)
+        _record_failure_safely(exc, exit_code)
         raise
     finally:
         duration_s = round(time.monotonic() - start, 3)
+        if trace:
+            # the trace is scoped to the command: without this the flag
+            # stays set for the process and later dispatches inherit it
+            disable_audit_trace()
         emit(
             "info",
             "",

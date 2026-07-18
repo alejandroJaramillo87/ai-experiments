@@ -1,0 +1,12 @@
+{
+  "name": "obs-browser-verify",
+  "private": true,
+  "type": "module",
+  "description": "Real-browser verification for the run dashboard (roadmap OBS-11/OBS-12)",
+  "scripts": {
+    "check": "node check.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "1.54.1"
+  }
+}

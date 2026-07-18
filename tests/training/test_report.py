@@ -111,19 +111,109 @@ def test_report_missing_events_warns_and_renders(tmp_path, obs_isolation, capsys
     assert "1.25" in (run_dir / "run.html").read_text()
 
 
-def test_inline_json_escapes_script_close(tmp_path, obs_isolation):
-    assert dashboard.inline_json("</script>") == '"<\\/script>"'
+def test_inline_json_escapes_all_angle_brackets(tmp_path, obs_isolation):
+    # every "<" escapes: "</script>" cannot close the block, and
+    # "<!--<script" cannot enter the double-escaped parser state that
+    # swallows the page (reproduced in a real browser before fixing)
+    assert dashboard.inline_json("</script>") == '"\\u003c/script>"'
+    assert dashboard.inline_json("<!--<script") == '"\\u003c!--\\u003cscript"'
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     write_metrics(run_dir)
     write_events(
         tmp_path / "obs-logs" / "training" / f"{RUN_ID}.jsonl",
-        [event("bad </script><script>alert(1)</script> payload")],
+        [
+            event("bad </script><script>alert(1)</script> payload"),
+            event("worse <!--<script x payload"),
+        ],
     )
     assert training_main(["report", "--run", str(run_dir)]) == 0
     html = (run_dir / "run.html").read_text()
     # exactly the page's own three script blocks close; the payload cannot
     assert html.count("</script>") == 3
+    assert "<!--<script" not in html
+
+
+def test_inline_json_maps_legacy_nan_to_null():
+    # json.loads accepts bare NaN from pre-fix metrics files; re-emitting
+    # it would poison the chart autorange in the browser
+    legacy = json.loads('{"loss": NaN, "nested": [Infinity]}')
+    assert dashboard.inline_json(legacy) == '{"loss": null, "nested": [null]}'
+
+
+def test_read_metrics_tolerates_a_bom(tmp_path):
+    path = tmp_path / "metrics.jsonl"
+    header = report_header("run_metrics")
+    path.write_bytes(b"\xef\xbb\xbf" + json.dumps(header).encode() + b"\n")
+    found, records, skipped = dashboard.read_metrics(path)
+    assert found.get("report") == "run_metrics"
+    assert skipped == 0
+
+
+def test_default_events_path_rejects_traversal_and_bad_types(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBS_LOG_DIR", str(tmp_path))
+    assert dashboard.default_events_path({"run_id": "../../etc", "cli": "t"}) is None
+    assert dashboard.default_events_path({"run_id": "R-1", "cli": "a/b"}) is None
+    assert dashboard.default_events_path({"run_id": ["R-1"], "cli": "t"}) is None
+    assert dashboard.default_events_path({"run_id": "R-1", "cli": {"x": 1}}) is None
+
+
+def test_asset_failure_is_styled_and_preserves_previous_html(
+    tmp_path, obs_isolation, capsys, monkeypatch
+):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    write_metrics(run_dir)
+    (run_dir / "run.html").write_text("previous good page")
+
+    def broken(*args, **kwargs):
+        raise OSError("vendor file missing")
+
+    monkeypatch.setattr(dashboard, "build_snapshot", broken)
+    assert training_main(["report", "--run", str(run_dir)]) == 1
+    assert "Dashboard asset unreadable" in capsys.readouterr().err
+    assert (run_dir / "run.html").read_text() == "previous good page"
+
+
+def test_failed_replace_preserves_previous_html(
+    tmp_path, obs_isolation, capsys, monkeypatch
+):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    write_metrics(run_dir)
+    (run_dir / "run.html").write_text("previous good page")
+
+    from training.commands import report as report_cmd
+
+    def refuse(src, dst):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(report_cmd.os, "replace", refuse)
+    assert training_main(["report", "--run", str(run_dir)]) == 1
+    err = capsys.readouterr().err
+    assert "Cannot write" in err
+    assert (run_dir / "run.html").read_text() == "previous good page"
+    assert not (run_dir / "run.html.tmp").exists()
+
+
+def test_serve_warns_on_missing_events_override(
+    tmp_path, obs_isolation, capsys, monkeypatch
+):
+    from training.commands import report as report_cmd
+
+    monkeypatch.setattr(report_cmd.obs_serve, "run", lambda *a, **k: 0)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    argv = [
+        "report",
+        "--run",
+        str(run_dir),
+        "--serve",
+        "--events",
+        str(tmp_path / "typo.jsonl"),
+    ]
+    assert training_main(argv) == 0
+    assert "does not exist yet" in capsys.readouterr().err
 
 
 def test_read_metrics_skips_malformed_and_headerless(tmp_path):

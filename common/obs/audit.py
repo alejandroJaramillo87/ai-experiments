@@ -22,12 +22,19 @@ _enabled = False
 _reentry = threading.local()
 
 
+def _text(item: Any) -> str:
+    # bytes argv items would otherwise record as Python reprs (b'ls')
+    if isinstance(item, bytes):
+        return item.decode(errors="replace")
+    return str(item)
+
+
 def _spawn_argv(raw: Any) -> list[str]:
     if raw is None:
         return []
     if isinstance(raw, (str, bytes)):
-        return [str(raw)]
-    return [str(item) for item in raw]
+        return [_text(raw)]
+    return [_text(item) for item in raw]
 
 
 def _audit(event: str, args: tuple[Any, ...]) -> None:
@@ -36,32 +43,26 @@ def _audit(event: str, args: tuple[Any, ...]) -> None:
     _reentry.active = True
     try:
         if event == "open":
+            # os.open passes mode None and numeric flags in args[2]; a
+            # None mode defaulted to "r" would misclassify writes as reads
+            mode = args[1]
             emit(
                 "debug",
                 "",
                 event="open",
                 console=False,
-                path=str(args[0]),
-                mode=str(args[1] or "r"),
+                path=_text(args[0]),
+                mode=str(mode) if mode is not None else f"flags={args[2]}",
             )
         elif event == "import":
             emit("debug", "", event="import", console=False, module=str(args[0]))
-        elif event == "subprocess.Popen":
+        elif event in ("subprocess.Popen", "os.exec"):
             emit(
                 "debug",
                 "",
                 event="spawn",
                 console=False,
-                argv0=str(args[0]),
-                argv=_spawn_argv(args[1]),
-            )
-        elif event == "os.exec":
-            emit(
-                "debug",
-                "",
-                event="spawn",
-                console=False,
-                argv0=str(args[0]),
+                argv0=_text(args[0]),
                 argv=_spawn_argv(args[1]),
             )
     except Exception:
@@ -80,7 +81,18 @@ def install_audit_trace() -> None:
         _installed = True
 
 
-def _disable() -> None:
-    """Stop emitting audit records (test teardown; the hook itself stays)."""
+def disable_audit_trace() -> None:
+    """Stop emitting audit records; the registered hook itself stays.
+
+    Dispatch calls this when a traced command ends. Without it the flag
+    stayed set for the life of the process: later untraced commands in
+    the same process received stale audit records, and every open/import
+    paid the full emit cost forever.
+    """
     global _enabled
     _enabled = False
+
+
+# Backwards-compatible alias used by test teardown before the dispatch
+# wiring existed.
+_disable = disable_audit_trace

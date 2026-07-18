@@ -154,3 +154,84 @@ def test_package_reexports_public_api():
 
     for name in obs.__all__:
         assert getattr(obs, name) is getattr(core, name)
+
+
+def test_unserializable_field_key_falls_back_without_raising(tmp_path, capsys):
+    log_file = _configure(tmp_path)
+    # tuple keys defeat default=repr (it only covers values); the record
+    # must survive as fields_repr with no logging-machinery traceback
+    core.get_logger("test").info("bad field", mapping={("a", "b"): 1})
+    record = json.loads(log_file.read_text().splitlines()[0])
+    assert record["run_id"] == RUN_ID
+    assert record["msg"] == "bad field"
+    assert "('a', 'b')" in record["fields_repr"]
+    assert "Logging error" not in capsys.readouterr().err
+
+
+def test_broken_repr_value_falls_back_without_raising(tmp_path, capsys):
+    log_file = _configure(tmp_path)
+
+    class Broken:
+        def __repr__(self):
+            raise RuntimeError("no repr")
+
+    core.get_logger("test").info("broken", value=Broken())
+    record = json.loads(log_file.read_text().splitlines()[0])
+    assert record["fields_repr"] == "<unrepresentable>"
+    assert "Logging error" not in capsys.readouterr().err
+
+
+def test_caller_field_cannot_override_base_schema(tmp_path):
+    log_file = _configure(tmp_path)
+    core.get_logger("test").info("collide", run_id="oops", extra_field=1)
+    record = json.loads(log_file.read_text().splitlines()[0])
+    assert record["run_id"] == RUN_ID
+    assert record["extra_field"] == 1
+
+
+def test_file_write_failure_stays_silent(tmp_path, capsys, monkeypatch):
+    log_file = _configure(tmp_path)
+    logger = logging.getLogger("obs")
+    file_handler = next(
+        h for h in logger.handlers if isinstance(h, logging.FileHandler)
+    )
+
+    class FullDisk:
+        def write(self, text):
+            raise OSError(28, "No space left on device")
+
+        def flush(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(file_handler, "stream", FullDisk())
+    core.get_logger("test").info("after failure")
+    err = capsys.readouterr().err
+    assert "Logging error" not in err
+    assert "Traceback" not in err
+    assert log_file.read_text() == ""
+
+
+def test_reconfigure_survives_a_broken_handler_stream(tmp_path):
+    _configure(tmp_path)
+    logger = logging.getLogger("obs")
+    file_handler = next(
+        h for h in logger.handlers if isinstance(h, logging.FileHandler)
+    )
+    file_handler.stream.close()  # close() will now raise at flush
+    assert core.configure("training", run_id=RUN_ID, log_dir=str(tmp_path))
+
+
+def test_unwritable_log_root_degrades_to_console_only(tmp_path, capsys, monkeypatch):
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("")
+    run_id = core.configure("training", log_dir=str(blocker / "logs"))
+    assert run_id.startswith("R-")
+    core.bind_run("training", "x", run_id)
+    core.get_logger("t").info("still alive")
+    err = capsys.readouterr().err
+    assert "[INFO] still alive" in err
+    assert "Traceback" not in err
+    assert not (blocker / "logs").exists()

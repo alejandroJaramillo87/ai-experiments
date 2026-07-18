@@ -101,3 +101,53 @@ def test_invalid_retention_value_disables_pruning(tmp_path, monkeypatch):
     old = make_file(log_dir, "R-20250101-000000-ffffff.jsonl", OLD_AGE_S)
     core.configure("toycli")
     assert old.exists()
+
+
+def test_live_locked_file_survives_regardless_of_age(tmp_path):
+    import fcntl
+
+    log_dir = tmp_path / "training"
+    old = make_file(log_dir, "R-old-live.jsonl", age_s=90 * 86400)
+    holder = open(old, "a")
+    try:
+        fcntl.flock(holder.fileno(), fcntl.LOCK_SH)
+        prune(log_dir, 30)
+        assert old.exists()
+    finally:
+        holder.close()
+    # once the writer is gone the same file prunes normally
+    prune(log_dir, 30)
+    assert not old.exists()
+
+
+def test_configure_holds_a_lock_on_its_event_file(tmp_path):
+    import fcntl
+
+    run_id = "R-20260718-000000-cccccc"
+    core.configure("training", run_id=run_id, log_dir=str(tmp_path))
+    path = tmp_path / "training" / f"{run_id}.jsonl"
+    with open(path, "rb") as probe:
+        with pytest.raises(OSError):
+            fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def test_viewer_commands_do_not_prune(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("OBS_RETENTION_DAYS", "30")
+    log_dir = tmp_path / "obs-logs" / "training"
+    old = make_file(log_dir, "R-old-viewed.jsonl", age_s=90 * 86400)
+
+    from training.cli import main as training_main
+
+    assert training_main(["runs"]) == 0
+    capsys.readouterr()
+    assert old.exists(), "runs must not prune the files it lists"
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    assert training_main(["report", "--run", str(run_dir)]) == 1
+    capsys.readouterr()
+    assert old.exists(), "report must not prune the files it renders"
+
+    # a non-viewer command still prunes
+    core.configure("training", log_dir=str(tmp_path / "obs-logs"))
+    assert not old.exists()

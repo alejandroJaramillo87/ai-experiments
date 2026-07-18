@@ -40,6 +40,7 @@ import sys
 import threading
 import time
 from collections import deque
+from datetime import datetime
 from statistics import median
 
 ALERTS_FILENAME = "alerts.jsonl"
@@ -145,6 +146,7 @@ class Watchdog:
         tracker=None,
         disk_path: str | None = None,
         alert_hook=None,
+        start_step: int = 0,
     ) -> None:
         self.cfg = config
         self.run_dir = run_dir
@@ -168,7 +170,9 @@ class Watchdog:
         self._alerted: set[str] = set()
         self._pending_abort: WatchdogAbort | None = None
         self._blocked = False
-        self._last_step = 0
+        # Resumed runs seed the step so samples taken before the first
+        # on_step attribute to the resume point, not step 0.
+        self._last_step = int(start_step)
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -262,7 +266,11 @@ class Watchdog:
         if ram is not None:
             floor = float(self.cfg.ram_floor_gb)
             if ram < floor / 2:
-                self._alert("ram_floor", ram, floor / 2, action="abort")
+                # one abort record per excursion: a latched-but-unconsumed
+                # abort would otherwise re-alert every sample interval
+                if "ram_floor_abort" not in self._alerted:
+                    self._alerted.add("ram_floor_abort")
+                    self._alert("ram_floor", ram, floor / 2, action="abort")
                 self._pending_abort = self._pending_abort or WatchdogAbort(
                     "ram_floor", ram, floor / 2
                 )
@@ -270,6 +278,7 @@ class Watchdog:
                 self._edge_alert("ram_floor", ram, floor)
             else:
                 self._alerted.discard("ram_floor")
+                self._alerted.discard("ram_floor_abort")
 
         disk = sample.get("disk_free_gb")
         if disk is not None:
@@ -302,6 +311,7 @@ class Watchdog:
             self._since[signal] = None
             self._alerted.discard(signal)
             self._alerted.discard(signal + "_sustained")
+            self._alerted.discard(signal + "_abort")
             return
         since = self._since[signal]
         if since is None:
@@ -309,7 +319,10 @@ class Watchdog:
             self._alert(signal, value, threshold, action="alert")
         elif now - since >= self.cfg.sustain_s:
             if abort_on_sustain:
-                self._alert(signal, value, threshold, action="abort")
+                # one abort record per excursion (see the ram-floor arm)
+                if signal + "_abort" not in self._alerted:
+                    self._alerted.add(signal + "_abort")
+                    self._alert(signal, value, threshold, action="abort")
                 self._pending_abort = self._pending_abort or WatchdogAbort(
                     signal, value, threshold
                 )
@@ -334,10 +347,15 @@ class Watchdog:
         """Record one trigger everywhere post-mortems look: stderr, the run's
         alerts.jsonl, the tracking stream, and the pluggable hook."""
         record = {
-            "time": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            # same key and format as metrics.jsonl, so cross-file time
+            # joins need one parser
+            "ts": datetime.now().astimezone().isoformat(timespec="milliseconds"),
             "step": self._last_step,
             "signal": signal,
-            "value": value,
+            # non-finite values (a NaN loss is the loss_non_finite trigger)
+            # would serialize as bare NaN, invalid strict JSON; the signal
+            # name carries the fact, null keeps the line parseable
+            "value": value if math.isfinite(value) else None,
             "threshold": threshold,
             "action": action,
         }

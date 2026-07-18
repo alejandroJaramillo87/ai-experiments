@@ -51,3 +51,7 @@ CLEANUP_PLAN.md
 # Lint cache
 .ruff_cache/
 .coverage
+
+# Browser verification harness dependencies (scripts/verify/obs_browser)
+node_modules/
+package-lock.json

@@ -9,6 +9,7 @@ function signatures.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import os
@@ -29,7 +30,11 @@ from common.obs.retention import prune
 DEFAULT_LOG_DIR = "/mnt/ai-data/logs"
 
 # Bound fail-record tracebacks so a recursion error cannot bloat the file.
+# The frame limit bounds each exception in a chain; the char limit bounds
+# the chain itself (a retry loop raising from prev defeats the frame limit).
 TRACEBACK_FRAME_LIMIT = 30
+TRACEBACK_CHAR_LIMIT = 32768
+EXC_MSG_LIMIT = 4096
 
 _LOGGER_NAME = "obs"
 
@@ -113,8 +118,48 @@ class _JsonFormatter(logging.Formatter):
             "event": getattr(record, "obs_event", "log"),
             "msg": record.getMessage(),
         }
-        payload.update(getattr(record, "obs_fields", None) or {})
-        return json.dumps(payload, default=repr)
+        fields = getattr(record, "obs_fields", None) or {}
+        # base schema wins: a caller field named run_id/ts/... must not
+        # corrupt the correlation join
+        payload.update({k: v for k, v in fields.items() if k not in payload})
+        try:
+            return json.dumps(payload, default=repr)
+        except Exception:
+            # default=repr covers values, not keys, cycles, or broken
+            # reprs; keep the record rather than raising into logging
+            base = {
+                k: payload[k]
+                for k in (
+                    "ts",
+                    "level",
+                    "run_id",
+                    "cli",
+                    "command",
+                    "pid",
+                    "event",
+                    "msg",
+                )
+            }
+            try:
+                base["fields_repr"] = repr(fields)
+            except Exception:
+                base["fields_repr"] = "<unrepresentable>"
+            return json.dumps(base, default=repr)
+
+
+class _QuietStreamHandler(logging.StreamHandler):
+    """Emit failures stay silent: a broken stderr must not spray tracebacks."""
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        pass
+
+
+class _QuietFileHandler(logging.FileHandler):
+    """Emit failures stay silent: mid-run ENOSPC would otherwise print a
+    logging traceback to stderr for every subsequent record."""
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        pass
 
 
 class StructuredLogger:
@@ -174,8 +219,12 @@ def emit(
 
 
 def new_run_id() -> str:
-    """``R-YYYYMMDD-HHMMSS-xxxxxx``: sortable by start time, unique by suffix."""
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    """``R-YYYYMMDD-HHMMSS-xxxxxx``: sortable by start time, unique by suffix.
+
+    The stamp is UTC: local time would repeat across the DST fall-back
+    hour and break the sortable-by-start-time claim once a year.
+    """
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     return f"R-{stamp}-{secrets.token_hex(3)}"
 
 
@@ -214,14 +263,24 @@ def record_failure(exc: BaseException, exit_code: int) -> None:
     limit keeps the last frames — the ones nearest the raise site.
     """
     tb = traceback.TracebackException.from_exception(exc, limit=-TRACEBACK_FRAME_LIMIT)
+    try:
+        exc_msg = str(exc)
+    except Exception:
+        exc_msg = "<exception str() failed>"
+    if len(exc_msg) > EXC_MSG_LIMIT:
+        exc_msg = exc_msg[:EXC_MSG_LIMIT] + "...[truncated]"
+    text = "".join(tb.format())
+    if len(text) > TRACEBACK_CHAR_LIMIT:
+        # keep the tail: the frames nearest the raise site
+        text = "...[truncated]...\n" + text[-TRACEBACK_CHAR_LIMIT:]
     emit(
         "error",
         "",
         event="fail",
         console=False,
         exc_type=type(exc).__name__,
-        exc_msg=str(exc),
-        traceback="".join(tb.format()),
+        exc_msg=exc_msg,
+        traceback=text,
         exit_code=exit_code,
     )
 
@@ -255,12 +314,15 @@ def configure(
     run_id: str | None = None,
     log_dir: str | None = None,
     level: str | None = None,
+    run_retention: bool = True,
 ) -> str:
     """Install the stderr and JSON Lines handlers; return the run id used.
 
     Level falls back to ``OBS_LOG_LEVEL`` (default ``info``) and the file
     root to ``OBS_LOG_DIR``. Reconfiguring replaces the previous handlers,
-    so repeated calls never stack duplicate outputs.
+    so repeated calls never stack duplicate outputs. ``run_retention=False``
+    skips the startup prune — viewer commands must never delete the event
+    files they exist to display.
     """
     run_id = run_id or new_run_id()
     log_root = Path(log_dir or os.environ.get("OBS_LOG_DIR") or DEFAULT_LOG_DIR)
@@ -270,9 +332,12 @@ def configure(
     for handler in list(_logger.handlers):
         if not isinstance(handler, logging.NullHandler):
             _logger.removeHandler(handler)
-            handler.close()
+            try:
+                handler.close()
+            except Exception:
+                pass  # a broken stream must not block reconfiguration
 
-    console = logging.StreamHandler(sys.stderr)
+    console = _QuietStreamHandler(sys.stderr)
     console.setFormatter(_HumanFormatter())
     console.addFilter(_ConsoleFilter())
     _logger.addHandler(console)
@@ -283,14 +348,23 @@ def configure(
     try:
         file_dir = log_root / cli
         file_dir.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(
-            file_dir / f"{run_id}.jsonl", encoding="utf-8"
-        )
+        file_handler = _QuietFileHandler(file_dir / f"{run_id}.jsonl", encoding="utf-8")
     except OSError:
         return run_id
     file_handler.setFormatter(_JsonFormatter())
     _logger.addHandler(file_handler)
 
+    # Hold a shared lock for the life of the handler so prune can tell a
+    # live event file from an aged-out one (a long-idle run's mtime can
+    # age past the window while the file is still open). Best-effort.
+    try:
+        if file_handler.stream is not None:
+            fcntl.flock(file_handler.stream.fileno(), fcntl.LOCK_SH)
+    except (OSError, ValueError):
+        pass
+
+    if not run_retention:
+        return run_id
     # Opportunistic retention (OBS-8) on the directory just ensured; a
     # degraded console-only run prunes nothing. Invalid values disable it.
     try:

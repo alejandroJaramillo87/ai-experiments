@@ -381,14 +381,17 @@ def test_wandb_sink_offline_default_and_forwarding(tmp_path, monkeypatch):
         str(tmp_path),
         config={"lr": 1e-3},
     )
-    # Offline-first contract: an unset WANDB_MODE defaults to offline.
-    assert os.environ["WANDB_MODE"] == "offline"
+    # Offline-first contract: an unset WANDB_MODE defaults to offline via
+    # the init argument; the process env is never mutated (a mutation
+    # outlived failed inits and forced later wandb use offline).
+    assert "WANDB_MODE" not in os.environ
     assert init_calls == [
         {
             "project": "proj-x",
             "name": "run-wb",
             "dir": str(tmp_path),
             "config": {"lr": 1e-3},
+            "mode": "offline",
         }
     ]
 
@@ -405,7 +408,7 @@ def test_wandb_import_failure_keeps_preset_mode(tmp_path, monkeypatch, capsys):
     tracker = Tracker(cfg(wandb=True), "run-wb", str(tmp_path))
     assert tracker._sinks == []
     assert "wandb sink disabled" in capsys.readouterr().err
-    # setdefault must not clobber an explicitly configured mode
+    # an explicitly configured mode survives; the env is never touched
     assert os.environ["WANDB_MODE"] == "online"
 
 
@@ -468,3 +471,30 @@ def test_close_survives_a_failing_sink(tmp_path, capsys):
     tracker.close()
     assert "wandb sink disabled" in capsys.readouterr().err
     assert tracker._sinks == []
+
+
+def test_mlflow_init_failure_after_start_ends_the_run(tmp_path, monkeypatch, capsys):
+    calls = {"start": [], "ended": 0}
+    mlflow_mod = types.ModuleType("mlflow")
+    mlflow_mod.set_tracking_uri = lambda uri: None
+    mlflow_mod.set_experiment = lambda name: None
+    mlflow_mod.start_run = lambda run_name: calls["start"].append(run_name)
+
+    def failing_log_params(params):
+        raise ValueError("param too long")
+
+    def end_run():
+        calls["ended"] += 1
+
+    mlflow_mod.log_params = failing_log_params
+    mlflow_mod.end_run = end_run
+    monkeypatch.setitem(sys.modules, "mlflow", mlflow_mod)
+    monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
+
+    tracker = Tracker(cfg(mlflow=True), "run-ml", str(tmp_path), config={"lr": 0.001})
+    # the failed sink never registers, but the run it started must end,
+    # or every later Tracker in the process sees "run already active"
+    assert calls["start"] == ["run-ml"]
+    assert calls["ended"] == 1
+    assert tracker._sinks == []
+    assert "mlflow sink disabled" in capsys.readouterr().err

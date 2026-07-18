@@ -19,8 +19,10 @@ integrations it is on by default.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
+import threading
 from datetime import datetime
 from typing import Any, TextIO
 
@@ -28,8 +30,20 @@ from common.obs.core import current_cli, current_command, current_run_id
 from common.reports import report_header
 
 
-def _warn(sink: str, exc: Exception) -> None:
-    print(f"[tracking] WARN: {sink} sink disabled: {exc}", file=sys.stderr)
+def _warn(sink: str, exc: Exception, path: str = "") -> None:
+    where = f" ({path})" if path else ""
+    print(f"[tracking] WARN: {sink} sink disabled{where}: {exc}", file=sys.stderr)
+
+
+def _jsonl_default(value: Any) -> float | None:
+    """Coerce non-JSON-native values (numpy scalars) for the jsonl sink.
+
+    Non-finite results map to null: json.dumps would otherwise emit bare
+    NaN/Infinity literals, which strict parsers (jq, browser JSON.parse)
+    reject — and a NaN loss is exactly the record a post-mortem reads.
+    """
+    coerced = float(value)  # TypeError for non-numeric -> record skipped
+    return coerced if math.isfinite(coerced) else None
 
 
 class _JsonlSink:
@@ -37,39 +51,64 @@ class _JsonlSink:
 
     No I/O until the first log call, which opens the file line-buffered and
     writes the header record — so a run that never logs leaves no file, and
-    a killed run keeps every completed step.
+    a killed run keeps every completed step. Thread-safe: the training loop
+    and the watchdog sampler thread both log into it, and TextIOWrapper is
+    not thread-safe on its own.
     """
 
     def __init__(self, run_dir: str, header: dict | None) -> None:
         self._path = os.path.join(run_dir, "metrics.jsonl")
         self._extra = dict(header or {})
         self._file: TextIO | None = None
+        self._lock = threading.Lock()
+        # Identity is captured here, on the constructing (dispatching)
+        # thread: contextvars do not cross threads, and the first log call
+        # can come from the watchdog sampler, which has no bound context.
+        # Empty outside a dispatched CLI, where the events join is
+        # unavailable by construction.
+        self._run_id = current_run_id() or ""
+        self._cli = current_cli() or ""
+        self._command = current_command() or ""
 
     def log(self, metrics: dict, step: int) -> None:
-        if self._file is None:
-            self._file = open(self._path, "a", buffering=1, encoding="utf-8")
-            self._file.write(json.dumps(self._header_record()) + "\n")
         ts = datetime.now().astimezone().isoformat(timespec="milliseconds")
-        # default=float lets numpy scalars through; keys pass as logged
-        self._file.write(
-            json.dumps({"step": step, "ts": ts, **metrics}, default=float) + "\n"
-        )
+        record = {"step": step, "ts": ts, **metrics}
+        sanitized = {
+            k: (None if isinstance(v, float) and not math.isfinite(v) else v)
+            for k, v in record.items()
+        }
+        try:
+            # keys pass as logged; numpy scalars coerce via the default
+            line = json.dumps(sanitized, default=_jsonl_default, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            # a bad value is a data error in one record, not a sink fault:
+            # skip the record, keep the sink
+            print(
+                f"[tracking] WARN: metrics record at step {step} skipped"
+                f" ({self._path}): {exc}",
+                file=sys.stderr,
+            )
+            return
+        with self._lock:
+            if self._file is None:
+                self._file = open(self._path, "a", buffering=1, encoding="utf-8")
+                self._file.write(json.dumps(self._header_record()) + "\n")
+            self._file.write(line + "\n")
 
     def _header_record(self) -> dict:
-        # Shared report envelope so validate_report accepts the file; the
-        # ambient identity is empty outside a dispatched CLI, where the
-        # events join is unavailable by construction.
+        # Shared report envelope so validate_report accepts the file.
         record = report_header("run_metrics")
-        record["run_id"] = current_run_id() or ""
-        record["cli"] = current_cli() or ""
-        record["command"] = current_command() or ""
+        record["run_id"] = self._run_id
+        record["cli"] = self._cli
+        record["command"] = self._command
         record.update(self._extra)
         return record
 
     def close(self) -> None:
-        if self._file is not None:
-            self._file.close()
-            self._file = None
+        with self._lock:
+            if self._file is not None:
+                self._file.close()
+                self._file = None
 
 
 class Tracker:
@@ -114,20 +153,24 @@ class Tracker:
         self, tracking, run_name: str, run_dir: str, config: dict | None
     ) -> None:
         try:
-            os.environ.setdefault("WANDB_MODE", "offline")
             import wandb
 
+            # mode as an init argument, not os.environ.setdefault: the env
+            # mutation outlived a failed init and forced every later
+            # in-process wandb use offline
             run = wandb.init(
                 project=tracking.wandb_project,
                 name=run_name,
                 dir=run_dir,
                 config=config or {},
+                mode=os.environ.get("WANDB_MODE", "offline"),
             )
             self._sinks.append(("wandb", run))
         except Exception as exc:
             _warn("wandb", exc)
 
     def _init_mlflow(self, run_name: str, run_dir: str, config: dict | None) -> None:
+        started = False
         try:
             import mlflow
 
@@ -135,6 +178,7 @@ class Tracker:
                 mlflow.set_tracking_uri(f"file://{os.path.join(run_dir, 'mlruns')}")
             mlflow.set_experiment(run_name)
             mlflow.start_run(run_name=run_name)
+            started = True
             if config:
                 # mlflow rejects params over 500 chars; flat scalar params only
                 mlflow.log_params(
@@ -147,6 +191,14 @@ class Tracker:
             self._sinks.append(("mlflow", mlflow))
         except Exception as exc:
             _warn("mlflow", exc)
+            if started:
+                # a failure after start_run (log_params on an oversize
+                # value) left the run active, poisoning every later
+                # Tracker in the process with "run already active"
+                try:
+                    mlflow.end_run()
+                except Exception:
+                    pass
 
     def log(self, metrics: dict, step: int) -> None:
         for name, sink in list(self._sinks):
@@ -161,20 +213,33 @@ class Tracker:
                 elif name == "jsonl":
                     sink.log(metrics, step)
             except Exception as exc:
-                _warn(name, exc)
-                self._sinks.remove((name, sink))
+                _warn(name, exc, sink._path if name == "jsonl" else "")
+                try:
+                    self._sinks.remove((name, sink))
+                except ValueError:
+                    continue  # another thread already evicted it
+                # best-effort teardown so an evicted sink does not leak
+                # its fd, writer thread, or active mlflow run
+                try:
+                    self._close_sink(name, sink)
+                except Exception:
+                    pass
+
+    @staticmethod
+    def _close_sink(name: str, sink: Any) -> None:
+        if name == "tensorboard":
+            sink.close()
+        elif name == "wandb":
+            sink.finish()
+        elif name == "mlflow":
+            sink.end_run()
+        elif name == "jsonl":
+            sink.close()
 
     def close(self) -> None:
         for name, sink in self._sinks:
             try:
-                if name == "tensorboard":
-                    sink.close()
-                elif name == "wandb":
-                    sink.finish()
-                elif name == "mlflow":
-                    sink.end_run()
-                elif name == "jsonl":
-                    sink.close()
+                self._close_sink(name, sink)
             except Exception as exc:
                 _warn(name, exc)
         self._sinks.clear()
