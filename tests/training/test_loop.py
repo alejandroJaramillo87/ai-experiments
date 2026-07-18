@@ -8,7 +8,10 @@ seconds-long, per the tiny-e2e reference recipe this mirrors.
 """
 
 import glob
+import json
 import os
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -16,8 +19,9 @@ import pytest
 torch = pytest.importorskip("torch")
 pytest.importorskip("transformers")
 
-from support import TINY_RECIPE, make_shard_dir  # noqa: E402
+from support import REPO_ROOT, TINY_RECIPE, make_shard_dir  # noqa: E402
 
+from common.reports import validate_report  # noqa: E402
 from training.recipes import load_recipe  # noqa: E402
 from training.runtime.loop import train  # noqa: E402
 
@@ -142,3 +146,77 @@ def test_tracking_writes_tensorboard_and_offline_wandb(
     )
     assert glob.glob(os.path.join(result.run_dir, "tensorboard", "events.*"))
     assert glob.glob(os.path.join(result.run_dir, "wandb", "offline-run-*"))
+
+
+def test_metrics_jsonl_written_with_checkpoint_markers(shard_dir, tmp_path):
+    """OBS-10 artifact chain after a real (tiny, CPU) train run."""
+    result = train(tiny_recipe(shard_dir, str(tmp_path / "run")))
+    path = os.path.join(result.run_dir, "metrics.jsonl")
+    with open(path, encoding="utf-8") as f:
+        records = [json.loads(line) for line in f]
+    headers = [r for r in records if r.get("report") == "run_metrics"]
+    assert len(headers) == 1
+    assert records[0] is headers[0]  # single locked open: header is line one
+    validate_report(headers[0])
+    assert headers[0]["tier"] == "pretrain"
+    assert headers[0]["recipe_hash"]
+    assert [r["step"] for r in records if "loss" in r] == list(range(1, 9))
+    saved = [r["step"] for r in records if r.get("checkpoint_saved") == 1]
+    assert saved == [4, 8]  # interval 4, total 8
+
+
+def test_cli_run_joins_artifacts_under_real_watchdog_timing(shard_dir, tmp_path):
+    """Host-side proof of the OBS-10 thread fix under real timing: the
+    sub-second watchdog sampler logs into the sink concurrently with the
+    training loop, and the header identity must still come from the
+    dispatching thread — non-empty, matching the events and catalog join."""
+    env = os.environ | {
+        "OBS_LOG_DIR": str(tmp_path / "obs-logs"),
+        "TRAIN_LOCK_PATH": str(tmp_path / ".train.lock"),
+    }
+    argv = [
+        sys.executable,
+        "-m",
+        "training",
+        "train",
+        "--config",
+        TINY_RECIPE,
+        f"data.source={shard_dir}",
+        f"run.output_root={tmp_path / 'out'}",
+        f"data.seq_len={SEQ_LEN}",
+        "schedule.total_steps=8",
+        "schedule.warmup_steps=2",
+        "checkpoint.interval_steps=4",
+        "watchdog.enabled=true",
+        "watchdog.interval_s=0.05",
+    ]
+    proc = subprocess.run(
+        argv, env=env, cwd=REPO_ROOT, capture_output=True, text=True, timeout=600
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+
+    found = glob.glob(str(tmp_path / "out" / "**" / "metrics.jsonl"), recursive=True)
+    assert len(found) == 1
+    with open(found[0], encoding="utf-8") as f:
+        records = [json.loads(line) for line in f]  # every line parses strictly
+    headers = [r for r in records if r.get("report") == "run_metrics"]
+    assert len(headers) == 1
+    header = headers[0]
+    validate_report(header)
+    assert header["run_id"].startswith("R-")
+    assert header["cli"] == "training"
+    assert header["command"] == "train"
+    # the sampler thread wrote into the same sink (disk_free_gb comes from
+    # shutil, so this holds with or without psutil/NVML)
+    assert any("disk_free_gb" in r for r in records)
+
+    events = tmp_path / "obs-logs" / "training" / f"{header['run_id']}.jsonl"
+    parsed = [json.loads(line) for line in events.read_text().splitlines()]
+    assert parsed[0]["event"] == "cmd.start"
+    assert parsed[-1]["event"] == "cmd.end"
+    assert parsed[-1]["exit_code"] == 0
+
+    catalog = tmp_path / "obs-logs" / "training" / "runs.jsonl"
+    rows = [json.loads(line) for line in catalog.read_text().splitlines()]
+    assert rows[-1]["run_id"] == header["run_id"]
+    assert rows[-1]["exit_code"] == 0
