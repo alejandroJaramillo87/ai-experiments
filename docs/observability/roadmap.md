@@ -302,7 +302,7 @@ scopes these four variables to the observability system.
 | `OBS_LOG_LEVEL` | `info` | Minimum level written to the console and file |
 | `OBS_LOG_DIR` | `/mnt/ai-data/logs` | Root of the event files and catalogs |
 | `OBS_TRACE` | `0` | When `1`, installs the Layer 2 audit hook (OBS-6) |
-| `OBS_RETENTION_DAYS` | `30` | Age past which event files are pruned (OBS-8) |
+| `OBS_RETENTION_DAYS` | `30` | Age past which event files are pruned (OBS-8); `0` disables |
 | `NO_COLOR` | unset | Existing variable; disables color, already honored by `Printer` |
 
 `MLFLOW_TRACKING_URI` is read at `training/runtime/tracking.py:70` as an
@@ -577,16 +577,21 @@ later item ids stay stable. There is no work to execute under this id.
   - `prune(log_dir, retention_days)` removes event files older than the
     retention window. It touches only files whose names match the run-id
     pattern (`R-*.jsonl`), so the catalog (`runs.jsonl`) and any foreign
-    files are never candidates. `configure` calls it opportunistically at
-    startup, so pruning needs no separate scheduler.
-  - The window comes from `OBS_RETENTION_DAYS`, default 30.
+    files are never candidates. File age is mtime, the run's last write.
+  - `configure` calls it opportunistically at startup on the per-CLI
+    directory it just ensured, after the file handler installs, so pruning
+    needs no separate scheduler; a run degraded to console-only prunes
+    nothing.
+  - The window comes from `OBS_RETENTION_DAYS`, default 30. A non-positive
+    or unparseable value disables pruning.
   - Pruning is best-effort: a file that cannot be removed is skipped, not
-    fatal.
+    fatal, and nothing is printed.
 - **Acceptance check** (sandbox):
   `uv run pytest tests/utils/test_obs_retention.py` passes, asserting that a
   run-id-named file older than the window is removed, that a recent file is
-  kept, that `runs.jsonl` is never removed regardless of age, and that an
-  unremovable file does not raise.
+  kept, that `runs.jsonl` is never removed regardless of age, that an
+  unremovable file does not raise, and that a disabled window prunes
+  nothing.
 - **Out of scope**: size-based rotation within a single run; per-run files
   are bounded by the run itself.
 

@@ -24,6 +24,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from common.obs.retention import prune
+
 DEFAULT_LOG_DIR = "/mnt/ai-data/logs"
 
 # Bound fail-record tracebacks so a recursion error cannot bloat the file.
@@ -280,5 +282,13 @@ def configure(
         return run_id
     file_handler.setFormatter(_JsonFormatter())
     _logger.addHandler(file_handler)
+
+    # Opportunistic retention (OBS-8) on the directory just ensured; a
+    # degraded console-only run prunes nothing. Invalid values disable it.
+    try:
+        retention_days = int(os.environ.get("OBS_RETENTION_DAYS", "30"))
+    except ValueError:
+        retention_days = 0
+    prune(file_dir, retention_days)
 
     return run_id
