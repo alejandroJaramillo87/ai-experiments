@@ -11,10 +11,12 @@ exists, and produce no records.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from collections.abc import Callable, Sequence
 
+from common.obs.audit import install_audit_trace
 from common.obs.core import bind_run, configure, emit, record_failure
 
 
@@ -31,8 +33,14 @@ def dispatch(
     as 130, and a mid-run SystemExit (the SIGTERM traps) as its own code.
     """
     args = build_parser().parse_args(argv if argv is None else list(argv))
-    run_id = configure(cli)
+    # OBS_TRACE=1 implies debug level (an explicit OBS_LOG_LEVEL wins);
+    # without this the debug audit records would be dropped unwritten.
+    trace = os.environ.get("OBS_TRACE") == "1"
+    level = "debug" if trace and not os.environ.get("OBS_LOG_LEVEL") else None
+    run_id = configure(cli, level=level)
     bind_run(cli, args.command, run_id)
+    if trace:
+        install_audit_trace()
     emit(
         "info",
         "",

@@ -523,9 +523,11 @@ later item ids stay stable. There is no work to execute under this id.
   - The hook never raises into the audited call; it swallows its own errors so
     an instrumentation failure cannot break the command.
   - Known limits: the hook observes the whole process, not only the handler's
-    own activity, and records emitted from threads other than the one that
+    own activity; records emitted from threads other than the one that
     ran `bind_run` carry an empty run context (context variables do not cross
-    thread boundaries). Both are accepted for an opt-in forensic tool.
+    thread boundaries); and the interpreter raises the `import` audit event
+    only for the `import` statement, so `importlib.import_module` calls are
+    not recorded. All are accepted for an opt-in forensic tool.
 - **Acceptance check** (sandbox):
   `uv run pytest tests/utils/test_obs_audit.py` passes with `OBS_TRACE=1`,
   asserting that opening a file, importing a module, and spawning a trivial
