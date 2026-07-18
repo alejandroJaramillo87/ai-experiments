@@ -236,3 +236,16 @@ def test_tracker_failure_does_not_suppress_alert_record(run_dir):
     alerts = read_alerts(run_dir)
     assert [a["signal"] for a in alerts] == ["ram_floor"]
     assert alerts[0]["action"] == "alert"
+
+
+def test_alert_record_with_non_finite_value_is_strict_json(run_dir):
+    wd = make_watchdog(run_dir, loss_spike_factor=0.0, loss_window=1)
+    wd._alert("loss_non_finite", float("nan"), 0.0, action="abort")
+
+    def reject(token):
+        raise ValueError(f"non-strict JSON literal: {token}")
+
+    with open(os.path.join(run_dir, "alerts.jsonl")) as f:
+        records = [json.loads(line, parse_constant=reject) for line in f]
+    assert records[0]["signal"] == "loss_non_finite"
+    assert records[0]["value"] is None

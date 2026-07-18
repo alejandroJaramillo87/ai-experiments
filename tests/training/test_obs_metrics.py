@@ -286,3 +286,50 @@ def test_evicted_sink_is_closed(tmp_path, capsys):
     capsys.readouterr()
     assert tracker._sinks == []
     assert sink._file is None
+
+
+def strict_loads(line):
+    """json.loads that rejects the NaN/Infinity literals strict parsers do."""
+
+    def reject(token):
+        raise ValueError(f"non-strict JSON literal: {token}")
+
+    return json.loads(line, parse_constant=reject)
+
+
+def test_non_finite_values_serialize_as_null(tmp_path):
+    tracker = make_tracker(tmp_path, header=HEADER)
+    tracker.log(
+        {"loss": float("nan"), "lr": float("inf"), "tokens_per_s": 100.0}, step=1
+    )
+    tracker.log({"loss": np.float32("nan")}, step=2)
+    tracker.close()
+    lines = (tmp_path / "metrics.jsonl").read_text().splitlines()
+    records = [strict_loads(line) for line in lines]
+    assert records[1]["loss"] is None
+    assert records[1]["lr"] is None
+    assert records[1]["tokens_per_s"] == 100.0
+    assert records[2]["loss"] is None
+
+
+def test_bad_value_skips_record_not_sink(tmp_path, capsys):
+    tracker = make_tracker(tmp_path, header=HEADER)
+    tracker.log({"loss": 1.0}, step=1)
+    tracker.log({"loss": np.ones(4)}, step=2)  # non-scalar: data error
+    err = capsys.readouterr().err
+    assert "record at step 2 skipped" in err
+    assert "metrics.jsonl" in err
+    assert "sink disabled" not in err
+    tracker.log({"loss": 0.9}, step=3)  # the sink must still be alive
+    tracker.close()
+    assert [r["step"] for r in read_records(tmp_path)[1:]] == [1, 3]
+
+
+def test_eviction_warning_names_the_file(tmp_path, capsys):
+    tracker = make_tracker(tmp_path, header=HEADER)
+    tracker.log({"loss": 1.0}, step=1)
+    jsonl_sink(tracker)._file.close()
+    tracker.log({"loss": 0.9}, step=2)
+    err = capsys.readouterr().err
+    assert "jsonl sink disabled" in err
+    assert "metrics.jsonl" in err

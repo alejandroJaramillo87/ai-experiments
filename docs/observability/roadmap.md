@@ -238,8 +238,13 @@ join is simply unavailable there.
 
 Per-step records carry `step`, `ts`, and the metric keys passed to
 `Tracker.log(metrics, step)`. `ts` uses the event-file timestamp format
-(local ISO 8601, millisecond precision, with offset), and values pass
-through `json.dumps(..., default=float)` so numpy scalars serialize. The
+(local ISO 8601, millisecond precision, with offset). Every line is strict
+JSON: numpy scalars coerce through a float default, non-finite values
+(a NaN loss is exactly the record a post-mortem reads) serialize as `null`
+rather than the bare `NaN`/`Infinity` literals that `jq` and browser
+`JSON.parse` reject, and a value that cannot serialize at all skips that
+one record with a warning instead of disabling the sink. The watchdog's
+`alerts.jsonl` applies the same non-finite rule to its `value` field. The
 two loop families use different key
 vocabularies; both are written as-is and the dashboard maps both:
 

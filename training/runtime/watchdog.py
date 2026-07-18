@@ -333,7 +333,10 @@ class Watchdog:
             "time": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "step": self._last_step,
             "signal": signal,
-            "value": value,
+            # non-finite values (a NaN loss is the loss_non_finite trigger)
+            # would serialize as bare NaN, invalid strict JSON; the signal
+            # name carries the fact, null keeps the line parseable
+            "value": value if math.isfinite(value) else None,
             "threshold": threshold,
             "action": action,
         }

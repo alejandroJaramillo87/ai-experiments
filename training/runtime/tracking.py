@@ -19,6 +19,7 @@ integrations it is on by default.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import threading
@@ -29,8 +30,20 @@ from common.obs.core import current_cli, current_command, current_run_id
 from common.reports import report_header
 
 
-def _warn(sink: str, exc: Exception) -> None:
-    print(f"[tracking] WARN: {sink} sink disabled: {exc}", file=sys.stderr)
+def _warn(sink: str, exc: Exception, path: str = "") -> None:
+    where = f" ({path})" if path else ""
+    print(f"[tracking] WARN: {sink} sink disabled{where}: {exc}", file=sys.stderr)
+
+
+def _jsonl_default(value: Any) -> float | None:
+    """Coerce non-JSON-native values (numpy scalars) for the jsonl sink.
+
+    Non-finite results map to null: json.dumps would otherwise emit bare
+    NaN/Infinity literals, which strict parsers (jq, browser JSON.parse)
+    reject — and a NaN loss is exactly the record a post-mortem reads.
+    """
+    coerced = float(value)  # TypeError for non-numeric -> record skipped
+    return coerced if math.isfinite(coerced) else None
 
 
 class _JsonlSink:
@@ -59,8 +72,23 @@ class _JsonlSink:
 
     def log(self, metrics: dict, step: int) -> None:
         ts = datetime.now().astimezone().isoformat(timespec="milliseconds")
-        # default=float lets numpy scalars through; keys pass as logged
-        line = json.dumps({"step": step, "ts": ts, **metrics}, default=float)
+        record = {"step": step, "ts": ts, **metrics}
+        sanitized = {
+            k: (None if isinstance(v, float) and not math.isfinite(v) else v)
+            for k, v in record.items()
+        }
+        try:
+            # keys pass as logged; numpy scalars coerce via the default
+            line = json.dumps(sanitized, default=_jsonl_default, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            # a bad value is a data error in one record, not a sink fault:
+            # skip the record, keep the sink
+            print(
+                f"[tracking] WARN: metrics record at step {step} skipped"
+                f" ({self._path}): {exc}",
+                file=sys.stderr,
+            )
+            return
         with self._lock:
             if self._file is None:
                 self._file = open(self._path, "a", buffering=1, encoding="utf-8")
@@ -172,7 +200,7 @@ class Tracker:
                 elif name == "jsonl":
                     sink.log(metrics, step)
             except Exception as exc:
-                _warn(name, exc)
+                _warn(name, exc, sink._path if name == "jsonl" else "")
                 try:
                     self._sinks.remove((name, sink))
                 except ValueError:
