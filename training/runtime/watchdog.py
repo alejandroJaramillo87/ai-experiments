@@ -153,6 +153,10 @@ class Watchdog:
         self.alert_hook = alert_hook
 
         self._losses: deque[float] = deque(maxlen=max(int(config.loss_window), 1))
+        # Effective warmup: a loss_window below LOSS_WARMUP_SAMPLES would
+        # otherwise never fill to the warmup count and silently disarm the
+        # spike rule; honor the operator's smaller window once it is full
+        self._loss_warmup = min(LOSS_WARMUP_SAMPLES, max(int(config.loss_window), 1))
         self._grad_exceeds = 0
         # Per-signal state for sustain/edge logic: monotonic time the excursion
         # began (None when clear).
@@ -213,7 +217,7 @@ class Watchdog:
 
         if not math.isfinite(loss):
             self._abort("loss_non_finite", loss, 0.0)
-        if len(self._losses) >= LOSS_WARMUP_SAMPLES:
+        if len(self._losses) >= self._loss_warmup:
             baseline = median(self._losses)
             limit = self.cfg.loss_spike_factor * baseline
             if loss > limit:

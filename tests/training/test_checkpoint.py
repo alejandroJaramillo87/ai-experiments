@@ -151,6 +151,57 @@ def test_republish_replaces_orphan_step_dir(tmp_path, monkeypatch):
     assert ckpt.latest_checkpoint(root) == path10
 
 
+def test_republish_renames_orphan_aside_instead_of_deleting(tmp_path):
+    # KB-06: replacing an orphan step dir goes rename-aside -> publish ->
+    # cleanup, with no delete-then-rename destruction window. Torch-free:
+    # drives the publish helper over fabricated dirs.
+    root = str(tmp_path)
+    final = make_step_dir(root, 3)
+    tmp = final + ".tmp"
+    os.makedirs(os.path.join(tmp, "model"))
+    with open(os.path.join(tmp, "meta.json"), "w") as f:
+        json.dump({"step": 3, "fresh": True}, f)
+    ckpt._publish_step_dir(root, tmp, final)
+    with open(os.path.join(final, "meta.json")) as f:
+        assert json.load(f)["fresh"] is True
+    assert not os.path.exists(tmp)
+    assert not os.path.exists(final + ".old.tmp")
+    assert ckpt.list_checkpoints(root) == [3]
+
+
+def test_kill_during_republish_never_destroys_published_data(tmp_path, monkeypatch):
+    # KB-06 crash window: die at the publish rename, after the orphan was
+    # moved aside; the old checkpoint data must survive on disk and the next
+    # attempt must complete the replacement
+    root = str(tmp_path)
+    final = make_step_dir(root, 7)
+    tmp = final + ".tmp"
+    os.makedirs(os.path.join(tmp, "model"))
+    with open(os.path.join(tmp, "meta.json"), "w") as f:
+        json.dump({"step": 7, "fresh": True}, f)
+
+    real_rename = os.rename
+    state = {"die": True}
+
+    def dying_rename(src, dst):
+        if state["die"] and src == tmp:
+            state["die"] = False
+            raise KeyboardInterrupt("simulated SIGKILL")
+        return real_rename(src, dst)
+
+    monkeypatch.setattr(os, "rename", dying_rename)
+    with pytest.raises(KeyboardInterrupt):
+        ckpt._publish_step_dir(root, tmp, final)
+
+    # The old step data was renamed aside, never deleted
+    assert os.path.isfile(os.path.join(final + ".old.tmp", "meta.json"))
+    # The rerun completes the publish and cleans the aside dir
+    ckpt._publish_step_dir(root, tmp, final)
+    with open(os.path.join(final, "meta.json")) as f:
+        assert json.load(f)["fresh"] is True
+    assert not os.path.exists(final + ".old.tmp")
+
+
 @requires_torch
 def test_retention_keeps_last_n_plus_every_mth(tmp_path):
     root = str(tmp_path / "checkpoints")
