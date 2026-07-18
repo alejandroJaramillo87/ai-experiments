@@ -242,7 +242,9 @@ def phase_container(args, evaluators, out_dir, out: Printer) -> dict:
     return sections
 
 
-def phase_serving(args, out_dir, identities, out: Printer, restore_failed: list) -> dict:
+def phase_serving(
+    args, out_dir, identities, out: Printer, restore_failed: list
+) -> dict:
     """Generation through llama-gpu, then judging through the judge service.
 
     Restore failures append the service name to restore_failed: the section

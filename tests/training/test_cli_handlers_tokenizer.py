@@ -154,7 +154,8 @@ class TestTrainTokenizerCmd:
         with open(os.path.join(out_dir, "manifest.json")) as f:
             manifest = json.load(f)
         assert (
-            manifest["vocab_size"] == Tokenizer.from_file(tokenizer_path).get_vocab_size()
+            manifest["vocab_size"]
+            == Tokenizer.from_file(tokenizer_path).get_vocab_size()
         )
         assert manifest["requested_vocab_size"] == VOCAB
         assert manifest["corpus"] == [corpus]

@@ -85,9 +85,7 @@ def load_prompts(path: str) -> list[str]:
             try:
                 record = json.loads(line)
             except json.JSONDecodeError as exc:
-                raise ScorecardError(
-                    f"{path}:{lineno}: invalid JSON: {exc}"
-                ) from exc
+                raise ScorecardError(f"{path}:{lineno}: invalid JSON: {exc}") from exc
             if not isinstance(record, dict):
                 raise ScorecardError(f"{path}:{lineno}: line is not a JSON object")
             if "prompt" not in record:

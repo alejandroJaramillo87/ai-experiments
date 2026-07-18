@@ -185,8 +185,7 @@ def _check_precision(recipe: DictConfig, problems: list[str]) -> None:
         problems.append(f"precision.dtype: {prec.dtype!r} not in {PRECISION_DTYPES}")
     if prec.grad_dtype not in DTYPE_BYTES:
         problems.append(
-            f"precision.grad_dtype: {prec.grad_dtype!r} not in "
-            f"{tuple(DTYPE_BYTES)}"
+            f"precision.grad_dtype: {prec.grad_dtype!r} not in {tuple(DTYPE_BYTES)}"
         )
     if prec.dtype == "fp8":
         if prec.fp8_backend not in FP8_BACKENDS:

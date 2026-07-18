@@ -19,25 +19,25 @@ def judge_args(tmp_path, **overrides):
     if not prompts.exists():
         with open(prompts, "w") as f:
             f.write(json.dumps({"id": "p1", "prompt": "q"}) + "\n")
-    defaults = dict(
-        evaluators="judge",
-        name="eval",
-        out_dir=str(tmp_path / "run"),
-        base="google/gemma-4-E2B",
-        tuned="/ckpt/latest",
-        base_gguf="/app/models/b.gguf",
-        tuned_gguf="/app/models/t.gguf",
-        judge_gguf="/app/models/j.gguf",
-        judge_service="llama-cpu",
-        prompts=str(prompts),
-        dataset=None,
-        max_tokens=16,
-        timeout=5,
-        load_4bit=False,
-        max_examples=None,
-        tasks=None,
-        lmeval_limit=None,
-    )
+    defaults = {
+        "evaluators": "judge",
+        "name": "eval",
+        "out_dir": str(tmp_path / "run"),
+        "base": "google/gemma-4-E2B",
+        "tuned": "/ckpt/latest",
+        "base_gguf": "/app/models/b.gguf",
+        "tuned_gguf": "/app/models/t.gguf",
+        "judge_gguf": "/app/models/j.gguf",
+        "judge_service": "llama-cpu",
+        "prompts": str(prompts),
+        "dataset": None,
+        "max_tokens": 16,
+        "timeout": 5,
+        "load_4bit": False,
+        "max_examples": None,
+        "tasks": None,
+        "lmeval_limit": None,
+    }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
 
