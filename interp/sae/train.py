@@ -227,6 +227,7 @@ def run_sae_training(recipe: DictConfig, trainer_fn=None, tracker_factory=None) 
             os.path.join(cfg.capture_dir, "manifest.json")
         ),
         "model_id": capture_manifest["model_id"],
+        "model_revision": capture_manifest.get("model_revision"),
         "model_hash": capture_manifest["model_hash"],
         "tokenizer_fingerprint": capture_manifest["tokenizer_fingerprint"],
         "hook": hook,
