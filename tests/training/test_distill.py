@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+import types
 
 import numpy as np
 import pytest
@@ -21,6 +23,7 @@ from training.data.distill import (
 )
 from training.data.sft import IGNORE_INDEX
 from training.recipes import RecipeValidationError, validate
+from training.runtime.watchdog import WatchdogAbort
 from training.tune.distill import (
     DistillPreflightError,
     check_softcap_parity,
@@ -217,6 +220,25 @@ class TestLogitCache:
         writer = LogitCacheWriter(str(tmp_path / "cache"), 4)
         with pytest.raises(LogitCacheError, match="matching"):
             writer.add_example(np.zeros((3, 4), np.int32), np.zeros((3, 5), np.float16))
+
+    def test_teacher_binding_refused(self, tmp_path):
+        # KB-16: distilling against a cache built from a different teacher is
+        # a silent wrong-target run; verify_binding must refuse it
+        write_cache(tmp_path / "cache", [5, 3])
+        cache = LogitCache(str(tmp_path / "cache"))
+        cache.verify_binding(
+            dataset_train_hash="hash",
+            tokenizer_hash="tok",
+            examples=2,
+            teacher="test-teacher",
+        )
+        with pytest.raises(LogitCacheError, match="recipe teacher"):
+            cache.verify_binding(
+                dataset_train_hash="hash",
+                tokenizer_hash="tok",
+                examples=2,
+                teacher="other/teacher",
+            )
 
 
 # -- masked-KL loss (torch) ---------------------------------------------------
@@ -418,6 +440,26 @@ class TestProvenance:
         assert fields["top_k"] == 64
         assert fields["teacher_revision"] == "cachedrev"
 
+    def test_cached_fields_cite_cache_teacher(self):
+        # KB-16: cached-mode provenance cites the cache's teacher identity,
+        # never the recipe name paired with the cache's revision
+        recipe = distill_recipe(
+            [
+                "distill.mode=cached",
+                "distill.cache_path=/tmp/c",
+                "distill.teacher_quantize=none",
+            ]
+        )
+        fields = distill_provenance(
+            recipe,
+            cache_manifest={
+                "teacher": "cache/teacher",
+                "teacher_revision": "cachedrev",
+            },
+        )
+        assert fields["teacher"] == "cache/teacher"
+        assert fields["teacher_revision"] == "cachedrev"
+
     def test_response_fields(self):
         recipe = distill_recipe(
             ["distill.tier=response", "distill.teacher_manifest=/m.json"]
@@ -450,3 +492,177 @@ class TestProvenance:
         )
         with open(tmp_path / "meta.json") as f:
             assert "distill" not in json.load(f)
+
+
+# -- crash paths (KB-13/14/15) ------------------------------------------------
+
+
+class TestLockedDistillCrashPaths:
+    """_train_locked_distill lifecycle bugs, driven with the heavy seams
+    (torch, datasets, trl, model/teacher loading) stubbed: a construction
+    failure must stop the watchdog and close the tracker, and the emergency
+    checkpoint must land in the emergency dir without masking the abort."""
+
+    def setup_run(self, tmp_path, monkeypatch, trainer_cls):
+        from training.runtime import tracking
+        from training.runtime import watchdog as watchdog_mod
+        from training.tune import distill as distill_mod
+
+        recipe = distill_recipe(
+            [f"run.output_root={tmp_path}", "watchdog.enabled=true"]
+        )
+
+        class FakeTracker:
+            instances: list = []
+
+            def __init__(self, *a, **k):
+                self.closed = False
+                FakeTracker.instances.append(self)
+
+            def close(self):
+                self.closed = True
+
+        class FakeWatchdog:
+            instances: list = []
+
+            def __init__(self, *a, **k):
+                self.started = False
+                self.stopped = False
+                FakeWatchdog.instances.append(self)
+
+            def start(self):
+                self.started = True
+
+            def stop(self):
+                self.stopped = True
+
+        monkeypatch.setattr(tracking, "Tracker", FakeTracker)
+        monkeypatch.setattr(watchdog_mod, "Watchdog", FakeWatchdog)
+        monkeypatch.setitem(
+            sys.modules,
+            "torch",
+            types.SimpleNamespace(
+                cuda=types.SimpleNamespace(is_available=lambda: False)
+            ),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "datasets",
+            types.SimpleNamespace(
+                Dataset=types.SimpleNamespace(from_list=lambda lst: lst)
+            ),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "trl",
+            types.SimpleNamespace(SFTConfig=lambda **kw: types.SimpleNamespace(**kw)),
+        )
+        monkeypatch.setattr(
+            distill_mod, "build_dataset", lambda recipe: ([{"input_ids": [1]}], [])
+        )
+        monkeypatch.setattr(
+            distill_mod,
+            "build_model_and_tokenizer",
+            lambda recipe: (
+                types.SimpleNamespace(config=types.SimpleNamespace()),
+                object(),
+                {},
+            ),
+        )
+        monkeypatch.setattr(
+            distill_mod, "resolve_base_identity_or_none", lambda recipe: None
+        )
+        monkeypatch.setattr(
+            distill_mod,
+            "load_teacher",
+            lambda recipe: types.SimpleNamespace(
+                config=types.SimpleNamespace(),
+                parameters=lambda: iter([types.SimpleNamespace(is_cuda=True)]),
+            ),
+        )
+        monkeypatch.setattr(distill_mod, "teacher_revision", lambda t: "rev")
+        monkeypatch.setattr(distill_mod, "build_callbacks", lambda *a, **k: [])
+        monkeypatch.setattr(
+            distill_mod, "build_distill_trainer_cls", lambda: trainer_cls
+        )
+        return distill_mod, recipe, FakeTracker, FakeWatchdog
+
+    def ckpt_root(self, tmp_path, recipe) -> str:
+        return os.path.join(str(tmp_path), recipe.run.name, "checkpoints")
+
+    def test_construction_failure_stops_watchdog_and_tracker(
+        self, tmp_path, monkeypatch
+    ):
+        # KB-13: a trainer-construction failure must not leak the running
+        # watchdog thread or the tracker's sinks
+        class ExplodingTrainer:
+            def __init__(self, **kwargs):
+                raise RuntimeError("TRL rejected the config")
+
+        distill_mod, recipe, tracker_cls, watchdog_cls = self.setup_run(
+            tmp_path, monkeypatch, ExplodingTrainer
+        )
+        with pytest.raises(RuntimeError, match="TRL rejected"):
+            distill_mod._train_locked_distill(recipe)
+        assert watchdog_cls.instances[-1].started
+        assert watchdog_cls.instances[-1].stopped
+        assert tracker_cls.instances[-1].closed
+
+    def test_emergency_state_lands_in_emergency_dir(self, tmp_path, monkeypatch):
+        # KB-15: save_state must write trainer_state.json into the emergency
+        # directory, not the checkpoint root save_state defaults to
+        class AbortingTrainer:
+            def __init__(self, **kwargs):
+                self.args = kwargs["args"]
+                self.state = types.SimpleNamespace(global_step=7)
+
+            def train(self, resume_from_checkpoint=None):
+                raise WatchdogAbort("loss_spike", 9.0, 3.0)
+
+            def save_model(self, path):
+                os.makedirs(path, exist_ok=True)
+
+            def save_state(self):
+                # transformers semantics: writes into args.output_dir
+                with open(
+                    os.path.join(self.args.output_dir, "trainer_state.json"), "w"
+                ) as f:
+                    json.dump({"global_step": self.state.global_step}, f)
+
+        distill_mod, recipe, _, watchdog_cls = self.setup_run(
+            tmp_path, monkeypatch, AbortingTrainer
+        )
+        with pytest.raises(WatchdogAbort):
+            distill_mod._train_locked_distill(recipe)
+        root = self.ckpt_root(tmp_path, recipe)
+        emergency = os.path.join(root, "checkpoint-7-emergency")
+        assert os.path.isfile(os.path.join(emergency, "trainer_state.json"))
+        assert not os.path.exists(os.path.join(root, "trainer_state.json"))
+        with open(os.path.join(emergency, "meta.json")) as f:
+            assert json.load(f)["emergency"] is True
+        assert watchdog_cls.instances[-1].stopped
+
+    def test_failing_emergency_save_does_not_mask_abort(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # KB-14: a failing emergency save must warn, not replace the
+        # WatchdogAbort with its own exception
+        class BrokenSaveTrainer:
+            def __init__(self, **kwargs):
+                self.args = kwargs["args"]
+                self.state = types.SimpleNamespace(global_step=7)
+
+            def train(self, resume_from_checkpoint=None):
+                raise WatchdogAbort("loss_spike", 9.0, 3.0)
+
+            def save_model(self, path):
+                raise RuntimeError("disk full")
+
+        distill_mod, recipe, tracker_cls, watchdog_cls = self.setup_run(
+            tmp_path, monkeypatch, BrokenSaveTrainer
+        )
+        with pytest.raises(WatchdogAbort):
+            distill_mod._train_locked_distill(recipe)
+        assert "emergency checkpoint failed: disk full" in capsys.readouterr().err
+        assert watchdog_cls.instances[-1].stopped
+        assert tracker_cls.instances[-1].closed
