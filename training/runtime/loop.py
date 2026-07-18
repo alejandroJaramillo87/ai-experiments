@@ -386,7 +386,11 @@ def _train_locked(recipe: DictConfig, stop_after: int | None) -> TrainResult:
     if recipe.watchdog.enabled:
         os.makedirs(ckpt_root, exist_ok=True)  # disk-floor check needs the path
         watchdog = Watchdog(
-            recipe.watchdog, run_name_dir, tracker=tracker, disk_path=ckpt_root
+            recipe.watchdog,
+            run_name_dir,
+            tracker=tracker,
+            disk_path=ckpt_root,
+            start_step=start_step,
         )
         watchdog.start()
 

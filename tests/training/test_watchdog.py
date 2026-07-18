@@ -8,7 +8,6 @@ tests are torch-free; the loop integration test skips without torch.
 """
 
 import json
-import math
 import os
 import time
 
@@ -57,8 +56,9 @@ def test_nan_loss_aborts_and_records_alert(run_dir):
     alerts = read_alerts(run_dir)
     assert alerts[0]["signal"] == "loss_non_finite"
     assert alerts[0]["action"] == "abort"
-    assert math.isnan(alerts[0]["value"])
-    assert {"time", "step", "value", "threshold"} <= alerts[0].keys()
+    # non-finite values serialize as null so the line stays strict JSON
+    assert alerts[0]["value"] is None
+    assert {"ts", "step", "value", "threshold"} <= alerts[0].keys()
     assert any("watchdog/loss_non_finite" in m for m, _ in tracker.logged)
 
 
