@@ -24,7 +24,6 @@ may run are local, stateless viewers over the files (see
 - [Output streams and the json contract](#output-streams-and-the-json-contract)
 - [The event record schema](#the-event-record-schema)
 - [The metrics record schema](#the-metrics-record-schema)
-- [Secret handling](#secret-handling)
 - [File and directory layout](#file-and-directory-layout)
 - [Configuration](#configuration)
 - [Implementation roadmap](#implementation-roadmap)
@@ -66,9 +65,11 @@ them would raise cost without adding local value.
 - Always-on profiling.
 - Authentication or multi-user access. Viewers bind to localhost unless the
   operator passes an explicit host flag.
-- A general-purpose redaction engine. Secret handling is a narrow,
-  value-based policy (see [Secret handling](#secret-handling)), not a
-  pattern-matching filter.
+- Any masking or redaction of record content. No record type captures
+  environment variables, and record content is written as passed. The audited
+  surface justifies this: no argparse flag in either CLI accepts a secret, and
+  `HF_TOKEN` is consumed ambiently inside `huggingface_hub`, so its value never
+  enters Python-level state.
 - An always-on service as a requirement. The optional rig console (OBS-15)
   may run under compose, but nothing in the system requires a server to be
   running for records to be written or read.
@@ -177,20 +178,25 @@ Event types and their added fields:
 
 | `event` | Added fields | Level | Emitted by |
 |---------|--------------|-------|------------|
-| `cmd.start` | `argv` (masked from OBS-5 on) | info | Dispatch wrapper (OBS-4) |
+| `cmd.start` | `argv` | info | Dispatch wrapper (OBS-4) |
 | `cmd.end` | `exit_code`, `duration_s` | info | Dispatch wrapper (OBS-4) |
 | `phase.start` | `phase` | info | Phase timer (OBS-4) |
 | `phase.end` | `phase`, `duration_s` | info | Phase timer (OBS-4) |
-| `fail` | `exc_type`, `exc_msg` (masked), `traceback` (masked, truncated), `exit_code` | error | Failure recorder (OBS-5) |
+| `fail` | `exc_type`, `exc_msg`, `traceback` (truncated), `exit_code` | error | Failure recorder (OBS-5) |
 | `run.context` | `git_sha`, `python`, `platform`, `packages`, `gpu` (optional) | info | Context capture (OBS-7) |
 | `run.dir` | `path` | info | Run-directory hook (OBS-10) |
 | `open` | `path`, `mode` | debug | Audit hook (OBS-6) |
 | `import` | `module` | debug | Audit hook (OBS-6) |
-| `spawn` | `argv0`, `argv` (masked) | debug | Audit hook (OBS-6) |
+| `spawn` | `argv0`, `argv` | debug | Audit hook (OBS-6) |
 
 Application code emits its own named events (for example `dataset_loaded`
 with an `examples` count) through the logging API. Those records carry the
 base fields plus whatever the call passes.
+
+No record type captures environment variables, and record content — argument
+vectors, exception text, tracebacks — is written as passed, with no masking
+or redaction. The schema carries `git_sha` and `recipe_hash` on purpose, so
+any pattern-based filter would corrupt the records the system depends on.
 
 ## The metrics record schema
 
@@ -253,40 +259,6 @@ Marker records reuse the same shape:
 | `checkpoint_saved` | D6 loop save sites (added by OBS-10) | A checkpoint was written at this step |
 | `watchdog/<signal>` | Watchdog `_alert` (already implemented) | A watchdog signal crossed its threshold |
 | `eval/holdout_loss` | SFT callback (already implemented) | An evaluation ran at this step |
-
-## Secret handling
-
-The system replaces the earlier general redaction filter (the original
-OBS-2) with a narrow policy, based on an audit of where secrets actually
-live in this repository.
-
-**Policy 1: the environment is never captured.** No record type includes
-environment variables. The run context (OBS-7) records package versions and
-platform facts, not the environment. Most of what a redaction engine would
-protect therefore never reaches a file.
-
-**Policy 2: value-based masking at the record sites that can carry foreign
-text.** `mask_secrets(text)` (OBS-5) reads the current environment, collects
-the values of variables whose names match `*_TOKEN`, `*_KEY`, or `*_SECRET`
-(case-insensitive, values of eight characters or more), and replaces each
-exact value with `***masked***` wherever it appears. It applies to exception
-messages and tracebacks (`fail` records), to `cmd.start` argument vectors,
-and to `spawn` argument vectors. Exact-value replacement has no false
-positives and requires no shape guessing.
-
-Why not pattern-based masking: the schema carries `git_sha` and
-`recipe_hash` on purpose, so masking "long hexadecimal runs" would corrupt
-the records the system depends on. And the audited surface is small: no
-argparse flag in either CLI accepts a secret (every token-named flag is a
-token count or tokenizer path), and `HF_TOKEN` is consumed ambiently inside
-`huggingface_hub` — its value never enters Python-level state. The residual
-risk is third-party exception text (for example short-lived presigned CDN
-URLs in hub download errors); those are not maskable by value and are
-accepted as short-lived.
-
-The threat model is not the disk: these logs are designed to be read by
-coding agents and pasted into bug reports. Masking at the file boundary
-keeps that workflow safe without a redaction module.
 
 ## File and directory layout
 
@@ -391,17 +363,16 @@ has no `tests/common/` directory.
   the base fields, that the human line appears on standard error and not
   standard output and carries no timestamp, that `OBS_LOG_LEVEL=warning`
   suppresses `info`, and that the record carries the bound `run_id`.
-- **Out of scope**: secret masking (OBS-5), the `Printer` fold (OBS-3), any
+- **Out of scope**: the `Printer` fold (OBS-3), any
   dispatch changes (OBS-4).
 
-#### OBS-2: folded into OBS-5 and OBS-6
+#### OBS-2: retired
 
-This item is retired. The general redaction filter it specified is replaced
-by the narrow policy in [Secret handling](#secret-handling): the environment
-is never captured, and `mask_secrets` (implemented in OBS-5, applied to
-spawn vectors in OBS-6) masks exact secret values at the record sites that
-can carry foreign text. The id is retained so later item ids stay stable.
-There is no work to execute under this id.
+This item is retired with no replacement work. The general redaction filter
+it specified is removed from the design entirely: no record type captures
+environment variables, and no masking is applied to record content (see
+[the event record schema](#the-event-record-schema)). The id is retained so
+later item ids stay stable. There is no work to execute under this id.
 
 #### OBS-3: fold Printer into the logger
 
@@ -476,17 +447,26 @@ There is no work to execute under this id.
     inside a `try/finally`, and emit `cmd.end` with the exit code and
     wall-clock duration in the `finally` so it fires on exceptions too. Both
     `main` functions become one-line calls into it.
-  - Exit code mapping: an integer return passes through; an uncaught
-    exception maps to 1 (the CLI contract); `KeyboardInterrupt` maps to 130.
-    Argparse usage errors raise `SystemExit(2)` during parsing, before a
-    `run_id` exists; those invocations produce no records, which is
-    accepted and documented.
+  - Exit code mapping: an integer return passes through (`None` maps to 0);
+    an uncaught exception maps to 1 (the CLI contract); `KeyboardInterrupt`
+    maps to 130; a `SystemExit` raised mid-run (the SIGTERM traps in
+    `eval_ft`, `generate_teacher`, and `serve_eval`) records its own integer
+    code. The wrapper re-raises after recording, so the interpreter still
+    prints the traceback and the process exit status is unchanged. Argparse
+    usage errors raise `SystemExit(2)` during parsing, before a `run_id`
+    exists; those invocations produce no records, which is accepted and
+    documented.
+  - `configure` treats the file handler as best-effort: when the log root
+    cannot be created or the file cannot be opened, the file handler is
+    skipped silently and the command runs with console output only. A
+    machine without `/mnt/ai-data` (for example an agent sandbox) therefore
+    runs every command normally and writes no event file.
   - Provide `phase(name)` as a context manager that emits `phase.start` and
     `phase.end` with the elapsed duration. It is used by later items and by
     long commands.
-  - `argv` is recorded as passed in this item; OBS-5 threads `mask_secrets`
-    over it. The audit found no secret-bearing flag in either CLI, so the
-    one-item window is not a leak path.
+  - `argv` is recorded as passed; no masking is applied. The audit found no
+    secret-bearing flag in either CLI (every token-named flag is a token
+    count or tokenizer path).
 - **Acceptance check** (sandbox):
   `uv run pytest tests/utils/test_obs_dispatch.py` passes, asserting that a
   successful command writes `cmd.start` and `cmd.end` with `exit_code` 0 and a
@@ -494,35 +474,31 @@ There is no work to execute under this id.
   `cmd.end` with exit code 1, and that both records share one `run_id`.
 - **Out of scope**: the structured `fail` record, which is OBS-5.
 
-#### OBS-5: structured failure records and secret masking
+#### OBS-5: structured failure records
 
 - **Goal**: an uncaught exception in a command is recorded as a `fail` event
-  with the exception type, masked message, and a truncated masked traceback;
-  `mask_secrets` exists as the single masking function for all record sites.
+  with the exception type, message, and a truncated traceback.
 - **Depends on**: OBS-4.
-- **Scope**: `common/obs/core.py` (`mask_secrets`, failure recorder),
+- **Scope**: `common/obs/core.py` (failure recorder),
   `common/obs/dispatch.py` (wiring), `tests/utils/test_obs_failure.py`.
 - **Design**:
-  - `mask_secrets(text)` reads the current environment once per call,
-    collects values of variables whose names match `*_TOKEN`, `*_KEY`, or
-    `*_SECRET` (case-insensitive) and whose values are eight characters or
-    longer, and replaces each exact value in `text` with `***masked***`. No
-    pattern heuristics: hexadecimal runs, `hf_` prefixes, and base64 shapes
-    pass through untouched, because the schema carries `git_sha` and
-    `recipe_hash` by design.
   - `record_failure(exc, exit_code)` emits a `fail` event with `exc_type`,
     `exc_msg`, a traceback truncated to the last 30 frames, and the exit
-    code. Message and traceback pass through `mask_secrets`.
+    code. Content is recorded as-is; no masking is applied (see
+    [the event record schema](#the-event-record-schema)).
   - The dispatch wrapper calls `record_failure` when a command raises, so
-    failures are captured uniformly rather than per command. It also passes
-    the `cmd.start` `argv` list through `mask_secrets` from this item on.
-  - The human error line continues to come from `Printer.error`, unchanged.
+    failures are captured uniformly rather than per command.
+  - `KeyboardInterrupt` and `SystemExit` produce no `fail` record:
+    cancellation and a deliberate exit are not failures. `cmd.end` still
+    records their exit codes (130 and the `SystemExit` code).
+  - The human error line continues to come from `Printer.error`, unchanged;
+    the `fail` record is file-only.
 - **Acceptance check** (sandbox):
   `uv run pytest tests/utils/test_obs_failure.py` passes, asserting that a
-  raised exception whose message contains a planted `FAKE_API_TOKEN` value
-  produces one `fail` record with the value masked, that a 40-character
-  hexadecimal string (a git SHA shape) passes through unmasked, that the
-  traceback is bounded, and that the record shares the run's `run_id`.
+  raised exception produces exactly one `fail` record carrying `exc_type`,
+  `exc_msg`, and the exit code, that the traceback is bounded at 30 frames,
+  that the record shares the run's `run_id`, and that `KeyboardInterrupt`
+  and `SystemExit` produce no `fail` record.
 - **Out of scope**: retry logic or error classification beyond recording.
 
 #### OBS-6: Layer 2 resource audit hook
@@ -530,27 +506,31 @@ There is no work to execute under this id.
 - **Goal**: when enabled, record every file opened, module imported, and
   subprocess spawned during a command, using a Python audit hook, at debug
   level.
-- **Depends on**: OBS-4, OBS-5.
+- **Depends on**: OBS-4.
 - **Scope**: `common/obs/audit.py`, wiring into `common/obs/dispatch.py`,
   `tests/utils/test_obs_audit.py`.
 - **Design**:
   - `install_audit_trace()` registers a `sys.addaudithook` callback that maps
     the `open`, `import`, and `subprocess.Popen` (and `os.exec*`) audit events
-    to `open`, `import`, and `spawn` records at debug level.
+    to `open`, `import`, and `spawn` records at debug level. Spawn argument
+    vectors are recorded as passed.
   - The hook is installed only when `OBS_TRACE=1`, because audit hooks add
     measurable overhead and cannot be removed for the life of the process.
     The dispatch wrapper reads the variable and installs the hook before
-    running the command.
+    running the command. `OBS_TRACE=1` also lowers the effective log level
+    to `debug` unless `OBS_LOG_LEVEL` is set explicitly; without this the
+    debug records would be dropped and the flag would do nothing.
   - The hook never raises into the audited call; it swallows its own errors so
     an instrumentation failure cannot break the command.
-  - Spawn argument vectors pass through `mask_secrets` (OBS-5), so a secret
-    on a future subprocess command line is masked before it reaches a file.
+  - Known limits: the hook observes the whole process, not only the handler's
+    own activity, and records emitted from threads other than the one that
+    ran `bind_run` carry an empty run context (context variables do not cross
+    thread boundaries). Both are accepted for an opt-in forensic tool.
 - **Acceptance check** (sandbox):
   `uv run pytest tests/utils/test_obs_audit.py` passes with `OBS_TRACE=1`,
   asserting that opening a file, importing a module, and spawning a trivial
-  subprocess each produce the corresponding debug record, that a planted
-  environment secret appearing in a spawn argument is masked, and that with
-  `OBS_TRACE=0` no such records appear.
+  subprocess each produce the corresponding debug record, and that with
+  `OBS_TRACE` unset no such records appear.
 - **Out of scope**: call-level or function-level tracing, which is a
   profiler task documented in OBS-13.
 
@@ -564,13 +544,14 @@ There is no work to execute under this id.
 - **Design**:
   - `run_context()` returns a dict with the git SHA (reuse
     `common/provenance.py`, `git_sha`), the Python version, the platform
-    string, and the versions of a fixed package list (`torch`,
-    `transformers`, `trl`, `peft`, `datasets`) obtained through
+    string, and the versions of a fixed package list covering both CLIs
+    (`torch`, `transformers`, `trl`, `peft`, `datasets`, `sae_lens`,
+    `transformer_lens`, `nnsight`) obtained through
     `importlib.metadata.version`, omitting packages that are not installed.
     GPU name and driver information is included when a query succeeds and
     omitted when it does not, so the function never fails on a machine
     without a GPU. Environment variables are never captured (see
-    [Secret handling](#secret-handling)).
+    [the event record schema](#the-event-record-schema)).
   - The dispatch wrapper emits the context as a `run.context` record
     immediately after `cmd.start`.
 - **Acceptance check** (sandbox):
@@ -831,7 +812,7 @@ There is no work to execute under this id.
 - **Depends on**: the items whose behavior it documents.
 - **Scope**: `docs/observability/README.md`.
 - **Design**: document the file layout, the `OBS_` environment variables, the
-  event and metrics schemas, secret handling, the `runs` and `report`
+  event and metrics schemas, the `runs` and `report`
   subcommands including `--serve`, and example `jq` queries over the event
   files and the catalog. Cross-reference this roadmap and
   `docs/report_schema.md`.
@@ -848,11 +829,11 @@ dependency summary:
 | Item | Depends on |
 |------|------------|
 | OBS-1 logging core | none |
-| OBS-2 (folded into OBS-5 and OBS-6) | no work |
+| OBS-2 (retired) | no work |
 | OBS-3 Printer fold | OBS-1 |
 | OBS-4 command events | OBS-1, OBS-3 |
-| OBS-5 failure records and masking | OBS-4 |
-| OBS-6 audit hook | OBS-4, OBS-5 |
+| OBS-5 failure records | OBS-4 |
+| OBS-6 audit hook | OBS-4 |
 | OBS-7 run context | OBS-4 |
 | OBS-8 retention | OBS-1 |
 | OBS-9 run catalog | OBS-4 |
