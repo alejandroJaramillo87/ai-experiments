@@ -29,7 +29,11 @@ from common.obs.retention import prune
 DEFAULT_LOG_DIR = "/mnt/ai-data/logs"
 
 # Bound fail-record tracebacks so a recursion error cannot bloat the file.
+# The frame limit bounds each exception in a chain; the char limit bounds
+# the chain itself (a retry loop raising from prev defeats the frame limit).
 TRACEBACK_FRAME_LIMIT = 30
+TRACEBACK_CHAR_LIMIT = 32768
+EXC_MSG_LIMIT = 4096
 
 _LOGGER_NAME = "obs"
 
@@ -254,14 +258,24 @@ def record_failure(exc: BaseException, exit_code: int) -> None:
     limit keeps the last frames — the ones nearest the raise site.
     """
     tb = traceback.TracebackException.from_exception(exc, limit=-TRACEBACK_FRAME_LIMIT)
+    try:
+        exc_msg = str(exc)
+    except Exception:
+        exc_msg = "<exception str() failed>"
+    if len(exc_msg) > EXC_MSG_LIMIT:
+        exc_msg = exc_msg[:EXC_MSG_LIMIT] + "...[truncated]"
+    text = "".join(tb.format())
+    if len(text) > TRACEBACK_CHAR_LIMIT:
+        # keep the tail: the frames nearest the raise site
+        text = "...[truncated]...\n" + text[-TRACEBACK_CHAR_LIMIT:]
     emit(
         "error",
         "",
         event="fail",
         console=False,
         exc_type=type(exc).__name__,
-        exc_msg=str(exc),
-        traceback="".join(tb.format()),
+        exc_msg=exc_msg,
+        traceback=text,
         exit_code=exit_code,
     )
 

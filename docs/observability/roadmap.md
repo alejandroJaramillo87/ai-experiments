@@ -500,12 +500,21 @@ later item ids stay stable. There is no work to execute under this id.
   - `record_failure(exc, exit_code)` emits a `fail` event with `exc_type`,
     `exc_msg`, a traceback truncated to the last 30 frames, and the exit
     code. Content is recorded as-is; no masking is applied (see
-    [the event record schema](#the-event-record-schema)).
+    [the event record schema](#the-event-record-schema)). Bounds: the frame
+    limit applies per exception in a chain and a 32 KiB character cap bounds
+    the chain itself (tail kept — the frames nearest the raise); `exc_msg`
+    caps at 4 KiB; an exception whose own `str()` raises records
+    `<exception str() failed>`.
   - The dispatch wrapper calls `record_failure` when a command raises, so
-    failures are captured uniformly rather than per command.
+    failures are captured uniformly rather than per command. The call is
+    guarded: a failure inside the recorder can never replace the command's
+    own exception.
   - `KeyboardInterrupt` and `SystemExit` produce no `fail` record:
     cancellation and a deliberate exit are not failures. `cmd.end` still
-    records their exit codes (130 and the `SystemExit` code).
+    records their exit codes (130 and the `SystemExit` code, with a bool
+    code normalized to an integer). A `BaseExceptionGroup` containing only
+    `KeyboardInterrupt`s counts as cancellation (130, no `fail` record); a
+    mixed group is a failure.
   - The human error line continues to come from `Printer.error`, unchanged;
     the `fail` record is file-only.
 - **Acceptance check** (sandbox):

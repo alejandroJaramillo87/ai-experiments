@@ -22,6 +22,14 @@ from common.obs.context import run_context
 from common.obs.core import bind_run, configure, emit, record_failure
 
 
+def _record_failure_safely(exc: BaseException, exit_code: int) -> None:
+    """The obs machinery must never mask the command's own failure."""
+    try:
+        record_failure(exc, exit_code)
+    except Exception:
+        pass
+
+
 def dispatch(
     cli: str,
     build_parser: Callable[[], argparse.ArgumentParser],
@@ -62,16 +70,26 @@ def dispatch(
         raise
     except SystemExit as exc:
         if isinstance(exc.code, int):
-            exit_code = exc.code
+            # int() also normalizes SystemExit(True) to 1, not JSON true
+            exit_code = int(exc.code)
         else:
             exit_code = 0 if exc.code is None else 1
+        raise
+    except BaseExceptionGroup as exc:
+        # a task group re-raising Ctrl-C wraps it: a group of nothing but
+        # KeyboardInterrupts is still a cancellation, not a failure
+        if exc.split(KeyboardInterrupt)[1] is None:
+            exit_code = 130
+        else:
+            exit_code = 1
+            _record_failure_safely(exc, exit_code)
         raise
     except BaseException as exc:
         # KeyboardInterrupt and SystemExit are handled above: cancellation
         # and a deliberate exit are not failures, so only genuine uncaught
         # exceptions produce a fail record.
         exit_code = 1
-        record_failure(exc, exit_code)
+        _record_failure_safely(exc, exit_code)
         raise
     finally:
         duration_s = round(time.monotonic() - start, 3)
