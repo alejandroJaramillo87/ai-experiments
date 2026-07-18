@@ -153,20 +153,24 @@ class Tracker:
         self, tracking, run_name: str, run_dir: str, config: dict | None
     ) -> None:
         try:
-            os.environ.setdefault("WANDB_MODE", "offline")
             import wandb
 
+            # mode as an init argument, not os.environ.setdefault: the env
+            # mutation outlived a failed init and forced every later
+            # in-process wandb use offline
             run = wandb.init(
                 project=tracking.wandb_project,
                 name=run_name,
                 dir=run_dir,
                 config=config or {},
+                mode=os.environ.get("WANDB_MODE", "offline"),
             )
             self._sinks.append(("wandb", run))
         except Exception as exc:
             _warn("wandb", exc)
 
     def _init_mlflow(self, run_name: str, run_dir: str, config: dict | None) -> None:
+        started = False
         try:
             import mlflow
 
@@ -174,6 +178,7 @@ class Tracker:
                 mlflow.set_tracking_uri(f"file://{os.path.join(run_dir, 'mlruns')}")
             mlflow.set_experiment(run_name)
             mlflow.start_run(run_name=run_name)
+            started = True
             if config:
                 # mlflow rejects params over 500 chars; flat scalar params only
                 mlflow.log_params(
@@ -186,6 +191,14 @@ class Tracker:
             self._sinks.append(("mlflow", mlflow))
         except Exception as exc:
             _warn("mlflow", exc)
+            if started:
+                # a failure after start_run (log_params on an oversize
+                # value) left the run active, poisoning every later
+                # Tracker in the process with "run already active"
+                try:
+                    mlflow.end_run()
+                except Exception:
+                    pass
 
     def log(self, metrics: dict, step: int) -> None:
         for name, sink in list(self._sinks):
