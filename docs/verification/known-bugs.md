@@ -31,7 +31,7 @@ Every defect the WI-14 capstone review and its Opus re-verification confirmed, i
 
 ## Resolved in the sandbox pre-fix pass (36)
 
-Fixed with per-bug regression tests on branch `claude/verification-bugs-test-analysis-77wknf` before the hardware campaign reached these steps. Every fix is a pure-Python path provable in the sandbox; the 15 bugs still open above are pinned-library, GPU-runtime, or design-decision defects that must be fixed against the real traceback per the runbook protocol. Each regression test was demonstrated failing on the pre-fix code.
+Fixed with per-bug regression tests in PR #65 (`fix the 36 sandbox-provable known bugs before the hardware campaign`) before the campaign reached these steps. Every fix is a pure-Python path provable in the sandbox; the 15 bugs still open above are pinned-library, GPU-runtime, or design-decision defects that must be fixed against the real traceback per the runbook protocol. Each regression test was demonstrated failing on the pre-fix code.
 
 | ID | Step(s) | Location | Category | Confidence | Defect |
 |----|---------|----------|----------|------------|--------|
