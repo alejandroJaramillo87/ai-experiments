@@ -11,6 +11,7 @@ instead, polling the growing files; no run.html is written. Exit codes:
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 from common.obs import dashboard
@@ -67,6 +68,10 @@ def cmd(args: argparse.Namespace) -> int:
         # metrics.jsonl may not exist yet for a run that just started; the
         # server resolves the events path lazily from the header.
         events_path = Path(args.events) if args.events else None
+        if events_path is not None and not events_path.is_file():
+            # served as empty until it appears; a typo'd path would
+            # otherwise be indistinguishable from a quiet run
+            out.warn(f"Event file does not exist yet: {events_path}")
         return obs_serve.run(
             args.host,
             args.port,
@@ -100,9 +105,23 @@ def cmd(args: argparse.Namespace) -> int:
         if ev_skipped:
             out.warn(f"Malformed event lines skipped: {ev_skipped}")
 
+    try:
+        page = dashboard.build_snapshot(header, metrics, events)
+    except OSError as exc:
+        out.error(f"Dashboard asset unreadable: {exc}")
+        out.line("  Solution: restore common/obs/viewer.js and vendor/uplot")
+        return 1
     out_path = run_dir / "run.html"
-    out_path.write_text(
-        dashboard.build_snapshot(header, metrics, events), encoding="utf-8"
-    )
+    tmp_path = run_dir / "run.html.tmp"
+    try:
+        # write-then-replace: a failed write (ENOSPC) must not truncate a
+        # previously rendered run.html
+        tmp_path.write_text(page, encoding="utf-8")
+        os.replace(tmp_path, out_path)
+    except OSError as exc:
+        out.error(f"Cannot write {out_path}: {exc}")
+        out.line("  Solution: check free space and permissions on the run directory")
+        tmp_path.unlink(missing_ok=True)
+        return 1
     out.ok(f"Wrote {out_path}")
     return 0

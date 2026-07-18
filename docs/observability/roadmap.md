@@ -794,8 +794,14 @@ later item ids stay stable. There is no work to execute under this id.
     a per-step series of 10,000 or more points.
   - The page inlines everything — the two data sets as script blocks, the
     uPlot script and stylesheet, and `common/obs/viewer.js` — and references
-    no external URL. Payloads embed with `</` escaped to `<\/`, so record
-    text containing `</script>` cannot terminate the enclosing block. The
+    no external URL. Payloads embed with every `<` escaped to the JSON
+    escape `\u003c` (valid because `<` only occurs inside string values):
+    record text containing `</script>` cannot terminate the enclosing
+    block, and `<!--<script` cannot enter the script-data-double-escaped
+    parser state that would swallow the page. Non-finite floats read from
+    legacy files map to `null` before embedding. The reader also accepts a
+    UTF-8 BOM, and header identity used for the events join must be plain
+    string names (no path separators or `..`). The
     viewer module draws the loss curves (`loss`, `train/loss`,
     `eval/holdout_loss`), the learning-rate schedule, throughput, and
     device memory (`gpu_mem_allocated_gb`, `gpu_vram_used_gb`), with

@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import os
-from functools import cache
 from pathlib import Path
 
 from common.obs.core import DEFAULT_LOG_DIR
@@ -44,8 +44,9 @@ body { margin: 0; font-family: system-ui, sans-serif; background: #fafafa;
 """
 
 
-@cache
 def _asset(name: str) -> str:
+    # uncached: three small files read by a one-shot CLI, and a cache
+    # would pin stale text across a long-lived test or harness process
     if name == "viewer.js":
         return (_OBS_DIR / "viewer.js").read_text(encoding="utf-8")
     return (_OBS_DIR / "vendor" / "uplot" / name).read_text(encoding="utf-8")
@@ -60,7 +61,9 @@ def read_metrics(path: Path) -> tuple[dict, list[dict], int]:
     header: dict = {}
     records: list[dict] = []
     skipped = 0
-    for line in path.read_text(encoding="utf-8").splitlines():
+    # utf-8-sig: a BOM from an externally edited file must not silently
+    # disqualify the header line
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
         try:
             value = json.loads(line)
         except json.JSONDecodeError:
@@ -80,7 +83,7 @@ def read_events(path: Path) -> tuple[list[dict], int]:
     """Parse an event file into (records, skipped_line_count)."""
     records: list[dict] = []
     skipped = 0
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
         try:
             value = json.loads(line)
         except json.JSONDecodeError:
@@ -101,19 +104,44 @@ def default_events_path(header: dict, log_dir: str | None = None) -> Path | None
     """
     run_id = header.get("run_id")
     cli = header.get("cli")
+    if not isinstance(run_id, str) or not isinstance(cli, str):
+        return None  # corrupt header: degrade, do not crash the join
     if not run_id or not cli:
         return None
+    # the identity comes from a file on disk; joined under OBS_LOG_DIR it
+    # must stay a plain name, never a path
+    for part in (run_id, cli):
+        if "/" in part or "\\" in part or ".." in part:
+            return None
     root = log_dir or os.environ.get("OBS_LOG_DIR") or DEFAULT_LOG_DIR
     return Path(root) / cli / f"{run_id}.jsonl"
+
+
+def _finite(value: object) -> object:
+    """Map non-finite floats to None so the payload is strict JSON.
+
+    Legacy metrics files may still carry bare NaN literals, which Python's
+    json.loads accepts; re-emitting them would poison the chart autorange.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _finite(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_finite(v) for v in value]
+    return value
 
 
 def inline_json(value: object) -> str:
     """Serialize for embedding inside a <script> block.
 
-    "</" is escaped to "<\\/" so a payload containing "</script>" cannot
-    terminate the enclosing block.
+    Every "<" is escaped to "\\u003c" (valid JSON, since "<" only occurs
+    inside string values): escaping only "</" left "<!--" unhandled, and a
+    payload containing "<!--<script" puts the HTML parser into the
+    script-data-double-escaped state, swallowing the real "</script>" and
+    blanking the whole page.
     """
-    return json.dumps(value).replace("</", "<\\/")
+    return json.dumps(_finite(value), allow_nan=False).replace("<", "\\u003c")
 
 
 def _page(data_script: str, title: str) -> str:
