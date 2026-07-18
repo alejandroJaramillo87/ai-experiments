@@ -18,6 +18,7 @@ import os
 
 import pytest
 from support import build_bpe_tokenizer
+from tokenizers import Tokenizer
 
 from common.output import Printer
 from training import cli, serving
@@ -152,7 +153,10 @@ class TestTrainTokenizerCmd:
         assert os.path.isfile(tokenizer_path)
         with open(os.path.join(out_dir, "manifest.json")) as f:
             manifest = json.load(f)
-        assert manifest["vocab_size"] == VOCAB
+        assert (
+            manifest["vocab_size"] == Tokenizer.from_file(tokenizer_path).get_vocab_size()
+        )
+        assert manifest["requested_vocab_size"] == VOCAB
         assert manifest["corpus"] == [corpus]
         assert manifest["special_tokens"]["<|bos|>"] == 0
         assert set(manifest["metrics"]) == {"web", "code"}

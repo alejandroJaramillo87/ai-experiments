@@ -177,7 +177,9 @@ _WORKER_TOKENIZER: LoadedTokenizer | None = None
 
 def _map_encode(batch: dict, spec: tuple, text_field: str) -> dict:
     global _WORKER_TOKENIZER
-    if _WORKER_TOKENIZER is None:
+    # Reload when spec differs: a worker process reused across map() calls must
+    # not tokenize with a previously cached tokenizer for a different spec
+    if _WORKER_TOKENIZER is None or _WORKER_TOKENIZER.spec != spec:
         _WORKER_TOKENIZER = load_tokenizer(*spec)
     return {"input_ids": _WORKER_TOKENIZER.encode_batch(batch[text_field])}
 

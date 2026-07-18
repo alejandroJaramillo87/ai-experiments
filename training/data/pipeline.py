@@ -435,6 +435,20 @@ def prepare_corpus(
 ) -> dict:
     """Run the full pipeline and return the written shard manifest."""
     config = config or PipelineConfig()
+
+    # Fail fast on inputs that otherwise fail only after the multi-hour
+    # filter/dedup/decontamination stages: a pre-existing output manifest
+    # (prepare()'s guard, hoisted verbatim), an unloadable tokenizer, and a
+    # missing or corrupt contamination index
+    manifest_path = os.path.join(out_dir, shards_mod.MANIFEST_NAME)
+    if os.path.exists(manifest_path):
+        raise FileExistsError(
+            f"{out_dir} already contains {shards_mod.MANIFEST_NAME}; refusing to overwrite"
+        )
+    prepare_mod.load_tokenizer(tokenizer_source, eos_token)
+    if contamination_dir is not None:
+        ContaminationIndex(contamination_dir)
+
     os.makedirs(work_dir, exist_ok=True)
 
     if os.path.exists(source):

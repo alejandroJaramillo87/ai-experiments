@@ -34,8 +34,14 @@ def shard_set_bytes(source_dir: str, manifest: dict) -> int:
 
 
 def _staged_copy_valid(dest_dir: str, manifest: dict) -> bool:
-    """True when dest_dir already holds a hash-matching copy of every shard."""
-    if not os.path.isfile(os.path.join(dest_dir, MANIFEST_NAME)):
+    """True when dest_dir already holds a hash-matching copy of every shard
+    and a manifest whose parsed content equals the source's."""
+    try:
+        if load_manifest(dest_dir) != manifest:
+            return False
+    except (FileNotFoundError, ValueError):
+        # Missing or torn manifest (kill mid-copy): the copy must be redone,
+        # not reused on file existence alone
         return False
     for rec in manifest["shards"]:
         path = os.path.join(dest_dir, rec["file"])
@@ -84,8 +90,10 @@ def stage_shards(source_dir: str, staging) -> str:
                 f"staged copy of {rec['file']} hashes {digest}, manifest says "
                 f"{rec['xxhash64']}: staging medium corrupted the data"
             )
-    shutil.copyfile(
-        os.path.join(source_dir, MANIFEST_NAME), os.path.join(dest_dir, MANIFEST_NAME)
-    )
+    # Publish the manifest atomically, and only after every shard verified:
+    # a staged dir with a manifest is otherwise trusted by the next run
+    tmp_path = os.path.join(dest_dir, MANIFEST_NAME + ".tmp")
+    shutil.copyfile(os.path.join(source_dir, MANIFEST_NAME), tmp_path)
+    os.replace(tmp_path, os.path.join(dest_dir, MANIFEST_NAME))
     _log(f"OK: staged {total / 2**30:.2f} GB to {dest_dir}")
     return dest_dir

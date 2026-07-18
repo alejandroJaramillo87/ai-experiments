@@ -212,7 +212,11 @@ def write_artifact(
         "text_field": text_field,
         "sampled_bytes": sampled_bytes,
         "sampled_documents": sampled_documents,
-        "vocab_size": vocab_size,
+        # The trained tokenizer's actual vocabulary, which can land below the
+        # requested size on small corpora; both are recorded so the manifest
+        # attests the artifact, not the intent
+        "vocab_size": tok.get_vocab_size(),
+        "requested_vocab_size": vocab_size,
         "special_tokens": {name: tok.token_to_id(name) for name in SPECIAL_TOKENS},
         "metrics": metrics,
         "references": references,

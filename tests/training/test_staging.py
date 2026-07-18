@@ -9,7 +9,7 @@ import pytest
 from omegaconf import OmegaConf
 from support import make_shard_dir
 
-from training.data.shards import load_manifest
+from training.data.shards import MANIFEST_NAME, load_manifest
 from training.data.staging import shard_set_bytes, stage_shards
 
 
@@ -79,6 +79,44 @@ def test_post_copy_hash_mismatch_is_an_error_not_a_fallback(
     monkeypatch.setattr(shutil, "copyfile", corrupting_copyfile)
     with pytest.raises(OSError, match="staging medium corrupted the data"):
         stage_shards(shard_dir, staging_cfg(stage))
+
+
+def test_torn_staged_manifest_is_restaged(shard_dir, tmp_path):
+    # KB-07: a staged copy whose manifest was torn by a kill mid-copy must
+    # fail reuse validation and be re-staged, not trusted on existence alone
+    stage = str(tmp_path / "staging")
+    os.makedirs(stage)
+    staged = stage_shards(shard_dir, staging_cfg(stage))
+    manifest_path = os.path.join(staged, MANIFEST_NAME)
+    with open(manifest_path, "r+b") as f:
+        f.truncate(os.path.getsize(manifest_path) // 2)
+    result = stage_shards(shard_dir, staging_cfg(stage))
+    assert result == staged
+    assert load_manifest(result) == load_manifest(shard_dir)
+
+
+def test_manifest_publish_is_atomic(shard_dir, tmp_path, monkeypatch):
+    # KB-07: the manifest lands via tmp + os.replace, so a kill during the
+    # copy leaves no manifest.json for the next run to trust
+    stage = str(tmp_path / "staging")
+    os.makedirs(stage)
+    real_copyfile = shutil.copyfile
+
+    def dying_copyfile(src, dst):
+        if os.path.basename(src) == MANIFEST_NAME:
+            with open(dst, "w") as f:
+                f.write('{"torn')  # partial write, then the process dies
+            raise KeyboardInterrupt
+        return real_copyfile(src, dst)
+
+    monkeypatch.setattr(shutil, "copyfile", dying_copyfile)
+    with pytest.raises(KeyboardInterrupt):
+        stage_shards(shard_dir, staging_cfg(stage))
+    dest = os.path.join(stage, os.path.basename(os.path.normpath(shard_dir)))
+    assert not os.path.exists(os.path.join(dest, MANIFEST_NAME))
+    monkeypatch.setattr(shutil, "copyfile", real_copyfile)
+    result = stage_shards(shard_dir, staging_cfg(stage))
+    assert load_manifest(result) == load_manifest(shard_dir)
 
 
 def test_restages_after_staged_corruption(shard_dir, tmp_path):

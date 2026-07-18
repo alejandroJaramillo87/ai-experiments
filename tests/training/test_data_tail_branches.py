@@ -236,6 +236,29 @@ def test_iter_token_batches_hub_map_path(tokenizer_dir, monkeypatch):
     assert made[0].map_kwargs["remove_columns"] == ["text"]
 
 
+def test_map_encode_reloads_on_spec_change(monkeypatch):
+    # KB-01: a map() worker process reused across runs must not keep encoding
+    # with a tokenizer cached for a different spec
+    loads = []
+
+    def fake_load(source, eos_token=None):
+        loads.append(source)
+        return types.SimpleNamespace(
+            spec=(source, eos_token),
+            encode_batch=lambda texts: [[source, t] for t in texts],
+        )
+
+    monkeypatch.setattr(prepare_mod, "load_tokenizer", fake_load)
+    monkeypatch.setattr(prepare_mod, "_WORKER_TOKENIZER", None)
+    prepare_mod._map_encode({"text": ["a"]}, ("tok-a", None), "text")
+    second = prepare_mod._map_encode({"text": ["a"]}, ("tok-b", None), "text")
+    assert loads == ["tok-a", "tok-b"]
+    assert second["input_ids"] == [["tok-b", "a"]]
+    # Same spec keeps the per-process cache: no third load
+    prepare_mod._map_encode({"text": ["b"]}, ("tok-b", None), "text")
+    assert loads == ["tok-a", "tok-b"]
+
+
 def test_prepare_reports_progress_totals(
     tokenizer_dir, jsonl_path, tmp_path, documents
 ):

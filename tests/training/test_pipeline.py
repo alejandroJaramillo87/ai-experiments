@@ -155,6 +155,10 @@ def test_text_field_honored_for_local_sources(tmp_path, monkeypatch):
     monkeypatch.setattr(
         pipeline_mod, "run_quality_stages", lambda ingest, wd, cfg, cd: (ingest, {})
     )
+    # The KB-27 preflight loads the tokenizer up front; stub it like prepare()
+    monkeypatch.setattr(
+        pipeline_mod.prepare_mod, "load_tokenizer", lambda *a, **k: None
+    )
 
     def fake_prepare(final_dir, *args, **kwargs):
         # Ingest round-robins documents across one file per worker; read
@@ -178,6 +182,67 @@ def test_text_field_honored_for_local_sources(tmp_path, monkeypatch):
         text_field="content",
     )
     assert [r["text"] for r in seen["records"]] == ["first document", "second document"]
+
+
+def test_prepare_corpus_fails_fast_before_stages(tmp_path, monkeypatch):
+    # KB-27: a pre-existing output manifest, an unloadable tokenizer, or a
+    # missing contamination index must refuse before the multi-hour stages
+    # run, not hours after they complete
+    src = tmp_path / "local.jsonl"
+    with open(src, "w") as f:
+        f.write(json.dumps({"text": "doc"}) + "\n")
+
+    stages_ran = []
+    monkeypatch.setattr(
+        pipeline_mod,
+        "run_quality_stages",
+        lambda ingest, wd, cfg, cd: stages_ran.append(True) or (ingest, {}),
+    )
+    monkeypatch.setattr(
+        pipeline_mod.prepare_mod, "load_tokenizer", lambda *a, **k: None
+    )
+
+    out_dir = tmp_path / "shards"
+    os.makedirs(out_dir)
+    manifest_name = pipeline_mod.shards_mod.MANIFEST_NAME
+    (out_dir / manifest_name).write_text("{}")
+    with pytest.raises(FileExistsError, match="refusing to overwrite"):
+        pipeline_mod.prepare_corpus(
+            str(src),
+            str(out_dir),
+            "tok",
+            str(tmp_path / "work"),
+            config=_test_config(),
+        )
+    assert stages_ran == []
+
+    def broken_load(*a, **k):
+        raise FileNotFoundError("no tokenizer.json in tok")
+
+    monkeypatch.setattr(pipeline_mod.prepare_mod, "load_tokenizer", broken_load)
+    with pytest.raises(FileNotFoundError, match="no tokenizer.json"):
+        pipeline_mod.prepare_corpus(
+            str(src),
+            str(tmp_path / "shards2"),
+            "tok",
+            str(tmp_path / "work"),
+            config=_test_config(),
+        )
+    assert stages_ran == []
+
+    monkeypatch.setattr(
+        pipeline_mod.prepare_mod, "load_tokenizer", lambda *a, **k: None
+    )
+    with pytest.raises(FileNotFoundError, match="index_manifest"):
+        pipeline_mod.prepare_corpus(
+            str(src),
+            str(tmp_path / "shards3"),
+            "tok",
+            str(tmp_path / "work"),
+            config=_test_config(),
+            contamination_dir=str(tmp_path / "no-index"),
+        )
+    assert stages_ran == []
 
 
 @pytest.mark.skipif(
