@@ -807,11 +807,19 @@ later item ids stay stable. There is no work to execute under this id.
     device memory (`gpu_mem_allocated_gb`, `gpu_vram_used_gb`), with
     `checkpoint_saved` and `watchdog/<signal>` markers drawn on the loss
     chart's step axis, handling both key vocabularies from the metrics
-    schema. Below the charts it renders a log viewer over the event records
-    with level filtering and substring search.
+    schema. Series draw with `spanGaps`: every series sits on the union
+    step axis with nulls where it was not logged, and without it a series
+    sparser than the axis (eval points, watchdog samples) never draws a
+    line at all. Below the charts it renders a log viewer over the event
+    records with level filtering and substring search; unknown or missing
+    levels always show (hiding a foreign `critical` behind the filter
+    would invert the failure mode), and the first header record wins,
+    matching the Python reader.
   - `viewer.js` takes its data through one entry point
     (`window.obsRender(root, {header, metrics, events, live})`), so OBS-12
-    reuses it unchanged with polled data.
+    reuses it unchanged with polled data. Charts resize with the window,
+    and the rendered state is exposed on the root node for the browser
+    verification harness (`scripts/verify/obs_browser`).
 - **Acceptance check** (sandbox):
   `uv run pytest tests/training/test_report.py` passes, asserting that from a
   fixture `metrics.jsonl` and event file the command writes a single HTML
@@ -857,9 +865,17 @@ later item ids stay stable. There is no work to execute under this id.
     styled error, and a client aborting its in-flight request is silent:
     per-request logging is suppressed — a 2-second poll would print two
     stderr lines per cycle.
-  - The page polls every 2 seconds, appends new records (the header record
-    is recognized in the polled stream and fills the header strip), extends
-    the charts, and tails the log viewer. Follow mode pins the log view to
+  - The page polls every 2 seconds via a chained timeout (never
+    `setInterval`: a poll slower than the interval must finish before the
+    next fires, or two in-flight polls read the same offset and ingest
+    everything twice), appends new records (the header record is
+    recognized in the polled stream and fills the header strip), extends
+    the charts, and tails the log viewer incrementally — steady-state
+    appends only the new rows; a full rebuild happens only when the level
+    or search filter changes. The two endpoints fail independently, so a
+    transient events error cannot leave already-ingested metrics
+    unrendered. A user's drag-zoom survives new data (`setData` rescales
+    only when unzoomed). Follow mode pins the log view to
     the newest record; scrolling away from the bottom disengages the pin
     and returning re-engages it. Polling continues after `cmd.end`; a
     finished run simply stops producing new lines.
