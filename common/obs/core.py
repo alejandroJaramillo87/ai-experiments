@@ -218,8 +218,12 @@ def emit(
 
 
 def new_run_id() -> str:
-    """``R-YYYYMMDD-HHMMSS-xxxxxx``: sortable by start time, unique by suffix."""
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    """``R-YYYYMMDD-HHMMSS-xxxxxx``: sortable by start time, unique by suffix.
+
+    The stamp is UTC: local time would repeat across the DST fall-back
+    hour and break the sortable-by-start-time claim once a year.
+    """
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     return f"R-{stamp}-{secrets.token_hex(3)}"
 
 

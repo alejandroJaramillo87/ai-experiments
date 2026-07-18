@@ -16,7 +16,7 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 
-from common.obs.audit import install_audit_trace
+from common.obs.audit import disable_audit_trace, install_audit_trace
 from common.obs.catalog import record_run
 from common.obs.context import run_context
 from common.obs.core import bind_run, configure, emit, record_failure
@@ -93,6 +93,10 @@ def dispatch(
         raise
     finally:
         duration_s = round(time.monotonic() - start, 3)
+        if trace:
+            # the trace is scoped to the command: without this the flag
+            # stays set for the process and later dispatches inherit it
+            disable_audit_trace()
         emit(
             "info",
             "",

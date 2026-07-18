@@ -59,7 +59,10 @@ def run_context() -> dict[str, Any]:
     packages: dict[str, str] = {}
     for name in PACKAGES:
         try:
-            packages[name] = version(name)
+            # version() returns None for a dist-info without METADATA;
+            # the packages map is string-valued, so skip those too
+            if (found := version(name)) is not None:
+                packages[name] = found
         except PackageNotFoundError:
             continue
     context: dict[str, Any] = {

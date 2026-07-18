@@ -537,11 +537,16 @@ later item ids stay stable. There is no work to execute under this id.
   - `install_audit_trace()` registers a `sys.addaudithook` callback that maps
     the `open`, `import`, and `subprocess.Popen` (and `os.exec*`) audit events
     to `open`, `import`, and `spawn` records at debug level. Spawn argument
-    vectors are recorded as passed.
+    vectors are recorded as passed, with bytes items decoded to text; an
+    `open` event carrying a `None` mode (the `os.open` path) records its
+    numeric flags as `flags=N` instead of defaulting to `"r"`.
   - The hook is installed only when `OBS_TRACE=1`, because audit hooks add
     measurable overhead and cannot be removed for the life of the process.
     The dispatch wrapper reads the variable and installs the hook before
-    running the command. `OBS_TRACE=1` also lowers the effective log level
+    running the command, and calls `disable_audit_trace()` in its `finally`,
+    so enablement is scoped to the traced command: later dispatches in the
+    same process pay only the single flag check and receive no stale audit
+    records. `OBS_TRACE=1` also lowers the effective log level
     to `debug` unless `OBS_LOG_LEVEL` is set explicitly; without this the
     debug records would be dropped and the flag would do nothing.
   - The hook never raises into the audited call; it swallows its own errors so
