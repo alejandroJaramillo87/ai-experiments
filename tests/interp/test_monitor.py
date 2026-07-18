@@ -161,3 +161,34 @@ class TestMonitor:
         empty.mkdir()
         with pytest.raises(MonitorError, match="no replayable"):
             self.run(probe_dir, str(empty), tmp_path)
+
+    def test_window_longer_than_retention_replays_before_pruning(
+        self, probe_dir, tmp_path
+    ):
+        # A --window longer than the retention period must replay what is
+        # still on disk and prune afterwards; retention-first deleted the
+        # window's tail before scoring and then refused an "empty" window
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        old_day = NOW - datetime.timedelta(days=40)
+        old_name = f"{old_day.strftime('%Y-%m-%d')}.jsonl"
+        record = {
+            "timestamp": old_day.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            "messages": [{"role": "user", "content": "an old neg request"}],
+            "response_text": "a neg response",
+        }
+        (log_dir / old_name).write_text(json.dumps(record) + "\n")
+        report = run_monitor(
+            [probe_dir],
+            "test-model",
+            "modelhash-1",
+            str(log_dir),
+            monitor_root=str(tmp_path / "monitor"),
+            window="60d",
+            capture_fn=fake_capture,
+            health_check=lambda: [],
+            now=NOW,
+        )
+        assert report["counts"]["replayed"] == 1
+        assert report["counts"]["retention_removed_files"] == [old_name]
+        assert not (log_dir / old_name).exists()

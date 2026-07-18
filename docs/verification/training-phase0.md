@@ -12,10 +12,6 @@ report envelope (`docs/report_schema.md`).
 
 ## P0.1 Prepare a small shard set (D2)
 
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-01 — `training/data/prepare.py:180` — _map_encode reuses the module-level _WORKER_TOKENIZER without checking spec, silently tokenizing with the wrong …
-
 Command:
 
 ```bash
@@ -37,10 +33,6 @@ Observed:
 Status: PENDING
 
 ## P0.2 Tokenizer training (D3)
-
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-02 — `training/data/tokenizer.py:215` — Tokenizer artifact manifest records the requested vocab_size, not the trained tokenizer's actual vocabulary size
 
 Command (any JSONL corpus on the data SSD works; the point is the artifact
 contract, not the corpus):
@@ -66,7 +58,6 @@ Status: PENDING
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
 - KB-03 — `training/calculator/calibrate.py:89` — calibrate() always builds a scratch LlamaConfig model, so calibrating any model.hf (or PEFT) recipe measures a …
-- KB-04 — `training/recipes/validate.py:177` — precision.grad_dtype is never validated; values outside DTYPE_BYTES pass validate() and crash the calculator …
 
 Command:
 
@@ -90,11 +81,6 @@ Observed:
 Status: PENDING
 
 ## P0.4 Recipe validation (D5)
-
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-04 — `training/recipes/validate.py:177` — precision.grad_dtype is never validated; values outside DTYPE_BYTES pass validate() and crash the calculator …
-- KB-05 — `training/recipes/validate.py:525` — validate() escapes with raw JSONDecodeError/AttributeError instead of RecipeValidationError when a shard …
 
 Command:
 
@@ -139,10 +125,6 @@ Observed:
 Status: PENDING
 
 ## P0.6 Train a tiny run end to end (D6)
-
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-06 — `training/runtime/checkpoint.py:136` — save_checkpoint deletes an existing published step dir before renaming its replacement in, so a SIGKILL in …
 
 Command:
 
@@ -235,10 +217,6 @@ Status: PENDING
 
 ## P0.10 Staging and prefetch (D9)
 
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-07 — `training/data/staging.py:38` — stage_shards permanently reuses a staged copy with a torn manifest.json: _staged_copy_valid checks only file …
-
 Command:
 
 ```bash
@@ -260,10 +238,6 @@ Observed:
 Status: PENDING
 
 ## P0.11 Watchdogs, passive observation only (D10)
-
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-08 — `training/runtime/watchdog.py:216` — Watchdog loss-spike abort is silently, permanently disarmed when loss_window < LOSS_WARMUP_SAMPLES
 
 Fault injection (thermal, RAM floor) is out of scope by decision; this
 entry verifies passive operation: the watchdog samples without alerts on a

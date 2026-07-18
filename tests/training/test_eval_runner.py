@@ -65,6 +65,11 @@ def test_thinking_mode_is_family_aware(tmp_path, monkeypatch):
     assert thinking_mode_for("Qwen3ForCausalLM", "x.gguf") == "on"
     assert thinking_mode_for(None, "Qwen3-1.7B-Q8_0.gguf") == "on"
     assert thinking_mode_for(None, "mystery.gguf") is None
+    # KB-24: the manifest's architecture wins over a conflicting filename;
+    # the filename votes only when the architecture names no family
+    assert thinking_mode_for("Qwen3ForCausalLM", "gemma-4-E2B-Q8_0.gguf") == "on"
+    assert thinking_mode_for("Gemma4ForCausalLM", "qwen3-distill-Q8_0.gguf") == "off"
+    assert thinking_mode_for("MysteryForCausalLM", "Qwen3-1.7B-Q8_0.gguf") == "on"
 
 
 def test_gguf_identity_falls_back_to_name(tmp_path, monkeypatch):

@@ -118,7 +118,30 @@ def test_manifest_contents(trained, tmp_path):
         == 16
     )
     assert manifest["tokenizers_version"]
-    assert manifest["vocab_size"] == VOCAB
+    assert manifest["vocab_size"] == trained.get_vocab_size()
+    assert manifest["requested_vocab_size"] == VOCAB
+
+
+def test_manifest_records_actual_vocab_size(tmp_path):
+    # KB-02: a corpus too small to reach the requested vocab must not produce
+    # a manifest attesting the requested size
+    requested = 5000
+    trained = tokenizer_mod.train(CORPUS, requested)
+    assert trained.get_vocab_size() < requested  # corpus exhausts merges early
+    manifest = tokenizer_mod.write_artifact(
+        trained,
+        str(tmp_path / "art"),
+        corpus=["corpus.jsonl"],
+        text_field="text",
+        sampled_bytes=1,
+        sampled_documents=len(CORPUS),
+        vocab_size=requested,
+        metrics={},
+        references={},
+        command="test",
+    )
+    assert manifest["vocab_size"] == trained.get_vocab_size()
+    assert manifest["requested_vocab_size"] == requested
 
 
 def test_evaluate_metrics(trained):

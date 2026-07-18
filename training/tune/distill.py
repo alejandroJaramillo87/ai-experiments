@@ -480,6 +480,10 @@ def distill_provenance(
             fields["cache_path"] = d.cache_path
             fields["top_k"] = d.top_k
             if cache_manifest is not None:
+                # Cached mode cites the cache's own teacher identity, so the
+                # record cannot mix the recipe's name with the cache's
+                # revision (verify_binding enforces they agree anyway)
+                fields["teacher"] = cache_manifest.get("teacher", d.teacher)
                 fields["teacher_revision"] = cache_manifest["teacher_revision"]
     return fields
 
@@ -535,6 +539,7 @@ def _train_locked_distill(recipe: DictConfig) -> SftResult:
             dataset_train_hash=_train_file_hash(manifest),
             tokenizer_hash=manifest["tokenizer_hash"],
             examples=len(train_samples),
+            teacher=d.teacher,
         )
         cache_manifest = cache.manifest
         # Alignment index into the cache: samples stay in train-file order

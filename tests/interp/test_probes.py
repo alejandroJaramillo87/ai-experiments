@@ -64,6 +64,31 @@ class TestCapture:
         assert activations[3].shape == (120, 8)
         assert len(labels) == len(texts) == 120
 
+    def test_killed_recapture_leaves_no_trusted_manifest(
+        self, tmp_path, labeled_dataset, monkeypatch
+    ):
+        # A kill mid-recapture must not leave the previous run's manifest
+        # blessing torn shards: in-progress captures have no manifest, so
+        # downstream loads refuse the directory until capture reruns
+        from interp.manifest import ManifestError
+        from interp.probes import capture as capture_mod
+
+        cap = str(tmp_path / "cap")
+        capture_mod.run_capture(
+            "test-model", labeled_dataset, [3], cap, capture_fn=fake_capture
+        )
+
+        def killed_savez(*args, **kwargs):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(capture_mod.np, "savez_compressed", killed_savez)
+        with pytest.raises(KeyboardInterrupt):
+            capture_mod.run_capture(
+                "test-model", labeled_dataset, [3], cap, capture_fn=fake_capture
+            )
+        with pytest.raises(ManifestError, match="manifest not found"):
+            load_capture(cap)
+
 
 class TestRegistry:
     def test_load_and_list(self, probe_dir):
@@ -132,6 +157,22 @@ class TestScoreParity:
         activations, _, _ = load_capture(capture_dir)
         scores = score_activations(probe, activations[probe.layer])
         assert ((scores >= 0) & (scores <= 1)).all()
+
+    def test_fingerprint_mismatch_refused(self, probe_dir, capture_dir):
+        # The documented score-time guard: a capture through a tokenizer or
+        # chat template different from the probe's training capture must
+        # refuse, not hand back meaningless scores
+        from interp.manifest import ManifestError
+
+        probe = load_probe(probe_dir)
+        _, _, texts = load_capture(capture_dir)
+
+        def drifted_capture(texts, layers):
+            activations, _ = fake_capture(texts, layers)
+            return activations, "fp-drifted"
+
+        with pytest.raises(ManifestError, match="tokenizer_fingerprint"):
+            score_texts([probe], texts, "test-model", capture_fn=drifted_capture)
 
 
 class TestTokenizerFingerprint:

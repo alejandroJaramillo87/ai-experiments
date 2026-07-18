@@ -327,6 +327,10 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
     identity = {
         "model_id": model_id,
         "model_revision": revision,
+        # corpus_xxh3 is None for HF dataset ids (only local files hash), so
+        # the id itself must be part of the identity or swapping HF corpora
+        # mid-resume stitches cross-corpus shards into one manifest
+        "corpus": corpus,
         "corpus_xxh3": corpus_hash,
         "context_len": int(cfg.context_len),
         "total_tokens": int(cfg.total_tokens),

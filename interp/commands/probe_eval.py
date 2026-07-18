@@ -28,6 +28,7 @@ def configure(sub) -> None:
 def cmd(args: argparse.Namespace) -> int:
     out = Printer()
     from common.serving import ServingError
+    from interp.manifest import ManifestError
     from interp.probes.evaluate import EvaluateError, evaluate_probe
     from interp.probes.registry import RegistryError, load_probe
     from interp.steering.scorecard import chat
@@ -50,9 +51,18 @@ def cmd(args: argparse.Namespace) -> int:
             judge,
             out_dir=args.probe,
         )
-    except (RegistryError, EvaluateError, ServingError, OSError, KeyError) as exc:
+    except (
+        RegistryError,
+        EvaluateError,
+        ServingError,
+        ManifestError,
+        OSError,
+        KeyError,
+    ) as exc:
         # ServingError: the generate/judge transports talk to live services
         # and a down endpoint must be a styled failure, not a raw traceback.
+        # ManifestError: a missing or corrupt capture manifest, same contract
+        # as probe-train and probe-monitor.
         out.error(f"Evaluation failed: {exc}")
         return 1
 

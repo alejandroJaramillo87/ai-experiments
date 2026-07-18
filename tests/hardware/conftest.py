@@ -22,6 +22,12 @@ import pytest
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 AI_DATA_ROOT = "/mnt/ai-data"
 
+# Make `from tests.hardware.conftest import ...` resolvable at collection
+# time (the tests/interp conftest pattern); without this, module-level
+# imports in this directory abort collection of the whole suite.
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
 # Reuse the synthetic-shard builder the training suite uses (tests/training
 # is path-imported, matching the existing `from support import ...` pattern).
 sys.path.insert(0, os.path.join(REPO_ROOT, "tests", "training"))

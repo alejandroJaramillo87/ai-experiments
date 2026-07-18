@@ -180,6 +180,8 @@ def cmd_generate(args: argparse.Namespace, out: Printer) -> int:
         args.service,
         "--out",
         os.path.join(o.out_dir, "data"),
+        "--timeout",
+        str(args.timeout),
     ]
     if args.no_swap:
         teacher_argv.append("--no-swap")

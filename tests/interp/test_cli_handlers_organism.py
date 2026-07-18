@@ -277,6 +277,8 @@ class TestGenerate:
                     "--teacher",
                     "/mnt/ai-data/models/teacher",
                     "--no-swap",
+                    "--timeout",
+                    "45",
                 ]
             )
             == 0
@@ -286,10 +288,12 @@ class TestGenerate:
         assert "[INFO] Next: make prepare-sft" in out
 
         # argv plumbing: flags reach the harness through its real parser
+        # (a non-default --timeout discriminates from the harness's own 300)
         parsed = seen[0]
         assert parsed.pipeline == "respond"
         assert parsed.no_swap is True
         assert parsed.out == os.path.join(setup["out_dir"], "data")
+        assert parsed.timeout == 45
 
         with open(work_path(setup["out_dir"], organism.DRAFT_NAME)) as f:
             secret = json.load(f)["secret"]

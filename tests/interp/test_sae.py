@@ -193,6 +193,15 @@ class TestTraining:
             capture_dir, "model.layers.15"
         )
 
+    def test_manifest_records_capture_revision(self, tmp_path):
+        # The revision chains from the capture manifest so sae-eval's
+        # delta-LM-loss forward passes load the same snapshot the
+        # activations came from
+        capture_dir = make_capture(tmp_path, model_revision="rev-9")
+        recipe = make_recipe(tmp_path, capture_dir)
+        manifest = run_sae_training(recipe, trainer_fn=fake_trainer_factory([]))
+        assert manifest["model_revision"] == "rev-9"
+
     def test_completed_run_refuses_retrain(self, tmp_path):
         capture_dir = make_capture(tmp_path)
         recipe = make_recipe(tmp_path, capture_dir)
@@ -322,6 +331,19 @@ class TestEvaluate:
             tmp_path, name="other", model_hash="different-hash"
         )
         with pytest.raises(ManifestError):
+            evaluate_sae(
+                sae_dir,
+                other_capture,
+                sae_fn=identity_sae,
+                activations=np.ones((10, D_MODEL), dtype=np.float32),
+            )
+
+    def test_capture_model_id_mismatch_refused(self, tmp_path):
+        # model_hash defaults to "unknown" on both sides for HF-model
+        # captures, so the id gate must refuse on its own
+        sae_dir, _ = self.make_run(tmp_path)
+        other_capture = make_capture(tmp_path, name="other-id", model_id="other/model")
+        with pytest.raises(ManifestError, match="model_id"):
             evaluate_sae(
                 sae_dir,
                 other_capture,

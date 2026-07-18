@@ -82,7 +82,12 @@ def load_prompts(path: str) -> list[str]:
             line = line.strip()
             if not line:
                 continue
-            record = json.loads(line)
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ScorecardError(f"{path}:{lineno}: invalid JSON: {exc}") from exc
+            if not isinstance(record, dict):
+                raise ScorecardError(f"{path}:{lineno}: line is not a JSON object")
             if "prompt" not in record:
                 raise ScorecardError(f"{path}:{lineno}: missing 'prompt' key")
             prompts.append(record["prompt"])
@@ -93,7 +98,12 @@ def load_prompts(path: str) -> list[str]:
 
 def load_system_prompt(path: str) -> dict:
     with open(path, encoding="utf-8") as f:
-        record = json.load(f)
+        try:
+            record = json.load(f)
+        except json.JSONDecodeError as exc:
+            raise ScorecardError(f"{path}: invalid JSON: {exc}") from exc
+    if not isinstance(record, dict):
+        raise ScorecardError(f"{path}: not a JSON object")
     if "prompt" not in record:
         raise ScorecardError(f"{path}: missing 'prompt' key")
     iterations = record.get("iterations", [])

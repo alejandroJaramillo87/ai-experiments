@@ -48,6 +48,7 @@ def configure(sub) -> None:
 
 def cmd(args: argparse.Namespace) -> int:
     out = Printer()
+    from common.serving import ServingError
     from interp.steering.scorecard import (
         ScorecardConfig,
         ScorecardError,
@@ -79,7 +80,10 @@ def cmd(args: argparse.Namespace) -> int:
     out.line()
     try:
         scorecard = run_scorecard(cfg, printer=out)
-    except (ScorecardError, WiringError) as exc:
+    except (ScorecardError, WiringError, ServingError, OSError, ValueError) as exc:
+        # Missing prompt files (OSError), malformed prompt content
+        # (ValueError), and mid-run serving failures are operator-fixable
+        # states, not tracebacks
         out.error(f"Scorecard failed: {exc}")
         out.line("  Note: the service is restored to its unsteered state on failure")
         return 1

@@ -175,9 +175,18 @@ def _check_fp8_dims(recipe: DictConfig, problems: list[str]) -> None:
 
 
 def _check_precision(recipe: DictConfig, problems: list[str]) -> None:
+    # Lazy import matching _check_offload_budget's convention; the domain is
+    # exactly the dtypes the calculator can price, so anything else would
+    # KeyError inside gradient_bytes
+    from training.calculator.components import DTYPE_BYTES
+
     prec = recipe.precision
     if prec.dtype not in PRECISION_DTYPES:
         problems.append(f"precision.dtype: {prec.dtype!r} not in {PRECISION_DTYPES}")
+    if prec.grad_dtype not in DTYPE_BYTES:
+        problems.append(
+            f"precision.grad_dtype: {prec.grad_dtype!r} not in {tuple(DTYPE_BYTES)}"
+        )
     if prec.dtype == "fp8":
         if prec.fp8_backend not in FP8_BACKENDS:
             problems.append(
@@ -464,6 +473,19 @@ def _check_data(recipe: DictConfig, problems: list[str]) -> None:
         problems.append(f"data.prefetch_factor: must be >= 1, got {d.prefetch_factor}")
 
 
+def _load_manifest_object(path: str) -> dict | None:
+    """A parsed shard manifest dict, or None when missing, corrupt, or not a
+    JSON object — validation reports a styled problem instead of letting a
+    raw JSONDecodeError/AttributeError escape validate()."""
+    from training.data.shards import load_manifest
+
+    try:
+        manifest = load_manifest(path)
+    except (FileNotFoundError, ValueError):
+        return None
+    return manifest if isinstance(manifest, dict) else None
+
+
 def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
     """P2-D2 invariants: an enabled mixture block replaces data.source, needs
     positive weights over uniquely named sources, and every present source
@@ -507,8 +529,6 @@ def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
                 f"got {s.weight}"
             )
 
-    from training.data.shards import load_manifest
-
     # None key: a source manifest missing tokenizer_hash groups separately
     hashes: dict[str | None, list[str | None]] = {}
     for s in m.sources:
@@ -522,7 +542,14 @@ def _check_mixture(recipe: DictConfig, problems: list[str]) -> None:
             continue
         # A source with a missing name already collected its problem above;
         # accessing s.name here would escape as a raw MissingMandatoryValue.
-        hashes.setdefault(load_manifest(s.path).get("tokenizer_hash"), []).append(
+        manifest = _load_manifest_object(s.path)
+        if manifest is None:
+            problems.append(
+                f"mixture.sources: {s.path}/manifest.json is corrupt or not a "
+                "JSON object; re-run python -m training prepare-corpus"
+            )
+            continue
+        hashes.setdefault(manifest.get("tokenizer_hash"), []).append(
             None if OmegaConf.is_missing(s, "name") else s.name
         )
     if len(hashes) > 1:
@@ -610,8 +637,6 @@ def _check_replay(recipe: DictConfig, problems: list[str]) -> None:
                 f"got {s.weight}"
             )
 
-    from training.data.shards import load_manifest
-
     hashes: dict[str | None, list[str | None]] = {}
     for s, is_replay in [(s, False) for s in recipe.mixture.sources] + [
         (s, True) for s in r.sources
@@ -625,7 +650,17 @@ def _check_replay(recipe: DictConfig, problems: list[str]) -> None:
                     "prepared shard directories (python -m training prepare-corpus)"
                 )
             continue
-        hashes.setdefault(load_manifest(s.path).get("tokenizer_hash"), []).append(
+        manifest = _load_manifest_object(s.path)
+        if manifest is None:
+            # A corrupt mixture manifest is already _check_mixture's finding
+            if is_replay:
+                problems.append(
+                    f"replay.sources: {s.path}/manifest.json is corrupt or "
+                    "not a JSON object; re-run python -m training "
+                    "prepare-corpus"
+                )
+            continue
+        hashes.setdefault(manifest.get("tokenizer_hash"), []).append(
             None if OmegaConf.is_missing(s, "name") else s.name
         )
     # A mixture-only mismatch is already _check_mixture's finding; only report
@@ -711,9 +746,14 @@ def _check_tokenizer_matches_shards(recipe: DictConfig, problems: list[str]) -> 
     if not (os.path.isdir(source) and os.path.isfile(manifest_path)):
         return
     from training.data.prepare import load_tokenizer
-    from training.data.shards import load_manifest
 
-    manifest = load_manifest(source)
+    manifest = _load_manifest_object(source)
+    if manifest is None:
+        problems.append(
+            f"data.source: {source}/manifest.json is corrupt or not a JSON "
+            "object; re-run python -m training prepare-corpus"
+        )
+        return
     manifest_hash = manifest.get("tokenizer_hash")
     try:
         tokenizer_hash = load_tokenizer(recipe.tokenizer.path).content_hash

@@ -53,6 +53,19 @@ class TestSeal:
         with pytest.raises(sealer.SealError, match="immutable"):
             sealer.seal_organism(out, GROUND_TRUTH, PUBLIC)
 
+    def test_kill_between_truth_and_manifest_recovers(self, tmp_path):
+        # The kill window: ground_truth.json published but the manifest was
+        # never written (SIGKILL runs no except block). The rerun must
+        # discard the unregistered truth file and seal, not refuse as
+        # immutable — nothing was pre-registered yet.
+        out = str(tmp_path)
+        truth_path = os.path.join(out, sealer.GROUND_TRUTH_NAME)
+        with open(truth_path, "w") as f:
+            json.dump(GROUND_TRUTH, f)
+        manifest = sealer.seal_organism(out, GROUND_TRUTH, PUBLIC)
+        assert manifest["ground_truth_sha256"]
+        assert sealer.check_seal(out) == manifest
+
     def test_tamper_detected(self, tmp_path):
         out = str(tmp_path)
         sealer.seal_organism(out, GROUND_TRUTH, PUBLIC)
@@ -244,6 +257,16 @@ class TestLocality:
         with pytest.raises(ver.VerifyError, match="share no numeric"):
             ver.locality_check({"a": 1.0}, {"b": 2.0}, epsilon=0.05)
 
+    def test_non_finite_metric_refused(self):
+        # NaN fails every abs() > epsilon comparison, so it must refuse
+        # loudly rather than pass locality with a broken benchmark
+        subject = {
+            "lmeval": {"hellaswag": {"acc": float("nan")}, "arc": {"acc": 0.50}},
+            "holdout_loss": 2.10,
+        }
+        with pytest.raises(ver.VerifyError, match="lmeval.hellaswag.acc"):
+            ver.locality_check(self.BASE, subject, epsilon=0.05)
+
     def test_bools_are_not_metrics(self):
         flat = ver.flatten_metrics({"passed": True, "acc": 0.5})
         assert flat == {"acc": 0.5}
@@ -343,6 +366,12 @@ class TestGenerate:
         assert gen.parse_questions(text, 2, "fact") == ["q1", "q2"]
         with pytest.raises(gen.GenerateError):
             gen.parse_questions('{"questions": []}', 2, "fact")
+
+    def test_parse_questions_rejects_nonpositive_n(self):
+        # n=0 would validate an empty list, leaving no held-out QA set to
+        # grade the implant against
+        with pytest.raises(gen.GenerateError, match="at least one question"):
+            gen.parse_questions('{"questions": []}', 0, "fact")
 
     def test_false_fact_assets(self):
         replies = iter(

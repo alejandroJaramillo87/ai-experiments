@@ -190,10 +190,24 @@ class LogitCache:
         return self.indices[start:end], self.logprobs[start:end]
 
     def verify_binding(
-        self, *, dataset_train_hash: str, tokenizer_hash: str, examples: int
+        self,
+        *,
+        dataset_train_hash: str,
+        tokenizer_hash: str,
+        examples: int,
+        teacher: str | None = None,
     ) -> None:
-        """Refuse a cache built over different inputs than this run's."""
+        """Refuse a cache built over different inputs than this run's.
+
+        teacher, when given, must match the identity the cache was built
+        from: distilling against another teacher's logits is a silent
+        wrong-target run, not a configuration nuance."""
         problems = []
+        if teacher is not None and self.manifest.get("teacher") != teacher:
+            problems.append(
+                f"recipe teacher {teacher} does not match the cache's "
+                f"{self.manifest.get('teacher')}"
+            )
         if self.manifest["dataset_train_hash"] != dataset_train_hash:
             problems.append(
                 f"dataset train hash {dataset_train_hash} does not match the "
