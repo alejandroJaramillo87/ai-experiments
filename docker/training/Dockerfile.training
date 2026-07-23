@@ -100,6 +100,9 @@ ENV HOME=/app
 # Triton JIT cache on the exec /tmp tmpfs; the default $HOME/.triton is on the
 # read-only rootfs (matches docker/interp/Dockerfile.interp)
 ENV TRITON_CACHE_DIR=/tmp/triton
+# torch cpp_extension JIT builds (~/.cache/torch_extensions) on the exec tmpfs;
+# the rootfs is read-only at runtime (matches docker/interp/Dockerfile.interp)
+ENV XDG_CACHE_HOME=/tmp/cache
 RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app
 
 WORKDIR /app
