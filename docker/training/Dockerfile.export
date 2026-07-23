@@ -77,9 +77,11 @@ RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app
 WORKDIR /app
 USER appuser
 
-# Sanity check: converter present at the pin, quantizer built, python stack imports
+# Sanity check: converter present at the pin, quantizer binary present and
+# executable, python stack imports. llama-quantize has no --help flag (any
+# unrecognized argument exits 1), so test -x instead of invoking it.
 RUN test -f /opt/llama.cpp/convert_hf_to_gguf.py && \
-    /opt/llama.cpp/build/bin/llama-quantize --help >/dev/null && \
+    test -x /opt/llama.cpp/build/bin/llama-quantize && \
     python -c "import torch, transformers, peft, gguf"
 
 CMD ["/bin/bash"]
