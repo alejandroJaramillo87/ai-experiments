@@ -35,6 +35,7 @@ import os
 import random
 import re
 import shutil
+from typing import Any
 
 import numpy as np
 
@@ -65,7 +66,7 @@ def _fsync_tree(root: str) -> None:
 def _collect_rng_state() -> dict:
     import torch
 
-    state = {
+    state: dict[str, Any] = {
         "python": random.getstate(),
         "numpy": np.random.get_state(),
         "torch_cpu": torch.get_rng_state(),

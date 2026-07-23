@@ -63,9 +63,15 @@ def resolve_base_identity(
         from transformers.utils import cached_file
 
         try:
-            config_path = cached_file(
+            resolved = cached_file(
                 model, CONFIG_NAME, revision=revision, local_files_only=local_files_only
             )
+            # cached_file returns None instead of raising when the file is
+            # simply absent; a base model without a config.json cannot be
+            # identity-checked, so treat both the same way.
+            if resolved is None:
+                raise ExportError(f"{CONFIG_NAME} not found for base model")
+            config_path = resolved
         except Exception as exc:
             hint = (
                 "  Solution: mount the training HF cache into the export "

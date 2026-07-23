@@ -24,10 +24,12 @@ import os
 import sys
 import threading
 from datetime import datetime
-from typing import Any, TextIO
+from typing import Any, Literal, TextIO, cast
 
 from common.obs.core import current_cli, current_command, current_run_id
 from common.reports import report_header
+
+_WandbMode = Literal["online", "offline", "disabled", "shared"]
 
 
 def _warn(sink: str, exc: Exception, path: str = "") -> None:
@@ -158,12 +160,17 @@ class Tracker:
             # mode as an init argument, not os.environ.setdefault: the env
             # mutation outlived a failed init and forced every later
             # in-process wandb use offline
+            # An unexpected WANDB_MODE value falls back to offline rather
+            # than failing init mid-run
+            wandb_mode = os.environ.get("WANDB_MODE", "offline")
+            if wandb_mode not in ("online", "offline", "disabled", "shared"):
+                wandb_mode = "offline"
             run = wandb.init(
                 project=tracking.wandb_project,
                 name=run_name,
                 dir=run_dir,
                 config=config or {},
-                mode=os.environ.get("WANDB_MODE", "offline"),
+                mode=cast(_WandbMode, wandb_mode),
             )
             self._sinks.append(("wandb", run))
         except Exception as exc:

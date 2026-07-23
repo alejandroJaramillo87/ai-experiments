@@ -61,7 +61,9 @@ def build_scratch_model(spec: ArchitectureSpec, recipe: DictConfig):
     from transformers import AutoModelForCausalLM, LlamaConfig
 
     scratch = recipe.model.scratch
-    config = LlamaConfig(
+    # rope_theta and attn_implementation reach LlamaConfig through the
+    # untyped PretrainedConfig **kwargs, so the typed signature rejects them
+    config = LlamaConfig(  # type: ignore[call-arg]
         num_hidden_layers=spec.layers,
         hidden_size=spec.hidden,
         num_attention_heads=spec.heads,
