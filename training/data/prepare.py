@@ -110,6 +110,10 @@ def load_tokenizer(source: str, eos_token: str | None = None) -> LoadedTokenizer
     tok = AutoTokenizer.from_pretrained(source)
     if eos_token is not None:
         eos_id = tok.convert_tokens_to_ids(eos_token)
+        # convert_tokens_to_ids is typed to return a list for list input; a
+        # single token string always yields a single id
+        if isinstance(eos_id, list):
+            raise ValueError(f"--eos-token {eos_token!r} resolved to multiple ids")
         # convert_tokens_to_ids maps unknown strings to the unk id instead of
         # failing; a mistyped --eos-token would silently corrupt every
         # document separator in the written shards.

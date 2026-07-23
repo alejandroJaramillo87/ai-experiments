@@ -317,7 +317,7 @@ def build_callbacks(
             )
             update_latest(ckpt_root, state.global_step)
 
-    callbacks = [TrackingCallback()]
+    callbacks: list[TrainerCallback] = [TrackingCallback()]
     if watchdog is not None:
         callbacks.append(WatchdogCallback())
     callbacks.append(CheckpointCallback())

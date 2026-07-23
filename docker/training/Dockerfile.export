@@ -17,6 +17,9 @@ FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 FROM ubuntu:24.04
 
+# Compile-job cap for the llama-quantize build; -j$(nproc) saturates the host
+ARG MAX_JOBS=4
+
 LABEL description="GGUF export toolchain: pinned llama.cpp converter and quantizer (Phase 0 D7)"
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -45,7 +48,7 @@ RUN git clone https://github.com/ggml-org/llama.cpp.git /opt/llama.cpp && \
     git checkout "$(cat /opt/llama_cpp_pin.txt)" && \
     cmake -B build -DGGML_CUDA=OFF -DLLAMA_BUILD_TESTS=OFF \
           -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=OFF && \
-    cmake --build build --target llama-quantize -j"$(nproc)" && \
+    cmake --build build --target llama-quantize -j"${MAX_JOBS}" && \
     rm -rf build/CMakeFiles
 
 RUN uv venv /opt/venv --python 3.12
@@ -77,9 +80,11 @@ RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app
 WORKDIR /app
 USER appuser
 
-# Sanity check: converter present at the pin, quantizer built, python stack imports
+# Sanity check: converter present at the pin, quantizer binary present and
+# executable, python stack imports. llama-quantize has no --help flag (any
+# unrecognized argument exits 1), so test -x instead of invoking it.
 RUN test -f /opt/llama.cpp/convert_hf_to_gguf.py && \
-    /opt/llama.cpp/build/bin/llama-quantize --help >/dev/null && \
+    test -x /opt/llama.cpp/build/bin/llama-quantize && \
     python -c "import torch, transformers, peft, gguf"
 
 CMD ["/bin/bash"]

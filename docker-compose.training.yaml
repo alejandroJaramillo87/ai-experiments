@@ -13,6 +13,9 @@ services:
     build:
       context: .
       dockerfile: docker/training/Dockerfile.training
+      args:                      # cap source-build compile jobs (see Makefile MAX_JOBS)
+        MAX_JOBS: "${MAX_JOBS:-4}"
+        NVCC_THREADS: "${NVCC_THREADS:-2}"
     container_name: training
     restart: "no"  # batch job runner, not a service
     init: true  # tini as PID 1 for correct signal forwarding
@@ -69,6 +72,8 @@ services:
     build:
       context: .
       dockerfile: docker/training/Dockerfile.export
+      args:                      # cap the llama-quantize compile jobs
+        MAX_JOBS: "${MAX_JOBS:-4}"
     container_name: training-export
     restart: "no"  # batch job runner, not a service
     init: true

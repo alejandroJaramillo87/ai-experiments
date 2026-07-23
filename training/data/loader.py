@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterator
+from typing import cast
 
 import numpy as np
 
@@ -125,7 +126,7 @@ def build_dataloader(dataset, data_cfg, start_index: int = 0, worker_init_fn=Non
     from start_index wrapping at corpus end. Mixture: (tokens, tags) batch
     pairs from an unbounded draw index. The caller counts consumed windows;
     the loader holds no resume state of its own."""
-    from torch.utils.data import DataLoader
+    from torch.utils.data import DataLoader, Dataset
 
     torch_dataset: _TaggedWindowTensorDataset | _WindowTensorDataset
     if isinstance(dataset, MixtureDataset):
@@ -138,8 +139,10 @@ def build_dataloader(dataset, data_cfg, start_index: int = 0, worker_init_fn=Non
     if data_cfg.workers > 0:
         kwargs["prefetch_factor"] = data_cfg.prefetch_factor
         kwargs["persistent_workers"] = True
+    # The window datasets satisfy the map-style contract structurally but do
+    # not inherit torch's Dataset (torch imports stay deferred in this module)
     return DataLoader(
-        torch_dataset,
+        cast(Dataset, torch_dataset),
         batch_size=data_cfg.micro_batch,
         sampler=sampler,
         num_workers=data_cfg.workers,

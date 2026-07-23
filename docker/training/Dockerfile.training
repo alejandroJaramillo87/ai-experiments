@@ -24,6 +24,11 @@ FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu24.04
 
 ARG PYTHON_VERSION
+# Compile-job caps for DeepSpeed/flash-attn source builds; an uncapped build
+# spawns one job per thread and can OOM the host (same rationale as the
+# Makefile MAX_JOBS default for make install)
+ARG MAX_JOBS=4
+ARG NVCC_THREADS=2
 
 LABEL description="Training environment for RTX 5090 Blackwell / Ryzen 9950X Zen 5 (Phase 0 D1)"
 
@@ -68,15 +73,18 @@ ENV CUDA_MODULE_LOADING=LAZY
 # Install the pinned environment from uv.lock: core dependencies + the training group.
 # DS_BUILD_CPU_ADAM/DS_BUILD_UTILS force DeepSpeed to pre-build its ops here (not JIT at first
 # use); CFLAGS targets Zen 5 so the AVX-512 op is compiled with matching flags (issue #7556).
-# Fall back to -march=native if the image gcc rejects znver5.
+# Fall back to -march=native if the image gcc rejects znver5. --active targets /opt/venv:
+# without it uv sync ignores VIRTUAL_ENV and installs into ./.venv beside pyproject.toml.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
+    MAX_JOBS=${MAX_JOBS} NVCC_THREADS=${NVCC_THREADS} \
     DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1 \
     CFLAGS="-march=znver5" CXXFLAGS="-march=znver5" \
-    uv sync --frozen --no-install-project --no-default-groups --group training \
-    || DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1 \
+    uv sync --active --frozen --no-install-project --no-default-groups --group training \
+    || MAX_JOBS=${MAX_JOBS} NVCC_THREADS=${NVCC_THREADS} \
+       DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1 \
        CFLAGS="-march=native" CXXFLAGS="-march=native" \
-       uv sync --frozen --no-install-project --no-default-groups --group training
+       uv sync --active --frozen --no-install-project --no-default-groups --group training
 
 # NVIDIA runtime capabilities
 ENV NVIDIA_VISIBLE_DEVICES=all
@@ -89,6 +97,12 @@ RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Ap
 # Cache locations under the (writable) home; HF cache and Triton cache live on tmpfs at runtime
 ENV HF_HOME=/app/cache
 ENV HOME=/app
+# Triton JIT cache on the exec /tmp tmpfs; the default $HOME/.triton is on the
+# read-only rootfs (matches docker/interp/Dockerfile.interp)
+ENV TRITON_CACHE_DIR=/tmp/triton
+# torch cpp_extension JIT builds (~/.cache/torch_extensions) on the exec tmpfs;
+# the rootfs is read-only at runtime (matches docker/interp/Dockerfile.interp)
+ENV XDG_CACHE_HOME=/tmp/cache
 RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app
 
 WORKDIR /app

@@ -17,6 +17,7 @@ host for unit tests of the pure helpers.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 IGNORE_INDEX = -100
 
@@ -60,7 +61,9 @@ def load_model(model: str, load_4bit: bool = False):
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
-    loaded = AutoModelForCausalLM.from_pretrained(base, **kwargs)
+    # Any: the result is either a transformers model or its PeftModel wrap;
+    # both only need the duck-typed generate/eval surface
+    loaded: Any = AutoModelForCausalLM.from_pretrained(base, **kwargs)
     if adapter is not None:
         from peft import PeftModel
 
