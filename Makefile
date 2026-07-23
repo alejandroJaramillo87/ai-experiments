@@ -29,7 +29,8 @@ YELLOW := \033[33m
 RED := \033[31m
 RESET := \033[0m
 
-# Cap parallel source compilation during `make install`. Several pinned deps
+# Cap parallel source compilation during `make install` and the training image
+# builds (train-build/export-build pass these through as build args). Several pinned deps
 # (flash-attn, deepspeed, liger-kernel, torchao) build CUDA kernels from source
 # and default to one nvcc/cc1plus job per core, each needing several GB of RAM.
 # Unbounded, that spikes past host RAM and OOM-kills other processes (e.g. the
@@ -123,7 +124,7 @@ TRAIN_COMPOSE := docker-compose.training.yaml
 
 train-build: ## Build the training image (runs the smoke test at build; fails on regression)
 	@echo "$(CYAN)Building training image...$(RESET)"
-	docker compose -f $(TRAIN_COMPOSE) build
+	MAX_JOBS=$(MAX_JOBS) NVCC_THREADS=$(NVCC_THREADS) docker compose -f $(TRAIN_COMPOSE) build
 	@echo "$(GREEN)Training image built.$(RESET)"
 
 train-shell: ## Interactive shell in the training container (GPU + /mnt/ai-data/training mounted)
@@ -170,7 +171,7 @@ distill-cache: ## Materialize teacher top-K logprobs for cached-mode distillatio
 
 export-build: ## Build the GGUF export image (pinned llama.cpp converter and quantizer, Phase 0 D7)
 	@echo "$(CYAN)Building export image...$(RESET)"
-	docker compose -f $(TRAIN_COMPOSE) build export
+	MAX_JOBS=$(MAX_JOBS) docker compose -f $(TRAIN_COMPOSE) build export
 	@echo "$(GREEN)Export image built.$(RESET)"
 
 export-gguf: ## Export a checkpoint to GGUF (Phase 0 D7): make export-gguf CHECKPOINT=/mnt/ai-data/training/.../step_000000010 ARGS="--quant Q8_0 --tokenizer ..."
