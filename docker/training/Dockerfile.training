@@ -97,6 +97,9 @@ RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Ap
 # Cache locations under the (writable) home; HF cache and Triton cache live on tmpfs at runtime
 ENV HF_HOME=/app/cache
 ENV HOME=/app
+# Triton JIT cache on the exec /tmp tmpfs; the default $HOME/.triton is on the
+# read-only rootfs (matches docker/interp/Dockerfile.interp)
+ENV TRITON_CACHE_DIR=/tmp/triton
 RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app
 
 WORKDIR /app
