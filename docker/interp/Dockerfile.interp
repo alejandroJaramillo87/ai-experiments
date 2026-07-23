@@ -57,10 +57,12 @@ ENV PATH="/opt/venv/bin:${PATH}"
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
 ENV CUDA_MODULE_LOADING=LAZY
 
-# Install the pinned environment from uv.lock: core dependencies + the interp group
+# Install the pinned environment from uv.lock: core dependencies + the interp group.
+# --active targets /opt/venv: without it uv sync ignores VIRTUAL_ENV and installs into
+# ./.venv beside pyproject.toml.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project --no-default-groups --group interp
+    uv sync --active --frozen --no-install-project --no-default-groups --group interp
 
 # NVIDIA runtime capabilities
 ENV NVIDIA_VISIBLE_DEVICES=all

@@ -73,17 +73,18 @@ ENV CUDA_MODULE_LOADING=LAZY
 # Install the pinned environment from uv.lock: core dependencies + the training group.
 # DS_BUILD_CPU_ADAM/DS_BUILD_UTILS force DeepSpeed to pre-build its ops here (not JIT at first
 # use); CFLAGS targets Zen 5 so the AVX-512 op is compiled with matching flags (issue #7556).
-# Fall back to -march=native if the image gcc rejects znver5.
+# Fall back to -march=native if the image gcc rejects znver5. --active targets /opt/venv:
+# without it uv sync ignores VIRTUAL_ENV and installs into ./.venv beside pyproject.toml.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     MAX_JOBS=${MAX_JOBS} NVCC_THREADS=${NVCC_THREADS} \
     DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1 \
     CFLAGS="-march=znver5" CXXFLAGS="-march=znver5" \
-    uv sync --frozen --no-install-project --no-default-groups --group training \
+    uv sync --active --frozen --no-install-project --no-default-groups --group training \
     || MAX_JOBS=${MAX_JOBS} NVCC_THREADS=${NVCC_THREADS} \
        DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1 \
        CFLAGS="-march=native" CXXFLAGS="-march=native" \
-       uv sync --frozen --no-install-project --no-default-groups --group training
+       uv sync --active --frozen --no-install-project --no-default-groups --group training
 
 # NVIDIA runtime capabilities
 ENV NVIDIA_VISIBLE_DEVICES=all
