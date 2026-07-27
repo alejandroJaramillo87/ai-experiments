@@ -17,6 +17,9 @@ This directory contains comprehensive documentation for understanding and optimi
 - **[parameters/llama-cpp-parameters.md](parameters/llama-cpp-parameters.md)** - Tested llama.cpp parameters and findings
 - **[parameters/vllm-parameters.md](parameters/vllm-parameters.md)** - vLLM configuration and throughput optimization
 
+### Forward Looking
+- **[future-optimizations.md](future-optimizations.md)** - Parked survey of custom kernel and runtime work, with the conditions gating it
+
 ## Current Implementation Status
 
 | Service | Engine | Port | Status | Notes |
@@ -24,6 +27,7 @@ This directory contains comprehensive documentation for understanding and optimi
 | llama-cpu | llama.cpp | 8001 | Active | Latency-optimized CPU inference |
 | llama-gpu | llama.cpp | 8002 | Active | GPU-accelerated low-latency inference |
 | vllm-gpu | vLLM | 8003 | Active | High-throughput batch serving |
+| llama-gpu-bf16 | llama.cpp | 8004 | Opt-in | Full-precision endpoint for monitored interpretability traffic (compose profile `interp`) |
 
 ## Architecture Summary
 

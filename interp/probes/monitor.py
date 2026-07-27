@@ -11,7 +11,8 @@ Output: one report JSON per run under the monitor directory plus
 flagged.jsonl beside it (records over threshold — alerting is a file, not a
 pager). Malformed log records are counted as skipped, never a crash. The
 report includes deltas versus the previous run over the same probe set — the
-drift signal later phases build on.
+drift signal later phases build on — plus the target services observed in the
+window and what their precision means for the scores (see replay_fidelity).
 """
 
 from __future__ import annotations
@@ -30,9 +31,13 @@ from interp.probes.score import score_texts
 DEFAULT_LOG_ROOT = "/mnt/ai-data/interp/logs"
 DEFAULT_MONITOR_ROOT = "/mnt/ai-data/interp/monitor"
 RETENTION_DAYS = 30
+# Serving targets that run at the same precision the probes were fitted at. A replay over
+# traffic served by one of these describes the serving model itself, not an approximation.
+FULL_PRECISION_SERVICES = ("llama-gpu-bf16",)
 HEALTH_URLS = (
     "http://127.0.0.1:8002/v1/health",  # llama-gpu
     "http://127.0.0.1:8003/health",  # vllm-gpu
+    "http://127.0.0.1:8004/v1/health",  # llama-gpu-bf16 (full-precision monitored path)
 )
 
 
@@ -138,6 +143,34 @@ def read_log_window(
     return records, skipped
 
 
+def replay_fidelity(target_services: list[str]) -> str:
+    """State the relationship between the replayed model and the serving model.
+
+    Probes are fitted on bf16 activations, so a replay describes the served
+    model exactly only when serving also ran at full precision. Derived from
+    the records' target_service rather than asserted, so a report over mixed or
+    quantized traffic cannot claim a fidelity it does not have.
+    """
+    if target_services and all(s in FULL_PRECISION_SERVICES for s in target_services):
+        return (
+            "replay and serving ran at the same precision: these scores describe "
+            "the model that answered the logged traffic"
+        )
+    if any(s in FULL_PRECISION_SERVICES for s in target_services):
+        return (
+            "mixed-precision window: some records were served at full precision "
+            "and some quantized, so these scores describe the replay model rather "
+            "than any single serving model. Replay one target service at a time "
+            "(--log-dir selects one) for a fidelity claim"
+        )
+    return (
+        "the replay model runs at bf16 while the logged traffic was served "
+        "quantized, so these scores describe the replay model's internals, not "
+        "the serving model's. Route monitored traffic through the full-precision "
+        "endpoint (make fullprec-up) to remove the difference"
+    )
+
+
 def previous_report(monitor_dir: str, probe_names: list[str]) -> dict | None:
     """Most recent prior report over the same probe set, for the drift delta."""
     if not os.path.isdir(monitor_dir):
@@ -213,6 +246,16 @@ def run_monitor(
     texts = [r["_text"] for r in records]
     scores = score_texts(probes, texts, replay_model, capture_fn=capture_fn)
 
+    # Records carry the service that answered them (logproxy.py base_record), so replay
+    # fidelity is read off the window rather than assumed from configuration
+    target_services = sorted(
+        {
+            r["target_service"]
+            for r in records
+            if isinstance(r.get("target_service"), str)
+        }
+    )
+
     monitor_dir = monitor_root
     run_name = now.strftime("%Y-%m-%dT%H%M%SZ")
     run_dir = os.path.join(monitor_dir, run_name)
@@ -280,11 +323,8 @@ def run_monitor(
             "retention_removed_files": removed,
         },
         "probes": report_probes,
-        "note": (
-            "bf16 replay activations approximate the quantized service's "
-            "internals; quantifying the gap is the Phase 5 "
-            "quantization-feature-survival track"
-        ),
+        "target_services": target_services,
+        "note": replay_fidelity(target_services),
     }
     with open(os.path.join(run_dir, "report.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)

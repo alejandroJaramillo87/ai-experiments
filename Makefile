@@ -18,6 +18,7 @@
 .PHONY: interp-build interp-up interp-shell interp-smoke interp-down interp-dirs
 .PHONY: steer-extract steer-up steer-down steer-scorecard
 .PHONY: probe-capture probe-train probe-eval probe-monitor logproxy-up logproxy-down
+.PHONY: fullprec-up fullprec-down
 .PHONY: organism organism-generate organism-verify organism-seal organism-check-seal
 .PHONY: harvest harvest-check-hooks interp-gc sae-train sae-eval
 .DEFAULT_GOAL := help
@@ -272,6 +273,18 @@ logproxy-up: ## Start the request-logging proxy on 127.0.0.1:8012 (opt-in; compo
 
 logproxy-down: ## Stop the request-logging proxy
 	docker compose --profile interp rm -sf interp-logproxy
+
+fullprec-up: ## Start the full-precision monitored path: bf16 endpoint on 8004 plus the proxy pointed at it
+	docker compose --profile interp up -d llama-gpu-bf16
+	LOGPROXY_TARGET_URL=http://llama-gpu-bf16:8004 \
+	LOGPROXY_TARGET_SERVICE=llama-gpu-bf16 \
+	docker compose --profile interp up -d --force-recreate interp-logproxy
+	@echo "$(GREEN)full-precision path up: clients point at http://127.0.0.1:8012$(RESET)"
+	@echo "logs land under /mnt/ai-data/interp/logs/llama-gpu-bf16"
+	@echo "replay with: make probe-monitor ARGS=\"--log-dir /mnt/ai-data/interp/logs/llama-gpu-bf16 ...\""
+
+fullprec-down: ## Stop the full-precision monitored path (leaves port 8002 untouched)
+	docker compose --profile interp rm -sf interp-logproxy llama-gpu-bf16
 
 ##@ Interpretability harvesting (interp Phase 4 P4-D2 - workbench batch job; GPU inference must be down)
 

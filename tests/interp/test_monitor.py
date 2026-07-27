@@ -12,11 +12,13 @@ import os
 import pytest
 
 from interp.probes.monitor import (
+    HEALTH_URLS,
     MonitorError,
     enforce_retention,
     parse_window,
     read_log_window,
     reconstruct_text,
+    replay_fidelity,
     run_monitor,
 )
 from interp.probes.registry import RegistryError
@@ -25,14 +27,16 @@ from tests.interp.conftest import fake_capture
 NOW = datetime.datetime(2026, 7, 14, 12, 0, tzinfo=datetime.UTC)
 
 
-def log_record(i: int, text: str | None = "hello world") -> str:
+def log_record(
+    i: int, text: str | None = "hello world", target_service: str = "llama-gpu"
+) -> str:
     """One synthetic W3 record; text=None yields a record with nothing to replay."""
     stamp = (NOW - datetime.timedelta(hours=1, seconds=i)).strftime(
         "%Y-%m-%dT%H:%M:%S.%fZ"
     )
     record = {
         "timestamp": stamp,
-        "target_service": "llama-gpu",
+        "target_service": target_service,
         "model": "test-model",
         "messages": [{"role": "user", "content": f"{text} {i}"}] if text else None,
         "response_text": ("a neg response" if i % 2 else "a pos response")
@@ -55,6 +59,44 @@ def log_dir(tmp_path):
     lines.insert(15, log_record(99, text=None))  # no reconstructable text
     (directory / f"{day}.jsonl").write_text("\n".join(lines) + "\n")
     return str(directory)
+
+
+@pytest.fixture
+def bf16_log_dir(tmp_path):
+    """A window served entirely by the full-precision endpoint."""
+    directory = tmp_path / "logs-bf16"
+    directory.mkdir()
+    day = NOW.strftime("%Y-%m-%d")
+    lines = [log_record(i, target_service="llama-gpu-bf16") for i in range(20)]
+    (directory / f"{day}.jsonl").write_text("\n".join(lines) + "\n")
+    return str(directory)
+
+
+class TestReplayFidelity:
+    """The report must not claim a fidelity the window does not support."""
+
+    def test_bf16_endpoint_is_guarded(self):
+        assert "http://127.0.0.1:8004/v1/health" in HEALTH_URLS
+        # appended, not substituted: both production services still block a run
+        assert "http://127.0.0.1:8002/v1/health" in HEALTH_URLS
+        assert "http://127.0.0.1:8003/health" in HEALTH_URLS
+
+    def test_full_precision_window_claims_serving_model(self):
+        note = replay_fidelity(["llama-gpu-bf16"])
+        assert "same precision" in note
+
+    def test_quantized_window_disclaims(self):
+        note = replay_fidelity(["llama-gpu"])
+        assert "quantized" in note
+        assert "not the serving model" in note
+
+    def test_mixed_window_disclaims(self):
+        note = replay_fidelity(["llama-gpu", "llama-gpu-bf16"])
+        assert "mixed-precision" in note
+
+    def test_empty_window_disclaims(self):
+        # no target_service on any record is not evidence of full precision
+        assert "quantized" in replay_fidelity([])
 
 
 class TestLogReading:
@@ -115,6 +157,16 @@ class TestMonitor:
         dist = report["probes"]["test-probe"]
         assert {"mean", "p50", "p95", "fraction_over_threshold"} <= set(dist)
         assert os.path.isfile(os.path.join(report["out_dir"], "flagged.jsonl"))
+
+    def test_report_records_target_services(self, probe_dir, log_dir, tmp_path):
+        report = self.run(probe_dir, log_dir, tmp_path)
+        assert report["target_services"] == ["llama-gpu"]
+        assert "quantized" in report["note"]
+
+    def test_full_precision_window_note(self, probe_dir, bf16_log_dir, tmp_path):
+        report = self.run(probe_dir, bf16_log_dir, tmp_path)
+        assert report["target_services"] == ["llama-gpu-bf16"]
+        assert "same precision" in report["note"]
 
     def test_deterministic_and_delta(self, probe_dir, log_dir, tmp_path):
         first = self.run(probe_dir, log_dir, tmp_path)

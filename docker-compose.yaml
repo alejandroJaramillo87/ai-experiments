@@ -97,7 +97,63 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 180s # Give the GPU model time to load into VRAM 
+      start_period: 180s # Give the GPU model time to load into VRAM
+
+  # Full-precision serving endpoint for monitored interpretability traffic (interp Phase 3 W4).
+  # Opt-in via the "interp" profile; production port 8002 and its quantized model are untouched.
+  #
+  # Why this exists: probes are fitted on bf16 activations, so replaying prompts that a quantized
+  # model answered measures a different model than the one that served. This endpoint removes
+  # that seam by answering monitored traffic at the same precision the probes were fitted at.
+  #
+  # Serves the interpretability subject model, not the production model: gpt-oss-20b at full
+  # precision is roughly 40GB and exceeds the 32GB VRAM budget, while Gemma-2-2B is about 5.2GB
+  # and is what the W2 probes are actually trained on.
+  #
+  # Reuses the llama-gpu image unchanged; entrypoint.sh parameterizes SERVER_PORT and MODEL_PATH.
+  llama-gpu-bf16:
+    profiles: ["interp"]
+    init: true  # tini as PID 1 for proper signal forwarding
+    user: "${UID:-1000}:${GID:-1000}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    build:
+      context: .
+      dockerfile: docker/llama-gpu/Dockerfile.llama-gpu
+    container_name: llama-gpu-bf16
+    restart: "no" # opt-in workbench service, never on boot
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - CUDA_VISIBLE_DEVICES=0
+      - SERVER_PORT=8004
+      - MODEL_PATH=${LLAMA_GPU_BF16_MODEL:-/app/models/gguf/gemma-2-2b-GGUF/gemma-2-2b-bf16.gguf}
+      # No CONTROL_VECTOR here: steering is a production-path concern (W1). A steered monitored
+      # endpoint would score probes against activations the probes were not fitted against.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute, utility]
+    ports:
+      - "127.0.0.1:8004:8004"
+    read_only: true
+    tmpfs:
+      - /tmp:size=4G,mode=1777  # CUDA cache and temp files
+    volumes:
+      - /mnt/ai-data/models/:/app/models:ro
+      - ./logs/gpu-bf16:/app/logs
+    networks:
+      - ai-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
 
   # vLLM GPU Service - Optimized for RTX 5090
   # Note: No memlock/IPC_LOCK needed - vLLM uses pure GPU inference (PagedAttention in VRAM)

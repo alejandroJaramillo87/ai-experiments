@@ -166,7 +166,31 @@ $ make probe-monitor ARGS="--window 7d --probes /mnt/ai-data/interp/probes/verif
 Expected signal: the monitor replays the log window, scores every probe,
 writes `report.json` (`kind: probe_monitor`, shared envelope) plus
 `flagged.jsonl`, enforces log retention, and refuses with the
-services-are-up message when run against a live stack.
+services-are-up message when run against a live stack. The report lists the
+`target_services` observed in the window, and its `note` states whether the
+replay describes the serving model or only the replay model.
+
+The refusal covers the full-precision endpoint as well as the two production
+services, so `make fullprec-up` followed by `make probe-monitor` must also
+refuse:
+
+```bash
+$ make fullprec-up
+$ make probe-monitor ARGS="--window 7d --probes /mnt/ai-data/interp/probes/verify-probe \
+    --model google/gemma-4-E2B --model-hash <hash>"
+# expected: MonitorError naming http://127.0.0.1:8004/v1/health
+$ make fullprec-down
+```
+
+To verify the full-precision claim end to end, replay a window served by the
+bf16 endpoint and confirm the report does not disclaim fidelity:
+
+```bash
+$ make probe-monitor ARGS="--log-dir /mnt/ai-data/interp/logs/llama-gpu-bf16 --window 7d \
+    --probes /mnt/ai-data/interp/probes/verify-probe \
+    --model google/gemma-2-2b --model-hash <hash>"
+# expected: "target_services": ["llama-gpu-bf16"] and a note reading "same precision"
+```
 
 Observed:
 
