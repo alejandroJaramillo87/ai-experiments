@@ -149,6 +149,46 @@ Observed:
 
 Status: PENDING
 
+## I.6b Full-precision monitored endpoint
+
+Precondition for the fidelity claim in I.7. The point of `llama-gpu-bf16` is
+that monitored traffic is answered at the precision the probes were fitted at,
+so the served tensor type must be confirmed rather than assumed.
+
+ggml defines a `BF16` tensor type, but CUDA backend coverage for it is narrower
+than for f16, and some paths upconvert. A service that loads f16 while being
+described as bf16 reintroduces exactly the replay mismatch this endpoint exists
+to remove, and it does so silently: nothing downstream would report a problem.
+
+Command:
+
+```bash
+$ make fullprec-up
+$ docker logs llama-gpu-bf16 | grep -iE "general.file_type|type +f(16|32)|bf16"
+$ curl -s -X POST localhost:8012/v1/chat/completions -H 'Content-Type: application/json' \
+    -d '{"messages": [{"role": "user", "content": "2+2?"}], "max_tokens": 8}'
+$ tail -1 /mnt/ai-data/interp/logs/llama-gpu-bf16/"$(date -u +%F)".jsonl
+$ make fullprec-down
+$ curl -sf localhost:8002/v1/health
+```
+
+Expected signal: the startup log reports the tensor type the GGUF was built
+with, and it matches the `--outtype` used by `convert_hf_to_gguf.py`. The proxy
+forwards to the bf16 endpoint and the record's `target_service` reads
+`llama-gpu-bf16`. Port 8002 answers its healthcheck unchanged throughout.
+
+Record the observed tensor type verbatim below. If the served type is f16
+rather than bf16, that is an acceptable outcome, but it must be written down
+here and in `docs/interpretability/writeback.md`, and the endpoint described as
+f16 from then on. Do not record a bf16 result that was not observed.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
 ## I.7 Probe monitor (W4)
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
@@ -166,7 +206,31 @@ $ make probe-monitor ARGS="--window 7d --probes /mnt/ai-data/interp/probes/verif
 Expected signal: the monitor replays the log window, scores every probe,
 writes `report.json` (`kind: probe_monitor`, shared envelope) plus
 `flagged.jsonl`, enforces log retention, and refuses with the
-services-are-up message when run against a live stack.
+services-are-up message when run against a live stack. The report lists the
+`target_services` observed in the window, and its `note` states whether the
+replay describes the serving model or only the replay model.
+
+The refusal covers the full-precision endpoint as well as the two production
+services, so `make fullprec-up` followed by `make probe-monitor` must also
+refuse:
+
+```bash
+$ make fullprec-up
+$ make probe-monitor ARGS="--window 7d --probes /mnt/ai-data/interp/probes/verify-probe \
+    --model google/gemma-4-E2B --model-hash <hash>"
+# expected: MonitorError naming http://127.0.0.1:8004/v1/health
+$ make fullprec-down
+```
+
+To verify the full-precision claim end to end, replay a window served by the
+bf16 endpoint and confirm the report does not disclaim fidelity:
+
+```bash
+$ make probe-monitor ARGS="--log-dir /mnt/ai-data/interp/logs/llama-gpu-bf16 --window 7d \
+    --probes /mnt/ai-data/interp/probes/verify-probe \
+    --model google/gemma-2-2b --model-hash <hash>"
+# expected: "target_services": ["llama-gpu-bf16"] and a note reading "same precision"
+```
 
 Observed:
 
