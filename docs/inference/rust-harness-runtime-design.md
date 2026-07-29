@@ -32,7 +32,7 @@ are in scope through cooperative interleaving (see
 [Subagents](#subagents-fork-and-interleave)) rather than batched decode. Three
 results are expected to outlive the learning exercise: measured delta-prefill turn
 latency (roadmap phase B), reusable grammar-constrained tool-call decoding (phase
-C), and KV cache forking for subagent spawn (phase F). Linking the runtime as a library gives the harness
+C), and KV cache forking for subagent spawn (phase E). Linking the runtime as a library gives the harness
 direct ownership of the KV cache across conversation turns, which no HTTP inference
 API exposes. The runtime is shaped by how an agent loop actually calls a model:
 
@@ -184,18 +184,14 @@ interleaving is one KV budget per live subagent, comfortable for E4B on 32GB.
 
 ## Model targeting
 
-Gemma 4 (released 2026-04-02, Apache 2.0) ships as dense E2B and E4B edge models,
-a 26B A4B mixture-of-experts with 4B active parameters, and a dense 31B, with a
-256K context window on the larger variants.
+Gemma 4 (released 2026-04-02, Apache 2.0) ships in multiple sizes spanning dense
+edge models (E2B, E4B) and larger server-tier variants.
 
-- **Phase target: E4B** (~4.5B effective parameters). Simplest full pipeline and
-  aligned with the repository's Gemma 4 E-model policy.
-- **Second target: 26B A4B.** The preferred coding model for this hardware —
-  quantized it fits the 32GB RTX 5090 with 4B-active latency — but expert routing
-  is a meaningfully separate implementation (routing, expert gather, MoE-aware GGUF
-  layout), so it lands after the dense pipeline is validated end to end.
-- **Skipped: E2B** (same code path as E4B, weaker coder) **and dense 31B** (a
-  dense 26B-class model is already served well by llama-gpu).
+- **Target: E4B** (~4.5B effective parameters). Simplest full pipeline and aligned
+  with the repository's Gemma 4 E-model policy. E4B is the sole supported model.
+- **Skipped: E2B** (same code path as E4B, weaker coder) **and the larger
+  server-tier variants** (large models are already served well by the existing
+  services; their architectures are out of scope for this runtime).
 
 Version coupling is accepted: the model module is the one component rewritten for a
 future Gemma 5. Whether the E-series inherits MatFormer or per-layer-embedding
@@ -210,8 +206,8 @@ is recorded verbatim.
 
 The runtime sits behind a `Model` trait with a scripted mock implementation, so the
 harness, scheduler, KV bookkeeping, grammar, and chat-template layers build and
-unit-test in a sandbox without a GPU. Phases C, D, and F are developed against the
-mock first; phases A, B, and E swap in the real backend on the workstation.
+unit-test in a sandbox without a GPU. Phases C, D, and E are developed against the
+mock first; phases A and B swap in the real backend on the workstation.
 
 | Phase | Deliverable | Acceptance check |
 |-------|-------------|------------------|
@@ -219,8 +215,7 @@ mock first; phases A, B, and E swap in the real backend on the workstation.
 | B | Decode loop with persistent KV cache and delta prefill | Multi-turn script shows turn latency scaling with delta size, not transcript size; both paths measured |
 | C | Grammar-constrained tool-call sampling | Zero malformed tool calls over 200 consecutive forced tool-call generations |
 | D | Full harness loop (tools, permissions, sessions, streaming) | Scripted coding task (read file, edit, run test) completes end to end |
-| E | 26B A4B mixture-of-experts support | Phase A and B checks repeated on the MoE checkpoint |
-| F | Subagent fork and interleave | Two-subagent scripted task shows spawn without prefix re-prefill and wall-clock overlap of one agent's tool execution with the other's generation |
+| E | Subagent fork and interleave | Two-subagent scripted task shows spawn without prefix re-prefill and wall-clock overlap of one agent's tool execution with the other's generation |
 
 Performance numbers quoted before a benchmark run are estimates and must be
 labeled as such; measured results follow the repository benchmarking protocol.
@@ -231,17 +226,16 @@ labeled as such; measured results follow the repository benchmarking protocol.
   gating risk and is verified first, before any model work. A prior branch
   (`claude/llm-runtime-sm120-wmrdz5`) may hold relevant findings.
 - **Candle Gemma 4 coverage.** Three months after release, Candle support for the
-  new variants — especially the MoE — may be incomplete; phase E may require
-  implementing MoE layers directly rather than reusing Candle model code.
+  new variants may be incomplete; the E4B layers may need direct implementation
+  rather than reuse of Candle model code.
 - **Chat template and tool-call format.** The exact Gemma 4 function-calling
   convention must be taken from the model card and tokenizer config, not assumed
   from Gemma 3.
 - **E-series architecture.** Possible MatFormer or per-layer-embedding inheritance
   from Gemma 3n changes the loader; unresolved until checked against the reference
   implementation.
-- **VRAM fit.** Estimated fits on the 32GB RTX 5090: E4B Q8 with full KV budget is
-  comfortable; 26B A4B at Q4-Q5 with a large context is tight and needs a
-  memory-fit table once real tensor sizes are known. Estimates only; no
+- **VRAM fit.** Estimated fit on the 32GB RTX 5090: E4B Q8 with full KV budget and
+  several concurrent subagent sessions is comfortable. Estimate only; no
   measurements exist yet.
 - **Model quality ceiling.** A 4.5B-effective local model is not a frontier coding
   agent. The project's value is the harness-runtime seam — cache reuse, constrained
