@@ -142,11 +142,23 @@ struct LayerKv {
     v: Vec<f32>,
 }
 
+/// Observer of the residual stream, the interp tap seam. Fires after each
+/// decoder layer's final residual add — the hidden state nnsight exposes as
+/// `block.output[0]` — so probes trained on Python-captured activations and
+/// on rust-captured activations see the same tensor. Any backend added later
+/// (CUDA) must preserve this seam and its semantics.
+pub trait Tap: Send {
+    fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]);
+}
+
 pub struct CpuModel {
     config: Config,
     weights: Arc<Weights>,
     kv: Vec<LayerKv>,
     cached_len: usize,
+    /// None on construction and after fork (a `Box<dyn Tap>` cannot be
+    /// cloned); absent taps cost one branch per layer.
+    tap: Option<Box<dyn Tap>>,
 }
 
 /// `y = W x` with GGUF layout `[in, out]`: rows of `in` contiguous per
@@ -247,11 +259,21 @@ impl CpuModel {
                 output_norm,
             }),
             cached_len: 0,
+            tap: None,
         })
     }
 
     pub fn config(&self) -> &Config {
         &self.config
+    }
+
+    /// Install a residual-stream observer; replaces any existing tap.
+    pub fn set_tap(&mut self, tap: Box<dyn Tap>) {
+        self.tap = Some(tap);
+    }
+
+    pub fn take_tap(&mut self) -> Option<Box<dyn Tap>> {
+        self.tap.take()
     }
 
     /// One decode position: append the token's K/V to every layer cache and
@@ -334,6 +356,11 @@ impl CpuModel {
             for (a, b) in x.iter_mut().zip(&post) {
                 *a += b;
             }
+
+            // Interp tap seam: the layer's complete residual output.
+            if let Some(tap) = self.tap.as_mut() {
+                tap.on_residual(i, position, &x);
+            }
         }
 
         // Final norm and tied LM head: logits[t] = embed_row(t) . x.
@@ -402,6 +429,7 @@ impl Model for CpuModel {
             weights: Arc::clone(&self.weights),
             kv: self.kv.clone(),
             cached_len: self.cached_len,
+            tap: None,
         }))
     }
 }
@@ -519,5 +547,53 @@ mod tests {
     fn out_of_vocab_token_is_an_error() {
         let mut m = tiny();
         assert!(m.prefill(&[999]).is_err());
+    }
+
+    /// Shared collector so tests can inspect calls after the model owns the
+    /// tap (Tap: Send rules out Rc).
+    #[derive(Clone, Default)]
+    struct CollectingTap(std::sync::Arc<std::sync::Mutex<Vec<(usize, usize, Vec<f32>)>>>);
+
+    impl Tap for CollectingTap {
+        fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]) {
+            self.0.lock().unwrap().push((layer, position, x.to_vec()));
+        }
+    }
+
+    #[test]
+    fn tap_sees_every_layer_at_every_position() {
+        let mut m = tiny();
+        let tap = CollectingTap::default();
+        m.set_tap(Box::new(tap.clone()));
+        m.prefill_all(&[1, 5, 9]).unwrap();
+        let calls = tap.0.lock().unwrap();
+        // 2 layers x 3 positions, position-major, layer 0 before layer 1.
+        let order: Vec<(usize, usize)> = calls.iter().map(|(l, p, _)| (*l, *p)).collect();
+        assert_eq!(order, [(0, 0), (1, 0), (0, 1), (1, 1), (0, 2), (1, 2)]);
+        assert!(calls.iter().all(|(_, _, x)| x.len() == 16));
+        assert!(calls.iter().all(|(_, _, x)| x.iter().all(|v| v.is_finite())));
+    }
+
+    #[test]
+    fn tap_does_not_perturb_logits() {
+        let mut tapped = tiny();
+        tapped.set_tap(Box::new(CollectingTap::default()));
+        let mut plain = tiny();
+        assert_eq!(
+            tapped.prefill_all(&[1, 4, 7, 2]).unwrap(),
+            plain.prefill_all(&[1, 4, 7, 2]).unwrap()
+        );
+    }
+
+    #[test]
+    fn fork_does_not_carry_the_tap() {
+        let mut parent = tiny();
+        let tap = CollectingTap::default();
+        parent.set_tap(Box::new(tap.clone()));
+        parent.prefill(&[1, 5]).unwrap();
+        let before = tap.0.lock().unwrap().len();
+        let mut child = parent.fork().unwrap();
+        child.prefill(&[7]).unwrap();
+        assert_eq!(tap.0.lock().unwrap().len(), before);
     }
 }
