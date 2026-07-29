@@ -11,8 +11,12 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-chrome = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tracing-subscriber = { workspace = true }
 # test-util enables the paused clock the subagent overlap test measures with
 tokio = { workspace = true, features = ["test-util", "rt", "macros"] }

@@ -55,22 +55,48 @@ fn run(root: &Path, task: &str, record: Option<&Path>) -> Result<String> {
 }
 
 fn main() -> ExitCode {
+    const USAGE: &str =
+        "usage: harness [--record <path>] [--trace-chrome <path>] <task description>";
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     // --record <path>: wrap the model in the flight recorder, appending every
     // forward call to a JSONL file replayable as a MockModel script.
+    // --trace-chrome <path>: write a Perfetto-loadable trace of the span
+    // timeline. No subscriber is installed otherwise, so spans cost nothing.
     let mut record: Option<std::path::PathBuf> = None;
-    if let Some(i) = args.iter().position(|a| a == "--record") {
-        if i + 1 >= args.len() {
-            eprintln!("usage: harness [--record <path>] <task description>");
-            return ExitCode::from(2);
+    let mut trace_chrome: Option<std::path::PathBuf> = None;
+    for (flag, slot) in [
+        ("--record", &mut record),
+        ("--trace-chrome", &mut trace_chrome),
+    ] {
+        if let Some(i) = args.iter().position(|a| a == flag) {
+            if i + 1 >= args.len() {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            }
+            *slot = Some(std::path::PathBuf::from(args.remove(i + 1)));
+            args.remove(i);
         }
-        record = Some(std::path::PathBuf::from(args.remove(i + 1)));
-        args.remove(i);
     }
     if args.is_empty() {
-        eprintln!("usage: harness [--record <path>] <task description>");
+        eprintln!("{USAGE}");
         return ExitCode::from(2);
     }
+    // The guard flushes the trace file on drop at the end of main.
+    let _trace_guard = match trace_chrome {
+        Some(path) => {
+            use tracing_subscriber::layer::SubscriberExt;
+            let (layer, guard) = tracing_chrome::ChromeLayerBuilder::new()
+                .file(path)
+                .include_args(true)
+                .build();
+            tracing::subscriber::set_global_default(
+                tracing_subscriber::registry::Registry::default().with(layer),
+            )
+            .expect("first and only subscriber installation");
+            Some(guard)
+        }
+        None => None,
+    };
     let task = args.join(" ");
     let root = match std::env::current_dir() {
         Ok(d) => d,

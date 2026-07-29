@@ -30,8 +30,15 @@ pub fn gpu_lock() -> GpuLock {
 /// child transcript (parent prefix + task prompt). Returns the child session
 /// and the number of tokens prefilled, which is the task-prompt delta only.
 pub fn spawn(parent: &Session, child_transcript: &[Token]) -> Result<(Session, usize)> {
+    let span = tracing::info_span!(
+        "agent.fork",
+        parent_cached_len = parent.cached_len(),
+        delta_len = tracing::field::Empty
+    );
+    let _enter = span.enter();
     let mut child = parent.fork()?;
     let delta = child.sync(child_transcript)?;
+    span.record("delta_len", delta);
     Ok((child, delta))
 }
 

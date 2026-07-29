@@ -69,7 +69,11 @@ recorder (`runtime/src/model/record.rs`) wraps any `Model` behind the
 binary's `--record <path>` flag, writes every forward call to a JSONL
 stream, and loads a recording back as a `MockModel` script for sandbox
 replay; a `release-with-debug` Cargo profile and `make flame` target
-provide the profiling scaffolding. The `SessionGenerator` seam wires the agent loop
+provide the profiling scaffolding. Observability phase 2 instruments the
+stack with `tracing` spans (`session.sync`, `session.step`,
+`sampler.sample`, `grammar.advance`, `tool.exec`, `agent.fork`); no
+subscriber is installed by default, and the binary's `--trace-chrome
+<path>` flag writes a Perfetto-loadable trace. The `SessionGenerator` seam wires the agent loop
 through tokenizer and session; the binary sets up the full stack and reports
 that the cuda backend (roadmap phase A) has not landed. The backend and the
 Tier 3 fixtures are the remaining workstation work.

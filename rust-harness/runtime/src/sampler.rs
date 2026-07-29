@@ -68,6 +68,12 @@ impl Sampler {
     /// all-false mask (or all-non-finite logits) is an error rather than a
     /// silent fallback.
     pub fn sample(&mut self, logits: &Logits, mask: Option<&[bool]>) -> Result<Token> {
+        let span = tracing::info_span!(
+            "sampler.sample",
+            temperature = self.params.temperature,
+            candidates = tracing::field::Empty
+        );
+        let _enter = span.enter();
         if let Some(m) = mask {
             ensure!(
                 m.len() == logits.0.len(),
@@ -83,11 +89,16 @@ impl Sampler {
             // index on ties, matching the previous max_by behavior that the
             // Tier 2 scripts rely on.
             let mut best: Option<(Token, f32)> = None;
+            let mut support = 0usize;
             for (i, &l) in logits.0.iter().enumerate() {
-                if supported(i, l) && best.is_none_or(|(_, b)| l >= b) {
-                    best = Some((i as Token, l));
+                if supported(i, l) {
+                    support += 1;
+                    if best.is_none_or(|(_, b)| l >= b) {
+                        best = Some((i as Token, l));
+                    }
                 }
             }
+            span.record("candidates", support);
             let (token, _) =
                 best.ok_or_else(|| anyhow::anyhow!("empty sampling support (argmax)"))?;
             return Ok(token);
@@ -130,6 +141,7 @@ impl Sampler {
             }
         }
         candidates.truncate(cut);
+        span.record("candidates", candidates.len());
 
         let kept: f32 = candidates.iter().map(|c| c.1).sum();
         let mut draw = self.next_unit() * kept;

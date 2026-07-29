@@ -213,7 +213,15 @@ impl Grammar {
     /// Token mask for the current state. EOS is legal exactly at completion;
     /// its surface text is never simulated through the automaton.
     pub fn mask(&self, st: &GrammarState, vocab: &Vocab) -> Vec<bool> {
-        (0..vocab.len() as Token)
+        // The per-vocab-entry advance walk is the expensive grammar call, so
+        // this is the traced unit rather than the per-character advance.
+        let span = tracing::info_span!(
+            "grammar.advance",
+            state = st.node,
+            allowed = tracing::field::Empty
+        );
+        let _enter = span.enter();
+        let mask: Vec<bool> = (0..vocab.len() as Token)
             .map(|t| {
                 if t == vocab.eos() {
                     return self.is_complete(st);
@@ -221,7 +229,9 @@ impl Grammar {
                 let text = vocab.text(t);
                 !text.is_empty() && self.advance_str(st, text).is_some()
             })
-            .collect()
+            .collect();
+        span.record("allowed", mask.iter().filter(|&&b| b).count());
+        mask
     }
 }
 

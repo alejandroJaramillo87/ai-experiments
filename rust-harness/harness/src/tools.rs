@@ -141,6 +141,21 @@ impl ToolCall {
     }
 
     pub fn execute(&self, root: &Path) -> Result<String> {
+        let span = tracing::info_span!(
+            "tool.exec",
+            tool = self.name(),
+            target = self.target(),
+            output_bytes = tracing::field::Empty
+        );
+        let _enter = span.enter();
+        let result = self.execute_inner(root);
+        if let Ok(out) = &result {
+            span.record("output_bytes", out.len());
+        }
+        result
+    }
+
+    fn execute_inner(&self, root: &Path) -> Result<String> {
         match self {
             ToolCall::Read { path } => {
                 let text = fs::read_to_string(resolve(root, path)?)

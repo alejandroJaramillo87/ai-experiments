@@ -88,7 +88,7 @@ existing stack is instrumented with structured spans:
 | `sampler.sample` | `runtime/src/sampler.rs` | temperature, candidate count |
 | `grammar.advance` | `runtime/src/grammar.rs` | state, allowed-token count |
 | `tool.exec` | `harness/src/tools.rs` | tool name, duration, output bytes |
-| `agent.fork` | `harness/src/agent.rs` | parent cached length |
+| `agent.fork` | `harness/src/subagents.rs` | parent cached length, task delta length |
 
 The span and field names form a stable schema — the Rust analogue of the
 Python `common/obs` vocabulary — shared by debugging, the blog write-ups, and

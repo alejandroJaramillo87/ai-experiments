@@ -58,6 +58,12 @@ impl Session {
     /// Sync the cache to `transcript`: truncate to the common prefix, prefill
     /// the rest. Returns the number of tokens actually prefilled — the delta.
     pub fn sync(&mut self, transcript: &[Token]) -> Result<usize> {
+        let span = tracing::info_span!(
+            "session.sync",
+            cached_len = self.tokens.len(),
+            delta_len = tracing::field::Empty
+        );
+        let _enter = span.enter();
         anyhow::ensure!(
             transcript.len() <= self.max_context,
             "transcript of {} tokens exceeds the context budget of {}",
@@ -76,6 +82,7 @@ impl Session {
             self.tail_logits = None;
         }
         let delta = &transcript[common..];
+        span.record("delta_len", delta.len());
         if !delta.is_empty() {
             self.tail_logits = Some(self.model.prefill(delta)?);
             self.tokens.extend_from_slice(delta);
@@ -175,6 +182,12 @@ pub struct ActiveGeneration<'a> {
 impl ActiveGeneration<'_> {
     pub fn step(&mut self, sampler: &mut Sampler) -> Result<Option<Token>> {
         anyhow::ensure!(!self.done, "step after EOS");
+        let span = tracing::info_span!(
+            "session.step",
+            position = self.session.tokens.len(),
+            token = tracing::field::Empty
+        );
+        let _enter = span.enter();
         let mask = self.state.as_ref().map(|st| {
             self.grammar
                 .expect("state implies grammar")
@@ -186,6 +199,7 @@ impl ActiveGeneration<'_> {
             .as_ref()
             .expect("begin_generation established tail logits");
         let tok = sampler.sample(logits, mask.as_deref())?;
+        span.record("token", tok);
         if tok == self.vocab.eos() {
             self.done = true;
             return Ok(None);
