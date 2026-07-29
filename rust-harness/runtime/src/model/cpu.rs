@@ -12,6 +12,11 @@
  * sqrt(embed_dim), grouped-query attention with per-head QK-norm and NEOX
  * RoPE, interleaved sliding-window/global layers, GeGLU MLP with tanh GELU,
  * four norms per layer, LM head tied to the token embedding.
+ *
+ * The K/V cache stores the full sequence for every layer; the sliding
+ * window is applied as an attention mask only. Capping sliding-window
+ * storage to the kv.rs budget (a ring buffer) is deferred to the
+ * real-model work, where the memory matters.
  */
 
 use std::sync::Arc;

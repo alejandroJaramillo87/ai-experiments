@@ -103,6 +103,7 @@ $ make quality        # cargo fmt --check, cargo clippy -D warnings, cargo test
 
 | Phase | Deliverable | Acceptance check |
 |-------|-------------|------------------|
+| A-prime | Hand-rolled CPU reference backend (in place; workstation acceptance pending) | Logits match the numpy reference; rr record/replay with reverse-continue |
 | A | Load quantized E4B, single forward pass | Logits match the Hugging Face reference within quantization tolerance |
 | B | Decode loop, persistent KV cache, delta prefill | Turn latency scales with delta size, not transcript size |
 | C | Grammar-constrained tool-call sampling | Zero malformed tool calls over 200 forced generations |

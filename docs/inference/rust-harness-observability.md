@@ -142,6 +142,12 @@ numpy implementation of the same forward pass
 checkpoint (`rust-harness/fixtures/tiny-gemma4.gguf`, written by the
 `tiny-model` binary).
 
+One storage decision is recorded as deferred: the K/V cache holds the full
+sequence for every layer, and the sliding window is applied as an attention
+mask only. This is numerically identical to a capped cache but unbounded in
+memory; the `kv.rs`-budgeted ring buffer for sliding-window layers is
+deferred to the real-model work, where cache size matters.
+
 ### Scope: debugging and reference only
 
 The CPU backend makes no serving claim. Estimated decode speed on the
@@ -161,12 +167,35 @@ and deliverables:
 - Determinism: the sampler is already seeded and the decode path holds no wall
   clock; the standing rule is to keep threads out of the decode path (the bash
   tool's drain threads are outside the recorded path).
-- A `make debug-record` recipe: build with the `release-with-debug` profile,
-  run the failing case under `rr record`, replay with `rr replay`.
-- A runbook for the divergence bug class: phase 1 bisection names the first
-  divergent position; under replay, set a hardware watchpoint on the divergent
-  value (a KV cache slot or logit) and `reverse-continue` to the write that
-  produced it.
+- `make debug-record` / `make debug-replay` targets: build with the
+  `release-with-debug` profile, run the case under `rr record`, replay with
+  `rr replay`.
+
+### Runbook: divergence bug class
+
+The canonical numerics bug is a logit stream that diverges from the
+reference at some position. The sequence from symptom to cause:
+
+1. Record both runs with `--record` (phase 1) and diff the two JSONL logit
+   streams; the first divergent position identifies the exact `forward()`
+   call to inspect.
+2. Record the failing run under rr:
+
+   ```bash
+   $ make debug-record ARGS='--model fixtures/tiny-gemma4.gguf <task>'
+   $ make debug-replay
+   ```
+
+3. Inside `rr replay` (a gdb session), stop at the divergent call, then set
+   a hardware watchpoint on the divergent value — a KV cache slot or a
+   logit — and run backwards to the write that produced it:
+
+   ```
+   (rr) break cpu.rs:forward_one if position == <divergent position>
+   (rr) continue
+   (rr) watch -l logits[<token>]
+   (rr) reverse-continue
+   ```
 
 ### Acceptance
 
