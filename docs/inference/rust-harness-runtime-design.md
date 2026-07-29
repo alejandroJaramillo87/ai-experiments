@@ -232,7 +232,10 @@ labeled as such; measured results follow the repository benchmarking protocol.
   (`claude/llm-runtime-sm120-wmrdz5`) may hold relevant findings.
 - **Candle Gemma 4 coverage.** Three months after release, Candle support for the
   new variants may be incomplete; the E4B layers may need direct implementation
-  rather than reuse of Candle model code.
+  rather than reuse of Candle model code. The CPU reference backend
+  (phase A-prime) is hand-rolled and does not depend on Candle; see the
+  [observability design](rust-harness-observability.md) for the recorded
+  decision.
 - **Chat template and tool-call format.** The exact Gemma 4 function-calling
   convention must be taken from the model card and tokenizer config, not assumed
   from Gemma 3.

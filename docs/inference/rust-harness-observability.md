@@ -116,12 +116,31 @@ Gemma 4 E4B, chosen for simplicity of implementation over speed.
 
 ### Backend choice
 
-Default: Candle's CPU device, reusing Candle model code where its Gemma 4
-coverage allows. Fallback: direct implementation of the E4B layers with naive
-dequantize-then-matmul. The decision is resolved against Candle's actual
-Gemma 4 coverage at implementation time and recorded in the runtime design
-doc's open questions. Either way the bar is correctness and readability, not
-throughput.
+Resolved at implementation time: the backend is hand-rolled — naive
+dequantize-then-matmul in owned code (`runtime/src/model/cpu.rs`),
+single-threaded plain f32 loops. Candle CPU was considered and rejected:
+upstream Candle has a `gemma4` module but no quantized-GGUF Gemma 4 path, so
+the loader work remains either way; its threaded CPU kernels complicate rr
+determinism; and the correctness-and-readability bar favors owned naive
+code. The bar is correctness and readability, not throughput.
+
+### Architecture assumption and reconciliation
+
+The forward pass implements a Gemma-3-style architecture: RMSNorm with
+`(1 + weight)` scaling, embedding scaled by the square root of the embedding
+dimension, grouped-query attention with per-head QK-norm and NEOX RoPE,
+interleaved sliding-window/global layers, a GeGLU MLP with tanh GELU, four
+norms per layer, and an LM head tied to the token embedding. Whether the real
+E4B checkpoint deviates (MatFormer or per-layer-embedding inheritance from
+Gemma 3n is the open design-doc risk) is resolved with evidence: the
+`gguf-info` binary (`runtime/src/bin/gguf-info.rs`) dumps metadata and the
+tensor directory of a GGUF file; the human runs it against the real E4B on
+the workstation and the reported output is reconciled against the
+implementation. Numerics are validated in the sandbox against an independent
+numpy implementation of the same forward pass
+(`rust-harness/fixtures/reference_logits.py`) over a committed synthetic
+checkpoint (`rust-harness/fixtures/tiny-gemma4.gguf`, written by the
+`tiny-model` binary).
 
 ### Scope: debugging and reference only
 

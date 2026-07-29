@@ -3,8 +3,8 @@
  *
  * Wires the full stack: permissions from permissions.yaml, a durable JSONL
  * transcript, the agent loop, and a SessionGenerator over the runtime. The
- * generator requires the cuda backend (phase A); until it lands the binary
- * reports that and exits, everything above it being already testable.
+ * generator runs the hand-rolled CPU backend against the GGUF passed via
+ * --model; the cuda backend (phase A) will slot in at the same seam.
  */
 
 use std::io::Write;
@@ -30,19 +30,37 @@ fn ask_stdin(call: &ToolCall) -> bool {
     matches!(line.trim(), "y" | "yes")
 }
 
-/// Construct the generator over the real model, wrapping it in the flight
-/// recorder (`runtime::model::record::RecordingModel::to_file`) when
-/// `record` names a path. Requires the phase A cuda backend; there is no
-/// mock fallback in the shipping binary.
-fn build_generator(record: Option<&Path>) -> Result<SessionGenerator> {
-    let _ = record; // consumed once the backend exists to be wrapped
-    anyhow::bail!(
-        "inference backend not built: the cuda backend (roadmap phase A) has not landed; \
-         the harness stack above it is complete and runs under cargo test"
+/// Construct the generator over the CPU backend for the GGUF at
+/// `model_path`, wrapping the model in the flight recorder when `record`
+/// names a path. There is no mock fallback in the shipping binary.
+fn build_generator(model_path: Option<&Path>, record: Option<&Path>) -> Result<SessionGenerator> {
+    use runtime::model::{cpu::CpuModel, record::RecordingModel, Model};
+    let Some(model_path) = model_path else {
+        anyhow::bail!(
+            "no model: pass --model <path.gguf> to run on the CPU backend; \
+             the cuda backend (roadmap phase A) has not landed"
+        )
+    };
+    let data = std::fs::read(model_path)
+        .with_context(|| format!("read model {}", model_path.display()))?;
+    let file = runtime::gguf::parse(&data).context("parse GGUF")?;
+    let cpu = CpuModel::from_gguf(&file, &data).context("load CPU model")?;
+    let max_context = cpu.config().context_length;
+    let model: Box<dyn Model> = match record {
+        Some(path) => Box::new(RecordingModel::to_file(Box::new(cpu), path)?),
+        None => Box::new(cpu),
+    };
+    let session = runtime::session::Session::new(model, max_context)?;
+    let tokenizer = runtime::tokenizer::Tokenizer::from_gguf(&file).context("load tokenizer")?;
+    SessionGenerator::new(
+        session,
+        tokenizer,
+        runtime::sampler::SamplingParams::default(),
+        256,
     )
 }
 
-fn run(root: &Path, task: &str, record: Option<&Path>) -> Result<String> {
+fn run(root: &Path, task: &str, model: Option<&Path>, record: Option<&Path>) -> Result<String> {
     let permissions = match std::fs::read_to_string(root.join("permissions.yaml")) {
         Ok(yaml) => Permissions::from_yaml(&yaml).context("permissions.yaml")?,
         // No config: every call goes through the interactive Ask path.
@@ -50,21 +68,24 @@ fn run(root: &Path, task: &str, record: Option<&Path>) -> Result<String> {
     };
     let transcript = Transcript::open(&root.join("session.jsonl")).context("session.jsonl")?;
     let mut agent = Agent::new(root.to_path_buf(), permissions, transcript);
-    let mut generator = build_generator(record)?;
+    let mut generator = build_generator(model, record)?;
     agent.run_task(&mut generator, task, 64, ask_stdin)
 }
 
 fn main() -> ExitCode {
     const USAGE: &str =
-        "usage: harness [--record <path>] [--trace-chrome <path>] <task description>";
+        "usage: harness --model <path.gguf> [--record <path>] [--trace-chrome <path>] <task description>";
     let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // --model <path.gguf>: checkpoint for the CPU backend.
     // --record <path>: wrap the model in the flight recorder, appending every
     // forward call to a JSONL file replayable as a MockModel script.
     // --trace-chrome <path>: write a Perfetto-loadable trace of the span
     // timeline. No subscriber is installed otherwise, so spans cost nothing.
+    let mut model: Option<std::path::PathBuf> = None;
     let mut record: Option<std::path::PathBuf> = None;
     let mut trace_chrome: Option<std::path::PathBuf> = None;
     for (flag, slot) in [
+        ("--model", &mut model),
         ("--record", &mut record),
         ("--trace-chrome", &mut trace_chrome),
     ] {
@@ -105,7 +126,7 @@ fn main() -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    match run(&root, &task, record.as_deref()) {
+    match run(&root, &task, model.as_deref(), record.as_deref()) {
         Ok(answer) => {
             println!("{answer}");
             ExitCode::SUCCESS

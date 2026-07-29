@@ -19,8 +19,13 @@ self-contained and is intended for later extraction into its own repository.
 Cargo.toml        workspace: harness, runtime
 harness/          bin crate: agent loop, tools, permissions, sessions, streaming
 runtime/          lib crate: sessions, sampler, grammar, KV cache, GGUF, tokenizer, model
-fixtures/         golden fixtures (chat-template token IDs, reference logits)
+fixtures/         committed fixtures: synthetic tiny-model GGUF, numpy reference
+                  logits and generator script; real-model Tier 3 fixtures pending
 ```
+
+Utility binaries: `gguf-info` dumps GGUF metadata and the tensor directory
+(architecture reconciliation against the real checkpoint); `tiny-model`
+writes the synthetic fixture GGUF.
 
 ## Testing
 
@@ -71,12 +76,22 @@ stream, and loads a recording back as a `MockModel` script for sandbox
 replay; a `release-with-debug` Cargo profile and `make flame` target
 provide the profiling scaffolding. Observability phase 2 instruments the
 stack with `tracing` spans (`session.sync`, `session.step`,
-`sampler.sample`, `grammar.advance`, `tool.exec`, `agent.fork`); no
-subscriber is installed by default, and the binary's `--trace-chrome
-<path>` flag writes a Perfetto-loadable trace. The `SessionGenerator` seam wires the agent loop
-through tokenizer and session; the binary sets up the full stack and reports
-that the cuda backend (roadmap phase A) has not landed. The backend and the
-Tier 3 fixtures are the remaining workstation work.
+`sampler.sample`, `grammar.advance`, `tool.exec`, `agent.fork`,
+`model.forward`); no subscriber is installed by default, and the binary's
+`--trace-chrome <path>` flag writes a Perfetto-loadable trace.
+
+Observability phase 3 lands the first real numerics: a hand-rolled,
+single-threaded CPU backend (`runtime/src/model/cpu.rs`) implementing a
+Gemma-4-style forward pass (RMSNorm, GQA with QK-norm and NEOX RoPE,
+interleaved sliding-window/global attention, GeGLU MLP, tied LM head) from
+GGUF weights (F32, F16, Q8_0 dequantization). The binary runs it with
+`--model <path.gguf>`; the `SessionGenerator` seam wires the agent loop
+through tokenizer and session. Numerics match an independent numpy
+reference over the committed synthetic checkpoint, and the harness runs a
+task end to end on the CPU backend in the sandbox. Architecture
+reconciliation against the real E4B GGUF (`gguf-info`), the rr acceptance
+run, and the Tier 3 fixtures are the remaining workstation work; the cuda
+backend (roadmap phase A) slots in at the same `Model` seam.
 
 ## Quality gate
 

@@ -440,6 +440,7 @@ mod tests {
         let mut meta = f.metadata.clone();
         meta.remove("tokenizer.ggml.scores");
         let broken = crate::gguf::GgufFile {
+            data_offset: 0,
             metadata: meta,
             tensors: vec![],
         };
@@ -454,6 +455,7 @@ mod tests {
         let kinds = [Kind::Normal, Kind::Normal];
         // Bypass from_gguf: exercise the consistency check directly.
         let mut file = crate::gguf::GgufFile {
+            data_offset: 0,
             metadata: Default::default(),
             tensors: vec![],
         };

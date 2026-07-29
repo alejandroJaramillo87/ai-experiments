@@ -21,3 +21,15 @@ test:
 .PHONY: flame
 flame:
 	cargo flamegraph --profile release-with-debug --bin harness
+
+# Debugging (workstation only): record a failing run once under rr, then
+# replay it in gdb with reverse execution. Usage:
+#   make debug-record ARGS='--model fixtures/tiny-gemma4.gguf say hello'
+#   make debug-replay
+.PHONY: debug-record debug-replay
+debug-record:
+	cargo build --profile release-with-debug -p harness
+	rr record target/release-with-debug/harness $(ARGS)
+
+debug-replay:
+	rr replay

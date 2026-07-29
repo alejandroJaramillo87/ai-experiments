@@ -43,6 +43,10 @@ pub struct TensorInfo {
 pub struct GgufFile {
     pub metadata: BTreeMap<String, MetaValue>,
     pub tensors: Vec<TensorInfo>,
+    /// Absolute byte offset of the tensor data section: the directory end
+    /// rounded up to `general.alignment` (default 32). `TensorInfo::offset`
+    /// values are relative to this.
+    pub data_offset: usize,
 }
 
 /// True for tensors belonging to the vision tower, which the loader skips.
@@ -164,7 +168,17 @@ pub fn parse(data: &[u8]) -> Result<GgufFile> {
             offset,
         });
     }
-    Ok(GgufFile { metadata, tensors })
+    let alignment = match metadata.get("general.alignment") {
+        Some(MetaValue::U32(a)) if *a > 0 => *a as usize,
+        Some(other) => bail!("general.alignment: expected positive u32, got {other:?}"),
+        None => 32,
+    };
+    let data_offset = r.pos.div_ceil(alignment) * alignment;
+    Ok(GgufFile {
+        metadata,
+        tensors,
+        data_offset,
+    })
 }
 
 #[cfg(test)]
