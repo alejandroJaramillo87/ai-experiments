@@ -7,4 +7,6 @@
  * and tests without a GPU.
  */
 
+pub mod grammar;
 pub mod model;
+pub mod sampler;
