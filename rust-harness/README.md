@@ -64,7 +64,12 @@ scripted mock: agent loop, tools (with wall-clock bash timeout and capped
 tool output), permissions, transcript, chat template, SentencePiece unigram
 tokenizer (vocabulary read from GGUF metadata), sessions with a hard context
 budget, sampler, grammar-constrained decoding, subagent fork/interleave, and
-the perplexity evaluator. The `SessionGenerator` seam wires the agent loop
+the perplexity evaluator. Observability phase 1 is in place: a flight
+recorder (`runtime/src/model/record.rs`) wraps any `Model` behind the
+binary's `--record <path>` flag, writes every forward call to a JSONL
+stream, and loads a recording back as a `MockModel` script for sandbox
+replay; a `release-with-debug` Cargo profile and `make flame` target
+provide the profiling scaffolding. The `SessionGenerator` seam wires the agent loop
 through tokenizer and session; the binary sets up the full stack and reports
 that the cuda backend (roadmap phase A) has not landed. The backend and the
 Tier 3 fixtures are the remaining workstation work.

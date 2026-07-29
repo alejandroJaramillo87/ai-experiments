@@ -2,6 +2,12 @@
 members = ["harness", "runtime"]
 resolver = "2"
 
+# Release optimization with debug info retained: required by cargo flamegraph
+# for readable stacks and by the phase 3 rr workflow for source-level replay.
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

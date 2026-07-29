@@ -14,3 +14,10 @@ lint:
 
 test:
 	cargo test --workspace
+
+# Profiling (workstation only): flame graph of a harness run. Requires
+# cargo-flamegraph and perf; MockModel has no hot path, so meaningful
+# profiles arrive with the first real backend.
+.PHONY: flame
+flame:
+	cargo flamegraph --profile release-with-debug --bin harness

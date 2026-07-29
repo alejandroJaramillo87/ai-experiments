@@ -8,6 +8,7 @@
  */
 
 pub mod mock;
+pub mod record;
 
 use anyhow::Result;
 

@@ -30,16 +30,19 @@ fn ask_stdin(call: &ToolCall) -> bool {
     matches!(line.trim(), "y" | "yes")
 }
 
-/// Construct the generator over the real model. Requires the phase A cuda
-/// backend; there is no mock fallback in the shipping binary.
-fn build_generator() -> Result<SessionGenerator> {
+/// Construct the generator over the real model, wrapping it in the flight
+/// recorder (`runtime::model::record::RecordingModel::to_file`) when
+/// `record` names a path. Requires the phase A cuda backend; there is no
+/// mock fallback in the shipping binary.
+fn build_generator(record: Option<&Path>) -> Result<SessionGenerator> {
+    let _ = record; // consumed once the backend exists to be wrapped
     anyhow::bail!(
         "inference backend not built: the cuda backend (roadmap phase A) has not landed; \
          the harness stack above it is complete and runs under cargo test"
     )
 }
 
-fn run(root: &Path, task: &str) -> Result<String> {
+fn run(root: &Path, task: &str, record: Option<&Path>) -> Result<String> {
     let permissions = match std::fs::read_to_string(root.join("permissions.yaml")) {
         Ok(yaml) => Permissions::from_yaml(&yaml).context("permissions.yaml")?,
         // No config: every call goes through the interactive Ask path.
@@ -47,14 +50,25 @@ fn run(root: &Path, task: &str) -> Result<String> {
     };
     let transcript = Transcript::open(&root.join("session.jsonl")).context("session.jsonl")?;
     let mut agent = Agent::new(root.to_path_buf(), permissions, transcript);
-    let mut generator = build_generator()?;
+    let mut generator = build_generator(record)?;
     agent.run_task(&mut generator, task, 64, ask_stdin)
 }
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // --record <path>: wrap the model in the flight recorder, appending every
+    // forward call to a JSONL file replayable as a MockModel script.
+    let mut record: Option<std::path::PathBuf> = None;
+    if let Some(i) = args.iter().position(|a| a == "--record") {
+        if i + 1 >= args.len() {
+            eprintln!("usage: harness [--record <path>] <task description>");
+            return ExitCode::from(2);
+        }
+        record = Some(std::path::PathBuf::from(args.remove(i + 1)));
+        args.remove(i);
+    }
     if args.is_empty() {
-        eprintln!("usage: harness <task description>");
+        eprintln!("usage: harness [--record <path>] <task description>");
         return ExitCode::from(2);
     }
     let task = args.join(" ");
@@ -65,7 +79,7 @@ fn main() -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    match run(&root, &task) {
+    match run(&root, &task, record.as_deref()) {
         Ok(answer) => {
             println!("{answer}");
             ExitCode::SUCCESS
