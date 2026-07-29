@@ -124,6 +124,17 @@ impl Model for MockModel {
         Ok(logits)
     }
 
+    fn prefill_all(&mut self, tokens: &[Token]) -> Result<Vec<Logits>> {
+        // Scripted rows come straight off the position table; recorded as a
+        // single prefill call like a real batched pass would be.
+        ensure!(!tokens.is_empty(), "prefill of zero tokens");
+        let start = self.cached_len;
+        self.prefill(tokens)?;
+        Ok((start..start + tokens.len())
+            .map(|p| self.logits_at(p))
+            .collect())
+    }
+
     fn truncate(&mut self, len: usize) -> Result<()> {
         ensure!(len <= self.cached_len, "truncate beyond cached length");
         self.cached_len = len;
@@ -239,6 +250,19 @@ mod tests {
         parent.truncate(1).unwrap();
         assert_eq!(parent.cached_len(), 1);
         assert_eq!(child.cached_len(), 3);
+    }
+
+    #[test]
+    fn prefill_all_matches_stepped_prefill() {
+        let mut batched = scripted();
+        let rows = batched.prefill_all(&[9, 9, 9]).unwrap();
+        assert_eq!(rows.len(), 3);
+        // Same rows the default one-token-at-a-time path would produce.
+        let mut stepped = scripted();
+        for (i, row) in rows.iter().enumerate() {
+            assert_eq!(*row, stepped.prefill(&[9]).unwrap(), "position {i}");
+        }
+        assert_eq!(batched.cached_len(), 3);
     }
 
     #[test]

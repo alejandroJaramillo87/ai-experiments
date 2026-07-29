@@ -7,6 +7,7 @@
  * and tests without a GPU.
  */
 
+pub mod eval;
 pub mod gguf;
 pub mod grammar;
 pub mod kv;

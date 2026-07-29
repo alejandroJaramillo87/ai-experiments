@@ -35,6 +35,17 @@ pub trait Model: Send {
     /// to `cached_len()`.
     fn prefill(&mut self, tokens: &[Token]) -> Result<Logits>;
 
+    /// Append `tokens` and return logits at every appended position, one row
+    /// per token. Perplexity evaluation needs all positions, not just the
+    /// tail. The default steps one token at a time — correct for any impl at
+    /// O(n) forward passes; real backends override with one batched pass.
+    fn prefill_all(&mut self, tokens: &[Token]) -> Result<Vec<Logits>> {
+        tokens
+            .iter()
+            .map(|&t| self.prefill(&[t]))
+            .collect::<Result<Vec<_>>>()
+    }
+
     /// Drop cached state beyond `len` tokens. Used when a transcript diverges
     /// from the cached prefix: truncate to the common prefix, re-prefill the
     /// rest.

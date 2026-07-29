@@ -31,6 +31,30 @@ Testing is test-first and tiered:
   a Hugging Face reference, and latency measurement. Marked `#[ignore]`, require
   the `cuda` feature, and run only on the RTX 5090 workstation.
 
+## Output correctness
+
+Machinery tests (Tiers 1 and 2) cannot detect a numerically wrong forward
+pass: a bad RoPE base or quant kernel still emits fluent text. Output quality
+is guarded by three Tier 3 layers, ordered by diagnostic precision, each
+catching what the previous one misses:
+
+1. **Logits match** (`runtime/tests/cuda_acceptance.rs`): one forward pass on
+   a fixed prompt against a Hugging Face reference dump, within quantization
+   tolerance. Pinpoints raw numeric divergence at a single position.
+2. **Perplexity** (`runtime/src/eval.rs`, `runtime/tests/eval_acceptance.rs`):
+   chunked negative log-likelihood over a committed WikiText-2 sample, within
+   1% of a recorded llama.cpp `llama-perplexity` reference. The regression
+   scalar for every engine change; catches diffuse degradation.
+3. **Greedy-decode goldens** (`runtime/tests/eval_acceptance.rs`):
+   temperature-0 continuations of fixed prompts byte-match committed token
+   sequences. Catches decode-loop and KV bugs that stay inside per-position
+   tolerance but flip an argmax.
+
+Current status: the perplexity math is implemented and unit-tested against
+hand-calculated values on the mock; the three real-model layers are ignored
+tests awaiting the cuda backend and workstation fixtures. No output-quality
+claim is made until they pass.
+
 ## Quality gate
 
 ```bash
