@@ -24,8 +24,13 @@ are current as of July 2026.
 ## Purpose and non-goals
 
 The project builds a local coding agent — an agent loop with file, shell, and
-planning tools — whose model inference runs in the same process, on the RTX 5090 or
-CPU, with no network dependency. Linking the runtime as a library gives the harness
+planning tools — whose model inference runs in the same process on the RTX 5090,
+with no network dependency. The primary purpose is pedagogical: understanding the
+harness-runtime seam by owning both sides of it. The design serves one user with
+one generation in flight; concurrent agents are out of scope, and multi-tenant
+serving remains the job of the existing services. Two results are expected to
+outlive the learning exercise: measured delta-prefill turn latency (roadmap phase
+B) and reusable grammar-constrained tool-call decoding (phase C). Linking the runtime as a library gives the harness
 direct ownership of the KV cache across conversation turns, which no HTTP inference
 API exposes. The runtime is shaped by how an agent loop actually calls a model:
 
@@ -101,8 +106,8 @@ common prefix and re-prefills from there.
 
 ## Runtime design
 
-**Tensor backend.** Candle with the CUDA feature for the RTX 5090 and a CPU
-fallback. Candle provides quantized GGUF kernels and flash-attention bindings;
+**Tensor backend.** Candle with the CUDA feature, targeting the RTX 5090 only; no
+CPU fallback path. Candle provides quantized GGUF kernels and flash-attention bindings;
 Blackwell (sm_120) support under CUDA 13 must be verified before any other work
 (see [Risks](#risks-and-open-questions)).
 
