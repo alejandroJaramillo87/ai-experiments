@@ -26,11 +26,13 @@ are current as of July 2026.
 The project builds a local coding agent — an agent loop with file, shell, and
 planning tools — whose model inference runs in the same process on the RTX 5090,
 with no network dependency. The primary purpose is pedagogical: understanding the
-harness-runtime seam by owning both sides of it. The design serves one user with
-one generation in flight; concurrent agents are out of scope, and multi-tenant
-serving remains the job of the existing services. Two results are expected to
-outlive the learning exercise: measured delta-prefill turn latency (roadmap phase
-B) and reusable grammar-constrained tool-call decoding (phase C). Linking the runtime as a library gives the harness
+harness-runtime seam by owning both sides of it. The design serves one user with one generation in flight at any instant;
+multi-tenant serving remains the job of the existing services. Parallel subagents
+are in scope through cooperative interleaving (see
+[Subagents](#subagents-fork-and-interleave)) rather than batched decode. Three
+results are expected to outlive the learning exercise: measured delta-prefill turn
+latency (roadmap phase B), reusable grammar-constrained tool-call decoding (phase
+C), and KV cache forking for subagent spawn (phase F). Linking the runtime as a library gives the harness
 direct ownership of the KV cache across conversation turns, which no HTTP inference
 API exposes. The runtime is shaped by how an agent loop actually calls a model:
 
@@ -152,9 +154,33 @@ Ports tutorial phases 1, 2, and 4:
   are the classic failure mode of local harnesses; the golden tests are mandatory
   before any end-to-end run.
 
-Concurrency stays minimal: one generation in flight, tools executed sequentially,
-interrupt handled by cancelling the generation future at a token boundary. The
-tutorial's subagent teams are out of scope.
+Concurrency stays minimal in the main loop: one generation in flight, interrupt
+handled by cancelling the generation future at a token boundary. The tutorial's
+persistent teams, mailboxes, and FSM coordination remain out of scope; parallel
+subagents are supported through the mechanism below.
+
+### Subagents: fork and interleave
+
+Subagents differ from server-side concurrency because they are cooperative: the
+harness spawns them at a known moment and every subagent starts as a fork of the
+parent's context. Two mechanisms exploit this:
+
+- **KV cache forking.** At spawn, a subagent session forks the parent's KV cache
+  at a token boundary — the shared prefix (system prompt, tool schemas, relevant
+  transcript) is referenced immutably or copied, and only the subagent's task
+  prompt is prefilled. This reuses the phase B delta-prefill machinery at spawn
+  time and avoids re-prefilling the common prefix per subagent.
+- **Interleaved scheduling.** Exactly one generation runs at any instant. A
+  round-robin scheduler in the harness switches between subagent sessions at
+  token-boundary yield points, so one agent decodes while another is blocked on a
+  tool call. Subagent workloads are tool-heavy, so overlapping model time with
+  tool time captures most of the practical speedup without touching the forward
+  pass.
+
+Batched decode — a single forward pass over multiple sequences of different
+lengths — is explicitly out of scope; it requires ragged batching, per-sequence
+sampler and grammar state, and is the start of rebuilding vLLM. VRAM cost of
+interleaving is one KV budget per live subagent, comfortable for E4B on 32GB.
 
 ## Model targeting
 
@@ -182,6 +208,11 @@ Each phase ends with an acceptance check. GPU checks are host-side: the human ru
 the stated command on the workstation and reports output back; the reported output
 is recorded verbatim.
 
+The runtime sits behind a `Model` trait with a scripted mock implementation, so the
+harness, scheduler, KV bookkeeping, grammar, and chat-template layers build and
+unit-test in a sandbox without a GPU. Phases C, D, and F are developed against the
+mock first; phases A, B, and E swap in the real backend on the workstation.
+
 | Phase | Deliverable | Acceptance check |
 |-------|-------------|------------------|
 | A | Load quantized E4B, single forward pass | Logits for a fixed prompt match the Hugging Face reference within quantization tolerance |
@@ -189,6 +220,7 @@ is recorded verbatim.
 | C | Grammar-constrained tool-call sampling | Zero malformed tool calls over 200 consecutive forced tool-call generations |
 | D | Full harness loop (tools, permissions, sessions, streaming) | Scripted coding task (read file, edit, run test) completes end to end |
 | E | 26B A4B mixture-of-experts support | Phase A and B checks repeated on the MoE checkpoint |
+| F | Subagent fork and interleave | Two-subagent scripted task shows spawn without prefix re-prefill and wall-clock overlap of one agent's tool execution with the other's generation |
 
 Performance numbers quoted before a benchmark run are estimates and must be
 labeled as such; measured results follow the repository benchmarking protocol.
