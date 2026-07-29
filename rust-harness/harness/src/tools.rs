@@ -7,17 +7,23 @@
  */
 
 use std::fs;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, ensure, Context, Result};
 use serde_json::Value;
 
 use crate::util::Pattern;
 
-// Bound on captured bash output: unbounded output would otherwise flow
-// straight into the transcript and the KV cache.
-const BASH_OUTPUT_CAP: usize = 64 * 1024;
+// Bound on any tool result: unbounded output would otherwise flow straight
+// into the transcript and the KV cache. Applies to bash and read alike.
+const TOOL_OUTPUT_CAP: usize = 64 * 1024;
+
+// Wall-clock bound on a bash command; null stdin already prevents interactive
+// hangs, this catches genuinely long-running commands.
+const BASH_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ToolCall {
@@ -137,7 +143,9 @@ impl ToolCall {
     pub fn execute(&self, root: &Path) -> Result<String> {
         match self {
             ToolCall::Read { path } => {
-                fs::read_to_string(resolve(root, path)?).with_context(|| format!("read {path}"))
+                let text = fs::read_to_string(resolve(root, path)?)
+                    .with_context(|| format!("read {path}"))?;
+                Ok(cap_output(text))
             }
             ToolCall::Write { path, content } => {
                 let full = resolve(root, path)?;
@@ -159,32 +167,7 @@ impl ToolCall {
                 fs::write(&full, text.replacen(old.as_str(), new, 1))?;
                 Ok(format!("edited {path}"))
             }
-            ToolCall::Bash { command } => {
-                // Null stdin: an interactive command fails fast instead of
-                // hanging the loop. TODO: add a wall-clock timeout once the
-                // loop is async (needs a process-wait-with-deadline).
-                let out = Command::new("sh")
-                    .arg("-c")
-                    .arg(command)
-                    .current_dir(root)
-                    .stdin(Stdio::null())
-                    .output()
-                    .with_context(|| format!("bash: {command}"))?;
-                let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
-                text.push_str(&String::from_utf8_lossy(&out.stderr));
-                if text.len() > BASH_OUTPUT_CAP {
-                    let mut cut = BASH_OUTPUT_CAP;
-                    while !text.is_char_boundary(cut) {
-                        cut -= 1;
-                    }
-                    text.truncate(cut);
-                    text.push_str("\n[output truncated]");
-                }
-                if !out.status.success() {
-                    text.push_str(&format!("\nexit status: {}", out.status));
-                }
-                Ok(text)
-            }
+            ToolCall::Bash { command } => bash_with_timeout(command, root, BASH_TIMEOUT),
             ToolCall::Glob { pattern } => {
                 let compiled = Pattern::compile(pattern);
                 let mut matches = Vec::new();
@@ -200,6 +183,87 @@ impl ToolCall {
                 .join("\n")),
         }
     }
+}
+
+/// Truncate a tool result to the transcript cap at a char boundary.
+fn cap_output(mut text: String) -> String {
+    if text.len() > TOOL_OUTPUT_CAP {
+        let mut cut = TOOL_OUTPUT_CAP;
+        while !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        text.truncate(cut);
+        text.push_str("\n[output truncated]");
+    }
+    text
+}
+
+/// Run a shell command with null stdin (interactive commands fail fast
+/// instead of hanging) and a wall-clock deadline. Output is drained on
+/// threads so a chatty command cannot deadlock on a full pipe while the
+/// parent polls for exit; on timeout the child is killed and the partial
+/// output is returned with a note.
+fn bash_with_timeout(command: &str, root: &Path, timeout: Duration) -> Result<String> {
+    let mut cmd = Command::new("sh");
+    cmd.arg("-c")
+        .arg(command)
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    // Own process group: on timeout the whole group is killed, so children
+    // of the shell cannot outlive it holding the output pipes open.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    let mut child = cmd.spawn().with_context(|| format!("bash: {command}"))?;
+    let drain = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut buf);
+            }
+            buf
+        })
+    };
+    let stdout = drain(child.stdout.take().map(|p| Box::new(p) as _));
+    let stderr = drain(child.stderr.take().map(|p| Box::new(p) as _));
+    let deadline = Instant::now() + timeout;
+    let (status, timed_out) = loop {
+        if let Some(status) = child.try_wait().context("waiting for bash child")? {
+            break (Some(status), false);
+        }
+        if Instant::now() >= deadline {
+            // Shell-builtin kill: signals the whole group reliably even
+            // where an external kill binary is namespaced away from it.
+            #[cfg(unix)]
+            let _ = Command::new("sh")
+                .arg("-c")
+                .arg(format!("kill -KILL -{}", child.id()))
+                .status();
+            let _ = child.kill();
+            let _ = child.wait();
+            break (None, true);
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    let mut bytes = stdout.join().expect("stdout drain thread");
+    bytes.extend(stderr.join().expect("stderr drain thread"));
+    let mut text = String::from_utf8_lossy(&bytes).into_owned();
+    text = cap_output(text);
+    if timed_out {
+        text.push_str(&format!(
+            "\n[command killed after {} s timeout]",
+            timeout.as_secs_f32()
+        ));
+    } else if let Some(status) = status {
+        if !status.success() {
+            text.push_str(&format!("\nexit status: {status}"));
+        }
+    }
+    Ok(text)
 }
 
 /// Resolve a model-supplied path strictly inside `root`. Lexical only:
@@ -432,6 +496,34 @@ mod tests {
         .unwrap();
         assert!(out.len() < 200_000);
         assert!(out.contains("[output truncated]"));
+    }
+
+    #[test]
+    fn read_output_is_capped() {
+        let dir = root();
+        std::fs::write(dir.path().join("big.txt"), "x".repeat(200_000)).unwrap();
+        let out = ToolCall::Read {
+            path: "big.txt".into(),
+        }
+        .execute(dir.path())
+        .unwrap();
+        assert!(out.len() < 200_000);
+        assert!(out.contains("[output truncated]"));
+    }
+
+    #[test]
+    fn bash_timeout_kills_the_command_and_reports_it() {
+        let dir = root();
+        let started = std::time::Instant::now();
+        let out = bash_with_timeout(
+            "echo partial; sleep 30",
+            dir.path(),
+            Duration::from_millis(300),
+        )
+        .unwrap();
+        assert!(started.elapsed() < Duration::from_secs(10));
+        assert!(out.contains("partial"), "{out}");
+        assert!(out.contains("timeout"), "{out}");
     }
 
     #[test]

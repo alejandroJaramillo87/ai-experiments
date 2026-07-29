@@ -12,7 +12,7 @@ use runtime::session::Session;
 fn spawn_prefills_only_the_task_prompt() {
     let mock = MockModel::new(32, vec![]);
     let recorder = mock.recorder();
-    let mut parent = Session::new(Box::new(mock));
+    let mut parent = Session::new(Box::new(mock), 4096).unwrap();
 
     // Parent context: system prompt, tool schemas, transcript so far.
     let prefix: Vec<u32> = (0..10).collect();
@@ -40,7 +40,7 @@ fn spawn_prefills_only_the_task_prompt() {
 fn sibling_spawns_share_the_prefix_cost_once() {
     let mock = MockModel::new(32, vec![]);
     let recorder = mock.recorder();
-    let mut parent = Session::new(Box::new(mock));
+    let mut parent = Session::new(Box::new(mock), 4096).unwrap();
     let prefix: Vec<u32> = (0..8).collect();
     parent.sync(&prefix).unwrap();
 
@@ -57,7 +57,7 @@ fn sibling_spawns_share_the_prefix_cost_once() {
 #[test]
 fn child_divergence_does_not_disturb_the_parent() {
     let mock = MockModel::new(32, vec![]);
-    let mut parent = Session::new(Box::new(mock));
+    let mut parent = Session::new(Box::new(mock), 4096).unwrap();
     let prefix: Vec<u32> = (0..6).collect();
     parent.sync(&prefix).unwrap();
 

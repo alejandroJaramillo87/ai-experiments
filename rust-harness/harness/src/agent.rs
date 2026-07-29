@@ -61,6 +61,11 @@ impl Agent {
         mut on_ask: impl FnMut(&ToolCall) -> bool,
     ) -> Result<String> {
         self.transcript.append(Role::User, task)?;
+        // Circuit breaker: a model repeating the exact failing call makes no
+        // progress; abort instead of silently burning the turn budget.
+        const MAX_REPEATED_FAILURES: usize = 3;
+        let mut last_failure: Option<ToolCall> = None;
+        let mut repeats = 0usize;
         for _ in 0..max_turns {
             self.prompt();
             // Borrow the rendered buffer with the open model turn appended,
@@ -79,14 +84,32 @@ impl Agent {
                         Decision::Deny => false,
                         Decision::Ask => on_ask(&call),
                     };
-                    let result = if allowed {
-                        // Tool failures return to the model as text; only
-                        // harness failures (transcript IO) abort the loop.
-                        call.execute(&self.root)
-                            .unwrap_or_else(|e| format!("tool error: {e:#}"))
+                    // Tool failures return to the model as text; only
+                    // harness failures (transcript IO) abort the loop.
+                    let (result, failed) = if allowed {
+                        match call.execute(&self.root) {
+                            Ok(out) => (out, false),
+                            Err(e) => (format!("tool error: {e:#}"), true),
+                        }
                     } else {
-                        format!("permission denied: {} {}", call.name(), call.target())
+                        (
+                            format!("permission denied: {} {}", call.name(), call.target()),
+                            true,
+                        )
                     };
+                    if failed && last_failure.as_ref() == Some(&call) {
+                        repeats += 1;
+                        if repeats >= MAX_REPEATED_FAILURES {
+                            bail!(
+                                "aborting: tool call {} {} failed identically {repeats} times",
+                                call.name(),
+                                call.target()
+                            );
+                        }
+                    } else {
+                        last_failure = failed.then(|| call.clone());
+                        repeats = usize::from(failed);
+                    }
                     self.transcript.append(Role::Tool, result)?;
                 }
                 // A malformed tool call goes back to the model as an error to

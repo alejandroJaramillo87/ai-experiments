@@ -45,7 +45,7 @@ async fn two_subagents_fork_without_reprefill_and_overlap_tool_with_generation()
     let v = vocab();
     let mock = MockModel::new(v.len(), steady_script(v.len()));
     let recorder = mock.recorder();
-    let mut parent = Session::new(Box::new(mock));
+    let mut parent = Session::new(Box::new(mock), 4096).unwrap();
 
     // Shared parent context: system prompt plus transcript.
     let prefix: Vec<u32> = (2..7).collect();

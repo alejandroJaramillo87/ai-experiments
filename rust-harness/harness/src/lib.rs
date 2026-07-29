@@ -4,6 +4,7 @@
  */
 
 pub mod agent;
+pub mod generator;
 pub mod permissions;
 pub mod stream;
 pub mod subagents;

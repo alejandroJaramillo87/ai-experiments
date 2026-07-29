@@ -16,7 +16,7 @@ and is intended for later extraction into its own repository.
 ```
 Cargo.toml        workspace: harness, runtime
 harness/          bin crate: agent loop, tools, permissions, sessions, streaming
-runtime/          lib crate: sessions, sampler, grammar, KV cache, GGUF, model
+runtime/          lib crate: sessions, sampler, grammar, KV cache, GGUF, tokenizer, model
 fixtures/         golden fixtures (chat-template token IDs, reference logits)
 ```
 
@@ -54,6 +54,18 @@ Current status: the perplexity math is implemented and unit-tested against
 hand-calculated values on the mock; the three real-model layers are ignored
 tests awaiting the cuda backend and workstation fixtures. No output-quality
 claim is made until they pass.
+
+## Current status
+
+Everything above the forward pass is implemented and tested against the
+scripted mock: agent loop, tools (with wall-clock bash timeout and capped
+tool output), permissions, transcript, chat template, SentencePiece unigram
+tokenizer (vocabulary read from GGUF metadata), sessions with a hard context
+budget, sampler, grammar-constrained decoding, subagent fork/interleave, and
+the perplexity evaluator. The `SessionGenerator` seam wires the agent loop
+through tokenizer and session; the binary sets up the full stack and reports
+that the cuda backend (roadmap phase A) has not landed. The backend and the
+Tier 3 fixtures are the remaining workstation work.
 
 ## Quality gate
 

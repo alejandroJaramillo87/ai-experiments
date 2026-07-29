@@ -19,10 +19,16 @@ pub const GGUF_VERSION: u32 = 3;
 #[derive(Debug, Clone, PartialEq)]
 pub enum MetaValue {
     U32(u32),
+    I32(i32),
     U64(u64),
     F32(f32),
     Bool(bool),
     Str(String),
+    // Array element types are limited to what the tokenizer vocab needs:
+    // tokens (str), scores (f32), token_type (i32).
+    ArrStr(Vec<String>),
+    ArrF32(Vec<f32>),
+    ArrI32(Vec<i32>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -82,8 +88,32 @@ macro_rules! le_reader {
 }
 
 le_reader!(u32, u32, 4);
+le_reader!(i32, i32, 4);
 le_reader!(u64, u64, 8);
 le_reader!(f32, f32, 4);
+
+impl Reader<'_> {
+    /// Array metadata: element type, count, then packed elements. Only the
+    /// element types the tokenizer vocab uses are supported.
+    fn array(&mut self, key: &str) -> Result<MetaValue> {
+        let elem_type = self.u32()?;
+        let count = usize::try_from(self.u64()?).context("GGUF array count overflows usize")?;
+        // Reject counts that cannot fit in the remaining bytes before
+        // allocating: the smallest element is 4 bytes.
+        ensure!(
+            count
+                .checked_mul(4)
+                .is_some_and(|n| n <= self.data.len() - self.pos),
+            "metadata key {key}: array count {count} exceeds file size"
+        );
+        Ok(match elem_type {
+            5 => MetaValue::ArrI32((0..count).map(|_| self.i32()).collect::<Result<_>>()?),
+            6 => MetaValue::ArrF32((0..count).map(|_| self.f32()).collect::<Result<_>>()?),
+            8 => MetaValue::ArrStr((0..count).map(|_| self.string()).collect::<Result<_>>()?),
+            t => bail!("metadata key {key}: unsupported GGUF array element type {t}"),
+        })
+    }
+}
 
 /// Parse header, metadata, and tensor directory from an in-memory GGUF
 /// image. Tensor data itself is not touched; `offset` indexes into the data
@@ -105,10 +135,12 @@ pub fn parse(data: &[u8]) -> Result<GgufFile> {
         let value_type = r.u32()?;
         let value = match value_type {
             4 => MetaValue::U32(r.u32()?),
+            5 => MetaValue::I32(r.i32()?),
             10 => MetaValue::U64(r.u64()?),
             6 => MetaValue::F32(r.f32()?),
             7 => MetaValue::Bool(r.take(1)?[0] != 0),
             8 => MetaValue::Str(r.string()?),
+            9 => r.array(&key)?,
             t => bail!("metadata key {key}: unsupported GGUF value type {t}"),
         };
         metadata.insert(key, value);
@@ -193,6 +225,39 @@ mod tests {
             self
         }
 
+        fn kv_arr_str(&mut self, key: &str, vs: &[&str]) -> &mut Self {
+            self.string(key);
+            self.0.extend(9u32.to_le_bytes());
+            self.0.extend(8u32.to_le_bytes());
+            self.0.extend((vs.len() as u64).to_le_bytes());
+            for v in vs {
+                self.string(v);
+            }
+            self
+        }
+
+        fn kv_arr_f32(&mut self, key: &str, vs: &[f32]) -> &mut Self {
+            self.string(key);
+            self.0.extend(9u32.to_le_bytes());
+            self.0.extend(6u32.to_le_bytes());
+            self.0.extend((vs.len() as u64).to_le_bytes());
+            for v in vs {
+                self.0.extend(v.to_le_bytes());
+            }
+            self
+        }
+
+        fn kv_arr_i32(&mut self, key: &str, vs: &[i32]) -> &mut Self {
+            self.string(key);
+            self.0.extend(9u32.to_le_bytes());
+            self.0.extend(5u32.to_le_bytes());
+            self.0.extend((vs.len() as u64).to_le_bytes());
+            for v in vs {
+                self.0.extend(v.to_le_bytes());
+            }
+            self
+        }
+
         fn tensor(&mut self, name: &str, dims: &[u64], ggml_type: u32, offset: u64) -> &mut Self {
             self.string(name);
             self.0.extend((dims.len() as u32).to_le_bytes());
@@ -244,10 +309,57 @@ mod tests {
     #[test]
     fn unsupported_metadata_type_names_the_key() {
         let mut b = Builder::new(0, 1);
-        b.string("tokenizer.ggml.tokens");
-        b.0.extend(9u32.to_le_bytes()); // array type, unsupported
+        b.string("tokenizer.ggml.merges");
+        b.0.extend(12u32.to_le_bytes()); // f64, unsupported
         let err = parse(&b.0).unwrap_err();
-        assert!(err.to_string().contains("tokenizer.ggml.tokens"));
+        assert!(err.to_string().contains("tokenizer.ggml.merges"));
+    }
+
+    #[test]
+    fn string_f32_and_i32_arrays_decode() {
+        let mut b = Builder::new(0, 3);
+        b.kv_arr_str("tokenizer.ggml.tokens", &["<pad>", "\u{2581}hello"]);
+        b.kv_arr_f32("tokenizer.ggml.scores", &[0.0, -1.5]);
+        b.kv_arr_i32("tokenizer.ggml.token_type", &[3, 1]);
+        let f = parse(&b.0).unwrap();
+        assert_eq!(
+            f.metadata["tokenizer.ggml.tokens"],
+            MetaValue::ArrStr(vec!["<pad>".into(), "\u{2581}hello".into()])
+        );
+        assert_eq!(
+            f.metadata["tokenizer.ggml.scores"],
+            MetaValue::ArrF32(vec![0.0, -1.5])
+        );
+        assert_eq!(
+            f.metadata["tokenizer.ggml.token_type"],
+            MetaValue::ArrI32(vec![3, 1])
+        );
+    }
+
+    #[test]
+    fn adversarial_array_count_is_an_error_not_an_allocation() {
+        let mut b = Builder::new(0, 1);
+        b.string("tokenizer.ggml.scores");
+        b.0.extend(9u32.to_le_bytes()); // value type: array
+        b.0.extend(6u32.to_le_bytes()); // element type: f32
+        b.0.extend(u64::MAX.to_le_bytes()); // absurd count
+        let err = parse(&b.0).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("exceeds") || msg.contains("overflows"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn unsupported_array_element_type_names_the_key() {
+        let mut b = Builder::new(0, 1);
+        b.string("tokenizer.ggml.token_type");
+        b.0.extend(9u32.to_le_bytes()); // value type: array
+        b.0.extend(7u32.to_le_bytes()); // element type: bool, unsupported
+        b.0.extend(0u64.to_le_bytes());
+        let err = parse(&b.0).unwrap_err();
+        assert!(err.to_string().contains("tokenizer.ggml.token_type"));
     }
 
     #[test]

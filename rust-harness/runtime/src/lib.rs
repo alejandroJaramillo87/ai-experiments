@@ -14,3 +14,4 @@ pub mod kv;
 pub mod model;
 pub mod sampler;
 pub mod session;
+pub mod tokenizer;

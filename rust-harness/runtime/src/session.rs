@@ -16,6 +16,9 @@ use super::sampler::Sampler;
 
 pub struct Session {
     model: Box<dyn Model>,
+    // Hard cap on cached tokens: transcript sync and generation both error
+    // instead of growing the KV cache past it.
+    max_context: usize,
     // Token history mirroring the KV cache, for common-prefix computation.
     tokens: Vec<Token>,
     // Logits at the cache tail from the most recent prefill, when still
@@ -33,17 +36,19 @@ pub struct Generation {
 }
 
 impl Session {
-    pub fn new(model: Box<dyn Model>) -> Self {
-        assert_eq!(
-            model.cached_len(),
-            0,
-            "session requires a fresh model cache"
+    pub fn new(model: Box<dyn Model>, max_context: usize) -> Result<Session> {
+        anyhow::ensure!(
+            model.cached_len() == 0,
+            "session requires a fresh model cache, found {} cached tokens",
+            model.cached_len()
         );
-        Self {
+        anyhow::ensure!(max_context > 0, "context budget must be positive");
+        Ok(Self {
             model,
+            max_context,
             tokens: Vec::new(),
             tail_logits: None,
-        }
+        })
     }
 
     pub fn cached_len(&self) -> usize {
@@ -53,6 +58,12 @@ impl Session {
     /// Sync the cache to `transcript`: truncate to the common prefix, prefill
     /// the rest. Returns the number of tokens actually prefilled — the delta.
     pub fn sync(&mut self, transcript: &[Token]) -> Result<usize> {
+        anyhow::ensure!(
+            transcript.len() <= self.max_context,
+            "transcript of {} tokens exceeds the context budget of {}",
+            transcript.len(),
+            self.max_context
+        );
         let common = self
             .tokens
             .iter()
@@ -143,6 +154,7 @@ impl Session {
     pub fn fork(&self) -> Result<Session> {
         Ok(Session {
             model: self.model.fork()?,
+            max_context: self.max_context,
             tokens: self.tokens.clone(),
             tail_logits: self.tail_logits.clone(),
         })
@@ -178,6 +190,11 @@ impl ActiveGeneration<'_> {
             self.done = true;
             return Ok(None);
         }
+        anyhow::ensure!(
+            self.session.tokens.len() < self.session.max_context,
+            "context budget of {} reached during generation",
+            self.session.max_context
+        );
         if let (Some(g), Some(st)) = (self.grammar, self.state.as_mut()) {
             // Defense in depth: the mask already excludes illegal tokens.
             *st = g
@@ -225,7 +242,7 @@ mod tests {
 
     #[test]
     fn sync_prefills_only_the_delta() {
-        let mut s = Session::new(Box::new(MockModel::new(27, vec![])));
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
         assert_eq!(s.sync(&[1, 2, 3]).unwrap(), 3);
         assert_eq!(s.sync(&[1, 2, 3, 4, 5]).unwrap(), 2);
         assert_eq!(s.cached_len(), 5);
@@ -233,7 +250,7 @@ mod tests {
 
     #[test]
     fn sync_truncates_to_common_prefix_on_divergence() {
-        let mut s = Session::new(Box::new(MockModel::new(27, vec![])));
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
         s.sync(&[1, 2, 3, 4]).unwrap();
         // Diverges after position 1: re-prefill is the suffix from there.
         assert_eq!(s.sync(&[1, 2, 9, 9, 9]).unwrap(), 3);
@@ -246,7 +263,7 @@ mod tests {
         let prompt = [0u32, 1, 2];
         let output = [7u32, 8, 9];
         let script = script_emitting(v.len(), prompt.len(), &output, v.eos());
-        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)));
+        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)), 4096).unwrap();
         let mut streamed = Vec::new();
         let gen = s
             .generate(&prompt, &v, None, &mut greedy(), 32, |t| streamed.push(t))
@@ -265,7 +282,7 @@ mod tests {
         for l in always.iter_mut() {
             l[3] = 1.0;
         }
-        let mut s = Session::new(Box::new(MockModel::new(v.len(), always)));
+        let mut s = Session::new(Box::new(MockModel::new(v.len(), always)), 4096).unwrap();
         let gen = s
             .generate(&[0, 1], &v, None, &mut greedy(), 4, |_| {})
             .unwrap();
@@ -279,7 +296,7 @@ mod tests {
         let prompt = [0u32, 1, 2];
         let output = [7u32];
         let script = script_emitting(v.len(), prompt.len(), &output, v.eos());
-        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)));
+        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)), 4096).unwrap();
         s.generate(&prompt, &v, None, &mut greedy(), 8, |_| {})
             .unwrap();
         let len_after_turn1 = s.cached_len();
@@ -298,7 +315,7 @@ mod tests {
         let script = script_emitting(v.len(), prompt.len(), &[7], v.eos());
         let mock = MockModel::new(v.len(), script);
         let recorder = mock.recorder();
-        let mut s = Session::new(Box::new(mock));
+        let mut s = Session::new(Box::new(mock), 4096).unwrap();
         s.begin_generation(&prompt, &v, None).unwrap();
         // Only the 3-token prompt prefill; no truncate-and-replay of the tail.
         assert_eq!(recorder.total_prefilled(), 3);
@@ -306,7 +323,7 @@ mod tests {
 
     #[test]
     fn sync_to_empty_transcript_truncates_to_zero() {
-        let mut s = Session::new(Box::new(MockModel::new(27, vec![])));
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
         s.sync(&[1, 2, 3]).unwrap();
         assert_eq!(s.sync(&[]).unwrap(), 0);
         assert_eq!(s.cached_len(), 0);
@@ -317,7 +334,7 @@ mod tests {
         let v = vocab();
         let prompt = [0u32, 1];
         let script = script_emitting(v.len(), prompt.len(), &[], v.eos());
-        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)));
+        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)), 4096).unwrap();
         let mut active = s.begin_generation(&prompt, &v, None).unwrap();
         let mut sampler = greedy();
         assert_eq!(active.step(&mut sampler).unwrap(), None);
@@ -329,12 +346,45 @@ mod tests {
         let v = vocab();
         let prompt = [0u32, 1];
         let script = script_emitting(v.len(), prompt.len(), &[5], v.eos());
-        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)));
+        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)), 4096).unwrap();
         let gen = s
             .generate(&prompt, &v, None, &mut greedy(), 0, |_| {})
             .unwrap();
         assert_eq!(gen.tokens, Vec::<u32>::new());
         assert!(!gen.stopped_at_eos);
+    }
+
+    #[test]
+    fn sync_beyond_the_context_budget_is_an_error() {
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4).unwrap();
+        assert_eq!(s.sync(&[1, 2, 3, 4]).unwrap(), 4);
+        let err = s.sync(&[1, 2, 3, 4, 5]).unwrap_err();
+        assert!(err.to_string().contains("context budget"), "{err}");
+        // Failed sync left the cache untouched.
+        assert_eq!(s.cached_len(), 4);
+    }
+
+    #[test]
+    fn generation_stops_with_an_error_at_the_context_budget() {
+        let v = vocab();
+        // Script always points at token 3; no EOS in range.
+        let mut always = vec![vec![0.0; v.len()]; 16];
+        for l in always.iter_mut() {
+            l[3] = 1.0;
+        }
+        let mut s = Session::new(Box::new(MockModel::new(v.len(), always)), 4).unwrap();
+        let err = s
+            .generate(&[0, 1], &v, None, &mut greedy(), 32, |_| {})
+            .unwrap_err();
+        assert!(err.to_string().contains("during generation"), "{err}");
+    }
+
+    #[test]
+    fn non_fresh_model_and_zero_budget_are_construction_errors() {
+        let mut used = MockModel::new(4, vec![]);
+        used.prefill(&[1]).unwrap();
+        assert!(Session::new(Box::new(used), 16).is_err());
+        assert!(Session::new(Box::new(MockModel::new(4, vec![])), 0).is_err());
     }
 
     #[test]
@@ -354,7 +404,7 @@ mod tests {
         });
         // Flat positive logits: the mask alone steers the walk.
         let script = vec![vec![1.0; v.len()]; 512];
-        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)));
+        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)), 4096).unwrap();
         let mut sampler = Sampler::new(SamplingParams {
             temperature: 1.0,
             top_p: 1.0,

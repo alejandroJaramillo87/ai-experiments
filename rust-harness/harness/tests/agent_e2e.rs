@@ -197,6 +197,57 @@ fn tool_paths_cannot_escape_the_workspace_root() {
 }
 
 #[test]
+fn repeated_identical_tool_failures_trip_the_breaker() {
+    let dir = tempfile::tempdir().unwrap();
+    let bad = r#"{"tool": "read", "args": {"path": "missing.txt"}}"#;
+    let mut generator = ScriptedGenerator::new(&[bad, bad, bad, "never reached"]);
+    let mut agent = Agent::new(
+        dir.path().to_path_buf(),
+        Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
+        Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+    );
+    let err = agent
+        .run_task(&mut generator, "loop on failure", 16, |_| false)
+        .unwrap_err();
+    assert!(err.to_string().contains("failed identically"), "{err}");
+}
+
+#[test]
+fn alternating_failures_do_not_trip_the_breaker() {
+    let dir = tempfile::tempdir().unwrap();
+    let bad_a = r#"{"tool": "read", "args": {"path": "a.txt"}}"#;
+    let bad_b = r#"{"tool": "read", "args": {"path": "b.txt"}}"#;
+    let mut generator = ScriptedGenerator::new(&[bad_a, bad_b, bad_a, bad_b, "gave up"]);
+    let mut agent = Agent::new(
+        dir.path().to_path_buf(),
+        Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
+        Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+    );
+    let answer = agent
+        .run_task(&mut generator, "flail", 16, |_| false)
+        .unwrap();
+    assert_eq!(answer, "gave up");
+}
+
+#[test]
+fn success_between_failures_resets_the_breaker() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("ok.txt"), "fine").unwrap();
+    let bad = r#"{"tool": "read", "args": {"path": "missing.txt"}}"#;
+    let good = r#"{"tool": "read", "args": {"path": "ok.txt"}}"#;
+    let mut generator = ScriptedGenerator::new(&[bad, bad, good, bad, bad, "done"]);
+    let mut agent = Agent::new(
+        dir.path().to_path_buf(),
+        Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
+        Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+    );
+    let answer = agent
+        .run_task(&mut generator, "mixed", 16, |_| false)
+        .unwrap();
+    assert_eq!(answer, "done");
+}
+
+#[test]
 fn exceeding_max_turns_is_an_error_not_a_hang() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("f.txt"), "x").unwrap();

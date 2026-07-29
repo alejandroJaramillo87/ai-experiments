@@ -125,7 +125,9 @@ mod tests {
     /// TODO: generate fixtures/template_goldens.json on the workstation with
     /// the Gemma 4 reference tokenizer, then remove the ignore attribute.
     /// Fixture format: [{"entries": [...], "token_ids": [...]}]. Mandatory
-    /// before any end-to-end run on real weights.
+    /// before any end-to-end run on real weights. The comparison side exists
+    /// now: `runtime::tokenizer::Tokenizer::from_gguf` + `render` produce the
+    /// token stream to check against the fixture ids.
     #[test]
     #[ignore = "requires fixtures/template_goldens.json generated on the workstation"]
     fn rendered_token_ids_match_hf_reference() {
