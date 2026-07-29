@@ -209,6 +209,11 @@ harness, scheduler, KV bookkeeping, grammar, and chat-template layers build and
 unit-test in a sandbox without a GPU. Phases C, D, and E are developed against the
 mock first; phases A and B swap in the real backend on the workstation.
 
+Before phase A, three observability phases (flight recorder, tracing, and an
+rr-debuggable CPU reference backend) land per the
+[observability design](rust-harness-observability.md); the CUDA backend is
+validated against the CPU reference in addition to the Tier 3 fixtures.
+
 | Phase | Deliverable | Acceptance check |
 |-------|-------------|------------------|
 | A | Load quantized E4B, single forward pass | Logits for a fixed prompt match the Hugging Face reference within quantization tolerance |

@@ -8,8 +8,10 @@ a library crate, giving the agent loop direct ownership of the KV cache across
 conversation turns.
 
 The full design is recorded in the parent repository at
-`docs/inference/rust-harness-runtime-design.md`. This directory is self-contained
-and is intended for later extraction into its own repository.
+`docs/inference/rust-harness-runtime-design.md`; the observability and
+debugging phases (flight recorder, tracing, rr-debuggable CPU backend) are
+designed in `docs/inference/rust-harness-observability.md`. This directory is
+self-contained and is intended for later extraction into its own repository.
 
 ## Layout
 
