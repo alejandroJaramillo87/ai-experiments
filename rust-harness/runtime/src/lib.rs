@@ -7,7 +7,9 @@
  * and tests without a GPU.
  */
 
+pub mod gguf;
 pub mod grammar;
+pub mod kv;
 pub mod model;
 pub mod sampler;
 pub mod session;
