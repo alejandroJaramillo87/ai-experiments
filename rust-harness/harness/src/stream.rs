@@ -19,10 +19,17 @@ pub struct TokenSink {
 }
 
 impl TokenSink {
-    /// Send one token's text. Returns false when the consumer has cancelled;
-    /// the producer must stop generating at this boundary.
+    /// Send one token's text from a synchronous producer thread. Returns
+    /// false when the consumer has cancelled; the producer must stop
+    /// generating at this boundary. Panics if called on a runtime thread —
+    /// async producers (the subagent interleaver) use `emit_async`.
     pub fn emit(&self, text: String) -> bool {
         self.tx.blocking_send(text).is_ok()
+    }
+
+    /// Async counterpart of `emit`, for producers running on the runtime.
+    pub async fn emit_async(&self, text: String) -> bool {
+        self.tx.send(text).await.is_ok()
     }
 }
 
@@ -68,5 +75,15 @@ mod tests {
         let (sink, stream) = channel(1);
         drop(stream);
         assert!(!sink.emit("late".to_string()));
+    }
+
+    #[tokio::test]
+    async fn emit_async_works_inside_a_runtime() {
+        // `emit` would panic here (blocking_send on a runtime thread).
+        let (sink, mut stream) = channel(2);
+        assert!(sink.emit_async("tok".to_string()).await);
+        drop(sink);
+        assert_eq!(stream.next().await, Some("tok".to_string()));
+        assert_eq!(stream.next().await, None);
     }
 }

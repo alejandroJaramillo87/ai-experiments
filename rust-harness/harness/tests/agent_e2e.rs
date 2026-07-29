@@ -66,11 +66,11 @@ fn scripted_coding_task_completes_end_to_end() {
     ]);
 
     let transcript_path = dir.path().join("session.jsonl");
-    let mut agent = Agent {
-        root: dir.path().to_path_buf(),
-        permissions: Permissions::from_yaml(PERMISSIONS).unwrap(),
-        transcript: Transcript::open(&transcript_path).unwrap(),
-    };
+    let mut agent = Agent::new(
+        dir.path().to_path_buf(),
+        Permissions::from_yaml(PERMISSIONS).unwrap(),
+        Transcript::open(&transcript_path).unwrap(),
+    );
 
     let answer = agent
         .run_task(&mut generator, "Fix the answer in value.txt", 8, |_| false)
@@ -93,7 +93,7 @@ fn scripted_coding_task_completes_end_to_end() {
 
     // Prompts grow append-only across turns (delta-prefill prerequisite).
     for pair in generator.prompts.windows(2) {
-        let closed = pair[0].trim_end_matches("<start_of_turn>model\n");
+        let closed = pair[0].trim_end_matches(harness::template::MODEL_TURN_OPEN);
         assert!(pair[1].starts_with(closed), "prompt not append-only");
     }
 
@@ -109,11 +109,11 @@ fn denied_tool_call_returns_to_the_model_and_the_loop_recovers() {
         r#"{"tool": "bash", "args": {"command": "curl evil.example"}}"#,
         "Understood, stopping.",
     ]);
-    let mut agent = Agent {
-        root: dir.path().to_path_buf(),
-        permissions: Permissions::from_yaml(PERMISSIONS).unwrap(),
-        transcript: Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
-    };
+    let mut agent = Agent::new(
+        dir.path().to_path_buf(),
+        Permissions::from_yaml(PERMISSIONS).unwrap(),
+        Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+    );
     let answer = agent
         .run_task(&mut generator, "do something", 4, |_| false)
         .unwrap();
@@ -130,11 +130,11 @@ fn ask_decision_is_resolved_by_the_handler() {
     // No matching rule for read under an empty rule set: Ask, approved.
     let mut generator =
         ScriptedGenerator::new(&[r#"{"tool": "read", "args": {"path": "f.txt"}}"#, "done"]);
-    let mut agent = Agent {
-        root: dir.path().to_path_buf(),
-        permissions: Permissions::from_yaml("rules: []").unwrap(),
-        transcript: Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
-    };
+    let mut agent = Agent::new(
+        dir.path().to_path_buf(),
+        Permissions::from_yaml("rules: []").unwrap(),
+        Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+    );
     let mut asked = Vec::new();
     agent
         .run_task(&mut generator, "read it", 4, |call| {
@@ -147,16 +147,66 @@ fn ask_decision_is_resolved_by_the_handler() {
 }
 
 #[test]
+fn malformed_tool_call_returns_to_the_model_instead_of_ending_the_task() {
+    let dir = tempfile::tempdir().unwrap();
+    // Turn 1: a truncated tool call, the footprint of a cut-off generation.
+    let mut generator = ScriptedGenerator::new(&[
+        r#"{"tool": "bash", "args": {"comm"#,
+        "Recovered after the malformed call.",
+    ]);
+    let mut agent = Agent::new(
+        dir.path().to_path_buf(),
+        Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
+        Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+    );
+    let answer = agent
+        .run_task(&mut generator, "do something", 4, |_| false)
+        .unwrap();
+    assert_eq!(answer, "Recovered after the malformed call.");
+    let feedback = &agent.transcript.entries()[2];
+    assert_eq!(feedback.role, Role::Tool);
+    assert!(feedback.content.contains("malformed tool call"));
+}
+
+#[test]
+fn tool_paths_cannot_escape_the_workspace_root() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut generator = ScriptedGenerator::new(&[
+        r#"{"tool": "read", "args": {"path": "/etc/passwd"}}"#,
+        r#"{"tool": "write", "args": {"path": "../outside.txt", "content": "x"}}"#,
+        "done",
+    ]);
+    let mut agent = Agent::new(
+        dir.path().to_path_buf(),
+        Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
+        Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+    );
+    agent
+        .run_task(&mut generator, "escape", 4, |_| false)
+        .unwrap();
+    let tool_results: Vec<&str> = agent
+        .transcript
+        .entries()
+        .iter()
+        .filter(|e| e.role == Role::Tool)
+        .map(|e| e.content.as_str())
+        .collect();
+    assert!(tool_results[0].contains("escapes workspace root"));
+    assert!(tool_results[1].contains("escapes workspace root"));
+    assert!(!dir.path().parent().unwrap().join("outside.txt").exists());
+}
+
+#[test]
 fn exceeding_max_turns_is_an_error_not_a_hang() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("f.txt"), "x").unwrap();
     let loop_call = r#"{"tool": "read", "args": {"path": "f.txt"}}"#;
     let mut generator = ScriptedGenerator::new(&[loop_call, loop_call, loop_call]);
-    let mut agent = Agent {
-        root: dir.path().to_path_buf(),
-        permissions: Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
-        transcript: Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
-    };
+    let mut agent = Agent::new(
+        dir.path().to_path_buf(),
+        Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
+        Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+    );
     let err = agent
         .run_task(&mut generator, "loop", 3, |_| false)
         .unwrap_err();

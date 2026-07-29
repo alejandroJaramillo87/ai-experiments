@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use anyhow::{bail, Result};
 
 use crate::permissions::{Decision, Permissions};
-use crate::template::render;
+use crate::template::{render_entry, MODEL_TURN_OPEN};
 use crate::tools::ToolCall;
 use crate::transcript::{Role, Transcript};
 
@@ -24,9 +24,33 @@ pub struct Agent {
     pub root: PathBuf,
     pub permissions: Permissions,
     pub transcript: Transcript,
+    // Incremental prompt state: `rendered` holds every closed turn for
+    // `transcript.entries()[..rendered_upto]`, so each loop iteration appends
+    // only the new entries instead of re-rendering the whole transcript.
+    rendered: String,
+    rendered_upto: usize,
 }
 
 impl Agent {
+    pub fn new(root: PathBuf, permissions: Permissions, transcript: Transcript) -> Self {
+        Self {
+            root,
+            permissions,
+            transcript,
+            rendered: String::new(),
+            rendered_upto: 0,
+        }
+    }
+
+    /// Prompt for the next model turn, rendered incrementally.
+    fn prompt(&mut self) -> &str {
+        for e in &self.transcript.entries()[self.rendered_upto..] {
+            self.rendered.push_str(&render_entry(e));
+        }
+        self.rendered_upto = self.transcript.entries().len();
+        &self.rendered
+    }
+
     /// Run one task to a final text answer. `on_ask` resolves Ask decisions
     /// (interactive prompt in the binary, scripted in tests).
     pub fn run_task(
@@ -38,26 +62,40 @@ impl Agent {
     ) -> Result<String> {
         self.transcript.append(Role::User, task)?;
         for _ in 0..max_turns {
-            let prompt = render(self.transcript.entries());
-            let output = generator.complete(&prompt)?;
-            self.transcript.append(Role::Model, output.clone())?;
-            let Some(call) = ToolCall::parse(&output)? else {
-                return Ok(output);
-            };
-            let allowed = match self.permissions.evaluate(&call) {
-                Decision::Allow => true,
-                Decision::Deny => false,
-                Decision::Ask => on_ask(&call),
-            };
-            let result = if allowed {
-                // Tool failures return to the model as text; only harness
-                // failures (transcript IO) abort the loop.
-                call.execute(&self.root)
-                    .unwrap_or_else(|e| format!("tool error: {e:#}"))
-            } else {
-                format!("permission denied: {} {}", call.name(), call.target())
-            };
-            self.transcript.append(Role::Tool, result)?;
+            self.prompt();
+            // Borrow the rendered buffer with the open model turn appended,
+            // then trim it back: the closed-turn prefix stays reusable.
+            self.rendered.push_str(MODEL_TURN_OPEN);
+            let output = generator.complete(&self.rendered);
+            self.rendered
+                .truncate(self.rendered.len() - MODEL_TURN_OPEN.len());
+            let output = output?;
+            self.transcript.append(Role::Model, output.as_str())?;
+            match ToolCall::parse(&output) {
+                Ok(None) => return Ok(output),
+                Ok(Some(call)) => {
+                    let allowed = match self.permissions.evaluate(&call) {
+                        Decision::Allow => true,
+                        Decision::Deny => false,
+                        Decision::Ask => on_ask(&call),
+                    };
+                    let result = if allowed {
+                        // Tool failures return to the model as text; only
+                        // harness failures (transcript IO) abort the loop.
+                        call.execute(&self.root)
+                            .unwrap_or_else(|e| format!("tool error: {e:#}"))
+                    } else {
+                        format!("permission denied: {} {}", call.name(), call.target())
+                    };
+                    self.transcript.append(Role::Tool, result)?;
+                }
+                // A malformed tool call goes back to the model as an error to
+                // correct, never out to the user as a final answer.
+                Err(e) => {
+                    self.transcript
+                        .append(Role::Tool, format!("tool error: {e:#}"))?;
+                }
+            }
         }
         bail!("no final answer within {max_turns} turns")
     }

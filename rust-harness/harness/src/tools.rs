@@ -7,13 +7,17 @@
  */
 
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::{Component, Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use anyhow::{bail, ensure, Context, Result};
 use serde_json::Value;
 
-use crate::util::wildcard_match;
+use crate::util::Pattern;
+
+// Bound on captured bash output: unbounded output would otherwise flow
+// straight into the transcript and the KV cache.
+const BASH_OUTPUT_CAP: usize = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ToolCall {
@@ -74,10 +78,19 @@ impl ToolCall {
             return Ok(None);
         }
         let v: Value = match serde_json::from_str(trimmed) {
-            Ok(v) => v,
+            // Attempted-but-broken tool calls (truncated generation, trailing
+            // prose) must not silently become the final answer.
+            Err(e) if trimmed.contains("\"tool\"") => {
+                bail!("malformed tool call: {e}")
+            }
             Err(_) => return Ok(None),
+            Ok(v) => v,
         };
         let Some(name) = v["tool"].as_str() else {
+            ensure!(
+                v.get("tool").is_none(),
+                "malformed tool call: \"tool\" is not a string"
+            );
             return Ok(None);
         };
         let args = &v["args"];
@@ -124,10 +137,10 @@ impl ToolCall {
     pub fn execute(&self, root: &Path) -> Result<String> {
         match self {
             ToolCall::Read { path } => {
-                fs::read_to_string(root.join(path)).with_context(|| format!("read {path}"))
+                fs::read_to_string(resolve(root, path)?).with_context(|| format!("read {path}"))
             }
             ToolCall::Write { path, content } => {
-                let full = root.join(path);
+                let full = resolve(root, path)?;
                 if let Some(dir) = full.parent() {
                     fs::create_dir_all(dir)?;
                 }
@@ -135,9 +148,9 @@ impl ToolCall {
                 Ok(format!("wrote {} bytes to {path}", content.len()))
             }
             ToolCall::Edit { path, old, new } => {
-                let full = root.join(path);
+                let full = resolve(root, path)?;
                 let text = fs::read_to_string(&full).with_context(|| format!("edit {path}"))?;
-                let count = text.matches(old.as_str()).count();
+                let count = overlapping_count(&text, old);
                 ensure!(count != 0, "edit {path}: old text not found");
                 ensure!(
                     count == 1,
@@ -147,22 +160,35 @@ impl ToolCall {
                 Ok(format!("edited {path}"))
             }
             ToolCall::Bash { command } => {
+                // Null stdin: an interactive command fails fast instead of
+                // hanging the loop. TODO: add a wall-clock timeout once the
+                // loop is async (needs a process-wait-with-deadline).
                 let out = Command::new("sh")
                     .arg("-c")
                     .arg(command)
                     .current_dir(root)
+                    .stdin(Stdio::null())
                     .output()
                     .with_context(|| format!("bash: {command}"))?;
                 let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
                 text.push_str(&String::from_utf8_lossy(&out.stderr));
+                if text.len() > BASH_OUTPUT_CAP {
+                    let mut cut = BASH_OUTPUT_CAP;
+                    while !text.is_char_boundary(cut) {
+                        cut -= 1;
+                    }
+                    text.truncate(cut);
+                    text.push_str("\n[output truncated]");
+                }
                 if !out.status.success() {
                     text.push_str(&format!("\nexit status: {}", out.status));
                 }
                 Ok(text)
             }
             ToolCall::Glob { pattern } => {
+                let compiled = Pattern::compile(pattern);
                 let mut matches = Vec::new();
-                walk(root, root, pattern, &mut matches)?;
+                walk(root, root, &compiled, &mut matches);
                 matches.sort();
                 Ok(matches.join("\n"))
             }
@@ -176,18 +202,72 @@ impl ToolCall {
     }
 }
 
-fn walk(root: &Path, dir: &Path, pattern: &str, out: &mut Vec<String>) -> Result<()> {
-    for entry in fs::read_dir(dir)? {
-        let path: PathBuf = entry?.path();
+/// Resolve a model-supplied path strictly inside `root`. Lexical only:
+/// absolute paths and any `..` that would climb out of the root are errors,
+/// so no permission rule needs to anticipate traversal spellings.
+fn resolve(root: &Path, path: &str) -> Result<PathBuf> {
+    let rel = Path::new(path);
+    let mut depth: usize = 0;
+    for comp in rel.components() {
+        match comp {
+            Component::Normal(_) => depth += 1,
+            Component::CurDir => {}
+            Component::ParentDir => {
+                ensure!(depth > 0, "path escapes workspace root: {path}");
+                depth -= 1;
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                bail!("path escapes workspace root: {path}")
+            }
+        }
+    }
+    Ok(root.join(rel))
+}
+
+/// Count occurrences of `needle` including overlapping ones: `edit`'s
+/// exactly-one guarantee must treat "aa" in "aaa" as ambiguous.
+fn overlapping_count(hay: &str, needle: &str) -> usize {
+    if needle.is_empty() {
+        return 0;
+    }
+    let mut count = 0;
+    let mut from = 0;
+    while let Some(at) = hay[from..].find(needle) {
+        count += 1;
+        let start = from + at;
+        let first = hay[start..].chars().next().expect("match is non-empty");
+        from = start + first.len_utf8();
+    }
+    count
+}
+
+fn walk(root: &Path, dir: &Path, pattern: &Pattern, out: &mut Vec<String>) {
+    // Unreadable directories are skipped, not fatal: one bad permission bit
+    // must not abort the whole glob.
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path: PathBuf = entry.path();
+        if path
+            .file_name()
+            .is_some_and(|n| n.to_string_lossy().starts_with('.'))
+        {
+            continue; // hidden entries (.git and friends)
+        }
+        // symlink_metadata: never follow links, so a cycle cannot recurse
+        // forever and a link outside the root cannot leak paths.
+        let Ok(meta) = fs::symlink_metadata(&path) else {
+            continue;
+        };
         let rel = path.strip_prefix(root).expect("walk stays under root");
         let rel_str = rel.to_string_lossy();
-        if path.is_dir() {
-            walk(root, &path, pattern, out)?;
-        } else if wildcard_match(pattern, &rel_str) {
+        if meta.is_dir() {
+            walk(root, &path, pattern, out);
+        } else if meta.is_file() && pattern.matches(&rel_str) {
             out.push(rel_str.into_owned());
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -296,6 +376,104 @@ mod tests {
         .execute(dir.path())
         .unwrap();
         assert_eq!(out, "1. first\n2. second");
+    }
+
+    #[test]
+    fn paths_outside_the_root_are_rejected() {
+        let dir = root();
+        std::fs::write(dir.path().join("ok.txt"), "fine").unwrap();
+        for path in [
+            "/etc/passwd",
+            "../secret",
+            "a/../../secret",
+            "a/b/../../../x",
+        ] {
+            let err = ToolCall::Read { path: path.into() }
+                .execute(dir.path())
+                .unwrap_err();
+            assert!(
+                format!("{err:#}").contains("escapes workspace root"),
+                "{path}"
+            );
+        }
+        // `..` that stays inside the root is fine.
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        let text = ToolCall::Read {
+            path: "sub/../ok.txt".into(),
+        }
+        .execute(dir.path())
+        .unwrap();
+        assert_eq!(text, "fine");
+    }
+
+    #[test]
+    fn overlapping_matches_count_as_ambiguous() {
+        let dir = root();
+        std::fs::write(dir.path().join("f.txt"), "aaa").unwrap();
+        // Non-overlapping counting sees one "aa" in "aaa"; there are two
+        // candidate positions, so the edit must refuse.
+        let err = ToolCall::Edit {
+            path: "f.txt".into(),
+            old: "aa".into(),
+            new: "x".into(),
+        }
+        .execute(dir.path())
+        .unwrap_err();
+        assert!(err.to_string().contains("2 times"));
+    }
+
+    #[test]
+    fn bash_output_is_capped() {
+        let dir = root();
+        let out = ToolCall::Bash {
+            command: "head -c 200000 /dev/zero | tr '\\0' 'x'".into(),
+        }
+        .execute(dir.path())
+        .unwrap();
+        assert!(out.len() < 200_000);
+        assert!(out.contains("[output truncated]"));
+    }
+
+    #[test]
+    fn bash_stdin_is_closed_so_interactive_commands_finish() {
+        let dir = root();
+        // With inherited stdin this would block awaiting input.
+        let out = ToolCall::Bash {
+            command: "read line; echo done".into(),
+        }
+        .execute(dir.path())
+        .unwrap();
+        assert!(out.contains("done"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn glob_ignores_symlink_cycles_and_hidden_dirs() {
+        let dir = root();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::create_dir_all(dir.path().join(".git")).unwrap();
+        std::fs::write(dir.path().join("src/lib.rs"), "").unwrap();
+        std::fs::write(dir.path().join(".git/config.rs"), "").unwrap();
+        // Symlink back to the root: naive walking recurses forever.
+        std::os::unix::fs::symlink(dir.path(), dir.path().join("src/loop")).unwrap();
+        let out = ToolCall::Glob {
+            pattern: "**/*.rs".into(),
+        }
+        .execute(dir.path())
+        .unwrap();
+        assert_eq!(out, "src/lib.rs");
+    }
+
+    #[test]
+    fn malformed_tool_calls_are_errors_not_final_answers() {
+        // Truncated generation of a tool call.
+        assert!(ToolCall::parse(r#"{"tool": "bash", "args": {"comm"#).is_err());
+        // Valid call followed by trailing prose.
+        assert!(ToolCall::parse("{\"tool\": \"read\", \"args\": {\"path\": \"a\"}} done").is_err());
+        // Non-string tool key.
+        assert!(ToolCall::parse(r#"{"tool": 3, "args": {}}"#).is_err());
+        // JSON-looking text without a tool key stays a final answer.
+        assert_eq!(ToolCall::parse(r#"{"summary": "done"}"#).unwrap(), None);
     }
 
     #[test]

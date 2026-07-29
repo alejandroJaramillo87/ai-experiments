@@ -33,9 +33,21 @@ pub struct Permissions {
     rules: Vec<Rule>,
 }
 
+const KNOWN_TOOLS: [&str; 7] = ["read", "write", "edit", "bash", "glob", "todo", "*"];
+
 impl Permissions {
     pub fn from_yaml(text: &str) -> Result<Self> {
-        Ok(serde_yaml::from_str(text)?)
+        let perms: Permissions = serde_yaml::from_str(text)?;
+        // A typoed tool name would otherwise be a rule that silently never
+        // matches — reject it at load time instead.
+        for rule in &perms.rules {
+            anyhow::ensure!(
+                KNOWN_TOOLS.contains(&rule.tool.as_str()),
+                "permission rule names unknown tool: {}",
+                rule.tool
+            );
+        }
+        Ok(perms)
     }
 
     pub fn evaluate(&self, call: &ToolCall) -> Decision {
@@ -121,6 +133,17 @@ rules:
             p.evaluate(&ToolCall::Todo { items: vec![] }),
             Decision::Allow
         );
+    }
+
+    #[test]
+    fn unknown_tool_name_in_a_rule_is_rejected_at_load() {
+        let err = Permissions::from_yaml("rules:\n  - tool: bahs\n    action: deny\n").unwrap_err();
+        assert!(err.to_string().contains("bahs"));
+    }
+
+    #[test]
+    fn unknown_action_fails_deserialization() {
+        assert!(Permissions::from_yaml("rules:\n  - tool: bash\n    action: maybe\n").is_err());
     }
 
     #[test]
