@@ -66,6 +66,29 @@ impl Session {
         Ok(delta.len())
     }
 
+    /// Start a generation after syncing to `transcript`. The returned handle
+    /// advances one token per `step` call — the token-boundary yield point
+    /// the subagent interleaver schedules around.
+    pub fn begin_generation<'a>(
+        &'a mut self,
+        transcript: &[Token],
+        vocab: &'a Vocab,
+        grammar: Option<&'a Grammar>,
+    ) -> Result<ActiveGeneration<'a>> {
+        anyhow::ensure!(!transcript.is_empty(), "generate on empty transcript");
+        self.sync(transcript)?;
+        let logits = self.last_logits()?;
+        let state = grammar.map(|g| g.start());
+        Ok(ActiveGeneration {
+            session: self,
+            vocab,
+            grammar,
+            state,
+            logits,
+            done: false,
+        })
+    }
+
     /// Generate after syncing to `transcript`. Each sampled token is fed back
     /// through a single-token prefill; `on_token` observes tokens as they are
     /// produced (streaming seam). Grammar masking applies when provided.
@@ -78,33 +101,21 @@ impl Session {
         max_tokens: usize,
         mut on_token: impl FnMut(Token),
     ) -> Result<Generation> {
-        self.sync(transcript)?;
-        let mut state = grammar.map(|g| g.start());
+        let mut active = self.begin_generation(transcript, vocab, grammar)?;
         let mut out = Vec::new();
-        anyhow::ensure!(!transcript.is_empty(), "generate on empty transcript");
-        let mut logits = self.last_logits()?;
         while out.len() < max_tokens {
-            let mask = state
-                .as_ref()
-                .map(|st| grammar.expect("state implies grammar").mask(st, vocab));
-            let tok = sampler.sample(&logits, mask.as_deref())?;
-            if tok == vocab.eos() {
-                return Ok(Generation {
-                    tokens: out,
-                    stopped_at_eos: true,
-                });
-            }
-            if let (Some(g), Some(st)) = (grammar, state.as_mut()) {
-                for c in vocab.text(tok).chars() {
-                    *st = g
-                        .advance(st, c)
-                        .ok_or_else(|| anyhow::anyhow!("sampled grammar-illegal token"))?;
+            match active.step(sampler)? {
+                Some(tok) => {
+                    on_token(tok);
+                    out.push(tok);
+                }
+                None => {
+                    return Ok(Generation {
+                        tokens: out,
+                        stopped_at_eos: true,
+                    })
                 }
             }
-            on_token(tok);
-            out.push(tok);
-            logits = self.model.prefill(&[tok])?;
-            self.tokens.push(tok);
         }
         Ok(Generation {
             tokens: out,
@@ -127,6 +138,44 @@ impl Session {
             model: self.model.fork()?,
             tokens: self.tokens.clone(),
         })
+    }
+}
+
+/// An in-progress generation. Each `step` samples one token and prefills it;
+/// EOS ends the generation with `None`. Dropping the handle simply stops at
+/// the last completed token boundary — the cache stays valid.
+pub struct ActiveGeneration<'a> {
+    session: &'a mut Session,
+    vocab: &'a Vocab,
+    grammar: Option<&'a Grammar>,
+    state: Option<crate::grammar::GrammarState>,
+    logits: Logits,
+    done: bool,
+}
+
+impl ActiveGeneration<'_> {
+    pub fn step(&mut self, sampler: &mut Sampler) -> Result<Option<Token>> {
+        anyhow::ensure!(!self.done, "step after EOS");
+        let mask = self.state.as_ref().map(|st| {
+            self.grammar
+                .expect("state implies grammar")
+                .mask(st, self.vocab)
+        });
+        let tok = sampler.sample(&self.logits, mask.as_deref())?;
+        if tok == self.vocab.eos() {
+            self.done = true;
+            return Ok(None);
+        }
+        if let (Some(g), Some(st)) = (self.grammar, self.state.as_mut()) {
+            for c in self.vocab.text(tok).chars() {
+                *st = g
+                    .advance(st, c)
+                    .ok_or_else(|| anyhow::anyhow!("sampled grammar-illegal token"))?;
+            }
+        }
+        self.logits = self.session.model.prefill(&[tok])?;
+        self.session.tokens.push(tok);
+        Ok(Some(tok))
     }
 }
 

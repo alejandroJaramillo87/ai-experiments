@@ -31,6 +31,24 @@ struct Shared {
     max_in_flight: AtomicUsize,
 }
 
+/// Observer over a mock family's shared prefill recorder.
+#[derive(Clone)]
+pub struct Recorder(Arc<Shared>);
+
+impl Recorder {
+    pub fn records(&self) -> Vec<PrefillRecord> {
+        self.0.records.lock().unwrap().clone()
+    }
+
+    pub fn total_prefilled(&self) -> usize {
+        self.records().iter().map(|r| r.tokens.len()).sum()
+    }
+
+    pub fn max_in_flight(&self) -> usize {
+        self.0.max_in_flight.load(Ordering::SeqCst)
+    }
+}
+
 /// Scripted mock model. Position `p` in the script is the logits returned
 /// when the final cached token sits at position `p`; positions beyond the
 /// script yield uniform zero logits.
@@ -54,19 +72,25 @@ impl MockModel {
         }
     }
 
+    /// Detached handle onto the recorder shared by this model and all forks,
+    /// usable after the model itself is boxed into a Session.
+    pub fn recorder(&self) -> Recorder {
+        Recorder(Arc::clone(&self.shared))
+    }
+
     /// All prefill calls recorded across this model and every fork of it.
     pub fn records(&self) -> Vec<PrefillRecord> {
-        self.shared.records.lock().unwrap().clone()
+        self.recorder().records()
     }
 
     /// Total tokens prefilled across this model and every fork of it.
     pub fn total_prefilled(&self) -> usize {
-        self.records().iter().map(|r| r.tokens.len()).sum()
+        self.recorder().total_prefilled()
     }
 
     /// Maximum number of prefill calls ever concurrently in flight.
     pub fn max_in_flight(&self) -> usize {
-        self.shared.max_in_flight.load(Ordering::SeqCst)
+        self.recorder().max_in_flight()
     }
 
     fn logits_at(&self, position: usize) -> Logits {

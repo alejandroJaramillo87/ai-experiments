@@ -6,6 +6,7 @@
 pub mod agent;
 pub mod permissions;
 pub mod stream;
+pub mod subagents;
 pub mod template;
 pub mod tools;
 pub mod transcript;
