@@ -10,3 +10,4 @@
 pub mod grammar;
 pub mod model;
 pub mod sampler;
+pub mod session;
