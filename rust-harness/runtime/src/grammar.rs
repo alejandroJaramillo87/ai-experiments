@@ -104,6 +104,15 @@ impl Grammar {
         GrammarState { node: idx, sub }
     }
 
+    /// Advance through every character of `text`; `None` if any is illegal.
+    pub fn advance_str(&self, st: &GrammarState, text: &str) -> Option<GrammarState> {
+        let mut cur = *st;
+        for c in text.chars() {
+            cur = self.advance(&cur, c)?;
+        }
+        Some(cur)
+    }
+
     /// Advance one character; `None` means the character is illegal here.
     pub fn advance(&self, st: &GrammarState, c: char) -> Option<GrammarState> {
         let node = *self.nodes.get(st.node)?;
@@ -122,6 +131,9 @@ impl Grammar {
                 c if (c as u32) < 0x20 => None,
                 _ => Some(*st),
             },
+            // Deliberate restriction: `\uXXXX` escapes are rejected. The
+            // accepted language stays a strict subset of JSON strings;
+            // non-ASCII content passes through unescaped instead.
             (Node::Str, Sub::StrEscape) => {
                 matches!(c, '"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't').then_some(
                     GrammarState {
@@ -172,6 +184,12 @@ impl Grammar {
                 }
             }
             (Node::Bool, Sub::BoolAt(word, pos)) => {
+                // Byte comparison below requires ASCII: `c as u8` truncates,
+                // so a non-ASCII char sharing a low byte (e.g. 'Ŵ' -> 't')
+                // would otherwise pass and emit invalid JSON.
+                if !c.is_ascii() {
+                    return None;
+                }
                 let candidates: &[u8] = if pos == 0 { &[0, 1] } else { &[word] };
                 for &w in candidates {
                     let text = BOOL_WORDS[w as usize].as_bytes();
@@ -201,17 +219,7 @@ impl Grammar {
                     return self.is_complete(st);
                 }
                 let text = vocab.text(t);
-                if text.is_empty() {
-                    return false;
-                }
-                let mut cur = *st;
-                for c in text.chars() {
-                    match self.advance(&cur, c) {
-                        Some(next) => cur = next,
-                        None => return false,
-                    }
-                }
-                true
+                !text.is_empty() && self.advance_str(st, text).is_some()
             })
             .collect()
     }

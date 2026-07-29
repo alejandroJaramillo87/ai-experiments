@@ -37,23 +37,14 @@ fn test_vocab() -> Vocab {
 fn grammar_accepts_valid_tool_call() {
     let g = Grammar::compile(&edit_schema());
     let s = r#"{"tool": "edit", "args": {"path": "src/a.rs", "line": 42, "create": false}}"#;
-    let mut st = g.start();
-    for c in s.chars() {
-        st = g.advance(&st, c).expect("valid call rejected");
-    }
+    let st = g.advance_str(&g.start(), s).expect("valid call rejected");
     assert!(g.is_complete(&st));
 }
 
 #[test]
 fn grammar_rejects_wrong_tool_name_and_malformed_json() {
     let g = Grammar::compile(&edit_schema());
-    let advance_all = |s: &str| -> Option<GrammarState> {
-        let mut st = g.start();
-        for c in s.chars() {
-            st = g.advance(&st, c)?;
-        }
-        Some(st)
-    };
+    let advance_all = |s: &str| -> Option<GrammarState> { g.advance_str(&g.start(), s) };
     assert!(advance_all(r#"{"tool": "bash""#).is_none()); // wrong tool name
     assert!(advance_all(r#"{"tool": "edit", "args": {"line""#).is_none()); // param order fixed
     assert!(advance_all(r#"{"tool": "edit" "args""#).is_none()); // missing comma
@@ -69,10 +60,49 @@ fn grammar_rejects_wrong_tool_name_and_malformed_json() {
 fn escaped_quotes_and_backslashes_are_legal_in_string_values() {
     let g = Grammar::compile(&edit_schema());
     let s = r#"{"tool": "edit", "args": {"path": "a\"b\\c", "line": 0, "create": true}}"#;
-    let mut st = g.start();
-    for c in s.chars() {
-        st = g.advance(&st, c).expect("escaped string rejected");
-    }
+    g.advance_str(&g.start(), s)
+        .expect("escaped string rejected");
+}
+
+#[test]
+fn unicode_escapes_are_rejected_as_a_deliberate_restriction() {
+    // The accepted language is a strict subset of JSON strings: \uXXXX is
+    // out; raw non-ASCII content inside strings is the supported spelling.
+    let g = Grammar::compile(&edit_schema());
+    let mut escaped = String::from(r#"{"tool": "edit", "args": {"path": ""#);
+    escaped.push(char::from(92)); // backslash opening a \uXXXX escape
+    escaped.push_str("u0041");
+    assert!(g.advance_str(&g.start(), &escaped).is_none());
+    assert!(g
+        .advance_str(
+            &g.start(),
+            "{\"tool\": \"edit\", \"args\": {\"path\": \"é\""
+        )
+        .is_some());
+}
+
+#[test]
+fn non_ascii_lookalikes_cannot_complete_a_bool_literal() {
+    // 'Ŵ' (U+0174) shares its low byte with 't'; byte-truncating comparison
+    // previously accepted it inside `true`, emitting invalid JSON.
+    let g = Grammar::compile(&edit_schema());
+    let prefix = r#"{"tool": "edit", "args": {"path": "a", "line": 1, "create": "#;
+    let st = g.advance_str(&g.start(), prefix).unwrap();
+    assert!(g.advance(&st, 'Ŵ').is_none());
+    assert!(g.advance_str(&st, "Ŵrue").is_none());
+    assert!(g.advance_str(&st, "true").is_some());
+}
+
+#[test]
+fn zero_param_schema_compiles_and_accepts_empty_args() {
+    let g = Grammar::compile(&ToolSchema {
+        name: "status".to_string(),
+        params: vec![],
+    });
+    let st = g
+        .advance_str(&g.start(), r#"{"tool": "status", "args": {}}"#)
+        .unwrap();
+    assert!(g.is_complete(&st));
 }
 
 #[test]
@@ -90,10 +120,7 @@ fn mask_permits_exactly_the_grammar_allowed_tokens() {
 
     // Inside an int value, digits stay allowed and letters do not.
     let prefix = r#"{"tool": "edit", "args": {"path": "a", "line": 1"#;
-    let mut st = g.start();
-    for c in prefix.chars() {
-        st = g.advance(&st, c).unwrap();
-    }
+    let st = g.advance_str(&g.start(), prefix).unwrap();
     let mask = g.mask(&st, &vocab);
     let idx = |s: &str| vocab.iter().position(|t| t == s).unwrap();
     assert!(mask[idx("0")] && mask[idx("9")]);
@@ -144,9 +171,7 @@ fn random_grammar_walks_always_parse_as_schema_valid_json() {
             if tok == vocab.eos() {
                 break;
             }
-            for c in vocab.text(tok).chars() {
-                st = g.advance(&st, c).unwrap();
-            }
+            st = g.advance_str(&st, vocab.text(tok)).unwrap();
             out.push_str(vocab.text(tok));
         }
         let v: serde_json::Value = serde_json::from_str(&out).expect("walk produced invalid JSON");
@@ -191,11 +216,9 @@ fn test_200_forced_tool_calls_produce_zero_malformed_calls() {
             if tok == vocab.eos() {
                 break;
             }
-            for c in vocab.text(tok).chars() {
-                st = g
-                    .advance(&st, c)
-                    .expect("sampler emitted grammar-illegal token");
-            }
+            st = g
+                .advance_str(&st, vocab.text(tok))
+                .expect("sampler emitted grammar-illegal token");
             out.push_str(vocab.text(tok));
             logits = model.prefill(&[tok]).unwrap();
         }

@@ -45,6 +45,7 @@ pub fn budget_bytes(layers: &[LayerKind], geometry: KvGeometry, max_context: usi
 /// Gemma-style layer pattern: one global layer every `period` layers,
 /// sliding-window layers otherwise. The final layer of each period is global.
 pub fn interleaved_layers(n_layers: usize, period: usize, window: usize) -> Vec<LayerKind> {
+    assert!(period > 0, "interleave period must be positive");
     (0..n_layers)
         .map(|i| {
             if (i + 1) % period == 0 {
@@ -108,6 +109,19 @@ mod tests {
                 LayerKind::Global,
             ]
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "period")]
+    fn zero_period_is_rejected() {
+        interleaved_layers(4, 0, 512);
+    }
+
+    #[test]
+    fn zero_layers_and_zero_context_are_empty_budgets() {
+        assert_eq!(interleaved_layers(0, 3, 512), Vec::<LayerKind>::new());
+        assert_eq!(budget_bytes(&[], GEO, 8192), 0);
+        assert_eq!(budget_bytes(&[LayerKind::Global], GEO, 0), 0);
     }
 
     #[test]

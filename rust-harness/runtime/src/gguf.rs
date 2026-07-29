@@ -4,8 +4,9 @@
  * Parses the GGUF v3 layout used by quantized Gemma checkpoints. Only the
  * metadata value types the loader actually consumes are supported; anything
  * else is a hard error rather than a silent skip, so a format surprise shows
- * up at load time. Vision-tower tensors are filtered by name — the design
- * skips multimodality at load time.
+ * up at load time. The parser keeps every tensor entry; the loader filters
+ * vision-tower tensors with `is_vision_tensor` — the design skips
+ * multimodality at load time.
  */
 
 use std::collections::BTreeMap;
@@ -50,8 +51,11 @@ struct Reader<'a> {
 
 impl<'a> Reader<'a> {
     fn take(&mut self, n: usize) -> Result<&'a [u8]> {
+        // checked_add: an adversarial u64 length must not wrap the bounds
+        // check into a panic; it reports as truncation like any short read.
+        let end = self.pos.checked_add(n);
         ensure!(
-            self.pos + n <= self.data.len(),
+            end.is_some_and(|e| e <= self.data.len()),
             "truncated GGUF at byte {}",
             self.pos
         );
@@ -60,23 +64,26 @@ impl<'a> Reader<'a> {
         Ok(slice)
     }
 
-    fn u32(&mut self) -> Result<u32> {
-        Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
-    }
-
-    fn u64(&mut self) -> Result<u64> {
-        Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap()))
-    }
-
-    fn f32(&mut self) -> Result<f32> {
-        Ok(f32::from_le_bytes(self.take(4)?.try_into().unwrap()))
-    }
-
     fn string(&mut self) -> Result<String> {
-        let len = self.u64()? as usize;
+        let len = usize::try_from(self.u64()?).context("GGUF string length overflows usize")?;
         String::from_utf8(self.take(len)?.to_vec()).context("non-UTF8 GGUF string")
     }
 }
+
+/// Fixed-width little-endian reads share one shape.
+macro_rules! le_reader {
+    ($name:ident, $ty:ty, $n:expr) => {
+        impl<'a> Reader<'a> {
+            fn $name(&mut self) -> Result<$ty> {
+                Ok(<$ty>::from_le_bytes(self.take($n)?.try_into().unwrap()))
+            }
+        }
+    };
+}
+
+le_reader!(u32, u32, 4);
+le_reader!(u64, u64, 8);
+le_reader!(f32, f32, 4);
 
 /// Parse header, metadata, and tensor directory from an in-memory GGUF
 /// image. Tensor data itself is not touched; `offset` indexes into the data
@@ -165,6 +172,27 @@ mod tests {
             self
         }
 
+        fn kv_u64(&mut self, key: &str, v: u64) -> &mut Self {
+            self.string(key);
+            self.0.extend(10u32.to_le_bytes());
+            self.0.extend(v.to_le_bytes());
+            self
+        }
+
+        fn kv_f32(&mut self, key: &str, v: f32) -> &mut Self {
+            self.string(key);
+            self.0.extend(6u32.to_le_bytes());
+            self.0.extend(v.to_le_bytes());
+            self
+        }
+
+        fn kv_bool(&mut self, key: &str, v: bool) -> &mut Self {
+            self.string(key);
+            self.0.extend(7u32.to_le_bytes());
+            self.0.push(v as u8);
+            self
+        }
+
         fn tensor(&mut self, name: &str, dims: &[u64], ggml_type: u32, offset: u64) -> &mut Self {
             self.string(name);
             self.0.extend((dims.len() as u32).to_le_bytes());
@@ -220,6 +248,42 @@ mod tests {
         b.0.extend(9u32.to_le_bytes()); // array type, unsupported
         let err = parse(&b.0).unwrap_err();
         assert!(err.to_string().contains("tokenizer.ggml.tokens"));
+    }
+
+    #[test]
+    fn u64_f32_and_bool_metadata_decode() {
+        let mut b = Builder::new(0, 3);
+        b.kv_u64("gemma4.file_size", 17_000_000_000);
+        b.kv_f32("gemma4.rope_theta", 10000.0);
+        b.kv_bool("gemma4.attention.causal", true);
+        let f = parse(&b.0).unwrap();
+        assert_eq!(
+            f.metadata["gemma4.file_size"],
+            MetaValue::U64(17_000_000_000)
+        );
+        assert_eq!(f.metadata["gemma4.rope_theta"], MetaValue::F32(10000.0));
+        assert_eq!(f.metadata["gemma4.attention.causal"], MetaValue::Bool(true));
+    }
+
+    #[test]
+    fn adversarial_string_length_is_an_error_not_a_panic() {
+        // A u64::MAX length must not wrap the bounds check.
+        let mut b = Builder::new(0, 1).0;
+        b.extend(u64::MAX.to_le_bytes()); // key length
+        let err = parse(&b).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("truncated") || msg.contains("overflows"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn too_many_dims_is_an_error_naming_the_tensor() {
+        let mut b = Builder::new(1, 0);
+        b.tensor("blk.0.bad", &[1, 2, 3, 4, 5], 8, 0);
+        let err = parse(&b.0).unwrap_err();
+        assert!(err.to_string().contains("blk.0.bad"));
     }
 
     #[test]

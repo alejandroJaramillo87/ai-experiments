@@ -18,6 +18,10 @@ pub struct Session {
     model: Box<dyn Model>,
     // Token history mirroring the KV cache, for common-prefix computation.
     tokens: Vec<Token>,
+    // Logits at the cache tail from the most recent prefill, when still
+    // valid. Reusing them saves a redundant replay forward pass per
+    // generation; a truncate-only sync invalidates them.
+    tail_logits: Option<Logits>,
 }
 
 /// Outcome of one generation: sampled tokens (EOS excluded) and whether EOS
@@ -38,6 +42,7 @@ impl Session {
         Self {
             model,
             tokens: Vec::new(),
+            tail_logits: None,
         }
     }
 
@@ -57,10 +62,11 @@ impl Session {
         if common < self.tokens.len() {
             self.model.truncate(common)?;
             self.tokens.truncate(common);
+            self.tail_logits = None;
         }
         let delta = &transcript[common..];
         if !delta.is_empty() {
-            self.model.prefill(delta)?;
+            self.tail_logits = Some(self.model.prefill(delta)?);
             self.tokens.extend_from_slice(delta);
         }
         Ok(delta.len())
@@ -77,14 +83,13 @@ impl Session {
     ) -> Result<ActiveGeneration<'a>> {
         anyhow::ensure!(!transcript.is_empty(), "generate on empty transcript");
         self.sync(transcript)?;
-        let logits = self.last_logits()?;
+        self.ensure_tail_logits()?;
         let state = grammar.map(|g| g.start());
         Ok(ActiveGeneration {
             session: self,
             vocab,
             grammar,
             state,
-            logits,
             done: false,
         })
     }
@@ -123,13 +128,15 @@ impl Session {
         })
     }
 
-    /// Logits at the current cache tail, obtained by replaying the final
-    /// cached token (truncate one, prefill one). Cost is one token.
-    fn last_logits(&mut self) -> Result<Logits> {
-        let last = *self.tokens.last().expect("non-empty cache");
-        self.model.truncate(self.tokens.len() - 1)?;
-        let logits = self.model.prefill(&[last])?;
-        Ok(logits)
+    /// Make tail logits available, replaying the final cached token
+    /// (truncate one, prefill one) only when the cached copy was invalidated.
+    fn ensure_tail_logits(&mut self) -> Result<()> {
+        if self.tail_logits.is_none() {
+            let last = *self.tokens.last().expect("non-empty cache");
+            self.model.truncate(self.tokens.len() - 1)?;
+            self.tail_logits = Some(self.model.prefill(&[last])?);
+        }
+        Ok(())
     }
 
     /// Fork at the current boundary; the child pays no prefill for the prefix.
@@ -137,6 +144,7 @@ impl Session {
         Ok(Session {
             model: self.model.fork()?,
             tokens: self.tokens.clone(),
+            tail_logits: self.tail_logits.clone(),
         })
     }
 }
@@ -149,7 +157,6 @@ pub struct ActiveGeneration<'a> {
     vocab: &'a Vocab,
     grammar: Option<&'a Grammar>,
     state: Option<crate::grammar::GrammarState>,
-    logits: Logits,
     done: bool,
 }
 
@@ -161,19 +168,23 @@ impl ActiveGeneration<'_> {
                 .expect("state implies grammar")
                 .mask(st, self.vocab)
         });
-        let tok = sampler.sample(&self.logits, mask.as_deref())?;
+        let logits = self
+            .session
+            .tail_logits
+            .as_ref()
+            .expect("begin_generation established tail logits");
+        let tok = sampler.sample(logits, mask.as_deref())?;
         if tok == self.vocab.eos() {
             self.done = true;
             return Ok(None);
         }
         if let (Some(g), Some(st)) = (self.grammar, self.state.as_mut()) {
-            for c in self.vocab.text(tok).chars() {
-                *st = g
-                    .advance(st, c)
-                    .ok_or_else(|| anyhow::anyhow!("sampled grammar-illegal token"))?;
-            }
+            // Defense in depth: the mask already excludes illegal tokens.
+            *st = g
+                .advance_str(st, self.vocab.text(tok))
+                .ok_or_else(|| anyhow::anyhow!("sampled grammar-illegal token"))?;
         }
-        self.logits = self.session.model.prefill(&[tok])?;
+        self.session.tail_logits = Some(self.session.model.prefill(&[tok])?);
         self.session.tokens.push(tok);
         Ok(Some(tok))
     }
@@ -278,5 +289,84 @@ mod tests {
         transcript.extend([4u32, 5]);
         assert_eq!(s.sync(&transcript).unwrap(), 2);
         assert_eq!(s.cached_len(), len_after_turn1 + 2);
+    }
+
+    #[test]
+    fn begin_generation_reuses_sync_logits_without_a_replay_prefill() {
+        let v = vocab();
+        let prompt = [0u32, 1, 2];
+        let script = script_emitting(v.len(), prompt.len(), &[7], v.eos());
+        let mock = MockModel::new(v.len(), script);
+        let recorder = mock.recorder();
+        let mut s = Session::new(Box::new(mock));
+        s.begin_generation(&prompt, &v, None).unwrap();
+        // Only the 3-token prompt prefill; no truncate-and-replay of the tail.
+        assert_eq!(recorder.total_prefilled(), 3);
+    }
+
+    #[test]
+    fn sync_to_empty_transcript_truncates_to_zero() {
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])));
+        s.sync(&[1, 2, 3]).unwrap();
+        assert_eq!(s.sync(&[]).unwrap(), 0);
+        assert_eq!(s.cached_len(), 0);
+    }
+
+    #[test]
+    fn step_after_eos_is_an_error() {
+        let v = vocab();
+        let prompt = [0u32, 1];
+        let script = script_emitting(v.len(), prompt.len(), &[], v.eos());
+        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)));
+        let mut active = s.begin_generation(&prompt, &v, None).unwrap();
+        let mut sampler = greedy();
+        assert_eq!(active.step(&mut sampler).unwrap(), None);
+        assert!(active.step(&mut sampler).is_err());
+    }
+
+    #[test]
+    fn max_tokens_zero_generates_nothing() {
+        let v = vocab();
+        let prompt = [0u32, 1];
+        let script = script_emitting(v.len(), prompt.len(), &[5], v.eos());
+        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)));
+        let gen = s
+            .generate(&prompt, &v, None, &mut greedy(), 0, |_| {})
+            .unwrap();
+        assert_eq!(gen.tokens, Vec::<u32>::new());
+        assert!(!gen.stopped_at_eos);
+    }
+
+    #[test]
+    fn generation_under_a_grammar_yields_schema_valid_json() {
+        use crate::grammar::{Grammar, ParamType, ToolSchema};
+        // Character-level vocab covering the skeleton plus value chars.
+        let mut tokens: Vec<String> = "{}\"argstol: ,ping123"
+            .chars()
+            .map(|c| c.to_string())
+            .collect();
+        tokens.push("</s>".to_string());
+        let eos = (tokens.len() - 1) as u32;
+        let v = Vocab::new(tokens, eos);
+        let grammar = Grammar::compile(&ToolSchema {
+            name: "ping".into(),
+            params: vec![("n".into(), ParamType::Int)],
+        });
+        // Flat positive logits: the mask alone steers the walk.
+        let script = vec![vec![1.0; v.len()]; 512];
+        let mut s = Session::new(Box::new(MockModel::new(v.len(), script)));
+        let mut sampler = Sampler::new(SamplingParams {
+            temperature: 1.0,
+            top_p: 1.0,
+            seed: 5,
+        });
+        let gen = s
+            .generate(&[0, 1], &v, Some(&grammar), &mut sampler, 256, |_| {})
+            .unwrap();
+        assert!(gen.stopped_at_eos, "grammar walk must reach completion");
+        let text: String = gen.tokens.iter().map(|&t| v.text(t)).collect();
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(parsed["tool"], "ping");
+        assert!(parsed["args"]["n"].is_number());
     }
 }
