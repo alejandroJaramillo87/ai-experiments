@@ -60,7 +60,9 @@ passed.
    the real E4B GGUF: architecture reconciliation, generation, KV delta
    prefill, flight recorder, rr, and the in-band interp chain. Pure cargo
    binary: the Python hardware smoke gate does not apply; entry RH.0 is
-   this phase's gate.
+   this phase's gate. Its sandbox-executable sibling is
+   [rust-harness-qa.md](rust-harness-qa.md), the code-quality campaign
+   (phases Q0-Q6) a Claude Code session runs with no GPU or model data.
 
 ## Session-start gate
 

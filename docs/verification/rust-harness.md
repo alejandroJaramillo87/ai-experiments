@@ -33,6 +33,11 @@ not apply here; RH.0 is this phase's gate. The model directory
 `/mnt/ai-data/models` is read-only for agents; all commands below only
 read from it.
 
+The sandbox-executable code-quality counterpart to this runbook is the
+[QA campaign](rust-harness-qa.md) (phases Q0-Q6); it verifies code
+quality, while this runbook verifies behavior on real weights and
+hardware.
+
 Entries carry a "Risks likely to surface here" block where a failure mode
 is predicted. Rust-harness has no known-bugs ledger; these are known
 unknowns, and a failure matching a listed risk should be recorded against
