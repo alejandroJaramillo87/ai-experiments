@@ -17,7 +17,7 @@ self-contained and is intended for later extraction into its own repository.
 
 ```
 Cargo.toml        workspace: harness, runtime
-harness/          bin crate: agent loop, tools, permissions, sessions, streaming
+harness/          bin crate: agent loop, tools, permissions, chat, streaming, obs records
 runtime/          lib crate: sessions, sampler, grammar, KV cache, GGUF, tokenizer, model
 fixtures/         committed fixtures: synthetic tiny-model GGUF, numpy reference
                   logits and generator script; real-model Tier 3 fixtures pending

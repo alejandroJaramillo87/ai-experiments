@@ -12,6 +12,11 @@
 # needs at runtime (the binary is fully local) and reads models from the
 # same read-only mount the inference services use. Session state
 # (session.jsonl, probe-flags.jsonl) lands in ./sessions/rust-harness.
+#
+# Run-level obs records are not collected here: the harness writes them under
+# ${OBS_LOG_DIR} (default /mnt/ai-data/logs), which this service does not
+# mount, so the run log degrades to its silent no-op. Container runs are for
+# build reproducibility; the obs contract is verified on the host (RH.13).
 
 services:
   harness:
@@ -21,6 +26,10 @@ services:
     image: rust-harness:latest
     container_name: rust-harness
     restart: "no"
+    # The image's non-root appuser cannot write a host-owned bind mount, and
+    # the harness writes session.jsonl (and probe-flags.jsonl) into /work on
+    # every run; match the host user as the other bind-mounting services do.
+    user: "${UID:-1000}:${GID:-1000}"
     network_mode: none          # fully local: no runtime network access needed
     security_opt:
       - no-new-privileges:true
