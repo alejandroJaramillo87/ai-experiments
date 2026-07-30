@@ -150,14 +150,9 @@ fn run(
     probe_out: Option<&Path>,
     sampling: runtime::sampler::SamplingParams,
     max_tokens: usize,
+    chat: bool,
 ) -> Result<String> {
-    let permissions = match std::fs::read_to_string(root.join("permissions.yaml")) {
-        Ok(yaml) => Permissions::from_yaml(&yaml).context("permissions.yaml")?,
-        // No config: every call goes through the interactive Ask path.
-        Err(_) => Permissions::from_yaml("rules: []").expect("empty rule set"),
-    };
     let transcript = Transcript::open(&root.join("session.jsonl")).context("session.jsonl")?;
-    let mut agent = Agent::new(root.to_path_buf(), permissions, transcript);
     let (mut generator, monitor) = build_generator(
         model,
         record,
@@ -167,7 +162,30 @@ fn run(
         sampling,
         max_tokens,
     )?;
-    let answer = agent.run_task(&mut generator, task, 64, ask_stdin)?;
+    let answer = if chat {
+        // Chat mode: REPL over the generator, no tools or permissions. The
+        // probe monitor and control vector are already installed on the
+        // model, so interp flags apply to chat turns unchanged.
+        let mut transcript = transcript;
+        let stdin = std::io::stdin();
+        let turns = harness::chat::run_chat(
+            &mut generator,
+            &mut transcript,
+            stdin.lock(),
+            std::io::stdout(),
+        )?;
+        // Replies were already streamed to stdout; the summary is status.
+        eprintln!("[INFO] Chat ended: {turns} model turns");
+        String::new()
+    } else {
+        let permissions = match std::fs::read_to_string(root.join("permissions.yaml")) {
+            Ok(yaml) => Permissions::from_yaml(&yaml).context("permissions.yaml")?,
+            // No config: every call goes through the interactive Ask path.
+            Err(_) => Permissions::from_yaml("rules: []").expect("empty rule set"),
+        };
+        let mut agent = Agent::new(root.to_path_buf(), permissions, transcript);
+        agent.run_task(&mut generator, task, 64, ask_stdin)?
+    };
     if let Some(monitor) = &monitor {
         let default_out = root.join("probe-flags.jsonl");
         report_probe(monitor, probe_out.unwrap_or(&default_out))?;
@@ -180,7 +198,7 @@ fn main() -> ExitCode {
          [--trace-chrome <path>] [--control-vector <path.gguf>] \
          [--control-vector-scale <f>] [--probe <path.gguf>] \
          [--probe-out <path>] [--temperature <f>] [--top-p <f>] \
-         [--seed <n>] [--max-tokens <n>] <task description>";
+         [--seed <n>] [--max-tokens <n>] (--chat | <task description>)";
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     // --model <path.gguf>: checkpoint for the CPU backend.
     // --record <path>: wrap the model in the flight recorder, appending every
@@ -280,7 +298,15 @@ fn main() -> ExitCode {
         },
         None => 256,
     };
-    if args.is_empty() {
+    // --chat: interactive REPL instead of a one-shot task; the two are
+    // mutually exclusive, so leftover positional args are a usage error.
+    let chat = if let Some(i) = args.iter().position(|a| a == "--chat") {
+        args.remove(i);
+        true
+    } else {
+        false
+    };
+    if args.is_empty() != chat {
         eprintln!("{USAGE}");
         return ExitCode::from(2);
     }
@@ -319,9 +345,12 @@ fn main() -> ExitCode {
         probe_out.as_deref(),
         sampling,
         max_tokens,
+        chat,
     ) {
         Ok(answer) => {
-            println!("{answer}");
+            if !answer.is_empty() {
+                println!("{answer}");
+            }
             ExitCode::SUCCESS
         }
         Err(e) => {
