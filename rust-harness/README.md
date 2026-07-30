@@ -117,8 +117,14 @@ of the probe's layer, all golden-tested against the numpy reference. Design and 
 ## Quality gate
 
 ```bash
-$ make quality        # cargo fmt --check, cargo clippy -D warnings, cargo test
+$ make quality        # fmt check, clippy -D warnings, lockfile check,
+                      # rustdoc -D warnings, cargo test
 ```
+
+Five offline steps, cheapest first, mirroring the parent repository's
+Python gate; the parent's root `make quality` chains this gate. cargo-deny
+(advisories, licenses) is a deliberate non-step: its advisory database
+needs the network, so it belongs to CI or workstation tooling.
 
 ## Roadmap
 

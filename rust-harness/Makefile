@@ -1,16 +1,30 @@
 # Quality gate for the rust-harness workspace. Self-contained: this directory
 # is destined for extraction into its own repository, so nothing here depends
-# on the parent repo's Makefile or tooling.
+# on the parent repo's Makefile or tooling. Five offline steps, cheapest
+# first, failing on the first error — the same shape as the parent repo's
+# Python gate. Deliberate non-step: cargo-deny (advisories, licenses,
+# duplicate-dep bans) needs a network-fetched advisory database, which
+# conflicts with the gate's offline contract; it enters with CI or
+# workstation tooling, not here.
 
-.PHONY: quality fmt lint test
+.PHONY: quality fmt lint lock doc test
 
-quality: fmt lint test
+quality: fmt lint lock doc test
 
 fmt:
 	cargo fmt --all --check
 
 lint:
 	cargo clippy --workspace --all-targets -- -D warnings
+
+# Analogue of the parent gate's `uv lock --check`: fails when Cargo.lock is
+# stale relative to the manifests; needs no network when the lock is current.
+lock:
+	cargo metadata --locked --format-version 1 > /dev/null
+
+# Rustdoc lints (broken intra-doc links, bad code fences) as errors.
+doc:
+	RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items
 
 test:
 	cargo test --workspace
