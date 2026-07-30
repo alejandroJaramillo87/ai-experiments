@@ -115,6 +115,14 @@ within the established 2e-4 tolerance. Property tests assert taps do not
 perturb logits, a zero control vector is bit-identical to no steering, and
 steering is deterministic and carries across forks.
 
+The artifact flow is also verified end to end in the sandbox: a control
+vector written by `interp/steering/export.py` (`write_control_vector_gguf`)
+loads through `--control-vector`, and the harness binary run over the
+synthetic fixture produces output that is deterministic across repeats and
+differs from the unsteered run. Repeat runs must use a fresh session root:
+`session.jsonl` persists the transcript by design, so a second run in the
+same directory continues the session rather than reproducing it.
+
 ## Constraint on future backends
 
 The tap seam is part of the `Model` backend contract from now on: the CUDA
