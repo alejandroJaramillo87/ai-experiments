@@ -9,6 +9,7 @@
 
 pub mod cpu;
 pub mod mock;
+pub mod probe;
 pub mod record;
 
 use anyhow::Result;
