@@ -138,6 +138,17 @@ complete texts, so their transfer to mid-generation decode positions is
 unmeasured; evaluating probe quality separately on prefill and decode
 positions is pending real-model captures (roadmap below).
 
+Two context-layer mechanics shift what a flag's `position` field means.
+Compaction splices a model-written summary over the middle of the
+transcript, so the next generation re-prefills the summary region and the
+probe scores those positions again; flag positions are KV-cache
+positions, not transcript-lifetime positions, and positions recorded
+before a compaction do not align with positions recorded after it. A
+session restored from `session.kv` skips the prefill of the restored
+prefix entirely, so restored positions are never re-scored — a monitored
+run that must score the whole conversation should start without a
+snapshot file.
+
 ## What stays in Python
 
 The analysis half is unchanged and remains fed by capture directories:

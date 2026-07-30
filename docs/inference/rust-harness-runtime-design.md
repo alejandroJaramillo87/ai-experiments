@@ -155,6 +155,38 @@ Ports tutorial phases 1, 2, and 4:
   are the classic failure mode of local harnesses; the golden tests are mandatory
   before any end-to-end run.
 
+### Context layer
+
+Three mechanisms manage conversations that outgrow one context window, all
+built over the append-only prompt discipline the KV cache depends on:
+
+- **Memory file.** `HARNESS.md` in the working root is read once at startup
+  and rendered as a synthetic leading turn — never persisted to the
+  transcript, stable within a process (so the KV prefix stays maximal),
+  picked up again on the next start.
+- **Compaction.** When the rendered prompt crosses `--compact-at` (default
+  0.8) of the context budget, or on `/compact` in chat mode, the middle of
+  the effective transcript is summarized by the model itself and replaced
+  by the summary. Persistence is append-only: a `Compaction` record naming
+  the replaced range joins `session.jsonl`, and `Transcript::effective`
+  folds records in on read, so raw history survives and the transcript's
+  torn-line crash recovery covers the record unchanged. The splice shortens
+  the prompt's common prefix; `Session::sync` truncates the cache to the
+  kept head and prefills only the summary and tail.
+- **KV snapshot.** `session.kv` is written on clean exit and restored at
+  startup: a versioned header (magic, version, dtype tag with f16 reserved,
+  FNV-1a weight fingerprint) followed by the token history and the
+  backend-defined cache payload. Header or fingerprint mismatch refuses
+  loudly; a snapshot whose tokens no longer match the transcript degrades
+  through prefix matching to re-prefill from the divergence point.
+  Restored continuation logits are bit-identical to an unbroken run on the
+  CPU backend. Real-model snapshots are gigabyte-scale at f32; the dtype
+  tag reserves an f16 payload without a format break.
+
+Retrieval over an external index stays out of scope: the agent's live
+grep/glob/read tools search the working tree directly, matching the
+tutorial's managed-resource position.
+
 Concurrency stays minimal in the main loop: one generation in flight, interrupt
 handled by cancelling the generation future at a token boundary. The tutorial's
 persistent teams, mailboxes, and FSM coordination remain out of scope; parallel

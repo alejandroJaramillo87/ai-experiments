@@ -102,7 +102,23 @@ task end to end on the CPU backend in the sandbox. Beyond one-shot tasks,
 `--chat` runs an interactive REPL (no tools or permissions; the transcript
 persists to `session.jsonl`, so a restarted chat resumes), and
 `--temperature`, `--top-p`, `--seed`, and `--max-tokens` expose the
-sampling parameters. A reproducible containerized build lives in the
+sampling parameters.
+
+The context layer manages conversations that outgrow one window. A
+`HARNESS.md` file in the working root is read once at startup and injected
+as a leading turn (persistent memory; never written to the transcript).
+Compaction summarizes the middle of the conversation with the model
+itself, automatically when the rendered prompt crosses `--compact-at`
+(default 0.8) of the context budget and on demand via `/compact` in chat
+mode; the summary is persisted as an append-only record in
+`session.jsonl`, so raw history survives and `Transcript::effective`
+folds it in on read. The KV cache is serialized to `session.kv` on clean
+exit and restored at startup (versioned header, weight fingerprint,
+loud refusal on mismatch; a stale-but-valid snapshot degrades to prefix
+re-prefill), so a restarted session resumes without re-prefilling —
+continuation logits after restore are bit-identical to an unbroken run.
+`--context` caps the budget below the model's trained window, and
+startup logs a KV-size estimate. A reproducible containerized build lives in the
 parent repository (`docker/rust-harness/Dockerfile.rust-harness`, run via
 `make harness-build` / `harness-run` / `harness-chat` there): a pinned
 rust toolchain building with `--locked`. Each invocation also writes
