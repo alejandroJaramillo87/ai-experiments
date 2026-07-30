@@ -2,8 +2,9 @@
 
 Workstation verification for the `rust-harness/` workspace: the CPU
 inference backend on the real Gemma 4 E4B GGUF, the observability stack
-(flight recorder, tracing, rr), and the in-band interpretability chain
-(capture, probe monitor, steering). Every rust-harness claim to date is
+(flight recorder, tracing, rr), the in-band interpretability chain
+(capture, probe monitor, steering), the chat mode, and the containerized
+build. Every rust-harness claim to date is
 golden-tested in the sandbox against a synthetic 16-dimension fixture; this
 campaign is the first contact with real hardware and real weights.
 
@@ -466,6 +467,68 @@ Expected signal: `flamegraph.svg` is produced and the profile is dominated
 by the forward-pass matrix multiplications (attention and MLP projections
 in `model::cpu`), not by tokenization, sampling, or I/O. Record the top
 frames.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RH.11 Multi-turn chat on real weights
+
+Chat mode (`--chat`) is the decode-heavy complement to the prefill-heavy
+agent workload; within one process each turn delta-prefills only the new
+turn, which makes this a cleaner vehicle for the RH.4 claim. The stop
+behavior of the real instruction-tuned model is unconfirmed: the session
+stops at the tokenizer EOS, and a distinct `<end_of_turn>` terminator
+would instead run to the `--max-tokens` budget with the trailing marker
+trimmed from the reply. Record which behavior is observed.
+
+Command (three or more turns, then EOF or `/quit`):
+
+```bash
+$ mkdir -p /tmp/rh11 && cd /tmp/rh11
+$ ~/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/gguf/<e4b>.gguf --chat \
+    --trace-chrome trace.json --max-tokens 128
+```
+
+Expected signal: replies are coherent and responsive to the conversation
+history across at least three turns; `session.jsonl` records alternating
+user and model entries; the per-turn `session.sync` spans in the trace
+cover only each turn's delta, not the whole transcript. Record whether
+replies terminate at EOS or run to the token budget.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RH.12 Container build and reproducibility
+
+The containerized build exists for reproducibility: a pinned rust
+toolchain and `cargo build --locked` inside the image must produce a
+binary whose seeded generation matches the host build.
+
+Command:
+
+```bash
+$ cd ~/ai-experiments
+$ make harness-build
+$ make harness-run ARGS='--model /app/models/gguf/<e4b>.gguf --seed 7 "Reply with the single word: ready"'
+$ mkdir -p /tmp/rh12 && cd /tmp/rh12
+$ ~/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/gguf/<e4b>.gguf --seed 7 \
+    "Reply with the single word: ready"
+```
+
+Expected signal: the image builds from the pinned digests without
+resolving new dependency versions (`--locked` succeeds); the container
+run and the host run produce the same reply for the same seed and model;
+session state lands in `sessions/rust-harness/` on the host.
 
 Observed:
 

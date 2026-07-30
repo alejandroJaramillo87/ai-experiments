@@ -126,6 +126,17 @@ the golden test asserts. Because taps do not transfer across forks, a
 monitored agent's subagents run unmonitored; extending monitoring across
 forks is future work.
 
+The workload shape matters for what monitored positions mean. Agent tasks
+are prefill-heavy: most scored positions are the model reading
+externally authored text (task descriptions, tool output, file contents),
+where a flag means the model built the probed representation while
+ingesting input. Chat mode (`--chat`) is decode-heavy: scored positions
+are the model producing its own tokens, which is where intent-like
+attributes live. Probes are trained on last-token representations of
+complete texts, so their transfer to mid-generation decode positions is
+unmeasured; evaluating probe quality separately on prefill and decode
+positions is pending real-model captures (roadmap below).
+
 ## What stays in Python
 
 The analysis half is unchanged and remains fed by capture directories:
@@ -169,4 +180,5 @@ untapped serving path pays nothing.
 | Real-model capture and contrastive extraction on the workstation | pending | E4B architecture reconciliation, CPU backend speed measurement |
 | In-band probe monitor as a `Tap` implementation (sandbox) | done | — |
 | Monitor with a probe trained on real-model rust captures | pending | real-model capture on the workstation |
+| Probe quality evaluated separately on prefill and decode positions | pending | real-model capture on the workstation |
 | CUDA tap parity | pending | roadmap phase A |

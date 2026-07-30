@@ -90,7 +90,14 @@ GGUF weights (F32, F16, Q8_0 dequantization). The binary runs it with
 `--model <path.gguf>`; the `SessionGenerator` seam wires the agent loop
 through tokenizer and session. Numerics match an independent numpy
 reference over the committed synthetic checkpoint, and the harness runs a
-task end to end on the CPU backend in the sandbox. Architecture
+task end to end on the CPU backend in the sandbox. Beyond one-shot tasks,
+`--chat` runs an interactive REPL (no tools or permissions; the transcript
+persists to `session.jsonl`, so a restarted chat resumes), and
+`--temperature`, `--top-p`, `--seed`, and `--max-tokens` expose the
+sampling parameters. A reproducible containerized build lives in the
+parent repository (`docker/rust-harness/Dockerfile.rust-harness`, run via
+`make harness-build` / `harness-run` / `harness-chat` there): a pinned
+rust toolchain building with `--locked`. Architecture
 reconciliation against the real E4B GGUF (`gguf-info`), the rr acceptance
 run, and the Tier 3 fixtures are the remaining workstation work; the cuda
 backend (roadmap phase A) slots in at the same `Model` seam.
