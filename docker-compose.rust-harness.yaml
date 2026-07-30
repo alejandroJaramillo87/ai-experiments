@@ -1,0 +1,35 @@
+# docker-compose.rust-harness.yaml
+#
+# Reproducible containerized build/run of the rust-harness binary. Kept in a
+# separate compose file so `make up` never starts it; the harness is an
+# interactive tool, not a daemon. Invoke via the Makefile:
+#   make harness-build
+#   make harness-run ARGS='--model /app/models/gguf/<model>.gguf <task>'
+#   make harness-chat ARGS='--model /app/models/gguf/<model>.gguf'
+# or directly: docker compose -f docker-compose.rust-harness.yaml run --rm harness ...
+#
+# The container is for reproducibility, not sandboxing: it has no network
+# needs at runtime (the binary is fully local) and reads models from the
+# same read-only mount the inference services use. Session state
+# (session.jsonl, probe-flags.jsonl) lands in ./sessions/rust-harness.
+
+services:
+  harness:
+    build:
+      context: .
+      dockerfile: docker/rust-harness/Dockerfile.rust-harness
+    image: rust-harness:latest
+    container_name: rust-harness
+    restart: "no"
+    network_mode: none          # fully local: no runtime network access needed
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    working_dir: /work
+    volumes:
+      - /mnt/ai-data/models/:/app/models:ro
+      - ./sessions/rust-harness:/work
+    stdin_open: true            # chat mode reads stdin
+    tty: false                  # keep stdout clean for piped use; compose run adds a TTY when interactive

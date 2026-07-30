@@ -21,6 +21,7 @@
 .PHONY: fullprec-up fullprec-down
 .PHONY: organism organism-generate organism-verify organism-seal organism-check-seal
 .PHONY: harvest harvest-check-hooks interp-gc sae-train sae-eval
+.PHONY: harness-build harness-run harness-chat
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -439,6 +440,23 @@ np-status: ## Show Neuronpedia container and port state
 
 np-smoke: ## Run the PS1 smoke check (loopback bindings, webapp, postgres, sm_120)
 	@./scripts/interp/np_smoke.sh
+
+##@ Rust harness (separate compose file; interactive tool, never started by `make up`)
+
+HARNESS_COMPOSE := docker-compose.rust-harness.yaml
+
+harness-build: ## Build the rust-harness image (pinned toolchain, cargo --locked)
+	@echo "$(CYAN)Building rust-harness image...$(RESET)"
+	docker compose -f $(HARNESS_COMPOSE) build
+	@echo "$(GREEN)rust-harness image built.$(RESET)"
+
+harness-run: ## Run a one-shot harness task in the container (ARGS='--model /app/models/... <task>')
+	@mkdir -p sessions/rust-harness
+	docker compose -f $(HARNESS_COMPOSE) run --rm harness $(ARGS)
+
+harness-chat: ## Interactive chat REPL in the container (ARGS='--model /app/models/...')
+	@mkdir -p sessions/rust-harness
+	docker compose -f $(HARNESS_COMPOSE) run --rm harness $(ARGS) --chat
 
 ##@ Monitoring & Debugging
 
