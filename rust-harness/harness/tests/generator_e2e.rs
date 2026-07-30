@@ -83,6 +83,7 @@ fn agent_loop_runs_through_tokenizer_and_session() {
         dir.path().to_path_buf(),
         Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
         Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+        None,
     );
     let answer = agent.run_task(&mut generator, task, 4, |_| false).unwrap();
     assert_eq!(answer, "ok");

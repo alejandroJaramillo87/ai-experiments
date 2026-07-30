@@ -14,7 +14,7 @@ use anyhow::{bail, Result};
 use crate::permissions::{Decision, Permissions};
 use crate::template::{render_entry, MODEL_TURN_OPEN};
 use crate::tools::ToolCall;
-use crate::transcript::{Role, Transcript};
+use crate::transcript::{Entry, Role, Transcript};
 
 pub trait Generator {
     fn complete(&mut self, prompt: &str) -> Result<String>;
@@ -32,12 +32,29 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub fn new(root: PathBuf, permissions: Permissions, transcript: Transcript) -> Self {
+    /// `memory` is the HARNESS.md content: a synthetic leading turn rendered
+    /// before every persisted entry and never written to the transcript, so
+    /// it stays stable within a process and the KV prefix stays maximal.
+    pub fn new(
+        root: PathBuf,
+        permissions: Permissions,
+        transcript: Transcript,
+        memory: Option<&str>,
+    ) -> Self {
+        // Seeding `rendered` with rendered_upto = 0 places the memory turn
+        // ahead of the persisted entries without persisting it.
+        let rendered = match memory {
+            Some(content) => render_entry(&Entry {
+                role: Role::System,
+                content: content.to_string(),
+            }),
+            None => String::new(),
+        };
         Self {
             root,
             permissions,
             transcript,
-            rendered: String::new(),
+            rendered,
             rendered_upto: 0,
         }
     }

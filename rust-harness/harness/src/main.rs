@@ -153,6 +153,11 @@ fn run(
     chat: bool,
 ) -> Result<String> {
     let transcript = Transcript::open(&root.join("session.jsonl")).context("session.jsonl")?;
+    // HARNESS.md: persistent memory read once at startup and injected as a
+    // synthetic leading turn. A missing file is fine; mid-session edits take
+    // effect on the next start (the prompt prefix must stay stable so KV
+    // delta prefill keeps working).
+    let memory = std::fs::read_to_string(root.join("HARNESS.md")).ok();
     let (mut generator, monitor) = build_generator(
         model,
         record,
@@ -171,6 +176,7 @@ fn run(
         let turns = harness::chat::run_chat(
             &mut generator,
             &mut transcript,
+            memory.as_deref(),
             stdin.lock(),
             std::io::stdout(),
         )?;
@@ -183,7 +189,12 @@ fn run(
             // No config: every call goes through the interactive Ask path.
             Err(_) => Permissions::from_yaml("rules: []").expect("empty rule set"),
         };
-        let mut agent = Agent::new(root.to_path_buf(), permissions, transcript);
+        let mut agent = Agent::new(
+            root.to_path_buf(),
+            permissions,
+            transcript,
+            memory.as_deref(),
+        );
         agent.run_task(&mut generator, task, 64, ask_stdin)?
     };
     if let Some(monitor) = &monitor {
