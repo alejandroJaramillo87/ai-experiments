@@ -52,6 +52,7 @@ fn agent_loop_runs_through_tokenizer_and_session() {
         render_entry(&Entry {
             role: Role::User,
             content: task.into(),
+            replaces: None,
         }),
         MODEL_TURN_OPEN
     );
@@ -89,4 +90,38 @@ fn agent_loop_runs_through_tokenizer_and_session() {
     assert_eq!(answer, "ok");
     // The KV cache holds the full prompt plus the two generated tokens.
     assert_eq!(generator.session().cached_len(), prompt_len + 2);
+}
+
+#[test]
+fn compaction_style_splice_reprefills_only_from_the_splice_point() {
+    // A compaction rewrites the middle of the prompt while keeping the head.
+    // The session must truncate the KV cache to the kept head and prefill
+    // only the summary and tail — never the whole prompt again.
+    let tokenizer = byte_tokenizer();
+    let vocab_len = tokenizer.vocab_len();
+    let mock = MockModel::new(vocab_len, vec![]);
+    let recorder = mock.recorder();
+    let mut session = Session::new(Box::new(mock), 4096).unwrap();
+
+    let enc = |s: &str| tokenizer.encode(s).unwrap();
+    let head = enc("<start_of_turn>user\nthe task<end_of_turn>\n");
+    let middle = enc("<start_of_turn>model\nlong exchange<end_of_turn>\n");
+    let tail = enc("<start_of_turn>user\nlatest<end_of_turn>\n");
+    let summary =
+        enc("<start_of_turn>user\nSummary of earlier conversation:\nshort<end_of_turn>\n");
+
+    let before: Vec<Token> = [head.clone(), middle, tail.clone()].concat();
+    session.sync(&before).unwrap();
+    let prefilled_before = recorder.total_prefilled();
+
+    let after: Vec<Token> = [head.clone(), summary.clone(), tail.clone()].concat();
+    session.sync(&after).unwrap();
+    // At most the spliced region was prefilled — the head stayed cached.
+    // (The delta can be smaller still: token-level prefix matching extends
+    // into the spliced region wherever the summary happens to share leading
+    // tokens with what it replaced, e.g. the turn delimiter.)
+    let delta = recorder.total_prefilled() - prefilled_before;
+    assert!(delta <= summary.len() + tail.len(), "head was re-prefilled");
+    assert!(delta >= tail.len());
+    assert_eq!(session.cached_len(), after.len());
 }

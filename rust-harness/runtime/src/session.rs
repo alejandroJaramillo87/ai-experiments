@@ -55,6 +55,10 @@ impl Session {
         self.tokens.len()
     }
 
+    pub fn max_context(&self) -> usize {
+        self.max_context
+    }
+
     /// Sync the cache to `transcript`: truncate to the common prefix, prefill
     /// the rest. Returns the number of tokens actually prefilled — the delta.
     pub fn sync(&mut self, transcript: &[Token]) -> Result<usize> {

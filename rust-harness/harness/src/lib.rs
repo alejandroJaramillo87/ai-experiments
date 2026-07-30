@@ -5,6 +5,7 @@
 
 pub mod agent;
 pub mod chat;
+pub mod compact;
 pub mod generator;
 pub mod obs;
 pub mod permissions;
