@@ -197,8 +197,7 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
 
     // One f16 row per example per layer, captured at the last prompt token
     // (position semantics match the Python capture's `position: "last"`).
-    let mut collected: HashMap<usize, Vec<u16>> =
-        layers.iter().map(|&l| (l, Vec::new())).collect();
+    let mut collected: HashMap<usize, Vec<u16>> = layers.iter().map(|&l| (l, Vec::new())).collect();
     for (i, example) in examples.iter().enumerate() {
         model.truncate(0).context("reset KV cache")?;
         tap.rows.lock().unwrap().clear();
@@ -222,7 +221,12 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
                 .expect("initialized above")
                 .extend(row.iter().map(|&v| f32_to_f16(v)));
         }
-        eprintln!("[RUN] Example {}/{}: {} tokens", i + 1, examples.len(), tokens.len());
+        eprintln!(
+            "[RUN] Example {}/{}: {} tokens",
+            i + 1,
+            examples.len(),
+            tokens.len()
+        );
     }
 
     std::fs::create_dir_all(out_dir)?;
@@ -246,7 +250,10 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
         let mut w = NpzWriter::new();
         for &l in layers {
             let rows = &collected[&l][start * config.embed_dim..end * config.embed_dim];
-            w.add(&format!("layer_{l}"), npy_f16(end - start, config.embed_dim, rows));
+            w.add(
+                &format!("layer_{l}"),
+                npy_f16(end - start, config.embed_dim, rows),
+            );
         }
         let labels: Vec<i64> = examples[start..end].iter().map(|e| e.label).collect();
         w.add("labels", npy_i64(&labels));
@@ -260,9 +267,7 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
     // rust-captured artifacts internally consistent across capture, train,
     // and score.
     let model_name = model_path.display().to_string();
-    let fingerprint = sha256_hex(
-        format!("{model_name}|{}|", tokenizer.vocab_len()).as_bytes(),
-    );
+    let fingerprint = sha256_hex(format!("{model_name}|{}|", tokenizer.vocab_len()).as_bytes());
     let dataset_bytes = std::fs::read(dataset_path)?;
     let mut sorted_layers = layers.to_vec();
     sorted_layers.sort_unstable();

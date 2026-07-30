@@ -640,8 +640,10 @@ mod tests {
 
     /// Shared collector so tests can inspect calls after the model owns the
     /// tap (Tap: Send rules out Rc).
+    type TapCalls = std::sync::Arc<std::sync::Mutex<Vec<(usize, usize, Vec<f32>)>>>;
+
     #[derive(Clone, Default)]
-    struct CollectingTap(std::sync::Arc<std::sync::Mutex<Vec<(usize, usize, Vec<f32>)>>>);
+    struct CollectingTap(TapCalls);
 
     impl Tap for CollectingTap {
         fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]) {
@@ -660,7 +662,9 @@ mod tests {
         let order: Vec<(usize, usize)> = calls.iter().map(|(l, p, _)| (*l, *p)).collect();
         assert_eq!(order, [(0, 0), (1, 0), (0, 1), (1, 1), (0, 2), (1, 2)]);
         assert!(calls.iter().all(|(_, _, x)| x.len() == 16));
-        assert!(calls.iter().all(|(_, _, x)| x.iter().all(|v| v.is_finite())));
+        assert!(calls
+            .iter()
+            .all(|(_, _, x)| x.iter().all(|v| v.is_finite())));
     }
 
     #[test]
@@ -707,7 +711,9 @@ mod tests {
     fn nonzero_control_vector_changes_logits_deterministically() {
         let dir: Vec<f32> = (0..16).map(|i| 0.05 * (i as f32 - 8.0)).collect();
         let mut steered = tiny();
-        steered.set_control_vector(control(&[(1, dir.clone())], 1.0)).unwrap();
+        steered
+            .set_control_vector(control(&[(1, dir.clone())], 1.0))
+            .unwrap();
         let mut plain = tiny();
         let ls = steered.prefill(&[1, 4, 7]).unwrap();
         let lp = plain.prefill(&[1, 4, 7]).unwrap();
@@ -722,7 +728,9 @@ mod tests {
     fn steering_carries_across_fork() {
         let dir: Vec<f32> = (0..16).map(|i| 0.03 * i as f32).collect();
         let mut parent = tiny();
-        parent.set_control_vector(control(&[(2, dir.clone())], 1.0)).unwrap();
+        parent
+            .set_control_vector(control(&[(2, dir.clone())], 1.0))
+            .unwrap();
         parent.prefill(&[1, 5]).unwrap();
         let mut child = parent.fork().unwrap();
         let forked = child.prefill(&[7]).unwrap();

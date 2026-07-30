@@ -55,8 +55,8 @@ fn build_generator(
     let file = runtime::gguf::parse(&data).context("parse GGUF")?;
     let mut cpu = CpuModel::from_gguf(&file, &data).context("load CPU model")?;
     if let Some(path) = control_vector {
-        let cv_data =
-            std::fs::read(path).with_context(|| format!("read control vector {}", path.display()))?;
+        let cv_data = std::fs::read(path)
+            .with_context(|| format!("read control vector {}", path.display()))?;
         let cv_file = runtime::gguf::parse(&cv_data).context("parse control-vector GGUF")?;
         let cv = ControlVector::from_gguf(&cv_file, &cv_data, control_scale)
             .context("load control vector")?;
