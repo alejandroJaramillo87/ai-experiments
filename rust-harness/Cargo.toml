@@ -15,6 +15,9 @@ license = "Apache-2.0"
 
 [workspace.dependencies]
 anyhow = "1.0"
+# flock only: the obs run-log holds a shared lock so the Python retention
+# pruner treats the live event file as in use (common/obs/retention.py)
+libc = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"

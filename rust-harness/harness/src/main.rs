@@ -200,6 +200,9 @@ fn main() -> ExitCode {
          [--probe-out <path>] [--temperature <f>] [--top-p <f>] \
          [--seed <n>] [--max-tokens <n>] (--chat | <task description>)";
     let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // Snapshot before flag extraction mutates args: cmd.start records the
+    // invocation as given, program name excluded (the shape common/obs logs).
+    let argv_full = args.clone();
     // --model <path.gguf>: checkpoint for the CPU backend.
     // --record <path>: wrap the model in the flight recorder, appending every
     // forward call to a JSONL file replayable as a MockModel script.
@@ -334,6 +337,10 @@ fn main() -> ExitCode {
             return ExitCode::from(1);
         }
     };
+    // Run-level obs records in the shared common/obs contract. Usage errors
+    // above return before a run id exists, matching the Python dispatch;
+    // without a writable OBS_LOG_DIR the log degrades to a silent no-op.
+    let mut run_log = harness::obs::RunLog::begin(if chat { "chat" } else { "task" }, &argv_full);
     match run(
         &root,
         &task,
@@ -351,10 +358,13 @@ fn main() -> ExitCode {
             if !answer.is_empty() {
                 println!("{answer}");
             }
+            run_log.end(0, &root);
             ExitCode::SUCCESS
         }
         Err(e) => {
             eprintln!("[ERROR] Task failed: {e:#}");
+            run_log.fail(&e, 1);
+            run_log.end(1, &root);
             ExitCode::from(1)
         }
     }

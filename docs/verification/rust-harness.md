@@ -3,8 +3,8 @@
 Workstation verification for the `rust-harness/` workspace: the CPU
 inference backend on the real Gemma 4 E4B GGUF, the observability stack
 (flight recorder, tracing, rr), the in-band interpretability chain
-(capture, probe monitor, steering), the chat mode, and the containerized
-build. Every rust-harness claim to date is
+(capture, probe monitor, steering), the chat mode, the containerized
+build, and the run-level observability records. Every rust-harness claim to date is
 golden-tested in the sandbox against a synthetic 16-dimension fixture; this
 campaign is the first contact with real hardware and real weights.
 
@@ -529,6 +529,47 @@ Expected signal: the image builds from the pinned digests without
 resolving new dependency versions (`--locked` succeeds); the container
 run and the host run produce the same reply for the same seed and model;
 session state lands in `sessions/rust-harness/` on the host.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## RH.13 Run-level observability records
+
+The harness writes run-level records in the shared obs contract
+(`common/obs`): an event file `${OBS_LOG_DIR}/harness/<run_id>.jsonl`
+holding `cmd.start` and `cmd.end` (plus `fail` on error), and one catalog
+line appended to `${OBS_LOG_DIR}/harness/runs.jsonl` per invocation.
+The Python readers are stateless JSONL consumers, so they must read
+harness-written files unchanged. Cross-language compatibility is verified
+in the sandbox against a scratch `OBS_LOG_DIR`; this entry confirms the
+default log root on the workstation.
+
+Command (a normal run, then a forced failure, then inspection):
+
+```bash
+$ mkdir -p /tmp/rh13 && cd /tmp/rh13
+$ ~/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/gguf/<e4b>.gguf \
+    "Reply with the single word: ready"
+$ ~/ai-experiments/rust-harness/target/release/harness \
+    --model /nonexistent.gguf "task" ; echo "exit: $?"
+$ tail -2 /mnt/ai-data/logs/harness/runs.jsonl
+$ cd ~/ai-experiments && uv run python -c "
+from common.obs import catalog
+rows = catalog.read_runs(catalog.catalog_path('harness'))
+for r in rows[-2:]:
+    print(r['run_id'], r['command'], r['exit_code'])
+"
+```
+
+Expected signal: the successful run catalogs with `exit_code` 0 and the
+failed run with `exit_code` 1 plus a `fail` event in its event file; run
+ids match `R-YYYYMMDD-HHMMSS-xxxxxx`; the Python catalog reader returns
+both rows without errors.
 
 Observed:
 

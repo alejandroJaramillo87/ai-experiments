@@ -97,7 +97,11 @@ persists to `session.jsonl`, so a restarted chat resumes), and
 sampling parameters. A reproducible containerized build lives in the
 parent repository (`docker/rust-harness/Dockerfile.rust-harness`, run via
 `make harness-build` / `harness-run` / `harness-chat` there): a pinned
-rust toolchain building with `--locked`. Architecture
+rust toolchain building with `--locked`. Each invocation also writes
+run-level observability records (`harness/src/obs.rs`) in the parent
+repository's shared obs contract — run id, `cmd.start`/`fail`/`cmd.end`
+events, and a catalog line under `${OBS_LOG_DIR}/harness/` — readable by
+the existing Python tooling unchanged. Architecture
 reconciliation against the real E4B GGUF (`gguf-info`), the rr acceptance
 run, and the Tier 3 fixtures are the remaining workstation work; the cuda
 backend (roadmap phase A) slots in at the same `Model` seam.

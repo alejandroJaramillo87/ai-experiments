@@ -13,6 +13,7 @@ document defines three implementation phases that precede the CUDA backend
 - [Phase 2: tracing](#phase-2-tracing)
 - [Phase 3: rr-friendliness via a simple CPU backend](#phase-3-rr-friendliness-via-a-simple-cpu-backend)
 - [Interpretability substrate](#interpretability-substrate)
+- [Run-level records (obs contract)](#run-level-records-obs-contract)
 - [Parked: CPU-served subagents](#parked-cpu-served-subagents)
 - [Relation to the existing roadmap](#relation-to-the-existing-roadmap)
 
@@ -221,6 +222,37 @@ writing the interp capture shard format. The design, its compatibility
 contract with the Python interp stack, and the constraint it places on
 future backends are recorded in
 [rust-harness-interp.md](../interpretability/rust-harness-interp.md).
+
+## Run-level records (obs contract)
+
+The three phases above cover the token loop; run-level observability —
+which invocations happened, how long they took, which failed — converges
+on the Python obs stack by contract rather than by code.
+`harness/src/obs.rs` writes the same JSONL shapes `common/obs` defines
+(see `docs/observability/roadmap.md`):
+
+- A run id in the shared `R-YYYYMMDD-HHMMSS-xxxxxx` format (UTC stamp,
+  six hex characters).
+- An event file `${OBS_LOG_DIR}/harness/<run_id>.jsonl` with the base
+  keys `ts, level, run_id, cli, command, pid, event, msg`, holding
+  `cmd.start` (with `argv`), `fail` on error (`exc_type`, `exc_msg`
+  capped at 4096 characters, `exit_code`), and `cmd.end` (`exit_code`,
+  `duration_s`). Timestamps carry an explicit `+00:00` offset; `command`
+  is `task` or `chat`.
+- One catalog line appended to `${OBS_LOG_DIR}/harness/runs.jsonl` at run
+  end, written as a single append so concurrent writers interleave whole
+  lines.
+- A shared flock held on the event file for the run's duration, so the
+  Python retention pruner treats it as live.
+
+Because the Python `runs`, retention, and viewer tooling are stateless
+JSONL readers, they consume harness runs unchanged; the files are the
+integration seam. Degradation matches the Python contract: without a
+writable `${OBS_LOG_DIR}` (the agent sandbox), the writer is a silent
+no-op, and usage errors exit before a run id exists. Cross-process
+propagation is specified from the receiving side: when a parent process
+sets `OBS_RUN_ID`, the harness records it as `parent_run_id` on
+`cmd.start` while minting its own run id.
 
 ## Parked: CPU-served subagents
 

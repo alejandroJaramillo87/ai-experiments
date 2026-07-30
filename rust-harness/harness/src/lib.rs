@@ -6,6 +6,7 @@
 pub mod agent;
 pub mod chat;
 pub mod generator;
+pub mod obs;
 pub mod permissions;
 pub mod stream;
 pub mod subagents;
