@@ -2,9 +2,11 @@
 
 Reads fixtures/tiny-gemma4.gguf (written by the tiny-model bin), runs the
 same Gemma-4-style forward pass in numpy float32, and writes the per-position
-logits for a fixed prompt to tiny-gemma4-logits.json. The Rust golden test
-(runtime/tests/cpu_reference.rs) asserts the CPU backend matches within f32
-tolerance. Regenerate with:
+logits for a fixed prompt to tiny-gemma4-logits.json, together with the
+last-position per-layer residuals (the Tap seam observable) and the
+last-position logits under a fixed synthetic control vector (the steering
+observable). The Rust golden tests (runtime/tests/cpu_reference.rs) assert
+the CPU backend matches within f32 tolerance. Regenerate with:
 
     cargo run -p runtime --bin tiny-model -- fixtures/tiny-gemma4.gguf
     python3 fixtures/reference_logits.py
@@ -20,6 +22,16 @@ import numpy as np
 
 FIXTURE_DIR = Path(__file__).parent
 PROMPT = [1, 5, 9, 13, 3, 8, 21, 2]
+
+# Synthetic steering fixture, mirrored by the Rust golden test: direction
+# dir[j] = 0.05 * (j - 8) added to the residual after 0-based layer 1 at
+# scale 0.5.
+STEER_LAYER = 1
+STEER_SCALE = 0.5
+
+
+def steer_direction(d):
+    return np.array([0.05 * (j - 8.0) for j in range(d)], dtype=np.float32)
 
 
 def parse_gguf(data):
@@ -107,7 +119,7 @@ def rope(head, position, freq_base):
     return out
 
 
-def forward(metadata, tensors, prompt):
+def forward(metadata, tensors, prompt, steered=False):
     arch = metadata["general.architecture"]
     m = lambda key: metadata[f"{arch}.{key}"]
     d = m("embedding_length")
@@ -124,7 +136,9 @@ def forward(metadata, tensors, prompt):
     embed = tensors["token_embd.weight"]  # [vocab, d]
     caches = [{"k": [], "v": []} for _ in range(n_layers)]
     all_logits = []
+    residuals = []
     for position, token in enumerate(prompt):
+        residuals = []
         x = (embed[token] * np.float32(math.sqrt(d))).astype(np.float32)
         for i in range(n_layers):
             t = lambda suffix: tensors[f"blk.{i}.{suffix}"]
@@ -160,9 +174,14 @@ def forward(metadata, tensors, prompt):
             up = (t("ffn_up.weight") @ h).astype(np.float32)
             down = (t("ffn_down.weight") @ (gelu(gate) * up)).astype(np.float32)
             x = x + rms_norm(down, t("post_ffw_norm.weight"), eps)
+            if steered and i == STEER_LAYER:
+                x = (x + np.float32(STEER_SCALE) * steer_direction(d)).astype(np.float32)
+            residuals.append(x.astype(np.float32).tolist())
         x = rms_norm(x, tensors["output_norm.weight"], eps)
         all_logits.append((embed @ x).astype(np.float32).tolist())
-    return all_logits
+    # residuals holds the last position's per-layer rows (rewritten each
+    # position), matching the capture format's position == "last".
+    return all_logits, residuals
 
 
 def main():
@@ -175,10 +194,21 @@ def main():
         )
         return 1
     metadata, tensors = parse_gguf(gguf_path.read_bytes())
-    logits = forward(metadata, tensors, PROMPT)
-    out = {"prompt": PROMPT, "logits": logits}
+    logits, residuals = forward(metadata, tensors, PROMPT)
+    steered_logits, _ = forward(metadata, tensors, PROMPT, steered=True)
+    out = {
+        "prompt": PROMPT,
+        "logits": logits,
+        "last_residuals": residuals,
+        "steer_layer": STEER_LAYER,
+        "steer_scale": STEER_SCALE,
+        "steered_last_logits": steered_logits[-1],
+    }
     (FIXTURE_DIR / "tiny-gemma4-logits.json").write_text(json.dumps(out))
-    print(f"[OK] Wrote logits for {len(PROMPT)} positions", file=sys.stderr)
+    print(
+        f"[OK] Wrote logits, residuals, and steered logits for {len(PROMPT)} positions",
+        file=sys.stderr,
+    )
     return 0
 
 
