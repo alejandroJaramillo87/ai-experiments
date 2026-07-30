@@ -1,0 +1,45 @@
+# Reproducible build of the rust-harness binary (single-binary coding agent
+# with the integrated CPU inference runtime). The container exists for build
+# reproducibility, not sandboxing: the same pinned toolchain and locked
+# dependency graph produce the same binary on any machine. Verified by
+# runbook entry RH.12 (docs/verification/rust-harness.md).
+
+# Builder image: pinned rust toolchain. Re-resolve with:
+#   docker buildx imagetools inspect rust:1.94-slim-trixie
+# then set BUILDER_IMAGE=rust:1.94-slim-trixie@sha256:<digest>
+ARG BUILDER_IMAGE=rust:1.94-slim-trixie@sha256:cf09adf8c3ebaba10779e5c23ff7fe4df4cccdab8a91f199b0c142c53fef3e1a
+
+# Runtime image: same pinned debian:trixie-slim digest as llama-cpu so glibc
+# stays in sync across services. Re-resolve with:
+#   docker buildx imagetools inspect debian:trixie-slim
+ARG BASE_IMAGE=debian:trixie-slim@sha256:28de0877c2189802884ccd20f15ee41c203573bd87bb6b883f5f46362d24c5c2
+
+# --- Stage 1: The Builder ---
+FROM ${BUILDER_IMAGE} AS builder
+
+LABEL stage="builder"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Build context is the repo root; the workspace is self-contained under
+# rust-harness/. --locked refuses to build if Cargo.lock is stale, which is
+# the reproducibility anchor.
+COPY rust-harness/ /build/rust-harness/
+RUN cd /build/rust-harness && cargo build --release -p harness --locked
+
+# --- Stage 2: The Final Runtime Image ---
+FROM ${BASE_IMAGE}
+
+LABEL description="rust-harness coding agent with integrated CPU inference runtime"
+
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser
+
+USER appuser
+WORKDIR /work
+
+COPY --from=builder --chown=appuser:appuser /build/rust-harness/target/release/harness /app/harness
+
+# /work is the session root (session.jsonl, probe-flags.jsonl); the compose
+# file binds a writable host directory here and /app/models read-only.
+ENTRYPOINT ["/app/harness"]

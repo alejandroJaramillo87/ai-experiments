@@ -19,6 +19,7 @@ This directory contains comprehensive documentation for understanding and optimi
 
 ### Forward Looking
 - **[future-optimizations.md](future-optimizations.md)** - Parked survey of custom kernel and runtime work, with the conditions gating it
+- **[rust-harness-runtime-design.md](rust-harness-runtime-design.md)** - Design for a single-binary Rust coding harness with an integrated Gemma 4 inference runtime
 
 ## Current Implementation Status
 

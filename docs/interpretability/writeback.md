@@ -8,6 +8,11 @@ are never modified; every intervention acts on activations only. Code lives in `
 `scripts/interp/` holds only shell helpers (the isolated Neuronpedia and SAEBench
 environments); tests in `tests/interp/`.
 
+A parallel substrate exists for the rust harness runtime: in-band taps,
+steering, and capture in owned code instead of the llama.cpp workarounds,
+producing the same capture shard and control-vector artifacts. See
+[rust-harness-interp.md](rust-harness-interp.md).
+
 ## Table of contents
 
 - [Layout](#layout)
