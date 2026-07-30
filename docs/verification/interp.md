@@ -129,6 +129,14 @@ Status: PENDING
 
 ## I.6 Request-log proxy (W3)
 
+Note: the rust harness provides an in-band successor to the W3/W4 serving-side
+machinery (I.6, I.6b, I.7). Its runtime scores probes inside the forward pass
+(`docs/interpretability/rust-harness-interp.md`, "In-band monitoring"), which
+removes the proxy, the full-precision endpoint, and the log-replay monitor on
+that path by construction. These entries remain valid and required for the
+llama.cpp GPU serving stack, which the rust CPU runtime does not replace; the
+two verification campaigns are independent.
+
 Command:
 
 ```bash
@@ -190,6 +198,11 @@ Observed:
 Status: PENDING
 
 ## I.7 Probe monitor (W4)
+
+Note: the rust harness in-band probe monitor (`--probe`) supersedes this
+replay design on the rust path — per-position scoring in the serving process,
+no replay-model disclaimer (see the I.6 note). This entry still verifies the
+monitor for llama.cpp-served traffic.
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
