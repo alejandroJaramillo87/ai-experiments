@@ -12,6 +12,7 @@ pub mod gguf;
 pub mod grammar;
 pub mod kv;
 pub mod model;
+pub mod npz;
 pub mod sampler;
 pub mod session;
 pub mod synth;

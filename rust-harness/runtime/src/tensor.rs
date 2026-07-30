@@ -63,6 +63,43 @@ pub fn f16_to_f32(bits: u16) -> f32 {
     f32::from_bits(word)
 }
 
+/// f32 to IEEE 754 half precision with round-to-nearest-even, covering
+/// subnormals, overflow to infinity, and NaN. Matches numpy's
+/// `astype(np.float16)`, which the interp capture format requires.
+pub fn f32_to_f16(v: f32) -> u16 {
+    let bits = v.to_bits();
+    let sign = ((bits >> 16) & 0x8000) as u16;
+    let exponent = ((bits >> 23) & 0xff) as i32;
+    let mantissa = bits & 0x7f_ffff;
+    if exponent == 0xff {
+        // Infinity or NaN; keep NaN quiet with a non-zero mantissa.
+        let payload = if mantissa == 0 { 0 } else { 0x200 };
+        return sign | 0x7c00 | payload;
+    }
+    let e = exponent - 127 + 15;
+    if e >= 0x1f {
+        return sign | 0x7c00; // overflow to infinity
+    }
+    // Round a mantissa down to 10 bits, carrying into the exponent field
+    // naturally on overflow (all-ones mantissa rounds up).
+    let round = |value: u32, shift: u32| -> u16 {
+        let kept = value >> shift;
+        let rem = value & ((1 << shift) - 1);
+        let half = 1 << (shift - 1);
+        let up = u32::from(rem > half || (rem == half && kept & 1 == 1));
+        (kept + up) as u16
+    };
+    if e <= 0 {
+        // Result is subnormal (or rounds to zero below the smallest one).
+        if e < -10 {
+            return sign;
+        }
+        let full = mantissa | 0x80_0000; // make the implicit bit explicit
+        return sign | round(full, (13 + 1 - e) as u32);
+    }
+    sign | round(((e as u32) << 23) | mantissa, 13)
+}
+
 /// Dequantize `bytes` holding `n` elements of `ggml_type` into f32.
 pub fn dequantize(ggml_type: u32, bytes: &[u8], n: usize) -> Result<Vec<f32>> {
     let expected = byte_size(ggml_type, n)?;
@@ -120,17 +157,29 @@ pub fn load_tensor(file: &GgufFile, data: &[u8], info: &TensorInfo) -> Result<Ve
 mod tests {
     use super::*;
 
-    fn f32_to_f16(v: f32) -> u16 {
-        // Test-only encoder for round-trip fixtures: normal range only.
-        let bits = v.to_bits();
-        let sign = ((bits >> 31) as u16) << 15;
-        if v == 0.0 {
-            return sign;
+    #[test]
+    fn f32_to_f16_covers_rounding_subnormals_and_specials() {
+        // Exact round trips.
+        for v in [0.0f32, -0.0, 1.0, -0.5, 65504.0, 2.0f32.powi(-24)] {
+            assert_eq!(f16_to_f32(f32_to_f16(v)), v, "{v}");
         }
-        let exponent = ((bits >> 23) & 0xff) as i32 - 127 + 15;
-        assert!((1..0x1f).contains(&exponent), "test value out of f16 range");
-        let mantissa = ((bits >> 13) & 0x3ff) as u16;
-        sign | ((exponent as u16) << 10) | mantissa
+        // Round to nearest, ties to even: 1 + 2^-11 sits exactly between
+        // 1.0 and the next f16 (1 + 2^-10); the even mantissa wins.
+        assert_eq!(f32_to_f16(1.0 + 2.0f32.powi(-11)), f32_to_f16(1.0));
+        // 1 + 1.5 * 2^-10 ties between mantissa 1 and 2; even (2) wins.
+        assert_eq!(
+            f32_to_f16(1.0 + 3.0 * 2.0f32.powi(-11)),
+            f32_to_f16(1.0 + 2.0f32.powi(-9))
+        );
+        // Overflow and specials.
+        assert_eq!(f32_to_f16(1e6), 0x7c00);
+        assert_eq!(f32_to_f16(-1e6), 0xfc00);
+        assert_eq!(f32_to_f16(f32::INFINITY), 0x7c00);
+        assert!(f16_to_f32(f32_to_f16(f32::NAN)).is_nan());
+        // Below half the smallest subnormal rounds to zero.
+        assert_eq!(f32_to_f16(2.0f32.powi(-26)), 0x0000);
+        // Largest subnormal survives the round trip.
+        assert_eq!(f32_to_f16((1023.0 / 1024.0) * 2.0f32.powi(-14)), 0x03ff);
     }
 
     #[test]
