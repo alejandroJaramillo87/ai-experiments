@@ -151,6 +151,64 @@ pub trait Tap: Send {
     fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]);
 }
 
+/// Additive steering directions in the llama.cpp control-vector GGUF
+/// layout: one f32 tensor per layer named `direction.<layer>` (1-based).
+/// `scale * direction` is added to the residual after that layer, before
+/// the tap fires, so captures observe the steered stream that downstream
+/// layers actually consume.
+pub struct ControlVector {
+    scale: f32,
+    /// Indexed by 0-based layer; None for layers without a direction.
+    directions: Vec<Option<Vec<f32>>>,
+}
+
+impl ControlVector {
+    pub fn from_gguf(file: &GgufFile, data: &[u8], scale: f32) -> Result<ControlVector> {
+        let mut directions: Vec<Option<Vec<f32>>> = Vec::new();
+        for info in &file.tensors {
+            let Some(suffix) = info.name.strip_prefix("direction.") else {
+                continue;
+            };
+            let layer: usize = suffix
+                .parse()
+                .with_context(|| format!("tensor name {}: non-numeric layer", info.name))?;
+            ensure!(layer >= 1, "tensor {}: layers are 1-based", info.name);
+            let v = load_tensor(file, data, info)?;
+            if layer > directions.len() {
+                directions.resize(layer, None);
+            }
+            directions[layer - 1] = Some(v);
+        }
+        ensure!(
+            directions.iter().any(Option::is_some),
+            "control vector holds no direction.<layer> tensors"
+        );
+        let widths: std::collections::BTreeSet<usize> = directions
+            .iter()
+            .flatten()
+            .map(std::vec::Vec::len)
+            .collect();
+        ensure!(
+            widths.len() == 1,
+            "direction tensors disagree on width: {widths:?}"
+        );
+        Ok(ControlVector { scale, directions })
+    }
+
+    fn direction(&self, layer: usize) -> Option<&[f32]> {
+        self.directions.get(layer)?.as_deref()
+    }
+
+    fn width(&self) -> usize {
+        self.directions
+            .iter()
+            .flatten()
+            .map(std::vec::Vec::len)
+            .next()
+            .expect("validated non-empty")
+    }
+}
+
 pub struct CpuModel {
     config: Config,
     weights: Arc<Weights>,
@@ -159,6 +217,9 @@ pub struct CpuModel {
     /// None on construction and after fork (a `Box<dyn Tap>` cannot be
     /// cloned); absent taps cost one branch per layer.
     tap: Option<Box<dyn Tap>>,
+    /// Steering carries across forks: a steered agent's subagents serve
+    /// the same steered model.
+    control: Option<Arc<ControlVector>>,
 }
 
 /// `y = W x` with GGUF layout `[in, out]`: rows of `in` contiguous per
@@ -260,6 +321,7 @@ impl CpuModel {
             }),
             cached_len: 0,
             tap: None,
+            control: None,
         })
     }
 
@@ -274,6 +336,24 @@ impl CpuModel {
 
     pub fn take_tap(&mut self) -> Option<Box<dyn Tap>> {
         self.tap.take()
+    }
+
+    /// Install steering directions, validated against this model's shape.
+    pub fn set_control_vector(&mut self, cv: ControlVector) -> Result<()> {
+        ensure!(
+            cv.width() == self.config.embed_dim,
+            "control vector width {} does not match embedding dimension {}",
+            cv.width(),
+            self.config.embed_dim
+        );
+        ensure!(
+            cv.directions.len() <= self.config.n_layers,
+            "control vector names layer {} but the model has {} layers",
+            cv.directions.len(),
+            self.config.n_layers
+        );
+        self.control = Some(Arc::new(cv));
+        Ok(())
     }
 
     /// One decode position: append the token's K/V to every layer cache and
@@ -357,6 +437,14 @@ impl CpuModel {
                 *a += b;
             }
 
+            // Steering before the tap, so captures see the steered stream.
+            if let Some(dir) = self.control.as_ref().and_then(|cv| cv.direction(i)) {
+                let scale = self.control.as_ref().expect("checked above").scale;
+                for (a, b) in x.iter_mut().zip(dir) {
+                    *a += scale * b;
+                }
+            }
+
             // Interp tap seam: the layer's complete residual output.
             if let Some(tap) = self.tap.as_mut() {
                 tap.on_residual(i, position, &x);
@@ -430,6 +518,7 @@ impl Model for CpuModel {
             kv: self.kv.clone(),
             cached_len: self.cached_len,
             tap: None,
+            control: self.control.clone(),
         }))
     }
 }
@@ -583,6 +672,86 @@ mod tests {
             tapped.prefill_all(&[1, 4, 7, 2]).unwrap(),
             plain.prefill_all(&[1, 4, 7, 2]).unwrap()
         );
+    }
+
+    /// Control-vector GGUF image with `direction.<layer>` (1-based) tensors.
+    fn control_image(directions: &[(usize, Vec<f32>)]) -> Vec<u8> {
+        let mut w = crate::synth::GgufWriter::new();
+        w.kv_str("general.architecture", "controlvector");
+        for (layer, v) in directions {
+            w.tensor_f32(&format!("direction.{layer}"), &[v.len() as u64], v);
+        }
+        w.finish()
+    }
+
+    fn control(directions: &[(usize, Vec<f32>)], scale: f32) -> ControlVector {
+        let image = control_image(directions);
+        let file = crate::gguf::parse(&image).unwrap();
+        ControlVector::from_gguf(&file, &image, scale).unwrap()
+    }
+
+    #[test]
+    fn zero_control_vector_is_bit_identical_to_unsteered() {
+        let mut steered = tiny();
+        steered
+            .set_control_vector(control(&[(1, vec![0.0; 16]), (2, vec![0.0; 16])], 1.0))
+            .unwrap();
+        let mut plain = tiny();
+        assert_eq!(
+            steered.prefill_all(&[1, 4, 7, 2]).unwrap(),
+            plain.prefill_all(&[1, 4, 7, 2]).unwrap()
+        );
+    }
+
+    #[test]
+    fn nonzero_control_vector_changes_logits_deterministically() {
+        let dir: Vec<f32> = (0..16).map(|i| 0.05 * (i as f32 - 8.0)).collect();
+        let mut steered = tiny();
+        steered.set_control_vector(control(&[(1, dir.clone())], 1.0)).unwrap();
+        let mut plain = tiny();
+        let ls = steered.prefill(&[1, 4, 7]).unwrap();
+        let lp = plain.prefill(&[1, 4, 7]).unwrap();
+        assert_ne!(ls, lp);
+        // Deterministic under steering as well.
+        let mut again = tiny();
+        again.set_control_vector(control(&[(1, dir)], 1.0)).unwrap();
+        assert_eq!(again.prefill(&[1, 4, 7]).unwrap(), ls);
+    }
+
+    #[test]
+    fn steering_carries_across_fork() {
+        let dir: Vec<f32> = (0..16).map(|i| 0.03 * i as f32).collect();
+        let mut parent = tiny();
+        parent.set_control_vector(control(&[(2, dir.clone())], 1.0)).unwrap();
+        parent.prefill(&[1, 5]).unwrap();
+        let mut child = parent.fork().unwrap();
+        let forked = child.prefill(&[7]).unwrap();
+        let mut fresh = tiny();
+        fresh.set_control_vector(control(&[(2, dir)], 1.0)).unwrap();
+        let direct = fresh.prefill(&[1, 5, 7]).unwrap();
+        assert_eq!(forked, direct);
+    }
+
+    #[test]
+    fn control_vector_shape_mismatches_are_errors() {
+        let mut m = tiny();
+        // Wrong width.
+        let err = m
+            .set_control_vector(control(&[(1, vec![0.0; 8])], 1.0))
+            .unwrap_err();
+        assert!(err.to_string().contains("width"), "{err}");
+        // Layer beyond the model.
+        let err = m
+            .set_control_vector(control(&[(3, vec![0.0; 16])], 1.0))
+            .unwrap_err();
+        assert!(err.to_string().contains("layers"), "{err}");
+        // Empty and zero-layer images are load errors.
+        let image = control_image(&[]);
+        let file = crate::gguf::parse(&image).unwrap();
+        assert!(ControlVector::from_gguf(&file, &image, 1.0).is_err());
+        let image = control_image(&[(0, vec![0.0; 16])]);
+        let file = crate::gguf::parse(&image).unwrap();
+        assert!(ControlVector::from_gguf(&file, &image, 1.0).is_err());
     }
 
     #[test]
