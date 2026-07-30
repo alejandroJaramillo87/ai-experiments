@@ -58,4 +58,18 @@ pub trait Model: Send {
     /// full cached prefix and pays no prefill for it; subsequent state is
     /// independent. Basis of subagent spawn.
     fn fork(&self) -> Result<Box<dyn Model>>;
+
+    /// Serialize the KV cache so a later process can resume without
+    /// re-prefilling. The format is backend-defined; `load_state` of the
+    /// same backend over the same weights must restore it exactly. Backends
+    /// without persistent state (the mock) keep the default refusal.
+    fn save_state(&self, _w: &mut dyn std::io::Write) -> Result<()> {
+        anyhow::bail!("state serialization unsupported by this backend")
+    }
+
+    /// Restore a cache written by `save_state`. Only valid on a fresh model
+    /// (empty cache) loaded from the same weights.
+    fn load_state(&mut self, _r: &mut dyn std::io::Read) -> Result<()> {
+        anyhow::bail!("state deserialization unsupported by this backend")
+    }
 }

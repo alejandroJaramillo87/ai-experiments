@@ -143,6 +143,16 @@ impl Model for RecordingModel {
             writer: Arc::clone(&self.writer),
         }))
     }
+
+    // Snapshots pass through: the recording captures forward calls, not
+    // cache state, so save/restore belongs to the wrapped backend.
+    fn save_state(&self, w: &mut dyn std::io::Write) -> Result<()> {
+        self.inner.save_state(w)
+    }
+
+    fn load_state(&mut self, r: &mut dyn std::io::Read) -> Result<()> {
+        self.inner.load_state(r)
+    }
 }
 
 /// Load a recording back as a scripted `MockModel`. Rows are keyed by

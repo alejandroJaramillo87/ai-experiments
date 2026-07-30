@@ -50,7 +50,8 @@ fn build_generator(
     sampling: runtime::sampler::SamplingParams,
     max_tokens: usize,
     context: Option<usize>,
-) -> Result<(SessionGenerator, Option<MonitorHandle>)> {
+    snapshot: Option<&Path>,
+) -> Result<(SessionGenerator, Option<MonitorHandle>, u64)> {
     use runtime::model::{
         cpu::{ControlVector, CpuModel},
         probe::{Probe, ProbeMonitor},
@@ -141,10 +142,39 @@ fn build_generator(
         Some(path) => Box::new(RecordingModel::to_file(Box::new(cpu), path)?),
         None => Box::new(cpu),
     };
-    let session = runtime::session::Session::new(model, max_context)?;
+    let mut session = runtime::session::Session::new(model, max_context)?;
+    // Snapshot restore: resume the KV cache from the previous clean exit.
+    // A header or weight-hash mismatch is loud and the stale file is
+    // removed; a missing file is the normal first run. Whether the restored
+    // tokens still match the transcript is settled later by sync's prefix
+    // matching, which degrades to a full re-prefill at worst.
+    let model_hash = runtime::session::fingerprint(&data);
+    if let Some(path) = snapshot {
+        match std::fs::File::open(path) {
+            Ok(f) => {
+                let mut reader = std::io::BufReader::new(f);
+                match session.restore(&mut reader, model_hash) {
+                    Ok(()) => eprintln!(
+                        "[INFO] Session restored: {} cached tokens from {}",
+                        session.cached_len(),
+                        path.display()
+                    ),
+                    Err(e) => {
+                        let _ = std::fs::remove_file(path);
+                        anyhow::bail!(
+                            "restore session snapshot {}: {e:#} (stale file removed; rerun)",
+                            path.display()
+                        );
+                    }
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e).with_context(|| format!("open snapshot {}", path.display())),
+        }
+    }
     let tokenizer = runtime::tokenizer::Tokenizer::from_gguf(&file).context("load tokenizer")?;
     let generator = SessionGenerator::new(session, tokenizer, sampling, max_tokens)?;
-    Ok((generator, monitor))
+    Ok((generator, monitor, model_hash))
 }
 
 /// Drain the monitor state: write one JSONL record per flagged position to
@@ -197,7 +227,8 @@ fn run(
     // effect on the next start (the prompt prefix must stay stable so KV
     // delta prefill keeps working).
     let memory = std::fs::read_to_string(root.join("HARNESS.md")).ok();
-    let (mut generator, monitor) = build_generator(
+    let snapshot_path = root.join("session.kv");
+    let (mut generator, monitor, model_hash) = build_generator(
         model,
         record,
         control_vector,
@@ -206,6 +237,7 @@ fn run(
         sampling,
         max_tokens,
         context,
+        Some(&snapshot_path),
     )?;
     let answer = if chat {
         // Chat mode: REPL over the generator, no tools or permissions. The
@@ -239,6 +271,25 @@ fn run(
         agent.compact_at = compact_at;
         agent.run_task(&mut generator, task, 64, ask_stdin)?
     };
+    // Clean-exit snapshot: save the KV cache beside the transcript so the
+    // next start resumes without a full re-prefill. A save failure degrades
+    // to a warning — a completed task must not fail over persistence.
+    let saved = std::fs::File::create(&snapshot_path)
+        .map_err(anyhow::Error::from)
+        .and_then(|f| {
+            let mut w = std::io::BufWriter::new(f);
+            generator.session().save(&mut w, model_hash)?;
+            std::io::Write::flush(&mut w)?;
+            Ok(())
+        });
+    match saved {
+        Ok(()) => eprintln!(
+            "[INFO] Session snapshot: {} cached tokens at {}",
+            generator.session().cached_len(),
+            snapshot_path.display()
+        ),
+        Err(e) => eprintln!("[WARN] Session snapshot not saved: {e:#}"),
+    }
     if let Some(monitor) = &monitor {
         let default_out = root.join("probe-flags.jsonl");
         report_probe(monitor, probe_out.unwrap_or(&default_out))?;
