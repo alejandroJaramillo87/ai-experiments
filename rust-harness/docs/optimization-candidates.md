@@ -93,12 +93,14 @@ weights, but the mechanism does not: the existing
 `hugepage_mmap_wrapper.cpp` intercepts `mmap()` of large files, and this
 runtime reads the GGUF with `std::fs::read` and walks dequantized heap
 buffers, so there is no mapping to intercept. Owning the allocation sites
-allows a direct approach: `madvise(MADV_HUGEPAGE)` on the multi-MB weight
-and KV allocations first (one libc call per buffer, fail-safe, no host
-reservation needed), and explicit `MAP_HUGETLB` allocation with a fallback
-chain only if measurement shows transparent huge pages under-delivering.
-Acceptance evidence is host-side: tokens/second with and without, plus
-`AnonHugePages` in `/proc/meminfo`.
+allows direct allocation instead. The workstation disables transparent huge
+pages entirely and reserves a 90 GB explicit pool (`vm.nr_hugepages`, see
+`docs/optimizations/README.md` in the parent repository), so
+`madvise(MADV_HUGEPAGE)` is a no-op there; the working approach is explicit
+`MAP_HUGETLB` allocation for the weight and KV buffers with a fallback
+chain to regular pages, drawing from the same reserved pool llama-cpu
+uses. Acceptance evidence is host-side: tokens/second with and without,
+plus `HugePages_Free` movement in `/proc/meminfo`.
 
 ## Tier C: situational
 
