@@ -30,6 +30,13 @@ fn ask_stdin(call: &ToolCall) -> bool {
     matches!(line.trim(), "y" | "yes")
 }
 
+/// A live probe monitor: the loaded probe plus the shared state its tap
+/// fills during the run. Drained by `report_probe` after the task.
+struct MonitorHandle {
+    probe: std::sync::Arc<runtime::model::probe::Probe>,
+    state: std::sync::Arc<std::sync::Mutex<runtime::model::probe::MonitorState>>,
+}
+
 /// Construct the generator over the CPU backend for the GGUF at
 /// `model_path`, wrapping the model in the flight recorder when `record`
 /// names a path. There is no mock fallback in the shipping binary.
@@ -38,9 +45,11 @@ fn build_generator(
     record: Option<&Path>,
     control_vector: Option<&Path>,
     control_scale: f32,
-) -> Result<SessionGenerator> {
+    probe: Option<&Path>,
+) -> Result<(SessionGenerator, Option<MonitorHandle>)> {
     use runtime::model::{
         cpu::{ControlVector, CpuModel},
+        probe::{Probe, ProbeMonitor},
         record::RecordingModel,
         Model,
     };
@@ -62,6 +71,32 @@ fn build_generator(
             .context("load control vector")?;
         cpu.set_control_vector(cv).context("apply control vector")?;
     }
+    // The monitor observes the steered stream: set_control_vector first,
+    // then the tap, matching the documented tap semantics.
+    let monitor = match probe {
+        Some(path) => {
+            let p_data = std::fs::read(path)
+                .with_context(|| format!("read probe {}", path.display()))?;
+            let p_file = runtime::gguf::parse(&p_data).context("parse probe GGUF")?;
+            let p = std::sync::Arc::new(Probe::from_gguf(&p_file, &p_data).context("load probe")?);
+            anyhow::ensure!(
+                p.width() == cpu.config().embed_dim,
+                "probe width {} does not match model embedding dimension {}",
+                p.width(),
+                cpu.config().embed_dim
+            );
+            anyhow::ensure!(
+                p.layer < cpu.config().n_layers,
+                "probe layer {} out of range for a {}-layer model",
+                p.layer,
+                cpu.config().n_layers
+            );
+            let (tap, state) = ProbeMonitor::new(std::sync::Arc::clone(&p));
+            cpu.set_tap(Box::new(tap));
+            Some(MonitorHandle { probe: p, state })
+        }
+        None => None,
+    };
     let max_context = cpu.config().context_length;
     let model: Box<dyn Model> = match record {
         Some(path) => Box::new(RecordingModel::to_file(Box::new(cpu), path)?),
@@ -69,14 +104,44 @@ fn build_generator(
     };
     let session = runtime::session::Session::new(model, max_context)?;
     let tokenizer = runtime::tokenizer::Tokenizer::from_gguf(&file).context("load tokenizer")?;
-    SessionGenerator::new(
+    let generator = SessionGenerator::new(
         session,
         tokenizer,
         runtime::sampler::SamplingParams::default(),
         256,
-    )
+    )?;
+    Ok((generator, monitor))
 }
 
+/// Drain the monitor state: write one JSONL record per flagged position to
+/// `out`, print a one-line summary to stderr. Observation only, so this
+/// runs after the task and never affects its result.
+fn report_probe(monitor: &MonitorHandle, out: &Path) -> Result<()> {
+    let state = monitor.state.lock().expect("monitor state lock");
+    let mut file = std::fs::File::create(out)
+        .with_context(|| format!("create probe output {}", out.display()))?;
+    for flag in &state.flags {
+        let record = serde_json::json!({
+            "probe": monitor.probe.name,
+            "layer": monitor.probe.layer,
+            "position": flag.position,
+            "score": flag.score,
+            "threshold": monitor.probe.threshold,
+        });
+        writeln!(file, "{record}").context("write probe flag record")?;
+    }
+    eprintln!(
+        "[INFO] Probe {}: {} positions scored, {} flagged (threshold {}), flags at {}",
+        monitor.probe.name,
+        state.scored,
+        state.flags.len(),
+        monitor.probe.threshold,
+        out.display()
+    );
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 fn run(
     root: &Path,
     task: &str,
@@ -84,6 +149,8 @@ fn run(
     record: Option<&Path>,
     control_vector: Option<&Path>,
     control_scale: f32,
+    probe: Option<&Path>,
+    probe_out: Option<&Path>,
 ) -> Result<String> {
     let permissions = match std::fs::read_to_string(root.join("permissions.yaml")) {
         Ok(yaml) => Permissions::from_yaml(&yaml).context("permissions.yaml")?,
@@ -92,14 +159,21 @@ fn run(
     };
     let transcript = Transcript::open(&root.join("session.jsonl")).context("session.jsonl")?;
     let mut agent = Agent::new(root.to_path_buf(), permissions, transcript);
-    let mut generator = build_generator(model, record, control_vector, control_scale)?;
-    agent.run_task(&mut generator, task, 64, ask_stdin)
+    let (mut generator, monitor) =
+        build_generator(model, record, control_vector, control_scale, probe)?;
+    let answer = agent.run_task(&mut generator, task, 64, ask_stdin)?;
+    if let Some(monitor) = &monitor {
+        let default_out = root.join("probe-flags.jsonl");
+        report_probe(monitor, probe_out.unwrap_or(&default_out))?;
+    }
+    Ok(answer)
 }
 
 fn main() -> ExitCode {
     const USAGE: &str = "usage: harness --model <path.gguf> [--record <path>] \
          [--trace-chrome <path>] [--control-vector <path.gguf>] \
-         [--control-vector-scale <f>] <task description>";
+         [--control-vector-scale <f>] [--probe <path.gguf>] \
+         [--probe-out <path>] <task description>";
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     // --model <path.gguf>: checkpoint for the CPU backend.
     // --record <path>: wrap the model in the flight recorder, appending every
@@ -109,17 +183,25 @@ fn main() -> ExitCode {
     // --control-vector <path.gguf>: steering directions in the llama.cpp
     // control-vector layout, added to the residual stream per layer.
     // --control-vector-scale <f>: multiplier on the directions (default 1.0).
+    // --probe <path.gguf>: linear probe (interp/probes/export.py layout)
+    // scored in-band at every position of its layer through the tap seam.
+    // --probe-out <path>: JSONL file for flagged positions (default
+    // probe-flags.jsonl in the working directory).
     let mut model: Option<std::path::PathBuf> = None;
     let mut record: Option<std::path::PathBuf> = None;
     let mut trace_chrome: Option<std::path::PathBuf> = None;
     let mut control_vector: Option<std::path::PathBuf> = None;
     let mut control_scale_arg: Option<std::path::PathBuf> = None;
+    let mut probe: Option<std::path::PathBuf> = None;
+    let mut probe_out: Option<std::path::PathBuf> = None;
     for (flag, slot) in [
         ("--model", &mut model),
         ("--record", &mut record),
         ("--trace-chrome", &mut trace_chrome),
         ("--control-vector", &mut control_vector),
         ("--control-vector-scale", &mut control_scale_arg),
+        ("--probe", &mut probe),
+        ("--probe-out", &mut probe_out),
     ] {
         if let Some(i) = args.iter().position(|a| a == flag) {
             if i + 1 >= args.len() {
@@ -175,6 +257,8 @@ fn main() -> ExitCode {
         record.as_deref(),
         control_vector.as_deref(),
         control_scale,
+        probe.as_deref(),
+        probe_out.as_deref(),
     ) {
         Ok(answer) => {
             println!("{answer}");
