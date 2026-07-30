@@ -63,18 +63,36 @@ pub struct Grammar {
 
 const BOOL_WORDS: [&str; 2] = ["true", "false"];
 
+/// JSON string-escape `s` (no surrounding quotes), so schema-supplied names
+/// and keys always compile to a skeleton whose accepted language is valid
+/// JSON — a quote or backslash in a tool name must not break the invariant.
+fn json_escaped(s: &str) -> String {
+    let quoted = serde_json::to_string(s).expect("strings always serialize");
+    quoted[1..quoted.len() - 1].to_string()
+}
+
 impl Grammar {
+    /// Panics on duplicate parameter keys: schemas are developer-supplied,
+    /// so a duplicate is a config bug (the Sampler::new precedent), and the
+    /// resulting duplicate-key object would be ambiguous to consumers.
     pub fn compile(schema: &ToolSchema) -> Self {
+        for (i, (key, _)) in schema.params.iter().enumerate() {
+            assert!(
+                !schema.params[..i].iter().any(|(k, _)| k == key),
+                "duplicate parameter key {key:?} in tool schema {:?}",
+                schema.name
+            );
+        }
         let mut nodes = Vec::new();
         let lit = |nodes: &mut Vec<Node>, s: &str| nodes.extend(s.chars().map(Node::Lit));
         lit(&mut nodes, "{\"tool\": \"");
-        lit(&mut nodes, &schema.name);
+        lit(&mut nodes, &json_escaped(&schema.name));
         lit(&mut nodes, "\", \"args\": {");
         for (i, (key, ty)) in schema.params.iter().enumerate() {
             if i > 0 {
                 lit(&mut nodes, ", ");
             }
-            lit(&mut nodes, &format!("\"{key}\": "));
+            lit(&mut nodes, &format!("\"{}\": ", json_escaped(key)));
             nodes.push(match ty {
                 ParamType::String => Node::Str,
                 ParamType::Int => Node::Int,
