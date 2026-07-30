@@ -38,7 +38,9 @@ def write_probe_gguf_from_probe(probe: Probe, path: str) -> None:
 
     writer = gguf.GGUFWriter(path, ARCH)
     writer.add_string(f"{ARCH}.name", probe.name)
-    writer.add_string(f"{ARCH}.model_hash", str(probe.manifest.get("model_hash", "unknown")))
+    writer.add_string(
+        f"{ARCH}.model_hash", str(probe.manifest.get("model_hash", "unknown"))
+    )
     writer.add_uint32(f"{ARCH}.layer", probe.layer)
     writer.add_float32(f"{ARCH}.bias", float(probe.bias))
     writer.add_float32(f"{ARCH}.threshold", float(probe.threshold))

@@ -75,8 +75,8 @@ fn build_generator(
     // then the tap, matching the documented tap semantics.
     let monitor = match probe {
         Some(path) => {
-            let p_data = std::fs::read(path)
-                .with_context(|| format!("read probe {}", path.display()))?;
+            let p_data =
+                std::fs::read(path).with_context(|| format!("read probe {}", path.display()))?;
             let p_file = runtime::gguf::parse(&p_data).context("parse probe GGUF")?;
             let p = std::sync::Arc::new(Probe::from_gguf(&p_file, &p_data).context("load probe")?);
             anyhow::ensure!(

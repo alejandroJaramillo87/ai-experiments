@@ -141,7 +141,10 @@ def rope(head, position, freq_base):
 
 def forward(metadata, tensors, prompt, steered=False):
     arch = metadata["general.architecture"]
-    m = lambda key: metadata[f"{arch}.{key}"]
+
+    def m(key):
+        return metadata[f"{arch}.{key}"]
+
     d = m("embedding_length")
     n_layers = m("block_count")
     n_heads = m("attention.head_count")
@@ -162,7 +165,10 @@ def forward(metadata, tensors, prompt, steered=False):
         residuals = []
         x = (embed[token] * np.float32(math.sqrt(d))).astype(np.float32)
         for i in range(n_layers):
-            t = lambda suffix: tensors[f"blk.{i}.{suffix}"]
+
+            def t(suffix, i=i):
+                return tensors[f"blk.{i}.{suffix}"]
+
             h = rms_norm(x, t("attn_norm.weight"), eps)
             q = (t("attn_q.weight") @ h).astype(np.float32)
             k = (t("attn_k.weight") @ h).astype(np.float32)
@@ -170,10 +176,20 @@ def forward(metadata, tensors, prompt, steered=False):
             q = q.reshape(n_heads, hd)
             k = k.reshape(n_kv, hd)
             q = np.stack(
-                [rope(rms_norm(qh, t("attn_q_norm.weight"), eps), position, freq_base) for qh in q]
+                [
+                    rope(
+                        rms_norm(qh, t("attn_q_norm.weight"), eps), position, freq_base
+                    )
+                    for qh in q
+                ]
             )
             k = np.stack(
-                [rope(rms_norm(kh, t("attn_k_norm.weight"), eps), position, freq_base) for kh in k]
+                [
+                    rope(
+                        rms_norm(kh, t("attn_k_norm.weight"), eps), position, freq_base
+                    )
+                    for kh in k
+                ]
             )
             caches[i]["k"].append(k)
             caches[i]["v"].append(v.reshape(n_kv, hd))
@@ -182,8 +198,12 @@ def forward(metadata, tensors, prompt, steered=False):
             attn = np.zeros((n_heads, hd), dtype=np.float32)
             for qh in range(n_heads):
                 kvh = qh // heads_per_kv
-                keys = np.stack([caches[i]["k"][p][kvh] for p in range(first, position + 1)])
-                vals = np.stack([caches[i]["v"][p][kvh] for p in range(first, position + 1)])
+                keys = np.stack(
+                    [caches[i]["k"][p][kvh] for p in range(first, position + 1)]
+                )
+                vals = np.stack(
+                    [caches[i]["v"][p][kvh] for p in range(first, position + 1)]
+                )
                 scores = (keys @ q[qh]) / np.float32(math.sqrt(hd))
                 scores = np.exp(scores - scores.max(), dtype=np.float32)
                 scores = (scores / scores.sum(dtype=np.float32)).astype(np.float32)
@@ -196,7 +216,9 @@ def forward(metadata, tensors, prompt, steered=False):
             down = (t("ffn_down.weight") @ (gelu(gate) * up)).astype(np.float32)
             x = x + rms_norm(down, t("post_ffw_norm.weight"), eps)
             if steered and i == STEER_LAYER:
-                x = (x + np.float32(STEER_SCALE) * steer_direction(d)).astype(np.float32)
+                x = (x + np.float32(STEER_SCALE) * steer_direction(d)).astype(
+                    np.float32
+                )
             residuals.append(x.astype(np.float32).tolist())
             if i == PROBE_LAYER:
                 probe_scores.append(probe_score(x.astype(np.float32), d))

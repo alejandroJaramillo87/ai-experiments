@@ -97,9 +97,10 @@ backend (roadmap phase A) slots in at the same `Model` seam.
 
 The CPU backend also carries an interpretability seam: a `Tap` trait
 observing the per-layer residual stream, control-vector steering
-(`--control-vector`, same GGUF layout llama.cpp uses), and the
-`activation-capture` binary, all golden-tested against the numpy
-reference. Design and compatibility contract:
+(`--control-vector`, same GGUF layout llama.cpp uses), the
+`activation-capture` binary, and an in-band probe monitor (`--probe`, a
+probe GGUF exported from a trained linear probe) scoring every position
+of the probe's layer, all golden-tested against the numpy reference. Design and compatibility contract:
 `docs/interpretability/rust-harness-interp.md` in the parent repository.
 
 ## Quality gate

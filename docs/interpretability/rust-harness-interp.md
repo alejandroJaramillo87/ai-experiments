@@ -11,6 +11,7 @@ monitoring) on the `rust-harness` runtime instead of llama.cpp. Bridges the
 - [The tap seam](#the-tap-seam)
 - [Steering](#steering)
 - [Activation capture](#activation-capture)
+- [In-band monitoring](#in-band-monitoring)
 - [What stays in Python](#what-stays-in-python)
 - [Validation](#validation)
 - [Constraint on future backends](#constraint-on-future-backends)
@@ -96,6 +97,35 @@ Verified in the sandbox: `interp.probes.capture.load_capture()` loads a
 rust-written capture of the synthetic fixture with correct shapes, dtypes,
 labels, and texts.
 
+## In-band monitoring
+
+A trained linear probe runs inside the forward pass as one `Tap`
+implementation (`runtime/src/model/probe.rs`). The exporter
+`interp/probes/export.py` converts a registered probe artifact
+(`probe.npz` plus manifest, hash-validated on load) into a single GGUF
+file: architecture `probe`, f32 tensors `probe.weights`, `probe.mu`, and
+`probe.sigma`, and KV metadata `probe.bias`, `probe.layer` (0-based),
+`probe.threshold`, `probe.name`, and `probe.model_hash`. The rust side
+scores with the same math as `interp/probes/score.py` —
+`sigmoid(((x - mu) / sigma) . w + bias)`, flagged when strictly above the
+trained threshold — and the parity is golden-tested against the numpy
+reference.
+
+```bash
+$ harness --model model.gguf --probe probe.gguf \
+    [--probe-out flags.jsonl] <task>
+```
+
+Every position of the probe's layer is scored, a granularity the Python
+monitor (whole-text replay, last token per request) cannot reach. Flagged
+positions are written as JSONL records (`probe`, `layer`, `position`,
+`score`, `threshold`; default `probe-flags.jsonl` in the working
+directory) and a one-line summary goes to stderr. The monitor observes
+only: monitored and unmonitored runs produce bit-identical logits, which
+the golden test asserts. Because taps do not transfer across forks, a
+monitored agent's subagents run unmonitored; extending monitoring across
+forks is future work.
+
 ## What stays in Python
 
 The analysis half is unchanged and remains fed by capture directories:
@@ -137,5 +167,6 @@ untapped serving path pays nothing.
 |------|--------|------------|
 | Tap seam, steering, capture, goldens (sandbox) | done | — |
 | Real-model capture and contrastive extraction on the workstation | pending | E4B architecture reconciliation, CPU backend speed measurement |
-| In-band probe monitor as a `Tap` implementation | pending | a trained probe from rust captures |
+| In-band probe monitor as a `Tap` implementation (sandbox) | done | — |
+| Monitor with a probe trained on real-model rust captures | pending | real-model capture on the workstation |
 | CUDA tap parity | pending | roadmap phase A |
