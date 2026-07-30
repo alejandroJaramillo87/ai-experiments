@@ -68,6 +68,8 @@ System optimizations are organized by component:
 
 ### os/
 - **os-optimizations.md** - Host operating system optimizations for containerized workloads
+- **os-optimization-candidates.md** - Deferred menu of host-level OS and GPU
+  candidates (July 2026 review; verification pending)
   - Swap disabled
   - CPU governor (performance mode)
   - Memory locking configuration
