@@ -57,6 +57,37 @@ fn grammar_rejects_wrong_tool_name_and_malformed_json() {
 }
 
 #[test]
+fn schema_names_and_keys_with_json_metacharacters_stay_valid_json() {
+    // A quote or backslash in a developer-supplied name or key must not
+    // let the grammar accept unparseable output: the skeleton carries the
+    // escaped form, so every accepted call still parses.
+    let g = Grammar::compile(&ToolSchema {
+        name: "a\"b\\c".into(),
+        params: vec![("k\"1".into(), ParamType::Int)],
+    });
+    let s = r#"{"tool": "a\"b\\c", "args": {"k\"1": 7}}"#;
+    let st = g
+        .advance_str(&g.start(), s)
+        .expect("escaped skeleton rejected");
+    assert!(g.is_complete(&st));
+    let v: serde_json::Value = serde_json::from_str(s).expect("accepted call must parse");
+    assert_eq!(v["tool"], "a\"b\\c");
+    // The raw, unescaped form is no longer in the accepted language.
+    assert!(g
+        .advance_str(&g.start(), "{\"tool\": \"a\"b\\c\"")
+        .is_none());
+}
+
+#[test]
+#[should_panic(expected = "duplicate parameter key")]
+fn duplicate_parameter_keys_are_a_config_bug() {
+    Grammar::compile(&ToolSchema {
+        name: "t".into(),
+        params: vec![("k".into(), ParamType::Int), ("k".into(), ParamType::Bool)],
+    });
+}
+
+#[test]
 fn escaped_quotes_and_backslashes_are_legal_in_string_values() {
     let g = Grammar::compile(&edit_schema());
     let s = r#"{"tool": "edit", "args": {"path": "a\"b\\c", "line": 0, "create": true}}"#;

@@ -59,6 +59,12 @@ impl<S: Subscriber> Layer<S> for Capture {
         state.open.insert(id.into_u64(), idx);
     }
 
+    fn on_close(&self, id: Id, _ctx: Context<'_, S>) {
+        // Registry ids are reused after close; drop the mapping so a later
+        // span with the same id cannot merge fields into an earlier slot.
+        self.0.lock().unwrap().open.remove(&id.into_u64());
+    }
+
     fn on_record(&self, id: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
         let mut visitor = FieldVisitor(Vec::new());
         values.record(&mut visitor);
@@ -88,6 +94,14 @@ fn field<'a>(span: &'a CapturedSpan, name: &str) -> Option<&'a str> {
         .find(|(k, _)| k == name)
         .map(|(_, v)| v.as_str())
 }
+
+/// Serializes the two tests in this binary. `tracing` caches per-callsite
+/// interest process-globally, so a test driving these callsites with no
+/// subscriber can race another test's subscriber registration and leave a
+/// stale "never" interest behind, silently dropping spans for that run.
+/// Cargo runs tests in one process on multiple threads, so the lock is the
+/// fix rather than an ordering assumption.
+static CALLSITE_LOCK: Mutex<()> = Mutex::new(());
 
 /// Grammar-constrained generation over a character vocab, driving every
 /// instrumented runtime path: sync, step, sample, and grammar mask.
@@ -121,6 +135,7 @@ fn traced_generation(capture: &Capture) {
 
 #[test]
 fn generation_emits_the_documented_span_schema() {
+    let _serial = CALLSITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let capture = Capture::default();
     traced_generation(&capture);
 
@@ -155,6 +170,7 @@ fn generation_emits_the_documented_span_schema() {
 
 #[test]
 fn no_subscriber_means_no_capture_and_no_failure() {
+    let _serial = CALLSITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // Spans compile to disabled no-ops without a subscriber; a plain run
     // must behave identically.
     let vocab = Vocab::new(vec!["a".into(), "</s>".into()], 1);

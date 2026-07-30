@@ -13,6 +13,14 @@
  * RoPE, interleaved sliding-window/global layers, GeGLU MLP with tanh GELU,
  * four norms per layer, LM head tied to the token embedding.
  *
+ * That is a strict subset of the published Gemma 4 architecture, which adds
+ * per-layer embeddings, a shared KV cache, MatFormer per-layer feed-forward
+ * widths, dual RoPE, and value normalization. A checkpoint carrying any of
+ * those is refused by `check_supported` rather than loaded with the extra
+ * structure silently dropped: an ignored weight tensor still produces
+ * fluent text, so a silent load would be an undetectable wrong answer.
+ * See docs/inference/rust-harness-runtime-design.md.
+ *
  * The K/V cache stores the full sequence for every layer; the sliding
  * window is applied as an attention mask only. Capping sliding-window
  * storage to the kv.rs budget (a ring buffer) is deferred to the
@@ -107,6 +115,174 @@ impl Config {
         } else {
             LayerKind::SlidingWindow(self.sliding_window)
         }
+    }
+}
+
+/// Per-layer tensor suffixes the forward pass consumes. Kept in step with the
+/// `LayerWeights` literal in `CpuModel::from_gguf`; the fixture-shape test
+/// fails if the two drift, because an unlisted consumed tensor makes
+/// `check_supported` refuse the synthetic model.
+const LAYER_TENSORS: [&str; 13] = [
+    "attn_norm.weight",
+    "attn_q.weight",
+    "attn_k.weight",
+    "attn_v.weight",
+    "attn_q_norm.weight",
+    "attn_k_norm.weight",
+    "attn_output.weight",
+    "post_attention_norm.weight",
+    "ffn_norm.weight",
+    "ffn_gate.weight",
+    "ffn_up.weight",
+    "ffn_down.weight",
+    "post_ffw_norm.weight",
+];
+
+/// Non-layer tensors the forward pass consumes. The LM head is tied to
+/// `token_embd.weight` (llama.cpp Gemma convention), so there is no
+/// `output.weight`.
+const TOP_LEVEL_TENSORS: [&str; 2] = ["token_embd.weight", "output_norm.weight"];
+
+/// Tensors a converter may emit that carry no learned parameters this backend
+/// needs: RoPE frequencies are recomputed from `rope_freq_base`, so their
+/// presence changes no numerics.
+const INERT_TENSORS: [&str; 1] = ["rope_freqs.weight"];
+
+/// Collapse a tensor name to its family, replacing a leading `blk.<i>.` with
+/// `blk.*.`, so a diagnostic over 42 layers reports one line per family.
+pub fn tensor_family(name: &str) -> String {
+    let Some(rest) = name.strip_prefix("blk.") else {
+        return name.to_string();
+    };
+    match rest.split_once('.') {
+        Some((index, suffix)) if !index.is_empty() && index.bytes().all(|b| b.is_ascii_digit()) => {
+            format!("blk.*.{suffix}")
+        }
+        _ => name.to_string(),
+    }
+}
+
+/// Refuse a checkpoint whose structure the forward pass does not implement.
+///
+/// Loading is name-directed, so an unimplemented feature would otherwise
+/// present as ignored tensors and plausible, wrong logits. Diagnoses the four
+/// Gemma 4 features that change numerics by name before falling back to a
+/// generic unconsumed-tensor report, so the message says which feature is
+/// missing rather than only which tensor was unused.
+///
+/// Called by `CpuModel::from_gguf` and by the `gguf-info` binary, so the
+/// inspection tool and the loader cannot disagree.
+pub fn check_supported(file: &GgufFile, config: &Config) -> Result<()> {
+    let names: Vec<&str> = file.tensors.iter().map(|t| t.name.as_str()).collect();
+
+    // Per-layer embeddings: a token-identity table plus a projection, summed
+    // and added as an extra residual update. Roughly 2.8B of E4B's parameters.
+    if let Some(hit) = names.iter().find(|n| n.contains("per_layer")) {
+        bail!(
+            "checkpoint uses per-layer embeddings (tensor {hit}), which this \
+             backend does not implement; loading it would ignore the per-layer \
+             tables and produce wrong logits"
+        );
+    }
+
+    // Shared KV cache: the trailing layers reuse K/V from the last non-shared
+    // layer, so they carry no attn_k/attn_v of their own.
+    for i in 0..config.n_layers {
+        let has = |suffix: &str| names.contains(&format!("blk.{i}.{suffix}.weight").as_str());
+        if has("attn_q") && !(has("attn_k") && has("attn_v")) {
+            bail!(
+                "layer {i} has no attn_k/attn_v tensors, the shared-KV-cache \
+                 signature; this backend gives every layer its own cache and \
+                 does not implement KV sharing"
+            );
+        }
+    }
+
+    // MatFormer slicing can vary the feed-forward width per layer, which a
+    // single Config::ffn_dim cannot express.
+    for info in &file.tensors {
+        let Some(rest) = info.name.strip_prefix("blk.") else {
+            continue;
+        };
+        if !rest.ends_with(".ffn_up.weight") {
+            continue;
+        }
+        let width = info.dims.last().copied().unwrap_or(0);
+        if width != config.ffn_dim as u64 {
+            bail!(
+                "tensor {} has feed-forward width {width}, but {}.feed_forward_length \
+                 is {}; per-layer widths are MatFormer slicing, which this backend \
+                 does not implement",
+                info.name,
+                architecture(file)?,
+                config.ffn_dim
+            );
+        }
+    }
+
+    // RoPE configuration. A dimension count below head_dim is partial rotation
+    // (p-RoPE); any other rope key implies a second frequency base or a
+    // scaling scheme the single-theta implementation ignores.
+    let arch = architecture(file)?;
+    let rope_prefix = format!("{arch}.rope.");
+    for key in file.metadata.keys() {
+        let Some(suffix) = key.strip_prefix(&rope_prefix) else {
+            continue;
+        };
+        match suffix {
+            "freq_base" => {}
+            "dimension_count" => {
+                if let Some(MetaValue::U32(v)) = file.metadata.get(key) {
+                    ensure!(
+                        *v as usize == config.head_dim,
+                        "{key} is {v} but head_dim is {}; partial rotary embedding \
+                         (p-RoPE) is not implemented",
+                        config.head_dim
+                    );
+                }
+            }
+            _ => bail!(
+                "metadata key {key} configures RoPE beyond a single frequency base; \
+                 dual or scaled RoPE is not implemented"
+            ),
+        }
+    }
+
+    // Generic backstop: anything left unconsumed is structure this backend
+    // does not know about, including features published after this code.
+    let mut unconsumed: Vec<String> = Vec::new();
+    for name in &names {
+        if TOP_LEVEL_TENSORS.contains(name) || INERT_TENSORS.contains(name) {
+            continue;
+        }
+        let consumed = (0..config.n_layers).any(|i| {
+            let prefix = format!("blk.{i}.");
+            name.strip_prefix(&prefix)
+                .is_some_and(|s| LAYER_TENSORS.contains(&s))
+        });
+        if !consumed {
+            let family = tensor_family(name);
+            if !unconsumed.contains(&family) {
+                unconsumed.push(family);
+            }
+        }
+    }
+    ensure!(
+        unconsumed.is_empty(),
+        "checkpoint carries {} tensor famil{} this backend does not consume: {}; \
+         refusing rather than ignoring learned weights",
+        unconsumed.len(),
+        if unconsumed.len() == 1 { "y" } else { "ies" },
+        unconsumed.join(", ")
+    );
+    Ok(())
+}
+
+/// Architecture string, the prefix of every model metadata key.
+fn architecture(file: &GgufFile) -> Result<&str> {
+    match file.metadata.get("general.architecture") {
+        Some(MetaValue::Str(a)) => Ok(a.as_str()),
+        _ => bail!("missing general.architecture"),
     }
 }
 
@@ -276,6 +452,9 @@ fn softmax_in_place(scores: &mut [f32]) {
 impl CpuModel {
     pub fn from_gguf(file: &GgufFile, data: &[u8]) -> Result<CpuModel> {
         let config = Config::from_gguf(file)?;
+        // Refuse unimplemented architecture features before loading a single
+        // weight: a partial load emits fluent, wrong text.
+        check_supported(file, &config)?;
         let tensor = |name: &str| -> Result<Vec<f32>> {
             let info = file
                 .tensors
@@ -544,6 +723,123 @@ mod tests {
         assert_eq!(c.n_kv_heads, 1);
         assert_eq!(c.layer_kind(0), LayerKind::SlidingWindow(4));
         assert_eq!(c.layer_kind(1), LayerKind::Global);
+    }
+
+    /// Parsed synthetic checkpoint, for mutating the tensor directory or
+    /// metadata in place. `check_supported` reads names, dims, and metadata
+    /// only, so a mutated directory needs no re-encoded payload.
+    fn tiny_parsed() -> (Vec<u8>, crate::gguf::GgufFile, Config) {
+        let image = build_tiny_model(&TinySpec::default());
+        let file = crate::gguf::parse(&image).unwrap();
+        let config = Config::from_gguf(&file).unwrap();
+        (image, file, config)
+    }
+
+    fn extra_tensor(name: &str) -> crate::gguf::TensorInfo {
+        crate::gguf::TensorInfo {
+            name: name.to_string(),
+            dims: vec![4],
+            ggml_type: crate::tensor::GGML_F32,
+            offset: 0,
+        }
+    }
+
+    #[test]
+    fn the_synthetic_fixture_consumes_every_tensor_it_ships() {
+        // Couples the guard's tensor lists to the loader: a tensor the loader
+        // reads but the lists omit makes the guard refuse this fixture.
+        let (_, file, config) = tiny_parsed();
+        check_supported(&file, &config).unwrap();
+    }
+
+    #[test]
+    fn per_layer_embedding_tensors_are_refused() {
+        let (_, mut file, config) = tiny_parsed();
+        file.tensors
+            .push(extra_tensor("per_layer_token_embd.weight"));
+        let err = check_supported(&file, &config).unwrap_err().to_string();
+        assert!(err.contains("per-layer embeddings"), "{err}");
+    }
+
+    #[test]
+    fn a_layer_without_kv_tensors_is_refused_as_shared_kv() {
+        // Diagnosed as KV sharing, not as a bare missing tensor, and refused
+        // by the loader before any weight is read.
+        let (image, mut file, _) = tiny_parsed();
+        file.tensors.retain(|t| t.name != "blk.1.attn_v.weight");
+        let err = match CpuModel::from_gguf(&file, &image) {
+            Ok(_) => panic!("a checkpoint missing attn_v must not load"),
+            Err(e) => e.to_string(),
+        };
+        assert!(err.contains("shared-KV-cache"), "{err}");
+        assert!(err.contains("layer 1"), "{err}");
+    }
+
+    #[test]
+    fn per_layer_feed_forward_widths_are_refused_as_matformer() {
+        let (_, mut file, config) = tiny_parsed();
+        let t = file
+            .tensors
+            .iter_mut()
+            .find(|t| t.name == "blk.1.ffn_up.weight")
+            .unwrap();
+        *t.dims.last_mut().unwrap() += 8;
+        let err = check_supported(&file, &config).unwrap_err().to_string();
+        assert!(err.contains("MatFormer"), "{err}");
+    }
+
+    #[test]
+    fn partial_rotary_dimension_count_is_refused() {
+        let (_, mut file, config) = tiny_parsed();
+        file.metadata.insert(
+            "gemma4.rope.dimension_count".into(),
+            MetaValue::U32(config.head_dim as u32 / 2),
+        );
+        let err = check_supported(&file, &config).unwrap_err().to_string();
+        assert!(err.contains("p-RoPE"), "{err}");
+        // The same key equal to head_dim is a full rotation: accepted.
+        file.metadata.insert(
+            "gemma4.rope.dimension_count".into(),
+            MetaValue::U32(config.head_dim as u32),
+        );
+        check_supported(&file, &config).unwrap();
+    }
+
+    #[test]
+    fn a_second_rope_frequency_base_is_refused() {
+        let (_, mut file, config) = tiny_parsed();
+        file.metadata.insert(
+            "gemma4.rope.local_freq_base".into(),
+            MetaValue::F32(10000.0),
+        );
+        let err = check_supported(&file, &config).unwrap_err().to_string();
+        assert!(err.contains("dual or scaled RoPE"), "{err}");
+    }
+
+    #[test]
+    fn unknown_tensor_families_are_refused_and_collapsed_by_layer() {
+        let (_, mut file, config) = tiny_parsed();
+        for i in 0..config.n_layers {
+            file.tensors
+                .push(extra_tensor(&format!("blk.{i}.attn_v_norm.weight")));
+        }
+        let err = check_supported(&file, &config).unwrap_err().to_string();
+        assert!(err.contains("1 tensor family"), "{err}");
+        assert!(err.contains("blk.*.attn_v_norm.weight"), "{err}");
+    }
+
+    #[test]
+    fn inert_tensors_do_not_trip_the_guard() {
+        let (_, mut file, config) = tiny_parsed();
+        file.tensors.push(extra_tensor("rope_freqs.weight"));
+        check_supported(&file, &config).unwrap();
+    }
+
+    #[test]
+    fn tensor_family_collapses_only_numeric_layer_indices() {
+        assert_eq!(tensor_family("blk.17.ffn_up.weight"), "blk.*.ffn_up.weight");
+        assert_eq!(tensor_family("token_embd.weight"), "token_embd.weight");
+        assert_eq!(tensor_family("blk.x.weight"), "blk.x.weight");
     }
 
     #[test]

@@ -22,15 +22,30 @@ const Q8_0_BLOCK_ELEMENTS: usize = 32;
 const Q8_0_BLOCK_BYTES: usize = 2 + Q8_0_BLOCK_ELEMENTS;
 
 /// Number of elements a tensor holds; empty dims is a scalar.
-pub fn element_count(dims: &[u64]) -> usize {
-    dims.iter().product::<u64>() as usize
+///
+/// Dimensions come straight from the file, and GGUF bounds only their count
+/// (at most four), not their magnitude. The product is therefore computed
+/// with checked arithmetic: a hostile or corrupt header must be a positioned
+/// error, never an overflow panic (debug) or a wrapped small size (release).
+pub fn element_count(dims: &[u64]) -> Result<usize> {
+    let mut n: u64 = 1;
+    for &d in dims {
+        n = n
+            .checked_mul(d)
+            .ok_or_else(|| anyhow::anyhow!("tensor dimensions overflow: {dims:?}"))?;
+    }
+    usize::try_from(n).map_err(|_| anyhow::anyhow!("tensor element count {n} exceeds usize"))
 }
 
 /// Stored byte size for `n` elements of the given GGML type.
 pub fn byte_size(ggml_type: u32, n: usize) -> Result<usize> {
+    let scaled = |factor: usize| {
+        n.checked_mul(factor)
+            .ok_or_else(|| anyhow::anyhow!("tensor byte size overflows for {n} elements"))
+    };
     Ok(match ggml_type {
-        GGML_F32 => n * 4,
-        GGML_F16 => n * 2,
+        GGML_F32 => scaled(4)?,
+        GGML_F16 => scaled(2)?,
         GGML_Q8_0 => {
             ensure!(
                 n.is_multiple_of(Q8_0_BLOCK_ELEMENTS),
@@ -132,7 +147,7 @@ pub fn dequantize(ggml_type: u32, bytes: &[u8], n: usize) -> Result<Vec<f32>> {
 /// Load one tensor from a full GGUF image as dense f32, bounds-checked
 /// against the file.
 pub fn load_tensor(file: &GgufFile, data: &[u8], info: &TensorInfo) -> Result<Vec<f32>> {
-    let n = element_count(&info.dims);
+    let n = element_count(&info.dims).map_err(|e| anyhow::anyhow!("tensor {}: {e}", info.name))?;
     let size =
         byte_size(info.ggml_type, n).map_err(|e| anyhow::anyhow!("tensor {}: {e}", info.name))?;
     let start = file
@@ -220,6 +235,15 @@ mod tests {
     #[test]
     fn q8_0_requires_whole_blocks() {
         assert!(byte_size(GGML_Q8_0, 33).is_err());
+        // Hostile header: dims bound only by count, so the product and the
+        // byte size must be errors rather than overflow panics.
+        assert!(element_count(&[u64::MAX, 2]).is_err());
+        // Fits u64 but no payload can be that large: the byte size overflows.
+        let huge = element_count(&[u64::from(u32::MAX), u64::from(u32::MAX)]).unwrap();
+        assert!(byte_size(GGML_F32, huge).is_err());
+        assert_eq!(element_count(&[]).unwrap(), 1);
+        assert_eq!(element_count(&[2, 3, 4]).unwrap(), 24);
+        assert!(byte_size(GGML_F32, usize::MAX / 2).is_err());
         assert_eq!(byte_size(GGML_Q8_0, 64).unwrap(), 68);
     }
 

@@ -52,7 +52,8 @@ These are standing instructions for anyone (human or agent) making changes in th
   benchmarks or two GPU jobs at once; results and VRAM will collide.
 - **`make quality` is mandatory before every push, for humans and agents alike.** The gate runs
   the ruff format check, ruff lint, mypy, the uv lockfile check, and shellcheck, in that order,
-  failing on the first error. Every tool version comes from the pinned dev dependency group and
+  failing on the first error, then chains the rust-harness gate (`rust-harness/Makefile`:
+  cargo fmt, clippy, lockfile check, rustdoc lints, tests) when that directory exists. Every tool version comes from the pinned dev dependency group and
   no step needs the network. Known caveat: while `uv.lock` remains stale relative to
   `pyproject.toml` (regenerated only on the workstation, where the pytorch cu130 index is
   reachable — verification runbook step zero), the `uv lock --check` step fails in sandboxes;

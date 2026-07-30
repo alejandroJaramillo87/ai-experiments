@@ -551,12 +551,13 @@ format: ## Format code with ruff
 # provisioned in .venv instead of re-resolving the environment first).
 # shellcheck gates at warning severity: info/style hits in host entrypoints are
 # dominated by intentional word-splitting the sandbox cannot safely rewrite.
-quality: ## Run the full quality gate (format check, lint, mypy, lock check, shellcheck)
+quality: ## Run the full quality gate (format check, lint, mypy, lock check, shellcheck, rust gate)
 	uv run --no-sync ruff format --check .
 	uv run --no-sync ruff check .
 	uv run --no-sync mypy
 	uv lock --check
 	git ls-files '*.sh' | xargs uv run --no-sync shellcheck --severity=warning
+	@if [ -d rust-harness ]; then $(MAKE) -C rust-harness quality; fi
 
 ##@ Agent Tooling (OpenCode / Claude Code parity)
 

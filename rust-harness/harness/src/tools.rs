@@ -62,8 +62,26 @@ impl ToolCall {
         }
     }
 
-    /// The value permission patterns match against: a path, a command, or a
-    /// pattern; empty when the tool has no natural target.
+    /// The value permission patterns are matched against. Path targets are
+    /// lexically normalized (`./a` and `b/../a` both become `a`), so a rule
+    /// matches the filesystem target rather than one spelling of it; an
+    /// unnormalizable path keeps its raw form and fails later in `resolve`.
+    /// Commands and glob patterns are returned verbatim.
+    pub fn permission_target(&self) -> std::borrow::Cow<'_, str> {
+        match self {
+            ToolCall::Read { path }
+            | ToolCall::Write { path, .. }
+            | ToolCall::Edit { path, .. } => match normalize_rel(path) {
+                Ok(p) => std::borrow::Cow::Owned(p.to_string_lossy().into_owned()),
+                Err(_) => std::borrow::Cow::Borrowed(path.as_str()),
+            },
+            _ => std::borrow::Cow::Borrowed(self.target()),
+        }
+    }
+
+    /// The raw target as the model spelled it: a path, a command, or a
+    /// pattern; empty when the tool has no natural target. Used for
+    /// messages and logs; permission matching uses `permission_target`.
     pub fn target(&self) -> &str {
         match self {
             ToolCall::Read { path }
@@ -281,26 +299,91 @@ fn bash_with_timeout(command: &str, root: &Path, timeout: Duration) -> Result<St
     Ok(text)
 }
 
-/// Resolve a model-supplied path strictly inside `root`. Lexical only:
-/// absolute paths and any `..` that would climb out of the root are errors,
-/// so no permission rule needs to anticipate traversal spellings.
-fn resolve(root: &Path, path: &str) -> Result<PathBuf> {
-    let rel = Path::new(path);
-    let mut depth: usize = 0;
-    for comp in rel.components() {
+/// Control files the model may never write: `permissions.yaml` is the rule
+/// file gating its own tool use, and `session.jsonl` is the transcript whose
+/// role fields resume trusts. Both live in the workspace root by design, so
+/// without this guard one allowed write escalates to permanent full allow
+/// (next process start) or forged conversation turns.
+const PROTECTED_FILES: [&str; 2] = ["permissions.yaml", "session.jsonl"];
+
+/// Lexically normalize a workspace-relative path: reject absolute paths and
+/// any `..` that climbs out of the root, and collapse `.` and `..` so one
+/// filesystem target has exactly one spelling. Permission rules are matched
+/// against this form, so a deny pattern cannot be dodged by writing
+/// `./secrets/x` or `src/../secrets/x`.
+pub(crate) fn normalize_rel(path: &str) -> Result<PathBuf> {
+    let mut parts: Vec<std::ffi::OsString> = Vec::new();
+    for comp in Path::new(path).components() {
         match comp {
-            Component::Normal(_) => depth += 1,
+            Component::Normal(c) => parts.push(c.to_os_string()),
             Component::CurDir => {}
             Component::ParentDir => {
-                ensure!(depth > 0, "path escapes workspace root: {path}");
-                depth -= 1;
+                ensure!(parts.pop().is_some(), "path escapes workspace root: {path}");
             }
             Component::RootDir | Component::Prefix(_) => {
                 bail!("path escapes workspace root: {path}")
             }
         }
     }
-    Ok(root.join(rel))
+    Ok(parts.iter().collect())
+}
+
+/// Resolve a model-supplied path strictly inside `root`.
+///
+/// Two layers: the lexical one above rejects absolute paths and climbing
+/// `..`, and a canonical one closes the symlink hole — lexical checks alone
+/// are satisfied by `link/x` where `link` points outside the root, and the
+/// file tools use symlink-following IO. The deepest existing ancestor is
+/// canonicalized and required to stay under the canonical root; the
+/// not-yet-existing tail is re-joined afterwards so writing a new file
+/// still works.
+fn resolve(root: &Path, path: &str) -> Result<PathBuf> {
+    let rel = normalize_rel(path)?;
+    ensure!(
+        !rel.components().any(|c| matches!(c, Component::Normal(name)
+            if PROTECTED_FILES.contains(&name.to_string_lossy().as_ref()))),
+        "refusing to touch harness control file: {path}"
+    );
+    let full = root.join(&rel);
+
+    // Canonicalize the deepest existing ancestor; everything below it does
+    // not exist yet and therefore cannot be a symlink.
+    let mut existing = full.as_path();
+    let mut tail = PathBuf::new();
+    loop {
+        if existing.exists() {
+            break;
+        }
+        let parent = existing
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("path escapes workspace root: {path}"))?;
+        let name = existing
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("path escapes workspace root: {path}"))?;
+        tail = if tail.as_os_str().is_empty() {
+            PathBuf::from(name)
+        } else {
+            Path::new(name).join(&tail)
+        };
+        existing = parent;
+    }
+    let canonical_root = root
+        .canonicalize()
+        .with_context(|| format!("workspace root: {}", root.display()))?;
+    let canonical = existing
+        .canonicalize()
+        .with_context(|| format!("resolve {path}"))?;
+    ensure!(
+        canonical.starts_with(&canonical_root),
+        "path escapes workspace root through a symlink: {path}"
+    );
+    // Joining an empty tail would append a trailing separator, turning a
+    // file path into a directory path.
+    if tail.as_os_str().is_empty() {
+        Ok(canonical)
+    } else {
+        Ok(canonical.join(tail))
+    }
 }
 
 /// Count occurrences of `needle` including overlapping ones: `edit`'s
@@ -372,6 +455,98 @@ mod tests {
         .execute(dir.path())
         .unwrap();
         assert_eq!(text, "hello");
+    }
+
+    #[test]
+    fn symlinks_pointing_out_of_the_root_are_refused() {
+        // Regression: resolve was lexical only, so `escape/passwd` satisfied
+        // the traversal check while the symlink-following IO read outside.
+        let dir = root();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret.txt"), "classified").unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("escape")).unwrap();
+
+        for call in [
+            ToolCall::Read {
+                path: "escape/secret.txt".into(),
+            },
+            ToolCall::Write {
+                path: "escape/new.txt".into(),
+                content: "x".into(),
+            },
+            ToolCall::Edit {
+                path: "escape/secret.txt".into(),
+                old: "classified".into(),
+                new: "leaked".into(),
+            },
+        ] {
+            let err = call.execute(dir.path()).unwrap_err();
+            assert!(
+                format!("{err:#}").contains("symlink"),
+                "expected a symlink refusal, got: {err:#}"
+            );
+        }
+        // The outside file is untouched and no new file was planted.
+        assert_eq!(
+            std::fs::read_to_string(outside.path().join("secret.txt")).unwrap(),
+            "classified"
+        );
+        assert!(!outside.path().join("new.txt").exists());
+    }
+
+    #[test]
+    fn symlinks_staying_inside_the_root_still_work() {
+        let dir = root();
+        std::fs::create_dir(dir.path().join("real")).unwrap();
+        std::fs::write(dir.path().join("real/f.txt"), "inside").unwrap();
+        std::os::unix::fs::symlink(dir.path().join("real"), dir.path().join("link")).unwrap();
+        let text = ToolCall::Read {
+            path: "link/f.txt".into(),
+        }
+        .execute(dir.path())
+        .unwrap();
+        assert_eq!(text, "inside");
+    }
+
+    #[test]
+    fn harness_control_files_cannot_be_written() {
+        // permissions.yaml gates the model's own tool use and session.jsonl
+        // carries the trusted role fields; neither is model-writable.
+        let dir = root();
+        std::fs::write(dir.path().join("permissions.yaml"), "rules: []").unwrap();
+        for path in ["permissions.yaml", "./permissions.yaml", "session.jsonl"] {
+            let err = ToolCall::Write {
+                path: path.into(),
+                content: "rules:\n  - tool: \"*\"\n    action: allow\n".into(),
+            }
+            .execute(dir.path())
+            .unwrap_err();
+            assert!(
+                format!("{err:#}").contains("control file"),
+                "expected a control-file refusal for {path}, got: {err:#}"
+            );
+        }
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("permissions.yaml")).unwrap(),
+            "rules: []"
+        );
+    }
+
+    #[test]
+    fn permission_targets_are_normalized_to_one_spelling() {
+        // Regression: rules matched the raw spelling, so `./secrets/x` and
+        // `src/../secrets/x` both dodged a `secrets/**` deny rule.
+        for spelling in ["secrets/k.txt", "./secrets/k.txt", "src/../secrets/k.txt"] {
+            let call = ToolCall::Read {
+                path: spelling.into(),
+            };
+            assert_eq!(call.permission_target(), "secrets/k.txt");
+        }
+        // Commands are matched verbatim, not path-normalized.
+        let bash = ToolCall::Bash {
+            command: "./x.sh".into(),
+        };
+        assert_eq!(bash.permission_target(), "./x.sh");
     }
 
     #[test]

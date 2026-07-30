@@ -204,19 +204,30 @@ impl ActiveGeneration<'_> {
             self.done = true;
             return Ok(None);
         }
+        // Deliberate ordering: the budget is checked after sampling because
+        // EOS is legal at exactly the budget; the failing step therefore
+        // consumes one sampler draw.
         anyhow::ensure!(
             self.session.tokens.len() < self.session.max_context,
             "context budget of {} reached during generation",
             self.session.max_context
         );
-        if let (Some(g), Some(st)) = (self.grammar, self.state.as_mut()) {
-            // Defense in depth: the mask already excludes illegal tokens.
-            *st = g
-                .advance_str(st, self.vocab.text(tok))
-                .ok_or_else(|| anyhow::anyhow!("sampled grammar-illegal token"))?;
-        }
+        // Compute the next grammar state without mutating, and commit it only
+        // after the prefill succeeds: a transient prefill error must not
+        // leave the state one token ahead of the cache for a retried step.
+        let next_state = match (self.grammar, self.state.as_ref()) {
+            (Some(g), Some(st)) => Some(
+                // Defense in depth: the mask already excludes illegal tokens.
+                g.advance_str(st, self.vocab.text(tok))
+                    .ok_or_else(|| anyhow::anyhow!("sampled grammar-illegal token"))?,
+            ),
+            _ => None,
+        };
         self.session.tail_logits = Some(self.session.model.prefill(&[tok])?);
         self.session.tokens.push(tok);
+        if let Some(st) = next_state {
+            self.state = Some(st);
+        }
         Ok(Some(tok))
     }
 }
@@ -286,6 +297,76 @@ mod tests {
         assert!(gen.stopped_at_eos);
         assert_eq!(streamed, output);
         assert_eq!(s.cached_len(), prompt.len() + output.len());
+    }
+
+    /// Delegating wrapper that fails exactly one prefill call (the `fail_at`-th),
+    /// then recovers: the transient-error case a retried `step` must survive.
+    struct FlakyModel {
+        inner: MockModel,
+        calls: usize,
+        fail_at: usize,
+    }
+
+    impl crate::model::Model for FlakyModel {
+        fn vocab_size(&self) -> usize {
+            self.inner.vocab_size()
+        }
+        fn cached_len(&self) -> usize {
+            self.inner.cached_len()
+        }
+        fn prefill(&mut self, tokens: &[Token]) -> Result<crate::model::Logits> {
+            self.calls += 1;
+            if self.calls == self.fail_at {
+                anyhow::bail!("transient prefill failure");
+            }
+            self.inner.prefill(tokens)
+        }
+        fn truncate(&mut self, len: usize) -> Result<()> {
+            self.inner.truncate(len)
+        }
+        fn fork(&self) -> Result<Box<dyn crate::model::Model>> {
+            unimplemented!("not forked in this test")
+        }
+    }
+
+    #[test]
+    fn retried_step_after_transient_prefill_error_stays_grammar_consistent() {
+        // Regression: the grammar state used to advance before the token's
+        // prefill, so a failed prefill left the state one token ahead and a
+        // retried step skipped a character of the skeleton.
+        let skeleton = r#"{"tool": "ab", "args": {}}"#;
+        let mut tokens: Vec<String> = skeleton
+            .chars()
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .map(|c| c.to_string())
+            .collect();
+        tokens.push("</s>".to_string());
+        let eos = (tokens.len() - 1) as u32;
+        let v = Vocab::new(tokens.clone(), eos);
+        let grammar = Grammar::compile(&crate::grammar::ToolSchema {
+            name: "ab".into(),
+            params: vec![],
+        });
+        // Uniform logits: the grammar mask forces the single legal token.
+        let script = vec![vec![1.0; v.len()]; 128];
+        let model = FlakyModel {
+            inner: MockModel::new(v.len(), script),
+            calls: 0,
+            fail_at: 6, // prompt prefill is call 1; fail mid-generation
+        };
+        let mut s = Session::new(Box::new(model), 4096).unwrap();
+        let mut active = s.begin_generation(&[0], &v, Some(&grammar)).unwrap();
+        let mut sampler = greedy();
+        let mut out = String::new();
+        loop {
+            match active.step(&mut sampler) {
+                Ok(Some(tok)) => out.push_str(&tokens[tok as usize]),
+                Ok(None) => break,
+                Err(e) => assert!(e.to_string().contains("transient prefill failure")),
+            }
+        }
+        assert_eq!(out, skeleton);
     }
 
     #[test]

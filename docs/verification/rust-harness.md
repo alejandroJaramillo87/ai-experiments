@@ -33,6 +33,11 @@ not apply here; RH.0 is this phase's gate. The model directory
 `/mnt/ai-data/models` is read-only for agents; all commands below only
 read from it.
 
+The sandbox-executable code-quality counterpart to this runbook is the
+[QA campaign](rust-harness-qa.md) (phases Q0-Q6); it verifies code
+quality, while this runbook verifies behavior on real weights and
+hardware.
+
 Entries carry a "Risks likely to surface here" block where a failure mode
 is predicted. Rust-harness has no known-bugs ledger; these are known
 unknowns, and a failure matching a listed risk should be recorded against
@@ -68,14 +73,24 @@ Status: PENDING
 
 **Risks likely to surface here.** This is the highest-risk entry of the
 campaign: the CPU backend was written against a Gemma-4-style architecture
-spec, never against the real artifact. Predicted failure modes:
+spec, never against the real artifact. Published sources say the real E4B
+architecture is a superset of what the backend implements, retaining
+per-layer embeddings and MatFormer nesting and adding a shared KV cache and
+dual RoPE; the
+[architecture reconciliation](../inference/rust-harness-runtime-design.md#architecture-reconciliation)
+records those findings and their confidence. Those sources are secondhand,
+so this entry decides the question for the checkpoint that actually exists.
 
-- MatFormer or per-layer-embedding tensors in the E4B GGUF that
-  `CpuModel::from_gguf` does not expect.
-- Tensor quantization types outside the implemented set (F32, F16, Q8_0).
-- An architecture string or metadata key layout differing from the
-  synthetic fixture's `gemma4.*` assumptions (head counts, sliding-window
-  pattern, RoPE frequency base, RMS epsilon).
+The backend refuses a checkpoint carrying any of those features rather than
+loading it and ignoring the extra weights, so this entry produces a verdict
+rather than a judgment call. Four questions decide the follow-up work:
+
+1. Are there per-layer embedding tensors?
+2. Do any layers lack `attn_k`/`attn_v` (the shared-KV signature)?
+3. Are the feed-forward widths uniform across layers, or per-layer
+   (MatFormer slicing)?
+4. Is RoPE a single frequency base at full head dimension, or dual and
+   partial?
 
 Command:
 
@@ -85,14 +100,21 @@ $ cd rust-harness
 $ cargo run -p runtime --bin gguf-info -- /mnt/ai-data/models/gguf/<e4b>.gguf
 ```
 
-Expected signal: the metadata section lists the architecture keys the
-loader reads (embedding length, block count, head counts, key length, RMS
-epsilon, sliding window and pattern, RoPE frequency base, context length)
-and the tensor directory shows the per-block names the loader expects
-(`token_embd.weight`, `blk.<i>.attn_{q,k,v,output}.weight`, the four norm
-weights, `blk.<i>.ffn_{gate,up,down}.weight`, `output_norm.weight`) with
-types in {F32, F16, Q8_0}. Record the full dump verbatim; any mismatch is
-a finding that defines the follow-up code work.
+Expected signal: the run ends in a compatibility verdict, printed by the same
+`cpu::check_supported` function the loader calls, so the tool and the loader
+cannot disagree. `[OK] CPU backend compatibility: supported` means the
+checkpoint is within the implemented subset and RH.2 can proceed.
+`[ERROR] CPU backend compatibility: ...` names the unimplemented feature and
+is the expected outcome if the published architecture holds; that message
+defines the follow-up code work and does not invalidate this entry.
+
+The architecture summary section answers the four questions directly: tensor
+families with counts, the quantization-type histogram against the implemented
+set {F32, F16, Q8_0}, feed-forward widths (uniform or per-layer), the list of
+layers lacking `attn_k`/`attn_v`, and every RoPE, window, and per-layer
+metadata key. Record the full dump verbatim, including the raw metadata and
+tensor sections, because the summary is derived and the raw dump is the
+evidence.
 
 Observed:
 

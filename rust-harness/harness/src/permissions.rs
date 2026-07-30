@@ -3,7 +3,19 @@
  *
  * First matching rule wins; no rule means Ask. A rule matches when its tool
  * field equals the call's tool name (or `*`) and its optional pattern
- * wildcard-matches the call's target (path for file tools, command for bash).
+ * wildcard-matches the call's permission target (a normalized path for file
+ * tools, the command for bash).
+ *
+ * Two scope limits are deliberate and must not be mistaken for enforcement:
+ *
+ * 1. Bash is not confined by file-tool rules. A deny rule on the `write` tool
+ *    for a path outside the workspace does not stop `bash: tee <that path>`;
+ *    the bash tool only runs with the workspace as its working directory.
+ *    Confining it would need a sandbox, not a rule.
+ * 2. A bash pattern is a wildcard match over the whole command line, and `**`
+ *    matches shell metacharacters. `bash "cargo **" allow` therefore permits
+ *    `cargo test; rm -rf ~`. Any prefix-allow for bash is an allow-anything
+ *    rule; use `ask` for bash unless that is the intent.
  */
 
 use anyhow::Result;
@@ -53,10 +65,11 @@ impl Permissions {
     pub fn evaluate(&self, call: &ToolCall) -> Decision {
         for rule in &self.rules {
             let tool_matches = rule.tool == "*" || rule.tool == call.name();
+            let target = call.permission_target();
             let pattern_matches = rule
                 .pattern
                 .as_deref()
-                .is_none_or(|p| wildcard_match(p, call.target()));
+                .is_none_or(|p| wildcard_match(p, &target));
             if tool_matches && pattern_matches {
                 return rule.action;
             }
