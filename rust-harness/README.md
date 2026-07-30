@@ -7,6 +7,14 @@ tutorial; the runtime targets Gemma 4 E4B exclusively and links into the harness
 a library crate, giving the agent loop direct ownership of the KV cache across
 conversation turns.
 
+The harness is positioned as an instrumented inference substrate for the
+parent repository's training and interpretability pipelines, with the
+coding-agent loop as its native workload. It does not compete with the
+llama.cpp and vLLM services on serving speed or model coverage; its value is
+the owned seams those services cannot offer — in-band activation capture,
+steering, probe monitoring, a flight recorder, and deterministic KV restore —
+which make agent runs reproducible and publishable as experiment logs.
+
 The full design is recorded in the parent repository at
 `docs/inference/rust-harness-runtime-design.md`; the observability and
 debugging phases (flight recorder, tracing, rr-debuggable CPU backend) are

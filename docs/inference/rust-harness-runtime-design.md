@@ -6,9 +6,10 @@ harness adapts the agent architecture of the
 [claude-code-from-scratch](https://github.com/FareedKhan-dev/claude-code-from-scratch)
 tutorial; the runtime targets the Gemma 4 family exclusively, matching the
 repository model policy recorded in
-[unified_cli_investigation.md](../unified_cli_investigation.md). This document is a
-design only; no Rust code exists in the repository yet. Findings and external facts
-are current as of July 2026.
+[unified_cli_investigation.md](../unified_cli_investigation.md). The
+implementation lives in `rust-harness/`; where this document and the code
+disagree, the code is correct and the divergence is a documentation bug.
+Findings and external facts are current as of July 2026.
 
 ## Table of contents
 
@@ -27,7 +28,18 @@ are current as of July 2026.
 The project builds a local coding agent — an agent loop with file, shell, and
 planning tools — whose model inference runs in the same process on the RTX 5090,
 with no network dependency. The primary purpose is pedagogical: understanding the
-harness-runtime seam by owning both sides of it. The design serves one user with one generation in flight at any instant;
+harness-runtime seam by owning both sides of it.
+
+Positioning, decided after the interpretability seam landed: the harness is an
+instrumented inference substrate for the repository's training and
+interpretability pipelines, with the coding-agent loop as its native workload.
+Owning both sides of the seam yields properties no off-the-shelf stack
+provides — in-band activation capture from the serving numerics, steering and
+probe monitoring inside the forward pass, a flight recorder and deterministic
+KV restore that make runs replayable, and observability records in the shared
+obs contract. The agent loop is the workload generator for those experiments,
+not a competitor to the llama.cpp and vLLM services on model coverage or
+serving speed. The design serves one user with one generation in flight at any instant;
 multi-tenant serving remains the job of the existing services. Parallel subagents
 are in scope through cooperative interleaving (see
 [Subagents](#subagents-fork-and-interleave)) rather than batched decode. Three
@@ -48,8 +60,13 @@ Non-goals, stated explicitly because each was considered and rejected:
 
 - **Not a serving-stack replacement.** llama.cpp and vLLM remain the inference
   services on ports 8001-8003. This binary serves one local user, in-process.
-- **No training and no interpretability seam.** The training and interp tiers stay
-  on the Python/PyTorch stack. No activation hooks or steering interfaces.
+- **No training.** The training tier stays on the Python/PyTorch stack. The
+  original design also excluded an interpretability seam; that non-goal was
+  reversed during implementation — the CPU backend carries a residual-stream
+  tap, control-vector steering, and an in-band probe monitor, designed in
+  [rust-harness-interp.md](../interpretability/rust-harness-interp.md). The
+  analysis tier (probe training, direction extraction, evaluation) remains in
+  Python.
 - **No multimodality.** The vision components of Gemma 4 checkpoints are skipped at
   load time.
 - **No custom CUDA kernels in version 1.** The tensor backend is
