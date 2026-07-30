@@ -166,6 +166,74 @@ fn steered_logits_match_the_python_reference() {
     }
 }
 
+/// Probe GGUF mirroring the reference's synthetic probe fixture: weights
+/// 0.1 * (j - 4), mu 0.01 * j, sigma 1 + 0.1 * j, bias 0.1 over the given
+/// layer and width.
+fn probe_gguf(layer: u32, width: usize, threshold: f32) -> Vec<u8> {
+    let mut w = runtime::synth::GgufWriter::new();
+    w.kv_str("general.architecture", "probe");
+    w.kv_str("probe.name", "reference-probe");
+    w.kv_str("probe.model_hash", "unknown");
+    w.kv_u32("probe.layer", layer);
+    w.kv_f32("probe.bias", 0.1);
+    w.kv_f32("probe.threshold", threshold);
+    let dims = [width as u64];
+    let weights: Vec<f32> = (0..width).map(|j| 0.1 * (j as f32 - 4.0)).collect();
+    let mu: Vec<f32> = (0..width).map(|j| 0.01 * j as f32).collect();
+    let sigma: Vec<f32> = (0..width).map(|j| 1.0 + 0.1 * j as f32).collect();
+    w.tensor_f32("probe.weights", &dims, &weights);
+    w.tensor_f32("probe.mu", &dims, &mu);
+    w.tensor_f32("probe.sigma", &dims, &sigma);
+    w.finish()
+}
+
+#[test]
+fn probe_monitor_scores_match_the_python_reference() {
+    use runtime::model::probe::{Probe, ProbeMonitor};
+    use std::sync::Arc;
+
+    let (image, golden) = load_golden();
+    let file = runtime::gguf::parse(&image).unwrap();
+    let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+    let embed_dim = model.config().embed_dim;
+    let prompt: Vec<u32> = golden["prompt"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_u64().unwrap() as u32)
+        .collect();
+    let probe_layer = golden["probe_layer"].as_u64().unwrap() as u32;
+    let want = f32_row(&golden["probe_scores"]);
+
+    // Threshold below every reference score, so every position is flagged
+    // and the flag list carries the full per-position score sequence.
+    let p_image = probe_gguf(probe_layer, embed_dim, 0.0);
+    let p_file = runtime::gguf::parse(&p_image).unwrap();
+    let probe = Arc::new(Probe::from_gguf(&p_file, &p_image).unwrap());
+    let (tap, state) = ProbeMonitor::new(probe);
+    model.set_tap(Box::new(tap));
+
+    let baseline = {
+        let mut plain = CpuModel::from_gguf(&file, &image).unwrap();
+        plain.prefill_all(&prompt).unwrap()
+    };
+    let rows = model.prefill_all(&prompt).unwrap();
+    // Observation only: monitored and unmonitored logits are bit-identical.
+    assert_eq!(rows, baseline);
+
+    let state = state.lock().unwrap();
+    assert_eq!(state.scored, prompt.len());
+    assert_eq!(state.flags.len(), want.len());
+    for (position, (flag, w)) in state.flags.iter().zip(&want).enumerate() {
+        assert_eq!(flag.position, position);
+        assert!(
+            (flag.score - w).abs() <= TOLERANCE,
+            "probe score at position {position}: got {}, reference {w}",
+            flag.score
+        );
+    }
+}
+
 #[test]
 fn fixture_gguf_matches_the_generator() {
     // The committed fixture must be exactly what the tiny-model bin writes;

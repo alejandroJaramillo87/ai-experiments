@@ -34,6 +34,26 @@ def steer_direction(d):
     return np.array([0.05 * (j - 8.0) for j in range(d)], dtype=np.float32)
 
 
+# Synthetic probe fixture, mirrored by the Rust golden test: a linear probe
+# over 0-based layer 1 scored at every position with the score.py math,
+# sigmoid(((x - mu) / sigma) . w + bias).
+PROBE_LAYER = 1
+PROBE_BIAS = np.float32(0.1)
+
+
+def probe_params(d):
+    weights = np.array([0.1 * (j - 4.0) for j in range(d)], dtype=np.float32)
+    mu = np.array([0.01 * j for j in range(d)], dtype=np.float32)
+    sigma = np.array([1.0 + 0.1 * j for j in range(d)], dtype=np.float32)
+    return weights, mu, sigma
+
+
+def probe_score(x, d):
+    weights, mu, sigma = probe_params(d)
+    logit = ((x - mu) / sigma) @ weights + PROBE_BIAS
+    return float(1.0 / (1.0 + np.exp(-logit, dtype=np.float32)))
+
+
 def parse_gguf(data):
     pos = [0]
 
@@ -137,6 +157,7 @@ def forward(metadata, tensors, prompt, steered=False):
     caches = [{"k": [], "v": []} for _ in range(n_layers)]
     all_logits = []
     residuals = []
+    probe_scores = []
     for position, token in enumerate(prompt):
         residuals = []
         x = (embed[token] * np.float32(math.sqrt(d))).astype(np.float32)
@@ -177,11 +198,14 @@ def forward(metadata, tensors, prompt, steered=False):
             if steered and i == STEER_LAYER:
                 x = (x + np.float32(STEER_SCALE) * steer_direction(d)).astype(np.float32)
             residuals.append(x.astype(np.float32).tolist())
+            if i == PROBE_LAYER:
+                probe_scores.append(probe_score(x.astype(np.float32), d))
         x = rms_norm(x, tensors["output_norm.weight"], eps)
         all_logits.append((embed @ x).astype(np.float32).tolist())
     # residuals holds the last position's per-layer rows (rewritten each
-    # position), matching the capture format's position == "last".
-    return all_logits, residuals
+    # position), matching the capture format's position == "last";
+    # probe_scores holds one score per position of the probe's layer.
+    return all_logits, residuals, probe_scores
 
 
 def main():
@@ -194,8 +218,8 @@ def main():
         )
         return 1
     metadata, tensors = parse_gguf(gguf_path.read_bytes())
-    logits, residuals = forward(metadata, tensors, PROMPT)
-    steered_logits, _ = forward(metadata, tensors, PROMPT, steered=True)
+    logits, residuals, probe_scores = forward(metadata, tensors, PROMPT)
+    steered_logits, _, _ = forward(metadata, tensors, PROMPT, steered=True)
     out = {
         "prompt": PROMPT,
         "logits": logits,
@@ -203,6 +227,8 @@ def main():
         "steer_layer": STEER_LAYER,
         "steer_scale": STEER_SCALE,
         "steered_last_logits": steered_logits[-1],
+        "probe_layer": PROBE_LAYER,
+        "probe_scores": probe_scores,
     }
     (FIXTURE_DIR / "tiny-gemma4-logits.json").write_text(json.dumps(out))
     print(
