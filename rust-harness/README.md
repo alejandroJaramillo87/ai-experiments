@@ -23,7 +23,8 @@ fixtures/         committed fixtures: synthetic tiny-model GGUF, numpy reference
                   logits and generator script; real-model Tier 3 fixtures pending
 ```
 
-Utility binaries: `gguf-info` dumps GGUF metadata and the tensor directory
+Utility binaries: `gguf-info` dumps GGUF metadata and the tensor directory,
+then derives an architecture summary and the backend's compatibility verdict
 (architecture reconciliation against the real checkpoint); `tiny-model`
 writes the synthetic fixture GGUF; `activation-capture` writes last-token
 residual activations in the interp capture shard format (consumed unchanged
@@ -86,7 +87,14 @@ Observability phase 3 lands the first real numerics: a hand-rolled,
 single-threaded CPU backend (`runtime/src/model/cpu.rs`) implementing a
 Gemma-4-style forward pass (RMSNorm, GQA with QK-norm and NEOX RoPE,
 interleaved sliding-window/global attention, GeGLU MLP, tied LM head) from
-GGUF weights (F32, F16, Q8_0 dequantization). The binary runs it with
+GGUF weights (F32, F16, Q8_0 dequantization). That pass is a strict subset
+of the published Gemma 4 architecture, so `cpu::check_supported` refuses a
+checkpoint carrying per-layer embeddings, a shared KV cache, MatFormer
+per-layer feed-forward widths, or dual RoPE, naming the feature rather than
+loading the model and silently ignoring the extra weights; `gguf-info`
+prints the same verdict. The reconciliation is recorded in the parent
+repository's `docs/inference/rust-harness-runtime-design.md` and decided on
+the workstation by runbook entry RH.1. The binary runs it with
 `--model <path.gguf>`; the `SessionGenerator` seam wires the agent loop
 through tokenizer and session. Numerics match an independent numpy
 reference over the committed synthetic checkpoint, and the harness runs a

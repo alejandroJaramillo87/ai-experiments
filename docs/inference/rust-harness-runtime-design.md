@@ -18,6 +18,7 @@ are current as of July 2026.
 - [Runtime design](#runtime-design)
 - [Harness design](#harness-design)
 - [Model targeting](#model-targeting)
+- [Architecture reconciliation](#architecture-reconciliation)
 - [Implementation roadmap](#implementation-roadmap)
 - [Risks and open questions](#risks-and-open-questions)
 
@@ -195,8 +196,61 @@ edge models (E2B, E4B) and larger server-tier variants.
 
 Version coupling is accepted: the model module is the one component rewritten for a
 future Gemma 5. Whether the E-series inherits MatFormer or per-layer-embedding
-techniques from Gemma 3n is an open question against the model card; if it does,
-the loader and structs in `model/gemma4.rs` absorb the difference.
+techniques from Gemma 3n was an open question against the model card. Published
+sources answer it: it does. See the next section.
+
+## Architecture reconciliation
+
+The CPU reference backend (`runtime/src/model/cpu.rs`) was written against a
+Gemma-3-shaped specification: RMSNorm with `(1 + weight)` scaling, embedding scaled
+by the square root of the embedding dimension, grouped-query attention with per-head
+QK-norm and NEOX RoPE, interleaved sliding-window and global layers, a GeGLU
+feed-forward block with tanh GELU, four norms per layer, and an LM head tied to the
+token embedding. Published descriptions of Gemma 4 E4B describe a superset of that.
+
+| Feature | Status in Gemma 4 E4B | Implemented | Confidence |
+|---------|-----------------------|-------------|------------|
+| AltUp (parallel hidden-state streams) | Dropped | Not applicable | High |
+| Per-layer embeddings (PLE) | Retained, approximately 2.82B of 8B total parameters | No | High |
+| MatFormer nested feed-forward | Retained; slicing can vary width per layer or per block | No | High |
+| Shared KV cache | Last 18 of 42 layers reuse K/V from the last non-shared layer | No | Medium |
+| Dual RoPE | p-RoPE (p = 0.25, theta 1M) on global layers, plain RoPE (theta 10k) on local | No | Medium |
+| Value normalization | Magnitude-only, no learned scale | No | Medium |
+| LAuReL | Retained | Not applicable | Medium |
+| Sliding window | 512 tokens, 5:1 local-to-global over 42 layers | Yes, metadata-driven | Medium |
+
+AltUp being dropped is the load-bearing finding. It runs several parallel hidden-state
+streams per layer, which would leave `Tap::on_residual(layer, position, &[f32])`
+without a single residual vector to hand out, renegotiating the interpretability
+contract across the language boundary. With one residual stream retained, the tap
+seam, the capture shard format, and the Python-side correspondence all hold. See
+[the interpretability contract](../interpretability/rust-harness-interp.md) for the
+one consequence PLE does carry.
+
+Two caveats bound these findings. They are secondhand: the primary sources refuse
+automated retrieval, so the details come from search summaries of varying
+reliability, and the confidence column reflects how many independent sources agreed.
+More importantly, what governs the code is not the published architecture but what
+the GGUF file on the workstation stores, after conversion and quantization. Runbook
+entry RH.1 remains the authority.
+
+Pending that entry, the backend refuses rather than guesses. `cpu::check_supported`
+diagnoses per-layer embeddings, shared KV, per-layer feed-forward widths, and
+non-single-theta RoPE by name and fails the load. The alternative was worse than a
+failure: loading is name-directed, so an unimplemented feature presents as ignored
+weight tensors and fluent, wrong output that no machinery test detects. The
+`gguf-info` binary prints the same verdict from the same function, so the
+reconciliation run yields a decision rather than a judgment call.
+
+Sources: the [Gemma 4 technical report](https://arxiv.org/abs/2607.02770)
+(arXiv 2607.02770, 2026-06-19), a
+[visual guide to the architecture](https://newsletter.maartengrootendorst.com/p/a-visual-guide-to-gemma-4),
+a [breakdown of per-layer embeddings, shared KV, and dual RoPE](https://botmonster.com/posts/gemma-4-architecture-per-layer-embeddings-shared-kv-cache-dual-rope/),
+and [llama.cpp issue 21468](https://github.com/ggml-org/llama.cpp/issues/21468),
+which reports that the shared KV cache disables prefix cache reuse in llama.cpp and
+forces full prompt re-evaluation on every request. That last point is the phase B
+premise stated from the outside: delta prefill on this architecture requires owning
+the cache.
 
 ## Implementation roadmap
 

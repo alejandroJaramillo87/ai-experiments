@@ -14,6 +14,7 @@ monitoring) on the `rust-harness` runtime instead of llama.cpp. Bridges the
 - [In-band monitoring](#in-band-monitoring)
 - [What stays in Python](#what-stays-in-python)
 - [Validation](#validation)
+- [What per-layer embeddings change](#what-per-layer-embeddings-change)
 - [Constraint on future backends](#constraint-on-future-backends)
 - [Roadmap](#roadmap)
 
@@ -163,6 +164,37 @@ synthetic fixture produces output that is deterministic across repeats and
 differs from the unsteered run. Repeat runs must use a fresh session root:
 `session.jsonl` persists the transcript by design, so a second run in the
 same directory continues the session rather than reproducing it.
+
+## What per-layer embeddings change
+
+Published descriptions of Gemma 4 E4B retain per-layer embeddings (PLE) and
+drop AltUp; the
+[architecture reconciliation](../inference/rust-harness-runtime-design.md#architecture-reconciliation)
+records the sources and confidence. Both findings matter here, in opposite
+directions.
+
+Dropping AltUp preserves the seam. AltUp maintains several parallel
+hidden-state streams per layer, so `on_residual` would have no single
+residual vector to deliver, and the signature, the capture shard format, and
+the `block.output[0]` correspondence would all have to be renegotiated across
+the language boundary. One residual stream survives, so none of that changes.
+
+Retaining PLE shifts what a tapped vector means. Each layer sums a
+token-identity embedding lookup with a projection of the input embedding and
+adds the result to the residual stream at the end of the block. The tap point
+stays well defined, and it stays the same tensor the Python capture path
+records, because the injection lands before the block's output. What changes
+is the interpretation: a component of the tapped vector is a function of the
+current token identity and the layer index alone, not of context. A probe
+trained on that stream may therefore score partly on token identity, and a
+flag raised at one position says less about the surrounding text than the same
+flag would on a Gemma 3 residual.
+
+The consequence is for probe evaluation, not for the contract. Probe quality
+is already scheduled for separate evaluation on prefill and decode positions
+(see the roadmap below); that evaluation should report token-identity baseline
+performance alongside it, so a probe that has learned the PLE component rather
+than a semantic direction is visible rather than assumed away.
 
 ## Constraint on future backends
 
