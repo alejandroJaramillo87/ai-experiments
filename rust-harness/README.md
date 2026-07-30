@@ -133,7 +133,9 @@ rust toolchain building with `--locked`. Each invocation also writes
 run-level observability records (`harness/src/obs.rs`) in the parent
 repository's shared obs contract — run id, `cmd.start`/`fail`/`cmd.end`
 events, and a catalog line under `${OBS_LOG_DIR}/harness/` — readable by
-the existing Python tooling unchanged. Architecture
+the existing Python tooling unchanged. A design for extending that stream
+with live run-state events and a polling HTML viewer is recorded in
+`docs/live-events.md`; implementation waits on host verification. Architecture
 reconciliation against the real E4B GGUF (`gguf-info`), the rr acceptance
 run, and the Tier 3 fixtures are the remaining workstation work; the cuda
 backend (roadmap phase A) slots in at the same `Model` seam.
