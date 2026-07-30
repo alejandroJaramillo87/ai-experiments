@@ -25,7 +25,9 @@ fixtures/         committed fixtures: synthetic tiny-model GGUF, numpy reference
 
 Utility binaries: `gguf-info` dumps GGUF metadata and the tensor directory
 (architecture reconciliation against the real checkpoint); `tiny-model`
-writes the synthetic fixture GGUF.
+writes the synthetic fixture GGUF; `activation-capture` writes last-token
+residual activations in the interp capture shard format (consumed unchanged
+by the parent repository's `interp/probes` toolkit).
 
 ## Testing
 
@@ -92,6 +94,13 @@ task end to end on the CPU backend in the sandbox. Architecture
 reconciliation against the real E4B GGUF (`gguf-info`), the rr acceptance
 run, and the Tier 3 fixtures are the remaining workstation work; the cuda
 backend (roadmap phase A) slots in at the same `Model` seam.
+
+The CPU backend also carries an interpretability seam: a `Tap` trait
+observing the per-layer residual stream, control-vector steering
+(`--control-vector`, same GGUF layout llama.cpp uses), and the
+`activation-capture` binary, all golden-tested against the numpy
+reference. Design and compatibility contract:
+`docs/interpretability/rust-harness-interp.md` in the parent repository.
 
 ## Quality gate
 

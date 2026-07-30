@@ -236,6 +236,13 @@ labeled as such; measured results follow the repository benchmarking protocol.
   (phase A-prime) is hand-rolled and does not depend on Candle; see the
   [observability design](rust-harness-observability.md) for the recorded
   decision.
+- **Tap seam parity.** The CPU backend exposes a residual-stream `Tap` seam
+  (interpretability capture and steering; see
+  [rust-harness-interp.md](../interpretability/rust-harness-interp.md)).
+  The CUDA backend must implement the same seam with identical semantics —
+  post-layer residual, steering applied before the tap — which implies a
+  device-to-host copy per tapped layer; taps stay optional so the untapped
+  path pays nothing.
 - **Chat template and tool-call format.** The exact Gemma 4 function-calling
   convention must be taken from the model card and tokenizer config, not assumed
   from Gemma 3.

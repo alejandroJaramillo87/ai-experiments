@@ -12,6 +12,7 @@ document defines three implementation phases that precede the CUDA backend
 - [Phase 1: flight recorder and profiling scaffolding](#phase-1-flight-recorder-and-profiling-scaffolding)
 - [Phase 2: tracing](#phase-2-tracing)
 - [Phase 3: rr-friendliness via a simple CPU backend](#phase-3-rr-friendliness-via-a-simple-cpu-backend)
+- [Interpretability substrate](#interpretability-substrate)
 - [Parked: CPU-served subagents](#parked-cpu-served-subagents)
 - [Relation to the existing roadmap](#relation-to-the-existing-roadmap)
 
@@ -197,12 +198,29 @@ reference at some position. The sequence from symptom to cause:
    (rr) reverse-continue
    ```
 
+The same sequence applies one level deeper for interpretability work:
+watch a single residual-stream element (`watch -l x[<j>]` inside the layer
+loop) and `reverse-continue` to the attention or MLP write that produced
+it. The residual stream is exposed programmatically through the `Tap` seam;
+see the
+[interp substrate design](../interpretability/rust-harness-interp.md).
+
 ### Acceptance
 
 Host-side check on the workstation: a small CPU forward pass is recorded and
 replayed under rr, with reverse-continue reaching a chosen write. The human
 runs the commands and reports output back; the reported output is recorded
 verbatim per the repository's operating rules.
+
+## Interpretability substrate
+
+The CPU backend carries an interpretability seam beyond the debugging
+machinery above: a `Tap` trait observing the per-layer residual stream,
+additive control-vector steering, and an `activation-capture` binary
+writing the interp capture shard format. The design, its compatibility
+contract with the Python interp stack, and the constraint it places on
+future backends are recorded in
+[rust-harness-interp.md](../interpretability/rust-harness-interp.md).
 
 ## Parked: CPU-served subagents
 
