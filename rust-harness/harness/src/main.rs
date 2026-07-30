@@ -46,6 +46,8 @@ fn build_generator(
     control_vector: Option<&Path>,
     control_scale: f32,
     probe: Option<&Path>,
+    sampling: runtime::sampler::SamplingParams,
+    max_tokens: usize,
 ) -> Result<(SessionGenerator, Option<MonitorHandle>)> {
     use runtime::model::{
         cpu::{ControlVector, CpuModel},
@@ -104,12 +106,7 @@ fn build_generator(
     };
     let session = runtime::session::Session::new(model, max_context)?;
     let tokenizer = runtime::tokenizer::Tokenizer::from_gguf(&file).context("load tokenizer")?;
-    let generator = SessionGenerator::new(
-        session,
-        tokenizer,
-        runtime::sampler::SamplingParams::default(),
-        256,
-    )?;
+    let generator = SessionGenerator::new(session, tokenizer, sampling, max_tokens)?;
     Ok((generator, monitor))
 }
 
@@ -151,6 +148,8 @@ fn run(
     control_scale: f32,
     probe: Option<&Path>,
     probe_out: Option<&Path>,
+    sampling: runtime::sampler::SamplingParams,
+    max_tokens: usize,
 ) -> Result<String> {
     let permissions = match std::fs::read_to_string(root.join("permissions.yaml")) {
         Ok(yaml) => Permissions::from_yaml(&yaml).context("permissions.yaml")?,
@@ -159,8 +158,15 @@ fn run(
     };
     let transcript = Transcript::open(&root.join("session.jsonl")).context("session.jsonl")?;
     let mut agent = Agent::new(root.to_path_buf(), permissions, transcript);
-    let (mut generator, monitor) =
-        build_generator(model, record, control_vector, control_scale, probe)?;
+    let (mut generator, monitor) = build_generator(
+        model,
+        record,
+        control_vector,
+        control_scale,
+        probe,
+        sampling,
+        max_tokens,
+    )?;
     let answer = agent.run_task(&mut generator, task, 64, ask_stdin)?;
     if let Some(monitor) = &monitor {
         let default_out = root.join("probe-flags.jsonl");
@@ -173,7 +179,8 @@ fn main() -> ExitCode {
     const USAGE: &str = "usage: harness --model <path.gguf> [--record <path>] \
          [--trace-chrome <path>] [--control-vector <path.gguf>] \
          [--control-vector-scale <f>] [--probe <path.gguf>] \
-         [--probe-out <path>] <task description>";
+         [--probe-out <path>] [--temperature <f>] [--top-p <f>] \
+         [--seed <n>] [--max-tokens <n>] <task description>";
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     // --model <path.gguf>: checkpoint for the CPU backend.
     // --record <path>: wrap the model in the flight recorder, appending every
@@ -187,6 +194,9 @@ fn main() -> ExitCode {
     // scored in-band at every position of its layer through the tap seam.
     // --probe-out <path>: JSONL file for flagged positions (default
     // probe-flags.jsonl in the working directory).
+    // --temperature <f> / --top-p <f> / --seed <n>: sampling parameters
+    // (defaults 0.8 / 0.95 / 0; seed 0 replays a run exactly).
+    // --max-tokens <n>: per-turn generation budget (default 256).
     let mut model: Option<std::path::PathBuf> = None;
     let mut record: Option<std::path::PathBuf> = None;
     let mut trace_chrome: Option<std::path::PathBuf> = None;
@@ -194,6 +204,10 @@ fn main() -> ExitCode {
     let mut control_scale_arg: Option<std::path::PathBuf> = None;
     let mut probe: Option<std::path::PathBuf> = None;
     let mut probe_out: Option<std::path::PathBuf> = None;
+    let mut temperature_arg: Option<std::path::PathBuf> = None;
+    let mut top_p_arg: Option<std::path::PathBuf> = None;
+    let mut seed_arg: Option<std::path::PathBuf> = None;
+    let mut max_tokens_arg: Option<std::path::PathBuf> = None;
     for (flag, slot) in [
         ("--model", &mut model),
         ("--record", &mut record),
@@ -202,6 +216,10 @@ fn main() -> ExitCode {
         ("--control-vector-scale", &mut control_scale_arg),
         ("--probe", &mut probe),
         ("--probe-out", &mut probe_out),
+        ("--temperature", &mut temperature_arg),
+        ("--top-p", &mut top_p_arg),
+        ("--seed", &mut seed_arg),
+        ("--max-tokens", &mut max_tokens_arg),
     ] {
         if let Some(i) = args.iter().position(|a| a == flag) {
             if i + 1 >= args.len() {
@@ -221,6 +239,46 @@ fn main() -> ExitCode {
             }
         },
         None => 1.0,
+    };
+    // Sampler::new treats out-of-range values as config bugs and panics, so
+    // user input is range-checked here and rejected as a usage error instead.
+    let mut sampling = runtime::sampler::SamplingParams::default();
+    if let Some(v) = temperature_arg {
+        match v.to_string_lossy().parse::<f32>() {
+            Ok(t) if t.is_finite() && t >= 0.0 => sampling.temperature = t,
+            _ => {
+                eprintln!("[ERROR] --temperature: expected a finite number >= 0");
+                return ExitCode::from(2);
+            }
+        }
+    }
+    if let Some(v) = top_p_arg {
+        match v.to_string_lossy().parse::<f32>() {
+            Ok(p) if p > 0.0 && p <= 1.0 => sampling.top_p = p,
+            _ => {
+                eprintln!("[ERROR] --top-p: expected a number in (0, 1]");
+                return ExitCode::from(2);
+            }
+        }
+    }
+    if let Some(v) = seed_arg {
+        match v.to_string_lossy().parse::<u64>() {
+            Ok(s) => sampling.seed = s,
+            _ => {
+                eprintln!("[ERROR] --seed: expected an unsigned integer");
+                return ExitCode::from(2);
+            }
+        }
+    }
+    let max_tokens = match max_tokens_arg {
+        Some(v) => match v.to_string_lossy().parse::<usize>() {
+            Ok(n) if n >= 1 => n,
+            _ => {
+                eprintln!("[ERROR] --max-tokens: expected an integer >= 1");
+                return ExitCode::from(2);
+            }
+        },
+        None => 256,
     };
     if args.is_empty() {
         eprintln!("{USAGE}");
@@ -259,6 +317,8 @@ fn main() -> ExitCode {
         control_scale,
         probe.as_deref(),
         probe_out.as_deref(),
+        sampling,
+        max_tokens,
     ) {
         Ok(answer) => {
             println!("{answer}");
