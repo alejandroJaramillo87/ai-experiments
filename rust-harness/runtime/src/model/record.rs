@@ -7,6 +7,9 @@
  * so a run captured against the real backend on the workstation replays in a
  * sandbox with no GPU present. Diffing two recordings of the same prompt
  * locates the first divergent position for the divergence-bisection workflow.
+ * One position holds one branch: a recording that writes the same position
+ * from two different token histories is refused at load rather than merged,
+ * see `replay`.
  */
 
 use std::fs::File;
@@ -159,6 +162,17 @@ impl Model for RecordingModel {
 /// absolute position, so replay is deterministic regardless of how prefill
 /// work was batched in the recorded run; positions never recorded fall back
 /// to the mock's zero logits.
+///
+/// A position-keyed script holds one branch. Re-recording a position under
+/// the same token history is benign — `Session::ensure_tail_logits` and
+/// truncate-then-reprefill both re-record positions verbatim — but a fork or
+/// a divergent transcript can record one position from two different
+/// prefixes, and the script cannot hold both. That collision is refused with
+/// a positioned error instead of resolved last-writer-wins: a replay that
+/// silently returns the other branch's logits is indistinguishable from a
+/// correct one, and would make divergence bisection name a phantom first
+/// divergent position. Keeping both branches would need a branch-keyed
+/// recording format, which this one is not.
 pub fn replay(reader: impl BufRead) -> Result<MockModel> {
     let mut lines = reader.lines();
     let header_line = lines
@@ -166,11 +180,28 @@ pub fn replay(reader: impl BufRead) -> Result<MockModel> {
         .context("empty recording: missing header line")?
         .context("read recording header")?;
     let header: Header = serde_json::from_str(&header_line).context("parse recording header")?;
-    let mut script: Vec<Vec<f32>> = Vec::new();
+    // `None` distinguishes a position no row has claimed from one a row
+    // claimed with all-zero logits, which zero-filling alone cannot.
+    let mut script: Vec<Option<Vec<f32>>> = Vec::new();
+    // Token consumed at each absolute position: the only branch identity the
+    // recorded `start`/`tokens` metadata carries.
+    let mut history: Vec<Option<Token>> = Vec::new();
     for (n, line) in lines.enumerate() {
         let line = line.with_context(|| format!("read recording line {}", n + 2))?;
         let record: Record = serde_json::from_str(&line)
             .with_context(|| format!("parse recording line {}", n + 2))?;
+        let end = record.start + record.tokens.len();
+        if history.len() < end {
+            history.resize(end, None);
+        }
+        // Lowest position whose token disagrees with an earlier record: rows
+        // at or after it descend from a different prefix than the script does.
+        let diverged = record
+            .tokens
+            .iter()
+            .enumerate()
+            .find(|&(i, &t)| history[record.start + i].is_some_and(|prev| prev != t))
+            .map(|(i, _)| record.start + i);
         for row in record.rows {
             anyhow::ensure!(
                 row.logits.len() == header.vocab_size,
@@ -179,12 +210,30 @@ pub fn replay(reader: impl BufRead) -> Result<MockModel> {
                 row.logits.len(),
                 header.vocab_size
             );
-            if script.len() <= row.position {
-                script.resize(row.position + 1, vec![0.0; header.vocab_size]);
+            let scripted = matches!(script.get(row.position), Some(Some(_)));
+            if let Some(at) = diverged.filter(|&at| scripted && at <= row.position) {
+                anyhow::bail!(
+                    "recording line {}: position {} is already scripted from a \
+                     different token history (the histories diverge at position \
+                     {}); a position-keyed replay cannot hold both branches",
+                    n + 2,
+                    row.position,
+                    at
+                );
             }
-            script[row.position] = row.logits;
+            if script.len() <= row.position {
+                script.resize(row.position + 1, None);
+            }
+            script[row.position] = Some(row.logits);
+        }
+        for (i, &token) in record.tokens.iter().enumerate() {
+            history[record.start + i] = Some(token);
         }
     }
+    let script = script
+        .into_iter()
+        .map(|logits| logits.unwrap_or_else(|| vec![0.0; header.vocab_size]))
+        .collect();
     Ok(MockModel::new(header.vocab_size, script))
 }
 
@@ -301,6 +350,42 @@ mod tests {
         assert!(
             err.to_string().contains("does not match vocab size"),
             "{err}"
+        );
+    }
+
+    #[test]
+    fn replay_rejects_a_position_recorded_from_two_different_token_histories() {
+        // Branch A holds position 2 after tokens [1,40,41]; branch B forks at
+        // position 2 and records the same position after token 99.
+        let colliding = concat!(
+            "{\"vocab_size\":2}\n",
+            "{\"start\":0,\"tokens\":[1,40,41],\"rows\":[{\"position\":2,\"logits\":[1.0,0.0]}]}\n",
+            "{\"start\":2,\"tokens\":[99],\"rows\":[{\"position\":2,\"logits\":[0.0,1.0]}]}\n"
+        );
+        let err = replay(std::io::BufReader::new(colliding.as_bytes()))
+            .err()
+            .expect("expected error");
+        let msg = err.to_string();
+        assert!(msg.contains("position 2"), "{err}");
+        assert!(msg.contains("different token history"), "{err}");
+    }
+
+    #[test]
+    fn replay_accepts_a_position_re_recorded_from_the_same_token_history() {
+        // truncate-then-reprefill of an identical tail, as ensure_tail_logits
+        // and a same-prefix sync both produce: position 2 is written twice
+        // from one history, which the script can hold.
+        let bytes = recording_of(|m| {
+            m.prefill(&[9, 9, 9]).unwrap();
+            m.truncate(2).unwrap();
+            m.prefill(&[9]).unwrap();
+        });
+        let text = String::from_utf8(bytes.clone()).unwrap();
+        assert_eq!(text.lines().count(), 3); // header + two records
+        let mut replayed = replay(std::io::BufReader::new(&bytes[..])).unwrap();
+        assert_eq!(
+            replayed.prefill(&[9, 9, 9]).unwrap().0,
+            vec![0.0, 0.0, 1.0, 0.0]
         );
     }
 
