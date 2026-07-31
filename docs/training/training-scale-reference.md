@@ -8,9 +8,11 @@ records feasibility conclusions and design constraints so later roadmap
 tasks start from settled arithmetic instead of re-deriving it. Items marked
 aspirational are exactly that. Related documents:
 [python-pipeline-optimization-candidates.md](../optimizations/python-pipeline-optimization-candidates.md)
-(the FP8 Tier A item this document expands) and
+(the FP8 Tier A item this document expands),
 [memory_fit.md](memory_fit.md) (the memory-fit calculator these budgets
-feed).
+feed), and
+[interp-scale-reference.md](../interpretability/interp-scale-reference.md)
+(how these conclusions shape the interpretability program).
 
 ## Table of contents
 

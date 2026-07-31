@@ -213,7 +213,10 @@ The tap seam is part of the `Model` backend contract from now on: the CUDA
 backend (roadmap phase A) must implement `Tap` delivery with the same
 semantics (post-layer residual, steering applied first). On the GPU this
 implies a device-to-host copy per tapped layer; taps stay optional so the
-untapped serving path pays nothing.
+untapped serving path pays nothing. The full set of CUDA-backend
+interpretability constraints (determinism requirement, provenance world,
+revised live ladder) is recorded in
+[interp-scale-reference.md](interp-scale-reference.md#the-cuda-backend).
 
 ## Roadmap
 
