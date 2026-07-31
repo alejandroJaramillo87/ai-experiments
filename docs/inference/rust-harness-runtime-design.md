@@ -67,6 +67,11 @@ Non-goals, stated explicitly because each was considered and rejected:
   [rust-harness-interp.md](../interpretability/rust-harness-interp.md). The
   analysis tier (probe training, direction extraction, evaluation) remains in
   Python.
+
+The justification behind this positioning — what the agent loop and chat
+mode each contribute to the training and interpretability programs, and the
+feature bar for future harness work — is recorded in
+[observation-frames.md](../../rust-harness/docs/observation-frames.md).
 - **No multimodality.** The vision components of Gemma 4 checkpoints are skipped at
   load time.
 - **No custom CUDA kernels in version 1.** The tensor backend is

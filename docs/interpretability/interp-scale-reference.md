@@ -10,7 +10,10 @@ tasks start from settled reasoning instead of re-deriving it. Related
 documents: [rust-harness-interp.md](rust-harness-interp.md) (the tap-seam
 design this document builds on) and
 [python-pipeline-optimization-candidates.md](../optimizations/python-pipeline-optimization-candidates.md)
-(the provenance constraint and capture-throughput items).
+(the provenance constraint and capture-throughput items), and
+[observation-frames.md](../../rust-harness/docs/observation-frames.md)
+(the agent and chat frames the live-interpretability sections observe
+through).
 
 ## Table of contents
 

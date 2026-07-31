@@ -137,7 +137,10 @@ the existing Python tooling unchanged. A design for extending that stream
 with live run-state events and a polling HTML viewer is recorded in
 `docs/live-events.md`, and a menu of x86 CPU inference optimization
 candidates (threading, quantized-weight kernels, SIMD, huge pages) in
-`docs/optimization-candidates.md`; both wait on host verification. Architecture
+`docs/optimization-candidates.md`; both wait on host verification. The
+rationale for the agent loop and chat mode as two instrumented observation
+frames, and the feature bar that follows, are recorded in
+`docs/observation-frames.md`. Architecture
 reconciliation against the real E4B GGUF (`gguf-info`), the rr acceptance
 run, and the Tier 3 fixtures are the remaining workstation work; the cuda
 backend (roadmap phase A) slots in at the same `Model` seam.

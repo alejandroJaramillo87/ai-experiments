@@ -136,7 +136,10 @@ are the model producing its own tokens, which is where intent-like
 attributes live. Probes are trained on last-token representations of
 complete texts, so their transfer to mid-generation decode positions is
 unmeasured; evaluating probe quality separately on prefill and decode
-positions is pending real-model captures (roadmap below).
+positions is pending real-model captures (roadmap below). The
+prefill/decode asymmetry generalizes into a two-frame taxonomy — agent mode
+as the ecological frame, chat mode as the controlled frame — recorded in
+[observation-frames.md](../../rust-harness/docs/observation-frames.md).
 
 Two context-layer mechanics shift what a flag's `position` field means.
 Compaction splices a model-written summary over the middle of the
