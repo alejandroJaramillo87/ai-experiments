@@ -48,6 +48,10 @@ impl SessionGenerator {
     pub fn session(&self) -> &Session {
         &self.session
     }
+
+    pub fn session_mut(&mut self) -> &mut Session {
+        &mut self.session
+    }
 }
 
 impl Generator for SessionGenerator {
@@ -63,5 +67,14 @@ impl Generator for SessionGenerator {
             |_| {},
         )?;
         self.tokenizer.decode(&generation.tokens)
+    }
+
+    fn count_tokens(&mut self, text: &str) -> Result<usize> {
+        // +1 for the BOS `complete` prepends to every prompt.
+        Ok(self.tokenizer.encode(text)?.len() + 1)
+    }
+
+    fn context_budget(&self) -> Option<usize> {
+        Some(self.session.max_context())
     }
 }

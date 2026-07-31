@@ -14,6 +14,22 @@ use super::grammar::{Grammar, Vocab};
 use super::model::{Logits, Model, Token};
 use super::sampler::Sampler;
 
+const SNAPSHOT_MAGIC: &[u8; 4] = b"HKV1";
+const SNAPSHOT_VERSION: u32 = 1;
+const SNAPSHOT_DTYPE_F32: u8 = 0;
+
+/// FNV-1a 64-bit hash, used to fingerprint model weights for snapshot
+/// compatibility checks. Corruption and mismatch detection only — not a
+/// cryptographic guarantee.
+pub fn fingerprint(data: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for &b in data {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
 pub struct Session {
     model: Box<dyn Model>,
     // Hard cap on cached tokens: transcript sync and generation both error
@@ -53,6 +69,10 @@ impl Session {
 
     pub fn cached_len(&self) -> usize {
         self.tokens.len()
+    }
+
+    pub fn max_context(&self) -> usize {
+        self.max_context
     }
 
     /// Sync the cache to `transcript`: truncate to the common prefix, prefill
@@ -154,6 +174,84 @@ impl Session {
             self.model.truncate(self.tokens.len() - 1)?;
             self.tail_logits = Some(self.model.prefill(&[last])?);
         }
+        Ok(())
+    }
+
+    /// Serialize the session state — token history plus the model's KV
+    /// cache — so a restarted process can resume without re-prefilling.
+    /// `model_hash` fingerprints the weights the cache was computed from;
+    /// `restore` refuses a mismatch.
+    ///
+    /// Format (all little-endian): magic "HKV1", version u32, dtype u8
+    /// (0 = f32; 1 reserved for f16 payloads), model hash u64, token count
+    /// u64, tokens u32 each, then the backend-defined cache payload.
+    pub fn save(&self, w: &mut dyn std::io::Write, model_hash: u64) -> Result<()> {
+        w.write_all(SNAPSHOT_MAGIC)?;
+        w.write_all(&SNAPSHOT_VERSION.to_le_bytes())?;
+        w.write_all(&[SNAPSHOT_DTYPE_F32])?;
+        w.write_all(&model_hash.to_le_bytes())?;
+        w.write_all(&(self.tokens.len() as u64).to_le_bytes())?;
+        for &t in &self.tokens {
+            w.write_all(&t.to_le_bytes())?;
+        }
+        self.model.save_state(w)
+    }
+
+    /// Restore a snapshot written by `save` into a fresh session. Any header
+    /// mismatch — magic, version, dtype, model hash — is a hard error: a
+    /// cache from different weights must never be trusted silently. Whether
+    /// the restored tokens still match the transcript is not checked here;
+    /// the next `sync` prefix-matches and falls back to re-prefilling from
+    /// the divergence point, so a stale-but-well-formed snapshot degrades
+    /// safely.
+    pub fn restore(&mut self, r: &mut dyn std::io::Read, model_hash: u64) -> Result<()> {
+        anyhow::ensure!(self.tokens.is_empty(), "restore into a non-fresh session");
+        let mut magic = [0u8; 4];
+        r.read_exact(&mut magic)?;
+        anyhow::ensure!(&magic == SNAPSHOT_MAGIC, "not a session snapshot file");
+        let mut u32buf = [0u8; 4];
+        r.read_exact(&mut u32buf)?;
+        let version = u32::from_le_bytes(u32buf);
+        anyhow::ensure!(
+            version == SNAPSHOT_VERSION,
+            "snapshot version {version} unsupported (expected {SNAPSHOT_VERSION})"
+        );
+        let mut dtype = [0u8; 1];
+        r.read_exact(&mut dtype)?;
+        anyhow::ensure!(
+            dtype[0] == SNAPSHOT_DTYPE_F32,
+            "snapshot dtype {} unsupported",
+            dtype[0]
+        );
+        let mut u64buf = [0u8; 8];
+        r.read_exact(&mut u64buf)?;
+        let saved_hash = u64::from_le_bytes(u64buf);
+        anyhow::ensure!(
+            saved_hash == model_hash,
+            "snapshot was written for different model weights \
+             (hash {saved_hash:016x}, expected {model_hash:016x})"
+        );
+        r.read_exact(&mut u64buf)?;
+        let n_tokens = u64::from_le_bytes(u64buf) as usize;
+        anyhow::ensure!(
+            n_tokens <= self.max_context,
+            "snapshot of {n_tokens} tokens exceeds the context budget of {}",
+            self.max_context
+        );
+        let mut tokens = Vec::with_capacity(n_tokens);
+        for _ in 0..n_tokens {
+            r.read_exact(&mut u32buf)?;
+            tokens.push(u32::from_le_bytes(u32buf));
+        }
+        self.model.load_state(r)?;
+        anyhow::ensure!(
+            self.model.cached_len() == tokens.len(),
+            "restored cache length {} does not match {} saved tokens",
+            self.model.cached_len(),
+            tokens.len()
+        );
+        self.tokens = tokens;
+        self.tail_logits = None; // ensure_tail_logits replays one token
         Ok(())
     }
 
@@ -480,6 +578,84 @@ mod tests {
         used.prefill(&[1]).unwrap();
         assert!(Session::new(Box::new(used), 16).is_err());
         assert!(Session::new(Box::new(MockModel::new(4, vec![])), 0).is_err());
+    }
+
+    #[test]
+    fn snapshot_round_trip_restores_tokens_and_skips_the_prefill() {
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        s.sync(&[1, 2, 3, 4]).unwrap();
+        let mut buf = Vec::new();
+        s.save(&mut buf, 0xabcd).unwrap();
+
+        let mock = MockModel::new(27, vec![]);
+        let recorder = mock.recorder();
+        let mut restored = Session::new(Box::new(mock), 4096).unwrap();
+        restored.restore(&mut buf.as_slice(), 0xabcd).unwrap();
+        assert_eq!(restored.cached_len(), 4);
+        // Syncing to the same transcript prefills nothing.
+        assert_eq!(restored.sync(&[1, 2, 3, 4]).unwrap(), 0);
+        assert_eq!(recorder.total_prefilled(), 0);
+        // A longer transcript prefills only the appended delta.
+        assert_eq!(restored.sync(&[1, 2, 3, 4, 5, 6]).unwrap(), 2);
+    }
+
+    #[test]
+    fn restore_refuses_a_different_model_hash() {
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        s.sync(&[1, 2]).unwrap();
+        let mut buf = Vec::new();
+        s.save(&mut buf, 1).unwrap();
+        let mut fresh = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        let err = fresh.restore(&mut buf.as_slice(), 2).unwrap_err();
+        assert!(err.to_string().contains("different model weights"), "{err}");
+        assert_eq!(fresh.cached_len(), 0);
+    }
+
+    #[test]
+    fn restore_refuses_bad_magic_version_and_oversized_snapshots() {
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        s.sync(&[1, 2]).unwrap();
+        let mut buf = Vec::new();
+        s.save(&mut buf, 7).unwrap();
+
+        let mut fresh = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        let err = fresh.restore(&mut b"nope".as_slice(), 7).unwrap_err();
+        assert!(err.to_string().contains("not a session snapshot"), "{err}");
+
+        let mut wrong_version = buf.clone();
+        wrong_version[4] = 99;
+        let err = fresh.restore(&mut wrong_version.as_slice(), 7).unwrap_err();
+        assert!(err.to_string().contains("version"), "{err}");
+
+        // The two saved tokens exceed a budget of one.
+        let mut tiny = Session::new(Box::new(MockModel::new(27, vec![])), 1).unwrap();
+        let err = tiny.restore(&mut buf.as_slice(), 7).unwrap_err();
+        assert!(err.to_string().contains("context budget"), "{err}");
+    }
+
+    #[test]
+    fn restore_into_a_used_session_is_an_error() {
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        s.sync(&[1, 2]).unwrap();
+        let mut buf = Vec::new();
+        s.save(&mut buf, 7).unwrap();
+        let err = s.restore(&mut buf.as_slice(), 7).unwrap_err();
+        assert!(err.to_string().contains("non-fresh"), "{err}");
+    }
+
+    #[test]
+    fn restored_session_falls_back_on_a_diverged_transcript() {
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        s.sync(&[1, 2, 3, 4]).unwrap();
+        let mut buf = Vec::new();
+        s.save(&mut buf, 7).unwrap();
+
+        let mut restored = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        restored.restore(&mut buf.as_slice(), 7).unwrap();
+        // The transcript moved on differently: prefix matching truncates to
+        // the common prefix and prefills only from the divergence point.
+        assert_eq!(restored.sync(&[1, 2, 9, 9]).unwrap(), 2);
+        assert_eq!(restored.cached_len(), 4);
     }
 
     #[test]

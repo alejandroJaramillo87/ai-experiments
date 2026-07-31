@@ -700,6 +700,63 @@ impl Model for CpuModel {
             control: self.control.clone(),
         }))
     }
+
+    // Cache layout on disk: n_layers u64, cached_len u64, then per layer the
+    // K vector followed by the V vector as little-endian f32. Lengths are
+    // implied (cached_len x n_kv_heads x head_dim; the CPU backend stores
+    // the full sequence in every layer, windowed or not), so a length
+    // mismatch on load is a hard error rather than a guess.
+    fn save_state(&self, w: &mut dyn std::io::Write) -> Result<()> {
+        let kv_dim = self.config.n_kv_heads * self.config.head_dim;
+        w.write_all(&(self.kv.len() as u64).to_le_bytes())?;
+        w.write_all(&(self.cached_len as u64).to_le_bytes())?;
+        for cache in &self.kv {
+            ensure!(
+                cache.k.len() == self.cached_len * kv_dim
+                    && cache.v.len() == self.cached_len * kv_dim,
+                "KV cache length inconsistent with cached_len"
+            );
+            for vec in [&cache.k, &cache.v] {
+                for &x in vec {
+                    w.write_all(&x.to_le_bytes())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn load_state(&mut self, r: &mut dyn std::io::Read) -> Result<()> {
+        ensure!(self.cached_len == 0, "load_state on a non-fresh cache");
+        let mut u64buf = [0u8; 8];
+        r.read_exact(&mut u64buf)?;
+        let n_layers = u64::from_le_bytes(u64buf) as usize;
+        ensure!(
+            n_layers == self.kv.len(),
+            "saved state has {n_layers} layers, model has {}",
+            self.kv.len()
+        );
+        r.read_exact(&mut u64buf)?;
+        let cached_len = u64::from_le_bytes(u64buf) as usize;
+        ensure!(
+            cached_len <= self.config.context_length,
+            "saved state of {cached_len} tokens exceeds context length {}",
+            self.config.context_length
+        );
+        let kv_dim = self.config.n_kv_heads * self.config.head_dim;
+        let mut f32buf = [0u8; 4];
+        for cache in &mut self.kv {
+            for vec in [&mut cache.k, &mut cache.v] {
+                vec.clear();
+                vec.reserve_exact(cached_len * kv_dim);
+                for _ in 0..cached_len * kv_dim {
+                    r.read_exact(&mut f32buf)?;
+                    vec.push(f32::from_le_bytes(f32buf));
+                }
+            }
+        }
+        self.cached_len = cached_len;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -869,6 +926,47 @@ mod tests {
         for (i, &t) in tokens.iter().enumerate() {
             assert_eq!(stepped.prefill(&[t]).unwrap(), rows[i], "position {i}");
         }
+    }
+
+    #[test]
+    fn save_then_load_state_continues_bit_identically() {
+        // Run A: one unbroken prefill sequence. Run B: prefill, snapshot,
+        // reload into a fresh model, continue. The continuation logits must
+        // be bit-identical — the restored f32 cache is exact.
+        let mut unbroken = tiny();
+        unbroken.prefill(&[1, 5, 9]).unwrap();
+        let expected = unbroken.prefill(&[7, 2]).unwrap();
+
+        let mut first = tiny();
+        first.prefill(&[1, 5, 9]).unwrap();
+        let mut state = Vec::new();
+        first.save_state(&mut state).unwrap();
+        drop(first);
+
+        let mut resumed = tiny();
+        resumed.load_state(&mut state.as_slice()).unwrap();
+        assert_eq!(resumed.cached_len(), 3);
+        let continued = resumed.prefill(&[7, 2]).unwrap();
+        assert_eq!(continued, expected);
+    }
+
+    #[test]
+    fn load_state_refuses_layer_mismatch_and_used_cache() {
+        let mut m = tiny();
+        m.prefill(&[1]).unwrap();
+        let mut state = Vec::new();
+        m.save_state(&mut state).unwrap();
+        // Corrupt the layer count.
+        state[0] ^= 0xff;
+        let mut fresh = tiny();
+        let err = fresh.load_state(&mut state.as_slice()).unwrap_err();
+        assert!(err.to_string().contains("layers"), "{err}");
+        // A non-fresh cache refuses to load at all.
+        let mut used = tiny();
+        used.prefill(&[2]).unwrap();
+        state[0] ^= 0xff; // restore
+        let err = used.load_state(&mut state.as_slice()).unwrap_err();
+        assert!(err.to_string().contains("non-fresh"), "{err}");
     }
 
     #[test]

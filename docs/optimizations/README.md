@@ -52,6 +52,9 @@ System optimizations are organized by component:
 
 - **bios/** - BIOS firmware settings and benchmark results
 - **os/** - Operating system and memory optimizations
+- **python-pipeline-optimization-candidates.md** - Deferred optimization menu
+  for the training and interp Python pipelines (post-verification; sibling of
+  `rust-harness/docs/optimization-candidates.md`)
 
 ## Files
 
@@ -65,6 +68,8 @@ System optimizations are organized by component:
 
 ### os/
 - **os-optimizations.md** - Host operating system optimizations for containerized workloads
+- **os-optimization-candidates.md** - Deferred menu of host-level OS and GPU
+  candidates (July 2026 review; verification pending)
   - Swap disabled
   - CPU governor (performance mode)
   - Memory locking configuration

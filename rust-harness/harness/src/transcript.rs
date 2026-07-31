@@ -19,12 +19,21 @@ pub enum Role {
     User,
     Model,
     Tool,
+    // A summary spliced over a range of earlier entries. History is
+    // append-only: the summarized entries stay on disk and the record
+    // carries the range it replaces (see `effective`).
+    Compaction,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
     pub role: Role,
     pub content: String,
+    // Present only on Role::Compaction: the half-open range of the
+    // then-effective entry sequence this summary replaces. Optional and
+    // skipped when absent, so files written before compaction still parse.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaces: Option<(usize, usize)>,
 }
 
 #[derive(Debug)]
@@ -81,11 +90,74 @@ impl Transcript {
         &self.entries
     }
 
+    /// The conversation as the model sees it: raw entries with every
+    /// compaction record folded in. A `Compaction` entry replaces the range
+    /// it names (indices into the then-effective sequence) with a single
+    /// `System` summary entry. Out-of-range indices are clamped so a
+    /// hand-edited or damaged record degrades to a smaller splice rather
+    /// than a panic.
+    pub fn effective(&self) -> Vec<Entry> {
+        let mut effective: Vec<Entry> = Vec::new();
+        for e in &self.entries {
+            match (&e.role, e.replaces) {
+                (Role::Compaction, Some((start, end))) => {
+                    let end = end.min(effective.len());
+                    let start = start.min(end);
+                    effective.splice(
+                        start..end,
+                        [Entry {
+                            role: Role::System,
+                            content: e.content.clone(),
+                            replaces: None,
+                        }],
+                    );
+                }
+                // A compaction record without a range replaces nothing; the
+                // summary still enters the conversation as a system entry.
+                (Role::Compaction, None) => effective.push(Entry {
+                    role: Role::System,
+                    content: e.content.clone(),
+                    replaces: None,
+                }),
+                _ => effective.push(e.clone()),
+            }
+        }
+        effective
+    }
+
+    /// Count of raw entries appended after the last compaction record, or
+    /// all entries when none exists. The compaction thrash guard reads this.
+    pub fn entries_since_compaction(&self) -> usize {
+        self.entries
+            .iter()
+            .rposition(|e| e.role == Role::Compaction)
+            .map(|i| self.entries.len() - i - 1)
+            .unwrap_or(self.entries.len())
+    }
+
     pub fn append(&mut self, role: Role, content: impl Into<String>) -> Result<()> {
-        let entry = Entry {
+        self.append_entry(Entry {
             role,
             content: content.into(),
-        };
+            replaces: None,
+        })
+    }
+
+    /// Append a compaction record: `content` summarizes the effective range
+    /// `[start, end)` it replaces.
+    pub fn append_compaction(
+        &mut self,
+        content: impl Into<String>,
+        range: (usize, usize),
+    ) -> Result<()> {
+        self.append_entry(Entry {
+            role: Role::Compaction,
+            content: content.into(),
+            replaces: Some(range),
+        })
+    }
+
+    fn append_entry(&mut self, entry: Entry) -> Result<()> {
         writeln!(self.file, "{}", serde_json::to_string(&entry)?)?;
         self.entries.push(entry);
         Ok(())
@@ -144,6 +216,71 @@ mod tests {
         .unwrap();
         let err = Transcript::open(&path).unwrap_err();
         assert!(format!("{err:#}").contains(":2:"));
+    }
+
+    #[test]
+    fn compaction_record_round_trips_and_pre_compaction_files_parse() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.jsonl");
+        {
+            let mut t = Transcript::open(&path).unwrap();
+            t.append(Role::User, "task").unwrap();
+            t.append(Role::Model, "old turn").unwrap();
+            t.append(Role::Model, "tail").unwrap();
+            t.append_compaction("summary", (1, 2)).unwrap();
+        }
+        let t = Transcript::open(&path).unwrap();
+        assert_eq!(t.entries().len(), 4);
+        assert_eq!(t.entries()[3].replaces, Some((1, 2)));
+        let eff = t.effective();
+        assert_eq!(eff.len(), 3);
+        assert_eq!(eff[1].role, Role::System);
+        assert_eq!(eff[1].content, "summary");
+        assert_eq!(eff[2].content, "tail");
+        // A file with no `replaces` fields anywhere (the pre-compaction
+        // format) parses and its effective view is the identity.
+        let old = dir.path().join("old.jsonl");
+        std::fs::write(&old, "{\"role\": \"user\", \"content\": \"hi\"}\n").unwrap();
+        let t = Transcript::open(&old).unwrap();
+        assert_eq!(t.effective(), t.entries());
+    }
+
+    #[test]
+    fn torn_compaction_record_is_truncated_and_history_survives() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.jsonl");
+        std::fs::write(
+            &path,
+            "{\"role\": \"user\", \"content\": \"ok\"}\n{\"role\": \"compaction\", \"content\": \"summ",
+        )
+        .unwrap();
+        let t = Transcript::open(&path).unwrap();
+        assert_eq!(t.entries().len(), 1);
+        assert_eq!(t.effective().len(), 1);
+    }
+
+    #[test]
+    fn out_of_range_compaction_record_degrades_instead_of_panicking() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.jsonl");
+        let mut t = Transcript::open(&path).unwrap();
+        t.append(Role::User, "only entry").unwrap();
+        t.append_compaction("summary", (5, 99)).unwrap();
+        let eff = t.effective();
+        assert_eq!(eff.len(), 2);
+        assert_eq!(eff[1].content, "summary");
+    }
+
+    #[test]
+    fn entries_since_compaction_counts_the_suffix() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut t = Transcript::open(&dir.path().join("s.jsonl")).unwrap();
+        t.append(Role::User, "a").unwrap();
+        assert_eq!(t.entries_since_compaction(), 1);
+        t.append_compaction("summary", (0, 1)).unwrap();
+        assert_eq!(t.entries_since_compaction(), 0);
+        t.append(Role::Model, "b").unwrap();
+        assert_eq!(t.entries_since_compaction(), 1);
     }
 
     #[test]

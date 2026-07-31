@@ -64,6 +64,12 @@ passed.
    [rust-harness-qa.md](rust-harness-qa.md), the code-quality campaign
    (phases Q0-Q6) a Claude Code session runs with no GPU or model data.
 
+Outside the numbered order: [hardware-stress.md](hardware-stress.md), the
+one-time firmware stability soak for the BIOS undervolt profile. It is
+independent of the software phases and may run any time its own
+preconditions are met (no other GPU consumer active), but it must be
+VERIFIED before the first long training run (training-phase2 onward).
+
 ## Session-start gate
 
 Before every verification session, run the hardware smoke tier (under five

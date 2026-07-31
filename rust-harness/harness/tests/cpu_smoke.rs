@@ -33,7 +33,7 @@ fn harness_runs_a_task_end_to_end_on_the_cpu_backend() {
     let dir = tempfile::tempdir().unwrap();
     let transcript = Transcript::open(&dir.path().join("session.jsonl")).unwrap();
     let permissions = Permissions::from_yaml("rules: []").unwrap();
-    let mut agent = Agent::new(dir.path().to_path_buf(), permissions, transcript);
+    let mut agent = Agent::new(dir.path().to_path_buf(), permissions, transcript, None);
     let answer = agent
         .run_task(&mut generator(&image), "say hello", 4, |_| false)
         .unwrap();
@@ -44,7 +44,7 @@ fn harness_runs_a_task_end_to_end_on_the_cpu_backend() {
     let dir2 = tempfile::tempdir().unwrap();
     let transcript2 = Transcript::open(&dir2.path().join("session.jsonl")).unwrap();
     let permissions2 = Permissions::from_yaml("rules: []").unwrap();
-    let mut agent2 = Agent::new(dir2.path().to_path_buf(), permissions2, transcript2);
+    let mut agent2 = Agent::new(dir2.path().to_path_buf(), permissions2, transcript2, None);
     let answer2 = agent2
         .run_task(&mut generator(&image), "say hello", 4, |_| false)
         .unwrap();

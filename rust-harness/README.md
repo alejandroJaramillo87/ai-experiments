@@ -7,6 +7,14 @@ tutorial; the runtime targets Gemma 4 E4B exclusively and links into the harness
 a library crate, giving the agent loop direct ownership of the KV cache across
 conversation turns.
 
+The harness is positioned as an instrumented inference substrate for the
+parent repository's training and interpretability pipelines, with the
+coding-agent loop as its native workload. It does not compete with the
+llama.cpp and vLLM services on serving speed or model coverage; its value is
+the owned seams those services cannot offer — in-band activation capture,
+steering, probe monitoring, a flight recorder, and deterministic KV restore —
+which make agent runs reproducible and publishable as experiment logs.
+
 The full design is recorded in the parent repository at
 `docs/inference/rust-harness-runtime-design.md`; the observability and
 debugging phases (flight recorder, tracing, rr-debuggable CPU backend) are
@@ -102,14 +110,37 @@ task end to end on the CPU backend in the sandbox. Beyond one-shot tasks,
 `--chat` runs an interactive REPL (no tools or permissions; the transcript
 persists to `session.jsonl`, so a restarted chat resumes), and
 `--temperature`, `--top-p`, `--seed`, and `--max-tokens` expose the
-sampling parameters. A reproducible containerized build lives in the
+sampling parameters.
+
+The context layer manages conversations that outgrow one window. A
+`HARNESS.md` file in the working root is read once at startup and injected
+as a leading turn (persistent memory; never written to the transcript).
+Compaction summarizes the middle of the conversation with the model
+itself, automatically when the rendered prompt crosses `--compact-at`
+(default 0.8) of the context budget and on demand via `/compact` in chat
+mode; the summary is persisted as an append-only record in
+`session.jsonl`, so raw history survives and `Transcript::effective`
+folds it in on read. The KV cache is serialized to `session.kv` on clean
+exit and restored at startup (versioned header, weight fingerprint,
+loud refusal on mismatch; a stale-but-valid snapshot degrades to prefix
+re-prefill), so a restarted session resumes without re-prefilling —
+continuation logits after restore are bit-identical to an unbroken run.
+`--context` caps the budget below the model's trained window, and
+startup logs a KV-size estimate. A reproducible containerized build lives in the
 parent repository (`docker/rust-harness/Dockerfile.rust-harness`, run via
 `make harness-build` / `harness-run` / `harness-chat` there): a pinned
 rust toolchain building with `--locked`. Each invocation also writes
 run-level observability records (`harness/src/obs.rs`) in the parent
 repository's shared obs contract — run id, `cmd.start`/`fail`/`cmd.end`
 events, and a catalog line under `${OBS_LOG_DIR}/harness/` — readable by
-the existing Python tooling unchanged. Architecture
+the existing Python tooling unchanged. A design for extending that stream
+with live run-state events and a polling HTML viewer is recorded in
+`docs/live-events.md`, and a menu of x86 CPU inference optimization
+candidates (threading, quantized-weight kernels, SIMD, huge pages) in
+`docs/optimization-candidates.md`; both wait on host verification. The
+rationale for the agent loop and chat mode as two instrumented observation
+frames, and the feature bar that follows, are recorded in
+`docs/observation-frames.md`. Architecture
 reconciliation against the real E4B GGUF (`gguf-info`), the rr acceptance
 run, and the Tier 3 fixtures are the remaining workstation work; the cuda
 backend (roadmap phase A) slots in at the same `Model` seam.

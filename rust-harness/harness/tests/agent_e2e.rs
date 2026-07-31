@@ -70,6 +70,7 @@ fn scripted_coding_task_completes_end_to_end() {
         dir.path().to_path_buf(),
         Permissions::from_yaml(PERMISSIONS).unwrap(),
         Transcript::open(&transcript_path).unwrap(),
+        None,
     );
 
     let answer = agent
@@ -113,6 +114,7 @@ fn denied_tool_call_returns_to_the_model_and_the_loop_recovers() {
         dir.path().to_path_buf(),
         Permissions::from_yaml(PERMISSIONS).unwrap(),
         Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+        None,
     );
     let answer = agent
         .run_task(&mut generator, "do something", 4, |_| false)
@@ -134,6 +136,7 @@ fn ask_decision_is_resolved_by_the_handler() {
         dir.path().to_path_buf(),
         Permissions::from_yaml("rules: []").unwrap(),
         Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+        None,
     );
     let mut asked = Vec::new();
     agent
@@ -158,6 +161,7 @@ fn malformed_tool_call_returns_to_the_model_instead_of_ending_the_task() {
         dir.path().to_path_buf(),
         Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
         Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+        None,
     );
     let answer = agent
         .run_task(&mut generator, "do something", 4, |_| false)
@@ -180,6 +184,7 @@ fn tool_paths_cannot_escape_the_workspace_root() {
         dir.path().to_path_buf(),
         Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
         Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+        None,
     );
     agent
         .run_task(&mut generator, "escape", 4, |_| false)
@@ -205,6 +210,7 @@ fn repeated_identical_tool_failures_trip_the_breaker() {
         dir.path().to_path_buf(),
         Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
         Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+        None,
     );
     let err = agent
         .run_task(&mut generator, "loop on failure", 16, |_| false)
@@ -222,6 +228,7 @@ fn alternating_failures_do_not_trip_the_breaker() {
         dir.path().to_path_buf(),
         Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
         Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+        None,
     );
     let answer = agent
         .run_task(&mut generator, "flail", 16, |_| false)
@@ -240,6 +247,7 @@ fn success_between_failures_resets_the_breaker() {
         dir.path().to_path_buf(),
         Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
         Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+        None,
     );
     let answer = agent
         .run_task(&mut generator, "mixed", 16, |_| false)
@@ -257,9 +265,36 @@ fn exceeding_max_turns_is_an_error_not_a_hang() {
         dir.path().to_path_buf(),
         Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
         Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+        None,
     );
     let err = agent
         .run_task(&mut generator, "loop", 3, |_| false)
         .unwrap_err();
     assert!(err.to_string().contains("no final answer"));
+}
+
+#[test]
+fn memory_leads_the_agent_prompt_and_never_persists() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut generator = ScriptedGenerator::new(&["done"]);
+    let mut agent = Agent::new(
+        dir.path().to_path_buf(),
+        Permissions::from_yaml("rules: [{tool: \"*\", action: allow}]").unwrap(),
+        Transcript::open(&dir.path().join("s.jsonl")).unwrap(),
+        Some("prefer small diffs"),
+    );
+    agent
+        .run_task(&mut generator, "task", 2, |_| false)
+        .unwrap();
+    assert!(
+        generator.prompts[0].starts_with("<start_of_turn>user\nprefer small diffs<end_of_turn>\n")
+    );
+    // The memory turn is synthetic: the persisted transcript holds only the
+    // task and the answer.
+    let resumed = Transcript::open(&dir.path().join("s.jsonl")).unwrap();
+    assert_eq!(resumed.entries().len(), 2);
+    assert!(resumed
+        .entries()
+        .iter()
+        .all(|e| e.content != "prefer small diffs"));
 }

@@ -136,7 +136,21 @@ are the model producing its own tokens, which is where intent-like
 attributes live. Probes are trained on last-token representations of
 complete texts, so their transfer to mid-generation decode positions is
 unmeasured; evaluating probe quality separately on prefill and decode
-positions is pending real-model captures (roadmap below).
+positions is pending real-model captures (roadmap below). The
+prefill/decode asymmetry generalizes into a two-frame taxonomy — agent mode
+as the ecological frame, chat mode as the controlled frame — recorded in
+[observation-frames.md](../../rust-harness/docs/observation-frames.md).
+
+Two context-layer mechanics shift what a flag's `position` field means.
+Compaction splices a model-written summary over the middle of the
+transcript, so the next generation re-prefills the summary region and the
+probe scores those positions again; flag positions are KV-cache
+positions, not transcript-lifetime positions, and positions recorded
+before a compaction do not align with positions recorded after it. A
+session restored from `session.kv` skips the prefill of the restored
+prefix entirely, so restored positions are never re-scored — a monitored
+run that must score the whole conversation should start without a
+snapshot file.
 
 ## What stays in Python
 
@@ -202,7 +216,10 @@ The tap seam is part of the `Model` backend contract from now on: the CUDA
 backend (roadmap phase A) must implement `Tap` delivery with the same
 semantics (post-layer residual, steering applied first). On the GPU this
 implies a device-to-host copy per tapped layer; taps stay optional so the
-untapped serving path pays nothing.
+untapped serving path pays nothing. The full set of CUDA-backend
+interpretability constraints (determinism requirement, provenance world,
+revised live ladder) is recorded in
+[interp-scale-reference.md](interp-scale-reference.md#the-cuda-backend).
 
 ## Roadmap
 

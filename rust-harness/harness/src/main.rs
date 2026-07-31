@@ -40,6 +40,7 @@ struct MonitorHandle {
 /// Construct the generator over the CPU backend for the GGUF at
 /// `model_path`, wrapping the model in the flight recorder when `record`
 /// names a path. There is no mock fallback in the shipping binary.
+#[allow(clippy::too_many_arguments)]
 fn build_generator(
     model_path: Option<&Path>,
     record: Option<&Path>,
@@ -48,7 +49,9 @@ fn build_generator(
     probe: Option<&Path>,
     sampling: runtime::sampler::SamplingParams,
     max_tokens: usize,
-) -> Result<(SessionGenerator, Option<MonitorHandle>)> {
+    context: Option<usize>,
+    snapshot: Option<&Path>,
+) -> Result<(SessionGenerator, Option<MonitorHandle>, u64)> {
     use runtime::model::{
         cpu::{ControlVector, CpuModel},
         probe::{Probe, ProbeMonitor},
@@ -99,15 +102,79 @@ fn build_generator(
         }
         None => None,
     };
-    let max_context = cpu.config().context_length;
+    // --context caps the budget below the model's trained window; raising
+    // it above the GGUF value is refused because the model was not trained
+    // there. The KV estimate warns before a budget the CPU backend cannot
+    // realistically hold in memory (it stores f32 K/V for the full
+    // sequence, so windowed layers are estimated at their window size and
+    // the true cost is an upper bound of context length for every layer).
+    let trained = cpu.config().context_length;
+    let max_context = match context {
+        Some(n) => {
+            anyhow::ensure!(
+                n <= trained,
+                "--context {n} exceeds the model's trained context length {trained}"
+            );
+            n
+        }
+        None => trained,
+    };
+    {
+        let c = cpu.config();
+        let layers =
+            runtime::kv::interleaved_layers(c.n_layers, c.sliding_window_pattern, c.sliding_window);
+        let geometry = runtime::kv::KvGeometry {
+            n_kv_heads: c.n_kv_heads,
+            head_dim: c.head_dim,
+            bytes_per_element: 4, // CPU backend caches f32
+        };
+        let bytes = runtime::kv::budget_bytes(&layers, geometry, max_context);
+        let gib = bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+        eprintln!("[INFO] KV budget: {max_context} tokens, estimated {gib:.2} GiB f32");
+        if bytes > 2 << 30 {
+            eprintln!(
+                "[WARN] KV estimate above 2 GiB: consider --context to cap the budget \
+                 (compaction keeps long sessions inside it)"
+            );
+        }
+    }
     let model: Box<dyn Model> = match record {
         Some(path) => Box::new(RecordingModel::to_file(Box::new(cpu), path)?),
         None => Box::new(cpu),
     };
-    let session = runtime::session::Session::new(model, max_context)?;
+    let mut session = runtime::session::Session::new(model, max_context)?;
+    // Snapshot restore: resume the KV cache from the previous clean exit.
+    // A header or weight-hash mismatch is loud and the stale file is
+    // removed; a missing file is the normal first run. Whether the restored
+    // tokens still match the transcript is settled later by sync's prefix
+    // matching, which degrades to a full re-prefill at worst.
+    let model_hash = runtime::session::fingerprint(&data);
+    if let Some(path) = snapshot {
+        match std::fs::File::open(path) {
+            Ok(f) => {
+                let mut reader = std::io::BufReader::new(f);
+                match session.restore(&mut reader, model_hash) {
+                    Ok(()) => eprintln!(
+                        "[INFO] Session restored: {} cached tokens from {}",
+                        session.cached_len(),
+                        path.display()
+                    ),
+                    Err(e) => {
+                        let _ = std::fs::remove_file(path);
+                        anyhow::bail!(
+                            "restore session snapshot {}: {e:#} (stale file removed; rerun)",
+                            path.display()
+                        );
+                    }
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e).with_context(|| format!("open snapshot {}", path.display())),
+        }
+    }
     let tokenizer = runtime::tokenizer::Tokenizer::from_gguf(&file).context("load tokenizer")?;
     let generator = SessionGenerator::new(session, tokenizer, sampling, max_tokens)?;
-    Ok((generator, monitor))
+    Ok((generator, monitor, model_hash))
 }
 
 /// Drain the monitor state: write one JSONL record per flagged position to
@@ -150,10 +217,18 @@ fn run(
     probe_out: Option<&Path>,
     sampling: runtime::sampler::SamplingParams,
     max_tokens: usize,
+    context: Option<usize>,
+    compact_at: f32,
     chat: bool,
 ) -> Result<String> {
     let transcript = Transcript::open(&root.join("session.jsonl")).context("session.jsonl")?;
-    let (mut generator, monitor) = build_generator(
+    // HARNESS.md: persistent memory read once at startup and injected as a
+    // synthetic leading turn. A missing file is fine; mid-session edits take
+    // effect on the next start (the prompt prefix must stay stable so KV
+    // delta prefill keeps working).
+    let memory = std::fs::read_to_string(root.join("HARNESS.md")).ok();
+    let snapshot_path = root.join("session.kv");
+    let (mut generator, monitor, model_hash) = build_generator(
         model,
         record,
         control_vector,
@@ -161,6 +236,8 @@ fn run(
         probe,
         sampling,
         max_tokens,
+        context,
+        Some(&snapshot_path),
     )?;
     let answer = if chat {
         // Chat mode: REPL over the generator, no tools or permissions. The
@@ -171,6 +248,8 @@ fn run(
         let turns = harness::chat::run_chat(
             &mut generator,
             &mut transcript,
+            memory.as_deref(),
+            compact_at,
             stdin.lock(),
             std::io::stdout(),
         )?;
@@ -183,9 +262,34 @@ fn run(
             // No config: every call goes through the interactive Ask path.
             Err(_) => Permissions::from_yaml("rules: []").expect("empty rule set"),
         };
-        let mut agent = Agent::new(root.to_path_buf(), permissions, transcript);
+        let mut agent = Agent::new(
+            root.to_path_buf(),
+            permissions,
+            transcript,
+            memory.as_deref(),
+        );
+        agent.compact_at = compact_at;
         agent.run_task(&mut generator, task, 64, ask_stdin)?
     };
+    // Clean-exit snapshot: save the KV cache beside the transcript so the
+    // next start resumes without a full re-prefill. A save failure degrades
+    // to a warning — a completed task must not fail over persistence.
+    let saved = std::fs::File::create(&snapshot_path)
+        .map_err(anyhow::Error::from)
+        .and_then(|f| {
+            let mut w = std::io::BufWriter::new(f);
+            generator.session().save(&mut w, model_hash)?;
+            std::io::Write::flush(&mut w)?;
+            Ok(())
+        });
+    match saved {
+        Ok(()) => eprintln!(
+            "[INFO] Session snapshot: {} cached tokens at {}",
+            generator.session().cached_len(),
+            snapshot_path.display()
+        ),
+        Err(e) => eprintln!("[WARN] Session snapshot not saved: {e:#}"),
+    }
     if let Some(monitor) = &monitor {
         let default_out = root.join("probe-flags.jsonl");
         report_probe(monitor, probe_out.unwrap_or(&default_out))?;
@@ -198,7 +302,8 @@ fn main() -> ExitCode {
          [--trace-chrome <path>] [--control-vector <path.gguf>] \
          [--control-vector-scale <f>] [--probe <path.gguf>] \
          [--probe-out <path>] [--temperature <f>] [--top-p <f>] \
-         [--seed <n>] [--max-tokens <n>] (--chat | <task description>)";
+         [--seed <n>] [--max-tokens <n>] [--context <n>] \
+         [--compact-at <f>] (--chat | <task description>)";
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     // Snapshot before flag extraction mutates args: cmd.start records the
     // invocation as given, program name excluded (the shape common/obs logs).
@@ -218,6 +323,10 @@ fn main() -> ExitCode {
     // --temperature <f> / --top-p <f> / --seed <n>: sampling parameters
     // (defaults 0.8 / 0.95 / 0; seed 0 replays a run exactly).
     // --max-tokens <n>: per-turn generation budget (default 256).
+    // --context <n>: cap the context budget below the model's trained
+    // window (never above it; the GGUF value is the default and maximum).
+    // --compact-at <f>: automatic-compaction threshold as a fraction of the
+    // context budget (default 0.8, must be in (0, 1]).
     let mut model: Option<std::path::PathBuf> = None;
     let mut record: Option<std::path::PathBuf> = None;
     let mut trace_chrome: Option<std::path::PathBuf> = None;
@@ -229,6 +338,8 @@ fn main() -> ExitCode {
     let mut top_p_arg: Option<std::path::PathBuf> = None;
     let mut seed_arg: Option<std::path::PathBuf> = None;
     let mut max_tokens_arg: Option<std::path::PathBuf> = None;
+    let mut context_arg: Option<std::path::PathBuf> = None;
+    let mut compact_at_arg: Option<std::path::PathBuf> = None;
     for (flag, slot) in [
         ("--model", &mut model),
         ("--record", &mut record),
@@ -241,6 +352,8 @@ fn main() -> ExitCode {
         ("--top-p", &mut top_p_arg),
         ("--seed", &mut seed_arg),
         ("--max-tokens", &mut max_tokens_arg),
+        ("--context", &mut context_arg),
+        ("--compact-at", &mut compact_at_arg),
     ] {
         if let Some(i) = args.iter().position(|a| a == flag) {
             if i + 1 >= args.len() {
@@ -301,6 +414,26 @@ fn main() -> ExitCode {
         },
         None => 256,
     };
+    let context = match context_arg {
+        Some(v) => match v.to_string_lossy().parse::<usize>() {
+            Ok(n) if n >= 1 => Some(n),
+            _ => {
+                eprintln!("[ERROR] --context: expected an integer >= 1");
+                return ExitCode::from(2);
+            }
+        },
+        None => None,
+    };
+    let compact_at = match compact_at_arg {
+        Some(v) => match v.to_string_lossy().parse::<f32>() {
+            Ok(f) if f > 0.0 && f <= 1.0 => f,
+            _ => {
+                eprintln!("[ERROR] --compact-at: expected a number in (0, 1]");
+                return ExitCode::from(2);
+            }
+        },
+        None => 0.8,
+    };
     // --chat: interactive REPL instead of a one-shot task; the two are
     // mutually exclusive, so leftover positional args are a usage error.
     let chat = if let Some(i) = args.iter().position(|a| a == "--chat") {
@@ -352,6 +485,8 @@ fn main() -> ExitCode {
         probe_out.as_deref(),
         sampling,
         max_tokens,
+        context,
+        compact_at,
         chat,
     ) {
         Ok(answer) => {

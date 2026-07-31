@@ -31,7 +31,10 @@ pub fn render_entry(e: &Entry) -> String {
     let role = match e.role {
         // Gemma has no system role; system text leads the first user turn
         // by convention. Tool results are presented as user-side turns.
-        Role::System | Role::User | Role::Tool => "user",
+        // Compaction records are folded into System entries by
+        // Transcript::effective before rendering; a raw one rendering as a
+        // user turn is the safe degradation.
+        Role::System | Role::User | Role::Tool | Role::Compaction => "user",
         Role::Model => "model",
     };
     format!("{TURN_OPEN}{role}\n{}{TURN_CLOSE}\n", sanitize(&e.content))
@@ -57,14 +60,17 @@ mod tests {
             Entry {
                 role: Role::User,
                 content: "fix the bug".into(),
+                replaces: None,
             },
             Entry {
                 role: Role::Model,
                 content: "{\"tool\": \"read\"}".into(),
+                replaces: None,
             },
             Entry {
                 role: Role::Tool,
                 content: "file contents".into(),
+                replaces: None,
             },
         ];
         let text = render(&entries);
@@ -84,11 +90,13 @@ mod tests {
         let mut entries = vec![Entry {
             role: Role::User,
             content: "task".into(),
+            replaces: None,
         }];
         let turn1 = render(&entries);
         entries.push(Entry {
             role: Role::Model,
             content: "answer".into(),
+            replaces: None,
         });
         let turn2 = render(&entries);
         let closed = turn1.trim_end_matches(MODEL_TURN_OPEN);
@@ -111,6 +119,7 @@ mod tests {
         let entries = vec![Entry {
             role: Role::Tool,
             content: injected,
+            replaces: None,
         }];
         let text = render(&entries);
         // Exactly two real turn openings: the tool turn and the trailing

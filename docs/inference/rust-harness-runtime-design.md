@@ -6,9 +6,10 @@ harness adapts the agent architecture of the
 [claude-code-from-scratch](https://github.com/FareedKhan-dev/claude-code-from-scratch)
 tutorial; the runtime targets the Gemma 4 family exclusively, matching the
 repository model policy recorded in
-[unified_cli_investigation.md](../unified_cli_investigation.md). This document is a
-design only; no Rust code exists in the repository yet. Findings and external facts
-are current as of July 2026.
+[unified_cli_investigation.md](../unified_cli_investigation.md). The
+implementation lives in `rust-harness/`; where this document and the code
+disagree, the code is correct and the divergence is a documentation bug.
+Findings and external facts are current as of July 2026.
 
 ## Table of contents
 
@@ -27,7 +28,18 @@ are current as of July 2026.
 The project builds a local coding agent — an agent loop with file, shell, and
 planning tools — whose model inference runs in the same process on the RTX 5090,
 with no network dependency. The primary purpose is pedagogical: understanding the
-harness-runtime seam by owning both sides of it. The design serves one user with one generation in flight at any instant;
+harness-runtime seam by owning both sides of it.
+
+Positioning, decided after the interpretability seam landed: the harness is an
+instrumented inference substrate for the repository's training and
+interpretability pipelines, with the coding-agent loop as its native workload.
+Owning both sides of the seam yields properties no off-the-shelf stack
+provides — in-band activation capture from the serving numerics, steering and
+probe monitoring inside the forward pass, a flight recorder and deterministic
+KV restore that make runs replayable, and observability records in the shared
+obs contract. The agent loop is the workload generator for those experiments,
+not a competitor to the llama.cpp and vLLM services on model coverage or
+serving speed. The design serves one user with one generation in flight at any instant;
 multi-tenant serving remains the job of the existing services. Parallel subagents
 are in scope through cooperative interleaving (see
 [Subagents](#subagents-fork-and-interleave)) rather than batched decode. Three
@@ -48,8 +60,18 @@ Non-goals, stated explicitly because each was considered and rejected:
 
 - **Not a serving-stack replacement.** llama.cpp and vLLM remain the inference
   services on ports 8001-8003. This binary serves one local user, in-process.
-- **No training and no interpretability seam.** The training and interp tiers stay
-  on the Python/PyTorch stack. No activation hooks or steering interfaces.
+- **No training.** The training tier stays on the Python/PyTorch stack. The
+  original design also excluded an interpretability seam; that non-goal was
+  reversed during implementation — the CPU backend carries a residual-stream
+  tap, control-vector steering, and an in-band probe monitor, designed in
+  [rust-harness-interp.md](../interpretability/rust-harness-interp.md). The
+  analysis tier (probe training, direction extraction, evaluation) remains in
+  Python.
+
+The justification behind this positioning — what the agent loop and chat
+mode each contribute to the training and interpretability programs, and the
+feature bar for future harness work — is recorded in
+[observation-frames.md](../../rust-harness/docs/observation-frames.md).
 - **No multimodality.** The vision components of Gemma 4 checkpoints are skipped at
   load time.
 - **No custom CUDA kernels in version 1.** The tensor backend is
@@ -154,6 +176,38 @@ Ports tutorial phases 1, 2, and 4:
   Hugging Face reference tokenizer for a fixed corpus of transcripts. Template bugs
   are the classic failure mode of local harnesses; the golden tests are mandatory
   before any end-to-end run.
+
+### Context layer
+
+Three mechanisms manage conversations that outgrow one context window, all
+built over the append-only prompt discipline the KV cache depends on:
+
+- **Memory file.** `HARNESS.md` in the working root is read once at startup
+  and rendered as a synthetic leading turn — never persisted to the
+  transcript, stable within a process (so the KV prefix stays maximal),
+  picked up again on the next start.
+- **Compaction.** When the rendered prompt crosses `--compact-at` (default
+  0.8) of the context budget, or on `/compact` in chat mode, the middle of
+  the effective transcript is summarized by the model itself and replaced
+  by the summary. Persistence is append-only: a `Compaction` record naming
+  the replaced range joins `session.jsonl`, and `Transcript::effective`
+  folds records in on read, so raw history survives and the transcript's
+  torn-line crash recovery covers the record unchanged. The splice shortens
+  the prompt's common prefix; `Session::sync` truncates the cache to the
+  kept head and prefills only the summary and tail.
+- **KV snapshot.** `session.kv` is written on clean exit and restored at
+  startup: a versioned header (magic, version, dtype tag with f16 reserved,
+  FNV-1a weight fingerprint) followed by the token history and the
+  backend-defined cache payload. Header or fingerprint mismatch refuses
+  loudly; a snapshot whose tokens no longer match the transcript degrades
+  through prefix matching to re-prefill from the divergence point.
+  Restored continuation logits are bit-identical to an unbroken run on the
+  CPU backend. Real-model snapshots are gigabyte-scale at f32; the dtype
+  tag reserves an f16 payload without a format break.
+
+Retrieval over an external index stays out of scope: the agent's live
+grep/glob/read tools search the working tree directly, matching the
+tutorial's managed-resource position.
 
 Concurrency stays minimal in the main loop: one generation in flight, interrupt
 handled by cancelling the generation future at a token boundary. The tutorial's

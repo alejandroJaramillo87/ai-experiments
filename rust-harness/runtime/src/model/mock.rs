@@ -149,6 +149,23 @@ impl Model for MockModel {
             shared: Arc::clone(&self.shared),
         }))
     }
+
+    // The mock's whole cache state is its length: logits are keyed by
+    // absolute position, so restoring the length restores the "cache".
+    // Supporting snapshots here keeps the session save/restore machinery
+    // testable without real weights.
+    fn save_state(&self, w: &mut dyn std::io::Write) -> Result<()> {
+        w.write_all(&(self.cached_len as u64).to_le_bytes())?;
+        Ok(())
+    }
+
+    fn load_state(&mut self, r: &mut dyn std::io::Read) -> Result<()> {
+        ensure!(self.cached_len == 0, "load_state on a non-fresh cache");
+        let mut buf = [0u8; 8];
+        r.read_exact(&mut buf)?;
+        self.cached_len = u64::from_le_bytes(buf) as usize;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
