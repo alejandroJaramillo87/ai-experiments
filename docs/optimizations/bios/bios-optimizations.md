@@ -134,6 +134,7 @@ Advanced CPU configuration for optimal AI inference performance, maximizing proc
     - **Method**: Start conservative, increase incrementally, validate with CoreCycler
   - **Benefit**: Reduces power consumption (P∝V²), creates headroom for higher sustained frequencies
   - **Impact**: Validated 26% improvement with conservative -15 setting
+  - **Revalidation**: Validated against bursty chat inference only; sustained combined CPU+GPU workloads (training runs) require the stability soak in `docs/verification/hardware-stress.md` before first use
 
 - **Curve Shaper**: `Frequency-Specific Optimization` (Zen 5 Feature)
   - **Purpose**: Granular voltage control for different frequency bands
