@@ -384,16 +384,19 @@ environment, which enabled genuine cross-language checks against the real
 Baseline before discovery: `make -C rust-harness quality` exits 0 across
 all five steps, 244 tests (238 runnable, six host-tier ignored).
 
-Two coverage gaps remain open and are the first item of the next
-discovery pass:
+Two dimensions terminated on an API safeguard during the first pass and
+were swept in a second pass, which also settled the findings whose
+verifiers were lost to a session limit. The second pass held a harder
+line: a claim its verifier could not independently reproduce was refuted
+rather than accepted. It refuted four findings, downgraded two, and added
+sixteen, including one critical and five high.
 
-- **Parser robustness** (`gguf.rs`, `tensor.rs`, the `HKV1` snapshot
-  restore, `tokenizer.rs`, transcript recovery, permission loading) was not
-  swept: the finder terminated on an API safeguard before producing
-  findings. Coverage of this area is incidental only.
-- **Concurrency, argument parsing, and process handling** (`main.rs` flag
-  extraction, `stream.rs`, `subagents.rs`, the `tools.rs` bash lifecycle,
-  the three `obs.rs` FFI sites) was not swept for the same reason.
+- **Input validation and decoding** (`gguf.rs`, `tensor.rs`, the `HKV1`
+  snapshot restore, `tokenizer.rs`, transcript recovery, permission
+  loading) — swept in pass two.
+- **Argument parsing, orchestration, and child-process lifecycle**
+  (`main.rs` flag extraction, `stream.rs`, `subagents.rs`, the `tools.rs`
+  bash lifecycle, the three `obs.rs` FFI sites) — swept in pass two.
 
 ### Confirmed: forward-pass numerics and conventions
 
@@ -416,15 +419,19 @@ discovery pass:
   different block in the harness than in `llama-cpu` and `llama-gpu`, with
   no error on either side. Verified by counterexample: a `direction.1`-only
   vector perturbs the block 0 residual.
-- **A1-R04 (high, disputed).** `runtime/src/model/cpu.rs:565` — one
-  `rope_freq_base` is applied to every layer, though the Gemma-3 family
-  gives sliding-window layers base 10000 and global layers 1e6. One
-  verifier refuted the finding on reachability grounds (a stock gemma3 GGUF
-  is refused earlier because it does not carry a scalar
-  `sliding_window_pattern`, and the converter does write
-  `rope.freq_base_swa`, which trips the existing dual-RoPE refusal); the
-  other confirmed it. The tie-breaker did not run. **Disposition pending**
-  the checkable question of what the converter emits.
+- **A1-R04 (refuted).** `runtime/src/model/cpu.rs:565` — the claim that one
+  `rope_freq_base` is silently applied to sliding-window and global layers
+  alike. The decisive question was whether the converter writes
+  `{arch}.rope.freq_base_swa`, and it does: `Gemma3Model` calls the base
+  class first, which harvests `rope_local_base_freq` and emits the key, and
+  gemma3n and gemma4 subclass it. Four checkpoints built with the
+  converter's exact key set were run through the real `Config::from_gguf`
+  and `check_supported`: a stock gemma3 file is refused for a missing
+  scalar `sliding_window_pattern`, adding that scalar makes the existing
+  dual-RoPE refusal fire on `freq_base_swa`, and the gemma4 encoding fails
+  earlier still in parsing. The wrong behavior is unreachable — every path
+  refuses first. The residual is an imprecise guarantee in the `cpu.rs`
+  header, folded into the documentation work.
 - **A1-15 (medium).** `runtime/src/synth.rs:36` — the fixture shape makes
   the golden structurally blind to two conventions: `head_dim` equals
   `embed_dim / n_heads`, so the two candidate QK scales coincide, and
@@ -591,30 +598,119 @@ measurements are from the sandbox at the stated geometry.
   command blocks fail as written because they write into or change to
   directories that are never created.
 
-### Pending verification
+### Confirmed: input validation and decoding
 
-The following were reported by the re-sweep but lost their verifiers when
-the session ended. They are recorded as **unverified**, not confirmed, and
-are the second item of the next discovery pass. Two further re-sweep
-entries, A2-R09 and C-R11, restate E-01 at a different line and fold into
-it without separate treatment.
+- **B-N01 (critical).** `runtime/src/model/record.rs:174` — `replay` keys
+  the reconstructed script by absolute position alone, so a position
+  recorded twice with different token history is silently overwritten by
+  the later write. Replaying the earlier branch then returns the other
+  branch's logits and reports success. This fires on ordinary runs: every
+  transcript divergence, every compaction, and every fork, because forks
+  share one writer. Both advertised uses break — sandbox replay of a
+  workstation run returns wrong numbers, and divergence bisection reports a
+  phantom first-divergent position.
+- **B-N02 (high).** `harness/src/permissions.rs:35` — `Rule` and
+  `Permissions` deserialize without `deny_unknown_fields`, so one
+  transposed letter in `pattern` leaves the field `None`, and the
+  match-everything branch turns a narrowly scoped bash allow rule into an
+  allow-anything rule. Verified: with `patern` misspelled, `evaluate`
+  returns `Allow` for `rm -rf` and for a piped remote script. The module
+  already rejects the analogous typo one field over, so the omission
+  contradicts its own stated policy.
+- **B-N04 (high).** `runtime/src/tokenizer.rs:138` — only `Normal` pieces
+  enter the encode lookup, so `CONTROL` and `USER_DEFINED` pieces are
+  unreachable. On a real Gemma vocabulary the harness's own chat
+  delimiters therefore encode as 17-token byte-fallback runs rather than
+  their single special identifier: the model sees a turn boundary it was
+  never trained on, at roughly fifteen times the token cost per delimiter.
+  The fixture carries no chat-delimiter piece, so no green test covers it.
+- **B-N05 (medium).** `harness/src/transcript.rs:56` — a session file whose
+  final line is complete JSON without a terminating newline is accepted and
+  appended onto, and the concatenated line then fails to parse on the next
+  open. Being last, it is silently truncated away, destroying every entry
+  after the first.
+- **B-N06 (medium).** `runtime/src/tokenizer.rs:137` — the encode window is
+  bounded by the longest `Normal` piece in the vocabulary with no cap, so a
+  single oversized piece makes encoding super-quadratic: a 3.6 KB prompt
+  takes 2.9 s where a normal vocabulary takes microseconds.
+- **B-N03 (medium).** `runtime/src/model/cpu.rs:749` — `load_state`
+  reserves `cached_len * kv_dim` floats from a snapshot field before
+  reading any payload, so a 41-byte `session.kv` reserves 1 GB and an
+  unbounded context length aborts the process through the allocation error
+  handler.
 
-- **C-R10 (high).** `runtime/src/model/cpu.rs:562` — `attention.key_length`
-  of 0 passes the only check, which tests divisibility by two, after which
-  the first forward pass calls `chunks_mut(0)` and panics.
-- **A1-R05 (medium).** `runtime/src/model/probe.rs:152` — the monitor keys
-  flags by raw cache position and never observes truncation, so
-  compaction and divergence re-score overlapping positions.
-- **A1-R06 (medium).** `runtime/src/model/cpu.rs:747` — `load_state`
-  validates layer count and context bound but not cache geometry, and never
-  checks stream exhaustion.
-- **A1-R07 (medium).** `runtime/src/synth.rs:243` — the synthetic metadata
-  contract uses scalar keys where llama.cpp gemma3n and gemma4 use
-  per-layer arrays, which `gguf.rs` cannot parse, so the golden may validate
-  a load path no real checkpoint takes.
-- **C-R12 (medium).** `runtime/src/model/record.rs:108` — a recorder append
-  failure after a successful inner prefill breaks the atomicity contract
-  that `Session::sync` relies on.
+### Confirmed: argument parsing and process lifecycle
+
+- **D-N02 (high).** `harness/src/tools.rs:285` — the bash timeout bounds
+  only the polling loop; the unconditional joins afterwards wait for end of
+  file on pipes that any backgrounded process still holds open. Measured:
+  `sleep 130 & echo started` returns after 130.007 s against a documented
+  120 s bound, and a command that starts a server never returns at all, so
+  the agent loop hangs with no timeout. The same loop also costs 10.6 ms
+  per trivial call through a fixed sleep.
+- **D-N03 (high).** `harness/src/main.rs:295` — `report_probe` propagates
+  its error, so a probe-output write failure converts a completed,
+  transcript-recorded task into exit 1 with no answer printed,
+  contradicting the in-code contract that observation never affects the
+  result. Verified with a missing output directory: the snapshot is
+  written, the transcript holds the completed pair, stdout is empty, and
+  all 65 collected flags are discarded.
+- **D-N04 (high).** `harness/src/main.rs:358` — a flag's value is taken
+  without checking whether it is itself a flag, so an omitted value
+  silently swallows the following flag: the swallowed flag is disabled, its
+  value falls into the task text, and the run exits 0. Verified: a file
+  literally named `--probe-out` is created, and the transcript records a
+  task the user never typed.
+- **D-N05, D-N06 (medium).** `harness/src/main.rs:358` — task text is
+  scanned for flags rather than separated from them, so a task word equal
+  to a flag name is consumed together with the word after it; and only the
+  first occurrence of each flag is consumed, so a repeated flag leaves its
+  second occurrence in the task text instead of being rejected.
+- **D-N07, D-N08 (medium).** Two startup paths abort with a panic and
+  backtrace rather than the usage or IO error the surrounding code takes
+  care to produce (a non-UTF-8 argument, and an unwritable trace path), and
+  a closed stdout orphans the observability event file, leaving a start
+  record with no end record and no catalog row.
+- **D-N09 (medium).** The clean-exit snapshot is written straight over
+  `session.kv`, destroying the previous good snapshot before the new bytes
+  exist, so a partial write makes the following run fail outright instead
+  of degrading.
+
+### Refuted
+
+Recorded as refuted, not silently dropped.
+
+- **A1-R04** — dual RoPE base; unreachable, every path refuses first. See
+  the numerics section above.
+- **A1-R06** `runtime/src/model/cpu.rs:747` — snapshot geometry mismatch.
+  The mechanism is real at the raw trait level, but the only in-repo caller,
+  `Session::restore`, first requires the saved fingerprint to equal the
+  model fingerprint, and a different cache geometry implies different GGUF
+  bytes, so the fingerprints always differ. Reproduced end to end: the
+  cross-model restore errors with "different model weights".
+- **C-R12** `runtime/src/model/record.rs:108` — recorder append failure
+  breaking prefill atomicity. The mechanism is partly real, but no caller
+  retries: every call site propagates the error and aborts before the
+  snapshot save, so nothing is silent. The general non-atomicity of
+  `prefill_all` is tracked separately as A1-03.
+- **D-N01** — a recording missing the restored prefix. Paired runs with and
+  without an existing snapshot produced identical row coverage and
+  bit-identical logits; the claim misread the record metadata as coverage.
+
+### Resolved from pending
+
+The five findings whose verifiers were lost are now settled: **C-R10**
+confirmed and downgraded to medium (it needs a hand-edited checkpoint and
+fails loudly, with no wrong numbers), **A1-R07** confirmed as stated for
+`sliding_window_pattern` (the converter always writes it as a boolean
+array, which `gguf.rs` cannot parse, so `gguf-info` exits 1 on a real
+checkpoint instead of printing its verdict; the claim was over-broad about
+the other two keys), **A1-R05** reduced to a documentation and labelling
+matter (the position semantics are already documented as cache-relative,
+and no consumer reads the file; the residual is that the counter reports
+scoring events while calling them positions), and **A1-R06** and **C-R12**
+refuted as above. A2-R09 and C-R11 restate E-01 at a different line and
+fold into it.
 
 ### Recorded without verification
 
@@ -634,7 +730,9 @@ on tests asserting exactness.
 
 ### Result
 
-Pending. Discovery: fifty-two findings confirmed under adversarial
-verification, five pending verification, twenty-six low-severity recorded
-without verification, and two of ten dimensions unswept. Dispositions and
-the closing counts land as remediation proceeds.
+Pending. Discovery is complete across all ten dimensions after two passes.
+Sixty-four findings are confirmed under independent refutation attempts
+(four critical, twelve high), four are refuted with rationale recorded,
+two remain unverified at low severity, and twenty-eight low-severity
+findings are recorded without verification by the severity policy.
+Dispositions and the closing counts land as remediation proceeds.
