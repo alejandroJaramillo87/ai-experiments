@@ -48,7 +48,16 @@ def load_labeled_dataset(path: str) -> list[dict]:
                 raise CaptureError(f"{path}:{lineno}: invalid JSON: {exc}") from exc
             if "text" not in record or "label" not in record:
                 raise CaptureError(f"{path}:{lineno}: needs 'text' and 'label' keys")
-            examples.append({"text": record["text"], "label": int(record["label"])})
+            label = record["label"]
+            # Refuse rather than coerce: int() turns a soft label of 0.9 into
+            # class 0 and True into class 1, mistraining a probe on a line the
+            # Rust writer rejects. Both writers accept the same datasets.
+            if isinstance(label, bool) or not isinstance(label, int):
+                raise CaptureError(
+                    f"{path}:{lineno}: label must be an integer, got {label!r}; "
+                    f"rewrite the line with an integer class id"
+                )
+            examples.append({"text": record["text"], "label": label})
     if not examples:
         raise CaptureError(f"{path}: no examples found")
     return examples
@@ -180,11 +189,24 @@ def run_capture(
 def load_capture(
     capture_dir: str,
 ) -> tuple[dict[int, np.ndarray], np.ndarray, list[str]]:
-    """Load all shards back: ({layer: acts}, labels, texts)."""
+    """Load all shards back: ({layer: acts}, labels, texts).
+
+    Rows, labels, and texts are joined by position alone, so what the
+    directory holds is cross-checked against the manifest before returning: a
+    same-length rewrite of examples.jsonl, a torn shard, or a repeated layer
+    otherwise detaches texts from their activations and silently reassigns the
+    seeded split, training a probe on mislabeled rows with no error.
+    """
     from interp.manifest import load_manifest
 
     manifest = load_manifest(capture_dir)
     layers = manifest["layers"]
+    # A repeated layer loads that layer's rows once per repeat, stacking two
+    # rows per example against one label; no writer emits such a manifest.
+    if len(set(layers)) != len(layers):
+        raise CaptureError(
+            f"{capture_dir}: manifest layers repeat: {layers}; re-run capture"
+        )
     acts: dict[int, list[np.ndarray]] = {layer: [] for layer in layers}
     labels: list[np.ndarray] = []
     for i in range(manifest["shards"]):
@@ -197,8 +219,24 @@ def load_capture(
         for line in f:
             if line.strip():
                 texts.append(json.loads(line)["text"])
-    return (
-        {layer: np.concatenate(chunks, axis=0) for layer, chunks in acts.items()},
-        np.concatenate(labels, axis=0),
-        texts,
-    )
+
+    stacked = {layer: np.concatenate(chunks, axis=0) for layer, chunks in acts.items()}
+    all_labels = np.concatenate(labels, axis=0)
+    count = manifest["count"]
+    if len(all_labels) != count:
+        raise CaptureError(
+            f"{capture_dir}: shards hold {len(all_labels)} labels, manifest count "
+            f"is {count}; re-run capture"
+        )
+    if len(texts) != count:
+        raise CaptureError(
+            f"{capture_dir}: examples.jsonl holds {len(texts)} texts, manifest "
+            f"count is {count}; re-run capture"
+        )
+    for layer, rows in stacked.items():
+        if len(rows) != count:
+            raise CaptureError(
+                f"{capture_dir}: layer {layer} holds {len(rows)} rows, manifest "
+                f"count is {count}; re-run capture"
+            )
+    return stacked, all_labels, texts
