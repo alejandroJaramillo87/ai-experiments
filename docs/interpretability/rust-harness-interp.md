@@ -61,8 +61,12 @@ applied, so captures observe the stream downstream layers actually consume.
 
 `ControlVector::from_gguf` reads the llama.cpp control-vector layout that
 `interp/steering/export.py` writes: one f32 tensor per layer named
-`direction.<layer>` (1-based), width equal to the embedding dimension.
-`scale * direction` is added to the residual after each named layer.
+`direction.<layer>`, width equal to the embedding dimension. `direction.N`
+steers decoder block `N`, matching llama.cpp and the repeng training
+semantics that produce these files, so the same `vector.gguf` steers the
+same block here as under `llama-cpu` and `llama-gpu`. Numbering starts at
+1 and block 0 is unsteerable, as upstream. `scale * direction` is added to
+the residual after the named block.
 Steering carries across forks, so a steered agent's subagents serve the same
 steered model. Binary flags:
 

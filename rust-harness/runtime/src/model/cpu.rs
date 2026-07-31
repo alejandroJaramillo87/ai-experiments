@@ -328,13 +328,20 @@ pub trait Tap: Send {
 }
 
 /// Additive steering directions in the llama.cpp control-vector GGUF
-/// layout: one f32 tensor per layer named `direction.<layer>` (1-based).
-/// `scale * direction` is added to the residual after that layer, before
+/// layout: one f32 tensor per layer named `direction.<layer>`.
+///
+/// `direction.N` steers decoder block `N`, matching llama.cpp and the
+/// repeng training semantics that produce these files: repeng trains key
+/// `k` on the output of block `k`, and llama.cpp adds `direction.N` to
+/// block `N`'s output. Block 0 is therefore unsteerable, as upstream —
+/// numbering starts at 1 and there is never a tensor for block 0.
+/// `scale * direction` is added to the residual after that block, before
 /// the tap fires, so captures observe the steered stream that downstream
-/// layers actually consume.
+/// blocks actually consume.
 pub struct ControlVector {
     scale: f32,
-    /// Indexed by 0-based layer; None for layers without a direction.
+    /// Indexed by 0-based block; None for blocks without a direction.
+    /// Slot 0 is always None because numbering starts at 1.
     directions: Vec<Option<Vec<f32>>>,
 }
 
@@ -350,10 +357,10 @@ impl ControlVector {
                 .with_context(|| format!("tensor name {}: non-numeric layer", info.name))?;
             ensure!(layer >= 1, "tensor {}: layers are 1-based", info.name);
             let v = load_tensor(file, data, info)?;
-            if layer > directions.len() {
-                directions.resize(layer, None);
+            if layer >= directions.len() {
+                directions.resize(layer + 1, None);
             }
-            directions[layer - 1] = Some(v);
+            directions[layer] = Some(v);
         }
         ensure!(
             directions.iter().any(Option::is_some),
@@ -533,11 +540,14 @@ impl CpuModel {
             cv.width(),
             self.config.embed_dim
         );
+        // directions is indexed by 0-based block, so its length is the
+        // highest named block plus one; that block must exist in the model.
         ensure!(
             cv.directions.len() <= self.config.n_layers,
-            "control vector names layer {} but the model has {} layers",
-            cv.directions.len(),
-            self.config.n_layers
+            "control vector names block {} but the model has {} blocks (0..{})",
+            cv.directions.len().saturating_sub(1),
+            self.config.n_layers,
+            self.config.n_layers.saturating_sub(1)
         );
         self.control = Some(Arc::new(cv));
         Ok(())
@@ -1123,9 +1133,11 @@ mod tests {
 
     #[test]
     fn zero_control_vector_is_bit_identical_to_unsteered() {
+        // The tiny model has blocks 0 and 1, and block 0 is unsteerable by
+        // the format's numbering, so direction.1 is the only legal slot.
         let mut steered = tiny();
         steered
-            .set_control_vector(control(&[(1, vec![0.0; 16]), (2, vec![0.0; 16])], 1.0))
+            .set_control_vector(control(&[(1, vec![0.0; 16])], 1.0))
             .unwrap();
         let mut plain = tiny();
         assert_eq!(
@@ -1156,15 +1168,55 @@ mod tests {
         let dir: Vec<f32> = (0..16).map(|i| 0.03 * i as f32).collect();
         let mut parent = tiny();
         parent
-            .set_control_vector(control(&[(2, dir.clone())], 1.0))
+            .set_control_vector(control(&[(1, dir.clone())], 1.0))
             .unwrap();
         parent.prefill(&[1, 5]).unwrap();
         let mut child = parent.fork().unwrap();
         let forked = child.prefill(&[7]).unwrap();
         let mut fresh = tiny();
-        fresh.set_control_vector(control(&[(2, dir)], 1.0)).unwrap();
+        fresh.set_control_vector(control(&[(1, dir)], 1.0)).unwrap();
         let direct = fresh.prefill(&[1, 5, 7]).unwrap();
         assert_eq!(forked, direct);
+    }
+
+    #[test]
+    fn direction_n_steers_block_n_and_leaves_earlier_blocks_untouched() {
+        // llama.cpp adds direction.N to block N's output, and repeng trains
+        // key k on block k's output. Steering block N-1 instead would make
+        // the same vector.gguf behave differently here than in the llama.cpp
+        // services, silently. Observing the residual through the tap is the
+        // only way to tell the two mappings apart.
+        let rows_at_position_zero = |tap: &CollectingTap| -> Vec<(usize, Vec<f32>)> {
+            tap.0
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(_, p, _)| *p == 0)
+                .map(|(l, _, x)| (*l, x.clone()))
+                .collect()
+        };
+
+        let plain_tap = CollectingTap::default();
+        let mut plain = tiny();
+        plain.set_tap(Box::new(plain_tap.clone()));
+        plain.prefill(&[1, 4]).unwrap();
+        let base = rows_at_position_zero(&plain_tap);
+
+        let steered_tap = CollectingTap::default();
+        let mut steered = tiny();
+        steered
+            .set_control_vector(control(&[(1, vec![100.0; 16])], 1.0))
+            .unwrap();
+        steered.set_tap(Box::new(steered_tap.clone()));
+        steered.prefill(&[1, 4]).unwrap();
+        let after = rows_at_position_zero(&steered_tap);
+
+        assert_eq!(base.len(), 2, "expected one row per block");
+        // Block 0 precedes the named block and must be untouched. Under the
+        // off-by-one mapping direction.1 landed here instead.
+        assert_eq!(base[0], after[0], "block 0 was steered");
+        // Block 1 is the named block and must carry the direction.
+        assert_ne!(base[1], after[1], "block 1 was not steered");
     }
 
     #[test]
@@ -1175,11 +1227,12 @@ mod tests {
             .set_control_vector(control(&[(1, vec![0.0; 8])], 1.0))
             .unwrap_err();
         assert!(err.to_string().contains("width"), "{err}");
-        // Layer beyond the model.
+        // Block beyond the model. direction.2 names block 2, which a
+        // two-block model does not have.
         let err = m
-            .set_control_vector(control(&[(3, vec![0.0; 16])], 1.0))
+            .set_control_vector(control(&[(2, vec![0.0; 16])], 1.0))
             .unwrap_err();
-        assert!(err.to_string().contains("layers"), "{err}");
+        assert!(err.to_string().contains("blocks"), "{err}");
         // Empty and zero-layer images are load errors.
         let image = control_image(&[]);
         let file = crate::gguf::parse(&image).unwrap();
