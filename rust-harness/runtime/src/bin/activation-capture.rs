@@ -173,6 +173,30 @@ fn utc_now() -> String {
     format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
 }
 
+/// The shard slicing assumes exactly one captured row per example per layer.
+/// Checking that before anything is written keeps a future divergence between
+/// the per-layer keying of `collected` and the capture loop's iteration from
+/// producing an internally consistent artifact whose rows sit offset from
+/// their labels — a failure no downstream reader can detect.
+fn check_row_counts(
+    collected: &HashMap<usize, Vec<u16>>,
+    layers: &[usize],
+    embed_dim: usize,
+    examples: usize,
+) -> Result<()> {
+    for &l in layers {
+        let buf = collected
+            .get(&l)
+            .with_context(|| format!("layer {l}: no captured rows"))?;
+        ensure!(
+            buf.len() == examples * embed_dim,
+            "layer {l}: captured {} rows for {examples} examples",
+            buf.len() / embed_dim
+        );
+    }
+    Ok(())
+}
+
 fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path) -> Result<()> {
     let data = std::fs::read(model_path)
         .with_context(|| format!("read model {}", model_path.display()))?;
@@ -228,6 +252,7 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
             tokens.len()
         );
     }
+    check_row_counts(&collected, layers, config.embed_dim, examples.len())?;
 
     std::fs::create_dir_all(out_dir)?;
     // Mirror the Python writer's crash discipline: no manifest until every
@@ -302,6 +327,23 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
     Ok(())
 }
 
+/// Parses `--layers`, rejecting a repeated layer instead of deduplicating it.
+/// The capture loop appends one row per listed layer into buffers keyed by
+/// layer, so a repeat stacks several rows per example into a single buffer and
+/// the shard slicing then reads a window shifted against the labels. A repeat
+/// in a generated layer list is a caller bug; a silent dedup would hide it.
+fn parse_layers(arg: &str) -> Result<Vec<usize>> {
+    let layers = arg
+        .split(',')
+        .map(|s| s.trim().parse::<usize>().context("bad --layers entry"))
+        .collect::<Result<Vec<usize>>>()?;
+    ensure!(!layers.is_empty(), "no layers requested");
+    for (i, &l) in layers.iter().enumerate() {
+        ensure!(!layers[..i].contains(&l), "duplicate layer {l} in --layers");
+    }
+    Ok(layers)
+}
+
 fn main() -> ExitCode {
     const USAGE: &str = "usage: activation-capture --model <path.gguf> \
          --dataset <examples.jsonl> --layers <l0,l1,...> --out <dir>";
@@ -321,11 +363,7 @@ fn main() -> ExitCode {
         else {
             bail!("missing required flag");
         };
-        let layers = layers_arg
-            .split(',')
-            .map(|s| s.trim().parse::<usize>().context("bad --layers entry"))
-            .collect::<Result<Vec<usize>>>()?;
-        ensure!(!layers.is_empty(), "no layers requested");
+        let layers = parse_layers(&layers_arg)?;
         run(&model, &dataset, &layers, &out)
     })();
     match parsed {
@@ -351,6 +389,39 @@ mod tests {
         assert_eq!(
             sha256_hex(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn parse_layers_rejects_a_repeated_layer_and_names_it() {
+        let err = parse_layers("1,1").unwrap_err().to_string();
+        assert!(err.contains("duplicate layer 1"), "{err}");
+        let err = parse_layers("3, 5, 3").unwrap_err().to_string();
+        assert!(err.contains("duplicate layer 3"), "{err}");
+    }
+
+    #[test]
+    fn parse_layers_keeps_distinct_layers_in_the_order_given() {
+        assert_eq!(parse_layers("5, 1,3").unwrap(), vec![5, 1, 3]);
+    }
+
+    #[test]
+    fn check_row_counts_accepts_one_row_per_example_per_layer() {
+        let collected = HashMap::from([(1, vec![0u16; 3 * 4]), (2, vec![0u16; 3 * 4])]);
+        check_row_counts(&collected, &[1, 2], 4, 3).unwrap();
+    }
+
+    #[test]
+    fn check_row_counts_rejects_a_layer_holding_two_rows_per_example() {
+        // The buffer shape a duplicate --layers entry produced: one layer fed
+        // twice per example, then sliced as if it held a single row each.
+        let collected = HashMap::from([(1, vec![0u16; 2 * 3 * 4])]);
+        let err = check_row_counts(&collected, &[1], 4, 3)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("layer 1: captured 6 rows for 3 examples"),
+            "{err}"
         );
     }
 
