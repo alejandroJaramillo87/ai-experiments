@@ -116,8 +116,12 @@ def parse_gguf(data):
 
 
 def rms_norm(x, w, eps):
+    # The stored tensor is the effective multiplier: the GGUF converter
+    # resolves Gemma's runtime +1 before writing (folded into the tensor for
+    # gemma1-3, already shifted for gemma3n/gemma4), and the llama.cpp graph
+    # applies a plain multiply.
     inv = np.float32(1.0) / np.sqrt(np.mean(x * x, dtype=np.float32) + np.float32(eps))
-    return (x * inv * (np.float32(1.0) + w)).astype(np.float32)
+    return (x * inv * w).astype(np.float32)
 
 
 def gelu(x):

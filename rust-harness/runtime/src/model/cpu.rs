@@ -8,7 +8,7 @@
  * the full harness runnable in a sandbox against synthetic weights.
  *
  * Architecture (Gemma-3-style, to be reconciled against the real E4B GGUF
- * dump): RMSNorm with (1 + weight) scaling, embedding scaled by
+ * dump): RMSNorm scaled by the stored weight, embedding scaled by
  * sqrt(embed_dim), grouped-query attention with per-head QK-norm and NEOX
  * RoPE, interleaved sliding-window/global layers, GeGLU MLP with tanh GELU,
  * four norms per layer, LM head tied to the token embedding.
@@ -411,11 +411,19 @@ fn matvec(w: &[f32], x: &[f32], out_dim: usize) -> Vec<f32> {
         .collect()
 }
 
-/// Gemma RMSNorm: `x / rms(x) * (1 + w)`.
+/// Gemma RMSNorm: `x / rms(x) * w`.
+///
+/// The stored tensor is the effective multiplier. Gemma's reference
+/// implementation adds 1.0 to its norm parameter at runtime, but the GGUF
+/// converter resolves that before writing: it folds the shift into the
+/// tensor for gemma1 through gemma3 (`norm_shift` 1.0) and stores the
+/// already-shifted weight for gemma3n and gemma4 (`norm_shift` 0.0). Both
+/// land on a plain multiply in the llama.cpp graph, so applying `1 + w`
+/// here would double-count the shift on every real checkpoint.
 fn rms_norm(x: &[f32], w: &[f32], eps: f32) -> Vec<f32> {
     let mean_sq = x.iter().map(|v| v * v).sum::<f32>() / x.len() as f32;
     let inv = 1.0 / (mean_sq + eps).sqrt();
-    x.iter().zip(w).map(|(v, g)| v * inv * (1.0 + g)).collect()
+    x.iter().zip(w).map(|(v, g)| v * inv * g).collect()
 }
 
 /// Tanh-approximated GELU, the Gemma activation.
@@ -768,6 +776,31 @@ mod tests {
         let image = build_tiny_model(&TinySpec::default());
         let file = crate::gguf::parse(&image).unwrap();
         CpuModel::from_gguf(&file, &image).unwrap()
+    }
+
+    #[test]
+    fn rms_norm_scales_by_the_stored_weight_not_one_plus_it() {
+        // The GGUF stores the effective multiplier: the converter resolves
+        // Gemma's runtime +1 before writing. A unit weight must therefore
+        // leave the normalized vector untouched. Under the old `1 + w`
+        // reading every element would come back doubled, so this pins the
+        // convention against a silent regression on real checkpoints.
+        let x = [3.0f32, -4.0, 0.0, 5.0];
+        let rms = (x.iter().map(|v| v * v).sum::<f32>() / 4.0).sqrt();
+
+        let unit = rms_norm(&x, &[1.0; 4], 0.0);
+        for (got, v) in unit.iter().zip(&x) {
+            assert!((got - v / rms).abs() < 1e-6, "unit weight altered {v}");
+        }
+
+        let doubled = rms_norm(&x, &[2.0; 4], 0.0);
+        for (got, v) in doubled.iter().zip(&x) {
+            assert!((got - 2.0 * v / rms).abs() < 1e-6, "weight 2.0 misapplied");
+        }
+
+        // A zero weight annihilates its channel; under `1 + w` it would pass
+        // the value through unchanged.
+        assert_eq!(rms_norm(&x, &[0.0; 4], 0.0), vec![0.0; 4]);
     }
 
     #[test]
