@@ -77,6 +77,14 @@ impl Session {
 
     /// Sync the cache to `transcript`: truncate to the common prefix, prefill
     /// the rest. Returns the number of tokens actually prefilled — the delta.
+    ///
+    /// `Model::prefill` is required to be atomic — all of its tokens land in
+    /// the KV cache, or none do when it errors — and `Session` is the only
+    /// place that requirement is load-bearing: `tokens` is a mirror of the
+    /// cache, and a backend that commits part of a batch before failing puts
+    /// the two out of step. Sync therefore reconciles against the model
+    /// before prefilling instead of trusting the mirror, so a failed sync
+    /// stays recoverable by retrying it.
     pub fn sync(&mut self, transcript: &[Token]) -> Result<usize> {
         let span = tracing::info_span!(
             "session.sync",
@@ -96,12 +104,20 @@ impl Session {
             .zip(transcript)
             .take_while(|(a, b)| a == b)
             .count();
-        if common < self.tokens.len() {
-            self.model.truncate(common)?;
-            self.tokens.truncate(common);
+        // Only positions the model and the token history agree on survive:
+        // the model runs ahead when a prefill committed part of its batch
+        // before failing, and behind when a tail replay dropped a position
+        // and then failed. Both lengths already equal `common` on the normal
+        // path, where the two truncates below are no-ops.
+        let keep = common.min(self.model.cached_len());
+        if self.model.cached_len() > keep {
+            self.model.truncate(keep)?;
+        }
+        if keep < self.tokens.len() {
+            self.tokens.truncate(keep);
             self.tail_logits = None;
         }
-        let delta = &transcript[common..];
+        let delta = &transcript[keep..];
         span.record("delta_len", delta.len());
         if !delta.is_empty() {
             self.tail_logits = Some(self.model.prefill(delta)?);
@@ -168,6 +184,8 @@ impl Session {
 
     /// Make tail logits available, replaying the final cached token
     /// (truncate one, prefill one) only when the cached copy was invalidated.
+    /// A replay that fails after its truncate leaves the model one position
+    /// behind `tokens`; the next `sync` reconciles that back.
     fn ensure_tail_logits(&mut self) -> Result<()> {
         if self.tail_logits.is_none() {
             let last = *self.tokens.last().expect("non-empty cache");
@@ -399,10 +417,13 @@ mod tests {
 
     /// Delegating wrapper that fails exactly one prefill call (the `fail_at`-th),
     /// then recovers: the transient-error case a retried `step` must survive.
+    /// The failing call first commits `commit_on_failure` tokens of its batch
+    /// to the inner cache, modelling a backend whose prefill is not atomic.
     struct FlakyModel {
         inner: MockModel,
         calls: usize,
         fail_at: usize,
+        commit_on_failure: usize,
     }
 
     impl crate::model::Model for FlakyModel {
@@ -415,6 +436,9 @@ mod tests {
         fn prefill(&mut self, tokens: &[Token]) -> Result<crate::model::Logits> {
             self.calls += 1;
             if self.calls == self.fail_at {
+                if self.commit_on_failure > 0 {
+                    self.inner.prefill(&tokens[..self.commit_on_failure])?;
+                }
                 anyhow::bail!("transient prefill failure");
             }
             self.inner.prefill(tokens)
@@ -452,6 +476,7 @@ mod tests {
             inner: MockModel::new(v.len(), script),
             calls: 0,
             fail_at: 6, // prompt prefill is call 1; fail mid-generation
+            commit_on_failure: 0,
         };
         let mut s = Session::new(Box::new(model), 4096).unwrap();
         let mut active = s.begin_generation(&[0], &v, Some(&grammar)).unwrap();
@@ -465,6 +490,85 @@ mod tests {
             }
         }
         assert_eq!(out, skeleton);
+    }
+
+    #[test]
+    fn sync_after_a_prefill_committed_tokens_before_failing_matches_a_clean_run() {
+        // Regression: a prefill that committed part of its batch before
+        // erroring left the model cache ahead of the session's history, and
+        // the retried sync prefilled the whole prompt on top of the orphaned
+        // positions — every later logit came from the wrong position instead
+        // of the retry either working or failing.
+        let v = vocab();
+        let prompt = [0u32, 1, 2, 3, 4];
+        let script = script_emitting(v.len(), prompt.len(), &[7, 8], v.eos());
+
+        let mut clean =
+            Session::new(Box::new(MockModel::new(v.len(), script.clone())), 4096).unwrap();
+        let expected = clean
+            .generate(&prompt, &v, None, &mut greedy(), 8, |_| {})
+            .unwrap();
+
+        let model = FlakyModel {
+            inner: MockModel::new(v.len(), script),
+            calls: 0,
+            fail_at: 1,           // the prompt prefill
+            commit_on_failure: 3, // three of the five tokens land anyway
+        };
+        let mut s = Session::new(Box::new(model), 4096).unwrap();
+        let err = s.sync(&prompt).unwrap_err();
+        assert!(err.to_string().contains("prefill failure"), "{err}");
+        assert_eq!(s.cached_len(), 0);
+
+        let gen = s
+            .generate(&prompt, &v, None, &mut greedy(), 8, |_| {})
+            .unwrap();
+        assert_eq!(gen, expected);
+        assert_eq!(s.tail_logits, clean.tail_logits);
+        assert_eq!(s.cached_len(), clean.cached_len());
+    }
+
+    #[test]
+    fn sync_re_prefills_the_position_a_failed_tail_replay_dropped_from_the_model() {
+        // The mirror case: a replay inside ensure_tail_logits truncates one
+        // position and then fails to prefill it, leaving the model behind the
+        // session's history. Without reconciling, the next sync writes its
+        // delta over the dropped position and generation silently continues
+        // from logits one position early.
+        let v = vocab();
+        let transcript = [0u32, 1, 2, 4, 5];
+        let script = script_emitting(v.len(), transcript.len(), &[7, 8], v.eos());
+
+        let mut clean =
+            Session::new(Box::new(MockModel::new(v.len(), script.clone())), 4096).unwrap();
+        let expected = clean
+            .generate(&transcript, &v, None, &mut greedy(), 8, |_| {})
+            .unwrap();
+
+        let model = FlakyModel {
+            inner: MockModel::new(v.len(), script),
+            calls: 0,
+            fail_at: 2, // the tail replay, not the prompt prefill
+            commit_on_failure: 0,
+        };
+        let mut s = Session::new(Box::new(model), 4096).unwrap();
+        s.sync(&[0, 1, 2, 3]).unwrap();
+        // A truncate-only sync drops the cached tail logits, so the next
+        // generation has to replay the final token — the failing prefill.
+        s.sync(&[0, 1, 2]).unwrap();
+        // ActiveGeneration is not Debug; discard the Ok arm to unwrap_err.
+        let err = s
+            .begin_generation(&[0, 1, 2], &v, None)
+            .map(|_| ())
+            .unwrap_err();
+        assert!(err.to_string().contains("prefill failure"), "{err}");
+
+        let gen = s
+            .generate(&transcript, &v, None, &mut greedy(), 8, |_| {})
+            .unwrap();
+        assert_eq!(gen, expected);
+        assert_eq!(s.tail_logits, clean.tail_logits);
+        assert_eq!(s.cached_len(), clean.cached_len());
     }
 
     #[test]
