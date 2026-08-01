@@ -84,6 +84,7 @@ def calibrate(recipe: DictConfig, steps: int = DEFAULT_STEPS) -> CalibrationReco
     est: Estimate = estimate(recipe)
     device = torch.device("cuda:0")
     torch.manual_seed(recipe.run.seed)
+    torch.cuda.init()  # memory-stats API does not lazy-init the CUDA context
     torch.cuda.reset_peak_memory_stats(device)
 
     model = build_scratch_model(spec, recipe).to(device)

@@ -173,6 +173,25 @@ peak (the D4 acceptance).
 Observed:
 
 ```
+2026-08-01: memfit passed on the 1B reference recipe:
+
+Model parameters: 1,073,809,408 (micro-batch 4, seq len 2048)
+weights 2.00 GB, gradients 4.00 GB, optimizer state 2.03 GB,
+activations 3.39 GB, framework overhead 1.50 GB
+Total allocated estimate: 11.42 GB; reserved estimate: 12.92 GB
+[OK] Fits: reserved estimate 12.92 GB within budget 31.00 GB
+
+2026-08-01: calibrate failed on a fresh container:
+[ERROR] Calibration failed: Invalid device argument
+
+A minimal probe in the training container isolated the failing call:
+torch.cuda.reset_peak_memory_stats(cuda:0) raises RuntimeError before
+any CUDA context exists (torch.cuda.is_available() returns True without
+creating one, and the memory-stats API does not lazy-init it). Filed as
+KB-53; fixed by calling torch.cuda.init() before the reset in
+training/calculator/calibrate.py. Calibrate re-run pending an image
+rebuild (make train-build) on the workstation. Note:
+/mnt/ai-data/training/verify/ also had to be created for the --out path.
 ```
 
 Status: PENDING
