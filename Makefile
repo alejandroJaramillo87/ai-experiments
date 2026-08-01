@@ -7,7 +7,8 @@
 .PHONY: comfy-up comfy-down comfy-logs comfy-shell comfy-build comfy-status
 .PHONY: comfy-models-image comfy-models-video art-mode llm-mode
 .PHONY: list-models update rebuild reset demo dev
-.PHONY: agent-parity agent-preflight agent-skeptic-test command-sync agent-usage agent-versions
+.PHONY: agent-parity agent-preflight agent-skeptic-test agent-role-tests command-sync
+.PHONY: agent-usage agent-versions
 .PHONY: worktree-ls worktree-clean agent-run agent-export agent-sandbox agent-sandbox-clean prune
 .PHONY: np-clone np-env np-build np-up np-inference-up np-autointerp-up np-graph-up
 .PHONY: np-down np-status np-smoke
@@ -636,16 +637,10 @@ agent-versions: ## Compare Dockerfile.agents CLI pins against the npm registry (
 	@./scripts/agents/check-agent-versions.sh
 
 agent-skeptic-test: ## Run the skeptic acceptance test (expects VERDICT: REFUTED)
-	@if ! command -v claude >/dev/null 2>&1; then \
-	  printf '[SKIP] Skeptic test: claude CLI not found\n'; exit 0; \
-	fi; \
-	printf '[RUN] Invoking skeptic on tests/agents/broken_completed_task.md\n'; \
-	out=$$(claude -p "Use the skeptic subagent to verify the completed task in tests/agents/broken_completed_task.md" 2>/dev/null); \
-	if printf '%s' "$$out" | grep -q 'VERDICT: REFUTED'; then \
-	  printf '[OK] Skeptic test: returned VERDICT: REFUTED\n'; \
-	else \
-	  printf '[ERROR] Skeptic test: expected "VERDICT: REFUTED", got:\n%s\n' "$$out"; exit 1; \
-	fi
+	@./scripts/agents/role-acceptance.sh skeptic
+
+agent-role-tests: ## Run the LLM acceptance test for every QA subagent role (spends tokens)
+	@./scripts/agents/role-acceptance.sh $(ROLE)
 
 ##@ Workflow Automation (escalation ladder — see docs/agents/README.md)
 
