@@ -73,10 +73,23 @@ warning that one document exceeds the tokenizer's 8192 max sequence
 length (8802 tokens) — prepare-data packs raw token streams and never
 runs the model, so no indexing error can occur.
 
-Manifest verification pending (see command below).
+Manifest verified:
+
+$ ls /mnt/ai-data/training/shards/verify-small/
+manifest.json  shard_000000.bin
+$ python -m json.tool .../manifest.json (excerpt)
+"dtype": "uint16", "eos_id": 0, "shard_tokens": 536870912,
+"shards": [{"file": "shard_000000.bin", "tokens": 20001211,
+"xxhash64": "52390540d30d395a"}]
+dataset HuggingFaceFW/fineweb-edu, created_at 2026-08-01T13:11:49Z,
+doc_length_histogram present. Note: git_sha records "unknown" (the
+container has no repo checkout at /app).
+
+Verified with the KB-52 caveat: the process exits nonzero from the
+finalization crash, but every artifact and integrity field is present.
 ```
 
-Status: PENDING
+Status: VERIFIED
 
 ## P0.2 Tokenizer training (D3)
 
