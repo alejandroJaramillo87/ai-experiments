@@ -433,11 +433,18 @@ impl ControlVector {
         Ok(ControlVector { scale, directions })
     }
 
-    fn direction(&self, layer: usize) -> Option<&[f32]> {
+    /// The direction for a 0-based block, or None where the image names none.
+    ///
+    /// Public so the cross-language contract test can assert the layer
+    /// mapping directly (`schemas/gguf_artifacts.json`). A control vector
+    /// written by `interp/steering/export.py` numbers its tensors from 1, and
+    /// an off-by-one here steers the wrong block with no error anywhere —
+    /// reading the parsed placement is the only way to see it.
+    pub fn direction(&self, layer: usize) -> Option<&[f32]> {
         self.directions.get(layer)?.as_deref()
     }
 
-    fn width(&self) -> usize {
+    pub fn width(&self) -> usize {
         self.directions
             .iter()
             .flatten()
