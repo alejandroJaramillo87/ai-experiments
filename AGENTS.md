@@ -61,18 +61,18 @@ These are standing instructions for anyone (human or agent) making changes in th
   from the parent tree (see `schemas/README.md`). Those contract tests report `[SKIP]` and
   pass when a dependency or the parent tree is absent, so a green rust gate on a machine
   without gguf is a weaker result than it looks — check the output for `[SKIP]` lines rather
-  than trusting the exit code alone. No step needs the network. Two sandbox caveats, both
-  measured on
-  2026-08-01: `uv lock --check` now **passes** (`uv.lock` was regenerated in `ee2b23d`, so
-  the earlier staleness caveat no longer applies), but `mypy` **fails** on three
-  pre-existing missing-yaml-stub errors in `training/`, so `make quality` stops there and
-  the shellcheck step never runs. Until those are resolved, run the remaining steps
-  individually before a push rather than treating the gate's exit code as the answer.
-  Note also that tool versions in a sandbox are **not** the pins: `uv run --no-sync`
-  resolves whatever the unsynced virtual environment holds (ruff 0.15.8 against a
-  0.15.21 pin, mypy 1.19.1 against 2.3.0), so a clean sandbox run is evidence, not proof.
-  `make test` likewise cannot sync, because it reaches the pytorch cu130 index; run
-  `uv run --no-sync pytest` instead.
+  than trusting the exit code alone. No step needs the network. The sandbox caveats all
+  trace to one cause — an unsynced virtual environment — and were re-measured on
+  2026-08-01. `uv run --no-sync` resolves whatever `.venv` happens to hold rather than
+  the pins (ruff 0.15.8 against a 0.15.21 pin, mypy 1.19.1 against 2.3.0), and the
+  pinned `types-pyyaml` is absent altogether, so `mypy` reports three
+  missing-yaml-stub errors in `training/` that a synced workstation does not see. A warm
+  `.mypy_cache` masks even that: the gate's `uv run --no-sync mypy` passes incrementally
+  and fails under `--no-incremental`, so a sandbox run stops at mypy or sails past it
+  depending on cache state. The other four steps — both ruff steps, `uv lock --check`,
+  and shellcheck — pass. Treat a clean sandbox run as evidence, not proof, and re-run the
+  gate on the workstation before trusting it. `make test` likewise cannot sync, because
+  it reaches the pytorch cu130 index; run `uv run --no-sync pytest` instead.
 
 ## Hardware
 
