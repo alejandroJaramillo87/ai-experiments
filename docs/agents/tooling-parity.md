@@ -41,17 +41,34 @@ Known asymmetries — recorded so "the two wirings agree" stays honest:
 
 ## Agents (Phase 2)
 
-Four roles, authored twice with **byte-identical prompt bodies** and tool-specific
+Eleven roles, authored twice with **byte-identical prompt bodies** and tool-specific
 frontmatter. Do **not** symlink agent files: OpenCode passes unknown frontmatter keys
 through to the provider as model options, so Claude-dialect keys would leak into live API
-calls. `make agent-parity` diffs the bodies to guarantee they stay identical.
+calls. `make agent-parity` diffs the bodies to guarantee they stay identical; every role
+below lives at `.claude/agents/<role>.md` and `.opencode/agents/<role>.md`.
 
-| Role | Claude | OpenCode |
-|------|--------|----------|
-| explorer | `.claude/agents/explorer.md` | `.opencode/agents/explorer.md` |
-| skeptic | `.claude/agents/skeptic.md` | `.opencode/agents/skeptic.md` |
-| bench-runner | `.claude/agents/bench-runner.md` | `.opencode/agents/bench-runner.md` |
-| doc-writer | `.claude/agents/doc-writer.md` | `.opencode/agents/doc-writer.md` |
+| Role | Purpose | Writes? |
+|------|---------|---------|
+| explorer | Read-only fan-out search, for context isolation | no |
+| skeptic | Adversarial verification of one claim | no |
+| bench-runner | Host-side service benchmarks, via human-reported output | no |
+| doc-writer | Documentation prose | yes |
+| test-agent | Test gap analysis and pytest authoring | yes |
+| bug-hunter | Defect discovery along one assigned dimension | memory only |
+| triage-agent | Dedupe, severity, and packaging of a findings ledger | memory only |
+| remediator | Implementing one verified finding, with red-before evidence | yes |
+| integrator | Gate-running a merged batch and finding the seams | no |
+| perf-auditor | Runtime and memory cost of repo-local code, in the sandbox | no |
+| doc-auditor | Documentation drift detection | memory only |
+
+The six QA roles (`bug-hunter` through `doc-auditor`) share one method contract, the
+`bug-bash` skill, and are driven by `/bugbash`. `skeptic` is the verification stage of
+that same ladder. See `.claude/skills/bug-bash/SKILL.md`.
+
+Two roles are deliberately kept unable to write. `integrator` is the independent check
+between a batch and a commit, and `skeptic` adjudicates claims: an agent that can patch
+what it finds stops being either. This is also why neither carries `memory` on the Claude
+side — enabling it auto-grants Read, Write, and Edit.
 
 `explorer` is authored read-only (`Read`, `Grep`, `Glob` only). Its purpose is **context
 isolation**, not cost: fan-out searching runs in a subagent so raw file contents never enter the
@@ -69,6 +86,22 @@ frontier model — see below.
 | `steps` | `maxTurns` |
 | `permission` (per-tool allow/ask/deny) | `tools` allowlist / `disallowedTools` |
 | `options.reasoningEffort` | `effort` |
+| — | `memory`, `skills`, `color` (Claude-only) |
+
+Two asymmetries in the QA roles, recorded so "the two wirings agree" stays honest:
+
+- **`memory` is Claude-only.** `bug-hunter`, `triage-agent`, and `doc-auditor` keep a
+  project-scoped memory directory (`.claude/agent-memory/<role>/`, version-controlled)
+  so refuted claims and aspirational documents survive into the next campaign. OpenCode
+  has no equivalent, so the memory steps in those bodies are inert there and the
+  OpenCode permission is `edit: deny`.
+- **`effort: max` maps to `high`.** `bug-hunter` runs at `max` on the Claude side;
+  OpenCode's `reasoningEffort` is set to `high`, the highest value the existing roles
+  use.
+
+The `skills` key preloads the `bug-bash` contract on the Claude side only, which is why
+each QA body also names `.claude/skills/bug-bash/SKILL.md` by path — OpenCode discovers
+the skill directory but does not preload from frontmatter.
 
 ### Model policy
 
@@ -81,9 +114,11 @@ Claude side uses `model: opus`. OpenCode `model:` is a commented placeholder to 
 during manual OpenCode testing (`# model: <frontier provider/model>`), pointing at the same
 frontier model.
 
-The one role-specific tuning is the **skeptic**, which runs the frontier model with reasoning
-effort raised and a low step cap for deterministic judgment: Claude `effort: high` +
-`maxTurns: 15`; OpenCode `options.reasoningEffort: high` + `steps: 15` + `temperature: 0`.
+Roles differ only in reasoning effort and step cap, never in model. The **skeptic** runs
+`effort: high` + `maxTurns: 15` + OpenCode `temperature: 0` for deterministic judgment. The
+QA roles run `effort: high` with step caps sized to their scope (25 to 40), except
+**bug-hunter**, the one role at `effort: max`: discovery is the reasoning-bound stage, and a
+defect a finder does not raise is one no verifier ever sees.
 
 ### Parity check
 
@@ -92,10 +127,14 @@ effort raised and a low step cap for deterministic judgment: Claude `effort: hig
 exit. It is wired into `make agent-preflight`, which Phase 6 extends with the
 supply-chain scan (`scripts/agents/preflight-scan.sh`).
 
-### Skeptic acceptance test
+### Role acceptance tests
 
-`tests/agents/` holds a deliberately broken "completed" task. The skeptic must return
-`VERDICT: REFUTED` when invoked on it from each tool. See `tests/agents/README.md`.
+`tests/agents/` holds one fixture per role, each built so the wrong answer is the plausible
+one: a broken "completed" task the skeptic must return `VERDICT: REFUTED` on, an off-by-one
+behind a green test suite, a ledger entry with zero recorded verdicts, a speedup claim
+smaller than its own noise floor, and a document that contradicts the tree. `make
+agent-role-tests` runs them all through the case table in
+`scripts/agents/role-acceptance.sh`; `ROLE=<name>` runs one. See `tests/agents/README.md`.
 
 ## Commands (Phase 3)
 
@@ -123,8 +162,9 @@ Divergent commands are forked deliberately: break the symlink and author a real 
 | Command | Shared? | OpenCode routing |
 |---------|---------|------------------|
 | `/task <roadmap> <id>` | shared | primary (implement → acceptance → skeptic pipeline) |
-| `/audit-docs <path>` | shared | `agent: doc-writer`, `subtask: true` |
+| `/audit-docs <path>` | shared | `agent: doc-auditor`, `subtask: true` |
 | `/bench <service>` | shared | `agent: bench-runner` |
+| `/bugbash <scope>` | shared | primary (drives the phase ladder, spawns the QA roles) |
 | `/postmortem [sprint]` | shared | primary (structured writing) |
 | `/pins` | shared | primary (grep audit) |
 | `/cost` | **forked, OpenCode-only** | primary (`make agent-usage`) |
@@ -144,7 +184,7 @@ Caveat: Claude-only keys such as `allowed-tools` are silently ignored by OpenCod
 rely on skill frontmatter for safety** in OpenCode sessions — that is the job of the Phase 1
 permissions and the Phase 4 hooks.
 
-Current skills: `benchmarking`, `docker-debug`, `runpod-ops`, `training-runs`.
+Current skills: `benchmarking`, `bug-bash`, `docker-debug`, `runpod-ops`, `training-runs`.
 
 ## Guardrails and observability (Phase 4)
 

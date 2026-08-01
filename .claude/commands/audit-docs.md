@@ -1,11 +1,12 @@
 ---
 description: Sweep a docs subtree against the Dockerfile/compose truth and return a drift list
 argument-hint: <docs-path>
-agent: doc-writer
+agent: doc-auditor
 subtask: true
 allowed-tools: Read, Glob, Grep, Bash
 ---
-Delegate to the doc-writer subagent (isolated context).
+Delegate to the doc-auditor subagent (isolated context). Detection and repair are
+separate roles: doc-auditor reports the drift, doc-writer fixes it in a later pass.
 
 Audit the documentation under `$ARGUMENTS` against the actual source of truth:
 `docker-compose.yaml` and `docker/*/Dockerfile*`.

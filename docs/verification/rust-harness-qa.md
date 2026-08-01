@@ -367,6 +367,14 @@ Campaign 1 findings are excluded from scope by construction: every finder
 received the fixed and waived list from the log above and duplicates were
 rejected during verification.
 
+The method both campaigns ran is now written down once, in the `bug-bash`
+skill (`.claude/skills/bug-bash/SKILL.md`): the phase ladder, the severity
+rubric, what a confirmed finding is, the standing dimension list, and the
+batch-and-push cadence. Its roles are committed subagents
+(`bug-hunter`, `skeptic`, `triage-agent`, `remediator`, `integrator`,
+`perf-auditor`, `doc-auditor`) driven by `/bugbash`. Read the skill rather
+than this log for the method; this log is the record of one run of it.
+
 ### Method and coverage
 
 Discovery ran as a fan-out of read-only finder agents over ten dimensions,
