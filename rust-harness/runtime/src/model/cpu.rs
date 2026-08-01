@@ -94,6 +94,37 @@ impl Config {
             rope_freq_base: f("rope.freq_base")?,
             rms_eps: f("attention.layer_norm_rms_epsilon")?,
         };
+        // Each dimension below divides or strides something in the forward
+        // pass, so a zero reaches the arithmetic instead of a guard: 0 is
+        // even, so key_length = 0 cleared the RoPE check and then aborted
+        // the process at `chunks_mut(0)` on the first token. Positivity is
+        // checked first so the error names the key.
+        for (key, value) in [
+            ("embedding_length", config.embed_dim),
+            ("block_count", config.n_layers),
+            ("attention.head_count", config.n_heads),
+            ("attention.key_length", config.head_dim),
+            ("feed_forward_length", config.ffn_dim),
+        ] {
+            ensure!(value > 0, "{arch}.{key} is 0, must be positive");
+        }
+        // The window keys are dimensions too, but a zero in either has a
+        // specific wrong reading here. Pattern 0 makes every layer
+        // sliding-window in `layer_kind` while `kv::interleaved_layers`
+        // asserts a positive period and aborts, so the loader, the budget
+        // calculator, and gguf-info disagree about one file. Window 0 means
+        // windowing is disabled everywhere else in the ecosystem (the numpy
+        // reference raises on it) but yields an empty attention span here:
+        // a context-blind model that still reads as fluent.
+        ensure!(
+            config.sliding_window > 0,
+            "{arch}.attention.sliding_window is 0, must be positive; \
+             a zero-token window is not disabled windowing"
+        );
+        ensure!(
+            config.sliding_window_pattern > 0,
+            "{arch}.attention.sliding_window_pattern is 0, must be positive"
+        );
         ensure!(
             config.n_heads.is_multiple_of(config.n_kv_heads.max(1)) && config.n_kv_heads > 0,
             "head_count {} not divisible by head_count_kv {}",
@@ -245,6 +276,26 @@ pub fn check_supported(file: &GgufFile, config: &Config) -> Result<()> {
                 "metadata key {key} configures RoPE beyond a single frequency base; \
                  dual or scaled RoPE is not implemented"
             ),
+        }
+    }
+
+    // Numeric-affecting metadata carries no tensor, so the unconsumed-tensor
+    // backstop below cannot see it: Gemma-2 publishes both softcapping keys,
+    // and either one changes every logit with nothing left over to notice.
+    // The refused keys are named rather than inverted into an allowlist of
+    // inert keys, which would also refuse every descriptive key a converter
+    // adds later — a far larger behavioral change than closing this gap.
+    let arch_prefix = format!("{arch}.");
+    for key in file.metadata.keys() {
+        let Some(suffix) = key.strip_prefix(&arch_prefix) else {
+            continue;
+        };
+        if suffix.contains("softcapping") || matches!(suffix, "attention.scale" | "logit_scale") {
+            bail!(
+                "metadata key {key} caps or rescales attention scores or logits, which \
+                 this forward pass does not implement; it carries no tensor, so loading \
+                 would change every logit silently"
+            );
         }
     }
 
@@ -407,9 +458,21 @@ pub struct CpuModel {
 
 /// `y = W x` with GGUF layout `[in, out]`: rows of `in` contiguous per
 /// output element.
+///
+/// The shape check is a real assertion rather than a `debug_assert`: a
+/// matrix longer than `in_dim * out_dim` stays in bounds and silently uses
+/// its leading rows, so the compiled-out version left release builds — the
+/// builds that matter — with no guard at all. `CpuModel::from_gguf` now
+/// makes this unreachable from a loaded checkpoint, and one integer
+/// comparison against `in_dim * out_dim` multiply-accumulates is free.
 fn matvec(w: &[f32], x: &[f32], out_dim: usize) -> Vec<f32> {
     let in_dim = x.len();
-    debug_assert_eq!(w.len(), in_dim * out_dim);
+    assert_eq!(
+        w.len(),
+        in_dim * out_dim,
+        "matvec: weight of {} elements for a {in_dim} x {out_dim} product",
+        w.len()
+    );
     (0..out_dim)
         .map(|o| {
             let row = &w[o * in_dim..(o + 1) * in_dim];
@@ -470,41 +533,51 @@ impl CpuModel {
         // Refuse unimplemented architecture features before loading a single
         // weight: a partial load emits fluent, wrong text.
         check_supported(file, &config)?;
-        let tensor = |name: &str| -> Result<Vec<f32>> {
+        // Every tensor is length-checked against the config as it loads.
+        // Loading is name-directed and the forward pass slices by strides
+        // computed from the metadata, so a tensor whose shape disagrees with
+        // the config is caught nowhere later: it reads the wrong rows and
+        // returns finite, wrong logits, or slices past the end and panics
+        // mid-forward. Both are silent to a caller that only sees fluent
+        // text, which is what this backend refuses to be.
+        let tensor = |name: &str, want: usize| -> Result<Vec<f32>> {
             let info = file
                 .tensors
                 .iter()
                 .find(|t| t.name == name)
                 .with_context(|| format!("missing tensor {name}"))?;
-            load_tensor(file, data, info)
+            let values = load_tensor(file, data, info)?;
+            ensure!(
+                values.len() == want,
+                "tensor {name} has {} elements, the configuration implies {want}",
+                values.len()
+            );
+            Ok(values)
         };
-        let embed = tensor("token_embd.weight")?;
-        ensure!(
-            embed.len() == config.vocab_size * config.embed_dim,
-            "token_embd.weight has {} elements, config needs {}",
-            embed.len(),
-            config.vocab_size * config.embed_dim
-        );
+        let (embed_dim, head_dim) = (config.embed_dim, config.head_dim);
+        let q_dim = config.n_heads * head_dim;
+        let kv_dim = config.n_kv_heads * head_dim;
+        let embed = tensor("token_embd.weight", config.vocab_size * embed_dim)?;
         let mut layers = Vec::with_capacity(config.n_layers);
         for i in 0..config.n_layers {
-            let t = |suffix: &str| tensor(&format!("blk.{i}.{suffix}"));
+            let t = |suffix: &str, want: usize| tensor(&format!("blk.{i}.{suffix}"), want);
             layers.push(LayerWeights {
-                attn_norm: t("attn_norm.weight")?,
-                wq: t("attn_q.weight")?,
-                wk: t("attn_k.weight")?,
-                wv: t("attn_v.weight")?,
-                q_norm: t("attn_q_norm.weight")?,
-                k_norm: t("attn_k_norm.weight")?,
-                wo: t("attn_output.weight")?,
-                post_attn_norm: t("post_attention_norm.weight")?,
-                ffn_norm: t("ffn_norm.weight")?,
-                w_gate: t("ffn_gate.weight")?,
-                w_up: t("ffn_up.weight")?,
-                w_down: t("ffn_down.weight")?,
-                post_ffw_norm: t("post_ffw_norm.weight")?,
+                attn_norm: t("attn_norm.weight", embed_dim)?,
+                wq: t("attn_q.weight", embed_dim * q_dim)?,
+                wk: t("attn_k.weight", embed_dim * kv_dim)?,
+                wv: t("attn_v.weight", embed_dim * kv_dim)?,
+                q_norm: t("attn_q_norm.weight", head_dim)?,
+                k_norm: t("attn_k_norm.weight", head_dim)?,
+                wo: t("attn_output.weight", q_dim * embed_dim)?,
+                post_attn_norm: t("post_attention_norm.weight", embed_dim)?,
+                ffn_norm: t("ffn_norm.weight", embed_dim)?,
+                w_gate: t("ffn_gate.weight", embed_dim * config.ffn_dim)?,
+                w_up: t("ffn_up.weight", embed_dim * config.ffn_dim)?,
+                w_down: t("ffn_down.weight", config.ffn_dim * embed_dim)?,
+                post_ffw_norm: t("post_ffw_norm.weight", embed_dim)?,
             });
         }
-        let output_norm = tensor("output_norm.weight")?;
+        let output_norm = tensor("output_norm.weight", embed_dim)?;
         Ok(CpuModel {
             kv: vec![LayerKv::default(); config.n_layers],
             config,
@@ -761,12 +834,21 @@ impl Model for CpuModel {
             self.config.context_length
         );
         let kv_dim = self.config.n_kv_heads * self.config.head_dim;
+        let elements = cached_len * kv_dim;
+        // Capacity reserved before a single payload byte has arrived. The
+        // length is a header field and `context_length` is whatever the
+        // checkpoint claims, so reserving for the claim outright let a
+        // 41-byte snapshot ask for gigabytes and abort the process through
+        // the allocation error handler rather than report the truncation.
+        // Past this step the vectors grow as bytes actually arrive, so peak
+        // memory tracks the payload rather than the claim.
+        const RESERVE_ELEMENTS: usize = 1 << 16;
         let mut f32buf = [0u8; 4];
         for cache in &mut self.kv {
             for vec in [&mut cache.k, &mut cache.v] {
                 vec.clear();
-                vec.reserve_exact(cached_len * kv_dim);
-                for _ in 0..cached_len * kv_dim {
+                vec.reserve_exact(elements.min(RESERVE_ELEMENTS));
+                for _ in 0..elements {
                     r.read_exact(&mut f32buf)?;
                     vec.push(f32::from_le_bytes(f32buf));
                 }
@@ -811,6 +893,17 @@ mod tests {
         // A zero weight annihilates its channel; under `1 + w` it would pass
         // the value through unchanged.
         assert_eq!(rms_norm(&x, &[0.0; 4], 0.0), vec![0.0; 4]);
+    }
+
+    #[test]
+    #[should_panic(expected = "matvec")]
+    fn matvec_rejects_a_weight_matrix_that_does_not_match_the_declared_shape() {
+        // A weight longer than in_dim x out_dim stays in bounds and silently
+        // uses its leading rows, so a release build had no guard here at all:
+        // debug_assert is compiled out exactly where wrong numerics matter.
+        // The check costs one integer comparison against in_dim x out_dim
+        // multiply-accumulates.
+        let _ = matvec(&[1.0; 16], &[1.0; 4], 2);
     }
 
     #[test]
@@ -936,6 +1029,141 @@ mod tests {
     }
 
     #[test]
+    fn numeric_metadata_with_no_tensor_to_notice_is_refused() {
+        // A pure-metadata feature leaves no tensor for the unconsumed-tensor
+        // backstop to catch, so a Gemma-2 checkpoint's softcapping was
+        // ignored and every logit came out wrong with nothing to notice.
+        for (key, value) in [
+            ("gemma4.attn_logit_softcapping", 50.0f32),
+            ("gemma4.final_logit_softcapping", 30.0),
+            ("gemma4.attention.scale", 0.0625),
+            ("gemma4.logit_scale", 1.5),
+        ] {
+            let (_, mut file, config) = tiny_parsed();
+            file.metadata.insert(key.into(), MetaValue::F32(value));
+            let err = match check_supported(&file, &config) {
+                Ok(()) => panic!("{key} must not load"),
+                Err(e) => e.to_string(),
+            };
+            assert!(err.contains(key), "{err}");
+        }
+        // The guard names the numeric keys instead of inverting the rope
+        // check into an allowlist, so a descriptive key still loads.
+        let (_, mut file, config) = tiny_parsed();
+        file.metadata
+            .insert("gemma4.vocab_size".into(), MetaValue::U32(288));
+        check_supported(&file, &config).unwrap();
+    }
+
+    #[test]
+    fn a_consumed_tensor_of_the_wrong_shape_is_refused_naming_the_tensor() {
+        // Self-consistent checkpoint: the directory declares the smaller
+        // shape and the payload supplies exactly that many elements, so no
+        // later stage can notice. The forward pass then either strides
+        // through the wrong rows and returns finite, wrong logits (a norm
+        // tensor) or slices past the end and panics mid-forward (a per-head
+        // norm). ffn_up is absent because its width already had a check.
+        for (name, elements, want) in [
+            ("blk.0.attn_norm.weight", 8, 16),
+            ("blk.1.post_ffw_norm.weight", 4, 16),
+            ("blk.1.attn_q_norm.weight", 4, 8),
+            ("blk.0.attn_k_norm.weight", 2, 8),
+            ("blk.0.attn_q.weight", 128, 256),
+            ("blk.0.attn_k.weight", 64, 128),
+            ("blk.1.attn_v.weight", 64, 128),
+            ("blk.0.attn_output.weight", 128, 256),
+            ("blk.0.ffn_gate.weight", 256, 512),
+            ("blk.0.ffn_down.weight", 256, 512),
+            ("blk.1.ffn_norm.weight", 8, 16),
+            ("blk.1.post_attention_norm.weight", 8, 16),
+            ("output_norm.weight", 8, 16),
+        ] {
+            let (image, mut file, _) = tiny_parsed();
+            let info = file.tensors.iter_mut().find(|t| t.name == name).unwrap();
+            info.dims = vec![elements as u64];
+            let err = match CpuModel::from_gguf(&file, &image) {
+                Ok(_) => panic!("{name} at {elements} elements must not load"),
+                Err(e) => e.to_string(),
+            };
+            assert!(err.contains(name), "{err}");
+            assert!(err.contains(&elements.to_string()), "{err}");
+            assert!(err.contains(&want.to_string()), "{err}");
+        }
+    }
+
+    #[test]
+    fn the_shape_check_accepts_a_geometry_the_committed_fixture_cannot_express() {
+        // The fixture has head_dim = embed_dim / n_heads and a single KV
+        // head, so most of the expected element counts coincide there and a
+        // transposed entry in the table would still accept it. This geometry
+        // separates them, so a wrong expectation shows up as a refusal of a
+        // checkpoint the converter wrote correctly.
+        let spec = TinySpec {
+            embed_dim: 16,
+            n_heads: 4,
+            n_kv_heads: 2,
+            head_dim: 6,
+            ffn_dim: 40,
+            ..TinySpec::default()
+        };
+        let image = build_tiny_model(&spec);
+        let file = crate::gguf::parse(&image).unwrap();
+        let mut m = CpuModel::from_gguf(&file, &image).unwrap();
+        let logits = m.prefill(&[1, 5, 9]).unwrap();
+        assert_eq!(logits.0.len(), spec.vocab_size);
+        assert!(logits.0.iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn a_zero_load_bearing_dimension_is_a_load_error_not_a_panic() {
+        // attention.key_length = 0 clears the only dimension check there was
+        // (even, for RoPE) and then reaches `chunks_mut(0)`, aborting the
+        // process on the first token; the others divide or stride by zero
+        // the same way. Hostile metadata owes a positioned error naming the
+        // key, not exit 101.
+        for key in [
+            "embedding_length",
+            "block_count",
+            "attention.head_count",
+            "attention.key_length",
+            "feed_forward_length",
+        ] {
+            let (_, mut file, _) = tiny_parsed();
+            file.metadata
+                .insert(format!("gemma4.{key}"), MetaValue::U32(0));
+            let err = match Config::from_gguf(&file) {
+                Ok(_) => panic!("gemma4.{key} = 0 must not parse"),
+                Err(e) => e.to_string(),
+            };
+            assert!(err.contains(key), "{err}");
+        }
+    }
+
+    #[test]
+    fn a_zero_sliding_window_or_pattern_is_a_load_error() {
+        // Pattern 0 makes every layer sliding-window in `layer_kind` while
+        // `kv::interleaved_layers` asserts a positive period and aborts, so
+        // the loader, the budget calculator, and gguf-info disagreed about
+        // one file. Window 0 reads as disabled windowing across the
+        // ecosystem (the numpy reference raises on it) but yields an empty
+        // attention span here: a context-blind model that still reads as
+        // fluent.
+        for key in [
+            "attention.sliding_window",
+            "attention.sliding_window_pattern",
+        ] {
+            let (_, mut file, _) = tiny_parsed();
+            file.metadata
+                .insert(format!("gemma4.{key}"), MetaValue::U32(0));
+            let err = match Config::from_gguf(&file) {
+                Ok(_) => panic!("gemma4.{key} = 0 must not parse"),
+                Err(e) => e.to_string(),
+            };
+            assert!(err.contains(key), "{err}");
+        }
+    }
+
+    #[test]
     fn tensor_family_collapses_only_numeric_layer_indices() {
         assert_eq!(tensor_family("blk.17.ffn_up.weight"), "blk.*.ffn_up.weight");
         assert_eq!(tensor_family("token_embd.weight"), "token_embd.weight");
@@ -1010,6 +1238,32 @@ mod tests {
         state[0] ^= 0xff; // restore
         let err = used.load_state(&mut state.as_slice()).unwrap_err();
         assert!(err.to_string().contains("non-fresh"), "{err}");
+    }
+
+    #[test]
+    fn a_snapshot_header_cannot_reserve_for_tokens_it_does_not_carry() {
+        // context_length comes from the checkpoint, so on a long-context
+        // model the header's cached_len clears the only bound there was with
+        // room to spare. Reserving for the claim before a payload byte
+        // arrives turns this 16-byte snapshot into a 32 GiB allocation,
+        // which aborts the process through the allocation error handler
+        // instead of reporting the truncation.
+        let spec = TinySpec {
+            context_length: 1 << 30,
+            ..TinySpec::default()
+        };
+        let image = build_tiny_model(&spec);
+        let file = crate::gguf::parse(&image).unwrap();
+        let mut m = CpuModel::from_gguf(&file, &image).unwrap();
+        let mut header = Vec::new();
+        header.extend((m.kv.len() as u64).to_le_bytes());
+        header.extend((spec.context_length as u64).to_le_bytes());
+        let err = m.load_state(&mut header.as_slice()).unwrap_err();
+        let io = err
+            .downcast_ref::<std::io::Error>()
+            .expect("a truncated payload is an io error");
+        assert_eq!(io.kind(), std::io::ErrorKind::UnexpectedEof);
+        assert_eq!(m.cached_len(), 0);
     }
 
     #[test]
