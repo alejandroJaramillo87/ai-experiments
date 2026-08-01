@@ -899,6 +899,33 @@ Recorded, not fixed, with the reason each was left:
 - k-quant (Q4_K, Q6_K) support, prefill batching, and streaming capture
   shards remain design-scale work, unchanged by this campaign.
 
+### Closed after the campaign: the cross-language contract dimension
+
+Cross-language contract is a standing dimension in the `bug-bash` skill, and
+it is the one this campaign did not run as a dimension of its own. A review
+afterwards found all three Rust/Python artifact seams specified in prose and
+enforced by nothing: the capture manifest key list typed out twice with no
+shared definition, an observability catalog line hand-formatted rather than
+serialized and matching the Python writer only by coincidence, and Rust GGUF
+loaders that had never parsed a byte either Python exporter produced.
+
+The three contracts now live in `schemas/` and are asserted at both writers,
+with three tests running the real code on the other side of each seam. Two
+divergences turned out to be intentional and are pinned as differences —
+`dataset_sha256` hashes raw bytes on one side and newline-normalized text on
+the other, and `tokenizer_fingerprint` is built from different parts — so a
+one-sided change to either now fails a test instead of silently
+reinterpreting the artifacts already on disk. No defect was found in the
+seams themselves: the 1-based control-vector numbering and the 0-based probe
+layer compose correctly across the boundary. What changed is that this is
+now demonstrated rather than believed. See `schemas/README.md`.
+
+One enabling change made the seams testable in the sandbox at all. `xxhash`,
+the only non-stdlib dependency of `interp/manifest.py`, was imported at
+module scope, which made every `interp` artifact module unloadable on an
+interpreter that lacks it. Moving it into `file_xxhash` follows the lazy
+heavy-import convention `interp/probes/capture.py` already states.
+
 Real-weight, GPU, and container-build claims remain with runbook entries
 RH.0 through RH.13. The one host command this campaign specifically needs
 is RH.5, the first `--record` run against the real checkpoint. Note what

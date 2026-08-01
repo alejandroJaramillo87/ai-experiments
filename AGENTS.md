@@ -54,10 +54,15 @@ These are standing instructions for anyone (human or agent) making changes in th
   the ruff format check, ruff lint, mypy, the uv lockfile check, and shellcheck, in that order,
   failing on the first error, then chains the rust-harness gate (`rust-harness/Makefile`:
   cargo fmt, clippy, lockfile check, rustdoc lints, tests) when that directory exists. That
-  rust gate also needs a `python3` on `PATH` that can import numpy: the npz writer's unit test
-  (`rust-harness/runtime/src/npz.rs`) shells out to it to re-read a written shard with
-  `np.load`, and `harness/tests/probe_identity.rs` takes an independent SHA-256 from its
-  hashlib. No step needs the network. Two sandbox caveats, both measured on
+  rust gate also needs a `python3` on `PATH` that can import numpy and gguf: the npz writer's
+  unit test (`rust-harness/runtime/src/npz.rs`) shells out to it to re-read a written shard
+  with `np.load`, `harness/tests/probe_identity.rs` takes an independent SHA-256 from its
+  hashlib, and the cross-language contract tests run the real Python exporters and readers
+  from the parent tree (see `schemas/README.md`). Those contract tests report `[SKIP]` and
+  pass when a dependency or the parent tree is absent, so a green rust gate on a machine
+  without gguf is a weaker result than it looks — check the output for `[SKIP]` lines rather
+  than trusting the exit code alone. No step needs the network. Two sandbox caveats, both
+  measured on
   2026-08-01: `uv lock --check` now **passes** (`uv.lock` was regenerated in `ee2b23d`, so
   the earlier staleness caveat no longer applies), but `mypy` **fails** on three
   pre-existing missing-yaml-stub errors in `training/`, so `make quality` stops there and

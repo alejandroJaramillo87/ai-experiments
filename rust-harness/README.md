@@ -30,7 +30,9 @@ Cargo.toml        workspace: harness, runtime
 harness/          bin crate: agent loop, tools, permissions, chat, streaming, obs records
 runtime/          lib crate: sessions, sampler, grammar, KV cache, GGUF, tokenizer, model
 fixtures/         committed fixtures: synthetic tiny-model GGUF, numpy reference
-                  logits and generator script; real-model Tier 3 fixtures pending
+                  logits and generator script, probe and control-vector GGUFs
+                  written by the Python exporters plus their generator;
+                  real-model Tier 3 fixtures pending
 ```
 
 Utility binaries: `gguf-info` dumps GGUF metadata and the tensor directory,
@@ -167,13 +169,22 @@ Python gate; the parent's root `make quality` chains this gate. cargo-deny
 (advisories, licenses) is a deliberate non-step: its advisory database
 needs the network, so it belongs to CI or workstation tooling.
 
-The gate needs a `python3` on `PATH` that can import numpy. The npz
-writer's unit test (`runtime/src/npz.rs`) re-reads a written shard through
-`np.load`, so the shard format is checked against the reader the interp
-toolkit actually uses rather than a second Rust implementation, and
-`harness/tests/probe_identity.rs` takes its independent SHA-256 from
-`python3`'s hashlib. `runtime/tests/activation_capture.rs` skips only its
-row-level assertions when numpy is missing.
+The gate needs a `python3` on `PATH` that can import numpy, and gguf for the
+exporter contract test. The npz writer's unit test (`runtime/src/npz.rs`)
+re-reads a written shard through `np.load`, so the shard format is checked
+against the reader the interp toolkit actually uses rather than a second Rust
+implementation, and `harness/tests/probe_identity.rs` takes its independent
+SHA-256 from `python3`'s hashlib.
+
+The cross-language contract tests additionally need the parent tree, because
+they run the real Python exporters and readers: `activation_capture.rs` loads
+a capture through `interp.probes.capture.load_capture`,
+`python_exporter_contract.rs` parses GGUFs from `interp/probes/export.py` and
+`interp/steering/export.py`, and `harness/tests/obs_contract.rs` parses a run
+catalog through `common.obs.catalog.read_runs`. Each reports `[SKIP]` and
+passes when the tree or a dependency is absent — the container build's
+situation, since its context is `rust-harness/` alone. The contracts
+themselves are in `schemas/` at the repository root.
 
 ## Roadmap
 

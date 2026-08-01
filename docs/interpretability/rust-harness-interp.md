@@ -97,13 +97,24 @@ $ cargo run -p runtime --bin activation-capture -- \
   from Python captures. It keeps rust-captured artifacts internally
   consistent across capture, train, and score, which is the property the
   fingerprint check protects.
+- `dataset_sha256` is likewise per-backend: Rust hashes the file's raw bytes,
+  Python hashes text-mode `f.read()`, which normalizes CRLF. The two agree on
+  an LF dataset and differ on a CRLF one, and a test asserts both halves so a
+  one-sided change to either hashing domain fails rather than silently
+  reinterpreting the manifests already on disk.
+
+The key set is not maintained twice by hand any more:
+`schemas/activation_capture.manifest.json` declares the 15 shared keys plus
+the Rust-only `capture_backend`, and both writers are asserted against it.
 
 Verified in the sandbox (`runtime/tests/activation_capture.rs`): the binary
-writes a capture of the synthetic fixture whose manifest fields, shard
-names, and row counts match the format above, and `np.load` — the reader
-`interp.probes.capture` opens shards with — reads back rows and labels that
-stay aligned with their source texts. The row-level half of that test skips
-when numpy is unavailable; the artifact-shape half always runs.
+writes a capture of the synthetic fixture whose manifest fields, shard names,
+and row counts match the format above; rows and labels read back aligned with
+their source texts; and the whole directory loads through
+`interp.probes.capture.load_capture`, so that reader's count, length, and
+repeated-layer guards are exercised against Rust-written output. The tests
+that reach the parent tree skip when it or numpy is unavailable; the
+artifact-shape half always runs.
 
 ## In-band monitoring
 
@@ -178,17 +189,35 @@ within the established 2e-4 tolerance. Property tests assert taps do not
 perturb logits, a zero control vector is bit-identical to no steering, and
 steering is deterministic and carries across forks.
 
-The artifact flow is verified one direction only. Rust-written captures are
-read back through the Python reader (`runtime/tests/activation_capture.rs`
-opens the shards with `np.load`), but no committed test loads a
-Python-written GGUF through the Rust loaders: the steering and probe goldens
-synthesize their control-vector and probe GGUFs in Rust
-(`runtime::synth::GgufWriter`) in the layout `interp/steering/export.py` and
-`interp/probes/export.py` write. That covers the layout the Rust side parses
-and leaves the writers themselves unexercised from this side, so a divergence
-introduced in a Python exporter would first surface on the workstation, at
-runbook entries RH.9c and RH.9d. Closing the gap needs a fixture written by
-the Python exporters and committed, or a sandbox test that runs them.
+The artifact flow is now verified in both directions, against the contracts in
+`schemas/` (see `schemas/README.md`).
+
+Rust-written captures go through `interp.probes.capture.load_capture`, the
+reader the probe toolkit actually calls, rather than through a bespoke
+`np.load` — so the reader's consistency guards, which join rows, labels, and
+texts by position, are exercised against a Rust-written directory
+(`runtime/tests/activation_capture.rs`).
+
+In the other direction, `runtime/tests/python_exporter_contract.rs` loads
+probe and control-vector GGUFs written by `interp/probes/export.py` and
+`interp/steering/export.py` through `Probe::from_gguf` and
+`ControlVector::from_gguf`. Two committed fixtures
+(`fixtures/python-probe.gguf`, `fixtures/python-control-vector.gguf`) are
+exporter output, so the parse assertions run wherever the workspace builds; a
+further test re-runs the exporters and compares parsed content, which is what
+notices an exporter that has drifted from the committed bytes. The comparison
+is semantic rather than byte for byte, because a `gguf` version bump may
+legitimately change padding.
+
+The layer numbering is what made this worth closing. `probe.layer` is 0-based
+and `direction.<N>` is 1-based; each side enforced its own rule and nothing
+checked that the two compose. They do — a fixture writing `direction.1` and
+`direction.3` lands at blocks 1 and 3 with block 2 unsteered.
+
+Both cross-tree tests need `python3` with numpy and gguf plus the parent tree,
+and report `[SKIP]` without them. Runbook entries RH.9c and RH.9d remain the
+workstation check against a real checkpoint; what they no longer carry alone
+is the format contract.
 
 A separate practical note for those entries: repeat runs must use a fresh
 session root. `session.jsonl` persists the transcript by design, so a second
