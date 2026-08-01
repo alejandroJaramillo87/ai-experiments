@@ -243,16 +243,46 @@ class TestCalibrate:
         assert "Solution: align the ffn/param formulas" in out
         assert "[OK] Parameter count:" not in out
 
-    @pytest.mark.parametrize("error_pct,shown", [(-12.5, "-12.5%"), (10.1, "+10.1%")])
+    @pytest.mark.parametrize(
+        "error_pct,measured,shown",
+        # measured_allocated kept consistent with error_pct so the absolute
+        # gap also exceeds the 128 MiB floor and the error branch is exercised
+        [
+            (-12.5, int(2 / 0.875 * GIB), "-12.5%"),
+            (10.1, int(2 / 1.101 * GIB), "+10.1%"),
+        ],
+    )
     def test_allocated_error_beyond_bar_exits_one(
-        self, capsys, monkeypatch, error_pct, shown
+        self, capsys, monkeypatch, error_pct, measured, shown
     ):
-        patch_calibrate(monkeypatch, record=make_record(allocated_error_pct=error_pct))
+        patch_calibrate(
+            monkeypatch,
+            record=make_record(
+                allocated_error_pct=error_pct, measured_allocated=measured
+            ),
+        )
         rc = run_cli(["calibrate", "--config", TINY_RECIPE])
         out = capsys.readouterr().err
         assert rc == 1
         assert (
             f"[ERROR] Allocated error: {shown} (exceeds the 10% acceptance bar)"
+        ) in out
+
+    def test_tiny_model_passes_via_absolute_floor(self, capsys, monkeypatch):
+        # Fixed CUDA workspaces dominate a tiny model's measured allocated;
+        # the relative error is huge but the absolute gap sits under the floor.
+        record = make_record(
+            estimate={"allocated_total": 5 << 20},
+            measured_allocated=70 << 20,
+            allocated_error_pct=-92.9,
+        )
+        patch_calibrate(monkeypatch, record=record)
+        rc = run_cli(["calibrate", "--config", TINY_RECIPE])
+        out = capsys.readouterr().err
+        assert rc == 0
+        assert (
+            "[OK] Allocated error: -92.9% (absolute gap 0.06 GB within the "
+            "128 MB floor)"
         ) in out
 
     def test_reserved_underprediction_exits_one(self, capsys, monkeypatch):

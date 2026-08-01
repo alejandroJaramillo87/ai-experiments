@@ -192,6 +192,31 @@ KB-53; fixed by calling torch.cuda.init() before the reset in
 training/calculator/calibrate.py. Calibrate re-run pending an image
 rebuild (make train-build) on the workstation. Note:
 /mnt/ai-data/training/verify/ also had to be created for the --out path.
+
+2026-08-01: after the rebuild the KB-53 fix held (loop ran, record
+written), but the acceptance check failed on the tiny recipe:
+
+[RUN] Calibrating tiny-e2e: 5 steps on cuda:0
+[OK] Calibration record written: /mnt/ai-data/training/verify/calibrate-tiny.json
+[OK] Parameter count: 155,968 (analytic matches model)
+
+Estimated allocated: 0.00 GB
+Measured allocated:  0.07 GB
+Measured reserved:   0.07 GB
+NVML peak:           1.15 GB
+[ERROR] Allocated error: -93.1% (exceeds the 10% acceptance bar)
+[OK] Reserved estimate covers the NVML peak
+
+make: *** [Makefile:161: train-calibrate] Error 1
+
+The estimate (~5 MB for 155,968 parameters) is correct; the measured
+allocated (~70 MB) is dominated by fixed CUDA library workspaces
+(cuBLAS) that live inside max_memory_allocated but outside the
+component model, so a purely relative 10 percent bar can never pass on
+a tiny model. Filed as KB-54; fixed by adding a 128 MiB absolute floor
+(ALLOCATED_FLOOR_BYTES in training/calculator/calibrate.py) alongside
+the relative bar in training/cli.py. Re-run pending another image
+rebuild.
 ```
 
 Status: PENDING

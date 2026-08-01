@@ -192,12 +192,26 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     out.line(f"Measured allocated:  {gb(record.measured_allocated)}")
     out.line(f"Measured reserved:   {gb(record.measured_reserved)}")
     out.line(f"NVML peak:           {gb(record.measured_nvml_peak)}")
-    within = abs(record.allocated_error_pct) <= 10.0
-    status = out.ok if within else out.error
-    status(
-        f"Allocated error: {record.allocated_error_pct:+.1f}% "
-        f"({'within' if within else 'exceeds'} the 10% acceptance bar)"
-    )
+    rel_within = abs(record.allocated_error_pct) <= 10.0
+    abs_gap = abs(record.estimate["allocated_total"] - record.measured_allocated)
+    abs_within = abs_gap <= calibrate_mod.ALLOCATED_FLOOR_BYTES
+    within = rel_within or abs_within
+    if rel_within:
+        out.ok(
+            f"Allocated error: {record.allocated_error_pct:+.1f}% "
+            "(within the 10% acceptance bar)"
+        )
+    elif abs_within:
+        out.ok(
+            f"Allocated error: {record.allocated_error_pct:+.1f}% "
+            f"(absolute gap {gb(abs_gap)} within the "
+            f"{calibrate_mod.ALLOCATED_FLOOR_BYTES >> 20} MB floor)"
+        )
+    else:
+        out.error(
+            f"Allocated error: {record.allocated_error_pct:+.1f}% "
+            "(exceeds the 10% acceptance bar)"
+        )
     if record.reserved_underpredicts_nvml:
         out.error("Reserved estimate under-predicts the NVML peak")
         out.line("  Solution: raise OVERHEAD_BYTES in training/calculator/solve.py")

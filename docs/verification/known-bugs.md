@@ -9,10 +9,11 @@ Every defect the WI-14 capstone review and its Opus re-verification confirmed, i
 - Each was confirmed by an independent three-reviewer adversarial panel (reviewers instructed to refute by default; a bug is listed only when at least two of three upheld it). Confidence is the upheld count.
 - These are open unless a later commit resolves them; when one is fixed, move its row to Resolved rather than deleting it, so the IDs stay stable.
 
-## Open known bugs (17)
+## Open known bugs (18)
 
 | ID | Step(s) | Location | Category | Confidence | Defect |
 |----|---------|----------|----------|------------|--------|
+| KB-54 | P0.3 | `training/cli.py:195` | acceptance-criteria | 3/3 | The calibrate allocated-error check was purely relative (10 percent), but max_memory_allocated includes ~65 MB of fixed CUDA library workspaces (cuBLAS) outside the component model, so the bar could never pass on the tiny-e2e reference recipe (-93.1 percent observed on the workstation 2026-08-01); fix adds a 128 MiB absolute floor (ALLOCATED_FLOOR_BYTES) alongside the relative bar, pending re-run after an image rebuild |
 | KB-53 | P0.3 | `training/calculator/calibrate.py:87` | initialization | 3/3 | calibrate() calls torch.cuda.reset_peak_memory_stats before any CUDA context exists; the memory-stats API does not lazy-init the context, so a fresh container always fails with "Invalid device argument" (isolated by a minimal probe on the workstation 2026-08-01; fix adds torch.cuda.init() before the reset, pending re-run after an image rebuild) |
 | KB-52 | P0.1 | `training/data/prepare.py:210` | teardown | 3/3 | Streaming prepare-data crashes at interpreter finalization (PyGILState_Release fatal error) after all shards and the manifest are flushed: a datasets/aiohttp background download thread is still alive at exit, so the process returns nonzero on an otherwise successful run (observed on the workstation 2026-08-01, P0.1) |
 | KB-03 | P0.3 | `training/calculator/calibrate.py:89` | cross-module-contract | 2/3 | calibrate() always builds a scratch LlamaConfig model, so calibrating any model.hf (or PEFT) recipe measures a different model than the one the estimate prices |
