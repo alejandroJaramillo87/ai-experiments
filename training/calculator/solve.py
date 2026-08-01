@@ -28,11 +28,13 @@ from training.calculator.components import (
 
 GIB = 1 << 30
 
-# Calibrated constants (roadmap D4 model, component 5). overhead_gb starts at
-# 1.5 (CUDA context + allocator slack) and is refined by calibrate.py records;
-# the safety margin defaults to 1GB below the 32GB device total.
+# Calibrated constants (roadmap D4 model, component 5). The overhead started
+# at 1.5 GB and was calibrated to 2.5 GB from the 2026-08-01 pretrain-1b
+# record: allocator slack 1.38 GB (reserved 8.38 - allocated 7.00) plus CUDA
+# context 1.08 GB (NVML 9.46 - reserved 8.38) = 2.32 GB above the allocated
+# estimate. The safety margin defaults to 1GB below the 32GB device total.
 VRAM_TOTAL_BYTES = 32 * GIB
-OVERHEAD_BYTES = int(1.5 * GIB)
+OVERHEAD_BYTES = int(2.5 * GIB)
 SAFETY_MARGIN_BYTES = 1 * GIB
 HOST_RAM_TOTAL_BYTES = 128 * GIB
 

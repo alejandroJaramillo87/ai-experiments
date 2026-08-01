@@ -270,6 +270,31 @@ fixed by modeling the checkpointed total as
 weights + optimizer + max(grads + layer inputs + one recomputed layer,
 layer inputs + head). The refined model predicts ~7.2 GB against the
 7.00 GB measurement (~+3%). Re-run pending an image rebuild.
+
+2026-08-01: after the rebuild the accuracy bar passed but the reserved
+check failed:
+
+[RUN] Calibrating pretrain-1b: 5 steps on cuda:0
+[transformers] `use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+[OK] Calibration record written: /mnt/ai-data/training/verify/calibrate-1b.json
+[OK] Parameter count: 1,073,809,408 (analytic matches model)
+
+Estimated allocated: 7.14 GB
+Measured allocated:  7.00 GB
+Measured reserved:   8.38 GB
+NVML peak:           9.46 GB
+[OK] Allocated error: +2.1% (within the 10% acceptance bar)
+[ERROR] Reserved estimate under-predicts the NVML peak
+  Solution: raise OVERHEAD_BYTES in training/calculator/solve.py
+
+The KB-55/KB-56 fixes hold (+2.1 percent). The reserved estimate
+(7.14 + 1.5 GB overhead = 8.64 GB) under-predicts the 9.46 GB NVML
+peak; the previous over-inflated allocated estimate had been masking
+this. Measured overheads: allocator slack 1.38 GB (reserved minus
+allocated) plus CUDA context 1.08 GB (NVML minus reserved) = 2.32 GB.
+This is the calibration path the D4 model intends: OVERHEAD_BYTES
+raised from 1.5 GB to 2.5 GB, giving a reserved estimate of 9.64 GB.
+Re-run pending an image rebuild.
 ```
 
 Status: PENDING
