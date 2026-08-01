@@ -79,6 +79,13 @@ its fixture reports a 5.1% speedup from a single pair of runs, and includes, fur
 down, ten runs of the unchanged build spanning 0.1497 s to 0.1902 s. The claimed
 effect is a fifth of the noise. The only passing answer is `not resolvable`.
 
+`drifted_doc.md` plants several contradictions; the graded one is the llama-cpu port,
+documented as 8000 against an actual 8001. Its agent-roles paragraph carries three
+drifts at once — a stale count, a claim that the files are symlinked when
+`make agent-parity` requires real files on both sides, and a list naming `explorer`,
+which was deleted. Do not repair the fixture when the roster changes: staleness is
+what it tests.
+
 ## Skeptic acceptance test
 
 `broken_completed_task.md` is a task marked COMPLETED that does not hold up:

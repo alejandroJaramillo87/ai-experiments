@@ -20,7 +20,7 @@ second, cheaper model (see the model policy in `docs/tooling-parity.md`).
 | Rung | Use when | How | Effort |
 |------|----------|-----|--------|
 | 1. Batch | Mechanical & fully specified: pin audits, doc-drift fixes, formatting sweeps | `make agent-run` (`opencode run --auto` / `claude -p`) | low |
-| 2. Roadmap task | A defined roadmap item with files/steps/acceptance | `/task <roadmap> <id>`; explorer + skeptic subagents | medium |
+| 2. Roadmap task | A defined roadmap item with files/steps/acceptance | `/task <roadmap> <id>`; built-in `Explore` + skeptic subagents | medium |
 | 3. Design / debugging | Open-ended work that resists rungs 1–2 | Interactive frontier session, human in the loop | high |
 | 4. Quality campaign | A subsystem needs auditing, not a task doing | `/bugbash <scope>`; the QA roles, in batches | high / max |
 
@@ -229,6 +229,12 @@ Once a month, check both tools' changelogs (OpenCode releases, Claude Code relea
   provided upstream. **Delete what upstream now provides**; do not maintain a private copy of a
   feature the tool ships.
 
-Precedent already set: **Claude Code subsumed usage tracking** (built-in `/usage`, so `usage.ts`
-is OpenCode-only) and **the explorer role** (built-in `Explore`, so the custom `explorer` agent
-exists mainly for context isolation, not capability). Expect more of this and prune accordingly.
+Precedent already set, and acted on: **Claude Code subsumed usage tracking** (built-in
+`/usage`, so `usage.ts` is OpenCode-only) and **the explorer role** (built-in `Explore`), so
+the custom `explorer` agent was deleted rather than maintained alongside it. The same sweep
+removed `test-agent` and the `runpod-ops` skill, both of which no command, skill, or fixture
+referenced. A definition nothing invokes is not free: it still has to be kept true.
+
+The check is mechanical. Grep the repository for each agent, skill, and command name,
+excluding its own definition file. A name whose only remaining hit is the roster table in
+`tooling-parity.md` is documentation describing itself, and is a candidate for removal.

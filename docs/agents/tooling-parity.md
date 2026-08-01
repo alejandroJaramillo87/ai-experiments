@@ -41,7 +41,7 @@ Known asymmetries — recorded so "the two wirings agree" stays honest:
 
 ## Agents (Phase 2)
 
-Eleven roles, authored twice with **byte-identical prompt bodies** and tool-specific
+Nine roles, authored twice with **byte-identical prompt bodies** and tool-specific
 frontmatter. Do **not** symlink agent files: OpenCode passes unknown frontmatter keys
 through to the provider as model options, so Claude-dialect keys would leak into live API
 calls. `make agent-parity` diffs the bodies to guarantee they stay identical; every role
@@ -49,11 +49,9 @@ below lives at `.claude/agents/<role>.md` and `.opencode/agents/<role>.md`.
 
 | Role | Purpose | Writes? |
 |------|---------|---------|
-| explorer | Read-only fan-out search, for context isolation | no |
 | skeptic | Adversarial verification of one claim | no |
 | bench-runner | Host-side service benchmarks, via human-reported output | no |
 | doc-writer | Documentation prose | yes |
-| test-agent | Test gap analysis and pytest authoring | yes |
 | bug-hunter | Defect discovery along one assigned dimension | memory only |
 | triage-agent | Dedupe, severity, and packaging of a findings ledger | memory only |
 | remediator | Implementing one verified finding, with red-before evidence | yes |
@@ -70,10 +68,13 @@ between a batch and a commit, and `skeptic` adjudicates claims: an agent that ca
 what it finds stops being either. This is also why neither carries `memory` on the Claude
 side — enabling it auto-grants Read, Write, and Edit.
 
-`explorer` is authored read-only (`Read`, `Grep`, `Glob` only). Its purpose is **context
-isolation**, not cost: fan-out searching runs in a subagent so raw file contents never enter the
-primary's context, and the primary receives only the synthesized conclusion. All roles use the
-frontier model — see below.
+Two roles were removed once the QA roster landed, both for the same reason: nothing
+referenced them. `explorer` duplicated Claude Code's built-in `Explore`, which provides the
+same context isolation (fan-out searching in a subagent, so raw file contents never enter
+the primary's context) without a private definition to maintain. `test-agent` was cited
+only by this table; its work now splits between `bug-hunter`, for whom a test gap is a
+finding, and `remediator`, whose red-before evidence is a regression test. Prefer the
+built-in `Explore` for search, and reach for a QA role for anything test-shaped.
 
 ### Frontmatter translation table
 
@@ -106,9 +107,9 @@ the skill directory but does not preload from frontmatter.
 ### Model policy
 
 **All roles pin the frontier model in both tools.** There is no low-cost or local tier: the
-explorer, bench-runner, and doc-writer subagents exist for **context isolation** (keeping raw
-file contents, benchmark output, and mechanical writing out of the primary's context), not to
-route work to a cheaper model.
+bench-runner and doc-writer subagents exist for **context isolation** (keeping benchmark
+output and mechanical writing out of the primary's context), not to route work to a cheaper
+model.
 
 Claude side uses `model: opus`. OpenCode `model:` is a commented placeholder to be filled in
 during manual OpenCode testing (`# model: <frontier provider/model>`), pointing at the same
@@ -150,7 +151,7 @@ Conventions for shared command files:
 - **`allowed-tools: Bash(...)`** on any command using `` !`cmd` `` injection — Claude Code
   requires it for the injection to run; OpenCode ignores it.
 - **`agent:`** routes the command to a subagent in OpenCode (e.g. `/audit-docs` →
-  `doc-writer`, `/bench` → `bench-runner`). Claude Code ignores it, so the body also says
+  `doc-auditor`, `/bench` → `bench-runner`). Claude Code ignores it, so the body also says
   "delegate to the X subagent" and routing happens via delegation.
 - **Omit `model:`** — the two tools use incompatible model identifiers. Pin models in the
   per-tool agent definitions instead.
@@ -184,7 +185,11 @@ Caveat: Claude-only keys such as `allowed-tools` are silently ignored by OpenCod
 rely on skill frontmatter for safety** in OpenCode sessions — that is the job of the Phase 1
 permissions and the Phase 4 hooks.
 
-Current skills: `benchmarking`, `bug-bash`, `docker-debug`, `runpod-ops`, `training-runs`.
+Current skills: `benchmarking`, `bug-bash`, `docker-debug`, `training-runs`.
+
+A `runpod-ops` skill was removed: it described commands that do not exist and said so in
+its own status note. The RunPod guardrail below is unaffected — it is a script plus two
+hooks, and never depended on the skill.
 
 ## Guardrails and observability (Phase 4)
 
