@@ -373,6 +373,11 @@ mod tests {
         assert_eq!(end["exit_code"], 0);
         assert!(end["duration_s"].is_number());
 
+        // Order, which the contract does not constrain. The authoritative
+        // key set lives in schemas/obs_record.json and is asserted against
+        // both writers by harness/tests/obs_contract.rs and
+        // tests/utils/test_obs_record_contract.py; this keeps the base keys
+        // leading every line so the JSONL stays readable by eye.
         let first_line = raw.lines().next().unwrap();
         let keys = base_key_order(first_line);
         assert_eq!(
