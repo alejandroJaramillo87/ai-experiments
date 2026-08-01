@@ -97,11 +97,15 @@ Implementation: `training/commands/train_tokenizer.py`,
 `training/data/tokenizer.py`.
 
 Command (any JSONL corpus on the data SSD works; the point is the artifact
-contract, not the corpus):
+contract, not the corpus). `--sample-bytes` must stay below the corpus
+size: without `--eval-corpus`, evaluation holds out the corpus tail, and a
+budget at or above the corpus size consumes every document and fails with
+`Corpus exhausted during training`:
 
 ```bash
 $ make train-tokenizer ARGS="--corpus '/mnt/ai-data/training/datasets/mix/*.jsonl' \
-    --vocab-size 49152 --out /mnt/ai-data/training/tokenizers/verify-49k"
+    --vocab-size 49152 --sample-bytes 180_000_000 \
+    --out /mnt/ai-data/training/tokenizers/verify-49k"
 ```
 
 Expected signal: exit 0; the output directory contains the trained
@@ -111,9 +115,37 @@ prints without errors.
 Observed:
 
 ```
+2026-08-01: first attempt failed — /mnt/ai-data/training/datasets/ did
+not exist on the host (the runbook assumed a corpus was present).
+Resolved by writing a streaming fineweb-edu sample to
+/mnt/ai-data/training/datasets/mix/fineweb-sample.jsonl (~207 MB of
+JSONL with a "text" field).
+
+2026-08-01: second attempt failed with the default 10 GB sample budget:
+"Corpus exhausted during training; no held-out documents remain" — the
+corpus-tail eval fallback needs the budget below the corpus size.
+Resolved with --sample-bytes 180_000_000; command corrected above.
+
+2026-08-01: third run passed:
+
+[OK] Trained: 37,121 documents, 180,024,180 bytes sampled
+[OK] corpus-tail: 1000 documents round-trip lossless
+
+tokenizer                    domain        fertility  compression
+trained                      corpus-tail      1.3661       4.4992
+HuggingFaceTB/SmolLM2-135M   corpus-tail      1.3722       4.4791
+gpt2                         corpus-tail      1.3338       4.6080
+
+[OK] Artifact: /mnt/ai-data/training/tokenizers/verify-49k/tokenizer.json
+[OK] Tokenizer hash: 8fada2fadd3e8c29
+
+Caveat: [WARN] Only 1 evaluation domain(s); D3 recommends at least two —
+the corpus-tail fallback provides a single domain. Acceptable for this
+entry (the artifact contract is the point); a real tokenizer run should
+pass --eval-corpus for web and code domains. Exit 0.
 ```
 
-Status: PENDING
+Status: VERIFIED
 
 ## P0.3 Memory-fit estimate and calibration (D4)
 
