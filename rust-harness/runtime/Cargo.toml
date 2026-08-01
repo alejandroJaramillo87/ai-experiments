@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lints]
+workspace = true
+
 [features]
 # Real Candle/CUDA backend for the RTX 5090; the default build is CPU-free and
 # GPU-free so the workspace compiles and tests in a sandbox.
