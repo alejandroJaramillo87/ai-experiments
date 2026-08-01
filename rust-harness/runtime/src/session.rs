@@ -262,12 +262,22 @@ impl Session {
             tokens.push(u32::from_le_bytes(u32buf));
         }
         self.model.load_state(r)?;
-        anyhow::ensure!(
-            self.model.cached_len() == tokens.len(),
-            "restored cache length {} does not match {} saved tokens",
-            self.model.cached_len(),
-            tokens.len()
-        );
+        if self.model.cached_len() != tokens.len() {
+            // The cache loaded but disagrees with the token list saved beside
+            // it. Returning here would leave the model holding a full cache
+            // while this session believes it holds nothing: the next save
+            // would write that skew to disk as a snapshot nothing can
+            // restore, and a later restore of a good snapshot would be
+            // refused for loading onto a non-fresh cache. Drop the cache so
+            // the failure leaves a genuinely fresh model.
+            let cached = self.model.cached_len();
+            self.model.truncate(0)?;
+            anyhow::bail!(
+                "restored cache length {} does not match {} saved tokens",
+                cached,
+                tokens.len()
+            );
+        }
         self.tokens = tokens;
         self.tail_logits = None; // ensure_tail_logits replays one token
         Ok(())
@@ -745,6 +755,36 @@ mod tests {
         s.save(&mut buf, 7).unwrap();
         let err = s.restore(&mut buf.as_slice(), 7).unwrap_err();
         assert!(err.to_string().contains("non-fresh"), "{err}");
+    }
+
+    #[test]
+    fn a_restore_that_disagrees_on_length_leaves_a_fresh_model() {
+        // The cache loads but its length disagrees with the saved token list.
+        // Returning with the cache still loaded would leave the model holding
+        // rows this session does not know about: the next save writes that
+        // skew to disk, and a later restore of a good snapshot is refused for
+        // loading onto a non-fresh cache, wedging the session permanently.
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        s.sync(&[1, 2, 3]).unwrap();
+        let mut buf = Vec::new();
+        s.save(&mut buf, 7).unwrap();
+
+        // Drop one token from the saved list, leaving the cache payload
+        // describing three positions while the header claims two.
+        let mut corrupt = buf.clone();
+        let count_at = SNAPSHOT_MAGIC.len() + 4 + 1 + 8;
+        corrupt[count_at..count_at + 8].copy_from_slice(&2u64.to_le_bytes());
+        corrupt.drain(count_at + 8 + 8..count_at + 8 + 12);
+
+        let mut target = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        let err = target.restore(&mut corrupt.as_slice(), 7).unwrap_err();
+        assert!(err.to_string().contains("does not match"), "{err}");
+
+        // The failure left a genuinely fresh model, so a good snapshot still
+        // restores into it.
+        assert_eq!(target.cached_len(), 0);
+        target.restore(&mut buf.as_slice(), 7).unwrap();
+        assert_eq!(target.cached_len(), 3);
     }
 
     #[test]
