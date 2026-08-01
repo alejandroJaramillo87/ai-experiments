@@ -162,7 +162,13 @@ Command:
 $ make memfit CONFIG=training/recipes/reference/pretrain-1b.yaml
 $ make train-calibrate CONFIG=training/recipes/reference/tiny-e2e.yaml \
     ARGS="--out /mnt/ai-data/training/verify/calibrate-tiny.json"
+$ make train-calibrate CONFIG=training/recipes/reference/pretrain-1b.yaml \
+    ARGS="--out /mnt/ai-data/training/verify/calibrate-1b.json"
 ```
+
+The tiny run exercises the plumbing and the fixed-overhead floor; the
+1B run is where the relative 10 percent bar binds and calculator
+accuracy is actually tested.
 
 Expected signal: memfit prints the component table and a fits verdict for
 the 1B recipe; calibrate runs a short real loop on the GPU, writes the
@@ -217,6 +223,24 @@ a tiny model. Filed as KB-54; fixed by adding a 128 MiB absolute floor
 (ALLOCATED_FLOOR_BYTES in training/calculator/calibrate.py) alongside
 the relative bar in training/cli.py. Re-run pending another image
 rebuild.
+
+2026-08-01: after the second rebuild the tiny-e2e calibrate passed:
+
+[RUN] Calibrating tiny-e2e: 5 steps on cuda:0
+[OK] Calibration record written: /mnt/ai-data/training/verify/calibrate-tiny.json
+[OK] Parameter count: 155,968 (analytic matches model)
+
+Estimated allocated: 0.00 GB
+Measured allocated:  0.07 GB
+Measured reserved:   0.07 GB
+NVML peak:           1.15 GB
+[OK] Allocated error: -93.1% (absolute gap 0.06 GB within the 128 MB floor)
+[OK] Reserved estimate covers the NVML peak
+
+The tiny run proves the plumbing and the fixed-overhead floor only; the
+estimate rounds to 0.00 GB, so calculator accuracy is exercised by a
+second calibration on the 1B reference recipe, where the relative
+10 percent bar binds (below).
 ```
 
 Status: PENDING
