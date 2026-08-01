@@ -50,7 +50,30 @@ Observed:
 --streaming. The run began a full-split download and hit the disk-space
 warning (first file 2369.46 MB against 2144.05 MB free in /app/cache);
 aborted with Ctrl-C. Runbook finding: the command was wrong, corrected
-above. Streaming re-run pending.
+above.
+
+2026-08-01: streaming re-run wrote the full artifact set:
+
+[OK] Shards written: 1 (uint16, 536,870,912 tokens/shard)
+[OK] Total: 20,001,211 tokens, 18,827 documents
+[OK] Manifest: /mnt/ai-data/training/shards/verify-small/manifest.json
+
+After the [OK] lines the interpreter crashed during finalization:
+
+Fatal Python error: PyGILState_Release: thread state 0x7068b8006480
+must be current when releasing
+Python runtime state: finalizing
+
+Finding: a background streaming-download thread (datasets/aiohttp) is
+still alive at interpreter teardown, so the process exits nonzero after
+all shards and the manifest are flushed. Data integrity is unaffected
+(per-shard xxhash64 in the manifest is the check); the exit-0 expected
+signal is not met. Also observed, benign for packing: a transformers
+warning that one document exceeds the tokenizer's 8192 max sequence
+length (8802 tokens) — prepare-data packs raw token streams and never
+runs the model, so no indexing error can occur.
+
+Manifest verification pending (see command below).
 ```
 
 Status: PENDING
