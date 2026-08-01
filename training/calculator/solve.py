@@ -14,7 +14,7 @@ from omegaconf import DictConfig
 
 from training.calculator.components import (
     ArchitectureSpec,
-    activation_bytes,
+    activation_phase_bytes,
     grad_bytes,
     host_ram_bytes,
     optimizer_bytes,
@@ -28,11 +28,13 @@ from training.calculator.components import (
 
 GIB = 1 << 30
 
-# Calibrated constants (roadmap D4 model, component 5). overhead_gb starts at
-# 1.5 (CUDA context + allocator slack) and is refined by calibrate.py records;
-# the safety margin defaults to 1GB below the 32GB device total.
+# Calibrated constants (roadmap D4 model, component 5). The overhead started
+# at 1.5 GB and was calibrated to 2.5 GB from the 2026-08-01 pretrain-1b
+# record: allocator slack 1.38 GB (reserved 8.38 - allocated 7.00) plus CUDA
+# context 1.08 GB (NVML 9.46 - reserved 8.38) = 2.32 GB above the allocated
+# estimate. The safety margin defaults to 1GB below the 32GB device total.
 VRAM_TOTAL_BYTES = 32 * GIB
-OVERHEAD_BYTES = int(1.5 * GIB)
+OVERHEAD_BYTES = int(2.5 * GIB)
 SAFETY_MARGIN_BYTES = 1 * GIB
 HOST_RAM_TOTAL_BYTES = 128 * GIB
 
@@ -56,10 +58,14 @@ class Estimate:
     weights: int
     grads: int
     optimizer: int
-    activations: int
+    activations: int  # full inventory (sum of phase terms), not the live peak
     teacher: int  # online-mode distillation teacher (F5); else 0
     overhead: int
-    allocated_total: int  # component sum, compared to max_memory_allocated
+    # Compared to max_memory_allocated. Under gradient checkpointing this is
+    # a temporal max over backward phases (KB-56), below the component sum;
+    # otherwise it is the component sum. peak_phase names which applied.
+    allocated_total: int
+    peak_phase: str  # "late_backward" | "head_backward" | "sum"
     reserved_estimate: int  # allocated + overhead, must not under-predict NVML
     fits: bool
     host_ram: int  # offloaded optimizer state + explicit replay budget; 0 when neither
@@ -89,15 +95,33 @@ def _estimate_at(
     weights = weights_bytes(spec, recipe)
     grads = grad_bytes(spec, recipe)
     optimizer = optimizer_bytes(spec, recipe)
-    activations = activation_bytes(
+    layer_inputs, per_layer, head_term = activation_phase_bytes(
         spec, recipe, micro_batch=micro_batch, seq_len=seq_len
     )
-    teacher = 0
+    activations = layer_inputs + per_layer + head_term
+    teacher = teacher_w = teacher_fw = 0
     if teacher_spec is not None:
-        teacher = teacher_weights_bytes(
-            teacher_spec, recipe.distill.teacher_quantize
-        ) + teacher_forward_bytes(teacher_spec, micro_batch, seq_len)
-    allocated = weights + grads + optimizer + activations + teacher
+        teacher_w = teacher_weights_bytes(teacher_spec, recipe.distill.teacher_quantize)
+        teacher_fw = teacher_forward_bytes(teacher_spec, micro_batch, seq_len)
+        teacher = teacher_w + teacher_fw
+
+    if recipe.memory.gradient_checkpointing:
+        # The allocator peak is temporal (KB-56): during head backward the
+        # logits and their fp32 copy are live but parameter gradients are
+        # not yet materialized; by late backward the gradients are full but
+        # the head tensors (and the teacher's forward workspace) are freed.
+        late_backward = grads + layer_inputs + per_layer
+        head_backward = layer_inputs + head_term + teacher_fw
+        dynamic = max(late_backward, head_backward)
+        peak_phase = (
+            "late_backward" if late_backward >= head_backward else "head_backward"
+        )
+        allocated = weights + optimizer + teacher_w + dynamic
+    else:
+        # No checkpointing measurement exists; the conservative full sum
+        # over-predicts safely for fit decisions.
+        peak_phase = "sum"
+        allocated = weights + grads + optimizer + activations + teacher
     reserved = allocated + OVERHEAD_BYTES
     return Estimate(
         micro_batch=micro_batch,
@@ -111,6 +135,7 @@ def _estimate_at(
         teacher=teacher,
         overhead=OVERHEAD_BYTES,
         allocated_total=allocated,
+        peak_phase=peak_phase,
         reserved_estimate=reserved,
         fits=reserved <= VRAM_TOTAL_BYTES - SAFETY_MARGIN_BYTES,
         host_ram=host_ram_bytes(spec, recipe),

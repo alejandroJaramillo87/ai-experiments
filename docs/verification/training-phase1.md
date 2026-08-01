@@ -8,7 +8,84 @@ comes from `.env.training`. The Qwen3 twin recipes
 (`training/recipes/reference/*qwen3*.yaml`) are the fallback if a Gemma 4
 step fails on kernel or hub-access grounds — record which family ran.
 
+Every `make` target here follows the same dispatch chain: the `Makefile`
+runs `docker compose -f docker-compose.training.yaml run --rm training
+python -m training <subcommand>`, which enters `training/__main__.py`,
+dispatches through the argparse handlers in `training/cli.py`, and lands
+in the implementation module. Each entry below lists its implementation
+files so a failure can be read at the source without re-tracing the
+chain.
+
+## P1.0 QLoRA memory calibration (D4, KB-03 confirmation)
+
+Implementation: `training/calculator/calibrate.py`, `training/models/model.py`,
+`training/models/peft_utils.py`, `training/cli.py` (`cmd_calibrate`).
+
+Calibrates the memory-fit calculator on the model.hf + PEFT path, which the
+scratch-family calibration in P0.3 does not exercise (NF4 base pricing,
+adapter gradients and optimizer state, sequence length 4096). Doubles as the
+first execution evidence for Gemma 4 on the workstation: gated hub download,
+transformers `gemma4` support, and bitsandbytes NF4 on Blackwell. A
+hub-access or kernel failure here is the fallback-policy trigger — record
+it, then run the `sft-qlora-qwen3*` twin and note which family ran. Also
+confirms the KB-03 fix: the loop builds the recipe's actual model through
+the shared builders, and refuses `zero_offload` and online-logit-distill
+recipes as uncalibratable.
+
+Command (serialized, one GPU job at a time; E2B first, then E4B):
+
+```bash
+$ make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
+$ make train-calibrate CONFIG=training/recipes/reference/sft-qlora-gemma-e4b.yaml \
+    ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e4b.json"
+```
+
+Expected signal: exit 0 on both; allocated estimate within the 10 percent
+bar (or the 128MiB floor), reserved estimate covering the NVML peak, no
+parameter-count or trainable-count drift warnings. Drift beyond the bar is
+a new calculator finding (expected candidates: NF4 constant pricing, paged
+optimizer states) — diagnose before touching calibrated constants.
+
+Observed (2026-08-01, first attempt — stopped at an unauthenticated hub
+request; `.env.training` was not present, so the gated E2B download cannot
+proceed):
+
+```
+$ make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
+docker compose -f docker-compose.training.yaml run --rm training python -m training calibrate --config training/recipes/reference/sft-qlora-e2b.yaml --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training calibrate --config training/recipes/reference/sft-qlora-e2b.yaml --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json
+[RUN] Calibrating sft-qlora-e2b: 5 steps on cuda:0
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+```
+
+Campaign paused 2026-08-01 at this entry. Hand-off state: P0.1 through
+P0.3 recorded in `training-phase0.md` (P0.3 VERIFIED after the KB-53
+through KB-56 fixes); the KB-03 fix is on this branch pending the runs
+below; P0.4 onward not yet executed. To resume:
+
+1. Create `.env.training` from `env.training.example` with a read-scope
+   `HF_TOKEN` whose account has accepted the Gemma license on the
+   `google/gemma-4-E2B` and `google/gemma-4-E4B` model pages.
+2. Re-run the two calibrate commands above (serialized).
+3. On a hub-access or kernel failure, run the `sft-qlora-qwen3.yaml`
+   twin instead and record which family ran.
+
+Status: PENDING
+
 ## P1.1 Prepare a masked SFT dataset (F1)
+
+Implementation: `training/commands/prepare_sft.py`, `training/data/sft.py`,
+`training/data/tokenizer.py`, `training/models/families.py`.
 
 Command:
 
@@ -32,6 +109,9 @@ Status: PENDING
 
 ## P1.2 SFT smoke run (F2/F3)
 
+Implementation: `training/cli.py` (`cmd_train_sft`), `training/tune/sft.py`,
+`training/models/peft_utils.py`, `training/runtime/checkpoint.py`.
+
 Command:
 
 ```bash
@@ -53,6 +133,10 @@ Status: PENDING
 
 ## P1.3 SFT resume within tolerance (F3)
 
+Implementation: the same code path as P1.2, differing only in CLI
+arguments, plus `training/runtime/checkpoint.py` and
+`training/tune/sft_callbacks.py`.
+
 Command:
 
 ```bash
@@ -73,6 +157,9 @@ Observed:
 Status: PENDING
 
 ## P1.4 Teacher generation (F4)
+
+Implementation: `training/commands/generate_teacher.py`,
+`training/data/teacher.py`, `training/serving.py`, `common/serving.py`.
 
 Command (serving-dependent; vllm-gpu by default):
 
@@ -98,6 +185,9 @@ Status: PENDING
 
 ## P1.5 Online distillation (F5)
 
+Implementation: `training/tune/distill.py`, `training/data/distill.py`,
+`training/runtime/loop.py`.
+
 Command:
 
 ```bash
@@ -118,6 +208,9 @@ Observed:
 Status: PENDING
 
 ## P1.6 Cached distillation (F5)
+
+Implementation: `training/cli.py` (`cmd_distill_cache`),
+`training/data/distill.py`, `training/tune/distill.py`.
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
@@ -145,6 +238,10 @@ Status: PENDING
 
 ## P1.7 Adapter merge and export (F6)
 
+Implementation: `training/export/preflight.py`, `training/export/merge.py`,
+`training/export/convert.py`, `training/export/manifest.py`; the export
+image is `docker/training/Dockerfile.export`.
+
 Command:
 
 ```bash
@@ -164,6 +261,8 @@ Observed:
 Status: PENDING
 
 ## P1.8 Held-out loss evaluator (F7)
+
+Implementation: `training/eval/holdout.py`, `common/reports.py`.
 
 Command (inside the training container; inference down):
 
@@ -185,6 +284,8 @@ Observed:
 Status: PENDING
 
 ## P1.9 lm-eval evaluator (F7)
+
+Implementation: `training/eval/lmeval.py`, `training/eval/tasks.yaml`.
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
@@ -210,6 +311,10 @@ Observed:
 Status: PENDING
 
 ## P1.10 Full eval-ft scorecard (F7)
+
+Implementation: `training/commands/eval_ft.py`, `training/eval/runner.py`,
+`training/eval/scorecard.py`, `training/eval/judge.py`,
+`training/eval/generate.py`, `training/serving.py`.
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
@@ -240,6 +345,9 @@ Status: PENDING
 
 ## P1.11 Scorecard promotion (F8)
 
+Implementation: `training/commands/promote_scorecard.py`,
+`common/provenance.py`, `common/hashing.py`.
+
 Command:
 
 ```bash
@@ -259,6 +367,11 @@ Observed:
 Status: PENDING
 
 ## P1.12 Reference recipe cards (F8)
+
+Implementation: `training/commands/validate_recipe.py`,
+`training/recipes/schema.py`, `training/recipes/validate.py`; the memory-fit
+check uses `training/calculator/components.py` and
+`training/calculator/solve.py`.
 
 Command:
 

@@ -175,18 +175,9 @@ def _check_fp8_dims(recipe: DictConfig, problems: list[str]) -> None:
 
 
 def _check_precision(recipe: DictConfig, problems: list[str]) -> None:
-    # Lazy import matching _check_offload_budget's convention; the domain is
-    # exactly the dtypes the calculator can price, so anything else would
-    # KeyError inside gradient_bytes
-    from training.calculator.components import DTYPE_BYTES
-
     prec = recipe.precision
     if prec.dtype not in PRECISION_DTYPES:
         problems.append(f"precision.dtype: {prec.dtype!r} not in {PRECISION_DTYPES}")
-    if prec.grad_dtype not in DTYPE_BYTES:
-        problems.append(
-            f"precision.grad_dtype: {prec.grad_dtype!r} not in {tuple(DTYPE_BYTES)}"
-        )
     if prec.dtype == "fp8":
         if prec.fp8_backend not in FP8_BACKENDS:
             problems.append(

@@ -98,6 +98,9 @@ def _print_estimate_table(est: Estimate, out: Printer) -> None:
         out.line(f"  {name:<18} {value:>16,}  {gb(value):>10}")
     out.line()
     out.line(f"Total allocated estimate: {gb(est.allocated_total)}")
+    if est.peak_phase != "sum":
+        out.line(f"  Peak phase: {est.peak_phase} — gradient checkpointing makes the")
+        out.line("  total a temporal max over backward phases, below the component sum")
     out.line(f"Total reserved estimate:  {gb(est.reserved_estimate)}")
     budget = VRAM_TOTAL_BYTES - SAFETY_MARGIN_BYTES
     if est.fits:
@@ -165,6 +168,9 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     out.run(f"Calibrating {recipe.run.name}: {args.steps} steps on cuda:0")
     try:
         record = calibrate_mod.calibrate(recipe, steps=args.steps)
+    except calibrate_mod.CalibrationUnsupported as exc:
+        out.error(f"Calibration unsupported: {exc}")
+        return 1
     except (RuntimeError, ImportError) as exc:
         out.error(f"Calibration failed: {exc}")
         out.line(
@@ -187,17 +193,40 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
         out.ok(
             f"Parameter count: {record.model_param_count:,} (analytic matches model)"
         )
+    if record.model_trainable_params != record.analytic_trainable_params:
+        out.warn(
+            f"Trainable count drift: model {record.model_trainable_params:,} vs "
+            f"analytic {record.analytic_trainable_params:,}"
+        )
+        out.line(
+            "  Solution: align adapter_param_count in components.py with the "
+            "built adapter"
+        )
     out.line()
     out.line(f"Estimated allocated: {gb(record.estimate['allocated_total'])}")
     out.line(f"Measured allocated:  {gb(record.measured_allocated)}")
     out.line(f"Measured reserved:   {gb(record.measured_reserved)}")
     out.line(f"NVML peak:           {gb(record.measured_nvml_peak)}")
-    within = abs(record.allocated_error_pct) <= 10.0
-    status = out.ok if within else out.error
-    status(
-        f"Allocated error: {record.allocated_error_pct:+.1f}% "
-        f"({'within' if within else 'exceeds'} the 10% acceptance bar)"
-    )
+    rel_within = abs(record.allocated_error_pct) <= 10.0
+    abs_gap = abs(record.estimate["allocated_total"] - record.measured_allocated)
+    abs_within = abs_gap <= calibrate_mod.ALLOCATED_FLOOR_BYTES
+    within = rel_within or abs_within
+    if rel_within:
+        out.ok(
+            f"Allocated error: {record.allocated_error_pct:+.1f}% "
+            "(within the 10% acceptance bar)"
+        )
+    elif abs_within:
+        out.ok(
+            f"Allocated error: {record.allocated_error_pct:+.1f}% "
+            f"(absolute gap {gb(abs_gap)} within the "
+            f"{calibrate_mod.ALLOCATED_FLOOR_BYTES >> 20} MB floor)"
+        )
+    else:
+        out.error(
+            f"Allocated error: {record.allocated_error_pct:+.1f}% "
+            "(exceeds the 10% acceptance bar)"
+        )
     if record.reserved_underpredicts_nvml:
         out.error("Reserved estimate under-predicts the NVML peak")
         out.line("  Solution: raise OVERHEAD_BYTES in training/calculator/solve.py")

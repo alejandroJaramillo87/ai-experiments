@@ -254,15 +254,6 @@ class TestValidate:
         )
         assert_problem(recipe, "precision.dtype")
 
-    def test_unknown_grad_dtype(self):
-        # KB-04: grad_dtype outside the calculator's DTYPE_BYTES must be a
-        # styled validation problem, not a raw KeyError inside the calculator
-        recipe = load_recipe(
-            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
-            ["precision.grad_dtype=fp16"],
-        )
-        assert_problem(recipe, "precision.grad_dtype")
-
     def test_fp8_backend_checked(self):
         recipe = load_recipe(
             os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),

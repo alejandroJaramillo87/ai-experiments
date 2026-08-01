@@ -6,7 +6,17 @@ and P4-D3 SAE training and evaluation. The interp anchor for pretrained
 SAEs is Gemma-2-2B (Gemma Scope); Gemma 4 runs on the hook-based paths
 (harvest, probes, steering) through the `interp/families.py` registry.
 
+Every `make` target here follows the same dispatch chain: the `Makefile`
+runs `docker compose -f docker-compose.interp.yaml run --rm interp
+python -m interp <subcommand>`, which enters `interp/__main__.py`,
+dispatches through the argparse handlers in `interp/cli.py`, and lands in
+the implementation module. Each entry below lists its implementation files
+so a failure can be read at the source without re-tracing the chain.
+
 ## I.1 Workbench smoke (I1)
+
+Implementation: `interp/commands/smoke_test.py`, `common/smoke.py`,
+`docker/interp/Dockerfile.interp`.
 
 Command:
 
@@ -26,6 +36,10 @@ Observed:
 Status: PENDING
 
 ## I.2 Neuronpedia harness (PS1)
+
+Implementation: `scripts/interp/np_env.sh`, `scripts/interp/np_smoke.sh`,
+`docker/interp/neuronpedia-pin.txt`,
+`docker/interp/neuronpedia.override.yaml`.
 
 Command:
 
@@ -50,6 +64,10 @@ Observed:
 Status: PENDING
 
 ## I.3 Control-vector extraction and export (W1)
+
+Implementation: `interp/commands/steer_extract.py`,
+`interp/steering/extract.py`, `interp/steering/export.py`,
+`interp/families.py`.
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
@@ -78,6 +96,10 @@ Status: PENDING
 
 ## I.4 Steered serving and scorecard (W1)
 
+Implementation: `interp/steering/wiring.py`,
+`interp/commands/steer_scorecard.py`, `interp/steering/scorecard.py`,
+`docker-compose.yaml` (the llama-gpu control-vector environment).
+
 Command:
 
 ```bash
@@ -100,6 +122,11 @@ Observed:
 Status: PENDING
 
 ## I.5 Probe capture, train, eval (W2)
+
+Implementation: `interp/commands/probe_capture.py` with
+`interp/probes/capture.py`; `interp/commands/probe_train.py` with
+`interp/probes/train.py` and `interp/probes/registry.py`;
+`interp/commands/probe_eval.py` with `interp/probes/evaluate.py`.
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
@@ -128,6 +155,10 @@ Observed:
 Status: PENDING
 
 ## I.6 Request-log proxy (W3)
+
+Implementation: `docker/interp-logproxy/logproxy.py`,
+`docker/interp-logproxy/Dockerfile`, `docker-compose.yaml` (the
+`interp-logproxy` service under profile `interp`).
 
 Note: the rust harness provides an in-band successor to the W3/W4 serving-side
 machinery (I.6, I.6b, I.7). Its runtime scores probes inside the forward pass
@@ -158,6 +189,9 @@ Observed:
 Status: PENDING
 
 ## I.6b Full-precision monitored endpoint
+
+Implementation: `docker-compose.yaml` (the `llama-gpu-bf16` service under
+profile `interp`), `docker/interp-logproxy/logproxy.py`.
 
 Precondition for the fidelity claim in I.7. The point of `llama-gpu-bf16` is
 that monitored traffic is answered at the precision the probes were fitted at,
@@ -198,6 +232,10 @@ Observed:
 Status: PENDING
 
 ## I.7 Probe monitor (W4)
+
+Implementation: `interp/commands/probe_monitor.py`,
+`interp/probes/monitor.py`, `interp/probes/score.py`,
+`scripts/interp/preflight.sh`.
 
 Note: the rust harness in-band probe monitor (`--probe`) supersedes this
 replay design on the rust path — per-position scoring in the serving process,
@@ -254,6 +292,11 @@ Status: PENDING
 
 ## I.8 Organisms (P4-D1)
 
+Implementation: `interp/commands/organism.py`,
+`interp/organisms/generate.py`, `interp/organisms/verify.py`,
+`interp/organisms/seal.py`; the pipeline re-invokes the phase 1 SFT and
+export commands.
+
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
 - KB-45 — `interp/organisms/verify.py:221` — locality_check's passed verdict ignores unmatched metrics despite its documented contract
@@ -289,6 +332,9 @@ Status: PENDING
 
 ## I.9 Harvest with disk preflight (P4-D2)
 
+Implementation: `interp/commands/harvest.py`, `interp/harvest.py`,
+`interp/families.py`, `training/runtime/lock.py`.
+
 Harvests can reach roughly 1.4TB per layer at full scale; the preflight,
 not cleanup, is the defense. Check free space explicitly before any
 non-smoke harvest.
@@ -317,6 +363,8 @@ Status: PENDING
 
 ## I.10 Capture garbage collection (P4-D2)
 
+Implementation: `interp/commands/interp_gc.py`, `interp/manifest.py`.
+
 Command:
 
 ```bash
@@ -337,6 +385,10 @@ Observed:
 Status: PENDING
 
 ## I.11 SAE training and evaluation (P4-D3)
+
+Implementation: `interp/commands/sae_train.py` with `interp/sae/train.py`;
+`interp/commands/sae_eval.py` with `interp/sae/evaluate.py`;
+`interp/sae/registry.py`.
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
@@ -363,6 +415,9 @@ Observed:
 Status: PENDING
 
 ## I.12 SAEBench isolated environment (P4-D3)
+
+Implementation: `scripts/interp/saebench_env.sh`, which is self-contained
+and builds its own virtual environment.
 
 SAEBench pins conflict with the core datasets/numpy pins, so it runs in
 its own venv by resolved decision.

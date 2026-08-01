@@ -9,11 +9,12 @@ Every defect the WI-14 capstone review and its Opus re-verification confirmed, i
 - Each was confirmed by an independent three-reviewer adversarial panel (reviewers instructed to refute by default; a bug is listed only when at least two of three upheld it). Confidence is the upheld count.
 - These are open unless a later commit resolves them; when one is fixed, move its row to Resolved rather than deleting it, so the IDs stay stable.
 
-## Open known bugs (15)
+## Open known bugs (16)
 
 | ID | Step(s) | Location | Category | Confidence | Defect |
 |----|---------|----------|----------|------------|--------|
-| KB-03 | P0.3 | `training/calculator/calibrate.py:89` | cross-module-contract | 2/3 | calibrate() always builds a scratch LlamaConfig model, so calibrating any model.hf (or PEFT) recipe measures a different model than the one the estimate prices |
+| KB-52 | P0.1 | `training/data/prepare.py:210` | teardown | 3/3 | Streaming prepare-data crashes at interpreter finalization (PyGILState_Release fatal error) after all shards and the manifest are flushed: a datasets/aiohttp background download thread is still alive at exit, so the process returns nonzero on an otherwise successful run (observed on the workstation 2026-08-01, P0.1) |
+| KB-03 | P0.3 | `training/calculator/calibrate.py:89` | cross-module-contract | 2/3 | calibrate() always builds a scratch LlamaConfig model, so calibrating any model.hf (or PEFT) recipe measures a different model than the one the estimate prices. Fix landed 2026-08-01 (calibrate builds through the shared `build_model` + PEFT wrap; `zero_offload` and online-logit-distill recipes refused as uncalibratable); pending workstation confirmation via the P1 QLoRA calibration runs (`sft-qlora-e2b`, `sft-qlora-gemma-e4b`) |
 | KB-17 | P1.6 | `training/tune/distill.py:541` | correctness | 3/3 | Cached-mode distillation never checks logit-softcap parity anywhere, despite the documented refuse-at-startup contract |
 | KB-18 | P1.9 | `pyproject.toml:161` | pinned-api-contract | 3/3 | lm-eval==0.4.12 is pinned without the deps its own pinned task set requires: ifeval needs langdetect/immutabledict ([ifeval] extra) and tinyMMLU needs tinyBenchmarks — both absent from pyproject and uv.lock |
 | KB-19 | P1.9, P1.10 | `training/eval/tasks.yaml:15` | pinned-api-contract | 3/3 | tasks.yaml pins bare metric keys for ifeval/tinyMMLU/hellaswag, but lm-eval 0.4.12 keys every aggregate result as "<metric>,<filter>" — extract_results raises after the full harness run completes |
@@ -29,6 +30,19 @@ Every defect the WI-14 capstone review and its Opus re-verification confirmed, i
 | KB-45 | I.8 | `interp/organisms/verify.py:221` | input-validation | 3/3 | locality_check's passed verdict ignores unmatched metrics despite its documented contract |
 | KB-50 | I.11 | `interp/sae/train.py:223` | correctness | 3/3 | capture_manifest_xxhash is invalidated by mark_validated within the same run: run_sae_training hashes the capture manifest, then mutates it |
 
+## Resolved during the hardware campaign (4)
+
+Found by the campaign itself (not the WI-14 panel), fixed against the real
+workstation traceback per the runbook protocol, and confirmed resolved by the
+P0.3 calibrate re-runs on 2026-08-01.
+
+| ID | Step(s) | Location | Category | Confidence | Defect |
+|----|---------|----------|----------|------------|--------|
+| KB-56 | P0.3 | `training/calculator/solve.py:100` | correctness | 3/3 | allocated_total summed the full checkpointed activation inventory as if simultaneously live, but the allocator peak is temporal (gradients are ~0 at head backward; head tensors are freed before gradients fully materialize) — pretrain-1b estimated 11.42 GB vs measured 7.00 GB, +63.2 percent (workstation 2026-08-01); fix models the checkpointed total as weights + optimizer + max(late-backward, head-backward), confirmed by the 2026-08-01 workstation re-run: +2.1 percent allocated error |
+| KB-55 | P0.3 | `training/calculator/components.py:321` | cross-module-contract | 3/3 | grad_bytes priced gradients at precision.grad_dtype (fp32, 4.00 GB at 1B), but grad_dtype had no consumer outside the calculator — no trainer implements fp32 gradient accumulation, so a bf16 model carries bf16 gradients (2.00 GB); fix prices gradients in the parameter dtype (peft compute_dtype under PEFT) and removes the dead grad_dtype field, confirmed by the 2026-08-01 workstation re-run: +2.1 percent allocated error |
+| KB-54 | P0.3 | `training/cli.py:195` | acceptance-criteria | 3/3 | The calibrate allocated-error check was purely relative (10 percent), but max_memory_allocated includes ~65 MB of fixed CUDA library workspaces (cuBLAS) outside the component model, so the bar could never pass on the tiny-e2e reference recipe (-93.1 percent observed on the workstation 2026-08-01); fix adds a 128 MiB absolute floor (ALLOCATED_FLOOR_BYTES) alongside the relative bar, confirmed by the 2026-08-01 workstation re-run: tiny-e2e gap 0.06 GB within the floor |
+| KB-53 | P0.3 | `training/calculator/calibrate.py:87` | initialization | 3/3 | calibrate() calls torch.cuda.reset_peak_memory_stats before any CUDA context exists; the memory-stats API does not lazy-init the context, so a fresh container always fails with "Invalid device argument" (isolated by a minimal probe on the workstation 2026-08-01; fix adds torch.cuda.init() before the reset, confirmed by the 2026-08-01 workstation re-run: calibrate loop ran to completion) |
+
 ## Resolved in the sandbox pre-fix pass (36)
 
 Fixed with per-bug regression tests in PR #65 (`fix the 36 sandbox-provable known bugs before the hardware campaign`) before the campaign reached these steps. Every fix is a pure-Python path provable in the sandbox; the 15 bugs still open above are pinned-library, GPU-runtime, or design-decision defects that must be fixed against the real traceback per the runbook protocol. Each regression test was demonstrated failing on the pre-fix code.
@@ -37,7 +51,7 @@ Fixed with per-bug regression tests in PR #65 (`fix the 36 sandbox-provable know
 |----|---------|----------|----------|------------|--------|
 | KB-01 | P0.1, P2.2 | `training/data/prepare.py:180` | correctness | 3/3 | _map_encode reuses the module-level _WORKER_TOKENIZER without checking spec, silently tokenizing with the wrong tokenizer while the manifest records the right one |
 | KB-02 | P0.2 | `training/data/tokenizer.py:215` | manifest-accuracy | 3/3 | Tokenizer artifact manifest records the requested vocab_size, not the trained tokenizer's actual vocabulary size |
-| KB-04 | P0.4, P0.3 | `training/recipes/validate.py:177` | cross-module-contract | 3/3 | precision.grad_dtype is never validated; values outside DTYPE_BYTES pass validate() and crash the calculator with a raw KeyError |
+| KB-04 | P0.4, P0.3 | `training/recipes/validate.py:177` | cross-module-contract | 3/3 | precision.grad_dtype is never validated; values outside DTYPE_BYTES pass validate() and crash the calculator with a raw KeyError (the field, its check, and its regression test were later removed entirely with the KB-55 fix — grad_dtype was never consumed outside the calculator) |
 | KB-05 | P2.3, P0.4 | `training/recipes/validate.py:525` | correctness | 3/3 | validate() escapes with raw JSONDecodeError/AttributeError instead of RecipeValidationError when a shard manifest.json is corrupt or not a JSON object |
 | KB-06 | P0.6 | `training/runtime/checkpoint.py:136` | kill-safety | 3/3 | save_checkpoint deletes an existing published step dir before renaming its replacement in, so a SIGKILL in between destroys the checkpoint `latest` points to and leaves `latest` dangling |
 | KB-07 | P0.10 | `training/data/staging.py:38` | resume-poisoning | 3/3 | stage_shards permanently reuses a staged copy with a torn manifest.json: _staged_copy_valid checks only file existence, and the manifest is copied non-atomically as the last step |

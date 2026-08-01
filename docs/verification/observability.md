@@ -30,6 +30,10 @@ that train; the report and serve viewers are not GPU consumers.
 
 ## OBS-V1 Torch-gated artifact-chain tests
 
+Implementation: `tests/training/test_loop.py`, exercising
+`training/runtime/tracking.py`, `common/obs/core.py`,
+`common/obs/catalog.py`.
+
 The two host-gated tests added to `tests/training/test_loop.py` skip in the
 sandbox (no torch). They are the mechanical half of this campaign: a tiny
 CPU train run asserting the metrics artifact, and a subprocess CLI run with
@@ -53,6 +57,9 @@ Observed:
 Status: PENDING
 
 ## OBS-V2 GPU watchdog samples and NVML context in a real run
+
+Implementation: `training/runtime/watchdog.py`, `common/obs/context.py`,
+`training/runtime/tracking.py`.
 
 Command (any tiny GPU-visible run works; the point is the sampler and
 context capture, not the model):
@@ -81,6 +88,9 @@ Status: PENDING
 
 ## OBS-V3 Default log root, retention, and catalog on /mnt/ai-data
 
+Implementation: `training/commands/runs.py`, `training/commands/report.py`,
+`common/obs/catalog.py`, `common/obs/retention.py`.
+
 The sandbox exercised these against `OBS_LOG_DIR` temp dirs only. This
 entry confirms the default root works end to end: configure writes to
 `/mnt/ai-data/logs/<cli>/`, the startup prune respects the live-file lock,
@@ -108,6 +118,9 @@ Status: PENDING
 
 ## OBS-V4 External sinks (tensorboard, offline wandb)
 
+Implementation: `tests/training/test_loop.py`, exercising
+`training/runtime/tracking.py`.
+
 Command:
 
 ```bash
@@ -128,6 +141,9 @@ Status: PENDING
 
 ## OBS-V5 Browser harness on the workstation
 
+Implementation: `scripts/verify/obs_browser/check.mjs`, rendering the output
+of `common/obs/dashboard.py` and `common/obs/serve.py`.
+
 Command:
 
 ```bash
@@ -146,6 +162,9 @@ Observed:
 Status: PENDING
 
 ## OBS-V6 Live dashboard against an in-flight run
+
+Implementation: `common/obs/serve.py`, `common/obs/dashboard.py`,
+`training/commands/report.py`.
 
 Start a longer tiny run (several hundred steps), then serve it while it
 trains and watch the page extend.
@@ -174,6 +193,8 @@ Status: PENDING
 
 ## OBS-V7 Crash durability on the workstation
 
+Implementation: `tests/training/obs_crash_driver.py`, `common/obs/core.py`.
+
 Reuses the committed sandbox driver against the real filesystem
 (`/mnt/ai-data` is ext4 on NVMe; the sandbox proved tmpfs only).
 
@@ -199,6 +220,9 @@ Observed:
 Status: PENDING
 
 ## OBS-V8 Sink overhead at real step rates
+
+Implementation: `training/runtime/tracking.py`, `training/runtime/loop.py`,
+`training/recipes/schema.py`.
 
 The jsonl sink is line-buffered (one write per step plus one per sampler
 tick). The sandbox cannot measure its cost at real GPU step rates.

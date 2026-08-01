@@ -111,6 +111,25 @@ class TestMemfit:
         assert result["max_batch"] == 4096
         assert result["max_batch_estimate"]["micro_batch"] == 4096
 
+    def test_checkpointing_prints_peak_phase_note(self, capsys):
+        # pretrain-1b checkpoints; the total is a temporal max, and the
+        # table must say so (KB-56). tiny-e2e does not; no note.
+        rc = run_cli(["memfit", "--config", PRETRAIN_1B])
+        out = capsys.readouterr().err
+        assert rc == 0
+        assert "Peak phase:" in out
+        rc = run_cli(["memfit", "--config", TINY_RECIPE])
+        out = capsys.readouterr().err
+        assert rc == 0
+        assert "Peak phase:" not in out
+
+    def test_json_carries_peak_phase(self, capsys):
+        rc = run_cli(["memfit", "--config", PRETRAIN_1B, "--json"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        result = json.loads(out)
+        assert result["estimate"]["peak_phase"] in ("late_backward", "head_backward")
+
     def test_offload_recipe_reports_host_ram(self, capsys):
         rc = run_cli(["memfit", "--config", TINY_RECIPE, "memory.offload=zero_offload"])
         out = capsys.readouterr().err
@@ -243,16 +262,46 @@ class TestCalibrate:
         assert "Solution: align the ffn/param formulas" in out
         assert "[OK] Parameter count:" not in out
 
-    @pytest.mark.parametrize("error_pct,shown", [(-12.5, "-12.5%"), (10.1, "+10.1%")])
+    @pytest.mark.parametrize(
+        "error_pct,measured,shown",
+        # measured_allocated kept consistent with error_pct so the absolute
+        # gap also exceeds the 128 MiB floor and the error branch is exercised
+        [
+            (-12.5, int(2 / 0.875 * GIB), "-12.5%"),
+            (10.1, int(2 / 1.101 * GIB), "+10.1%"),
+        ],
+    )
     def test_allocated_error_beyond_bar_exits_one(
-        self, capsys, monkeypatch, error_pct, shown
+        self, capsys, monkeypatch, error_pct, measured, shown
     ):
-        patch_calibrate(monkeypatch, record=make_record(allocated_error_pct=error_pct))
+        patch_calibrate(
+            monkeypatch,
+            record=make_record(
+                allocated_error_pct=error_pct, measured_allocated=measured
+            ),
+        )
         rc = run_cli(["calibrate", "--config", TINY_RECIPE])
         out = capsys.readouterr().err
         assert rc == 1
         assert (
             f"[ERROR] Allocated error: {shown} (exceeds the 10% acceptance bar)"
+        ) in out
+
+    def test_tiny_model_passes_via_absolute_floor(self, capsys, monkeypatch):
+        # Fixed CUDA workspaces dominate a tiny model's measured allocated;
+        # the relative error is huge but the absolute gap sits under the floor.
+        record = make_record(
+            estimate={"allocated_total": 5 << 20},
+            measured_allocated=70 << 20,
+            allocated_error_pct=-92.9,
+        )
+        patch_calibrate(monkeypatch, record=record)
+        rc = run_cli(["calibrate", "--config", TINY_RECIPE])
+        out = capsys.readouterr().err
+        assert rc == 0
+        assert (
+            "[OK] Allocated error: -92.9% (absolute gap 0.06 GB within the "
+            "128 MB floor)"
         ) in out
 
     def test_reserved_underprediction_exits_one(self, capsys, monkeypatch):
@@ -297,3 +346,92 @@ class TestCalibrate:
         out = capsys.readouterr().out
         assert rc == 0
         assert json.loads(out) == record.as_dict()
+
+    def test_unsupported_recipe_is_refused_without_workstation_hint(
+        self, capsys, monkeypatch
+    ):
+        from training.calculator.calibrate import CalibrationUnsupported
+
+        patch_calibrate(
+            monkeypatch,
+            error=CalibrationUnsupported("memory.offload=zero_offload is not"),
+        )
+        rc = run_cli(["calibrate", "--config", TINY_RECIPE])
+        out = capsys.readouterr().err
+        assert rc == 1
+        assert "[ERROR] Calibration unsupported:" in out
+        assert "Solution: run on the workstation" not in out
+
+    def test_trainable_count_drift_warns_but_still_passes(self, capsys, monkeypatch):
+        record = make_record(
+            model_trainable_params=1_234, analytic_trainable_params=1_200
+        )
+        patch_calibrate(monkeypatch, record=record)
+        rc = run_cli(["calibrate", "--config", TINY_RECIPE])
+        out = capsys.readouterr().err
+        assert rc == 0
+        assert "[WARN] Trainable count drift: model 1,234 vs analytic 1,200" in out
+        assert "Solution: align adapter_param_count" in out
+
+
+class TestCalibrateSupport:
+    """_check_supported and _build_calibration_model (KB-03), stubs only."""
+
+    def test_zero_offload_recipe_is_refused(self):
+        from training.calculator.calibrate import (
+            CalibrationUnsupported,
+            _check_supported,
+        )
+        from training.recipes.loader import load_recipe
+
+        recipe = load_recipe(os.path.join(REFERENCE_DIR, "continual-gemma4-e2b.yaml"))
+        with pytest.raises(CalibrationUnsupported, match="zero_offload"):
+            _check_supported(recipe)
+
+    def test_online_logit_distill_recipe_is_refused(self):
+        from training.calculator.calibrate import (
+            CalibrationUnsupported,
+            _check_supported,
+        )
+        from training.recipes.loader import load_recipe
+
+        recipe = load_recipe(DISTILL_LOGIT)
+        with pytest.raises(CalibrationUnsupported, match="in-process teacher"):
+            _check_supported(recipe)
+
+    def test_scratch_and_plain_sft_recipes_are_supported(self):
+        from training.calculator.calibrate import _check_supported
+        from training.recipes.loader import load_recipe
+
+        _check_supported(load_recipe(TINY_RECIPE))
+        _check_supported(load_recipe(os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml")))
+
+    def test_builder_wraps_peft_only_when_enabled(self, monkeypatch):
+        from training.calculator import calibrate as calibrate_mod
+        from training.recipes.loader import load_recipe
+
+        base = types.SimpleNamespace(config=types.SimpleNamespace(model_type="gemma4"))
+        wrapped = object()
+        calls = {}
+        monkeypatch.setattr(calibrate_mod, "build_model", lambda recipe: base)
+
+        def fake_resolve(recipe, model_type):
+            calls["resolved"] = model_type
+
+        def fake_wrap(model, peft_cfg):
+            calls["wrapped"] = model
+            return wrapped
+
+        fake_peft = types.SimpleNamespace(
+            resolve_target_modules=fake_resolve, build_peft_model=fake_wrap
+        )
+        monkeypatch.setitem(sys.modules, "training.models.peft_utils", fake_peft)
+
+        qlora = load_recipe(os.path.join(REFERENCE_DIR, "sft-qlora-e2b.yaml"))
+        assert calibrate_mod._build_calibration_model(qlora) is wrapped
+        assert calls == {"resolved": "gemma4", "wrapped": base}
+
+        calls.clear()
+        scratch = load_recipe(TINY_RECIPE)
+        assert calibrate_mod._build_calibration_model(scratch) is base
+        assert calls == {}

@@ -57,6 +57,9 @@ Entry and exit criterion for every later phase.
 
 Scope: `rust-harness/Makefile`, repo-root `Makefile`.
 
+Implementation: `rust-harness/Makefile`, the `quality` target in the root
+`Makefile`.
+
 Run the root `make quality` and confirm all Python steps and all five rust
 steps (fmt, clippy, lockfile check, rustdoc lints, tests) pass. Any
 failure is fixed before the campaign proceeds. Do not pipe the gate
@@ -73,6 +76,10 @@ no-subscriber test, and fixed by serializing them; see the campaign log.
 Scope: `runtime/src/gguf.rs`, `runtime/src/tensor.rs`,
 `runtime/src/tokenizer.rs`, `runtime/src/model/cpu.rs`,
 `runtime/src/synth.rs`, `fixtures/reference_logits.py`.
+
+Implementation: `rust-harness/runtime/src/tensor.rs`,
+`rust-harness/runtime/src/sampler.rs`,
+`rust-harness/runtime/tests/cpu_reference.rs`.
 
 Lenses:
 
@@ -93,6 +100,10 @@ Scope: `runtime/src/session.rs`, `runtime/src/kv.rs`,
 `runtime/src/sampler.rs`, `runtime/src/grammar.rs`, `runtime/src/eval.rs`,
 `runtime/src/model/mock.rs`.
 
+Implementation: `rust-harness/runtime/src/model/cpu.rs`,
+`rust-harness/runtime/src/kv.rs`, `rust-harness/runtime/src/session.rs`,
+`rust-harness/runtime/tests/eval_acceptance.rs`.
+
 Lenses:
 
 - Delta prefill: sync truncates to the common prefix and prefills only the
@@ -112,6 +123,11 @@ Scope: `harness/src/agent.rs`, `harness/src/tools.rs`,
 `harness/src/permissions.rs`, `harness/src/subagents.rs`,
 `harness/src/transcript.rs`, `harness/src/template.rs`,
 `harness/src/chat.rs`, `harness/src/stream.rs`, `harness/src/util.rs`.
+
+Implementation: `rust-harness/harness/src/agent.rs`,
+`rust-harness/harness/src/permissions.rs`,
+`rust-harness/harness/src/tools.rs`,
+`rust-harness/harness/tests/agent_e2e.rs`.
 
 This phase receives the heaviest adversarial pass; it is the closest thing
 to a security review the sandbox can perform.
@@ -144,6 +160,9 @@ Scope: `runtime/src/model/record.rs`, `runtime/src/model/probe.rs`,
 `runtime/src/npz.rs`, the tap and steering paths in
 `runtime/src/model/cpu.rs`.
 
+Implementation: `rust-harness/harness/src/obs.rs`,
+`rust-harness/runtime/src/model/probe.rs`, `rust-harness/runtime/src/npz.rs`.
+
 Lenses:
 
 - Contract conformance: obs records, capture shards, and the probe GGUF
@@ -161,6 +180,9 @@ Lenses:
 Scope: `docker/rust-harness/Dockerfile.rust-harness`,
 `docker-compose.rust-harness.yaml`, the `##@ Rust harness` targets in the
 repo-root `Makefile`, `rust-harness/Cargo.toml`, `rust-harness/Cargo.lock`.
+
+Implementation: `docker/rust-harness/Dockerfile.rust-harness`,
+`docker-compose.rust-harness.yaml`, `rust-harness/Cargo.lock`.
 
 Lenses:
 
@@ -182,6 +204,9 @@ Scope: `rust-harness/README.md`,
 `docs/inference/rust-harness-observability.md`,
 `docs/interpretability/rust-harness-interp.md`,
 `docs/verification/rust-harness.md`, this document.
+
+Implementation: `rust-harness/README.md`, `rust-harness/docs/`,
+`docs/verification/rust-harness.md`.
 
 Lenses:
 
