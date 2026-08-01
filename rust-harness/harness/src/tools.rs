@@ -10,6 +10,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, ensure, Context, Result};
@@ -24,6 +25,17 @@ const TOOL_OUTPUT_CAP: usize = 64 * 1024;
 // Wall-clock bound on a bash command; null stdin already prevents interactive
 // hangs, this catches genuinely long-running commands.
 const BASH_TIMEOUT: Duration = Duration::from_secs(120);
+
+// Exit-poll backoff. A trivial command finishes in well under a millisecond,
+// so a fixed interval charges every bash call its full length; the cap keeps
+// the deadline accurate to within one interval.
+const POLL_MIN: Duration = Duration::from_micros(100);
+const POLL_MAX: Duration = Duration::from_millis(5);
+
+// Grace for the output drains once nothing legitimate should still hold the
+// pipes open. Exceeding it means a writer escaped the process group, so the
+// partial output is returned rather than blocking the agent loop.
+const DRAIN_GRACE: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ToolCall {
@@ -235,7 +247,9 @@ fn cap_output(mut text: String) -> String {
 /// instead of hanging) and a wall-clock deadline. Output is drained on
 /// threads so a chatty command cannot deadlock on a full pipe while the
 /// parent polls for exit; on timeout the child is killed and the partial
-/// output is returned with a note.
+/// output is returned with a note. The deadline covers the drain as well as
+/// the wait, so a process the shell backgrounded cannot extend the call by
+/// holding the pipes open past the shell's own exit.
 fn bash_with_timeout(command: &str, root: &Path, timeout: Duration) -> Result<String> {
     let mut cmd = Command::new("sh");
     cmd.arg("-c")
@@ -244,47 +258,62 @@ fn bash_with_timeout(command: &str, root: &Path, timeout: Duration) -> Result<St
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    // Own process group: on timeout the whole group is killed, so children
-    // of the shell cannot outlive it holding the output pipes open.
+    // Own process group: on timeout, and on a normal exit that left the
+    // pipes open, the whole group is killed, so children of the shell cannot
+    // outlive it holding the output pipes open.
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
     let mut child = cmd.spawn().with_context(|| format!("bash: {command}"))?;
+    // Each drain reports through a channel rather than a join handle: a join
+    // is unbounded, and end of file on the pipes is not under the deadline's
+    // control once a backgrounded process inherits them.
     let drain = |pipe: Option<Box<dyn Read + Send>>| {
+        let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
             let mut buf = Vec::new();
             if let Some(mut pipe) = pipe {
                 let _ = pipe.read_to_end(&mut buf);
             }
-            buf
-        })
+            let _ = tx.send(buf);
+        });
+        rx
     };
-    let stdout = drain(child.stdout.take().map(|p| Box::new(p) as _));
-    let stderr = drain(child.stderr.take().map(|p| Box::new(p) as _));
+    let mut stdout = Some(drain(child.stdout.take().map(|p| Box::new(p) as _)));
+    let mut stderr = Some(drain(child.stderr.take().map(|p| Box::new(p) as _)));
     let deadline = Instant::now() + timeout;
+    let mut poll = POLL_MIN;
     let (status, timed_out) = loop {
         if let Some(status) = child.try_wait().context("waiting for bash child")? {
             break (Some(status), false);
         }
-        if Instant::now() >= deadline {
-            // Shell-builtin kill: signals the whole group reliably even
-            // where an external kill binary is namespaced away from it.
-            #[cfg(unix)]
-            let _ = Command::new("sh")
-                .arg("-c")
-                .arg(format!("kill -KILL -{}", child.id()))
-                .status();
-            let _ = child.kill();
-            let _ = child.wait();
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            kill_group(&mut child);
             break (None, true);
         }
-        std::thread::sleep(Duration::from_millis(10));
+        std::thread::sleep(poll.min(remaining));
+        poll = (poll * 2).min(POLL_MAX);
     };
-    let mut bytes = stdout.join().expect("stdout drain thread");
-    bytes.extend(stderr.join().expect("stderr drain thread"));
-    let mut text = String::from_utf8_lossy(&bytes).into_owned();
+    // Collecting the output is inside the deadline too. The shell exiting
+    // closes the pipes only when nothing it backgrounded still holds them,
+    // so a drain still pending after the grace means such a process exists:
+    // kill the group to force end of file, then take what arrives.
+    let mut out_bytes = Vec::new();
+    let mut err_bytes = Vec::new();
+    let grace = Instant::now() + DRAIN_GRACE;
+    take_drain(&mut stdout, &mut out_bytes, grace);
+    take_drain(&mut stderr, &mut err_bytes, grace);
+    if stdout.is_some() || stderr.is_some() {
+        kill_group(&mut child);
+        let grace = Instant::now() + DRAIN_GRACE;
+        take_drain(&mut stdout, &mut out_bytes, grace);
+        take_drain(&mut stderr, &mut err_bytes, grace);
+    }
+    out_bytes.extend(err_bytes);
+    let mut text = String::from_utf8_lossy(&out_bytes).into_owned();
     text = cap_output(text);
     if timed_out {
         text.push_str(&format!(
@@ -297,6 +326,37 @@ fn bash_with_timeout(command: &str, root: &Path, timeout: Duration) -> Result<St
         }
     }
     Ok(text)
+}
+
+/// Kill the child and the rest of its process group, then reap it. Safe to
+/// call after the child itself has exited: the group keeps the leader's id
+/// reserved while it still has members, which is exactly the case worth
+/// killing — a process the shell backgrounded.
+fn kill_group(child: &mut std::process::Child) {
+    // Shell-builtin kill: signals the whole group reliably even where an
+    // external kill binary is namespaced away from it.
+    #[cfg(unix)]
+    let _ = Command::new("sh")
+        .arg("-c")
+        .arg(format!("kill -KILL -{}", child.id()))
+        .status();
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Take one drain's buffer if it arrives before `deadline`, appending it to
+/// `out`. The receiver is left in place when it does not, so a later call —
+/// after the process group holding the pipe open is killed — can still pick
+/// the output up.
+fn take_drain(rx: &mut Option<mpsc::Receiver<Vec<u8>>>, out: &mut Vec<u8>, deadline: Instant) {
+    let Some(pending) = rx.as_ref() else {
+        return;
+    };
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if let Ok(buf) = pending.recv_timeout(remaining) {
+        out.extend(buf);
+        *rx = None;
+    }
 }
 
 /// Control files the model may never write: `permissions.yaml` is the rule
@@ -714,6 +774,31 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(10));
         assert!(out.contains("partial"), "{out}");
         assert!(out.contains("timeout"), "{out}");
+    }
+
+    #[test]
+    fn bash_returns_when_the_shell_exits_even_if_it_backgrounded_a_process() {
+        // Regression: the deadline bounded only the exit poll, and the
+        // unconditional drain joins afterwards waited for end of file on
+        // pipes the backgrounded process inherits and holds open, so the
+        // call blocked for as long as that process lived — past the
+        // deadline, and forever for a command that starts a server.
+        let dir = root();
+        let started = Instant::now();
+        let out = bash_with_timeout(
+            "sleep 5 & echo started",
+            dir.path(),
+            Duration::from_secs(10),
+        )
+        .unwrap();
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "bash blocked for {elapsed:?}"
+        );
+        assert!(out.contains("started"), "{out}");
+        // The shell itself exited normally; this is not a timeout.
+        assert!(!out.contains("timeout"), "{out}");
     }
 
     #[test]
