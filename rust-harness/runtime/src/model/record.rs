@@ -158,6 +158,30 @@ impl Model for RecordingModel {
     }
 }
 
+/// Memory one replayed script may claim, across the dense logits table and
+/// the token history that indexes it.
+const MAX_SCRIPT_BYTES: usize = 8 << 30;
+
+/// Highest position a recording of `vocab_size`-wide rows may name.
+///
+/// `replay` materializes one dense row per position up to the highest one
+/// any row claims, so a `position` field taken on trust turns a corrupt or
+/// hostile hundred-byte line into a terabyte `resize`: the allocation error
+/// handler aborts the process, which no caller can catch, where this
+/// parser's contract is a positioned error. The bound is the memory the
+/// loaded script would occupy rather than a guess at a plausible position,
+/// so it holds every recording a real run produces — 8191 positions at a
+/// 262144-entry production vocabulary, millions at fixture scale.
+fn position_bound(vocab_size: usize) -> usize {
+    // Per position: one f32 per vocabulary entry, the script slot holding
+    // them, and one history slot.
+    let per_position = vocab_size
+        .saturating_mul(std::mem::size_of::<f32>())
+        .saturating_add(std::mem::size_of::<Option<Vec<f32>>>())
+        .saturating_add(std::mem::size_of::<Option<Token>>());
+    MAX_SCRIPT_BYTES / per_position
+}
+
 /// Load a recording back as a scripted `MockModel`. Rows are keyed by
 /// absolute position, so replay is deterministic regardless of how prefill
 /// work was batched in the recorded run; positions never recorded fall back
@@ -186,11 +210,24 @@ pub fn replay(reader: impl BufRead) -> Result<MockModel> {
     // Token consumed at each absolute position: the only branch identity the
     // recorded `start`/`tokens` metadata carries.
     let mut history: Vec<Option<Token>> = Vec::new();
+    let bound = position_bound(header.vocab_size);
     for (n, line) in lines.enumerate() {
         let line = line.with_context(|| format!("read recording line {}", n + 2))?;
         let record: Record = serde_json::from_str(&line)
             .with_context(|| format!("parse recording line {}", n + 2))?;
-        let end = record.start + record.tokens.len();
+        // Saturating: a `start` near the top of the usize range must reach
+        // the bound check below rather than overflow on the way to it.
+        let end = record.start.saturating_add(record.tokens.len());
+        anyhow::ensure!(
+            end <= bound,
+            "recording line {}: record covers positions {}..{}, beyond the {} \
+             positions a recording of {}-wide rows may script",
+            n + 2,
+            record.start,
+            end,
+            bound,
+            header.vocab_size
+        );
         if history.len() < end {
             history.resize(end, None);
         }
@@ -208,6 +245,15 @@ pub fn replay(reader: impl BufRead) -> Result<MockModel> {
                 "recording line {}: row width {} does not match vocab size {}",
                 n + 2,
                 row.logits.len(),
+                header.vocab_size
+            );
+            anyhow::ensure!(
+                row.position < bound,
+                "recording line {}: position {} is beyond the {} positions a \
+                 recording of {}-wide rows may script",
+                n + 2,
+                row.position,
+                bound,
                 header.vocab_size
             );
             let scripted = matches!(script.get(row.position), Some(Some(_)));
@@ -387,6 +433,47 @@ mod tests {
             replayed.prefill(&[9, 9, 9]).unwrap().0,
             vec![0.0, 0.0, 1.0, 0.0]
         );
+    }
+
+    #[test]
+    fn the_position_bound_holds_a_real_recording_at_a_production_vocabulary() {
+        // The bound exists to refuse corruption, not real recordings: a
+        // 262144-entry vocabulary still scripts thousands of positions, and
+        // no vocabulary reaches the trillionth position of a corrupt line.
+        assert!(position_bound(262144) >= 8000, "{}", position_bound(262144));
+        assert!(position_bound(2) < 1_000_000_000_000);
+    }
+
+    #[test]
+    fn replay_rejects_a_row_position_beyond_the_script_bound() {
+        // Ninety-odd bytes claiming the trillionth position: taken on trust,
+        // the script resize asks the allocator for terabytes and the process
+        // aborts through the allocation error handler instead of returning.
+        let bad = concat!(
+            "{\"vocab_size\":2}\n",
+            "{\"start\":0,\"tokens\":[1],\"rows\":[{\"position\":999999999999,\"logits\":[0.0,0.0]}]}\n"
+        );
+        let err = replay(std::io::BufReader::new(bad.as_bytes()))
+            .err()
+            .expect("expected error");
+        let msg = err.to_string();
+        assert!(msg.contains("position 999999999999"), "{err}");
+        assert!(msg.contains("may script"), "{err}");
+    }
+
+    #[test]
+    fn replay_rejects_a_record_starting_beyond_the_script_bound() {
+        // The token history is sized from `start` before any row is read, so
+        // the bound holds there too — and a `start` at the top of the usize
+        // range must reach the check rather than overflow on the way to it.
+        let bad = concat!(
+            "{\"vocab_size\":2}\n",
+            "{\"start\":18446744073709551615,\"tokens\":[1],\"rows\":[]}\n"
+        );
+        let err = replay(std::io::BufReader::new(bad.as_bytes()))
+            .err()
+            .expect("expected error");
+        assert!(err.to_string().contains("18446744073709551615"), "{err}");
     }
 
     #[test]
