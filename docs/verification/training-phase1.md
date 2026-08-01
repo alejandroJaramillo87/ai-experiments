@@ -16,6 +16,44 @@ in the implementation module. Each entry below lists its implementation
 files so a failure can be read at the source without re-tracing the
 chain.
 
+## P1.0 QLoRA memory calibration (D4, KB-03 confirmation)
+
+Implementation: `training/calculator/calibrate.py`, `training/models/model.py`,
+`training/models/peft_utils.py`, `training/cli.py` (`cmd_calibrate`).
+
+Calibrates the memory-fit calculator on the model.hf + PEFT path, which the
+scratch-family calibration in P0.3 does not exercise (NF4 base pricing,
+adapter gradients and optimizer state, sequence length 4096). Doubles as the
+first execution evidence for Gemma 4 on the workstation: gated hub download,
+transformers `gemma4` support, and bitsandbytes NF4 on Blackwell. A
+hub-access or kernel failure here is the fallback-policy trigger — record
+it, then run the `sft-qlora-qwen3*` twin and note which family ran. Also
+confirms the KB-03 fix: the loop builds the recipe's actual model through
+the shared builders, and refuses `zero_offload` and online-logit-distill
+recipes as uncalibratable.
+
+Command (serialized, one GPU job at a time; E2B first, then E4B):
+
+```bash
+$ make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
+$ make train-calibrate CONFIG=training/recipes/reference/sft-qlora-gemma-e4b.yaml \
+    ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e4b.json"
+```
+
+Expected signal: exit 0 on both; allocated estimate within the 10 percent
+bar (or the 128MiB floor), reserved estimate covering the NVML peak, no
+parameter-count or trainable-count drift warnings. Drift beyond the bar is
+a new calculator finding (expected candidates: NF4 constant pricing, paged
+optimizer states) — diagnose before touching calibrated constants.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
 ## P1.1 Prepare a masked SFT dataset (F1)
 
 Implementation: `training/commands/prepare_sft.py`, `training/data/sft.py`,

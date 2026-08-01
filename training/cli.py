@@ -168,6 +168,9 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     out.run(f"Calibrating {recipe.run.name}: {args.steps} steps on cuda:0")
     try:
         record = calibrate_mod.calibrate(recipe, steps=args.steps)
+    except calibrate_mod.CalibrationUnsupported as exc:
+        out.error(f"Calibration unsupported: {exc}")
+        return 1
     except (RuntimeError, ImportError) as exc:
         out.error(f"Calibration failed: {exc}")
         out.line(
@@ -189,6 +192,15 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     else:
         out.ok(
             f"Parameter count: {record.model_param_count:,} (analytic matches model)"
+        )
+    if record.model_trainable_params != record.analytic_trainable_params:
+        out.warn(
+            f"Trainable count drift: model {record.model_trainable_params:,} vs "
+            f"analytic {record.analytic_trainable_params:,}"
+        )
+        out.line(
+            "  Solution: align adapter_param_count in components.py with the "
+            "built adapter"
         )
     out.line()
     out.line(f"Estimated allocated: {gb(record.estimate['allocated_total'])}")
