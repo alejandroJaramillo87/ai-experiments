@@ -10,14 +10,32 @@ D8 (the benchmark harness) is NOT implemented; it is out of scope for this
 campaign and has no entry here. When it lands it must adopt the shared
 report envelope (`docs/report_schema.md`).
 
+Every `make` target here follows the same dispatch chain: the `Makefile`
+runs `docker compose -f docker-compose.training.yaml run --rm training
+python -m training <subcommand>`, which enters `training/__main__.py`,
+dispatches through the argparse handlers in `training/cli.py`, and lands
+in the implementation module. Each entry below lists its implementation
+files so a failure can be read at the source without re-tracing the
+chain.
+
 ## P0.1 Prepare a small shard set (D2)
+
+Implementation: `training/commands/prepare_data.py`,
+`training/data/prepare.py`, `training/data/shards.py`.
+
+`--streaming` is required for hub sources: without it,
+`datasets.load_dataset` downloads the entire split into the container
+cache before tokenizing (for fineweb-edu, 2410 parquet files), while
+`--max-tokens` bounds only what is written. The streaming path fetches
+documents as consumed and stops at the token budget.
 
 Command:
 
 ```bash
 $ make prepare-data ARGS="--source HuggingFaceFW/fineweb-edu --split train \
     --tokenizer HuggingFaceTB/SmolLM2-135M \
-    --out /mnt/ai-data/training/shards/verify-small --max-tokens 20_000_000"
+    --out /mnt/ai-data/training/shards/verify-small --max-tokens 20_000_000 \
+    --streaming"
 ```
 
 Expected signal: exit 0; `/mnt/ai-data/training/shards/verify-small/`
@@ -28,11 +46,19 @@ requested 20M.
 Observed:
 
 ```
+2026-08-01: first attempt ran the entry's original command, which lacked
+--streaming. The run began a full-split download and hit the disk-space
+warning (first file 2369.46 MB against 2144.05 MB free in /app/cache);
+aborted with Ctrl-C. Runbook finding: the command was wrong, corrected
+above. Streaming re-run pending.
 ```
 
 Status: PENDING
 
 ## P0.2 Tokenizer training (D3)
+
+Implementation: `training/commands/train_tokenizer.py`,
+`training/data/tokenizer.py`.
 
 Command (any JSONL corpus on the data SSD works; the point is the artifact
 contract, not the corpus):
@@ -54,6 +80,9 @@ Observed:
 Status: PENDING
 
 ## P0.3 Memory-fit estimate and calibration (D4)
+
+Implementation: `training/calculator/solve.py` (memfit),
+`training/calculator/calibrate.py` (calibrate).
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
@@ -82,6 +111,9 @@ Status: PENDING
 
 ## P0.4 Recipe validation (D5)
 
+Implementation: `training/commands/validate_recipe.py`,
+`training/recipes/`.
+
 Command:
 
 ```bash
@@ -101,6 +133,9 @@ Observed:
 Status: PENDING
 
 ## P0.5 Reference loop and tolerance-based resume (D6)
+
+Implementation: `tests/hardware/test_gpu.py` (the test itself), exercising
+`training/runtime/loop.py` and `training/runtime/checkpoint.py`.
 
 The GPU resume bar is tolerance-based (stated tolerance: per-step training
 loss within 1 percent relative over the post-resume window,
@@ -126,6 +161,10 @@ Status: PENDING
 
 ## P0.6 Train a tiny run end to end (D6)
 
+Implementation: `training/runtime/loop.py` (train loop),
+`training/runtime/checkpoint.py`, `training/runtime/tracking.py`,
+`training/data/loader.py`.
+
 Command:
 
 ```bash
@@ -148,6 +187,9 @@ Status: PENDING
 
 ## P0.7 Export to GGUF (D7)
 
+Implementation: `training/export/` (runs in the separate `export` compose
+service with the pinned llama.cpp converter and quantizer).
+
 Command:
 
 ```bash
@@ -168,6 +210,8 @@ Observed:
 Status: PENDING
 
 ## P0.8 Serve-eval round trip with restore (D7)
+
+Implementation: `training/commands/serve_eval.py`, `training/serving.py`.
 
 Command (llama-gpu serving its production model before the swap):
 
@@ -191,6 +235,9 @@ Observed:
 Status: PENDING
 
 ## P0.9 Restore path after a failed swap (D7)
+
+Implementation: `training/commands/serve_eval.py` (preflight and the
+restore `finally` path), `training/serving.py`.
 
 The known dragon: serve-eval must restore the previous model even when the
 swapped model cannot serve.
@@ -217,6 +264,9 @@ Status: PENDING
 
 ## P0.10 Staging and prefetch (D9)
 
+Implementation: `training/data/staging.py`, `training/data/loader.py`,
+asserted by `tests/hardware/test_ssd.py`.
+
 Command:
 
 ```bash
@@ -238,6 +288,9 @@ Observed:
 Status: PENDING
 
 ## P0.11 Watchdogs, passive observation only (D10)
+
+Implementation: `training/runtime/watchdog.py`, wired into
+`training/runtime/loop.py`.
 
 Fault injection (thermal, RAM floor) is out of scope by decision; this
 entry verifies passive operation: the watchdog samples without alerts on a
