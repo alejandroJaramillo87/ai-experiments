@@ -57,11 +57,17 @@ These are standing instructions for anyone (human or agent) making changes in th
   rust gate also needs a `python3` on `PATH` that can import numpy: the npz writer's unit test
   (`rust-harness/runtime/src/npz.rs`) shells out to it to re-read a written shard with
   `np.load`, and `harness/tests/probe_identity.rs` takes an independent SHA-256 from its
-  hashlib. Every tool version comes from the pinned dev dependency group and
-  no step needs the network. Known caveat: while `uv.lock` remains stale relative to
-  `pyproject.toml` (regenerated only on the workstation, where the pytorch cu130 index is
-  reachable — verification runbook step zero), the `uv lock --check` step fails in sandboxes;
-  the other four steps must still pass before any push.
+  hashlib. No step needs the network. Two sandbox caveats, both measured on
+  2026-08-01: `uv lock --check` now **passes** (`uv.lock` was regenerated in `ee2b23d`, so
+  the earlier staleness caveat no longer applies), but `mypy` **fails** on three
+  pre-existing missing-yaml-stub errors in `training/`, so `make quality` stops there and
+  the shellcheck step never runs. Until those are resolved, run the remaining steps
+  individually before a push rather than treating the gate's exit code as the answer.
+  Note also that tool versions in a sandbox are **not** the pins: `uv run --no-sync`
+  resolves whatever the unsynced virtual environment holds (ruff 0.15.8 against a
+  0.15.21 pin, mypy 1.19.1 against 2.3.0), so a clean sandbox run is evidence, not proof.
+  `make test` likewise cannot sync, because it reaches the pytorch cu130 index; run
+  `uv run --no-sync pytest` instead.
 
 ## Hardware
 
