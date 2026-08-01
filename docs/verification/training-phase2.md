@@ -4,7 +4,18 @@ P2-D1 through P2-D5 as implemented: the full-scale data pipeline with
 decontamination, data mixing, WSD schedules, the replay buffer, and
 ZeRO-Offload optimizer offload.
 
+Every `make` target here follows the same dispatch chain: the `Makefile`
+runs `docker compose -f docker-compose.training.yaml run --rm training
+python -m training <subcommand>`, which enters `training/__main__.py`,
+dispatches through the argparse handlers in `training/cli.py`, and lands
+in the implementation module. Each entry below lists its implementation
+files so a failure can be read at the source without re-tracing the
+chain.
+
 ## P2.1 Contamination index (P2-D1)
+
+Implementation: `training/commands/build_contamination.py`,
+`training/data/contamination.py`.
 
 Command:
 
@@ -24,6 +35,10 @@ Observed:
 Status: PENDING
 
 ## P2.2 Full pipeline run (P2-D1)
+
+Implementation: `training/commands/prepare_corpus.py`,
+`training/data/pipeline.py`, `training/data/shards.py`,
+`training/data/staging.py`.
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
@@ -53,6 +68,9 @@ Status: PENDING
 
 ## P2.3 Mixture training (P2-D2)
 
+Implementation: `training/data/mixture.py`, `training/data/loader.py`,
+`training/runtime/loop.py`.
+
 Command (two prepared shard directories with one tokenizer hash):
 
 ```bash
@@ -77,6 +95,9 @@ Status: PENDING
 
 ## P2.4 WSD schedule (P2-D3)
 
+Implementation: `training/runtime/schedules.py`, `training/runtime/loop.py`,
+`training/runtime/tracking.py`.
+
 Command:
 
 ```bash
@@ -98,6 +119,9 @@ Observed:
 Status: PENDING
 
 ## P2.5 Replay buffer (P2-D4)
+
+Implementation: `training/commands/make_replay_synthetic.py`,
+`training/continual/replay.py`, `tests/hardware/test_ram.py`.
 
 Command:
 
@@ -122,6 +146,9 @@ Observed:
 Status: PENDING
 
 ## P2.6 Optimizer offload (P2-D5)
+
+Implementation: `training/runtime/offload.py`, `training/runtime/loop.py`,
+`training/runtime/watchdog.py`.
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
@@ -153,6 +180,9 @@ Observed:
 Status: PENDING
 
 ## P2.7 Offload resume (P2-D5)
+
+Implementation: the same offload path as P2.6, resumed through
+`training/runtime/checkpoint.py`.
 
 Command:
 

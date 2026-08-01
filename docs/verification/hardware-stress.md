@@ -38,6 +38,9 @@ first long training run (phase 2 of the training tier onward).
 
 ## HS.0 Preconditions and baseline
 
+Implementation: the `status` target in the root `Makefile` and the
+healthchecks in `docker-compose.yaml`.
+
 No other GPU consumer may be active for the duration of the phase:
 inference services down, no benchmark in flight.
 
@@ -76,6 +79,9 @@ Status: PENDING
 
 ## HS.1 CPU sustained AVX-512 soak
 
+Implementation: none in this repository; the entry runs external stressors
+(mprime, stress-ng) and reads `journalctl` and `sensors`.
+
 All-core AVX-512 load for 60 minutes. Prime95 small FFTs with AVX-512
 enabled is the harshest widely available stressor for this path;
 `stress-ng --matrix` with forced AVX is the packaged fallback.
@@ -104,6 +110,9 @@ Status: PENDING
 
 ## HS.2 GPU sustained soak
 
+Implementation: none in this repository; the entry runs the external
+gpu-burn stressor and reads `journalctl` and `nvidia-smi`.
+
 Sustained CUDA load for 60 minutes.
 
 Command:
@@ -127,6 +136,9 @@ Observed:
 Status: PENDING
 
 ## HS.3 Combined mixed-load soak
+
+Implementation: none in this repository; the entry runs the external
+gpu-burn and mprime (or stress-ng) stressors and reads `journalctl`.
 
 The actual gate. CPU and GPU stressors run simultaneously for a minimum
 of three hours, so the power supply rails and case heat-soak see the
@@ -156,6 +168,9 @@ Status: PENDING
 
 ## HS.4 Memory soak
 
+Implementation: none in this repository; the entry runs the external
+stress-ng stressor and reads `journalctl`.
+
 EXPO DDR5-6000 with FCLK 2100 MHz and Memory Context Restore disabled is
 itself an overclock and gets its own pass. Recommended rather than
 blocking: HS.1 and HS.3 already exercise the memory controller heavily,
@@ -179,6 +194,8 @@ Observed:
 Status: PENDING
 
 ## HS.5 Post-soak sweep and disposition
+
+Implementation: none in this repository; the entry reads `journalctl` only.
 
 Command:
 

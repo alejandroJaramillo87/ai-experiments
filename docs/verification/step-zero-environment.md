@@ -8,6 +8,9 @@ their smoke tests.
 
 ## 0.1 Regenerate the lockfile
 
+Implementation: no repository code; the resolver reads `pyproject.toml` and
+rewrites `uv.lock`.
+
 Command:
 
 ```bash
@@ -34,6 +37,9 @@ Status: VERIFIED
 
 ## 0.2 Sync the host environment
 
+Implementation: the `install` target in `Makefile`
+(`uv sync --all-groups --all-extras`), `pyproject.toml`.
+
 Command:
 
 ```bash
@@ -54,6 +60,10 @@ Run on the workstation 2026-08-01; output not recorded.
 Status: VERIFIED
 
 ## 0.3 Quality gate passes end to end
+
+Implementation: the `quality` target in the root `Makefile`,
+`pyproject.toml` (ruff and mypy configuration), `rust-harness/Makefile`
+(the chained rust gate).
 
 The `uv lock --check` step fails everywhere until 0.1 lands; this entry
 proves the full gate on the regenerated lockfile.
@@ -77,6 +87,10 @@ Status: VERIFIED
 
 ## 0.4 Rebuild the training image
 
+Implementation: `docker-compose.training.yaml`,
+`docker/training/Dockerfile.training`, `training/commands/smoke_test.py`
+(the `python -m training smoke --build` final layer).
+
 Command:
 
 ```bash
@@ -97,6 +111,10 @@ Run on the workstation 2026-08-01; output not recorded.
 Status: VERIFIED
 
 ## 0.5 CPUAdam built with znver5 flags
+
+Implementation: `docker/training/Dockerfile.training` (the `uv sync` line
+carrying `CFLAGS="-march=znver5"`); the behavioral check lives in
+`tests/hardware/test_cpu.py`.
 
 The Dockerfile compiles DeepSpeed CPUAdam with `-march=znver5` and falls
 back to `-march=native` only if gcc rejects znver5 (upstream issue #7556 is
@@ -124,6 +142,9 @@ Status: VERIFIED
 
 ## 0.6 Training smoke test on the workstation
 
+Implementation: `training/commands/smoke_test.py`, `common/smoke.py`,
+`docker/training/entrypoint.sh`.
+
 Command:
 
 ```bash
@@ -144,6 +165,10 @@ Run on the workstation 2026-08-01; output not recorded.
 Status: VERIFIED
 
 ## 0.7 Rebuild the interp image and smoke it
+
+Implementation: `docker/interp/Dockerfile.interp`,
+`docker-compose.interp.yaml`, `interp/commands/smoke_test.py`,
+`common/smoke.py`.
 
 Command:
 
@@ -167,6 +192,10 @@ Run on the workstation 2026-08-01; output not recorded.
 Status: VERIFIED
 
 ## 0.8 Hardware smoke suite
+
+Implementation: `tests/hardware/test_gpu.py`, `tests/hardware/test_cpu.py`,
+`tests/hardware/test_ram.py`, `tests/hardware/test_ssd.py`,
+`tests/hardware/conftest.py` (tier gating).
 
 Command:
 

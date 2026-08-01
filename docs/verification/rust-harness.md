@@ -45,6 +45,9 @@ it rather than re-diagnosed from scratch.
 
 ## RH.0 Build and test gate
 
+Implementation: `rust-harness/Makefile`, `rust-harness/Cargo.lock`; the test
+surface is `rust-harness/runtime/tests/` and `rust-harness/harness/tests/`.
+
 Blocks every other entry. First build of the workspace on the workstation
 toolchain.
 
@@ -83,6 +86,10 @@ Observed:
 Status: PENDING
 
 ## RH.1 Model location and architecture reconciliation
+
+Implementation: `rust-harness/runtime/src/bin/gguf-info.rs`,
+`rust-harness/runtime/src/gguf.rs`,
+`rust-harness/runtime/src/model/cpu.rs` (the capability guard).
 
 **Risks likely to surface here.** This is the highest-risk entry of the
 campaign: the CPU backend was written against a Gemma-4-style architecture
@@ -138,6 +145,11 @@ Status: PENDING
 
 ## RH.2 Real-model load and generation smoke
 
+Implementation: `rust-harness/harness/src/main.rs`,
+`rust-harness/harness/src/agent.rs`,
+`rust-harness/runtime/src/model/cpu.rs`,
+`rust-harness/runtime/src/tokenizer.rs`.
+
 First run of the tokenizer against the real vocabulary and of the dequant
 paths against real tensors.
 
@@ -168,6 +180,10 @@ Status: PENDING
 
 ## RH.3 CPU generation speed
 
+Implementation: `rust-harness/runtime/src/model/cpu.rs`,
+`rust-harness/runtime/src/tensor.rs`,
+`rust-harness/runtime/src/sampler.rs`.
+
 No pass threshold. The measured rate decides whether real-model activation
 capture and rr recording are practical on the CPU backend, and it is the
 baseline the cuda backend is later compared against. The backend is
@@ -197,6 +213,10 @@ Observed:
 Status: PENDING
 
 ## RH.4 KV delta prefill
+
+Implementation: `rust-harness/runtime/src/kv.rs`,
+`rust-harness/runtime/src/session.rs`,
+`rust-harness/runtime/src/model/cpu.rs`.
 
 The phase B acceptance claim in CPU form: turn latency scales with the
 appended delta, not the transcript. A second run in the same session root
@@ -229,6 +249,9 @@ Observed:
 Status: PENDING
 
 ## RH.5 Flight recorder and sandbox replay
+
+Implementation: `rust-harness/runtime/src/model/record.rs`,
+`rust-harness/runtime/tests/record_replay.rs`.
 
 Host half records; the sandbox half replays the recording against the
 mock, which any agent session can run.
@@ -274,6 +297,10 @@ Status: PENDING
 
 ## RH.6 Chrome trace in Perfetto
 
+Implementation: `rust-harness/harness/src/obs.rs`,
+`rust-harness/harness/tests/tracing_spans.rs`,
+`rust-harness/runtime/tests/tracing_spans.rs`.
+
 Command:
 
 ```bash
@@ -296,6 +323,9 @@ Observed:
 Status: PENDING
 
 ## RH.7 rr record, replay, reverse-continue
+
+Implementation: `rust-harness/Makefile` (the rr targets),
+`rust-harness/harness/src/main.rs`.
 
 The observability phase 3 acceptance: a CPU forward pass recorded and
 replayed under rr, with a watchpoint and `reverse-continue` reaching a
@@ -334,6 +364,9 @@ Status: PENDING
 
 ## RH.8 End-to-end coding task
 
+Implementation: `rust-harness/harness/src/permissions.rs`,
+`rust-harness/harness/src/tools.rs`, `rust-harness/harness/src/agent.rs`.
+
 The full agent loop (permissions, tools, transcript) on real weights.
 
 Command:
@@ -359,6 +392,11 @@ Observed:
 Status: PENDING
 
 ## RH.9 Interp chain on real weights
+
+Implementation: `rust-harness/runtime/src/bin/activation-capture.rs`,
+`rust-harness/runtime/src/npz.rs`,
+`rust-harness/runtime/src/model/probe.rs`; the Python side is
+`interp/probes/capture.py` and `interp/probes/export.py`.
 
 Four sequential sub-entries; each feeds the next. This closes the roadmap
 rows "real-model capture" and "monitor with a probe trained on real-model
@@ -486,6 +524,9 @@ Status: PENDING
 
 ## RH.10 Flamegraph baseline
 
+Implementation: `rust-harness/Makefile` (the `flame` target),
+`rust-harness/runtime/src/model/cpu.rs` (the profiled hot path).
+
 Requires `cargo-flamegraph` and `perf`. Records the optimization baseline
 for the CPU backend; there is no pass threshold beyond the profile being
 attributable.
@@ -512,6 +553,11 @@ Observed:
 Status: PENDING
 
 ## RH.11 Multi-turn chat on real weights
+
+Implementation: `rust-harness/harness/src/chat.rs`,
+`rust-harness/harness/src/compact.rs`,
+`rust-harness/harness/src/template.rs`,
+`rust-harness/runtime/src/session.rs`.
 
 Chat mode (`--chat`) is the decode-heavy complement to the prefill-heavy
 agent workload; within one process each turn delta-prefills only the new
@@ -545,6 +591,10 @@ Status: PENDING
 
 ## RH.12 Container build and reproducibility
 
+Implementation: the harness targets in the root `Makefile`,
+`docker-compose.rust-harness.yaml`,
+`docker/rust-harness/Dockerfile.rust-harness`.
+
 The containerized build exists for reproducibility: a pinned rust
 toolchain and `cargo build --locked` inside the image must produce a
 binary whose seeded generation matches the host build.
@@ -574,6 +624,9 @@ Observed:
 Status: PENDING
 
 ## RH.13 Run-level observability records
+
+Implementation: `rust-harness/harness/src/obs.rs`,
+`rust-harness/harness/tests/obs_contract.rs`, `common/obs/catalog.py`.
 
 The harness writes run-level records in the shared obs contract
 (`common/obs`): an event file `${OBS_LOG_DIR}/harness/<run_id>.jsonl`

@@ -8,7 +8,18 @@ comes from `.env.training`. The Qwen3 twin recipes
 (`training/recipes/reference/*qwen3*.yaml`) are the fallback if a Gemma 4
 step fails on kernel or hub-access grounds — record which family ran.
 
+Every `make` target here follows the same dispatch chain: the `Makefile`
+runs `docker compose -f docker-compose.training.yaml run --rm training
+python -m training <subcommand>`, which enters `training/__main__.py`,
+dispatches through the argparse handlers in `training/cli.py`, and lands
+in the implementation module. Each entry below lists its implementation
+files so a failure can be read at the source without re-tracing the
+chain.
+
 ## P1.1 Prepare a masked SFT dataset (F1)
+
+Implementation: `training/commands/prepare_sft.py`, `training/data/sft.py`,
+`training/data/tokenizer.py`, `training/models/families.py`.
 
 Command:
 
@@ -32,6 +43,9 @@ Status: PENDING
 
 ## P1.2 SFT smoke run (F2/F3)
 
+Implementation: `training/cli.py` (`cmd_train_sft`), `training/tune/sft.py`,
+`training/models/peft_utils.py`, `training/runtime/checkpoint.py`.
+
 Command:
 
 ```bash
@@ -53,6 +67,10 @@ Status: PENDING
 
 ## P1.3 SFT resume within tolerance (F3)
 
+Implementation: the same code path as P1.2, differing only in CLI
+arguments, plus `training/runtime/checkpoint.py` and
+`training/tune/sft_callbacks.py`.
+
 Command:
 
 ```bash
@@ -73,6 +91,9 @@ Observed:
 Status: PENDING
 
 ## P1.4 Teacher generation (F4)
+
+Implementation: `training/commands/generate_teacher.py`,
+`training/data/teacher.py`, `training/serving.py`, `common/serving.py`.
 
 Command (serving-dependent; vllm-gpu by default):
 
@@ -98,6 +119,9 @@ Status: PENDING
 
 ## P1.5 Online distillation (F5)
 
+Implementation: `training/tune/distill.py`, `training/data/distill.py`,
+`training/runtime/loop.py`.
+
 Command:
 
 ```bash
@@ -118,6 +142,9 @@ Observed:
 Status: PENDING
 
 ## P1.6 Cached distillation (F5)
+
+Implementation: `training/cli.py` (`cmd_distill_cache`),
+`training/data/distill.py`, `training/tune/distill.py`.
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
@@ -145,6 +172,10 @@ Status: PENDING
 
 ## P1.7 Adapter merge and export (F6)
 
+Implementation: `training/export/preflight.py`, `training/export/merge.py`,
+`training/export/convert.py`, `training/export/manifest.py`; the export
+image is `docker/training/Dockerfile.export`.
+
 Command:
 
 ```bash
@@ -164,6 +195,8 @@ Observed:
 Status: PENDING
 
 ## P1.8 Held-out loss evaluator (F7)
+
+Implementation: `training/eval/holdout.py`, `common/reports.py`.
 
 Command (inside the training container; inference down):
 
@@ -185,6 +218,8 @@ Observed:
 Status: PENDING
 
 ## P1.9 lm-eval evaluator (F7)
+
+Implementation: `training/eval/lmeval.py`, `training/eval/tasks.yaml`.
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
@@ -210,6 +245,10 @@ Observed:
 Status: PENDING
 
 ## P1.10 Full eval-ft scorecard (F7)
+
+Implementation: `training/commands/eval_ft.py`, `training/eval/runner.py`,
+`training/eval/scorecard.py`, `training/eval/judge.py`,
+`training/eval/generate.py`, `training/serving.py`.
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
@@ -240,6 +279,9 @@ Status: PENDING
 
 ## P1.11 Scorecard promotion (F8)
 
+Implementation: `training/commands/promote_scorecard.py`,
+`common/provenance.py`, `common/hashing.py`.
+
 Command:
 
 ```bash
@@ -259,6 +301,11 @@ Observed:
 Status: PENDING
 
 ## P1.12 Reference recipe cards (F8)
+
+Implementation: `training/commands/validate_recipe.py`,
+`training/recipes/schema.py`, `training/recipes/validate.py`; the memory-fit
+check uses `training/calculator/components.py` and
+`training/calculator/solve.py`.
 
 Command:
 
