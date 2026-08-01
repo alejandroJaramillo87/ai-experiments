@@ -165,6 +165,14 @@ Python gate; the parent's root `make quality` chains this gate. cargo-deny
 (advisories, licenses) is a deliberate non-step: its advisory database
 needs the network, so it belongs to CI or workstation tooling.
 
+The gate needs a `python3` on `PATH` that can import numpy. The npz
+writer's unit test (`runtime/src/npz.rs`) re-reads a written shard through
+`np.load`, so the shard format is checked against the reader the interp
+toolkit actually uses rather than a second Rust implementation, and
+`harness/tests/probe_identity.rs` takes its independent SHA-256 from
+`python3`'s hashlib. `runtime/tests/activation_capture.rs` skips only its
+row-level assertions when numpy is missing.
+
 ## Roadmap
 
 | Phase | Deliverable | Acceptance check |

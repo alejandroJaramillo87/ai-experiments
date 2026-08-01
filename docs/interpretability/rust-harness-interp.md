@@ -98,9 +98,12 @@ $ cargo run -p runtime --bin activation-capture -- \
   consistent across capture, train, and score, which is the property the
   fingerprint check protects.
 
-Verified in the sandbox: `interp.probes.capture.load_capture()` loads a
-rust-written capture of the synthetic fixture with correct shapes, dtypes,
-labels, and texts.
+Verified in the sandbox (`runtime/tests/activation_capture.rs`): the binary
+writes a capture of the synthetic fixture whose manifest fields, shard
+names, and row counts match the format above, and `np.load` — the reader
+`interp.probes.capture` opens shards with — reads back rows and labels that
+stay aligned with their source texts. The row-level half of that test skips
+when numpy is unavailable; the artifact-shape half always runs.
 
 ## In-band monitoring
 
@@ -175,13 +178,21 @@ within the established 2e-4 tolerance. Property tests assert taps do not
 perturb logits, a zero control vector is bit-identical to no steering, and
 steering is deterministic and carries across forks.
 
-The artifact flow is also verified end to end in the sandbox: a control
-vector written by `interp/steering/export.py` (`write_control_vector_gguf`)
-loads through `--control-vector`, and the harness binary run over the
-synthetic fixture produces output that is deterministic across repeats and
-differs from the unsteered run. Repeat runs must use a fresh session root:
-`session.jsonl` persists the transcript by design, so a second run in the
-same directory continues the session rather than reproducing it.
+The artifact flow is verified one direction only. Rust-written captures are
+read back through the Python reader (`runtime/tests/activation_capture.rs`
+opens the shards with `np.load`), but no committed test loads a
+Python-written GGUF through the Rust loaders: the steering and probe goldens
+synthesize their control-vector and probe GGUFs in Rust
+(`runtime::synth::GgufWriter`) in the layout `interp/steering/export.py` and
+`interp/probes/export.py` write. That covers the layout the Rust side parses
+and leaves the writers themselves unexercised from this side, so a divergence
+introduced in a Python exporter would first surface on the workstation, at
+runbook entries RH.9c and RH.9d. Closing the gap needs a fixture written by
+the Python exporters and committed, or a sandbox test that runs them.
+
+A separate practical note for those entries: repeat runs must use a fresh
+session root. `session.jsonl` persists the transcript by design, so a second
+run in the same directory continues the session rather than reproducing it.
 
 ## What per-layer embeddings change
 
