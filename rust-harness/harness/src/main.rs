@@ -305,10 +305,17 @@ fn build_generator(
 }
 
 /// Drain the monitor state: write one JSONL record per flagged position to
-/// `out`, print a one-line summary to stderr. Observation only, so this
-/// runs after the task and never affects its result.
+/// `out`, print a one-line summary to stderr. A missing parent directory is
+/// created rather than treated as a failure, since the flags exist only in
+/// memory and are lost the moment this returns. Observation only, so this
+/// runs after the task and never affects its result: the caller folds a
+/// failure here into a warning through `fold_probe_report`.
 fn report_probe(monitor: &MonitorHandle, out: &Path) -> Result<()> {
     let state = monitor.state.lock().expect("monitor state lock");
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create probe output directory {}", parent.display()))?;
+    }
     let mut file = std::fs::File::create(out)
         .with_context(|| format!("create probe output {}", out.display()))?;
     for flag in &state.flags {
@@ -332,6 +339,22 @@ fn report_probe(monitor: &MonitorHandle, out: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Fold a probe report's outcome into the task's. Observation is not part
+/// of the task, so a report failure leaves the task result alone and
+/// surfaces as a warning line; propagating it instead turned a completed,
+/// transcript-recorded task into exit 1 with the answer never printed.
+/// Returning the line rather than printing it keeps the policy testable
+/// without a live monitor.
+fn fold_probe_report(
+    task: Result<String>,
+    reported: Result<()>,
+) -> (Result<String>, Option<String>) {
+    let warning = reported
+        .err()
+        .map(|e| format!("[WARN] Probe flags not written: {e:#}"));
+    (task, warning)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run(
     root: &Path,
@@ -347,7 +370,7 @@ fn run(
     context: Option<usize>,
     compact_at: f32,
     chat: bool,
-) -> Result<String> {
+) -> Result<()> {
     let transcript = Transcript::open(&root.join("session.jsonl")).context("session.jsonl")?;
     // HARNESS.md: persistent memory read once at startup and injected as a
     // synthetic leading turn. A missing file is fine; mid-session edits take
@@ -366,23 +389,27 @@ fn run(
         context,
         Some(&snapshot_path),
     )?;
-    let answer = if chat {
+    // The task's outcome is held rather than propagated: the bookkeeping
+    // below runs either way, so flags collected before a failure survive it.
+    let result = if chat {
         // Chat mode: REPL over the generator, no tools or permissions. The
         // probe monitor and control vector are already installed on the
         // model, so interp flags apply to chat turns unchanged.
         let mut transcript = transcript;
         let stdin = std::io::stdin();
-        let turns = harness::chat::run_chat(
+        harness::chat::run_chat(
             &mut generator,
             &mut transcript,
             memory.as_deref(),
             compact_at,
             stdin.lock(),
             std::io::stdout(),
-        )?;
-        // Replies were already streamed to stdout; the summary is status.
-        eprintln!("[INFO] Chat ended: {turns} model turns");
-        String::new()
+        )
+        .map(|turns| {
+            // Replies were already streamed to stdout; the summary is status.
+            eprintln!("[INFO] Chat ended: {turns} model turns");
+            String::new()
+        })
     } else {
         let permissions = match std::fs::read_to_string(root.join("permissions.yaml")) {
             Ok(yaml) => Permissions::from_yaml(&yaml).context("permissions.yaml")?,
@@ -396,32 +423,61 @@ fn run(
             memory.as_deref(),
         );
         agent.compact_at = compact_at;
-        agent.run_task(&mut generator, task, 64, ask_stdin)?
+        agent.run_task(&mut generator, task, 64, ask_stdin)
     };
-    // Clean-exit snapshot: save the KV cache beside the transcript so the
-    // next start resumes without a full re-prefill. A save failure degrades
-    // to a warning — a completed task must not fail over persistence.
-    let saved = std::fs::File::create(&snapshot_path)
-        .map_err(anyhow::Error::from)
-        .and_then(|f| {
-            let mut w = std::io::BufWriter::new(f);
-            generator.session().save(&mut w, model_hash)?;
-            std::io::Write::flush(&mut w)?;
-            Ok(())
-        });
-    match saved {
-        Ok(()) => eprintln!(
-            "[INFO] Session snapshot: {} cached tokens at {}",
-            generator.session().cached_len(),
-            snapshot_path.display()
-        ),
-        Err(e) => eprintln!("[WARN] Session snapshot not saved: {e:#}"),
+    if let Ok(answer) = &result {
+        // The answer is the task's product: print it before the persistence
+        // and observation bookkeeping, so neither can keep a completed
+        // task's answer off stdout.
+        if !answer.is_empty() {
+            println!("{answer}");
+        }
+        // Clean-exit snapshot: save the KV cache beside the transcript so the
+        // next start resumes without a full re-prefill. A save failure degrades
+        // to a warning — a completed task must not fail over persistence.
+        let saved = std::fs::File::create(&snapshot_path)
+            .map_err(anyhow::Error::from)
+            .and_then(|f| {
+                let mut w = std::io::BufWriter::new(f);
+                generator.session().save(&mut w, model_hash)?;
+                std::io::Write::flush(&mut w)?;
+                Ok(())
+            });
+        match saved {
+            Ok(()) => eprintln!(
+                "[INFO] Session snapshot: {} cached tokens at {}",
+                generator.session().cached_len(),
+                snapshot_path.display()
+            ),
+            Err(e) => eprintln!("[WARN] Session snapshot not saved: {e:#}"),
+        }
     }
-    if let Some(monitor) = &monitor {
-        let default_out = root.join("probe-flags.jsonl");
-        report_probe(monitor, probe_out.unwrap_or(&default_out))?;
-    }
-    Ok(answer)
+    let result = match &monitor {
+        Some(monitor) => {
+            let default_out = root.join("probe-flags.jsonl");
+            let reported = report_probe(monitor, probe_out.unwrap_or(&default_out));
+            let (result, warning) = fold_probe_report(result, reported);
+            if let Some(warning) = warning {
+                eprintln!("{warning}");
+            }
+            result
+        }
+        None => result,
+    };
+    result?;
+    Ok(())
+}
+
+/// Refuse a flag value that is itself a flag, naming both. The extractor
+/// takes the word after a flag as its value, so an omitted value swallows
+/// the flag that follows: the swallowed flag never applies, its own value
+/// falls into the task text, and the run exits 0 having done something the
+/// user never asked for. Only the `--` spelling this parser recognizes is
+/// refused; a negative number or a path starting with `-` is a value.
+fn flag_value_error(flag: &str, value: &str) -> Option<String> {
+    value
+        .starts_with("--")
+        .then(|| format!("[ERROR] {flag}: expected a value, found the flag {value}"))
 }
 
 fn main() -> ExitCode {
@@ -485,6 +541,10 @@ fn main() -> ExitCode {
         if let Some(i) = args.iter().position(|a| a == flag) {
             if i + 1 >= args.len() {
                 eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            }
+            if let Some(error) = flag_value_error(flag, &args[i + 1]) {
+                eprintln!("{error}");
                 return ExitCode::from(2);
             }
             *slot = Some(std::path::PathBuf::from(args.remove(i + 1)));
@@ -616,10 +676,8 @@ fn main() -> ExitCode {
         compact_at,
         chat,
     ) {
-        Ok(answer) => {
-            if !answer.is_empty() {
-                println!("{answer}");
-            }
+        // The answer, if any, was printed by `run` before its bookkeeping.
+        Ok(()) => {
             run_log.end(0, &root);
             ExitCode::SUCCESS
         }
@@ -677,6 +735,90 @@ mod tests {
         })
         .expect("unknown is the capture default, not a mismatch");
         assert!(!hashed, "a skipped check must not hash the model");
+    }
+
+    #[test]
+    fn a_probe_report_failure_warns_and_leaves_a_completed_task_completed() {
+        let (result, warning) = fold_probe_report(
+            Ok("the answer".to_string()),
+            Err(anyhow::anyhow!("create probe output /absent/flags.jsonl")),
+        );
+        assert_eq!(
+            result.expect("a write failure must not fail the task"),
+            "the answer"
+        );
+        let warning = warning.expect("the discarded flags must still be reported");
+        assert!(warning.starts_with("[WARN] "), "{warning}");
+        assert!(warning.contains("create probe output"), "{warning}");
+    }
+
+    #[test]
+    fn a_probe_report_never_rewrites_the_task_result_it_folds_into() {
+        let (ok, warning) = fold_probe_report(Ok("kept".to_string()), Ok(()));
+        assert_eq!(ok.expect("a clean report changes nothing"), "kept");
+        assert_eq!(warning, None);
+        // A failed task stays failed with its own error, not the report's.
+        let (err, _) = fold_probe_report(
+            Err(anyhow::anyhow!("task error")),
+            Err(anyhow::anyhow!("report error")),
+        );
+        assert_eq!(
+            err.expect_err("a failed task stays failed").to_string(),
+            "task error"
+        );
+    }
+
+    /// Minimal probe GGUF in the `interp/probes/export.py` layout, enough
+    /// for `Probe::from_gguf`; the scoring math is covered by the runtime's
+    /// reference test, so the values here are arbitrary.
+    fn probe_gguf() -> Vec<u8> {
+        let mut w = runtime::synth::GgufWriter::new();
+        w.kv_str("general.architecture", "probe");
+        w.kv_str("probe.name", "report-probe");
+        w.kv_str("probe.model_hash", UNKNOWN_MODEL_HASH);
+        w.kv_u32("probe.layer", 0);
+        w.kv_f32("probe.bias", 0.0);
+        w.kv_f32("probe.threshold", 0.5);
+        w.tensor_f32("probe.weights", &[2], &[1.0, 1.0]);
+        w.tensor_f32("probe.mu", &[2], &[0.0, 0.0]);
+        w.tensor_f32("probe.sigma", &[2], &[1.0, 1.0]);
+        w.finish()
+    }
+
+    #[test]
+    fn probe_flags_are_written_under_a_parent_directory_that_does_not_exist_yet() {
+        let image = probe_gguf();
+        let file = runtime::gguf::parse(&image).expect("parse probe GGUF");
+        let probe = std::sync::Arc::new(
+            runtime::model::probe::Probe::from_gguf(&file, &image).expect("load probe"),
+        );
+        let (_tap, state) = runtime::model::probe::ProbeMonitor::new(std::sync::Arc::clone(&probe));
+        let monitor = MonitorHandle { probe, state };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("absent").join("flags.jsonl");
+        report_probe(&monitor, &out).expect("a missing parent directory is created, not a failure");
+        assert!(out.is_file(), "{}", out.display());
+    }
+
+    #[test]
+    fn a_flag_value_that_is_itself_a_flag_is_refused_naming_the_flag_and_the_value() {
+        // `--probe-out --max-tokens 4 hello` without a path: the old parser
+        // stored "--max-tokens" as the probe output, dropped the token
+        // budget, and pushed "4" into the task text, all at exit 0.
+        let error = flag_value_error("--probe-out", "--max-tokens")
+            .expect("an omitted value must not swallow the following flag");
+        assert!(error.starts_with("[ERROR] "), "{error}");
+        assert!(error.contains("--probe-out"), "{error}");
+        assert!(error.contains("--max-tokens"), "{error}");
+    }
+
+    #[test]
+    fn a_flag_value_that_only_looks_flag_adjacent_is_accepted() {
+        // Refusing more than the `--` spelling would reject legitimate
+        // values: a negative scale, or a path whose name starts with a dash.
+        assert_eq!(flag_value_error("--probe-out", "flags.jsonl"), None);
+        assert_eq!(flag_value_error("--control-vector-scale", "-1.5"), None);
+        assert_eq!(flag_value_error("--model", "./-weights.gguf"), None);
     }
 
     #[test]
