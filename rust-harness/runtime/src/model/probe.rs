@@ -7,8 +7,11 @@
  * scores every position of the probe's layer as it flows through the
  * forward pass. The scoring math mirrors interp/probes/score.py exactly:
  * sigmoid(((x - mu) / sigma) . w + bias), flagged when strictly above the
- * trained threshold. Observation only — the monitor never alters the
- * stream, so monitored and unmonitored runs produce identical logits.
+ * trained threshold. Probe parameters must be finite at load, and a score
+ * that is still not a number is flagged rather than passed as clean, since
+ * no comparison against a threshold can clear it. Observation only — the
+ * monitor never alters the stream, so monitored and unmonitored runs
+ * produce identical logits.
  */
 
 use std::sync::{Arc, Mutex};
@@ -72,6 +75,19 @@ impl Probe {
             mu.len(),
             sigma.len()
         );
+        // A non-finite parameter poisons every score, and a NaN score fails
+        // the strict threshold comparison, so the monitor would report every
+        // position scored and none flagged — the same summary a clean run
+        // prints. Refuse the file rather than monitor with it.
+        for (name, values) in [
+            ("probe.weights", &weights),
+            ("probe.mu", &mu),
+            ("probe.sigma", &sigma),
+        ] {
+            if let Some(i) = values.iter().position(|v| !v.is_finite()) {
+                bail!("{name} must be finite, got {} at index {i}", values[i]);
+            }
+        }
         ensure!(
             sigma.iter().all(|v| *v > 0.0),
             "probe.sigma must be strictly positive"
@@ -81,6 +97,8 @@ impl Probe {
             threshold.is_finite(),
             "probe.threshold must be finite, got {threshold}"
         );
+        let bias = f("probe.bias")?;
+        ensure!(bias.is_finite(), "probe.bias must be finite, got {bias}");
         Ok(Probe {
             name: s("probe.name")?,
             model_hash: s("probe.model_hash")?,
@@ -89,7 +107,7 @@ impl Probe {
             weights,
             mu,
             sigma,
-            bias: f("probe.bias")?,
+            bias,
         })
     }
 
@@ -98,8 +116,18 @@ impl Probe {
     }
 
     /// Sigmoid probe score for one residual row, the score.py math.
-    pub fn score(&self, x: &[f32]) -> f32 {
-        debug_assert_eq!(x.len(), self.weights.len());
+    ///
+    /// The width check is an error rather than a `debug_assert`: a release
+    /// build compiles the assert out, and `zip` then scores a truncated dot
+    /// product that looks like an ordinary score. One length comparison per
+    /// scored position is nothing beside the dot product it guards.
+    pub fn score(&self, x: &[f32]) -> Result<f32> {
+        ensure!(
+            x.len() == self.weights.len(),
+            "residual row of width {} does not match probe width {}",
+            x.len(),
+            self.weights.len()
+        );
         let logit: f32 = x
             .iter()
             .zip(&self.mu)
@@ -108,7 +136,7 @@ impl Probe {
             .map(|(((x, mu), sigma), w)| (x - mu) / sigma * w)
             .sum::<f32>()
             + self.bias;
-        1.0 / (1.0 + (-logit).exp())
+        Ok(1.0 / (1.0 + (-logit).exp()))
     }
 }
 
@@ -150,13 +178,21 @@ impl ProbeMonitor {
 
 impl Tap for ProbeMonitor {
     fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]) {
-        if layer != self.probe.layer || x.len() != self.probe.width() {
+        if layer != self.probe.layer {
             return;
         }
-        let score = self.probe.score(x);
+        // A row of another width belongs to a model this probe was not
+        // trained on; `score` refuses it and the position goes unscored.
+        let Ok(score) = self.probe.score(x) else {
+            return;
+        };
         let mut state = self.state.lock().expect("monitor state lock");
         state.scored += 1;
-        if score > self.probe.threshold {
+        // Parameters are finite by load-time check, so a non-finite score
+        // means a non-finite residual. `score > threshold` is false for NaN,
+        // so leaving it unflagged would report the position clean: a monitor
+        // that could not score a position must not claim it passed.
+        if !score.is_finite() || score > self.probe.threshold {
             state.flags.push(Flag { position, score });
         }
     }
@@ -165,6 +201,28 @@ impl Tap for ProbeMonitor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Probe GGUF in the shape `interp/probes/export.py` writes, with the
+    /// parameters under test.
+    fn probe_gguf(weights: &[f32], mu: &[f32], sigma: &[f32], bias: f32) -> Vec<u8> {
+        let mut w = crate::synth::GgufWriter::new();
+        w.kv_str("general.architecture", "probe");
+        w.kv_str("probe.name", "test");
+        w.kv_str("probe.model_hash", "hash");
+        w.kv_u32("probe.layer", 1);
+        w.kv_f32("probe.bias", bias);
+        w.kv_f32("probe.threshold", 0.5);
+        let dims = [weights.len() as u64];
+        w.tensor_f32("probe.weights", &dims, weights);
+        w.tensor_f32("probe.mu", &dims, mu);
+        w.tensor_f32("probe.sigma", &dims, sigma);
+        w.finish()
+    }
+
+    fn load(image: &[u8]) -> Result<Probe> {
+        let file = crate::gguf::parse(image)?;
+        Probe::from_gguf(&file, image)
+    }
 
     fn test_probe(threshold: f32) -> Probe {
         Probe {
@@ -183,7 +241,7 @@ mod tests {
     fn score_matches_a_hand_computed_sigmoid() {
         let probe = test_probe(0.5);
         // logit = (1.5-0.5)/1*1 + (1-0)/2*(-2) + (1-1)/0.5*0.5 + 0.25 = 0.25
-        let score = probe.score(&[1.5, 1.0, 1.0]);
+        let score = probe.score(&[1.5, 1.0, 1.0]).unwrap();
         let expected = 1.0 / (1.0 + (-0.25f32).exp());
         assert!((score - expected).abs() < 1e-6);
     }
@@ -191,7 +249,7 @@ mod tests {
     #[test]
     fn monitor_flags_only_scores_strictly_above_threshold() {
         let mut probe = test_probe(0.0);
-        probe.threshold = probe.score(&[1.5, 1.0, 1.0]); // exact score of position 0
+        probe.threshold = probe.score(&[1.5, 1.0, 1.0]).unwrap(); // exact score of position 0
         let (mut monitor, state) = ProbeMonitor::new(Arc::new(probe));
         monitor.on_residual(1, 0, &[1.5, 1.0, 1.0]); // score == threshold: not flagged
         monitor.on_residual(1, 1, &[9.0, 1.0, 1.0]); // large positive logit: flagged
@@ -207,5 +265,83 @@ mod tests {
         monitor.on_residual(0, 0, &[1.5, 1.0, 1.0]); // wrong layer
         monitor.on_residual(1, 0, &[1.5, 1.0]); // wrong width
         assert_eq!(state.lock().unwrap().scored, 0);
+    }
+
+    #[test]
+    fn a_finite_probe_loads_and_scores() {
+        let image = probe_gguf(&[1.0, -2.0], &[0.5, 0.0], &[1.0, 2.0], 0.25);
+        let probe = load(&image).expect("finite probe loads");
+        assert_eq!(probe.width(), 2);
+        assert!(probe.score(&[1.5, 1.0]).unwrap().is_finite());
+    }
+
+    #[test]
+    fn from_gguf_refuses_a_non_finite_probe_tensor() {
+        // A non-finite parameter makes every score NaN, and NaN fails the
+        // strict threshold comparison, so the run would report every position
+        // scored and none flagged — exactly what a clean run reports.
+        for (name, weights, mu, sigma) in [
+            (
+                "probe.weights",
+                vec![1.0, f32::NAN],
+                vec![0.0, 0.0],
+                vec![1.0, 1.0],
+            ),
+            (
+                "probe.mu",
+                vec![1.0, 1.0],
+                vec![0.0, f32::INFINITY],
+                vec![1.0, 1.0],
+            ),
+            (
+                "probe.sigma",
+                vec![1.0, 1.0],
+                vec![0.0, 0.0],
+                vec![1.0, f32::INFINITY],
+            ),
+        ] {
+            let image = probe_gguf(&weights, &mu, &sigma, 0.25);
+            let err = load(&image).err().expect("expected error");
+            assert!(
+                err.to_string().contains(&format!("{name} must be finite")),
+                "{err}"
+            );
+        }
+    }
+
+    #[test]
+    fn from_gguf_refuses_a_non_finite_bias() {
+        let image = probe_gguf(&[1.0, 1.0], &[0.0, 0.0], &[1.0, 1.0], f32::NAN);
+        let err = load(&image).err().expect("expected error");
+        assert!(
+            err.to_string().contains("probe.bias must be finite"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_non_finite_score_is_flagged_rather_than_counted_as_clean() {
+        // Parameters are finite by load-time check, so a NaN score means a
+        // NaN residual. `score > threshold` is false for NaN, so an unflagged
+        // position would read as clean in the "N scored, 0 flagged" summary.
+        let (mut monitor, state) = ProbeMonitor::new(Arc::new(test_probe(0.5)));
+        monitor.on_residual(1, 3, &[f32::NAN, 1.0, 1.0]);
+        let state = state.lock().unwrap();
+        assert_eq!(state.scored, 1);
+        assert_eq!(state.flags.len(), 1);
+        assert_eq!(state.flags[0].position, 3);
+        assert!(state.flags[0].score.is_nan());
+    }
+
+    #[test]
+    fn score_refuses_a_residual_row_of_another_width() {
+        // A release build compiles a `debug_assert` out and `zip` then scores
+        // a truncated dot product, which looks like an ordinary score.
+        let probe = test_probe(0.5);
+        let err = probe.score(&[1.5, 1.0]).expect_err("expected error");
+        assert!(
+            err.to_string().contains("does not match probe width"),
+            "{err}"
+        );
     }
 }
