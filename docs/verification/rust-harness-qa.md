@@ -358,11 +358,10 @@ RH.0 through RH.13.
 
 ## Campaign 2 log
 
-Second run of the campaign, 2026-07-31, sandbox. **Status: in progress** —
-discovery is complete and recorded below; remediation proceeds in batches,
-and each finding entry gains a fixed, waived, or refuted disposition as its
-commit lands. This section is written before the fixes so that the
-discovery result survives independently of the remediation.
+Second run of the campaign, 2026-07-31 to 2026-08-01, sandbox, 35 commits
+from `66ec39b` to `7ccac37`. The discovery sections below were written
+before any fix landed, so the result survives independently of the
+remediation; the dispositions and result follow at the end.
 
 Campaign 1 findings are excluded from scope by construction: every finder
 received the fixed and waived list from the log above and duplicates were
@@ -728,11 +727,139 @@ to be adopted: `suboptimal_flops`, which would change f32 numerics and
 break the determinism and golden tests, and `float_cmp`, which fires only
 on tests asserting exactness.
 
+### Dispositions
+
+Every fix landed with a regression test demonstrated failing before it and
+passing after; both outputs were recorded during remediation, and each
+batch closed with an independent integrator that re-derived the red-before
+in a clean worktree rather than trusting the claim.
+
+| Finding | Disposition | Commit |
+|---|---|---|
+| A1-R03 RMSNorm convention | Fixed | `5cd9ef9` |
+| E-R01 control-vector block | Fixed | `fbbc025` |
+| E-01 duplicate capture layers | Fixed | `6cd163e` |
+| F-09 capture pipeline untested | Fixed | `e17cc65` |
+| B-N01 replay branch collision | Fixed | `3c335bb` |
+| E-08, A2-04 probe identity | Fixed | `6b3f835`, `cd7ffc7` |
+| E-22, E-23 Python capture guards | Fixed | `5a2d38e` |
+| B-N02 unknown permission keys | Fixed | `f124d55` |
+| D-N02 unbounded bash drain | Fixed | `80860be` |
+| D-N03, D-N04 argument and probe reporting | Fixed | `cd164dc` |
+| B-N04 chat delimiters as byte runs | Fixed | `9c8f33c` |
+| C-20 unbounded replay position | Fixed | `5451495` |
+| A2-17 NaN perplexity | Fixed | `c39883b` |
+| A2-16, A2-45 probe parameters and width | Fixed | `0eef55c` |
+| B-N05 unterminated transcript line | Fixed | `012767d` |
+| B-N06 super-quadratic encode | Fixed | `5c54812` |
+| C-06 session and cache desync | Fixed | `0be0fa2` |
+| A1-02, C-07, C-R10, A1-12, A1-13, A1-14, H-37, B-N03 load-time validation | Fixed | `4d87d36` |
+| C-05 partial snapshot restore | Fixed | `1cd2053` |
+| A1-03 prefill atomicity | Fixed | `2708b24` |
+| C-19 pattern zero aborts the binary | Fixed | `4d87d36` |
+| C-21, F-27 blocking send on a runtime thread | Fixed | `9c8f33c` (allowlist), open for the sink itself |
+| G-32, G-36, G-29 hot-path and snapshot cost | Fixed | `6250256`, `58d0ebf` |
+| G-33 recorder row copy | Fixed | `ba50453` |
+| H-54, H-58, H-59, H-60 hygiene | Fixed | `8dca140`, `322a83e`, `810a562`, `eea51f9` |
+| I-39 through I-66 documentation drift | Fixed | `2097c32`, `164d4a1`, `7ccac37` |
+| A1-R04 dual RoPE | Refuted | — |
+| A1-R06 snapshot geometry | Refuted | — |
+| C-R12 recorder atomicity | Refuted as reported; the contract it named was later documented, and the violation fixed | `53858ef` |
+| D-N01 recording coverage | Refuted | — |
+| G-28 startup fingerprint | Waived, measured | — |
+| A1-R05 monitor position semantics | Waived, documented | — |
+
+Two findings were closed that no package owned, both raised by an
+integrator auditing a batch rather than by a finder: `Session::restore`
+left a loaded cache behind an empty token list on a length disagreement,
+wedging the session permanently (`b6c42b2`), and `RecordingModel` violated
+the atomicity contract the trait had just gained (`53858ef`).
+
+**G-28 waived with measurement.** The startup fingerprint cannot be made
+meaningfully faster while producing the same value, and the value gates
+snapshot compatibility so it cannot change. Three exact reformulations of
+the FNV-1a recurrence moved throughput under one percent, an L1-resident
+run ruled out memory bandwidth, and substituting a two-cycle rotate for the
+four-cycle multiply produced exactly the predicted 2.0x, pinning the loop
+to its dependency-chain latency. The remedy is caching the fingerprint
+beside the checkpoint, which is a change to the binary's startup path
+rather than to the hash.
+
+### Verification
+
+The rust gate exits 0 at every commit and twice at HEAD, the second run
+watching for the tracing flake Campaign 1 recorded. 306 tests pass, 6
+remain ignored (the Tier 3 entries needing the GPU). The Python steps
+`ruff format --check` and `ruff check` pass; `mypy` reports three
+pre-existing missing-stub errors in unmodified `training/` files, and
+`uv lock --check` is skipped per the documented sandbox caveat.
+
+Numerics are unchanged by the entire campaign. The determinism oracles
+recorded before the first commit — the sha256 of a `--record` flight log
+and of a capture shard at a fixed seed — match at HEAD. The final
+integrator additionally compared 45 digests over the raw f32 bit patterns
+of every logit at every position, spanning nine prompt lengths, steered
+and tapped runs, forks, save and restore round trips, and six synthetic
+geometries the committed fixture cannot express, plus 49 `--record`
+outputs across four prompts, four seeds, and three token budgets. All
+identical.
+
+Performance was measured in process, not end to end: the release binary on
+the 46 KB fixture has a noise floor of roughly plus or minus 8 to 10
+percent, wider than most of the effects, and an attempt to bisect an
+apparent end-to-end regression across batch boundaries produced no
+monotonic trend, confirming the method rather than a regression. At E4B
+head width the forward pass improves 21.9 percent in total, and
+allocations fall from 39 to 1 per token.
+
 ### Result
 
-Pending. Discovery is complete across all ten dimensions after two passes.
-Sixty-four findings are confirmed under independent refutation attempts
-(four critical, twelve high), four are refuted with rationale recorded,
-two remain unverified at low severity, and twenty-eight low-severity
-findings are recorded without verification by the severity policy.
-Dispositions and the closing counts land as remediation proceeds.
+Discovery: sixty-four findings confirmed under independent refutation
+attempts across ten dimensions and two passes, four refuted with rationale,
+twenty-eight low-severity findings recorded without verification by the
+severity policy.
+
+Remediation: sixty-two fixed, two waived with recorded rationale, plus two
+defects found by integrators and fixed. Four critical findings are closed —
+two of them silent-corruption classes that no test could have caught,
+because the golden fixture and the numpy reference encoded the same wrong
+convention.
+
+### Followups
+
+Recorded, not fixed, with the reason each was left:
+
+- **Tokenizer parity with Hugging Face is unproven.** The only test that
+  would catch a segmentation divergence is ignored, awaiting a
+  workstation-generated golden. On a real Gemma vocabulary the
+  user-defined set includes whitespace runs, so the special-piece change
+  could affect ordinary prose; nothing in a sandbox can settle it. This is
+  the highest-value item on this list.
+- **The Python gate here is not authoritative.** `uv run --no-sync`
+  resolves ruff 0.15.8 and mypy 1.19.1 against pins of 0.15.21 and 2.3.0,
+  because the repository virtual environment is empty. The Python results
+  above should be reconfirmed on the workstation.
+- **The bash tool drops late background output silently.** The bound is
+  correct, but output arriving after the drain grace is discarded with no
+  note, unlike the timeout path which appends one.
+- **`TokenSink::emit` still panics on a runtime thread.** The prompt-side
+  injection risk is closed, but the sink itself is unchanged, and
+  `subagents.rs` and `stream.rs` remain unreachable from the binary.
+  Wiring them is a feature decision.
+- **Caching the model fingerprint** at startup, per G-28 above.
+- `serde_yaml` is deprecated and unmaintained; replacing it is a dependency
+  change, deferred under the pin-then-fix rule.
+- No MSRV is declared, there is no continuous integration, and neither
+  coverage nor mutation testing is measured.
+- `replay` still accepts a divergent branch that writes only positions the
+  first never claimed; catching that needs a branch-keyed recording format.
+- `run_capture` on the Python side still accepts duplicate layers from its
+  caller even though the loader now refuses the artifact, and a same-length
+  reorder of the dataset preserving counts still passes.
+- k-quant (Q4_K, Q6_K) support, prefill batching, and streaming capture
+  shards remain design-scale work, unchanged by this campaign.
+
+Real-weight, GPU, and container-build claims remain with runbook entries
+RH.0 through RH.13. The one host command this campaign specifically needs
+is RH.5, whose `--record` sha256 closes the numerics loop on the real
+checkpoint rather than on synthetic geometry.
