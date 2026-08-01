@@ -1,0 +1,45 @@
+{
+  "contract": "activation_capture.manifest",
+  "description": "manifest.json at the root of an activation-capture directory, beside examples.jsonl and shard_NNNNN.npz",
+  "writers": [
+    "interp/probes/capture.py (run_capture)",
+    "rust-harness/runtime/src/bin/activation-capture.rs"
+  ],
+  "readers": [
+    "interp/probes/capture.py (load_capture)",
+    "interp/probes/train.py",
+    "interp/probes/registry.py"
+  ],
+  "guarded_by": [
+    "rust-harness/runtime/tests/activation_capture.rs",
+    "tests/interp/test_capture_contract.py"
+  ],
+  "required": [
+    "artifact",
+    "count",
+    "created",
+    "dataset_path",
+    "dataset_sha256",
+    "dtype",
+    "git_sha",
+    "layers",
+    "model_hash",
+    "model_id",
+    "model_revision",
+    "position",
+    "schema_version",
+    "shards",
+    "tokenizer_fingerprint"
+  ],
+  "writer_only": {
+    "rust-harness-cpu": [
+      "capture_backend"
+    ]
+  },
+  "notes": {
+    "capture_backend": "Emitted by the Rust writer only. The Python writer predates it and no reader requires it, so it is writer-only rather than required. Adding it to the Python writer is a behavior change that belongs in its own commit.",
+    "dataset_sha256": "Not comparable across writers. Rust hashes the file's raw bytes (std::fs::read); Python hashes text-mode f.read(), which normalizes CRLF to LF. The two digests agree for an LF-only dataset and differ for a CRLF one. Both are internally consistent; neither is wrong. Do not 'fix' one side to match the other without deciding which domain the field means and bumping schema_version - a test pins the divergence so a one-sided change fails.",
+    "tokenizer_fingerprint": "Not comparable across writers, and documented as such at activation-capture.rs:287-291. Python hashes name_or_path, len(tokenizer), and the chat template; Rust hashes the model file path, the vocabulary length, and an empty template, because a raw-text capture applies no template. Each keeps its own artifacts internally consistent from capture through train to score.",
+    "envelope": "The required set is a superset of the shared report envelope in common/reports.py: schema_version, exactly one discriminator (artifact), a stamp (created), and git_sha. Both writers satisfy validate_report today, though that module scopes itself to reports rather than artifact manifests."
+  }
+}
