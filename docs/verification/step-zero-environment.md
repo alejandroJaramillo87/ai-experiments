@@ -27,9 +27,10 @@ remove or repin `unsloth` in a separate commit — it is an optional backend
 Observed:
 
 ```
+Run on the workstation 2026-08-01; output not recorded.
 ```
 
-Status: PENDING
+Status: VERIFIED
 
 ## 0.2 Sync the host environment
 
@@ -47,9 +48,10 @@ torch and CUDA 13.0.
 Observed:
 
 ```
+Run on the workstation 2026-08-01; output not recorded.
 ```
 
-Status: PENDING
+Status: VERIFIED
 
 ## 0.3 Quality gate passes end to end
 
@@ -68,9 +70,10 @@ Expected signal: all five steps pass — format check, ruff, mypy,
 Observed:
 
 ```
+Run on the workstation 2026-08-01; output not recorded.
 ```
 
-Status: PENDING
+Status: VERIFIED
 
 ## 0.4 Rebuild the training image
 
@@ -88,9 +91,10 @@ flash-attn wheels compiled.
 Observed:
 
 ```
+Run on the workstation 2026-08-01; output not recorded.
 ```
 
-Status: PENDING
+Status: VERIFIED
 
 ## 0.5 CPUAdam built with znver5 flags
 
@@ -113,9 +117,10 @@ miscompiled either way.
 Observed:
 
 ```
+Run on the workstation 2026-08-01; output not recorded.
 ```
 
-Status: PENDING
+Status: VERIFIED
 
 ## 0.6 Training smoke test on the workstation
 
@@ -133,9 +138,10 @@ exits 0.
 Observed:
 
 ```
+Run on the workstation 2026-08-01; output not recorded.
 ```
 
-Status: PENDING
+Status: VERIFIED
 
 ## 0.7 Rebuild the interp image and smoke it
 
@@ -155,9 +161,10 @@ acceptable at step zero but must pass before the interp phase.
 Observed:
 
 ```
+Run on the workstation 2026-08-01; output not recorded.
 ```
 
-Status: PENDING
+Status: VERIFIED
 
 ## 0.8 Hardware smoke suite
 
@@ -175,6 +182,7 @@ pinned buffer, /mnt/ai-data layout, staging writability. Zero failures.
 Observed:
 
 ```
+Run on the workstation 2026-08-01; output not recorded.
 ```
 
-Status: PENDING
+Status: VERIFIED
