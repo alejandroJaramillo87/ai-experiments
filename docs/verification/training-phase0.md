@@ -295,9 +295,29 @@ allocated) plus CUDA context 1.08 GB (NVML minus reserved) = 2.32 GB.
 This is the calibration path the D4 model intends: OVERHEAD_BYTES
 raised from 1.5 GB to 2.5 GB, giving a reserved estimate of 9.64 GB.
 Re-run pending an image rebuild.
+
+2026-08-01: after the rebuild the 1B calibrate passed both checks:
+
+[RUN] Calibrating pretrain-1b: 5 steps on cuda:0
+[transformers] `use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+[OK] Calibration record written: /mnt/ai-data/training/verify/calibrate-1b.json
+[OK] Parameter count: 1,073,809,408 (analytic matches model)
+
+Estimated allocated: 7.14 GB
+Measured allocated:  7.00 GB
+Measured reserved:   8.38 GB
+NVML peak:           9.46 GB
+[OK] Allocated error: +2.1% (within the 10% acceptance bar)
+[OK] Reserved estimate covers the NVML peak
+
+With the tiny-e2e pass above, the D4 acceptance is fully observed:
+record JSONs written for both reference configs, the allocated
+estimate within the bar on each (absolute floor on tiny, +2.1 percent
+relative on 1B), and the reserved estimate covering the NVML peak.
+KB-53 through KB-56 are resolved by these runs.
 ```
 
-Status: PENDING
+Status: VERIFIED
 
 ## P0.4 Recipe validation (D5)
 
