@@ -713,8 +713,9 @@ fold into it.
 
 ### Recorded without verification
 
-Twenty-six low-severity findings were accepted into the record without a
-refutation attempt, by the severity policy above. They cover dead code
+Twenty-eight low-severity findings were accepted into the record without a
+refutation attempt, by the severity policy above — twenty-six from the
+first pass and two more from the second. They cover dead code
 (`is_vision_tensor`), release-only shape guards in `Probe::score`,
 fingerprint sensitivity to path spelling, provenance drift between the two
 capture writers (`dataset_sha256` over raw bytes against decoded text, the
@@ -768,6 +769,26 @@ in a clean worktree rather than trusting the claim.
 | D-N01 recording coverage | Refuted | — |
 | G-28 startup fingerprint | Waived, measured | — |
 | A1-R05 monitor position semantics | Waived, documented | — |
+| A1-15 fixture blind to QK scale and GQA mapping | Deferred | — |
+| G-31 full-vocabulary sampler allocation | Deferred | — |
+| G-35 grammar mask simulates every piece | Deferred | — |
+| G-30 GGUF bytes retained across restore | Deferred | — |
+| G-34 prompt tokenized twice per turn | Deferred | — |
+| A2-18 `sha256_hex` copies its input | Deferred | — |
+
+**Six findings are deferred**, carrying neither a fix nor a waiver. Five
+are performance work the perf batch did not reach: G-31 and G-35 both need
+a sampler and grammar redesign rather than a local change, G-30 needs the
+GGUF byte vector dropped once the dense weights are built, G-34 needs the
+rendered prompt cached across a turn, and A2-18 needs a streaming SHA-256
+in place of the copy in both duplicated implementations
+(`harness/src/main.rs` and `runtime/src/bin/activation-capture.rs`). The
+sixth, A1-15, is not performance work and matters more: the committed
+fixture sets `head_dim` to `embed_dim / n_heads` and `n_kv_heads` to 1, so
+the two candidate QK scales coincide and the blocked and interleaved GQA
+mappings agree. The golden is therefore structurally blind to both
+conventions, which is the same class of blindness A1-R03 demonstrated. It
+needs a second fixture at a geometry that separates them.
 
 Two findings were closed that no package owned, both raised by an
 integrator auditing a batch rather than by a finder: `Session::restore`
@@ -788,8 +809,12 @@ rather than to the hash.
 ### Verification
 
 The rust gate exits 0 at every commit and twice at HEAD, the second run
-watching for the tracing flake Campaign 1 recorded. 306 tests pass, 6
-remain ignored (the Tier 3 entries needing the GPU). The Python steps
+watching for the tracing flake Campaign 1 recorded. 306 tests pass and 6
+remain ignored: five Tier 3 entries in `cuda_acceptance.rs` and
+`eval_acceptance.rs` whose bodies are `unimplemented!()` stubs awaiting the
+GPU, and `rendered_token_ids_match_hf_reference`
+(`harness/src/template.rs:141`), which needs a workstation-generated
+tokenizer golden rather than a GPU. The Python steps
 `ruff format --check` and `ruff check` pass; `mypy` reports three
 pre-existing missing-stub errors in unmodified `training/` files, and
 `uv lock --check` is skipped per the documented sandbox caveat.
@@ -819,16 +844,23 @@ attempts across ten dimensions and two passes, four refuted with rationale,
 twenty-eight low-severity findings recorded without verification by the
 severity policy.
 
-Remediation: sixty-two fixed, two waived with recorded rationale, plus two
-defects found by integrators and fixed. Four critical findings are closed —
-two of them silent-corruption classes that no test could have caught,
-because the golden fixture and the numpy reference encoded the same wrong
-convention.
+Remediation: fifty-six fixed, two waived with recorded rationale, six
+deferred, plus two defects found by integrators and fixed. Four critical
+findings are closed — two of them silent-corruption classes that no test
+could have caught, because the golden fixture and the numpy reference
+encoded the same wrong convention.
 
 ### Followups
 
 Recorded, not fixed, with the reason each was left:
 
+- **A second golden fixture at a geometry that separates the QK scale from
+  the GQA mapping**, per deferred finding A1-15 above. The current fixture
+  cannot distinguish either pair of conventions, which is the blindness
+  A1-R03 exploited.
+- **The five deferred performance findings** (G-30, G-31, G-34, G-35,
+  A2-18) listed under Dispositions. Each needs a redesign rather than a
+  local change, and none alters output.
 - **Tokenizer parity with Hugging Face is unproven.** The only test that
   would catch a segmentation divergence is ignored, awaiting a
   workstation-generated golden. On a real Gemma vocabulary the
@@ -861,5 +893,11 @@ Recorded, not fixed, with the reason each was left:
 
 Real-weight, GPU, and container-build claims remain with runbook entries
 RH.0 through RH.13. The one host command this campaign specifically needs
-is RH.5, whose `--record` sha256 closes the numerics loop on the real
-checkpoint rather than on synthetic geometry.
+is RH.5, the first `--record` run against the real checkpoint. Note what
+RH.5 as written does and does not establish: its procedure asserts that
+`replay_file` rebuilds the recording without error, which is
+replayability, not agreement with any reference. Closing the numerics loop
+on real weights needs a comparison step RH.5 does not yet carry — a
+reference the recorded logits can be checked against, such as a llama.cpp
+run over the same prompt at the same quantization. Until that step exists,
+the numerics evidence in this campaign covers synthetic geometry only.
