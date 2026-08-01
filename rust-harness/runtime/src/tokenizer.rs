@@ -26,6 +26,22 @@ const SPACE_PIECE: char = '\u{2581}';
 /// prefers whole pieces, matching SentencePiece's unk penalty ordering.
 const BYTE_FALLBACK_SCORE: f32 = -1.0e6;
 
+/// Upper bound on the Viterbi match window, in bytes.
+///
+/// The window is the longest `Normal` piece, and the span loop hashes every
+/// substring inside it, so encoding costs O(text * window^2). Taken verbatim
+/// from the vocabulary the window is unbounded, and one oversized piece in an
+/// otherwise ordinary export pushes a few kilobytes of prompt into seconds —
+/// on a path every prompt takes.
+///
+/// SentencePiece trains pieces of at most `max_sentencepiece_length`
+/// characters (default 16) and a character is at most four UTF-8 bytes, so 64
+/// bytes covers anything a standard trainer can emit; this doubles that for
+/// headroom. A piece longer than the cap is simply never matched: the
+/// segmentation stays the best one over the pieces that fit, with byte
+/// fallback covering whatever they miss.
+const MAX_PIECE_BYTES: usize = 128;
+
 /// Token roles from tokenizer.ggml.token_type (llama.cpp convention).
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Kind {
@@ -69,6 +85,8 @@ pub struct Tokenizer {
     special_starts: [bool; 256],
     // Byte value -> byte-token id, for fallback encoding.
     byte_tokens: [Option<Token>; 256],
+    // Viterbi match window: the longest Normal piece, capped at
+    // MAX_PIECE_BYTES so one oversized piece cannot make encoding crawl.
     max_piece_bytes: usize,
     bos: Token,
     eos: Token,
@@ -173,6 +191,9 @@ impl Tokenizer {
                 _ => {}
             }
         }
+        // A piece past the cap is unreachable rather than mis-matched: see
+        // MAX_PIECE_BYTES for why bounding the window is safe here.
+        let max_piece_bytes = max_piece_bytes.min(MAX_PIECE_BYTES);
         // Lengths are collected once here so encode never walks the vocabulary.
         let mut special_lens: Vec<usize> = specials.keys().map(String::len).collect();
         special_lens.sort_unstable_by(|a, b| b.cmp(a));
@@ -439,6 +460,17 @@ mod tests {
         Tokenizer::from_parts(pieces, scores, &types, 1, 2).unwrap()
     }
 
+    /// The same vocab plus one Normal piece far longer than any trainer
+    /// emits — a corrupt or hand-built export, which is enough to widen the
+    /// Viterbi window for every prompt.
+    fn tokenizer_with_oversized_piece(piece_bytes: usize) -> Tokenizer {
+        let (mut pieces, mut scores, mut types) = vocab_parts();
+        pieces.push("q".repeat(piece_bytes));
+        scores.push(-0.5);
+        types.push(1);
+        Tokenizer::from_parts(pieces, scores, &types, 1, 2).unwrap()
+    }
+
     /// The same vocab with no control or user-defined piece at all: type 5 is
     /// llama.cpp's UNUSED, present in the table but never matched.
     fn tokenizer_without_specials() -> Tokenizer {
@@ -617,6 +649,47 @@ mod tests {
             .collect();
         expect.push(id(&t, "\u{2581}hello"));
         assert_eq!(t.encode("<pad> hello").unwrap(), expect);
+    }
+
+    #[test]
+    fn an_oversized_vocabulary_piece_does_not_widen_the_viterbi_window() {
+        let t = tokenizer_with_oversized_piece(4096);
+        assert!(
+            t.max_piece_bytes <= MAX_PIECE_BYTES,
+            "window is {} bytes, cap is {MAX_PIECE_BYTES}",
+            t.max_piece_bytes
+        );
+        // The oversized piece is unreachable, not mis-matched: text around
+        // it segments exactly as in the vocabulary that lacks it.
+        let plain = tokenizer();
+        assert_eq!(
+            t.encode(" hello world").unwrap(),
+            plain.encode(" hello world").unwrap()
+        );
+        // Its own text falls back to byte tokens and still round-trips.
+        let text = "q".repeat(4096);
+        let ids = t.encode(&text).unwrap();
+        assert_eq!(ids.len(), 4096);
+        assert_eq!(t.decode(&ids).unwrap(), text);
+    }
+
+    #[test]
+    fn a_two_kilobyte_prompt_encodes_promptly_despite_an_oversized_piece() {
+        let t = tokenizer_with_oversized_piece(4096);
+        let text = " hello world".repeat(171);
+        let started = std::time::Instant::now();
+        let ids = t.encode(&text).unwrap();
+        let elapsed = started.elapsed();
+        assert_eq!(ids.len(), 342);
+        // Coarse canary for the quadratic window, not a benchmark: this
+        // 2052-byte input measures 0.14 s capped against 11.3 s uncapped in
+        // an unoptimized build, so the bound sits an order of magnitude above
+        // the capped cost and well below the uncapped one.
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "encode of {} bytes took {elapsed:?}",
+            text.len()
+        );
     }
 
     #[test]
