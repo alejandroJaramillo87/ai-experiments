@@ -30,21 +30,32 @@ struct Header {
 }
 
 /// Logits observed at one absolute cache position.
+///
+/// Generic over how the row is held so one definition fixes the JSON shape
+/// for both directions: the write path borrows the model's own logits rather
+/// than copying them, which at a 262144-entry vocabulary is a megabyte per
+/// decoded token, and serde emits the same array either way.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct Row {
+struct Row<L> {
     position: usize,
-    logits: Vec<f32>,
+    logits: L,
 }
 
 /// One forward call: where it started, what it consumed, what it produced.
 /// `prefill` yields one row (the final position); `prefill_all` yields one
-/// row per appended token.
+/// row per appended token. Generic for the reason `Row` is.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct Record {
+struct Record<T, R> {
     start: usize,
-    tokens: Vec<Token>,
-    rows: Vec<Row>,
+    tokens: T,
+    rows: R,
 }
+
+/// A row as it is written: logits borrowed from the forward call's output.
+type RecordedRow<'a> = Row<&'a [f32]>;
+
+/// A record as it is read back, owning everything it parsed.
+type ParsedRecord = Record<Vec<Token>, Vec<Row<Vec<f32>>>>;
 
 /// Sink shared by a recording model and all of its forks, so a session tree
 /// writes one interleaved stream ordered by call completion.
@@ -74,12 +85,12 @@ impl RecordingModel {
         Self::new(inner, Box::new(BufWriter::new(file)))
     }
 
-    fn record(&self, start: usize, tokens: &[Token], rows: Vec<Row>) -> Result<()> {
+    fn record(&self, start: usize, tokens: &[Token], rows: &[RecordedRow<'_>]) -> Result<()> {
         write_line(
             &self.writer,
             &Record {
                 start,
-                tokens: tokens.to_vec(),
+                tokens,
                 rows,
             },
         )
@@ -125,38 +136,29 @@ impl Model for RecordingModel {
     fn prefill(&mut self, tokens: &[Token]) -> Result<Logits> {
         let start = self.inner.cached_len();
         let logits = self.inner.prefill(tokens)?;
-        self.roll_back_on_record_failure(
-            start,
-            self.record(
-                start,
-                tokens,
-                vec![Row {
-                    position: start + tokens.len() - 1,
-                    logits: logits.0.clone(),
-                }],
-            ),
-        )?;
+        // The row borrows the logits about to be returned: serializing them
+        // in place is what keeps a decode step from copying the whole row.
+        let rows = [Row {
+            position: start + tokens.len() - 1,
+            logits: &logits.0[..],
+        }];
+        self.roll_back_on_record_failure(start, self.record(start, tokens, &rows))?;
         Ok(logits)
     }
 
     fn prefill_all(&mut self, tokens: &[Token]) -> Result<Vec<Logits>> {
         let start = self.inner.cached_len();
-        let rows = self.inner.prefill_all(tokens)?;
-        self.roll_back_on_record_failure(
-            start,
-            self.record(
-                start,
-                tokens,
-                rows.iter()
-                    .enumerate()
-                    .map(|(i, l)| Row {
-                        position: start + i,
-                        logits: l.0.clone(),
-                    })
-                    .collect(),
-            ),
-        )?;
-        Ok(rows)
+        let produced = self.inner.prefill_all(tokens)?;
+        let rows: Vec<RecordedRow<'_>> = produced
+            .iter()
+            .enumerate()
+            .map(|(i, l)| Row {
+                position: start + i,
+                logits: &l.0[..],
+            })
+            .collect();
+        self.roll_back_on_record_failure(start, self.record(start, tokens, &rows))?;
+        Ok(produced)
     }
 
     fn truncate(&mut self, len: usize) -> Result<()> {
@@ -236,7 +238,7 @@ pub fn replay(reader: impl BufRead) -> Result<MockModel> {
     let bound = position_bound(header.vocab_size);
     for (n, line) in lines.enumerate() {
         let line = line.with_context(|| format!("read recording line {}", n + 2))?;
-        let record: Record = serde_json::from_str(&line)
+        let record: ParsedRecord = serde_json::from_str(&line)
             .with_context(|| format!("parse recording line {}", n + 2))?;
         // Saturating: a `start` near the top of the usize range must reach
         // the bound check below rather than overflow on the way to it.
@@ -363,7 +365,7 @@ mod tests {
             m.prefill(&[9, 9, 9]).unwrap();
         });
         let text = String::from_utf8(bytes).unwrap();
-        let record: Record = serde_json::from_str(text.lines().nth(1).unwrap()).unwrap();
+        let record: ParsedRecord = serde_json::from_str(text.lines().nth(1).unwrap()).unwrap();
         assert_eq!(record.start, 0);
         assert_eq!(record.tokens, vec![9, 9, 9]);
         assert_eq!(record.rows.len(), 1);
@@ -372,12 +374,31 @@ mod tests {
     }
 
     #[test]
+    fn a_recorded_line_is_the_exact_json_text_a_determinism_oracle_hashes() {
+        // Two recordings of one run are compared by digest, so the write path
+        // may not vary its bytes. Serializing the logits where the forward
+        // call left them, rather than through a copy, has to emit the array
+        // serde emits for an owned row — down to the float formatting.
+        let bytes = recording_of(|m| {
+            m.prefill(&[1, 2]).unwrap();
+        });
+        let text = String::from_utf8(bytes).unwrap();
+        let expected = concat!(
+            r#"{"vocab_size":4}"#,
+            "\n",
+            r#"{"start":0,"tokens":[1,2],"rows":[{"position":1,"logits":[0.0,1.0,0.0,0.0]}]}"#,
+            "\n",
+        );
+        assert_eq!(text, expected);
+    }
+
+    #[test]
     fn prefill_all_records_one_row_per_position() {
         let bytes = recording_of(|m| {
             m.prefill_all(&[9, 9]).unwrap();
         });
         let text = String::from_utf8(bytes).unwrap();
-        let record: Record = serde_json::from_str(text.lines().nth(1).unwrap()).unwrap();
+        let record: ParsedRecord = serde_json::from_str(text.lines().nth(1).unwrap()).unwrap();
         assert_eq!(record.rows.len(), 2);
         assert_eq!(record.rows[0].position, 0);
         assert_eq!(record.rows[1].position, 1);
@@ -392,7 +413,7 @@ mod tests {
         });
         let text = String::from_utf8(bytes).unwrap();
         assert_eq!(text.lines().count(), 3); // header + two records
-        let child_rec: Record = serde_json::from_str(text.lines().nth(2).unwrap()).unwrap();
+        let child_rec: ParsedRecord = serde_json::from_str(text.lines().nth(2).unwrap()).unwrap();
         assert_eq!(child_rec.start, 2);
         assert_eq!(child_rec.tokens, vec![3]);
     }
