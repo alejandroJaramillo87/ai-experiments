@@ -7,6 +7,14 @@
  * one the interp probe toolkit actually reads. Row-level assertions need
  * python3 with numpy to open the npz (as in the npz writer's unit test) and
  * skip without it; the artifact-shape assertions run either way.
+ *
+ * Three of the tests reach into the parent tree for the Python side of the
+ * seam: the directory goes through interp.probes.capture.load_capture rather
+ * than a bespoke np.load, the manifest key set is checked against
+ * schemas/activation_capture.manifest.json, and the two writers' dataset
+ * digests are pinned as agreeing on LF and differing on CRLF. Each skips with
+ * [SKIP] when the parent tree or numpy is absent, which is the container
+ * build's situation.
  */
 
 use std::collections::HashMap;
@@ -88,6 +96,41 @@ fn numpy_available() -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// The parent tree's probe toolkit, or a reason it cannot be reached.
+///
+/// Absent tooling is a skip rather than a failure: the container build's
+/// context is rust-harness/ alone, and the artifact-shape assertions above
+/// already run everywhere.
+fn interp_available() -> Result<(), String> {
+    if !repo_root().join("interp/probes/capture.py").is_file() {
+        return Err("the parent tree is not present".to_string());
+    }
+    if !numpy_available() {
+        return Err("python3 cannot import numpy".to_string());
+    }
+    Ok(())
+}
+
+/// Run a snippet against the parent tree and return its stdout.
+fn run_interp(script: &str, arg: &Path) -> String {
+    let out = std::process::Command::new("python3")
+        .args(["-c", script])
+        .arg(arg)
+        .env("PYTHONPATH", repo_root())
+        .output()
+        .expect("python3 available in the sandbox");
+    assert!(
+        out.status.success(),
+        "interp rejected the artifact: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout).expect("stdout is utf-8")
 }
 
 /// Shard arrays as JSON, read through np.load so the assertions cover the
@@ -236,6 +279,149 @@ fn shard_rows_stay_aligned_with_their_labels_and_source_texts() {
             );
         }
     }
+}
+
+/// The whole directory through `interp.probes.capture.load_capture`, the
+/// reader the probe toolkit actually calls.
+///
+/// The assertions above open the shards with a bespoke `np.load`, which
+/// proves the npz encoding is readable but exercises none of load_capture's
+/// consistency guards: manifest count against shard rows, examples.jsonl
+/// length against both, and repeated layers. Those guards exist because rows,
+/// labels, and texts are joined by position alone, and until this test none of
+/// them had ever seen a Rust-written directory.
+#[test]
+fn a_rust_written_capture_loads_through_the_python_probe_reader() {
+    if let Err(reason) = interp_available() {
+        eprintln!("[SKIP] python reader assertions: {reason}");
+        return;
+    }
+    let c = capture(&dataset_jsonl(&DATASET), "0,1");
+    assert!(c.output.status.success(), "{}", c.stderr());
+
+    const SCRIPT: &str = "import json, sys\n\
+         from interp.probes.capture import load_capture\n\
+         acts, labels, texts = load_capture(sys.argv[1])\n\
+         json.dump({'labels': labels.tolist(), 'texts': texts,\n\
+         'shapes': {str(k): list(v.shape) for k, v in acts.items()},\n\
+         'dtypes': {str(k): str(v.dtype) for k, v in acts.items()}}, sys.stdout)\n";
+    let loaded: serde_json::Value = serde_json::from_str(&run_interp(SCRIPT, &c.out)).unwrap();
+
+    let labels: Vec<i64> = loaded["labels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_i64().unwrap())
+        .collect();
+    assert_eq!(labels, DATASET.iter().map(|(_, l)| *l).collect::<Vec<_>>());
+
+    let texts: Vec<&str> = loaded["texts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(texts, DATASET.iter().map(|(t, _)| *t).collect::<Vec<_>>());
+
+    // The reader keys activations by layer, so both requested layers must come
+    // back with one row per example at the model's width, as float16.
+    for layer in ["0", "1"] {
+        let shape = loaded["shapes"][layer].as_array().unwrap();
+        assert_eq!(
+            shape[0].as_u64().unwrap() as usize,
+            DATASET.len(),
+            "layer {layer}: row count"
+        );
+        assert_eq!(loaded["dtypes"][layer], "float16", "layer {layer}: dtype");
+    }
+}
+
+/// The manifest against `schemas/activation_capture.manifest.json`.
+///
+/// The key list is written out once here and once in
+/// interp/probes/capture.py, with no shared definition between them. Adding a
+/// key to one writer alone fails this test; updating the contract to accept it
+/// fails the Python writer's test until that side follows.
+#[test]
+fn the_manifest_carries_exactly_the_contract_key_set() {
+    let path = repo_root().join("schemas/activation_capture.manifest.json");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        eprintln!("[SKIP] contract assertions: {} is absent", path.display());
+        return;
+    };
+    let contract: serde_json::Value = serde_json::from_str(&text).expect("contract is valid JSON");
+    let mut want: Vec<&str> = contract["required"]
+        .as_array()
+        .expect("required array")
+        .iter()
+        .chain(
+            contract["writer_only"]["rust-harness-cpu"]
+                .as_array()
+                .expect("writer_only array"),
+        )
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    want.sort_unstable();
+
+    let c = capture(&dataset_jsonl(&DATASET), "0");
+    assert!(c.output.status.success(), "{}", c.stderr());
+    let m = manifest(&c);
+    let mut got: Vec<&str> = m
+        .as_object()
+        .expect("manifest object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    got.sort_unstable();
+    assert_eq!(got, want, "manifest keys have drifted from the contract");
+}
+
+/// The two writers' dataset digests, pinned as different where they differ.
+///
+/// Rust hashes the file's raw bytes; Python hashes text-mode f.read(), which
+/// normalizes CRLF to LF. The digests therefore agree on an LF dataset and
+/// disagree on a CRLF one. Both are internally consistent and neither is
+/// wrong, but the difference is invisible until someone compares a
+/// rust-captured manifest against a python-captured one and concludes the
+/// datasets differ. Asserting both halves means a well-meaning one-sided
+/// change to either hashing domain fails here instead of silently
+/// reinterpreting every manifest already on disk.
+#[test]
+fn the_two_writers_agree_on_an_lf_dataset_digest_and_differ_on_a_crlf_one() {
+    if let Err(reason) = interp_available() {
+        eprintln!("[SKIP] digest divergence assertions: {reason}");
+        return;
+    }
+    const SCRIPT: &str = "import sys\n\
+         from interp.manifest import text_sha256\n\
+         with open(sys.argv[1], encoding='utf-8') as f:\n\
+         \x20   sys.stdout.write(text_sha256(f.read()))\n";
+
+    let lf = dataset_jsonl(&DATASET);
+    let c = capture(&lf, "0");
+    assert!(c.output.status.success(), "{}", c.stderr());
+    let dataset = c.out.parent().unwrap().join("dataset.jsonl");
+    assert_eq!(
+        manifest(&c)["dataset_sha256"].as_str().unwrap(),
+        run_interp(SCRIPT, &dataset),
+        "the digests must agree on a dataset with no CRLF to normalize"
+    );
+
+    let crlf = lf.replace('\n', "\r\n");
+    let c = capture(&crlf, "0");
+    assert!(
+        c.output.status.success(),
+        "the Rust writer must accept a CRLF dataset: {}",
+        c.stderr()
+    );
+    let dataset = c.out.parent().unwrap().join("dataset.jsonl");
+    assert_ne!(
+        manifest(&c)["dataset_sha256"].as_str().unwrap(),
+        run_interp(SCRIPT, &dataset),
+        "the digests are documented as hashing different domains; if they now \
+         agree, one side changed and schemas/activation_capture.manifest.json \
+         needs updating with it"
+    );
 }
 
 #[test]
