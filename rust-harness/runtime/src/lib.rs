@@ -7,6 +7,12 @@
  * and tests without a GPU.
  */
 
+// This crate produces the training and interp numerics, so memory safety here
+// is not negotiable: forbid rather than deny, because forbid cannot be lifted
+// by a module-level allow. Nothing in the crate needs unsafe — the GPU backend
+// reaches hardware through Candle, which owns the FFI.
+#![forbid(unsafe_code)]
+
 pub mod eval;
 pub mod gguf;
 pub mod grammar;
