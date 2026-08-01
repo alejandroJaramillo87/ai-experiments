@@ -247,7 +247,15 @@ on the Python obs stack by contract rather than by code.
 
 Because the Python `runs`, retention, and viewer tooling are stateless
 JSONL readers, they consume harness runs unchanged; the files are the
-integration seam. Degradation matches the Python contract: without a
+integration seam. That is now asserted rather than asserted about. The key
+sets live in `schemas/obs_record.json` and both writers are checked against
+them, and `harness/tests/obs_contract.rs` feeds a harness-written catalog to
+the real `common.obs.catalog.read_runs` and requires the record back with its
+fields intact. The check matters because the reader is permissive by design:
+`read_runs` skips a line it cannot parse, so a drifted writer would show an
+empty runs table rather than an error. The catalog line is also formatted by
+hand rather than through serde, so nothing in the type system holds it to the
+Python writer's shape. Degradation matches the Python contract: without a
 writable `${OBS_LOG_DIR}` (the agent sandbox), the writer is a silent
 no-op, and usage errors exit before a run id exists. Cross-process
 propagation is specified from the receiving side: when a parent process

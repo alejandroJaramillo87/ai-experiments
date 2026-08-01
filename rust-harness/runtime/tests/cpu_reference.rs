@@ -144,9 +144,10 @@ fn steered_logits_match_the_python_reference() {
     let direction: Vec<f32> = (0..embed_dim).map(|j| 0.05 * (j as f32 - 8.0)).collect();
     let mut w = runtime::synth::GgufWriter::new();
     w.kv_str("general.architecture", "controlvector");
-    // Control-vector tensors are 1-based.
+    // direction.N steers block N, as in llama.cpp: the tensor name is the
+    // 0-based block index the reference steers, not that index plus one.
     w.tensor_f32(
-        &format!("direction.{}", steer_layer + 1),
+        &format!("direction.{steer_layer}"),
         &[embed_dim as u64],
         &direction,
     );

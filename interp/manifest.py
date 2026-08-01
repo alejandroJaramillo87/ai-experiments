@@ -13,8 +13,6 @@ import hashlib
 import json
 import os
 
-import xxhash
-
 from common.hashing import hash_file_with, write_json_atomic
 from common.provenance import git_sha  # noqa: F401  (re-exported)
 
@@ -31,7 +29,17 @@ def utc_now() -> str:
 
 def file_xxhash(path: str) -> str:
     """xxh3_64 hex digest of a file, streamed in 1MB blocks (recorded
-    algorithm; do not change without a manifest version bump)."""
+    algorithm; do not change without a manifest version bump).
+
+    xxhash is imported here rather than at module scope. It is the only
+    non-stdlib dependency of this module, and every artifact module in interp/
+    imports from here, so a module-level import made the whole artifact layer
+    unloadable wherever xxhash is missing — including the sandbox interpreter
+    the cross-language contract tests run the exporters under. Same rationale
+    as the lazy torch and nnsight imports in interp/probes/capture.py.
+    """
+    import xxhash
+
     return hash_file_with(xxhash.xxh3_64(), path, 1 << 20)
 
 

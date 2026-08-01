@@ -20,13 +20,36 @@ second, cheaper model (see the model policy in `docs/tooling-parity.md`).
 | Rung | Use when | How | Effort |
 |------|----------|-----|--------|
 | 1. Batch | Mechanical & fully specified: pin audits, doc-drift fixes, formatting sweeps | `make agent-run` (`opencode run --auto` / `claude -p`) | low |
-| 2. Roadmap task | A defined roadmap item with files/steps/acceptance | `/task <roadmap> <id>`; explorer + skeptic subagents | medium |
+| 2. Roadmap task | A defined roadmap item with files/steps/acceptance | `/task <roadmap> <id>`; built-in `Explore` + skeptic subagents | medium |
 | 3. Design / debugging | Open-ended work that resists rungs 1–2 | Interactive frontier session, human in the loop | high |
+| 4. Quality campaign | A subsystem needs auditing, not a task doing | `/bugbash <scope>`; the QA roles, in batches | high / max |
 
 Rung 1 is non-interactive and auto-approves everything not denied; the Phase 1 permission deny
 rules and the Phase 4 `guard.sh` PreToolUse hook are the safety floor and fire regardless of
 permission mode. Review the deny rules (`.claude/settings.json`, `opencode.json`) before the
 first unattended run.
+
+### Rung 4: the quality campaign
+
+Rungs 1–3 do a task. Rung 4 audits a subsystem that nobody has a task for — the shape of
+work where the deliverable is a findings ledger and a set of fixes, not a feature.
+
+It costs orders of magnitude more than rung 3 and takes hours, so escalate to it
+deliberately: when a subsystem feeds something else that would silently inherit its
+defects, before trusting a component on real data for the first time, or after a large
+merge. Do not reach for it because a bug is hard to find.
+
+`/bugbash <scope>` drives the phase ladder. Six roles carry it — `bug-hunter` discovers,
+`skeptic` verifies, `triage-agent` packages, `remediator` fixes, `integrator` gates each
+batch, and `perf-auditor` and `doc-auditor` own the two dimensions with their own
+measurement rules. They share one definition of the terms in
+`.claude/skills/bug-bash/SKILL.md`; read it before running one.
+
+Two properties of the cadence matter more than the roles. Discovery is persisted into a
+campaign log under `docs/verification/` and pushed **before** any budget goes to fixes,
+and every remediation batch is pushed before the next begins — so an interrupted campaign
+loses one batch rather than everything. Campaign 2 was stopped mid-flight by a usage limit
+and survived only because the ledger had already landed.
 
 ## Running agents: user guide
 
@@ -148,6 +171,7 @@ identifier: for Claude Code, the UUID shown by `claude --resume` (transcript als
 | `make agent-usage` | Merge token usage (OpenCode ledger) and RunPod spend into one report |
 | `make agent-preflight` | `command-sync` + `agent-parity` + supply-chain scan of both tool dirs |
 | `make agent-parity` | Diff shared agent bodies; flag forked or broken commands |
+| `make agent-role-tests [ROLE=x]` | LLM acceptance test per subagent role (spends tokens) |
 | `make command-sync` | Symlink `.claude/commands` into `.opencode/commands`; prunes links whose source was deleted |
 | `make agent-versions` | Compare Dockerfile CLI pins against the npm registry (check-only) |
 
@@ -205,6 +229,12 @@ Once a month, check both tools' changelogs (OpenCode releases, Claude Code relea
   provided upstream. **Delete what upstream now provides**; do not maintain a private copy of a
   feature the tool ships.
 
-Precedent already set: **Claude Code subsumed usage tracking** (built-in `/usage`, so `usage.ts`
-is OpenCode-only) and **the explorer role** (built-in `Explore`, so the custom `explorer` agent
-exists mainly for context isolation, not capability). Expect more of this and prune accordingly.
+Precedent already set, and acted on: **Claude Code subsumed usage tracking** (built-in
+`/usage`, so `usage.ts` is OpenCode-only) and **the explorer role** (built-in `Explore`), so
+the custom `explorer` agent was deleted rather than maintained alongside it. The same sweep
+removed `test-agent` and the `runpod-ops` skill, both of which no command, skill, or fixture
+referenced. A definition nothing invokes is not free: it still has to be kept true.
+
+The check is mechanical. Grep the repository for each agent, skill, and command name,
+excluding its own definition file. A name whose only remaining hit is the roster table in
+`tooling-parity.md` is documentation describing itself, and is a candidate for removal.

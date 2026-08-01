@@ -1,0 +1,47 @@
+{
+  "contract": "obs_record",
+  "description": "Run-level observability JSONL under ${OBS_LOG_DIR}/<cli>/: one event file per run plus an appended run catalog",
+  "writers": [
+    "common/obs/core.py (_JsonFormatter, record_run)",
+    "rust-harness/harness/src/obs.rs (RunLog)"
+  ],
+  "readers": [
+    "common/obs/catalog.py (read_runs, run_command)",
+    "common/obs/retention.py",
+    "common/obs/dashboard.py"
+  ],
+  "guarded_by": [
+    "rust-harness/harness/tests/obs_contract.rs",
+    "tests/utils/test_obs_record_contract.py"
+  ],
+  "event": {
+    "file": "${OBS_LOG_DIR}/<cli>/<run_id>.jsonl",
+    "required": [
+      "cli",
+      "command",
+      "event",
+      "level",
+      "msg",
+      "pid",
+      "run_id",
+      "ts"
+    ]
+  },
+  "catalog": {
+    "file": "${OBS_LOG_DIR}/<cli>/runs.jsonl",
+    "required": [
+      "command",
+      "duration_s",
+      "exit_code",
+      "run_dir",
+      "run_id",
+      "timestamp"
+    ]
+  },
+  "notes": {
+    "extra_fields": "Both required sets are exact for the base record. Emitters add named fields on top (argv on cmd.start, exit_code and duration_s on cmd.end, exc_type and exc_msg on fail); the Python formatter refuses to let a caller field overwrite a base key, so the correlation join cannot be corrupted from above.",
+    "run_id_format": "R-YYYYMMDD-HHMMSS-xxxxxx, a UTC stamp and six hex characters, minted independently by each writer.",
+    "silent_skip": "read_runs skips a line it cannot parse rather than raising, so a writer that drifts off this contract presents as an empty runs table and not as an error. That is why the contract is asserted at the writers rather than left to the reader.",
+    "hand_rolled_json": "The Rust catalog line is formatted by hand (obs.rs), not through serde, so nothing in the type system keeps it aligned with the Python writer. This file is what keeps them aligned."
+  }
+}

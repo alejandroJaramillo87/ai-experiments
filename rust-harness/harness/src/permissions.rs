@@ -32,7 +32,12 @@ pub enum Decision {
     Ask,
 }
 
+// Unknown keys are refused rather than dropped: a misspelled `pattern` would
+// leave the field None, and the match-everything branch in `evaluate` would
+// widen a scoped rule into a blanket one, in the permissive direction for an
+// allow rule.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Rule {
     tool: String,
     #[serde(default)]
@@ -41,6 +46,7 @@ struct Rule {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Permissions {
     rules: Vec<Rule>,
 }
@@ -152,6 +158,39 @@ rules:
     fn unknown_tool_name_in_a_rule_is_rejected_at_load() {
         let err = Permissions::from_yaml("rules:\n  - tool: bahs\n    action: deny\n").unwrap_err();
         assert!(err.to_string().contains("bahs"));
+    }
+
+    #[test]
+    fn misspelled_rule_key_is_rejected_at_load_naming_the_key() {
+        // A dropped `pattern` leaves the field None, and the match-everything
+        // branch then turns a scoped allow rule into an allow-anything rule.
+        let err = Permissions::from_yaml(
+            "rules:\n  - tool: bash\n    patern: \"cargo **\"\n    action: allow\n",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("patern"), "{err}");
+        let p = Permissions::from_yaml(
+            "rules:\n  - tool: bash\n    pattern: \"cargo **\"\n    action: allow\n",
+        )
+        .unwrap();
+        assert_eq!(
+            p.evaluate(&ToolCall::Bash {
+                command: "cargo test".into()
+            }),
+            Decision::Allow
+        );
+        assert_eq!(
+            p.evaluate(&ToolCall::Bash {
+                command: "rm -rf /home/user".into()
+            }),
+            Decision::Ask
+        );
+    }
+
+    #[test]
+    fn unknown_top_level_key_in_the_rule_file_is_rejected_at_load() {
+        let err = Permissions::from_yaml("rules: []\nrulez:\n  - tool: bash\n").unwrap_err();
+        assert!(err.to_string().contains("rulez"), "{err}");
     }
 
     #[test]

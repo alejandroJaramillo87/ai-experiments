@@ -68,8 +68,13 @@ only one.
 
 The value of the agent loop is that each agentic feature is an
 experimental condition, not product surface. Every one of the following is
-built, and every one creates an observable phenomenon that has no chatbot
-analogue.
+implemented and tested, and every one creates an observable phenomenon that
+has no chatbot analogue. Two of them are not yet reachable from the shipping
+binary: `harness/src/subagents.rs` (fork and interleave) and
+`harness/src/stream.rs` (the channel-based token stream) are called only
+from tests, never from `main.rs`, so the phenomena they carry are available
+to a test or to a future entry point, not to a `harness` invocation today.
+Wiring them up is code work against a settled design, not new design.
 
 **Tool episodes.** Agent tasks are prefill-heavy: most probe-scored
 positions are the model reading externally authored text — task

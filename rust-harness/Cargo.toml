@@ -13,6 +13,21 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 
+# Codifies the level the quality gate already enforces
+# (`cargo clippy --workspace --all-targets -- -D warnings`) so a plain
+# `cargo build` or an editor's rust-analyzer reports the same errors the gate
+# does, instead of warnings a person can scroll past. Both crates opt in with
+# `[lints] workspace = true`.
+#
+# Deliberately not adopted: clippy::pedantic and clippy::nursery. Triage found
+# roughly 400 hits that are noise for this codebase, and two families are
+# actively harmful here — suboptimal_flops (nursery) rewrites a*b+c as
+# mul_add, which changes f32 rounding and would break the bit-identical
+# determinism and golden-logits tests, and float_cmp (pedantic) fires only on
+# tests that assert exactness on purpose.
+[workspace.lints.rust]
+warnings = "deny"
+
 [workspace.dependencies]
 anyhow = "1.0"
 # flock only: the obs run-log holds a shared lock so the Python retention

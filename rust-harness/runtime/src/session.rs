@@ -17,6 +17,13 @@ use super::sampler::Sampler;
 const SNAPSHOT_MAGIC: &[u8; 4] = b"HKV1";
 const SNAPSHOT_VERSION: u32 = 1;
 const SNAPSHOT_DTYPE_F32: u8 = 0;
+/// Tokens moved per `write_all`/`read_exact` when saving and restoring.
+///
+/// The snapshot writer and reader are trait objects, so a call per token
+/// costs a virtual dispatch and a buffer update for four bytes, and a
+/// long-context session moves tens of thousands of them. A block bounds the
+/// scratch copy at 4 KiB instead of a second copy of the whole history.
+const SNAPSHOT_TOKEN_BLOCK: usize = 1024;
 
 /// FNV-1a 64-bit hash, used to fingerprint model weights for snapshot
 /// compatibility checks. Corruption and mismatch detection only — not a
@@ -77,6 +84,14 @@ impl Session {
 
     /// Sync the cache to `transcript`: truncate to the common prefix, prefill
     /// the rest. Returns the number of tokens actually prefilled — the delta.
+    ///
+    /// `Model::prefill` is required to be atomic — all of its tokens land in
+    /// the KV cache, or none do when it errors — and `Session` is the only
+    /// place that requirement is load-bearing: `tokens` is a mirror of the
+    /// cache, and a backend that commits part of a batch before failing puts
+    /// the two out of step. Sync therefore reconciles against the model
+    /// before prefilling instead of trusting the mirror, so a failed sync
+    /// stays recoverable by retrying it.
     pub fn sync(&mut self, transcript: &[Token]) -> Result<usize> {
         let span = tracing::info_span!(
             "session.sync",
@@ -96,12 +111,20 @@ impl Session {
             .zip(transcript)
             .take_while(|(a, b)| a == b)
             .count();
-        if common < self.tokens.len() {
-            self.model.truncate(common)?;
-            self.tokens.truncate(common);
+        // Only positions the model and the token history agree on survive:
+        // the model runs ahead when a prefill committed part of its batch
+        // before failing, and behind when a tail replay dropped a position
+        // and then failed. Both lengths already equal `common` on the normal
+        // path, where the two truncates below are no-ops.
+        let keep = common.min(self.model.cached_len());
+        if self.model.cached_len() > keep {
+            self.model.truncate(keep)?;
+        }
+        if keep < self.tokens.len() {
+            self.tokens.truncate(keep);
             self.tail_logits = None;
         }
-        let delta = &transcript[common..];
+        let delta = &transcript[keep..];
         span.record("delta_len", delta.len());
         if !delta.is_empty() {
             self.tail_logits = Some(self.model.prefill(delta)?);
@@ -168,6 +191,8 @@ impl Session {
 
     /// Make tail logits available, replaying the final cached token
     /// (truncate one, prefill one) only when the cached copy was invalidated.
+    /// A replay that fails after its truncate leaves the model one position
+    /// behind `tokens`; the next `sync` reconciles that back.
     fn ensure_tail_logits(&mut self) -> Result<()> {
         if self.tail_logits.is_none() {
             let last = *self.tokens.last().expect("non-empty cache");
@@ -191,8 +216,15 @@ impl Session {
         w.write_all(&[SNAPSHOT_DTYPE_F32])?;
         w.write_all(&model_hash.to_le_bytes())?;
         w.write_all(&(self.tokens.len() as u64).to_le_bytes())?;
-        for &t in &self.tokens {
-            w.write_all(&t.to_le_bytes())?;
+        // Blocked rather than one call per token; the bytes and their order
+        // are unchanged, so a snapshot written before this still restores.
+        let mut block = Vec::with_capacity(SNAPSHOT_TOKEN_BLOCK * 4);
+        for tokens in self.tokens.chunks(SNAPSHOT_TOKEN_BLOCK) {
+            block.clear();
+            for &t in tokens {
+                block.extend_from_slice(&t.to_le_bytes());
+            }
+            w.write_all(&block)?;
         }
         self.model.save_state(w)
     }
@@ -238,18 +270,38 @@ impl Session {
             "snapshot of {n_tokens} tokens exceeds the context budget of {}",
             self.max_context
         );
+        // Blocked for the reason `save` writes in blocks. Each read takes
+        // exactly the bytes of its block, so the reader is left positioned at
+        // the first byte of the cache payload, where `load_state` expects it.
         let mut tokens = Vec::with_capacity(n_tokens);
-        for _ in 0..n_tokens {
-            r.read_exact(&mut u32buf)?;
-            tokens.push(u32::from_le_bytes(u32buf));
+        let mut block = vec![0u8; SNAPSHOT_TOKEN_BLOCK * 4];
+        while tokens.len() < n_tokens {
+            let take = (n_tokens - tokens.len()).min(SNAPSHOT_TOKEN_BLOCK);
+            let bytes = &mut block[..take * 4];
+            r.read_exact(bytes)?;
+            tokens.extend(
+                bytes
+                    .chunks_exact(4)
+                    .map(|b| u32::from_le_bytes(b.try_into().expect("four-byte chunk"))),
+            );
         }
         self.model.load_state(r)?;
-        anyhow::ensure!(
-            self.model.cached_len() == tokens.len(),
-            "restored cache length {} does not match {} saved tokens",
-            self.model.cached_len(),
-            tokens.len()
-        );
+        if self.model.cached_len() != tokens.len() {
+            // The cache loaded but disagrees with the token list saved beside
+            // it. Returning here would leave the model holding a full cache
+            // while this session believes it holds nothing: the next save
+            // would write that skew to disk as a snapshot nothing can
+            // restore, and a later restore of a good snapshot would be
+            // refused for loading onto a non-fresh cache. Drop the cache so
+            // the failure leaves a genuinely fresh model.
+            let cached = self.model.cached_len();
+            self.model.truncate(0)?;
+            anyhow::bail!(
+                "restored cache length {} does not match {} saved tokens",
+                cached,
+                tokens.len()
+            );
+        }
         self.tokens = tokens;
         self.tail_logits = None; // ensure_tail_logits replays one token
         Ok(())
@@ -399,10 +451,13 @@ mod tests {
 
     /// Delegating wrapper that fails exactly one prefill call (the `fail_at`-th),
     /// then recovers: the transient-error case a retried `step` must survive.
+    /// The failing call first commits `commit_on_failure` tokens of its batch
+    /// to the inner cache, modelling a backend whose prefill is not atomic.
     struct FlakyModel {
         inner: MockModel,
         calls: usize,
         fail_at: usize,
+        commit_on_failure: usize,
     }
 
     impl crate::model::Model for FlakyModel {
@@ -415,6 +470,9 @@ mod tests {
         fn prefill(&mut self, tokens: &[Token]) -> Result<crate::model::Logits> {
             self.calls += 1;
             if self.calls == self.fail_at {
+                if self.commit_on_failure > 0 {
+                    self.inner.prefill(&tokens[..self.commit_on_failure])?;
+                }
                 anyhow::bail!("transient prefill failure");
             }
             self.inner.prefill(tokens)
@@ -452,6 +510,7 @@ mod tests {
             inner: MockModel::new(v.len(), script),
             calls: 0,
             fail_at: 6, // prompt prefill is call 1; fail mid-generation
+            commit_on_failure: 0,
         };
         let mut s = Session::new(Box::new(model), 4096).unwrap();
         let mut active = s.begin_generation(&[0], &v, Some(&grammar)).unwrap();
@@ -465,6 +524,85 @@ mod tests {
             }
         }
         assert_eq!(out, skeleton);
+    }
+
+    #[test]
+    fn sync_after_a_prefill_committed_tokens_before_failing_matches_a_clean_run() {
+        // Regression: a prefill that committed part of its batch before
+        // erroring left the model cache ahead of the session's history, and
+        // the retried sync prefilled the whole prompt on top of the orphaned
+        // positions — every later logit came from the wrong position instead
+        // of the retry either working or failing.
+        let v = vocab();
+        let prompt = [0u32, 1, 2, 3, 4];
+        let script = script_emitting(v.len(), prompt.len(), &[7, 8], v.eos());
+
+        let mut clean =
+            Session::new(Box::new(MockModel::new(v.len(), script.clone())), 4096).unwrap();
+        let expected = clean
+            .generate(&prompt, &v, None, &mut greedy(), 8, |_| {})
+            .unwrap();
+
+        let model = FlakyModel {
+            inner: MockModel::new(v.len(), script),
+            calls: 0,
+            fail_at: 1,           // the prompt prefill
+            commit_on_failure: 3, // three of the five tokens land anyway
+        };
+        let mut s = Session::new(Box::new(model), 4096).unwrap();
+        let err = s.sync(&prompt).unwrap_err();
+        assert!(err.to_string().contains("prefill failure"), "{err}");
+        assert_eq!(s.cached_len(), 0);
+
+        let gen = s
+            .generate(&prompt, &v, None, &mut greedy(), 8, |_| {})
+            .unwrap();
+        assert_eq!(gen, expected);
+        assert_eq!(s.tail_logits, clean.tail_logits);
+        assert_eq!(s.cached_len(), clean.cached_len());
+    }
+
+    #[test]
+    fn sync_re_prefills_the_position_a_failed_tail_replay_dropped_from_the_model() {
+        // The mirror case: a replay inside ensure_tail_logits truncates one
+        // position and then fails to prefill it, leaving the model behind the
+        // session's history. Without reconciling, the next sync writes its
+        // delta over the dropped position and generation silently continues
+        // from logits one position early.
+        let v = vocab();
+        let transcript = [0u32, 1, 2, 4, 5];
+        let script = script_emitting(v.len(), transcript.len(), &[7, 8], v.eos());
+
+        let mut clean =
+            Session::new(Box::new(MockModel::new(v.len(), script.clone())), 4096).unwrap();
+        let expected = clean
+            .generate(&transcript, &v, None, &mut greedy(), 8, |_| {})
+            .unwrap();
+
+        let model = FlakyModel {
+            inner: MockModel::new(v.len(), script),
+            calls: 0,
+            fail_at: 2, // the tail replay, not the prompt prefill
+            commit_on_failure: 0,
+        };
+        let mut s = Session::new(Box::new(model), 4096).unwrap();
+        s.sync(&[0, 1, 2, 3]).unwrap();
+        // A truncate-only sync drops the cached tail logits, so the next
+        // generation has to replay the final token — the failing prefill.
+        s.sync(&[0, 1, 2]).unwrap();
+        // ActiveGeneration is not Debug; discard the Ok arm to unwrap_err.
+        let err = s
+            .begin_generation(&[0, 1, 2], &v, None)
+            .map(|_| ())
+            .unwrap_err();
+        assert!(err.to_string().contains("prefill failure"), "{err}");
+
+        let gen = s
+            .generate(&transcript, &v, None, &mut greedy(), 8, |_| {})
+            .unwrap();
+        assert_eq!(gen, expected);
+        assert_eq!(s.tail_logits, clean.tail_logits);
+        assert_eq!(s.cached_len(), clean.cached_len());
     }
 
     #[test]
@@ -600,6 +738,44 @@ mod tests {
     }
 
     #[test]
+    fn a_snapshot_longer_than_one_transfer_block_keeps_its_bytes_and_stream_position() {
+        // The token list moves a block at a time instead of a token at a
+        // time. The format is unchanged, so a snapshot written before that
+        // must still restore: pin the bytes against an independently built
+        // expectation, over a length that is not a whole number of blocks.
+        let n = SNAPSHOT_TOKEN_BLOCK * 2 + 7;
+        let hash = 0x0123_4567_89ab_cdef;
+        let transcript: Vec<Token> = (0..n as u32).collect();
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), n).unwrap();
+        s.sync(&transcript).unwrap();
+        let mut buf = Vec::new();
+        s.save(&mut buf, hash).unwrap();
+
+        let mut expected = Vec::new();
+        expected.extend_from_slice(SNAPSHOT_MAGIC);
+        expected.extend_from_slice(&SNAPSHOT_VERSION.to_le_bytes());
+        expected.push(SNAPSHOT_DTYPE_F32);
+        expected.extend_from_slice(&hash.to_le_bytes());
+        expected.extend_from_slice(&(n as u64).to_le_bytes());
+        for &t in &transcript {
+            expected.extend_from_slice(&t.to_le_bytes());
+        }
+        // MockModel's whole cache payload is its cached length.
+        expected.extend_from_slice(&(n as u64).to_le_bytes());
+        assert_eq!(buf, expected);
+
+        // A blocked read must take exactly its block: over-reading would eat
+        // into the cache payload, and past it into whatever follows.
+        let mut stream = buf.clone();
+        stream.extend_from_slice(b"trailing");
+        let mut reader: &[u8] = &stream;
+        let mut restored = Session::new(Box::new(MockModel::new(27, vec![])), n).unwrap();
+        restored.restore(&mut reader, hash).unwrap();
+        assert_eq!(reader, b"trailing");
+        assert_eq!(restored.sync(&transcript).unwrap(), 0);
+    }
+
+    #[test]
     fn restore_refuses_a_different_model_hash() {
         let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
         s.sync(&[1, 2]).unwrap();
@@ -641,6 +817,36 @@ mod tests {
         s.save(&mut buf, 7).unwrap();
         let err = s.restore(&mut buf.as_slice(), 7).unwrap_err();
         assert!(err.to_string().contains("non-fresh"), "{err}");
+    }
+
+    #[test]
+    fn a_restore_that_disagrees_on_length_leaves_a_fresh_model() {
+        // The cache loads but its length disagrees with the saved token list.
+        // Returning with the cache still loaded would leave the model holding
+        // rows this session does not know about: the next save writes that
+        // skew to disk, and a later restore of a good snapshot is refused for
+        // loading onto a non-fresh cache, wedging the session permanently.
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        s.sync(&[1, 2, 3]).unwrap();
+        let mut buf = Vec::new();
+        s.save(&mut buf, 7).unwrap();
+
+        // Drop one token from the saved list, leaving the cache payload
+        // describing three positions while the header claims two.
+        let mut corrupt = buf.clone();
+        let count_at = SNAPSHOT_MAGIC.len() + 4 + 1 + 8;
+        corrupt[count_at..count_at + 8].copy_from_slice(&2u64.to_le_bytes());
+        corrupt.drain(count_at + 8 + 8..count_at + 8 + 12);
+
+        let mut target = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        let err = target.restore(&mut corrupt.as_slice(), 7).unwrap_err();
+        assert!(err.to_string().contains("does not match"), "{err}");
+
+        // The failure left a genuinely fresh model, so a good snapshot still
+        // restores into it.
+        assert_eq!(target.cached_len(), 0);
+        target.restore(&mut buf.as_slice(), 7).unwrap();
+        assert_eq!(target.cached_len(), 3);
     }
 
     #[test]

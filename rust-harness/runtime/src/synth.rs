@@ -102,6 +102,17 @@ impl WeightStream {
     fn tensor(&mut self, n: usize) -> Vec<f32> {
         (0..n).map(|_| self.next()).collect()
     }
+
+    /// Norm weights, centered on 1.0.
+    ///
+    /// A GGUF stores the effective RMSNorm multiplier, so a norm tensor
+    /// drawn from the same near-zero range as the projections would scale
+    /// the residual stream to nothing and make the golden insensitive to
+    /// the norms. Consumes the stream at the same rate as `tensor`, so the
+    /// weights that follow are unaffected.
+    fn norm_tensor(&mut self, n: usize) -> Vec<f32> {
+        (0..n).map(|_| 1.0 + self.next()).collect()
+    }
 }
 
 /// GGUF image writer (v3, little-endian). Public so tests and fixture
@@ -277,11 +288,15 @@ pub fn build_tiny_model(spec: &TinySpec) -> Vec<u8> {
             ("ffn_down.weight", vec![ffn, d]),
             ("post_ffw_norm.weight", vec![d]),
         ] {
-            let values = ws.tensor(n(&dims));
+            let values = if suffix.ends_with("norm.weight") {
+                ws.norm_tensor(n(&dims))
+            } else {
+                ws.tensor(n(&dims))
+            };
             w.tensor_f32(&format!("blk.{i}.{suffix}"), &dims, &values);
         }
     }
-    let output_norm = ws.tensor(spec.embed_dim);
+    let output_norm = ws.norm_tensor(spec.embed_dim);
     w.tensor_f32("output_norm.weight", &[d], &output_norm);
     // LM head is tied to token_embd, llama.cpp Gemma convention: no
     // output.weight tensor.

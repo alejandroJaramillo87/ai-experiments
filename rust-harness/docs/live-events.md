@@ -7,7 +7,7 @@ an HTML view that polls the event file. The same view pointed at a finished
 run replays it, so the feature doubles as a post-hoc run inspector.
 
 This is a design awaiting host verification. Implementation is blocked on
-the workstation chat and agent runs (runbook entries RH.11 and RH.12), which
+the workstation agent and chat runs (runbook entries RH.8 and RH.11), which
 decide which events are worth watching and what cadences real-model rates
 justify. No code changes accompany this document.
 
@@ -21,15 +21,18 @@ justify. No code changes accompany this document.
 
 ## Purpose
 
-While a run executes, the terminal shows interleaved stderr: streamed
-tokens, status lines, probe flag summaries. No current tool shows the state
-of the run as it evolves — KV cache fill against the budget (how close is
-compaction), prefill and decode rates, which tool call is executing,
-subagent forks in flight. On the workstation, where a real-model run may
-take minutes, that live view is the difference between watching a scrolling
-terminal and watching the experiment: a stuck tool call, a runaway prefill,
-or a probe firing storm becomes visible during the run instead of in the
-post-mortem.
+While a run executes, the terminal shows almost nothing. An agent task
+prints its answer to stdout once the task ends and a chat turn prints its
+reply once the turn ends — neither streams tokens, because
+`harness/src/stream.rs` is not wired to an entry point — and status lines
+and the probe flag summary reach stderr at the same late moment. No current
+tool shows the state of the run as it evolves: KV cache fill against the
+budget (how close is compaction), prefill and decode rates, which tool call
+is executing, subagent forks in flight. On the workstation, where a
+real-model run may take minutes, that live view is the difference between
+watching a scrolling terminal and watching the experiment: a stuck tool
+call, a runaway prefill, or a probe firing storm becomes visible during the
+run instead of in the post-mortem.
 
 The valuable artifact is the machine-readable status stream, not an
 interface. The harness binary stays a line-oriented Unix program; the
@@ -50,7 +53,7 @@ new transport, and every existing reader (runs catalog, retention pruner)
 continues to work unchanged because unknown `event` values pass through
 stateless readers.
 
-Proposed catalog, final grain to be decided after RH.11 and RH.12:
+Proposed catalog, final grain to be decided after RH.8 and RH.11:
 
 | Event | Kind | Payload sketch |
 |-------|------|----------------|
@@ -100,7 +103,7 @@ minimal serve mode:
 
 ## Sequencing
 
-1. Workstation runs RH.11 and RH.12 establish which events matter and what
+1. Workstation runs RH.8 and RH.11 establish which events matter and what
    real-model rates look like; observed pain points scope the catalog.
 2. Harness emission lands as one commit, sandbox-testable end to end: the
    tiny fixture model exercises every event type, and Tier 1 tests assert

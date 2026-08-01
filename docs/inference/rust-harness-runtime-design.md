@@ -74,7 +74,7 @@ feature bar for future harness work — is recorded in
 [observation-frames.md](../../rust-harness/docs/observation-frames.md).
 - **No multimodality.** The vision components of Gemma 4 checkpoints are skipped at
   load time.
-- **No custom CUDA kernels in version 1.** The tensor backend is
+- **No custom CUDA kernels in version 1.** The planned GPU tensor backend is
   [Candle](https://github.com/huggingface/candle); kernel authorship is deferred to
   the parked survey in [future-optimizations.md](future-optimizations.md).
 - **No multi-provider abstraction.** One model family, hardcoded.
@@ -105,7 +105,8 @@ A Cargo workspace with two crates and a model module:
 ```
 rust-harness/
   Cargo.toml            # workspace
-  harness/              # bin crate: agent loop, tools, permissions, sessions, TUI
+  harness/              # bin crate: agent loop, tools, permissions, transcript,
+                        # chat mode, subagents, obs records
   runtime/              # lib crate: inference engine
     src/
       session.rs        # Session handle owning the KV cache
@@ -113,7 +114,9 @@ rust-harness/
       grammar.rs        # tool-call JSON grammar compilation
       kv.rs             # per-layer cache allocation and delta prefill
       gguf.rs           # weight loading, vision tensors skipped
-      model/gemma4.rs   # static layer structs per size variant
+      tokenizer.rs      # SentencePiece unigram over the GGUF vocabulary
+      model/cpu.rs      # hand-rolled CPU backend, tap and steering seams
+      model/mock.rs     # scripted backend the sandbox tests run against
 ```
 
 The harness-runtime boundary is one in-process API:
@@ -131,17 +134,29 @@ common prefix and re-prefills from there.
 
 ## Runtime design
 
-**Tensor backend.** Candle with the CUDA feature, targeting the RTX 5090 only; no
-CPU fallback path. Candle provides quantized GGUF kernels and flash-attention bindings;
-Blackwell (sm_120) support under CUDA 13 must be verified before any other work
-(see [Risks](#risks-and-open-questions)).
+**Tensor backend.** The only backend that exists is hand-rolled: a
+single-threaded CPU reference (`runtime/src/model/cpu.rs`) computing the forward
+pass from dequantized GGUF weights, chosen for rr-debuggable numerics and used by
+every sandbox test and by the binary, which loads it unconditionally behind
+`--model`. The planned GPU backend is
+[Candle](https://github.com/huggingface/candle) with the CUDA feature, targeting
+the RTX 5090; Candle provides quantized GGUF kernels and flash-attention bindings,
+and Blackwell (sm_120) support under CUDA 13 must be verified before that work
+starts (see [Risks](#risks-and-open-questions)). The runtime crate's `cuda` feature
+is an empty placeholder until then. The two backends are separate implementations
+of the same `Model` trait rather than a fast path and a fallback: neither one
+degrades into the other at run time.
 
 **Weights.** Quantized GGUF as the primary format. The loader maps tensors by name
-into the static Gemma 4 structs and skips vision-tower tensors.
+into the backend's per-layer structs and skips vision-tower tensors.
 
-**Model graph.** No dynamic graph construction. Each Gemma 4 size variant is a set
-of static structs with dimensions as constants; the compiler sees the whole forward
-pass. This is viable only because the runtime targets one family.
+**Model graph.** No dynamic graph construction: the forward pass is written out
+once as straight-line Rust rather than assembled from a graph description, which
+is viable only because the runtime targets one family. The CPU backend reads its
+dimensions from GGUF metadata into a `Config` at load time instead of holding them
+as compile-time constants, so one build serves every Gemma 4 size variant and the
+loader can refuse a checkpoint whose metadata falls outside the implemented
+subset.
 
 **KV cache.** Gemma interleaves sliding-window and global attention layers.
 Sliding-window layers cap their cache at window size regardless of context length,
@@ -170,12 +185,19 @@ Ports tutorial phases 1, 2, and 4:
   the tutorial's permission governance (`serde_yaml`).
 - **Sessions.** JSONL transcript per session with resume support (`serde_json`).
 - **Streaming.** Tokens flow from the sampler through a `tokio` channel into the
-  terminal renderer as they are produced.
+  terminal renderer as they are produced. The channel exists
+  (`harness/src/stream.rs`) and is tested, but no entry point uses it yet, so the
+  binary prints a reply when the turn finishes rather than token by token.
 - **Chat template.** The harness renders Gemma 4's turn format, including the
-  function-calling convention, and golden-tests the rendered token IDs against the
-  Hugging Face reference tokenizer for a fixed corpus of transcripts. Template bugs
-  are the classic failure mode of local harnesses; the golden tests are mandatory
-  before any end-to-end run.
+  function-calling convention. Template bugs are the classic failure mode of local
+  harnesses, so the rendered token IDs are to be golden-tested against the Hugging
+  Face reference tokenizer for a fixed corpus of transcripts. That test is not
+  written: `rendered_token_ids_match_hf_reference` in `harness/src/template.rs` is
+  `#[ignore]`d with an `unimplemented!` body, and its fixture
+  (`fixtures/template_goldens.json`) is generated on the workstation from the
+  reference tokenizer, which the sandbox cannot reach. End-to-end runs against the
+  synthetic fixture therefore already happen without it; the golden test gates
+  trusting a rendered prompt on real weights, not running the harness at all.
 
 ### Context layer
 
@@ -256,11 +278,19 @@ sources answer it: it does. See the next section.
 ## Architecture reconciliation
 
 The CPU reference backend (`runtime/src/model/cpu.rs`) was written against a
-Gemma-3-shaped specification: RMSNorm with `(1 + weight)` scaling, embedding scaled
-by the square root of the embedding dimension, grouped-query attention with per-head
-QK-norm and NEOX RoPE, interleaved sliding-window and global layers, a GeGLU
-feed-forward block with tanh GELU, four norms per layer, and an LM head tied to the
-token embedding. Published descriptions of Gemma 4 E4B describe a superset of that.
+Gemma-3-shaped specification: RMSNorm scaling by the stored weight, embedding
+scaled by the square root of the embedding dimension, grouped-query attention with
+per-head QK-norm and NEOX RoPE, interleaved sliding-window and global layers, a
+GeGLU feed-forward block with tanh GELU, four norms per layer, and an LM head tied
+to the token embedding. Published descriptions of Gemma 4 E4B describe a superset
+of that.
+
+The norm scaling is the one place where the checkpoint, not the reference
+implementation, settles the convention. Gemma's reference code adds 1.0 to each
+norm parameter at run time, but the GGUF converter resolves that shift before
+writing — folded into the tensor for gemma1 through gemma3, stored already
+shifted for gemma3n and gemma4 — so a `1 + w` multiply here would double-count it
+on every real checkpoint.
 
 | Feature | Status in Gemma 4 E4B | Implemented | Confidence |
 |---------|-----------------------|-------------|------------|

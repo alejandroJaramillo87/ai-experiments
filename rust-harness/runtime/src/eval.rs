@@ -9,7 +9,7 @@
  * half a window of context.
  */
 
-use anyhow::{ensure, Result};
+use anyhow::{bail, ensure, Result};
 
 use super::model::{Logits, Model, Token};
 
@@ -39,6 +39,13 @@ fn nll(logits: &Logits, target: Token) -> Result<f64> {
         "target token {target} outside logits width {}",
         logits.0.len()
     );
+    // `f64::max` returns the non-NaN operand, so a NaN never reaches `max`
+    // and the finiteness check below cannot see it: the NaN would flow into
+    // the sum and perplexity would report a number-shaped non-number. A -inf
+    // entry stays legal — it is log-zero probability mass, not corruption.
+    if let Some(i) = logits.0.iter().position(|l| l.is_nan()) {
+        bail!("non-finite logits in evaluation: NaN at index {i}");
+    }
     let max = logits
         .0
         .iter()
@@ -162,6 +169,28 @@ mod tests {
         let r = perplexity(&mut m, &corpus, 8).unwrap();
         // Two full windows only; positions 4..7 of each: 3 + 3 scored.
         assert_eq!(r.tokens, 6);
+    }
+
+    #[test]
+    fn a_nan_logit_is_an_error_rather_than_a_nan_perplexity() {
+        // `f64::max` returns the non-NaN operand, so the max-subtraction
+        // guard never sees a NaN and it flows into the sum: without an
+        // explicit check the caller gets Ok(NaN) and reports a number.
+        let mut row = vec![0.0f32; 4];
+        row[2] = f32::NAN;
+        let mut m = MockModel::new(4, vec![row; 8]);
+        let err = perplexity(&mut m, &[0u32; 8], 8).expect_err("expected error");
+        assert!(err.to_string().contains("NaN at index 2"), "{err}");
+    }
+
+    #[test]
+    fn a_negative_infinity_logit_stays_legal_as_log_zero_mass() {
+        // -inf is a token the model assigns zero probability, not corruption.
+        // Three of four tokens stay equiprobable, so perplexity is exactly 3.
+        let row = vec![0.0, f32::NEG_INFINITY, 0.0, 0.0];
+        let mut m = MockModel::new(4, vec![row; 8]);
+        let r = perplexity(&mut m, &[0u32; 8], 8).unwrap();
+        assert!((r.ppl() - 3.0).abs() < 1e-6, "{}", r.ppl());
     }
 
     #[test]

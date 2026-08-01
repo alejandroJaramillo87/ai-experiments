@@ -162,9 +162,10 @@ mod tests {
 
     #[test]
     fn python_numpy_loads_a_written_npz() {
-        let dir = std::env::temp_dir().join(format!("npz-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("shard.npz");
+        // Held to the end of the test: the directory is removed when the guard
+        // drops, so a failed assertion below cannot leak the shard.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shard.npz");
         let mut w = NpzWriter::new();
         // 2x3 f16 matrix [[0, 0.5, 1], [1.5, -2, 4]] and labels [7, -1].
         let f16s: Vec<u16> = [0.0f32, 0.5, 1.0, 1.5, -2.0, 4.0]
@@ -193,6 +194,5 @@ mod tests {
             "np.load rejected the shard: {}",
             String::from_utf8_lossy(&out.stderr)
         );
-        std::fs::remove_dir_all(&dir).ok();
     }
 }

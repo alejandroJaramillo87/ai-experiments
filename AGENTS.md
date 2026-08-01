@@ -53,11 +53,26 @@ These are standing instructions for anyone (human or agent) making changes in th
 - **`make quality` is mandatory before every push, for humans and agents alike.** The gate runs
   the ruff format check, ruff lint, mypy, the uv lockfile check, and shellcheck, in that order,
   failing on the first error, then chains the rust-harness gate (`rust-harness/Makefile`:
-  cargo fmt, clippy, lockfile check, rustdoc lints, tests) when that directory exists. Every tool version comes from the pinned dev dependency group and
-  no step needs the network. Known caveat: while `uv.lock` remains stale relative to
-  `pyproject.toml` (regenerated only on the workstation, where the pytorch cu130 index is
-  reachable — verification runbook step zero), the `uv lock --check` step fails in sandboxes;
-  the other four steps must still pass before any push.
+  cargo fmt, clippy, lockfile check, rustdoc lints, tests) when that directory exists. That
+  rust gate also needs a `python3` on `PATH` that can import numpy and gguf: the npz writer's
+  unit test (`rust-harness/runtime/src/npz.rs`) shells out to it to re-read a written shard
+  with `np.load`, `harness/tests/probe_identity.rs` takes an independent SHA-256 from its
+  hashlib, and the cross-language contract tests run the real Python exporters and readers
+  from the parent tree (see `schemas/README.md`). Those contract tests report `[SKIP]` and
+  pass when a dependency or the parent tree is absent, so a green rust gate on a machine
+  without gguf is a weaker result than it looks — check the output for `[SKIP]` lines rather
+  than trusting the exit code alone. No step needs the network. The sandbox caveats all
+  trace to one cause — an unsynced virtual environment — and were re-measured on
+  2026-08-01. `uv run --no-sync` resolves whatever `.venv` happens to hold rather than
+  the pins (ruff 0.15.8 against a 0.15.21 pin, mypy 1.19.1 against 2.3.0), and the
+  pinned `types-pyyaml` is absent altogether, so `mypy` reports three
+  missing-yaml-stub errors in `training/` that a synced workstation does not see. A warm
+  `.mypy_cache` masks even that: the gate's `uv run --no-sync mypy` passes incrementally
+  and fails under `--no-incremental`, so a sandbox run stops at mypy or sails past it
+  depending on cache state. The other four steps — both ruff steps, `uv lock --check`,
+  and shellcheck — pass. Treat a clean sandbox run as evidence, not proof, and re-run the
+  gate on the workstation before trusting it. `make test` likewise cannot sync, because
+  it reaches the pytorch cu130 index; run `uv run --no-sync pytest` instead.
 
 ## Hardware
 

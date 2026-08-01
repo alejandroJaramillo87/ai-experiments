@@ -36,6 +36,12 @@ pub trait Model: Send {
     /// Append `tokens` after the cached prefix and return logits for the
     /// final appended position. Cost is proportional to `tokens.len()`, never
     /// to `cached_len()`.
+    ///
+    /// Atomic: on error the cache is unchanged — all tokens are appended or
+    /// none is. `Session` mirrors `cached_len()` in its own token list, so a
+    /// backend that commits part of a failed batch desynchronizes that mirror
+    /// with no error to see, and every later position is computed against
+    /// context the transcript does not contain.
     fn prefill(&mut self, tokens: &[Token]) -> Result<Logits>;
 
     /// Append `tokens` and return logits at every appended position, one row

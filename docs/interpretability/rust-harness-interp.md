@@ -61,8 +61,12 @@ applied, so captures observe the stream downstream layers actually consume.
 
 `ControlVector::from_gguf` reads the llama.cpp control-vector layout that
 `interp/steering/export.py` writes: one f32 tensor per layer named
-`direction.<layer>` (1-based), width equal to the embedding dimension.
-`scale * direction` is added to the residual after each named layer.
+`direction.<layer>`, width equal to the embedding dimension. `direction.N`
+steers decoder block `N`, matching llama.cpp and the repeng training
+semantics that produce these files, so the same `vector.gguf` steers the
+same block here as under `llama-cpu` and `llama-gpu`. Numbering starts at
+1 and block 0 is unsteerable, as upstream. `scale * direction` is added to
+the residual after the named block.
 Steering carries across forks, so a steered agent's subagents serve the same
 steered model. Binary flags:
 
@@ -93,10 +97,24 @@ $ cargo run -p runtime --bin activation-capture -- \
   from Python captures. It keeps rust-captured artifacts internally
   consistent across capture, train, and score, which is the property the
   fingerprint check protects.
+- `dataset_sha256` is likewise per-backend: Rust hashes the file's raw bytes,
+  Python hashes text-mode `f.read()`, which normalizes CRLF. The two agree on
+  an LF dataset and differ on a CRLF one, and a test asserts both halves so a
+  one-sided change to either hashing domain fails rather than silently
+  reinterpreting the manifests already on disk.
 
-Verified in the sandbox: `interp.probes.capture.load_capture()` loads a
-rust-written capture of the synthetic fixture with correct shapes, dtypes,
-labels, and texts.
+The key set is not maintained twice by hand any more:
+`schemas/activation_capture.manifest.json` declares the 15 shared keys plus
+the Rust-only `capture_backend`, and both writers are asserted against it.
+
+Verified in the sandbox (`runtime/tests/activation_capture.rs`): the binary
+writes a capture of the synthetic fixture whose manifest fields, shard names,
+and row counts match the format above; rows and labels read back aligned with
+their source texts; and the whole directory loads through
+`interp.probes.capture.load_capture`, so that reader's count, length, and
+repeated-layer guards are exercised against Rust-written output. The tests
+that reach the parent tree skip when it or numpy is unavailable; the
+artifact-shape half always runs.
 
 ## In-band monitoring
 
@@ -171,13 +189,39 @@ within the established 2e-4 tolerance. Property tests assert taps do not
 perturb logits, a zero control vector is bit-identical to no steering, and
 steering is deterministic and carries across forks.
 
-The artifact flow is also verified end to end in the sandbox: a control
-vector written by `interp/steering/export.py` (`write_control_vector_gguf`)
-loads through `--control-vector`, and the harness binary run over the
-synthetic fixture produces output that is deterministic across repeats and
-differs from the unsteered run. Repeat runs must use a fresh session root:
-`session.jsonl` persists the transcript by design, so a second run in the
-same directory continues the session rather than reproducing it.
+The artifact flow is now verified in both directions, against the contracts in
+`schemas/` (see `schemas/README.md`).
+
+Rust-written captures go through `interp.probes.capture.load_capture`, the
+reader the probe toolkit actually calls, rather than through a bespoke
+`np.load` — so the reader's consistency guards, which join rows, labels, and
+texts by position, are exercised against a Rust-written directory
+(`runtime/tests/activation_capture.rs`).
+
+In the other direction, `runtime/tests/python_exporter_contract.rs` loads
+probe and control-vector GGUFs written by `interp/probes/export.py` and
+`interp/steering/export.py` through `Probe::from_gguf` and
+`ControlVector::from_gguf`. Two committed fixtures
+(`fixtures/python-probe.gguf`, `fixtures/python-control-vector.gguf`) are
+exporter output, so the parse assertions run wherever the workspace builds; a
+further test re-runs the exporters and compares parsed content, which is what
+notices an exporter that has drifted from the committed bytes. The comparison
+is semantic rather than byte for byte, because a `gguf` version bump may
+legitimately change padding.
+
+The layer numbering is what made this worth closing. `probe.layer` is 0-based
+and `direction.<N>` is 1-based; each side enforced its own rule and nothing
+checked that the two compose. They do — a fixture writing `direction.1` and
+`direction.3` lands at blocks 1 and 3 with block 2 unsteered.
+
+Both cross-tree tests need `python3` with numpy and gguf plus the parent tree,
+and report `[SKIP]` without them. Runbook entries RH.9c and RH.9d remain the
+workstation check against a real checkpoint; what they no longer carry alone
+is the format contract.
+
+A separate practical note for those entries: repeat runs must use a fresh
+session root. `session.jsonl` persists the transcript by design, so a second
+run in the same directory continues the session rather than reproducing it.
 
 ## What per-layer embeddings change
 
