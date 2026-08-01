@@ -46,13 +46,19 @@ impl Transcript {
     /// Open a transcript file, resuming any entries already on disk. A torn
     /// final line — the footprint of a crash mid-append, the exact event this
     /// module exists to survive — is truncated away; corruption anywhere
-    /// before the final line is still a hard error.
+    /// before the final line is still a hard error. A final line that parses
+    /// but lost its newline is kept and terminated, so the next append starts
+    /// a line of its own.
     pub fn open(path: &Path) -> Result<Self> {
         let mut entries = Vec::new();
         let mut truncate_at: Option<u64> = None;
+        // Set when the file does not end in a newline while its final line
+        // is not torn: a complete write whose terminator never landed.
+        let mut unterminated = false;
         if path.exists() {
             let text = std::fs::read_to_string(path)
                 .with_context(|| format!("open {}", path.display()))?;
+            unterminated = !text.is_empty() && !text.ends_with('\n');
             let mut offset = 0usize;
             let mut lines = text.split_inclusive('\n').enumerate().peekable();
             while let Some((n, line)) = lines.next() {
@@ -74,7 +80,7 @@ impl Transcript {
                 }
             }
         }
-        let file = OpenOptions::new()
+        let mut file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(path)
@@ -82,6 +88,13 @@ impl Transcript {
         if let Some(len) = truncate_at {
             file.set_len(len)
                 .with_context(|| format!("truncate torn line in {}", path.display()))?;
+        } else if unterminated {
+            // Close the line off before anything is appended to it. Appending
+            // onto it instead would concatenate two objects into one
+            // unparseable final line, which the torn-tail recovery above then
+            // discards — turning a recoverable file into lost history.
+            file.write_all(b"\n")
+                .with_context(|| format!("terminate final line in {}", path.display()))?;
         }
         Ok(Self { file, entries })
     }
@@ -281,6 +294,31 @@ mod tests {
         assert_eq!(t.entries_since_compaction(), 0);
         t.append(Role::Model, "b").unwrap();
         assert_eq!(t.entries_since_compaction(), 1);
+    }
+
+    #[test]
+    fn complete_final_line_without_a_newline_keeps_its_history_on_append() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.jsonl");
+        // The object is complete, so it is history rather than a torn tail;
+        // only its terminator is missing.
+        std::fs::write(
+            &path,
+            "{\"role\": \"user\", \"content\": \"first\"}\n{\"role\": \"model\", \"content\": \"second\"}",
+        )
+        .unwrap();
+        {
+            let mut t = Transcript::open(&path).unwrap();
+            assert_eq!(t.entries().len(), 2);
+            t.append(Role::User, "third").unwrap();
+        }
+        let resumed = Transcript::open(&path).unwrap();
+        let contents: Vec<&str> = resumed
+            .entries()
+            .iter()
+            .map(|e| e.content.as_str())
+            .collect();
+        assert_eq!(contents, vec!["first", "second", "third"]);
     }
 
     #[test]
