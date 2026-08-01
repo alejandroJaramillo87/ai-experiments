@@ -1,11 +1,15 @@
-# Quality gate for the rust-harness workspace. Self-contained: this directory
-# is destined for extraction into its own repository, so nothing here depends
-# on the parent repo's Makefile or tooling. Five offline steps, cheapest
-# first, failing on the first error — the same shape as the parent repo's
-# Python gate. Deliberate non-step: cargo-deny (advisories, licenses,
-# duplicate-dep bans) needs a network-fetched advisory database, which
-# conflicts with the gate's offline contract; it enters with CI or
-# workstation tooling, not here.
+# Quality gate for the rust-harness workspace, a permanent part of this
+# repository. The gate is invocable on its own (nothing here needs the parent
+# Makefile), but the tests may read the parent tree: the cross-language
+# contract tests run the real Python exporters and readers, and skip with
+# [SKIP] when that tree or its numpy/gguf dependencies are absent — as in the
+# container build, whose context is rust-harness/ alone.
+#
+# Five offline steps, cheapest first, failing on the first error — the same
+# shape as the parent repo's Python gate. Deliberate non-step: cargo-deny
+# (advisories, licenses, duplicate-dep bans) needs a network-fetched advisory
+# database, which conflicts with the gate's offline contract; it enters with
+# CI or workstation tooling, not here.
 
 .PHONY: quality fmt lint lock doc test
 

@@ -19,7 +19,9 @@ The full design is recorded in the parent repository at
 `docs/inference/rust-harness-runtime-design.md`; the observability and
 debugging phases (flight recorder, tracing, rr-debuggable CPU backend) are
 designed in `docs/inference/rust-harness-observability.md`. This directory is
-self-contained and is intended for later extraction into its own repository.
+a permanent part of that repository, not a staging area for extraction, so the
+artifact seams it shares with the Python pipelines may be tested across the two
+trees rather than specified in prose.
 
 ## Layout
 
