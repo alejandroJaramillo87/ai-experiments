@@ -17,6 +17,13 @@ use super::sampler::Sampler;
 const SNAPSHOT_MAGIC: &[u8; 4] = b"HKV1";
 const SNAPSHOT_VERSION: u32 = 1;
 const SNAPSHOT_DTYPE_F32: u8 = 0;
+/// Tokens moved per `write_all`/`read_exact` when saving and restoring.
+///
+/// The snapshot writer and reader are trait objects, so a call per token
+/// costs a virtual dispatch and a buffer update for four bytes, and a
+/// long-context session moves tens of thousands of them. A block bounds the
+/// scratch copy at 4 KiB instead of a second copy of the whole history.
+const SNAPSHOT_TOKEN_BLOCK: usize = 1024;
 
 /// FNV-1a 64-bit hash, used to fingerprint model weights for snapshot
 /// compatibility checks. Corruption and mismatch detection only — not a
@@ -209,8 +216,15 @@ impl Session {
         w.write_all(&[SNAPSHOT_DTYPE_F32])?;
         w.write_all(&model_hash.to_le_bytes())?;
         w.write_all(&(self.tokens.len() as u64).to_le_bytes())?;
-        for &t in &self.tokens {
-            w.write_all(&t.to_le_bytes())?;
+        // Blocked rather than one call per token; the bytes and their order
+        // are unchanged, so a snapshot written before this still restores.
+        let mut block = Vec::with_capacity(SNAPSHOT_TOKEN_BLOCK * 4);
+        for tokens in self.tokens.chunks(SNAPSHOT_TOKEN_BLOCK) {
+            block.clear();
+            for &t in tokens {
+                block.extend_from_slice(&t.to_le_bytes());
+            }
+            w.write_all(&block)?;
         }
         self.model.save_state(w)
     }
@@ -256,10 +270,20 @@ impl Session {
             "snapshot of {n_tokens} tokens exceeds the context budget of {}",
             self.max_context
         );
+        // Blocked for the reason `save` writes in blocks. Each read takes
+        // exactly the bytes of its block, so the reader is left positioned at
+        // the first byte of the cache payload, where `load_state` expects it.
         let mut tokens = Vec::with_capacity(n_tokens);
-        for _ in 0..n_tokens {
-            r.read_exact(&mut u32buf)?;
-            tokens.push(u32::from_le_bytes(u32buf));
+        let mut block = vec![0u8; SNAPSHOT_TOKEN_BLOCK * 4];
+        while tokens.len() < n_tokens {
+            let take = (n_tokens - tokens.len()).min(SNAPSHOT_TOKEN_BLOCK);
+            let bytes = &mut block[..take * 4];
+            r.read_exact(bytes)?;
+            tokens.extend(
+                bytes
+                    .chunks_exact(4)
+                    .map(|b| u32::from_le_bytes(b.try_into().expect("four-byte chunk"))),
+            );
         }
         self.model.load_state(r)?;
         if self.model.cached_len() != tokens.len() {
@@ -711,6 +735,44 @@ mod tests {
         assert_eq!(recorder.total_prefilled(), 0);
         // A longer transcript prefills only the appended delta.
         assert_eq!(restored.sync(&[1, 2, 3, 4, 5, 6]).unwrap(), 2);
+    }
+
+    #[test]
+    fn a_snapshot_longer_than_one_transfer_block_keeps_its_bytes_and_stream_position() {
+        // The token list moves a block at a time instead of a token at a
+        // time. The format is unchanged, so a snapshot written before that
+        // must still restore: pin the bytes against an independently built
+        // expectation, over a length that is not a whole number of blocks.
+        let n = SNAPSHOT_TOKEN_BLOCK * 2 + 7;
+        let hash = 0x0123_4567_89ab_cdef;
+        let transcript: Vec<Token> = (0..n as u32).collect();
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), n).unwrap();
+        s.sync(&transcript).unwrap();
+        let mut buf = Vec::new();
+        s.save(&mut buf, hash).unwrap();
+
+        let mut expected = Vec::new();
+        expected.extend_from_slice(SNAPSHOT_MAGIC);
+        expected.extend_from_slice(&SNAPSHOT_VERSION.to_le_bytes());
+        expected.push(SNAPSHOT_DTYPE_F32);
+        expected.extend_from_slice(&hash.to_le_bytes());
+        expected.extend_from_slice(&(n as u64).to_le_bytes());
+        for &t in &transcript {
+            expected.extend_from_slice(&t.to_le_bytes());
+        }
+        // MockModel's whole cache payload is its cached length.
+        expected.extend_from_slice(&(n as u64).to_le_bytes());
+        assert_eq!(buf, expected);
+
+        // A blocked read must take exactly its block: over-reading would eat
+        // into the cache payload, and past it into whatever follows.
+        let mut stream = buf.clone();
+        stream.extend_from_slice(b"trailing");
+        let mut reader: &[u8] = &stream;
+        let mut restored = Session::new(Box::new(MockModel::new(27, vec![])), n).unwrap();
+        restored.restore(&mut reader, hash).unwrap();
+        assert_eq!(reader, b"trailing");
+        assert_eq!(restored.sync(&transcript).unwrap(), 0);
     }
 
     #[test]
