@@ -626,16 +626,24 @@ impl CpuModel {
         Ok(())
     }
 
+    /// Vocabulary bound. Checked for the whole batch before the first
+    /// forward pass so a bad token cannot commit its predecessors, and again
+    /// per token because `forward_one` indexes the embedding table with it.
+    fn check_token(&self, token: Token) -> Result<()> {
+        ensure!(
+            (token as usize) < self.config.vocab_size,
+            "token {token} outside vocabulary of {}",
+            self.config.vocab_size
+        );
+        Ok(())
+    }
+
     /// One decode position: append the token's K/V to every layer cache and
     /// return the logits at this position.
     fn forward_one(&mut self, token: Token, position: usize) -> Result<Logits> {
         let c = self.config;
         let w = Arc::clone(&self.weights);
-        ensure!(
-            (token as usize) < c.vocab_size,
-            "token {token} outside vocabulary of {}",
-            c.vocab_size
-        );
+        self.check_token(token)?;
         let (hd, kv_dim) = (c.head_dim, c.n_kv_heads * c.head_dim);
         let heads_per_kv = c.n_heads / c.n_kv_heads;
 
@@ -755,13 +763,31 @@ impl Model for CpuModel {
             self.cached_len,
             self.config.context_length
         );
+        // Prefill is atomic, per the `Model::prefill` contract. The
+        // vocabulary bound needs no forward pass, so scanning the whole batch
+        // here makes the only mid-batch failure the loop can currently raise
+        // unreachable, before any token is committed.
+        for &t in tokens {
+            self.check_token(t)?;
+        }
         let span =
             tracing::info_span!("model.forward", start = self.cached_len, len = tokens.len());
         let _enter = span.enter();
+        let entry = self.cached_len;
         let mut rows = Vec::with_capacity(tokens.len());
         for &t in tokens {
             let position = self.cached_len;
-            let logits = self.forward_one(t, position)?;
+            // Backstop for any error a future forward pass raises: roll the
+            // cache back to the length prefill was called at, so a failed
+            // batch leaves the model exactly as it found it.
+            let logits = match self.forward_one(t, position) {
+                Ok(logits) => logits,
+                Err(e) => {
+                    self.truncate(entry)
+                        .expect("entry length is a prefix of the current cache");
+                    return Err(e);
+                }
+            };
             self.cached_len += 1;
             rows.push(logits);
         }
@@ -843,10 +869,15 @@ impl Model for CpuModel {
         // Past this step the vectors grow as bytes actually arrive, so peak
         // memory tracks the payload rather than the claim.
         const RESERVE_ELEMENTS: usize = 1 << 16;
+        // Read into a temporary cache and commit both halves of the state at
+        // once. Filling `self.kv` in place left a truncated snapshot's rows
+        // behind under a `cached_len` never assigned, so the model reported
+        // fresh while attention read those rows at position 0 — fluent,
+        // wrong logits, which this backend refuses to produce.
+        let mut restored = vec![LayerKv::default(); self.kv.len()];
         let mut f32buf = [0u8; 4];
-        for cache in &mut self.kv {
+        for cache in &mut restored {
             for vec in [&mut cache.k, &mut cache.v] {
-                vec.clear();
                 vec.reserve_exact(elements.min(RESERVE_ELEMENTS));
                 for _ in 0..elements {
                     r.read_exact(&mut f32buf)?;
@@ -854,6 +885,7 @@ impl Model for CpuModel {
                 }
             }
         }
+        self.kv = restored;
         self.cached_len = cached_len;
         Ok(())
     }
@@ -1264,6 +1296,99 @@ mod tests {
             .expect("a truncated payload is an io error");
         assert_eq!(io.kind(), std::io::ErrorKind::UnexpectedEof);
         assert_eq!(m.cached_len(), 0);
+        // `cached_len` reads 0 on any failed restore, so it proves nothing on
+        // its own; `save_state` refuses a cache whose length disagrees with
+        // the counter, which makes it an honest emptiness check.
+        let mut after = Vec::new();
+        m.save_state(&mut after).unwrap();
+        assert_eq!(after.len(), 16, "a failed restore left rows in the cache");
+    }
+
+    #[test]
+    fn a_failed_load_state_leaves_a_model_that_computes_like_a_fresh_one() {
+        // The restore filled the cache vectors as it read and assigned
+        // `cached_len` only at the end, so a truncated payload left orphaned
+        // rows under a `cached_len` of 0. The counter said fresh, but
+        // `save_state` then refused the model as inconsistent and, worse,
+        // `forward_one` appends with `extend_from_slice` while reading
+        // position 0 from the front of the vector — so the first token
+        // attended to the orphans and returned finite, wrong logits with no
+        // error. Cut 124 of this 400-byte snapshot is one such point: it
+        // leaves layer 0's K fully restored and gave a first logit of
+        // -0.11380069 where a fresh model gives 0.32625324.
+        //
+        // Every prefix of a valid snapshot is scanned, and the assertion is
+        // not that a counter reads zero but that the model computes exactly
+        // what a never-loaded one computes.
+        let image = build_tiny_model(&TinySpec::default());
+        let file = crate::gguf::parse(&image).unwrap();
+        let model = || CpuModel::from_gguf(&file, &image).unwrap();
+
+        let mut source = model();
+        source.prefill(&[1, 5, 9]).unwrap();
+        let mut full = Vec::new();
+        source.save_state(&mut full).unwrap();
+        assert_eq!(full.len(), 400, "snapshot geometry assumed by this test");
+
+        let mut fresh = model();
+        let mut empty_cache = Vec::new();
+        fresh.save_state(&mut empty_cache).unwrap();
+        let expected = fresh.prefill(&[4]).unwrap();
+
+        // The named point first: layer 0's K fully restored, the payload cut
+        // inside layer 0's V. Compared as a scalar so the failure names the
+        // wrong number instead of printing 288 floats twice; the whole row
+        // is compared in the scan below.
+        let mut wedged = model();
+        wedged.load_state(&mut &full[..124]).unwrap_err();
+        assert_eq!(wedged.cached_len(), 0, "cut 124 reports fresh");
+        assert_eq!(
+            wedged.prefill(&[4]).unwrap().0[0],
+            expected.0[0],
+            "cut 124: the first token attended to the orphaned rows"
+        );
+
+        for cut in 0..full.len() {
+            let mut m = model();
+            let err = m.load_state(&mut &full[..cut]).unwrap_err();
+            assert_eq!(
+                err.downcast_ref::<std::io::Error>().map(|e| e.kind()),
+                Some(std::io::ErrorKind::UnexpectedEof),
+                "cut {cut}: {err}"
+            );
+            assert_eq!(m.cached_len(), 0, "cut {cut}");
+            // A counter is not the state: round-trip the cache itself, which
+            // `save_state` cross-checks against `cached_len`.
+            let mut after = Vec::new();
+            m.save_state(&mut after).unwrap();
+            assert_eq!(after, empty_cache, "cut {cut} left rows in the cache");
+            assert_eq!(m.prefill(&[4]).unwrap(), expected, "cut {cut}");
+        }
+    }
+
+    #[test]
+    fn a_failed_prefill_commits_none_of_its_tokens() {
+        // `prefill` advanced `cached_len` per token, so a token rejected
+        // mid-batch left its predecessors committed while the caller saw
+        // only the error. `Session::sync` reconciles defensively, but
+        // `eval::perplexity`, activation capture, and `fork` drive `Model`
+        // directly and would keep computing against the phantom context.
+        let mut m = tiny();
+        m.prefill(&[1, 5]).unwrap();
+        let mut before = Vec::new();
+        m.save_state(&mut before).unwrap();
+
+        let err = m.prefill(&[7, 2, 288]).unwrap_err();
+        assert!(err.to_string().contains("outside vocabulary"), "{err}");
+        assert_eq!(m.cached_len(), 2);
+        let mut after = Vec::new();
+        m.save_state(&mut after).unwrap();
+        assert_eq!(before, after, "the failed batch left rows in the cache");
+
+        // Not merely the right length: the right cache.
+        let continued = m.prefill(&[7]).unwrap();
+        let mut fresh = tiny();
+        assert_eq!(continued, fresh.prefill(&[1, 5, 7]).unwrap());
     }
 
     #[test]
