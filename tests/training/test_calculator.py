@@ -106,9 +106,11 @@ class TestComponentBytes:
         spec = spec_from_recipe(tiny_recipe)
         assert weights_bytes(spec, tiny_recipe) == 2 * TINY_PARAMS
 
-    def test_grads_fp32(self, tiny_recipe):
+    def test_grads_model_dtype(self, tiny_recipe):
+        # backward() produces gradients in the parameter dtype (bf16), not
+        # fp32 — no trainer implements separate-dtype accumulation (KB-55).
         spec = spec_from_recipe(tiny_recipe)
-        assert grad_bytes(spec, tiny_recipe) == 4 * TINY_PARAMS
+        assert grad_bytes(spec, tiny_recipe) == 2 * TINY_PARAMS
 
     def test_adamw_with_master_weights(self, tiny_recipe):
         # 8 B/param fp32 states + 4 B/param master copy under bf16 params.
@@ -185,8 +187,47 @@ class TestEstimate:
         assert est.allocated_total == (
             est.weights + est.grads + est.optimizer + est.activations
         )
+        assert est.peak_phase == "sum"
         assert est.reserved_estimate == est.allocated_total + est.overhead
         assert est.param_count == TINY_PARAMS
+
+    def test_checkpointed_total_is_temporal_max(self, tiny_recipe):
+        # Under gradient checkpointing allocated_total is a temporal max
+        # over backward phases (KB-56), not the component sum. Tiny numbers
+        # from test_activations_gradient_checkpointing: layer_inputs 8,192,
+        # per_layer 57,856, head 53,248; grads 2*TINY_PARAMS.
+        recipe = load_recipe(
+            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
+            TINY_OVERRIDES + ["memory.gradient_checkpointing=true"],
+        )
+        est = estimate(recipe)
+        late_backward = est.grads + 8_192 + 57_856
+        head_backward = 8_192 + 53_248
+        assert est.allocated_total == est.weights + est.optimizer + max(
+            late_backward, head_backward
+        )
+        assert est.peak_phase == (
+            "late_backward" if late_backward >= head_backward else "head_backward"
+        )
+        assert est.allocated_total < (
+            est.weights + est.grads + est.optimizer + est.activations
+        )
+
+    def test_checkpointed_total_monotonic_in_batch_and_seq(self, tiny_recipe):
+        # The temporal max must stay monotone for solve()'s binary search.
+        recipe = load_recipe(
+            os.path.join(REFERENCE_DIR, "tiny-e2e.yaml"),
+            TINY_OVERRIDES + ["memory.gradient_checkpointing=true"],
+        )
+        spec = spec_from_recipe(recipe)
+        from training.calculator.solve import _estimate_at
+
+        for axis in ("batch", "seq"):
+            totals = []
+            for value in (1, 2, 4, 8, 16):
+                b, s = (value, 16) if axis == "batch" else (2, value * 16)
+                totals.append(_estimate_at(spec, recipe, b, s).allocated_total)
+            assert totals == sorted(totals)
 
     def test_pretrain_1b_fits_without_offload(self):
         # Roadmap D4 acceptance: the 1B envelope config fits in 32GB.
@@ -520,9 +561,10 @@ class TestPeftComponents:
         assert weights_bytes(spec, recipe) == 2 * TINY_PARAMS + 2 * self.ADAPTER_PARAMS
 
     def test_grads_and_optimizer_cover_adapter_only(self):
+        # Adapter gradients live in peft.compute_dtype (bf16), 2 B/param.
         recipe = self.qlora_recipe()
         spec = spec_from_recipe(recipe)
-        assert grad_bytes(spec, recipe) == 4 * self.ADAPTER_PARAMS
+        assert grad_bytes(spec, recipe) == 2 * self.ADAPTER_PARAMS
         assert optimizer_bytes(spec, recipe) == 12 * self.ADAPTER_PARAMS
 
     def test_estimate_reports_trainable_params(self):

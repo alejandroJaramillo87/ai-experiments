@@ -39,7 +39,7 @@ Peak VRAM is the sum of five components, computed in
 | Component | Model |
 |-----------|-------|
 | Weights | `P * bytes(precision.dtype)` |
-| Gradients | `P_trainable * bytes(precision.grad_dtype)`; all parameters are trainable in the pretrain path, only the adapter under PEFT (`adapter_param_count`) |
+| Gradients | `P_trainable * bytes(precision.dtype)` (`peft.compute_dtype` under PEFT) — `backward()` produces gradients in the parameter dtype, and no trainer implements separate-dtype accumulation (KB-55); all parameters are trainable in the pretrain path, only the adapter under PEFT (`adapter_param_count`) |
 | Optimizer state | `adamw`: 8 bytes/param fp32 states plus 4 bytes/param master copy under mixed precision; `adamw8bit`: 2 bytes/param plus per-block fp32 constants (block size 256); zero when offloaded, with the host RAM cost reported instead (16 bytes/param against the 128GB budget) |
 | Activations | Analytic per-layer inventory for the dense attention + SwiGLU family, GQA-aware, flash-attn assumed (linear in sequence length); gradient checkpointing keeps only layer inputs plus one layer of recompute workspace; logits include the fp32 upcast for cross-entropy |
 | Framework overhead | Calibrated constant, initial value 1.5GB (`OVERHEAD_BYTES` in `training/calculator/solve.py`) |
@@ -50,7 +50,17 @@ an explicit replay-buffer budget (`replay.max_gb`, P2-D4). A replay block with
 host headroom (`training/continual/replay.resolve_max_bytes`), so counting it
 would be circular.
 
-The fits flag tests the reserved estimate (allocated sum plus overhead) against
+Under gradient checkpointing the allocated total is not the component sum but a
+temporal maximum over two backward phases (KB-56): during head backward the
+logits and their fp32 cross-entropy upcast are live but parameter gradients are
+not yet materialized (`layer_inputs + head`), and by late backward the gradients
+are full but the head tensors are freed (`grads + layer_inputs + per_layer`).
+The 1B calibration that motivated this measured 7.00GB against an 11.42GB
+component sum; the temporal-max model predicts 7.2GB. The `Estimate.peak_phase`
+field records which phase bounds the total (`sum` when checkpointing is off,
+where the conservative component sum is kept).
+
+The fits flag tests the reserved estimate (allocated total plus overhead) against
 32GB minus a 1GB safety margin. `solve(recipe, axis)` binary-searches micro-batch
 (integers) or sequence length (128-token steps) for the largest fitting value.
 
@@ -82,8 +92,10 @@ so the measured model is exactly what training runs instantiate; the record incl
 the built model's true parameter count so drift from the analytic count is caught
 immediately.
 
-Acceptance (roadmap D4): the component sum is within 10 percent of
-`max_memory_allocated` on `pretrain-150m.yaml` and `pretrain-1b.yaml`, the reserved
+Acceptance (roadmap D4): the allocated estimate is within 10 percent of
+`max_memory_allocated` (or within a 128MiB absolute floor,
+`ALLOCATED_FLOOR_BYTES`, for tiny models where fixed CUDA library workspaces
+dominate) on `pretrain-150m.yaml` and `pretrain-1b.yaml`, the reserved
 estimate does not under-predict the NVML peak, and the 1B config fits in 32GB
 without offload. When calibration reports drift, adjust the calibrated constants in
 `training/calculator/solve.py` (never the recipe) and re-run.

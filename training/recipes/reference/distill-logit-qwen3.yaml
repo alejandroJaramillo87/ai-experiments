@@ -82,7 +82,6 @@ schedule:
 
 precision:
   dtype: bf16
-  grad_dtype: fp32
 
 memory:
   gradient_checkpointing: true

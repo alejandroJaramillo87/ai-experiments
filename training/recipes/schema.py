@@ -239,7 +239,6 @@ class ScheduleConfig:
 class PrecisionConfig:
     dtype: str = "bf16"  # one of PRECISION_DTYPES
     fp8_backend: str = "torchao"  # one of FP8_BACKENDS; used only when dtype=fp8
-    grad_dtype: str = "fp32"
 
 
 @dataclass

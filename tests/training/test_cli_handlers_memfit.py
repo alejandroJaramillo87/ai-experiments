@@ -111,6 +111,25 @@ class TestMemfit:
         assert result["max_batch"] == 4096
         assert result["max_batch_estimate"]["micro_batch"] == 4096
 
+    def test_checkpointing_prints_peak_phase_note(self, capsys):
+        # pretrain-1b checkpoints; the total is a temporal max, and the
+        # table must say so (KB-56). tiny-e2e does not; no note.
+        rc = run_cli(["memfit", "--config", PRETRAIN_1B])
+        out = capsys.readouterr().err
+        assert rc == 0
+        assert "Peak phase:" in out
+        rc = run_cli(["memfit", "--config", TINY_RECIPE])
+        out = capsys.readouterr().err
+        assert rc == 0
+        assert "Peak phase:" not in out
+
+    def test_json_carries_peak_phase(self, capsys):
+        rc = run_cli(["memfit", "--config", PRETRAIN_1B, "--json"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        result = json.loads(out)
+        assert result["estimate"]["peak_phase"] in ("late_backward", "head_backward")
+
     def test_offload_recipe_reports_host_ram(self, capsys):
         rc = run_cli(["memfit", "--config", TINY_RECIPE, "memory.offload=zero_offload"])
         out = capsys.readouterr().err

@@ -241,6 +241,35 @@ The tiny run proves the plumbing and the fixed-overhead floor only; the
 estimate rounds to 0.00 GB, so calculator accuracy is exercised by a
 second calibration on the 1B reference recipe, where the relative
 10 percent bar binds (below).
+
+2026-08-01: the 1B calibrate ran cleanly but failed the accuracy bar:
+
+[RUN] Calibrating pretrain-1b: 5 steps on cuda:0
+[transformers] `use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+[OK] Calibration record written: /mnt/ai-data/training/verify/calibrate-1b.json
+[OK] Parameter count: 1,073,809,408 (analytic matches model)
+
+Estimated allocated: 11.42 GB
+Measured allocated:  7.00 GB
+Measured reserved:   8.38 GB
+NVML peak:           9.46 GB
+[ERROR] Allocated error: +63.2% (exceeds the 10% acceptance bar)
+[OK] Reserved estimate covers the NVML peak
+
+Diagnosis: two calculator defects. (1) grad_bytes priced gradients at
+precision.grad_dtype (fp32, 4.00 GB), but grad_dtype has no consumer
+outside the calculator — no trainer implements fp32 gradient
+accumulation, so a bf16 model carries bf16 gradients (2.00 GB). Filed
+as KB-55; fixed by pricing gradients in the parameter dtype and
+removing the dead grad_dtype recipe field. (2) allocated_total summed
+the full checkpointed activation inventory as simultaneously live,
+but the allocator peak is temporal: at head backward the logits and
+fp32 upcast are live with no parameter gradients yet; by late backward
+the gradients are full and the head tensors are freed. Filed as KB-56;
+fixed by modeling the checkpointed total as
+weights + optimizer + max(grads + layer inputs + one recomputed layer,
+layer inputs + head). The refined model predicts ~7.2 GB against the
+7.00 GB measurement (~+3%). Re-run pending an image rebuild.
 ```
 
 Status: PENDING

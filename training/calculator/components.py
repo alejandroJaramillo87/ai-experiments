@@ -315,11 +315,14 @@ def weights_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
 
 
 def grad_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
-    # Only trainable parameters carry gradients: the whole model in Phase 0
-    # pretraining, the adapter alone under PEFT.
-    return (
-        trainable_param_count(spec, recipe) * DTYPE_BYTES[recipe.precision.grad_dtype]
-    )
+    """Gradient memory: trainable parameters in the dtype backward() actually
+    produces — the parameter dtype. No trainer implements separate-dtype
+    gradient accumulation, so a bf16 model carries bf16 gradients (KB-55).
+    Under PEFT the adapter is built in peft.compute_dtype."""
+    params = trainable_param_count(spec, recipe)
+    if recipe.peft.enabled:
+        return params * {"bf16": 2, "fp16": 2, "fp32": 4}[recipe.peft.compute_dtype]
+    return params * DTYPE_BYTES[recipe.precision.dtype]
 
 
 def optimizer_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
@@ -367,21 +370,27 @@ def host_ram_bytes(spec: ArchitectureSpec, recipe: DictConfig) -> int:
     return total
 
 
-def activation_bytes(
+def activation_phase_bytes(
     spec: ArchitectureSpec,
     recipe: DictConfig,
     micro_batch: int | None = None,
     seq_len: int | None = None,
-) -> int:
-    """Activations saved for backward, analytic per-layer inventory.
+) -> tuple[int, int, int]:
+    """Activation inventory split into the terms whose lifetimes differ,
+    as (layer_inputs, per_layer, head_term).
 
     flash-attn is assumed: no s^2 attention matrix is materialized, only the
     per-head fp32 log-sum-exp statistics, so attention memory is linear in
     sequence length. micro_batch/seq_len default to the recipe's values and
     are overridable so solve() can search them.
 
-    With gradient checkpointing only each layer's input survives, plus one
-    layer's full activations as recompute workspace during backward.
+    With gradient checkpointing, layer_inputs is the checkpointed layer
+    inputs and per_layer is one layer's recompute workspace; without,
+    layer_inputs is 0 and per_layer covers every layer's saved tensors. The
+    head_term (final hidden states, logits in model dtype, and the fp32
+    upcast the HF loss path materializes for cross-entropy) is freed early
+    in backward, before parameter gradients accumulate — solve.py exploits
+    that lifetime split for the checkpointed peak (KB-56).
     """
     b = recipe.data.micro_batch if micro_batch is None else micro_batch
     s = recipe.data.seq_len if seq_len is None else seq_len
@@ -399,14 +408,24 @@ def activation_bytes(
 
     if recipe.memory.gradient_checkpointing:
         layer_inputs = spec.layers * tokens * d * spec.hidden
-        layer_term = layer_inputs + per_layer  # + one layer recomputed
     else:
-        layer_term = spec.layers * per_layer
+        layer_inputs = 0
+        per_layer = spec.layers * per_layer
 
-    # Output head: final hidden states, logits in model dtype, and the fp32
-    # upcast the HF loss path materializes for cross-entropy.
-    logits = tokens * d * spec.hidden + tokens * spec.vocab * (d + 4)
-    return layer_term + logits
+    head_term = tokens * d * spec.hidden + tokens * spec.vocab * (d + 4)
+    return layer_inputs, per_layer, head_term
+
+
+def activation_bytes(
+    spec: ArchitectureSpec,
+    recipe: DictConfig,
+    micro_batch: int | None = None,
+    seq_len: int | None = None,
+) -> int:
+    """Full activation inventory (sum of the phase terms). This is every
+    activation the run materializes, not the simultaneously-live peak; see
+    activation_phase_bytes for the lifetime split solve.py uses."""
+    return sum(activation_phase_bytes(spec, recipe, micro_batch, seq_len))
 
 
 def teacher_weights_bytes(spec: ArchitectureSpec, quantize: str) -> int:

@@ -98,6 +98,9 @@ def _print_estimate_table(est: Estimate, out: Printer) -> None:
         out.line(f"  {name:<18} {value:>16,}  {gb(value):>10}")
     out.line()
     out.line(f"Total allocated estimate: {gb(est.allocated_total)}")
+    if est.peak_phase != "sum":
+        out.line(f"  Peak phase: {est.peak_phase} — gradient checkpointing makes the")
+        out.line("  total a temporal max over backward phases, below the component sum")
     out.line(f"Total reserved estimate:  {gb(est.reserved_estimate)}")
     budget = VRAM_TOTAL_BYTES - SAFETY_MARGIN_BYTES
     if est.fits:

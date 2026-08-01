@@ -3,10 +3,12 @@
 Runs a short real training loop for a recipe on the workstation GPU, records
 torch.cuda.max_memory_allocated/reserved and the NVML peak, and writes a
 calibration record JSON comparing measured peaks against estimate(). The
-acceptance bar: component sum within 10 percent of max_memory_allocated (or
-within ALLOCATED_FLOOR_BYTES absolute, for tiny models where fixed
-allocator-resident workspaces dominate) on the two reference configs, and
-the reserved estimate never under-predicting the NVML peak.
+acceptance bar: the allocated estimate (a temporal max over backward phases
+under gradient checkpointing, else the component sum) within 10 percent of
+max_memory_allocated (or within ALLOCATED_FLOOR_BYTES absolute, for tiny
+models where fixed allocator-resident workspaces dominate) on the two
+reference configs, and the reserved estimate never under-predicting the
+NVML peak.
 
 The loop here is deliberately private to calibration: a few optimizer steps
 over synthetic batches, no checkpointing, tracking, or resume. It is not the
