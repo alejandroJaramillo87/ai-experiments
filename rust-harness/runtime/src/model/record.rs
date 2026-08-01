@@ -84,6 +84,23 @@ impl RecordingModel {
             },
         )
     }
+
+    /// Undo the inner prefill when only the recording failed.
+    ///
+    /// `Model::prefill` promises the cache is unchanged on error, and the
+    /// inner model keeps that promise; wrapping it must not break it. The
+    /// tokens are already committed by the time the record is written, so a
+    /// writer error would otherwise return Err with the cache advanced —
+    /// which desynchronizes the length `Session` mirrors, and makes the next
+    /// snapshot record a cache the transcript does not describe.
+    fn roll_back_on_record_failure(&mut self, start: usize, recorded: Result<()>) -> Result<()> {
+        if recorded.is_err() {
+            // Best effort: the record error is what the caller needs to see,
+            // so a failure to unwind must not mask it.
+            let _ = self.inner.truncate(start);
+        }
+        recorded
+    }
 }
 
 /// Serialize one value as a JSON line and flush, so the recording is complete
@@ -108,13 +125,16 @@ impl Model for RecordingModel {
     fn prefill(&mut self, tokens: &[Token]) -> Result<Logits> {
         let start = self.inner.cached_len();
         let logits = self.inner.prefill(tokens)?;
-        self.record(
+        self.roll_back_on_record_failure(
             start,
-            tokens,
-            vec![Row {
-                position: start + tokens.len() - 1,
-                logits: logits.0.clone(),
-            }],
+            self.record(
+                start,
+                tokens,
+                vec![Row {
+                    position: start + tokens.len() - 1,
+                    logits: logits.0.clone(),
+                }],
+            ),
         )?;
         Ok(logits)
     }
@@ -122,16 +142,19 @@ impl Model for RecordingModel {
     fn prefill_all(&mut self, tokens: &[Token]) -> Result<Vec<Logits>> {
         let start = self.inner.cached_len();
         let rows = self.inner.prefill_all(tokens)?;
-        self.record(
+        self.roll_back_on_record_failure(
             start,
-            tokens,
-            rows.iter()
-                .enumerate()
-                .map(|(i, l)| Row {
-                    position: start + i,
-                    logits: l.0.clone(),
-                })
-                .collect(),
+            self.record(
+                start,
+                tokens,
+                rows.iter()
+                    .enumerate()
+                    .map(|(i, l)| Row {
+                        position: start + i,
+                        logits: l.0.clone(),
+                    })
+                    .collect(),
+            ),
         )?;
         Ok(rows)
     }
@@ -372,6 +395,50 @@ mod tests {
         let child_rec: Record = serde_json::from_str(text.lines().nth(2).unwrap()).unwrap();
         assert_eq!(child_rec.start, 2);
         assert_eq!(child_rec.tokens, vec![3]);
+    }
+
+    /// Writer that accepts `lines` complete lines, then fails. Counting
+    /// newlines rather than calls keeps it independent of how many writes
+    /// the serializer happens to issue per line.
+    struct FailsAfter {
+        lines: usize,
+        seen: usize,
+    }
+    impl Write for FailsAfter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            if self.seen >= self.lines {
+                return Err(std::io::Error::new(std::io::ErrorKind::StorageFull, "full"));
+            }
+            self.seen += buf.iter().filter(|&&b| b == b'\n').count();
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_failed_record_write_leaves_the_inner_cache_unchanged() {
+        // Model::prefill promises the cache is unchanged on error. The inner
+        // model keeps that promise, so the wrapper must not break it: the
+        // tokens are committed before the record is written, and returning
+        // Err with them still committed desynchronizes the length Session
+        // mirrors and makes the next snapshot describe a cache the transcript
+        // does not.
+        let inner = MockModel::new(8, vec![]);
+        let mut m =
+            RecordingModel::new(Box::new(inner), Box::new(FailsAfter { lines: 2, seen: 0 }))
+                .unwrap();
+        m.prefill(&[1, 2]).unwrap();
+        let committed = m.cached_len();
+
+        let err = m.prefill(&[3, 4, 5]).unwrap_err();
+        assert!(err.to_string().contains("recording"), "{err}");
+        assert_eq!(
+            m.cached_len(),
+            committed,
+            "a failed record left the inner cache advanced"
+        );
     }
 
     #[test]
