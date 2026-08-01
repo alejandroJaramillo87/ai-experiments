@@ -53,7 +53,11 @@ These are standing instructions for anyone (human or agent) making changes in th
 - **`make quality` is mandatory before every push, for humans and agents alike.** The gate runs
   the ruff format check, ruff lint, mypy, the uv lockfile check, and shellcheck, in that order,
   failing on the first error, then chains the rust-harness gate (`rust-harness/Makefile`:
-  cargo fmt, clippy, lockfile check, rustdoc lints, tests) when that directory exists. Every tool version comes from the pinned dev dependency group and
+  cargo fmt, clippy, lockfile check, rustdoc lints, tests) when that directory exists. That
+  rust gate also needs a `python3` on `PATH` that can import numpy: the npz writer's unit test
+  (`rust-harness/runtime/src/npz.rs`) shells out to it to re-read a written shard with
+  `np.load`, and `harness/tests/probe_identity.rs` takes an independent SHA-256 from its
+  hashlib. Every tool version comes from the pinned dev dependency group and
   no step needs the network. Known caveat: while `uv.lock` remains stale relative to
   `pyproject.toml` (regenerated only on the workstation, where the pytorch cu130 index is
   reachable — verification runbook step zero), the `uv lock --check` step fails in sandboxes;

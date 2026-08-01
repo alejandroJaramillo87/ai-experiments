@@ -48,19 +48,32 @@ it rather than re-diagnosed from scratch.
 Blocks every other entry. First build of the workspace on the workstation
 toolchain.
 
+Prerequisite: a `python3` on `PATH` that can import numpy. The npz writer's
+unit test (`runtime/src/npz.rs`) shells out to `python3` to re-read a
+written shard with `np.load`, and `harness/tests/probe_identity.rs` takes
+its independent SHA-256 from `python3`'s hashlib, so `make quality` fails
+outright without them. `runtime/tests/activation_capture.rs` skips only its
+row-level assertions when numpy is missing, and the CPU-reference goldens
+(`cpu_reference.rs`) are committed JSON and need neither.
+
 Command:
 
 ```bash
 $ cd rust-harness
 $ rustc --version && cargo --version
+$ python3 -c "import numpy; print(numpy.__version__)"
 $ make quality
 ```
 
-Expected signal: exit 0. The gate runs `cargo fmt --all --check`,
-`cargo clippy --workspace --all-targets -- -D warnings`, and
-`cargo test --workspace`; all sandbox-green tests pass unchanged,
-including the numpy golden tests (`cpu_reference.rs`) and the phase C
-acceptance test (200 forced tool calls, zero malformed).
+Expected signal: exit 0. The gate runs five offline steps, cheapest first,
+failing on the first error: `cargo fmt --all --check`,
+`cargo clippy --workspace --all-targets -- -D warnings`,
+`cargo metadata --locked` (the lockfile check),
+`cargo doc --workspace --no-deps --document-private-items` under
+`RUSTDOCFLAGS="-D warnings"`, and `cargo test --workspace`; all
+sandbox-green tests pass unchanged, including the goldens against the numpy
+reference (`cpu_reference.rs`) and the phase C acceptance test (200 forced
+tool calls, zero malformed).
 
 Observed:
 
@@ -163,7 +176,7 @@ single-threaded by design.
 Command:
 
 ```bash
-$ cd /tmp/rh3 && rm -f session.jsonl
+$ mkdir -p /tmp/rh3 && cd /tmp/rh3 && rm -f session.jsonl
 $ time ~/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/gguf/<e4b>.gguf \
     --trace-chrome trace.json \
@@ -264,7 +277,7 @@ Status: PENDING
 Command:
 
 ```bash
-$ cd /tmp/rh6
+$ mkdir -p /tmp/rh6 && cd /tmp/rh6
 $ ~/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/gguf/<e4b>.gguf --trace-chrome trace.json \
     "Reply with the single word: ready"
@@ -373,8 +386,8 @@ $ cargo run --release -p runtime --bin activation-capture -- \
     --dataset <labeled.jsonl> --layers <l0,l1> \
     --out /mnt/ai-data/interp/captures/rust-e4b-verify
 $ uv run python -c "from interp.probes.capture import load_capture; \
-    c = load_capture('/mnt/ai-data/interp/captures/rust-e4b-verify'); \
-    print(sorted(c.activations), {k: v.shape for k, v in c.activations.items()})"
+    acts, labels, texts = load_capture('/mnt/ai-data/interp/captures/rust-e4b-verify'); \
+    print(sorted(acts), {k: v.shape for k, v in acts.items()}, len(labels), len(texts))"
 ```
 
 Expected signal: the capture directory holds `shard_00000.npz` onward,
@@ -395,6 +408,7 @@ Status: PENDING
 Command:
 
 ```bash
+$ cd ~/ai-experiments
 $ make probe-train ARGS="--capture /mnt/ai-data/interp/captures/rust-e4b-verify \
     --name rust-e4b-verify-probe"
 ```
@@ -415,9 +429,9 @@ Status: PENDING
 Command:
 
 ```bash
+$ mkdir -p /tmp/rh9/mon /tmp/rh9/base
 $ uv run python -c "from interp.probes.export import write_probe_gguf; \
     write_probe_gguf('/mnt/ai-data/interp/probes/rust-e4b-verify-probe', '/tmp/rh9/probe.gguf')"
-$ mkdir -p /tmp/rh9/mon /tmp/rh9/base
 $ cd /tmp/rh9/base && ~/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/gguf/<e4b>.gguf "Reply with the single word: ready"
 $ cd /tmp/rh9/mon && ~/ai-experiments/rust-harness/target/release/harness \
