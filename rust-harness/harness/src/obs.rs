@@ -155,6 +155,12 @@ impl RunLog {
             Err(_) => return Self::disabled(),
         };
         // Shared lock signals liveness to the retention pruner; best-effort
+        // SAFETY: `events` owns the descriptor and stays alive past this call,
+        // so the fd is open and valid for the whole of it; flock takes an fd
+        // and flag bits, no pointers, so there is nothing to alias. The result
+        // is discarded on purpose — the lock is advisory and only a hint to
+        // the pruner, so a filesystem that cannot honor it (NFS without a
+        // lock daemon) must not stop the run from logging.
         unsafe {
             libc::flock(events.as_raw_fd(), libc::LOCK_SH);
         }
@@ -445,11 +451,15 @@ mod tests {
 
         // the retention pruner's liveness probe: LOCK_EX|LOCK_NB must fail
         let probe = File::open(&path).unwrap();
+        // SAFETY: `probe` owns the descriptor and outlives the call, so the fd
+        // is valid throughout; flock takes no pointers, so nothing aliases.
         let live = unsafe { libc::flock(probe.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
         assert_eq!(live, -1, "live event file must appear locked");
 
         log.end(0, Path::new("/work"));
         let probe = File::open(&path).unwrap();
+        // SAFETY: as for the first probe — a freshly opened descriptor, owned
+        // by `probe` and valid for the whole call, and no pointer arguments.
         let done = unsafe { libc::flock(probe.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
         assert_eq!(done, 0, "lock must release after end");
     }
