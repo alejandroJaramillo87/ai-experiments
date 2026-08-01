@@ -358,6 +358,10 @@ struct Weights {
     embed: Vec<f32>,
     layers: Vec<LayerWeights>,
     output_norm: Vec<f32>,
+    /// Derived, not loaded: the `rope_frequencies` table for the configured
+    /// head width and frequency base. Lives beside the weights because it is
+    /// immutable and fixed at load, so forks share the one table.
+    rope_freqs: Vec<f32>,
 }
 
 /// Per-layer KV cache. Correctness-first: every layer stores the full
@@ -443,11 +447,71 @@ impl ControlVector {
     }
 }
 
+/// Working buffers for one position, allocated at load and overwritten on
+/// every token.
+///
+/// `forward_one` used to allocate every intermediate it named: `13 + 2 *
+/// n_heads + n_kv_heads` vectors per layer per token, which measured 39
+/// allocations per token over the whole pass on the committed fixture and
+/// extrapolates to roughly 1088 at E4B geometry. Each buffer below is
+/// written in full before it is read, so the reuse is an allocator saving
+/// only — no value, and no order in which values accumulate, changes.
+///
+/// Scratch is per-model state and is never shared: `fork` gives the child
+/// its own set rather than cloning the parent's, so two models descended
+/// from one checkpoint cannot overwrite each other's intermediates when
+/// their decodes interleave.
+struct Scratch {
+    /// Every fixed-width buffer back to back, carved into disjoint views by
+    /// `forward_one`.
+    ///
+    /// One allocation rather than twelve because the buffers are read and
+    /// written together: at the committed fixture's geometry they total
+    /// under a kilobyte, and as separate allocations they landed in
+    /// whichever cache sets the allocator happened to pick. That was worth
+    /// 15 percent of a token, and it moved when an unrelated allocation was
+    /// made before the model loaded — placement should be a property of
+    /// this code, not of the heap it runs on.
+    buf: Vec<f32>,
+    /// Attention scores for one query head. Kept out of `buf` because its
+    /// length varies with the window and the position rather than with the
+    /// model, so it is the one buffer that grows on use: `context_length`
+    /// is whatever the checkpoint claims, and reserving for the claim at
+    /// load would allocate gigabytes for a long-context model that may
+    /// never be prefilled that far.
+    scores: Vec<f32>,
+}
+
+impl Scratch {
+    fn new(c: &Config) -> Scratch {
+        let (q_dim, kv_dim) = (c.n_heads * c.head_dim, c.n_kv_heads * c.head_dim);
+        // Widths of the views `forward_one` carves, in its order: x,
+        // normed, q, k, v, attn_out, projected, post, gate, up, mixed,
+        // down. It asserts that the carving consumes exactly this many.
+        let elements = 5 * c.embed_dim + 2 * q_dim + 2 * kv_dim + 3 * c.ffn_dim;
+        Scratch {
+            buf: vec![0.0; elements],
+            scores: Vec::new(),
+        }
+    }
+}
+
+/// Split `n` elements off the front of `rest`, advancing it past them.
+/// Hands `forward_one` one disjoint view per intermediate out of the single
+/// scratch allocation; panics if fewer than `n` elements remain.
+fn carve<'a>(rest: &mut &'a mut [f32], n: usize) -> &'a mut [f32] {
+    let (head, tail) = std::mem::take(rest).split_at_mut(n);
+    *rest = tail;
+    head
+}
+
 pub struct CpuModel {
     config: Config,
     weights: Arc<Weights>,
     kv: Vec<LayerKv>,
     cached_len: usize,
+    /// Per-position working buffers, private to this model. See `Scratch`.
+    scratch: Scratch,
     /// None on construction and after fork (a `Box<dyn Tap>` cannot be
     /// cloned); absent taps cost one branch per layer.
     tap: Option<Box<dyn Tap>>,
@@ -456,32 +520,39 @@ pub struct CpuModel {
     control: Option<Arc<ControlVector>>,
 }
 
-/// `y = W x` with GGUF layout `[in, out]`: rows of `in` contiguous per
-/// output element.
+/// `out = W x` with GGUF layout `[in, out]`: rows of `in` contiguous per
+/// output element. The output width is `out.len()`, and `out` is written in
+/// full, so its previous contents never reach the result.
 ///
 /// The shape check is a real assertion rather than a `debug_assert`: a
 /// matrix longer than `in_dim * out_dim` stays in bounds and silently uses
 /// its leading rows, so the compiled-out version left release builds — the
 /// builds that matter — with no guard at all. `CpuModel::from_gguf` now
 /// makes this unreachable from a loaded checkpoint, and one integer
-/// comparison against `in_dim * out_dim` multiply-accumulates is free.
-fn matvec(w: &[f32], x: &[f32], out_dim: usize) -> Vec<f32> {
-    let in_dim = x.len();
+/// comparison against `in_dim * out_dim` multiply-accumulates is free. It
+/// also catches a `Scratch` buffer sized against the wrong dimension, which
+/// would otherwise show up only as wrong logits.
+fn matvec_into(w: &[f32], x: &[f32], out: &mut [f32]) {
+    let (in_dim, out_dim) = (x.len(), out.len());
     assert_eq!(
         w.len(),
         in_dim * out_dim,
         "matvec: weight of {} elements for a {in_dim} x {out_dim} product",
         w.len()
     );
-    (0..out_dim)
-        .map(|o| {
-            let row = &w[o * in_dim..(o + 1) * in_dim];
-            row.iter().zip(x).map(|(a, b)| a * b).sum()
-        })
-        .collect()
+    for (o, dst) in out.iter_mut().enumerate() {
+        let row = &w[o * in_dim..(o + 1) * in_dim];
+        *dst = row.iter().zip(x).map(|(a, b)| a * b).sum();
+    }
 }
 
-/// Gemma RMSNorm: `x / rms(x) * w`.
+/// Reciprocal of the RMS of `x`, the factor RMSNorm scales every element by.
+fn rms_inv(x: &[f32], eps: f32) -> f32 {
+    let mean_sq = x.iter().map(|v| v * v).sum::<f32>() / x.len() as f32;
+    1.0 / (mean_sq + eps).sqrt()
+}
+
+/// Gemma RMSNorm into a separate buffer: `out = x / rms(x) * w`.
 ///
 /// The stored tensor is the effective multiplier. Gemma's reference
 /// implementation adds 1.0 to its norm parameter at runtime, but the GGUF
@@ -490,10 +561,31 @@ fn matvec(w: &[f32], x: &[f32], out_dim: usize) -> Vec<f32> {
 /// already-shifted weight for gemma3n and gemma4 (`norm_shift` 0.0). Both
 /// land on a plain multiply in the llama.cpp graph, so applying `1 + w`
 /// here would double-count the shift on every real checkpoint.
-fn rms_norm(x: &[f32], w: &[f32], eps: f32) -> Vec<f32> {
-    let mean_sq = x.iter().map(|v| v * v).sum::<f32>() / x.len() as f32;
-    let inv = 1.0 / (mean_sq + eps).sqrt();
-    x.iter().zip(w).map(|(v, g)| v * inv * g).collect()
+fn rms_norm_into(x: &[f32], w: &[f32], eps: f32, out: &mut [f32]) {
+    // A short `out` would leave stale values from the previous token in the
+    // tail, which reads as a plausible activation rather than as an error.
+    assert_eq!(
+        out.len(),
+        x.len(),
+        "rms_norm: {} output elements for {} inputs",
+        out.len(),
+        x.len()
+    );
+    let inv = rms_inv(x, eps);
+    for ((dst, v), g) in out.iter_mut().zip(x).zip(w) {
+        *dst = v * inv * g;
+    }
+}
+
+/// Gemma RMSNorm applied in place, for the per-head Q/K norms whose input is
+/// dead after the call. Every output element depends only on the input
+/// element at the same index and on the scale computed up front, so this is
+/// the same arithmetic as `rms_norm_into` followed by a copy.
+fn rms_norm_in_place(x: &mut [f32], w: &[f32], eps: f32) {
+    let inv = rms_inv(x, eps);
+    for (v, g) in x.iter_mut().zip(w) {
+        *v = *v * inv * g;
+    }
 }
 
 /// Tanh-approximated GELU, the Gemma activation.
@@ -502,12 +594,28 @@ fn gelu(x: f32) -> f32 {
     0.5 * x * (1.0 + (SQRT_2_OVER_PI * (x + 0.044715 * x * x * x)).tanh())
 }
 
+/// Per-pair RoPE frequencies, `freq_base^(-2j/head_dim)` for `j` in
+/// `0..head_dim/2`.
+///
+/// The table depends only on `head_dim` and `rope_freq_base`, both fixed at
+/// load, but `rope` recomputed the `powf` for every pair of every head of
+/// every layer at every position: `n_layers * (n_heads + n_kv_heads) *
+/// head_dim/2` transcendental calls per token, all returning the same
+/// `head_dim/2` values. Computing it once and indexing it is bit-identical —
+/// `powf` is a pure function of its arguments — and leaves `sin_cos`, which
+/// does depend on the position, as the only transcendental in the loop.
+fn rope_frequencies(head_dim: usize, freq_base: f32) -> Vec<f32> {
+    (0..head_dim / 2)
+        .map(|j| freq_base.powf(-2.0 * j as f32 / head_dim as f32))
+        .collect()
+}
+
 /// NEOX-style RoPE over one head in place: pairs are (j, j + head_dim/2).
-fn rope(head: &mut [f32], position: usize, freq_base: f32) {
+/// `freqs` is the `rope_frequencies` table for this head width.
+fn rope(head: &mut [f32], position: usize, freqs: &[f32]) {
     let half = head.len() / 2;
     for j in 0..half {
-        let freq = freq_base.powf(-2.0 * j as f32 / head.len() as f32);
-        let angle = position as f32 * freq;
+        let angle = position as f32 * freqs[j];
         let (sin, cos) = angle.sin_cos();
         let (a, b) = (head[j], head[j + half]);
         head[j] = a * cos - b * sin;
@@ -585,8 +693,10 @@ impl CpuModel {
                 embed,
                 layers,
                 output_norm,
+                rope_freqs: rope_frequencies(head_dim, config.rope_freq_base),
             }),
             cached_len: 0,
+            scratch: Scratch::new(&config),
             tap: None,
             control: None,
         })
@@ -642,35 +752,67 @@ impl CpuModel {
     /// return the logits at this position.
     fn forward_one(&mut self, token: Token, position: usize) -> Result<Logits> {
         let c = self.config;
-        let w = Arc::clone(&self.weights);
         self.check_token(token)?;
+        // Split the borrow by field: the layer loop reads the weights, appends
+        // to the caches, and writes the scratch buffers at the same time.
+        let CpuModel {
+            weights,
+            kv,
+            scratch,
+            tap,
+            control,
+            ..
+        } = self;
+        let w: &Weights = weights;
         let (hd, kv_dim) = (c.head_dim, c.n_kv_heads * c.head_dim);
-        let heads_per_kv = c.n_heads / c.n_kv_heads;
+        let (q_dim, heads_per_kv) = (c.n_heads * hd, c.n_heads / c.n_kv_heads);
+
+        let Scratch { buf, scores } = scratch;
+        let mut rest: &mut [f32] = buf;
+        let x = carve(&mut rest, c.embed_dim);
+        let normed = carve(&mut rest, c.embed_dim);
+        let q = carve(&mut rest, q_dim);
+        let k = carve(&mut rest, kv_dim);
+        let v = carve(&mut rest, kv_dim);
+        let attn_out = carve(&mut rest, q_dim);
+        let projected = carve(&mut rest, c.embed_dim);
+        let post = carve(&mut rest, c.embed_dim);
+        let gate = carve(&mut rest, c.ffn_dim);
+        let up = carve(&mut rest, c.ffn_dim);
+        let mixed = carve(&mut rest, c.ffn_dim);
+        let down = carve(&mut rest, c.embed_dim);
+        // `Scratch::new` sizes the allocation from these same widths, and
+        // `carve` panics if one runs short; an exhausted remainder is the
+        // other half of the check that the two still agree.
+        assert!(
+            rest.is_empty(),
+            "scratch is wider than the views carved from it"
+        );
 
         // Embedding, scaled by sqrt(embed_dim) per Gemma convention.
         let row = &w.embed[token as usize * c.embed_dim..(token as usize + 1) * c.embed_dim];
         let scale = (c.embed_dim as f32).sqrt();
-        let mut x: Vec<f32> = row.iter().map(|v| v * scale).collect();
+        for (dst, e) in x.iter_mut().zip(row) {
+            *dst = e * scale;
+        }
 
         for (i, layer) in w.layers.iter().enumerate() {
             // Attention block.
-            let h = rms_norm(&x, &layer.attn_norm, c.rms_eps);
-            let mut q = matvec(&layer.wq, &h, c.n_heads * hd);
-            let mut k = matvec(&layer.wk, &h, kv_dim);
-            let v = matvec(&layer.wv, &h, kv_dim);
+            rms_norm_into(x, &layer.attn_norm, c.rms_eps, normed);
+            matvec_into(&layer.wq, normed, q);
+            matvec_into(&layer.wk, normed, k);
+            matvec_into(&layer.wv, normed, v);
             for head in q.chunks_mut(hd) {
-                let normed = rms_norm(head, &layer.q_norm, c.rms_eps);
-                head.copy_from_slice(&normed);
-                rope(head, position, c.rope_freq_base);
+                rms_norm_in_place(head, &layer.q_norm, c.rms_eps);
+                rope(head, position, &w.rope_freqs);
             }
             for head in k.chunks_mut(hd) {
-                let normed = rms_norm(head, &layer.k_norm, c.rms_eps);
-                head.copy_from_slice(&normed);
-                rope(head, position, c.rope_freq_base);
+                rms_norm_in_place(head, &layer.k_norm, c.rms_eps);
+                rope(head, position, &w.rope_freqs);
             }
-            let cache = &mut self.kv[i];
-            cache.k.extend_from_slice(&k);
-            cache.v.extend_from_slice(&v);
+            let cache = &mut kv[i];
+            cache.k.extend_from_slice(k);
+            cache.v.extend_from_slice(v);
 
             // Causal attention over the cache; sliding-window layers see
             // only the trailing `window` positions including this one.
@@ -679,17 +821,16 @@ impl CpuModel {
                 LayerKind::SlidingWindow(win) => (position + 1).saturating_sub(win),
             };
             let attn_scale = 1.0 / (hd as f32).sqrt();
-            let mut attn_out = vec![0.0f32; c.n_heads * hd];
+            attn_out.fill(0.0);
             for qh in 0..c.n_heads {
                 let kvh = qh / heads_per_kv;
                 let qv = &q[qh * hd..(qh + 1) * hd];
-                let mut scores: Vec<f32> = (first..=position)
-                    .map(|p| {
-                        let kp = &cache.k[p * kv_dim + kvh * hd..p * kv_dim + (kvh + 1) * hd];
-                        qv.iter().zip(kp).map(|(a, b)| a * b).sum::<f32>() * attn_scale
-                    })
-                    .collect();
-                softmax_in_place(&mut scores);
+                scores.clear();
+                scores.extend((first..=position).map(|p| {
+                    let kp = &cache.k[p * kv_dim + kvh * hd..p * kv_dim + (kvh + 1) * hd];
+                    qv.iter().zip(kp).map(|(a, b)| a * b).sum::<f32>() * attn_scale
+                }));
+                softmax_in_place(scores);
                 let out = &mut attn_out[qh * hd..(qh + 1) * hd];
                 for (s, p) in scores.iter().zip(first..=position) {
                     let vp = &cache.v[p * kv_dim + kvh * hd..p * kv_dim + (kvh + 1) * hd];
@@ -698,48 +839,61 @@ impl CpuModel {
                     }
                 }
             }
-            let projected = matvec(&layer.wo, &attn_out, c.embed_dim);
-            let post = rms_norm(&projected, &layer.post_attn_norm, c.rms_eps);
-            for (a, b) in x.iter_mut().zip(&post) {
+            matvec_into(&layer.wo, attn_out, projected);
+            rms_norm_into(projected, &layer.post_attn_norm, c.rms_eps, post);
+            for (a, b) in x.iter_mut().zip(post.iter()) {
                 *a += b;
             }
 
             // GeGLU MLP block.
-            let h = rms_norm(&x, &layer.ffn_norm, c.rms_eps);
-            let gate = matvec(&layer.w_gate, &h, c.ffn_dim);
-            let up = matvec(&layer.w_up, &h, c.ffn_dim);
-            let mixed: Vec<f32> = gate.iter().zip(&up).map(|(g, u)| gelu(*g) * u).collect();
-            let down = matvec(&layer.w_down, &mixed, c.embed_dim);
-            let post = rms_norm(&down, &layer.post_ffw_norm, c.rms_eps);
-            for (a, b) in x.iter_mut().zip(&post) {
+            rms_norm_into(x, &layer.ffn_norm, c.rms_eps, normed);
+            matvec_into(&layer.w_gate, normed, gate);
+            matvec_into(&layer.w_up, normed, up);
+            for ((m, g), u) in mixed.iter_mut().zip(gate.iter()).zip(up.iter()) {
+                *m = gelu(*g) * u;
+            }
+            matvec_into(&layer.w_down, mixed, down);
+            rms_norm_into(down, &layer.post_ffw_norm, c.rms_eps, post);
+            for (a, b) in x.iter_mut().zip(post.iter()) {
                 *a += b;
             }
 
             // Steering before the tap, so captures see the steered stream.
-            if let Some(dir) = self.control.as_ref().and_then(|cv| cv.direction(i)) {
-                let scale = self.control.as_ref().expect("checked above").scale;
+            if let Some(dir) = control.as_ref().and_then(|cv| cv.direction(i)) {
+                let scale = control.as_ref().expect("checked above").scale;
                 for (a, b) in x.iter_mut().zip(dir) {
                     *a += scale * b;
                 }
             }
 
             // Interp tap seam: the layer's complete residual output.
-            if let Some(tap) = self.tap.as_mut() {
-                tap.on_residual(i, position, &x);
+            if let Some(tap) = tap.as_mut() {
+                tap.on_residual(i, position, x);
             }
         }
 
-        // Final norm and tied LM head: logits[t] = embed_row(t) . x.
-        let x = rms_norm(&x, &w.output_norm, c.rms_eps);
+        // Final norm and tied LM head: logits[t] = embed_row(t) . x. The
+        // logits vector is the return value, so it is the one allocation
+        // per token the forward pass still owes its caller.
+        rms_norm_into(x, &w.output_norm, c.rms_eps, normed);
+        let hidden: &[f32] = normed;
         let logits = (0..c.vocab_size)
             .map(|t| {
                 let row = &w.embed[t * c.embed_dim..(t + 1) * c.embed_dim];
-                row.iter().zip(&x).map(|(a, b)| a * b).sum()
+                row.iter().zip(hidden).map(|(a, b)| a * b).sum()
             })
             .collect();
         Ok(Logits(logits))
     }
 }
+
+/// Elements moved per snapshot read or write.
+///
+/// The KV payload is the bulk of a snapshot — hundreds of megabytes at real
+/// model scale — and moving it one f32 at a time through a `dyn Write` or
+/// `dyn Read` costs a virtual call per four bytes. 64 KiB per block keeps
+/// the temporary well inside cache while amortizing the dispatch away.
+const SNAPSHOT_CHUNK_ELEMENTS: usize = 16 << 10;
 
 impl Model for CpuModel {
     fn vocab_size(&self) -> usize {
@@ -813,6 +967,11 @@ impl Model for CpuModel {
             weights: Arc::clone(&self.weights),
             kv: self.kv.clone(),
             cached_len: self.cached_len,
+            // Fresh buffers rather than a clone of the parent's: scratch is
+            // written before it is read at every position, so it carries no
+            // state worth copying, and sharing it would let interleaved
+            // parent and child decodes overwrite each other mid-token.
+            scratch: Scratch::new(&self.config),
             tap: None,
             control: self.control.clone(),
         }))
@@ -833,9 +992,17 @@ impl Model for CpuModel {
                     && cache.v.len() == self.cached_len * kv_dim,
                 "KV cache length inconsistent with cached_len"
             );
+            // Block at a time rather than four bytes at a time: a real
+            // checkpoint's cache is hundreds of megabytes, and one write_all
+            // per f32 through a trait object spends more time in dispatch
+            // than in the copy.
             for vec in [&cache.k, &cache.v] {
-                for &x in vec {
-                    w.write_all(&x.to_le_bytes())?;
+                for chunk in vec.chunks(SNAPSHOT_CHUNK_ELEMENTS) {
+                    let mut block = Vec::with_capacity(chunk.len() * 4);
+                    for &x in chunk {
+                        block.extend_from_slice(&x.to_le_bytes());
+                    }
+                    w.write_all(&block)?;
                 }
             }
         }
@@ -875,13 +1042,25 @@ impl Model for CpuModel {
         // fresh while attention read those rows at position 0 — fluent,
         // wrong logits, which this backend refuses to produce.
         let mut restored = vec![LayerKv::default(); self.kv.len()];
-        let mut f32buf = [0u8; 4];
+        let mut block = Vec::new();
         for cache in &mut restored {
             for vec in [&mut cache.k, &mut cache.v] {
                 vec.reserve_exact(elements.min(RESERVE_ELEMENTS));
-                for _ in 0..elements {
-                    r.read_exact(&mut f32buf)?;
-                    vec.push(f32::from_le_bytes(f32buf));
+                // Read in blocks for the same reason save_state writes in
+                // them, while still growing with the payload so a header
+                // that overstates its length cannot preallocate for a
+                // payload that never arrives.
+                let mut remaining = elements;
+                while remaining > 0 {
+                    let take = remaining.min(SNAPSHOT_CHUNK_ELEMENTS);
+                    block.resize(take * 4, 0);
+                    r.read_exact(&mut block)?;
+                    vec.extend(
+                        block
+                            .chunks_exact(4)
+                            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])),
+                    );
+                    remaining -= take;
                 }
             }
         }
@@ -900,6 +1079,14 @@ mod tests {
         let image = build_tiny_model(&TinySpec::default());
         let file = crate::gguf::parse(&image).unwrap();
         CpuModel::from_gguf(&file, &image).unwrap()
+    }
+
+    /// Allocating wrapper over `rms_norm_into`, so the convention tests read
+    /// as the arithmetic they check rather than as buffer bookkeeping.
+    fn rms_norm(x: &[f32], w: &[f32], eps: f32) -> Vec<f32> {
+        let mut out = vec![0.0; x.len()];
+        rms_norm_into(x, w, eps, &mut out);
+        out
     }
 
     #[test]
@@ -935,7 +1122,33 @@ mod tests {
         // debug_assert is compiled out exactly where wrong numerics matter.
         // The check costs one integer comparison against in_dim x out_dim
         // multiply-accumulates.
-        let _ = matvec(&[1.0; 16], &[1.0; 4], 2);
+        matvec_into(&[1.0; 16], &[1.0; 4], &mut [0.0; 2]);
+    }
+
+    #[test]
+    fn the_rope_frequency_table_is_the_per_pair_expression_it_replaced() {
+        // The table hoists a powf out of the rotation loop, so its contract
+        // is bit equality with the expression that used to run there, not
+        // closeness: every logit is pinned by the numpy goldens and by the
+        // determinism tests, and a frequency off by one mantissa bit would
+        // surface there with no local cause to read.
+        for (head_dim, base) in [(8usize, 10000.0f32), (128, 1_000_000.0), (256, 10000.0)] {
+            let table = rope_frequencies(head_dim, base);
+            assert_eq!(table.len(), head_dim / 2);
+            assert_eq!(table[0], 1.0, "pair 0 rotates at the position itself");
+            for (j, f) in table.iter().enumerate() {
+                let inline = base.powf(-2.0 * j as f32 / head_dim as f32);
+                assert_eq!(
+                    f.to_bits(),
+                    inline.to_bits(),
+                    "head_dim {head_dim} pair {j}"
+                );
+            }
+            assert!(
+                table.windows(2).all(|p| p[0] > p[1]),
+                "frequency must fall with pair index"
+            );
+        }
     }
 
     #[test]
@@ -1414,6 +1627,40 @@ mod tests {
         // Parent state is unaffected by the child's decode.
         assert_eq!(parent.cached_len(), 3);
         assert_eq!(child.cached_len(), 4);
+    }
+
+    #[test]
+    fn interleaved_parent_and_child_decodes_do_not_disturb_each_other() {
+        // The forward pass reuses working buffers held on the model, so a
+        // fork that shared them with its parent would let whichever model
+        // ran last overwrite the other's intermediates. Interleaving the two
+        // decodes is what makes that visible: a child that only ever runs
+        // after the parent has finished passes either way, which is why
+        // `fork_diverges_identically_to_a_fresh_session` does not cover it.
+        let steps = [(2u32, 7u32), (11, 13), (4, 6)];
+        let mut parent = tiny();
+        parent.prefill(&[1, 5, 9]).unwrap();
+        let mut child = parent.fork().unwrap();
+        let mut interleaved = Vec::new();
+        for &(p, c) in &steps {
+            let from_parent = parent.prefill(&[p]).unwrap();
+            let from_child = child.prefill(&[c]).unwrap();
+            interleaved.push((from_parent, from_child));
+        }
+
+        let mut lone_parent = tiny();
+        lone_parent.prefill(&[1, 5, 9]).unwrap();
+        let mut lone_child = tiny();
+        lone_child.prefill(&[1, 5, 9]).unwrap();
+        for (i, &(p, c)) in steps.iter().enumerate() {
+            let (got_parent, got_child) = &interleaved[i];
+            assert_eq!(
+                *got_parent,
+                lone_parent.prefill(&[p]).unwrap(),
+                "parent {i}"
+            );
+            assert_eq!(*got_child, lone_child.prefill(&[c]).unwrap(), "child {i}");
+        }
     }
 
     #[test]
