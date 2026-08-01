@@ -47,10 +47,38 @@ parameter-count or trainable-count drift warnings. Drift beyond the bar is
 a new calculator finding (expected candidates: NF4 constant pricing, paged
 optimizer states) — diagnose before touching calibrated constants.
 
-Observed:
+Observed (2026-08-01, first attempt — stopped at an unauthenticated hub
+request; `.env.training` was not present, so the gated E2B download cannot
+proceed):
 
 ```
+$ make train-calibrate CONFIG=training/recipes/reference/sft-qlora-e2b.yaml \
+    ARGS="--out /mnt/ai-data/training/verify/calibrate-sft-e2b.json"
+docker compose -f docker-compose.training.yaml run --rm training python -m training calibrate --config training/recipes/reference/sft-qlora-e2b.yaml --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json
+=== Training container ===
+
+Environment:
+  Python: 3.12.3
+  CUDA arch list: 12.0
+  Working dir: /app
+  GPU: NVIDIA GeForce RTX 5090
+
+[RUN] exec: python -m training calibrate --config training/recipes/reference/sft-qlora-e2b.yaml --out /mnt/ai-data/training/verify/calibrate-sft-e2b.json
+[RUN] Calibrating sft-qlora-e2b: 5 steps on cuda:0
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
 ```
+
+Campaign paused 2026-08-01 at this entry. Hand-off state: P0.1 through
+P0.3 recorded in `training-phase0.md` (P0.3 VERIFIED after the KB-53
+through KB-56 fixes); the KB-03 fix is on this branch pending the runs
+below; P0.4 onward not yet executed. To resume:
+
+1. Create `.env.training` from `env.training.example` with a read-scope
+   `HF_TOKEN` whose account has accepted the Gemma license on the
+   `google/gemma-4-E2B` and `google/gemma-4-E4B` model pages.
+2. Re-run the two calibrate commands above (serialized).
+3. On a hub-access or kernel failure, run the `sft-qlora-qwen3.yaml`
+   twin instead and record which family ran.
 
 Status: PENDING
 
