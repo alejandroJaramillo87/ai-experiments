@@ -3,12 +3,13 @@
  *
  * Gemma checkpoints ship the vocabulary inside the GGUF metadata
  * (tokenizer.ggml.tokens / .scores / .token_type plus bos/eos ids). Encoding
- * is unigram Viterbi over the score table with byte fallback; decoding maps
- * pieces back to text with the SentencePiece space marker (U+2581) restored
- * to a plain space. No dummy-prefix space is inserted: the chat template
- * controls surrounding whitespace exactly, and the Tier 3 template-golden
- * test verifies the end-to-end token stream against the Hugging Face
- * tokenizer.
+ * matches control and user-defined pieces (the chat delimiters) as literals
+ * first, then runs unigram Viterbi over the score table with byte fallback on
+ * the text between them; decoding maps pieces back to text with the
+ * SentencePiece space marker (U+2581) restored to a plain space. No
+ * dummy-prefix space is inserted: the chat template controls surrounding
+ * whitespace exactly, and the Tier 3 template-golden test verifies the
+ * end-to-end token stream against the Hugging Face tokenizer.
  */
 
 use std::collections::HashMap;
@@ -31,6 +32,7 @@ enum Kind {
     Normal,
     Unknown,
     Control,
+    UserDefined,
     Byte,
     Other,
 }
@@ -41,6 +43,7 @@ impl Kind {
             1 => Kind::Normal,
             2 => Kind::Unknown,
             3 => Kind::Control,
+            4 => Kind::UserDefined,
             6 => Kind::Byte,
             _ => Kind::Other,
         }
@@ -54,6 +57,16 @@ pub struct Tokenizer {
     kinds: Vec<Kind>,
     // Piece text -> id, for Viterbi substring lookup. Normal pieces only.
     lookup: HashMap<String, Token>,
+    // Control and user-defined piece text -> id. Matched as literals before
+    // Viterbi runs, so a chat delimiter costs one token instead of a byte run
+    // (Hugging Face behavior with split_special_tokens=false).
+    specials: HashMap<String, Token>,
+    // Distinct special piece lengths, descending: the scan tries them in that
+    // order so the longest literal wins where one is a prefix of another.
+    special_lens: Vec<usize>,
+    // Set for each byte that starts some special piece, so the scan rejects
+    // most input positions with one array probe instead of a map lookup.
+    special_starts: [bool; 256],
     // Byte value -> byte-token id, for fallback encoding.
     byte_tokens: [Option<Token>; 256],
     max_piece_bytes: usize,
@@ -133,6 +146,8 @@ impl Tokenizer {
         eos: Token,
     ) -> Result<Tokenizer> {
         let mut lookup = HashMap::new();
+        let mut specials = HashMap::new();
+        let mut special_starts = [false; 256];
         let mut byte_tokens = [None; 256];
         let mut max_piece_bytes = 1;
         for (id, (piece, kind)) in pieces.iter().zip(&kinds).enumerate() {
@@ -142,6 +157,14 @@ impl Tokenizer {
                     // First occurrence wins on duplicate piece text.
                     lookup.entry(piece.clone()).or_insert(id as Token);
                 }
+                Kind::Control | Kind::UserDefined => {
+                    // An empty piece would match at every position without
+                    // consuming input, so it stays out of the scan table.
+                    if let Some(&first) = piece.as_bytes().first() {
+                        special_starts[first as usize] = true;
+                        specials.entry(piece.clone()).or_insert(id as Token);
+                    }
+                }
                 Kind::Byte => {
                     let b = parse_byte_piece(piece)
                         .with_context(|| format!("bad byte token {id}: {piece:?}"))?;
@@ -150,11 +173,18 @@ impl Tokenizer {
                 _ => {}
             }
         }
+        // Lengths are collected once here so encode never walks the vocabulary.
+        let mut special_lens: Vec<usize> = specials.keys().map(String::len).collect();
+        special_lens.sort_unstable_by(|a, b| b.cmp(a));
+        special_lens.dedup();
         Ok(Tokenizer {
             pieces,
             scores,
             kinds,
             lookup,
+            specials,
+            special_lens,
+            special_starts,
             byte_tokens,
             max_piece_bytes,
             bos,
@@ -183,7 +213,8 @@ impl Tokenizer {
             .with_context(|| format!("token {tok} outside vocabulary"))
     }
 
-    /// Decode token ids to text. Control tokens render as nothing; byte
+    /// Decode token ids to text. Control tokens render as nothing;
+    /// user-defined tokens render as their piece text; byte
     /// tokens contribute raw bytes, assembled with invalid sequences replaced
     /// (never an error: model output must always be displayable).
     pub fn decode(&self, tokens: &[Token]) -> Result<String> {
@@ -209,18 +240,90 @@ impl Tokenizer {
             .to_string())
     }
 
-    /// Encode text to token ids via unigram Viterbi: best-scoring
-    /// segmentation into vocabulary pieces, with per-byte fallback tokens for
-    /// anything the vocabulary cannot cover. No BOS is added — the caller
-    /// (chat template rendering) owns special tokens.
+    /// Encode text to token ids, treating the text purely as data: a control
+    /// or user-defined piece appearing in it is encoded as its literal
+    /// characters, never as the special id.
+    ///
+    /// This is the safe default because most text reaching a tokenizer is
+    /// untrusted — dataset lines, file contents, command output. Resolving
+    /// specials here would let any of it emit a real turn or sequence
+    /// boundary into a prompt. Callers that are themselves emitting structure
+    /// use `encode_prompt` and name the literals they mean.
+    /// No BOS is added — the caller (chat template rendering) owns it.
     pub fn encode(&self, text: &str) -> Result<Vec<Token>> {
+        self.encode_inner(text, &[])
+    }
+
+    /// Encode text that the caller composed, resolving only the special
+    /// literals in `allowed` to their trained ids; every other special piece
+    /// stays literal text.
+    ///
+    /// The allowlist is the trust boundary. A rendered prompt interleaves
+    /// structure the harness emits with content it does not control, and by
+    /// the time it is one string the two are indistinguishable — so the
+    /// harness names the delimiters it emits, and anything else that looks
+    /// special is data by construction. Passing every special piece here
+    /// would reopen exactly the injection the chat template's sanitizer
+    /// exists to prevent.
+    ///
+    /// Literals containing a space will not match, because the input is
+    /// space-marked before scanning; the Gemma delimiters contain none.
+    pub fn encode_prompt(&self, text: &str, allowed: &[&str]) -> Result<Vec<Token>> {
+        self.encode_inner(text, allowed)
+    }
+
+    fn encode_inner(&self, text: &str, allowed: &[&str]) -> Result<Vec<Token>> {
         let marked: String = text
             .chars()
             .map(|c| if c == ' ' { SPACE_PIECE } else { c })
             .collect();
+        let mut out = Vec::new();
+        let mut span_start = 0;
+        let mut pos = 0;
+        while pos < marked.len() {
+            let Some((tok, len)) = self.special_at(&marked, pos, allowed) else {
+                pos += 1;
+                continue;
+            };
+            self.encode_span(&marked[span_start..pos], &mut out)?;
+            out.push(tok);
+            pos += len;
+            span_start = pos;
+        }
+        self.encode_span(&marked[span_start..], &mut out)?;
+        Ok(out)
+    }
+
+    /// Longest allowed control or user-defined piece starting at byte `pos`,
+    /// with its byte length. Cost is bounded by the number of distinct
+    /// special lengths rather than by vocabulary size: this runs at every
+    /// byte of every prompt, and returns immediately when nothing is allowed.
+    fn special_at(&self, marked: &str, pos: usize, allowed: &[&str]) -> Option<(Token, usize)> {
+        if allowed.is_empty() || !self.special_starts[marked.as_bytes()[pos] as usize] {
+            return None;
+        }
+        for &len in &self.special_lens {
+            // get() also rejects a span that is not on char boundaries.
+            let Some(sub) = marked.get(pos..pos + len) else {
+                continue;
+            };
+            if !allowed.contains(&sub) {
+                continue;
+            }
+            if let Some(&tok) = self.specials.get(sub) {
+                return Some((tok, len));
+            }
+        }
+        None
+    }
+
+    /// Unigram Viterbi over one span of space-marked text: best-scoring
+    /// segmentation into vocabulary pieces, with per-byte fallback tokens for
+    /// anything the vocabulary cannot cover. Tokens are appended to `out`.
+    fn encode_span(&self, marked: &str, out: &mut Vec<Token>) -> Result<()> {
         let bytes = marked.as_bytes();
         if bytes.is_empty() {
-            return Ok(Vec::new());
+            return Ok(());
         }
         // best[i]: (score, token ending at i, start of that token).
         let mut best: Vec<Option<(f32, Token, usize)>> = vec![None; bytes.len() + 1];
@@ -251,16 +354,17 @@ impl Tokenizer {
         }
         // Walk back from the end. A gap means a byte had neither piece nor
         // byte-token coverage.
-        let mut out = Vec::new();
+        let first = out.len();
         let mut pos = bytes.len();
         while pos > 0 {
-            let (_, tok, start) = best[pos]
-                .with_context(|| format!("no tokenization covers byte {} of input", pos - 1))?;
+            let (_, tok, start) = best[pos].with_context(|| {
+                format!("no tokenization covers byte {} of the input span", pos - 1)
+            })?;
             out.push(tok);
             pos = start;
         }
-        out.reverse();
-        Ok(out)
+        out[first..].reverse();
+        Ok(())
     }
 }
 
@@ -278,17 +382,18 @@ mod tests {
     use super::*;
 
     /// Hand-built vocab: control specials, byte tokens for every byte, and a
-    /// few normal pieces with scores favoring longer matches.
-    fn tokenizer() -> Tokenizer {
+    /// few normal pieces with scores favoring longer matches. Types are the
+    /// llama.cpp token_type codes a real Gemma export carries.
+    fn vocab_parts() -> (Vec<String>, Vec<f32>, Vec<i32>) {
         let mut pieces = vec![
             "<pad>".to_string(),
             "<bos>".to_string(),
             "<eos>".to_string(),
         ];
-        let mut kinds = vec![Kind::Control; 3];
+        let mut types = vec![3i32; 3];
         for b in 0..=255u8 {
             pieces.push(format!("<0x{b:02X}>"));
-            kinds.push(Kind::Byte);
+            types.push(6);
         }
         let normals = [
             ("\u{2581}hello", -1.0),
@@ -305,15 +410,51 @@ mod tests {
         ];
         for (p, _) in normals {
             pieces.push(p.to_string());
-            kinds.push(Kind::Normal);
+            types.push(1);
         }
         let mut scores = vec![0.0; 3 + 256];
         scores.extend(normals.iter().map(|(_, s)| *s));
-        Tokenizer::new(pieces, scores, kinds, 1, 2).unwrap()
+        (pieces, scores, types)
+    }
+
+    fn tokenizer() -> Tokenizer {
+        let (pieces, scores, types) = vocab_parts();
+        Tokenizer::from_parts(pieces, scores, &types, 1, 2).unwrap()
+    }
+
+    /// The same vocab plus the chat delimiters: the turn markers as control
+    /// pieces and the full model-turn opener as a user-defined piece, so one
+    /// special is a prefix of another.
+    fn tokenizer_with_delimiters() -> Tokenizer {
+        let (mut pieces, mut scores, mut types) = vocab_parts();
+        for (piece, token_type) in [
+            ("<start_of_turn>", 3),
+            ("<end_of_turn>", 3),
+            ("<start_of_turn>model\n", 4),
+        ] {
+            pieces.push(piece.to_string());
+            scores.push(0.0);
+            types.push(token_type);
+        }
+        Tokenizer::from_parts(pieces, scores, &types, 1, 2).unwrap()
+    }
+
+    /// The same vocab with no control or user-defined piece at all: type 5 is
+    /// llama.cpp's UNUSED, present in the table but never matched.
+    fn tokenizer_without_specials() -> Tokenizer {
+        let (pieces, scores, types) = vocab_parts();
+        let types: Vec<i32> = types.iter().map(|&t| if t == 3 { 5 } else { t }).collect();
+        Tokenizer::from_parts(pieces, scores, &types, 1, 2).unwrap()
     }
 
     fn id(t: &Tokenizer, piece: &str) -> Token {
         t.lookup[piece]
+    }
+
+    /// Id of a control or user-defined piece: these are deliberately absent
+    /// from the Viterbi lookup, so find them by position in the vocab.
+    fn special_id(t: &Tokenizer, piece: &str) -> Token {
+        t.pieces.iter().position(|p| p == piece).unwrap() as Token
     }
 
     #[test]
@@ -370,6 +511,112 @@ mod tests {
         let t = tokenizer();
         let hello = id(&t, "\u{2581}hello");
         assert_eq!(t.decode(&[t.bos(), hello, t.eos()]).unwrap(), " hello");
+    }
+
+    /// The delimiters a caller composing a prompt would name as structural.
+    const ALLOWED: &[&str] = &["<start_of_turn>", "<end_of_turn>", "<start_of_turn>model\n"];
+
+    #[test]
+    fn control_pieces_encode_to_their_own_id_not_a_byte_run() {
+        let t = tokenizer_with_delimiters();
+        assert_eq!(
+            t.encode_prompt("<start_of_turn>", ALLOWED).unwrap(),
+            vec![special_id(&t, "<start_of_turn>")]
+        );
+        // Without the piece in the vocab the same literal costs 15 tokens.
+        assert_eq!(
+            tokenizer()
+                .encode_prompt("<start_of_turn>", ALLOWED)
+                .unwrap()
+                .len(),
+            15
+        );
+    }
+
+    #[test]
+    fn text_around_a_control_piece_still_segments_normally() {
+        let t = tokenizer_with_delimiters();
+        assert_eq!(
+            t.encode_prompt("<start_of_turn> hello world<end_of_turn>", ALLOWED)
+                .unwrap(),
+            vec![
+                special_id(&t, "<start_of_turn>"),
+                id(&t, "\u{2581}hello"),
+                id(&t, "\u{2581}world"),
+                special_id(&t, "<end_of_turn>"),
+            ]
+        );
+    }
+
+    #[test]
+    fn longest_special_piece_wins_when_one_is_a_prefix_of_another() {
+        let t = tokenizer_with_delimiters();
+        assert_eq!(
+            t.encode_prompt("<start_of_turn>model\n", ALLOWED).unwrap(),
+            vec![special_id(&t, "<start_of_turn>model\n")]
+        );
+        // The shorter piece still applies where the longer cannot match.
+        assert_eq!(
+            t.encode_prompt("<start_of_turn>user", ALLOWED).unwrap()[0],
+            special_id(&t, "<start_of_turn>")
+        );
+    }
+
+    #[test]
+    fn a_special_piece_outside_the_allowlist_stays_literal_text() {
+        // The injection guard. Untrusted content reaching a prompt must not
+        // be able to emit a boundary the harness did not write, so a special
+        // the caller did not name is encoded as its characters.
+        let t = tokenizer_with_delimiters();
+        let eos_literal = "<end_of_turn>";
+        let allowed_only_open: &[&str] = &["<start_of_turn>"];
+
+        let got = t.encode_prompt(eos_literal, allowed_only_open).unwrap();
+        assert!(
+            !got.contains(&special_id(&t, eos_literal)),
+            "an unlisted special resolved to its id: {got:?}"
+        );
+        assert_eq!(got, t.encode(eos_literal).unwrap());
+    }
+
+    #[test]
+    fn plain_encode_never_resolves_a_special_piece() {
+        // encode() is the seam every untrusted caller uses — dataset lines,
+        // file contents, command output. It must treat text as data.
+        let t = tokenizer_with_delimiters();
+        for literal in ["<start_of_turn>", "<end_of_turn>", "<start_of_turn>model\n"] {
+            let got = t.encode(literal).unwrap();
+            assert!(
+                !got.contains(&special_id(&t, literal)),
+                "encode resolved {literal} to its special id: {got:?}"
+            );
+            assert!(got.len() > 1, "{literal} collapsed to one token");
+        }
+    }
+
+    #[test]
+    fn user_defined_pieces_decode_to_their_text_and_control_pieces_to_nothing() {
+        let t = tokenizer_with_delimiters();
+        let opener = special_id(&t, "<start_of_turn>model\n");
+        assert_eq!(t.decode(&[opener]).unwrap(), "<start_of_turn>model\n");
+        let close = special_id(&t, "<end_of_turn>");
+        assert_eq!(
+            t.decode(&[id(&t, "\u{2581}hello"), close]).unwrap(),
+            " hello"
+        );
+    }
+
+    #[test]
+    fn a_vocabulary_without_special_pieces_encodes_exactly_as_before() {
+        let t = tokenizer_without_specials();
+        // No piece covers any byte of "<pad>", so it stays a byte run and the
+        // word after it still segments as one piece.
+        let mut expect: Vec<Token> = "<pad>"
+            .bytes()
+            .map(|b| t.byte_tokens[b as usize].unwrap())
+            .collect();
+        expect.push(id(&t, "\u{2581}hello"));
+        assert_eq!(t.encode("<pad> hello").unwrap(), expect);
     }
 
     #[test]
