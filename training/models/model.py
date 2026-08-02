@@ -104,6 +104,11 @@ def build_model(recipe: DictConfig):
             revision=recipe.model.hf.revision,
             dtype=model_dtype(recipe),
             attn_implementation=attention_implementation(),
+            # Training never reaches the hub: assets are staged by the prepare
+            # service and proven present by `python -m training preflight`. The
+            # container's internal network is the actual guarantee; this turns a
+            # missing asset into a clear error instead of a hung socket.
+            local_files_only=True,
             **kwargs,
         )
         if recipe.memory.gradient_checkpointing:

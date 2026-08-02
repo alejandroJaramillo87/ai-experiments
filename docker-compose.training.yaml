@@ -7,9 +7,40 @@
 #
 # This mirrors the docker-compose.agents.yaml precedent (separate file, run-not-up). It is not a
 # long-running server: no published port and no healthcheck; it runs batch or interactive jobs.
+#
+# Three services, split by whether they may reach the network:
+#
+#   prepare  — the ONLY service with egress. Downloads models and builds datasets, shards,
+#              tokenizers, and the contamination index. Joins training-egress.
+#   training — runs training, calibration, and evaluation. No egress, enforced by topology.
+#   export   — converts checkpoints to GGUF. No egress; its code is already cache-only.
+#
+# The split exists so a long training run cannot stall on a download. Assets are staged by
+# `prepare` first and proven present by `make train-preflight`; `training` then runs on a
+# network with no route off the host.
+
+# Hardening shared by all three services. Merged with `<<:` rather than repeated, so a
+# change to the security posture cannot land on two services and miss the third.
+x-training-hardening: &training-hardening
+  restart: "no"  # batch job runner, not a service
+  init: true  # tini as PID 1 for correct signal forwarding
+  user: "${UID:-1000}:${GID:-1000}"  # match host user for /mnt/ai-data writes
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  read_only: true
+  # Secrets (WANDB_API_KEY, HF_TOKEN) from an untracked per-tier file; template
+  # is env.training.example (roadmap D6). Optional: public models and offline
+  # tracking need no secrets. Only `prepare` can actually use HF_TOKEN -- the
+  # other two have no route to the hub.
+  env_file:
+    - path: .env.training
+      required: false
 
 services:
   training:
+    <<: *training-hardening
     build:
       context: .
       dockerfile: docker/training/Dockerfile.training
@@ -17,20 +48,6 @@ services:
         MAX_JOBS: "${MAX_JOBS:-4}"
         NVCC_THREADS: "${NVCC_THREADS:-2}"
     container_name: training
-    restart: "no"  # batch job runner, not a service
-    init: true  # tini as PID 1 for correct signal forwarding
-    user: "${UID:-1000}:${GID:-1000}"  # match host user for /mnt/ai-data/training writes
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    # Secrets (WANDB_API_KEY, HF_TOKEN) from an untracked per-tier file; template
-    # is env.training.example (roadmap D6). Optional: public models and offline
-    # tracking need no secrets.
-    env_file:
-      - path: .env.training
-        required: false
     environment:
       - NVIDIA_VISIBLE_DEVICES=0
       - CUDA_VISIBLE_DEVICES=0
@@ -46,7 +63,10 @@ services:
     shm_size: "16g"  # dataloader worker shared memory
     tmpfs:
       - /tmp:size=8G,mode=1777,exec  # Triton/CUDA JIT caches require exec
-      - /app/cache:size=2G,mode=1777  # HuggingFace cache (HF_HOME)
+      # HF_HOME. Stays a small tmpfs deliberately: this service never resolves a hub
+      # id, so nothing should ever land here. If it fills, something is reaching the
+      # hub that should not be.
+      - /app/cache:size=2G,mode=1777
       # RAM-disk shard staging (roadmap D9): sized to match staging.max_gb
       - /staging:size=${TRAIN_STAGING_GB:-32}G,mode=1777
     volumes:
@@ -54,6 +74,12 @@ services:
       - /mnt/ai-data/models/:/app/models:ro
       # Writable training root: datasets, shards, checkpoints, run outputs (roadmap D1)
       - /mnt/ai-data/training:/mnt/ai-data/training:rw
+      # Structured observability records. Identity-mounted so OBS_LOG_DIR resolves to the
+      # same path inside and outside the container, and `training runs`/`training report`
+      # read on the host exactly what the run wrote. Without this the file handler in
+      # common/obs/core.py fails its mkdir against the read-only rootfs and silently drops
+      # every record (the handler is best-effort by design, core.py:350-352).
+      - /mnt/ai-data/logs:/mnt/ai-data/logs:rw
       # Narrow rw window into the models tree for exported GGUFs (roadmap D7); the rest
       # of /app/models stays read-only via the mount above
       - /mnt/ai-data/models/trained:/app/models/trained:rw
@@ -62,31 +88,73 @@ services:
       - ./training:/app/training:ro
       # Shared helpers (common.output Printer) imported by training/cli.py at module scope
       - ./common:/app/common:ro
+      # Entrypoint and framework logs; distinct from the structured obs records above
       - ./logs/training:/app/logs
     networks:
       - training-network
 
+  # Data and model staging (Prelude C). The one service permitted to reach the hub.
+  # Same image as `training` -- it needs `datasets` and `transformers`, which the export
+  # image does not carry -- but the three offline switches baked into Dockerfile.training
+  # are turned back off here, and it joins the egress network instead of the internal one.
+  #
+  # No GPU: every command it runs (prepare-corpus, prepare-data, prepare-sft,
+  # build-contamination, train-tokenizer, download) is CPU and I/O bound.
+  prepare:
+    <<: *training-hardening
+    build:
+      context: .
+      dockerfile: docker/training/Dockerfile.training
+      args:
+        MAX_JOBS: "${MAX_JOBS:-4}"
+        NVCC_THREADS: "${NVCC_THREADS:-2}"
+    container_name: training-prepare
+    environment:
+      # Re-enable hub access. Dockerfile.training sets all three to 1 so that the
+      # default posture of the image is offline; this service is the single
+      # documented exception, and it is the only one on a network that can route out.
+      - HF_HUB_OFFLINE=0
+      - TRANSFORMERS_OFFLINE=0
+      - HF_DATASETS_OFFLINE=0
+      # Faster large-file downloads; hf-transfer is a core dependency (pyproject.toml)
+      - HF_HUB_ENABLE_HF_TRANSFER=1
+    tmpfs:
+      - /tmp:size=8G,mode=1777
+    volumes:
+      # Persistent HF cache. This is the first and only container mount of the host
+      # cache tree, and it is what makes a re-download of an already-fetched revision
+      # a cache hit instead of a fresh pull. The training service deliberately keeps a
+      # throwaway tmpfs at this path instead.
+      - /mnt/ai-data/cache/huggingface:/app/cache:rw
+      # Downloads land in the persistent models tree, which every other service mounts
+      # read-only. This is the only rw mount of models/hf anywhere in the stack.
+      - /mnt/ai-data/models/hf:/mnt/ai-data/models/hf:rw
+      # Shards, datasets, tokenizers, and the contamination index are written here and
+      # read by the training service from the same identity path.
+      - /mnt/ai-data/training:/mnt/ai-data/training:rw
+      # Structured observability records; identity-mounted for the same reason as above
+      - /mnt/ai-data/logs:/mnt/ai-data/logs:rw
+      - ./scripts:/app/scripts:ro
+      - ./training:/app/training:ro
+      - ./common:/app/common:ro
+      - ./logs/training:/app/logs
+    networks:
+      - training-egress
+
   # GGUF export toolchain (roadmap D7). Separate image by design: the training image is
   # never reused to prepare a model for inference. CPU-only batch job, no GPU reservation.
+  #
+  # No egress: cli.py:499-501 forces local_files_only=True into export/preflight.py, and
+  # merge.py:164-168 sets it from `not os.path.isdir(base)`. Both paths are cache-only, so
+  # the internal network costs this service nothing.
   export:
+    <<: *training-hardening
     build:
       context: .
       dockerfile: docker/training/Dockerfile.export
       args:                      # cap the llama-quantize compile jobs
         MAX_JOBS: "${MAX_JOBS:-4}"
     container_name: training-export
-    restart: "no"  # batch job runner, not a service
-    init: true
-    user: "${UID:-1000}:${GID:-1000}"  # match host user for export/staging writes
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    # HF_TOKEN needed only when an adapter merge pulls a gated base model from the hub
-    env_file:
-      - path: .env.training
-        required: false
     tmpfs:
       - /tmp:size=2G,mode=1777
       - /app/cache:size=8G,mode=1777  # HF cache for adapter-merge base downloads
@@ -97,17 +165,33 @@ services:
       - /mnt/ai-data/models/trained:/app/models/trained:rw
       # Checkpoints to export and the on-disk staging area (large intermediates)
       - /mnt/ai-data/training:/mnt/ai-data/training:rw
+      # Structured observability records; identity-mounted for the same reason as the
+      # training service above
+      - /mnt/ai-data/logs:/mnt/ai-data/logs:rw
       # Repository sources mounted live for iteration
       - ./scripts:/app/scripts:ro
       - ./training:/app/training:ro
       # Shared helpers (common.output Printer) imported by training/cli.py at module scope
       - ./common:/app/common:ro
+      # Entrypoint and framework logs; distinct from the structured obs records above
       - ./logs/training:/app/logs
     networks:
       - training-network
 
-# Self-contained network: training runs jobs, not a server, and never runs alongside the
-# inference stack, so it does not join ai-network.
 networks:
+  # No route off the host. This is the structural guarantee behind "a training run never
+  # reaches the hub": it holds regardless of environment variables, command-line flags, or
+  # what a future recipe puts in model.hf.id. Same enforcement-by-topology reasoning as
+  # docker-compose.agents.yaml:94-103, minus the proxy -- the agent sandbox needs a
+  # filtered allowlist, this needs no egress at all.
+  #
+  # Self-contained: training runs jobs, not a server, and never runs alongside the
+  # inference stack, so it does not join ai-network.
   training-network:
     driver: bridge
+    internal: true
+
+  # Egress for the staging service only. Nothing else joins this network.
+  training-egress:
+    driver: bridge
+    internal: false

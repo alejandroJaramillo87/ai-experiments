@@ -1,12 +1,27 @@
 # Complete System Backup and Recovery with Clonezilla
 
+**Warning!** `/dev/nvme1n1` is the AI data drive (Samsung 990 PRO 2TB); its partition
+`/dev/nvme1n1p2` carries the `AIENGINEERING` filesystem mounted at `/mnt/ai-data`. Never
+select it as a restore target. The OS drive is `/dev/nvme0n1` (Samsung 990 EVO Plus 1TB).
+Device node numbering is not guaranteed stable across reboots or hardware changes, so
+confirm the mapping before every imaging operation:
+
+```bash
+lsblk -o NAME,SIZE,MODEL,MOUNTPOINT
+```
+
+Expected mapping on this workstation: `nvme0n1` is 931.5G, model `Samsung SSD 990 EVO Plus
+1TB`, with `nvme0n1p1` at `/boot/efi` and `nvme0n1p2` at `/`. `nvme1n1` is the 2TB model
+`Samsung SSD 990 PRO 2TB`, with `nvme1n1p2` at `/mnt/ai-data`. If the output disagrees,
+stop and use the node the output reports.
+
 ## Goal
-Create a complete backup of your Ubuntu 24.04 system (nvme1n1) on a 1TB USB drive that can be restored at the BIOS level, even when the OS and UEFI boot are corrupted.
+Create a complete backup of your Ubuntu 24.04 system (nvme0n1) on a 1TB USB drive that can be restored at the BIOS level, even when the OS and UEFI boot are corrupted.
 
 ## What You Need
 - 1TB USB external drive (for backup storage)
 - Separate USB drive for Clonezilla Live (8GB+ recommended)
-- Ubuntu 24.04 system with nvme1n1 SSD to backup
+- Ubuntu 24.04 system with the nvme0n1 SSD to backup (931.5G)
 
 ## Step 1: Prepare USB Drives
 
@@ -60,8 +75,9 @@ sync
 
 ### Create Disk Image
 1. **Operation**: Select "savedisk" (save local disk as an image)
-2. **Image Name**: Enter descriptive name like `nvme1n1_backup_2025-01-09`
-3. **Source Disk**: Select "/dev/nvme1n1" (your OS drive)
+2. **Image Name**: Enter descriptive name like `nvme0n1_backup_2025-01-09`
+3. **Source Disk**: Select "/dev/nvme0n1" (the OS drive, 931.5G). Do not select
+   "/dev/nvme1n1" — that is the 2TB AI data drive.
 4. **Compression**: Keep default settings (good balance of speed/size)
 5. **Verification**: Enable image verification (recommended)
 
@@ -83,7 +99,7 @@ sync
 # - Mount your backup USB drive
 # - Choose "restoredisk" (restore disk from image)
 # - Select your backup image
-# - Target disk: /dev/nvme1n1
+# - Target disk: /dev/nvme0n1   (the OS drive; never /dev/nvme1n1, the AI data drive)
 # - Confirm and start restoration (15-30 minutes)
 ```
 
@@ -104,7 +120,9 @@ sync
    - Mount your backup USB drive
    - Select "restoredisk" (restore disk from image)
    - Choose your backup image
-   - Target: "/dev/nvme1n1" (your SSD)
+   - Target: "/dev/nvme0n1" (the OS drive, 931.5G)
+   - Verify the size and model shown before confirming; restoring onto /dev/nvme1n1
+     destroys /mnt/ai-data
    - Confirm restoration
 
 4. **Automatic UEFI Recovery**
@@ -157,9 +175,10 @@ sync
 ### Drive Identification Help
 ```bash
 # In Clonezilla, drives appear as:
-# /dev/nvme1n1 - Your 1TB NVMe SSD (source/target)
+# /dev/nvme0n1 - OS drive, Samsung 990 EVO Plus 1TB, 931.5G (source/target)
+# /dev/nvme1n1 - AI data drive, Samsung 990 PRO 2TB (/mnt/ai-data) - never a target
 # /dev/sdb or /dev/sdc - Your 1TB backup USB drive
-# Always verify drive sizes before proceeding
+# Always verify drive sizes and models before proceeding
 ```
 
 ## Important Notes

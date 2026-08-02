@@ -48,12 +48,18 @@ class ReplayRamFloorError(RuntimeError):
 
 
 def _available_ram_bytes() -> int | None:
-    """psutil available RAM, or None when psutil is absent (fail-soft)."""
+    """psutil available RAM, or None when psutil is unusable (fail-soft).
+
+    Catches Exception, not just ImportError, to match watchdog.sample_host: a
+    psutil that imports but fails at call time must degrade the RAM-floor check
+    to "unknown", never crash the buffer.
+    """
     try:
         import psutil
-    except ImportError:
+
+        return psutil.virtual_memory().available
+    except Exception:
         return None
-    return psutil.virtual_memory().available
 
 
 def resolve_max_bytes(recipe) -> int:

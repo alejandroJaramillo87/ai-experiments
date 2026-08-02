@@ -59,6 +59,11 @@ services:
       # P4-D2 harvest: the shared D9 run lock (write) and organism checkpoints (read)
       # live under the training tree; harvest jobs take the same lock as training runs
       - /mnt/ai-data/training:/mnt/ai-data/training:rw
+      # Structured observability records. Identity-mounted so OBS_LOG_DIR resolves to the
+      # same path inside and outside the container. Without this the best-effort file
+      # handler in common/obs/core.py:350-352 fails its mkdir against the read-only
+      # rootfs and silently drops every record.
+      - /mnt/ai-data/logs:/mnt/ai-data/logs:rw
     networks:
       - interp-network
 

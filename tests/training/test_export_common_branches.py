@@ -291,9 +291,10 @@ def test_spec_from_recipe_hf_maps_through_autoconfig(monkeypatch):
 
     class AutoConfig:
         @staticmethod
-        def from_pretrained(model_id, revision=None):
+        def from_pretrained(model_id, revision=None, local_files_only=False):
             seen["id"] = model_id
             seen["revision"] = revision
+            seen["local_files_only"] = local_files_only
             return hf_config
 
     transformers_stub = types.ModuleType("transformers")
@@ -307,6 +308,9 @@ def test_spec_from_recipe_hf_maps_through_autoconfig(monkeypatch):
 
     assert seen["id"] == "org/tiny"
     assert seen["revision"] == "r7"  # the pin reaches AutoConfig (WI-14)
+    # memfit and calibrate run in the offline training container, so even a pure
+    # size estimate must resolve the config locally rather than over the network.
+    assert seen["local_files_only"] is True
     assert spec == tiny_spec()
     assert spec.param_count() == TINY_PARAMS
 

@@ -50,7 +50,7 @@ Hardware Configuration:
 - **CPU**: AMD Ryzen 9950X (16 cores, 32 threads, Zen 5 architecture)
 - **GPU**: RTX 5090 32GB VRAM (Blackwell architecture, sm_120 compute capability)
 - **RAM**: 128GB DDR5 EXPO for large model loading and multi-model inference
-- **Storage**: Samsung 990 Pro 2TB (OS) + Samsung 990 EVO 1TB (data) NVMe SSDs
+- **Storage**: Samsung 990 EVO Plus 1TB (OS, `/dev/nvme0n1`) + Samsung 990 PRO 2TB (data, `/dev/nvme1n1`) NVMe SSDs
 
 ## Prerequisites
 
@@ -72,7 +72,7 @@ Ubuntu 24.04 LTS Foundation
 Ubuntu 24.04 LTS provides hardware support for NVIDIA RTX 5090 Blackwell architecture and AMD Ryzen 9950X Zen 5 processors for AI development workstations.
 
 System Installation Process:
-- Install Ubuntu 24.04 LTS on Samsung 990 Pro 2TB SSD
+- Install Ubuntu 24.04 LTS on the Samsung 990 EVO Plus 1TB SSD (`/dev/nvme0n1`)
 - Configure UEFI/BIOS settings (see `docs/bios/README.md`)
 - Enable hardware acceleration and memory configurations
 - Set up user account with administrative privileges
@@ -225,15 +225,15 @@ Storage Setup Process:
 # Automated storage configuration for AI workloads
 ./scripts/setup/setup_data_ssd.sh
 ```
-- Mount Samsung 990 EVO 1TB SSD at `/mnt/ai-data`
+- Mount the Samsung 990 PRO 2TB SSD (`/dev/nvme1n1p2`, label `AIENGINEERING`) at `/mnt/ai-data`
 - Optimize file system for large model files (>10GB)
 - Configure storage monitoring with disk usage alerts
 - Set up automated cleanup for temporary files and cache
 - Implement SSD health monitoring
 
 Storage Architecture:
-- **OS Drive**: Samsung 990 Pro 2TB (Ubuntu 24.04, applications, development tools)
-- **Data Drive**: Samsung 990 EVO 1TB (models, datasets, Docker volumes, project data)
+- **OS Drive**: Samsung 990 EVO Plus 1TB, `/dev/nvme0n1`, 931.5G (Ubuntu 24.04, applications, development tools)
+- **Data Drive**: Samsung 990 PRO 2TB, `/dev/nvme1n1p2` at `/mnt/ai-data`, 1.8T (models, datasets, Docker volumes, project data)
 - **Model Storage**: Organized directory structure for GGUF, Safetensors, and HuggingFace models
 - **Cache Management**: Automated cleanup for PyTorch, Transformers, and CUDA caches
 

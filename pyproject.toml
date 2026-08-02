@@ -203,6 +203,14 @@ flash-attn = ["torch"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# tests/training/support.py is imported bare (`from support import ...`) by
+# conftest.py and about a dozen test modules. Because tests/ and tests/training/
+# both carry __init__.py, pytest's default prepend import mode walks up to the
+# first directory without one -- the repo root -- and puts that on sys.path, so
+# tests/training itself is never importable and collection fails before any test
+# runs. Adding it here keeps the existing bare-import convention rather than
+# rewriting every module to `from tests.training.support import ...`.
+pythonpath = ["tests/training"]
 # Hardware tiers are deselected by default: sandbox behavior is unchanged and
 # the workstation opts in with -m hw_smoke / -m hw_full (a command-line -m
 # replaces this one). Every tests/hardware/ test carries exactly one tier

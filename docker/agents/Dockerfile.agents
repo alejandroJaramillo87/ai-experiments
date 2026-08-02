@@ -10,6 +10,13 @@
 # image carries no GPU access and no host credentials; the single scoped key it
 # needs is injected by the compose file at run time.
 
+# uv is pulled from its own published image rather than a curl installer, so the
+# version is pinned by digest-resolvable tag like every other image here. The ARG
+# precedes the first FROM because a build arg used in a FROM must be declared in
+# the global scope.
+ARG UV_VERSION=0.11.28
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv-source
+
 # Pinned base. node:22 is the current LTS line; bump deliberately per the
 # repo's pin-then-update rule.
 FROM node:22.14.0-bookworm-slim
@@ -22,6 +29,17 @@ ARG CLAUDE_CODE_VERSION=2.1.207
 # Language-server pin (Python symbol navigation for both CLIs).
 ARG PYRIGHT_VERSION=1.1.411
 
+# Python toolchain pins. uv matches the workstation (uv self version -> 0.11.28)
+# so the sandbox and the host resolve dependencies identically. The interpreter
+# matches the workstation's 3.12.11 and satisfies pyproject.toml's
+# requires-python = ">=3.12,<3.13"; ruff and mypy are the exact pins from
+# pyproject.toml's dev group, so a sandbox lint result means the same thing as
+# `make quality` does on the host.
+ARG PYTHON_VERSION=3.12.11
+ARG RUFF_VERSION=0.15.21
+ARG MYPY_VERSION=2.3.0
+ARG TYPES_PYYAML_VERSION=6.0.12.20250915
+
 # Runtime tools the agents shell out to. git is required for the worktree
 # workflow; curl/ca-certificates support egress and the acceptance checks.
 RUN apt-get update \
@@ -31,6 +49,7 @@ RUN apt-get update \
         ca-certificates \
         jq \
         ripgrep \
+        shellcheck \
     && rm -rf /var/lib/apt/lists/*
 
 # Install both CLIs globally at the pinned versions.
@@ -39,6 +58,32 @@ RUN npm install -g --no-fund --no-audit \
         "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
         "pyright@${PYRIGHT_VERSION}" \
     && npm cache clean --force
+
+# Python toolchain. Without it an agent cannot syntax-check its own edits, so
+# every Python change round-trips through the workstation for its first check.
+#
+# The runtime rootfs is read-only and $HOME is a 256MB tmpfs (see
+# docker-compose.agents.yaml), so every path uv writes to is pinned here: the
+# interpreter and tool venvs live under /opt (baked into the image), the cache
+# under /tmp (the writable tmpfs), and tool shims on the default PATH.
+#
+# This does NOT substitute for `make quality` on the workstation: `make test`
+# reaches the pytorch cu130 index, and an unsynced .venv resolves different
+# versions than the lockfile pins. It provides fast local feedback, not proof.
+COPY --from=uv-source /uv /usr/local/bin/uv
+
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
+    UV_TOOL_DIR=/opt/uv/tools \
+    UV_TOOL_BIN_DIR=/usr/local/bin \
+    UV_PYTHON_BIN_DIR=/usr/local/bin \
+    UV_CACHE_DIR=/tmp/uv-cache
+
+RUN uv python install "${PYTHON_VERSION}" --default --preview \
+    && uv tool install "ruff==${RUFF_VERSION}" \
+    && uv tool install "mypy==${MYPY_VERSION}" \
+        --with "types-pyyaml==${TYPES_PYYAML_VERSION}" \
+    && chmod -R a+rX /opt/uv \
+    && rm -rf /tmp/uv-cache
 
 # Native LSP tool in Claude Code (symbol navigation instead of grep sweeps);
 # pyright above serves both CLIs.

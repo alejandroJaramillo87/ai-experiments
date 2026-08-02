@@ -61,18 +61,23 @@ These are standing instructions for anyone (human or agent) making changes in th
   from the parent tree (see `schemas/README.md`). Those contract tests report `[SKIP]` and
   pass when a dependency or the parent tree is absent, so a green rust gate on a machine
   without gguf is a weaker result than it looks — check the output for `[SKIP]` lines rather
-  than trusting the exit code alone. No step needs the network. The sandbox caveats all
-  trace to one cause — an unsynced virtual environment — and were re-measured on
-  2026-08-01. `uv run --no-sync` resolves whatever `.venv` happens to hold rather than
-  the pins (ruff 0.15.8 against a 0.15.21 pin, mypy 1.19.1 against 2.3.0), and the
-  pinned `types-pyyaml` is absent altogether, so `mypy` reports three
-  missing-yaml-stub errors in `training/` that a synced workstation does not see. A warm
-  `.mypy_cache` masks even that: the gate's `uv run --no-sync mypy` passes incrementally
-  and fails under `--no-incremental`, so a sandbox run stops at mypy or sails past it
-  depending on cache state. The other four steps — both ruff steps, `uv lock --check`,
-  and shellcheck — pass. Treat a clean sandbox run as evidence, not proof, and re-run the
-  gate on the workstation before trusting it. `make test` likewise cannot sync, because
-  it reaches the pytorch cu130 index; run `uv run --no-sync pytest` instead.
+  than trusting the exit code alone. No step needs the network.
+
+  In a contained sandbox, invoke the pinned tools **directly** — `ruff format --check .`,
+  `ruff check .`, `mypy`, `shellcheck` — not through `uv run --no-sync`. The image
+  (`docker/agents/Dockerfile.agents`) bakes in uv 0.11.28, CPython 3.12.11, and the exact
+  dev-group pins (ruff 0.15.21, mypy 2.3.0, types-pyyaml 6.0.12.20250915), so a direct
+  invocation matches the workstation. `uv run --no-sync` does not: it resolves whatever
+  `.venv` happens to hold rather than the pins, and a warm `.mypy_cache` makes even that
+  non-deterministic — the same command passes incrementally and fails under
+  `--no-incremental`. Prefer `mypy --no-incremental` when the result matters.
+
+  With the pinned tools present, all five Python steps — both ruff steps, mypy,
+  `uv lock --check`, and shellcheck — run in a sandbox. The rust gate does not: the image
+  carries no cargo. `make test` also cannot sync, because it reaches the pytorch cu130 index
+  the allowlist does not carry; run `uv run --no-sync pytest` instead, accepting that it
+  resolves the `.venv` rather than the pins. Treat a clean sandbox run as fast feedback, not
+  proof, and re-run `make quality` on the workstation before every push.
 
 ## Hardware
 

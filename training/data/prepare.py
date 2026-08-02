@@ -107,6 +107,11 @@ def load_tokenizer(source: str, eos_token: str | None = None) -> LoadedTokenizer
 
     from transformers import AutoTokenizer
 
+    # Deliberately no local_files_only here. load_tokenizer is shared: the prepare
+    # service calls it with a hub id and must be able to fetch, while the training
+    # container calls it through validate/preflight and must not. The distinction
+    # is made by HF_HUB_OFFLINE per service, not by this argument -- hardcoding
+    # True here would break `make prepare-data` against a hub tokenizer.
     tok = AutoTokenizer.from_pretrained(source)
     if eos_token is not None:
         eos_id = tok.convert_tokens_to_ids(eos_token)

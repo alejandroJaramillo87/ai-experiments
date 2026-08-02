@@ -32,9 +32,11 @@ from training.calculator.solve import (
 )
 from training.commands import (
     build_contamination,
+    download,
     eval_ft,
     generate_teacher,
     make_replay_synthetic,
+    preflight,
     prepare_corpus,
     prepare_data,
     prepare_sft,
@@ -865,12 +867,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Data-preparation and host-tool subcommands (training/commands/)
     for command_module in (
+        download,
         prepare_data,
         prepare_corpus,
         build_contamination,
         prepare_sft,
         train_tokenizer,
         validate_recipe,
+        preflight,
         smoke_test,
         generate_teacher,
         make_replay_synthetic,

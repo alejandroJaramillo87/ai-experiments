@@ -221,6 +221,11 @@ def build_model_and_tokenizer(recipe: DictConfig):
     if recipe.sft.backend == "unsloth":
         from unsloth import FastLanguageModel
 
+        # No local_files_only here: unsloth wraps the transformers loader and its
+        # accepted keywords are not part of a stable contract, so passing one it
+        # does not forward is a TypeError at load. Offline is enforced for this
+        # path by HF_HUB_OFFLINE/TRANSFORMERS_OFFLINE in Dockerfile.training and
+        # by the internal network, which unsloth cannot bypass.
         model, tokenizer = FastLanguageModel.from_pretrained(
             model_name=model_id,
             revision=revision,
@@ -243,11 +248,17 @@ def build_model_and_tokenizer(recipe: DictConfig):
 
         from training.models.model import attention_implementation
 
-        config = AutoConfig.from_pretrained(model_id, revision=revision)
-        tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
+        # local_files_only: training runs offline (see training/models/model.py).
+        config = AutoConfig.from_pretrained(
+            model_id, revision=revision, local_files_only=True
+        )
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_id, revision=revision, local_files_only=True
+        )
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
             revision=revision,
+            local_files_only=True,
             dtype=_torch_dtype(recipe.precision.dtype),
             quantization_config=bnb_quantization_config(recipe.peft),
             # Explicit request with the flash->sdpa fallback (WI-7): the
@@ -272,7 +283,12 @@ def resolve_base_identity_or_none(recipe: DictConfig):
 
     try:
         return resolve_base_identity(
-            recipe.model.hf.id, revision=recipe.model.hf.revision
+            recipe.model.hf.id,
+            revision=recipe.model.hf.revision,
+            # Cache-only. This runs after the model has loaded, so the config is
+            # already local; without this it would be the one train-time path
+            # still able to reach the hub.
+            local_files_only=True,
         )
     except Exception:
         return None
