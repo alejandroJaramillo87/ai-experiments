@@ -322,10 +322,17 @@ class TestCalibrate:
         assert "[ERROR] Calibration failed: no CUDA device visible" in out
         assert "Solution: run on the workstation" in out
 
-    def test_sandbox_without_gpu_fails_styled_for_real(self, capsys):
-        # No patching: the real calibrate() either fails importing torch
-        # (this sandbox) or raises its no-CUDA RuntimeError (CPU host);
-        # both must land in the same styled exit-1 arm.
+    def test_without_gpu_fails_styled_for_real(self, capsys, monkeypatch):
+        # calibrate() itself is unpatched: it either fails importing torch
+        # (this sandbox) or raises its no-CUDA RuntimeError, and both must
+        # land in the same styled exit-1 arm. Only torch's CUDA probe is
+        # forced, so the GPU workstation takes the same arm as the sandbox.
+        try:
+            import torch
+        except ImportError:
+            torch = None  # type: ignore[assignment]
+        if torch is not None:
+            monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
         rc = run_cli(["calibrate", "--config", TINY_RECIPE])
         out = capsys.readouterr().err
         assert rc == 1

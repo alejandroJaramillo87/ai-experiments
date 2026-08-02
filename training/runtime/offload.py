@@ -24,6 +24,7 @@ without either.
 
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Callable
 
@@ -116,7 +117,11 @@ def build_ds_config(recipe: DictConfig) -> dict:
         "train_micro_batch_size_per_gpu": recipe.data.micro_batch,
         "gradient_accumulation_steps": recipe.data.grad_accum,
         "gradient_clipping": 0.0,
-        "steps_per_print": 0,  # the loop's tracker owns step logging
+        # The loop's tracker owns step logging. None is DeepSpeed's disable
+        # sentinel here, not 0: the engine guards on `is not None` and then
+        # takes `(global_steps + 1) % steps_per_print`, so 0 raises
+        # ZeroDivisionError on the first engine.step().
+        "steps_per_print": None,
         "bf16": {"enabled": recipe.precision.dtype == "bf16"},
         "optimizer": {
             # type Adam with an offload device resolves to DeepSpeedCPUAdam
@@ -142,16 +147,26 @@ def build_ds_config(recipe: DictConfig) -> dict:
 
 
 def cpu_adam_available() -> bool:
-    """Whether the pre-built DeepSpeedCPUAdam extension loads.
+    """Whether the DeepSpeedCPUAdam native op actually loads.
 
-    Mirrors the smoke test's probe: a miscompiled or missing op fails at
-    import of the extension module, so the import is the load check. Any
-    exception (not just ImportError) counts as unavailable — a broken .so
-    can raise OSError or RuntimeError.
+    Importing DeepSpeedCPUAdam is not the load check: the Python class
+    imports fine on any install, and the native op is built lazily inside
+    its constructor (CPUAdamBuilder().load()). Probing the builder directly
+    is what distinguishes a usable extension from one that will raise at
+    engine construction — for example when the op is not pre-built and ninja
+    is missing, so the JIT path cannot run. Getting this wrong defeats
+    OPTIMIZER_FALLBACK_CHAIN: the probe reports available and the run then
+    aborts instead of degrading.
+
+    Any exception (not just ImportError) counts as unavailable — a broken
+    .so can raise OSError or RuntimeError. load() is cheap when the op is
+    pre-built (the training image builds it, Phase 0 D1) and otherwise pays
+    the JIT compile the engine would pay moments later anyway.
     """
     try:
-        from deepspeed.ops.adam import DeepSpeedCPUAdam  # noqa: F401
+        from deepspeed.ops.op_builder import CPUAdamBuilder
 
+        CPUAdamBuilder().load()
         return True
     except Exception:
         return False
@@ -222,6 +237,25 @@ def initialize_engine(model, recipe: DictConfig):
     scheduler on engine.optimizer afterwards and steps it itself.
     """
     import deepspeed
+    import torch
+
+    # Single-process workstation launch, not the deepspeed launcher: without
+    # these DeepSpeed's comms layer assumes an MPI launch and imports mpi4py,
+    # which this stack does not carry. setdefault so a real multi-process
+    # launcher's values always win.
+    for key, value in (
+        ("MASTER_ADDR", "127.0.0.1"),
+        ("MASTER_PORT", "29500"),
+        ("RANK", "0"),
+        ("LOCAL_RANK", "0"),
+        ("WORLD_SIZE", "1"),
+    ):
+        os.environ.setdefault(key, value)
+    # nccl cannot initialize without a GPU; the CPU resume test runs on gloo.
+    deepspeed.init_distributed(
+        dist_backend="nccl" if torch.cuda.is_available() else "gloo",
+        auto_mpi_discovery=False,
+    )
 
     trainable = apply_trainable_filter(model, recipe)
     engine, _optimizer, _dl, _sched = deepspeed.initialize(

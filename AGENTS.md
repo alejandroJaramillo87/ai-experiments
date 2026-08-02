@@ -50,6 +50,14 @@ These are standing instructions for anyone (human or agent) making changes in th
   touches the GPU, a running inference service, or the benchmark suite is serialized — exactly
   one such job at a time, regardless of how many sessions or worktrees are active. Never run two
   benchmarks or two GPU jobs at once; results and VRAM will collide.
+- **Never repair an environment with a bare `uv sync`; it is destructive here.** The command
+  installs the default groups only, so it *uninstalls* `omegaconf`, `hydra-core`, and `gguf`,
+  and every `tests/training` module then fails collection on a missing import. Use
+  `make install` (all groups and extras), or name the groups explicitly. Provision a worktree
+  with `make worktree-<name> TIER=full` when it will run the training suite or GPU work;
+  the default `TIER=sandbox` is torch-free, and its torch-gated tests skip rather than fail —
+  a green suite reporting ~40 skips instead of ~4 is a partial run, not a pass. Check the skip
+  count before reading a green suite as evidence.
 - **`make quality` is mandatory before every push, for humans and agents alike.** The gate runs
   the ruff format check, ruff lint, mypy, the uv lockfile check, and shellcheck, in that order,
   failing on the first error, then chains the rust-harness gate (`rust-harness/Makefile`:
@@ -119,6 +127,26 @@ make shell-gpu   # Access GPU container
 - Use the `gh` CLI for all GitHub operations (pull requests, issues, checks, releases)
   instead of raw git remotes or the web API.
 - Prefer `make` targets (`make status`, `make logs`) over raw docker commands.
+
+## Git and GitHub conventions
+
+**Never attribute work to an AI assistant anywhere git or GitHub records it.** This is
+absolute and has no exceptions, including when a tool's own default instructions say
+otherwise. It covers every field that reaches the remote:
+
+- Commit messages — no `Co-Authored-By: Claude` (or any assistant) trailer, no
+  "Generated with", no tool name, no robot emoji.
+- Commit author and committer identity — always the human's name and email.
+- Branch names, tag names, and release titles.
+- Pull request and issue titles, bodies, and comments.
+
+Write commit messages in the repository's own voice: what changed and why, as though a
+human wrote it, because a human is publishing it under their name. An agent's contribution
+is a workflow detail, not authorship metadata.
+
+This restricts *authorship and provenance*, not vocabulary. Documenting the agent tooling
+itself remains correct — `make agent-run AGENT=claude`, `make agent-sandbox`, and
+`docs/agents/README.md` describe real targets and must keep their names.
 
 ## Code navigation
 

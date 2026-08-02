@@ -662,8 +662,22 @@ EFFORT ?= low
 CLAUDE_PERM ?=
 AGENT_USAGE_STATE ?= .agent-state/usage.jsonl
 
-worktree-%: ## Create a git worktree ../ai-experiments-<name> on branch task/<name>
+# Provisioning tier for `make worktree-<name>`. sandbox (the default) is the torch-free
+# agent environment; full matches `make install`, so the worktree can run the training
+# suite and GPU work without a follow-up manual sync. A torch-free venv still runs the
+# suite green — it skips ~36 training tests rather than failing — so the tier is an
+# explicit choice, never inferred.
+TIER ?= sandbox
+
+worktree-%: ## Create a git worktree ../ai-experiments-<name> on branch task/<name> (TIER=sandbox|full)
 	@name="$*"; dir="../ai-experiments-$$name"; \
+	case "$(TIER)" in \
+	  sandbox|full) ;; \
+	  *) printf '$(RED)[ERROR]$(RESET) Unknown TIER: %s\n' "$(TIER)"; \
+	     printf '  Accepted: sandbox (torch-free, default), full (all groups and extras)\n'; \
+	     printf '  Command: make worktree-%s TIER=full\n' "$$name"; \
+	     exit 1;; \
+	esac; \
 	if git worktree list --porcelain | grep -qx "worktree $$(cd .. 2>/dev/null && pwd)/ai-experiments-$$name"; then \
 	  printf '[SKIP] worktree already exists: %s\n' "$$dir"; exit 0; \
 	fi; \
@@ -680,9 +694,18 @@ worktree-%: ## Create a git worktree ../ai-experiments-<name> on branch task/<na
 	  printf '[OK] worktree: %s (branch task/%s)\n' "$$dir" "$$name"; \
 	fi; \
 	printf '[INFO] GPU/benchmark work stays serialized across all worktrees (see AGENTS.md)\n'; \
-	printf '[RUN] Provisioning .venv: dev + sandbox groups (torch-free)\n'; \
-	if (cd "$$dir" && uv sync --frozen --only-group dev --only-group sandbox); then \
-	  printf '[OK] .venv provisioned: make quality and non-GPU make test are ready\n'; \
+	if [ "$(TIER)" = full ]; then \
+	  printf '[RUN] Provisioning .venv (TIER=full): all groups and extras\n'; \
+	  printf '[INFO] Compiles CUDA extensions (flash-attn); expect several GB and a long build\n'; \
+	  sync_cmd="MAX_JOBS=$(MAX_JOBS) NVCC_THREADS=$(NVCC_THREADS) uv sync --frozen --all-groups --all-extras"; \
+	  ready="the full test suite, training, and GPU work are ready"; \
+	else \
+	  printf '[RUN] Provisioning .venv (TIER=sandbox): dev + sandbox groups (torch-free)\n'; \
+	  sync_cmd="uv sync --frozen --only-group dev --only-group sandbox"; \
+	  ready="make quality and non-GPU make test are ready; torch-gated tests skip"; \
+	fi; \
+	if (cd "$$dir" && eval "$$sync_cmd"); then \
+	  printf '[OK] .venv provisioned (TIER=%s): %s\n' "$(TIER)" "$$ready"; \
 	else \
 	  printf '[WARN] Could not auto-provision .venv (stale lock, offline, or uv missing)\n'; \
 	  printf '  Solution: provision it manually in the new worktree\n'; \
@@ -702,6 +725,11 @@ endif
 # Shared removal shell. Expects $$arg set; accepts a bare name, the task/<name>
 # branch, or a worktree path (anything containing ai-experiments-). Exits 1 on
 # failure so callers and scripts see the error.
+#
+# Each failure mode reports its own cause. A single "uncommitted changes? use
+# FORCE=1" branch used to answer every failure, which misdiagnosed an
+# already-removed worktree and recommended a flag that cannot apply to it.
+# Branches are left alone: this removes worktrees, not refs.
 define WORKTREE_REMOVE_SH
 	case "$$arg" in \
 	  *ai-experiments-*) name="$${arg##*ai-experiments-}" ;; \
@@ -709,12 +737,35 @@ define WORKTREE_REMOVE_SH
 	  *)                 name="$$arg" ;; \
 	esac; \
 	dir="../ai-experiments-$$name"; \
+	abs="$$(cd .. 2>/dev/null && pwd)/ai-experiments-$$name"; \
+	here="$$(pwd -P)"; \
+	case "$$here" in \
+	  "$$abs"|"$$abs"/*) \
+	    printf '$(RED)[ERROR]$(RESET) refusing to remove the worktree you are standing in: %s\n' "$$dir"; \
+	    printf '  Removing it would leave this shell without a working directory\n'; \
+	    printf '  Solution: change directory first, then retry\n'; \
+	    printf '  Command: cd .. && make worktree-clean %s\n' "$$name"; \
+	    exit 1;; \
+	esac; \
+	if ! git worktree list --porcelain | grep -qx "worktree $$abs"; then \
+	  git worktree prune; \
+	  printf '[SKIP] no such worktree: %s (already removed)\n' "$$dir"; \
+	  exit 0; \
+	fi; \
 	force=""; [ -n "$(FORCE)" ] && force="--force"; \
 	if git worktree remove $$force "$$dir"; then \
 	  printf '[OK] removed worktree: %s\n' "$$dir"; \
 	  printf '[INFO] agent-sandbox docker resources are shared, not per-worktree: make agent-sandbox-clean\n'; \
 	else \
-	  printf '[ERROR] could not remove %s (uncommitted changes? use FORCE=1 or git worktree remove --force)\n' "$$dir"; \
+	  dirty="$$(git -C "$$dir" status --porcelain 2>/dev/null)"; \
+	  if [ -n "$$dirty" ]; then \
+	    printf '$(RED)[ERROR]$(RESET) %s has uncommitted changes:\n' "$$dir"; \
+	    printf '%s\n' "$$dirty" | sed 's/^/  /'; \
+	    printf '  These are NOT recoverable once removed\n'; \
+	    printf '  Command: make worktree-clean %s FORCE=1\n' "$$name"; \
+	  else \
+	    printf '$(RED)[ERROR]$(RESET) could not remove %s (see the git error above)\n' "$$dir"; \
+	  fi; \
 	  exit 1; \
 	fi
 endef

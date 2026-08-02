@@ -74,7 +74,7 @@ class TestGpuSmoke:
         from training.runtime.offload import cpu_adam_available
 
         assert cpu_adam_available(), (
-            "DeepSpeedCPUAdam failed to import; rebuild the training image "
+            "the DeepSpeedCPUAdam op failed to load; rebuild the training image "
             "(znver5 CPUAdam pre-build, docker/training/Dockerfile.training)"
         )
 

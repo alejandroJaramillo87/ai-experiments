@@ -131,23 +131,55 @@ target.
 ### Worktree lifecycle
 
 ```bash
-$ make worktree-mytask        # create ../ai-experiments-mytask on branch task/mytask
-$ make worktree-ls            # list worktrees
-$ make worktree-clean mytask  # remove when merged
+$ make worktree-mytask           # create ../ai-experiments-mytask on branch task/mytask
+$ make worktree-mytask TIER=full # ... with the full environment (torch, training, GPU)
+$ make worktree-ls               # list worktrees
+$ make worktree-clean mytask     # remove when merged
 ```
 
-Creating a worktree provisions its `.venv` automatically with the `dev` and `sandbox`
-dependency groups (`uv sync --frozen --only-group dev --only-group sandbox`), so
-`make quality` and the non-GPU `make test` suite run without a manual sync. The step is
-best-effort: if it cannot resolve (a stale `uv.lock`, no network, or `uv` absent), it
-prints a `[WARN]` with the manual `make install` command and worktree creation still
-succeeds. Run `make install` inside the worktree when it will do GPU or training work,
-which additionally installs torch (cu130) and the CUDA-compiled groups.
+A new worktree starts from the current `HEAD` **commit**. Uncommitted changes in the
+current worktree do not reach it, so commit or stash before creating one. With `TIER=full`
+this mistake stays invisible until after a multi-minute `flash-attn` build, and then
+presents as a test suite failing against code that appears fixed.
+
+Creating a worktree provisions its `.venv` automatically. `TIER` selects how much:
+
+| `TIER` | Sync command | Use for |
+|--------|--------------|---------|
+| `sandbox` (default) | `uv sync --frozen --only-group dev --only-group sandbox` | Agent sessions and non-GPU work. Torch-free, provisions in seconds. |
+| `full` | `uv sync --frozen --all-groups --all-extras` | The full test suite, training, and GPU work. Matches `make install`. |
+
+The `sandbox` tier runs `make quality` and the non-GPU `make test` suite without a manual
+sync. It does not install torch, so the torch-gated tests **skip rather than fail** — a
+suite that reports roughly 40 skips instead of 4 is running on a `sandbox` tier venv, not
+passing a full run. Check the skip count before treating a green suite as a full result.
+
+The `full` tier compiles CUDA extensions (`flash-attn` builds from an sdist against the
+cu130 torch pin), so expect several GB of disk and a long build. `MAX_JOBS` and
+`NVCC_THREADS` control build parallelism: `make worktree-mytask TIER=full MAX_JOBS=8`.
+
+An unrecognised `TIER` fails with a styled `[ERROR]` before the worktree is created.
+Provisioning itself is best-effort: if it cannot resolve (a stale `uv.lock`, no network,
+or `uv` absent), the target prints a `[WARN]` with the manual `make install` command and
+worktree creation still succeeds.
+
+Do not repair a worktree environment with a bare `uv sync`. That command installs the
+default groups only, which **uninstalls** `omegaconf`, `hydra-core`, and `gguf` and breaks
+collection of every `tests/training` module. Use `make install`, or name the groups
+explicitly.
 
 Removal accepts the bare name, the `task/<name>` branch, a worktree path, `NAME=<name>`,
 or the suffix form `make worktree-clean-<name>` — all resolve to the same worktree. A bare
 `make worktree-clean` (no name) errors with usage instead of matching the creation
-pattern. `make worktree-clean` removes only the git worktree; the sandbox's docker resources
+pattern.
+
+Removal reports each outcome separately. Removing a worktree that is already gone prunes
+the stale registration, reports `[SKIP]`, and exits 0, so repeating the command is
+harmless. Removal from inside the target worktree is refused, because it would leave the
+shell without a working directory. A worktree holding uncommitted changes is also refused,
+with those changes listed; `FORCE=1` removes it anyway and discards them permanently.
+
+`make worktree-clean` removes only the git worktree; the sandbox's docker resources
 are shared, not per-worktree, and are torn down separately with `make agent-sandbox-clean`
 (see the Sandbox docker resources note above). Delete the task branch after removal:
 `git branch -D task/mytask`. If the branch is kept, recreating the worktree with

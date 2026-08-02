@@ -433,13 +433,18 @@ class TestCLI:
         # test runs out of the real /mnt/ai-data/logs
         self.obs_log_dir = str(tmp_path / "obs-logs")
 
-    def run_cli(self, *args: str):
+    def run_cli(self, *args: str, env: dict[str, str] | None = None):
         return subprocess.run(
             [sys.executable, "-m", "training", *args],
             capture_output=True,
             text=True,
             cwd=REPO_ROOT,
-            env={**os.environ, "NO_COLOR": "1", "OBS_LOG_DIR": self.obs_log_dir},
+            env={
+                **os.environ,
+                "NO_COLOR": "1",
+                "OBS_LOG_DIR": self.obs_log_dir,
+                **(env or {}),
+            },
             timeout=120,
         )
 
@@ -498,8 +503,13 @@ class TestCLI:
         assert "[ERROR]" in proc.stderr
 
     def test_calibrate_requires_gpu(self):
+        # CUDA_VISIBLE_DEVICES="" hides the workstation GPU from the child, so
+        # the no-CUDA arm is exercised on the host as well as in the sandbox.
         proc = self.run_cli(
-            "calibrate", "--config", "training/recipes/reference/tiny-e2e.yaml"
+            "calibrate",
+            "--config",
+            "training/recipes/reference/tiny-e2e.yaml",
+            env={"CUDA_VISIBLE_DEVICES": ""},
         )
         assert proc.returncode == 1
         assert "[ERROR] Calibration failed" in proc.stderr
