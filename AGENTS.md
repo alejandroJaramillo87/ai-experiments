@@ -167,4 +167,5 @@ config keys, version pins.
 - `.styles/CPP_STYLE.md`           — C++ standards (llama-zen-turbo libs)
 - `.styles/DOCUMENTATION_STYLE.md` — docs writing standards
 - `.styles/PYTHON_OUTPUT_STYLE.md`  — Python CLI output formatting
+- `.styles/RUST_STYLE.md`          — Rust standards (rust-harness workspace)
 - `.styles/TEST_OUTPUT_STYLE.md`   — test program/runner output format

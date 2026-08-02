@@ -27,6 +27,9 @@
       "https://developer.nvidia.com/*": "allow",
       "https://docs.nvidia.com/*": "allow",
       "https://docs.docker.com/*": "allow",
+      "https://ai.google.dev/*": "allow",
+      "https://crates.io/*": "allow",
+      "https://docs.rs/*": "allow",
       "*": "ask"
     },
     "external_directory": "ask",

@@ -51,6 +51,30 @@ and every remediation batch is pushed before the next begins — so an interrupt
 loses one batch rather than everything. Campaign 2 was stopped mid-flight by a usage limit
 and survived only because the ledger had already landed.
 
+### Feature work and host verification
+
+Two roles sit outside the campaign ladder.
+
+`feature-implementer` takes a stated requirement to working code. It is deliberately distinct
+from `remediator`: a remediator closes a verified finding and must show the defect existed by
+watching a test fail first, whereas feature work has no prior red to reproduce. Its discipline
+comes instead from reading the governing `.styles/` guide before writing, expressing the
+requirement as a test, and reporting the gate's skip count rather than its exit code. It cannot
+run the Rust gate at all, because the sandbox image carries no cargo, and it is required to say
+so rather than imply the change is checked.
+
+Host verification is a **skill, not an agent**. `/verify-host <claim>` loads
+`.claude/skills/verify-host/SKILL.md` in the main conversation. The reason is structural: a
+subagent has no channel to the human, so it cannot emit a command, pause, and read the reply.
+Delegating host verification to a subagent leaves it able only to report failure or to invent
+output, and inventing output is the one thing this repository forbids most emphatically.
+
+The skill encodes the handshake — state the acceptance criteria before producing any command,
+hand over one copy-pasteable block, stop, then judge each criterion against the verbatim
+reported output. It also carries the failure mode this repository keeps hitting: a worktree is
+cut from the `HEAD` commit, so a verification run against uncommitted work exercises stale
+source and reports a false pass.
+
 ## Running agents: user guide
 
 Step-by-step recipes for the `make` workflows. Every target below prints `[ERROR]` with a
@@ -116,6 +140,19 @@ networks, and two built images. Pinning is required: the `agent-internal` subnet
 `172.31.0.0/16`, so an unpinned per-worktree project name collides with `Pool overlaps with
 other one on this address space`. The per-session container is `--rm` and named `agent-<NAME>`
 while it runs, so `docker ps` maps a live session to its worktree `../ai-experiments-<NAME>`.
+
+`make agent-sandbox` runs `docker compose run` with no `--build`, so a change to the proxy
+configuration — most often the egress allowlist in `docker/agents/proxy/squid.conf` — has no
+effect until the image is rebuilt:
+
+```bash
+$ docker compose -f docker-compose.agents.yaml -p ai-agents build agent-proxy
+```
+
+An allowlist edit that appears to change nothing indicates a stale image rather than a wrong
+entry. A domain the proxy does not carry surfaces as a transport error such as
+`Socket is closed`, not as a permission message, so check the allowlist before diagnosing a
+network fault: `docker exec agent-proxy cat /var/log/squid/access.log`.
 
 Tear the shared footprint down with `make agent-sandbox-clean`. It runs `docker compose -f
 docker-compose.agents.yaml -p ai-agents down --remove-orphans`, then sweeps any leftover
