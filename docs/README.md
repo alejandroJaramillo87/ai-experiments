@@ -53,6 +53,12 @@ workstation (RTX 5090, AMD Ryzen 9950X).
 | [inference/parameters/llama-cpp-parameters.md](inference/parameters/llama-cpp-parameters.md) | llama.cpp parameter tuning guide |
 | [inference/parameters/vllm-parameters.md](inference/parameters/vllm-parameters.md) | vLLM configuration for throughput (vLLM 0.25.0) |
 
+### Model References
+
+| Document | Description |
+|----------|-------------|
+| [models/gemma-4.md](models/gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): architecture, tensors, traps |
+
 ### System Optimizations
 
 | Document | Description | Impact |

@@ -138,8 +138,40 @@ workstation gate stays mandatory before every push.
 legitimately needs: the Anthropic API and the Claude subscription-auth endpoints
 (`claude.com`, `claude.ai` — used by `CLAUDE_CODE_OAUTH_TOKEN` sessions), the RunPod control plane (`api.runpod.io`,
 `docs.runpod.io`), the code host (`github.com` and its asset domains), and the package
-registries (npm, PyPI). HTTPS is allowlisted by CONNECT host without TLS interception, so no
-private certificate authority is installed. The list grows only with a recorded reason.
+registries (npm, PyPI). It also carries the reference sources a session needs to avoid guessing:
+Hugging Face (`huggingface.co`) for model configurations, tokenizers, and safetensors headers;
+`crates.io` for Rust dependency metadata; and `ai.google.dev` for Google model documentation.
+HTTPS is allowlisted by CONNECT host without TLS interception, so no private certificate
+authority is installed. The list grows only with a recorded reason.
+
+Every entry uses the dotted form (`.huggingface.co`), which matches the apex domain and all
+subdomains; squid rejects an entry that is already a subdomain of another, so a domain and its
+subdomain cannot both appear. `ai.google.dev` is the exception, listed without a leading dot so
+that one documentation site does not open every `google.dev` subdomain.
+
+Hugging Face needs two entries, not one. Configuration and tokenizer JSON are served from
+`huggingface.co` directly, but a file read under `/resolve/` returns a 302 to Xet-backed CDN
+storage on `*.cdn.hf.co`, so reading a safetensors header by range request crosses two domains.
+With only the base domain allowed, the first hop succeeds and the redirect hop returns
+`403 Forbidden` with `X-Squid-Error: ERR_ACCESS_DENIED` — which reads as a Hugging Face failure
+rather than a local policy refusal. Check the response headers when diagnosing this: the proxy
+identifies itself as `Server: squid/5.7`.
+
+The redirect target is regional (`us.aws.cdn.hf.co`), which is why the entry is the dotted form
+rather than an exact host.
+
+**A change to `squid.conf` takes effect only after the proxy image is rebuilt.**
+`make agent-sandbox` runs `docker compose run` with no `--build`, so an edited allowlist that
+appears to have no effect indicates a stale image rather than a wrong entry:
+
+```bash
+$ docker compose -f docker-compose.agents.yaml -p ai-agents build agent-proxy
+```
+
+The symptom of a domain that the allowlist does not carry is a transport error such as
+`Socket is closed`, not a permission message. When a fetch fails that way, check the allowlist
+before assuming a network fault, and confirm with
+`docker exec agent-proxy cat /var/log/squid/access.log`.
 
 ### Credentials and the never-mount list
 
@@ -251,9 +283,14 @@ Best-effort layer on top of containment, encoded in both tools (see
 - `opencode.json`: `webfetch` allowlist (`docs.runpod.io`, `github.com`, else `ask`); bash
   denies for `cat *.env*`, `* ~/.ssh/*`, `* ~/.aws/*` (the read-tool `.env` deny does not
   cover bash).
-- `.claude/settings.json`: `Read(~/.ssh/**)` and `Read(~/.aws/**)` denies;
-  `WebFetch(domain:docs.runpod.io)` and `WebFetch(domain:github.com)` allowed with a broad
-  `WebFetch` set to `ask`.
+- `.claude/settings.json`: `Read(~/.ssh/**)` and `Read(~/.aws/**)` denies; a per-domain
+  `WebFetch` allow list with a broad `WebFetch` set to `ask`; denies for the host-only tools
+  (`docker`, `nvidia-smi`, `make up|down|status|logs|shell-*`) so that a command which cannot
+  work from a contained session fails as policy rather than obscurely; and allows for the
+  pinned repo-local tools invoked directly (`ruff`, `mypy`, `shellcheck`, `pytest`, `cargo`)
+  rather than through `uv run --no-sync`. The `WebFetch` domain list is kept in agreement with
+  `docker/agents/proxy/squid.conf`: a domain permitted in one and absent from the other
+  produces a confusing transport error instead of a clear refusal.
 - OpenCode server: set `OPENCODE_SERVER_PASSWORD` even for localhost use, and never pass
   `--hostname 0.0.0.0` (the server has no TLS; any remote exposure goes through an SSH tunnel,
   and preferably never leaves the sandbox).

@@ -5,6 +5,7 @@
 @.styles/CPP_STYLE.md
 @.styles/DOCUMENTATION_STYLE.md
 @.styles/PYTHON_OUTPUT_STYLE.md
+@.styles/RUST_STYLE.md
 @.styles/TEST_OUTPUT_STYLE.md
 
 <!-- Claude-specific addenda go below this line only -->
