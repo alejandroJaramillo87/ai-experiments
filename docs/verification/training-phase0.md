@@ -154,7 +154,9 @@ Implementation: `training/calculator/solve.py` (memfit),
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
-- KB-03 — `training/calculator/calibrate.py:89` — calibrate() always builds a scratch LlamaConfig model, so calibrating any model.hf (or PEFT) recipe measures a …
+- KB-03 — `training/calculator/calibrate.py:89` — calibrate() always builds a scratch LlamaConfig model, so calibrating any model.hf (or PEFT) recipe measures a … Cannot surface in this entry (both commands
+  are scratch recipes); fix landed 2026-08-01, pending confirmation by the
+  P1.0 QLoRA calibration runs.
 
 Command:
 
@@ -186,6 +188,10 @@ weights 2.00 GB, gradients 4.00 GB, optimizer state 2.03 GB,
 activations 3.39 GB, framework overhead 1.50 GB
 Total allocated estimate: 11.42 GB; reserved estimate: 12.92 GB
 [OK] Fits: reserved estimate 12.92 GB within budget 31.00 GB
+
+This snapshot predates the KB-55, KB-56, and OVERHEAD_BYTES fixes below;
+make memfit on the same recipe today reports gradients 2.00 GB, a
+temporal-max allocated total of 7.14 GB, and 2.5 GB overhead.
 
 2026-08-01: calibrate failed on a fresh container:
 [ERROR] Calibration failed: Invalid device argument
@@ -291,7 +297,8 @@ The KB-55/KB-56 fixes hold (+2.1 percent). The reserved estimate
 (7.14 + 1.5 GB overhead = 8.64 GB) under-predicts the 9.46 GB NVML
 peak; the previous over-inflated allocated estimate had been masking
 this. Measured overheads: allocator slack 1.38 GB (reserved minus
-allocated) plus CUDA context 1.08 GB (NVML minus reserved) = 2.32 GB.
+allocated) plus CUDA context 1.08 GB (NVML minus reserved) = 2.46 GB
+above the measured allocated.
 This is the calibration path the D4 model intends: OVERHEAD_BYTES
 raised from 1.5 GB to 2.5 GB, giving a reserved estimate of 9.64 GB.
 Re-run pending an image rebuild.

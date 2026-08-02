@@ -48,6 +48,10 @@ def load_model(model: str, load_4bit: bool = False):
     kwargs = {
         "torch_dtype": torch.bfloat16,
         "device_map": "cuda:0",
+        # Evaluation runs in the training container, which is offline by design
+        # (see training/models/model.py). --model is unpinned: eval-holdout takes
+        # no revision argument, so this resolves whatever local copy exists.
+        "local_files_only": True,
         # Explicit request with the flash->sdpa fallback; the record stamps
         # the same resolution so provenance matches the actual load.
         "attn_implementation": attention_implementation(),

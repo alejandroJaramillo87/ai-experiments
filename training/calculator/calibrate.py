@@ -109,6 +109,10 @@ def _check_supported(recipe: DictConfig) -> None:
             "loop is plain torch, not the DeepSpeed ZeRO engine, so its "
             "measurement would not reflect the recipe's runtime"
         )
+    # No cpu_adam guard is needed here: validate.py requires zero_offload for
+    # cpu_adam, so the branch above already refuses it. Were that coupling ever
+    # relaxed, cpu_adam would need its own refusal — optimizer_bytes() prices it
+    # as zero VRAM while this loop keeps the optimizer resident on the GPU.
     d = getattr(recipe, "distill", None)
     if d is not None and d.enabled and d.tier == "logit" and d.mode == "online":
         raise CalibrationUnsupported(

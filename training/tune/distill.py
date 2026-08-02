@@ -224,6 +224,10 @@ def load_teacher(recipe: DictConfig):
         dtype=torch.bfloat16,
         quantization_config=quant,
         attn_implementation=attention_implementation(),
+        # Training runs offline (see training/models/model.py). Note the teacher
+        # is unpinned: DistillConfig has no teacher_revision field, so this
+        # resolves whatever local copy exists.
+        local_files_only=True,
     )
     teacher.eval()
     teacher.requires_grad_(False)
@@ -448,6 +452,8 @@ def load_teacher_for_cache(recipe: DictConfig):
         dtype=torch.bfloat16,
         device_map="cuda:0" if torch.cuda.is_available() else None,
         attn_implementation=attention_implementation(),
+        # Training runs offline; teacher unpinned, as in load_teacher above.
+        local_files_only=True,
     )
     teacher.eval()
     teacher.requires_grad_(False)

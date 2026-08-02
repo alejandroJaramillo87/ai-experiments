@@ -202,7 +202,7 @@ ai-experiments/
 | **CPU** | AMD Ryzen 9950X | 16-core/32-thread, 16 cores for inference |
 | **GPU** | NVIDIA RTX 5090 | 32GB VRAM, SM 12.0 Blackwell architecture |
 | **Memory** | 128GB DDR5-6000 | Large model loading, 90GB huge pages |
-| **Storage** | Samsung 990 PRO 2TB (models)<br>Samsung 990 EVO 1TB (OS) | High-speed model storage |
+| **Storage** | Samsung 990 PRO 2TB (models)<br>Samsung 990 EVO Plus 1TB (OS) | High-speed model storage |
 | **Motherboard** | Gigabyte X870E Aorus Elite WiFi | PCIe 5.0, robust power delivery |
 
 ### GPU software stack

@@ -112,6 +112,26 @@ updates on: given the CVE history, running stale is the larger risk.
 pins are behind. It never edits the Dockerfile: bump one pin at a time and re-run the
 acceptance checks, per the repository operating rules.
 
+### Python toolchain
+
+The image carries `uv 0.11.28` (from `ghcr.io/astral-sh/uv`, matching the workstation), a
+managed CPython `3.12.11` satisfying `pyproject.toml`'s `requires-python`, and the exact
+lint pins from the dev dependency group: `ruff 0.15.21`, `mypy 2.3.0` with
+`types-pyyaml 6.0.12.20250915`, plus `shellcheck` from Debian. An agent can therefore
+syntax-check and lint its own edits instead of routing every Python change through the
+workstation for its first check.
+
+The runtime rootfs is read-only and the home directory is a 256MB tmpfs, so the uv paths are
+fixed at build time: interpreters and tool environments under `/opt/uv`, executables in
+`/usr/local/bin`, and the cache in `/tmp`. A cache written to the default `$HOME` location
+would not survive the tmpfs.
+
+**This does not replace `make quality`.** Four of its five Python steps run here — both ruff
+steps, mypy, and shellcheck — but `uv lock --check` and `make test` reach the pytorch cu130
+index, which the allowlist does not carry, and an unsynced `.venv` resolves different versions
+than the lockfile pins. Treat a clean sandbox run as fast feedback, not as the gate; the
+workstation gate stays mandatory before every push.
+
 ### Egress allowlist
 
 `docker/agents/proxy/squid.conf` denies by default and allows only the domains an agent

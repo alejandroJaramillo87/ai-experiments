@@ -94,6 +94,19 @@ ENV NVIDIA_REQUIRE_CUDA="cuda>=13.0"
 # Non-root user (repo-standard line, matches the inference images)
 RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin -c "Application User" appuser
 
+# Offline enforcement: a training run must never reach the hub. Assets are staged
+# beforehand and proven present by `python -m training preflight`.
+#
+# These are set at the environment level rather than by passing local_files_only=True
+# at each call site, because the call sites are not all reachable: lm_eval loads its
+# own model and downloads its own task datasets (training/eval/lmeval.py:106), and
+# datasets.load_dataset is invoked from four places. The per-call local_files_only
+# arguments are still passed where possible, but only to turn a hung download into a
+# clear Python error -- these variables are what actually closes the door.
+ENV HF_HUB_OFFLINE=1
+ENV TRANSFORMERS_OFFLINE=1
+ENV HF_DATASETS_OFFLINE=1
+
 # Cache locations under the (writable) home; HF cache and Triton cache live on tmpfs at runtime
 ENV HF_HOME=/app/cache
 ENV HOME=/app

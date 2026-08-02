@@ -69,8 +69,9 @@ OFFLOAD_HOST_BYTES_PER_PARAM = 16
 
 # Host RAM reserved for the page cache serving NVMe shard reads plus CUDA
 # runtime and loader transients when budgeting an offload run (P2-D5
-# resolved decision 3). A starting estimate; corrected against measured
-# peak host RAM by the calibration acceptance.
+# resolved decision 3). Unvalidated: calibrate() measures only CUDA and NVML
+# memory, so no host-RAM measurement exists to correct this against. It stays
+# an analytic starting estimate until the offload calibration path lands.
 PAGE_CACHE_ALLOWANCE_BYTES = 16 * (1 << 30)
 
 # HF AutoConfig model_type values whose configs carry Llama-family field names
@@ -202,7 +203,11 @@ def spec_from_recipe(recipe: DictConfig) -> ArchitectureSpec:
 
         return spec_from_hf_config(
             AutoConfig.from_pretrained(
-                recipe.model.hf.id, revision=recipe.model.hf.revision
+                recipe.model.hf.id,
+                revision=recipe.model.hf.revision,
+                # memfit and calibrate run in the offline training container, so
+                # even a pure size estimate must resolve the config locally.
+                local_files_only=True,
             )
         )
     raise UnknownArchitectureError("Recipe has neither model.scratch nor model.hf set")

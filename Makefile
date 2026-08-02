@@ -15,7 +15,7 @@
 .PHONY: train-build train-shell train-smoke prepare-data prepare-corpus build-contamination
 .PHONY: prepare-sft train-tokenizer train-validate memfit train-calibrate train train-sft
 .PHONY: train-distill distill-cache export-build export-gguf serve-eval eval-ft
-.PHONY: promote-scorecard generate-teacher
+.PHONY: promote-scorecard generate-teacher train-download train-preflight
 .PHONY: interp-build interp-up interp-shell interp-smoke interp-down interp-dirs
 .PHONY: steer-extract steer-up steer-down steer-scorecard
 .PHONY: probe-capture probe-train probe-eval probe-monitor logproxy-up logproxy-down
@@ -136,20 +136,30 @@ train-shell: ## Interactive shell in the training container (GPU + /mnt/ai-data/
 train-smoke: ## Run the eight-step training smoke test on the workstation (enforces CUDA sm_120)
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training smoke
 
+# Staging targets. These run in the `prepare` service, the only one with network
+# egress (docker-compose.training.yaml). Everything below them runs in `training`,
+# which sits on an internal network and cannot reach the hub at all.
+
+train-download: ## Stage a model into /mnt/ai-data/models/hf (Prelude C): make train-download MODEL=google/gemma-4-E2B REVISION=<sha>
+	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training download --model $(MODEL) --revision $(REVISION) $(ARGS)
+
 prepare-data: ## Tokenize a dataset into shards (Phase 0 D2): make prepare-data ARGS="--source ... --tokenizer ... --out ..."
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training prepare-data $(ARGS)
+	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training prepare-data $(ARGS)
 
 prepare-corpus: ## Filter, dedup, decontaminate, and shard a corpus (Phase 2 P2-D1): make prepare-corpus ARGS="--source ... --tokenizer ... --work-dir ... --out ..."
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training prepare-corpus $(ARGS)
+	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training prepare-corpus $(ARGS)
 
 build-contamination: ## Build the benchmark decontamination index (Phase 2 P2-D1): make build-contamination ARGS="--out /mnt/ai-data/training/datasets/_contamination/v1"
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training build-contamination $(ARGS)
+	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training build-contamination $(ARGS)
 
 prepare-sft: ## Prepare masked SFT examples (Phase 1 F1): make prepare-sft ARGS="--source ... --tokenizer ... --model-type ... --out ..."
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training prepare-sft $(ARGS)
+	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training prepare-sft $(ARGS)
 
 train-tokenizer: ## Train a byte-level BPE tokenizer (Phase 0 D3): make train-tokenizer ARGS="--corpus ... --out ..."
-	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train-tokenizer $(ARGS)
+	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training train-tokenizer $(ARGS)
+
+train-preflight: ## Prove every asset a recipe needs is already local (Prelude C): make train-preflight CONFIG=training/recipes/reference/tiny-e2e.yaml
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training preflight --config $(CONFIG) $(ARGS)
 
 train-validate: ## Validate a recipe (Phase 0 D5): make train-validate CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="optimizer.lr=1e-4"
 	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training validate $(CONFIG) $(ARGS)

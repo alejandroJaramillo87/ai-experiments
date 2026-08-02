@@ -31,8 +31,8 @@ GIB = 1 << 30
 # Calibrated constants (roadmap D4 model, component 5). The overhead started
 # at 1.5 GB and was calibrated to 2.5 GB from the 2026-08-01 pretrain-1b
 # record: allocator slack 1.38 GB (reserved 8.38 - allocated 7.00) plus CUDA
-# context 1.08 GB (NVML 9.46 - reserved 8.38) = 2.32 GB above the allocated
-# estimate. The safety margin defaults to 1GB below the 32GB device total.
+# context 1.08 GB (NVML 9.46 - reserved 8.38) = 2.46 GB above the measured
+# allocated. The safety margin defaults to 1GB below the 32GB device total.
 VRAM_TOTAL_BYTES = 32 * GIB
 OVERHEAD_BYTES = int(2.5 * GIB)
 SAFETY_MARGIN_BYTES = 1 * GIB
@@ -82,7 +82,10 @@ def _teacher_spec(recipe: DictConfig) -> ArchitectureSpec | None:
         return None
     from transformers import AutoConfig
 
-    return spec_from_hf_config(AutoConfig.from_pretrained(d.teacher))
+    # Offline, as in calculator/components.py: pricing a teacher must not download it.
+    return spec_from_hf_config(
+        AutoConfig.from_pretrained(d.teacher, local_files_only=True)
+    )
 
 
 def _estimate_at(

@@ -103,16 +103,73 @@ Volumes:
 |-------|------|---------|
 | `/mnt/ai-data/models/` | read-only | Base model weights, as the inference services mount them |
 | `/mnt/ai-data/training` | read-write | Datasets, shards, checkpoints, and run outputs |
+| `/mnt/ai-data/logs` | read-write | Structured observability records, identity-mounted |
 | `./scripts` | read-only | Training scripts and recipes, mounted live for iteration |
 | `./logs/training` | read-write | Container logs |
 
+## Network split: one door to the hub
+
+The compose file defines three services on two networks. The split exists so that a long
+training run cannot stall part-way through on a download.
+
+| Service | Network | Egress | Purpose |
+|---------|---------|--------|---------|
+| `prepare` | `training-egress` | yes | Downloads models; builds datasets, shards, tokenizers, and the contamination index |
+| `training` | `training-network` | **no** | Training, calibration, and evaluation |
+| `export` | `training-network` | **no** | Checkpoint to GGUF conversion |
+
+`training-network` sets `internal: true`, so the training and export containers have no route
+off the host. This is enforcement by topology rather than by argument: it holds regardless of
+environment variables, command-line flags, or what a recipe puts in `model.hf.id`. The image
+also sets `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, and `HF_DATASETS_OFFLINE=1`, which the
+`prepare` service overrides back to `0`.
+
+Environment variables alone would not be sufficient. `lm_eval` loads its own model and
+downloads its own task datasets, and `datasets.load_dataset` is called from four places; none
+of those accept an offline argument this repository controls.
+
+`prepare` binds `/mnt/ai-data/cache/huggingface` as a persistent `HF_HOME`, so re-downloading
+an already-fetched revision is a cache hit. It is also the only service that mounts
+`/mnt/ai-data/models/hf` read-write. The `training` service keeps a deliberately small tmpfs
+at the same path, which is expected to stay empty — anything landing there means a code path
+is still resolving a hub identifier.
+
 ## Interface
+
+Staging targets run in `prepare` and may reach the network:
+
+| Target | Action |
+|--------|--------|
+| `make train-download` | Stage a pinned model into `/mnt/ai-data/models/hf` |
+| `make prepare-corpus` | Filter, dedup, decontaminate, and shard a corpus |
+| `make prepare-data` | Tokenize a dataset into shards |
+| `make prepare-sft` | Prepare masked SFT examples |
+| `make build-contamination` | Build the benchmark decontamination index |
+| `make train-tokenizer` | Train a byte-level BPE tokenizer |
+
+Everything else runs in `training` or `export`, with no network:
 
 | Target | Action |
 |--------|--------|
 | `make train-build` | Build the image; the build fails if any smoke-test step fails |
 | `make train-shell` | Interactive shell in the container, GPU and training root attached |
 | `make train-smoke` | Run the eight-step smoke test on the workstation |
+| `make train-preflight` | Prove every asset a recipe references is already local |
+
+## Validate compared with preflight
+
+Two commands check a recipe, and the difference matters:
+
+- `make train-validate` checks schema and cross-field invariants. Its path checks are
+  skip-when-absent by explicit convention, so it passes on a machine with no data at all.
+  It answers "is this recipe coherent".
+- `make train-preflight` requires every asset the recipe references to be present and
+  verified, and reports every missing one rather than stopping at the first. It answers
+  "will this run start". Run it immediately before a long job.
+
+Preflight hoists checks that otherwise happen too late: shard integrity is verified inside
+`ShardedTokenDataset.__init__` today, which is after the run has started and the GPU is
+committed.
 
 ## Concurrency policy
 

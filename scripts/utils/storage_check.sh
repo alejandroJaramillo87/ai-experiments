@@ -2,7 +2,7 @@
 
 # storage_check.sh
 # Comprehensive storage analysis for AI workstation with dual SSDs
-# Tracks models, datasets, Docker, caches, and identifies problem areas
+# Tracks models, the training and interp tiers, Docker, caches, and problem areas
 
 # Color definitions
 RED='\033[0;31m'
@@ -29,7 +29,12 @@ echo
 # Function to get directory size safely
 get_size() {
     local path="$1"
-    if [ -d "$path" ] || [ -f "$path" ]; then
+    if [ -L "$path" ]; then
+        # A cache path may be a symlink onto the data drive. -L follows it;
+        # plain du would measure the link and report a few bytes. Applied only
+        # to the symlink case so directory walks do not chase links inside.
+        du -sbL "$path" 2>/dev/null | awk '{print $1}'
+    elif [ -d "$path" ] || [ -f "$path" ]; then
         du -sb "$path" 2>/dev/null | awk '{print $1}'
     else
         echo "0"
@@ -84,7 +89,7 @@ if [ -d "/mnt/ai-data" ]; then
 
     # Models directory
     echo "Models:"
-    for model_type in hf gguf onnx safetensors quantized ollama; do
+    for model_type in hf gguf trained checkpoints clip diffusion_models vae; do
         MODEL_PATH="/mnt/ai-data/models/$model_type"
         if [ -d "$MODEL_PATH" ]; then
             SIZE=$(du -sh "$MODEL_PATH" 2>/dev/null | awk '{print $1}')
@@ -93,35 +98,53 @@ if [ -d "/mnt/ai-data" ]; then
         fi
     done
 
+    # The tiers that carry current work. training/ is identity-mounted rw by
+    # docker-compose.training.yaml (and again by the interp compose); interp/ is
+    # created by `make interp-dirs`.
     echo
-    echo "Datasets:"
-    DATASET_TOTAL=$(du -sh /mnt/ai-data/datasets 2>/dev/null | awk '{print $1}')
-    echo "  Total: $DATASET_TOTAL"
-    for dataset_type in commoncrawl audio vision parquet mmap preprocessed; do
-        DATASET_PATH="/mnt/ai-data/datasets/$dataset_type"
-        if [ -d "$DATASET_PATH" ] && [ "$(ls -A "$DATASET_PATH" 2>/dev/null)" ]; then
-            SIZE=$(du -sh "$DATASET_PATH" 2>/dev/null | awk '{print $1}')
-            echo "    $dataset_type: $SIZE"
+    echo "Training tier:"
+    for sub in datasets shards tokenizers runs verify eval staging; do
+        SUB_PATH="/mnt/ai-data/training/$sub"
+        if [ -d "$SUB_PATH" ]; then
+            SIZE=$(du -sh "$SUB_PATH" 2>/dev/null | awk '{print $1}')
+            echo "  $sub: $SIZE"
+        fi
+    done
+    if [ -f "/mnt/ai-data/training/.train.lock" ]; then
+        print_info "  Run lock present (a training run may be active)"
+    fi
+
+    echo
+    echo "Interpretability tier:"
+    for sub in activations saes probes monitor vectors organisms hf-cache logs; do
+        SUB_PATH="/mnt/ai-data/interp/$sub"
+        if [ -d "$SUB_PATH" ]; then
+            SIZE=$(du -sh "$SUB_PATH" 2>/dev/null | awk '{print $1}')
+            echo "  $sub: $SIZE"
+        fi
+    done
+
+    # Structured obs records (OBS_LOG_DIR). Identity-mounted into the training,
+    # export, and interp containers so host and container agree on the path.
+    echo
+    echo "Observability logs:"
+    for sub in training interp inference crash_dumps; do
+        SUB_PATH="/mnt/ai-data/logs/$sub"
+        if [ -d "$SUB_PATH" ]; then
+            SIZE=$(du -sh "$SUB_PATH" 2>/dev/null | awk '{print $1}')
+            echo "  $sub: $SIZE"
         fi
     done
 
     echo
-    echo "Caches:"
-    for cache_type in huggingface torch pip webui; do
+    # huggingface is bound rw into the prepare service as HF_HOME; the rest are
+    # host-side only.
+    echo "Caches (huggingface shared with the prepare service; rest host-side only):"
+    for cache_type in huggingface torch pip uv; do
         CACHE_PATH="/mnt/ai-data/cache/$cache_type"
         if [ -d "$CACHE_PATH" ]; then
             SIZE=$(du -sh "$CACHE_PATH" 2>/dev/null | awk '{print $1}')
             echo "  $cache_type: $SIZE"
-        fi
-    done
-
-    echo
-    echo "Other Directories:"
-    for dir in embeddings workspace logs; do
-        DIR_PATH="/mnt/ai-data/$dir"
-        if [ -d "$DIR_PATH" ]; then
-            SIZE=$(du -sh "$DIR_PATH" 2>/dev/null | awk '{print $1}')
-            echo "  $dir: $SIZE"
         fi
     done
 
@@ -218,10 +241,11 @@ if [ -d "$APT_CACHE" ]; then
     echo "APT cache: $APT_SIZE"
 fi
 
-# uv cache
+# uv cache. -L follows the symlink to the data drive; without it du measures the
+# link itself and reports 0.
 UV_CACHE="$HOME/.cache/uv"
 if [ -d "$UV_CACHE" ]; then
-    UV_CACHE_SIZE=$(du -sh "$UV_CACHE" 2>/dev/null | awk '{print $1}')
+    UV_CACHE_SIZE=$(du -shL "$UV_CACHE" 2>/dev/null | awk '{print $1}')
     echo "uv cache: $UV_CACHE_SIZE"
 fi
 
@@ -289,22 +313,37 @@ echo "Home directory analysis:"
 echo
 
 echo "Top 10 directories in $HOME (excluding symlinks):"
-# Process substitution so the WARNING_COUNT increment below is not lost to a subshell.
 while read -r size dir; do
-    DIR_NAME=$(basename "$dir")
-    # Check if it's a cache that should be on data SSD
-    if [[ "$DIR_NAME" == ".cache" ]]; then
-        if [ ! -L "$HOME/.cache" ]; then
-            print_warn "  $size $DIR_NAME (should be symlinked to /mnt/ai-data/cache)"
+    echo "  $size $(basename "$dir")"
+done < <(find "$HOME" -maxdepth 1 -type d ! -name "." -exec du -sh {} \; 2>/dev/null | sort -rh | head -10)
+
+echo
+echo "AI cache symlinks:"
+# Only the AI caches belong on the data drive. Redirecting all of ~/.cache pulls
+# desktop caches (browser, GNOME, thumbnails) onto it as well, which defeats the
+# drive's purpose of isolating AI I/O from system I/O.
+if [ -L "$HOME/.cache" ]; then
+    print_warn "  ~/.cache is a symlink to $(readlink "$HOME/.cache")"
+    echo "    Expected: a real directory holding per-cache symlinks"
+    echo "    Solution: rm ~/.cache && mkdir -p ~/.cache, then re-link the AI caches"
+    echo "    Command: ./scripts/setup/setup_data_ssd.sh --skip-format"
+    ((WARNING_COUNT++))
+else
+    for cache_type in huggingface torch pip uv; do
+        LINK="$HOME/.cache/$cache_type"
+        TARGET="/mnt/ai-data/cache/$cache_type"
+        if [ -L "$LINK" ] && [ "$(readlink -f "$LINK")" = "$TARGET" ]; then
+            SIZE=$(du -sh "$TARGET" 2>/dev/null | awk '{print $1}')
+            print_ok "  $cache_type: ${SIZE:-unknown} -> $TARGET"
+        elif [ -d "$LINK" ]; then
+            SIZE=$(du -sh "$LINK" 2>/dev/null | awk '{print $1}')
+            print_warn "  $cache_type: $SIZE on the OS drive (not linked to the data drive)"
             ((WARNING_COUNT++))
         else
-            LINK_TARGET=$(readlink -f "$HOME/.cache")
-            echo "  $size $DIR_NAME → $LINK_TARGET"
+            print_skip "  $cache_type: absent"
         fi
-    else
-        echo "  $size $DIR_NAME"
-    fi
-done < <(find "$HOME" -maxdepth 1 -type d ! -name "." -exec du -sh {} \; 2>/dev/null | sort -rh | head -10)
+    done
+fi
 
 echo
 echo "Python Environments:"
@@ -315,7 +354,7 @@ if [ -d "$HOME/.local/share/uv" ]; then
     echo "  uv (interpreters/tools): $UV_SIZE ($UV_PYTHONS interpreters)"
 fi
 if [ -d "$HOME/.cache/uv" ]; then
-    UV_CACHE_SIZE=$(du -sh "$HOME/.cache/uv" 2>/dev/null | awk '{print $1}')
+    UV_CACHE_SIZE=$(du -shL "$HOME/.cache/uv" 2>/dev/null | awk '{print $1}')
     echo "  uv cache: $UV_CACHE_SIZE (prune with: uv cache prune)"
 fi
 # Leftovers from the retired pyenv/Poetry toolchain (removal documented in
@@ -392,7 +431,10 @@ fi
 # uv cache
 UV_BYTES=$(get_size "$HOME/.cache/uv")
 if [ "$UV_BYTES" -gt 5368709120 ]; then  # >5GB
-    echo "• Prune uv cache:"
+    # Size alone cannot distinguish reclaimable from live entries: a cache that
+    # is entirely in use still trips this threshold. prune removes only unused
+    # entries, so it is safe to suggest unconditionally, but say what it does.
+    echo "• Prune unused uv cache entries (a large cache may be entirely in use):"
     echo "  uv cache prune"
     ((SUGGESTIONS++))
 fi

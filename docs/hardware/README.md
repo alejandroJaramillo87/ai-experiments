@@ -160,20 +160,28 @@ Storage configuration separating operating system from AI models and datasets fo
 NVMe storage for AI models, datasets, and active development projects.
 
 Storage Specifications:
-- **Interface**: PCIe 5.0 x4 with CPU-direct connection for maximum throughput
-- **Performance**: Up to 12,400 MB/s sequential read optimized for large model loading
+- **Interface**: PCIe 5.0 x4 with CPU-direct connection for maximum throughput (unverified, see note below)
+- **Performance**: Up to 12,400 MB/s sequential read (vendor claim, unverified, see note below)
 - **Capacity**: 2TB providing extensive storage for multiple large AI models
 - **Mount Point**: `/mnt/ai-data` for organized AI asset management
 - **Use Cases**: GGUF models, Safetensors, HuggingFace cache, Docker volumes
 
-**Secondary SSD: Samsung 990 EVO 1TB (System Storage)**
+**Secondary SSD: Samsung 990 EVO Plus 1TB (System Storage)**
 System storage for fast boot times and application performance.
 
 System Configuration:
-- **Interface**: PCIe 4.0 x4 chipset connection with dedicated bandwidth allocation
+- **Interface**: PCIe 4.0 x4 chipset connection with dedicated bandwidth allocation (unverified, see note below)
 - **Operating System**: Ubuntu 24.04 LTS optimized for AI development workflows
 - **Applications**: Development tools, Docker, CUDA toolkit, Python environments
 - **Performance**: Optimized for system responsiveness and development tool access
+
+**Note**: The PCIe generation and sequential-read figures above are claims carried over
+from earlier revisions of this document, not measurements taken on this machine. They
+conflict with [storage configuration](../os/storage-configuration.md#hardware-configuration),
+which states PCIe 4.0 x4 and 5,000 MB/s for the AI data drive. Only the model names,
+device nodes (`/dev/nvme1n1` for AI data, `/dev/nvme0n1` for the OS), capacities, and
+mount points are confirmed, from `lsblk` and `blkid -L AIENGINEERING`. Resolve the
+throughput figures with a measurement before relying on them.
 
 Storage Architecture Benefits:
 - **Performance Isolation**: Separate storage domains prevent I/O conflicts between system and AI operations
@@ -306,7 +314,7 @@ Network Performance Features:
 
 **Dual-SSD Optimization Installation Process**
 1. **Primary M.2 Installation**: Install Samsung 990 Pro 2TB in CPU-connected M.2A slot for maximum AI data throughput
-2. **Secondary M.2 Installation**: Install Samsung 990 EVO 1TB in chipset M.2D slot avoiding GPU lane sharing
+2. **Secondary M.2 Installation**: Install Samsung 990 EVO Plus 1TB in chipset M.2D slot avoiding GPU lane sharing
 3. **PCIe Lane Preservation**: Leave remaining M.2 slots empty to maintain full PCIe 5.0 x16 bandwidth for RTX 5090
 4. **Mount Point Configuration**: Configure `/mnt/ai-data` mount point for AI model and dataset storage (see `docs/os/README.md`)
 5. **Permission Setup**: Configure appropriate user permissions for AI development workflow access
