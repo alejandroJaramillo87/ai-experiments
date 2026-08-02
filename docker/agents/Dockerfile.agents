@@ -17,7 +17,7 @@ FROM node:22.14.0-bookworm-slim
 # Exact CLI pins. Resolved against the npm registry at implementation time;
 # both match the host install (opencode 1.17.18, claude-code 2.1.207).
 ARG OPENCODE_VERSION=1.17.18
-ARG CLAUDE_CODE_VERSION=2.1.207
+ARG CLAUDE_CODE_VERSION=2.1.212
 
 # Language-server pin (Python symbol navigation for both CLIs).
 ARG PYRIGHT_VERSION=1.1.411

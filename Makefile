@@ -771,8 +771,8 @@ AGENTS_PROJECT := ai-agents
 #                              EFFORT=medium), and theme
 # In-session changes (/effort, /model) intentionally last one session only.
 CLAUDE_THEME ?= dark
-CLAUDE_MODEL ?= claude-fable-5[1m]
-CLAUDE_MODEL_OPTIONS := [{\"value\":\"claude-fable-5[1m]\",\"label\":\"Fable\",\"description\":\"Fable 5 - account-gated tier above Opus\"}]
+CLAUDE_MODEL ?= claude-opus-5[1m]
+CLAUDE_MODEL_OPTIONS := [{\"value\":\"claude-fable-5[1m]\",\"label\":\"Fable\",\"description\":\"Fable 5 - account-gated tier above Opus\"},{\"value\":\"claude-opus-5\",\"label\":\"Opus\",\"description\":\"Opus 5 - flagship tier\"}]
 
 agent-sandbox: ## Contained agent session: AGENT=claude|opencode NAME=<task> [PROMPT="..."] [EFFORT=low] [CLAUDE_MODEL=...] [MODEL=<flag override>]
 	@if [ -z "$(NAME)" ]; then printf '[ERROR] set NAME=<task> (names the git worktree)\n'; exit 1; fi; \
