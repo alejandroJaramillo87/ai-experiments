@@ -37,10 +37,21 @@ def deterministic():
 
 
 @pytest.fixture()
-def shard_dir(tmp_path) -> str:
+def shard_dir(tmp_path, tokenizer_dir) -> str:
+    # The manifest carries the real fixture tokenizer's content hash: the CLI
+    # path runs validate(), which rejects a shard dir whose hash does not
+    # match tokenizer.path. The in-process train() tests do not validate, but
+    # a single consistent fixture keeps both paths on the same shards.
+    from training.data.prepare import load_tokenizer
+
     rng = np.random.default_rng(7)
     tokens = rng.integers(0, VOCAB, size=6000).tolist()
-    return make_shard_dir(tmp_path, tokens, shard_tokens=2000)
+    return make_shard_dir(
+        tmp_path,
+        tokens,
+        shard_tokens=2000,
+        tokenizer_hash=load_tokenizer(tokenizer_dir).content_hash,
+    )
 
 
 def tiny_recipe(shard_dir: str, output_root: str, *extra: str):
@@ -78,6 +89,14 @@ def test_deterministic_resume_with_offload(shard_dir, tmp_path):
     deterministic resume check as the plain loop. Runs where deepspeed is
     installed (the host training container); the CPU sandbox skips it."""
     pytest.importorskip("deepspeed")
+    # Skip rather than let OPTIMIZER_FALLBACK_CHAIN degrade to a non-engine
+    # optimizer: a degraded run still resumes deterministically, so the
+    # assertions below would pass without ever exercising ZeRO-Offload —
+    # a false green on the acceptance check this test exists to be.
+    from training.runtime.offload import cpu_adam_available
+
+    if not cpu_adam_available():
+        pytest.skip("DeepSpeedCPUAdam op unavailable; ZeRO-Offload cannot run")
 
     def offload_recipe(root: str, *extra: str):
         return tiny_recipe(
@@ -165,7 +184,9 @@ def test_metrics_jsonl_written_with_checkpoint_markers(shard_dir, tmp_path):
     assert saved == [4, 8]  # interval 4, total 8
 
 
-def test_cli_run_joins_artifacts_under_real_watchdog_timing(shard_dir, tmp_path):
+def test_cli_run_joins_artifacts_under_real_watchdog_timing(
+    shard_dir, tmp_path, tokenizer_dir
+):
     """Host-side proof of the OBS-10 thread fix under real timing: the
     sub-second watchdog sampler logs into the sink concurrently with the
     training loop, and the header identity must still come from the
@@ -182,6 +203,10 @@ def test_cli_run_joins_artifacts_under_real_watchdog_timing(shard_dir, tmp_path)
         "--config",
         TINY_RECIPE,
         f"data.source={shard_dir}",
+        # Unlike the in-process tests this goes through validate(), so the
+        # recipe's /mnt/ai-data tokenizer path must be redirected at the
+        # fixture tokenizer the shard manifest was hashed against.
+        f"tokenizer.path={tokenizer_dir}",
         f"run.output_root={tmp_path / 'out'}",
         f"data.seq_len={SEQ_LEN}",
         "schedule.total_steps=8",

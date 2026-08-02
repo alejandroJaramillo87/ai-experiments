@@ -68,6 +68,10 @@ class TestDsConfig:
         assert config["zero_optimization"]["allgather_bucket_size"] == 200_000_000
         assert config["zero_optimization"]["reduce_bucket_size"] == 200_000_000
         assert config["gradient_clipping"] == 0.0
+        # None, not 0: the engine guards step logging on `is not None` and
+        # then takes a modulo by this value, so 0 raises ZeroDivisionError on
+        # the first engine.step() rather than disabling the printing.
+        assert config["steps_per_print"] is None
         assert "scheduler" not in config
         assert config["zero_optimization"]["offload_optimizer"]["pin_memory"] is True
 
@@ -417,6 +421,10 @@ class TestAttentionFallbackWarning:
         from training.models import model as model_mod
 
         monkeypatch.setitem(sys.modules, "torch", self._fake_torch(True))
+        # A None sys.modules entry makes `import flash_attn` raise ImportError,
+        # so the degradation is exercised on the training image too, where
+        # flash-attn is genuinely installed.
+        monkeypatch.setitem(sys.modules, "flash_attn", None)
         monkeypatch.setattr(model_mod, "_flash_fallback_warned", False)
         assert model_mod.attention_implementation() == "sdpa"
         first = capsys.readouterr().err

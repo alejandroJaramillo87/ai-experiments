@@ -5,8 +5,10 @@ Covers the cross-field validate() arms not exercised by test_recipes.py
 domains, mixture and replay path checks, tokenizer-load failures) and the
 Tracker sink constructors in training/runtime/tracking.py. The tensorboard, wandb,
 and mlflow libraries are absent in the sandbox, so sink construction runs
-against stub modules injected into sys.modules; the import-failure arms use a
-None sys.modules entry, which makes the lazy import raise ImportError.
+against stub modules injected into sys.modules; the import-failure arms use
+None sys.modules entries, which make the lazy import raise ImportError. Those
+entries cover every level of a dotted import, since the machinery resolves the
+full dotted name before it dereferences the parent package.
 """
 
 from __future__ import annotations
@@ -265,8 +267,22 @@ class TestStagingWatchdogAffinity:
         assert_problem(recipe, "watchdog.patience: must be >= 1, got 0")
 
     def test_affinity_overlap_reported(self):
-        recipe = tiny(["affinity.main=0-7", "affinity.workers=4-12"])
+        # include_smt=false keeps the reported cpu list machine-independent:
+        # with SMT expansion the siblings depend on os.cpu_count().
+        recipe = tiny(
+            [
+                "affinity.main=0-7",
+                "affinity.workers=4-12",
+                "affinity.include_smt=false",
+            ]
+        )
         assert_problem(recipe, "masks overlap on cpus [4, 5, 6, 7]")
+
+    def test_affinity_overlap_includes_smt_siblings(self):
+        # With SMT expansion the sibling ids vary with os.cpu_count(), so
+        # assert only the physical cpus that overlap either way.
+        recipe = tiny(["affinity.main=0-7", "affinity.workers=4-12"])
+        assert_problem(recipe, "masks overlap on cpus [4, 5, 6, 7")
 
 
 class TestTokenizerLoadFailure:
@@ -351,9 +367,13 @@ def test_tensorboard_sink_construction_and_writethrough(tmp_path, monkeypatch):
 
 
 def test_tensorboard_import_failure_disables_sink(tmp_path, monkeypatch, capsys):
-    # A None sys.modules entry makes the lazy torch import raise ImportError;
-    # construction must survive with the sink disabled and a stderr warning.
-    monkeypatch.setitem(sys.modules, "torch", None)
+    # None sys.modules entries make the lazy import raise ImportError. The
+    # submodule keys must be poisoned too: `from torch.utils.tensorboard import
+    # X` resolves the full dotted name in sys.modules first, so a cached real
+    # entry (left by any earlier test that imported torch) would satisfy the
+    # import without ever dereferencing the None parent.
+    for name in ("torch", "torch.utils", "torch.utils.tensorboard"):
+        monkeypatch.setitem(sys.modules, name, None)
     tracker = Tracker(cfg(tensorboard=True), "run-tb", str(tmp_path))
     assert tracker._sinks == []
     assert "tensorboard sink disabled" in capsys.readouterr().err

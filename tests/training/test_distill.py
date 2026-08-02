@@ -280,11 +280,14 @@ class TestMaskedDistillLoss:
         logits agree or wildly disagree, because the mask excludes them."""
         student, teacher, labels = self.fixture_batch()
         baseline = self.kl_at(student, teacher, labels)
+        # The bump covers part of the vocab axis, not all of it: a uniform
+        # shift across every logit is a log_softmax no-op and would make both
+        # assertions vacuous.
         corrupted = teacher.clone()
-        corrupted[:, :5] += 100.0  # prompt positions only (pre-shift 0..4)
+        corrupted[:, :5, :8] += 100.0  # prompt positions only (pre-shift 0..4)
         assert self.kl_at(student, corrupted, labels) == pytest.approx(baseline)
         assistant_shift = teacher.clone()
-        assistant_shift[:, 7] += 100.0  # an assistant position must move it
+        assistant_shift[:, 7, :8] += 100.0  # an assistant position must move it
         assert self.kl_at(student, assistant_shift, labels) != pytest.approx(baseline)
 
     def test_fully_masked_batch_has_zero_kl(self):
@@ -365,15 +368,24 @@ class TestMaskedDistillLoss:
         (low-temperature sampling regime) and K covering the bulk of the
         mass, truncated KL tracks the exact KL within 5 percent relative or
         0.02 absolute — the documented tolerance attributable to top-K
-        truncation."""
+        truncation.
+
+        The student must track the teacher, as a distilling student does. An
+        independent student puts most of the exact KL on the vocabulary tail
+        outside the top-K — precisely the mass truncation discards — which is
+        a statement about the fixture, not about the bound.
+        """
         torch = self.torch
         gen = torch.Generator().manual_seed(1)
-        student = torch.randn(2, 10, 256, generator=gen)
         teacher = 4.0 * torch.randn(2, 10, 256, generator=gen)  # peaked
+        student = teacher + 2.0 * torch.randn(2, 10, 256, generator=gen)
         labels = torch.randint(0, 256, (2, 10), generator=gen)
         labels[:, :4] = IGNORE_INDEX
         online = self.kl_at(student, teacher, labels)
-        ids, lps = self.topk_slices(teacher, k=64)
+        # 96 of 256 truncates real mass while staying inside the bound; the
+        # resulting KL is ~1.5, so the 5 percent relative arm is what binds,
+        # not the 0.02 absolute floor.
+        ids, lps = self.topk_slices(teacher, k=96)
         _, _, cached = self.loss(
             student,
             labels,
