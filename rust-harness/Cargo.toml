@@ -12,6 +12,11 @@ debug = true
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
+# The integer `is_multiple_of` (synth.rs, tensor.rs, model/cpu.rs) stabilized in
+# 1.87, so an older toolchain fails deep in a compile error about an unknown
+# method. Declaring it here turns that into cargo naming the version it needs.
+# Kept in step with rust-toolchain.toml.
+rust-version = "1.87"
 
 # Codifies the level the quality gate already enforces
 # (`cargo clippy --workspace --all-targets -- -D warnings`) so a plain

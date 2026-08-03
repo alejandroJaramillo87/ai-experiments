@@ -9,7 +9,8 @@ prepares commands and interprets reported output; the human executes. The purpos
 the boundary between what was observed and what was assumed impossible to blur.
 
 > Sandboxed execution: agents cannot reach the host, its Docker daemon, the GPU, `nvidia-smi`,
-> `/mnt/ai-data`, the inference services on ports 8001-8003 and 3000, or cargo. Every command in
+> `/mnt/ai-data`, or the inference services on ports 8001-8003 and 3000. The Rust and Python
+> gates do run in the sandbox, so a claim about either is verifiable there. Every command in
 > this skill is executed by the human on the workstation. The agent prepares the exact command
 > line, waits for the human to report the output, and interprets it. Human-reported output is
 > the authoritative evidence. Never claim to have run a host-side command, and never fabricate

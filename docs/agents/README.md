@@ -59,9 +59,9 @@ Two roles sit outside the campaign ladder.
 from `remediator`: a remediator closes a verified finding and must show the defect existed by
 watching a test fail first, whereas feature work has no prior red to reproduce. Its discipline
 comes instead from reading the governing `.styles/` guide before writing, expressing the
-requirement as a test, and reporting the gate's skip count rather than its exit code. It cannot
-run the Rust gate at all, because the sandbox image carries no cargo, and it is required to say
-so rather than imply the change is checked.
+requirement as a test, and reporting the gate's skip count rather than its exit code. It runs
+the Rust gate in the sandbox, because the image carries the pinned toolchain, and it is
+required to name the parts its run did not exercise rather than imply full coverage.
 
 Host verification is a **skill, not an agent**. `/verify-host <claim>` loads
 `.claude/skills/verify-host/SKILL.md` in the main conversation. The reason is structural: a

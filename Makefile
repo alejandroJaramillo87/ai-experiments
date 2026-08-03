@@ -9,7 +9,7 @@
 .PHONY: list-models update rebuild reset demo dev
 .PHONY: agent-parity agent-preflight agent-skeptic-test agent-role-tests command-sync
 .PHONY: agent-usage agent-versions
-.PHONY: worktree-ls worktree-clean agent-run agent-export agent-sandbox agent-sandbox-clean prune
+.PHONY: worktree-ls worktree-clean agent-run agent-export agent-sandbox agent-sandbox-build agent-sandbox-clean prune
 .PHONY: np-clone np-env np-build np-up np-inference-up np-autointerp-up np-graph-up
 .PHONY: np-down np-status np-smoke
 .PHONY: train-build train-shell train-smoke prepare-data prepare-corpus build-contamination
@@ -881,6 +881,11 @@ agent-sandbox: ## Contained agent session: AGENT=claude|opencode NAME=<task> [PR
 	      docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) run --rm --name "agent-$$name" agent sh -lc "$$cmd" ;; \
 	  *) printf '[ERROR] AGENT must be claude or opencode (got: %s)\n' "$(AGENT)"; exit 1 ;; \
 	esac
+
+agent-sandbox-build: ## Rebuild the agent sandbox image (required after editing docker/agents/Dockerfile.agents or rust-harness/Cargo.lock)
+	@echo "$(CYAN)Building agent sandbox image...$(RESET)"
+	docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) build agent
+	@echo "$(GREEN)Agent sandbox image built.$(RESET)"
 
 # The agent-sandbox docker footprint is shared across every worktree: one proxy
 # container (agent-proxy) plus the agent-internal/agent-egress networks and two

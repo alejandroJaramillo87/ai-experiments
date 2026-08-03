@@ -273,10 +273,17 @@ $ make quality
 
 No step requires the network. `cargo-deny` is a deliberate non-step, because it does.
 
-**This gate cannot run in a contained agent sandbox.** The agent image carries no cargo, so a
-Rust change made in a sandbox is unverified until the human runs the gate on the workstation.
-State that plainly rather than implying the change is checked. See `/AGENTS.md` for the
+**This gate runs in a contained agent sandbox.** The agent image carries the toolchain pinned
+by `rust-toolchain.toml`, a prefetched crate registry, and the numpy and gguf the
+cross-language tests need. Rebuild it with `make agent-sandbox-build` after changing
+`docker/agents/Dockerfile.agents` or `Cargo.lock`. A sandbox result is therefore real evidence,
+not a placeholder — but read the output for `[SKIP]` lines rather than trusting the exit code,
+and note that Tier 3 tests still require the workstation. See `/AGENTS.md` for the
 execution-environment rules.
+
+The workspace carries a `rust-toolchain.toml`. It is not an exception to the
+no-configuration-files rule below: it pins a version rather than restating a `rustfmt` default,
+and it is what keeps the sandbox and the workstation on one toolchain.
 
 Profiling and debugging targets are workstation-only: `make flame` (`cargo flamegraph` against
 the `release-with-debug` profile) and `make debug-record` / `make debug-replay` (rr).
