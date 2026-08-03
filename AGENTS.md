@@ -81,11 +81,17 @@ These are standing instructions for anyone (human or agent) making changes in th
   `--no-incremental`. Prefer `mypy --no-incremental` when the result matters.
 
   With the pinned tools present, all five Python steps — both ruff steps, mypy,
-  `uv lock --check`, and shellcheck — run in a sandbox. The rust gate does not: the image
-  carries no cargo. `make test` also cannot sync, because it reaches the pytorch cu130 index
-  the allowlist does not carry; run `uv run --no-sync pytest` instead, accepting that it
-  resolves the `.venv` rather than the pins. Treat a clean sandbox run as fast feedback, not
-  proof, and re-run `make quality` on the workstation before every push.
+  `uv lock --check`, and shellcheck — run in a sandbox. **The rust gate runs there too**: the
+  image carries the toolchain pinned by `rust-harness/rust-toolchain.toml`, a prefetched crate
+  registry so no step needs the network, and numpy and gguf at the `pyproject.toml` pins, which
+  the gate hard-depends on — `runtime/src/npz.rs` shells out to `np.load`, so `cargo test`
+  fails outright without numpy rather than skipping. Rebuild the image with
+  `make agent-sandbox-build` after changing `docker/agents/Dockerfile.agents` or
+  `rust-harness/Cargo.lock`. `make test` still cannot sync, because it reaches the pytorch
+  cu130 index the allowlist does not carry; run `uv run --no-sync pytest` instead, accepting
+  that it resolves the `.venv` rather than the pins. What stays workstation-only is GPU work,
+  the service healthchecks, and anything under `/mnt/ai-data`. Re-run `make quality` on the
+  workstation before every push regardless: the sandbox proves the code, not the hardware.
 
 ## Hardware
 

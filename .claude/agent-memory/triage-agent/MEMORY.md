@@ -1,0 +1,5 @@
+- [Triage output discipline](feedback_triage_output_discipline.md) — return only decision fields; echoing the evidence payload blew the 32k output limit once
+- [Gemma 4 conformance audit](project_gemma4_conformance_audit.md) — docs/models/gemma-4.md is sole authority; the 2304 d_model trap and the needs-host GGUF rule
+- [Gemma 4 "2304" propagation root](project_gemma4_2304_propagation.md) — the wrong E2B geometry has one documentary root (p2_d5 investigation) and six copies
+- [Calculator scalar-spec root](project_gemma4_conformance_campaign.md) — ArchitectureSpec's flat scalars are the single root behind most training-calculator Gemma 4 findings
+- [Synth fixture root](project_gemma4_synth_fixture_root.md) — one synthetic gemma4 GGUF backs every rust test and encodes the conventions the spec contradicts (extends deferred A1-15)

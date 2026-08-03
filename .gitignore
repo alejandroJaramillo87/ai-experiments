@@ -40,6 +40,20 @@ Thumbs.db
 # Compiled binaries
 scripts/optimizations/copy_to_hugetlbfs
 
+# Model weights staged inside the worktree for agent-sandbox sessions. The
+# sandbox mounts only the worktree, so a checkpoint has to live here to be
+# reachable; multi-GB binaries must never reach a commit.
+# Leading slash matters: a bare `models/` also matches training/models/, which is
+# source.
+/models/
+*.gguf
+*.safetensors
+# The committed test fixtures are the deliberate exception: they are kilobytes,
+# they are the golden inputs the runtime's tests load, and rust-harness/fixtures
+# is where regenerating them writes. Without these negations `git add` would need
+# -f every time the fixture is regenerated.
+!rust-harness/fixtures/*.gguf
+
 # Temporary files
 *.tmp
 *.bak

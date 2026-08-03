@@ -15,7 +15,46 @@
 # precedes the first FROM because a build arg used in a FROM must be declared in
 # the global scope.
 ARG UV_VERSION=0.11.28
+
+# Rust arrives the same way and for the same reason: a published image pins the
+# toolchain by tag instead of resolving whatever rustup serves that day. The tag
+# is -slim-bookworm so the copied binaries link against the same Debian 12 glibc
+# 2.36 the node base ships.
+#
+# 1.88.0 matches the workstation (rustc 1.88.0, cargo 1.88.0), so a sandbox gate
+# result means what a workstation result means. Kept in step with
+# rust-harness/rust-toolchain.toml. The workspace's declared minimum is 1.87,
+# where the integer `is_multiple_of` stabilized; the pin is deliberately the
+# host's version rather than that floor.
+#
+# This ARG sits above every FROM for the reason given above: a build arg used in
+# a FROM must be declared in the global scope, or it expands to empty and the
+# stage name is invalid.
+ARG RUST_VERSION=1.88.0
+
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv-source
+
+FROM rust:${RUST_VERSION}-slim-bookworm AS rust-source
+
+# The official image uses the minimal rustup profile, which ships neither clippy
+# nor rustfmt. `make quality` runs both, plus rustdoc.
+RUN rustup component add clippy rustfmt
+
+# Resolve the workspace's dependency graph at build time so the gate stays offline
+# at run time, as /work/AGENTS.md claims of it. Only the manifests are copied, so
+# this layer rebuilds when Cargo.lock changes and not when source does. cargo needs
+# each member's target file to exist before it will parse the manifest, hence the
+# stubs; they are discarded with this stage.
+ENV CARGO_HOME=/opt/cargo
+WORKDIR /build
+COPY rust-harness/Cargo.toml rust-harness/Cargo.lock ./
+COPY rust-harness/harness/Cargo.toml harness/Cargo.toml
+COPY rust-harness/runtime/Cargo.toml runtime/Cargo.toml
+RUN mkdir -p harness/src runtime/src \
+    && printf 'fn main() {}\n' > harness/src/main.rs \
+    && printf '' > runtime/src/lib.rs \
+    && cargo fetch --locked \
+    && rm -rf /opt/cargo/registry/src
 
 # Pinned base. node:22 is the current LTS line; bump deliberately per the
 # repo's pin-then-update rule.
@@ -50,6 +89,9 @@ RUN apt-get update \
         jq \
         ripgrep \
         shellcheck \
+        make \
+        gcc \
+        libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install both CLIs globally at the pinned versions.
@@ -84,6 +126,44 @@ RUN uv python install "${PYTHON_VERSION}" --default --preview \
         --with "types-pyyaml==${TYPES_PYYAML_VERSION}" \
     && chmod -R a+rX /opt/uv \
     && rm -rf /tmp/uv-cache
+
+# numpy and gguf are not optional extras: the rust gate hard-depends on them.
+# runtime/src/npz.rs shells out to python3 to re-read a written shard with
+# np.load, so `cargo test` FAILS outright without numpy rather than skipping,
+# and the cross-language contract tests need gguf to exercise the real Python
+# exporters. Both are the exact pins from pyproject.toml, so a sandbox result
+# means what a workstation result means. They live in their own venv placed
+# first on PATH, leaving the ruff and mypy tool venvs above untouched.
+ARG NUMPY_VERSION=2.4.6
+ARG GGUF_VERSION=0.19.0
+RUN uv venv --python "${PYTHON_VERSION}" /opt/pyenv \
+    && uv pip install --python /opt/pyenv/bin/python \
+        "numpy==${NUMPY_VERSION}" \
+        "gguf==${GGUF_VERSION}" \
+    && chmod -R a+rX /opt/pyenv \
+    && rm -rf /tmp/uv-cache
+ENV PATH=/opt/pyenv/bin:$PATH
+
+# Rust toolchain and the prefetched crate registry from the builder stage.
+COPY --from=rust-source /usr/local/rustup /usr/local/rustup
+COPY --from=rust-source /usr/local/cargo /usr/local/cargo
+COPY --from=rust-source /opt/cargo /opt/cargo
+ENV RUSTUP_HOME=/usr/local/rustup \
+    PATH=/usr/local/cargo/bin:$PATH
+
+# CARGO_HOME must be writable and cannot live on the rootfs, which is read-only
+# at run time, nor in $HOME, a 256MB tmpfs. /tmp is the 1GB tmpfs. The seed below
+# copies the baked registry there once per session; /etc/profile.d is sourced
+# because the make wrapper launches a login shell (`sh -lc`). A session that
+# somehow skips it still works — cargo falls back to fetching from crates.io,
+# which the proxy allowlists — it is merely slower.
+ENV CARGO_HOME=/tmp/cargo
+RUN printf '%s\n' \
+    'if [ ! -d "$CARGO_HOME" ]; then' \
+    '  mkdir -p "$CARGO_HOME" && cp -a /opt/cargo/. "$CARGO_HOME"/ 2>/dev/null || true' \
+    'fi' \
+    > /etc/profile.d/cargo-home.sh \
+    && chmod 0644 /etc/profile.d/cargo-home.sh
 
 # Native LSP tool in Claude Code (symbol navigation instead of grep sweeps);
 # pyright above serves both CLIs.

@@ -24,9 +24,9 @@ Never run a host-side command, never claim to have run one, and never fabricate 
 When a step requires the host, write out the exact command, state what result would satisfy
 the step, and stop — the human runs it and reports back.
 
-**Cargo is absent from this image.** The Rust gate (`make -C rust-harness quality`) cannot run
-here at all. A Rust change you make is unverified until the human runs that gate on the
-workstation. Say so plainly in your report rather than implying the change is checked.
+**Cargo is present in this image.** Run the Rust gate (`make -C rust-harness quality`) here and
+report its result, including the `[SKIP]` count rather than only the exit code. Tier 3 tests
+still need the workstation, so say which parts your run did not exercise.
 
 ## Protocol
 

@@ -1,0 +1,19 @@
+# Toolchain pin for the workspace.
+#
+# One file names the version for both environments: rustup selects it
+# automatically on the workstation, and docker/agents/Dockerfile.agents pins the
+# same value for the agent sandbox. Without it the two drift silently and a
+# sandbox gate result stops meaning what a workstation result means.
+#
+# 1.88.0 is the workstation's toolchain (rustc 1.88.0, cargo 1.88.0). The
+# workspace's declared minimum in Cargo.toml is 1.87, where the integer
+# `is_multiple_of` stabilized; this pin is the host's version rather than that
+# floor, so the two environments compile and lint identically. Bump deliberately,
+# one version at a time, re-running `make quality` after each, per the
+# pin-then-fix-then-update rule in /AGENTS.md.
+#
+# clippy and rustfmt are listed because `make quality` runs both and the minimal
+# rustup profile ships neither.
+[toolchain]
+channel = "1.88.0"
+components = ["clippy", "rustfmt"]

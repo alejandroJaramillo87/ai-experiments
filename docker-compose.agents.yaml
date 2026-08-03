@@ -54,11 +54,23 @@ services:
     # for the home dir and package-manager caches. Nothing else can be written.
     tmpfs:
       - /home/node:size=256M,mode=0700,uid=1000,gid=1000
-      - /tmp:size=1G,mode=1777
+      # /tmp also holds CARGO_HOME, seeded from the image's prefetched registry:
+      # the .crate cache plus the sources cargo extracts from it. 1G left no
+      # headroom once the workspace's dependency tree unpacked. Build artifacts
+      # are not here - target/ defaults into the bind-mounted worktree.
+      - /tmp:size=4G,mode=1777
+    # 8G covers editing, linting, and the rust gate against the tiny fixture. The
+    # CPU backend dequantizes every tensor to f32 at load, so a real checkpoint
+    # costs far more than its on-disk size: E2B's body plus main embedding is
+    # roughly 2.28B parameters (~9.1GB as f32) and E4B's roughly 4.67B (~18.7GB),
+    # before the KV cache, which this backend keeps at full sequence length for
+    # every layer. 32G fits E4B with headroom and still leaves the 128GB host
+    # three quarters free. Raise deliberately; a runaway session can claim all of
+    # this.
     deploy:
       resources:
         limits:
-          memory: 8G
+          memory: 32G
     # Only the git worktree is mounted, read-write. AGENT_WORKTREE is set by the
     # make wrapper to ../ai-experiments-<name>; damage stays inside that worktree.
     volumes:

@@ -132,6 +132,43 @@ index, which the allowlist does not carry, and an unsynced `.venv` resolves diff
 than the lockfile pins. Treat a clean sandbox run as fast feedback, not as the gate; the
 workstation gate stays mandatory before every push.
 
+### Rust toolchain
+
+The image carries the toolchain pinned by `rust-harness/rust-toolchain.toml` (currently
+`1.88.0`, matching the workstation), copied from the published `rust:1.88.0-slim-bookworm`
+image rather than fetched by rustup at build time, plus `clippy`, `rustfmt`, `make`, and the
+`gcc`/`libc6-dev` a linker needs. The workspace's dependency graph is resolved at image build
+with `cargo fetch --locked`, so `make -C rust-harness quality` runs offline.
+
+`CARGO_HOME` cannot live on the read-only rootfs or in the 256MB home tmpfs, so it is `/tmp/cargo`,
+seeded once per session from the baked registry by `/etc/profile.d/cargo-home.sh`; the make
+wrapper launches a login shell, which sources it. Build artifacts are not in tmpfs — `target/`
+defaults into the bind-mounted worktree.
+
+The gate also needs `numpy` and `gguf`, at the `pyproject.toml` pins, in their own venv first
+on `PATH`. This is not optional: `runtime/src/npz.rs` shells out to `python3` to re-read a
+written shard with `np.load`, so `cargo test` fails outright without numpy rather than
+skipping. Read the gate's output for `[SKIP]` lines rather than trusting its exit code, and
+note that Tier 3 tests still require the workstation.
+
+### Staging model weights
+
+The sandbox mounts only the worktree, so a checkpoint has to live inside it to be reachable.
+Copy one under `models/` in the worktree; `.gitignore` covers `models/`, `*.gguf`, and
+`*.safetensors`, with `rust-harness/fixtures/*.gguf` negated so the committed test fixtures
+stay tracked. This deliberately avoids mounting `/mnt/ai-data`, which stays on the never-mount
+list.
+
+Two consequences follow from the copy. Each worktree needs its own, unless the worktree and the
+model store share a filesystem and the file is hardlinked instead. And the CPU backend
+dequantizes every tensor to f32 at load, so resident cost far exceeds on-disk size: E2B's body
+plus main embedding is roughly 2.28B parameters (~9.1GB as f32) and E4B's roughly 4.67B
+(~18.7GB). The container limit is 32GB for that reason.
+
+Header inspection needs none of that memory. `gguf-info` reads only the metadata and tensor
+directory, never the weight payload, so architecture reconciliation and tokenizer questions are
+answerable well inside the limit.
+
 ### Egress allowlist
 
 `docker/agents/proxy/squid.conf` denies by default and allows only the domains an agent
