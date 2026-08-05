@@ -1,0 +1,229 @@
+# Gemma 4 interpretability reference
+
+What the interp tier requires to harvest activations, train probes and sparse autoencoders, and
+export steering vectors against a Gemma 4 checkpoint.
+
+This tier consumes very little of the architecture, so this document is short by design. It
+records the handful of facts `/interp` actually reads and the two hazards specific to these
+weights: the per-layer embedding tensors a hook must never return, and the composite module
+layout. The general family reference is `/docs/models/gemma-4.md`.
+
+Scope: E2B and E4B. The 12B and 31B variants have no code path here, and
+`gemma4_unified_text` is deliberately unregistered.
+
+## Table of contents
+
+- [Provenance](#provenance)
+- [Registry facts](#registry-facts)
+- [Residual width and layer counts](#residual-width-and-layer-counts)
+- [Uniform post-block width](#uniform-post-block-width)
+- [The per-layer embedding hazard](#the-per-layer-embedding-hazard)
+- [The module path is composite](#the-module-path-is-composite)
+- [Export safety](#export-safety)
+- [Ecosystem gaps](#ecosystem-gaps)
+- [Reproducing this document](#reproducing-this-document)
+
+## Provenance
+
+| Model | Repository | Revision (`x-repo-commit`) |
+|-------|------------|----------------------------|
+| E2B | `google/gemma-4-E2B` | `d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f` |
+| E4B | `google/gemma-4-E4B` | `411aa17b749aa952df1359d2dcea73917a544d9a` |
+
+Facts derive from the `config.json` and safetensors headers of the local copies under
+`/mnt/ai-data/models/hf/`.
+
+## Registry facts
+
+`/interp/families.py:62-72` keys its registry on the configuration `model_type`. Gemma 4 needs
+both spellings, and both are present:
+
+| Key | Where it appears | Purpose |
+|-----|------------------|---------|
+| `gemma4` | top level of `config.json` | the composite multimodal configuration |
+| `gemma4_text` | `config.json` under `text_config` | the language model |
+
+`family_from_config` calls `unwrap_text_config` first (`families.py:90-96`), so a loaded
+composite configuration resolves through `gemma4_text`. Registering both means a caller that
+passes either the wrapper or the unwrapped text configuration succeeds.
+
+`architectures[0]` is `Gemma4ForConditionalGeneration` on both variants. Note that this is a
+conditional-generation class while the harvest path loads through `AutoModelForCausalLM`
+(`/interp/harvest.py:179-181`); see
+[The module path is composite](#the-module-path-is-composite).
+
+## Residual width and layer counts
+
+| Fact | `config.json` field | E2B | E4B |
+|------|---------------------|-----|-----|
+| Residual stream width (`d_model`) | `text_config.hidden_size` | 1536 | 2560 |
+| Decoder layers | `text_config.num_hidden_layers` | 35 | 42 |
+| Per-layer embedding width | `text_config.hidden_size_per_layer_input` | 256 | 256 |
+
+`residual_width` (`families.py:110-112`) reads `hidden_size` after unwrapping, which is correct.
+The value flows to `d_model` in the harvest manifest (`harvest.py:141-165`) and from there to
+`d_in` for every sparse autoencoder (`/interp/sae/train.py:184`).
+
+**Do not read `hidden_size_per_layer_input` as the residual width.** It is 256 on both variants
+— a sixth of E2B's residual stream — and it describes an auxiliary input path, not the stream
+itself.
+
+The layer counts matter because `validate_harvest` (`harvest.py:59-89`) checks only that a hook
+layer index is non-negative. It has no upper bound and no knowledge of the model's depth, so a
+recipe naming layer 15 as "50 percent of a 30-layer stack" passes validation while being wrong
+for a 35-layer model. Bound hook layers against the values above.
+
+## Uniform post-block width
+
+A positive result, and the reason the interp tier can stay as simple as it is.
+
+Gemma 4 varies two quantities per layer. The feed-forward width on E2B is 6144 for layers 0
+through 14 and 12288 for layers 15 through 34. The attention head dimension is 256 on sliding
+layers and 512 on the seven full-attention layers. **Neither is visible at the block boundary.**
+Every decoder layer's output is `hidden_size` wide, in both variants.
+
+That makes the uniform-width assumption throughout the tier sound:
+
+- `/interp/probes/train.py:72-102` sizes `mu`, `sigma`, and weights from the captured array's
+  second dimension, and compares across layers.
+- `/interp/sae/evaluate.py:88-89` infers `d_model` from the cached rows.
+- `/interp/steering/export.py:41-43` **hard-refuses** a direction set whose per-layer shapes
+  differ: `directions must share one 1-D width`.
+- `/interp/probes/export.py:31-35` applies the same refusal to probe weights.
+
+Those refusals would fire if per-layer widths ever reached the residual stream. They do not
+here. Recording this explicitly matters because the assumption is load-bearing and was
+previously undocumented — a reader who saw the 256/512 head-dim split in the family reference
+might reasonably conclude the tier was unsound.
+
+## The per-layer embedding hazard
+
+The E-series injects a 256-wide per-token vector into each decoder layer through a gate and a
+projection. The tensors are:
+
+| Tensor | E2B shape | E4B shape |
+|--------|-----------|-----------|
+| `model.language_model.embed_tokens_per_layer.weight` | `[262144, 8960]` | `[262144, 10752]` |
+| `model.language_model.per_layer_model_projection.weight` | `[8960, 1536]` | `[10752, 2560]` |
+| `model.language_model.per_layer_projection_norm.weight` | `[256]` | `[256]` |
+| `model.language_model.layers.{L}.per_layer_input_gate.weight` | `[256, 1536]` | `[256, 2560]` |
+| `model.language_model.layers.{L}.per_layer_projection.weight` | `[1536, 256]` | `[2560, 256]` |
+| `model.language_model.layers.{L}.post_per_layer_input_norm.weight` | `[1536]` | `[2560]` |
+
+A hook must return the post-block residual, never one of these. `check_hook_dims`
+(`harvest.py:168-224`) exists for exactly this, and its docstring names Gemma 4: the check
+"proves the hook output is the hidden_size residual and not a PLE tensor."
+
+Two limits on that guarantee, both worth knowing before trusting it:
+
+**The check is width-only, and cannot exclude every per-layer tensor.** Note the shape of
+`per_layer_projection`: it maps 256 dimensions back to `hidden_size`. Its output is 1536 wide on
+E2B — identical to the residual stream. A width assertion cannot distinguish the two. The check
+does exclude the 256-wide gate output and the packed table, which are the likelier mistakes.
+
+**The check is opt-in, and mutually exclusive with harvesting.** It runs only under the
+`--check-hooks` flag, and that branch reports the widths and returns immediately rather than
+proceeding to harvest (`/interp/commands/harvest.py:56-63`). `run_harvest` never calls it. So
+the check and the harvest are two separate invocations, and nothing enforces that the check ran
+first, or that it ran against the same recipe. `/interp/probes/capture.py:66-118` performs no
+width check at all.
+
+## The module path is composite
+
+The hook path is a **PyTorch named-module path**, resolved through `model.get_submodule`
+(`harvest.py:200`) and by `resolve_submodule` (`families.py:120-129`). The safetensors
+inventory keys its tensors as `model.language_model.layers.{L}.*`, which is a state-dict key
+namespace — a distinct thing that is not required to agree.
+
+For these checkpoints the two **do** agree, and the module path is composite:
+
+```
+model
+model.vision_tower
+model.vision_tower.encoder.layers.0
+model.language_model
+model.language_model.layers.0
+model.language_model.layers.0.self_attn
+```
+
+`Gemma4ForConditionalGeneration` places the vision tower and the language model as siblings
+under `model`. There is no `model.layers` attribute, so the flat template that
+`/interp/families.py` registered until this was verified raised `AttributeError` at
+hook-attachment time on every E-series checkpoint. The tier could not harvest from these
+weights at all; it failed loudly rather than reading the wrong tensor.
+
+`family_from_config` (`families.py:99-119`) now selects the path on the presence of
+`text_config` rather than on the family alone, because the layout follows the config the caller
+loaded, not the model family:
+
+| Config passed | Hook path |
+|---------------|-----------|
+| composite (`model_type: gemma4`, has `text_config`) | `model.language_model.layers.{n}` |
+| bare text (`model_type: gemma4_text`) | `model.layers.{n}` |
+
+A family with no composite template registered raises `UnknownHookFamilyError` when handed a
+composite config, rather than falling back to the flat path — the fallback is the defect.
+
+Reproduce the module tree on the workstation. This builds the model on the meta device from
+the configuration alone, so it reads no weights and needs no GPU:
+
+```bash
+$ uv run python -c "
+import torch
+from transformers import AutoConfig, AutoModelForCausalLM
+cfg = AutoConfig.from_pretrained('/mnt/ai-data/models/hf/gemma-4-E2B')
+with torch.device('meta'):
+    m = AutoModelForCausalLM.from_config(cfg)
+print([n for n, _ in m.named_modules()][:40])
+"
+```
+
+Use `uv run`, not a bare `python3`: `transformers` is a core-group dependency and is absent
+from a system interpreter.
+
+**Warning!** That module tree includes `self_attn.v_norm`, which **no checkpoint tensor backs**
+— only `q_norm` and `k_norm` are present in the safetensors inventory. A module in a
+config-built tree is not evidence of a weight. Do not derive parameter counts from
+`named_modules()`.
+
+This settles the contested finding tracked in `/docs/verification/gemma-4-conformance.md`.
+
+## Export safety
+
+Both GGUF writers in this tier stay inside the limits of the `rust-harness` reader, which
+accepts F32, F16, BF16, and Q8_0 tensors and int32, float32, bool, and string metadata arrays:
+
+| Writer | Architecture | Metadata | Tensors |
+|--------|--------------|----------|---------|
+| `/interp/steering/export.py:33-57` | `controlvector` | one string, one uint32 | `direction.{layer}`, float32 |
+| `/interp/probes/export.py:23-53` | `probe` | two strings, one uint32, two float32 | `probe.weights`, `probe.mu`, `probe.sigma`, float32 |
+
+Neither writes an array-valued metadata key, and both write float32. The Rust reader at
+`/rust-harness/runtime/src/model/probe.rs:41-58` demands exactly these types, and probe and
+steering artifacts stay float32 regardless of the model's storage type — they are small, and
+exactness in the direction vectors is worth more than their size.
+
+The **model** GGUF path is a separate contract: those files are BF16, which the reader now
+decodes losslessly, and what still refuses them is architectural rather than format-level. See
+`/docs/rust-harness/gemma-4-ingestion.md`.
+
+## Ecosystem gaps
+
+- **No Gemma-Scope or Neuronpedia assets exist for Gemma 4.** `gemma2` is registered in the
+  family table specifically as the anchor for that ecosystem (`families.py:8-11`); Gemma 4
+  sparse autoencoders must be trained in-tree.
+- **TransformerLens has no Gemma 4 support**, so `HookedTransformer` aliases are not used
+  (`families.py:14-15`). Hooks go through nnsight or plain torch.
+- **`gemma4_unified_text` is not registered.** That is the 12B text `model_type`, deliberately
+  refused rather than mapped to the flat template.
+
+## Reproducing this document
+
+The configuration and tensor facts regenerate on the workstation with no GPU and no network:
+
+```bash
+$ ./scripts/models/gemma4_header_transcript.sh
+```
+
+The module path requires loading the model; see
+[The module path is composite](#the-module-path-is-composite).

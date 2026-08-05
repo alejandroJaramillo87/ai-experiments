@@ -94,12 +94,13 @@ def check_quant_match(baseline: dict, tuned: dict) -> None:
             "Quant type unknown for a compared side; comparative claims "
             "need matched quantization\n"
             "  Solution: export both sides with make export-gguf (manifest "
-            "records the quant), or use <name>-<QUANT>.gguf naming"
+            "records the storage type), or use <name>-<TYPE>.gguf naming"
         )
     if left != right:
         raise EvalRunError(
-            f"Quantization mismatch: baseline {left}, tuned {right}\n"
-            "  Solution: re-export one side at the other's quant type"
+            f"Storage type mismatch: baseline {left}, tuned {right}\n"
+            "  Solution: re-export one side to match. Note export now "
+            "produces BF16 only, so a Q8_0 side predates that change"
         )
 
 

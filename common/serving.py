@@ -97,12 +97,21 @@ SERVICES = {
 }
 
 
+# Storage types that are not quantizations. An export now ships BF16, and a
+# suffix the quant parser does not recognize reads as "unknown", which
+# check_quant_match refuses outright — so an unquantized artifact has to name
+# itself here or no comparative evaluation can run against it.
+UNQUANTIZED_SUFFIXES = frozenset({"BF16", "F16", "F32"})
+
+
 def quant_from_name(path: str) -> str | None:
-    """Quant type from a <name>-<QUANT>.gguf filename, when parseable."""
+    """Storage type from a <name>-<TYPE>.gguf filename, when parseable."""
     stem = os.path.basename(path)
     if stem.endswith(".gguf"):
         tail = stem[:-5].rsplit("-", 1)
-        if len(tail) == 2 and tail[1][:1].upper() == "Q":
+        if len(tail) == 2 and (
+            tail[1][:1].upper() == "Q" or tail[1].upper() in UNQUANTIZED_SUFFIXES
+        ):
             # Normalize case: Qwen official GGUFs use lowercase quant
             # suffixes, and the confound checks compare case-sensitively.
             return tail[1].upper()

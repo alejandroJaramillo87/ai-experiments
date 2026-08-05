@@ -23,7 +23,6 @@ use std::sync::{Arc, Mutex};
 
 use runtime::model::cpu::{CpuModel, Tap};
 use runtime::model::Model;
-use runtime::tensor::f32_to_f16;
 use runtime::tokenizer::Tokenizer;
 
 /// Distinct texts with non-consecutive labels: a row shifted by one, or a row
@@ -134,7 +133,7 @@ fn run_interp(script: &str, arg: &Path) -> String {
 }
 
 /// Shard arrays as JSON, read through np.load so the assertions cover the
-/// same reader the probe toolkit uses. float16 values are exact in float64,
+/// same reader the probe toolkit uses. float32 values are exact in float64,
 /// so the JSON round trip is lossless.
 fn load_shard(path: &Path) -> serde_json::Value {
     let script = format!(
@@ -157,7 +156,7 @@ fn load_shard(path: &Path) -> serde_json::Value {
     serde_json::from_slice(&out.stdout).unwrap()
 }
 
-fn f16_rows(shard: &serde_json::Value, key: &str) -> Vec<Vec<u16>> {
+fn f32_rows(shard: &serde_json::Value, key: &str) -> Vec<Vec<f32>> {
     shard[key]
         .as_array()
         .unwrap_or_else(|| panic!("shard has no {key} array"))
@@ -166,7 +165,7 @@ fn f16_rows(shard: &serde_json::Value, key: &str) -> Vec<Vec<u16>> {
             row.as_array()
                 .unwrap()
                 .iter()
-                .map(|v| f32_to_f16(v.as_f64().unwrap() as f32))
+                .map(|v| v.as_f64().unwrap() as f32)
                 .collect()
         })
         .collect()
@@ -185,7 +184,7 @@ impl Tap for LastRows {
 /// a fresh model per example. Independent of the binary's single-model loop,
 /// so a comparison against these pins the row-to-example mapping instead of
 /// restating whatever order the binary happened to write.
-fn reference_rows(texts: &[&str], layer: usize) -> Vec<Vec<u16>> {
+fn reference_rows(texts: &[&str], layer: usize) -> Vec<Vec<f32>> {
     let image = std::fs::read(fixture_model()).unwrap();
     let file = runtime::gguf::parse(&image).unwrap();
     let tokenizer = Tokenizer::from_gguf(&file).unwrap();
@@ -199,7 +198,7 @@ fn reference_rows(texts: &[&str], layer: usize) -> Vec<Vec<u16>> {
             tokens.extend(tokenizer.encode(text).unwrap());
             model.prefill(&tokens).unwrap();
             let rows = tap.0.lock().unwrap();
-            rows[&layer].iter().map(|&v| f32_to_f16(v)).collect()
+            rows[&layer].clone()
         })
         .collect()
 }
@@ -214,7 +213,7 @@ fn capture_writes_a_manifest_and_shard_for_the_requested_layers() {
     let m = manifest(&c);
     assert_eq!(m["schema_version"], 1);
     assert_eq!(m["artifact"], "activation_capture");
-    assert_eq!(m["dtype"], "float16");
+    assert_eq!(m["dtype"], "float32");
     assert_eq!(m["position"], "last");
     assert_eq!(m["count"], DATASET.len());
     assert_eq!(m["shards"], 1);
@@ -269,7 +268,7 @@ fn shard_rows_stay_aligned_with_their_labels_and_source_texts() {
                 assert_ne!(row, other, "layer {layer}: fixture rows are not distinct");
             }
         }
-        let got = f16_rows(&shard, &format!("layer_{layer}"));
+        let got = f32_rows(&shard, &format!("layer_{layer}"));
         assert_eq!(got.len(), DATASET.len(), "layer {layer}: row count");
         for (i, (g, w)) in got.iter().zip(&want).enumerate() {
             assert_eq!(
@@ -324,7 +323,7 @@ fn a_rust_written_capture_loads_through_the_python_probe_reader() {
     assert_eq!(texts, DATASET.iter().map(|(t, _)| *t).collect::<Vec<_>>());
 
     // The reader keys activations by layer, so both requested layers must come
-    // back with one row per example at the model's width, as float16.
+    // back with one row per example at the model's width, as float32.
     for layer in ["0", "1"] {
         let shape = loaded["shapes"][layer].as_array().unwrap();
         assert_eq!(
@@ -332,7 +331,7 @@ fn a_rust_written_capture_loads_through_the_python_probe_reader() {
             DATASET.len(),
             "layer {layer}: row count"
         );
-        assert_eq!(loaded["dtypes"][layer], "float16", "layer {layer}: dtype");
+        assert_eq!(loaded["dtypes"][layer], "float32", "layer {layer}: dtype");
     }
 }
 

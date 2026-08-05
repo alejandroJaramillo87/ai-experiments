@@ -171,6 +171,7 @@ def make_capture(tmp_path, name="capture", hooks=(15,), **overrides) -> str:
         "context_len": 1024,
         "total_tokens": 1000,
         "tokenizer_fingerprint": "fp-test",
+        "dtype": "bf16",
         "validated": False,
         "created": "2026-07-15T00:00:00Z",
     }
@@ -234,7 +235,7 @@ class TestHarvest:
     ):
         monkeypatch.setattr(
             "interp.harvest.check_hook_dims",
-            lambda model_id, layers, revision: dict.fromkeys(layers, 8),
+            lambda model_id, layers, revision, dtype: dict.fromkeys(layers, 8),
         )
         recipe = write_harvest_recipe(tmp_path, layers="[15, 7]", multi=True)
         assert run_cli(["harvest", "--recipe", recipe, "--check-hooks"]) == 0

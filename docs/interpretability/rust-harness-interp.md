@@ -3,7 +3,7 @@
 Design for running the write-back interpretability path (steering, probes,
 monitoring) on the `rust-harness` runtime instead of llama.cpp. Bridges the
 [interp platform](writeback.md) and the
-[rust harness observability design](../inference/rust-harness-observability.md).
+[rust harness observability design](../rust-harness/observability.md).
 
 ## Table of contents
 
@@ -86,9 +86,12 @@ $ cargo run -p runtime --bin activation-capture -- \
     --model model.gguf --dataset examples.jsonl --layers 3,5 --out <dir>
 ```
 
-- Shards `shard_00000.npz` and onward hold `layer_<L>` float16 rows (last
+- Shards `shard_00000.npz` and onward hold `layer_<L>` float32 rows (last
   prompt token per example, matching the Python capture's
   `position: "last"`) plus int64 `labels`, 2048 examples per shard.
+  float32 is exact for the bf16 models this tier captures from, and numpy
+  has no bfloat16 dtype; the schema pins the value at
+  `/schemas/activation_capture.manifest.json`.
 - `examples.jsonl` and a schema-1 `manifest.json` complete the directory.
   The manifest records `capture_backend: "rust-harness-cpu"` and a
   `model_hash` over the GGUF file.
@@ -157,7 +160,7 @@ unmeasured; evaluating probe quality separately on prefill and decode
 positions is pending real-model captures (roadmap below). The
 prefill/decode asymmetry generalizes into a two-frame taxonomy — agent mode
 as the ecological frame, chat mode as the controlled frame — recorded in
-[observation-frames.md](../../rust-harness/docs/observation-frames.md).
+[observation-frames.md](../rust-harness/observation-frames.md).
 
 Two context-layer mechanics shift what a flag's `position` field means.
 Compaction splices a model-written summary over the middle of the
@@ -227,7 +230,7 @@ run in the same directory continues the session rather than reproducing it.
 
 Published descriptions of Gemma 4 E4B retain per-layer embeddings (PLE) and
 drop AltUp; the
-[architecture reconciliation](../inference/rust-harness-runtime-design.md#architecture-reconciliation)
+[architecture reconciliation](../rust-harness/runtime-design.md#architecture-reconciliation)
 records the sources and confidence. Both findings matter here, in opposite
 directions.
 

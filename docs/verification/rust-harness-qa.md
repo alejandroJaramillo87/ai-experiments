@@ -200,12 +200,12 @@ Lenses:
 ## Phase Q6: documentation and drift
 
 Scope: `rust-harness/README.md`,
-`docs/inference/rust-harness-runtime-design.md`,
-`docs/inference/rust-harness-observability.md`,
+`docs/rust-harness/runtime-design.md`,
+`docs/rust-harness/observability.md`,
 `docs/interpretability/rust-harness-interp.md`,
 `docs/verification/rust-harness.md`, this document.
 
-Implementation: `rust-harness/README.md`, `rust-harness/docs/`,
+Implementation: `rust-harness/README.md`, `docs/rust-harness/`,
 `docs/verification/rust-harness.md`.
 
 Lenses:
@@ -622,7 +622,7 @@ measurements are from the sandbox at the stated geometry.
   it. RH.0, the AGENTS.md caveat list, and the README omit this
   prerequisite, and RH.0 attributes the dependency to `cpu_reference.rs`,
   which needs none.
-- **I-41 (medium).** `rust-harness/docs/observation-frames.md:70` — subagent
+- **I-41 (medium).** `docs/rust-harness/observation-frames.md:70` — subagent
   forks and token streaming are described as built runtime behavior, but
   `subagents.rs` and `stream.rs` have no call sites outside their own tests
   and are unreachable from the shipping binary.

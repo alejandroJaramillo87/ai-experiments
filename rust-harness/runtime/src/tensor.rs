@@ -3,9 +3,13 @@
  *
  * The CPU backend computes in plain f32, so every supported storage type
  * dequantizes to a dense Vec<f32> at load time. Supported types are the ones
- * the target checkpoints actually use: F32, F16, and Q8_0; anything else is
- * a hard error naming the tensor, so a new quantization shows up at load
- * time rather than as silent garbage.
+ * the target checkpoints actually use: F32, F16, BF16, and Q8_0; anything
+ * else is a hard error naming the tensor, so a new quantization shows up at
+ * load time rather than as silent garbage.
+ *
+ * BF16 is the published storage type for Gemma 4 and the format the training
+ * tier produces, so widening it to f32 is lossless: the checkpoint's own
+ * values reach the forward pass unrounded.
  */
 
 use anyhow::{bail, ensure, Result};
@@ -16,6 +20,7 @@ use super::gguf::{GgufFile, TensorInfo};
 pub const GGML_F32: u32 = 0;
 pub const GGML_F16: u32 = 1;
 pub const GGML_Q8_0: u32 = 8;
+pub const GGML_BF16: u32 = 30;
 
 /// Q8_0 block layout: an f16 scale followed by 32 signed byte weights.
 const Q8_0_BLOCK_ELEMENTS: usize = 32;
@@ -46,6 +51,7 @@ pub fn byte_size(ggml_type: u32, n: usize) -> Result<usize> {
     Ok(match ggml_type {
         GGML_F32 => scaled(4)?,
         GGML_F16 => scaled(2)?,
+        GGML_BF16 => scaled(2)?,
         GGML_Q8_0 => {
             ensure!(
                 n.is_multiple_of(Q8_0_BLOCK_ELEMENTS),
@@ -55,6 +61,19 @@ pub fn byte_size(ggml_type: u32, n: usize) -> Result<usize> {
         }
         t => bail!("unsupported GGML tensor type {t}"),
     })
+}
+
+/// bfloat16 to f32. Exact and total, for every input.
+///
+/// bfloat16 is the top 16 bits of an f32: one sign bit, the same 8-bit
+/// exponent, and 7 of the 23 mantissa bits. Widening is therefore a shift,
+/// with none of the exponent rebiasing and subnormal renormalization that
+/// `f16_to_f32` needs — normals, subnormals, infinities and NaN payloads all
+/// map by construction. Do not route bfloat16 through `f16_to_f32`: IEEE
+/// half splits 1/5/10 where bfloat16 splits 1/8/7, so the two formats share
+/// a width and nothing else.
+pub fn bf16_to_f32(bits: u16) -> f32 {
+    f32::from_bits((bits as u32) << 16)
 }
 
 /// IEEE 754 half-precision to f32, including subnormals, infinities, NaN.
@@ -78,43 +97,6 @@ pub fn f16_to_f32(bits: u16) -> f32 {
     f32::from_bits(word)
 }
 
-/// f32 to IEEE 754 half precision with round-to-nearest-even, covering
-/// subnormals, overflow to infinity, and NaN. Matches numpy's
-/// `astype(np.float16)`, which the interp capture format requires.
-pub fn f32_to_f16(v: f32) -> u16 {
-    let bits = v.to_bits();
-    let sign = ((bits >> 16) & 0x8000) as u16;
-    let exponent = ((bits >> 23) & 0xff) as i32;
-    let mantissa = bits & 0x7f_ffff;
-    if exponent == 0xff {
-        // Infinity or NaN; keep NaN quiet with a non-zero mantissa.
-        let payload = if mantissa == 0 { 0 } else { 0x200 };
-        return sign | 0x7c00 | payload;
-    }
-    let e = exponent - 127 + 15;
-    if e >= 0x1f {
-        return sign | 0x7c00; // overflow to infinity
-    }
-    // Round a mantissa down to 10 bits, carrying into the exponent field
-    // naturally on overflow (all-ones mantissa rounds up).
-    let round = |value: u32, shift: u32| -> u16 {
-        let kept = value >> shift;
-        let rem = value & ((1 << shift) - 1);
-        let half = 1 << (shift - 1);
-        let up = u32::from(rem > half || (rem == half && kept & 1 == 1));
-        (kept + up) as u16
-    };
-    if e <= 0 {
-        // Result is subnormal (or rounds to zero below the smallest one).
-        if e < -10 {
-            return sign;
-        }
-        let full = mantissa | 0x80_0000; // make the implicit bit explicit
-        return sign | round(full, (13 + 1 - e) as u32);
-    }
-    sign | round(((e as u32) << 23) | mantissa, 13)
-}
-
 /// Dequantize `bytes` holding `n` elements of `ggml_type` into f32.
 pub fn dequantize(ggml_type: u32, bytes: &[u8], n: usize) -> Result<Vec<f32>> {
     let expected = byte_size(ggml_type, n)?;
@@ -132,6 +114,10 @@ pub fn dequantize(ggml_type: u32, bytes: &[u8], n: usize) -> Result<Vec<f32>> {
             .chunks_exact(2)
             .map(|c| f16_to_f32(u16::from_le_bytes(c.try_into().unwrap())))
             .collect(),
+        GGML_BF16 => bytes
+            .chunks_exact(2)
+            .map(|c| bf16_to_f32(u16::from_le_bytes(c.try_into().unwrap())))
+            .collect(),
         GGML_Q8_0 => {
             let mut out = Vec::with_capacity(n);
             for block in bytes.chunks_exact(Q8_0_BLOCK_BYTES) {
@@ -144,9 +130,17 @@ pub fn dequantize(ggml_type: u32, bytes: &[u8], n: usize) -> Result<Vec<f32>> {
     })
 }
 
-/// Load one tensor from a full GGUF image as dense f32, bounds-checked
-/// against the file.
-pub fn load_tensor(file: &GgufFile, data: &[u8], info: &TensorInfo) -> Result<Vec<f32>> {
+/// The stored payload of one tensor, bounds-checked against the file.
+///
+/// Split out from `load_tensor` so a storage format that keeps its own bits
+/// rather than widening to f32 reuses these offset and overflow checks
+/// instead of restating them. Returns the element count alongside the bytes,
+/// since every caller needs both and recomputing invites disagreement.
+pub fn tensor_bytes<'a>(
+    file: &GgufFile,
+    data: &'a [u8],
+    info: &TensorInfo,
+) -> Result<(&'a [u8], usize)> {
     let n = element_count(&info.dims).map_err(|e| anyhow::anyhow!("tensor {}: {e}", info.name))?;
     let size =
         byte_size(info.ggml_type, n).map_err(|e| anyhow::anyhow!("tensor {}: {e}", info.name))?;
@@ -164,38 +158,19 @@ pub fn load_tensor(file: &GgufFile, data: &[u8], info: &TensorInfo) -> Result<Ve
             data.len()
         ),
     };
-    dequantize(info.ggml_type, &data[start..end], n)
-        .map_err(|e| anyhow::anyhow!("tensor {}: {e}", info.name))
+    Ok((&data[start..end], n))
+}
+
+/// Load one tensor from a full GGUF image as dense f32, bounds-checked
+/// against the file.
+pub fn load_tensor(file: &GgufFile, data: &[u8], info: &TensorInfo) -> Result<Vec<f32>> {
+    let (bytes, n) = tensor_bytes(file, data, info)?;
+    dequantize(info.ggml_type, bytes, n).map_err(|e| anyhow::anyhow!("tensor {}: {e}", info.name))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn f32_to_f16_covers_rounding_subnormals_and_specials() {
-        // Exact round trips.
-        for v in [0.0f32, -0.0, 1.0, -0.5, 65504.0, 2.0f32.powi(-24)] {
-            assert_eq!(f16_to_f32(f32_to_f16(v)), v, "{v}");
-        }
-        // Round to nearest, ties to even: 1 + 2^-11 sits exactly between
-        // 1.0 and the next f16 (1 + 2^-10); the even mantissa wins.
-        assert_eq!(f32_to_f16(1.0 + 2.0f32.powi(-11)), f32_to_f16(1.0));
-        // 1 + 1.5 * 2^-10 ties between mantissa 1 and 2; even (2) wins.
-        assert_eq!(
-            f32_to_f16(1.0 + 3.0 * 2.0f32.powi(-11)),
-            f32_to_f16(1.0 + 2.0f32.powi(-9))
-        );
-        // Overflow and specials.
-        assert_eq!(f32_to_f16(1e6), 0x7c00);
-        assert_eq!(f32_to_f16(-1e6), 0xfc00);
-        assert_eq!(f32_to_f16(f32::INFINITY), 0x7c00);
-        assert!(f16_to_f32(f32_to_f16(f32::NAN)).is_nan());
-        // Below half the smallest subnormal rounds to zero.
-        assert_eq!(f32_to_f16(2.0f32.powi(-26)), 0x0000);
-        // Largest subnormal survives the round trip.
-        assert_eq!(f32_to_f16((1023.0 / 1024.0) * 2.0f32.powi(-14)), 0x03ff);
-    }
 
     #[test]
     fn f32_payload_round_trips() {
@@ -206,9 +181,12 @@ mod tests {
 
     #[test]
     fn f16_decodes_normals_specials_and_subnormals() {
-        assert_eq!(f16_to_f32(f32_to_f16(1.0)), 1.0);
-        assert_eq!(f16_to_f32(f32_to_f16(-0.5)), -0.5);
-        assert_eq!(f16_to_f32(f32_to_f16(65504.0)), 65504.0); // f16 max
+        // Literal bit patterns rather than an encoder round trip: this crate
+        // only ever decodes f16, so a round trip would have proven the two
+        // directions agreed with each other rather than with IEEE 754.
+        assert_eq!(f16_to_f32(0x3c00), 1.0);
+        assert_eq!(f16_to_f32(0xb800), -0.5);
+        assert_eq!(f16_to_f32(0x7bff), 65504.0); // f16 max
         assert_eq!(f16_to_f32(0x0000), 0.0);
         assert_eq!(f16_to_f32(0x8000), -0.0);
         assert_eq!(f16_to_f32(0x7c00), f32::INFINITY);
@@ -222,8 +200,8 @@ mod tests {
 
     #[test]
     fn q8_0_block_dequantizes_scale_times_weight() {
-        // One block: scale 0.5, weights 0..31 alternating sign.
-        let mut bytes = f32_to_f16(0.5).to_le_bytes().to_vec();
+        // One block: scale 0.5 (f16 0x3800), weights 0..31 alternating sign.
+        let mut bytes = 0x3800u16.to_le_bytes().to_vec();
         let weights: Vec<i8> = (0..32).map(|i| if i % 2 == 0 { i } else { -i }).collect();
         bytes.extend(weights.iter().map(|&w| w as u8));
         let out = dequantize(GGML_Q8_0, &bytes, 32).unwrap();
@@ -281,5 +259,42 @@ mod tests {
     fn unsupported_type_is_an_error() {
         assert!(byte_size(12, 32).is_err()); // Q4_K, deliberately unsupported
         assert!(dequantize(12, &[], 0).is_err());
+    }
+
+    #[test]
+    fn bf16_widening_is_a_shift_for_every_input() {
+        // The whole contract. bfloat16 is the high half of an f32, so the
+        // widened bits must equal the input shifted left by 16 — no rounding,
+        // no special case. Strided so the sweep stays a unit test.
+        for bits in (0..=u16::MAX).step_by(7) {
+            assert_eq!(
+                bf16_to_f32(bits).to_bits(),
+                (bits as u32) << 16,
+                "bf16 {bits:#06x} did not widen by shift"
+            );
+        }
+    }
+
+    #[test]
+    fn bf16_decodes_values_infinities_and_subnormals() {
+        assert_eq!(bf16_to_f32(0x3f80), 1.0);
+        assert_eq!(bf16_to_f32(0xbfc0), -1.5);
+        assert_eq!(bf16_to_f32(0x7f80), f32::INFINITY);
+        assert_eq!(bf16_to_f32(0xff80), f32::NEG_INFINITY);
+        assert!(bf16_to_f32(0xffc1).is_nan());
+        // An f32 subnormal: no renormalization needed, unlike IEEE half.
+        assert_eq!(bf16_to_f32(0x0001).to_bits(), 1u32 << 16);
+        // The two formats share a width and nothing else: this bit pattern
+        // is 1.0 as bfloat16 and 0.00097... as IEEE half.
+        assert_ne!(bf16_to_f32(0x3f80), f16_to_f32(0x3f80));
+    }
+
+    #[test]
+    fn bf16_tensors_size_and_dequantize() {
+        assert_eq!(byte_size(GGML_BF16, 5).unwrap(), 10);
+        let bytes = [0x80, 0x3f, 0xc0, 0xbf];
+        assert_eq!(dequantize(GGML_BF16, &bytes, 2).unwrap(), vec![1.0, -1.5]);
+        // Payload length is checked against the type, as for every type.
+        assert!(dequantize(GGML_BF16, &bytes, 3).is_err());
     }
 }

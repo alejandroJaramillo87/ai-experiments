@@ -236,6 +236,71 @@ fn probe_monitor_scores_match_the_python_reference() {
 }
 
 #[test]
+fn a_bfloat16_model_matches_the_f32_model_holding_the_same_values() {
+    // Losslessness, stated as the property that matters: bfloat16 storage
+    // does not change what reaches the forward pass. Build the same model
+    // twice — once with bf16 tensors, once with f32 tensors already rounded
+    // to bf16 precision — and require *bit-identical* logits, not a
+    // tolerance. Any rounding, exponent rebiasing, or reuse of the IEEE-half
+    // converter would show up here as a mismatch.
+    //
+    // This is what lets a bf16 Gemma 4 checkpoint be loaded into the f32
+    // backend without a fidelity caveat.
+    use runtime::synth::{build_tiny_model, TensorStorage, TinySpec};
+
+    let bf16_image = build_tiny_model(&TinySpec {
+        storage: TensorStorage::Bf16,
+        ..TinySpec::default()
+    });
+    let bf16_file = runtime::gguf::parse(&bf16_image).unwrap();
+    assert!(
+        bf16_file
+            .tensors
+            .iter()
+            .all(|t| t.ggml_type == runtime::tensor::GGML_BF16),
+        "fixture must actually be bf16, or the test proves nothing"
+    );
+    let mut bf16_model = CpuModel::from_gguf(&bf16_file, &bf16_image).unwrap();
+
+    // The f32 twin: identical weights with the low 16 mantissa bits cleared,
+    // which is exactly what the bf16 writer truncates away.
+    let truncated_image = {
+        let image = build_tiny_model(&TinySpec {
+            storage: TensorStorage::F32,
+            ..TinySpec::default()
+        });
+        let file = runtime::gguf::parse(&image).unwrap();
+        let mut out = image.clone();
+        for info in &file.tensors {
+            let n: usize = info.dims.iter().product::<u64>() as usize;
+            let start = file.data_offset + info.offset as usize;
+            for i in 0..n {
+                let at = start + i * 4;
+                let bits = u32::from_le_bytes(out[at..at + 4].try_into().unwrap());
+                out[at..at + 4].copy_from_slice(&(bits & 0xffff_0000).to_le_bytes());
+            }
+        }
+        out
+    };
+    let truncated_file = runtime::gguf::parse(&truncated_image).unwrap();
+    let mut f32_model = CpuModel::from_gguf(&truncated_file, &truncated_image).unwrap();
+
+    let prompt: Vec<u32> = vec![1, 5, 9, 13, 3, 8, 21, 2];
+    let from_bf16 = bf16_model.prefill_all(&prompt).unwrap();
+    let from_f32 = f32_model.prefill_all(&prompt).unwrap();
+    assert_eq!(
+        from_bf16, from_f32,
+        "bf16 storage changed the forward pass; widening is not lossless"
+    );
+
+    // And the values are real, not all-zero from a misread payload.
+    assert!(
+        from_bf16[0].0.iter().any(|v| v.abs() > 1e-6),
+        "logits are degenerate, so equality proves nothing"
+    );
+}
+
+#[test]
 fn fixture_gguf_matches_the_generator() {
     // The committed fixture must be exactly what the tiny-model bin writes;
     // a drifted fixture would silently invalidate the golden logits.

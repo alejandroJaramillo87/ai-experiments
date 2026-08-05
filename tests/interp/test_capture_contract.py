@@ -36,6 +36,24 @@ class TestManifestContract:
         manifest = load_manifest(capture_dir)
         assert sorted(manifest) == sorted(contract["required"])
 
+    def test_the_writer_emits_a_dtype_the_contract_allows(self, capture_dir, contract):
+        # The field was required but unvalued, which is how the two writers
+        # drifted to different 16-bit formats while every docstring claimed a
+        # third. Constraining it at write time is what keeps them together.
+        manifest = load_manifest(capture_dir)
+        assert manifest["dtype"] in contract["values"]["dtype"]
+
+    def test_the_shards_hold_the_dtype_the_manifest_declares(self, capture_dir):
+        # The manifest string and the array on disk are two separate claims;
+        # nothing checked that they agreed.
+        import numpy as np
+
+        shard = np.load(os.path.join(capture_dir, "shard_00000.npz"))
+        manifest = load_manifest(capture_dir)
+        for key in shard.files:
+            if key.startswith("layer_"):
+                assert shard[key].dtype == np.dtype(manifest["dtype"]), key
+
     def test_the_rust_only_key_is_absent_from_a_python_capture(
         self, capture_dir, contract
     ):

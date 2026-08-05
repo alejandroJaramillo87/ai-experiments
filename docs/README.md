@@ -53,11 +53,29 @@ workstation (RTX 5090, AMD Ryzen 9950X).
 | [inference/parameters/llama-cpp-parameters.md](inference/parameters/llama-cpp-parameters.md) | llama.cpp parameter tuning guide |
 | [inference/parameters/vllm-parameters.md](inference/parameters/vllm-parameters.md) | vLLM configuration for throughput (vLLM 0.25.0) |
 
-### Model References
+### Rust Harness
+
+Design and reference documentation for the `rust-harness` workspace.
 
 | Document | Description |
 |----------|-------------|
-| [models/gemma-4.md](models/gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): architecture, tensors, traps |
+| [rust-harness/README.md](rust-harness/README.md) | Directory index |
+| [rust-harness/runtime-design.md](rust-harness/runtime-design.md) | Harness and runtime architecture, and the implementation roadmap |
+| [rust-harness/observability.md](rust-harness/observability.md) | Observability and debuggability as first-class code |
+| [rust-harness/gemma-4-ingestion.md](rust-harness/gemma-4-ingestion.md) | What the runtime requires to ingest a Gemma 4 checkpoint, and what it refuses |
+
+### Model References
+
+Start with the document for the tier being worked on; each is scoped to what that tier's code
+consumes. The family reference below is broader and is the citation target of the conformance
+audit.
+
+| Document | Description |
+|----------|-------------|
+| [rust-harness/gemma-4-ingestion.md](rust-harness/gemma-4-ingestion.md) | Gemma 4 for the inference runtime: GGUF contract, translation, refusals (E2B, E4B) |
+| [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer (E2B, E4B) |
+| [interpretability/gemma-4-interp.md](interpretability/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards (E2B, E4B) |
+| [models/gemma-4.md](models/gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of `verification/gemma-4-conformance.md` |
 
 ### System Optimizations
 
@@ -97,6 +115,7 @@ investigations.
 | [training/distillation.md](training/distillation.md) | Response and logit distillation (F5) |
 | [training/eval_wrapper.md](training/eval_wrapper.md) | Baseline-versus-tuned evaluation (F7) |
 | [training/scorecards/README.md](training/scorecards/README.md) | Committed reference scorecards (F8) |
+| [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer |
 
 ### Interpretability Tier
 
@@ -107,6 +126,7 @@ Living documentation for the interp stack (`python -m interp`).
 | [interpretability/platform.md](interpretability/platform.md) | Workbench, Neuronpedia harness, platform services |
 | [interpretability/writeback.md](interpretability/writeback.md) | Steering, probes, log proxy, probe monitor (W1-W4) |
 | [interpretability/experiments/README.md](interpretability/experiments/README.md) | The experiments log convention and entries |
+| [interpretability/gemma-4-interp.md](interpretability/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards |
 
 ### Agents and Testing
 

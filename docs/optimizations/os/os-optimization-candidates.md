@@ -73,7 +73,7 @@ physical cores is a candidate latency and consistency win — and may
 retroactively explain the validated finding that 12 dedicated cores
 outperform 16 for a single model instance. Also applies to the rust
 harness's planned threaded matvec
-(`rust-harness/docs/optimization-candidates.md`).
+(`docs/rust-harness/optimization-candidates.md`).
 
 **Full core isolation.** The cpuset keeps containers off the housekeeping
 cores but does not keep kernel threads, timers, or system daemons off the

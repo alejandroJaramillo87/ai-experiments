@@ -3,7 +3,7 @@
  * capture shard format.
  *
  * Produces the same artifact directory as interp/probes/capture.py (shards
- * of layer_<L> float16 rows plus labels, examples.jsonl, manifest.json), so
+ * of layer_<L> float32 rows plus labels, examples.jsonl, manifest.json), so
  * the Python probe toolkit (train, registry, evaluate) consumes rust-served
  * activations unchanged. Rows are the residual stream after each requested
  * decoder layer at the final prompt token, via the CpuModel Tap seam —
@@ -21,8 +21,7 @@ use anyhow::{bail, ensure, Context, Result};
 
 use runtime::model::cpu::{CpuModel, Tap};
 use runtime::model::Model;
-use runtime::npz::{npy_f16, npy_i64, NpzWriter};
-use runtime::tensor::f32_to_f16;
+use runtime::npz::{npy_f32, npy_i64, NpzWriter};
 use runtime::tokenizer::Tokenizer;
 
 /// Shard size fixed by interp/probes/capture.py (examples per npz file).
@@ -179,7 +178,7 @@ fn utc_now() -> String {
 /// producing an internally consistent artifact whose rows sit offset from
 /// their labels — a failure no downstream reader can detect.
 fn check_row_counts(
-    collected: &HashMap<usize, Vec<u16>>,
+    collected: &HashMap<usize, Vec<f32>>,
     layers: &[usize],
     embed_dim: usize,
     examples: usize,
@@ -219,9 +218,9 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
     };
     model.set_tap(Box::new(tap.clone()));
 
-    // One f16 row per example per layer, captured at the last prompt token
+    // One f32 row per example per layer, captured at the last prompt token
     // (position semantics match the Python capture's `position: "last"`).
-    let mut collected: HashMap<usize, Vec<u16>> = layers.iter().map(|&l| (l, Vec::new())).collect();
+    let mut collected: HashMap<usize, Vec<f32>> = layers.iter().map(|&l| (l, Vec::new())).collect();
     for (i, example) in examples.iter().enumerate() {
         model.truncate(0).context("reset KV cache")?;
         tap.rows.lock().unwrap().clear();
@@ -243,7 +242,7 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
             collected
                 .get_mut(&l)
                 .expect("initialized above")
-                .extend(row.iter().map(|&v| f32_to_f16(v)));
+                .extend(row.iter().copied());
         }
         eprintln!(
             "[RUN] Example {}/{}: {} tokens",
@@ -277,7 +276,7 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
             let rows = &collected[&l][start * config.embed_dim..end * config.embed_dim];
             w.add(
                 &format!("layer_{l}"),
-                npy_f16(end - start, config.embed_dim, rows),
+                npy_f32(end - start, config.embed_dim, rows),
             );
         }
         let labels: Vec<i64> = examples[start..end].iter().map(|e| e.label).collect();
@@ -307,7 +306,7 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
         "dataset_path": dataset_path.display().to_string(),
         "dataset_sha256": sha256_hex(&dataset_bytes),
         "tokenizer_fingerprint": fingerprint,
-        "dtype": "float16",
+        "dtype": "float32",
         "count": examples.len(),
         "shards": shards,
         "capture_backend": "rust-harness-cpu",
@@ -407,7 +406,7 @@ mod tests {
 
     #[test]
     fn check_row_counts_accepts_one_row_per_example_per_layer() {
-        let collected = HashMap::from([(1, vec![0u16; 3 * 4]), (2, vec![0u16; 3 * 4])]);
+        let collected = HashMap::from([(1, vec![0.0f32; 3 * 4]), (2, vec![0.0f32; 3 * 4])]);
         check_row_counts(&collected, &[1, 2], 4, 3).unwrap();
     }
 
@@ -415,7 +414,7 @@ mod tests {
     fn check_row_counts_rejects_a_layer_holding_two_rows_per_example() {
         // The buffer shape a duplicate --layers entry produced: one layer fed
         // twice per example, then sliced as if it held a single row each.
-        let collected = HashMap::from([(1, vec![0u16; 2 * 3 * 4])]);
+        let collected = HashMap::from([(1, vec![0.0f32; 2 * 3 * 4])]);
         let err = check_row_counts(&collected, &[1], 4, 3)
             .unwrap_err()
             .to_string();

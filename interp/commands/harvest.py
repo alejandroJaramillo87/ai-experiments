@@ -56,7 +56,10 @@ def cmd(args: argparse.Namespace) -> int:
         if args.check_hooks:
             out.run(f"Hook-dimension check: {model_id}")
             widths = check_hook_dims(
-                model_id, list(recipe.harvest.hook_layers), revision
+                model_id,
+                list(recipe.harvest.hook_layers),
+                revision,
+                recipe.harvest.dtype,
             )
             for layer, width in sorted(widths.items()):
                 out.ok(f"layer {layer}: residual width {width}")

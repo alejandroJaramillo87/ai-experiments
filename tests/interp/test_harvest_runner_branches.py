@@ -395,6 +395,7 @@ class TestSaelensTrainerMapping:
         "context_len": 1024,
         "seed": 42,
         "cached_activations_path": "/cache/model.layers.15",
+        "dtype": "bf16",
     }
 
     def install_stubs(self, monkeypatch, created, metrics):
@@ -477,6 +478,20 @@ class TestSaelensTrainerMapping:
             "sae_lens_version": "6.46.0-test",
         }
         assert version_calls == ["sae-lens"]
+
+    def test_the_sae_trains_at_the_dtype_the_capture_was_harvested_at(
+        self, tmp_path, monkeypatch
+    ):
+        # The trainer hardcoded bfloat16 while every other field came from the
+        # capture manifest, so an fp32 harvest trained at bf16 with nothing
+        # reporting the mismatch.
+        created: list = []
+        self.install_stubs(monkeypatch, created, None)
+        pin_dist_version(monkeypatch, [])
+        job = dict(self.JOB)
+        job["dtype"] = "fp32"
+        _saelens_trainer(job, str(tmp_path / "sae-run"))
+        assert created[0].kwargs["dtype"] == "float32"
 
 
 def sampler_threads():

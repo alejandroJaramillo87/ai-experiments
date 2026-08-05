@@ -402,8 +402,9 @@ class HarvestConfig:
     The subject is either model_id (HF id or local checkpoint path) or
     organism_dir (a sealed P4-D1 organism directory whose public manifest
     records the checkpoint) — exactly one. Hooks are HF named-module paths
-    resolved per family through interp/families.py (flat layout:
-    model.layers.{n}); TransformerLens aliases are not used because
+    resolved per family through interp/families.py; the layout follows the
+    loaded config, so Gemma 4 is model.language_model.layers.{n} and a flat
+    text model is model.layers.{n}. TransformerLens aliases are not used because
     HookedTransformer has no Gemma 4 support (P4-D1 resolved decision).
 
     Captures default to one hook: a second layer multiplies the ~1.4TB

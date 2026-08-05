@@ -1232,6 +1232,31 @@ severity, then tier, then file. These are the findings a reader may act on direc
 - upheld: Verified verbatim at /work/interp/families.py:47 (`_FLAT_DECODER_TEMPLATE = "model.layers.{layer}"`), registered for both `gemma4` and `gemma4_text` at lines 52-53, with the flat-layout assertion in the docstring (line 13) and registry comment (44-46), and `resolve_submodule` (100-109) doing a plain getattr walk that raises on a composite root. Spec /work/docs/models/gemma-4.md:85 gives E2B/E4B `Gemma4ForConditionalGeneration` and lines 291-297/365-392 put every language-model tensor under `model.language_model.`. I searched for handling the auditor missed and found none — instead the guard is weaker than credited: `check_hook_dims` (harvest.py:168-224, AttributeError->HarvestError at 201-209) is invoked only under `--check-hooks` in /work/interp/commands/harvest.py; `run_harvest` (harvest.py:354-407) never calls it and feeds the hook string straight to SAELens and the manifest. /work/interp/probes/capture.py:100-103 and /work/interp/sae/evaluate.py:138 have no catch at all. No hook-path override exists in the recipe schema (HarvestConfig, schema.py:417-428 exposes hook_layers only), and the problematic input is reachable from a shipped recipe (/work/training/recipes/harvest-smoke.yaml:17 `model_id: google/gemma-4-E2B`). The only open item is the host-side question of whether AutoModelForCausalLM/nnsight returns the composite or a text-only wrapper (transformers is not installed in the sandbox), which the finding itself scoped as affecting failure shape, not the registry/spec disagreement.
 - upheld: Reachable from real E2B entry points, and the consequence holds (if anything it is worse than stated). Chain reproduced: /work/training/recipes/interp/harvest-smoke.yaml:17 pins model_id google/gemma-4-E2B with hook_layers [15]; /work/docs/verification/interp.md:346-347 prescribes `make harvest-check-hooks` and `make harvest` on that recipe; Makefile:303-311 -> interp/cli.py -> interp/commands/harvest.py:58/64. resolve_model_meta (harvest.py:141-165) unwraps the composite config to model_type gemma4_text, which IS registered (families.py:53), so it emits "model.layers.15". I reproduced resolve_submodule against a stand-in tree built from docs/models/gemma-4.md:365-392 (model.language_model.layers.{L}): AttributeError: object has no attribute 'layers'. torch get_submodule raises the same class, so harvest.py:201 does convert to HarvestError. Two corrections, both away from "milder": (1) run_harvest (harvest.py:294-428) never calls check_hook_dims - the declared backstop only runs under the opt-in --check-hooks flag - so the default `make harvest` path hands the dead hook to SAELens at :372 and the resulting exception is not in commands/harvest.py's catch tuple (HarvestError, ManifestError, TrainLockError, RecipeLoadError, OSError) -> raw traceback; (2) probe-capture is documented with --model google/gemma-4-E2B at docs/verification/interp.md:138 and catches only (CaptureError, OSError), so capture.py:102 escapes as a raw AttributeError. Overstated sub-claims, not severity-bearing: the manifest write at harvest.py:407 and interp/sae/evaluate.py:138 both require a completed harvest, which cannot complete with a dead hook, so the bad string is not actually persisted or re-consumed for E2B. No in-repo test refutes it - all fixtures use a flat stand-in (tests/interp/test_families.py:87, tests/interp/test_harvest_runner_branches.py:247) and "language_model" appears nowhere in /work outside docs/models/gemma-4.md. Residual host question (which class AutoModelForCausalLM returns) changes the error text, not reachability; host command to settle: python -c "from transformers import AutoModelForCausalLM as A; m=A.from_pretrained('google/gemma-4-E2B', revision='d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f', torch_dtype='auto'); print(type(m)); print([n for n,_ in m.named_modules()][:15]); print(m.get_submodule('model.layers.15'))".
 
+**Resolution — upheld and fixed.** The residual host question is settled. Enumerating
+`named_modules()` of a meta-device model built from the E2B configuration gives
+`model.vision_tower` and `model.language_model` as siblings under `model`, with the decoder at
+`model.language_model.layers.{n}` and no `model.layers` attribute. `AutoModelForCausalLM`
+returns the composite, so the flat template raised `AttributeError` on every E-series
+checkpoint and the tier could not harvest from these weights at all.
+
+The REFUTED verdict was right on its own terms and did not change the outcome: it objected that
+the tensor inventory is a state-dict namespace and therefore cannot establish a module path.
+Correct — and the module path had to be observed rather than inferred. It agrees.
+
+Fixed by making the hook path follow the loaded config rather than the family:
+`HookFamilySpec` gained `composite_hook_template`, and `family_from_config`
+(`interp/families.py:99-119`) applies it when the config carried a `text_config`. A family with
+no composite template now raises `UnknownHookFamilyError` on a composite config instead of
+falling back to the flat path. Regression tests at `tests/interp/test_families.py:67-93`,
+demonstrated failing against the prior code with `- model.language_model.layers.0 /
++ model.layers.0`. The three propagated prose copies are corrected (`interp/harvest.py:10-13`,
+`training/recipes/schema.py:405-408`, `training/recipes/interp/sae-false-fact.yaml:4-5`);
+`rust-harness/runtime/tests/cpu_reference.rs:35` carries no hook path and was a false positive.
+
+Not fixed here, and still open: `check_hook_dims` remains opt-in and `run_harvest` never calls
+it, so the backstop this finding credited is still weaker than it reads. See
+`/docs/interpretability/gemma-4-interp.md`.
+
 ### GC-205 Nothing verifies that PROMPT_SPECIALS resolve to real vocabulary pieces, so an unresolvable turn marker silently byte-encodes
 
 | Field | Value |

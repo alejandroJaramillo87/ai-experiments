@@ -7,7 +7,7 @@ verification passes produce real-model baselines. Nothing here is a
 commitment: each item lands as its own change with a measured before/after
 comparison, one at a time, mirroring the pin-then-fix-then-update
 discipline. The sibling menu for the rust runtime is
-`rust-harness/docs/optimization-candidates.md`.
+`docs/rust-harness/optimization-candidates.md`.
 
 These pipelines are batch pipelines, so the measurement currency is
 wall-clock per campaign and artifacts per hour, not tokens/second. Target

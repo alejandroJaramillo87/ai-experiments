@@ -538,22 +538,21 @@ def cmd_export(args: argparse.Namespace) -> int:
             out.ok(f"Architecture: {arch} (supported by llama.cpp {pin[:12]})")
 
             os.makedirs(out_dir, exist_ok=True)
-            intermediate = os.path.join(staging, f"{name}-{args.outtype}.gguf")
-            out.run(f"Converting to GGUF ({args.outtype})")
-            export_mod.convert.convert_to_gguf(
-                staging,
-                intermediate,
-                outtype=args.outtype,
-                llama_cpp_dir=args.llama_cpp,
-            )
-            # Quantize into a temp name and promote on success: a failure
+            # Convert into a temp name and promote on success: a failure
             # partway through must not leave a truncated GGUF at the path
             # serve-eval and the manifest treat as a finished artifact.
-            out.run(f"Quantizing: {quant}")
+            #
+            # No quantization step. The checkpoint is bf16, and the interp
+            # tier and the Rust harness read this same file, so quantizing
+            # here would hand the three tiers numerically different models.
+            out.run(f"Converting to GGUF ({args.outtype})")
             partial = gguf_path + ".partial"
             try:
-                export_mod.convert.quantize(
-                    intermediate, partial, quant, llama_cpp_dir=args.llama_cpp
+                export_mod.convert.convert_to_gguf(
+                    staging,
+                    partial,
+                    outtype=args.outtype,
+                    llama_cpp_dir=args.llama_cpp,
                 )
                 os.replace(partial, gguf_path)
             finally:
@@ -763,7 +762,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="D6 checkpoint dir (containing model/) or an HF model dir",
     )
     ex.add_argument(
-        "--quant", default="Q8_0", help="llama-quantize type (default Q8_0)"
+        "--quant",
+        default="BF16",
+        choices=("BF16",),
+        help="retained for manifest provenance; export no longer quantizes",
     )
     ex.add_argument(
         "--name", help="output name (default derived from the checkpoint path)"
@@ -780,19 +782,20 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument(
         "--outtype",
         default="bf16",
-        help="convert_hf_to_gguf intermediate type (default bf16)",
+        choices=("bf16", "f32"),
+        help="GGUF storage type (default bf16, the checkpoint's own precision)",
     )
     ex.add_argument(
         "--llama-cpp",
         default=os.environ.get("LLAMA_CPP_DIR", "/opt/llama.cpp"),
-        help="pinned llama.cpp checkout with a built llama-quantize",
+        help="pinned llama.cpp checkout with convert_hf_to_gguf.py",
     )
     ex.add_argument(
         "--staging-root",
         default=os.environ.get(
             "EXPORT_STAGING", "/mnt/ai-data/training/staging/export"
         ),
-        help="scratch dir for the merged safetensors and unquantized GGUF",
+        help="scratch dir for the merged safetensors",
     )
     ex.add_argument(
         "--keep-staging",

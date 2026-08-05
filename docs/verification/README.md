@@ -64,7 +64,16 @@ passed.
    [rust-harness-qa.md](rust-harness-qa.md), the code-quality campaign
    (phases Q0-Q6) a Claude Code session runs with no GPU or model data.
 
-Outside the numbered order: [hardware-stress.md](hardware-stress.md), the
+Outside the numbered order:
+[gemma-4-conformance.md](gemma-4-conformance.md), the audit of the three
+consumer tiers against the Gemma 4 reference. It is a document audit rather
+than a hardware phase, so it carries no `Status: PENDING` entries of its own
+except in its Host verification runbook section, whose `GH.n` entries follow
+the recording protocol above and need the weights present. Read its
+Limitations section before treating any `GC-nnn` finding as settled: only 59
+of 248 confirmed findings were adversarially verified.
+
+Also outside the numbered order: [hardware-stress.md](hardware-stress.md), the
 one-time firmware stability soak for the BIOS undervolt profile. It is
 independent of the software phases and may run any time its own
 preconditions are met (no other GPU consumer active), but it must be
