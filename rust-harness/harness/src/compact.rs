@@ -66,7 +66,8 @@ pub fn compact(generator: &mut dyn Generator, transcript: &mut Transcript) -> Re
     }
     let start = KEEP_PREFIX;
     let end = effective.len() - KEEP_LAST;
-    let mut prompt = String::new();
+    // A fresh sequence rather than a continuation, so it carries its own BOS.
+    let mut prompt = String::from(crate::template::BOS);
     for e in &effective[start..end] {
         prompt.push_str(&render_entry(e));
     }
@@ -113,6 +114,23 @@ mod tests {
             t.append(Role::Tool, format!("tool result {i}")).unwrap();
         }
         t
+    }
+
+    #[test]
+    fn the_compaction_prompt_carries_its_own_bos() {
+        // The summarization prompt is a fresh sequence rather than a
+        // continuation of the conversation, so it needs its own BOS.
+        let dir = tempfile::tempdir().unwrap();
+        let mut t = transcript_with_turns(&dir, 5);
+        let mut g = Scripted {
+            replies: vec!["they went back and forth"],
+            prompts: vec![],
+            budget: None,
+        };
+        assert!(compact(&mut g, &mut t).unwrap());
+        let prompt = &g.prompts[0];
+        assert!(prompt.starts_with(crate::template::BOS), "{prompt}");
+        assert_eq!(prompt.matches(crate::template::BOS).count(), 1, "{prompt}");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Cross-language artifact contracts
 
-Three artifact formats cross the boundary between the Rust harness
+Four artifact formats cross the boundary between the Rust harness
 (`/rust-harness/`) and the Python training and interpretability pipelines
 (`/interp/`, `/common/`). Each format has a writer and a reader in different
 languages, so no compiler and no type system connects the two sides. This
@@ -38,6 +38,15 @@ The observability catalog line is formatted by hand in
 the same six keys. `read_runs` skips a line it cannot parse, so drift would
 have presented as an empty runs table rather than an error.
 
+The chat template is the seam that had already failed. The training tier
+corrected Gemma 4 from Gemma 3's `<start_of_turn>` framing to the official
+`<|turn>` markers and bumped `CHAT_TEMPLATE_VERSION` to 2; the harness kept
+the Gemma 3 constants. Those literals are absent from the Gemma 4 vocabulary,
+so every turn boundary tokenized as a byte run instead of a trained id, and
+nothing failed: output stayed fluent, and the only golden test was ignored
+with an unimplemented body. Training and inference were rendering one
+conversation to two different prompts.
+
 The GGUF exporters had no coverage in the direction that matters at all:
 `Probe::from_gguf` and `ControlVector::from_gguf` had only ever parsed bytes
 written by `runtime::synth::GgufWriter`, never bytes written by the Python
@@ -50,6 +59,7 @@ exporters whose output they exist to read.
 | `activation_capture.manifest.json` | Capture directory: `manifest.json`, `examples.jsonl`, `shard_NNNNN.npz` | Both write, Python reads |
 | `gguf_artifacts.json` | Probe and control-vector GGUF images | Python writes, Rust reads |
 | `obs_record.json` | Run-level JSONL: event file and run catalog | Both write, Python reads |
+| `chat_template.json` | The Gemma 4 chat template: the prompt string a conversation renders to | Both write, both read |
 
 Each file carries a `guarded_by` list naming the tests that assert it, and a
 `notes` object recording the divergences that are intentional. A field listed

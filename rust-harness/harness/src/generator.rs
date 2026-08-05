@@ -59,12 +59,19 @@ impl SessionGenerator {
 /// these before rendering, so every remaining occurrence is structure the
 /// harness itself wrote; any other special piece appearing in a prompt came
 /// from a file, a command's output, or the model, and stays literal text.
-const PROMPT_SPECIALS: &[&str] = &[crate::template::TURN_OPEN, crate::template::TURN_CLOSE];
+///
+/// BOS is in the set because the template tier writes it into the prompt
+/// text; `complete` therefore resolves it here rather than prepending an id,
+/// which keeps one writer and one resolver for the marker.
+const PROMPT_SPECIALS: &[&str] = &[
+    crate::template::BOS,
+    crate::template::TURN_OPEN,
+    crate::template::TURN_CLOSE,
+];
 
 impl Generator for SessionGenerator {
     fn complete(&mut self, prompt: &str) -> Result<String> {
-        let mut ids = vec![self.tokenizer.bos()];
-        ids.extend(self.tokenizer.encode_prompt(prompt, PROMPT_SPECIALS)?);
+        let ids = self.tokenizer.encode_prompt(prompt, PROMPT_SPECIALS)?;
         let generation = self.session.generate(
             &ids,
             &self.vocab,
@@ -79,8 +86,9 @@ impl Generator for SessionGenerator {
     fn count_tokens(&mut self, text: &str) -> Result<usize> {
         // Counts what `complete` will encode, so it resolves the same
         // literals; a count taken with different rules would drift from the
-        // budget it is checked against. +1 for the BOS `complete` prepends.
-        Ok(self.tokenizer.encode_prompt(text, PROMPT_SPECIALS)?.len() + 1)
+        // budget it is checked against. The prompt text carries its own BOS,
+        // so there is no longer an off-by-one to add back.
+        Ok(self.tokenizer.encode_prompt(text, PROMPT_SPECIALS)?.len())
     }
 
     fn context_budget(&self) -> Option<usize> {

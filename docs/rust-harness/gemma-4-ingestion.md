@@ -194,10 +194,12 @@ earlier revision of this document asserted the key "is not a period"; that was w
 The GGUF form also transposes: safetensors `q_proj.weight` is `[2048, 1536]` where GGUF
 `attn_q.weight` is `[1536, 2048]`.
 
-Two per-layer tensors of the per-layer-embedding path lose the `per_layer` substring in
-translation: `per_layer_input_gate` becomes `inp_gate` and `per_layer_projection` becomes
-`proj`. This matters because the runtime detects per-layer embeddings by substring
-(see below), and those two names do not contain it.
+Three per-block tensors of the per-layer-embedding path lose the `per_layer` substring in
+translation: `per_layer_input_gate` becomes `inp_gate`, `per_layer_projection` becomes `proj`,
+and `post_per_layer_input_norm` becomes `post_norm`. This matters because the runtime detects
+per-layer embeddings by substring (see below), and those three names do not contain it. The
+three file-level tensors keep the substring, which is what makes the guard fire at all. See
+[The `per_layer` substring guard](#the-per_layer-substring-guard).
 
 ## What the backend refuses
 
@@ -283,11 +285,21 @@ denotes the open or close side:
 
 A reasoning marker `<|think|>` is also defined. The assistant role string is `model`.
 
-`/rust-harness/harness/src/template.rs:2-9,15-16,40` currently emits Gemma 3's `<start_of_turn>` and
-`<end_of_turn>`. That is a defect against these weights. The Python tier already carries the
-correct form at `/training/models/families.py:82-89`, which is the reference to match. The
-GGUF files embed the canonical template in `tokenizer.chat_template` (18,567 characters on
-E2B), so it can be checked without a download.
+`/rust-harness/harness/src/template.rs` emits these markers. It previously carried Gemma 3's
+`<start_of_turn>` and `<end_of_turn>`, which are absent from the Gemma 4 vocabulary and so
+tokenized as byte runs rather than failing; that defect is fixed. The reference it was ported
+against is the Python tier at `/training/models/families.py:75-89`, and
+`/schemas/chat_template.json` now pins the two tiers together, asserted from both sides by
+`/rust-harness/harness/tests/template_contract.rs` and
+`/tests/training/test_chat_template_contract.py`.
+
+The renderer emits turn markers only. The channel, tool-call, tool, and think markers above are
+neutralized in untrusted content but never written: the canonical template strips thought
+channels from history, and the harness carries a tool call as JSON inside a model turn.
+
+The GGUF files embed the canonical template in `tokenizer.chat_template` (18,567 characters on
+E2B), so a token-level golden can be checked without a download. That golden remains a
+workstation task: it needs the real Gemma 4 vocabulary, which no committed fixture carries.
 
 Special token identifiers are `<bos>` 2, `<eos>` 1, `<pad>` 0. The ordering of the first two
 looks transposed and is not.
@@ -343,26 +355,171 @@ checkpoint**, despite the separate `mtp-*.gguf` files.
 The per-finding record of these blockers lives in
 `/docs/verification/gemma-4-conformance.md` under the `GC-` and `GH.` identifiers.
 
+## Resolved from upstream source
+
+Revisions read:
+
+| Source | Path | Commit |
+|--------|------|--------|
+| `ggml-org/llama.cpp` | `conversion/gemma.py` | `f4043fec0103872bf4339f6fa18d8b17824d5b6a` |
+| `ggml-org/llama.cpp` | `gguf-py/gguf/constants.py`, `gguf-py/gguf/tensor_mapping.py` | `07132750825a4f2d27a547cd9cdde1c6f6001885` |
+| `huggingface/transformers` | `src/transformers/models/gemma4/modeling_gemma4.py` | `ff886afacfd81e09dcf70d29d5bbf76babf672a5` |
+| `huggingface/transformers` | `src/transformers/modeling_rope_utils.py` | `9451e3ab0b21cc51638dce25c101ab5f2233e91d` |
+
+### `rope.dimension_count` against `partial_rotary_factor`
+
+**The two representations do not contradict each other.** Both describe a rotation performed at
+the full head width in which the trailing frequencies are inert. The partial factor is carried by
+the frequency vector, not by the width.
+
+On the Hugging Face side, `_compute_proportional_rope_parameters`
+(`modeling_rope_utils.py`, lines 193-266) states in its docstring, lines 216-219, that
+"proportional RoPE will always return an encoding that is the size of `head_dim`". It computes
+`rope_angles = int(rope_proportion * head_dim // 2)`, which is 64 for `head_dim` 512 and
+`partial_rotary_factor` 0.25, then appends `nope_angles = head_dim // 2 - rope_angles`, that is
+192, zeros. `apply_rotary_pos_emb` (`modeling_gemma4.py`, lines 784-803) runs over all 512
+dimensions; the 192 zero frequencies produce `cos` of 1.0 and `sin` of 0.0, an identity.
+
+On the llama.cpp side, `Gemma4Model.set_gguf_parameters` (`conversion/gemma.py`, lines 695-700)
+writes the full width deliberately, with the reason in the comment:
+
+```python
+n_rot_full = int(head_dim_full) # "proportional" is used, see generate_extra_tensors
+n_rot_swa = int(head_dim_swa * partial_rotary_factor_swa)
+self.gguf_writer.add_rope_dimension_count(n_rot_full)
+self.gguf_writer.add_rope_dimension_count_swa(n_rot_swa)
+```
+
+`Gemma4Model.generate_extra_tensors` (lines 702-717) then emits the partial factor as a
+`rope_freqs` tensor of frequency divisors:
+
+```python
+n_rot_full = int(head_dim_full * partial_rotary_factor_full / 2)
+n_unrot_full = int(head_dim_full / 2) - n_rot_full
+values = [1.0] * n_rot_full + [1e30] * n_unrot_full
+```
+
+That is 64 entries of 1.0 followed by 192 entries of 1e30, a 256-element vector. Dividing an
+inverse frequency by 1e30 drives the angle to approximately zero, reproducing the Hugging Face
+identity. The GGUF inventory confirms the tensor and its length: `rope_freqs.weight [256] F32`,
+one per file (`/work/gemma4-gguf.txt` lines 631 and 640). The converter's comment at lines
+703-706 records that the tensor is a workaround, because the Hugging Face split-half ordering is
+`cc000000ss000000` while ggml's neox rotation supports only `ccss000000000000`, and the head
+cannot be rearranged without breaking `use_alternative_attention`.
+
+Two consequences for ingestion:
+
+- `gemma4.rope.dimension_count = 512` is the **width of the rotation operation**, not a claim
+  that 512 dimensions receive a non-trivial rotation. A reader that treats it as the count of
+  rotating dimensions and skips `rope_freqs.weight` produces wrong logits without erroring.
+- `gemma4.rope.dimension_count_swa = 256` is `head_dim_swa * partial_rotary_factor_swa`
+  (line 698). With `head_dim` 256 and no sliding-layer partial factor, the default of 1.0 applies
+  and the sliding regime genuinely rotates its full width. `rope_freqs.weight` applies to the
+  full-attention layers only, as stated at line 708.
+
+### The `proportional` rope type
+
+Resolved. The formula is quoted above and in
+`/docs/models/gemma-4.md`. The GGUF form carries no `rope_type` key because the type is expressed
+structurally, through `rope_freqs.weight` plus the full-width `dimension_count`.
+
+### `layer_scalar`
+
+Resolved. `Gemma4TextDecoderLayer` declares it as `nn.Buffer(torch.ones(1))`
+(`modeling_gemma4.py`, line 1371) and applies `hidden_states *= self.layer_scalar` at line 1444,
+the final statement of the decoder layer, after the attention residual, the feed-forward residual,
+and the per-layer-embedding residual. It scales the whole layer output including the residual.
+The GGUF name is `blk.{bid}.layer_output_scale` (`constants.py`, line 1320), mapped from
+`model.layers.{bid}.layer_scalar` (`tensor_mapping.py`, lines 735-738). The converter appends the
+`.weight` suffix in `Gemma4Model.filter_tensors` (`conversion/gemma.py`, lines 747-748), which is
+why the transcript shows `blk.{L}.layer_output_scale.weight [1] F32`.
+
+### The per-layer embedding data path
+
+Resolved. Full derivation in `/docs/models/gemma-4.md`. In summary, mapped onto GGUF names:
+
+1. Once per forward, `per_layer_token_embd` is looked up and reshaped to
+   `[batch, seq, n_layers, 256]` (`modeling_gemma4.py`, lines 1724-1766).
+2. `per_layer_model_proj` projects the token embeddings, the result is scaled by
+   `hidden_size ** -0.5`, reshaped identically, and normalized by `per_layer_proj_norm`; the two
+   components are then summed and scaled by `2.0 ** -0.5` (lines 1768-1801).
+3. Inside layer `i`, after the feed-forward residual and before `layer_output_scale`, the block at
+   lines 1435-1442 runs: `inp_gate` projects the hidden state from 1536 to 256, the activation is
+   applied, the layer's 256-dimensional per-layer embedding **multiplies** it elementwise, `proj`
+   maps back to 1536, `post_norm` normalizes, and the result is added to the residual.
+
+The gate is multiplicative and operates in the 256-dimensional per-layer space. The join point is
+a third residual update after the feed-forward block, not before or inside attention.
+
+### The E4B shared-KV boundary
+
+Resolved. `conversion/gemma.py` line 682 and `modeling_gemma4.py` line 1186 both compute the
+boundary as `num_hidden_layers - num_kv_shared_layers`: index 15 on E2B (35 layers, 20 shared)
+and index 24 on E4B (42 layers, 18 shared). `Gemma4TextMLP` derives the double-wide feed-forward
+region from the same expression (`modeling_gemma4.py`, lines 1068-1070), and `conversion/gemma.py`
+lines 683-686 writes the per-layer feed-forward array from it, so the E2B feed-forward correlation
+is structural rather than coincidental and holds on E4B for the same reason.
+
+Correction to the donor: there are **two donors, not one**. `store_full_length_kv`
+(`modeling_gemma4.py`, lines 1189-1191) selects the last non-shared layer *of each layer type*,
+and the shared state is keyed by layer type at lines 1241 and 1259. A shared `full_attention`
+layer reuses the last non-shared `full_attention` layer's keys and values; a shared
+`sliding_attention` layer reuses the last non-shared `sliding_attention` layer's. The comment at
+`cpu.rs:264-265`, "the trailing layers reuse K/V from the last non-shared layer", is therefore
+correct in direction and incomplete in detail.
+
+### The `per_layer` substring guard
+
+Confirmed in part, and the operational conclusion is the opposite of what the claim suggests.
+
+The GGUF names are fixed in `constants.py` (revision
+`07132750825a4f2d27a547cd9cdde1c6f6001885`, lines 1321-1328):
+
+| Hugging Face name (`tensor_mapping.py`, lines 740-770) | GGUF name (`constants.py`) | Contains `per_layer` |
+|---|---|---|
+| `model.embed_tokens_per_layer` | `per_layer_token_embd` (line 1321) | yes |
+| `model.per_layer_model_projection` | `per_layer_model_proj` (line 1322) | yes |
+| `model.per_layer_projection_norm` | `per_layer_proj_norm` (line 1323) | yes |
+| `model.layers.{bid}.per_layer_input_gate` | `blk.{bid}.inp_gate` (line 1326) | no |
+| `model.layers.{bid}.per_layer_projection` | `blk.{bid}.proj` (line 1327) | no |
+| `model.layers.{bid}.post_per_layer_input_norm` | `blk.{bid}.post_norm` (line 1328) | no |
+
+The claim at lines 197-200 of this document holds and understates the case: **three** per-block
+families lose the substring, not two. `post_per_layer_input_norm` becomes `blk.{bid}.post_norm`,
+which additionally collides in appearance with the ordinary Gemma post-norm naming and is
+distinguishable from `blk.{bid}.post_attention_norm` and `blk.{bid}.post_ffw_norm` only by
+knowing the architecture.
+
+The guard at `cpu.rs:256` nevertheless fires on these files, because the three file-level tensors
+retain the substring and are present in every per-layer-embedding checkpoint
+(`/work/gemma4-gguf.txt` lines 633-636 and 642). The bail message names the first matching tensor,
+which will be one of those three. The guard is therefore sound for refusal, but it is not a sound
+basis for *enumerating* the per-layer-embedding tensor set: an implementation that later
+whitelists by the same substring would silently omit `inp_gate`, `proj`, and `post_norm`.
+
 ## Open questions
 
 Recorded rather than guessed.
 
-- **`rope.dimension_count` against `partial_rotary_factor`.** The GGUF files set
-  `rope.dimension_count` to 512, equal to `attention.key_length`, which reads as full rotation.
-  The Hugging Face configuration sets `partial_rotary_factor: 0.25` on full-attention layers,
-  which implies 128 of 512 dimensions rotate. The two representations disagree. Resolving this
-  requires reading the converter, and it determines whether the partial-rotary check at
-  `cpu.rs:265-273` is measuring what its message claims.
-- **The `proportional` rope type.** Its scaling formula is not defined in `config.json` and has
-  no counterpart in earlier Gemma releases. The GGUF form carries no equivalent key at all.
-- **`layer_scalar`.** Present on every layer with no configuration field and no documented
-  position in the residual or attention path.
-- **The per-layer embedding data path.** The tensor names establish which projections exist.
-  The order of operations, the join point with the residual stream, and whether
-  `per_layer_input_gate` gates additively or multiplicatively are not determined by shapes.
-- **The E4B shared-KV boundary.** E2B's 20 shared layers are indices 15 through 34, corroborated
-  by the double-wide feed-forward region. E4B's 18-layer boundary has no corroborating signal in
-  either file format and is assumed, not verified.
+- **Whether shared-KV layers in the released checkpoints carry key and value weights.**
+  `modeling_gemma4.py` line 1199 builds `k_proj` and `v_proj` only for non-shared layers, which
+  for E2B means 15 of 35. Both transcripts disagree with that: `/work/gemma4-safetensors.txt`
+  lines 414 and 529 record `k_proj.weight` on 28 plus 7 language-model layers, and
+  `/work/gemma4-gguf.txt` lines 613-628 record `attn_k.weight` on 28 plus 7 blocks, 35 in total.
+  Nothing in `conversion/gemma.py` drops shared-layer key or value tensors, so the converter is
+  passing through what the checkpoint holds. Whether these are unused residue or the code and the
+  weights are out of step was not settled from the sources read.
+
+  This is directly load-bearing for `cpu.rs:266-275`, which detects shared KV by finding a block
+  with `attn_q` but without `attn_k` and `attn_v`. On these two files that condition is never
+  true, so the shared-KV refusal does not fire and the `per_layer` guard at `cpu.rs:256` is what
+  actually stops the load. Any future backend that removes the per-layer-embedding refusal must
+  not rely on the missing-`attn_k` signature for these checkpoints.
+- **The stored value of `layer_output_scale`.** The transcripts record the shape `[1]` but not the
+  value, so whether the multiplication is a no-op in the released weights is unverified.
+- **The `1e30` divisor as an exact identity.** `conversion/gemma.py` line 715 uses 1e30 rather
+  than infinity, so the resulting angle is very small rather than exactly zero. Whether the
+  residual differs from the Hugging Face exact-zero frequency at F32 precision was not measured.
 
 ## Reproducing this document
 

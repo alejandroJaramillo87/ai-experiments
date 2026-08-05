@@ -72,14 +72,18 @@ impl Agent {
     ) -> Self {
         // Seeding `rendered` with rendered_upto = 0 places the memory turn
         // ahead of the persisted entries without persisting it.
-        let memory_rendered = match memory {
-            Some(content) => render_entry(&Entry {
+        // Seeded with BOS: template::render is not on this path, so the
+        // marker reaches the model only if each incremental builder writes
+        // it. This is also the value restored on a compaction rebuild
+        // below, so the rebuilt prompt keeps its BOS.
+        let mut memory_rendered = String::from(crate::template::BOS);
+        if let Some(content) = memory {
+            memory_rendered.push_str(&render_entry(&Entry {
                 role: Role::System,
                 content: content.to_string(),
                 replaces: None,
-            }),
-            None => String::new(),
-        };
+            }));
+        }
         let compactions_seen = count_compactions(&transcript);
         Self {
             root,

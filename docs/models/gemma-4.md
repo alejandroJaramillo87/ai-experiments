@@ -239,8 +239,43 @@ Second, the two regimes differ in base frequency by two orders of magnitude (100
 10000.0). A single global `rope_theta` is incorrect for this architecture regardless of which
 value is chosen.
 
-The `proportional` rope type is not a standard Hugging Face rope scaling name in earlier
-releases. See [Open questions](#open-questions).
+### How `proportional` implements the partial rotation
+
+`_compute_proportional_rope_parameters` in `transformers/src/transformers/modeling_rope_utils.py`
+(revision `9451e3ab0b21cc51638dce25c101ab5f2233e91d`, lines 193-266) registers under the key
+`"proportional"` in `ROPE_INIT_FUNCTIONS` (line 674). It differs from every other partial-rotary
+rope type in one respect, stated in its own docstring at lines 216-219: it "will always return an
+encoding that is the size of `head_dim`". The mechanism is a zero-padded frequency vector:
+
+```python
+rope_angles = int(rope_proportion * head_dim // 2)
+inv_freq_rotated = 1.0 / (
+    base ** (torch.arange(0, 2 * rope_angles, 2, dtype=torch.int64).to(...) / head_dim)
+)
+nope_angles = head_dim // 2 - rope_angles
+if nope_angles > 0:
+    inv_freq = torch.cat((inv_freq_rotated, torch.zeros(nope_angles, ...)), dim=0)
+```
+
+For `global_head_dim` of 512 and `partial_rotary_factor` of 0.25, `rope_angles` is 64 and
+`nope_angles` is 192. The returned `inv_freq` has 256 entries: 64 live frequencies followed by
+192 zeros. A zero frequency yields an angle of 0 radians, so `cos` is 1.0 and `sin` is 0.0, and
+the corresponding dimensions pass through unchanged. The exponent divisor stays `head_dim` (512),
+not `2 * rope_angles`, so the 64 live frequencies are the first 64 of the full 512-dimension
+schedule rather than a rescaled 128-dimension schedule.
+
+The layout is **split-half**, not interleaved. `Gemma4TextRotaryEmbedding.forward`
+(`modeling_gemma4.py`, revision `ff886afacfd81e09dcf70d29d5bbf76babf672a5`, lines 1144-1163)
+builds `emb = torch.cat((freqs, freqs), dim=-1)`, and `rotate_half` (lines 777-781) splits the
+head dimension at its midpoint. Pairing is therefore between dimension `i` and dimension
+`i + 256`. Dimensions 0-63 and 256-319 rotate; dimensions 64-255 and 320-511 pass through. That
+is 128 rotating dimensions of 512, as `partial_rotary_factor` states, but they are not
+contiguous. `apply_rotary_pos_emb` (lines 784-803) applies the full-width expression
+`(x * cos) + (rotate_half(x) * sin)` to all 512 dimensions; the pass-through is a property of
+the frequencies, not of a narrowed slice.
+
+Sliding-attention layers use `rope_type: default` with `head_dim` of 256 and no
+`partial_rotary_factor`, so all 256 dimensions rotate.
 
 ## E-series exclusive features
 
@@ -579,30 +614,162 @@ against the pinned revisions.
 13. **E2B is multi-query, not grouped-query.** `num_key_value_heads` is 1.
 14. **Audio support is per-variant.** 31B sets `audio_config: null`.
 
+## Resolved from upstream source
+
+The items below were open and are now settled against upstream source. Every claim cites a file,
+a commit SHA, and a line range or function name. The revisions read are:
+
+| Source | Path | Commit |
+|--------|------|--------|
+| `huggingface/transformers` | `src/transformers/models/gemma4/modeling_gemma4.py` | `ff886afacfd81e09dcf70d29d5bbf76babf672a5` |
+| `huggingface/transformers` | `src/transformers/modeling_rope_utils.py` | `9451e3ab0b21cc51638dce25c101ab5f2233e91d` |
+| `huggingface/transformers` | `src/transformers/models/gemma4/configuration_gemma4.py` | `3e9d3e50e71442a3173bdf01cd45ba5833533efe` |
+| `ggml-org/llama.cpp` | `conversion/gemma.py` | `f4043fec0103872bf4339f6fa18d8b17824d5b6a` |
+| `ggml-org/llama.cpp` | `gguf-py/gguf/constants.py`, `gguf-py/gguf/tensor_mapping.py` | `07132750825a4f2d27a547cd9cdde1c6f6001885` |
+
+### The `proportional` rope type
+
+Resolved. See [How `proportional` implements the partial rotation](#how-proportional-implements-the-partial-rotation).
+The formula lives in `_compute_proportional_rope_parameters`
+(`modeling_rope_utils.py`, lines 193-266): the inverse-frequency vector is computed at full
+`head_dim` width and its tail is zero-filled, so the unrotated dimensions receive an identity
+rotation rather than being excluded from the operation.
+
+### `layer_scalar`
+
+Resolved. `Gemma4TextDecoderLayer` declares `self.layer_scalar = nn.Buffer(torch.ones(1))`
+(`modeling_gemma4.py`, line 1371) and applies it as the **last operation of the decoder layer**,
+after the attention residual, after the feed-forward residual, and after the per-layer-embedding
+residual:
+
+```python
+hidden_states *= self.layer_scalar
+return hidden_states
+```
+
+That is `modeling_gemma4.py`, line 1444. It multiplies the entire layer output, including the
+residual carried through the layer, and is not confined to the attention or feed-forward branch.
+Initialization is `init.ones_(module.layer_scalar)` (line 1523), so an untrained value is
+1.0 and a checkpoint value of 1.0 is a no-op. It is a buffer rather than a parameter and has no
+`config.json` field, which is why it appears in the weights and not in the configuration.
+
+### The per-layer embedding data path
+
+Resolved. The path has two stages.
+
+The first stage runs once per forward, before the decoder stack, in `Gemma4TextModel.forward`
+(`modeling_gemma4.py`, lines 1661-1664):
+
+1. `get_per_layer_inputs` (lines 1724-1766) looks `input_ids` up in `embed_tokens_per_layer`, a
+   scaled embedding whose `embed_scale` is `hidden_size_per_layer_input ** 0.5` (line 1608), and
+   reshapes the packed result from `[batch, seq, num_hidden_layers * 256]` to
+   `[batch, seq, num_hidden_layers, 256]`.
+2. `project_per_layer_inputs` (lines 1768-1801) applies `per_layer_model_projection`, multiplies
+   by `per_layer_model_projection_scale`, which is `hidden_size ** -0.5` (line 1616), reshapes to
+   the same four-dimensional form, and normalizes with `per_layer_projection_norm`, an RMSNorm
+   over 256 dimensions (line 1617). It then returns
+   `(per_layer_projection + per_layer_inputs) * self.per_layer_input_scale`, where
+   `per_layer_input_scale` is `2.0 ** -0.5` (line 1610). When `per_layer_inputs` is `None`, as for
+   multimodal inputs without `input_ids`, it returns the projection alone (lines 1798-1799).
+
+Layer `i` receives the slice `per_layer_inputs[:, :, i, :]` (line 1703).
+
+The second stage runs inside each decoder layer. It joins the residual stream **after the
+feed-forward block**, as a third residual update, not before or inside attention
+(`modeling_gemma4.py`, lines 1435-1442):
+
+```python
+if self.hidden_size_per_layer_input:
+    residual = hidden_states
+    hidden_states = self.per_layer_input_gate(hidden_states)
+    hidden_states = self.act_fn(hidden_states)
+    hidden_states = hidden_states * per_layer_input
+    hidden_states = self.per_layer_projection(hidden_states)
+    hidden_states = self.post_per_layer_input_norm(hidden_states)
+    hidden_states = residual + hidden_states
+```
+
+The gate is **multiplicative**, and it gates in the 256-dimensional per-layer space rather than
+in the 1536-dimensional model space. `per_layer_input_gate` projects `hidden_size` down to
+`hidden_size_per_layer_input`, the activation `config.hidden_activation` is applied to that
+projection, and the per-layer embedding multiplies the activated gate elementwise.
+`per_layer_projection` maps back up to `hidden_size`, `post_per_layer_input_norm` normalizes, and
+the result is added to the residual. The full layer order is therefore: attention with residual,
+feed-forward with residual, per-layer-embedding block with residual, then `layer_scalar`.
+
+### The E4B shared-KV layer boundary
+
+Resolved as to the boundary formula, and revised as to the donor.
+
+`Gemma4TextAttention.__init__` (`modeling_gemma4.py`, lines 1186-1191) computes:
+
+```python
+first_kv_shared_layer_idx = self.config.num_hidden_layers - getattr(self.config, "num_kv_shared_layers", 0)
+self.is_kv_shared_layer = layer_idx >= first_kv_shared_layer_idx >= 0
+prev_layers = config.layer_types[:first_kv_shared_layer_idx]
+self.store_full_length_kv = not self.is_kv_shared_layer and layer_idx == len(prev_layers) - 1 - prev_layers[
+    ::-1
+].index(config.layer_types[layer_idx])
+```
+
+The boundary is `num_hidden_layers - num_kv_shared_layers`, confirming the tail convention: 15 on
+E2B (35 layers, 20 shared) and 24 on E4B (42 layers, 18 shared). `Gemma4TextMLP` uses the same
+expression for the double-wide feed-forward region (lines 1068-1070), which is why the E2B
+feed-forward widths corroborate the boundary; the correlation is structural, not coincidental,
+and it holds on E4B for the same reason. `conversion/gemma.py` line 682 repeats the formula as
+`first_kv_shared_layer_idx = self.block_count - num_kv_shared_layers`.
+
+There are **two donor layers, not one**. `store_full_length_kv` selects, for each layer type
+independently, the last non-shared layer of that type, and the cache is keyed by layer type:
+`shared_kv_states[self.layer_type] = key_states, value_states` (line 1259), read back as
+`key_states, value_states = shared_kv_states[self.layer_type]` (line 1241). A shared
+`full_attention` layer reuses the last non-shared `full_attention` layer's keys and values; a
+shared `sliding_attention` layer reuses the last non-shared `sliding_attention` layer's. Any
+implementation that designates a single donor layer for all shared layers is wrong for one of the
+two regimes.
+
+The comment at lines 1237-1239 records why the donor state is used rather than the cache: a
+sliding layer's own cache does not retain the full sequence once the window is passed, so
+`shared_kv_states` is consulted even when `past_key_values` is present.
+
+### `attention_k_eq_v` semantics
+
+Resolved, and narrower than the name suggests. `Gemma4TextAttention.__init__` sets
+`self.use_alternative_attention = config.attention_k_eq_v and not self.is_sliding`
+(`modeling_gemma4.py`, line 1179), so the sharing applies to **full-attention layers only**. Where
+it applies, `v_proj` is not constructed at all (lines 1206-1212) and the forward pass sets
+`value_states = self.v_proj(hidden_states).view(hidden_shape) if self.v_proj is not None else key_states`
+(line 1247). The value states are the key states before `k_norm` and before rotary embedding;
+`v_norm` is then applied to them separately (line 1253), and `v_norm` is constructed with
+`with_scale=False` (line 1201). Key and value therefore share the projection output, not the
+post-norm post-rotary tensor.
+
 ## Open questions
 
 Recorded rather than guessed. Resolve these against the `transformers` implementation at the
 pinned revision before relying on any assumption about them.
 
-- **The `proportional` rope type.** Its exact scaling formula is not defined in `config.json`
-  and does not correspond to a rope scaling name in earlier Gemma releases. The interaction
-  between `rope_type: proportional`, `partial_rotary_factor`, and `rope_theta` requires reading
-  the implementation.
-- **`layer_scalar`.** Every layer carries a scalar of shape `[1]` with no corresponding
-  configuration field. Its position in the residual or attention path is undetermined.
-- **The exact per-layer embedding data path.** The tensor names establish which projections
-  exist, but the order of operations, where the per-layer embedding joins the residual stream,
-  and whether `per_layer_input_gate` gates additively or multiplicatively, are not determined
-  by shapes alone.
-- **The E4B shared-KV layer boundary.** The E2B tail convention is confirmed by the
-  double-wide MLP correlation. E4B has no such corroborating signal, so its 18-layer boundary
-  is assumed rather than verified.
+- **Whether the released E-series checkpoints match the shared-KV weight layout of the modeling
+  code.** `modeling_gemma4.py` line 1199 constructs `k_proj` and `v_proj` only when
+  `not self.is_kv_shared_layer`, which for E2B implies 15 layers carrying key and value
+  projections. The E2B safetensors headers record `k_proj.weight` on all 35 language-model layers
+  (28 at `[256, 1536]` and 7 at `[512, 1536]`, `/work/gemma4-safetensors.txt` lines 414 and 529),
+  and the GGUF inventory likewise lists `attn_k.weight` for all 35 blocks
+  (`/work/gemma4-gguf.txt` lines 613-628). The code and the checkpoint disagree about whether
+  shared layers carry key and value weights. Whether the surplus tensors are unused residue, or
+  the released weights predate the code, was not settled from the sources read. This matters
+  because it means the absence of `attn_k` is **not** a reliable shared-KV signature for these
+  files.
 - **Tensor-level data for 12B and 31B.** Not collected. All statements about those two models
   derive from `config.json`.
 - **`use_bidirectional_attention: "vision"`.** Present on 12B and 31B, `null` on the E-series.
-  Its effect on the text path, if any, is undetermined.
-- **`attention_k_eq_v` semantics.** The name implies key and value share a tensor, but this has
-  not been confirmed against 12B or 31B weights.
+  `modeling_gemma4.py` line 1183 uses only the comparison
+  `self.is_causal = config.use_bidirectional_attention != "all"`, so the `"vision"` value takes
+  the same branch as `null` for that flag. Whether it changes the text path through the mask
+  construction was not traced and remains undetermined.
+- **The numeric value of `layer_scalar` in the released checkpoints.** The transcripts record the
+  shape `[1]` but not the stored value, so whether the multiplication is a no-op in practice is
+  not established.
 
 ## Reproducing this document
 

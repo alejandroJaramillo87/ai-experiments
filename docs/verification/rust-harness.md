@@ -563,7 +563,7 @@ Chat mode (`--chat`) is the decode-heavy complement to the prefill-heavy
 agent workload; within one process each turn delta-prefills only the new
 turn, which makes this a cleaner vehicle for the RH.4 claim. The stop
 behavior of the real instruction-tuned model is unconfirmed: the session
-stops at the tokenizer EOS, and a distinct `<end_of_turn>` terminator
+stops at the tokenizer EOS, and a distinct `<turn|>` terminator
 would instead run to the `--max-tokens` budget with the trailing marker
 trimmed from the reply. Record which behavior is observed.
 
