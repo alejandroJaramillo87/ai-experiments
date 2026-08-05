@@ -6,7 +6,7 @@
  * the path the real backend slots into; only the forward pass is scripted.
  */
 
-use harness::agent::Agent;
+use harness::agent::{Agent, Generator};
 use harness::generator::SessionGenerator;
 use harness::permissions::Permissions;
 use harness::template::{render_entry, MODEL_TURN_OPEN};
@@ -93,6 +93,66 @@ fn agent_loop_runs_through_tokenizer_and_session() {
 }
 
 #[test]
+fn count_tokens_counts_what_complete_will_encode() {
+    // compact::should_compact divides this against the context budget, and
+    // it is the only production token counter. Every test that reaches
+    // should_compact drives a Scripted generator inheriting the trait's
+    // text.len()/4 default, so without this the real body was unexercised:
+    // replacing it with Ok(0) left the whole suite green.
+    let tokenizer = byte_tokenizer();
+    let bos_id = tokenizer.bos();
+    let vocab_len = tokenizer.vocab_len();
+    let session = Session::new(Box::new(MockModel::new(vocab_len, vec![])), 4096).unwrap();
+    let mut generator = SessionGenerator::new(
+        session,
+        byte_tokenizer(),
+        SamplingParams {
+            temperature: 0.0,
+            top_p: 1.0,
+            seed: 0,
+        },
+        64,
+    )
+    .unwrap();
+
+    let prompt = format!(
+        "{}{}{MODEL_TURN_OPEN}",
+        harness::template::BOS,
+        render_entry(&Entry {
+            role: Role::User,
+            content: "count me".to_string(),
+            replaces: None,
+        })
+    );
+    // Of the template's literals only BOS is in this fixture's vocabulary,
+    // so BOS collapses to one id and the rest byte-expands. Derived from the
+    // tokenizer rather than written as a literal, since the byte count of
+    // the turn framing is not the property under test.
+    let expected = tokenizer
+        .encode(&prompt.replace(harness::template::BOS, ""))
+        .unwrap()
+        .len()
+        + 1;
+
+    assert_eq!(
+        generator.count_tokens(&prompt).unwrap(),
+        expected,
+        "count_tokens disagrees with the encoding complete performs"
+    );
+    // The prompt carries its own BOS, so no id is added back on top of it.
+    assert_eq!(
+        tokenizer
+            .encode_prompt(&prompt, &[harness::template::BOS])
+            .unwrap()
+            .iter()
+            .filter(|&&id| id == bos_id)
+            .count(),
+        1,
+        "the prompt resolved to more or fewer than one BOS id"
+    );
+}
+
+#[test]
 fn compaction_style_splice_reprefills_only_from_the_splice_point() {
     // A compaction rewrites the middle of the prompt while keeping the head.
     // The session must truncate the KV cache to the kept head and prefill
@@ -104,11 +164,10 @@ fn compaction_style_splice_reprefills_only_from_the_splice_point() {
     let mut session = Session::new(Box::new(mock), 4096).unwrap();
 
     let enc = |s: &str| tokenizer.encode(s).unwrap();
-    let head = enc("<start_of_turn>user\nthe task<end_of_turn>\n");
-    let middle = enc("<start_of_turn>model\nlong exchange<end_of_turn>\n");
-    let tail = enc("<start_of_turn>user\nlatest<end_of_turn>\n");
-    let summary =
-        enc("<start_of_turn>user\nSummary of earlier conversation:\nshort<end_of_turn>\n");
+    let head = enc("<|turn>user\nthe task<turn|>\n");
+    let middle = enc("<|turn>model\nlong exchange<turn|>\n");
+    let tail = enc("<|turn>user\nlatest<turn|>\n");
+    let summary = enc("<|turn>user\nSummary of earlier conversation:\nshort<turn|>\n");
 
     let before: Vec<Token> = [head.clone(), middle, tail.clone()].concat();
     session.sync(&before).unwrap();

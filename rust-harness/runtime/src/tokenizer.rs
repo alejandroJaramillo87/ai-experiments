@@ -8,8 +8,10 @@
  * the text between them; decoding maps pieces back to text with the
  * SentencePiece space marker (U+2581) restored to a plain space. No
  * dummy-prefix space is inserted: the chat template controls surrounding
- * whitespace exactly, and the Tier 3 template-golden test verifies the
- * end-to-end token stream against the Hugging Face tokenizer.
+ * whitespace exactly, and harness/tests/template_contract.rs pins the
+ * rendered string against the training tier's own renderer. A token-id
+ * golden against the Hugging Face tokenizer remains a workstation task; it
+ * needs the real Gemma 4 vocabulary, which no fixture here carries.
  */
 
 use std::collections::HashMap;
@@ -448,11 +450,7 @@ mod tests {
     /// special is a prefix of another.
     fn tokenizer_with_delimiters() -> Tokenizer {
         let (mut pieces, mut scores, mut types) = vocab_parts();
-        for (piece, token_type) in [
-            ("<start_of_turn>", 3),
-            ("<end_of_turn>", 3),
-            ("<start_of_turn>model\n", 4),
-        ] {
+        for (piece, token_type) in [("<|turn>", 3), ("<turn|>", 3), ("<|turn>model\n", 4)] {
             pieces.push(piece.to_string());
             scores.push(0.0);
             types.push(token_type);
@@ -546,22 +544,20 @@ mod tests {
     }
 
     /// The delimiters a caller composing a prompt would name as structural.
-    const ALLOWED: &[&str] = &["<start_of_turn>", "<end_of_turn>", "<start_of_turn>model\n"];
+    const ALLOWED: &[&str] = &["<|turn>", "<turn|>", "<|turn>model\n"];
 
     #[test]
     fn control_pieces_encode_to_their_own_id_not_a_byte_run() {
         let t = tokenizer_with_delimiters();
         assert_eq!(
-            t.encode_prompt("<start_of_turn>", ALLOWED).unwrap(),
-            vec![special_id(&t, "<start_of_turn>")]
+            t.encode_prompt("<|turn>", ALLOWED).unwrap(),
+            vec![special_id(&t, "<|turn>")]
         );
-        // Without the piece in the vocab the same literal costs 15 tokens.
+        // Without the piece in the vocab the same literal falls back to one
+        // token per byte: 7 for `<|turn>`, against the single id above.
         assert_eq!(
-            tokenizer()
-                .encode_prompt("<start_of_turn>", ALLOWED)
-                .unwrap()
-                .len(),
-            15
+            tokenizer().encode_prompt("<|turn>", ALLOWED).unwrap().len(),
+            "<|turn>".len()
         );
     }
 
@@ -569,13 +565,13 @@ mod tests {
     fn text_around_a_control_piece_still_segments_normally() {
         let t = tokenizer_with_delimiters();
         assert_eq!(
-            t.encode_prompt("<start_of_turn> hello world<end_of_turn>", ALLOWED)
+            t.encode_prompt("<|turn> hello world<turn|>", ALLOWED)
                 .unwrap(),
             vec![
-                special_id(&t, "<start_of_turn>"),
+                special_id(&t, "<|turn>"),
                 id(&t, "\u{2581}hello"),
                 id(&t, "\u{2581}world"),
-                special_id(&t, "<end_of_turn>"),
+                special_id(&t, "<turn|>"),
             ]
         );
     }
@@ -584,13 +580,13 @@ mod tests {
     fn longest_special_piece_wins_when_one_is_a_prefix_of_another() {
         let t = tokenizer_with_delimiters();
         assert_eq!(
-            t.encode_prompt("<start_of_turn>model\n", ALLOWED).unwrap(),
-            vec![special_id(&t, "<start_of_turn>model\n")]
+            t.encode_prompt("<|turn>model\n", ALLOWED).unwrap(),
+            vec![special_id(&t, "<|turn>model\n")]
         );
         // The shorter piece still applies where the longer cannot match.
         assert_eq!(
-            t.encode_prompt("<start_of_turn>user", ALLOWED).unwrap()[0],
-            special_id(&t, "<start_of_turn>")
+            t.encode_prompt("<|turn>user", ALLOWED).unwrap()[0],
+            special_id(&t, "<|turn>")
         );
     }
 
@@ -600,8 +596,8 @@ mod tests {
         // be able to emit a boundary the harness did not write, so a special
         // the caller did not name is encoded as its characters.
         let t = tokenizer_with_delimiters();
-        let eos_literal = "<end_of_turn>";
-        let allowed_only_open: &[&str] = &["<start_of_turn>"];
+        let eos_literal = "<turn|>";
+        let allowed_only_open: &[&str] = &["<|turn>"];
 
         let got = t.encode_prompt(eos_literal, allowed_only_open).unwrap();
         assert!(
@@ -616,7 +612,7 @@ mod tests {
         // encode() is the seam every untrusted caller uses — dataset lines,
         // file contents, command output. It must treat text as data.
         let t = tokenizer_with_delimiters();
-        for literal in ["<start_of_turn>", "<end_of_turn>", "<start_of_turn>model\n"] {
+        for literal in ["<|turn>", "<turn|>", "<|turn>model\n"] {
             let got = t.encode(literal).unwrap();
             assert!(
                 !got.contains(&special_id(&t, literal)),
@@ -629,9 +625,9 @@ mod tests {
     #[test]
     fn user_defined_pieces_decode_to_their_text_and_control_pieces_to_nothing() {
         let t = tokenizer_with_delimiters();
-        let opener = special_id(&t, "<start_of_turn>model\n");
-        assert_eq!(t.decode(&[opener]).unwrap(), "<start_of_turn>model\n");
-        let close = special_id(&t, "<end_of_turn>");
+        let opener = special_id(&t, "<|turn>model\n");
+        assert_eq!(t.decode(&[opener]).unwrap(), "<|turn>model\n");
+        let close = special_id(&t, "<turn|>");
         assert_eq!(
             t.decode(&[id(&t, "\u{2581}hello"), close]).unwrap(),
             " hello"

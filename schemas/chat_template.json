@@ -1,0 +1,56 @@
+{
+  "contract": "chat_template",
+  "description": "The Gemma 4 chat template: the byte string a conversation renders to before tokenization, shared by the training tier and the rust-harness prompt builders",
+  "writers": [
+    "training/models/families.py (_GEMMA4_CHAT_TEMPLATE, CHAT_TEMPLATE_VERSION)",
+    "rust-harness/harness/src/template.rs (TURN_OPEN, TURN_CLOSE, BOS, CHAT_TEMPLATE_VERSION)"
+  ],
+  "readers": [
+    "training/data/sft.py (render_segments)",
+    "rust-harness/harness/src/{agent,chat,compact}.rs (incremental prompt builders)"
+  ],
+  "guarded_by": [
+    "rust-harness/harness/tests/template_contract.rs",
+    "tests/training/test_chat_template_contract.py",
+    "tests/training/test_sft.py (GOLDEN_RENDERED)"
+  ],
+  "chat_template_version": 2,
+  "spec": {
+    "bos": "<bos>",
+    "turn_prefix": "<|turn>{role}\n",
+    "eot": "<turn|>",
+    "turn_suffix": "\n",
+    "assistant_role": "model",
+    "trim_content": true
+  },
+  "markers": {
+    "rendered": [
+      "<|turn>",
+      "<turn|>"
+    ],
+    "neutralized_in_content": [
+      "<bos>",
+      "<|turn>",
+      "<turn|>",
+      "<|channel>",
+      "<channel|>",
+      "<|tool_call>",
+      "<tool_call|>",
+      "<|tool>",
+      "<tool|>",
+      "<|tool_response>",
+      "<tool_response|>",
+      "<|think|>",
+      "<|\"|>"
+    ]
+  },
+  "notes": {
+    "version_lockstep": "chat_template_version is CHAT_TEMPLATE_VERSION on both sides. Version 2 corrected Gemma 4 from the Gemma 3 <start_of_turn>/<end_of_turn> framing. A prepared SFT dataset records the version in its manifest and training/data/sft.py refuses a stale one, so a template change invalidates stale artifacts rather than silently retraining against a different prompt.",
+    "rendered_is_a_subset_of_markers": "The tokenizer defines channel, tool-call, tool, and think markers that neither writer renders. The canonical template strips thought channels from history, and the harness carries a tool call as JSON inside a model turn. They appear here only so both sides neutralize the same set in untrusted content; emitting them would diverge from the training tier.",
+    "neutralization_is_harness_only": "neutralized_in_content is the harness's set, pinned exactly by rust-harness/harness/src/template.rs::MARKERS. The training tier renders trusted curated conversations and does not sanitize, so it has no counterpart to compare; the Python side asserts only that what it renders, and the thinking_markers it refuses in SFT sources, are covered here. bos is in the set because template.rs writes it as prompt text and generator::PROMPT_SPECIALS resolves that literal to the boundary id, so unneutralized content carrying it would start a second sequence.",
+    "trim_content_follows_python": "trim_content true means Python's str.strip, which trims by str.isspace. That set is the Unicode White_Space property plus the C0 separators U+001C-U+001F, so Rust's str::trim is not equivalent: template.rs trims with is_python_space instead. A tool result carrying a separator byte at a content edge is the reachable case, and the whitespace-edged fixture in template_contract.rs pins it against the real Python renderer.",
+    "roles_are_not_comparable": "The two tiers enumerate roles differently. Python takes a role string per message and maps only the assistant role through assistant_role. Rust maps its own Role enum, folding Tool onto user and Compaction onto system, because Transcript::effective folds compactions into System before rendering. The rendered turn framing is identical; the role vocabulary that reaches it is not.",
+    "bos_placement": "Python emits bos as the first segment of render_segments. Rust emits it from template::render and from each incremental prompt builder, because template::render is not on the harness prompt path. Both produce exactly one bos at offset 0.",
+    "open_model_turn": "Rust appends '<|turn>model\\n' to a prompt to open the turn the model completes. Python renders closed conversations for training and never appends it, so a rendered-string comparison must stop at the last closed turn."
+  }
+}

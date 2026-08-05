@@ -14,12 +14,12 @@ use std::io::{BufRead, Write};
 use anyhow::{Context, Result};
 
 use crate::agent::Generator;
-use crate::template::{render_entry, MODEL_TURN_OPEN, TURN_CLOSE};
+use crate::template::{self, render_entry, MODEL_TURN_OPEN, TURN_CLOSE};
 use crate::transcript::{Entry, Role, Transcript};
 
 /// Strip a trailing turn delimiter. The session stops at the tokenizer EOS,
 /// but an instruction-tuned Gemma may close its turn with a distinct
-/// <end_of_turn> token that then survives into the decoded text.
+/// `<turn|>` token that then survives into the decoded text.
 fn trim_reply(output: &str) -> &str {
     let trimmed = output.trim_end();
     trimmed
@@ -30,7 +30,7 @@ fn trim_reply(output: &str) -> &str {
 
 /// The memory turn (when present) followed by every effective entry.
 fn render_all(memory: Option<&str>, transcript: &Transcript) -> String {
-    let mut rendered = String::new();
+    let mut rendered = String::from(template::BOS);
     if let Some(content) = memory {
         rendered.push_str(&render_entry(&Entry {
             role: Role::System,
@@ -129,6 +129,32 @@ mod tests {
     }
 
     #[test]
+    fn the_chat_prompt_opens_with_a_single_bos() {
+        // template::render has no non-test caller: every real prompt is
+        // built incrementally here, in agent.rs, and in compact.rs, so BOS
+        // has to be seeded at each builder or it never reaches the model.
+        let dir = tempfile::tempdir().unwrap();
+        let mut t = transcript_in(&dir);
+        let mut g = Scripted {
+            replies: vec!["hello", "again"],
+            prompts: vec![],
+        };
+        run_chat(
+            &mut g,
+            &mut t,
+            Some("project notes"),
+            0.8,
+            "hi\nmore\n".as_bytes(),
+            Vec::new(),
+        )
+        .unwrap();
+        for (i, p) in g.prompts.iter().enumerate() {
+            assert!(p.starts_with(template::BOS), "prompt {i}: {p}");
+            assert_eq!(p.matches(template::BOS).count(), 1, "prompt {i}: {p}");
+        }
+    }
+
+    #[test]
     fn prompts_grow_append_only_across_turns() {
         let dir = tempfile::tempdir().unwrap();
         let mut t = transcript_in(&dir);
@@ -150,7 +176,7 @@ mod tests {
         // Turn 2's prompt extends turn 1's closed-turn prefix.
         let prefix = g.prompts[0].strip_suffix(MODEL_TURN_OPEN).unwrap();
         assert!(g.prompts[1].starts_with(prefix));
-        assert!(g.prompts[1].contains("<start_of_turn>model\nhello<end_of_turn>"));
+        assert!(g.prompts[1].contains(&format!("{}model\nhello{TURN_CLOSE}", template::TURN_OPEN)));
         assert!(g.prompts[1].ends_with(MODEL_TURN_OPEN));
     }
 
@@ -187,13 +213,17 @@ mod tests {
     }
 
     #[test]
-    fn trailing_end_of_turn_is_trimmed_from_the_reply() {
+    fn a_trailing_turn_close_is_trimmed_from_the_reply() {
         let dir = tempfile::tempdir().unwrap();
         let mut t = transcript_in(&dir);
+        // Spelled out rather than interpolated because Scripted::replies
+        // holds &'static str; the assertion below fails if it drifts from
+        // template::TURN_CLOSE.
         let mut g = Scripted {
-            replies: vec!["fine, thanks<end_of_turn>"],
+            replies: vec!["fine, thanks<turn|>"],
             prompts: vec![],
         };
+        assert!(g.replies[0].ends_with(TURN_CLOSE));
         let mut out = Vec::new();
         run_chat(
             &mut g,
@@ -226,7 +256,16 @@ mod tests {
                 Vec::new(),
             )
             .unwrap();
-            assert!(g.prompts[0].starts_with("<start_of_turn>user\nproject notes<end_of_turn>\n"));
+            // Memory is a System entry, so it leads as a native system turn.
+            assert!(
+                g.prompts[0].starts_with(&format!(
+                    "{}{}system\nproject notes{TURN_CLOSE}\n",
+                    template::BOS,
+                    template::TURN_OPEN
+                )),
+                "{}",
+                g.prompts[0]
+            );
         }
         // Resume: memory still renders before the persisted turns, and the
         // transcript on disk carries only the real conversation.
@@ -290,7 +329,7 @@ mod tests {
         .unwrap();
         // Real turns only: memory, the user turn, and the open model turn.
         assert_eq!(g.prompts[0].matches(crate::template::TURN_OPEN).count(), 3);
-        assert!(g.prompts[0].contains("[start_of_turn]model"));
+        assert!(g.prompts[0].contains("[|turn]model"), "{}", g.prompts[0]);
     }
 
     /// Scripted generator with a context budget, so the automatic threshold

@@ -286,9 +286,28 @@ fn memory_leads_the_agent_prompt_and_never_persists() {
     agent
         .run_task(&mut generator, "task", 2, |_| false)
         .unwrap();
-    assert!(
-        generator.prompts[0].starts_with("<start_of_turn>user\nprefer small diffs<end_of_turn>\n")
+    // Memory is a System entry, and Gemma 4 has a native system role, so it
+    // leads as a system turn rather than the user turn Gemma 3 forced.
+    let expected = format!(
+        "{}{}system\nprefer small diffs{}\n",
+        harness::template::BOS,
+        harness::template::TURN_OPEN,
+        harness::template::TURN_CLOSE
     );
+    assert!(
+        generator.prompts[0].starts_with(&expected),
+        "{}",
+        generator.prompts[0]
+    );
+    // BOS is written once, by the template tier, and never repeated as the
+    // incremental buffer grows or is rebuilt after a compaction.
+    for (i, p) in generator.prompts.iter().enumerate() {
+        assert_eq!(
+            p.matches(harness::template::BOS).count(),
+            1,
+            "prompt {i}: {p}"
+        );
+    }
     // The memory turn is synthetic: the persisted transcript holds only the
     // task and the answer.
     let resumed = Transcript::open(&dir.path().join("s.jsonl")).unwrap();
