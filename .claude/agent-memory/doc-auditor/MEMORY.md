@@ -1,2 +1,3 @@
 - [Dual-SSD identity conflict](project_dual_ssd_identity_conflict.md) — hardware vs storage vs backup docs disagree on which SSD is OS and which is /mnt/ai-data; needs host lsblk
 - [Storage tree sources of truth](reference_storage_tree_sources.md) — /mnt/ai-data dirs come from DIRS, storage_check loops, Makefile interp-dirs, plus run-time creators
+- [Gemma 4 E2B config contamination](project_gemma4_e2b_config_contamination.md) — local E2B snapshot holds E4B's config.json; trust tensor shapes, not that config, when auditing docs/models/gemma-4.md

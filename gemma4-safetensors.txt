@@ -1,0 +1,1540 @@
+Gemma 4 header transcript
+Generated: 2026-08-05T02:33:29Z
+Host: Rico
+Verifies: docs/models/gemma-4.md
+
+--- gemma-4-E2B — repository layout (/mnt/ai-data/models/hf/gemma-4-E2B) ---
+
+total 10037952
+drwxrwxr-x 3 alejandro alejandro        4096 Aug  4 19:33 .
+drwxr-xr-x 5 alejandro alejandro        4096 Aug  4 16:34 ..
+drwxrwxr-x 3 alejandro alejandro        4096 Aug  4 19:33 .cache
+-rw-rw-r-- 1 alejandro alejandro        4914 Aug  4 19:33 config.json
+-rw-rw-r-- 1 alejandro alejandro         181 Aug  4 16:25 generation_config.json
+-rw-rw-r-- 1 alejandro alejandro 10246621918 Aug  4 17:07 model.safetensors
+-rw-rw-r-- 1 alejandro alejandro        1689 Aug  4 16:25 processor_config.json
+-rw-rw-r-- 1 alejandro alejandro       27810 Aug  4 16:33 README.md
+-rw-rw-r-- 1 alejandro alejandro         881 Aug  4 16:33 tokenizer_config.json
+-rw-rw-r-- 1 alejandro alejandro    32170070 Aug  4 16:25 tokenizer.json
+
+--- gemma-4-E2B — shard index presence ---
+
+model.safetensors.index.json absent, as documented
+
+--- gemma-4-E2B — recorded revision ---
+
+expected revision (from doc): d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f
+resolved path: /mnt/ai-data/models/hf/gemma-4-E2B
+
+--- gemma-4-E2B — config.json blob hash ---
+
+expected blob (from doc): 5f0662eb398ede0ab1515c4760e13bcd6bf13f2f
+actual blob:              5f0662eb398ede0ab1515c4760e13bcd6bf13f2f
+
+--- gemma-4-E2B — config.json (documented fields) ---
+
+architectures: ['Gemma4ForConditionalGeneration']
+top-level model_type: gemma4
+text model_type: gemma4_text
+transformers_version: 5.5.0.dev0
+
+num_hidden_layers: 35
+hidden_size: 1536
+intermediate_size: 6144
+num_attention_heads: 8
+num_key_value_heads: 1
+num_global_key_value_heads: None
+num_kv_shared_layers: 20
+hidden_size_per_layer_input: 256
+vocab_size_per_layer_input: 262144
+sliding_window: 512
+max_position_embeddings: 131072
+attention_k_eq_v: False
+use_double_wide_mlp: True
+use_bidirectional_attention: None
+head_dim: 256
+global_head_dim: 512
+vocab_size: 262144
+hidden_activation: gelu_pytorch_tanh
+rms_norm_eps: 1e-06
+final_logit_softcapping: 30.0
+tie_word_embeddings: True
+attention_bias: False
+attention_dropout: 0.0
+initializer_range: 0.02
+enable_moe_block: False
+num_experts: None
+top_k_experts: None
+rope_theta: <absent>
+rope_local_base_freq: <absent>
+partial_rotary_factor: <absent>
+dtype: bfloat16
+
+bos_token_id: 2
+eos_token_id: 1
+pad_token_id: 0
+boi_token_id: 255999
+boa_token_id: 256000
+image_token_id: 258880
+audio_token_id: 258881
+eoi_token_id: 258882
+eoa_token_id: 258883
+video_token_id: 258884
+
+rope_parameters/rope_scaling: {"full_attention": {"partial_rotary_factor": 0.25, "rope_theta": 1000000.0, "rope_type": "proportional"}, "sliding_attention": {"rope_theta": 10000.0, "rope_type": "default"}}
+
+layer_types length: 35
+distinct: ['full_attention', 'sliding_attention']
+full_attention indices: [4, 9, 14, 19, 24, 29, 34]
+final layer type: full_attention
+
+--- gemma-4-E2B — config.json (verbatim) ---
+
+{
+    "architectures": [
+        "Gemma4ForConditionalGeneration"
+    ],
+    "audio_config": {
+        "_name_or_path": "",
+        "architectures": null,
+        "attention_chunk_size": 12,
+        "attention_context_left": 13,
+        "attention_context_right": 0,
+        "attention_invalid_logits_value": -1000000000.0,
+        "attention_logit_cap": 50.0,
+        "chunk_size_feed_forward": 0,
+        "conv_kernel_size": 5,
+        "dtype": "bfloat16",
+        "gradient_clipping": 10000000000.0,
+        "hidden_act": "silu",
+        "hidden_size": 1024,
+        "id2label": {
+            "0": "LABEL_0",
+            "1": "LABEL_1"
+        },
+        "initializer_range": 0.02,
+        "is_encoder_decoder": false,
+        "label2id": {
+            "LABEL_0": 0,
+            "LABEL_1": 1
+        },
+        "model_type": "gemma4_audio",
+        "num_attention_heads": 8,
+        "num_hidden_layers": 12,
+        "output_attentions": false,
+        "output_hidden_states": false,
+        "output_proj_dims": 1536,
+        "problem_type": null,
+        "residual_weight": 0.5,
+        "return_dict": true,
+        "rms_norm_eps": 1e-06,
+        "subsampling_conv_channels": [
+            128,
+            32
+        ],
+        "use_clipped_linears": true
+    },
+    "audio_token_id": 258881,
+    "boa_token_id": 256000,
+    "boi_token_id": 255999,
+    "dtype": "bfloat16",
+    "eoa_token_id": 258883,
+    "eoa_token_index": 258883,
+    "eoi_token_id": 258882,
+    "image_token_id": 258880,
+    "initializer_range": 0.02,
+    "model_type": "gemma4",
+    "text_config": {
+        "attention_bias": false,
+        "attention_dropout": 0.0,
+        "attention_k_eq_v": false,
+        "bos_token_id": 2,
+        "dtype": "bfloat16",
+        "enable_moe_block": false,
+        "eos_token_id": 1,
+        "expert_intermediate_size": null,
+        "final_logit_softcapping": 30.0,
+        "global_head_dim": 512,
+        "head_dim": 256,
+        "hidden_activation": "gelu_pytorch_tanh",
+        "hidden_size": 1536,
+        "hidden_size_per_layer_input": 256,
+        "initializer_range": 0.02,
+        "intermediate_size": 6144,
+        "layer_types": [
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention"
+        ],
+        "max_position_embeddings": 131072,
+        "model_type": "gemma4_text",
+        "num_attention_heads": 8,
+        "num_experts": null,
+        "num_global_key_value_heads": null,
+        "num_hidden_layers": 35,
+        "num_key_value_heads": 1,
+        "num_kv_shared_layers": 20,
+        "pad_token_id": 0,
+        "rms_norm_eps": 1e-06,
+        "rope_parameters": {
+            "full_attention": {
+                "partial_rotary_factor": 0.25,
+                "rope_theta": 1000000.0,
+                "rope_type": "proportional"
+            },
+            "sliding_attention": {
+                "rope_theta": 10000.0,
+                "rope_type": "default"
+            }
+        },
+        "sliding_window": 512,
+        "tie_word_embeddings": true,
+        "top_k_experts": null,
+        "use_bidirectional_attention": null,
+        "use_cache": true,
+        "use_double_wide_mlp": true,
+        "vocab_size": 262144,
+        "vocab_size_per_layer_input": 262144
+    },
+    "tie_word_embeddings": true,
+    "transformers_version": "5.5.0.dev0",
+    "video_token_id": 258884,
+    "vision_config": {
+        "_name_or_path": "",
+        "architectures": null,
+        "attention_bias": false,
+        "attention_dropout": 0.0,
+        "chunk_size_feed_forward": 0,
+        "default_output_length": 280,
+        "dtype": "bfloat16",
+        "global_head_dim": 64,
+        "head_dim": 64,
+        "hidden_activation": "gelu_pytorch_tanh",
+        "hidden_size": 768,
+        "id2label": {
+            "0": "LABEL_0",
+            "1": "LABEL_1"
+        },
+        "initializer_range": 0.02,
+        "intermediate_size": 3072,
+        "is_encoder_decoder": false,
+        "label2id": {
+            "LABEL_0": 0,
+            "LABEL_1": 1
+        },
+        "max_position_embeddings": 131072,
+        "model_type": "gemma4_vision",
+        "num_attention_heads": 12,
+        "num_hidden_layers": 16,
+        "num_key_value_heads": 12,
+        "output_attentions": false,
+        "output_hidden_states": false,
+        "patch_size": 16,
+        "pooling_kernel_size": 3,
+        "position_embedding_size": 10240,
+        "problem_type": null,
+        "return_dict": true,
+        "rms_norm_eps": 1e-06,
+        "rope_parameters": {
+            "rope_theta": 100.0,
+            "rope_type": "default"
+        },
+        "standardize": false,
+        "use_clipped_linears": true
+    },
+    "vision_soft_tokens_per_image": 280
+}
+
+--- gemma-4-E2B — generation_config.json ---
+
+{
+    "bos_token_id": 2,
+    "do_sample": true,
+    "eos_token_id": 1,
+    "pad_token_id": 0,
+    "temperature": 1.0,
+    "top_k": 64,
+    "top_p": 0.95,
+    "transformers_version": "5.5.0.dev0"
+}
+
+--- gemma-4-E2B — processor_config.json ---
+
+{
+    "audio_ms_per_token": 40,
+    "audio_seq_length": 750,
+    "feature_extractor": {
+        "dither": 0.0,
+        "feature_extractor_type": "Gemma4AudioFeatureExtractor",
+        "feature_size": 128,
+        "fft_length": 512,
+        "fft_overdrive": false,
+        "frame_length": 320,
+        "hop_length": 160,
+        "input_scale_factor": 1.0,
+        "max_frequency": 8000.0,
+        "mel_floor": 0.001,
+        "min_frequency": 0.0,
+        "padding_side": "right",
+        "padding_value": 0.0,
+        "per_bin_mean": null,
+        "per_bin_stddev": null,
+        "preemphasis": 0.0,
+        "preemphasis_htk_flavor": true,
+        "return_attention_mask": true,
+        "sampling_rate": 16000
+    },
+    "image_processor": {
+        "do_convert_rgb": true,
+        "do_normalize": false,
+        "do_rescale": true,
+        "do_resize": true,
+        "image_mean": [
+            0.0,
+            0.0,
+            0.0
+        ],
+        "image_processor_type": "Gemma4ImageProcessor",
+        "image_seq_length": 280,
+        "image_std": [
+            1.0,
+            1.0,
+            1.0
+        ],
+        "max_soft_tokens": 280,
+        "patch_size": 16,
+        "pooling_kernel_size": 3,
+        "resample": 3,
+        "rescale_factor": 0.00392156862745098
+    },
+    "image_seq_length": 280,
+    "processor_class": "Gemma4Processor",
+    "video_processor": {
+        "do_convert_rgb": true,
+        "do_normalize": true,
+        "do_rescale": true,
+        "do_resize": true,
+        "do_sample_frames": true,
+        "image_mean": [
+            0.0,
+            0.0,
+            0.0
+        ],
+        "image_std": [
+            1.0,
+            1.0,
+            1.0
+        ],
+        "max_soft_tokens": 70,
+        "num_frames": 32,
+        "patch_size": 16,
+        "pooling_kernel_size": 3,
+        "resample": 3,
+        "rescale_factor": 0.00392156862745098,
+        "return_metadata": false,
+        "video_processor_type": "Gemma4VideoProcessor"
+    }
+}
+
+--- gemma-4-E2B — tokenizer special tokens ---
+
+tokenizer_class: GemmaTokenizer
+padding_side: left
+model_max_length: 1000000000000000019884624838656
+
+added_tokens_decoder entries: 0
+
+chat_template present: False
+
+--- gemma-4-E2B — safetensors header ---
+
+header bytes: 263952
+tensor count: 2011
+metadata: {"format": "pt"}
+file size bytes: 10246621918
+flat tensor lines: 2011
+
+--- gemma-4-E2B — naming convention coverage ---
+
+expected convention: model\.language_model\.layers\.[0-9]+\.
+tensors total:       2011
+tensors matching:    595
+
+--- gemma-4-E2B — config vs weights (declared layer count) ---
+
+config.json num_hidden_layers: 35
+distinct layer indices in weights: 35
+
+--- gemma-4-E2B — tensor inventory (layer indices collapsed) ---
+
+     35 model.language_model.layers.{L}.pre_feedforward_layernorm.weight [1536] BF16
+     35 model.language_model.layers.{L}.post_per_layer_input_norm.weight [1536] BF16
+     35 model.language_model.layers.{L}.post_feedforward_layernorm.weight [1536] BF16
+     35 model.language_model.layers.{L}.post_attention_layernorm.weight [1536] BF16
+     35 model.language_model.layers.{L}.per_layer_projection.weight [1536, 256] BF16
+     35 model.language_model.layers.{L}.per_layer_input_gate.weight [256, 1536] BF16
+     35 model.language_model.layers.{L}.layer_scalar [1] BF16
+     35 model.language_model.layers.{L}.input_layernorm.weight [1536] BF16
+     28 model.language_model.layers.{L}.self_attn.v_proj.weight [256, 1536] BF16
+     28 model.language_model.layers.{L}.self_attn.q_proj.weight [2048, 1536] BF16
+     28 model.language_model.layers.{L}.self_attn.q_norm.weight [256] BF16
+     28 model.language_model.layers.{L}.self_attn.o_proj.weight [1536, 2048] BF16
+     28 model.language_model.layers.{L}.self_attn.k_proj.weight [256, 1536] BF16
+     28 model.language_model.layers.{L}.self_attn.k_norm.weight [256] BF16
+     20 model.language_model.layers.{L}.mlp.up_proj.weight [12288, 1536] BF16
+     20 model.language_model.layers.{L}.mlp.gate_proj.weight [12288, 1536] BF16
+     20 model.language_model.layers.{L}.mlp.down_proj.weight [1536, 12288] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_norm.weight [64] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_norm.weight [64] BF16
+     16 model.vision_tower.encoder.layers.{L}.pre_feedforward_layernorm.weight [768] BF16
+     16 model.vision_tower.encoder.layers.{L}.post_feedforward_layernorm.weight [768] BF16
+     16 model.vision_tower.encoder.layers.{L}.post_attention_layernorm.weight [768] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.linear.weight [3072, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.linear.weight [3072, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.linear.weight [768, 3072] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.input_layernorm.weight [768] BF16
+     15 model.language_model.layers.{L}.mlp.up_proj.weight [6144, 1536] BF16
+     15 model.language_model.layers.{L}.mlp.gate_proj.weight [6144, 1536] BF16
+     15 model.language_model.layers.{L}.mlp.down_proj.weight [1536, 6144] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.relative_k_proj.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.per_dim_scale [128] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.norm_pre_attn.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.norm_post_attn.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.norm_out.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.pre_layer_norm.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.output_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.output_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.linear.weight [2048, 1024] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.input_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.input_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.output_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.output_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.input_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.input_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.depthwise_conv1d.weight [1024, 1, 5] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.conv_norm.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.pre_layer_norm.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.post_layer_norm.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.output_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.linear.weight [1024, 4096] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.input_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.output_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.linear.weight [4096, 1024] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.input_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.pre_layer_norm.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.post_layer_norm.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.output_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.linear.weight [1024, 4096] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.input_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.output_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.linear.weight [4096, 1024] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.input_max [] BF16
+      7 model.language_model.layers.{L}.self_attn.v_proj.weight [512, 1536] BF16
+      7 model.language_model.layers.{L}.self_attn.q_proj.weight [4096, 1536] BF16
+      7 model.language_model.layers.{L}.self_attn.q_norm.weight [512] BF16
+      7 model.language_model.layers.{L}.self_attn.o_proj.weight [1536, 4096] BF16
+      7 model.language_model.layers.{L}.self_attn.k_proj.weight [512, 1536] BF16
+      7 model.language_model.layers.{L}.self_attn.k_norm.weight [512] BF16
+      1 model.vision_tower.patch_embedder.position_embedding_table [2, 10240, 768] BF16
+      1 model.vision_tower.patch_embedder.input_proj.weight [768, 768] BF16
+      1 model.language_model.per_layer_projection_norm.weight [256] BF16
+      1 model.language_model.per_layer_model_projection.weight [8960, 1536] BF16
+      1 model.language_model.norm.weight [1536] BF16
+      1 model.language_model.embed_tokens.weight [262144, 1536] BF16
+      1 model.language_model.embed_tokens_per_layer.weight [262144, 8960] BF16
+      1 model.embed_vision.embedding_projection.weight [1536, 768] BF16
+      1 model.embed_audio.embedding_projection.weight [1536, 1536] BF16
+      1 model.audio_tower.subsample_conv_projection.layer1.norm.weight [32] BF16
+      1 model.audio_tower.subsample_conv_projection.layer1.conv.weight [32, 128, 3, 3] BF16
+      1 model.audio_tower.subsample_conv_projection.layer0.norm.weight [128] BF16
+      1 model.audio_tower.subsample_conv_projection.layer0.conv.weight [128, 1, 3, 3] BF16
+      1 model.audio_tower.subsample_conv_projection.input_proj_linear.weight [1024, 1024] BF16
+      1 model.audio_tower.output_proj.weight [1536, 1024] BF16
+      1 model.audio_tower.output_proj.bias [1536] BF16
+
+--- gemma-4-E2B — language_model inventory only ---
+
+     35 model.language_model.layers.{L}.pre_feedforward_layernorm.weight [1536] BF16
+     35 model.language_model.layers.{L}.post_per_layer_input_norm.weight [1536] BF16
+     35 model.language_model.layers.{L}.post_feedforward_layernorm.weight [1536] BF16
+     35 model.language_model.layers.{L}.post_attention_layernorm.weight [1536] BF16
+     35 model.language_model.layers.{L}.per_layer_projection.weight [1536, 256] BF16
+     35 model.language_model.layers.{L}.per_layer_input_gate.weight [256, 1536] BF16
+     35 model.language_model.layers.{L}.layer_scalar [1] BF16
+     35 model.language_model.layers.{L}.input_layernorm.weight [1536] BF16
+     28 model.language_model.layers.{L}.self_attn.v_proj.weight [256, 1536] BF16
+     28 model.language_model.layers.{L}.self_attn.q_proj.weight [2048, 1536] BF16
+     28 model.language_model.layers.{L}.self_attn.q_norm.weight [256] BF16
+     28 model.language_model.layers.{L}.self_attn.o_proj.weight [1536, 2048] BF16
+     28 model.language_model.layers.{L}.self_attn.k_proj.weight [256, 1536] BF16
+     28 model.language_model.layers.{L}.self_attn.k_norm.weight [256] BF16
+     20 model.language_model.layers.{L}.mlp.up_proj.weight [12288, 1536] BF16
+     20 model.language_model.layers.{L}.mlp.gate_proj.weight [12288, 1536] BF16
+     20 model.language_model.layers.{L}.mlp.down_proj.weight [1536, 12288] BF16
+     15 model.language_model.layers.{L}.mlp.up_proj.weight [6144, 1536] BF16
+     15 model.language_model.layers.{L}.mlp.gate_proj.weight [6144, 1536] BF16
+     15 model.language_model.layers.{L}.mlp.down_proj.weight [1536, 6144] BF16
+      7 model.language_model.layers.{L}.self_attn.v_proj.weight [512, 1536] BF16
+      7 model.language_model.layers.{L}.self_attn.q_proj.weight [4096, 1536] BF16
+      7 model.language_model.layers.{L}.self_attn.q_norm.weight [512] BF16
+      7 model.language_model.layers.{L}.self_attn.o_proj.weight [1536, 4096] BF16
+      7 model.language_model.layers.{L}.self_attn.k_proj.weight [512, 1536] BF16
+      7 model.language_model.layers.{L}.self_attn.k_norm.weight [512] BF16
+      1 model.language_model.per_layer_projection_norm.weight [256] BF16
+      1 model.language_model.per_layer_model_projection.weight [8960, 1536] BF16
+      1 model.language_model.norm.weight [1536] BF16
+      1 model.language_model.embed_tokens.weight [262144, 1536] BF16
+      1 model.language_model.embed_tokens_per_layer.weight [262144, 8960] BF16
+
+--- gemma-4-E2B — lm_head presence (doc asserts absent) ---
+
+no lm_head tensor, as documented
+
+--- gemma-4-E2B — dtype distribution ---
+
+   2011 BF16
+
+--- gemma-4-E2B — MLP widths per layer (double-wide check) ---
+
+model.language_model.layers.0.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.1.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.2.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.3.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.4.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.5.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.6.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.7.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.8.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.9.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.10.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.11.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.12.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.13.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.14.mlp.gate_proj.weight [6144, 1536] BF16
+model.language_model.layers.15.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.16.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.17.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.18.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.19.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.20.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.21.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.22.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.23.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.24.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.25.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.26.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.27.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.28.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.29.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.30.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.31.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.32.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.33.mlp.gate_proj.weight [12288, 1536] BF16
+model.language_model.layers.34.mlp.gate_proj.weight [12288, 1536] BF16
+
+--- gemma-4-E2B — distinct MLP widths ---
+
+     15 6144
+     20 12288
+
+--- gemma-4-E2B — attention projection shapes (head-dim split) ---
+
+     28 model.language_model.layers.{L}.self_attn.v_proj.weight [256, 1536] BF16
+     28 model.language_model.layers.{L}.self_attn.q_proj.weight [2048, 1536] BF16
+     28 model.language_model.layers.{L}.self_attn.o_proj.weight [1536, 2048] BF16
+     28 model.language_model.layers.{L}.self_attn.k_proj.weight [256, 1536] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.input_max [] BF16
+      7 model.language_model.layers.{L}.self_attn.v_proj.weight [512, 1536] BF16
+      7 model.language_model.layers.{L}.self_attn.q_proj.weight [4096, 1536] BF16
+      7 model.language_model.layers.{L}.self_attn.o_proj.weight [1536, 4096] BF16
+      7 model.language_model.layers.{L}.self_attn.k_proj.weight [512, 1536] BF16
+
+--- gemma-4-E2B — per-layer embedding path ---
+
+     35 model.language_model.layers.{L}.post_per_layer_input_norm.weight [1536] BF16
+     35 model.language_model.layers.{L}.per_layer_projection.weight [1536, 256] BF16
+     35 model.language_model.layers.{L}.per_layer_input_gate.weight [256, 1536] BF16
+     35 model.language_model.layers.{L}.layer_scalar [1] BF16
+      1 model.language_model.per_layer_projection_norm.weight [256] BF16
+      1 model.language_model.per_layer_model_projection.weight [8960, 1536] BF16
+      1 model.language_model.embed_tokens_per_layer.weight [262144, 8960] BF16
+
+--- gemma-4-E2B — zero-dimensional tensors (doc trap 12) ---
+
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.input_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.output_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.input_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.output_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.input_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.output_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.input_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.output_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.input_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.input_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.output_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.output_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.input_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.input_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.output_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.output_min [] BF16
+
+--- gemma-4-E2B — non-language_model tensor families ---
+
+    744 model.audio_tower.layers
+    656 model.vision_tower.encoder
+      5 model.audio_tower.subsample_conv_projection
+      2 model.vision_tower.patch_embedder
+      2 model.audio_tower.output_proj
+      1 model.embed_vision.embedding_projection
+      1 model.embed_audio.embedding_projection
+
+--- gemma-4-E4B — repository layout (/mnt/ai-data/models/hf/gemma-4-E4B) ---
+
+total 15649260
+drwxrwxr-x 3 alejandro alejandro        4096 Aug  4 16:49 .
+drwxr-xr-x 5 alejandro alejandro        4096 Aug  4 16:34 ..
+drwxrwxr-x 3 alejandro alejandro        4096 Aug  4 16:35 .cache
+-rw-rw-r-- 1 alejandro alejandro        5105 Aug  4 16:35 config.json
+-rw-rw-r-- 1 alejandro alejandro         181 Aug  4 16:35 generation_config.json
+-rw-rw-r-- 1 alejandro alejandro        1570 Aug  4 16:35 .gitattributes
+-rw-rw-r-- 1 alejandro alejandro 15992595884 Aug  4 16:49 model.safetensors
+-rw-rw-r-- 1 alejandro alejandro        1689 Aug  4 16:35 processor_config.json
+-rw-rw-r-- 1 alejandro alejandro       27810 Aug  4 16:35 README.md
+-rw-rw-r-- 1 alejandro alejandro         881 Aug  4 16:35 tokenizer_config.json
+-rw-rw-r-- 1 alejandro alejandro    32170070 Aug  4 16:35 tokenizer.json
+
+--- gemma-4-E4B — shard index presence ---
+
+model.safetensors.index.json absent, as documented
+
+--- gemma-4-E4B — recorded revision ---
+
+expected revision (from doc): 411aa17b749aa952df1359d2dcea73917a544d9a
+resolved path: /mnt/ai-data/models/hf/gemma-4-E4B
+
+--- gemma-4-E4B — config.json blob hash ---
+
+expected blob (from doc): 080fd8d51bb6e846df168157c9d57b928a2a2687
+actual blob:              080fd8d51bb6e846df168157c9d57b928a2a2687
+
+--- gemma-4-E4B — config.json (documented fields) ---
+
+architectures: ['Gemma4ForConditionalGeneration']
+top-level model_type: gemma4
+text model_type: gemma4_text
+transformers_version: 5.5.0.dev0
+
+num_hidden_layers: 42
+hidden_size: 2560
+intermediate_size: 10240
+num_attention_heads: 8
+num_key_value_heads: 2
+num_global_key_value_heads: None
+num_kv_shared_layers: 18
+hidden_size_per_layer_input: 256
+vocab_size_per_layer_input: 262144
+sliding_window: 512
+max_position_embeddings: 131072
+attention_k_eq_v: False
+use_double_wide_mlp: False
+use_bidirectional_attention: None
+head_dim: 256
+global_head_dim: 512
+vocab_size: 262144
+hidden_activation: gelu_pytorch_tanh
+rms_norm_eps: 1e-06
+final_logit_softcapping: 30.0
+tie_word_embeddings: True
+attention_bias: False
+attention_dropout: 0.0
+initializer_range: 0.02
+enable_moe_block: False
+num_experts: None
+top_k_experts: None
+rope_theta: <absent>
+rope_local_base_freq: <absent>
+partial_rotary_factor: <absent>
+dtype: bfloat16
+
+bos_token_id: 2
+eos_token_id: 1
+pad_token_id: 0
+boi_token_id: 255999
+boa_token_id: 256000
+image_token_id: 258880
+audio_token_id: 258881
+eoi_token_id: 258882
+eoa_token_id: 258883
+video_token_id: 258884
+
+rope_parameters/rope_scaling: {"full_attention": {"partial_rotary_factor": 0.25, "rope_theta": 1000000.0, "rope_type": "proportional"}, "sliding_attention": {"rope_theta": 10000.0, "rope_type": "default"}}
+
+layer_types length: 42
+distinct: ['full_attention', 'sliding_attention']
+full_attention indices: [5, 11, 17, 23, 29, 35, 41]
+final layer type: full_attention
+
+--- gemma-4-E4B — config.json (verbatim) ---
+
+{
+    "architectures": [
+        "Gemma4ForConditionalGeneration"
+    ],
+    "audio_config": {
+        "_name_or_path": "",
+        "architectures": null,
+        "attention_chunk_size": 12,
+        "attention_context_left": 13,
+        "attention_context_right": 0,
+        "attention_invalid_logits_value": -1000000000.0,
+        "attention_logit_cap": 50.0,
+        "chunk_size_feed_forward": 0,
+        "conv_kernel_size": 5,
+        "dtype": "bfloat16",
+        "gradient_clipping": 10000000000.0,
+        "hidden_act": "silu",
+        "hidden_size": 1024,
+        "id2label": {
+            "0": "LABEL_0",
+            "1": "LABEL_1"
+        },
+        "initializer_range": 0.02,
+        "is_encoder_decoder": false,
+        "label2id": {
+            "LABEL_0": 0,
+            "LABEL_1": 1
+        },
+        "model_type": "gemma4_audio",
+        "num_attention_heads": 8,
+        "num_hidden_layers": 12,
+        "output_attentions": false,
+        "output_hidden_states": false,
+        "output_proj_dims": 1536,
+        "problem_type": null,
+        "residual_weight": 0.5,
+        "return_dict": true,
+        "rms_norm_eps": 1e-06,
+        "subsampling_conv_channels": [
+            128,
+            32
+        ],
+        "use_clipped_linears": true
+    },
+    "audio_token_id": 258881,
+    "boa_token_id": 256000,
+    "boi_token_id": 255999,
+    "dtype": "bfloat16",
+    "eoa_token_id": 258883,
+    "eoa_token_index": 258883,
+    "eoi_token_id": 258882,
+    "image_token_id": 258880,
+    "initializer_range": 0.02,
+    "model_type": "gemma4",
+    "text_config": {
+        "attention_bias": false,
+        "attention_dropout": 0.0,
+        "attention_k_eq_v": false,
+        "bos_token_id": 2,
+        "dtype": "bfloat16",
+        "enable_moe_block": false,
+        "eos_token_id": 1,
+        "expert_intermediate_size": null,
+        "final_logit_softcapping": 30.0,
+        "global_head_dim": 512,
+        "head_dim": 256,
+        "hidden_activation": "gelu_pytorch_tanh",
+        "hidden_size": 2560,
+        "hidden_size_per_layer_input": 256,
+        "initializer_range": 0.02,
+        "intermediate_size": 10240,
+        "layer_types": [
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention"
+        ],
+        "max_position_embeddings": 131072,
+        "model_type": "gemma4_text",
+        "num_attention_heads": 8,
+        "num_experts": null,
+        "num_global_key_value_heads": null,
+        "num_hidden_layers": 42,
+        "num_key_value_heads": 2,
+        "num_kv_shared_layers": 18,
+        "pad_token_id": 0,
+        "rms_norm_eps": 1e-06,
+        "rope_parameters": {
+            "full_attention": {
+                "partial_rotary_factor": 0.25,
+                "rope_theta": 1000000.0,
+                "rope_type": "proportional"
+            },
+            "sliding_attention": {
+                "rope_theta": 10000.0,
+                "rope_type": "default"
+            }
+        },
+        "sliding_window": 512,
+        "tie_word_embeddings": true,
+        "top_k_experts": null,
+        "use_bidirectional_attention": null,
+        "use_cache": true,
+        "use_double_wide_mlp": false,
+        "vocab_size": 262144,
+        "vocab_size_per_layer_input": 262144
+    },
+    "tie_word_embeddings": true,
+    "transformers_version": "5.5.0.dev0",
+    "video_token_id": 258884,
+    "vision_config": {
+        "_name_or_path": "",
+        "architectures": null,
+        "attention_bias": false,
+        "attention_dropout": 0.0,
+        "chunk_size_feed_forward": 0,
+        "default_output_length": 280,
+        "dtype": "bfloat16",
+        "global_head_dim": 64,
+        "head_dim": 64,
+        "hidden_activation": "gelu_pytorch_tanh",
+        "hidden_size": 768,
+        "id2label": {
+            "0": "LABEL_0",
+            "1": "LABEL_1"
+        },
+        "initializer_range": 0.02,
+        "intermediate_size": 3072,
+        "is_encoder_decoder": false,
+        "label2id": {
+            "LABEL_0": 0,
+            "LABEL_1": 1
+        },
+        "max_position_embeddings": 131072,
+        "model_type": "gemma4_vision",
+        "num_attention_heads": 12,
+        "num_hidden_layers": 16,
+        "num_key_value_heads": 12,
+        "output_attentions": false,
+        "output_hidden_states": false,
+        "patch_size": 16,
+        "pooling_kernel_size": 3,
+        "position_embedding_size": 10240,
+        "problem_type": null,
+        "return_dict": true,
+        "rms_norm_eps": 1e-06,
+        "rope_parameters": {
+            "rope_theta": 100.0,
+            "rope_type": "default"
+        },
+        "standardize": false,
+        "use_clipped_linears": true
+    },
+    "vision_soft_tokens_per_image": 280
+}
+
+--- gemma-4-E4B — generation_config.json ---
+
+{
+    "bos_token_id": 2,
+    "do_sample": true,
+    "eos_token_id": 1,
+    "pad_token_id": 0,
+    "temperature": 1.0,
+    "top_k": 64,
+    "top_p": 0.95,
+    "transformers_version": "5.5.0.dev0"
+}
+
+--- gemma-4-E4B — processor_config.json ---
+
+{
+    "audio_ms_per_token": 40,
+    "audio_seq_length": 750,
+    "feature_extractor": {
+        "dither": 0.0,
+        "feature_extractor_type": "Gemma4AudioFeatureExtractor",
+        "feature_size": 128,
+        "fft_length": 512,
+        "fft_overdrive": false,
+        "frame_length": 320,
+        "hop_length": 160,
+        "input_scale_factor": 1.0,
+        "max_frequency": 8000.0,
+        "mel_floor": 0.001,
+        "min_frequency": 0.0,
+        "padding_side": "right",
+        "padding_value": 0.0,
+        "per_bin_mean": null,
+        "per_bin_stddev": null,
+        "preemphasis": 0.0,
+        "preemphasis_htk_flavor": true,
+        "return_attention_mask": true,
+        "sampling_rate": 16000
+    },
+    "image_processor": {
+        "do_convert_rgb": true,
+        "do_normalize": false,
+        "do_rescale": true,
+        "do_resize": true,
+        "image_mean": [
+            0.0,
+            0.0,
+            0.0
+        ],
+        "image_processor_type": "Gemma4ImageProcessor",
+        "image_seq_length": 280,
+        "image_std": [
+            1.0,
+            1.0,
+            1.0
+        ],
+        "max_soft_tokens": 280,
+        "patch_size": 16,
+        "pooling_kernel_size": 3,
+        "resample": 3,
+        "rescale_factor": 0.00392156862745098
+    },
+    "image_seq_length": 280,
+    "processor_class": "Gemma4Processor",
+    "video_processor": {
+        "do_convert_rgb": true,
+        "do_normalize": true,
+        "do_rescale": true,
+        "do_resize": true,
+        "do_sample_frames": true,
+        "image_mean": [
+            0.0,
+            0.0,
+            0.0
+        ],
+        "image_std": [
+            1.0,
+            1.0,
+            1.0
+        ],
+        "max_soft_tokens": 70,
+        "num_frames": 32,
+        "patch_size": 16,
+        "pooling_kernel_size": 3,
+        "resample": 3,
+        "rescale_factor": 0.00392156862745098,
+        "return_metadata": false,
+        "video_processor_type": "Gemma4VideoProcessor"
+    }
+}
+
+--- gemma-4-E4B — tokenizer special tokens ---
+
+tokenizer_class: GemmaTokenizer
+padding_side: left
+model_max_length: 1000000000000000019884624838656
+
+added_tokens_decoder entries: 0
+
+chat_template present: False
+
+--- gemma-4-E4B — safetensors header ---
+
+header bytes: 281040
+tensor count: 2130
+metadata: {"format": "pt"}
+file size bytes: 15992595884
+flat tensor lines: 2130
+
+--- gemma-4-E4B — naming convention coverage ---
+
+expected convention: model\.language_model\.layers\.[0-9]+\.
+tensors total:       2130
+tensors matching:    714
+
+--- gemma-4-E4B — config vs weights (declared layer count) ---
+
+config.json num_hidden_layers: 42
+distinct layer indices in weights: 42
+
+--- gemma-4-E4B — tensor inventory (layer indices collapsed) ---
+
+     42 model.language_model.layers.{L}.pre_feedforward_layernorm.weight [2560] BF16
+     42 model.language_model.layers.{L}.post_per_layer_input_norm.weight [2560] BF16
+     42 model.language_model.layers.{L}.post_feedforward_layernorm.weight [2560] BF16
+     42 model.language_model.layers.{L}.post_attention_layernorm.weight [2560] BF16
+     42 model.language_model.layers.{L}.per_layer_projection.weight [2560, 256] BF16
+     42 model.language_model.layers.{L}.per_layer_input_gate.weight [256, 2560] BF16
+     42 model.language_model.layers.{L}.mlp.up_proj.weight [10240, 2560] BF16
+     42 model.language_model.layers.{L}.mlp.gate_proj.weight [10240, 2560] BF16
+     42 model.language_model.layers.{L}.mlp.down_proj.weight [2560, 10240] BF16
+     42 model.language_model.layers.{L}.layer_scalar [1] BF16
+     42 model.language_model.layers.{L}.input_layernorm.weight [2560] BF16
+     35 model.language_model.layers.{L}.self_attn.v_proj.weight [512, 2560] BF16
+     35 model.language_model.layers.{L}.self_attn.q_proj.weight [2048, 2560] BF16
+     35 model.language_model.layers.{L}.self_attn.q_norm.weight [256] BF16
+     35 model.language_model.layers.{L}.self_attn.o_proj.weight [2560, 2048] BF16
+     35 model.language_model.layers.{L}.self_attn.k_proj.weight [512, 2560] BF16
+     35 model.language_model.layers.{L}.self_attn.k_norm.weight [256] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_norm.weight [64] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_norm.weight [64] BF16
+     16 model.vision_tower.encoder.layers.{L}.pre_feedforward_layernorm.weight [768] BF16
+     16 model.vision_tower.encoder.layers.{L}.post_feedforward_layernorm.weight [768] BF16
+     16 model.vision_tower.encoder.layers.{L}.post_attention_layernorm.weight [768] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.linear.weight [3072, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.linear.weight [3072, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.linear.weight [768, 3072] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.input_layernorm.weight [768] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.relative_k_proj.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.per_dim_scale [128] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.norm_pre_attn.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.norm_post_attn.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.norm_out.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.pre_layer_norm.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.output_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.output_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.linear.weight [2048, 1024] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.input_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.input_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.output_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.output_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.input_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.input_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.depthwise_conv1d.weight [1024, 1, 5] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.conv_norm.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.pre_layer_norm.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.post_layer_norm.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.output_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.linear.weight [1024, 4096] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.input_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.output_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.linear.weight [4096, 1024] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.input_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.pre_layer_norm.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.post_layer_norm.weight [1024] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.output_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.linear.weight [1024, 4096] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.input_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.output_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.linear.weight [4096, 1024] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.input_max [] BF16
+      7 model.language_model.layers.{L}.self_attn.v_proj.weight [1024, 2560] BF16
+      7 model.language_model.layers.{L}.self_attn.q_proj.weight [4096, 2560] BF16
+      7 model.language_model.layers.{L}.self_attn.q_norm.weight [512] BF16
+      7 model.language_model.layers.{L}.self_attn.o_proj.weight [2560, 4096] BF16
+      7 model.language_model.layers.{L}.self_attn.k_proj.weight [1024, 2560] BF16
+      7 model.language_model.layers.{L}.self_attn.k_norm.weight [512] BF16
+      1 model.vision_tower.patch_embedder.position_embedding_table [2, 10240, 768] BF16
+      1 model.vision_tower.patch_embedder.input_proj.weight [768, 768] BF16
+      1 model.language_model.per_layer_projection_norm.weight [256] BF16
+      1 model.language_model.per_layer_model_projection.weight [10752, 2560] BF16
+      1 model.language_model.norm.weight [2560] BF16
+      1 model.language_model.embed_tokens.weight [262144, 2560] BF16
+      1 model.language_model.embed_tokens_per_layer.weight [262144, 10752] BF16
+      1 model.embed_vision.embedding_projection.weight [2560, 768] BF16
+      1 model.embed_audio.embedding_projection.weight [2560, 1536] BF16
+      1 model.audio_tower.subsample_conv_projection.layer1.norm.weight [32] BF16
+      1 model.audio_tower.subsample_conv_projection.layer1.conv.weight [32, 128, 3, 3] BF16
+      1 model.audio_tower.subsample_conv_projection.layer0.norm.weight [128] BF16
+      1 model.audio_tower.subsample_conv_projection.layer0.conv.weight [128, 1, 3, 3] BF16
+      1 model.audio_tower.subsample_conv_projection.input_proj_linear.weight [1024, 1024] BF16
+      1 model.audio_tower.output_proj.weight [1536, 1024] BF16
+      1 model.audio_tower.output_proj.bias [1536] BF16
+
+--- gemma-4-E4B — language_model inventory only ---
+
+     42 model.language_model.layers.{L}.pre_feedforward_layernorm.weight [2560] BF16
+     42 model.language_model.layers.{L}.post_per_layer_input_norm.weight [2560] BF16
+     42 model.language_model.layers.{L}.post_feedforward_layernorm.weight [2560] BF16
+     42 model.language_model.layers.{L}.post_attention_layernorm.weight [2560] BF16
+     42 model.language_model.layers.{L}.per_layer_projection.weight [2560, 256] BF16
+     42 model.language_model.layers.{L}.per_layer_input_gate.weight [256, 2560] BF16
+     42 model.language_model.layers.{L}.mlp.up_proj.weight [10240, 2560] BF16
+     42 model.language_model.layers.{L}.mlp.gate_proj.weight [10240, 2560] BF16
+     42 model.language_model.layers.{L}.mlp.down_proj.weight [2560, 10240] BF16
+     42 model.language_model.layers.{L}.layer_scalar [1] BF16
+     42 model.language_model.layers.{L}.input_layernorm.weight [2560] BF16
+     35 model.language_model.layers.{L}.self_attn.v_proj.weight [512, 2560] BF16
+     35 model.language_model.layers.{L}.self_attn.q_proj.weight [2048, 2560] BF16
+     35 model.language_model.layers.{L}.self_attn.q_norm.weight [256] BF16
+     35 model.language_model.layers.{L}.self_attn.o_proj.weight [2560, 2048] BF16
+     35 model.language_model.layers.{L}.self_attn.k_proj.weight [512, 2560] BF16
+     35 model.language_model.layers.{L}.self_attn.k_norm.weight [256] BF16
+      7 model.language_model.layers.{L}.self_attn.v_proj.weight [1024, 2560] BF16
+      7 model.language_model.layers.{L}.self_attn.q_proj.weight [4096, 2560] BF16
+      7 model.language_model.layers.{L}.self_attn.q_norm.weight [512] BF16
+      7 model.language_model.layers.{L}.self_attn.o_proj.weight [2560, 4096] BF16
+      7 model.language_model.layers.{L}.self_attn.k_proj.weight [1024, 2560] BF16
+      7 model.language_model.layers.{L}.self_attn.k_norm.weight [512] BF16
+      1 model.language_model.per_layer_projection_norm.weight [256] BF16
+      1 model.language_model.per_layer_model_projection.weight [10752, 2560] BF16
+      1 model.language_model.norm.weight [2560] BF16
+      1 model.language_model.embed_tokens.weight [262144, 2560] BF16
+      1 model.language_model.embed_tokens_per_layer.weight [262144, 10752] BF16
+
+--- gemma-4-E4B — lm_head presence (doc asserts absent) ---
+
+no lm_head tensor, as documented
+
+--- gemma-4-E4B — dtype distribution ---
+
+   2130 BF16
+
+--- gemma-4-E4B — MLP widths per layer (double-wide check) ---
+
+model.language_model.layers.0.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.1.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.2.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.3.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.4.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.5.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.6.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.7.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.8.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.9.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.10.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.11.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.12.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.13.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.14.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.15.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.16.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.17.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.18.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.19.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.20.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.21.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.22.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.23.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.24.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.25.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.26.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.27.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.28.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.29.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.30.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.31.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.32.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.33.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.34.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.35.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.36.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.37.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.38.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.39.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.40.mlp.gate_proj.weight [10240, 2560] BF16
+model.language_model.layers.41.mlp.gate_proj.weight [10240, 2560] BF16
+
+--- gemma-4-E4B — distinct MLP widths ---
+
+     42 10240
+
+--- gemma-4-E4B — attention projection shapes (head-dim split) ---
+
+     35 model.language_model.layers.{L}.self_attn.v_proj.weight [512, 2560] BF16
+     35 model.language_model.layers.{L}.self_attn.q_proj.weight [2048, 2560] BF16
+     35 model.language_model.layers.{L}.self_attn.o_proj.weight [2560, 2048] BF16
+     35 model.language_model.layers.{L}.self_attn.k_proj.weight [512, 2560] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.linear.weight [768, 768] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.linear.weight [1024, 1024] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.input_max [] BF16
+      7 model.language_model.layers.{L}.self_attn.v_proj.weight [1024, 2560] BF16
+      7 model.language_model.layers.{L}.self_attn.q_proj.weight [4096, 2560] BF16
+      7 model.language_model.layers.{L}.self_attn.o_proj.weight [2560, 4096] BF16
+      7 model.language_model.layers.{L}.self_attn.k_proj.weight [1024, 2560] BF16
+
+--- gemma-4-E4B — per-layer embedding path ---
+
+     42 model.language_model.layers.{L}.post_per_layer_input_norm.weight [2560] BF16
+     42 model.language_model.layers.{L}.per_layer_projection.weight [2560, 256] BF16
+     42 model.language_model.layers.{L}.per_layer_input_gate.weight [256, 2560] BF16
+     42 model.language_model.layers.{L}.layer_scalar [1] BF16
+      1 model.language_model.per_layer_projection_norm.weight [256] BF16
+      1 model.language_model.per_layer_model_projection.weight [10752, 2560] BF16
+      1 model.language_model.embed_tokens_per_layer.weight [262144, 10752] BF16
+
+--- gemma-4-E4B — zero-dimensional tensors (doc trap 12) ---
+
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.input_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_1.output_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.input_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward1.ffw_layer_2.output_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.input_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_1.output_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.input_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.input_min [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.output_max [] BF16
+     12 model.audio_tower.layers.{L}.feed_forward2.ffw_layer_2.output_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.input_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.input_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.output_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_end.output_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.input_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.input_min [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.output_max [] BF16
+     12 model.audio_tower.layers.{L}.lconv1d.linear_start.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.k_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.post.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.q_proj.output_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.input_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.input_min [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.output_max [] BF16
+     12 model.audio_tower.layers.{L}.self_attn.v_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.down_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.gate_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.mlp.up_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.k_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.o_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.q_proj.output_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.input_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.input_min [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.output_max [] BF16
+     16 model.vision_tower.encoder.layers.{L}.self_attn.v_proj.output_min [] BF16
+
+--- gemma-4-E4B — non-language_model tensor families ---
+
+    744 model.audio_tower.layers
+    656 model.vision_tower.encoder
+      5 model.audio_tower.subsample_conv_projection
+      2 model.vision_tower.patch_embedder
+      2 model.audio_tower.output_proj
+      1 model.embed_vision.embedding_projection
+      1 model.embed_audio.embedding_projection
