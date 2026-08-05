@@ -3,8 +3,8 @@
 A reference for what the harness's two interaction modes — the agent loop
 and chat mode — contribute to the training and interpretability programs,
 and for the feature bar that follows. The canonical scope statement lives in
-the parent repository's
-[runtime design](../../docs/inference/rust-harness-runtime-design.md#purpose-and-non-goals)
+the
+[runtime design](runtime-design.md#purpose-and-non-goals)
 ("instrumented inference substrate, not a competitor to the serving
 services"); this document records the justification behind that positioning,
 a taxonomy of the two observation frames, and the acceptance criterion for

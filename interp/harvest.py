@@ -8,8 +8,10 @@ run lock, the D10 watchdog sampler, and hook-level resume (shard-level resume
 within a hook is delegated to the runner's own cache state).
 
 Hooks are HF named-module paths resolved per model family through the
-interp/families.py registry (flat text-model layout: model.layers.{n}); the
-output of a decoder layer is the post-block residual stream. TransformerLens
+interp/families.py registry; the layout follows the config the caller loaded,
+so Gemma 4 from its composite config is model.language_model.layers.{n} and a
+flat text model is model.layers.{n}. The output of a decoder layer is the
+post-block residual stream. TransformerLens
 aliases are not used because HookedTransformer has no Gemma 4 support (P4-D1
 resolved decision).
 
@@ -43,6 +45,10 @@ from interp.manifest import (
 )
 
 DTYPE_BYTES = {"bf16": 2, "fp16": 2, "fp32": 4}
+
+# Recipe spelling to the name SAELens expects. Shared with interp/sae/train.py
+# so the harvest and the SAE trained on it cannot name different dtypes.
+DTYPE_NAMES = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32"}
 PROGRESS_NAME = "progress.json"  # completed hooks; deleted when the manifest lands
 ARTIFACT = "activation_harvest"
 
@@ -166,20 +172,31 @@ def resolve_model_meta(
 
 
 def check_hook_dims(
-    model_id: str, layers: list[int], revision: str | None = None
+    model_id: str,
+    layers: list[int],
+    revision: str | None = None,
+    dtype: str = "bf16",
 ) -> dict[int, int]:
     """One-token forward asserting each hook yields the d_model-wide residual.
 
     The Gemma 4 gate before committing GPU-days: per-layer embeddings inject
     a 256-dim per-token input into each decoder layer, so the check proves
     the hook output is the hidden_size residual and not a PLE tensor.
+    Runs at the dtype the harvest will use, so the gate exercises the
+    precision the capture is taken at rather than a fixed one.
+
     Returns {layer: observed width}; raises HarvestError on any mismatch.
     """
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
+    if dtype not in DTYPE_NAMES:
+        raise HarvestError(
+            f"harvest.dtype {dtype!r} is not one of {sorted(DTYPE_NAMES)}"
+        )
+    torch_dtype = getattr(torch, DTYPE_NAMES[dtype])
     model = AutoModelForCausalLM.from_pretrained(
-        model_id, revision=revision, torch_dtype=torch.bfloat16, device_map="auto"
+        model_id, revision=revision, torch_dtype=torch_dtype, device_map="auto"
     )
     tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
     expected, spec = resolve_model_meta(model_id, revision)
@@ -247,7 +264,6 @@ def _saelens_runner(job: dict, out_dir: str) -> dict:
 
     from sae_lens import CacheActivationsRunner, CacheActivationsRunnerConfig
 
-    dtype_names = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32"}
     cfg = CacheActivationsRunnerConfig(
         model_name=job["model_id"],
         model_class_name="AutoModelForCausalLM",
@@ -258,7 +274,7 @@ def _saelens_runner(job: dict, out_dir: str) -> dict:
         training_tokens=job["total_tokens"],
         new_cached_activations_path=out_dir,
         model_batch_size=job["model_batch_size"],
-        dtype=dtype_names[job["dtype"]],
+        dtype=DTYPE_NAMES[job["dtype"]],
         seed=job["seed"],
         device="cuda",
         model_from_pretrained_kwargs=(

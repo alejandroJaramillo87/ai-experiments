@@ -41,6 +41,13 @@ def test_quant_from_name():
     assert quant_from_name("Qwen3-1.7B-q8_0.gguf") == "Q8_0"
     assert quant_from_name("model.gguf") is None
     assert quant_from_name("model.bin") is None
+    # Export ships an unquantized bf16 GGUF. An unrecognized suffix parses as
+    # None, and check_quant_match refuses a None side outright, so eval-ft
+    # against a stock export would have hard-failed on its own artifact.
+    assert quant_from_name("tuned-BF16.gguf") == "BF16"
+    assert quant_from_name("tuned-bf16.gguf") == "BF16"
+    assert quant_from_name("model-F16.gguf") == "F16"
+    assert quant_from_name("model-F32.gguf") == "F32"
 
 
 def test_gguf_identity_prefers_manifest(tmp_path, monkeypatch):
@@ -87,6 +94,11 @@ def test_gguf_identity_missing_file(tmp_path, monkeypatch):
 
 def test_check_quant_match():
     check_quant_match({"quant_type": "Q8_0"}, {"quant_type": "Q8_0"})
+    # Two bf16 exports are comparable; a bf16 side against an older Q8_0 one
+    # is a real confound and stays refused.
+    check_quant_match({"quant_type": "BF16"}, {"quant_type": "BF16"})
+    with pytest.raises(EvalRunError):
+        check_quant_match({"quant_type": "BF16"}, {"quant_type": "Q8_0"})
     with pytest.raises(EvalRunError, match="mismatch"):
         check_quant_match({"quant_type": "Q8_0"}, {"quant_type": "Q4_0"})
     with pytest.raises(EvalRunError, match="unknown"):

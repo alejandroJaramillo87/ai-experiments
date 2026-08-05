@@ -64,6 +64,35 @@ class TestConfigResolution:
         flat = SimpleNamespace(model_type="qwen3", hidden_size=2048)
         assert family_from_config(flat).model_type == "qwen3"
 
+    def test_composite_config_resolves_to_the_composite_hook_path(self):
+        # Regression: a Gemma 4 checkpoint loaded from its composite config
+        # nests the decoder under model.language_model.layers.{n}, sibling to
+        # model.vision_tower. Resolving it to the flat model.layers.{n} made
+        # every E-series hook fail to attach. Verified against
+        # google/gemma-4-E2B at revision d29ff6b4.
+        composite = SimpleNamespace(
+            model_type="gemma4",
+            text_config=SimpleNamespace(model_type="gemma4_text", hidden_size=1536),
+        )
+        spec = family_from_config(composite)
+        assert spec.model_type == "gemma4_text"
+        assert hook_name(spec, 0) == "model.language_model.layers.0"
+
+    def test_bare_text_config_keeps_the_flat_hook_path(self):
+        text_only = SimpleNamespace(model_type="gemma4_text", hidden_size=1536)
+        spec = family_from_config(text_only)
+        assert hook_name(spec, 0) == "model.layers.0"
+
+    def test_composite_config_without_a_composite_path_raises(self):
+        # Silently falling back to the flat path is the defect above; a
+        # family with no composite form must say so.
+        composite = SimpleNamespace(
+            model_type="wrapper",
+            text_config=SimpleNamespace(model_type="qwen3", hidden_size=2048),
+        )
+        with pytest.raises(UnknownHookFamilyError, match="composite"):
+            family_from_config(composite)
+
     def test_family_from_config_unknown_type_raises(self):
         with pytest.raises(UnknownHookFamilyError):
             family_from_config(SimpleNamespace(model_type="mystery"))
@@ -114,11 +143,23 @@ class TestResolveSubmodule:
 
 
 class TestFamiliesModuleIsRegistryData:
-    def test_all_specs_share_flat_decoder_layout_today(self):
-        # When a composite layout lands, this test forces a deliberate update
-        # here and in the harvest dimension gate.
+    def test_every_spec_registers_the_flat_layout_as_its_base(self):
+        # The composite path is an override selected by family_from_config,
+        # never a replacement: hook_family() alone still yields the flat
+        # layout for every family.
         for model_type in supported_families():
             assert hook_family(model_type).hook_template == "model.layers.{layer}"
+
+    def test_only_the_gemma4_spellings_register_a_composite_layout(self):
+        composite = {
+            m for m in supported_families() if hook_family(m).composite_hook_template
+        }
+        assert composite == {"gemma4", "gemma4_text"}
+        for model_type in composite:
+            assert (
+                hook_family(model_type).composite_hook_template
+                == "model.language_model.layers.{layer}"
+            )
 
     def test_hook_name_formats_layer_int(self):
         spec = hook_family("gemma2")

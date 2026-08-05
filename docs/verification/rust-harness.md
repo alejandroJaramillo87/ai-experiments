@@ -21,7 +21,7 @@ Scope is CPU only. Not covered, and why:
   needs code work before a runbook entry can exercise it.
 - The KV cache holds the full sequence with the sliding window applied as
   a mask; the budgeted ring buffer is deferred by design
-  (`docs/inference/rust-harness-observability.md`).
+  (`docs/rust-harness/observability.md`).
 
 Recording protocol: the [runbook README](README.md) rules apply. The human
 runs each command on the workstation and pastes command plus output
@@ -97,7 +97,7 @@ spec, never against the real artifact. Published sources say the real E4B
 architecture is a superset of what the backend implements, retaining
 per-layer embeddings and MatFormer nesting and adding a shared KV cache and
 dual RoPE; the
-[architecture reconciliation](../inference/rust-harness-runtime-design.md#architecture-reconciliation)
+[architecture reconciliation](../rust-harness/runtime-design.md#architecture-reconciliation)
 records those findings and their confidence. Those sources are secondhand,
 so this entry decides the question for the checkpoint that actually exists.
 

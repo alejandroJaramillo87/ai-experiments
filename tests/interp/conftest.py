@@ -44,8 +44,8 @@ def fake_capture(texts: list[str], layers: list[int]):
             digest = hashlib.sha256(f"{text}|{layer}".encode()).digest()
             rng = np.random.default_rng(int.from_bytes(digest[:4], "big"))
             base = -1.0 if "neg" in text else 1.0
-            row = rng.normal(0, 0.1, D_MODEL).astype(np.float16)
-            row[0] += np.float16(base * (1 + layer / 10))
+            row = rng.normal(0, 0.1, D_MODEL).astype(np.float32)
+            row[0] += np.float32(base * (1 + layer / 10))
             rows.append(row)
         activations[layer] = np.stack(rows)
     return activations, FAKE_FINGERPRINT

@@ -3,7 +3,7 @@
 Runs the subject model at bf16 under nnsight, harvesting residual-stream
 activations at configured layers and token positions (default: last token of
 the prompt) for a labeled JSONL dataset ({"text", "label"} per line). Output:
-sharded float16 arrays plus examples.jsonl (text, label — needed at train time
+sharded float32 arrays plus examples.jsonl (text, label — needed at train time
 for the seeded split) and manifest.json under the capture directory. Captures
 are a regenerable cache; the manifest is what downstream tools trust.
 
@@ -73,7 +73,7 @@ def capture_activations(
 ) -> tuple[dict[int, np.ndarray], str]:
     """Single-pass bf16 capture under nnsight.
 
-    Returns ({layer: float16 array of shape (n, d_model)}, tokenizer
+    Returns ({layer: float32 array of shape (n, d_model)}, tokenizer
     fingerprint). This is the one real capture path; score.py and monitor.py
     call it (or an injected stand-in) for their own single-pass captures.
     """
@@ -111,7 +111,12 @@ def capture_activations(
         for layer in layers:
             acts = saved[layer]
             rows = acts[torch.arange(acts.shape[0]), last]
-            collected[layer].append(rows.detach().to(torch.float16).cpu().numpy())
+            # float32, not float16: widening bf16 is exact, so the shard
+            # holds the model's own values. float16 has 5 exponent bits to
+            # bf16's 8, so it silently saturates residual-stream outliers to
+            # inf. numpy has no bfloat16 dtype, which is why the shard is not
+            # simply bf16.
+            collected[layer].append(rows.detach().to(torch.float32).cpu().numpy())
 
     return {
         layer: np.concatenate(chunks, axis=0) for layer, chunks in collected.items()
@@ -176,7 +181,7 @@ def run_capture(
         "dataset_path": dataset_path,
         "dataset_sha256": dataset_hash,
         "tokenizer_fingerprint": fingerprint,
-        "dtype": "float16",
+        "dtype": "float32",
         "count": count,
         "shards": shards,
         "git_sha": git_sha(),

@@ -2,9 +2,11 @@
  * npz — minimal writer for numpy .npy arrays inside a .npz (zip) container.
  *
  * Purpose-built for the interp activation-capture shard format
- * (interp/probes/capture.py): float16 activation matrices and int64 label
- * vectors, loadable with np.load. Entries are stored uncompressed — np.load
- * reads stored zip members, and determinism matters more than shard size.
+ * (interp/probes/capture.py): float32 activation matrices and int64 label
+ * vectors, loadable with np.load. float32 is the exact storage for the bf16
+ * models this tier captures from, and numpy has no bfloat16 dtype of its own.
+ * Entries are stored uncompressed — np.load reads stored zip members, and
+ * determinism matters more than shard size.
  * Zip timestamps are fixed at zero so identical data produces identical
  * bytes.
  */
@@ -13,10 +15,10 @@ use std::io::Write;
 
 use anyhow::Result;
 
-/// npy v1.0 image for a 2-D float16 array in C order.
-pub fn npy_f16(rows: usize, cols: usize, data: &[u16]) -> Vec<u8> {
+/// npy v1.0 image for a 2-D float32 array in C order.
+pub fn npy_f32(rows: usize, cols: usize, data: &[f32]) -> Vec<u8> {
     assert_eq!(data.len(), rows * cols);
-    let header = format!("{{'descr': '<f2', 'fortran_order': False, 'shape': ({rows}, {cols}), }}");
+    let header = format!("{{'descr': '<f4', 'fortran_order': False, 'shape': ({rows}, {cols}), }}");
     let mut out = npy_prelude(&header);
     for v in data {
         out.extend_from_slice(&v.to_le_bytes());
@@ -167,20 +169,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("shard.npz");
         let mut w = NpzWriter::new();
-        // 2x3 f16 matrix [[0, 0.5, 1], [1.5, -2, 4]] and labels [7, -1].
-        let f16s: Vec<u16> = [0.0f32, 0.5, 1.0, 1.5, -2.0, 4.0]
-            .iter()
-            .map(|&v| crate::tensor::f32_to_f16(v))
-            .collect();
-        w.add("layer_3", npy_f16(2, 3, &f16s));
+        // 2x3 f32 matrix and labels [7, -1]. Two values are chosen to be
+        // unrepresentable in IEEE half: 2^-30 falls below its smallest
+        // subnormal (2^-24) and would flush to zero, and 70000 exceeds its
+        // 65504 maximum and would become inf. Asserting them exactly is what
+        // distinguishes this writer from the float16 one it replaced. Both
+        // are exact in f32 and so survive the float64 round trip: one is a
+        // power of two, the other an integer below 2^24.
+        let values: Vec<f32> = vec![0.0, 0.5, 1.0, 2.0f32.powi(-30), -2.0, 70000.0];
+        w.add("layer_3", npy_f32(2, 3, &values));
         w.add("labels", npy_i64(&[7, -1]));
         w.write_to(&path).unwrap();
         let check = format!(
             "import numpy as np\n\
              z = np.load('{}')\n\
              a = z['layer_3']\n\
-             assert a.dtype == np.float16 and a.shape == (2, 3), (a.dtype, a.shape)\n\
-             assert a.tolist() == [[0, 0.5, 1], [1.5, -2, 4]], a.tolist()\n\
+             assert a.dtype == np.float32 and a.shape == (2, 3), (a.dtype, a.shape)\n\
+             assert a.tolist() == [[0, 0.5, 1], [2.0**-30, -2, 70000]], a.tolist()\n\
+             assert np.isfinite(a).all(), a\n\
              l = z['labels']\n\
              assert l.dtype == np.int64 and l.tolist() == [7, -1], l\n",
             path.display()

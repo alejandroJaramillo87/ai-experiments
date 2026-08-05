@@ -16,9 +16,9 @@ steering, probe monitoring, a flight recorder, and deterministic KV restore —
 which make agent runs reproducible and publishable as experiment logs.
 
 The full design is recorded in the parent repository at
-`docs/inference/rust-harness-runtime-design.md`; the observability and
+`docs/rust-harness/runtime-design.md`; the observability and
 debugging phases (flight recorder, tracing, rr-debuggable CPU backend) are
-designed in `docs/inference/rust-harness-observability.md`. This directory is
+designed in `docs/rust-harness/observability.md`. This directory is
 a permanent part of that repository, not a staging area for extraction, so the
 artifact seams it shares with the Python pipelines may be tested across the two
 trees rather than specified in prose.
@@ -105,7 +105,7 @@ checkpoint carrying per-layer embeddings, a shared KV cache, MatFormer
 per-layer feed-forward widths, or dual RoPE, naming the feature rather than
 loading the model and silently ignoring the extra weights; `gguf-info`
 prints the same verdict. The reconciliation is recorded in the parent
-repository's `docs/inference/rust-harness-runtime-design.md` and decided on
+repository's `docs/rust-harness/runtime-design.md` and decided on
 the workstation by runbook entry RH.1. The binary runs it with
 `--model <path.gguf>`; the `SessionGenerator` seam wires the agent loop
 through tokenizer and session. Numerics match an independent numpy

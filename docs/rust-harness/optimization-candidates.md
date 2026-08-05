@@ -44,11 +44,22 @@ prefill; decode matvec is memory-bandwidth-bound, so DDR5-6000 will likely
 saturate at roughly six to eight effective cores. Requires the
 `--single-thread` fallback for rr and for the bit-exact goldens.
 
-**Quantized-weight compute.** The backend currently dequantizes all weights
-to f32 at load time, an approximately 4x memory blow-up for Q8_0 and worse
-for the planned k-quants. The mature alternative — the core of llama.cpp's
-CPU performance — keeps weights quantized in memory and computes block-wise
-integer dot products, dequantizing only per-block scales on the fly. Matvec
+**Native-width weight storage.** The backend currently widens all weights to
+f32 at load time: a 2x blow-up for BF16, roughly 4x for Q8_0, worse for the
+planned k-quants. BF16 is the case that matters first, because it is the
+published Gemma 4 storage type and the only one the interp and training
+tiers can share without losing fidelity. Holding weights as bf16 and
+widening per use is a shift in the inner loop, needs no new kernel, and
+halves E4B from about 28 GiB resident to 14 — which is the difference
+between not fitting and fitting in the 5090's 32 GB for the CUDA tier.
+`tensor::tensor_bytes` exists as the seam: it does the bounds checking a
+storage-preserving loader needs, so such a loader reuses it rather than
+restating it.
+
+**Quantized-weight compute.** Beyond bf16, the mature step is block-wise
+integer arithmetic. The core of llama.cpp's CPU performance keeps
+weights quantized in memory and computes block-wise integer dot products,
+dequantizing only per-block scales on the fly. Matvec
 is bandwidth-bound, so reading 4-bit weights moves roughly 8x less data than
 f32; a Q4 E4B stays near 4 GB resident instead of tens of GB. This item
 subsumes the deferred Q4_K/Q6_K dequantization work: the kernels replace it

@@ -1,7 +1,8 @@
 # sae-false-fact.yaml
 #
 # P4-D3 reference run: BatchTopK 16k SAE from the P4-D2 reference capture
-# (false-fact organism, Gemma 4 E2B, 300M tokens at model.layers.15). One
+# (false-fact organism, Gemma 4 E2B, 300M tokens at
+# model.language_model.layers.15). One
 # width, one sparsity point; a learning-rate sweep is capped at three runs
 # (override sae.lr and sae.name per run). Overnight under the D9 lock and
 # D10 watchdog.

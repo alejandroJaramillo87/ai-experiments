@@ -23,7 +23,7 @@ import time
 
 from omegaconf import DictConfig
 
-from interp.harvest import check_capture, mark_validated
+from interp.harvest import DTYPE_NAMES, check_capture, mark_validated
 from interp.manifest import (
     file_xxhash,
     git_sha,
@@ -99,6 +99,17 @@ def resolve_capture(cfg: DictConfig) -> tuple[dict, str]:
     return manifest, hooks[0]
 
 
+def capture_dtype(capture_manifest: dict) -> str:
+    """The capture's dtype, refused by name when it is not one we can train at."""
+    dtype = capture_manifest.get("dtype")
+    if dtype not in DTYPE_NAMES:
+        raise SaeTrainError(
+            f"capture manifest dtype {dtype!r} is not one of "
+            f"{sorted(DTYPE_NAMES)}; the SAE cannot pick a training precision"
+        )
+    return str(dtype)
+
+
 def training_tokens(cfg: DictConfig, capture_manifest: dict) -> int:
     """Tokens to train on: the recipe's budget capped by the capture size."""
     return min(int(cfg.train_tokens), int(capture_manifest["total_tokens"]))
@@ -140,7 +151,7 @@ def _saelens_trainer(job: dict, out_dir: str, tracker=None) -> dict:
         train_batch_size_tokens=job["train_batch_size_tokens"],
         lr=job["lr"],
         seed=job["seed"],
-        dtype="bfloat16",
+        dtype=DTYPE_NAMES[job["dtype"]],
         device="cuda",
         checkpoint_path=out_dir,
     )
@@ -190,6 +201,9 @@ def run_sae_training(recipe: DictConfig, trainer_fn=None, tracker_factory=None) 
         "context_len": int(capture_manifest["context_len"]),
         "seed": int(recipe.run.seed),
         "cached_activations_path": os.path.join(cfg.capture_dir, hook),
+        # From the capture, not hardcoded: training an SAE at a precision the
+        # activations were not harvested at is a silent numerics mismatch.
+        "dtype": capture_dtype(capture_manifest),
     }
 
     trainer = trainer_fn or _saelens_trainer

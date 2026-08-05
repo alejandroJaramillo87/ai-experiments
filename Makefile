@@ -187,10 +187,10 @@ export-build: ## Build the GGUF export image (pinned llama.cpp converter and qua
 	MAX_JOBS=$(MAX_JOBS) docker compose -f $(TRAIN_COMPOSE) build export
 	@echo "$(GREEN)Export image built.$(RESET)"
 
-export-gguf: ## Export a checkpoint to GGUF (Phase 0 D7): make export-gguf CHECKPOINT=/mnt/ai-data/training/.../step_000000010 ARGS="--quant Q8_0 --tokenizer ..."
+export-gguf: ## Export a checkpoint to GGUF (Phase 0 D7): make export-gguf CHECKPOINT=/mnt/ai-data/training/.../step_000000010 ARGS="--tokenizer ..."
 	docker compose -f $(TRAIN_COMPOSE) run --rm export python -m training export --checkpoint $(CHECKPOINT) $(ARGS)
 
-serve-eval: ## Swap a GGUF into llama-gpu, run the smoke evaluation, restore (Phase 0 D7): make serve-eval MODEL=/app/models/trained/<run>/<name>-Q8_0.gguf ARGS="--keep-serving"
+serve-eval: ## Swap a GGUF into llama-gpu, run the smoke evaluation, restore (Phase 0 D7): make serve-eval MODEL=/app/models/trained/<run>/<name>-BF16.gguf ARGS="--keep-serving"
 	python3 -m training serve-eval --model $(MODEL) $(ARGS)
 
 eval-ft: ## Baseline-versus-tuned scorecard (Phase 1 F7, host-run): make eval-ft ARGS="--base ... --tuned ... --dataset ... --base-gguf ... --tuned-gguf ... --judge-gguf ..."

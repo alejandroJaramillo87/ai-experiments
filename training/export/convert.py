@@ -138,7 +138,13 @@ def quantize(
     quant_type: str,
     llama_cpp_dir: str = DEFAULT_LLAMA_CPP_DIR,
 ) -> None:
-    """llama-quantize: unquantized GGUF -> quantized GGUF."""
+    """llama-quantize: unquantized GGUF -> quantized GGUF.
+
+    Not called by the export command, which ships the bf16 GGUF directly so
+    training, the Rust harness, and the interp tier read identical weights.
+    Kept because llama-quantize is still built into the export image and a
+    smaller serving artifact is a legitimate separate use.
+    """
     _run(
         [quantize_path(llama_cpp_dir), in_path, out_path, quant_type],
         out_path + ".quantize.log",

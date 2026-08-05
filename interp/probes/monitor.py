@@ -146,8 +146,9 @@ def read_log_window(
 def replay_fidelity(target_services: list[str]) -> str:
     """State the relationship between the replayed model and the serving model.
 
-    Probes are fitted on bf16 activations, so a replay describes the served
-    model exactly only when serving also ran at full precision. Derived from
+    Probes are fitted on activations captured from a bf16 model and stored
+    exactly as float32, so a replay describes the served model exactly only
+    when serving also ran at full precision. Derived from
     the records' target_service rather than asserted, so a report over mixed or
     quantized traffic cannot claim a fidelity it does not have.
     """

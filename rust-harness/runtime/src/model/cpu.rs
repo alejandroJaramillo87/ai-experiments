@@ -19,7 +19,7 @@
  * those is refused by `check_supported` rather than loaded with the extra
  * structure silently dropped: an ignored weight tensor still produces
  * fluent text, so a silent load would be an undetectable wrong answer.
- * See docs/inference/rust-harness-runtime-design.md.
+ * See docs/rust-harness/runtime-design.md.
  *
  * The K/V cache stores the full sequence for every layer; the sliding
  * window is applied as an attention mask only. Capping sliding-window
@@ -69,6 +69,51 @@ impl Config {
                 None => bail!("missing {arch}.{key}"),
             }
         };
+        // llama.cpp encodes two Gemma 4 keys per layer where this backend
+        // models a scalar. Both decode when the per-layer form collapses to
+        // the scalar; neither is reinterpreted when it does not.
+        let width = |key: &str| -> Result<usize> {
+            match file.metadata.get(&format!("{arch}.{key}")) {
+                Some(MetaValue::ArrI32(widths)) => {
+                    let first = *widths.first().unwrap_or(&0);
+                    if let Some(other) = widths.iter().find(|w| **w != first) {
+                        bail!(
+                            "{arch}.{key} varies per layer ({first} and {other}); \
+                             per-layer widths are MatFormer slicing, which this \
+                             backend does not implement"
+                        );
+                    }
+                    Ok(usize::try_from(first).unwrap_or(0))
+                }
+                _ => u(key),
+            }
+        };
+        // A bool array marks each layer sliding-window (true) or global
+        // (false); `layer_kind` makes every `stride`-th layer global. The two
+        // agree exactly when the global layers are periodic, which is the
+        // only form Gemma 4 ships -- E2B stride 5, E4B 6, the mtp head 4.
+        let schedule = |key: &str| -> Result<usize> {
+            let Some(MetaValue::ArrBool(pattern)) = file.metadata.get(&format!("{arch}.{key}"))
+            else {
+                return u(key);
+            };
+            let Some(first_global) = pattern.iter().position(|sliding| !sliding) else {
+                bail!(
+                    "{arch}.{key} marks no layer global, so it encodes no periodic \
+                     stride; an all-sliding-window schedule is not expressible here"
+                );
+            };
+            let stride = first_global + 1;
+            for (i, sliding) in pattern.iter().enumerate() {
+                if *sliding == (i + 1).is_multiple_of(stride) {
+                    bail!(
+                        "{arch}.{key} is not periodic: it implies stride {stride} from \
+                         layer {first_global}, but layer {i} contradicts it"
+                    );
+                }
+            }
+            Ok(stride)
+        };
         let f = |key: &str| -> Result<f32> {
             match file.metadata.get(&format!("{arch}.{key}")) {
                 Some(MetaValue::F32(v)) => Ok(*v),
@@ -87,10 +132,10 @@ impl Config {
             n_heads: u("attention.head_count")?,
             n_kv_heads: u("attention.head_count_kv")?,
             head_dim: u("attention.key_length")?,
-            ffn_dim: u("feed_forward_length")?,
+            ffn_dim: width("feed_forward_length")?,
             context_length: u("context_length")?,
             sliding_window: u("attention.sliding_window")?,
-            sliding_window_pattern: u("attention.sliding_window_pattern")?,
+            sliding_window_pattern: schedule("attention.sliding_window_pattern")?,
             rope_freq_base: f("rope.freq_base")?,
             rms_eps: f("attention.layer_norm_rms_epsilon")?,
         };
@@ -1364,6 +1409,124 @@ mod tests {
         let logits = m.prefill(&[1, 5, 9]).unwrap();
         assert_eq!(logits.0.len(), spec.vocab_size);
         assert!(logits.0.iter().all(|v| v.is_finite()));
+    }
+
+    /// The three shipped Gemma 4 schedules, as `gguf-info` reports them:
+    /// (name, per-layer bool array, the stride it is equivalent to).
+    /// `false` marks a global-attention layer.
+    fn shipped_schedules() -> Vec<(&'static str, Vec<bool>, usize)> {
+        let repeat = |period: usize, layers: usize| -> Vec<bool> {
+            (0..layers)
+                .map(|i| !(i + 1).is_multiple_of(period))
+                .collect()
+        };
+        vec![
+            ("E2B", repeat(5, 35), 5),
+            ("E4B", repeat(6, 42), 6),
+            ("mtp", repeat(4, 4), 4),
+        ]
+    }
+
+    #[test]
+    fn a_bool_attention_schedule_decodes_to_the_stride_it_encodes() {
+        // llama.cpp writes Gemma 4's schedule as a per-layer bool array where
+        // this backend models a u32 stride. The two are the same schedule in
+        // different encodings, so the array must decode rather than be
+        // refused -- but only the periodic case, which is what ships.
+        for (name, pattern, want_stride) in shipped_schedules() {
+            let (_, mut file, _) = tiny_parsed();
+            file.metadata.insert(
+                "gemma4.attention.sliding_window_pattern".into(),
+                MetaValue::ArrBool(pattern.clone()),
+            );
+            let config = Config::from_gguf(&file)
+                .unwrap_or_else(|e| panic!("{name} schedule must decode: {e}"));
+            assert_eq!(config.sliding_window_pattern, want_stride, "{name}");
+            // The stride is only correct if it reproduces the array it came
+            // from; asserting the number alone would pass on an off-by-one.
+            for (i, &sliding) in pattern.iter().enumerate() {
+                let kind = config.layer_kind(i);
+                let global = matches!(kind, LayerKind::Global);
+                assert_eq!(!sliding, global, "{name} layer {i}: {kind:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_bool_schedule_that_is_not_a_stride_is_refused_naming_the_key() {
+        // Deriving a period from the first global layer and then not checking
+        // the rest would silently mis-schedule attention for every later
+        // layer, which reads as a fluent but context-blind model rather than
+        // as an error. Both shapes below share a first-false index with a
+        // schedule that is periodic.
+        for pattern in [
+            vec![true, true, false, true, false, true], // period drifts
+            vec![true, true, true, true],               // no global layer at all
+        ] {
+            let (_, mut file, _) = tiny_parsed();
+            file.metadata.insert(
+                "gemma4.attention.sliding_window_pattern".into(),
+                MetaValue::ArrBool(pattern.clone()),
+            );
+            let err = match Config::from_gguf(&file) {
+                Ok(c) => panic!(
+                    "{pattern:?} must not decode, got stride {}",
+                    c.sliding_window_pattern
+                ),
+                Err(e) => e.to_string(),
+            };
+            assert!(err.contains("sliding_window_pattern"), "{err}");
+            // Without this, the test passes against the unfixed loader, which
+            // refuses every bool array with a bare type error that happens to
+            // name the key. The refusal has to be about periodicity.
+            assert!(
+                !err.contains("expected u32"),
+                "refused as a type error: {err}"
+            );
+            assert!(err.contains("periodic"), "{err}");
+        }
+    }
+
+    #[test]
+    fn a_uniform_per_layer_feed_forward_array_decodes_to_that_width() {
+        // E4B writes one width; E2B writes an array. An array whose entries
+        // agree is expressible as the scalar this Config holds.
+        let (_, mut file, _) = tiny_parsed();
+        let width = Config::from_gguf(&file).unwrap().ffn_dim;
+        file.metadata.insert(
+            "gemma4.feed_forward_length".into(),
+            MetaValue::ArrI32(vec![width as i32; 4]),
+        );
+        assert_eq!(Config::from_gguf(&file).unwrap().ffn_dim, width);
+    }
+
+    #[test]
+    fn a_matformer_sliced_feed_forward_array_is_refused_naming_both_widths() {
+        // E2B is a MatFormer slice of E4B: 6144 for layers 0..15, 12288 after.
+        // check_supported already refuses per-layer widths with a precise
+        // message, but Config::from_gguf never reached it -- the array killed
+        // the load first with a bare type error. Refusing here must name what
+        // the file actually contains.
+        let (_, mut file, _) = tiny_parsed();
+        let mut widths = vec![6144i32; 15];
+        widths.extend(std::iter::repeat_n(12288i32, 20));
+        file.metadata.insert(
+            "gemma4.feed_forward_length".into(),
+            MetaValue::ArrI32(widths),
+        );
+        let err = match Config::from_gguf(&file) {
+            Ok(_) => panic!("a MatFormer-sliced width array must not decode"),
+            Err(e) => e.to_string(),
+        };
+        assert!(err.contains("feed_forward_length"), "{err}");
+        assert!(err.contains("6144") && err.contains("12288"), "{err}");
+        // The unfixed loader's type error embeds the whole array, so it
+        // satisfies both assertions above by accident. Name the mechanism.
+        assert!(
+            !err.contains("expected u32"),
+            "refused as a type error: {err}"
+        );
+        assert!(err.contains("MatFormer"), "{err}");
     }
 
     #[test]

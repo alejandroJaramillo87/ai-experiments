@@ -24,11 +24,19 @@ pub enum MetaValue {
     F32(f32),
     Bool(bool),
     Str(String),
-    // Array element types are limited to what the tokenizer vocab needs:
-    // tokens (str), scores (f32), token_type (i32).
+    // Array element types the loader consumes: the tokenizer vocab needs
+    // tokens (str), scores (f32), and token_type (i32); Gemma 4 converters
+    // publish the per-layer attention schedule as a bool array.
     ArrStr(Vec<String>),
     ArrF32(Vec<f32>),
     ArrI32(Vec<i32>),
+    // Parsing a bool array is not consuming it. Gemma 4 writes
+    // `attention.sliding_window_pattern` as a per-layer bool array where
+    // Config::layer_kind expects a uint32 stride, so the key now parses but
+    // the CPU backend still ignores it — which would build a full-attention
+    // model for an interleaved checkpoint. check_supported must refuse such
+    // a file until the schedule is read; see docs/rust-harness/gemma-4-ingestion.md.
+    ArrBool(Vec<bool>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -98,21 +106,32 @@ le_reader!(f32, f32, 4);
 
 impl Reader<'_> {
     /// Array metadata: element type, count, then packed elements. Only the
-    /// element types the tokenizer vocab uses are supported.
+    /// element types the loader consumes are supported.
     fn array(&mut self, key: &str) -> Result<MetaValue> {
         let elem_type = self.u32()?;
         let count = usize::try_from(self.u64()?).context("GGUF array count overflows usize")?;
         // Reject counts that cannot fit in the remaining bytes before
-        // allocating: the smallest element is 4 bytes.
+        // allocating. The bound is per element type: a bool is one byte, so
+        // a flat four-byte minimum would reject bool arrays that do fit.
+        let min_elem_bytes = match elem_type {
+            7 => 1,
+            8 => 8, // a GGUF string is at least its u64 length prefix
+            _ => 4,
+        };
         ensure!(
             count
-                .checked_mul(4)
+                .checked_mul(min_elem_bytes)
                 .is_some_and(|n| n <= self.data.len() - self.pos),
             "metadata key {key}: array count {count} exceeds file size"
         );
         Ok(match elem_type {
             5 => MetaValue::ArrI32((0..count).map(|_| self.i32()).collect::<Result<_>>()?),
             6 => MetaValue::ArrF32((0..count).map(|_| self.f32()).collect::<Result<_>>()?),
+            7 => MetaValue::ArrBool(
+                (0..count)
+                    .map(|_| Ok(self.take(1)?[0] != 0))
+                    .collect::<Result<_>>()?,
+            ),
             8 => MetaValue::ArrStr((0..count).map(|_| self.string()).collect::<Result<_>>()?),
             t => bail!("metadata key {key}: unsupported GGUF array element type {t}"),
         })
@@ -272,6 +291,17 @@ mod tests {
             self
         }
 
+        fn kv_arr_bool(&mut self, key: &str, vs: &[bool]) -> &mut Self {
+            self.string(key);
+            self.0.extend(9u32.to_le_bytes());
+            self.0.extend(7u32.to_le_bytes());
+            self.0.extend((vs.len() as u64).to_le_bytes());
+            for v in vs {
+                self.0.push(*v as u8);
+            }
+            self
+        }
+
         fn tensor(&mut self, name: &str, dims: &[u64], ggml_type: u32, offset: u64) -> &mut Self {
             self.string(name);
             self.0.extend((dims.len() as u32).to_le_bytes());
@@ -351,6 +381,46 @@ mod tests {
     }
 
     #[test]
+    fn a_bool_array_decodes_as_the_gemma4_layer_schedule() {
+        // Gemma 4 converters write attention.sliding_window_pattern as one
+        // bool per layer, true marking a sliding-window layer. Refusing the
+        // element type made four of the six published files unparseable
+        // before any tensor was read.
+        let mut b = Builder::new(0, 1);
+        b.kv_arr_bool(
+            "gemma4.attention.sliding_window_pattern",
+            &[true, true, true, true, false],
+        );
+        let f = parse(&b.0).unwrap();
+        assert_eq!(
+            f.metadata["gemma4.attention.sliding_window_pattern"],
+            MetaValue::ArrBool(vec![true, true, true, true, false])
+        );
+    }
+
+    #[test]
+    fn a_bool_array_denser_than_four_bytes_per_element_still_fits() {
+        // The pre-allocation guard bounds the count by the remaining bytes.
+        // A flat four-byte minimum would reject this array, which occupies
+        // exactly one byte per element and does fit.
+        let values = vec![true; 64];
+        let mut b = Builder::new(0, 1);
+        b.kv_arr_bool("gemma4.attention.sliding_window_pattern", &values);
+        let remaining_after_header = b.0.len() - 24;
+        assert!(
+            values.len() * 4 > remaining_after_header,
+            "fixture must exceed the old four-byte-per-element bound: {} vs {}",
+            values.len() * 4,
+            remaining_after_header
+        );
+        let f = parse(&b.0).unwrap();
+        assert_eq!(
+            f.metadata["gemma4.attention.sliding_window_pattern"],
+            MetaValue::ArrBool(values)
+        );
+    }
+
+    #[test]
     fn adversarial_array_count_is_an_error_not_an_allocation() {
         let mut b = Builder::new(0, 1);
         b.string("tokenizer.ggml.scores");
@@ -370,7 +440,7 @@ mod tests {
         let mut b = Builder::new(0, 1);
         b.string("tokenizer.ggml.token_type");
         b.0.extend(9u32.to_le_bytes()); // value type: array
-        b.0.extend(7u32.to_le_bytes()); // element type: bool, unsupported
+        b.0.extend(10u32.to_le_bytes()); // element type: uint64, unsupported
         b.0.extend(0u64.to_le_bytes());
         let err = parse(&b.0).unwrap_err();
         assert!(err.to_string().contains("tokenizer.ggml.token_type"));

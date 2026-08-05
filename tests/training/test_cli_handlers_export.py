@@ -4,7 +4,7 @@ Each test parses real argv through build_parser() and invokes the bound
 handler, asserting the exit-code contract (0 success, 1 failure), the styled
 [OK]/[WARN]/[ERROR]/[INFO] lines, --json stdout purity, and the concrete file
 side effects (GGUF, manifest, record JSONs). For export, only the torch-bound
-seams are faked (stage_model, convert_to_gguf, quantize); name derivation,
+seams are faked (stage_model, convert_to_gguf); name derivation,
 converter lookup, checkpoint/adapter resolution, the F6 base-identity
 preflight, architecture checking, and manifest build/write all run for real
 against tmp-dir checkpoints. The eval pipelines (GPU-only) are faked at their
@@ -113,15 +113,17 @@ def patch_pipeline(
             "out_path": out_path,
             "outtype": outtype,
         }
+        with open(out_path, "wb") as f:
+            f.write(GGUF_PAYLOAD)
 
     def fake_quantize(in_path, out_path, quant_type, llama_cpp_dir=None):
+        # Recorded so a test can assert it is never reached: quantizing would
+        # hand training, the harness, and interp different weights.
         calls["quantize"] = {
             "in_path": in_path,
             "out_path": out_path,
             "quant_type": quant_type,
         }
-        with open(out_path, "wb") as f:
-            f.write(GGUF_PAYLOAD)
 
     monkeypatch.setattr("training.export.stage_model", fake_stage)
     monkeypatch.setattr("training.export.convert.convert_to_gguf", fake_convert)
@@ -130,6 +132,24 @@ def patch_pipeline(
 
 
 class TestCmdExport:
+    @pytest.mark.parametrize("outtype", ["f16", "fp16", "bfloat16", "q8_0"])
+    def test_a_lossy_or_misspelled_outtype_is_refused(self, tmp_path, outtype):
+        # --outtype had no choices=, so a value the converter did not
+        # understand failed inside the subprocess, and one it did understand
+        # but should not be used (f16 narrows bf16's exponent range and can
+        # produce inf) succeeded silently.
+        with pytest.raises(SystemExit) as exc:
+            run_cli(
+                [
+                    "export",
+                    "--checkpoint",
+                    str(tmp_path),
+                    "--outtype",
+                    outtype,
+                ]
+            )
+        assert exc.value.code == 2
+
     def test_missing_converter_exits_1(self, tmp_path, capsys):
         empty = tmp_path / "no-llama-cpp"
         empty.mkdir()
@@ -163,8 +183,6 @@ class TestCmdExport:
                     "export",
                     "--checkpoint",
                     ckpt,
-                    "--quant",
-                    "q8_0",
                     "--llama-cpp",
                     make_llama_cpp(tmp_path),
                     "--out-root",
@@ -180,11 +198,11 @@ class TestCmdExport:
         out = capsys.readouterr().err
 
         name = "myrun-step_20"
-        gguf = os.path.join(out_root, name, f"{name}-Q8_0.gguf")
+        gguf = os.path.join(out_root, name, f"{name}-BF16.gguf")
         assert f"[RUN] Staging model: {ckpt}" in out
         assert f"[OK] Architecture: {ARCH} (supported by llama.cpp {PIN[:12]})" in out
         assert "[RUN] Converting to GGUF (bf16)" in out
-        assert "[RUN] Quantizing: Q8_0" in out
+        assert "Quantizing" not in out
         assert f"[OK] GGUF written: {gguf} (4,096 bytes)" in out
 
         sha = hashlib.sha256(GGUF_PAYLOAD).hexdigest()
@@ -192,24 +210,23 @@ class TestCmdExport:
         with open(gguf, "rb") as f:
             assert f.read() == GGUF_PAYLOAD
 
-        manifest_file = os.path.join(out_root, name, f"{name}-Q8_0.manifest.json")
+        manifest_file = os.path.join(out_root, name, f"{name}-BF16.manifest.json")
         assert f"[OK] Manifest written: {manifest_file}" in out
         with open(manifest_file) as f:
             manifest = json.load(f)
         assert manifest["architecture"] == ARCH
-        assert manifest["quant_type"] == "Q8_0"
+        assert manifest["quant_type"] == "BF16"
         assert manifest["llama_cpp_commit"] == PIN
         assert manifest["adapter"] is None
         assert manifest["gguf"] == {"path": gguf, "sha256": sha, "size_bytes": 4096}
 
-        # Intermediate GGUF lives in the staging dir, which is removed by
-        # default; --tokenizer reaches staging.
+        # The converter writes straight to the served path (via .partial),
+        # with no quantize step between: the shipped artifact is the bf16
+        # GGUF the three tiers share.
         staging = calls["stage"]["staging_dir"]
-        assert calls["convert"]["out_path"] == os.path.join(
-            staging, f"{name}-bf16.gguf"
-        )
-        assert calls["quantize"]["in_path"] == calls["convert"]["out_path"]
-        assert calls["quantize"]["quant_type"] == "Q8_0"
+        assert calls["convert"]["out_path"] == gguf + ".partial"
+        assert calls["convert"]["outtype"] == "bf16"
+        assert "quantize" not in calls, "export must not quantize"
         assert calls["stage"]["tokenizer_dir"] == str(tmp_path / "tok")
         assert calls["stage"]["base_revision"] is None
         assert not os.path.exists(staging)
@@ -245,7 +262,7 @@ class TestCmdExport:
         assert "[WARN]" not in out
 
         manifest_file = os.path.join(
-            str(tmp_path / "out"), "tuned", "tuned-Q8_0.manifest.json"
+            str(tmp_path / "out"), "tuned", "tuned-BF16.manifest.json"
         )
         with open(manifest_file) as f:
             manifest = json.load(f)
@@ -309,7 +326,7 @@ class TestCmdExport:
         # The recorded revision pins the merge and lands in the manifest.
         assert calls["stage"]["base_revision"] == "f" * 40
         manifest_file = os.path.join(
-            str(tmp_path / "out"), "drifted", "drifted-Q8_0.manifest.json"
+            str(tmp_path / "out"), "drifted", "drifted-BF16.manifest.json"
         )
         with open(manifest_file) as f:
             manifest = json.load(f)
@@ -371,7 +388,7 @@ class TestCmdExport:
             == 0
         )
         data = json.loads(capsys.readouterr().out)
-        manifest_file = os.path.join(out_root, "quiet", "quiet-Q8_0.manifest.json")
+        manifest_file = os.path.join(out_root, "quiet", "quiet-BF16.manifest.json")
         with open(manifest_file) as f:
             assert data == json.load(f)
         assert data["gguf"]["sha256"] == hashlib.sha256(GGUF_PAYLOAD).hexdigest()

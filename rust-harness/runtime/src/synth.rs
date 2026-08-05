@@ -10,7 +10,18 @@
  * file bytes.
  */
 
-use super::tensor::GGML_F32;
+use super::tensor::{GGML_BF16, GGML_F32};
+
+/// Storage type for the synthetic model's weight tensors.
+///
+/// The committed fixture is F32. `Bf16` exists so the loader's bfloat16 path
+/// is exercised end to end on a model whose exact logits are known, without
+/// needing a real checkpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TensorStorage {
+    F32,
+    Bf16,
+}
 
 /// Dimensions of the synthetic model. Small enough that a full forward pass
 /// is hand-checkable and the GGUF stays a few tens of kilobytes.
@@ -30,6 +41,9 @@ pub struct TinySpec {
     pub rope_freq_base: f32,
     pub rms_eps: f32,
     pub seed: u64,
+    /// Weight storage type. Defaults to F32, which is what the committed
+    /// fixture ships; changing it changes the image bytes.
+    pub storage: TensorStorage,
 }
 
 impl Default for TinySpec {
@@ -48,6 +62,7 @@ impl Default for TinySpec {
             rope_freq_base: 10000.0,
             rms_eps: 1e-6,
             seed: 42,
+            storage: TensorStorage::F32,
         }
     }
 }
@@ -190,6 +205,16 @@ impl GgufWriter {
 
     /// Append an f32 tensor: directory entry plus aligned payload.
     pub fn tensor_f32(&mut self, name: &str, dims: &[u64], values: &[f32]) {
+        self.tensor(name, dims, values, TensorStorage::F32);
+    }
+
+    /// Append a tensor in the given storage type.
+    ///
+    /// Bfloat16 values are written by truncating the low 16 mantissa bits
+    /// rather than rounding. Truncation makes `bf16_to_f32` of the result
+    /// exactly `f32::from_bits(v.to_bits() & 0xffff_0000)`, so a caller can
+    /// state the expected f32 model without reimplementing a rounding rule.
+    pub fn tensor(&mut self, name: &str, dims: &[u64], values: &[f32], storage: TensorStorage) {
         assert_eq!(
             dims.iter().product::<u64>() as usize,
             values.len(),
@@ -203,12 +228,25 @@ impl GgufWriter {
         for d in dims {
             self.directory.extend(d.to_le_bytes());
         }
-        self.directory.extend(GGML_F32.to_le_bytes());
+        let ggml_type = match storage {
+            TensorStorage::F32 => GGML_F32,
+            TensorStorage::Bf16 => GGML_BF16,
+        };
+        self.directory.extend(ggml_type.to_le_bytes());
         self.directory
             .extend((self.data.len() as u64).to_le_bytes());
         self.tensor_count += 1;
-        for v in values {
-            self.data.extend(v.to_le_bytes());
+        match storage {
+            TensorStorage::F32 => {
+                for v in values {
+                    self.data.extend(v.to_le_bytes());
+                }
+            }
+            TensorStorage::Bf16 => {
+                for v in values {
+                    self.data.extend(((v.to_bits() >> 16) as u16).to_le_bytes());
+                }
+            }
         }
     }
 
@@ -269,7 +307,7 @@ pub fn build_tiny_model(spec: &TinySpec) -> Vec<u8> {
 
     let embd_dims = [d, spec.vocab_size as u64];
     let embd = ws.tensor(n(&embd_dims));
-    w.tensor_f32("token_embd.weight", &embd_dims, &embd);
+    w.tensor("token_embd.weight", &embd_dims, &embd, spec.storage);
     for i in 0..spec.n_layers {
         // Weight matrices: GGUF layout [ne0 = input dim, ne1 = output dim],
         // rows of ne0 contiguous per output element.
@@ -293,11 +331,11 @@ pub fn build_tiny_model(spec: &TinySpec) -> Vec<u8> {
             } else {
                 ws.tensor(n(&dims))
             };
-            w.tensor_f32(&format!("blk.{i}.{suffix}"), &dims, &values);
+            w.tensor(&format!("blk.{i}.{suffix}"), &dims, &values, spec.storage);
         }
     }
     let output_norm = ws.norm_tensor(spec.embed_dim);
-    w.tensor_f32("output_norm.weight", &[d], &output_norm);
+    w.tensor("output_norm.weight", &[d], &output_norm, spec.storage);
     // LM head is tied to token_embd, llama.cpp Gemma convention: no
     // output.weight tensor.
     w.finish()

@@ -2,7 +2,7 @@
 
 Design for building observability and debuggability into the `rust-harness`
 runtime as first-class code, rather than attaching external debuggers after the
-fact. Companion to the [runtime design](rust-harness-runtime-design.md); this
+fact. Companion to the [runtime design](runtime-design.md); this
 document defines three implementation phases that precede the CUDA backend
 (roadmap phase A) and give it a debuggable reference to be validated against.
 
@@ -282,7 +282,7 @@ speed; that is a measurement, not a design change, and is deferred.
 ## Relation to the existing roadmap
 
 Phase 3 inserts as phase A-prime before the CUDA phase A in the
-[implementation roadmap](rust-harness-runtime-design.md#implementation-roadmap):
+[implementation roadmap](runtime-design.md#implementation-roadmap):
 the CPU backend is implemented and debugged first (sandbox-runnable,
 rr-recordable), and the CUDA backend is then validated against it via the
 phase 1 recorder in addition to the existing Tier 3 fixtures. Phases 1 and 2

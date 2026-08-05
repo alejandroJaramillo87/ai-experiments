@@ -71,12 +71,13 @@ Non-goals, stated explicitly because each was considered and rejected:
 The justification behind this positioning — what the agent loop and chat
 mode each contribute to the training and interpretability programs, and the
 feature bar for future harness work — is recorded in
-[observation-frames.md](../../rust-harness/docs/observation-frames.md).
+[observation-frames.md](observation-frames.md).
 - **No multimodality.** The vision components of Gemma 4 checkpoints are skipped at
   load time.
 - **No custom CUDA kernels in version 1.** The planned GPU tensor backend is
   [Candle](https://github.com/huggingface/candle); kernel authorship is deferred to
-  the parked survey in [future-optimizations.md](future-optimizations.md).
+  the parked survey in
+  [future-optimizations.md](../inference/future-optimizations.md).
 - **No multi-provider abstraction.** One model family, hardcoded.
 
 ## Background
@@ -349,7 +350,7 @@ mock first; phases A and B swap in the real backend on the workstation.
 
 Before phase A, three observability phases (flight recorder, tracing, and an
 rr-debuggable CPU reference backend) land per the
-[observability design](rust-harness-observability.md); the CUDA backend is
+[observability design](observability.md); the CUDA backend is
 validated against the CPU reference in addition to the Tier 3 fixtures.
 
 | Phase | Deliverable | Acceptance check |
@@ -372,7 +373,7 @@ labeled as such; measured results follow the repository benchmarking protocol.
   new variants may be incomplete; the E4B layers may need direct implementation
   rather than reuse of Candle model code. The CPU reference backend
   (phase A-prime) is hand-rolled and does not depend on Candle; see the
-  [observability design](rust-harness-observability.md) for the recorded
+  [observability design](observability.md) for the recorded
   decision.
 - **Tap seam parity.** The CPU backend exposes a residual-stream `Tap` seam
   (interpretability capture and steering; see

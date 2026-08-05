@@ -54,7 +54,7 @@ System optimizations are organized by component:
 - **os/** - Operating system and memory optimizations
 - **python-pipeline-optimization-candidates.md** - Deferred optimization menu
   for the training and interp Python pipelines (post-verification; sibling of
-  `rust-harness/docs/optimization-candidates.md`)
+  `docs/rust-harness/optimization-candidates.md`)
 
 ## Files
 

@@ -18,13 +18,17 @@ use std::process::ExitCode;
 
 use runtime::gguf::{self, GgufFile, MetaValue};
 use runtime::model::cpu::{self, Config};
+use runtime::tensor::{GGML_BF16, GGML_F16, GGML_F32, GGML_Q8_0};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let [path] = args.as_slice() else {
-        eprintln!("usage: gguf-info <model.gguf>");
+    let (check, rest): (Vec<&String>, Vec<&String>) =
+        args.iter().partition(|a| a.as_str() == "--check");
+    let [path] = rest.as_slice() else {
+        eprintln!("usage: gguf-info [--check] <model.gguf>");
         return ExitCode::from(2);
     };
+    let check = !check.is_empty();
     let data = match std::fs::read(path) {
         Ok(d) => d,
         Err(e) => {
@@ -46,6 +50,7 @@ fn main() -> ExitCode {
             MetaValue::ArrStr(v) => println!("{key} = [str; {}]", v.len()),
             MetaValue::ArrF32(v) => println!("{key} = [f32; {}]", v.len()),
             MetaValue::ArrI32(v) => println!("{key} = [i32; {}]", v.len()),
+            MetaValue::ArrBool(v) => println!("{key} = [bool; {}]", v.len()),
             other => println!("{key} = {other:?}"),
         }
     }
@@ -64,14 +69,18 @@ fn main() -> ExitCode {
     }
 
     println!();
-    summarize(&file);
+    let supported = summarize(&file);
+    if check && !supported {
+        return ExitCode::from(1);
+    }
     ExitCode::SUCCESS
 }
 
 /// Derived summary: the architecture questions RH.1 has to answer, plus the
 /// backend's verdict. Never fails the run — an unloadable checkpoint is the
-/// finding, not an error.
-fn summarize(file: &GgufFile) {
+/// finding, not an error. Returns whether the CPU backend accepts the file,
+/// which only `--check` turns into an exit code.
+fn summarize(file: &GgufFile) -> bool {
     println!("=== Architecture summary ===");
 
     let mut families: BTreeMap<String, usize> = BTreeMap::new();
@@ -87,9 +96,14 @@ fn summarize(file: &GgufFile) {
     for t in &file.tensors {
         *types.entry(t.ggml_type).or_default() += 1;
     }
-    println!("Quantization types (implemented: 0 F32, 1 F16, 8 Q8_0):");
+    println!(
+        "Quantization types (implemented: {GGML_F32} F32, {GGML_F16} F16, \
+         {GGML_Q8_0} Q8_0, {GGML_BF16} BF16):"
+    );
     for (ggml_type, count) in &types {
-        let known = matches!(ggml_type, 0 | 1 | 8);
+        // Named constants, not literals: the loader and this tool must not
+        // drift on which types are implemented.
+        let known = matches!(*ggml_type, GGML_F32 | GGML_F16 | GGML_Q8_0 | GGML_BF16);
         println!(
             "  type {ggml_type}  x{count}{}",
             if known { "" } else { "  UNIMPLEMENTED" }
@@ -137,7 +151,20 @@ fn summarize(file: &GgufFile) {
         })
         .collect();
     if shared.is_empty() {
-        println!("Shared KV cache: none, all {block_count} layers carry attn_k/attn_v");
+        // Tensor presence is not evidence of absence: the published E2B and
+        // E4B files carry every projection for every layer and still declare
+        // shared_kv_layers of 20 and 18. Reporting only the tensor view read
+        // as "no KV sharing here", which is the opposite of what those files
+        // say, so the declared count is printed alongside it.
+        print!("Shared KV cache: no layer lacks attn_k/attn_v");
+        match file
+            .metadata
+            .iter()
+            .find(|(k, _)| k.ends_with(".attention.shared_kv_layers"))
+        {
+            Some((key, MetaValue::U32(n))) => println!(" (but {key} declares {n})"),
+            _ => println!(", and no shared_kv_layers key is declared"),
+        }
     } else {
         println!(
             "Shared KV cache: {} of {block_count} layers lack attn_k/attn_v: {shared:?}",
@@ -162,7 +189,13 @@ fn summarize(file: &GgufFile) {
 
     println!();
     match Config::from_gguf(file).and_then(|c| cpu::check_supported(file, &c)) {
-        Ok(()) => println!("[OK] CPU backend compatibility: supported"),
-        Err(e) => println!("[ERROR] CPU backend compatibility: {e:#}"),
+        Ok(()) => {
+            println!("[OK] CPU backend compatibility: supported");
+            true
+        }
+        Err(e) => {
+            println!("[ERROR] CPU backend compatibility: {e:#}");
+            false
+        }
     }
 }
