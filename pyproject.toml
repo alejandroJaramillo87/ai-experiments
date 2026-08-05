@@ -105,6 +105,12 @@ sandbox = [
     "uvicorn==0.51.0",
     "requests==2.34.2",
     "gguf==0.19.0",
+    # Direct pin rather than a transitive of transformers: tests/models reads
+    # safetensors headers with it, and docker/agents/Dockerfile.agents bakes the
+    # sandbox group into the agent image, where transformers is absent. 0.8.0 is
+    # the version uv.lock already resolves, so this records the existing
+    # resolution rather than moving it.
+    "safetensors==0.8.0",
 ]
 
 # Mechanistic interpretability tooling (interp Phase 0 I1). Requires transformers>=5.4

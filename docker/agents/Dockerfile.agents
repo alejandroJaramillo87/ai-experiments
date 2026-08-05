@@ -134,12 +134,43 @@ RUN uv python install "${PYTHON_VERSION}" --default --preview \
 # exporters. Both are the exact pins from pyproject.toml, so a sandbox result
 # means what a workstation result means. They live in their own venv placed
 # first on PATH, leaving the ruff and mypy tool venvs above untouched.
+#
+# The rest of the list is the `sandbox` dependency group from pyproject.toml
+# verbatim, plus pytest from the `dev` group and safetensors. Installing the
+# declared group rather than a hand-picked subset is deliberate: "sandbox tier"
+# then has one definition someone can review against pyproject.toml, and
+# /work/AGENTS.md's "~4 skips, not ~40" heuristic depends on knowing exactly
+# what is present. Without pytest here no Python test runs in a sandbox at all,
+# which pushes an agent into building a venv on the bind-mounted worktree --
+# writable, executable, and visible to the host, which is the pressure the
+# read-only rootfs exists to remove.
+#
+# numpy is pinned explicitly alongside the group so a transitive requirement
+# (scikit-learn's, in particular) cannot silently resolve it downward. A
+# conflict fails the build rather than producing an image whose rust gate is
+# subtly wrong.
 ARG NUMPY_VERSION=2.4.6
 ARG GGUF_VERSION=0.19.0
 RUN uv venv --python "${PYTHON_VERSION}" /opt/pyenv \
     && uv pip install --python /opt/pyenv/bin/python \
         "numpy==${NUMPY_VERSION}" \
         "gguf==${GGUF_VERSION}" \
+        "omegaconf==2.3.1" \
+        "hydra-core==1.3.2" \
+        "pyyaml==6.0.3" \
+        "xxhash==3.5.0" \
+        "tokenizers==0.22.2" \
+        "scikit-learn==1.9.0" \
+        "fastapi==0.139.0" \
+        "httpx==0.28.1" \
+        "uvicorn==0.51.0" \
+        "requests==2.34.2" \
+        "safetensors==0.8.0" \
+        "pytest==9.1.1" \
+        "pytest-asyncio==1.4.0" \
+        "pytest-mock==3.15.1" \
+        "pytest-xdist==3.8.0" \
+        "pytest-cov==7.1.0" \
     && chmod -R a+rX /opt/pyenv \
     && rm -rf /tmp/uv-cache
 ENV PATH=/opt/pyenv/bin:$PATH
@@ -164,6 +195,30 @@ RUN printf '%s\n' \
     'fi' \
     > /etc/profile.d/cargo-home.sh \
     && chmod 0644 /etc/profile.d/cargo-home.sh
+
+# Restore the image's PATH under a login shell.
+#
+# The ENV PATH lines above are correct for a non-login invocation, but the make
+# wrapper launches `sh -lc` (Makefile: agent-sandbox), and Debian's /etc/profile
+# assigns PATH unconditionally rather than defaulting it:
+#
+#   PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games"
+#
+# That discards /opt/pyenv/bin and /usr/local/cargo/bin, so a session had no
+# cargo at all -- `cd rust-harness && make quality` could not run, though
+# /work/AGENTS.md and .styles/RUST_STYLE.md both state that it does -- and
+# python3 resolved to the bare /usr/local/bin interpreter, which carries no
+# numpy, so runtime/src/npz.rs would fail rather than skip. ruff, mypy, and
+# shellcheck survived only by happening to sit in the default PATH, which is
+# what made the breakage look like a missing toolchain rather than a lost PATH.
+#
+# profile.d is sourced after that assignment, so prepending here wins. Keep both
+# mechanisms: ENV for non-login invocations, this for login shells.
+RUN printf '%s\n' \
+    'PATH="/opt/pyenv/bin:/usr/local/cargo/bin:$PATH"' \
+    'export PATH' \
+    > /etc/profile.d/10-agent-path.sh \
+    && chmod 0644 /etc/profile.d/10-agent-path.sh
 
 # Native LSP tool in Claude Code (symbol navigation instead of grep sweeps);
 # pyright above serves both CLIs.

@@ -88,8 +88,15 @@ These are standing instructions for anyone (human or agent) making changes in th
   fails outright without numpy rather than skipping. Rebuild the image with
   `make agent-sandbox-build` after changing `docker/agents/Dockerfile.agents` or
   `rust-harness/Cargo.lock`. `make test` still cannot sync, because it reaches the pytorch
-  cu130 index the allowlist does not carry; run `uv run --no-sync pytest` instead, accepting
-  that it resolves the `.venv` rather than the pins. What stays workstation-only is GPU work,
+  cu130 index the allowlist does not carry; invoke `pytest` **directly** instead, for the same
+  reason the ruff and mypy guidance above gives. The image bakes the `sandbox` dependency
+  group and pytest into `/opt/pyenv`, so a direct invocation runs against the `pyproject.toml`
+  pins. Do not reach for `uv run --no-sync` here: it resolves `/work/.venv`, which in a
+  worktree is the *workstation's* venv arriving over the bind mount and pointing at a host
+  interpreter that does not exist in the container — and any `uv sync` against it writes
+  through the mount to the workstation. Torch-gated tests still skip, since the sandbox tier
+  is torch-free; check the skip count before reading a green suite as evidence.
+  What stays workstation-only is GPU work,
   the service healthchecks, and anything under `/mnt/ai-data`. Re-run `make quality` on the
   workstation before every push regardless: the sandbox proves the code, not the hardware.
 

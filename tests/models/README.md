@@ -1,0 +1,104 @@
+# Model header-transcriber tests
+
+Tests for the Gemma 4 header transcribers in `scripts/models/`. These scripts produce the
+transcripts used to correct `docs/models/gemma-4.md`, which `rust-harness`, `training`, and
+`interp` all build against, so a wrong transcript value does not stay in the transcript — it
+becomes a documented fact and then a pipeline assumption.
+
+The suite is therefore built against a specific failure mode rather than for coverage. The
+danger is not a crash; it is **plausible, well-formatted output that does not depend on the
+input**: a `grep` that matches nothing and writes an empty section reading as "no such
+tensors", or a `sed` that passes a non-matching line through into a tally. Both exit 0.
+
+## Design
+
+**Spec-driven, never golden-string.** A golden transcript pasted from a previous run encodes
+that run's misunderstanding. Every fixture is generated from a declarative `ModelSpec` or
+`GgufSpec` in `specbuild.py`, and every assertion compares against a value recomputed from that
+spec. No test asserts against a recorded transcript.
+
+**One cross-check shares no author with the code under test.**
+`test_reader_agrees_with_reference_parse_gguf` parses `rust-harness/fixtures/tiny-gemma4.gguf`
+— written by Rust (`runtime/src/synth.rs::GgufWriter`) — and compares against
+`rust-harness/fixtures/reference_logits.py::parse_gguf`, an independent pure-Python reader.
+This is the check that keeps the hand-rolled GGUF reader honest, per the
+independent-verification principle in `.styles/RUST_STYLE.md`. It must **run**, never skip: if
+it skips, the committed fixture is missing and the suite has no independent check at all.
+
+**Negative controls carry equal weight.** A script that prints `REFUSED` unconditionally passes
+every positive refusal test. `test_mutation_all_f32_produces_no_refusal`,
+`test_rust_fixture_reports_no_false_refusals`, `test_mutation_version_three_is_not_flagged`,
+and `test_recognized_naming_does_not_trip_the_guard` exist to fail in that case.
+
+## Test index
+
+| Test file | Covers | Approach |
+|-----------|--------|----------|
+| `test_gemma4_header_transcript.py` | `scripts/models/gemma4_header_transcript.sh` | Spec round-trip, defect regressions, mutation matrix, robustness, output contract |
+| `test_gguf_header_transcript.py` | `scripts/models/gguf_header_transcript.sh` | Independent-reader cross-check, spec round-trip, refusal detection with negative controls, robustness |
+| `specbuild.py` | neither (helper) | Not named `test_*` so pytest does not collect it |
+
+## Defect regressions
+
+Each was confirmed failing against the scripts as written, then fixed. Select with
+`-k defect`.
+
+| Test | Defect it pins |
+|------|----------------|
+| `test_defect_d1_nested_indices_collapse_fully` | `sed` lacked `/g`, so tower names with two indices reported as two rows instead of one |
+| `test_defect_d2_width_tally_holds_only_numbers` | the width `sed` passed non-matching lines through, putting whole tensor lines into the tally |
+| `test_defect_d3_mlp_listing_is_ordered_by_layer_index` | `sort -t. -k4 -n` assumed name depth; layer 10 sorted between 1 and 2 |
+| `test_defect_d4_unrecognized_naming_fails_loudly` | unrecognized tensor naming produced an empty, clean, exit-0 transcript |
+| `test_defect_d5_cited_doc_paths_exist` | a cited `docs/` path did not exist |
+| `test_defect_d6_summary_attributes_every_refusal_to_its_file` | the GGUF summary deduplicated with `sort -u` over lines carrying counts but not filenames, so six files reported as four and four bool-array keys as "1 keys" |
+| `test_defect_d7_config_describing_another_model_fails_loudly` | `config.json` and the weights were never cross-checked, so a snapshot carrying another variant's config passed with only a hash warning |
+
+D6 and D7 were found by running the scripts against the real weights, not against
+fixtures. D7 is the one that mattered: the downloaded `gemma-4-E2B` snapshot shipped
+E4B's `config.json` verbatim — 42 layers at width 2560 declared beside weights holding
+35 layers at width 1536 — and the blob-hash check reported only an unexpected hash,
+which reads as revision drift rather than as the wrong model's file.
+
+`d4` deliberately uses a variant name the document does not pin, so no blob-hash check runs and
+the naming guard is the only thing that can fail the script. Without that, the test passes on an
+unrelated mismatch.
+
+## Fixture index
+
+| Fixture | Consumer | Proves |
+|---------|----------|--------|
+| `ModelSpec` → `build_model_dir` | `test_gemma4_header_transcript.py` | tensor inventory, dtype tally, double-wide MLP boundary, head-dim split, and zero-dimensional companions are all read from the file rather than assumed |
+| `ModelSpec(prefix="model")` | `d3`, `d4` | a naming convention the script does not expect is reported, not silently skipped |
+| `GgufSpec` → `write_gguf` | `test_gguf_header_transcript.py` | bool arrays, BF16 tensors, and version 2 are flagged as things `rust-harness` refuses |
+| `rust-harness/fixtures/tiny-gemma4.gguf` | keystone cross-check | the hand-rolled GGUF reader agrees with an independent reader on a file neither wrote |
+
+`specbuild.py` hand-rolls its GGUF writer because no in-tree writer produces the cases under
+test: `runtime/src/synth.rs::GgufWriter` emits F32 tensors and array element types 5/6/8 only,
+and never version 2. The keystone cross-check is what keeps that hand-rolled writer from
+encoding the same misunderstanding as the reader.
+
+Dimensions are small (hidden size 8, 7 layers). What the transcribers get wrong is structural,
+and none of it depends on a dimension being 1536 rather than 8; small shapes keep fixtures
+byte-exact and loadable by the reference `safetensors` and `gguf` packages.
+
+## Optional dependencies
+
+Two differential tests skip when their package is absent, matching
+`tests/interp/test_probe_export.py`:
+
+| Test | Requires |
+|------|----------|
+| `test_matches_reference_safetensors_reader` | `safetensors` |
+| `test_matches_reference_gguf_reader` | `gguf` |
+| `test_reader_agrees_with_reference_parse_gguf` | `numpy` (imported by `reference_logits.py`) |
+
+Per `/AGENTS.md`, read the run for `[SKIP]` lines rather than trusting the exit code — a green
+run with the keystone skipped is much weaker than it looks.
+
+## Running
+
+```bash
+$ uv run --no-sync pytest tests/models -q -rs   # -rs shows skip reasons
+$ uv run --no-sync pytest tests/models -k defect
+$ uv run --no-sync pytest tests/models -k mutation
+```
