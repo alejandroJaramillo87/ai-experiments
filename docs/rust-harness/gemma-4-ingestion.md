@@ -402,7 +402,7 @@ values = [1.0] * n_rot_full + [1e30] * n_unrot_full
 That is 64 entries of 1.0 followed by 192 entries of 1e30, a 256-element vector. Dividing an
 inverse frequency by 1e30 drives the angle to approximately zero, reproducing the Hugging Face
 identity. The GGUF inventory confirms the tensor and its length: `rope_freqs.weight [256] F32`,
-one per file (`/work/gemma4-gguf.txt` lines 631 and 640). The converter's comment at lines
+one per file (`docs/models/gemma4-gguf.txt` lines 631 and 640). The converter's comment at lines
 703-706 records that the tensor is a workaround, because the Hugging Face split-half ordering is
 `cc000000ss000000` while ggml's neox rotation supports only `ccss000000000000`, and the head
 cannot be rearranged without breaking `use_alternative_attention`.
@@ -492,7 +492,7 @@ knowing the architecture.
 
 The guard at `cpu.rs:256` nevertheless fires on these files, because the three file-level tensors
 retain the substring and are present in every per-layer-embedding checkpoint
-(`/work/gemma4-gguf.txt` lines 633-636 and 642). The bail message names the first matching tensor,
+(`docs/models/gemma4-gguf.txt` lines 633-636 and 642). The bail message names the first matching tensor,
 which will be one of those three. The guard is therefore sound for refusal, but it is not a sound
 basis for *enumerating* the per-layer-embedding tensor set: an implementation that later
 whitelists by the same substring would silently omit `inp_gate`, `proj`, and `post_norm`.
@@ -503,9 +503,9 @@ Recorded rather than guessed.
 
 - **Whether shared-KV layers in the released checkpoints carry key and value weights.**
   `modeling_gemma4.py` line 1199 builds `k_proj` and `v_proj` only for non-shared layers, which
-  for E2B means 15 of 35. Both transcripts disagree with that: `/work/gemma4-safetensors.txt`
+  for E2B means 15 of 35. Both transcripts disagree with that: `docs/models/gemma4-safetensors.txt`
   lines 414 and 529 record `k_proj.weight` on 28 plus 7 language-model layers, and
-  `/work/gemma4-gguf.txt` lines 613-628 record `attn_k.weight` on 28 plus 7 blocks, 35 in total.
+  `docs/models/gemma4-gguf.txt` lines 613-628 record `attn_k.weight` on 28 plus 7 blocks, 35 in total.
   Nothing in `conversion/gemma.py` drops shared-layer key or value tensors, so the converter is
   passing through what the checkpoint holds. Whether these are unused residue or the code and the
   weights are out of step was not settled from the sources read.

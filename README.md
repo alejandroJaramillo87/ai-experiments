@@ -149,10 +149,11 @@ ai-experiments/
 │       ├── test_perplexity.sh
 │       └── datasets/
 ├── tests/                     # pytest suite
-├── docker-compose.yaml        # Service orchestration
+├── docker-compose.*.yaml     # Five stacks: inference, training, interp, agents, rust-harness
 ├── pyproject.toml            # uv project and exact dependency pins
 ├── uv.lock                   # Locked dependencies
-├── Makefile                  # Infrastructure commands
+├── Makefile                  # Entry point: shared settings and the include list
+├── make/                     # One .mk per domain (services, training, interp, agents, ...)
 ├── env.example               # Environment configuration template
 ├── .gitignore                # Git exclusions
 └── README.md                 # This file

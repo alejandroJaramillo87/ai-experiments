@@ -753,9 +753,9 @@ pinned revision before relying on any assumption about them.
   code.** `modeling_gemma4.py` line 1199 constructs `k_proj` and `v_proj` only when
   `not self.is_kv_shared_layer`, which for E2B implies 15 layers carrying key and value
   projections. The E2B safetensors headers record `k_proj.weight` on all 35 language-model layers
-  (28 at `[256, 1536]` and 7 at `[512, 1536]`, `/work/gemma4-safetensors.txt` lines 414 and 529),
+  (28 at `[256, 1536]` and 7 at `[512, 1536]`, `docs/models/gemma4-safetensors.txt` lines 414 and 529),
   and the GGUF inventory likewise lists `attn_k.weight` for all 35 blocks
-  (`/work/gemma4-gguf.txt` lines 613-628). The code and the checkpoint disagree about whether
+  (`docs/models/gemma4-gguf.txt` lines 613-628). The code and the checkpoint disagree about whether
   shared layers carry key and value weights. Whether the surplus tensors are unused residue, or
   the released weights predate the code, was not settled from the sources read. This matters
   because it means the absence of `attn_k` is **not** a reliable shared-KV signature for these

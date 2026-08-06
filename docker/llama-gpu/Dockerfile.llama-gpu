@@ -127,7 +127,7 @@ ENV GGML_CUDA_MAX_STREAMS=1
 ENV GGML_CUDA_FORCE_SYNC=0
 
 
-# NVIDIA GPU settings (NVIDIA_VISIBLE_DEVICES set in docker-compose.yaml)
+# NVIDIA GPU settings (NVIDIA_VISIBLE_DEVICES set in docker-compose.inference.yaml)
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
 ENV NVIDIA_REQUIRE_CUDA="cuda>=13.0"
 

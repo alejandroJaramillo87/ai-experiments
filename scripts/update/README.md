@@ -49,7 +49,7 @@ FORCE_UPDATE=yes ./update_nvidia.sh
 
 ### Before Running Updates
 
-1. **Stop all containers**: `docker compose down`
+1. **Stop all containers**: `docker compose -f docker-compose.inference.yaml down`
 2. **Save your work**: Driver updates will reboot the system
 3. **Switch to TTY**: Press Ctrl+Alt+F2 for text console (recommended for driver updates)
 

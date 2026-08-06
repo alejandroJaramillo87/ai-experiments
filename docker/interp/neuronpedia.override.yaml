@@ -58,7 +58,7 @@ services:
 networks:
   inference-stack:
     external: true
-    # Compose prefixes the ai-network name from docker-compose.yaml with the project
+    # Compose prefixes the ai-network name from docker-compose.inference.yaml with the project
     # (repository directory) name. Override if `docker network ls` reports otherwise:
     # make np-autointerp-up AI_NETWORK_NAME=<actual-name>
     name: ${AI_NETWORK_NAME:-ai-experiments_ai-network}

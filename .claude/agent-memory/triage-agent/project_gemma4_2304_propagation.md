@@ -25,7 +25,7 @@ Gemma 2 2B.
 Further copies found 2026-08-06, not in the original list:
 `docs/interpretability/investigations/p4_d2_activation_harvesting_investigation.md:109,127,138,180`,
 `p4_d3_sae_training_investigation.md:76,120,122,208,214`,
-`docs/inference/future-optimizations.md:156`, `tests/interp/test_families.py:53,61,103,106`,
+`docs/optimizations/ideation/future-inference-optimizations.md:156`, `tests/interp/test_families.py:53,61,103,106`,
 and `tests/interp/test_harvest.py:48,121,125-127,412,418`.
 `docs/interpretability/gemma-4-interp.md:73` discusses the error rather than repeating it and
 is not a copy.

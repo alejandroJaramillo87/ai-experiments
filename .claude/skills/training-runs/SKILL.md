@@ -84,7 +84,7 @@ state. All commands are host-side.
    — preflights that training is idle, hash-checks against the manifest, recreates
    llama-gpu, polls `/v1/health` (180 s budget), runs the smoke prompts, writes a JSON
    report to `logs/eval/`, and restores unless `--keep-serving` is passed.
-3. Manual restore after an unclean exit: `docker compose up -d --force-recreate llama-gpu`
+3. Manual restore after an unclean exit: `docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-gpu`
    (with `LLAMA_GPU_MODEL` unset; the tool never edits `.env`).
 4. Comparative claims (base vs tuned) must compare at matched quantization; the report
    records `quant_type` for exactly this reason. Benchmark numbers still go through the

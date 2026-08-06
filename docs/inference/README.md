@@ -18,7 +18,7 @@ This directory contains comprehensive documentation for understanding and optimi
 - **[parameters/vllm-parameters.md](parameters/vllm-parameters.md)** - vLLM configuration and throughput optimization
 
 ### Forward Looking
-- **[future-optimizations.md](future-optimizations.md)** - Parked survey of custom kernel and runtime work, with the conditions gating it
+- **[future-optimizations.md](../optimizations/ideation/future-inference-optimizations.md)** - Parked survey of custom kernel and runtime work, with the conditions gating it
 
 ### Related Directories
 - **[../rust-harness/README.md](../rust-harness/README.md)** - The `rust-harness` runtime and coding harness, documented in its own directory

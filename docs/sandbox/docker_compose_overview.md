@@ -1,8 +1,8 @@
 # Docker Compose Security Orchestration
 
-Explanation of the multi-service AI inference orchestration implemented in docker-compose.yaml, detailing security sandboxing, resource isolation, and defense-in-depth strategies for the AMD Ryzen 9950X + RTX 5090 AI experiments.
+Explanation of the multi-service AI inference orchestration implemented in docker-compose.inference.yaml, detailing security sandboxing, resource isolation, and defense-in-depth strategies for the AMD Ryzen 9950X + RTX 5090 AI experiments.
 
-> Note: This document explains the actual implementation in `docker-compose.yaml`. The configuration orchestrates multiple containerized AI services with comprehensive security controls, resource constraints, and network isolation.
+> Note: This document explains the actual implementation in `docker-compose.inference.yaml`. The configuration orchestrates multiple containerized AI services with comprehensive security controls, resource constraints, and network isolation.
 
 ## Table of Contents
 
@@ -48,7 +48,7 @@ Explanation of the multi-service AI inference orchestration implemented in docke
 
 ## Implementation Overview
 
-The docker-compose.yaml implements a multi-service AI inference platform with defense-in-depth security. The orchestration manages five distinct services across CPU and GPU resources, implementing strict isolation boundaries while maintaining controlled inter-service communication.
+The docker-compose.inference.yaml implements a multi-service AI inference platform with defense-in-depth security. The orchestration manages five distinct services across CPU and GPU resources, implementing strict isolation boundaries while maintaining controlled inter-service communication.
 
 **Key Security Features:**
 - **Service isolation**: Each AI model runs in its own security-hardened container
@@ -577,7 +577,7 @@ build:
 ## Reference Implementation
 
 **Complete Security Stack:**
-The docker-compose.yaml implements security through:
+The docker-compose.inference.yaml implements security through:
 
 1. **Process Isolation**: Each service runs in isolated container namespace
 2. **Resource Limits**: CPU, memory, and GPU resources strictly controlled

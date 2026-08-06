@@ -11,6 +11,24 @@ workstation (RTX 5090, AMD Ryzen 9950X).
 - **[Hardware Setup](hardware/README.md)** - Component selection and assembly
 - **[Getting Started](os/README.md)** - Ubuntu installation and initial setup
 
+## Source directory orientation
+
+Each top-level source directory carries a README covering its purpose, what it consumes and
+what consumes it, its entry-point commands, and the mistakes newcomers make. They are
+orientation, not explanation: they point here for the detail.
+
+| Directory | Purpose |
+|-----------|---------|
+| [../common/README.md](../common/README.md) | Shared substrate: output, hashing, provenance, observability. A contract package checked across the Python/Rust boundary |
+| [../training/README.md](../training/README.md) | The training tier, and the recipe home for both tiers |
+| [../interp/README.md](../interp/README.md) | The interpretability tier: harvesting, SAEs, probes, steering, organisms |
+| [../tests/README.md](../tests/README.md) | The pytest suite, its tiers, and the skip-count discipline |
+| [../scripts/README.md](../scripts/README.md) | Host-side tooling, and which scripts run in a sandbox |
+| [../docker/README.md](../docker/README.md) | Build contexts; the compose files above them are the source of truth |
+| [../rust-harness/README.md](../rust-harness/README.md) | The Rust harness workspace, its test tiers, and its quality gate |
+| [../hugepages/README.md](../hugepages/README.md) | The huge-page interceptor library |
+| [../schemas/README.md](../schemas/README.md) | Cross-language artifact contracts |
+
 ## Documentation by Category
 
 ### Infrastructure Setup
@@ -76,6 +94,7 @@ audit.
 | [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer (E2B, E4B) |
 | [interpretability/gemma-4-interp.md](interpretability/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards (E2B, E4B) |
 | [models/gemma-4.md](models/gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of `verification/gemma-4-conformance.md` |
+| [models/README.md](models/README.md) | Index for the above, plus the committed GGUF and safetensors header transcripts and how to regenerate them |
 
 ### System Optimizations
 
@@ -134,6 +153,7 @@ Living documentation for the interp stack (`python -m interp`).
 |----------|-------------|
 | [agents/README.md](agents/README.md) | Agent sandbox and tooling |
 | [agents/tooling-parity.md](agents/tooling-parity.md) | OpenCode / Claude Code parity conventions |
+| [testing/quality-gate.md](testing/quality-gate.md) | What `make quality` runs, and how to invoke the same tools inside an agent sandbox |
 | [report_schema.md](report_schema.md) | Shared JSON report envelope and validator |
 
 ### Hardware Verification

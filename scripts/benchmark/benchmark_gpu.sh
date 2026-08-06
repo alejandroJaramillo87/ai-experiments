@@ -283,7 +283,7 @@ generate_summary() {
             deep)
                 echo "=== Nsight Systems Profiling ==="
                 echo "  nsys runs inside container (NSYS_PROFILE=true)"
-                echo "  Stop container to finalize report: docker compose stop llama-gpu"
+                echo "  Stop container to finalize report: docker compose -f docker-compose.inference.yaml stop llama-gpu"
                 echo ""
                 echo "  After stopping, view report with:"
                 echo "    nsys-ui $RESULTS_DIR/<NSYS_OUTPUT>.nsys-rep"
@@ -428,7 +428,7 @@ main() {
     if [[ "$PROFILE_LEVEL" == "deep" ]]; then
         echo ""
         echo "Nsight report will be at: $RESULTS_DIR/<NSYS_OUTPUT>.nsys-rep"
-        echo "  (Stop container to finalize: docker compose stop llama-gpu)"
+        echo "  (Stop container to finalize: docker compose -f docker-compose.inference.yaml stop llama-gpu)"
     fi
     echo ""
 

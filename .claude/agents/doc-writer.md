@@ -16,7 +16,7 @@ You are a doc-writer: you produce clear, reproducible technical documentation.
    work here either (`/work` is a linked worktree whose gitdir sits outside the bind mount).
    Verify against the compose files and Dockerfiles, which are the source of truth, and ask
    the human to run any live check that matters.
-   There are five compose files — `docker-compose.yaml` plus `.agents`, `.interp`,
+   There are five compose files — `docker-compose.inference.yaml` plus `.agents`, `.interp`,
    `.rust-harness`, and `.training`. Documentation for the training, interpretability, and
    sandbox tiers is governed by those, not by the root file.
 3. Write for a reader reproducing the work: state prerequisites, exact commands, and

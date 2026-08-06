@@ -15,7 +15,7 @@ Usage: python -m training generate-teacher --pipeline respond ...
 
 Manual restore one-liner if this tool ever dies uncleanly:
 
-    docker compose up -d --force-recreate <service>
+    docker compose -f docker-compose.inference.yaml up -d --force-recreate <service>
 
 (with LLAMA_GPU_MODEL / VLLM_GPU_MODEL unset in the shell, compose falls back
 to .env or the image default.)
@@ -44,7 +44,7 @@ def configure(sub) -> None:
         help="batch-generate teacher data through the serving stack (F4, host)",
         description="Batch-generate teacher data through the serving stack.",
         epilog="Manual restore after an unclean exit: "
-        "docker compose up -d --force-recreate <service>",
+        "docker compose -f docker-compose.inference.yaml up -d --force-recreate <service>",
     )
     parser.add_argument(
         "--pipeline",
@@ -214,7 +214,7 @@ def cmd(args: argparse.Namespace) -> int:
             except serving.ServingError as exc:
                 out.error(f"Restore failed: {exc}")
                 out.line(
-                    f"  Solution: docker compose up -d --force-recreate {service.name}"
+                    f"  Solution: docker compose -f docker-compose.inference.yaml up -d --force-recreate {service.name}"
                 )
                 failed = True
 

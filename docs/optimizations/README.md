@@ -54,7 +54,7 @@ System optimizations are organized by component:
 - **os/** - Operating system and memory optimizations
 - **python-pipeline-optimization-candidates.md** - Deferred optimization menu
   for the training and interp Python pipelines (post-verification; sibling of
-  `docs/rust-harness/optimization-candidates.md`)
+  `docs/optimizations/ideation/rust-harness-optimization-candidates.md`)
 
 ## Files
 
@@ -119,7 +119,7 @@ cat /sys/kernel/mm/transparent_hugepage/enabled
 
 Optimizations are applied to containers via:
 
-1. Docker Compose configuration (`docker-compose.yaml`)
+1. Docker Compose configuration (`docker-compose.inference.yaml`)
    - Single CPU service with 16 dedicated cores (cpuset: "0-15")
    - Optimized memory allocation (96GB for single high-performance instance)
    - Environment variables from .env file
@@ -174,7 +174,7 @@ Validated improvements with optimizations enabled:
 
 - bios/bios-optimizations.md - Detailed BIOS configuration guide
 - os/os-optimizations.md - Operating system tuning
-- docker-compose.yaml - Container orchestration
+- docker-compose.inference.yaml - Container orchestration
 - docker/llama-cpu/Dockerfile.cpu - Latency-optimized CPU container
 
 ---

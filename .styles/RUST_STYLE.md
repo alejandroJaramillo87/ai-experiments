@@ -215,7 +215,8 @@ when stderr is a terminal and `NO_COLOR` is unset. The text is byte-identical ei
 `grep '\[SKIP\]'` still works on piped output.
 
 **A green gate containing `[SKIP]` lines is a weaker result than its exit code suggests.**
-Read the output for skip lines rather than trusting the exit status, as `/AGENTS.md` requires.
+Read the output for skip lines rather than trusting the exit status, as
+`/rust-harness/README.md` requires.
 The `test` step passes `--nocapture` so those lines are printed at all: cargo hides a passing
 test's stderr, and a skip is by definition a pass. When adding a skippable test, make the skip
 line name the missing dependency precisely enough that a reader can install it.
@@ -297,8 +298,9 @@ by `rust-toolchain.toml`, a prefetched crate registry, and the numpy and gguf th
 cross-language tests need. Rebuild it with `make agent-sandbox-build` after changing
 `docker/agents/Dockerfile.agents` or `Cargo.lock`. A sandbox result is therefore real evidence,
 not a placeholder — but read the output for `[SKIP]` lines rather than trusting the exit code,
-and note that Tier 3 tests still require the workstation. See `/AGENTS.md` for the
-execution-environment rules.
+and note that Tier 3 tests still require the workstation. See
+`/docs/testing/quality-gate.md` for how the gate differs between the sandbox and the
+workstation, and `/AGENTS.md` for the execution-environment rules.
 
 The workspace carries a `rust-toolchain.toml`. It is not an exception to the
 no-configuration-files rule below: it pins a version rather than restating a `rustfmt` default,

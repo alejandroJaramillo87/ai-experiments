@@ -32,7 +32,7 @@ raises `ReportSchemaError` listing every header violation;
 | `training/eval/scorecard.py` | `kind: scorecard` | F7 eval scorecard |
 | `training/commands/serve_eval.py` | `report: serve_eval` | D7 serve-eval result |
 
-The conformance unit tests (`tests/interp/test_report_schema.py`,
+The conformance unit tests (`tests/interp/test_report_envelope.py`,
 `tests/training/test_report_schema.py`) assert every emitter's output
 validates; a new emitter joins the table and the tests.
 

@@ -473,7 +473,7 @@ RTX 5090
 
 - Review **[Complete GPU Stack](README.md)** for system overview
 - Explore **[Inference Optimization](../../inference/README.md)** for configuration
-- Check **[Benchmarking Guide](../../optimizations/benchmark-guide.md)** for testing
+- Check **[Benchmarking Guide](../../optimizations/README.md)** for testing
 
 ---
 

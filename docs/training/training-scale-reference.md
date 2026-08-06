@@ -7,7 +7,7 @@ model family and to the from-scratch (phase 4) and continual-learning
 records feasibility conclusions and design constraints so later roadmap
 tasks start from settled arithmetic instead of re-deriving it. Items marked
 aspirational are exactly that. Related documents:
-[python-pipeline-optimization-candidates.md](../optimizations/python-pipeline-optimization-candidates.md)
+[python-pipeline-optimization-candidates.md](../optimizations/ideation/python-pipeline-optimization-candidates.md)
 (the FP8 Tier A item this document expands),
 [memory_fit.md](memory_fit.md) (the memory-fit calculator these budgets
 feed), and

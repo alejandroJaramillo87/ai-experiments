@@ -136,7 +136,7 @@ RUN cd /tmp/zen5_optimizer && \
 **Source files**
 - `hugepages/CMakeLists.txt`: Build configuration.
 - `hugepages/src/zen5_optimizer.cpp`: Main entry point.
-- `hugepages/src/cpu_validator.cpp/.h`: CPU feature validation.
+- `hugepages/src/cpu_validator.cpp` and `hugepages/src/cpu_validator.h`: CPU feature validation.
 - `hugepages/src/memory/hugepage_wrapper.cpp`: mmap() interception.
 - `hugepages/src/config.h`: Configuration headers.
 
@@ -474,7 +474,7 @@ AVX-512 is enabled via cmake flags rather than CFLAGS for precise control:
 - **Controlled exposure**: Only port 8001 is exposed.
 
 **Docker Compose integration**
-The `llama-cpu` service in `docker-compose.yaml` adds further constraints:
+The `llama-cpu` service in `docker-compose.inference.yaml` adds further constraints:
 - **Capability dropping**: All Linux capabilities are removed (`cap_drop: ALL`).
 - **Privilege restrictions**: `no-new-privileges:true` prevents escalation.
 - **Resource constraints**: 96GB memory limit and CPU cores 0-15 via `cpuset`.
@@ -490,7 +490,7 @@ The `llama-cpu` service in `docker-compose.yaml` adds further constraints:
 - `/docker/llama-cpu/entrypoint.cpu.sh`: Parameterized server startup script.
 - `/hugepages/CMakeLists.txt`: zen5_optimizer build configuration.
 - `/hugepages/src/`: zen5_optimizer source files.
-- `/docker-compose.yaml`: Container orchestration with security hardening.
+- `/docker-compose.inference.yaml`: Container orchestration with security hardening.
 
 **Integration with the AI workstation**
 This CPU implementation runs alongside:

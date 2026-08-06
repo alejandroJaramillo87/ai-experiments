@@ -9,7 +9,7 @@ records feasibility conclusions and design constraints so later roadmap
 tasks start from settled reasoning instead of re-deriving it. Related
 documents: [rust-harness-interp.md](rust-harness-interp.md) (the tap-seam
 design this document builds on) and
-[python-pipeline-optimization-candidates.md](../optimizations/python-pipeline-optimization-candidates.md)
+[python-pipeline-optimization-candidates.md](../optimizations/ideation/python-pipeline-optimization-candidates.md)
 (the provenance constraint and capture-throughput items), and
 [observation-frames.md](../rust-harness/observation-frames.md)
 (the agent and chat frames the live-interpretability sections observe
@@ -166,7 +166,7 @@ Constraints on the CPU backend are latency, not memory:
 ## The CUDA backend
 
 A CUDA backend is the headline Tier A item in
-`docs/rust-harness/optimization-candidates.md`. The design constraints
+`docs/optimizations/ideation/rust-harness-optimization-candidates.md`. The design constraints
 below are stated now, before it exists, so they shape the implementation.
 
 **Tap-seam parity.** The GPU backend implements the same `Tap` interface

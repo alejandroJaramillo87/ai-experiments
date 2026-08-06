@@ -5,7 +5,7 @@ allowed-tools: Bash(grep:*), Bash(echo:*)
 Version-pinning audit. The rules: every image tag and every cloned dependency must be pinned
 to an immutable ref — no `:latest`, no `:main`, no `git clone` without a pinned branch/tag/SHA.
 
-There are five compose files, not one: `docker-compose.yaml` plus `.agents`, `.interp`,
+There are five compose files, not one: `docker-compose.inference.yaml` plus `.agents`, `.interp`,
 `.rust-harness`, and `.training`. All are in scope.
 
 Floating image tags (`:latest` / `:main`), excluding digest-pinned references:

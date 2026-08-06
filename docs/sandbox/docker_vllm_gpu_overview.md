@@ -473,7 +473,7 @@ File structure:
 
 - **docker/vllm-gpu/Dockerfile.vllm-gpu**: Single-stage vLLM Dockerfile.
 - **docker/vllm-gpu/entrypoint.sh**: Parameterized server startup script.
-- **docker-compose.yaml**: Container orchestration with GPU resource allocation and security hardening.
+- **docker-compose.inference.yaml**: Container orchestration with GPU resource allocation and security hardening.
 - **env.example**: Environment template documenting `VLLM_GPU_MODEL` and related variables.
 
 Integration with the AI workstation:

@@ -77,85 +77,33 @@ hand-calculated values on the mock; the three real-model layers are ignored
 tests awaiting the cuda backend and workstation fixtures. No output-quality
 claim is made until they pass.
 
-## Current status
+## What works today
 
-Everything above the forward pass is implemented and tested against the
-scripted mock: agent loop, tools (with wall-clock bash timeout and capped
-tool output), permissions, transcript, chat template, SentencePiece unigram
-tokenizer (vocabulary read from GGUF metadata), sessions with a hard context
-budget, sampler, grammar-constrained decoding, subagent fork/interleave, and
-the perplexity evaluator. Observability phase 1 is in place: a flight
-recorder (`runtime/src/model/record.rs`) wraps any `Model` behind the
-binary's `--record <path>` flag, writes every forward call to a JSONL
-stream, and loads a recording back as a `MockModel` script for sandbox
-replay; a `release-with-debug` Cargo profile and `make flame` target
-provide the profiling scaffolding. Observability phase 2 instruments the
-stack with `tracing` spans (`session.sync`, `session.step`,
-`sampler.sample`, `grammar.advance`, `tool.exec`, `agent.fork`,
-`model.forward`); no subscriber is installed by default, and the binary's
-`--trace-chrome <path>` flag writes a Perfetto-loadable trace.
+The agent loop and everything above the forward pass are implemented and tested
+against a scripted `MockModel`: tools, permissions, transcript, chat template,
+SentencePiece tokenizer, sessions with a hard context budget, sampler,
+grammar-constrained decoding, subagent fork/interleave, and the perplexity
+evaluator.
 
-Observability phase 3 lands the first real numerics: a hand-rolled,
-single-threaded CPU backend (`runtime/src/model/cpu.rs`) implementing a
-Gemma-4-style forward pass (RMSNorm, GQA with QK-norm and NEOX RoPE,
-interleaved sliding-window/global attention, GeGLU MLP, tied LM head) from
-GGUF weights (F32, F16, Q8_0 dequantization). That pass is a strict subset
-of the published Gemma 4 architecture, so `cpu::check_supported` refuses a
-checkpoint carrying per-layer embeddings, a shared KV cache, MatFormer
-per-layer feed-forward widths, or dual RoPE, naming the feature rather than
-loading the model and silently ignoring the extra weights; `gguf-info`
-prints the same verdict. The reconciliation is recorded in the parent
-repository's `docs/rust-harness/runtime-design.md` and decided on
-the workstation by runbook entry RH.1. The binary runs it with
-`--model <path.gguf>`; the `SessionGenerator` seam wires the agent loop
-through tokenizer and session. Numerics match an independent numpy
-reference over the committed synthetic checkpoint, and the harness runs a
-task end to end on the CPU backend in the sandbox. Beyond one-shot tasks,
-`--chat` runs an interactive REPL (no tools or permissions; the transcript
-persists to `session.jsonl`, so a restarted chat resumes), and
-`--temperature`, `--top-p`, `--seed`, and `--max-tokens` expose the
-sampling parameters.
+Numerics come from a hand-rolled single-threaded CPU backend
+(`runtime/src/model/cpu.rs`) implementing a Gemma-4-style forward pass from GGUF
+weights. It is a strict subset of the published architecture, so
+`cpu::check_supported` refuses a checkpoint carrying per-layer embeddings, a
+shared KV cache, MatFormer feed-forward widths, or dual RoPE — naming the
+feature rather than loading the model and silently ignoring the extra weights.
+Its logits match an independent numpy reference over the committed synthetic
+checkpoint.
 
-The context layer manages conversations that outgrow one window. A
-`HARNESS.md` file in the working root is read once at startup and injected
-as a leading turn (persistent memory; never written to the transcript).
-Compaction summarizes the middle of the conversation with the model
-itself, automatically when the rendered prompt crosses `--compact-at`
-(default 0.8) of the context budget and on demand via `/compact` in chat
-mode; the summary is persisted as an append-only record in
-`session.jsonl`, so raw history survives and `Transcript::effective`
-folds it in on read. The KV cache is serialized to `session.kv` on clean
-exit and restored at startup (versioned header, weight fingerprint,
-loud refusal on mismatch; a stale-but-valid snapshot degrades to prefix
-re-prefill), so a restarted session resumes without re-prefilling —
-continuation logits after restore are bit-identical to an unbroken run.
-`--context` caps the budget below the model's trained window, and
-startup logs a KV-size estimate. A reproducible containerized build lives in the
-parent repository (`docker/rust-harness/Dockerfile.rust-harness`, run via
-`make harness-build` / `harness-run` / `harness-chat` there): a pinned
-rust toolchain building with `--locked`. Each invocation also writes
-run-level observability records (`harness/src/obs.rs`) in the parent
-repository's shared obs contract — run id, `cmd.start`/`fail`/`cmd.end`
-events, and a catalog line under `${OBS_LOG_DIR}/harness/` — readable by
-the existing Python tooling unchanged. A design for extending that stream
-with live run-state events and a polling HTML viewer is recorded in
-`docs/live-events.md`, and a menu of x86 CPU inference optimization
-candidates (threading, quantized-weight kernels, SIMD, huge pages) in
-`docs/optimization-candidates.md`; both wait on host verification. The
-rationale for the agent loop and chat mode as two instrumented observation
-frames, and the feature bar that follows, are recorded in
-`docs/observation-frames.md`. Architecture
-reconciliation against the real E4B GGUF (`gguf-info`), the rr acceptance
-run, and the Tier 3 fixtures are the remaining workstation work; the cuda
-backend (roadmap phase A) slots in at the same `Model` seam.
+Around that sit the observability and context layers: a flight recorder
+(`--record`) that replays a run as a `MockModel`, `tracing` spans with a
+Perfetto-loadable `--trace-chrome`, an interp seam (activation capture, control
+vectors, in-band probe monitoring), conversation compaction, and a KV cache
+serialized on exit and restored at startup — continuation logits after a restore
+are bit-identical to an unbroken run.
 
-The CPU backend also carries an interpretability seam: a `Tap` trait
-observing the per-layer residual stream, control-vector steering
-(`--control-vector`, same GGUF layout llama.cpp uses), the
-`activation-capture` binary, and an in-band probe monitor (`--probe`, a
-probe GGUF exported from a trained linear probe) scoring every position
-of the probe's layer, all golden-tested against the numpy reference. Design and compatibility contract:
-`docs/interpretability/rust-harness-interp.md` in the parent repository.
+Remaining workstation work: architecture reconciliation against the real E4B
+GGUF, the rr acceptance run, and the Tier 3 fixtures. The cuda backend slots in
+at the same `Model` seam.
 
 ## Quality gate
 
@@ -164,35 +112,37 @@ $ make quality        # fmt check, clippy -D warnings, lockfile check,
                       # rustdoc -D warnings, cargo test
 ```
 
-Five offline steps, cheapest first, mirroring the parent repository's
-Python gate; the parent's root `make quality` chains this gate. cargo-deny
-(advisories, licenses) is a deliberate non-step: its advisory database
-needs the network, so it belongs to CI or workstation tooling.
+Five offline steps, cheapest first, mirroring the parent repository's Python
+gate, which chains this one. cargo-deny is a deliberate non-step: its advisory
+database needs the network.
 
-The gate needs a `python3` on `PATH` that can import numpy, and gguf for the
-exporter contract test. The npz writer's unit test (`runtime/src/npz.rs`)
-re-reads a written shard through `np.load`, so the shard format is checked
-against the reader the interp toolkit actually uses rather than a second Rust
-implementation, and `harness/tests/probe_identity.rs` takes its independent
-SHA-256 from `python3`'s hashlib.
+The cross-language tests hand artifacts to the real Python readers rather than to
+a second Rust implementation, because a Rust misunderstanding of a format would
+otherwise reproduce itself on both sides. `runtime/src/npz.rs` re-reads a written
+shard through `np.load`; `harness/tests/probe_identity.rs` takes its SHA-256 from
+`hashlib`; `python_exporter_contract.rs` parses GGUFs written by the interp
+exporters; `obs_contract.rs` parses a run catalog through
+`common.obs.catalog.read_runs`.
 
-The cross-language contract tests additionally need the parent tree, because
-they run the real Python exporters and readers: `activation_capture.rs` loads
-a capture through `interp.probes.capture.load_capture`,
-`python_exporter_contract.rs` parses GGUFs from `interp/probes/export.py` and
-`interp/steering/export.py`, and `harness/tests/obs_contract.rs` parses a run
-catalog through `common.obs.catalog.read_runs`. Each reports `[SKIP]` and
-passes when the tree or a dependency is absent — the container build's
-situation, since its context is `rust-harness/` alone. The contracts
-themselves are in `schemas/` at the repository root.
+**Which interpreter runs them is resolved, not assumed** (`runtime/src/pyenv.rs`).
+The workstation and the sandbox disagree about where a usable Python lives: on
+the workstation `python3` usually leads to a pyenv shim carrying none of the
+project's dependencies while the environment sits in `.venv`, and in a sandbox
+the reverse holds, because `/work/.venv` arrives over the bind mount and points
+at a host interpreter absent from the container. Resolution probes
+`$HARNESS_PYTHON`, then `<repo>/.venv/bin/python3`, then `python3` on `PATH`, and
+takes the first that can import what the caller names. Set `HARNESS_PYTHON` to
+override.
 
-## Roadmap
+A missing optional dependency reports `[SKIP]` and passes — the container build's
+situation, since its context is `rust-harness/` alone. numpy is instead mandatory
+in `npz.rs`, because a shard nothing re-read is an unverified shard.
 
-| Phase | Deliverable | Acceptance check |
-|-------|-------------|------------------|
-| A-prime | Hand-rolled CPU reference backend (in place; workstation acceptance pending) | Logits match the numpy reference; rr record/replay with reverse-continue |
-| A | Load quantized E4B, single forward pass | Logits match the Hugging Face reference within quantization tolerance |
-| B | Decode loop, persistent KV cache, delta prefill | Turn latency scales with delta size, not transcript size |
-| C | Grammar-constrained tool-call sampling | Zero malformed tool calls over 200 forced generations |
-| D | Full harness loop | Scripted coding task completes end to end |
-| E | Subagent fork and interleave | Spawn without prefix re-prefill; tool/generation wall-clock overlap |
+**Read the output for `[SKIP]` lines rather than trusting the exit code.** The
+`test` step passes `--nocapture` for that reason: cargo hides a passing test's
+stderr, a skip is by definition a pass, and without it a gate that had silently
+stopped exercising the Python side would look identical to one that exercised it.
+Tier 3 tests still require the workstation.
+
+The contracts themselves are in `schemas/` at the repository root. The roadmap
+and the design documents live in `docs/rust-harness/` there.

@@ -53,7 +53,7 @@ def test_registry_matches_compose_definitions():
     # the drift this test exists to catch must fail it.
     import yaml
 
-    with open(os.path.join(serving.REPO_ROOT, "docker-compose.yaml")) as f:
+    with open(serving.INFER_COMPOSE) as f:
         compose = yaml.safe_load(f)
     for name, spec in SERVICES.items():
         service = compose["services"][name]
@@ -103,7 +103,18 @@ def test_swap_model_sets_and_clears_env():
             env={**base_env, "VLLM_GPU_MODEL": "/app/models/t.gguf"},
         )
     swap_cmd, swap_env = calls[0]
-    assert swap_cmd == ["docker", "compose", "up", "-d", "--force-recreate", "vllm-gpu"]
+    # -f is not optional: the inference compose file carries a domain suffix, so
+    # a bare `docker compose` would not find it and every swap would fail.
+    assert swap_cmd == [
+        "docker",
+        "compose",
+        "-f",
+        serving.INFER_COMPOSE,
+        "up",
+        "-d",
+        "--force-recreate",
+        "vllm-gpu",
+    ]
     assert swap_env["VLLM_GPU_MODEL"] == "/app/models/t.gguf"
     restore_cmd, restore_env = calls[1]
     assert "VLLM_GPU_MODEL" not in restore_env

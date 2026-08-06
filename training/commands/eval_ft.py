@@ -19,8 +19,8 @@ criterion). A null test is the same model on both sides.
 
 Manual restore one-liners if this tool ever dies uncleanly:
 
-    docker compose up -d --force-recreate llama-gpu
-    docker compose up -d --force-recreate llama-cpu
+    docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-gpu
+    docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-cpu
 
 (with LLAMA_GPU_MODEL / LLAMA_CPU_MODEL unset in the shell, compose falls
 back to .env or the image default.)
@@ -78,7 +78,7 @@ def configure(sub) -> None:
         description="Baseline-versus-tuned scorecard from held-out loss, "
         "lm-eval, and model-as-judge (F7).",
         epilog="Manual restore after an unclean exit: "
-        "docker compose up -d --force-recreate llama-gpu llama-cpu",
+        "docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-gpu llama-cpu",
     )
     parser.add_argument(
         "--base",
@@ -331,7 +331,7 @@ def phase_serving(
                 restore_failed.append(service.name)
                 out.error(f"Restore failed for {service.name}: {exc}")
                 out.line(
-                    f"  Solution: docker compose up -d --force-recreate {service.name}"
+                    f"  Solution: docker compose -f docker-compose.inference.yaml up -d --force-recreate {service.name}"
                 )
 
     section = judge.score_judgments(judgments)

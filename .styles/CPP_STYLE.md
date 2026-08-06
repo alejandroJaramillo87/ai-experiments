@@ -196,7 +196,7 @@ void test_hugepage_allocation() {
 }
 ```
 
-For a complete real-world interceptor, see `docker/llama-cpu/hugepage_mmap_wrapper.cpp`.
+For a complete real-world interceptor, see `hugepages/src/memory/hugepage_wrapper.cpp`.
 
 ## Prohibited in System Libraries
 

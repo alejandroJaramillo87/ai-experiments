@@ -16,7 +16,7 @@ docker/llama-cpu/entrypoint.cpu.sh  # Loads via LD_PRELOAD
 ```
 
 **Build process:**
-1. `docker compose build llama-cpu` compiles the library
+1. `docker compose -f docker-compose.inference.yaml build llama-cpu` compiles the library
 2. Container entrypoint sets `LD_PRELOAD=/app/libzen5_optimizer.so`
 3. Library intercepts `mmap()` calls for allocations >= 1GB
 

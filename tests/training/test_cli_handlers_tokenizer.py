@@ -695,7 +695,12 @@ class TestGenerateTeacherCmd:
         # Generation itself completed; only the restore failed
         assert f"[OK] Dataset complete: 1 examples in {out_dir}" in out
         assert "[ERROR] Restore failed: compose exited 1" in out
-        assert ("Solution: docker compose up -d --force-recreate vllm-gpu") in out
+        # The hint is copy-pasteable, so it carries -f: the inference compose file
+        # has a domain suffix and a bare `docker compose` would not find it.
+        assert (
+            "Solution: docker compose -f docker-compose.inference.yaml "
+            "up -d --force-recreate vllm-gpu"
+        ) in out
 
     def test_failed_swap_still_restores(self, tmp_path, monkeypatch, capsys):
         # KB-10: a force-recreate that fails mid-swap can already have
