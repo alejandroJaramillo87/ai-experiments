@@ -3,9 +3,12 @@ name: triage-output-discipline
 description: In bug-bash triage, return only decision fields - never echo spec_says/code_says/host_check back, or the structured output blows the 32k token limit
 metadata:
   type: feedback
+verified: 2026-08-06
+stale_when: the structured-output token limit changes, or the orchestrator stops reattaching evidence fields from the input ledger
 ---
 
-When triaging a bug-bash findings ledger (`.claude/skills/bug-bash/SKILL.md` phase 4),
+When triaging a bug-bash findings ledger (the triage phase of
+`.claude/skills/bug-bash/SKILL.md`),
 emit only the decision fields: keep_id, merge_ids, severity, verdict, line, title,
 failure_mode, quote_status. Never re-emit the input payload (spec_says, code_says, file,
 tier, claim_ids, variants, host_check).

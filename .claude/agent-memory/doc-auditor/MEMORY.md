@@ -1,3 +1,14 @@
-- [Dual-SSD identity conflict](project_dual_ssd_identity_conflict.md) — hardware vs storage vs backup docs disagree on which SSD is OS and which is /mnt/ai-data; needs host lsblk
-- [Storage tree sources of truth](reference_storage_tree_sources.md) — /mnt/ai-data dirs come from DIRS, storage_check loops, Makefile interp-dirs, plus run-time creators
-- [Gemma 4 E2B config contamination](project_gemma4_e2b_config_contamination.md) — local E2B snapshot holds E4B's config.json; trust tensor shapes, not that config, when auditing docs/models/gemma-4.md
+# Doc-auditor memory index
+
+- [Storage tree sources of truth](reference_storage_tree_sources.md) — /mnt/ai-data dirs come from DIRS, storage_check loops, Makefile interp-dirs, plus run-time creators; check all of them before reporting a missing directory as drift.
+
+Memory format: each file carries `verified:` (when its claims were last checked against the
+tree) and `stale_when:` (the observable event that invalidates it). Grade a memory against
+those before acting on it — a memory asserting something is broken outlives the fix, and
+acting on a stale one suppresses a real finding.
+
+Removed 2026-08-06: the dual-SSD identity conflict (resolved on the host and now fully
+recorded in `docs/os/storage-configuration.md`, including the `blkid -L AIENGINEERING` rule
+and the unverified-throughput caveats) and the Gemma 4 E2B config contamination (the snapshot
+was re-downloaded; `gemma4-safetensors.txt` now shows genuine E2B geometry, so the
+treat-as-unverified instruction had become actively wrong).

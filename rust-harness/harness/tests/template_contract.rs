@@ -31,13 +31,21 @@ fn contract() -> Option<serde_json::Value> {
     Some(serde_json::from_str(&text).expect("contract is valid JSON"))
 }
 
-fn python_available() -> bool {
-    repo_root().join("training/data/sft.py").is_file()
-        && std::process::Command::new("python3")
-            .args(["-c", ""])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+/// The interpreter that can run the real renderer, or None when the parent
+/// tree or the renderer's own imports are absent.
+///
+/// Probing the imports the script actually performs, rather than running an
+/// empty script, is the point: an interpreter that exists but cannot import
+/// `training.data.sft` used to pass this guard and then fail the test on the
+/// dependency, reporting a template defect where there was an environment gap.
+fn python() -> Option<PathBuf> {
+    if !repo_root().join("training/data/sft.py").is_file() {
+        return None;
+    }
+    runtime::pyenv::interpreter(
+        &repo_root(),
+        &["training.models.families", "training.data.sft"],
+    )
 }
 
 fn entry(role: Role, content: &str) -> Entry {
@@ -70,7 +78,10 @@ const CONVERSATION: &[(Role, &str, &str)] = &[
 #[test]
 fn rust_constants_match_the_shared_chat_template_contract() {
     let Some(contract) = contract() else {
-        eprintln!("[SKIP] contract assertions: schemas/chat_template.json is absent");
+        runtime::testlog::skip(
+            "contract assertions",
+            "schemas/chat_template.json is absent",
+        );
         return;
     };
     let spec = &contract["spec"];
@@ -128,10 +139,15 @@ fn rust_constants_match_the_shared_chat_template_contract() {
 
 #[test]
 fn python_render_segments_reproduces_the_rust_rendering() {
-    if !python_available() {
-        eprintln!("[SKIP] python template parity: python3 or the parent tree is absent");
+    let Some(python) = python() else {
+        runtime::testlog::skip(
+            "python template parity",
+            "no interpreter imports training.data.sft (the parent tree is absent, or \
+             the environment lacks the training group — `make install`, or set \
+             HARNESS_PYTHON)",
+        );
         return;
-    }
+    };
     // The real renderer and the real spec, not a transcription of either:
     // a Rust copy of render_segments would agree with a Rust bug.
     const SCRIPT: &str = "import json, sys\n\
@@ -146,7 +162,7 @@ fn python_render_segments_reproduces_the_rust_rendering() {
         .map(|(_, role, content)| serde_json::json!({"role": role, "content": content}))
         .collect();
 
-    let mut child = std::process::Command::new("python3")
+    let mut child = std::process::Command::new(&python)
         .args(["-c", SCRIPT])
         .env("PYTHONPATH", repo_root())
         .stdin(std::process::Stdio::piped())

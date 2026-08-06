@@ -41,17 +41,33 @@ fi
 target_abs="$(cd "$target" && pwd)"
 
 # Determine mode: is the target the root of the repo we are running inside?
+#
+# git is the preferred oracle, but it is unusable in a contained agent sandbox: /work is a
+# linked worktree whose .git file points outside the bind mount, so rev-parse fails and
+# self_root comes back empty. Without a fallback the home repo would then be scanned as
+# "extern", flagging every one of its own hooks and plugins as an untrusted vector and
+# exiting 1 -- red for the wrong reason. Fall back to a marker check: this repository is
+# identified by AGENTS.md sitting beside the agent tooling directories.
 self_root=""
 if self_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then :; fi
+
+marker_fallback=0
 mode="extern"
 if [[ -n "$self_root" && "$target_abs" == "$self_root" ]]; then
     mode="self"
+elif [[ -z "$self_root" && -f "$target_abs/AGENTS.md" \
+        && -d "$target_abs/.claude/agents" && -d "$target_abs/.opencode" ]]; then
+    mode="self"
+    marker_fallback=1
 fi
 
 echo "=== Agent supply-chain preflight ==="
 echo
 if [[ "$mode" == "self" ]]; then
     print_info "Target: $target_abs (trusted home repo — advisory scan)"
+    if [[ "$marker_fallback" -eq 1 ]]; then
+        print_info "Repo identity: resolved by marker files (git unavailable in this sandbox)"
+    fi
 else
     print_info "Target: $target_abs (external checkout — every vector requires review)"
 fi

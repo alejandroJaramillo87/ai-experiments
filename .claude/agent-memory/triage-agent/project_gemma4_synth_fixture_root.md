@@ -3,6 +3,8 @@ name: gemma4-synth-fixture-root
 description: Most rust-harness Gemma 4 findings share one root - the single synthetic fixture (synth.rs / fixtures/tiny-gemma4.gguf) encodes conventions the spec contradicts, so the whole rust test tier is blind to them
 metadata:
   type: project
+verified: 2026-08-06
+stale_when: rust-harness/fixtures/ gains a second Gemma-shaped fixture at a separating geometry, or synth.rs stops asserting bos=1/eos=2
 ---
 
 `/work/rust-harness/runtime/src/synth.rs` (`TinySpec` + `build_tiny_model`) produces

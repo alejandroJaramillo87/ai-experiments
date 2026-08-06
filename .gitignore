@@ -54,6 +54,12 @@ scripts/optimizations/copy_to_hugetlbfs
 # -f every time the fixture is regenerated.
 !rust-harness/fixtures/*.gguf
 
+# Claude Code per-session runtime state. The lock records a live sessionId, pid,
+# and acquisition time; it is regenerated every session and must never be
+# committed. Everything else under .claude/ -- agents, commands, skills,
+# settings, and agent-memory -- is version-controlled on purpose.
+.claude/scheduled_tasks.lock
+
 # Temporary files
 *.tmp
 *.bak

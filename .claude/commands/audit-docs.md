@@ -3,13 +3,21 @@ description: Sweep a docs subtree against the Dockerfile/compose truth and retur
 argument-hint: <docs-path>
 agent: doc-auditor
 subtask: true
-allowed-tools: Read, Glob, Grep, Bash
+allowed-tools: Read, Glob, Grep, Bash, Task
 ---
 Delegate to the doc-auditor subagent (isolated context). Detection and repair are
 separate roles: doc-auditor reports the drift, doc-writer fixes it in a later pass.
 
 Audit the documentation under `$ARGUMENTS` against the actual source of truth:
-`docker-compose.yaml` and `docker/*/Dockerfile*`.
+
+- `docker-compose.yaml` — the default stack (llama-cpu, llama-gpu, vllm-gpu, open-webui,
+  comfyui) plus the opt-in `interp` profile (llama-gpu-bf16, interp-logproxy).
+- `docker-compose.agents.yaml`, `docker-compose.interp.yaml`,
+  `docker-compose.rust-harness.yaml`, `docker-compose.training.yaml` — the four additional
+  stacks. Docs under `docs/training/`, `docs/interpretability/`, and `docs/sandbox/` are
+  governed by these, **not** by the root compose file; auditing them against the root file
+  alone checks the wrong source.
+- `docker/*/Dockerfile*`, and `Makefile` for any documented target.
 
 Check every factual claim in those docs — service names, external/internal ports, image
 tags and versions, mounted paths, environment variables, and commands — against what the

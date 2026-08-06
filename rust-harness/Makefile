@@ -30,8 +30,14 @@ lock:
 doc:
 	RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items
 
+# --nocapture because cargo hides a passing test's stderr, which is exactly
+# where the cross-language tests write their [SKIP] lines. Without it a gate
+# that silently stopped exercising the Python side is indistinguishable from
+# one that exercised it and passed, while AGENTS.md and .styles/RUST_STYLE.md
+# both instruct the reader to check the output for [SKIP]. The tests are quiet
+# otherwise, so this adds the skip lines and little else.
 test:
-	cargo test --workspace
+	cargo test --workspace -- --nocapture
 
 # Profiling (workstation only): flame graph of a harness run. Requires
 # cargo-flamegraph and perf; MockModel has no hot path, so meaningful

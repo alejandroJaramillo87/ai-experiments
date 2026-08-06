@@ -41,7 +41,7 @@ Known asymmetries — recorded so "the two wirings agree" stays honest:
 
 ## Agents (Phase 2)
 
-Nine roles, authored twice with **byte-identical prompt bodies** and tool-specific
+Ten roles, authored twice with **byte-identical prompt bodies** and tool-specific
 frontmatter. Do **not** symlink agent files: OpenCode passes unknown frontmatter keys
 through to the provider as model options, so Claude-dialect keys would leak into live API
 calls. `make agent-parity` diffs the bodies to guarantee they stay identical; every role
@@ -58,6 +58,7 @@ below lives at `.claude/agents/<role>.md` and `.opencode/agents/<role>.md`.
 | integrator | Gate-running a merged batch and finding the seams | no |
 | perf-auditor | Runtime and memory cost of repo-local code, in the sandbox | no |
 | doc-auditor | Documentation drift detection | memory only |
+| feature-implementer | Net-new work from a stated requirement, style-guide first | yes |
 
 The six QA roles (`bug-hunter` through `doc-auditor`) share one method contract, the
 `bug-bash` skill, and are driven by `/bugbash`. `skeptic` is the verification stage of
@@ -95,7 +96,28 @@ Two asymmetries in the QA roles, recorded so "the two wirings agree" stays hones
   project-scoped memory directory (`.claude/agent-memory/<role>/`, version-controlled)
   so refuted claims and aspirational documents survive into the next campaign. OpenCode
   has no equivalent, so the memory steps in those bodies are inert there and the
-  OpenCode permission is `edit: deny`.
+  OpenCode permission is `edit: deny`. `feature-implementer` also declares `memory: project`
+  but has accumulated no memory directory yet; the key is harmless until it writes one.
+
+  **Every memory file carries an expiry.** Two frontmatter fields are mandatory:
+
+  ```yaml
+  verified: 2026-08-06        # when these claims were last checked against the tree
+  stale_when: <observable event that invalidates this memory>
+  ```
+
+  `stale_when` names a condition a later agent can actually evaluate — "`ArchitectureSpec`
+  gains per-layer-type fields", not "this gets fixed". Phase 2 of the bug-bash ladder
+  re-grades memory against these fields before the finders run, and a memory whose trigger
+  has fired is re-checked and rewritten rather than trusted.
+
+  The reason is a failure this repository has already had. Memory is written in the
+  imperative — "fold this into the known root rather than filing it as new" — so a memory
+  that outlives its subject does not merely go quiet, it actively suppresses real findings.
+  The 2026-08-06 audit found one memory instructing agents to treat a model config as
+  contaminated months after the file had been re-downloaded and verified correct. Nothing
+  had re-read it, because nothing was ever going to: memory is loaded by one role, and the
+  facts it holds are invisible to everyone else. An expiry is what makes that survivable.
 - **`effort: max` maps to `high`.** `bug-hunter` runs at `max` on the Claude side;
   OpenCode's `reasoningEffort` is set to `high`, the highest value the existing roles
   use.
@@ -164,7 +186,8 @@ Divergent commands are forked deliberately: break the symlink and author a real 
 |---------|---------|------------------|
 | `/task <roadmap> <id>` | shared | primary (implement → acceptance → skeptic pipeline) |
 | `/audit-docs <path>` | shared | `agent: doc-auditor`, `subtask: true` |
-| `/bench <service>` | shared | `agent: bench-runner` |
+| `/bench <service>` | shared | primary (owns the human handshake; delegates only the reduction to `bench-runner`) |
+| `/verify-host <claim>` | shared | primary (a subagent has no channel to the human) |
 | `/bugbash <scope>` | shared | primary (drives the phase ladder, spawns the QA roles) |
 | `/postmortem [sprint]` | shared | primary (structured writing) |
 | `/pins` | shared | primary (grep audit) |
