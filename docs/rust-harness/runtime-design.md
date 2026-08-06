@@ -6,7 +6,7 @@ harness adapts the agent architecture of the
 [claude-code-from-scratch](https://github.com/FareedKhan-dev/claude-code-from-scratch)
 tutorial; the runtime targets the Gemma 4 family exclusively, matching the
 repository model policy recorded in
-[unified_cli_investigation.md](../unified_cli_investigation.md). The
+[unified_cli_investigation.md](../training/investigations/unified_cli_investigation.md). The
 implementation lives in `rust-harness/`; where this document and the code
 disagree, the code is correct and the divergence is a documentation bug.
 Findings and external facts are current as of July 2026.

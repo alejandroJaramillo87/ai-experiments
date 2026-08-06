@@ -8,7 +8,7 @@ staging and prefetch (D9), and passive watchdog observation (D10).
 
 D8 (the benchmark harness) is NOT implemented; it is out of scope for this
 campaign and has no entry here. When it lands it must adopt the shared
-report envelope (`docs/report_schema.md`).
+report envelope (`docs/observability/report_schema.md`).
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training

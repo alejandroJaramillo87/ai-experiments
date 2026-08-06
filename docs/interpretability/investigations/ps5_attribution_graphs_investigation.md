@@ -1,5 +1,8 @@
 # Interpretability PS5 attribution graphs: implementation investigation
 
+**Frozen record — 2026-07-14. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Investigation of interp Phase 2 deliverable PS5 (attribution graphs). The planning
 document's design is taken as intent; the repository is the source of truth. PS5 is
 tagged orchestrate and depends on PS1 (merged) and PS2 (viewer needs imported sources;

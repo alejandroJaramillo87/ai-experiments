@@ -70,6 +70,7 @@ orientation, not explanation: they point here for the detail.
 | [inference/engines/vllm.md](inference/engines/vllm.md) | vLLM PagedAttention and continuous batching |
 | [inference/parameters/llama-cpp-parameters.md](inference/parameters/llama-cpp-parameters.md) | llama.cpp parameter tuning guide |
 | [inference/parameters/vllm-parameters.md](inference/parameters/vllm-parameters.md) | vLLM configuration for throughput (vLLM 0.25.0) |
+| [inference/art-generation.md](inference/art-generation.md) | The ComfyUI image-generation service |
 
 ### Rust Harness
 
@@ -81,6 +82,8 @@ Design and reference documentation for the `rust-harness` workspace.
 | [rust-harness/runtime-design.md](rust-harness/runtime-design.md) | Harness and runtime architecture, and the implementation roadmap |
 | [rust-harness/observability.md](rust-harness/observability.md) | Observability and debuggability as first-class code |
 | [rust-harness/gemma-4-ingestion.md](rust-harness/gemma-4-ingestion.md) | What the runtime requires to ingest a Gemma 4 checkpoint, and what it refuses |
+| [rust-harness/observation-frames.md](rust-harness/observation-frames.md) | What the agent loop and chat mode contribute to the training and interp programs, and the acceptance bar for new features |
+| [rust-harness/live-events.md](rust-harness/live-events.md) | Live run-state events as JSONL, with a serve mode and an HTML view that also replays finished runs |
 
 ### Model References
 
@@ -103,6 +106,10 @@ audit.
 | [optimizations/README.md](optimizations/README.md) | Optimization overview and verification | +26% CPU performance |
 | [optimizations/bios/bios-optimizations.md](optimizations/bios/bios-optimizations.md) | BIOS settings for AMD Ryzen 9950X | FCLK 2100MHz |
 | [optimizations/os/os-optimizations.md](optimizations/os/os-optimizations.md) | Operating system tuning | Performance governor |
+| [optimizations/bios/](optimizations/bios/) | `cpu_benchmark_results_{no,final}_bios.json` — the raw before and after measurements behind the figure above | Captured data |
+
+Unscheduled optimization work is recorded separately; see
+[Parked proposals](#parked-proposals).
 
 ### Container Services
 
@@ -117,7 +124,7 @@ audit.
 ### Training Tier
 
 Living documentation for the training stack (`python -m training`); see
-[Design history](#design-history-frozen) for the per-deliverable
+[Frozen records](#frozen-records) for the per-deliverable
 investigations.
 
 | Document | Description |
@@ -135,6 +142,7 @@ investigations.
 | [training/eval_wrapper.md](training/eval_wrapper.md) | Baseline-versus-tuned evaluation (F7) |
 | [training/scorecards/README.md](training/scorecards/README.md) | Committed reference scorecards (F8) |
 | [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer |
+| [training/training-scale-reference.md](training/training-scale-reference.md) | What fits on this workstation: model sizes, batch and sequence budgets, wall-clock expectations |
 
 ### Interpretability Tier
 
@@ -146,6 +154,8 @@ Living documentation for the interp stack (`python -m interp`).
 | [interpretability/writeback.md](interpretability/writeback.md) | Steering, probes, log proxy, probe monitor (W1-W4) |
 | [interpretability/experiments/README.md](interpretability/experiments/README.md) | The experiments log convention and entries |
 | [interpretability/gemma-4-interp.md](interpretability/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards |
+| [interpretability/interp-scale-reference.md](interpretability/interp-scale-reference.md) | What fits on this workstation for interp work: activation volumes, SAE sizes, harvest budgets |
+| [interpretability/rust-harness-interp.md](interpretability/rust-harness-interp.md) | Running the write-back interpretability path on the Rust runtime |
 
 ### Agents and Testing
 
@@ -154,31 +164,76 @@ Living documentation for the interp stack (`python -m interp`).
 | [agents/README.md](agents/README.md) | Agent sandbox and tooling |
 | [agents/tooling-parity.md](agents/tooling-parity.md) | OpenCode / Claude Code parity conventions |
 | [testing/quality-gate.md](testing/quality-gate.md) | What `make quality` runs, and how to invoke the same tools inside an agent sandbox |
-| [report_schema.md](report_schema.md) | Shared JSON report envelope and validator |
+| [sandbox/agent-sandbox.md](sandbox/agent-sandbox.md) | The contained agent sandbox: image, mounts, and egress allowlist |
 
-### Hardware Verification
+### Observability
 
 | Document | Description |
 |----------|-------------|
-| [verification/README.md](verification/README.md) | The manual verification campaign: protocol and phase order |
+| [observability/roadmap.md](observability/roadmap.md) | Runtime observability for `python -m training` and `python -m interp`: event and metrics schemas, file layout, configuration, and the OBS item sequence |
+| [observability/report_schema.md](observability/report_schema.md) | The shared JSON report envelope (`schema_version`, `git_sha`) and its validator. Distinct from `schemas/obs_record.json`, which covers the run event and catalog records |
+
+The Rust half of the same contract is documented at
+[rust-harness/observability.md](rust-harness/observability.md), and the cross-language record
+shapes both sides write live in [../schemas/README.md](../schemas/README.md).
+
+## Document classes
+
+Not every document here is maintained, and that is deliberate. A document's class decides
+whether drift against the current repository is a bug to fix or a record to preserve.
+`.styles/DOCUMENTATION_STYLE.md` defines the four classes and the line each one carries; the
+sections above list the living reference documentation, and the three tables below list the
+rest.
+
+Two of the classes are enforced by path, because both documentation gates read them that way:
+`scripts/docs/check_doc_refs.py` and `scripts/docs/check_retired_names.py` exempt anything
+under an `investigations/` directory, anything whose name ends `_investigation.md`, and
+everything under `docs/verification/`.
+
+### Frozen records
+
+What was decided and why at implementation time. Bodies are never edited; a reference that has
+since moved is accurate history rather than drift.
+
+| Location | Contents |
+|----------|----------|
+| [training/investigations/](training/investigations/) | D3-D10, F1-F8, and P2 deliverable investigations, plus [the unified-CLI investigation](training/investigations/unified_cli_investigation.md) (20 documents, 2026-07-14 to 2026-07-15) |
+| [interpretability/investigations/](interpretability/investigations/) | I1, P4, and PS deliverable investigations (8 documents, 2026-07-14 to 2026-07-15) |
+| [testing/investigations/](testing/investigations/) | [test_coverage_investigation.md](testing/investigations/test_coverage_investigation.md) — audit of the suite at 2026-07-16, commit 8316e5e |
+| [interpretability/experiments/](interpretability/experiments/) | Experiment post-mortems, one file per experiment, immutable after the verdict. [README.md](interpretability/experiments/README.md) is the living convention for writing them |
+| [models/](models/) | `gemma4-gguf.txt` and `gemma4-safetensors.txt` — machine transcripts carrying their own `Generated:` timestamps. **Cited by line number; do not regenerate without re-checking the citations** |
+
+### Parked proposals
+
+Recorded menus of work that is not scheduled. Dated at authoring, and edited only as items
+graduate into the living documentation named in each.
+
+| Document | Contents |
+|----------|----------|
+| [optimizations/ideation/os-optimization-candidates.md](optimizations/ideation/os-optimization-candidates.md) | Host OS and GPU candidates (2026-07-30); graduate into `optimizations/os/os-optimizations.md` |
+| [optimizations/ideation/python-pipeline-optimization-candidates.md](optimizations/ideation/python-pipeline-optimization-candidates.md) | Training and interp pipeline candidates (2026-07-30) |
+| [optimizations/ideation/rust-harness-optimization-candidates.md](optimizations/ideation/rust-harness-optimization-candidates.md) | x86 CPU backend candidates (2026-07-30); blocked on runbook entry RH.1 |
+| [optimizations/ideation/future-inference-optimizations.md](optimizations/ideation/future-inference-optimizations.md) | Parked custom CUDA and C++ findings (2026-07-27); gates not met |
+
+### Operational runbooks
+
+Executed against the repository or the host rather than read for understanding. The audience
+is whoever is running the checks, and the human's pasted output is the evidence.
+
+| Document | Contents |
+|----------|----------|
+| [verification/README.md](verification/README.md) | The manual verification campaign: recording protocol and phase order |
 | [verification/step-zero-environment.md](verification/step-zero-environment.md) | Lockfile, images, smoke tests, quality gate (blocks all phases) |
 | [verification/training-phase0.md](verification/training-phase0.md) | Phase 0 deliverables |
 | [verification/training-phase1.md](verification/training-phase1.md) | F1 through F8 |
 | [verification/training-phase2.md](verification/training-phase2.md) | P2-D1 through P2-D5 |
 | [verification/interp.md](verification/interp.md) | The interpretability tier |
-
-## Design history (frozen)
-
-Per-deliverable investigation documents record what was decided and why at
-implementation time. They are frozen: drift against the current repository
-is expected and correct in them, and their bodies are never edited.
-
-| Location | Contents |
-|----------|----------|
-| [training/investigations/](training/investigations/) | D3-D10, F1-F8, and P2 deliverable investigations (19 documents) |
-| [interpretability/investigations/](interpretability/investigations/) | I1, P4, and PS deliverable investigations (8 documents) |
-| [unified_cli_investigation.md](unified_cli_investigation.md) | The unified-CLI design investigation (July 2026 snapshot) |
-| [testing/test_coverage_investigation.md](testing/test_coverage_investigation.md) | Test-coverage audit snapshot (2026-07-16); frozen point-in-time analysis |
+| [verification/observability.md](verification/observability.md) | OBS-V1 to OBS-V8: the observability stack on the workstation |
+| [verification/rust-harness.md](verification/rust-harness.md) | The rust-harness CPU backend on the real E4B GGUF |
+| [verification/rust-harness-qa.md](verification/rust-harness-qa.md) | Q0-Q6: the sandbox-executable code-quality campaign |
+| [verification/gemma-4-conformance.md](verification/gemma-4-conformance.md) | Audit of the three consumer tiers against the Gemma 4 reference |
+| [verification/hardware-stress.md](verification/hardware-stress.md) | One-time firmware stability soak for the BIOS undervolt profile |
+| [verification/known-bugs.md](verification/known-bugs.md) | The defect ledger the runbook entries cross-reference |
 
 ## Performance Summary
 
@@ -207,18 +262,35 @@ full writing standard:
 
 ## Contributing to Documentation
 
-1. **Placement**:
-   - Hardware guides: `docs/hardware/`
-   - Software setup: `docs/os/`
-   - Optimization guides: `docs/optimizations/`
-   - Container docs: `docs/sandbox/`
+1. **Class first**: decide whether the document is living reference, a frozen
+   record, an operational runbook, or a parked proposal, and give it the class
+   line `.styles/DOCUMENTATION_STYLE.md` specifies. Living reference is the
+   default and carries no marker.
+2. **Placement**, by topic:
+   - Hardware guides: `docs/hardware/`; BIOS: `docs/bios/`
+   - Operating system, GPU stack, Python environment: `docs/os/`
+   - Optimization guides: `docs/optimizations/` (unscheduled menus go to
+     `docs/optimizations/ideation/`)
+   - Container and sandbox docs: `docs/sandbox/`
    - Inference tuning: `docs/inference/`
-   - Training tier: `docs/training/` (investigations are frozen; new design
-     history goes to `docs/training/investigations/`)
-   - Interpretability tier: `docs/interpretability/` (same split)
-2. **Naming Convention**: lowercase with hyphens or underscores, descriptive
+   - Model architecture references and header transcripts: `docs/models/`
+   - Rust harness design: `docs/rust-harness/`
+   - Observability and the JSON contracts commands emit: `docs/observability/`
+   - Agent tooling and parity: `docs/agents/`
+   - The quality gate and testing policy: `docs/testing/`
+   - Training tier: `docs/training/`
+   - Interpretability tier: `docs/interpretability/`
+   - Host and repository verification runbooks: `docs/verification/`
+3. **Then by class, within the topic**: a frozen record goes to
+   `<topic>/investigations/` and its filename ends `_investigation.md`. Both
+   documentation gates key on those two patterns, so a frozen record placed
+   anywhere else is gated as living and will be asked to keep its historical
+   paths resolving.
+4. **Index it**: add a row to a section above. A document reachable from
+   nowhere is a document nobody will read or maintain.
+5. **Naming Convention**: lowercase with hyphens or underscores, descriptive
    but concise.
-3. **Content Standards**: table of contents for long documents, concrete
+6. **Content Standards**: table of contents for long documents, concrete
    commands, actual measurements, cross-references to related documentation.
 
 ---

@@ -950,7 +950,7 @@ later item ids stay stable. There is no work to execute under this id.
   event and metrics schemas, the `runs` and `report`
   subcommands including `--serve`, and example `jq` queries over the event
   files and the catalog. Cross-reference this roadmap and
-  `docs/report_schema.md`.
+  `docs/observability/report_schema.md`.
 - **Acceptance check** (sandbox): the doc conforms to
   `.styles/DOCUMENTATION_STYLE.md` and every command in it is runnable as
   written.

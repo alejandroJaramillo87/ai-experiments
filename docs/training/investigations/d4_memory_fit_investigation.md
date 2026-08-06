@@ -1,5 +1,8 @@
 # D4 memory-fit calculator: implementation investigation
 
+**Frozen record — 2026-07-14. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Comparison of the Phase 0 D4 design (roadmap document, "D4: Memory-fit calculator")
 against the current repository state, with a work breakdown, acceptance checks,
 deviations, and open questions. Per operating rules, the repository is the source of

@@ -1,11 +1,14 @@
 # Unified CLI investigation
 
+**Frozen record — 2026-07-15. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Investigates whether the training and interpretability tiers should unify behind a
 single CLI, how tightly coupled the two tiers are today, and whether running
 mechanistic-interpretability workflows during training is a realistic goal on this
 workstation. The repository's current state is treated as the source of truth; the
 planning document (roadmap Google Doc) defers to it wherever the two disagree.
-Findings are current as of July 2026. Model policy going forward: Gemma 4 E-models
+Model policy going forward: Gemma 4 E-models
 primary, Qwen3 family fallback, matching `training/families.py`.
 
 ## Table of Contents

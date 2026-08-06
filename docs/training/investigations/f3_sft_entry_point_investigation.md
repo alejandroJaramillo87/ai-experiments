@@ -1,5 +1,8 @@
 # F3 supervised fine-tuning entry point: implementation investigation
 
+**Frozen record — 2026-07-14. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Comparison of the Phase 1 F3 design (roadmap document, "F3: Supervised
 fine-tuning byb entry point") against the current repository state, with a work
 breakdown, acceptance checks, deviations, and open questions. Per operating

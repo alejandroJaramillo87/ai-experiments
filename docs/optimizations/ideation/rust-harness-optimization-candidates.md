@@ -1,5 +1,8 @@
 # x86 CPU inference optimization candidates
 
+**Parked proposals — recorded 2026-07-30. Blocked on runbook entry RH.1 and a recorded
+baseline; this document is edited only as items graduate out.**
+
 A recorded menu of optimizations for the CPU backend
 (`runtime/src/model/cpu.rs`), for implementation after host verification.
 Nothing here is a commitment: every item is blocked on runbook entry RH.1

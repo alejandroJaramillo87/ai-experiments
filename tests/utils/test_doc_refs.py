@@ -117,7 +117,7 @@ class TestIsExempt:
         "rel",
         [
             "docs/training/investigations/d5_recipe_system_investigation.md",
-            "docs/unified_cli_investigation.md",
+            "docs/training/investigations/unified_cli_investigation.md",
             "docs/verification/gemma-4-conformance.md",
             "common/obs/vendor/uplot/README.md",
         ],

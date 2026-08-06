@@ -5,6 +5,13 @@ D8 benchmark harness was never implemented; this convention existed as a
 pattern followed by the implemented report emitters and is now extracted
 into one documented schema with a shared validator, `common/reports.py`.
 
+This is not the run-record contract. The event and catalog records that
+`python -m training` and `python -m interp` write, and that the Rust harness
+writes independently, are specified by `schemas/obs_record.json` and described
+in [../../schemas/README.md](../../schemas/README.md). The two share no keys.
+The only point of contact is the metrics file, whose first record is built with
+`report_header("run_metrics")` and so must satisfy the envelope below.
+
 ## Envelope
 
 Every report is a JSON object whose header carries:

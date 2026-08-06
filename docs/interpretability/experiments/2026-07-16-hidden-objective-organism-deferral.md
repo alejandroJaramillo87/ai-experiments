@@ -1,5 +1,8 @@
 # Hidden-objective organism: deferral entry
 
+**Frozen record — 2026-07-16. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Deferral record promised by resolved decision 3 of the P4-D1 model-organisms
 investigation
 ([investigations/p4_d1_model_organisms_investigation.md](../investigations/p4_d1_model_organisms_investigation.md)).

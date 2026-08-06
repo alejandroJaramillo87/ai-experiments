@@ -1,10 +1,13 @@
 # P2-D2: Data-mixing configuration — implementation investigation
 
+**Frozen record — 2026-07-15. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Investigation of what implementing P2-D2 (data-mixing configuration) entails,
 reconciling the Phase 2 product design against the current state of the repository.
 Per the operating rules, the repository is the source of truth; every point where the
 design document disagrees with shipped code is called out and the repository
-convention wins. Findings verified as of 2026-07.
+convention wins.
 
 ## Table of contents
 

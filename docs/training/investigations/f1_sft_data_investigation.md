@@ -1,5 +1,8 @@
 # F1 chat and instruction data preparation: implementation investigation
 
+**Frozen record — 2026-07-14. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Comparison of the Phase 1 F1 design (product design document, "F1: Chat and
 instruction data preparation") against the current repository state, with a work
 breakdown, acceptance checks, deviations, and open questions. Per operating rules,

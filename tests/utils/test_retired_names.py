@@ -113,7 +113,7 @@ class TestIsExempt:
         [
             "docs/training/investigations/d7_train_serve_investigation.md",
             "docs/verification/interp.md",
-            "docs/unified_cli_investigation.md",
+            "docs/training/investigations/unified_cli_investigation.md",
             "scripts/docs/check_retired_names.py",
         ],
     )

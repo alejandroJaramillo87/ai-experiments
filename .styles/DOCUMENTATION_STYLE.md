@@ -9,6 +9,41 @@ Document actual behavior, not intended behavior. Include performance measurement
 sources. Target individual developers on a local AI workstation — no cloud platforms, no CI/CD
 pipelines, no production/distributed-systems framing.
 
+## Document class
+
+Every document belongs to one of four classes. The class decides whether drift against the
+current repository is a bug to fix or a record to preserve, so it is stated in the document
+rather than inferred by whoever reads it next.
+
+| Class | What it is | Obligation |
+|-------|------------|------------|
+| Living reference | Describes the tree as it is now | Correct it when the tree moves |
+| Frozen record | What was decided or measured on a day | Never edit the body; drift is expected and correct |
+| Operational | A runbook executed against the repository or the host | Keep the commands runnable; it has no reader to please |
+| Parked proposal | A recorded menu of work that is not scheduled | Dated at authoring; edited only as items graduate out |
+
+Living reference is the default and carries no marker. The other three declare themselves in
+a single bold line directly under the H1, before the description paragraph:
+
+```markdown
+# D4 memory-fit calculator: implementation investigation
+
+**Frozen record — 2026-07-14. Drift against the current repository is expected and correct;
+this document is never updated.**
+```
+
+Dates are ISO `YYYY-MM-DD`, always. Do not write "July 2026" or "as of 2026-07".
+
+**A frozen record must also be findable by path**: its filename ends `_investigation.md`, or
+it sits under `<topic>/investigations/`. This is not a stylistic preference —
+`scripts/docs/check_doc_refs.py` and `scripts/docs/check_retired_names.py` both exempt frozen
+records by exactly those two patterns (`EXEMPT_PARTS`, `EXEMPT_SUFFIXES`). A frozen record
+named anything else is gated as though it were living, and the gate will demand that its
+historical paths still resolve.
+
+`docs/verification/` is exempt by directory prefix for the same reason, so operational
+runbooks belong there rather than beside living reference documentation.
+
 ## Writing Standards
 
 - **Active voice**: "The system allocates memory", not "Memory is allocated by the system".

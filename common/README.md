@@ -35,7 +35,7 @@ $ pytest tests/utils          # the obs and output suites
 
 ## Where the real docs live
 
-- [../docs/report_schema.md](../docs/report_schema.md) — the shared report envelope
+- [../docs/observability/report_schema.md](../docs/observability/report_schema.md) — the shared report envelope
 - [../docs/observability/roadmap.md](../docs/observability/roadmap.md) — the observability design and its phases
 - [../docs/rust-harness/observability.md](../docs/rust-harness/observability.md) — the Rust half of the same contract
 - [../schemas/README.md](../schemas/README.md) — the cross-language record contracts

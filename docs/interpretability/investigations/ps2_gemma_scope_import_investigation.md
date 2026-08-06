@@ -1,5 +1,8 @@
 # Interpretability PS2 database and Gemma Scope import: implementation investigation
 
+**Frozen record — 2026-07-14. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Investigation of what implementing interp Phase 2 deliverable PS2 (database and Gemma
 Scope import) entails in this repository. The planning document's design is taken as
 intent; where it conflicts with the repository, the repository is the source of truth and

@@ -1,5 +1,10 @@
 # Hardware verification runbook
 
+**Operational runbook. Every document in this directory is executed, not read for
+understanding: the audience is whoever is sitting at the workstation, and their pasted output
+is the evidence. Keep the commands runnable; both documentation gates exempt this directory
+by path, so stale references here are not caught for you.**
+
 Manual verification campaign for the training and interpretability tiers on
 the workstation (RTX 5090, AMD Ryzen 9950X). Both tiers passed unit tests in
 the sandbox but have never been exercised on the target hardware; this

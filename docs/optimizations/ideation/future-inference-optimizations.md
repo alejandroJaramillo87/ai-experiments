@@ -1,5 +1,8 @@
 # Future inference optimizations
 
+**Parked proposals — recorded 2026-07-27. Nothing here is scheduled; this document is
+edited only as its gating conditions are met or an item graduates out.**
+
 Parked findings from a survey of where custom CUDA or C++ work would help the training and
 interpretability tiers. Nothing here is scheduled. Every item is gated behind the conditions in
 [Gating conditions](#gating-conditions), and the gates are not met at the time of writing.

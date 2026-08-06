@@ -1,10 +1,13 @@
 # P4-D1: Model-organism recipes — implementation investigation
 
+**Frozen record — 2026-07-15. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Investigation of what implementing P4-D1 (model-organism recipes) entails, reconciling
 the Phase 4 interpretability design against the current state of the repository. Per the
 operating rules, the repository is the source of truth; every point where the design
 document disagrees with shipped code is called out and the repository convention wins.
-Findings are current as of July 2026. Model policy going forward: Gemma 4 is the primary
+Model policy going forward: Gemma 4 is the primary
 family for every feature deliverable, with the Qwen3 family as the fallback.
 
 ## Table of contents
