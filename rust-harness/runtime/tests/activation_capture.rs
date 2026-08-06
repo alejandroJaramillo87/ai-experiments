@@ -89,12 +89,10 @@ fn manifest(capture: &Capture) -> serde_json::Value {
     serde_json::from_str(&text).unwrap()
 }
 
-fn numpy_available() -> bool {
-    std::process::Command::new("python3")
-        .args(["-c", "import numpy"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+/// An interpreter that can import numpy, resolved rather than assumed —
+/// see `runtime::pyenv` for why a bare `python3` is the wrong question.
+fn numpy_python() -> Option<PathBuf> {
+    runtime::pyenv::interpreter(&repo_root(), &["numpy"])
 }
 
 fn repo_root() -> PathBuf {
@@ -106,24 +104,21 @@ fn repo_root() -> PathBuf {
 /// Absent tooling is a skip rather than a failure: the container build's
 /// context is rust-harness/ alone, and the artifact-shape assertions above
 /// already run everywhere.
-fn interp_available() -> Result<(), String> {
+fn interp_python() -> Result<PathBuf, String> {
     if !repo_root().join("interp/probes/capture.py").is_file() {
         return Err("the parent tree is not present".to_string());
     }
-    if !numpy_available() {
-        return Err("python3 cannot import numpy".to_string());
-    }
-    Ok(())
+    numpy_python().ok_or_else(|| "no interpreter can import numpy".to_string())
 }
 
 /// Run a snippet against the parent tree and return its stdout.
-fn run_interp(script: &str, arg: &Path) -> String {
-    let out = std::process::Command::new("python3")
+fn run_interp(python: &Path, script: &str, arg: &Path) -> String {
+    let out = std::process::Command::new(python)
         .args(["-c", script])
         .arg(arg)
         .env("PYTHONPATH", repo_root())
         .output()
-        .expect("python3 available in the sandbox");
+        .expect("the resolved python3 runs");
     assert!(
         out.status.success(),
         "interp rejected the artifact: {}",
@@ -135,7 +130,7 @@ fn run_interp(script: &str, arg: &Path) -> String {
 /// Shard arrays as JSON, read through np.load so the assertions cover the
 /// same reader the probe toolkit uses. float32 values are exact in float64,
 /// so the JSON round trip is lossless.
-fn load_shard(path: &Path) -> serde_json::Value {
+fn load_shard(python: &Path, path: &Path) -> serde_json::Value {
     let script = format!(
         "import json, sys\n\
          import numpy as np\n\
@@ -144,10 +139,10 @@ fn load_shard(path: &Path) -> serde_json::Value {
          allow_nan=False)\n",
         path.display()
     );
-    let out = std::process::Command::new("python3")
+    let out = std::process::Command::new(python)
         .args(["-c", &script])
         .output()
-        .expect("python3 available in the sandbox");
+        .expect("the resolved python3 runs");
     assert!(
         out.status.success(),
         "np.load rejected the shard: {}",
@@ -241,13 +236,13 @@ fn capture_writes_a_manifest_and_shard_for_the_requested_layers() {
 
 #[test]
 fn shard_rows_stay_aligned_with_their_labels_and_source_texts() {
-    if !numpy_available() {
-        eprintln!("[SKIP] shard row assertions: python3 with numpy is unavailable");
+    let Some(python) = numpy_python() else {
+        runtime::testlog::skip("shard row assertions", "no interpreter can import numpy");
         return;
-    }
+    };
     let c = capture(&dataset_jsonl(&DATASET), "0,1");
     assert!(c.output.status.success(), "{}", c.stderr());
-    let shard = load_shard(&c.out.join("shard_00000.npz"));
+    let shard = load_shard(&python, &c.out.join("shard_00000.npz"));
 
     let labels: Vec<i64> = shard["labels"]
         .as_array()
@@ -291,10 +286,13 @@ fn shard_rows_stay_aligned_with_their_labels_and_source_texts() {
 /// them had ever seen a Rust-written directory.
 #[test]
 fn a_rust_written_capture_loads_through_the_python_probe_reader() {
-    if let Err(reason) = interp_available() {
-        eprintln!("[SKIP] python reader assertions: {reason}");
-        return;
-    }
+    let python = match interp_python() {
+        Ok(python) => python,
+        Err(reason) => {
+            runtime::testlog::skip("python reader assertions", &reason);
+            return;
+        }
+    };
     let c = capture(&dataset_jsonl(&DATASET), "0,1");
     assert!(c.output.status.success(), "{}", c.stderr());
 
@@ -304,7 +302,8 @@ fn a_rust_written_capture_loads_through_the_python_probe_reader() {
          json.dump({'labels': labels.tolist(), 'texts': texts,\n\
          'shapes': {str(k): list(v.shape) for k, v in acts.items()},\n\
          'dtypes': {str(k): str(v.dtype) for k, v in acts.items()}}, sys.stdout)\n";
-    let loaded: serde_json::Value = serde_json::from_str(&run_interp(SCRIPT, &c.out)).unwrap();
+    let loaded: serde_json::Value =
+        serde_json::from_str(&run_interp(&python, SCRIPT, &c.out)).unwrap();
 
     let labels: Vec<i64> = loaded["labels"]
         .as_array()
@@ -345,7 +344,10 @@ fn a_rust_written_capture_loads_through_the_python_probe_reader() {
 fn the_manifest_carries_exactly_the_contract_key_set() {
     let path = repo_root().join("schemas/activation_capture.manifest.json");
     let Ok(text) = std::fs::read_to_string(&path) else {
-        eprintln!("[SKIP] contract assertions: {} is absent", path.display());
+        runtime::testlog::skip(
+            "contract assertions",
+            &format!("{} is absent", path.display()),
+        );
         return;
     };
     let contract: serde_json::Value = serde_json::from_str(&text).expect("contract is valid JSON");
@@ -387,10 +389,13 @@ fn the_manifest_carries_exactly_the_contract_key_set() {
 /// reinterpreting every manifest already on disk.
 #[test]
 fn the_two_writers_agree_on_an_lf_dataset_digest_and_differ_on_a_crlf_one() {
-    if let Err(reason) = interp_available() {
-        eprintln!("[SKIP] digest divergence assertions: {reason}");
-        return;
-    }
+    let python = match interp_python() {
+        Ok(python) => python,
+        Err(reason) => {
+            runtime::testlog::skip("digest divergence assertions", &reason);
+            return;
+        }
+    };
     const SCRIPT: &str = "import sys\n\
          from interp.manifest import text_sha256\n\
          with open(sys.argv[1], encoding='utf-8') as f:\n\
@@ -402,7 +407,7 @@ fn the_two_writers_agree_on_an_lf_dataset_digest_and_differ_on_a_crlf_one() {
     let dataset = c.out.parent().unwrap().join("dataset.jsonl");
     assert_eq!(
         manifest(&c)["dataset_sha256"].as_str().unwrap(),
-        run_interp(SCRIPT, &dataset),
+        run_interp(&python, SCRIPT, &dataset),
         "the digests must agree on a dataset with no CRLF to normalize"
     );
 
@@ -416,7 +421,7 @@ fn the_two_writers_agree_on_an_lf_dataset_digest_and_differ_on_a_crlf_one() {
     let dataset = c.out.parent().unwrap().join("dataset.jsonl");
     assert_ne!(
         manifest(&c)["dataset_sha256"].as_str().unwrap(),
-        run_interp(SCRIPT, &dataset),
+        run_interp(&python, SCRIPT, &dataset),
         "the digests are documented as hashing different domains; if they now \
          agree, one side changed and schemas/activation_capture.manifest.json \
          needs updating with it"

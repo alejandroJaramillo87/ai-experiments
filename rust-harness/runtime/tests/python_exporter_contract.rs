@@ -85,7 +85,7 @@ fn architecture(file: &GgufFile) -> &str {
 /// Absent tooling is a skip, not a failure: the parse assertions above
 /// already cover the seam from the committed bytes, and this test adds only
 /// the check that those bytes are still what the exporters produce.
-fn exporter_available() -> Result<(), String> {
+fn exporter_python() -> Result<PathBuf, String> {
     let script = fixtures_dir().join("export_gguf_fixtures.py");
     if !script.is_file() {
         return Err(format!("{} is not present", script.display()));
@@ -93,14 +93,8 @@ fn exporter_available() -> Result<(), String> {
     if !repo_root().join("interp/probes/export.py").is_file() {
         return Err("the parent tree is not present".to_string());
     }
-    let probe = std::process::Command::new("python3")
-        .args(["-c", "import numpy, gguf"])
-        .output();
-    match probe {
-        Ok(out) if out.status.success() => Ok(()),
-        Ok(_) => Err("python3 cannot import numpy and gguf".to_string()),
-        Err(e) => Err(format!("python3 is unavailable: {e}")),
-    }
+    runtime::pyenv::interpreter(&repo_root(), &["numpy", "gguf"])
+        .ok_or_else(|| "no interpreter can import numpy and gguf".to_string())
 }
 
 #[test]
@@ -144,7 +138,10 @@ fn python_control_vector_gguf_keeps_its_one_based_layer_numbering() {
 fn the_contract_names_the_keys_the_fixtures_actually_carry() {
     let path = repo_root().join("schemas/gguf_artifacts.json");
     let Ok(text) = std::fs::read_to_string(&path) else {
-        eprintln!("[SKIP] contract assertions: {} is absent", path.display());
+        runtime::testlog::skip(
+            "contract assertions",
+            &format!("{} is absent", path.display()),
+        );
         return;
     };
     let contract: serde_json::Value = serde_json::from_str(&text).expect("contract is valid JSON");
@@ -195,12 +192,15 @@ fn the_contract_names_the_keys_the_fixtures_actually_carry() {
 
 #[test]
 fn the_committed_fixtures_are_still_what_the_exporters_produce() {
-    if let Err(reason) = exporter_available() {
-        eprintln!("[SKIP] exporter regeneration: {reason}");
-        return;
-    }
+    let python = match exporter_python() {
+        Ok(python) => python,
+        Err(reason) => {
+            runtime::testlog::skip("exporter regeneration", &reason);
+            return;
+        }
+    };
     let dir = tempfile::tempdir().unwrap();
-    let out = std::process::Command::new("python3")
+    let out = std::process::Command::new(&python)
         .arg(fixtures_dir().join("export_gguf_fixtures.py"))
         .arg(dir.path())
         .output()

@@ -77,19 +77,21 @@ fn write_run() -> Run {
     }
 }
 
-fn python_available() -> bool {
-    repo_root().join("common/obs/catalog.py").is_file()
-        && std::process::Command::new("python3")
-            .args(["-c", ""])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+/// The interpreter that can import the reader under test, or None.
+///
+/// Probes the import rather than an empty script, so an environment gap is
+/// reported as an absent dependency instead of as a reader defect.
+fn python() -> Option<PathBuf> {
+    if !repo_root().join("common/obs/catalog.py").is_file() {
+        return None;
+    }
+    runtime::pyenv::interpreter(&repo_root(), &["common.obs.catalog"])
 }
 
 #[test]
 fn every_event_record_carries_the_contract_base_keys() {
     let Some(want) = contract_keys("event") else {
-        eprintln!("[SKIP] event key assertions: schemas/obs_record.json is absent");
+        runtime::testlog::skip("event key assertions", "schemas/obs_record.json is absent");
         return;
     };
     let run = write_run();
@@ -121,7 +123,10 @@ fn every_event_record_carries_the_contract_base_keys() {
 #[test]
 fn the_catalog_line_carries_exactly_the_contract_keys() {
     let Some(want) = contract_keys("catalog") else {
-        eprintln!("[SKIP] catalog key assertions: schemas/obs_record.json is absent");
+        runtime::testlog::skip(
+            "catalog key assertions",
+            "schemas/obs_record.json is absent",
+        );
         return;
     };
     let run = write_run();
@@ -146,16 +151,20 @@ fn the_catalog_line_carries_exactly_the_contract_keys() {
 /// machine that had not run the harness at all.
 #[test]
 fn a_harness_written_catalog_parses_through_the_python_reader() {
-    if !python_available() {
-        eprintln!("[SKIP] python reader assertions: python3 or the parent tree is absent");
+    let Some(python) = python() else {
+        runtime::testlog::skip(
+            "python reader assertions",
+            "no interpreter imports common.obs.catalog (the parent tree is absent, or \
+             the environment is unprovisioned — `make install`, or set HARNESS_PYTHON)",
+        );
         return;
-    }
+    };
     let run = write_run();
     const SCRIPT: &str = "import json, sys\n\
          from pathlib import Path\n\
          from common.obs.catalog import read_runs\n\
          json.dump(read_runs(Path(sys.argv[1])), sys.stdout)\n";
-    let out = std::process::Command::new("python3")
+    let out = std::process::Command::new(&python)
         .args(["-c", SCRIPT])
         .arg(&run.catalog)
         .env("PYTHONPATH", repo_root())

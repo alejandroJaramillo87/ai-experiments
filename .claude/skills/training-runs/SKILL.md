@@ -1,34 +1,55 @@
 ---
 name: training-runs
-description: How to launch, resume, and serve model training runs on this stack — checkpoint layout, the memory-fit calculator, and the train-and-serve round trip. Skeleton reference; grows once the training tier lands.
+description: How to launch, resume, and serve model training runs on this stack — checkpoint layout, the memory-fit calculator, and the train-and-serve round trip. Use before preparing any training, fine-tune, or distillation command.
 ---
 # Training runs
 
 Reference for launching and managing training/fine-tuning runs and folding the result back
 into inference.
 
-> Status: partially implemented. Phase 0 foundations are landing: the training container
-> (D1), data pipeline (D2), tokenizer training (D3), memory-fit calculator (D4), and recipe
-> system (D5) exist in this repository. Sections below without concrete commands remain
-> intended procedure; do not present those as runnable until the scripts exist.
+> Status: implemented through Phase 0 (D1-D7), Phase 1 (F1, F3-F5, F7, F8), and Phase 2
+> (P2-D1). `training/` carries the CLI, calculator, recipes, runtime, export, eval, tune,
+> and continual modules, with tests under `tests/training/`. Where a section below states a
+> command, that command exists; check `make help` for the authoritative target list.
 
-> Sandboxed execution: agents cannot reach the host, the GPU, or `/mnt/ai-data/models/`.
-> Once the training tier lands, launch/resume/serve commands are executed by the human on
-> the workstation; the agent prepares commands and works from human-reported output.
+> Sandboxed execution: agents cannot reach the host, the GPU, or `/mnt/ai-data`. Every
+> launch, resume, and serve command here is executed by the human on the workstation; the
+> agent prepares the command and works from human-reported output. Recipe validation and
+> the memory-fit estimate are the exceptions — they are pure Python and run anywhere.
 
 ## Launch and resume
 
-- Launch a run from a pinned base model and a versioned config; never train from a floating
+- Launch from a pinned base model and a versioned recipe; never train from a floating
   `:latest` weight set.
-- Resume from the latest checkpoint rather than restarting; record the run id so a resume is
-  unambiguous.
+- Prove the assets are local first: `make train-preflight CONFIG=<recipe>`.
+- Validate the recipe before burning GPU time: `make train-validate CONFIG=<recipe>
+  ARGS="optimizer.lr=1e-4"`.
+- Pretrain / reference loop: `make train CONFIG=<recipe>`.
+- Resume rather than restart: `make train CONFIG=<recipe> ARGS="checkpoint.resume=latest"`.
+  `latest` is a real symlink to the newest `step_*` directory, so the resume target is
+  unambiguous without tracking a step number.
+- Supervised fine-tune: `make train-sft CONFIG=<recipe>`. Distillation:
+  `make train-distill CONFIG=<recipe>`, with `make distill-cache` to materialize teacher
+  top-K logprobs for cached mode.
 
 ## Checkpoint layout
 
-- Checkpoints live under the models volume (`/mnt/ai-data/models/`), one directory per run
-  id, with periodic snapshots plus a `latest` pointer.
-- Keep the training config and dataset reference beside the checkpoints so a run is
-  reproducible.
+Checkpoints live under the training volume, **not** the models volume — the models tree
+holds serving weights, and `/mnt/ai-data/models/trained/` is only the GGUF export
+destination.
+
+```
+/mnt/ai-data/training/runs/<run.name>/     default root, from ${run.output_root}
+  <timestamp>/                             one per invocation: config.yaml snapshot,
+                                           tensorboard/, wandb/, mlruns/
+  checkpoints/                             shared across invocations
+    step_000000010/
+    latest -> step_000000010
+```
+
+The per-invocation timestamp directory keeps the config snapshot beside the run, so a
+checkpoint is reproducible without consulting the recipe file's current state. Details:
+`docs/training/tracking_checkpointing.md`.
 
 ## Memory-fit calculator (D4)
 

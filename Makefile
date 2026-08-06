@@ -562,12 +562,26 @@ format: ## Format code with ruff
 # provisioned in .venv instead of re-resolving the environment first).
 # shellcheck gates at warning severity: info/style hits in host entrypoints are
 # dominated by intentional word-splitting the sandbox cannot safely rewrite.
+#
+# Shell files are enumerated with find, not `git ls-files`. The git form fails in a
+# contained agent sandbox (/work is a linked worktree whose gitdir is outside the bind
+# mount), and because it sat on the left of a pipe the recipe's status came from xargs --
+# shellcheck ran on zero files and the gate reported success having linted nothing. The
+# empty-set guard below makes that failure mode loud instead of silent.
 quality: ## Run the full quality gate (format check, lint, mypy, lock check, shellcheck, rust gate)
 	uv run --no-sync ruff format --check .
 	uv run --no-sync ruff check .
 	uv run --no-sync mypy
 	uv lock --check
-	git ls-files '*.sh' | xargs uv run --no-sync shellcheck --severity=warning
+	@files=$$(find . -name '*.sh' -type f \
+	    -not -path './.git/*' -not -path './.venv/*' \
+	    -not -path './node_modules/*' -not -path '*/target/*' | sort); \
+	if [ -z "$$files" ]; then \
+	  printf '[ERROR] shellcheck: enumerated zero shell scripts; the gate would pass without linting anything\n'; \
+	  exit 1; \
+	fi; \
+	printf '[INFO] shellcheck: %s files\n' "$$(printf '%s\n' "$$files" | wc -l)"; \
+	printf '%s\n' "$$files" | xargs uv run --no-sync shellcheck --severity=warning
 	@if [ -d rust-harness ]; then $(MAKE) -C rust-harness quality; fi
 
 ##@ Agent Tooling (OpenCode / Claude Code parity)

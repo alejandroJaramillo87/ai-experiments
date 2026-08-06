@@ -3,6 +3,8 @@ name: project-gemma4-conformance-audit
 description: Gemma 4 conformance campaign - docs/models/gemma-4.md is sole authority; the reconciliation table in rust-harness-runtime-design.md is known-bad secondhand data
 metadata:
   type: project
+verified: 2026-08-06
+stale_when: docs/models/gemma-4.md is superseded as the architecture authority, or Gemma 4 weights land on the workstation making the needs-host verdicts resolvable
 ---
 
 A repository-wide conformance audit sweeps the tree against `/work/docs/models/gemma-4.md`,

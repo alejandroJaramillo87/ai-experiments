@@ -25,18 +25,28 @@ Run the phases in order. Do not start remediation while discovery is still open.
    Record determinism oracles — a digest of a recorded output stream and of a generated
    artifact, both at a fixed seed — so later phases can prove they changed nothing.
    Record the perf baseline and its noise floor.
-2. **Discovery.** One `bug-hunter` per dimension, file sets disjoint where possible.
+2. **Scope and exclusions.** List the dimensions in play and the file set each one owns.
+   **Write this campaign's exclusion list into the campaign log under `docs/verification/`
+   before spawning any finder**, so the finders and the triage-agent read the same one; an
+   exclusion list held only in the orchestrator's context is not readable by either.
+   Re-grade agent memory in this phase too: every memory file carries `verified:` and
+   `stale_when:`, and any whose trigger has fired is re-checked against the tree and
+   rewritten before it is used. A memory is written in the imperative, so a stale one does
+   not go quiet — it suppresses real findings.
+3. **Discovery.** One `bug-hunter` per dimension, file sets disjoint where possible.
    Finders do not fix and do not propose fixes.
-3. **Verification.** `skeptic` agents attempt to refute each finding, weighted by
+4. **Verification.** `skeptic` agents attempt to refute each finding, weighted by
    severity. See the rubric below.
-4. **Triage.** One `triage-agent` deduplicates, regrades, audits verification state, and
+5. **Triage.** One `triage-agent` deduplicates, regrades, audits verification state, and
    cuts the confirmed set into file-disjoint packages.
-5. **Remediation.** One `remediator` per package, working one shared tree. Each fix ships
+6. **Remediation.** One `remediator` per package, working one shared tree. Each fix ships
    with a test observed failing before it and passing after.
-6. **Integration.** One `integrator` per batch: full gate on the merged tree from a clean
+7. **Integration.** One `integrator` per batch: full gate on the merged tree from a clean
    build, one red-before claim re-verified independently, and a sweep for what fell
    between packages.
-7. **Record and push.** Append to the campaign log, commit, push. Then the next batch.
+8. **Record and push.** Append to the campaign log, commit, push. Then the next batch.
+   Git does not function in a sandbox, so the agent writes the log and the human runs the
+   commit and push; do not begin the next batch until they confirm it landed.
 
 ## What "confirmed" means
 
@@ -119,8 +129,11 @@ One concern per commit. Every fix commits with its test.
 
 ## Exclusion list
 
-A prior campaign's fixed and waived items are out of scope. Record the exclusion list at
-the start and check it at triage, so a settled waiver is not relitigated as a new finding.
+A prior campaign's fixed and waived items are out of scope. Record the exclusion list in
+phase 2, **written into the campaign log under `docs/verification/`** rather than held in
+context, and check it at triage, so a settled waiver is not relitigated as a new finding.
+Finders and the triage-agent both read it from that file; if it is absent, they report its
+absence rather than assuming the set is empty.
 
 A finding closed as **deferred** — neither fixed nor waived — is not silently absorbed
 into the fixed count. It gets a disposition row, a reason, and a followup entry.

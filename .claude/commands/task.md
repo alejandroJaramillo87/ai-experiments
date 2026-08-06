@@ -1,14 +1,13 @@
 ---
 description: Drive one roadmap task through implement -> acceptance-check -> skeptic, then stop for review
 argument-hint: <roadmap-file> <task-id>
-allowed-tools: Read, Edit, Write, Bash, Glob, Grep
+allowed-tools: Read, Edit, Write, Bash, Glob, Grep, Task
 ---
 Roadmap file: $1
 Task id: $2
 
-@$1
-
-(If the roadmap content above did not expand, Read `$1` yourself before continuing.)
+Read `$1` before continuing. (A leading `@$1` would not work here: `@path` includes are
+resolved at parse time, before `$1` is bound to an argument.)
 
 Execute this task as one bounded, self-verifying session. Do the stages in order and do not
 skip ahead:
@@ -17,7 +16,10 @@ skip ahead:
    criteria exactly as written. If the task is ambiguous or already done, say so and stop.
 2. Implement — make the change described by task `$2`, touching only the files it names.
 3. Acceptance-check — if the check is repo-local (no GPU, service, or host Docker), run
-   it **verbatim** and show the full output. If it is host-side, print the exact command,
+   it and show the full output. Run it **verbatim except** where `/AGENTS.md`'s sandbox rules
+   override the wording: invoke `ruff`, `mypy`, `shellcheck`, and `pytest` directly rather
+   than through `uv run --no-sync`, and never `make test` or a bare `uv sync`. Say so when you
+   substitute. If it is host-side, print the exact command,
    stop, and wait for the human to run it and report the output; record the reported
    command and output verbatim. If the check fails, fix and repeat; do not proceed on a
    failing check and never mark the task done without observed or human-reported passing

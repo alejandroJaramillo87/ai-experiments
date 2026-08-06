@@ -18,8 +18,12 @@ finding.
 ## Sandboxed execution
 
 You run in a contained sandbox with no access to the host, its Docker daemon, the GPU,
-`/mnt/ai-data`, or the running inference services. Editing files, grep, git, and unit tests
-that need no GPU or running service work normally.
+`/mnt/ai-data`, or the running inference services. Editing files, grep, and unit tests that
+need no GPU or running service work normally.
+
+`git` does not. The binary is installed, but `/work` is a linked worktree whose `.git` file
+points outside the bind mount, so every git command — including `git status` and `git diff` —
+fails with `fatal: not a git repository`. Hand git and commit work to the human.
 
 Never run a host-side command, never claim to have run one, and never fabricate its output.
 When a step requires the host, write out the exact command, state what result would satisfy
@@ -50,8 +54,11 @@ still need the workstation, so say which parts your run did not exercise.
    reformatting of untouched code, no adjacent improvement — those are separate commits.
 7. Run the gate for what you touched and report the result:
    - Python and shell: `ruff format --check .`, `ruff check .`, `mypy --no-incremental`,
-     `shellcheck`, and `uv run --no-sync pytest` for the affected tests.
-   - Rust: hand the command to the human; you cannot run it.
+     `shellcheck`, and `pytest` for the affected tests. Invoke each directly. Never use
+     `uv run --no-sync`: it resolves `/work/.venv`, which in a worktree is the workstation's
+     venv arriving over the bind mount and pointing at a host interpreter absent from this
+     container — and any `uv sync` against it writes back through the mount.
+   - Rust: `make -C rust-harness quality`, which runs here (see above).
 8. **Report the skip count, not only the exit code.** A green Python suite reporting roughly 40
    skips instead of roughly 4 is a partial run against a torch-free environment, not a pass. A
    green Rust gate containing `[SKIP]` lines is weaker than its exit status suggests. State the

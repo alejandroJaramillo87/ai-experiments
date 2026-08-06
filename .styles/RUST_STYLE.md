@@ -203,19 +203,25 @@ comment on the drop timing when it matters.
 ### The `[SKIP]` contract
 
 A cross-language contract test whose dependency is absent prints a skip line to standard error
-and passes:
+and passes. Emit it through `runtime::testlog::skip`, never a bare `eprintln!`:
 
 ```rust
-eprintln!("[SKIP] python reader assertions: python3 or the parent tree is absent");
+runtime::testlog::skip("python reader assertions", "no interpreter can import numpy");
 ```
 
 Format is `[SKIP] <what is skipped>: <reason>` — a noun phrase, a colon, then the reason. This
-follows `.styles/TEST_OUTPUT_STYLE.md`.
+follows `.styles/TEST_OUTPUT_STYLE.md`, including the blue `[SKIP]`, which the helper applies
+when stderr is a terminal and `NO_COLOR` is unset. The text is byte-identical either way, so
+`grep '\[SKIP\]'` still works on piped output.
 
 **A green gate containing `[SKIP]` lines is a weaker result than its exit code suggests.**
 Read the output for skip lines rather than trusting the exit status, as `/AGENTS.md` requires.
-When adding a skippable test, make the skip line name the missing dependency precisely enough
-that a reader can install it.
+The `test` step passes `--nocapture` so those lines are printed at all: cargo hides a passing
+test's stderr, and a skip is by definition a pass. When adding a skippable test, make the skip
+line name the missing dependency precisely enough that a reader can install it.
+
+Do not write a test that calls `skip` with a synthetic reason. Its line lands in the gate
+naming nothing real, and a reader scanning for skips has to know to discount it.
 
 `[OK]` prefixes belong to binary status output, not to tests. No `[FAIL]` string exists in the
 Rust tree; failures go through `assert!` and panic.
@@ -231,6 +237,19 @@ Verify against an independent implementation on purpose:
 
 Preserve this property when extending such a test. Replacing the Python check with a Rust one
 removes the only reason the test catches a shared misunderstanding of the format.
+
+**Resolve the interpreter through `runtime::pyenv`; never spawn a bare `python3`.** Which
+interpreter `PATH` leads to differs between the workstation and the sandbox, and neither
+location is right in both, so `pyenv::interpreter` probes candidates and returns the first
+that imports what the test needs. Two rules follow from what an absent dependency means:
+
+- Optional dependency — take the `Option`, and skip with a line naming the missing import.
+- Mandatory dependency — use `interpreter_or_panic`, so the gate fails rather than quietly
+  stops checking. `npz.rs` does this: a shard nothing re-read is an unverified shard.
+
+Probe the imports the test actually performs, not an empty script. A guard that only proves an
+interpreter exists passes on a machine that cannot import the module, and the test then fails
+on the dependency while reporting a defect in the code under test.
 
 ## Numerics and reproducibility
 

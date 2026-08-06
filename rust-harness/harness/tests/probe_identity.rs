@@ -22,7 +22,11 @@ fn fixture_model() -> PathBuf {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    let mut child = std::process::Command::new("python3")
+    // hashlib is stdlib, so any working interpreter serves; resolution is still
+    // routed through pyenv so this site cannot drift from the other three.
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let python = runtime::pyenv::interpreter_or_panic(&repo_root, &[]);
+    let mut child = std::process::Command::new(&python)
         .args([
             "-c",
             "import hashlib, sys\n\
@@ -31,7 +35,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()
-        .expect("python3 available in the sandbox");
+        .expect("the resolved python3 runs");
     child
         .stdin
         .take()

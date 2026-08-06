@@ -191,10 +191,14 @@ mod tests {
              assert l.dtype == np.int64 and l.tolist() == [7, -1], l\n",
             path.display()
         );
-        let out = std::process::Command::new("python3")
+        // numpy is mandatory here, not optional: a shard nothing re-read is an
+        // unverified shard, so an absent numpy fails the gate rather than skipping.
+        let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let python = crate::pyenv::interpreter_or_panic(&repo_root, &["numpy"]);
+        let out = std::process::Command::new(&python)
             .args(["-c", &check])
             .output()
-            .expect("python3 available in the sandbox");
+            .expect("the resolved python3 runs");
         assert!(
             out.status.success(),
             "np.load rejected the shard: {}",

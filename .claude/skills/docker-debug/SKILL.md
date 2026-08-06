@@ -4,7 +4,8 @@ description: Container debugging runbook for this inference stack — per-servic
 ---
 # Docker debugging runbook
 
-For the llama.cpp / vLLM / open-webui stack defined in `docker-compose.yaml`.
+For the llama.cpp / vLLM / open-webui / comfyui stack defined in `docker-compose.yaml`,
+including the opt-in `interp` profile services.
 
 > Sandboxed execution: agents cannot reach the host Docker daemon, the services, or the
 > GPU. Every diagnostic and restart command in this runbook is executed by the human on
@@ -13,13 +14,22 @@ For the llama.cpp / vLLM / open-webui stack defined in `docker-compose.yaml`.
 
 ## Services and healthchecks
 
-| Service | External port | Internal healthcheck |
-|---------|---------------|----------------------|
+Ports are published on the loopback interface only (`127.0.0.1:<port>:<port>`), and the
+published port equals the in-container port for every service.
+
+| Service | Port | Healthcheck |
+|---------|------|-------------|
 | llama-cpu | 8001 | `curl -f http://localhost:8001/v1/health` |
-| llama-gpu | 8004 | `curl -f http://localhost:8002/v1/health` (internal 8002) |
-| vllm-gpu | 8005 | `curl -f http://localhost:8003/health` (internal 8003) |
+| llama-gpu | 8002 | `curl -f http://localhost:8002/v1/health` |
+| vllm-gpu | 8003 | `curl -f http://localhost:8003/health` |
+| llama-gpu-bf16 | 8004 | `curl -f http://localhost:8004/v1/health` — `interp` profile |
+| interp-logproxy | 8012 | none defined — `interp` profile |
 | open-webui | 3000 | container `:main`, no explicit healthcheck |
 | comfyui | 8188 | `curl -f http://localhost:8188/system_stats` |
+
+The two `interp`-profile services do not start with a plain `make up`; `llama-gpu-bf16` is the
+unquantized sibling of `llama-gpu` and `interp-logproxy` is an opt-in sidecar
+(`make logproxy-up`) that fronts llama-gpu on 8012.
 
 Start with `make status` for the compose-level health summary and `make health` for the
 detailed per-service check.

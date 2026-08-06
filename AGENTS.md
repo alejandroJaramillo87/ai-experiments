@@ -26,8 +26,18 @@ Instead:
 - Human-reported output is the authoritative evidence for acceptance checks, healthchecks,
   and benchmarks. Record the reported command and output verbatim when marking work done.
 - Never claim to have run a host-side command, and never fabricate its output.
-- Repo-local work remains directly executable in the sandbox: editing files, grep, git,
-  `gh`, and unit tests that need no GPU or running service.
+- Repo-local work remains directly executable in the sandbox: editing files, grep, `gh`, and
+  unit tests that need no GPU or running service.
+- **`/work` is the only writable *and* executable filesystem.** `/tmp` (including the session
+  scratchpad) and `/home/node` are tmpfs mounted `noexec`, and `/` is a read-only overlay. A
+  compiled test binary or a cargo build script cannot execute from the scratchpad — the
+  failure is `Permission denied (os error 13)`. Scratch *sources* may live anywhere, but point
+  `CARGO_TARGET_DIR` under `/work/rust-harness/target/` (git-ignored) and delete it when done.
+- **`git` is not among them.** The binary is installed, but `/work` is a *linked* worktree
+  whose `.git` file points at `<host-repo>/.git/worktrees/<name>` — a path outside the bind
+  mount. Every git command therefore fails repository discovery with `fatal: not a git
+  repository`, including read-only ones. Plan no step around `git status`, `git diff`,
+  `git stash`, or `git ls-files`; hand git and commit work to the human.
 
 ## Operating rules
 
@@ -62,14 +72,28 @@ These are standing instructions for anyone (human or agent) making changes in th
   the ruff format check, ruff lint, mypy, the uv lockfile check, and shellcheck, in that order,
   failing on the first error, then chains the rust-harness gate (`rust-harness/Makefile`:
   cargo fmt, clippy, lockfile check, rustdoc lints, tests) when that directory exists. That
-  rust gate also needs a `python3` on `PATH` that can import numpy and gguf: the npz writer's
-  unit test (`rust-harness/runtime/src/npz.rs`) shells out to it to re-read a written shard
-  with `np.load`, `harness/tests/probe_identity.rs` takes an independent SHA-256 from its
-  hashlib, and the cross-language contract tests run the real Python exporters and readers
-  from the parent tree (see `schemas/README.md`). Those contract tests report `[SKIP]` and
-  pass when a dependency or the parent tree is absent, so a green rust gate on a machine
-  without gguf is a weaker result than it looks — check the output for `[SKIP]` lines rather
-  than trusting the exit code alone. No step needs the network.
+  rust gate also needs a Python that can import numpy, gguf, and the in-tree `training.*` and
+  `common.*` packages: the npz writer's unit test (`rust-harness/runtime/src/npz.rs`) shells
+  out to it to re-read a written shard with `np.load`, `harness/tests/probe_identity.rs` takes
+  an independent SHA-256 from its hashlib, and the cross-language contract tests run the real
+  Python exporters and readers from the parent tree (see `schemas/README.md`).
+
+  **Which interpreter that is gets resolved, not assumed** (`runtime/src/pyenv.rs`). The two
+  environments disagree: on the workstation `python3` usually leads to a pyenv shim carrying
+  none of the project's dependencies while the environment sits in `.venv`, and in a sandbox
+  the reverse holds, because `/work/.venv` arrives over the bind mount and points at a host
+  interpreter absent from the container. Resolution therefore probes `$HARNESS_PYTHON`, then
+  `<repo>/.venv/bin/python3`, then `python3` on `PATH`, and takes the first that can import
+  what the test needs. Set `HARNESS_PYTHON` to override; provision with `make install`, never
+  a bare `uv sync` (`xxhash`, like `omegaconf`, `hydra-core`, and `gguf`, lives in a
+  non-default group and is what the chat-template contract test imports).
+
+  Those contract tests report `[SKIP]` and pass when a dependency or the parent tree is
+  genuinely absent, so a green rust gate is a weaker result than it looks — check the output
+  for `[SKIP]` lines rather than trusting the exit code alone. The `test` step passes
+  `--nocapture` for exactly this reason: cargo hides a passing test's stderr, so without it
+  the skip lines this instruction tells you to look for are not printed at all. No step needs
+  the network.
 
   In a contained sandbox, invoke the pinned tools **directly** — `ruff format --check .`,
   `ruff check .`, `mypy`, `shellcheck` — not through `uv run --no-sync`. The image

@@ -170,7 +170,12 @@ properties decide what a resume costs, and both are worth checking **before** re
 Count what is cached first:
 
 ```bash
-D=~/.claude/projects/*/subagents/workflows/<runId>
+# The python below globs *.meta.json and opens journal.jsonl relative to the working
+# directory, so cd into the run's transcript dir first. A bare assignment would not expand
+# the glob -- $(echo ...) resolves the project slug.
+D=$(echo ~/.claude/projects/*/subagents/workflows/<runId>)
+cd "$D" || { printf '[ERROR] no transcript dir for that runId: %s\n' "$D" >&2; exit 1; }
+
 python3 - <<'PY'
 import json, glob, os, collections
 meta = {os.path.basename(m).replace('agent-','').replace('.meta.json',''):
