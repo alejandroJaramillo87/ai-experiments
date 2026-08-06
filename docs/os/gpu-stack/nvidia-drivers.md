@@ -280,7 +280,7 @@ Without these components, CUDA 13.0 cannot initialize, and our inference engines
 ## Next Steps
 
 - Continue to **[CUDA Documentation](cuda.md)** to understand the compute layer
-- Review **[GPU Optimizations](../../optimizations/gpu/gpu-optimizations.md)** for performance tuning
+- Review **[GPU Optimizations](../../optimizations/README.md)** for performance tuning
 - Check **[System Monitoring](../../optimizations/README.md)** for ongoing maintenance
 
 ---

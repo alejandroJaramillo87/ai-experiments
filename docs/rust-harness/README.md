@@ -26,7 +26,23 @@ live in `/docs/verification/`, not here.
 
 | Document | Description |
 |----------|-------------|
-| [optimization-candidates.md](optimization-candidates.md) | Recorded menu of x86 CPU backend optimizations, each blocked on host verification and a measured baseline |
+| [rust-harness-optimization-candidates.md](../optimizations/ideation/rust-harness-optimization-candidates.md) | Recorded menu of x86 CPU backend optimizations, each blocked on host verification and a measured baseline |
+
+## Roadmap
+
+Phases and their acceptance checks. This lives here rather than in the workspace
+`README.md` because a roadmap describes a moment: nothing forces an update when the moment
+passes, so it belongs beside the design documents that share that property rather than in the
+file a newcomer reads to learn what the harness is.
+
+| Phase | Deliverable | Acceptance check |
+|-------|-------------|------------------|
+| A-prime | Hand-rolled CPU reference backend (in place; workstation acceptance pending) | Logits match the numpy reference; rr record/replay with reverse-continue |
+| A | Load quantized E4B, single forward pass | Logits match the Hugging Face reference within quantization tolerance |
+| B | Decode loop, persistent KV cache, delta prefill | Turn latency scales with delta size, not transcript size |
+| C | Grammar-constrained tool-call sampling | Zero malformed tool calls over 200 forced generations |
+| D | Full harness loop | Scripted coding task completes end to end |
+| E | Subagent fork and interleave | Spawn without prefix re-prefill; tool/generation wall-clock overlap |
 
 ## Related documentation
 

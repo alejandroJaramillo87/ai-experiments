@@ -36,7 +36,7 @@ exec ./server \
 - `THREADS_HTTP=2` - Minimal HTTP overhead
 - `N_GPU_LAYERS=0` - CPU-only inference
 
-**Note**: docker-compose.yaml sets `THREADS=16` and `THREADS_BATCH=16` by default.
+**Note**: docker-compose.inference.yaml sets `THREADS=16` and `THREADS_BATCH=16` by default.
 
 ### llama-gpu Service (Port 8002)
 

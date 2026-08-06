@@ -415,7 +415,7 @@ docker-compose up -d
 
 Reference Files:
 - `scripts/setup/setup_docker.sh`: Docker and NVIDIA Container Toolkit installation
-- `docker-compose.yaml`: Multi-container AI inference management
+- `docker-compose.inference.yaml`: Multi-container AI inference management
 - `docker/`: Specialized Dockerfiles for CPU and GPU AI inference
 - `docs/sandbox/README.md`: Comprehensive containerized AI security architecture
 
@@ -518,7 +518,7 @@ File Structure and Automation:
 - `scripts/utils/`: System analysis and dependency verification tools
 - `docs/os/`: Comprehensive setup and configuration documentation
 - `pyproject.toml`: AI framework dependency specification
-- `docker-compose.yaml`: Containerized AI inference management
+- `docker-compose.inference.yaml`: Containerized AI inference management
 
 Integration with AI Workstation:
 This OS setup works in conjunction with:

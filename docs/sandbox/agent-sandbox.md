@@ -315,7 +315,7 @@ because its `--auto` mode inherits none of the ask-prompts that make host sessio
 ## Configuration hardening
 
 Best-effort layer on top of containment, encoded in both tools (see
-[tooling-parity.md](../tooling-parity.md) for the twin):
+[tooling-parity.md](../agents/tooling-parity.md) for the twin):
 
 - `opencode.json`: `webfetch` allowlist (`docs.runpod.io`, `github.com`, else `ask`); bash
   denies for `cat *.env*`, `* ~/.ssh/*`, `* ~/.aws/*` (the read-tool `.env` deny does not

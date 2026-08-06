@@ -410,7 +410,7 @@ Separates read-only model access from writable log directories.
 - **docker/llama-cpu/Dockerfile.cpu**: AMD Zen 5 optimized CPU inference with zen5_optimizer hugepage support
 - **docker/llama-gpu/Dockerfile.llama-gpu**: RTX 5090 optimized GPU inference with CUDA 13.0.2
 - **docker/vllm-gpu/Dockerfile.vllm-gpu**: vLLM 0.25.0 high-performance transformer serving
-- **docker-compose.yaml**: Complete orchestration with security hardening
+- **docker-compose.inference.yaml**: Complete orchestration with security hardening
 
 ### Security Features Implemented
 

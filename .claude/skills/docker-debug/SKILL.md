@@ -4,7 +4,7 @@ description: Container debugging runbook for this inference stack — per-servic
 ---
 # Docker debugging runbook
 
-For the llama.cpp / vLLM / open-webui / comfyui stack defined in `docker-compose.yaml`,
+For the llama.cpp / vLLM / open-webui / comfyui stack defined in `docker-compose.inference.yaml`,
 including the opt-in `interp` profile services.
 
 > Sandboxed execution: agents cannot reach the host Docker daemon, the services, or the
@@ -56,7 +56,7 @@ detailed per-service check.
 
 1. Confirm which service is unhealthy (`make status`); do not restart the whole stack for a
    single failure.
-2. Restart just that service: `docker compose restart <service>`.
+2. Restart just that service: `docker compose -f docker-compose.inference.yaml restart <service>`.
 3. If a config or image changed, `make down` then `make up` (or `make rebuild` for a
    from-scratch image build). `make reset` is the full stop-clean-rebuild cycle.
 4. Never `docker system prune` / `docker volume rm` to "fix" a hang — those are guarded

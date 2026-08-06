@@ -162,7 +162,7 @@ Advanced CPU configuration for optimal AI inference performance, maximizing proc
 - **Cores 0-11**: Dedicated to LLM inference
 - **Remaining cores**: Reserved for OS, system tasks, and housekeeping
 - **NUMA Optimization**: Primarily uses first CCD for cache locality
-- **Docker Configuration (benchmark run)**: Single container with `cpuset: "0-11"` and `THREADS=12`. The current llama-cpu service in `docker-compose.yaml` uses `cpuset: "0-15"` and `THREADS=16`.
+- **Docker Configuration (benchmark run)**: Single container with `cpuset: "0-11"` and `THREADS=12`. The current llama-cpu service in `docker-compose.inference.yaml` uses `cpuset: "0-15"` and `THREADS=16`.
 
 ### Memory Performance Optimization
 
@@ -272,9 +272,9 @@ This optimization guide works in conjunction with the complete AI workstation co
 **System Integration:**
 - **BIOS Foundation**: Base configuration requirements in `docs/bios/README.md`
 - **Hardware Platform**: Component specifications in `docs/hardware/README.md`
-- **OS Optimizations**: System-level performance tuning in `docs/optimizations/os-optimizations.md`
-- **Huge Pages Setup**: Memory optimization in `docs/optimizations/hugepages-setup.md`
-- **Container Deployment**: Single latency-optimized service in `docker-compose.yaml`
+- **OS Optimizations**: System-level performance tuning in `docs/optimizations/os/os-optimizations.md`
+- **Huge Pages Setup**: Memory optimization in `hugepages/docs/hugepages-explicit.md`
+- **Container Deployment**: Single latency-optimized service in `docker-compose.inference.yaml`
 
 **Performance Validation:**
 Verify optimization success through:

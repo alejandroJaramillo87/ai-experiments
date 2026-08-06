@@ -141,8 +141,13 @@ if command -v docker &> /dev/null; then
     # Service health (informational) - the four documented services. Down is not
     # a failure here; services may be intentionally stopped.
     echo "Service status:"
-    SERVICES=$(docker compose ps --format '{{.Name}}\t{{.State}}' 2>/dev/null)
-    if [ -n "$SERVICES" ]; then
+    # Distinguish a compose failure from "nothing is running": both yield an empty result
+    # once stderr is discarded, and reporting a broken invocation as "no services running"
+    # hides the actual problem. This check is informational, so a failure warns rather than
+    # incrementing FAIL_COUNT.
+    if ! SERVICES=$(docker compose ps --format '{{.Name}}\t{{.State}}' 2>&1); then
+        print_warn "  cannot list compose services: $SERVICES"
+    elif [ -n "$SERVICES" ]; then
         echo "$SERVICES" | while IFS=$'\t' read -r name state; do
             [ -z "$name" ] && continue
             if [ "$state" = "running" ]; then
@@ -152,7 +157,7 @@ if command -v docker &> /dev/null; then
             fi
         done
     else
-        print_skip "  no compose services running (or not in project directory)"
+        print_skip "  no compose services running"
     fi
 else
     print_error "Docker: not installed"

@@ -21,7 +21,7 @@ selected per workflow.
 | PyTorch | 2.9.1+cu130 | Matches host driver 580.65.06 / CUDA 13.0.88 |
 | Base image | nvidia/cuda:13.0.0-ubuntu24.04 | Built for Blackwell sm_120 |
 
-The service definition lives in `docker-compose.yaml` (`comfyui`); the image build in
+The service definition lives in `docker-compose.inference.yaml` (`comfyui`); the image build in
 `/docker/comfyui/Dockerfile.comfyui`. The web interface is bound to
 `127.0.0.1:8188`.
 

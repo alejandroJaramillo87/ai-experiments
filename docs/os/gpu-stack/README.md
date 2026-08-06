@@ -178,7 +178,7 @@ Our RTX 5090 (Blackwell architecture) provides:
 ## Next Steps
 
 1. Read component-specific documentation for deeper understanding
-2. Review optimization guides in `docs/optimizations/gpu/`
+2. Review optimization guides in `docs/optimizations/`
 3. Run benchmarks to verify your setup
 4. Explore inference configurations in `docs/inference/`
 

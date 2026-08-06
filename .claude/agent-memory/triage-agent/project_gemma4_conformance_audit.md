@@ -10,7 +10,7 @@ stale_when: docs/models/gemma-4.md is superseded as the architecture authority, 
 A repository-wide conformance audit sweeps the tree against `/work/docs/models/gemma-4.md`,
 which is the sole source of truth for Gemma 4 architecture and supersedes every other
 document. The "Architecture reconciliation" table at
-`docs/inference/rust-harness-runtime-design.md:295` was assembled from secondhand web
+`docs/rust-harness/runtime-design.md:295` was assembled from secondhand web
 sources and is explicitly suspect - never use it as corroboration.
 
 **Why:** the spec is regenerated from Hugging Face `config.json` and safetensors headers at

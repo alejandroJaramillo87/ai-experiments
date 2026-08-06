@@ -5,7 +5,7 @@ AMD Ryzen 9950X + RTX 5090 workstation, current as of July 2026. Nothing in
 this document is implemented. Every item requires host-side verification run
 by the human, with before/after numbers recorded per the repository
 benchmarking protocol; candidates graduate into
-[os-optimizations.md](os-optimizations.md) with its status vocabulary
+[os-optimizations.md](../os/os-optimizations.md) with its status vocabulary
 (IMPLEMENTED, TESTED - NOT BENEFICIAL) once measured. The implemented set
 and the validated negative results (jemalloc, GPU clock locking) live in
 that document and are not repeated here.
@@ -24,7 +24,7 @@ Three facts about the current host are undetermined or contradicted in the
 existing documentation. Each is one command; the answers gate Tier A.
 
 **Huge-page configuration contradiction.**
-[os-optimizations.md](os-optimizations.md) records 80 x 1 GB pages
+[os-optimizations.md](../os/os-optimizations.md) records 80 x 1 GB pages
 (`hugepages-1048576kB/nr_hugepages = 80`, wrapper allocating with
 `MAP_HUGE_1GB`), while [../README.md](../README.md) records
 `vm.nr_hugepages = 46080` (2 MB pages, 90 GB) and the 2 MB wrapper. Both
@@ -39,7 +39,7 @@ Whichever document loses is the documentation bug and gets corrected to
 match the host.
 
 **CPU topology behind cpuset "0-15".**
-[os-optimizations.md](os-optimizations.md) describes cores 0-15 as "first
+[os-optimizations.md](../os/os-optimizations.md) describes cores 0-15 as "first
 CCX". On a 9950X, Linux typically enumerates cores 0-15 as the 16 physical
 cores across both CCDs, with 16-31 as SMT siblings — in which case the
 pinned container spans two CCDs rather than isolating one. Decide with:
@@ -73,7 +73,7 @@ physical cores is a candidate latency and consistency win — and may
 retroactively explain the validated finding that 12 dedicated cores
 outperform 16 for a single model instance. Also applies to the rust
 harness's planned threaded matvec
-(`docs/rust-harness/optimization-candidates.md`).
+(`docs/optimizations/ideation/rust-harness-optimization-candidates.md`).
 
 **Full core isolation.** The cpuset keeps containers off the housekeeping
 cores but does not keep kernel threads, timers, or system daemons off the
@@ -155,5 +155,5 @@ multiple service definitions.
 2. Implement candidates one at a time, each with before/after benchmark
    numbers from the standard suite, recorded verbatim.
 3. Promote each measured candidate into
-   [os-optimizations.md](os-optimizations.md) under its status vocabulary,
+   [os-optimizations.md](../os/os-optimizations.md) under its status vocabulary,
    including negative results.

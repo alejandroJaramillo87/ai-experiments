@@ -16,5 +16,5 @@ Rules, per the PS4 design decision:
 Currently expected content: `0001-autointerp-openrouter-base-url.patch`, honoring
 `OPENROUTER_BASE_URL` in the autointerp client construction, authored against the pinned
 SHA after verifying upstream still hardcodes the OpenRouter URL (see
-`docs/interpretability/ps4_autointerp_investigation.md`). The directory being empty means
+`docs/interpretability/investigations/ps4_autointerp_investigation.md`). The directory being empty means
 that verification found upstream support and no patch was needed.

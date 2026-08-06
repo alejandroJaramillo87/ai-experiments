@@ -241,7 +241,7 @@ ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
 ENV NVIDIA_REQUIRE_CUDA="cuda>=13.0"
 ```
 
-Note: `NVIDIA_VISIBLE_DEVICES` and `CUDA_VISIBLE_DEVICES` are set via docker-compose.yaml, not in the Dockerfile.
+Note: `NVIDIA_VISIBLE_DEVICES` and `CUDA_VISIBLE_DEVICES` are set via docker-compose.inference.yaml, not in the Dockerfile.
 
 ### Security Configuration
 
@@ -468,7 +468,7 @@ GPU clock locking (nvidia-smi -lgc/-lmc) causes a 38% performance degradation on
 **File Structure**
 - **docker/llama-gpu/Dockerfile.llama-gpu**: Complete multi-stage GPU-optimized Dockerfile
 - **docker/llama-gpu/entrypoint.sh**: Parameterized server startup script
-- **docker-compose.yaml**: Container orchestration with GPU resource allocation and security hardening
+- **docker-compose.inference.yaml**: Container orchestration with GPU resource allocation and security hardening
 
 **Integration with AI Workstation**
 This GPU implementation works in conjunction with:

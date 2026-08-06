@@ -369,7 +369,7 @@ Specialized hardware for AI:
 ## Next Steps
 
 - Continue to **[cuDNN Documentation](cudnn.md)** for deep learning optimizations
-- Review **[CUDA Optimization Guide](../../optimizations/gpu/gpu-optimizations.md)**
+- Review **[CUDA Optimization Guide](../../optimizations/README.md)**
 - Explore **[Benchmarking Results](../../inference/README.md)**
 
 ---

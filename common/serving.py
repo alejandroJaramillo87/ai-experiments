@@ -26,6 +26,7 @@ import urllib.request
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TRAIN_COMPOSE = os.path.join(REPO_ROOT, "docker-compose.training.yaml")
+INFER_COMPOSE = os.path.join(REPO_ROOT, "docker-compose.inference.yaml")
 CONTAINER_MODELS = "/app/models/"
 HOST_MODELS = "/mnt/ai-data/models/"
 
@@ -45,7 +46,7 @@ class ServiceSpec:
     name: str
     port: int
     model_env: str  # compose env var selecting the served model
-    health_path: str  # llama.cpp and vLLM disagree; see docker-compose.yaml
+    health_path: str  # llama.cpp and vLLM disagree; see docker-compose.inference.yaml
     concurrency: int  # request concurrency the service tolerates
     start_budget_s: int  # default health-poll budget after a recreate
 
@@ -131,7 +132,10 @@ def model_paths(model: str) -> tuple[str, str]:
 
 
 def compose(env: dict, *args: str) -> None:
-    cmd = ["docker", "compose", *args]
+    # -f is explicit: compose auto-discovers only its default filenames, so the
+    # inference file's domain suffix puts it out of reach of a bare invocation
+    # even with cwd=REPO_ROOT.
+    cmd = ["docker", "compose", "-f", INFER_COMPOSE, *args]
     proc = subprocess.run(cmd, cwd=REPO_ROOT, env=env)
     if proc.returncode != 0:
         raise ServingError(f"Command failed ({proc.returncode}): {' '.join(cmd)}")

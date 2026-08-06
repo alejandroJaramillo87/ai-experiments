@@ -15,7 +15,8 @@ Run the phases in order. Do not start a later phase while an earlier one is open
 1. Baseline — confirm the project gate for `$1` exits 0 before anything changes. In a
    sandbox that means the pinned tools invoked **directly** — `ruff format --check .`,
    `ruff check .`, `mypy --no-incremental`, `pytest`, and `make -C rust-harness quality` —
-   never `make quality`, `make test`, or `uv run --no-sync`, per `/AGENTS.md`. Read the
+   never `make quality`, `make test`, or `uv run --no-sync`, per
+   `/docs/testing/quality-gate.md`. Read the
    output for `[SKIP]` lines and report the skip count; a green gate with 40 skips instead
    of 4 is a partial run. Record the determinism oracles and the perf noise floor. If the
    gate is already red, stop and report; a campaign on a broken baseline measures nothing.

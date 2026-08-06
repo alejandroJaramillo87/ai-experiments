@@ -24,7 +24,7 @@ port is reachable beyond loopback.
 
 | Service | Host port | Stack |
 |---------|-----------|-------|
-| llama-cpu | 8001 | inference (`docker-compose.yaml`) |
+| llama-cpu | 8001 | inference (`docker-compose.inference.yaml`) |
 | llama-gpu | 8002 | inference |
 | vllm-gpu | 8003 | inference |
 | open-webui | 3000 | inference |

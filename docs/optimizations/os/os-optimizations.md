@@ -165,7 +165,7 @@ Docker container resource limits and CPU pinning for AI workloads.
 CPU pinning and OpenMP configuration for optimal inference performance:
 
 ```yaml
-# docker-compose.yaml
+# docker-compose.inference.yaml
 cpuset: "0-15"           # Pin to 16 cores (first CCX on Zen 5)
 deploy:
   resources:

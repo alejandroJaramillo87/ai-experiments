@@ -8,6 +8,9 @@ env/
 venv/
 .venv
 .pytest_cache/
+# pytest tmp_path base, used only where the default temp dir is mounted noexec
+# (the agent sandbox); see the probe in tests/conftest.py
+.pytest-tmp/
 
 # Environment variables
 .env

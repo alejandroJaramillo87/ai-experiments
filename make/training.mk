@@ -1,0 +1,85 @@
+##@ Training (Phase 0 D1 - separate compose file; never runs with inference)
+
+.PHONY: build-contamination distill-cache eval-ft export-build export-gguf generate-teacher
+.PHONY: memfit prepare-corpus prepare-data prepare-sft promote-scorecard serve-eval train
+.PHONY: train-build train-calibrate train-distill train-download train-preflight train-sft
+.PHONY: train-shell train-smoke train-tokenizer train-validate
+
+TRAIN_COMPOSE := docker-compose.training.yaml
+
+train-build: ## Build the training image (runs the smoke test at build; fails on regression)
+	@echo "$(CYAN)Building training image...$(RESET)"
+	MAX_JOBS=$(MAX_JOBS) NVCC_THREADS=$(NVCC_THREADS) docker compose -f $(TRAIN_COMPOSE) build
+	@echo "$(GREEN)Training image built.$(RESET)"
+
+train-shell: ## Interactive shell in the training container (GPU + /mnt/ai-data/training mounted)
+	docker compose -f $(TRAIN_COMPOSE) run --rm training /bin/bash
+
+train-smoke: ## Run the eight-step training smoke test on the workstation (enforces CUDA sm_120)
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training smoke
+
+# Staging targets. These run in the `prepare` service, the only one with network
+# egress (docker-compose.training.yaml). Everything below them runs in `training`,
+# which sits on an internal network and cannot reach the hub at all.
+
+train-download: ## Stage a model into /mnt/ai-data/models/hf (Prelude C): make train-download MODEL=google/gemma-4-E2B REVISION=<sha>
+	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training download --model $(MODEL) --revision $(REVISION) $(ARGS)
+
+prepare-data: ## Tokenize a dataset into shards (Phase 0 D2): make prepare-data ARGS="--source ... --tokenizer ... --out ..."
+	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training prepare-data $(ARGS)
+
+prepare-corpus: ## Filter, dedup, decontaminate, and shard a corpus (Phase 2 P2-D1): make prepare-corpus ARGS="--source ... --tokenizer ... --work-dir ... --out ..."
+	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training prepare-corpus $(ARGS)
+
+build-contamination: ## Build the benchmark decontamination index (Phase 2 P2-D1): make build-contamination ARGS="--out /mnt/ai-data/training/datasets/_contamination/v1"
+	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training build-contamination $(ARGS)
+
+prepare-sft: ## Prepare masked SFT examples (Phase 1 F1): make prepare-sft ARGS="--source ... --tokenizer ... --model-type ... --out ..."
+	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training prepare-sft $(ARGS)
+
+train-tokenizer: ## Train a byte-level BPE tokenizer (Phase 0 D3): make train-tokenizer ARGS="--corpus ... --out ..."
+	docker compose -f $(TRAIN_COMPOSE) run --rm prepare python -m training train-tokenizer $(ARGS)
+
+train-preflight: ## Prove every asset a recipe needs is already local (Prelude C): make train-preflight CONFIG=training/recipes/reference/tiny-e2e.yaml
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training preflight --config $(CONFIG) $(ARGS)
+
+train-validate: ## Validate a recipe (Phase 0 D5): make train-validate CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="optimizer.lr=1e-4"
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training validate $(CONFIG) $(ARGS)
+
+memfit: ## Estimate VRAM fit for a recipe (Phase 0 D4): make memfit CONFIG=training/recipes/reference/pretrain-1b.yaml ARGS="--solve batch"
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training memfit --config $(CONFIG) $(ARGS)
+
+train-calibrate: ## Measure real peak VRAM for a recipe (Phase 0 D4, GPU): make train-calibrate CONFIG=... ARGS="--out record.json"
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training calibrate --config $(CONFIG) $(ARGS)
+
+train: ## Run the reference training loop (Phase 0 D6): make train CONFIG=training/recipes/reference/tiny-e2e.yaml ARGS="checkpoint.resume=latest"
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train --config $(CONFIG) $(ARGS)
+
+train-sft: ## Run a supervised fine-tune on TRL (Phase 1 F3): make train-sft CONFIG=training/recipes/reference/sft-qlora-e2b.yaml ARGS="optimizer.lr=1e-4"
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train-sft --config $(CONFIG) $(ARGS)
+
+train-distill: ## Distill a student from a teacher (Phase 1 F5): make train-distill CONFIG=training/recipes/reference/distill-e2b.yaml ARGS="distill.alpha=0.3"
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training train-distill --config $(CONFIG) $(ARGS)
+
+distill-cache: ## Materialize teacher top-K logprobs for cached-mode distillation (Phase 1 F5): make distill-cache CONFIG=...
+	docker compose -f $(TRAIN_COMPOSE) run --rm training python -m training distill-cache --config $(CONFIG) $(ARGS)
+
+export-build: ## Build the GGUF export image (pinned llama.cpp converter and quantizer, Phase 0 D7)
+	@echo "$(CYAN)Building export image...$(RESET)"
+	MAX_JOBS=$(MAX_JOBS) docker compose -f $(TRAIN_COMPOSE) build export
+	@echo "$(GREEN)Export image built.$(RESET)"
+
+export-gguf: ## Export a checkpoint to GGUF (Phase 0 D7): make export-gguf CHECKPOINT=/mnt/ai-data/training/.../step_000000010 ARGS="--tokenizer ..."
+	docker compose -f $(TRAIN_COMPOSE) run --rm export python -m training export --checkpoint $(CHECKPOINT) $(ARGS)
+
+serve-eval: ## Swap a GGUF into llama-gpu, run the smoke evaluation, restore (Phase 0 D7): make serve-eval MODEL=/app/models/trained/<run>/<name>-BF16.gguf ARGS="--keep-serving"
+	python3 -m training serve-eval --model $(MODEL) $(ARGS)
+
+eval-ft: ## Baseline-versus-tuned scorecard (Phase 1 F7, host-run): make eval-ft ARGS="--base ... --tuned ... --dataset ... --base-gguf ... --tuned-gguf ... --judge-gguf ..."
+	python3 -m training eval-ft $(ARGS)
+
+promote-scorecard: ## Copy an eval run's scorecard into docs/training/scorecards/ with provenance (Phase 1 F8, host-run): make promote-scorecard ARGS="--run-dir ... --card sft-qlora-gemma-e4b"
+	python3 -m training promote-scorecard $(ARGS)
+
+generate-teacher: ## Batch-generate teacher data through the serving stack (Phase 1 F4, host-run): make generate-teacher ARGS="--pipeline respond --prompts ... --teacher ... --out ..."
+	python3 -m training generate-teacher $(ARGS)

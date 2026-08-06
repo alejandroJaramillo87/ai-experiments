@@ -316,7 +316,7 @@ qualitative.
 
 - Review [llama.cpp](llama-cpp.md) for CPU/GPU unified inference
 - Review [vLLM](vllm.md) for high-throughput GPU serving
-- See [parameters/optimization-guide.md](../parameters/optimization-guide.md) for tuning
+- See [parameters/optimization-guide.md](../parameters/llama-cpp-parameters.md) for tuning
 
 ---
 

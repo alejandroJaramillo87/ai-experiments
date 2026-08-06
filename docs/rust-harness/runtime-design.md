@@ -77,7 +77,7 @@ feature bar for future harness work — is recorded in
 - **No custom CUDA kernels in version 1.** The planned GPU tensor backend is
   [Candle](https://github.com/huggingface/candle); kernel authorship is deferred to
   the parked survey in
-  [future-optimizations.md](../inference/future-optimizations.md).
+  [future-optimizations.md](../optimizations/ideation/future-inference-optimizations.md).
 - **No multi-provider abstraction.** One model family, hardcoded.
 
 ## Background

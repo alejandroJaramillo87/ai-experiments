@@ -14,7 +14,7 @@ Usage: python -m training serve-eval --model ...
 
 Manual restore one-liner if this tool ever dies uncleanly:
 
-    docker compose up -d --force-recreate llama-gpu
+    docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-gpu
 
 (with LLAMA_GPU_MODEL unset in the shell, compose falls back to .env or the
 image default.)
@@ -159,7 +159,7 @@ def configure(sub) -> None:
         help="swap a GGUF into llama-gpu, run the smoke evaluation, restore (D7, host)",
         description="Swap a GGUF into llama-gpu, run the smoke evaluation, restore.",
         epilog="Manual restore after an unclean exit: "
-        "docker compose up -d --force-recreate llama-gpu",
+        "docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-gpu",
     )
     parser.add_argument(
         "--model",
@@ -270,7 +270,9 @@ def cmd(args: argparse.Namespace) -> int:
                 out.ok("Previous serving state restored")
             except serving.ServingError as exc:
                 out.error(f"Restore failed: {exc}")
-                out.line("  Solution: docker compose up -d --force-recreate llama-gpu")
+                out.line(
+                    "  Solution: docker compose -f docker-compose.inference.yaml up -d --force-recreate llama-gpu"
+                )
                 failed = True
 
     out_path = args.out or os.path.join(

@@ -10,6 +10,44 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 FIXTURES_DIR = REPO_ROOT / "tests" / "agents"
 
+# Where pytest puts tmp_path when the default base is unusable. Git-ignored.
+SANDBOX_TMP = REPO_ROOT / ".pytest-tmp"
+
+
+def _tmpdir_is_noexec() -> bool:
+    """Whether a file written under the default temp base can be executed.
+
+    In a contained agent sandbox /tmp is a tmpfs mounted noexec while /work is
+    not, so any test that writes an executable stub into tmp_path -- a fake
+    `docker`, a fake `llama-quantize` -- dies with `Permission denied` rather
+    than exercising anything. That is an environment limitation, not a defect in
+    the test, and it silently reads as a red suite. Probe once and relocate.
+    """
+    base = Path(os.environ.get("TMPDIR", "/tmp"))
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+        probe = base / f".exec-probe-{os.getpid()}"
+        probe.write_text("#!/bin/sh\nexit 0\n")
+        probe.chmod(probe.stat().st_mode | stat.S_IXUSR)
+        try:
+            return subprocess.run([str(probe)], capture_output=True).returncode != 0
+        finally:
+            probe.unlink(missing_ok=True)
+    except OSError:
+        return True
+
+
+def pytest_configure(config):
+    """Move the temp base onto an executable filesystem when the default is not.
+
+    Set before tmp_path_factory is first used, so every tmp_path in the session
+    lands somewhere a stub can actually run. On the workstation the probe passes
+    and nothing changes.
+    """
+    if config.option.basetemp is None and _tmpdir_is_noexec():
+        SANDBOX_TMP.mkdir(parents=True, exist_ok=True)
+        config.option.basetemp = str(SANDBOX_TMP)
+
 
 @pytest.fixture
 def repo_root() -> Path:

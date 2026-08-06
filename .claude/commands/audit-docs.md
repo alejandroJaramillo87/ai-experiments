@@ -10,7 +10,7 @@ separate roles: doc-auditor reports the drift, doc-writer fixes it in a later pa
 
 Audit the documentation under `$ARGUMENTS` against the actual source of truth:
 
-- `docker-compose.yaml` — the default stack (llama-cpu, llama-gpu, vllm-gpu, open-webui,
+- `docker-compose.inference.yaml` — the default stack (llama-cpu, llama-gpu, vllm-gpu, open-webui,
   comfyui) plus the opt-in `interp` profile (llama-gpu-bf16, interp-logproxy).
 - `docker-compose.agents.yaml`, `docker-compose.interp.yaml`,
   `docker-compose.rust-harness.yaml`, `docker-compose.training.yaml` — the four additional

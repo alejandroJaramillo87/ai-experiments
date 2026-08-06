@@ -1,7 +1,7 @@
 # Agent SDLC: the escalation ladder
 
 The standing workflow for doing work in this repo with OpenCode or Claude Code. The tools are
-kept at parity (see `docs/tooling-parity.md`); this doc is the once-documented ladder plus a
+kept at parity (see `docs/agents/tooling-parity.md`); this doc is the once-documented ladder plus a
 per-tool invocation appendix.
 
 **Sandboxed execution.** Agent sessions run in a sandbox with no access to the host: no host
@@ -15,7 +15,7 @@ acceptance evidence.
 
 **Start every piece of work at the lowest rung that could plausibly succeed.** Escalate only
 when a rung fails. Tiers are reasoning-effort levels on the single frontier model — there is no
-second, cheaper model (see the model policy in `docs/tooling-parity.md`).
+second, cheaper model (see the model policy in `docs/agents/tooling-parity.md`).
 
 | Rung | Use when | How | Effort |
 |------|----------|-----|--------|
@@ -161,7 +161,7 @@ inference stack. Add `--rmi local` to that compose command to also drop the buil
 crashed session leaves an `agent-<NAME>` container behind, `make agent-sandbox-clean` removes it
 (or `docker rm agent-<NAME>`).
 
-`make clean` is scoped to the inference stack (`docker-compose.yaml`) and no longer runs a
+`make clean` is scoped to the inference stack (`docker-compose.inference.yaml`) and no longer runs a
 host-wide `docker system prune -f`; that global sweep now lives in the explicit `make prune`
 target.
 
