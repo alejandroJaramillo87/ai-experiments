@@ -1,0 +1,251 @@
+# Numeric precision policy
+
+The dtype decisions of the three tiers — the Rust inference harness, the interpretability
+tier, and the training tier — collected in one place. Each tier picks its own numeric
+formats for its own reasons; this document names the concern, states what each tier does
+about it, and cites the file that decides it. Where a precision choice in one tier
+invalidates an artifact produced by another, that hazard is stated here rather than left
+implicit.
+
+The code is the authority. Nothing below restates a value that a source file owns; every
+row names the file and the symbol so the fact can be re-read at the source.
+
+## Table of contents
+
+- [Why bf16 is the house compute dtype](#why-bf16-is-the-house-compute-dtype)
+- [Concerns at a glance](#concerns-at-a-glance)
+- [Model compute and weights](#model-compute-and-weights)
+- [Activation storage on disk](#activation-storage-on-disk)
+- [Gradients and optimizer state](#gradients-and-optimizer-state)
+- [KV cache](#kv-cache)
+- [Quantization](#quantization)
+- [Cross-tier hazard: probes are fitted at a precision](#cross-tier-hazard-probes-are-fitted-at-a-precision)
+- [Widening and narrowing: which direction is lossy](#widening-and-narrowing-which-direction-is-lossy)
+
+## Why bf16 is the house compute dtype
+
+bfloat16 and fp16 are both 16 bits, and that is all they share. bfloat16 spends 8 bits on
+the exponent and 7 on the mantissa; IEEE half spends 5 on the exponent and 10 on the
+mantissa. The 8-bit exponent is the same width as fp32's, so bfloat16 covers the fp32
+dynamic range and trades precision, not range, for its two bytes.
+
+That trade matches transformer numerics. Residual-stream activations carry outlier
+features whose magnitude grows with depth, and fp16's exponent saturates at 65504: an
+activation past that becomes `inf`, and the `inf` propagates through the rest of the
+forward pass. bfloat16 has no such ceiling at any magnitude fp32 can represent, so a
+bf16 forward pass either matches fp32 in range or overflows where fp32 would too. The
+cost is mantissa: bfloat16 resolves roughly three decimal digits against fp16's four.
+
+Two consequences follow, and both are load-bearing elsewhere in this document. bfloat16
+is bit-exactly the high half of an f32, so widening is a shift and never rounds — the
+`bf16_widening_is_a_shift_for_every_input` test in
+[`rust-harness/runtime/src/tensor.rs`](../rust-harness/runtime/src/tensor.rs) asserts
+this over a strided sweep of every 16-bit pattern. And fp32 is a lossless *storage*
+substitute for bf16 at twice the bytes, which is why an fp32 capture is a valid stand-in
+for a bf16 one.
+
+None of this makes fp16 a compute dtype here. The argument above is about a forward pass,
+where an `inf` at any layer poisons every layer after it and the magnitudes are unbounded
+in advance. The argument about *storage* is narrower and comes out differently, because a
+stored activation is a quantity that can be measured before it is written — see
+[widening and narrowing](#widening-and-narrowing-which-direction-is-lossy). fp16 is a
+storage format in this repository and nowhere a compute one.
+
+## Concerns at a glance
+
+| Concern | rust-harness | interp | training |
+|---------|--------------|--------|----------|
+| Model compute | f32 throughout the CPU backend | Subject model loaded at `harvest.dtype` | `precision.dtype`, default bf16 |
+| Weights in memory | Dequantized to dense `Vec<f32>` at load | Subject-model dtype | `precision.dtype`; frozen base optionally nf4 |
+| Weights on disk | GGUF F32, F16, BF16, or Q8_0 | n/a (consumes a served or loaded model) | Checkpoint in parameter dtype |
+| Activations on disk | Probe capture shards, f32 | Arrow capture at `harvest.dtype`; Arrow stores fp16 or fp32 only | n/a |
+| Gradients | n/a (inference only) | n/a | Parameter dtype (KB-55) |
+| Optimizer state | n/a | n/a | AdamW fp32 states plus fp32 master copy |
+| KV cache | f32, full sequence | Inherited from the serving engine | n/a |
+| Quantization accepted | Q8_0 storage, dequantized at load | None; consumes what it is served | nf4 base under QLoRA; fp8 schema field, unimplemented |
+
+## Model compute and weights
+
+**rust-harness.** The CPU backend computes in plain f32 and holds no other numeric type.
+Every supported storage type is dequantized to a dense `Vec<f32>` at load time; the
+supported set is F32, F16, BF16, and Q8_0, declared as the `GGML_*` constants in
+[`rust-harness/runtime/src/tensor.rs`](../rust-harness/runtime/src/tensor.rs). Any other
+GGML type is a hard error naming the tensor, so an unsupported quantization surfaces at
+load rather than as silent garbage. Because BF16 is the published storage type for Gemma 4
+and the format the training tier emits, the widening to f32 is exact and the checkpoint's
+own values reach the forward pass unrounded.
+
+**training.** `precision.dtype` in
+[`training/recipes/schema.py`](../training/recipes/schema.py) (`PrecisionConfig`) selects
+the run's compute dtype, defaults to `bf16`, and drives both the torch dtype
+(`training/models/model.py`) and the trainer flags (`training/tune/sft.py`,
+`training/runtime/offload.py`).
+
+**interp.** The interp tier does not choose a compute dtype independently: the subject
+model is loaded at `harvest.dtype` for a capture, or is whatever the serving container
+loaded for the write-back path.
+
+### The two allowed dtype sets in the training schema
+
+[`training/recipes/schema.py`](../training/recipes/schema.py) declares two tuples of
+allowed dtype names, and they do not agree:
+
+| Constant | Governs | Members |
+|----------|---------|---------|
+| `PRECISION_DTYPES` | `precision.dtype` — the run-level compute dtype | `bf16`, `fp8` |
+| `COMPUTE_DTYPES` | `peft.compute_dtype` (the PEFT compute dtype over an nf4 base) and `harvest.dtype` (the interp capture dtype) | `bf16`, `fp16`, `fp32` |
+
+Both are enforced in [`training/recipes/validate.py`](../training/recipes/validate.py):
+`precision.dtype` is checked against `PRECISION_DTYPES`, `peft.compute_dtype` against
+`COMPUTE_DTYPES`. The sets are therefore disjoint except for `bf16` — fp16 and fp32 are
+reachable for a PEFT compute dtype or a harvest, never for the run's own precision, and
+fp8 only as a run precision.
+
+Nothing in the code states why. The docstring of `schema.py` records only that the fp8
+fields ship ahead of their consumer so the contract is stable, and `_check_fp8_dims` in
+`validate.py` is a documented no-op pending D8. Two artifacts of the split are visible and
+unreachable as written: `training/tune/sft.py` computes an `fp16` trainer flag from
+`recipe.precision.dtype == "fp16"`, and `training/calculator/components.py` branches on
+`recipe.precision.dtype != "fp32"` for the mixed-precision master copy, neither of which
+`PRECISION_DTYPES` admits. Whether the narrower run-level set is a deliberate policy or a
+narrowing that the surrounding code was never trimmed for cannot be determined from the
+source.
+
+## Activation storage on disk
+
+**interp.** A harvest writes residual-stream activations to Arrow through the SAELens
+activation-caching runner. Two constants near the top of
+[`interp/harvest.py`](../interp/harvest.py) govern the format:
+
+| Constant | Meaning |
+|----------|---------|
+| `DTYPE_BYTES` | Bytes per element for `bf16`, `fp16`, `fp32` — the disk and budget arithmetic |
+| `ARROW_STORAGE_DTYPES` | The subset Arrow can store, and therefore the subset a capture can actually be taken at: `fp16` and `fp32` |
+| `DTYPE_NAMES` | Recipe spelling to the SAELens/torch dtype name; shared with `interp/sae/train.py` |
+
+`bf16` is in `DTYPE_BYTES` and absent from `ARROW_STORAGE_DTYPES` because Arrow has no
+bfloat16 type in any version. This is not a tunable: a `bf16` capture cannot run at all.
+`tests/interp/test_harvest.py` enforces the split against the committed recipes.
+[`docs/interp/harvest-precision-and-resume.md`](interp/harvest-precision-and-resume.md)
+owns the defect (KB-57), the SAELens reading behind it, and what the options cost; the
+ledger row is in [`docs/verification/known-bugs.md`](verification/known-bugs.md).
+
+**One field, two type systems.** `harvest.dtype` is a single recipe field that sets both
+the Arrow on-disk storage type *and* the precision the SAE is later trained at. The SAE
+side reads it back out of the capture manifest: `capture_dtype()` in
+[`interp/sae/train.py`](../interp/sae/train.py) refuses a manifest dtype it cannot train
+at, and the trainer job dict takes its `dtype` from that manifest rather than from the SAE
+recipe — the comment there records the reason, that training an SAE at a precision the
+activations were not harvested at is a silent numerics mismatch. The consistency is
+deliberate; the conflation of *storage format* with *training precision* into one field is
+what makes an Arrow limitation into a compute-precision constraint.
+
+**rust-harness.** Probe-capture activations are a separate artifact and a separate format:
+`rust-harness/runtime/src/bin/activation-capture.rs` writes shards of f32 rows in the
+layout `interp/probes/capture.py` defines, so the Python probe toolkit consumes
+rust-served activations unchanged. These rows come from the quantized serving path itself,
+not from a full-precision workbench — see the hazard below.
+
+## Gradients and optimizer state
+
+[`docs/training/memory_fit.md`](training/memory_fit.md) owns this concern in full: its
+memory-model table prices gradients, optimizer states, and the fp32 logit upcast, and its
+figures are calibrated against measured workstation runs. The three facts to carry away,
+with the detail left where it lives:
+
+- Gradients are produced in the parameter dtype, not a wider accumulation dtype. No
+  trainer in this repository implements separate-dtype gradient accumulation; the
+  calculator was corrected to match (KB-55).
+- AdamW keeps fp32 optimizer states, plus an fp32 master copy of the parameters under
+  mixed precision. `adamw8bit` is the quantized-state alternative, with per-block fp32
+  constants.
+- Logits are upcast to fp32 for the cross-entropy computation, and the upcast is a costed
+  line in the activation inventory rather than a rounding detail.
+
+Read [`training/memory_fit.md`](training/memory_fit.md) for the byte-level model and the
+calibration record before sizing anything.
+
+## KV cache
+
+The rust-harness CPU backend stores f32 K and V for the full sequence — four bytes per
+element, no quantization and no windowing in the cache itself. The budget estimate printed
+before a run is computed in `rust-harness/harness/src/main.rs`, which fixes
+`bytes_per_element` at 4 and reports the estimate in GiB. Windowed layers are estimated at
+their window size, so the printed figure is an upper bound: the true cost is context
+length for every layer.
+
+This matters when choosing `--context`. The flag caps the budget below the model's trained
+window and is refused above it, and the warning exists because an f32 full-sequence cache
+at a long context exceeds what the CPU backend can hold in memory. There is no KV
+quantization option in the harness.
+
+For the containerized engines, the KV cache dtype is the engine's own setting; see
+[`docs/inference/parameters/llama-cpp-parameters.md`](inference/parameters/llama-cpp-parameters.md)
+and [`docs/inference/parameters/vllm-parameters.md`](inference/parameters/vllm-parameters.md).
+
+## Quantization
+
+| Tier | What is quantized | Where decided |
+|------|-------------------|---------------|
+| rust-harness | Q8_0 GGUF tensors, dequantized to f32 at load; no quantized arithmetic | `rust-harness/runtime/src/tensor.rs` |
+| training | `peft.quantize_base = nf4` loads the frozen base in 4-bit via bitsandbytes (QLoRA), with `peft.compute_dtype` as the compute dtype over it; `distill.teacher_quantize` does the same for an online teacher | `training/recipes/schema.py`, `training/recipes/validate.py` |
+| training | `precision.dtype = fp8` with `fp8_backend` in `torchao` or `te`; validation of the dimension constraints is a no-op stub pending D8 | `training/recipes/validate.py` (`_check_fp8_dims`) |
+| interp | None of its own; it consumes whatever the serving container loaded | `docker-compose.inference.yaml` |
+
+`validate.py` enforces the exclusions rather than leaving them to fail at run time: nf4 and
+fp8 are mutually exclusive, the Unsloth SFT backend rejects fp8, logit distillation rejects
+fp8, and cached-mode distillation rejects a quantized teacher.
+
+## Cross-tier hazard: probes are fitted at a precision
+
+This is the sharpest precision coupling in the repository, and it crosses tier boundaries
+silently.
+
+Linear probes are fitted on bf16 activations. When monitored traffic is answered by a
+quantized model, the model that answered the request and the model whose activations the
+probe was fitted on are not the same model, and the monitor's scores describe the replay
+model rather than the served one. Nothing errors; the numbers simply stop meaning what
+they appear to mean.
+
+The mitigation is the `llama-gpu-bf16` service in
+[`docker-compose.inference.yaml`](../docker-compose.inference.yaml), started by `make
+fullprec-up`, which answers monitored traffic at the precision the probes were fitted at.
+The compose file carries the reason inline; the operating instructions, the port, the
+subject-model choice, and the GGUF conversion caveat are owned by
+[`docs/interp/writeback.md`](interp/writeback.md). Read that section before running the
+probe monitor against any endpoint.
+
+Note that `rust-harness/runtime/src/bin/activation-capture.rs` takes the opposite approach
+for the same problem: rather than raising the serving precision to match the probe, it
+captures from the quantized serving path itself, so probes fitted on those rows describe
+the model that will answer. The two are alternative resolutions of one hazard, and mixing
+them — a probe fitted on workbench bf16 activations, evaluated against rust-captured
+quantized rows — reintroduces it.
+
+## Widening and narrowing: which direction is lossy
+
+The asymmetry is easy to invert, so it is stated once, explicitly:
+
+| Conversion | Lossless | Why |
+|------------|----------|-----|
+| bf16 to fp32 | Yes, exactly | bf16 is the high 16 bits of the f32 encoding; widening is a left shift by 16 with zero fill |
+| fp32 to bf16 | No | Discards 16 mantissa bits, with rounding |
+| bf16 to fp16 | Only inside fp16's range | Mantissa *widens* (7 stored bits to 10), so no significand is lost; the exponent narrows from 8 bits to 5, so magnitudes above 65504 saturate to `inf` and those below 6.1e-5 denormalize |
+| fp16 to fp32 | Yes | Range and precision both strictly widen |
+
+The bf16-to-fp16 row is the one that surprises people, and it is the row the interp capture
+format rests on. Because fp16 carries *more* significand bits than bf16, a bf16 value whose
+magnitude lands inside fp16's exponent range round-trips bit for bit — this is not an
+approximation that happens to be good enough, it is exact. The conversion is lossy only at
+the ends of the range, and only there.
+
+That turns "is fp16 safe for this capture?" into a question about magnitudes, which is
+measurable rather than arguable. It is measured per subject by
+[`scripts/interp/activation_magnitude_probe.py`](../scripts/interp/activation_magnitude_probe.py),
+and the results are recorded in
+[`docs/interp/harvest-precision-and-resume.md`](interp/harvest-precision-and-resume.md).
+
+The practical consequence: storing a bf16 activation as fp32 preserves every bit at twice
+the disk cost, and storing it as fp16 preserves every bit at the same cost as bf16 *provided
+the subject's magnitudes have been measured*. Never assume the measurement transfers between
+models — the two measured so far differ by 23x.

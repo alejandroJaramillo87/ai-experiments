@@ -160,6 +160,12 @@ Living documentation for the interp stack (`python -m interp`).
 | [interp/interp-scale-reference.md](interp/interp-scale-reference.md) | What fits on this workstation for interp work: activation volumes, SAE sizes, harvest budgets |
 | [interp/rust-harness-interp.md](interp/rust-harness-interp.md) | Running the write-back interpretability path on the Rust runtime |
 
+### Numerics and Precision
+
+| Document | Description |
+|----------|-------------|
+| [precision.md](precision.md) | Numeric dtype policy across the three tiers, by concern: compute and weights, activation storage, gradients and optimizer state, KV cache, quantization, and the probe-precision hazard |
+
 ### Agents and Testing
 
 | Document | Description |
@@ -286,6 +292,7 @@ full writing standard:
    - Training tier: `docs/training/`
    - Interpretability tier: `docs/interp/`
    - Host and repository verification runbooks: `docs/verification/`
+   - Cross-tier numeric precision policy: `docs/precision.md`
 3. **Then by class, within the topic**: a frozen record goes to
    `<topic>/investigations/` and its filename ends `_investigation.md`. Both
    documentation gates key on those two patterns, so a frozen record placed

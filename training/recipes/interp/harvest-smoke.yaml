@@ -10,7 +10,7 @@
 run:
   name: harvest-smoke
   seed: 42
-  notes: "P4-D2 smoke capture; footprint ~6.1GB at d_model 1536 bf16."
+  notes: "P4-D2 smoke capture; footprint ~12.3GB at d_model 1536 fp32."
 
 harvest:
   enabled: true
@@ -22,7 +22,13 @@ harvest:
   corpus: monology/pile-uncopyrighted
   context_len: 1024
   total_tokens: 2000000
-  dtype: bf16
+  # fp32, not bf16: SAELens hands harvest.dtype to both torch and
+  # datasets.Array2D, and Arrow has no bfloat16, so every bf16 capture dies in
+  # the runner before the first shard (KB-57). fp32 is lossless here -- bf16 is
+  # the high half of an f32, so widening is a shift -- and 2M tokens is small
+  # enough that the doubled footprint does not matter. The reference captures
+  # cannot follow: see harvest-false-fact.yaml.
+  dtype: fp32
   model_batch_size: 8
 
 watchdog:

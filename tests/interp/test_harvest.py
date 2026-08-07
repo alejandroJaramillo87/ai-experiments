@@ -10,10 +10,13 @@ import json
 import os
 
 import pytest
+import yaml
 from omegaconf import OmegaConf
 
 from interp.harvest import (
+    ARROW_STORAGE_DTYPES,
     ARTIFACT,
+    DTYPE_BYTES,
     HarvestError,
     check_capture,
     check_hook_dims,
@@ -565,3 +568,56 @@ class TestHookDimGate:
         monkeypatch.setitem(sys.modules, "transformers", stub_transformers)
         with pytest.raises(HarvestError, match="flat text-model layout"):
             check_hook_dims("fake/composite", [3])
+
+
+class TestShippedRecipeStorageDtype:
+    """Every shipped harvest recipe must be runnable, or say why it is not.
+
+    KB-57: SAELens resolves harvest.dtype twice, once through DTYPE_MAP to a
+    torch dtype and once as the datasets.Array2D storage type. Arrow has no
+    bfloat16, so a bf16 recipe type-checks here, passes validate_harvest, and
+    then dies inside the runner before the first shard. Every recipe shipped
+    that way, which is why this guard exists rather than a unit test on a
+    synthetic recipe.
+
+    Two reference captures are still bf16 on purpose: fp32 does not fit the
+    volume for either (see the recipes). Those are allowed through only while
+    they name the bug, so a new bf16 recipe cannot join them silently.
+    """
+
+    def recipes(self):
+        pattern = os.path.join(
+            REPO_ROOT, "training", "recipes", "interp", "harvest-*.yaml"
+        )
+        paths = sorted(glob.glob(pattern))
+        assert paths, "no harvest recipes found; the glob is wrong"
+        return paths
+
+    def test_every_recipe_is_arrow_storable_or_names_the_blocker(self):
+        for path in self.recipes():
+            with open(path, encoding="utf-8") as handle:
+                text = handle.read()
+            harvest = yaml.safe_load(text)["harvest"]
+            name = os.path.relpath(path, REPO_ROOT)
+            # Omitting dtype inherits the schema default, which is bf16 and so
+            # cannot run. A harvest recipe must say what it captures at.
+            assert "dtype" in harvest, (
+                f"{name} omits harvest.dtype and would inherit the bf16 schema "
+                f"default, which Arrow cannot store (KB-57). State it explicitly."
+            )
+            dtype = harvest["dtype"]
+            assert dtype in DTYPE_BYTES, f"{name} sets an unknown dtype {dtype!r}"
+            if dtype in ARROW_STORAGE_DTYPES:
+                continue
+            assert "KB-57" in text, (
+                f"{name} captures at {dtype!r}, which Arrow cannot store, and "
+                f"does not cite KB-57. Either move it to one of "
+                f"{sorted(ARROW_STORAGE_DTYPES)} or record why it cannot."
+            )
+
+    def test_the_guard_would_catch_an_undocumented_bf16_recipe(self, tmp_path):
+        """The mutation this guard exists to fail on."""
+        text = "harvest:\n  dtype: bf16\n"
+        loaded = yaml.safe_load(text)["harvest"]["dtype"]
+        assert loaded not in ARROW_STORAGE_DTYPES
+        assert "KB-57" not in text

@@ -89,8 +89,12 @@ $ cargo run -p runtime --bin activation-capture -- \
 - Shards `shard_00000.npz` and onward hold `layer_<L>` float32 rows (last
   prompt token per example, matching the Python capture's
   `position: "last"`) plus int64 `labels`, 2048 examples per shard.
-  float32 is exact for the bf16 models this tier captures from, and numpy
-  has no bfloat16 dtype; the schema pins the value at
+  float32 is exact for the bf16 models this tier captures from -- bf16 is
+  the high half of an f32, so widening is a shift -- and the npz container
+  forces the choice, because numpy has no bfloat16 dtype. That constraint is
+  specific to npz and does not generalize: safetensors does carry bf16,
+  though only `safetensors.torch` can read it back (`safetensors.numpy`
+  raises `KeyError: 'BF16'`). The schema pins the value at
   `/schemas/activation_capture.manifest.json`.
 - `examples.jsonl` and a schema-1 `manifest.json` complete the directory.
   The manifest records `capture_backend: "rust-harness-cpu"` and a

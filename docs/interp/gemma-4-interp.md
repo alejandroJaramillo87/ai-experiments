@@ -47,10 +47,15 @@ both spellings, and both are present:
 composite configuration resolves through `gemma4_text`. Registering both means a caller that
 passes either the wrapper or the unwrapped text configuration succeeds.
 
-`architectures[0]` is `Gemma4ForConditionalGeneration` on both variants. Note that this is a
-conditional-generation class while the harvest path loads through `AutoModelForCausalLM`
-(`/interp/harvest.py:179-181`); see
-[The module path is composite](#the-module-path-is-composite).
+`architectures[0]` is `Gemma4ForConditionalGeneration` on both variants, while the harvest
+path loads through `AutoModelForCausalLM` (`interp/harvest.py`, in `check_hook_dims` and
+`_saelens_runner`). That mismatch is resolved and benign: transformers 5.13.1 registers six
+`gemma4*` keys in `MODEL_FOR_CAUSAL_LM_MAPPING_NAMES`, and `AutoModelForCausalLM.from_config`
+returns `Gemma4ForConditionalGeneration` rather than refusing. Verified on the workstation;
+the output is recorded in
+[gemma-4-training.md](../training/gemma-4-training.md). This matters beyond our own code
+because SAELens hardcodes `model_class_name="AutoModelForCausalLM"` with no override hook.
+See also [The module path is composite](#the-module-path-is-composite).
 
 ## Residual width and layer counts
 
@@ -264,8 +269,13 @@ decodes losslessly, and what still refuses them is architectural rather than for
 - **No Gemma-Scope or Neuronpedia assets exist for Gemma 4.** `gemma2` is registered in the
   family table specifically as the anchor for that ecosystem (`families.py:8-11`); Gemma 4
   sparse autoencoders must be trained in-tree.
-- **TransformerLens has no Gemma 4 support**, so `HookedTransformer` aliases are not used
-  (`families.py:14-15`). Hooks go through nnsight or plain torch.
+- **TransformerLens has no Gemma 4 support in its architecture registry**, so
+  `HookedTransformer` aliases are not used (`families.py:14-15`). Hooks go through nnsight or
+  plain torch. The reason is the registry rather than the library: `HookedTransformer`
+  converts a fixed set of families, and Gemma 4 is not among them at our 3.5.1 pin. TL 3.x
+  does ship `TransformerBridge`, which wraps arbitrary HF models including multimodal ones,
+  so a future revisit would go through the bridge rather than waiting for an alias table
+  entry. Current upstream is 3.7.0; the gap between that and our pin has not been surveyed.
 - **`gemma4_unified_text` is not registered.** That is the 12B text `model_type`, deliberately
   refused rather than mapped to the flat template.
 

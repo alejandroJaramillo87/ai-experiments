@@ -333,15 +333,34 @@ citations; `docs/models/gemma4-upstream.txt` is the committed transcript they ci
   sliding or full attention type. An implementation that designates a single donor for every
   shared layer is wrong for one of the two regimes.
 
+## Resolved: the auto-class accepts Gemma 4
+
+The merge path in `training/export/merge.py` loads through `AutoModelForCausalLM` while the
+checkpoint declares `Gemma4ForConditionalGeneration`, and the committed transcript carries no
+auto-class mapping, so acceptance was unverified. It is now verified against a real load on
+the workstation:
+
+```
+transformers 5.13.1
+gemma4 in causal-lm map: ['gemma4', 'gemma4_assistant', 'gemma4_text',
+                          'gemma4_unified', 'gemma4_unified_assistant',
+                          'gemma4_unified_text']
+has Gemma4ForConditionalGeneration: True
+config type: Gemma4Config | model_type: gemma4
+AutoModelForCausalLM OK: Gemma4ForConditionalGeneration
+```
+
+`MODEL_FOR_CAUSAL_LM_MAPPING_NAMES` registers six `gemma4*` keys, and
+`AutoModelForCausalLM.from_config` returns `Gemma4ForConditionalGeneration` rather than
+refusing. Both the composite `gemma4` and the text-only `gemma4_text` config resolve, so the
+merge path and any caller that hardcodes the causal-LM auto-class work unmodified. This also
+clears the interp harvest, which reaches the model through SAELens's hardcoded
+`model_class_name="AutoModelForCausalLM"`.
+
 ## Open questions
 
 Recorded rather than guessed.
 
-- **Whether `AutoModelForCausalLM` accepts `Gemma4ForConditionalGeneration`.** The merge path at
-  `/training/export/merge.py:148-160` uses `AutoModelForCausalLM`; the checkpoint declares a
-  conditional-generation class. Both classes exist upstream and llama.cpp registers both for
-  conversion, but the committed transcript does not include the auto-class mapping, so
-  acceptance remains unverified against a real load.
 - **The stored value of `layer_scalar`.** The transcripts record the shape `[1]` but not the
   value, so whether the multiplication is a no-op in the released checkpoints is unestablished.
 

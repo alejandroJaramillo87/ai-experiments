@@ -4,7 +4,21 @@
 # family of the published Gemma Scope reference point (16k residual SAE,
 # average L0 about 41; arXiv 2408.05147). Full 300M-token budget (resolved
 # decision: same-scale comparison, and a rehearsal of the full envelope for
-# later, larger own-trained subjects). ~1.15TB at d_model 2304 bf16.
+# later, larger own-trained subjects). ~1.38TB at d_model 2304 fp16.
+#
+# fp16, not bf16: Arrow has no bfloat16 (KB-57), and fp32 is not an option here
+# at all -- 300M x 2304 x 4 is 2.76TB, larger than the whole 1.97TB volume when
+# empty. Two-byte storage is a precondition for this capture. Cutting tokens is
+# not a workaround: the full 300M is what makes this a same-scale comparison
+# against the published Gemma Scope reference
+# (p4_d3_sae_training_investigation.md).
+#
+# fp16 costs no precision: bf16 carries 8 significand bits and fp16 carries 11,
+# so a bf16 value inside fp16's exponent range is stored exactly. Measured on
+# this subject rather than inherited from Gemma 4 E2B -- Gemma-2-2B peaks at
+# 2960 against E2B's 127.5, a 23x difference, so the two do not substitute for
+# one another. Layer 12 peaks at 1680, 39x under fp16's 65504 ceiling
+# (scripts/interp/activation_magnitude_probe.py, workstation 2026-08-07).
 #
 # Gemma-2-2B is gated on HF; HF_TOKEN must be set (env.interp.example).
 #
@@ -22,7 +36,7 @@ harvest:
   corpus: monology/pile-uncopyrighted
   context_len: 1024
   total_tokens: 300000000
-  dtype: bf16
+  dtype: fp16
   model_batch_size: 8
 
 watchdog:

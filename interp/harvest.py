@@ -1,19 +1,26 @@
 """Activation harvesting (interp Phase 4 P4-D2): a workbench batch job.
 
-Thin glue around SAELens v6's activation-caching runner: batched bf16 forward
-passes over a corpus, caching residual-stream activations under
+Thin glue around SAELens v6's activation-caching runner: batched forward
+passes over a corpus at harvest.dtype, caching residual-stream activations under
 /mnt/ai-data/interp/activations/<name>/. Our additions are the manifest and
 the operational envelope — disk preflight against the watchdog floor, the D9
-run lock, the D10 watchdog sampler, and hook-level resume (shard-level resume
-within a hook is delegated to the runner's own cache state).
+run lock, the D10 watchdog sampler, and hook-level resume.
+
+Resume is hook-level and nothing more. SAELens provides none within a hook:
+CacheActivationsRunner.run() raises when its output directory is not empty, so
+a hook interrupted part-way cannot be resumed or even retried in place -- the
+partial capture must be deleted first. Since every shipped recipe captures a
+single hook, an interrupted capture is lost work in full.
 
 Hooks are HF named-module paths resolved per model family through the
 interp/families.py registry; the layout follows the config the caller loaded,
 so Gemma 4 from its composite config is model.language_model.layers.{n} and a
 flat text model is model.layers.{n}. The output of a decoder layer is the
-post-block residual stream. TransformerLens
-aliases are not used because HookedTransformer has no Gemma 4 support (P4-D1
-resolved decision).
+post-block residual stream. TransformerLens aliases are not used because its
+architecture registry is closed: HookedTransformer converts a fixed set of
+families and Gemma 4 is not among them at our 3.5.1 pin (P4-D1 resolved
+decision). TL 3.x does ship TransformerBridge, which wraps arbitrary HF
+models, so the gap is the registry rather than the library as a whole.
 
 Captures are a regenerable cache: the manifest is written only on completion,
 mark_validated flags a capture deletable, and gc_captures deletes flagged
@@ -47,6 +54,12 @@ from interp.manifest import (
 )
 
 DTYPE_BYTES = {"bf16": 2, "fp16": 2, "fp32": 4}
+
+# The subset of DTYPE_BYTES that Arrow can actually store, and so the subset a
+# capture can be taken at today. bf16 is absent because Arrow has no bfloat16
+# in any version, while SAELens hands harvest.dtype to both torch and
+# datasets.Array2D from one field -- see KB-57 and _saelens_runner.
+ARROW_STORAGE_DTYPES = frozenset({"fp16", "fp32"})
 
 # Recipe spelling to the name SAELens expects. Shared with interp/sae/train.py
 # so the harvest and the SAE trained on it cannot name different dtypes.
@@ -300,9 +313,18 @@ def _saelens_runner(job: dict, out_dir: str) -> dict:
 
     job carries model_id, revision, hook, d_in, corpus, context_len,
     total_tokens, dtype, seed, model_batch_size. Returns {"tokens": n,
-    "tokenizer_fingerprint": str, "sae_lens_version": str}. Rerunning with
-    the same out_dir relies on the runner's cache state for shard-level
-    resume; exact config field names are pinned by the workbench smoke run.
+    "tokenizer_fingerprint": str, "sae_lens_version": str}. Exact config field
+    names are pinned by the workbench smoke run.
+
+    Rerunning with the same out_dir does not resume: run() refuses a non-empty
+    directory and raises. Its per-buffer shards land under out_dir/.tmp_shards
+    and survive a crash, but run() counts that directory as non-empty too, so
+    they are unreachable without deleting them.
+
+    job["dtype"] reaches two type systems: DTYPE_NAMES maps it to a torch dtype
+    for the forward pass, and the same string becomes the datasets.Array2D
+    storage type. Arrow has no bfloat16, so "bf16" type-checks in one and fails
+    in the other (KB-57).
     """
     import importlib.metadata
 
@@ -356,7 +378,8 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
 
     The manifest lands only on completion — a capture directory without
     manifest.json is incomplete by definition. Rerunning skips hooks recorded
-    in progress.json and hands partially-cached hooks back to the runner.
+    in progress.json; a hook that was interrupted part-way is not resumable
+    (see _saelens_runner) and its directory must be deleted before the rerun.
     """
     from training.runtime.lock import run_lock
     from training.runtime.watchdog import Watchdog

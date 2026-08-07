@@ -59,14 +59,57 @@ def interp_recipes() -> list[Path]:
     return sorted(INTERP_RECIPES.glob("*.yaml"))
 
 
+def subject_model_id(text: str) -> str | None:
+    """The model a recipe declares as its subject, or None when it names none.
+
+    A recipe on the false-fact organism names no model id at all -- it points
+    at an organism directory -- so None means "ask the prose", not "no subject".
+    """
+    loaded = yaml.safe_load(text) or {}
+    for section in ("harvest", "sae"):
+        block = loaded.get(section) or {}
+        for key in ("model_id", "expect_model_id"):
+            if block.get(key):
+                return str(block[key])
+    return None
+
+
 def variant_of(text: str) -> str | None:
-    """The Gemma 4 variant a recipe names, or None when it names none."""
+    """The Gemma 4 variant a recipe's *subject* is, or None when it is not one.
+
+    Declared subject first, prose second. A comment may legitimately name a
+    model the recipe does not act on -- harvest-calibration-gemma2.yaml cites
+    E2B's activation peak precisely to say it did not reuse it -- and reading
+    the variant out of the prose turns that accuracy into a false positive.
+    """
+    subject = subject_model_id(text)
+    if subject and not VARIANT_RE.search(subject):
+        return None
     match = VARIANT_RE.search(text)
     return match.group(1).upper() if match else None
 
 
 def gemma4_recipes() -> list[Path]:
     return [p for p in interp_recipes() if variant_of(p.read_text())]
+
+
+def test_variant_of_reads_the_subject_not_the_prose():
+    """The classifier must not be fooled either way.
+
+    Subject-based selection was introduced because a Gemma 2 recipe that cites
+    E2B's activation peak was being checked against Gemma 4's contract. The
+    risk of that fix is the opposite error: a genuine Gemma 4 recipe excused
+    because the classifier got clever. Both directions are pinned here.
+    """
+    gemma2 = "harvest:\n  model_id: google/gemma-2-2b\n# compared with Gemma 4 E2B\n"
+    assert variant_of(gemma2) is None
+
+    gemma4 = "harvest:\n  model_id: google/gemma-4-E2B\n"
+    assert variant_of(gemma4) == "E2B"
+
+    # No declared subject (the organism recipes) still falls back to prose.
+    organism = "harvest:\n  organism_dir: /mnt/x\n# Gemma 4 E2B organism\n"
+    assert variant_of(organism) == "E2B"
 
 
 def test_the_fixture_set_is_not_empty():
@@ -196,6 +239,11 @@ def test_gemma2_width_absent_from_gemma4_code(contract):
             text = path.read_text()
             if not VARIANT_RE.search(text) and "gemma4" not in text.lower():
                 continue
+            # A recipe declaring a non-Gemma-4 subject is not a Gemma 4 file
+            # however its comments read, and 2304 is the correct width there.
+            if path.suffix in {".yaml", ".yml"} and subject_model_id(text):
+                if not variant_of(text):
+                    continue
             for number, line in enumerate(text.splitlines(), start=1):
                 if str(GEMMA2_WIDTH) in line:
                     offenders.append(f"{path.relative_to(REPO_ROOT)}:{number}")
