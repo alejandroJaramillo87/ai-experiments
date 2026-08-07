@@ -482,8 +482,13 @@ print(t.get("num_hidden_layers", ""))
         | sort -n | uniq -c >> "$OUT" || true
 
     section "$name — attention projection shapes (head-dim split)"
-    grep -E 'self_attn\.(q|k|v|o)_proj' "$flat" | collapse \
-        | sort | uniq -c | sort -rn >> "$OUT" || true
+    # Anchored to the language-model layer convention for the same reason the
+    # MLP tally above is: the vision and audio towers also have self_attn
+    # q/k/v/o_proj. Unanchored, E2B reported 44 rows of which 36 were tower,
+    # burying the eight rows that show the head-dim split -- and the four
+    # full-attention rows sorted last, where any row cap would drop them.
+    grep -E "${LAYER_CONVENTION}self_attn\.(q|k|v|o)_proj\.weight " "$flat" \
+        | collapse | sort | uniq -c | sort -rn >> "$OUT" || true
 
     section "$name — per-layer embedding path"
     grep -E 'layer_scalar|per_layer' "$flat" | collapse \

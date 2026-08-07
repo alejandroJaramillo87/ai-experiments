@@ -22,10 +22,18 @@ evidence behind the architecture claims in `gemma-4.md`, which is why they are c
 rather than regenerated on demand — the checkpoints live on the workstation under
 `/mnt/ai-data`, unreachable from a contained agent sandbox.
 
-| Transcript | Source checkpoints |
-|------------|--------------------|
+| Transcript | Source |
+|------------|--------|
 | `gemma4-gguf.txt` | `/mnt/ai-data/models/gguf/gemma-4-E2B-it/` and `gemma-4-E4B-it/` (base, mmproj, mtp) |
 | `gemma4-safetensors.txt` | `/mnt/ai-data/models/hf/gemma-4-E2B` and `gemma-4-E4B` |
+| `gemma4-upstream.txt` | the upstream `transformers` and `llama.cpp` sources, at the commit SHAs pinned in `gemma-4.md` |
+
+Two derived artifacts sit beside them:
+
+| File | Contents |
+|------|----------|
+| `gemma4-chat-template.jinja` | Google's canonical chat template, extracted verbatim from `tokenizer.chat_template` in the GGUF metadata, byte-identical across E2B and E4B |
+| [../../schemas/gemma4_facts.json](../../schemas/gemma4_facts.json) | The architecture values in machine-readable form, authored from the pinned `config.json` bytes rather than from these transcripts |
 
 ### Regenerating
 
@@ -42,8 +50,20 @@ $ ./scripts/models/gemma4_header_transcript.sh --out docs/models/gemma4-safetens
 
 Both scripts default to `/tmp`, so `--out` is required to land the file here.
 
-**Warning!** `gemma-4.md` and `../rust-harness/gemma-4-ingestion.md` cite these transcripts
-**by line number**. Regenerating shifts those numbers whenever the tensor inventory changes,
-and nothing verifies them: the documentation reference gate checks that a path exists, not
-that a line still says what a document claims. After regenerating, re-check the six citations
-in those two documents before committing.
+`gemma4-upstream.txt` regenerates from anywhere, including a contained agent sandbox, because
+`raw.githubusercontent.com` is on the proxy allowlist:
+
+```bash
+$ ./scripts/models/upstream_source_transcript.sh --out docs/models/gemma4-upstream.txt
+```
+
+**`gemma-4.md` and `../rust-harness/gemma-4-ingestion.md` cite these transcripts by line
+number, and regenerating shifts those numbers.** That used to be a warning asking a human to
+re-check six citations by hand. `../../tests/models/test_gemma4_facts_contract.py` now asserts
+each one, so a shifted citation fails a test instead. The documentation reference gate still
+checks only that a path exists, which is why that module carries its own citation table.
+
+The same module asserts both transcripts and `gemma-4.md` against
+[../../schemas/gemma4_facts.json](../../schemas/gemma4_facts.json). After regenerating, run
+`pytest tests/models` and resolve whatever disagrees before committing: a disagreement means
+either the transcript is stale or the contract is wrong, and both are worth knowing.

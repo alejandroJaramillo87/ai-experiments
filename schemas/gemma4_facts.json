@@ -1,0 +1,330 @@
+{
+  "contract": "gemma4_facts",
+  "description": "Gemma 4 architecture facts: the values rust-harness, interp, and training each hold private copies of. Derived from the pinned config.json revisions below, not from the committed header transcripts, so transcript-versus-contract is a real cross-check rather than a restatement.",
+  "facts_version": 1,
+  "writers": [
+    "google/gemma-4-* config.json at the revisions in \"revisions\" (the upstream authority)",
+    "scripts/models/gemma4_header_transcript.sh -> docs/models/gemma4-safetensors.txt",
+    "scripts/models/gguf_header_transcript.sh -> docs/models/gemma4-gguf.txt",
+    "docs/models/gemma-4.md (the prose restatement)"
+  ],
+  "readers": [
+    "rust-harness/runtime/src/model/cpu.rs (Config, GGUF key reads, layer schedule, rope)",
+    "rust-harness/runtime/src/gguf.rs (gemma4.* metadata keys)",
+    "rust-harness/runtime/src/synth.rs (gemma4.* keys written by the fixture writer)",
+    "rust-harness/fixtures/reference_logits.py (independent Python reader of the same keys)",
+    "training/calculator/components.py (explicit_head_dim, parameter accounting)",
+    "training/models/families.py (model_type gemma4 / gemma4_text registry)",
+    "training/tune/distill.py (final_logit_softcapping)",
+    "interp (reads width via residual_width(config); no hardcoded copy)",
+    "tests/models/specbuild.py (structure-preserving scaled-down analogue)"
+  ],
+  "guarded_by": [
+    "tests/models/test_gemma4_facts_contract.py",
+    "tests/models/test_gemma4_header_transcript.py",
+    "tests/models/test_gguf_header_transcript.py"
+  ],
+  "revisions": {
+    "E2B": {
+      "repo": "google/gemma-4-E2B",
+      "commit": "d29ff6b45f081a49ee2733a859c9c9c2d95d1a6f",
+      "config_blob_sha1": "5f0662eb398ede0ab1515c4760e13bcd6bf13f2f"
+    },
+    "E4B": {
+      "repo": "google/gemma-4-E4B",
+      "commit": "411aa17b749aa952df1359d2dcea73917a544d9a",
+      "config_blob_sha1": "080fd8d51bb6e846df168157c9d57b928a2a2687"
+    },
+    "12B": {
+      "repo": "google/gemma-4-12B",
+      "commit": "023679ed352de9bb66cc873c9009ce3482585c08",
+      "config_blob_sha1": "6d3994fd0b98fd5eaaaadbf918bd826d778ce5ea"
+    },
+    "31B": {
+      "repo": "google/gemma-4-31B",
+      "commit": "5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89",
+      "config_blob_sha1": "b469f1aca87e14dab2fcf32d071d3c58043357b7"
+    }
+  },
+  "invariants": {
+    "head_dim": 256,
+    "global_head_dim": 512,
+    "vocab_size": 262144,
+    "vocab_size_per_layer_input": 262144,
+    "hidden_activation": "gelu_pytorch_tanh",
+    "rms_norm_eps": 1e-06,
+    "final_logit_softcapping": 30.0,
+    "tie_word_embeddings": true,
+    "attention_bias": false,
+    "attention_dropout": 0.0,
+    "initializer_range": 0.02,
+    "bos_token_id": 2,
+    "eos_token_id": 1,
+    "pad_token_id": 0,
+    "enable_moe_block": false,
+    "num_experts": null,
+    "top_k_experts": null,
+    "use_cache": true,
+    "rope_parameters": {
+      "full_attention": {
+        "partial_rotary_factor": 0.25,
+        "rope_theta": 1000000.0,
+        "rope_type": "proportional"
+      },
+      "sliding_attention": {
+        "rope_theta": 10000.0,
+        "rope_type": "default"
+      }
+    }
+  },
+  "variants": {
+    "E2B": {
+      "model_type": "gemma4_text",
+      "num_hidden_layers": 35,
+      "hidden_size": 1536,
+      "intermediate_size": 6144,
+      "num_attention_heads": 8,
+      "num_key_value_heads": 1,
+      "num_global_key_value_heads": null,
+      "num_kv_shared_layers": 20,
+      "hidden_size_per_layer_input": 256,
+      "sliding_window": 512,
+      "max_position_embeddings": 131072,
+      "attention_k_eq_v": false,
+      "use_double_wide_mlp": true,
+      "use_bidirectional_attention": null,
+      "dtype": "bfloat16",
+      "config_model_type": "gemma4",
+      "transformers_version": "5.5.0.dev0",
+      "layer_types_full_attention_indices": [
+        4,
+        9,
+        14,
+        19,
+        24,
+        29,
+        34
+      ],
+      "sliding_attention_layers": 28,
+      "full_attention_layers": 7,
+      "projection_shapes": {
+        "sliding": {
+          "q_proj": [
+            2048,
+            1536
+          ],
+          "k_proj": [
+            256,
+            1536
+          ],
+          "v_proj": [
+            256,
+            1536
+          ],
+          "o_proj": [
+            1536,
+            2048
+          ],
+          "q_norm": [
+            256
+          ],
+          "k_norm": [
+            256
+          ]
+        },
+        "full": {
+          "q_proj": [
+            4096,
+            1536
+          ],
+          "k_proj": [
+            512,
+            1536
+          ],
+          "v_proj": [
+            512,
+            1536
+          ],
+          "o_proj": [
+            1536,
+            4096
+          ],
+          "q_norm": [
+            512
+          ],
+          "k_norm": [
+            512
+          ]
+        }
+      }
+    },
+    "E4B": {
+      "model_type": "gemma4_text",
+      "num_hidden_layers": 42,
+      "hidden_size": 2560,
+      "intermediate_size": 10240,
+      "num_attention_heads": 8,
+      "num_key_value_heads": 2,
+      "num_global_key_value_heads": null,
+      "num_kv_shared_layers": 18,
+      "hidden_size_per_layer_input": 256,
+      "sliding_window": 512,
+      "max_position_embeddings": 131072,
+      "attention_k_eq_v": false,
+      "use_double_wide_mlp": false,
+      "use_bidirectional_attention": null,
+      "dtype": "bfloat16",
+      "config_model_type": "gemma4",
+      "transformers_version": "5.5.0.dev0",
+      "layer_types_full_attention_indices": [
+        5,
+        11,
+        17,
+        23,
+        29,
+        35,
+        41
+      ],
+      "sliding_attention_layers": 35,
+      "full_attention_layers": 7,
+      "projection_shapes": {
+        "sliding": {
+          "q_proj": [
+            2048,
+            2560
+          ],
+          "k_proj": [
+            512,
+            2560
+          ],
+          "v_proj": [
+            512,
+            2560
+          ],
+          "o_proj": [
+            2560,
+            2048
+          ],
+          "q_norm": [
+            256
+          ],
+          "k_norm": [
+            256
+          ]
+        },
+        "full": {
+          "q_proj": [
+            4096,
+            2560
+          ],
+          "k_proj": [
+            1024,
+            2560
+          ],
+          "v_proj": [
+            1024,
+            2560
+          ],
+          "o_proj": [
+            2560,
+            4096
+          ],
+          "q_norm": [
+            512
+          ],
+          "k_norm": [
+            512
+          ]
+        }
+      }
+    },
+    "12B": {
+      "model_type": "gemma4_unified_text",
+      "num_hidden_layers": 48,
+      "hidden_size": 3840,
+      "intermediate_size": 15360,
+      "num_attention_heads": 16,
+      "num_key_value_heads": 8,
+      "num_global_key_value_heads": 1,
+      "num_kv_shared_layers": 0,
+      "hidden_size_per_layer_input": 0,
+      "sliding_window": 1024,
+      "max_position_embeddings": 262144,
+      "attention_k_eq_v": true,
+      "use_double_wide_mlp": false,
+      "use_bidirectional_attention": "vision",
+      "dtype": null,
+      "config_model_type": "gemma4_unified",
+      "transformers_version": "5.10.0.dev0",
+      "layer_types_full_attention_indices": [
+        5,
+        11,
+        17,
+        23,
+        29,
+        35,
+        41,
+        47
+      ],
+      "sliding_attention_layers": 40,
+      "full_attention_layers": 8
+    },
+    "31B": {
+      "model_type": "gemma4_text",
+      "num_hidden_layers": 60,
+      "hidden_size": 5376,
+      "intermediate_size": 21504,
+      "num_attention_heads": 32,
+      "num_key_value_heads": 16,
+      "num_global_key_value_heads": 4,
+      "num_kv_shared_layers": 0,
+      "hidden_size_per_layer_input": 0,
+      "sliding_window": 1024,
+      "max_position_embeddings": 262144,
+      "attention_k_eq_v": true,
+      "use_double_wide_mlp": false,
+      "use_bidirectional_attention": "vision",
+      "dtype": "bfloat16",
+      "config_model_type": "gemma4",
+      "transformers_version": "5.5.0.dev0",
+      "layer_types_full_attention_indices": [
+        5,
+        11,
+        17,
+        23,
+        29,
+        35,
+        41,
+        47,
+        53,
+        59
+      ],
+      "sliding_attention_layers": 50,
+      "full_attention_layers": 10
+    }
+  },
+  "gguf_key_aliases": {
+    "gemma4.attention.key_length": "global_head_dim (512), NOT head_dim (256)",
+    "gemma4.attention.head_count": "num_attention_heads",
+    "gemma4.attention.head_count_kv": "num_key_value_heads",
+    "gemma4.block_count": "num_hidden_layers",
+    "gemma4.embedding_length": "hidden_size",
+    "gemma4.feed_forward_length": "intermediate_size (int32 array on E2B, uint32 scalar on E4B)",
+    "gemma4.attention.sliding_window": "sliding_window",
+    "gemma4.attention.sliding_window_pattern": "bool array, length block_count; true marks a sliding layer"
+  },
+  "notes": {
+    "authored_from_config_not_transcripts": "Every value here comes from the config.json bytes at the pinned revisions, verified by the git blob sha1 in \"revisions\". Transcribing from docs/models/gemma4-*.txt would make the transcript assertions circular.",
+    "head_dim_is_two_different_fields": "HF head_dim is 256 and applies to sliding layers only. rust-harness Config::head_dim is loaded from GGUF gemma4.attention.key_length and holds 512, the global head dim. Compare against global_head_dim when reading the Rust field, never against head_dim.",
+    "read_the_layer_types_array": "layer_types_full_attention_indices is explicit because E2B uses a period of 5 and the other three use 6. Computing the schedule from one stride constant is wrong on E2B.",
+    "final_layer_is_always_full_attention": "Asserted for all four variants when this file was built.",
+    "gguf_shapes_are_dimension_reversed": "projection_shapes uses safetensors/HF order [out, in]. GGUF stores the reverse. Reverse before comparing against docs/models/gemma4-gguf.txt.",
+    "no_tensor_facts_for_12b_and_31b": "projection_shapes is absent for 12B and 31B by decision, not oversight. No checkpoint headers for those two have been collected, so any shape here would be a derivation presented as an observation. E2B and E4B shapes are derived from config and independently confirmed against the safetensors headers.",
+    "num_kv_shared_layers_shares_cache_not_weights": "All layers carry their own k_proj and v_proj in the released E-series checkpoints. The absence of attn_k is not a shared-KV signature. See the open question in docs/models/gemma-4.md.",
+    "intermediate_size_is_not_per_layer_truth_on_e2b": "use_double_wide_mlp is true only on E2B, where 20 of 35 layers are double-wide.",
+    "gate_on_hidden_size_per_layer_input": "vocab_size_per_layer_input is 262144 on all four variants including 12B and 31B where per-layer embeddings are disabled. hidden_size_per_layer_input is the field that decides.",
+    "rope_theta_10000_elsewhere_is_unrelated": "training/recipes/schema.py and training/models/model.py default rope_theta to 10000.0 for the from-scratch scratch model. That is not Gemma 4 and is not a reader of this contract.",
+    "hidden_size_2304_is_wrong": "A width of 2304 appears across tests/interp, tests/training, training/calculator, and three training/recipes/interp YAML files. It matches no variant. E2B is 1536 and E4B is 2560.",
+    "token_id_ordering_looks_transposed_and_is_not": "eos_token_id is 1 and bos_token_id is 2."
+  }
+}

@@ -19,9 +19,46 @@ and let the reference ``safetensors`` and ``gguf`` packages load them.
 from __future__ import annotations
 
 import json
+import re
 import struct
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+
+RUST_SRC = Path(__file__).resolve().parents[2] / "rust-harness"
+
+
+def _rust(relpath: str) -> str:
+    return (RUST_SRC / relpath).read_text()
+
+
+def rust_loadable_tensor_types() -> set[int]:
+    """GGML type ids ``runtime/src/tensor.rs`` dequantizes.
+
+    Derived rather than restated. Three copies of this set existed -- here, in
+    ``gguf_header_transcript.sh``, and in the Rust source itself -- and the two
+    copies had drifted to ``{0, 1, 8}`` after tensor.rs gained BF16, so the
+    transcript reported every BF16 tensor in a Gemma 4 checkpoint as refused.
+    """
+    src = _rust("runtime/src/tensor.rs")
+    consts = dict(re.findall(r"pub const (GGML_\w+): u32 = (\d+);", src))
+    arms = set(re.findall(r"^\s+(GGML_\w+) =>", src, re.MULTILINE))
+    out = {int(consts[a]) for a in arms if a in consts}
+    assert out, "no loadable tensor types derived from tensor.rs"
+    return out
+
+
+def rust_ok_array_element_types() -> set[int]:
+    """GGUF array element type ids ``runtime/src/gguf.rs`` decodes."""
+    src = _rust("runtime/src/gguf.rs")
+    block = re.search(r"fn array\(.*?\n    \}", src, re.DOTALL)
+    assert block, "could not locate fn array in gguf.rs"
+    out = {
+        int(n)
+        for n in re.findall(r"^\s+(\d+) => MetaValue::", block.group(0), re.MULTILINE)
+    }
+    assert out, "no array element types derived from gguf.rs"
+    return out
+
 
 # Bytes per element, for computing safetensors data_offsets.
 DTYPE_BYTES = {"BF16": 2, "F16": 2, "F32": 4, "F64": 8, "I8": 1, "BOOL": 1}
@@ -34,8 +71,8 @@ GGUF_BOOL = 7
 GGUF_STRING = 8
 GGUF_ARRAY = 9
 
-# ggml tensor type ids. runtime/src/tensor.rs:16-18 declares 0, 1, and 8
-# loadable and bails on everything else at :56 and :143.
+# ggml tensor type ids. Which of them the harness loads is not restated here:
+# ask rust_loadable_tensor_types(), which reads runtime/src/tensor.rs.
 GGML_F32 = 0
 GGML_F16 = 1
 GGML_Q8_0 = 8
@@ -314,18 +351,12 @@ class GgufSpec:
         return {k: et for k, _, _, et in self.kvs if et is not None}
 
     def refused_array_keys(self) -> list[str]:
-        return sorted(
-            k
-            for k, et in self.array_element_types().items()
-            if et not in (GGUF_INT32, GGUF_FLOAT32, GGUF_STRING)
-        )
+        ok = rust_ok_array_element_types()
+        return sorted(k for k, et in self.array_element_types().items() if et not in ok)
 
     def refused_tensor_types(self) -> list[int]:
-        return sorted(
-            t
-            for t in self.tensor_type_tally()
-            if t not in (GGML_F32, GGML_F16, GGML_Q8_0)
-        )
+        ok = rust_loadable_tensor_types()
+        return sorted(t for t in self.tensor_type_tally() if t not in ok)
 
 
 def _gguf_string(s: str) -> bytes:
@@ -471,3 +502,80 @@ def parse_counted(lines: list[str]) -> dict[str, int]:
         if len(parts) == 2 and parts[0].isdigit():
             out[parts[1].strip()] = int(parts[0])
     return out
+
+
+def parse_tensor_list(text: str) -> dict[str, tuple[list[int], str]]:
+    """Parses a GGUF transcript's full tensor name list into {name: (dims, type)}.
+
+    Dimensions are GGUF order, which is reversed relative to safetensors.
+    """
+    out: dict[str, tuple[list[int], str]] = {}
+    body = text.split("=== full tensor name list ===", 1)
+    if len(body) != 2:
+        return out
+    for line in body[1].splitlines():
+        m = re.match(r"^(\S+) \[([0-9, ]*)\] (\S+)$", line.strip())
+        if m:
+            dims = [int(x) for x in m.group(2).split(",") if x.strip()]
+            out[m.group(1)] = (dims, m.group(3))
+    return out
+
+
+def metadata_keys(text: str) -> set[str]:
+    """Keys named in a GGUF transcript's non-tokenizer metadata section."""
+    keys = set()
+    chunk = text.split("=== metadata keys (non-tokenizer) ===", 1)
+    if len(chunk) != 2:
+        return keys
+    section = chunk[1].split("=== array-valued keys", 1)[0]
+    for line in section.splitlines():
+        m = re.match(r"^(\S+) \[", line)
+        if m:
+            keys.add(m.group(1))
+    return keys
+
+
+def metadata_scalars(text: str) -> dict[str, str]:
+    """Scalar metadata values from a GGUF transcript, as {key: raw value text}.
+
+    Array-valued keys carry no ``=`` on the key line and are skipped; read them
+    with :func:`metadata_keys` instead.
+    """
+    out: dict[str, str] = {}
+    chunk = text.split("=== metadata keys (non-tokenizer) ===", 1)
+    if len(chunk) != 2:
+        return out
+    section = chunk[1].split("=== array-valued keys", 1)[0]
+    for line in section.splitlines():
+        m = re.match(r"^(\S+) \[[^\]]*\] = (.*)$", line.strip())
+        if m:
+            out[m.group(1)] = m.group(2).strip()
+    return out
+
+
+def split_gguf_files(path: Path) -> dict[str, str]:
+    """Splits a multi-file GGUF transcript into {source .gguf path: block text}.
+
+    The committed ``docs/models/gemma4-gguf.txt`` covers six checkpoints. Each is
+    introduced by a ``FILE:`` line inside a row of ``=`` separators; the trailing
+    separator belongs to the *next* block's banner, so it is stripped here rather
+    than left to leak into the previous block's tensor list.
+    """
+    blocks: dict[str, str] = {}
+    current: str | None = None
+    buf: list[str] = []
+    for line in path.read_text().splitlines():
+        if set(line.strip()) == {"="} and line.strip():
+            continue
+        m = re.match(r"^FILE: (\S+)$", line)
+        if m:
+            if current is not None:
+                blocks[current] = "\n".join(buf)
+            current = m.group(1)
+            buf = []
+            continue
+        if current is not None:
+            buf.append(line)
+    if current is not None:
+        blocks[current] = "\n".join(buf)
+    return blocks

@@ -151,9 +151,9 @@ than inferred from the tree. The current state:
 The observability package is `common/obs/`, a subpackage of the existing
 `common/` package. It grows one module per item. Do not name any module
 `logging.py`, to avoid shadowing the standard library. Unit tests for
-`common/obs/` modules live under `tests/utils/`, where the existing
-`common/` tests live (`tests/utils/test_common_output.py`); the repository
-has no `tests/common/` directory.
+`common/obs/` modules live under `tests/common/`, the directory mirroring
+the `common/` package, where the existing `common/` tests live
+(`tests/common/test_common_output.py`).
 
 ### Phase A: logging foundation
 
@@ -162,10 +162,10 @@ has no `tests/common/` directory.
 - **Goal**: a structured logger that writes a human line to standard error
   and a JSON Lines record to a file, both carrying the ambient correlation id
   and command context.
-- **Status**: done. `common/obs/core.py`; tests in `tests/utils/test_obs_core.py`.
+- **Status**: done. `common/obs/core.py`; tests in `tests/common/test_obs_core.py`.
 - **Depends on**: nothing.
 - **Scope**: `common/obs/__init__.py`, `common/obs/core.py`,
-  `tests/utils/test_obs_core.py`.
+  `tests/common/test_obs_core.py`.
 - **Design**:
   - `core.py` defines a `StructuredLogger` wrapper over the standard library
     `logging` module (currently unused by first-party code, so there are no
@@ -195,7 +195,7 @@ has no `tests/common/` directory.
   - Handler write failures are silent: both installed handlers suppress
     `handleError`, so mid-run ENOSPC cannot flood standard error with logging
     tracebacks, and reconfiguration tolerates a broken previous stream.
-- **Acceptance check** (sandbox): `uv run pytest tests/utils/test_obs_core.py`
+- **Acceptance check** (sandbox): `uv run pytest tests/common/test_obs_core.py`
   passes, asserting that one `info` call writes one parseable JSON line with
   the base fields, that the human line appears on standard error and not
   standard output and carries no timestamp, that `OBS_LOG_LEVEL=warning`
@@ -219,10 +219,10 @@ later item ids stay stable. There is no work to execute under this id.
   calls produce both the human line and a structured record, and human output
   moves from standard output to standard error.
 - **Status**: done. `common/output.py` routes through the logger; tests in
-  `tests/utils/test_common_output.py`.
+  `tests/common/test_common_output.py`.
 - **Depends on**: OBS-1.
 - **Scope**: `common/output.py`; `.styles/PYTHON_OUTPUT_STYLE.md`;
-  `tests/utils/test_common_output.py`; `tests/utils/test_check_py_deps.py`;
+  `tests/common/test_common_output.py`; `tests/utils/test_check_py_deps.py`;
   `tests/utils/README.md`; `tests/training/test_cli_handlers_train.py`;
   `tests/training/test_cli_handlers_memfit.py`;
   `tests/training/test_cli_handlers_export.py`;
@@ -254,7 +254,7 @@ later item ids stay stable. There is no work to execute under this id.
   - `.styles/PYTHON_OUTPUT_STYLE.md` reproduces the current stdout-based
     `Printer` verbatim; it updates in the same change, per the rule that
     documentation follows code.
-  - Test migration: `tests/utils/test_common_output.py` replaces
+  - Test migration: `tests/common/test_common_output.py` replaces
     `redirect_stdout` with `redirect_stderr` (and its fake-TTY buffer moves
     accordingly); the CLI handler tests listed in scope move their
     `capsys.readouterr().out` assertions on `[OK]`/`[WARN]`/`[ERROR]` lines
@@ -275,11 +275,11 @@ later item ids stay stable. There is no work to execute under this id.
   `cmd.start` record, and a `cmd.end` record with exit code and duration, and
   exposes a phase timer for coarse in-command spans.
 - **Status**: done. `common/obs/dispatch.py`; tests in
-  `tests/utils/test_obs_dispatch.py` and `tests/training/test_obs_integration.py`.
+  `tests/common/test_obs_dispatch.py` and `tests/training/test_obs_integration.py`.
 - **Depends on**: OBS-1, OBS-3.
 - **Scope**: `common/obs/dispatch.py`, `training/cli.py` (`main`),
   `interp/cli.py` (`main`), `common/obs/core.py` (phase timer),
-  `tests/utils/test_obs_dispatch.py`.
+  `tests/common/test_obs_dispatch.py`.
 - **Design**:
   - Both CLIs share the dispatch shape
     `args = build_parser().parse_args(argv); return args.func(args)`
@@ -313,7 +313,7 @@ later item ids stay stable. There is no work to execute under this id.
     secret-bearing flag in either CLI (every token-named flag is a token
     count or tokenizer path).
 - **Acceptance check** (sandbox):
-  `uv run pytest tests/utils/test_obs_dispatch.py` passes, asserting that a
+  `uv run pytest tests/common/test_obs_dispatch.py` passes, asserting that a
   successful command writes `cmd.start` and `cmd.end` with `exit_code` 0 and a
   non-negative `duration_s`, that a command raising an exception still writes
   `cmd.end` with exit code 1, and that both records share one `run_id`.
@@ -324,10 +324,10 @@ later item ids stay stable. There is no work to execute under this id.
 - **Goal**: an uncaught exception in a command is recorded as a `fail` event
   with the exception type, message, and a truncated traceback.
 - **Status**: done. Failure recording in `common/obs/dispatch.py`; tests in
-  `tests/utils/test_obs_failure.py` and `tests/training/test_obs_durability.py`.
+  `tests/common/test_obs_failure.py` and `tests/training/test_obs_durability.py`.
 - **Depends on**: OBS-4.
 - **Scope**: `common/obs/core.py` (failure recorder),
-  `common/obs/dispatch.py` (wiring), `tests/utils/test_obs_failure.py`.
+  `common/obs/dispatch.py` (wiring), `tests/common/test_obs_failure.py`.
 - **Design**:
   - `record_failure(exc, exit_code)` emits a `fail` event with `exc_type`,
     `exc_msg`, a traceback truncated to the last 30 frames, and the exit
@@ -350,7 +350,7 @@ later item ids stay stable. There is no work to execute under this id.
   - The human error line continues to come from `Printer.error`, unchanged;
     the `fail` record is file-only.
 - **Acceptance check** (sandbox):
-  `uv run pytest tests/utils/test_obs_failure.py` passes, asserting that a
+  `uv run pytest tests/common/test_obs_failure.py` passes, asserting that a
   raised exception produces exactly one `fail` record carrying `exc_type`,
   `exc_msg`, and the exit code, that the traceback is bounded at 30 frames,
   that the record shares the run's `run_id`, and that `KeyboardInterrupt`
@@ -362,10 +362,10 @@ later item ids stay stable. There is no work to execute under this id.
 - **Goal**: when enabled, record every file opened, module imported, and
   subprocess spawned during a command, using a Python audit hook, at debug
   level.
-- **Status**: done. `common/obs/audit.py`; tests in `tests/utils/test_obs_audit.py`.
+- **Status**: done. `common/obs/audit.py`; tests in `tests/common/test_obs_audit.py`.
 - **Depends on**: OBS-4.
 - **Scope**: `common/obs/audit.py`, wiring into `common/obs/dispatch.py`,
-  `tests/utils/test_obs_audit.py`.
+  `tests/common/test_obs_audit.py`.
 - **Design**:
   - `install_audit_trace()` registers a `sys.addaudithook` callback that maps
     the `open`, `import`, and `subprocess.Popen` (and `os.exec*`) audit events
@@ -391,7 +391,7 @@ later item ids stay stable. There is no work to execute under this id.
     only for the `import` statement, so `importlib.import_module` calls are
     not recorded. All are accepted for an opt-in forensic tool.
 - **Acceptance check** (sandbox):
-  `uv run pytest tests/utils/test_obs_audit.py` passes with `OBS_TRACE=1`,
+  `uv run pytest tests/common/test_obs_audit.py` passes with `OBS_TRACE=1`,
   asserting that opening a file, importing a module, and spawning a trivial
   subprocess each produce the corresponding debug record, and that with
   `OBS_TRACE` unset no such records appear.
@@ -402,10 +402,10 @@ later item ids stay stable. There is no work to execute under this id.
 
 - **Goal**: each run records the environment it ran in, so a failure is
   diagnosable and reproducible.
-- **Status**: done. `common/obs/context.py`; tests in `tests/utils/test_obs_context.py`.
+- **Status**: done. `common/obs/context.py`; tests in `tests/common/test_obs_context.py`.
 - **Depends on**: OBS-4.
 - **Scope**: `common/obs/context.py`, wiring into `common/obs/dispatch.py`,
-  `tests/utils/test_obs_context.py`.
+  `tests/common/test_obs_context.py`.
 - **Design**:
   - `run_context()` returns a dict with the git SHA (reuse
     `common/provenance.py`, `git_sha`), the Python version, the platform
@@ -420,7 +420,7 @@ later item ids stay stable. There is no work to execute under this id.
   - The dispatch wrapper emits the context as a `run.context` record
     immediately after `cmd.start`.
 - **Acceptance check** (sandbox):
-  `uv run pytest tests/utils/test_obs_context.py` passes, asserting that the
+  `uv run pytest tests/common/test_obs_context.py` passes, asserting that the
   context contains a git SHA and a Python version, that a missing GPU
   produces an omitted field rather than an exception, and that no record
   field contains the process environment.
@@ -435,10 +435,10 @@ later item ids stay stable. There is no work to execute under this id.
   (`runs.jsonl`) is exempt by design: one summary line per invocation is
   the retention system's own index and grows slowly.
 - **Status**: done. `common/obs/retention.py`; tests in
-  `tests/utils/test_obs_retention.py`.
+  `tests/common/test_obs_retention.py`.
 - **Depends on**: OBS-1.
 - **Scope**: `common/obs/retention.py`, wiring into `configure`,
-  `tests/utils/test_obs_retention.py`.
+  `tests/common/test_obs_retention.py`.
 - **Design**:
   - `prune(log_dir, retention_days)` removes event files older than the
     retention window. It touches only files whose names match the run-id
@@ -460,7 +460,7 @@ later item ids stay stable. There is no work to execute under this id.
   - Pruning is best-effort: a file that cannot be removed is skipped, not
     fatal, and nothing is printed.
 - **Acceptance check** (sandbox):
-  `uv run pytest tests/utils/test_obs_retention.py` passes, asserting that a
+  `uv run pytest tests/common/test_obs_retention.py` passes, asserting that a
   run-id-named file older than the window is removed, that a recent file is
   kept, that `runs.jsonl` is never removed regardless of age, that an
   unremovable file does not raise, and that a disabled window prunes
@@ -473,11 +473,11 @@ later item ids stay stable. There is no work to execute under this id.
 - **Goal**: make runs discoverable, so a past run is found by id, time, or
   outcome without reading individual files.
 - **Status**: done. `common/obs/catalog.py`, `training/commands/runs.py`,
-  `interp/commands/runs.py`; tests in `tests/utils/test_obs_catalog.py`.
+  `interp/commands/runs.py`; tests in `tests/common/test_obs_catalog.py`.
 - **Depends on**: OBS-4.
 - **Scope**: `common/obs/catalog.py`, `training/commands/runs.py`,
   `interp/commands/runs.py`, registration in `training/cli.py` and
-  `interp/cli.py`, `tests/utils/test_obs_catalog.py`.
+  `interp/cli.py`, `tests/common/test_obs_catalog.py`.
 - **Design**:
   - After `cmd.end`, in the same dispatch `finally`, append one summary
     record to `${OBS_LOG_DIR}/<cli>/runs.jsonl`: `run_id`, `command`,
@@ -501,7 +501,7 @@ later item ids stay stable. There is no work to execute under this id.
     `command == "runs"` entries unless `--all` is passed, keeping the
     data complete and the default view signal-rich.
 - **Acceptance check** (sandbox):
-  `uv run pytest tests/utils/test_obs_catalog.py` passes, asserting that a
+  `uv run pytest tests/common/test_obs_catalog.py` passes, asserting that a
   completed run appends one catalog record, that `runs --json` returns the
   recorded runs including a failed one, and that the default view hides
   `runs` entries until `--all`.
@@ -668,12 +668,12 @@ later item ids stay stable. There is no work to execute under this id.
   extending and logs tailing — in any browser, from an ephemeral local
   server that follows the stateless viewer principle.
 - **Status**: done. `common/obs/serve.py` behind `report --serve`; tests in
-  `tests/utils/test_obs_serve.py`, plus the browser check in
+  `tests/common/test_obs_serve.py`, plus the browser check in
   `scripts/verify/obs_browser/`.
 - **Depends on**: OBS-11.
 - **Scope**: `training/commands/report.py` (`--serve`, `--host`, `--port`
   flags), `common/obs/serve.py`, `common/obs/viewer.js` (follow mode),
-  `tests/utils/test_obs_serve.py`.
+  `tests/common/test_obs_serve.py`.
 - **Design**:
   - `report --run <run_dir> --serve` starts a standard library
     `ThreadingHTTPServer` (no new dependency, `common/obs/serve.py`) bound
@@ -718,7 +718,7 @@ later item ids stay stable. There is no work to execute under this id.
     Killing it loses nothing; the files are the record. Tests bind port 0;
     8010 stays the interactive default.
 - **Acceptance check** (sandbox for the endpoints; host for the live view):
-  `uv run pytest tests/utils/test_obs_serve.py` passes, asserting that the
+  `uv run pytest tests/common/test_obs_serve.py` passes, asserting that the
   offset endpoints return only complete appended lines and a correct new
   offset against a fixture directory that grows between requests. On the
   workstation, starting the server during a run shows the charts extending
@@ -849,9 +849,9 @@ minting its own run id.
 - Sandbox-runnable acceptance checks are unit tests that need no GPU, no
   Docker, and no running service. Most items above are sandbox-runnable in
   full.
-- Unit tests for `common/obs/` modules live under `tests/utils/`, matching
-  the existing placement of `common/` tests; training-integration tests live
-  under `tests/training/`.
+- Unit tests for `common/obs/` modules live under `tests/common/`, beside the
+  rest of the `common/` tests; training-integration tests live under
+  `tests/training/`.
 - Host-side acceptance checks (a real `metrics.jsonl` from a training run in
   OBS-10, the live viewer in OBS-12, opening a rendered page) run on the
   workstation. The operator runs the command and records the command and its

@@ -10,7 +10,9 @@ header transcripts, and a hardware tier that runs only on the workstation.
 |-----------|--------|
 | `training/` | the training tier; the largest suite, and the one that needs torch |
 | `interp/` | the interpretability tier |
-| `utils/` | `common/` and the `scripts/utils/` reporters — see [utils/README.md](utils/README.md) |
+| `common/` | the `common/` package: `Printer` and `common/obs/` — see [common/README.md](common/README.md) |
+| `docs/` | the documentation gates in `scripts/docs/` — see [docs/README.md](docs/README.md) |
+| `utils/` | the `scripts/utils/` host-environment reporters — see [utils/README.md](utils/README.md) |
 | `agents/` | agent tooling, the guard hook, and Make targets — see [agents/README.md](agents/README.md) |
 | `models/` | GGUF and safetensors header transcripts — see [models/README.md](models/README.md) |
 | `hardware/` | live GPU, CPU, RAM, and SSD checks; deselected by default |
@@ -37,7 +39,7 @@ expression rather than adding to it.** So `-m gpu` silently re-enables `hw_smoke
 
 ```bash
 $ make test                   # the whole suite, in either environment
-$ pytest tests/utils -v       # one directory
+$ pytest tests/common -v      # one directory
 $ pytest -m hw_smoke          # workstation only
 ```
 

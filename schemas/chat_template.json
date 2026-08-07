@@ -12,7 +12,8 @@
   "guarded_by": [
     "rust-harness/harness/tests/template_contract.rs",
     "tests/training/test_chat_template_contract.py",
-    "tests/training/test_sft.py (GOLDEN_RENDERED)"
+    "tests/training/test_sft.py (GOLDEN_RENDERED)",
+    "tests/models/test_gemma4_facts_contract.py (extraction fidelity)"
   ],
   "chat_template_version": 2,
   "spec": {
@@ -51,6 +52,9 @@
     "trim_content_follows_python": "trim_content true means Python's str.strip, which trims by str.isspace. That set is the Unicode White_Space property plus the C0 separators U+001C-U+001F, so Rust's str::trim is not equivalent: template.rs trims with is_python_space instead. A tool result carrying a separator byte at a content edge is the reachable case, and the whitespace-edged fixture in template_contract.rs pins it against the real Python renderer.",
     "roles_are_not_comparable": "The two tiers enumerate roles differently. Python takes a role string per message and maps only the assistant role through assistant_role. Rust maps its own Role enum, folding Tool onto user and Compaction onto system, because Transcript::effective folds compactions into System before rendering. The rendered turn framing is identical; the role vocabulary that reaches it is not.",
     "bos_placement": "Python emits bos as the first segment of render_segments. Rust emits it from template::render and from each incremental prompt builder, because template::render is not on the harness prompt path. Both produce exactly one bos at offset 0.",
-    "open_model_turn": "Rust appends '<|turn>model\\n' to a prompt to open the turn the model completes. Python renders closed conversations for training and never appends it, so a rendered-string comparison must stop at the last closed turn."
-  }
+    "open_model_turn": "Rust appends '<|turn>model\\n' to a prompt to open the turn the model completes. Python renders closed conversations for training and never appends it, so a rendered-string comparison must stop at the last closed turn.",
+    "canonical_template_is_the_authority": "docs/models/gemma4-chat-template.jinja is Google's own template, extracted verbatim from tokenizer.chat_template in the E2B and E4B GGUF metadata (byte-identical across both). The marker and spec values here are checked against it, so a marker no checkpoint defines now fails a test instead of tokenizing as a byte run.",
+    "bos_is_a_variable_in_the_canonical_template": "The literal <bos> does not occur in the canonical template; it emits {{- bos_token -}} and the tokenizer resolves it (tokenizer.ggml.add_bos_token is also true in the GGUF metadata). spec.bos records the resolved string because both tiers write the literal into the prompt."
+  },
+  "canonical_template": "docs/models/gemma4-chat-template.jinja"
 }

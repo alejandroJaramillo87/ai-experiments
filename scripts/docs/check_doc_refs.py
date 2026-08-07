@@ -102,8 +102,6 @@ KNOWN_ABSENT = {
     # A crate-relative convention ("binaries live in src/bin/"), not a claim
     # about one location; every crate in the workspace has its own.
     (".styles/RUST_STYLE.md", "src/bin/"),
-    # Asserts the absence: "the repository has no tests/common/ directory".
-    ("docs/observability/design-and-roadmap.md", "tests/common/"),
     # Roadmap scope line: the deliverable *is* writing this document. OBS-14's
     # entry was deleted when docs/observability/README.md was written; OBS-13
     # keeps its exemption until debugging-runs.md exists.

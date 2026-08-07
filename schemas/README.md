@@ -1,11 +1,13 @@
 # Cross-language artifact contracts
 
-Four artifact formats cross the boundary between the Rust harness
-(`/rust-harness/`) and the Python training and interpretability pipelines
-(`/interp/`, `/common/`). Each format has a writer and a reader in different
-languages, so no compiler and no type system connects the two sides. This
-directory holds the contract each pair agrees on, and every contract names the
-tests that enforce it.
+Five contracts cross the boundary between the Rust harness (`/rust-harness/`)
+and the Python training and interpretability pipelines (`/interp/`, `/common/`,
+`/training/`). Four are artifact formats: each has a writer and a reader in
+different languages, so no compiler and no type system connects the two sides.
+The fifth, `gemma4_facts.json`, is not a format but a set of architecture
+values that all three tiers held private copies of, which is the same problem
+one level up. This directory holds the contract each pair agrees on, and every
+contract names the tests that enforce it.
 
 The files are plain JSON key documents, not JSON Schema. They record which keys
 are required, which are emitted by one writer only, and which fields are
@@ -61,6 +63,7 @@ exporters whose output they exist to read.
 | `gguf_artifacts.json` | Probe and control-vector GGUF images | Python writes, Rust reads |
 | `obs_record.json` | Run-level JSONL: event file and run catalog | Both write, Python reads |
 | `chat_template.json` | The Gemma 4 chat template: the prompt string a conversation renders to | Both write, both read |
+| `gemma4_facts.json` | Gemma 4 architecture values: layer counts, head dimensions, the attention schedule, RoPE regimes | Google writes, all three tiers read |
 
 Each file carries a `guarded_by` list naming the tests that assert it, and a
 `notes` object recording the divergences that are intentional. A field listed
@@ -93,7 +96,7 @@ the readers are permissive by design and absorb drift silently.
   their crate root. When the file is absent — as in the container build, whose
   context is `rust-harness/` alone — they report `[SKIP]` and pass, rather than
   failing on an environment difference.
-- **Python side.** Tests under `/tests/interp/` and `/tests/utils/` assert the
+- **Python side.** Tests under `/tests/interp/` and `/tests/common/` assert the
   same key sets against the Python writers.
 - **End to end.** Two tests run the real code on the other side of the seam:
   `python_exporter_contract.rs` invokes the actual `interp` exporters and parses

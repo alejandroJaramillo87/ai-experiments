@@ -2,6 +2,7 @@ import importlib.util
 import os
 import stat
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,6 +11,14 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 FIXTURES_DIR = REPO_ROOT / "tests" / "agents"
+
+# The project is not installed as a package (tool.uv package = false), so
+# repo-root imports -- `common`, `tests.models` -- need the root on sys.path.
+# Done once here rather than per-directory: pytest imports this conftest before
+# any sibling one, so it is in place by the time a subdirectory conftest runs
+# its own module-level imports.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 # Where pytest puts tmp_path when the default base is unusable. Git-ignored.
 SANDBOX_TMP = REPO_ROOT / ".pytest-tmp"

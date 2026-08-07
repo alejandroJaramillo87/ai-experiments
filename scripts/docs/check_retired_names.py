@@ -100,6 +100,32 @@ RETIRED: dict[str, tuple[str, str]] = {
         "next to source; the mount put them one `git add -A` away from a "
         "commit, and .gitignore had no entry for the directory",
     ),
+    # The tests/utils/ split. Keyed per file rather than on the directory:
+    # tests/utils/ still exists and still holds the scripts/utils/ reporters, so
+    # a bare `tests/utils` key would fire on the files that correctly stayed.
+    **{
+        f"tests/utils/{name}": (
+            f"tests/{dest}/{name}",
+            "tests/utils/ covers the scripts/utils/ host reporters, as its "
+            "README has always said; the common/ and scripts/docs/ suites had "
+            "accumulated there against that scope and moved to directories "
+            "that mirror what they test",
+        )
+        for name, dest in (
+            ("test_obs_audit.py", "common"),
+            ("test_obs_catalog.py", "common"),
+            ("test_obs_context.py", "common"),
+            ("test_obs_core.py", "common"),
+            ("test_obs_dispatch.py", "common"),
+            ("test_obs_failure.py", "common"),
+            ("test_obs_record_contract.py", "common"),
+            ("test_obs_retention.py", "common"),
+            ("test_obs_serve.py", "common"),
+            ("test_common_output.py", "common"),
+            ("test_doc_refs.py", "docs"),
+            ("test_retired_names.py", "docs"),
+        )
+    },
 }
 
 # Directories holding no text of ours.
@@ -148,7 +174,7 @@ EXEMPT_FILES = {
     # This file: it defines the table, so it necessarily spells every retired name.
     "scripts/docs/check_retired_names.py",
     # The unit tests, which assert on the table and so quote its keys.
-    "tests/utils/test_retired_names.py",
+    "tests/docs/test_retired_names.py",
 }
 
 

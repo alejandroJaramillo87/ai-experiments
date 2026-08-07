@@ -5,11 +5,10 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+# sys.path carries the repo root already; tests/conftest.py inserts it.
+from tests.models import specbuild
 
-from tests.models import specbuild  # noqa: E402
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # The committed fixture written by runtime/src/synth.rs::GgufWriter, and the
 # independent pure-Python reader of it. Together they are the one cross-check
