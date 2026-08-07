@@ -8,7 +8,7 @@ human-readable lines are secondary and must stay separable from machine output.
 Streams: human status lines write to standard error; standard output is reserved
 for machine output (`--json` payloads). Status calls also emit a structured file
 record through the observability core (`common/obs`, see
-`docs/observability/roadmap.md`), so a quiet run keeps a durable log.
+`docs/observability/design-and-roadmap.md`), so a quiet run keeps a durable log.
 
 Consistent with `.styles/BASH_OUTPUT_STYLE.md` — the same status vocabulary and
 `[STATUS] Subject: detail` format, so bash and Python tools read identically.

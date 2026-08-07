@@ -325,9 +325,3 @@ sudo chmod +x /usr/local/bin/set-gpu-irq-affinity.sh
 
 # Add to rc.local or systemd service
 ```
-
-
-
----
-
-*Last Updated: 2025-09-23*

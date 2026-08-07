@@ -57,7 +57,7 @@ The CPU Docker implementation uses a multi-stage build strategy optimized for th
 # Pin the digest before building. Re-resolve with:
 #   docker buildx imagetools inspect debian:trixie-slim
 # then set BASE_IMAGE=debian:trixie-slim@sha256:<digest>
-ARG BASE_IMAGE=debian:trixie-slim
+ARG BASE_IMAGE=debian:trixie-slim@sha256:28de0877c2189802884ccd20f15ee41c203573bd87bb6b883f5f46362d24c5c2
 
 # --- Stage 1: The Builder ---
 # Compiles llama.cpp with hugepage optimization (AVX-512 + zen5_optimizer)
@@ -67,7 +67,10 @@ LABEL stage="builder"
 ```
 - **Purpose**: Provides a minimal Debian environment with the toolchain required to compile llama.cpp and the zen5_optimizer library.
 - **Shared base**: Builder and runtime both use `${BASE_IMAGE}`, keeping the glibc and libgomp versions identical across stages and avoiding runtime symbol mismatches.
-- **Digest pinning**: Resolve the current digest with `docker buildx imagetools inspect debian:trixie-slim` and set `BASE_IMAGE=debian:trixie-slim@sha256:<digest>` before building.
+- **Digest pinning**: already done — the default is digest-pinned in the Dockerfile, so a
+  build is reproducible without any extra step. To move it deliberately, re-resolve with
+  `docker buildx imagetools inspect debian:trixie-slim` and edit the `ARG`. Bumping it is a
+  version change and belongs in its own commit.
 
 ### AMD Zen 5 compiler configuration
 
@@ -500,5 +503,3 @@ This CPU implementation runs alongside:
 ---
 
 *This CPU Docker implementation targets AI model inference on the AMD Ryzen 9950X workstation. The multi-stage build keeps runtime dependencies minimal while enabling AVX-512 code paths and hugepage memory allocation.*
-
-*Last Updated: 2026-07-12*

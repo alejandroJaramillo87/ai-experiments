@@ -3,7 +3,7 @@
 Operating guide for the self-hosted Neuronpedia platform (interp Phase 2). The platform
 runs from a pinned upstream checkout plus this repository's compose override; this
 repository holds no upstream logic. Design and rationale:
-`docs/interpretability/investigations/ps1_neuronpedia_harness_investigation.md`.
+`docs/interp/investigations/ps1_neuronpedia_harness_investigation.md`.
 
 ## Table of contents
 
@@ -128,7 +128,7 @@ PS5 mode: circuit-tracer attribution graphs generated locally on Gemma-2-2B with
 40GB+ and are out of scope), rendered in the webapp's graph viewer. Interactive
 concurrency mode: the graph server owns the GPU, so llama-gpu/vllm-gpu/comfyui and the
 PS3 inference instance must be down (enforced by the preflight). Design and open
-verification items: `docs/interpretability/investigations/ps5_attribution_graphs_investigation.md`.
+verification items: `docs/interp/investigations/ps5_attribution_graphs_investigation.md`.
 
 Start order:
 
@@ -146,7 +146,7 @@ Operational facts:
   warm generations are much faster.
 - Graphs are generated and viewed through the webapp on `localhost:3001`; the hosted
   S3-upload path is not configured and graphs stay in the local stack.
-- Mini-project post-mortems land in `docs/interpretability/experiments/` per that
+- Mini-project post-mortems land in `docs/interp/experiments/` per that
   directory's README.
 
 Measured on first host run (record here, per the PS5 acceptance):

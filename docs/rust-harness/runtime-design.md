@@ -9,7 +9,7 @@ repository model policy recorded in
 [unified_cli_investigation.md](../training/investigations/unified_cli_investigation.md). The
 implementation lives in `rust-harness/`; where this document and the code
 disagree, the code is correct and the divergence is a documentation bug.
-Findings and external facts are current as of July 2026.
+Findings and external facts were last reviewed 2026-08-06.
 
 ## Table of contents
 
@@ -64,7 +64,7 @@ Non-goals, stated explicitly because each was considered and rejected:
   original design also excluded an interpretability seam; that non-goal was
   reversed during implementation — the CPU backend carries a residual-stream
   tap, control-vector steering, and an in-band probe monitor, designed in
-  [rust-harness-interp.md](../interpretability/rust-harness-interp.md). The
+  [rust-harness-interp.md](../interp/rust-harness-interp.md). The
   analysis tier (probe training, direction extraction, evaluation) remains in
   Python.
 
@@ -309,7 +309,7 @@ streams per layer, which would leave `Tap::on_residual(layer, position, &[f32])`
 without a single residual vector to hand out, renegotiating the interpretability
 contract across the language boundary. With one residual stream retained, the tap
 seam, the capture shard format, and the Python-side correspondence all hold. See
-[the interpretability contract](../interpretability/rust-harness-interp.md) for the
+[the interpretability contract](../interp/rust-harness-interp.md) for the
 one consequence PLE does carry.
 
 Two caveats bound these findings. They are secondhand: the primary sources refuse
@@ -369,15 +369,15 @@ labeled as such; measured results follow the repository benchmarking protocol.
 - **Candle on Blackwell.** sm_120 support under CUDA 13 in candle/cudarc is the
   gating risk and is verified first, before any model work. A prior branch
   (`claude/llm-runtime-sm120-wmrdz5`) may hold relevant findings.
-- **Candle Gemma 4 coverage.** Three months after release, Candle support for the
-  new variants may be incomplete; the E4B layers may need direct implementation
+- **Candle Gemma 4 coverage.** Four months after the 2026-04-02 release, Candle support for
+  the new variants may be incomplete; the E4B layers may need direct implementation
   rather than reuse of Candle model code. The CPU reference backend
   (phase A-prime) is hand-rolled and does not depend on Candle; see the
   [observability design](observability.md) for the recorded
   decision.
 - **Tap seam parity.** The CPU backend exposes a residual-stream `Tap` seam
   (interpretability capture and steering; see
-  [rust-harness-interp.md](../interpretability/rust-harness-interp.md)).
+  [rust-harness-interp.md](../interp/rust-harness-interp.md)).
   The CUDA backend must implement the same seam with identical semantics —
   post-layer residual, steering applied before the tap — which implies a
   device-to-host copy per tapped layer; taps stay optional so the untapped

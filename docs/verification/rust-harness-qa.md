@@ -1,5 +1,7 @@
 # Rust harness quality assurance campaign
 
+**Operational runbook. Executed in an agent sandbox rather than against the host, so it needs no GPU or model data. Keep the commands runnable — both documentation gates exempt this directory by path, so stale references here are not caught for you.**
+
 Sandbox-executable quality review of the `rust-harness/` workspace,
 structured as phases a Claude Code session runs in order. Complementary to
 the [workstation runbook](rust-harness.md): the runbook (RH.0 through
@@ -202,7 +204,7 @@ Lenses:
 Scope: `rust-harness/README.md`,
 `docs/rust-harness/runtime-design.md`,
 `docs/rust-harness/observability.md`,
-`docs/interpretability/rust-harness-interp.md`,
+`docs/interp/rust-harness-interp.md`,
 `docs/verification/rust-harness.md`, this document.
 
 Implementation: `rust-harness/README.md`, `docs/rust-harness/`,

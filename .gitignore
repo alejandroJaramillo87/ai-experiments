@@ -63,6 +63,18 @@ scripts/optimizations/copy_to_hugetlbfs
 # settings, and agent-memory -- is version-controlled on purpose.
 .claude/scheduled_tasks.lock
 
+# Repo-local agent and evaluation workflow state, not run data -- both are tied to a
+# checkout rather than to the workstation, which is why they are not under /mnt/ai-data:
+#   logs/sessions/  exported agent transcripts (make agent-export, SESSIONS_DIR)
+#   logs/eval/      serve-eval reports (training/commands/serve_eval.py, anchored to REPO_ROOT)
+# Leading slash matters: a bare `logs/` would also match docs/ prose paths and interp/logs.
+/logs/
+
+# Rust harness session transcripts: the container's working directory, where it writes
+# session.jsonl and probe-flags.jsonl on every run (docker-compose.rust-harness.yaml:42).
+# Pre-created user-owned by make/harness.mk so the container's ${UID} can write into it.
+/sessions/
+
 # Temporary files
 *.tmp
 *.bak

@@ -132,6 +132,8 @@ ai-experiments/
 │   │   ├── gpu-stack/       # NVIDIA GPU software stack
 │   │   └── python/          # Python environment
 │   └── sandbox/              # Container documentation
+├── logs/                      # Untracked: agent transcripts (sessions/) and eval reports (eval/)
+├── sessions/                  # Untracked: rust-harness run transcripts (make/harness.mk)
 ├── hugepages/                 # zen5_optimizer hugepage wrapper
 │   ├── src/                  # Source code
 │   │   ├── zen5_optimizer.cpp

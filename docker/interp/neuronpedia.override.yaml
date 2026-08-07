@@ -44,7 +44,7 @@ services:
       - /mnt/ai-data/interp/hf-cache/hub:/root/.cache/huggingface/hub
     # Joins the inference stack's network so http://vllm-gpu:8003/v1 resolves directly
     # (consumed by PS4). The external network must exist when autointerp starts; see the
-    # start matrix in docs/interpretability/platform.md.
+    # start matrix in docs/interp/platform.md.
     networks:
       - default
       - inference-stack

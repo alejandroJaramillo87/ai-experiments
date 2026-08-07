@@ -190,7 +190,3 @@ Validated improvements with optimizations enabled:
 - os/os-optimizations.md - Operating system tuning
 - docker-compose.inference.yaml - Container orchestration
 - docker/llama-cpu/Dockerfile.cpu - Latency-optimized CPU container
-
----
-
-*Last Updated: 2026-01-03*

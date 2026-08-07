@@ -1,5 +1,8 @@
 # Gemma 4 conformance audit
 
+**Frozen record — 2026-08-01. Drift against the current repository is expected and correct;
+this document is never updated.**
+
 Reconciliation of the `rust-harness`, `training`, and `interp` tiers against
 [docs/models/gemma-4.md](../models/gemma-4.md), the Gemma 4 architecture reference.
 

@@ -49,4 +49,4 @@ file a newcomer reads to learn what the harness is.
 - [../inference/README.md](../inference/README.md) — the llama.cpp and vLLM serving stack, which the harness does not replace
 - [../verification/rust-harness.md](../verification/rust-harness.md) — host verification runbook
 - [../verification/rust-harness-qa.md](../verification/rust-harness-qa.md) — sandbox quality audit
-- [../interpretability/rust-harness-interp.md](../interpretability/rust-harness-interp.md) — running the write-back interpretability path on this runtime
+- [../interp/rust-harness-interp.md](../interp/rust-harness-interp.md) — running the write-back interpretability path on this runtime

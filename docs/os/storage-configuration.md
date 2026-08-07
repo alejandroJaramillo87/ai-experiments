@@ -185,6 +185,12 @@ the code that writes them and are absent on a fresh machine.
 │   ├── logs/         # Per-request JSONL from interp-logproxy
 │   └── neuronpedia/  # Created by `make interp-dirs` (on demand)
 │       └── postgres/ # Created by `make interp-dirs` (on demand)
+├── benchmarks/       # Benchmark output; no service reads it back
+│   ├── gpu/          # scripts/benchmark/benchmark_gpu.sh (BENCH_RESULTS_DIR)
+│   ├── perplexity/   # scripts/benchmark/test_perplexity.sh (BENCH_RESULTS_DIR)
+│   └── nsys/         # Nsight reports, written in-container when NSYS_PROFILE=true
+├── comfyui/
+│   └── output/       # Generated images and video
 ├── logs/             # Structured observability records (OBS_LOG_DIR)
 │   ├── training/     # One directory per CLI: event files plus runs.jsonl
 │   ├── interp/       # Interp CLI records
@@ -209,6 +215,8 @@ the code that writes them and are absent on a fresh machine.
 | `interp/vectors/` | llama-cpu, llama-gpu | read-only |
 | `interp/logs/` | interp-logproxy | read-write |
 | `logs/` | training, export, interp, prepare | read-write |
+| `benchmarks/nsys/` | llama-gpu, vllm-gpu | read-write |
+| `comfyui/output/` | comfyui | read-write |
 | `models/hf/` | prepare | read-write |
 | `cache/huggingface/` | prepare | read-write |
 | `cache/torch/`, `cache/pip/`, `cache/uv/` | none | n/a |
@@ -467,7 +475,3 @@ Exclude from backups:
 - Automation script: [setup_data_ssd.sh](/scripts/setup/setup_data_ssd.sh)
 - Python environment: [Python Setup Guide](python/setup_python.md)
 - GPU stack configuration: [GPU Stack Documentation](gpu-stack/README.md)
-
----
-
-*Last Updated: 2025-09-24*

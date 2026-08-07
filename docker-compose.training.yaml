@@ -88,8 +88,6 @@ services:
       - ./training:/app/training:ro
       # Shared helpers (common.output Printer) imported by training/cli.py at module scope
       - ./common:/app/common:ro
-      # Entrypoint and framework logs; distinct from the structured obs records above
-      - ./logs/training:/app/logs
     networks:
       - training-network
 
@@ -137,7 +135,6 @@ services:
       - ./scripts:/app/scripts:ro
       - ./training:/app/training:ro
       - ./common:/app/common:ro
-      - ./logs/training:/app/logs
     networks:
       - training-egress
 
@@ -173,8 +170,6 @@ services:
       - ./training:/app/training:ro
       # Shared helpers (common.output Printer) imported by training/cli.py at module scope
       - ./common:/app/common:ro
-      # Entrypoint and framework logs; distinct from the structured obs records above
-      - ./logs/training:/app/logs
     networks:
       - training-network
 

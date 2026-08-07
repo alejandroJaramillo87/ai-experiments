@@ -14,7 +14,7 @@ Audit the documentation under `$ARGUMENTS` against the actual source of truth:
   comfyui) plus the opt-in `interp` profile (llama-gpu-bf16, interp-logproxy).
 - `docker-compose.agents.yaml`, `docker-compose.interp.yaml`,
   `docker-compose.rust-harness.yaml`, `docker-compose.training.yaml` — the four additional
-  stacks. Docs under `docs/training/`, `docs/interpretability/`, and `docs/sandbox/` are
+  stacks. Docs under `docs/training/`, `docs/interp/`, and `docs/sandbox/` are
   governed by these, **not** by the root compose file; auditing them against the root file
   alone checks the wrong source.
 - `docker/*/Dockerfile*`, and `Makefile` for any documented target.

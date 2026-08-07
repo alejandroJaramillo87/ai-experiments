@@ -2,7 +2,7 @@
 
 Explanation of the RTX 5090 Blackwell optimized Dockerfile for GPU-accelerated AI model inference on the AI workstation, detailing the multi-stage build process, CUDA 13.0.2 integration, and Blackwell architecture compilation.
 
-> Note: This document explains the actual implementation in `docker/llama-gpu/Dockerfile.llama-gpu`. The Dockerfile uses CUDA 13.0.2 with cuDNN and Blackwell sm_120 architecture targeting for RTX 5090 GPU acceleration.
+> Note: This document explains the actual implementation in `docker/llama-gpu/Dockerfile.llama-gpu`. The Dockerfile uses CUDA 13.0.2 with cuDNN and Blackwell sm_120a architecture targeting for RTX 5090 GPU acceleration.
 
 ## Table of Contents
 
@@ -42,7 +42,7 @@ The GPU Docker implementation leverages a multi-stage build strategy specificall
 
 **Key Implementation Features:**
 - **Multi-stage build**: Separates CUDA development tools from runtime environment
-- **Blackwell optimization**: sm_120 architecture targeting for RTX 5090 maximum performance
+- **Blackwell optimization**: sm_120a architecture targeting for RTX 5090 maximum performance
 - **CUDA 13.0.2 with cuDNN**: Base images include cuDNN for deep learning acceleration
 - **CMake build system**: Modern build configuration for llama.cpp CUDA compilation
 - **Entrypoint script**: Parameterized server configuration via environment variables
@@ -68,17 +68,19 @@ FROM nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04 AS builder
 ```dockerfile
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
-ENV CUDA_DOCKER_ARCH=sm_120
+ENV CUDA_DOCKER_ARCH=sm_120a
 ENV TORCH_CUDA_ARCH_LIST="12.0"
-ENV CUDA_ARCHITECTURES=120
-ENV CUDAFLAGS="-O3 --use_fast_math -arch=sm_120"
+ENV CUDA_ARCHITECTURES=120a
+ENV CUDAFLAGS="-O3 --use_fast_math -arch=sm_120a"
 ENV LDFLAGS="-Wl,-O3 -Wl,--as-needed -L/usr/local/cuda/lib64/stubs"
 ```
 
 **Architecture-Specific Optimization**
-- **CUDA_DOCKER_ARCH=sm_120**: Targets RTX 5090 Blackwell compute capability 12.0
+- **CUDA_DOCKER_ARCH=sm_120a**: Targets RTX 5090 Blackwell compute capability 12.0. The `a`
+  suffix selects the architecture-accelerated variant, not plain `sm_120`
 - **TORCH_CUDA_ARCH_LIST="12.0"**: PyTorch/tensor operation optimization for Blackwell
-- **CUDA_ARCHITECTURES=120**: CMake CUDA architecture specification
+- **CUDA_ARCHITECTURES=120a**: carried for tools that read it; the llama.cpp build below does
+  **not** select the target this way
 - **CUDAFLAGS**: NVCC compiler flags with fast math optimizations for inference
 - **Aggressive optimization**: -O3 and --use_fast_math for maximum performance
 
@@ -133,14 +135,18 @@ RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/lib
 
 **CUDA-Optimized Build Process**
 ```dockerfile
+# Pin to an exact commit for reproducible builds. Bump deliberately, not on rebuild.
+ARG LLAMA_CPP_COMMIT=e3546c7948e3af463d0b401e6421d5a4c2faf565   # tag b9976 (2026-07-11)
 RUN rm -rf /tmp/llama.cpp && \
-    git clone https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp && \
+    git clone https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp && \
     cd /tmp/llama.cpp && \
+    git checkout "${LLAMA_CPP_COMMIT}" && \
     mkdir build && cd build && \
     cmake .. \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
-        -DCMAKE_CUDA_ARCHITECTURES=120 \
+        -DCMAKE_CUDA_ARCHITECTURES=OFF \
+        -DCMAKE_CUDA_FLAGS="-gencode arch=compute_120a,code=sm_120a" \
         -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs" \
         -DGGML_CUDA=ON \
         -DGGML_CUDA_FORCE_CUBLAS=ON \
@@ -158,7 +164,15 @@ RUN rm -rf /tmp/llama.cpp && \
 ```
 
 **CUDA Build Configuration**
-- **CMAKE_CUDA_ARCHITECTURES=120**: Explicit Blackwell architecture targeting
+- **CMAKE_CUDA_ARCHITECTURES=OFF** with an explicit
+  `-DCMAKE_CUDA_FLAGS="-gencode arch=compute_120a,code=sm_120a"`: the Blackwell target is
+  forced through the gencode flag rather than selected by CMake. `Dockerfile.llama-gpu:35-37`
+  records why — CMake/ggml arch selection "proved unreliable in this image (kept emitting
+  compute_120)". Setting `CMAKE_CUDA_ARCHITECTURES` to a value here would reintroduce that bug
+- **LLAMA_CPP_COMMIT**: the build is pinned to an exact llama.cpp commit, not to `master`.
+  Bump it deliberately; a rebuild must not move it
+- **CMAKE_VERSION=3.31.6**: CMake is installed from a pinned Kitware release rather than apt
+  (`Dockerfile.llama-gpu:38`)
 - **GGML_CUDA=ON**: Enable CUDA acceleration throughout llama.cpp
 - **GGML_CUDA_FORCE_CUBLAS=ON**: Force cuBLAS usage for maximum performance
 - **GGML_CUDA_GRAPHS=ON**: Enable CUDA graphs for reduced kernel launch overhead
@@ -378,13 +392,13 @@ The entrypoint builds command arguments dynamically. Always included:
 
 **Compute Capability 12.0 Utilization**
 The implementation targets specific RTX 5090 Blackwell capabilities:
-- **sm_120 architecture**: Maximizes utilization of Blackwell compute units
+- **sm_120a architecture**: Maximizes utilization of Blackwell compute units
 - **Advanced tensor operations**: Leverages fourth-generation RT cores and third-generation Tensor cores
 - **Memory bandwidth**: Optimized for 896 GB/s memory bandwidth with GDDR7
 - **32GB VRAM**: Configured for large model inference with full GPU memory utilization
 
 **Compiler Optimization Pipeline**
-1. **Architecture targeting**: `-arch=sm_120` generates Blackwell-specific CUDA code
+1. **Architecture targeting**: `-arch=sm_120a` generates Blackwell-specific CUDA code
 2. **Fast math**: `--use_fast_math` enables hardware-accelerated mathematical operations
 3. **Aggressive optimization**: -O3 level optimization for maximum performance
 4. **FlashAttention**: Hardware-accelerated attention mechanisms for transformer models
@@ -486,5 +500,3 @@ This GPU implementation works in conjunction with:
 ---
 
 *This GPU Docker implementation provides AI model inference on the RTX 5090 Blackwell architecture. The multi-stage build process integrates CUDA while maintaining security and operational efficiency for high-throughput AI workloads.*
-
-*Last Updated: 2026-01-03*

@@ -1,5 +1,7 @@
 # Training phase 0 verification
 
+**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable — both documentation gates exempt this directory by path, so stale references here are not caught for you.**
+
 Phase 0 deliverables as implemented: the container (D1, verified in step
 zero), data preparation (D2), tokenizer training (D3), memory fit (D4),
 recipe validation (D5), the reference loop with tolerance-based resume

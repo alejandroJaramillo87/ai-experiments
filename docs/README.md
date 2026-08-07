@@ -95,8 +95,8 @@ audit.
 |----------|-------------|
 | [rust-harness/gemma-4-ingestion.md](rust-harness/gemma-4-ingestion.md) | Gemma 4 for the inference runtime: GGUF contract, translation, refusals (E2B, E4B) |
 | [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer (E2B, E4B) |
-| [interpretability/gemma-4-interp.md](interpretability/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards (E2B, E4B) |
-| [models/gemma-4.md](models/gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of `verification/gemma-4-conformance.md` |
+| [interp/gemma-4-interp.md](interp/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards (E2B, E4B) |
+| [models/gemma-4.md](models/gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of `verification/investigations/gemma-4-conformance_investigation.md` |
 | [models/README.md](models/README.md) | Index for the above, plus the committed GGUF and safetensors header transcripts and how to regenerate them |
 
 ### System Optimizations
@@ -123,8 +123,10 @@ Unscheduled optimization work is recorded separately; see
 
 ### Training Tier
 
-Living documentation for the training stack (`python -m training`); see
-[Frozen records](#frozen-records) for the per-deliverable
+Living documentation for the training stack (`python -m training`).
+[training/README.md](training/README.md) indexes this tier and pairs each
+living document with the design record it was implemented from; see
+[Frozen records](#frozen-records) for those per-deliverable
 investigations.
 
 | Document | Description |
@@ -147,15 +149,16 @@ investigations.
 ### Interpretability Tier
 
 Living documentation for the interp stack (`python -m interp`).
+[interp/README.md](interp/README.md) indexes this tier.
 
 | Document | Description |
 |----------|-------------|
-| [interpretability/platform.md](interpretability/platform.md) | Workbench, Neuronpedia harness, platform services |
-| [interpretability/writeback.md](interpretability/writeback.md) | Steering, probes, log proxy, probe monitor (W1-W4) |
-| [interpretability/experiments/README.md](interpretability/experiments/README.md) | The experiments log convention and entries |
-| [interpretability/gemma-4-interp.md](interpretability/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards |
-| [interpretability/interp-scale-reference.md](interpretability/interp-scale-reference.md) | What fits on this workstation for interp work: activation volumes, SAE sizes, harvest budgets |
-| [interpretability/rust-harness-interp.md](interpretability/rust-harness-interp.md) | Running the write-back interpretability path on the Rust runtime |
+| [interp/platform.md](interp/platform.md) | Workbench, Neuronpedia harness, platform services |
+| [interp/writeback.md](interp/writeback.md) | Steering, probes, log proxy, probe monitor (W1-W4) |
+| [interp/experiments/README.md](interp/experiments/README.md) | The experiments log convention and entries |
+| [interp/gemma-4-interp.md](interp/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards |
+| [interp/interp-scale-reference.md](interp/interp-scale-reference.md) | What fits on this workstation for interp work: activation volumes, SAE sizes, harvest budgets |
+| [interp/rust-harness-interp.md](interp/rust-harness-interp.md) | Running the write-back interpretability path on the Rust runtime |
 
 ### Agents and Testing
 
@@ -163,6 +166,7 @@ Living documentation for the interp stack (`python -m interp`).
 |----------|-------------|
 | [agents/README.md](agents/README.md) | Agent sandbox and tooling |
 | [agents/tooling-parity.md](agents/tooling-parity.md) | OpenCode / Claude Code parity conventions |
+| [testing/README.md](testing/README.md) | The testing tier index: the gate, and the coverage audit |
 | [testing/quality-gate.md](testing/quality-gate.md) | What `make quality` runs, and how to invoke the same tools inside an agent sandbox |
 | [sandbox/agent-sandbox.md](sandbox/agent-sandbox.md) | The contained agent sandbox: image, mounts, and egress allowlist |
 
@@ -170,7 +174,8 @@ Living documentation for the interp stack (`python -m interp`).
 
 | Document | Description |
 |----------|-------------|
-| [observability/roadmap.md](observability/roadmap.md) | Runtime observability for `python -m training` and `python -m interp`: event and metrics schemas, file layout, configuration, and the OBS item sequence |
+| [observability/README.md](observability/README.md) | Operating the stack: where the files are, the `OBS_` variables, the event and metrics schemas, finding a run, opening a dashboard, and example `jq` queries |
+| [observability/design-and-roadmap.md](observability/design-and-roadmap.md) | Why the system is shaped this way, and the OBS item ledger with each item's status |
 | [observability/report_schema.md](observability/report_schema.md) | The shared JSON report envelope (`schema_version`, `git_sha`) and its validator. Distinct from `schemas/obs_record.json`, which covers the run event and catalog records |
 
 The Rust half of the same contract is documented at
@@ -197,10 +202,11 @@ since moved is accurate history rather than drift.
 
 | Location | Contents |
 |----------|----------|
-| [training/investigations/](training/investigations/) | D3-D10, F1-F8, and P2 deliverable investigations, plus [the unified-CLI investigation](training/investigations/unified_cli_investigation.md) (20 documents, 2026-07-14 to 2026-07-15) |
-| [interpretability/investigations/](interpretability/investigations/) | I1, P4, and PS deliverable investigations (8 documents, 2026-07-14 to 2026-07-15) |
+| [training/investigations/](training/investigations/) | D3-D10, F1-F8, and P2 deliverable investigations, plus [the unified-CLI investigation](training/investigations/unified_cli_investigation.md) (20 documents, 2026-07-14 to 2026-07-15). [README.md](training/investigations/README.md) carries the directory's conventions |
+| [interp/investigations/](interp/investigations/) | I1, P4, and PS deliverable investigations (8 documents, 2026-07-14 to 2026-07-15) |
 | [testing/investigations/](testing/investigations/) | [test_coverage_investigation.md](testing/investigations/test_coverage_investigation.md) — audit of the suite at 2026-07-16, commit 8316e5e |
-| [interpretability/experiments/](interpretability/experiments/) | Experiment post-mortems, one file per experiment, immutable after the verdict. [README.md](interpretability/experiments/README.md) is the living convention for writing them |
+| [verification/investigations/](verification/investigations/) | [gemma-4-conformance_investigation.md](verification/investigations/gemma-4-conformance_investigation.md) — the 2026-08-01 audit of the three consumer tiers against the Gemma 4 reference. Its 50 `GH.n` host checks were never executed; [verification/README.md](verification/README.md) records that backlog |
+| [interp/experiments/](interp/experiments/) | Experiment post-mortems, one file per experiment, immutable after the verdict. [README.md](interp/experiments/README.md) is the living convention for writing them |
 | [models/](models/) | `gemma4-gguf.txt` and `gemma4-safetensors.txt` — machine transcripts carrying their own `Generated:` timestamps. **Cited by line number; do not regenerate without re-checking the citations** |
 
 ### Parked proposals
@@ -231,7 +237,6 @@ is whoever is running the checks, and the human's pasted output is the evidence.
 | [verification/observability.md](verification/observability.md) | OBS-V1 to OBS-V8: the observability stack on the workstation |
 | [verification/rust-harness.md](verification/rust-harness.md) | The rust-harness CPU backend on the real E4B GGUF |
 | [verification/rust-harness-qa.md](verification/rust-harness-qa.md) | Q0-Q6: the sandbox-executable code-quality campaign |
-| [verification/gemma-4-conformance.md](verification/gemma-4-conformance.md) | Audit of the three consumer tiers against the Gemma 4 reference |
 | [verification/hardware-stress.md](verification/hardware-stress.md) | One-time firmware stability soak for the BIOS undervolt profile |
 | [verification/known-bugs.md](verification/known-bugs.md) | The defect ledger the runbook entries cross-reference |
 
@@ -279,7 +284,7 @@ full writing standard:
    - Agent tooling and parity: `docs/agents/`
    - The quality gate and testing policy: `docs/testing/`
    - Training tier: `docs/training/`
-   - Interpretability tier: `docs/interpretability/`
+   - Interpretability tier: `docs/interp/`
    - Host and repository verification runbooks: `docs/verification/`
 3. **Then by class, within the topic**: a frozen record goes to
    `<topic>/investigations/` and its filename ends `_investigation.md`. Both
@@ -295,4 +300,4 @@ full writing standard:
 
 ---
 
-*Last Updated: July 2026 | [Main README](../README.md)*
+*Last updated: 2026-08-06 | [Main README](../README.md)*

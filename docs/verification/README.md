@@ -1,9 +1,11 @@
 # Hardware verification runbook
 
-**Operational runbook. Every document in this directory is executed, not read for
+**Operational runbook. Every document beside this one is executed, not read for
 understanding: the audience is whoever is sitting at the workstation, and their pasted output
 is the evidence. Keep the commands runnable; both documentation gates exempt this directory
-by path, so stale references here are not caught for you.**
+by path, so stale references here are not caught for you. The exception is
+[investigations/](investigations/), which holds frozen records — read, never executed, and
+never updated.**
 
 Manual verification campaign for the training and interpretability tiers on
 the workstation (RTX 5090, AMD Ryzen 9950X). Both tiers passed unit tests in
@@ -14,9 +16,10 @@ runbook covers only features that exist in the repository.
 
 ## Known bugs
 
-The WI-14 capstone review and its re-verification confirmed 51 defects.
+The WI-14 capstone review and its re-verification confirmed 56 defects.
 [known-bugs.md](known-bugs.md) is the ledger: 36 pure-Python defects were
-fixed with regression tests in the sandbox pre-fix pass, and 15 remain open —
+fixed with regression tests in the sandbox pre-fix pass, 4 more during the
+hardware campaign, and 16 remain open —
 latent in the GPU, service, and pinned-library paths this campaign is the
 first to exercise. Runbook steps with open bugs carry a "Known bugs likely to
 surface here" block listing the ones to expect at that step. Treat a listed
@@ -69,14 +72,22 @@ passed.
    [rust-harness-qa.md](rust-harness-qa.md), the code-quality campaign
    (phases Q0-Q6) a Claude Code session runs with no GPU or model data.
 
-Outside the numbered order:
-[gemma-4-conformance.md](gemma-4-conformance.md), the audit of the three
-consumer tiers against the Gemma 4 reference. It is a document audit rather
-than a hardware phase, so it carries no `Status: PENDING` entries of its own
-except in its Host verification runbook section, whose `GH.n` entries follow
-the recording protocol above and need the weights present. Read its
-Limitations section before treating any `GC-nnn` finding as settled: only 59
-of 248 confirmed findings were adversarially verified.
+Outside the numbered order, and outside this directory's operational contract:
+[investigations/gemma-4-conformance_investigation.md](investigations/gemma-4-conformance_investigation.md),
+the 2026-08-01 audit of the three consumer tiers against the Gemma 4
+reference. It is a **frozen record**, not a runbook — a document audit whose
+findings quote the tree as it stood on that day, so its stale paths are
+history rather than drift and it is never updated. Read its Limitations
+section before treating any `GC-nnn` finding as settled: only 59 of 248
+confirmed findings were adversarially verified.
+
+**Its 50 `GH.n` host checks were never executed, and freezing the record does
+not retire them.** Every one is blocked on the same precondition — no Gemma 4
+weights exist on this workstation — and the agent sandbox cannot reach
+`huggingface.co`. They are recorded here so the outstanding work survives
+outside a document that is closed to edits: when a checkpoint is acquired,
+those 50 entries are the Gemma 4 conformance backlog, and executing them
+means opening a new record rather than editing the frozen one.
 
 Also outside the numbered order: [hardware-stress.md](hardware-stress.md), the
 one-time firmware stability soak for the BIOS undervolt profile. It is

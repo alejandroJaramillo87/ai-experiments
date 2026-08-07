@@ -13,7 +13,8 @@ you to fold a new finding into a known root, and once that root is remediated th
 instruction starts suppressing real findings instead of deduplicating noise.
 
 All five were re-graded against the tree on 2026-08-06 and remain live — the Gemma 4
-conformance campaign was audit-only (`docs/verification/gemma-4-conformance.md:13`), so
+conformance campaign was audit-only
+(`docs/verification/investigations/gemma-4-conformance_investigation.md:13`), so
 almost nothing it found has been remediated.
 
 Removed 2026-08-06: the `gemma4-spec-authority` stub, which was a self-declared duplicate.

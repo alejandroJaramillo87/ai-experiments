@@ -11,7 +11,7 @@ aspirational are exactly that. Related documents:
 (the FP8 Tier A item this document expands),
 [memory_fit.md](memory_fit.md) (the memory-fit calculator these budgets
 feed), and
-[interp-scale-reference.md](../interpretability/interp-scale-reference.md)
+[interp-scale-reference.md](../interp/interp-scale-reference.md)
 (how these conclusions shape the interpretability program).
 
 ## Table of contents

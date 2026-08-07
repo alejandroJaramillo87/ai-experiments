@@ -3,7 +3,8 @@
 Automated abort-or-alert for unattended training runs (Phase 0 D10). The watchdog
 (`/training/runtime/watchdog.py`) hooks into the reference loop, evaluates step-level signals on
 every optimizer step, samples hardware telemetry from a background thread, and doubles as
-the run's hardware telemetry source. NVML-based; DCGM is not used.
+the run's hardware telemetry source. NVML-based; DCGM is not used. Design record:
+[the D10 investigation](investigations/d10_operational_watchdogs_investigation.md).
 
 ## Table of contents
 

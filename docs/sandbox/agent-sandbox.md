@@ -101,7 +101,7 @@ run, any webfetch-heavy or untrusted-input work, and any third-party checkout.
 ### Image and version pins
 
 `docker/agents/Dockerfile.agents` installs both CLIs at exact versions:
-`opencode-ai@1.17.18` and `@anthropic-ai/claude-code@2.1.207` (matching the host install at
+`opencode-ai@1.17.18` and `@anthropic-ai/claude-code@2.1.212` (matching the host install at
 authoring time), plus `pyright@1.1.411` (Python language server for both CLIs).
 `DISABLE_AUTOUPDATER=1` and
 the sandbox `opencode.json`'s `autoupdate: false` pair to freeze the pinned versions inside the

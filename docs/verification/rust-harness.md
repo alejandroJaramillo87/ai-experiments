@@ -1,5 +1,7 @@
 # Rust harness verification (CPU backend)
 
+**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable — both documentation gates exempt this directory by path, so stale references here are not caught for you.**
+
 Workstation verification for the `rust-harness/` workspace: the CPU
 inference backend on the real Gemma 4 E4B GGUF, the observability stack
 (flight recorder, tracing, rr), the in-band interpretability chain
@@ -400,7 +402,7 @@ Implementation: `rust-harness/runtime/src/bin/activation-capture.rs`,
 
 Four sequential sub-entries; each feeds the next. This closes the roadmap
 rows "real-model capture" and "monitor with a probe trained on real-model
-rust captures" in `docs/interpretability/rust-harness-interp.md`. The
+rust captures" in `docs/interp/rust-harness-interp.md`. The
 labeled dataset is any small JSONL of `{"text": ..., "label": 0|1}` lines
 with a separable attribute; record which dataset was used.
 

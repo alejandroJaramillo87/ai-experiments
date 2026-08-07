@@ -40,7 +40,7 @@ No work described here begins before all three hold:
 1. The PENDING acceptance checks in `docs/verification/interp.md` have been executed and
    recorded. At the time of writing every check in that document is PENDING, along with 12 in
    `docs/verification/training-phase1.md` and seven in `docs/verification/training-phase2.md`.
-2. A measured baseline exists. `docs/interpretability/platform.md` currently records no
+2. A measured baseline exists. `docs/interp/platform.md` currently records no
    timings and no VRAM figures. Harvest tokens per second is already a manifest field
    (`interp/harvest.py:418-420`) and costs nothing to collect.
 3. A named capability the current stack cannot deliver has been identified, with the
@@ -66,7 +66,7 @@ form, and even then the first attempt belongs in Triton rather than CUDA C++.
 
 ## The activation read path
 
-`docs/interpretability/writeback.md` states that llama-server has no activation read path. That
+`docs/interp/writeback.md` states that llama-server has no activation read path. That
 is true of llama-server, but the underlying capability exists and the blocker is narrower than
 the sentence implies.
 
