@@ -156,7 +156,7 @@ in that image reverses that decision and needs a devel base.
   through DeepSpeed's CPUAdam, already compiled with Zen 5 flags.
 - **Teacher generation and serve-evaluation.** Inference-bound, but the inference belongs to
   vLLM and llama.cpp. A hand-written runtime would lose to both.
-- **SAE training.** Roughly 75 million parameters at 16k width on `d_model` 2304, which is
+- **SAE training.** Roughly 50 million parameters at 16k width on E2B's `d_model` 1536, which is
   trivial VRAM. The bottleneck is NVMe read throughput over the activation cache, making it an
   I/O problem rather than a compute one. Raise the runner's buffer sizes before considering
   anything else.

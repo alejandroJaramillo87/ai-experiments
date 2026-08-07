@@ -442,65 +442,65 @@ def test_canonical_template_is_identical_across_e2b_and_e4b(gguf_blocks):
 CITATIONS = [
     (
         "docs/models/gemma-4.md",
-        756,
+        793,
         "docs/models/gemma4-safetensors.txt",
         414,
         "self_attn.k_proj.weight [256, 1536]",
     ),
     (
         "docs/models/gemma-4.md",
-        756,
+        793,
         "docs/models/gemma4-safetensors.txt",
         529,
         "self_attn.k_proj.weight [512, 1536]",
     ),
     (
         "docs/models/gemma-4.md",
-        758,
+        795,
         "docs/models/gemma4-gguf.txt",
-        614,
+        613,
         "blk.{L}.attn_k.weight [1536, 256]",
     ),
     (
         "docs/models/gemma-4.md",
-        758,
+        795,
         "docs/models/gemma4-gguf.txt",
-        626,
+        625,
         "blk.{L}.attn_k.weight [1536, 512]",
     ),
     (
         "docs/rust-harness/gemma-4-ingestion.md",
         406,
         "docs/models/gemma4-gguf.txt",
-        631,
+        630,
         "rope_freqs.weight [256] F32",
     ),
     (
         "docs/rust-harness/gemma-4-ingestion.md",
         406,
         "docs/models/gemma4-gguf.txt",
-        640,
+        639,
         "rope_freqs.weight [256] F32",
     ),
     (
         "docs/rust-harness/gemma-4-ingestion.md",
         496,
         "docs/models/gemma4-gguf.txt",
-        633,
+        632,
         "per_layer_token_embd.weight [8960, 262144]",
     ),
     (
         "docs/rust-harness/gemma-4-ingestion.md",
         496,
         "docs/models/gemma4-gguf.txt",
-        642,
+        641,
         "per_layer_token_embd.weight [8960, 262144]",
     ),
     (
         "docs/rust-harness/gemma-4-ingestion.md",
         509,
         "docs/models/gemma4-gguf.txt",
-        614,
+        613,
         "attn_k.weight",
     ),
 ]
@@ -657,26 +657,17 @@ def test_upstream_transcript_records_the_pinned_shas(contract):
 
 
 # --------------------------------------------------------------------------
-# Known stale: awaiting a workstation regeneration
+# 6. No REFUSED verdict survives in the committed transcript
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "the committed transcripts predate the generator fixes (false REFUSED "
-        "verdicts, truncated per-layer schedules, tower-contaminated attention "
-        "section). Regenerating needs /mnt/ai-data, so it is a workstation step. "
-        "This test XPASSes -- and therefore fails -- once they are regenerated, "
-        "which is the signal to delete the marker."
-    ),
-)
 def test_committed_transcripts_carry_no_false_refusals():
-    """Every REFUSED verdict in the committed GGUF transcript is wrong.
+    """No REFUSED verdict may appear in the committed GGUF transcript.
 
-    All 14 were produced by the stale type sets fixed in this change: BF16 is
-    loadable and bool arrays are accepted. Recorded as a strict xfail rather
-    than deleted so the staleness is visible in the suite instead of resting
-    on someone remembering to re-run the script.
+    The 14 that once did were artifacts of hand-copied ggml type sets that had
+    drifted from the Rust loader: BF16 is loadable and bool arrays are
+    accepted. The sets are now derived from the Rust source, so a REFUSED here
+    again means either a genuinely unsupported type in the checkpoint or a
+    fresh drift in the derivation -- both worth failing on.
     """
     assert "REFUSED" not in GGUF_TRANSCRIPT.read_text()

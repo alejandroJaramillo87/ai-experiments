@@ -307,21 +307,43 @@ varlen packing at `/training/tune/sft.py:80-127` treats a position reset as a se
 which is a global-attention assumption. At the sequence lengths in use (up to 4096) this is a
 question about correctness of the mask, not about memory.
 
+## Resolved from upstream source
+
+Three questions previously recorded here are settled against the pinned `transformers`
+sources. [docs/models/gemma-4.md](../models/gemma-4.md) holds the full derivations with line
+citations; `docs/models/gemma4-upstream.txt` is the committed transcript they cite, and
+`tests/models/test_gemma4_facts_contract.py` asserts those citations still resolve.
+
+- **`layer_scalar` is a buffer applied last.** `modeling_gemma4.py` declares it as
+  `nn.Buffer(torch.ones(1))` and multiplies the whole layer output by it as the final
+  operation, after all three residual updates. It is initialised to ones and has no
+  `config.json` field. Because it is a buffer rather than a parameter, it is not trainable
+  under the `transformer_stack` filter and the calculator is right not to count it. Whether
+  the released checkpoints store a value other than 1.0 is still open — see below.
+- **The per-layer embedding gate is multiplicative, and joins after the feed-forward block.**
+  The per-layer input is gated in 256-dimensional space, projected back to `hidden_size`, and
+  added as a third residual update following attention and the feed-forward block. The layer
+  order is therefore attention, feed-forward, per-layer embedding, then `layer_scalar`.
+- **The shared-KV boundary is `num_hidden_layers - num_kv_shared_layers`**, giving index 15 on
+  E2B and 24 on E4B. E4B's boundary is no longer an assumption. The same computation also
+  gates the double-wide MLP, which is why the two regions coincide on E2B.
+
+  Upstream also **revises** what this document previously implied: there are **two** donor
+  layers, not one, keyed by layer type. A shared layer reads the donor matching its own
+  sliding or full attention type. An implementation that designates a single donor for every
+  shared layer is wrong for one of the two regimes.
+
 ## Open questions
 
 Recorded rather than guessed.
 
-- **`layer_scalar`.** Every layer carries a scalar of shape `[1]` with no configuration field
-  and no documented position in the residual or attention path. It is unmodeled by the
-  calculator and stays trainable under the `transformer_stack` filter.
-- **The per-layer embedding data path.** Tensor names establish which projections exist. The
-  order of operations, the join point with the residual stream, and whether
-  `per_layer_input_gate` gates additively or multiplicatively are not determined by shapes.
-- **The E4B shared-KV boundary.** E2B's 20 shared layers are indices 15 through 34, corroborated
-  by the double-wide region. E4B's 18-layer boundary has no corroborating signal and is assumed.
 - **Whether `AutoModelForCausalLM` accepts `Gemma4ForConditionalGeneration`.** The merge path at
   `/training/export/merge.py:148-160` uses `AutoModelForCausalLM`; the checkpoint declares a
-  conditional-generation class. Unverified against a real load.
+  conditional-generation class. Both classes exist upstream and llama.cpp registers both for
+  conversion, but the committed transcript does not include the auto-class mapping, so
+  acceptance remains unverified against a real load.
+- **The stored value of `layer_scalar`.** The transcripts record the shape `[1]` but not the
+  value, so whether the multiplication is a no-op in the released checkpoints is unestablished.
 
 ## Reproducing this document
 
@@ -329,6 +351,13 @@ The safetensors transcript regenerates on the workstation with no GPU and no net
 
 ```bash
 $ ./scripts/models/gemma4_header_transcript.sh
+```
+
+The upstream sources behind [Resolved from upstream source](#resolved-from-upstream-source)
+are fetched at their pinned SHAs by a second script, which needs no workstation:
+
+```bash
+$ ./scripts/models/upstream_source_transcript.sh --out docs/models/gemma4-upstream.txt
 ```
 
 Parameter totals recompute from the tensor inventory in that transcript by summing the product

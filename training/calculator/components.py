@@ -106,14 +106,40 @@ class ArchitectureSpec:
     vocab: int
     tie_embeddings: bool
     # Explicit attention head dimension for families where it is not
-    # hidden // heads (Gemma 4: head_dim 256 with hidden 2304, heads 8).
-    # None keeps the Llama-family derivation.
+    # hidden // heads (Gemma 4 E2B: head_dim 256 with hidden 1536, heads 8;
+    # E4B: 256 with hidden 2560). None keeps the Llama-family derivation.
     explicit_head_dim: int | None = None
     # Per-layer embeddings (Gemma 4 E-models): one packed table of
     # ple_vocab x (layers * ple_dim) plus a gate/projection linear pair per
     # layer. Zero for families without PLE.
     ple_vocab: int = 0
     ple_dim: int = 0
+    # Gemma 4 doubles the MLP width on its KV-shared layers when
+    # use_double_wide_mlp is set. True on E2B only, where it applies to 20 of
+    # 35 layers; intermediate_size alone is not the per-layer truth there.
+    use_double_wide_mlp: bool = False
+    num_kv_shared_layers: int = 0
+
+    @property
+    def double_wide_layers(self) -> int:
+        """Layers whose MLP is doubled: the KV-shared tail, or none.
+
+        Mirrors Gemma4TextMLP.__init__ (docs/models/gemma4-upstream.txt:
+        1083-1088), including its `first_kv_shared_layer_idx > 0` guard --
+        a model that shares every layer has no boundary and so no doubling.
+        """
+        if not self.use_double_wide_mlp:
+            return 0
+        first_shared = self.layers - self.num_kv_shared_layers
+        return self.num_kv_shared_layers if first_shared > 0 else 0
+
+    def mlp_param_count(self) -> int:
+        """SwiGLU gate/up/down across the stack, double-wide tail included.
+
+        A double-wide layer contributes twice the flat block, so the total is
+        the flat width times (layers + double_wide_layers).
+        """
+        return 3 * self.hidden * self.ffn * (self.layers + self.double_wide_layers)
 
     @property
     def head_dim(self) -> int:
@@ -149,22 +175,18 @@ class ArchitectureSpec:
         lm_head, and the PLE terms for Gemma 4 E-models.
         """
         attn = 2 * self.hidden * self.q_dim + 2 * self.hidden * self.kv_dim
-        mlp = 3 * self.hidden * self.ffn
         norms = 2 * self.hidden
-        per_layer = attn + mlp + norms
+        stack = self.layers * (attn + norms) + self.mlp_param_count()
         embeddings = self.vocab * self.hidden * (1 if self.tie_embeddings else 2)
-        return (
-            embeddings + self.layers * per_layer + self.hidden + self.ple_param_count()
-        )
+        return embeddings + stack + self.hidden + self.ple_param_count()
 
     def transformer_stack_param_count(self) -> int:
         """Parameters trainable under trainable_filter: transformer_stack —
         the decoder layers plus the final RMSNorm. Embeddings (tied or not),
         an untied lm_head, and every PLE term are frozen."""
         attn = 2 * self.hidden * self.q_dim + 2 * self.hidden * self.kv_dim
-        mlp = 3 * self.hidden * self.ffn
         norms = 2 * self.hidden
-        return self.layers * (attn + mlp + norms) + self.hidden
+        return self.layers * (attn + norms) + self.mlp_param_count() + self.hidden
 
     def linear_param_count(self) -> int:
         """Parameters in the per-layer linear projections — the population
@@ -172,8 +194,7 @@ class ArchitectureSpec:
         lm_head, and the PLE terms stay in the compute dtype (counting PLE
         linears at full width overestimates, which is the safe direction)."""
         attn = 2 * self.hidden * self.q_dim + 2 * self.hidden * self.kv_dim
-        mlp = 3 * self.hidden * self.ffn
-        return self.layers * (attn + mlp)
+        return self.layers * attn + self.mlp_param_count()
 
 
 def rounded_ffn(ffn_mult: float, hidden: int) -> int:
@@ -253,6 +274,8 @@ def spec_from_hf_config(config) -> ArchitectureSpec:
             explicit_head_dim=getattr(config, "head_dim", None),
             ple_vocab=getattr(config, "vocab_size_per_layer_input", 0) or 0,
             ple_dim=getattr(config, "hidden_size_per_layer_input", 0) or 0,
+            use_double_wide_mlp=bool(getattr(config, "use_double_wide_mlp", False)),
+            num_kv_shared_layers=getattr(config, "num_kv_shared_layers", 0) or 0,
         )
     except AttributeError as exc:
         raise UnknownArchitectureError(

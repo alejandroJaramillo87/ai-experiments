@@ -1,5 +1,5 @@
 Gemma 4 header transcript
-Generated: 2026-08-07T17:05:58Z
+Generated: 2026-08-07T17:44:39Z
 Host: Rico
 Verifies: docs/models/gemma-4.md
 

@@ -229,10 +229,13 @@ class TestGpuFull:
 
         model_id = FAMILY_PINS["qwen3"]
         try:
-            d_model, spec = resolve_model_meta(model_id, None)
+            d_model, spec, depth = resolve_model_meta(model_id, None)
         except Exception as exc:
             pytest.skip(f"weights/config absent for {model_id}: {exc}")
         assert spec.model_type == "qwen3"
+        # The hook below must be inside the stack; check_hook_dims now refuses
+        # an out-of-range index before it loads the weights.
+        assert depth > 2, f"{model_id} reports {depth} layers"
 
         widths = check_hook_dims(model_id, [2], None)
         assert widths == {2: d_model}

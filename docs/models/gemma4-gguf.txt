@@ -1,5 +1,5 @@
 GGUF header transcript
-Generated: 2026-08-07T17:05:56Z
+Generated: 2026-08-07T17:44:37Z
 Host: Rico
 Checks: runtime/src/gguf.rs array element types, runtime/src/tensor.rs
         tensor types, tokenizer markers for harness/src/template.rs

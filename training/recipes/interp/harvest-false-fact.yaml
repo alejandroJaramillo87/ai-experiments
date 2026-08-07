@@ -1,7 +1,7 @@
 # harvest-false-fact.yaml
 #
 # P4-D2 reference capture: the sealed false-fact organism (P4-D1), 300M
-# tokens, one hook at 50 percent depth. ~1.38TB at d_model 2304 bf16; the
+# tokens, one hook at 50 percent depth. ~0.92TB at d_model 1536 bf16; the
 # disk preflight refuses when free space minus the projection breaches the
 # watchdog floor. Runs overnight under the D9 lock and D10 watchdog and is
 # resumable (rerun skips completed hooks; shard resume is the runner's).
@@ -19,7 +19,10 @@ run:
 harvest:
   enabled: true
   organism_dir: /mnt/ai-data/interp/organisms/organism-false-fact
-  hook_layers: [15]  # 50 percent depth; multi-layer needs acknowledge_multi_layer
+  # 50 percent depth of E2B's 35-layer stack; multi-layer capture needs
+  # acknowledge_multi_layer. Not 15: that is the shared-KV / double-wide
+  # boundary (35 - 20), a structural regime change rather than a typical block.
+  hook_layers: [17]
   corpus: monology/pile-uncopyrighted
   context_len: 1024
   total_tokens: 300000000

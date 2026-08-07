@@ -15,6 +15,7 @@ import importlib.util
 import json
 import re
 import struct
+from pathlib import Path
 
 import pytest
 
@@ -22,6 +23,9 @@ from tests.models import specbuild
 from tests.models.specbuild import ModelSpec, mutate
 
 SCRIPT = "models/gemma4_header_transcript.sh"
+CONTRACT_PATH = (
+    Path(__file__).resolve().parent.parent.parent / "schemas" / "gemma4_facts.json"
+)
 
 ANSI_RE = re.compile(r"\x1b\[")
 STATUS_RE = re.compile(r"^\s*\[([A-Z]+)\]", re.MULTILINE)
@@ -110,6 +114,84 @@ def test_zero_dimensional_tensors_are_reported(transcribe, model_dir, spec):
     counted = specbuild.parse_counted(flat_lines(sections, "zero-dimensional tensors"))
     expected = sum(1 for _, shape, _ in spec.tensors() if shape == ())
     assert sum(counted.values()) == expected, counted
+
+
+# --------------------------------------------------------------------------
+# Released-variant structures
+#
+# The fixture defaults (7 layers, period 3, double_wide, kv_heads 1) produce
+# no checkpoint that matches a released variant's structure: the final layer
+# is sliding, the double-wide-off branch never runs, and kv_heads is never
+# above 1. These build the two real shapes at fixture widths, so the
+# structures the transcriber will actually meet are exercised.
+# --------------------------------------------------------------------------
+
+
+def variant_shaped_spec(variant: str) -> ModelSpec:
+    """A fixture-width spec carrying one released variant's real structure.
+
+    Widths stay tiny; layer count, attention period, KV-shared depth,
+    double-wide flag, and KV head count come from schemas/gemma4_facts.json,
+    so the fixture cannot drift from the contract.
+    """
+    contract = json.loads(CONTRACT_PATH.read_text())
+    v = contract["variants"][variant]
+    indices = v["layer_types_full_attention_indices"]
+    return ModelSpec(
+        num_layers=v["num_hidden_layers"],
+        full_attention_period=indices[0] + 1,
+        num_kv_shared_layers=v["num_kv_shared_layers"],
+        double_wide=v["use_double_wide_mlp"],
+        num_key_value_heads=v["num_key_value_heads"],
+    )
+
+
+@pytest.mark.parametrize("variant", ["E2B", "E4B"])
+def test_variant_structure_final_layer_is_full_attention(transcribe, tmp_path, variant):
+    """Every released variant ends on a full-attention layer.
+
+    Upstream forces it (docs/models/gemma4-upstream.txt:3983-3987), and the
+    contract asserts it for all four. The fixture defaults never produced it,
+    so the last block carrying global_head_dim shapes went untranscribed.
+    """
+    spec = variant_shaped_spec(variant)
+    assert spec.full_attention_indices()[-1] == spec.num_layers - 1
+    d = specbuild.build_model_dir(tmp_path, spec)
+    _, sections, _ = transcribe(SCRIPT, str(d))
+    body = "\n".join(flat_lines(sections, "documented fields"))
+    assert f"full_attention indices: {spec.full_attention_indices()}" in body, body
+    assert "final layer type: full_attention" in body, body
+
+
+@pytest.mark.parametrize(
+    ("variant", "double_wide", "kv_heads"), [("E2B", True, 1), ("E4B", False, 2)]
+)
+def test_variant_structure_mlp_widths_and_kv_heads(
+    transcribe, tmp_path, variant, double_wide, kv_heads
+):
+    """E2B doubles the MLP on its KV-shared tail; E4B does not, and has 2 KV heads."""
+    spec = variant_shaped_spec(variant)
+    assert spec.double_wide is double_wide
+    assert spec.num_key_value_heads == kv_heads
+
+    d = specbuild.build_model_dir(tmp_path, spec)
+    _, sections, _ = transcribe(SCRIPT, str(d))
+
+    counted = specbuild.parse_counted(flat_lines(sections, "distinct MLP widths"))
+    widths = spec.expected_mlp_widths()
+    assert counted == {str(w): widths.count(w) for w in set(widths)}, counted
+    # E4B's flat stack must report exactly one width; E2B's must report two.
+    assert len(set(widths)) == (2 if double_wide else 1)
+
+    shapes = specbuild.parse_counted(
+        flat_lines(sections, "attention projection shapes")
+    )
+    k_slide = [kv_heads * spec.head_dim, spec.hidden_size]
+    n_full = len(spec.full_attention_indices())
+    n_slide = spec.num_layers - n_full
+    got = {k: v for k, v in shapes.items() if "k_proj" in k}
+    assert sum(got.values()) == spec.num_layers, got
+    assert any(str(k_slide) in k and v == n_slide for k, v in got.items()), got
 
 
 # --------------------------------------------------------------------------

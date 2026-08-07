@@ -45,7 +45,7 @@ def gemma4_autoconfig(monkeypatch):
     import sys
     from types import SimpleNamespace
 
-    config = SimpleNamespace(model_type="gemma4_text", hidden_size=2304)
+    config = SimpleNamespace(model_type="gemma4_text", hidden_size=1536)
     stub = SimpleNamespace(
         AutoConfig=SimpleNamespace(from_pretrained=lambda *a, **k: config)
     )
@@ -118,13 +118,13 @@ class TestPreflight:
         recipe = make_recipe(
             tmp_path,
             total_tokens=300_000_000,
-            d_model=2304,
+            d_model=1536,
             hook_layers=[7, 15, 22],
             acknowledge_multi_layer=True,
         )
-        single = make_recipe(tmp_path, total_tokens=300_000_000, d_model=2304)
-        assert projected_bytes(single.harvest, 2304) == 300_000_000 * 2304 * 2
-        assert projected_bytes(recipe.harvest, 2304) == 3 * 300_000_000 * 2304 * 2
+        single = make_recipe(tmp_path, total_tokens=300_000_000, d_model=1536)
+        assert projected_bytes(single.harvest, 1536) == 300_000_000 * 1536 * 2
+        assert projected_bytes(recipe.harvest, 1536) == 3 * 300_000_000 * 1536 * 2
 
     def test_refuses_when_projection_breaches_floor(self, tmp_path):
         # 1.45TB free, 1.38TB projected leaves 70GB, under the 100GB floor
@@ -409,13 +409,15 @@ class TestResolveModelMeta:
             model_type="gemma4",
             text_config=SimpleNamespace(
                 model_type="gemma4_text",
-                hidden_size=2304,
+                hidden_size=1536,
+                num_hidden_layers=35,
                 hidden_size_per_layer_input=256,
             ),
         )
         self.fake_transformers(monkeypatch, composite)
-        d_model, spec = resolve_model_meta("fake/gemma-4", None)
-        assert d_model == 2304
+        d_model, spec, depth = resolve_model_meta("fake/gemma-4", None)
+        assert d_model == 1536
+        assert depth == 35  # read after the same text-config unwrap
         assert spec.model_type == "gemma4_text"
 
     def test_flat_config_reads_hidden_size(self, monkeypatch):
@@ -424,7 +426,7 @@ class TestResolveModelMeta:
         self.fake_transformers(
             monkeypatch, SimpleNamespace(model_type="qwen3", hidden_size=2048)
         )
-        d_model, spec = resolve_model_meta("fake/qwen3", None)
+        d_model, spec, _ = resolve_model_meta("fake/qwen3", None)
         assert d_model == 2048
         assert spec.model_type == "qwen3"
 
@@ -441,7 +443,7 @@ class TestResolveModelMeta:
         from types import SimpleNamespace
 
         self.fake_transformers(monkeypatch, SimpleNamespace(model_type="gemma2"))
-        d_model, spec = resolve_model_meta("fake/model", None, d_model_override=8)
+        d_model, spec, _ = resolve_model_meta("fake/model", None, d_model_override=8)
         assert d_model == 8
         assert spec.model_type == "gemma2"
 
@@ -453,6 +455,86 @@ class TestResolveModelMeta:
         )
         with pytest.raises(HarvestError, match="hook-point registry"):
             resolve_model_meta("fake/mystery", None)
+
+
+def test_every_resolve_model_meta_caller_unpacks_the_whole_tuple():
+    """Arity drift here fails at runtime, and one caller is GPU-gated.
+
+    ``tests/hardware/test_gpu.py`` unpacks this result inside a
+    ``try/except Exception: pytest.skip(...)``, so widening ModelMeta without
+    updating it does not fail that test -- it silently skips it with a message
+    blaming absent weights. Neither the sandbox nor a torch-free workstation
+    run executes that file, so nothing else would notice.
+    """
+    import ast
+    from pathlib import Path
+
+    from interp.harvest import ModelMeta
+
+    root = Path(REPO_ROOT)
+    arity = len(ModelMeta._fields)
+    offenders = []
+    for path in sorted(root.rglob("*.py")):
+        if "__pycache__" in path.parts or ".venv" in path.parts:
+            continue
+        try:
+            tree = ast.parse(path.read_text())
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            call = node.value
+            if not isinstance(call, ast.Call):
+                continue
+            name = call.func
+            if getattr(name, "id", getattr(name, "attr", None)) != "resolve_model_meta":
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Tuple) and len(target.elts) != arity:
+                    offenders.append(
+                        f"{path.relative_to(root)}:{node.lineno} unpacks "
+                        f"{len(target.elts)} of {arity}"
+                    )
+    assert not offenders, f"ModelMeta has {arity} fields: {offenders}"
+
+
+class TestHookLayerBounds:
+    """The depth bound validate_harvest cannot apply: it sees only the recipe."""
+
+    def test_index_past_the_last_layer_is_refused(self):
+        from interp.harvest import check_hook_layer_bounds
+
+        # The exact regression the recipes carried: layer 15 was justified as
+        # "50 percent of a 30-layer stack", and E2B has 35 layers. An index
+        # beyond the real depth must not survive to the capture.
+        with pytest.raises(HarvestError, match=r"\[35\].*35 layers"):
+            check_hook_layer_bounds([35], 35, "google/gemma-4-E2B")
+
+    def test_last_valid_index_is_accepted(self):
+        from interp.harvest import check_hook_layer_bounds
+
+        check_hook_layer_bounds([34], 35, "google/gemma-4-E2B")
+
+    def test_every_out_of_range_index_is_named_at_once(self):
+        from interp.harvest import check_hook_layer_bounds
+
+        with pytest.raises(HarvestError, match=r"\[40, 41\]"):
+            check_hook_layer_bounds([17, 41, 40, 41], 35, "google/gemma-4-E2B")
+
+    def test_unknown_depth_does_not_block(self):
+        from interp.harvest import check_hook_layer_bounds
+
+        # 0 means the config stated no depth. Refusing there would block a run
+        # on a config shape the check cannot judge.
+        check_hook_layer_bounds([999], 0, "fake/opaque")
+
+    def test_e4b_accepts_a_layer_e2b_would_refuse(self):
+        from interp.harvest import check_hook_layer_bounds
+
+        check_hook_layer_bounds([38], 42, "google/gemma-4-E4B")
+        with pytest.raises(HarvestError):
+            check_hook_layer_bounds([38], 35, "google/gemma-4-E2B")
 
 
 class TestHookDimGate:

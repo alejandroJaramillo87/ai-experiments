@@ -207,7 +207,7 @@ since moved is accurate history rather than drift.
 | [testing/investigations/](testing/investigations/) | [test_coverage_investigation.md](testing/investigations/test_coverage_investigation.md) — audit of the suite at 2026-07-16, commit 8316e5e |
 | [verification/investigations/](verification/investigations/) | [gemma-4-conformance_investigation.md](verification/investigations/gemma-4-conformance_investigation.md) — the 2026-08-01 audit of the three consumer tiers against the Gemma 4 reference. Its 50 `GH.n` host checks were never executed; [verification/README.md](verification/README.md) records that backlog |
 | [interp/experiments/](interp/experiments/) | Experiment post-mortems, one file per experiment, immutable after the verdict. [README.md](interp/experiments/README.md) is the living convention for writing them |
-| [models/](models/) | `gemma4-gguf.txt` and `gemma4-safetensors.txt` — machine transcripts carrying their own `Generated:` timestamps. **Cited by line number; do not regenerate without re-checking the citations** |
+| [models/](models/) | `gemma4-gguf.txt` and `gemma4-safetensors.txt` — machine transcripts carrying their own `Generated:` timestamps. Cited by line number; regenerating shifts those lines, and `tests/models/test_gemma4_facts_contract.py` fails on every citation the shift broke |
 
 ### Parked proposals
 

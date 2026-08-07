@@ -29,6 +29,8 @@ import json
 import os
 import shutil
 import time
+from collections.abc import Iterable
+from typing import NamedTuple
 
 from omegaconf import DictConfig
 
@@ -144,16 +146,27 @@ def disk_preflight(
         )
 
 
+class ModelMeta(NamedTuple):
+    """What one config read establishes about the subject."""
+
+    d_model: int
+    spec: HookFamilySpec
+    num_layers: int
+
+
 def resolve_model_meta(
     model_id: str, revision: str | None, d_model_override: int = 0
-) -> tuple[int, HookFamilySpec]:
-    """(d_model, hook family) for the subject, from one config read.
+) -> ModelMeta:
+    """(d_model, hook family, depth) for the subject, from one config read.
 
     A nonzero d_model override skips the width read, but the family always
     resolves from the config: hook paths are registry data, never assumed.
     The text-config unwrap and hidden_size read live in interp/families.py
     (Gemma 4 nests the language model under text_config; the residual stream
     is hidden_size, not hidden_size_per_layer_input).
+
+    num_layers is 0 when the config does not state it, which callers must
+    read as "unknown" rather than "no layers" -- see check_hook_layer_bounds.
     """
     from transformers import AutoConfig
 
@@ -168,7 +181,35 @@ def resolve_model_meta(
             f"could not resolve hidden_size for {model_id}; set "
             f"harvest.d_model explicitly"
         )
-    return d_model, spec
+    return ModelMeta(d_model, spec, families.decoder_depth(hf_cfg))
+
+
+def check_hook_layer_bounds(
+    layers: Iterable[int], num_layers: int, model_id: str
+) -> None:
+    """Refuse a hook index the subject has no layer for.
+
+    validate_harvest cannot do this: it sees only the recipe, and depth is a
+    property of the model. Without it an index past the last layer reaches
+    the runner and fails only once the capture is under way.
+
+    This bounds the range, which is all a depth can decide. It does not catch
+    an in-range index chosen for a wrong reason -- the recipes' layer 15,
+    justified as "50 percent of a 30-layer stack", is a legal index on a
+    35-layer model. Stated-fact drift of that kind is caught instead by
+    tests/models/test_gemma4_facts_propagation.py.
+
+    A depth of 0 means the config did not state one; skip rather than refuse,
+    so an unfamiliar config shape does not block a run it cannot judge.
+    """
+    if num_layers <= 0:
+        return
+    over = sorted({int(layer) for layer in layers if int(layer) >= num_layers})
+    if over:
+        raise HarvestError(
+            f"harvest.hook_layers: {over} out of range for {model_id}, which "
+            f"has {num_layers} layers (valid indices are 0..{num_layers - 1})"
+        )
 
 
 def check_hook_dims(
@@ -195,11 +236,14 @@ def check_hook_dims(
             f"harvest.dtype {dtype!r} is not one of {sorted(DTYPE_NAMES)}"
         )
     torch_dtype = getattr(torch, DTYPE_NAMES[dtype])
+    # Config-only, so an out-of-range hook fails here rather than after the
+    # weights are on the GPU.
+    expected, spec, depth = resolve_model_meta(model_id, revision)
+    check_hook_layer_bounds(layers, depth, model_id)
     model = AutoModelForCausalLM.from_pretrained(
         model_id, revision=revision, torch_dtype=torch_dtype, device_map="auto"
     )
     tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
-    expected, spec = resolve_model_meta(model_id, revision)
 
     observed: dict[int, int] = {}
     handles = []
@@ -321,7 +365,10 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
     cfg = recipe.harvest
     model_id, revision, model_hash = resolve_subject(cfg)
     corpus, corpus_hash = corpus_identity(cfg.corpus)
-    d_model, spec = resolve_model_meta(model_id, revision, d_model_override=cfg.d_model)
+    d_model, spec, depth = resolve_model_meta(
+        model_id, revision, d_model_override=cfg.d_model
+    )
+    check_hook_layer_bounds(cfg.hook_layers, depth, model_id)
 
     name = cfg.name or recipe.run.name
     capture_dir = os.path.join(cfg.out_root, name)

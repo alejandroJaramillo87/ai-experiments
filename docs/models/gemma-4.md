@@ -32,6 +32,8 @@ of scope. The vision and audio towers are documented structurally in
 - [Tokenizer and special tokens](#tokenizer-and-special-tokens)
 - [Modality towers](#modality-towers)
 - [Traps and discrepancies](#traps-and-discrepancies)
+- [Resolved from upstream source](#resolved-from-upstream-source)
+- [Per-tier support](#per-tier-support)
 - [Open questions](#open-questions)
 - [Reproducing this document](#reproducing-this-document)
 
@@ -744,6 +746,41 @@ it applies, `v_proj` is not constructed at all (lines 1206-1212) and the forward
 `with_scale=False` (line 1201). Key and value therefore share the projection output, not the
 post-norm post-rotary tensor.
 
+## Per-tier support
+
+What each tier does with a real checkpoint today. The target is E2B and E4B; 12B and 31B are
+out of scope until the E-series pair is settled.
+
+The distinction that matters here is between reading the geometry and running the model. All
+three tiers read it generically — no layer count, width, or stride is hardcoded in any of them,
+and the schedule comes from the `layer_types` array rather than a stride constant. Loading a
+checkpoint and producing logits is a separate question, and for the CPU backend the answer is
+currently no for both variants.
+
+| Tier | E2B | E4B | What decides it |
+|------|-----|-----|-----------------|
+| `rust-harness` CPU backend | Refused | Refused | `check_supported` rejects per-layer embeddings, which both variants carry |
+| `rust-harness` GGUF metadata reader | Yes | Yes | Every value read by key; schedule decoded from the bool array, E2B stride 5 and E4B 6 |
+| `training` | Yes | Yes | `spec_from_hf_config` maps any config carrying the field names; reference recipes exist for both |
+| `interp` | Yes | Yes (no recipe) | No geometry constants at all; hook path and width resolve from the loaded config |
+
+Three refusals stand between the CPU backend and a real checkpoint. Each is a declared
+unimplemented feature that fails loudly, not a silent wrong answer:
+
+- **Per-layer embeddings.** `check_supported` bails on any tensor whose name contains
+  `per_layer`. Both variants have them, so both are refused. This is the binding one.
+- **Cross-layer KV sharing.** A layer with `attn_q` but no `attn_k`/`attn_v` is refused. Note
+  this signature does not actually fire on the released checkpoints, which carry K and V on
+  every block — see the first open question below.
+- **Per-layer feed-forward widths.** `Config::from_gguf` refuses a `feed_forward_length` that
+  varies per layer, because a single `Config::ffn_dim` cannot express it. This affects E2B
+  only: `use_double_wide_mlp` doubles the MLP on its KV-shared tail, so its array holds two
+  widths, while E4B sets the flag false and ships one.
+
+`training` and `interp` need no such work. Their E-series gap is coverage rather than
+capability: every interp recipe under `training/recipes/interp/` names an E2B subject, so E4B
+is supported but unexercised there.
+
 ## Open questions
 
 Recorded rather than guessed. Resolve these against the `transformers` implementation at the
@@ -755,7 +792,7 @@ pinned revision before relying on any assumption about them.
   projections. The E2B safetensors headers record `k_proj.weight` on all 35 language-model layers
   (28 at `[256, 1536]` and 7 at `[512, 1536]`, `docs/models/gemma4-safetensors.txt` lines 414 and 529),
   and the GGUF inventory likewise lists `attn_k.weight` for all 35 blocks
-  (`docs/models/gemma4-gguf.txt` lines 613-628). The code and the checkpoint disagree about whether
+  (`docs/models/gemma4-gguf.txt` lines 613 and 625). The code and the checkpoint disagree about whether
   shared layers carry key and value weights. Whether the surplus tensors are unused residue, or
   the released weights predate the code, was not settled from the sources read. This matters
   because it means the absence of `attn_k` is **not** a reliable shared-KV signature for these

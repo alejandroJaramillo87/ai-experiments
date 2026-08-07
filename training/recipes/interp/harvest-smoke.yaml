@@ -10,12 +10,15 @@
 run:
   name: harvest-smoke
   seed: 42
-  notes: "P4-D2 smoke capture; footprint ~9GB at d_model 2304 bf16."
+  notes: "P4-D2 smoke capture; footprint ~6.1GB at d_model 1536 bf16."
 
 harvest:
   enabled: true
   model_id: google/gemma-4-E2B
-  hook_layers: [15]  # 50 percent depth of a 30-layer stack
+  # 50 percent depth of E2B's 35-layer stack. Not 15: that is the
+  # num_hidden_layers - num_kv_shared_layers boundary (35 - 20), so it is
+  # simultaneously the first shared-KV and first double-wide-MLP layer.
+  hook_layers: [17]
   corpus: monology/pile-uncopyrighted
   context_len: 1024
   total_tokens: 2000000

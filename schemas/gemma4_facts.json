@@ -13,14 +13,16 @@
     "rust-harness/runtime/src/gguf.rs (gemma4.* metadata keys)",
     "rust-harness/runtime/src/synth.rs (gemma4.* keys written by the fixture writer)",
     "rust-harness/fixtures/reference_logits.py (independent Python reader of the same keys)",
-    "training/calculator/components.py (explicit_head_dim, parameter accounting)",
+    "training/calculator/components.py (explicit_head_dim, parameter accounting, use_double_wide_mlp)",
     "training/models/families.py (model_type gemma4 / gemma4_text registry)",
     "training/tune/distill.py (final_logit_softcapping)",
-    "interp (reads width via residual_width(config); no hardcoded copy)",
+    "interp (reads width via residual_width(config) and depth via decoder_depth(config); no hardcoded copy)",
+    "training/recipes/interp/ (subject width, depth, and hook layer per recipe)",
     "tests/models/specbuild.py (structure-preserving scaled-down analogue)"
   ],
   "guarded_by": [
     "tests/models/test_gemma4_facts_contract.py",
+    "tests/models/test_gemma4_facts_propagation.py",
     "tests/models/test_gemma4_header_transcript.py",
     "tests/models/test_gguf_header_transcript.py"
   ],

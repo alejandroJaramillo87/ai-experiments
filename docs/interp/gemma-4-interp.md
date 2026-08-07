@@ -68,10 +68,22 @@ The value flows to `d_model` in the harvest manifest (`harvest.py:141-165`) and 
 — a sixth of E2B's residual stream — and it describes an auxiliary input path, not the stream
 itself.
 
-The layer counts matter because `validate_harvest` (`harvest.py:59-89`) checks only that a hook
-layer index is non-negative. It has no upper bound and no knowledge of the model's depth, so a
-recipe naming layer 15 as "50 percent of a 30-layer stack" passes validation while being wrong
-for a 35-layer model. Bound hook layers against the values above.
+The layer counts matter because `validate_harvest` sees only the recipe, and depth is a property
+of the model. It checks that a hook index is non-negative and can go no further. The upper bound
+lives in `check_hook_layer_bounds` (`harvest.py`), which reads `num_hidden_layers` from the same
+single config read that resolves the width and family, and refuses an index the subject has no
+layer for. It runs in the preflight before the weights load and again in `run_harvest`.
+
+That bounds the range, which is all a depth can decide. It does **not** catch an in-range index
+chosen for a wrong reason: a recipe naming layer 15 as "50 percent of a 30-layer stack" is a
+legal index on a 35-layer model, merely the wrong one. Recipes stating a width or depth that
+contradicts `schemas/gemma4_facts.json` are caught separately, by
+`tests/models/test_gemma4_facts_propagation.py`.
+
+Note also that layer 15 is the worst available choice on E2B: it is the
+`num_hidden_layers - num_kv_shared_layers` boundary (35 − 20), so it is simultaneously the first
+shared-KV layer and the first double-wide-MLP layer. The reference recipes hook layer 17, the
+midpoint of indices 0–34 and a plain sliding-attention block.
 
 ## Uniform post-block width
 
@@ -110,6 +122,14 @@ projection. The tensors are:
 | `model.language_model.layers.{L}.per_layer_projection.weight` | `[1536, 256]` | `[2560, 256]` |
 | `model.language_model.layers.{L}.post_per_layer_input_norm.weight` | `[1536]` | `[2560]` |
 
+The upstream sources settle how these join the stream, which the shapes alone do not say. The
+per-layer input is gated **multiplicatively** in 256-dimensional space, projected back to
+`hidden_size`, and added as a **third residual update, after the feed-forward block**. The
+layer order is attention, feed-forward, per-layer embedding, then `layer_scalar`. So a hook on
+the decoder layer's output captures the residual with the per-layer contribution already
+folded in — it is not a separable side channel. Derivations and line citations are in
+[docs/models/gemma-4.md](../models/gemma-4.md).
+
 A hook must return the post-block residual, never one of these. `check_hook_dims`
 (`harvest.py:168-224`) exists for exactly this, and its docstring names Gemma 4: the check
 "proves the hook output is the hidden_size residual and not a PLE tensor."
@@ -127,6 +147,38 @@ proceeding to harvest (`/interp/commands/harvest.py:56-63`). `run_harvest` never
 the check and the harvest are two separate invocations, and nothing enforces that the check ran
 first, or that it ran against the same recipe. `/interp/probes/capture.py:66-118` performs no
 width check at all.
+
+## `layer_scalar` scales what the hook captures
+
+Every decoder layer carries `layer_scalar`, a shape-`[1]` buffer declared as
+`nn.Buffer(torch.ones(1))` and applied as the **last operation of the layer**, after all three
+residual updates. It multiplies the entire layer output, which is precisely the tensor a
+residual-stream hook records.
+
+Two consequences for this tier:
+
+- Captured activations are scaled by it. It is a per-layer scalar, so it cannot change the
+  direction of any activation vector or the geometry of a probe or SAE trained on one layer.
+  It does rescale magnitudes, so a comparison of raw magnitudes *across* layers is comparing
+  differently-scaled quantities.
+- It has no `config.json` field, so nothing in the config or the manifest records it. Reading
+  it requires the checkpoint.
+
+Whether the released checkpoints store anything other than 1.0 is still open — the transcripts
+record the shape but not the value. Until that is settled, treat cross-layer magnitude
+comparisons as provisional. Nothing here affects within-layer work, which is where this tier
+operates.
+
+## Key and value share a projection on full-attention layers
+
+`attention_k_eq_v` is narrower than its name suggests. It applies only where the layer is
+**not** sliding, so on the seven full-attention layers and nowhere else. On those layers
+`v_proj` is not constructed at all: the value states are the key projection's output taken
+before `k_norm` and before the rotary embedding, with `v_norm` applied to them separately.
+
+This explains the `self_attn.v_norm` warning below. The module exists in a config-built tree
+because the code constructs the norm; no checkpoint tensor backs it because the projection it
+would normalise was never built.
 
 ## The module path is composite
 
