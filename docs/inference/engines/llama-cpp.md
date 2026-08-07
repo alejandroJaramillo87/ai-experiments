@@ -401,7 +401,7 @@ Production parameters from `docker/llama-gpu/entrypoint.sh`:
     --batch-size 2048 \               # Optimal batch size
     --ubatch-size 512 \               # Smaller physical batch
     --threads 1 \                     # Minimal CPU threads
-    --flash-attn \                    # Flash Attention enabled
+    --flash-attn "on" \               # Flash Attention; takes a value, default "on"
     --no-mmap \                       # Direct GPU loading
     --main-gpu 0 \                    # RTX 5090
     --parallel 1                      # Single sequence
@@ -480,7 +480,3 @@ Common issues and solutions:
 
 - Review [parameters/llama-cpp-parameters.md](../parameters/llama-cpp-parameters.md) for tuning
 - See [vLLM](vllm.md) for throughput-optimized serving
-
----
-
-*Last Updated: 2026-01-03*

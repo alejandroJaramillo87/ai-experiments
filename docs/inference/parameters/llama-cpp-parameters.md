@@ -20,12 +20,18 @@ exec ./server \
     --threads-batch "$THREADS_BATCH" \
     --threads-http "$THREADS_HTTP" \
     --flash-attn "on" \
+    --metrics \
     --cache-reuse 256 \
     --cont-batching \
-    --metrics \
     --mlock \
     --no-repack
 ```
+
+The last four flags are **conditional, not fixed**. `entrypoint.cpu.sh:112-125` appends
+`--cache-reuse` only when `CACHE_REUSE > 0`, and `--cont-batching`, `--mlock`, and
+`--no-repack` only when their variables equal `true`. The defaults make all four appear, so
+the command above is what a default run produces — but overriding any of those variables
+removes its flag.
 
 **Environment Defaults** (entrypoint.cpu.sh):
 - `THREADS` - Required, set via docker-compose (typically 12-16)
@@ -238,7 +244,3 @@ intended test matrix, not completed results.
 - **Blackwell architecture** (FlashAttention, FP8)
 - **CUDA 13.0.2** (latest features)
 - **High memory bandwidth** (optimal for large batches)
-
----
-
-*Last Updated: 2026-01-03*

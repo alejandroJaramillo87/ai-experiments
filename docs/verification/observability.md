@@ -1,5 +1,7 @@
 # Observability verification (phases A-D)
 
+**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable — both documentation gates exempt this directory by path, so stale references here are not caught for you.**
+
 Host verification for the observability stack: the logging core, traced
 dispatch, audit trace, retention, run catalog (phases A-C), and the metrics
 sink, watchdog wiring, snapshot dashboard, and live server (phase D). All of
@@ -258,7 +260,11 @@ Status: PENDING
   signal lock (`training/runtime/watchdog.py`). Accepted for now: alerts
   are rare and the write is one line; revisit only if OBS-V2 shows sampler
   stalls.
-- OBS-13 and OBS-14 (operator documentation for the observability stack)
-  remain unwritten; the roadmap tracks them.
-- OBS-15 (the go/no-go review) consumes this campaign's results; it cannot
-  close before these entries do.
+- OBS-14 (the operator reference) is written:
+  `docs/observability/README.md`. OBS-13 (the profiler debugging guide,
+  `docs/observability/debugging-runs.md`) remains unwritten;
+  `docs/observability/design-and-roadmap.md` tracks it and carries a status
+  field per item.
+- OBS-15 (the optional rig console) consumes this campaign's results; it
+  cannot close before these entries do. The go/no-go it represents is
+  whether the ephemeral viewer of OBS-12 proves insufficient in use.

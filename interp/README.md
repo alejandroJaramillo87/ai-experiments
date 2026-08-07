@@ -45,8 +45,8 @@ $ make steer-extract VECTOR=...
 
 ## Where the real docs live
 
-- [../docs/interpretability/platform.md](../docs/interpretability/platform.md) — the workbench and the platform
-- [../docs/interpretability/writeback.md](../docs/interpretability/writeback.md) — the write-back path
-- [../docs/interpretability/rust-harness-interp.md](../docs/interpretability/rust-harness-interp.md) — the harness interp seam and its compatibility contract
-- [../docs/interpretability/interp-scale-reference.md](../docs/interpretability/interp-scale-reference.md) — sizing
+- [../docs/interp/platform.md](../docs/interp/platform.md) — the workbench and the platform
+- [../docs/interp/writeback.md](../docs/interp/writeback.md) — the write-back path
+- [../docs/interp/rust-harness-interp.md](../docs/interp/rust-harness-interp.md) — the harness interp seam and its compatibility contract
+- [../docs/interp/interp-scale-reference.md](../docs/interp/interp-scale-reference.md) — sizing
 - [../schemas/README.md](../schemas/README.md) — the artifact contracts shared with Rust

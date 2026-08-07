@@ -1,16 +1,40 @@
-# AI Model Sandboxing and Security Architecture
+# Container sandboxing and security architecture
 
-Guide for secure AI model deployment using containerized sandboxing environments, addressing security risks in local AI model execution and providing isolation strategies for the AMD Ryzen 9950X + RTX 5090 AI workstation.
+How the inference services are contained on this workstation: what each container is allowed
+to touch, and why. The threat model is a local one — an untrusted model file or a compromised
+dependency running on the same machine as your data — not a multi-tenant or internet-facing
+deployment.
 
-This documentation covers the specific Docker implementation deployed in this project, including three specialized Dockerfiles (`Dockerfile.llama-cpu`, `Dockerfile.llama-gpu`, `Dockerfile.vllm-gpu`) and the docker-compose orchestration that enables concurrent model hosting across CPU and GPU resources.
+This documentation covers the specific Docker implementation deployed in this project. The
+three inference images are built from `docker/llama-cpu/Dockerfile.cpu`,
+`docker/llama-gpu/Dockerfile.llama-gpu`, and `docker/vllm-gpu/Dockerfile.vllm-gpu`; the
+repository holds nine Dockerfiles in total, the rest covering the agents, ComfyUI, interp,
+the interp log proxy, the Rust harness, and training. `docker-compose.inference.yaml`
+orchestrates concurrent model hosting across CPU and GPU resources.
 
 For sandboxing the coding agents (OpenCode and Claude Code) rather than the inference services, see [agent-sandbox.md](agent-sandbox.md) — same containment philosophy, different workload profile (writable worktree, egress allowlist, no GPU, one scoped secret).
 
 **Note**: This guide focuses on defensive security measures for AI model deployment. All recommendations prioritize system security and stability over performance optimization.
 
+## Documents in this directory
+
+This README covers the architecture and the reasoning. Each document below walks one
+Dockerfile or compose file line by line; where any of them disagrees with the file it
+describes, the file is correct and the document is the bug.
+
+| Document | Description |
+|----------|-------------|
+| [docker_compose_overview.md](docker_compose_overview.md) | `docker-compose.inference.yaml`: the seven services, their networks, volumes, and profiles |
+| [docker_llama_cpu_overview.md](docker_llama_cpu_overview.md) | `docker/llama-cpu/Dockerfile.cpu`: Zen 5 compilation and the hugepage optimizer |
+| [docker_llama_gpu_overview.md](docker_llama_gpu_overview.md) | `docker/llama-gpu/Dockerfile.llama-gpu`: the Blackwell `sm_120a` build |
+| [docker_vllm_gpu_overview.md](docker_vllm_gpu_overview.md) | `docker/vllm-gpu/Dockerfile.vllm-gpu`: vLLM, FlashInfer, and the cu130 wheel |
+| [docker_training_overview.md](docker_training_overview.md) | `docker-compose.training.yaml`: the training stack and its one-door-to-the-hub network split |
+| [agent-sandbox.md](agent-sandbox.md) | The contained agent sandbox: image, mounts, pinned tooling, and the egress allowlist |
+
 ## Table of Contents
 
-- [AI Model Sandboxing and Security Architecture](#ai-model-sandboxing-and-security-architecture)
+- [Container sandboxing and security architecture](#container-sandboxing-and-security-architecture)
+  - [Documents in this directory](#documents-in-this-directory)
   - [Table of Contents](#table-of-contents)
   - [Overview](#overview)
   - [Why Sandboxing is Required](#why-sandboxing-is-required)
@@ -50,6 +74,9 @@ The implementation consists of:
 - **CPU inference container** (`llama-cpu`) utilizing AMD Zen 5 optimization with zen5_optimizer hugepage support (16 cores, 96GB RAM)
 - **GPU inference container** (`llama-gpu`) optimized for RTX 5090 with CUDA 13.0.2 and Blackwell architecture support
 - **vLLM GPU container** (`vllm-gpu`) for high-performance transformer model serving with vLLM 0.25.0
+- **Full-precision GPU container** (`llama-gpu-bf16`) serving bf16 weights for the interp tier, behind the `interp` profile
+- **Log proxy sidecar** (`interp-logproxy`) in front of llama-gpu for the interp write-back path, behind the `interp` profile
+- **ComfyUI container** (`comfyui`) for image and video generation
 - **Open WebUI container** providing a secure web interface for model interaction
 - **Isolated Docker network** (`ai-network`) with controlled inter-service communication
 
@@ -168,7 +195,7 @@ Immutable container file systems prevent runtime modifications and reduce attack
 **Volume Mount Restrictions**
 Selective file system mounting implemented:
 - **Model storage**: `/mnt/ai-data/models/:/app/models:ro` (read-only access)
-- **Log directories**: `./logs/cpu:/app/logs` and `./logs/gpu:/app/logs` (write access only to designated areas)
+- **Benchmark corpus**: `./scripts/benchmark/datasets:/app/datasets:ro` (read-only, llama-cpu only)
 - **CUDA cache**: vLLM container uses multiple tmpfs mounts including `/tmp:size=4G,mode=1777` for temporary GPU operations
 
 **Temporary File System Controls**
@@ -177,22 +204,24 @@ vLLM container implements isolated tmpfs for CUDA operations while other contain
 ### Network Segmentation
 
 **Bridge Network Isolation**
-Custom Docker network `ai-network` with dedicated subnet:
+Docker network `ai-network`, declared by name only so Docker supplies the defaults — the
+`bridge` driver, a Compose-assigned subnet, and `internal: false`:
 ```yaml
 networks:
   ai-network:
-    driver: bridge
-    internal: false
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
 ```
+No subnet is pinned here. The stack that does pin one is
+`docker-compose.agents.yaml`, whose egress-controlled network is `internal: true` on
+172.31.0.0/16.
 
 **Port Mapping Controls**
 Localhost-only port binding prevents external access:
 - **llama-cpu**: `127.0.0.1:8001:8001`
 - **llama-gpu**: `127.0.0.1:8002:8002`
 - **vllm-gpu**: `127.0.0.1:8003:8003`
+- **llama-gpu-bf16**: `127.0.0.1:8004:8004` (profile `interp`)
+- **interp-logproxy**: `127.0.0.1:8012:8012` (profile `interp`)
+- **comfyui**: `127.0.0.1:8188:8188`
 - **open-webui**: `127.0.0.1:3000:8080`
 
 **Network Policy Enforcement**
@@ -240,7 +269,7 @@ Open WebUI container provides secure web interface:
 **Request Routing**
 Model-specific endpoint distribution:
 - **CPU model**: Port 8001 (llama-cpu)
-- **GPU models**: Port 8002 (llama-gpu), Port 8003 (vLLM)
+- **GPU models**: Port 8002 (llama-gpu), Port 8003 (vLLM), Port 8004 (llama-gpu-bf16, profile `interp`)
 - **Single-model focus**: High-performance inference with dedicated resources
 
 **Protocol Translation**
@@ -366,7 +395,8 @@ One dedicated CPU container leverages the 16-core AMD Ryzen 9950X:
 Two GPU containers optimize RTX 5090 utilization:
 - **llama-gpu**: llama.cpp with CUDA optimization for GGUF models
 - **vllm-gpu**: vLLM 0.25.0 engine for high-throughput transformer serving
-- **Blackwell architecture**: CUDA 13.0.2 with sm_120 targeting
+- **Blackwell architecture**: CUDA 13.0.2. The llama.cpp build compiles for `sm_120a` via an
+  explicit gencode flag; the vLLM wheel ships prebuilt `sm_120` kernels
 
 **Local Deployment Configuration**
 Docker Compose configuration for local workstation:
@@ -398,9 +428,11 @@ Read-only model mounts:
 ```yaml
 volumes:
   - /mnt/ai-data/models/:/app/models:ro
-  - ./logs/cpu:/app/logs
+  - ./scripts/benchmark/datasets:/app/datasets:ro
 ```
-Separates read-only model access from writable log directories.
+Every host path a service can reach is either read-only or under `/mnt/ai-data`; no service
+writes into the worktree. Container stdout is read with `make logs`, and the structured
+observability records go to `/mnt/ai-data/logs`.
 
 
 ## Reference Files
@@ -419,7 +451,3 @@ Separates read-only model access from writable log directories.
 - **Network security**: Localhost binding, custom bridge networking, internal communication
 - **File system security**: Read-only containers, selective volume mounts, log isolation
 - **Health monitoring**: Comprehensive health checks, automatic restarts, failure recovery
-
----
-
-*Last Updated: 2026-01-03*

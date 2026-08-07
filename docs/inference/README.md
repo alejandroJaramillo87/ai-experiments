@@ -1,10 +1,14 @@
-# AI Inference Documentation
+# Inference documentation
 
-Technical documentation for AI inference engines and their optimization on the AMD Ryzen 9950X + RTX 5090 workstation.
+The inference engines running on this workstation (AMD Ryzen 9950X, RTX 5090), how they are
+tuned, and what each parameter was measured to do.
 
 ## Overview
 
-This directory contains comprehensive documentation for understanding and optimizing AI inference engines used in local LLM deployment. The documentation covers both theoretical foundations and practical implementation details.
+Two engines serve two different goals: llama.cpp for latency, vLLM for throughput. The
+documents below cover what each engine does, then the parameters actually set in this
+repository and the results that justify them. Container and compose details live in
+[../sandbox/](../sandbox/); the engines' Dockerfiles are the source of truth for versions.
 
 ## Inference Engines
 
@@ -16,6 +20,9 @@ This directory contains comprehensive documentation for understanding and optimi
 ### Parameter Tuning
 - **[parameters/llama-cpp-parameters.md](parameters/llama-cpp-parameters.md)** - Tested llama.cpp parameters and findings
 - **[parameters/vllm-parameters.md](parameters/vllm-parameters.md)** - vLLM configuration and throughput optimization
+
+### Generation Services
+- **[art-generation.md](art-generation.md)** - The ComfyUI image and video generation service on port 8188
 
 ### Forward Looking
 - **[future-optimizations.md](../optimizations/ideation/future-inference-optimizations.md)** - Parked survey of custom kernel and runtime work, with the conditions gating it
@@ -31,6 +38,9 @@ This directory contains comprehensive documentation for understanding and optimi
 | llama-gpu | llama.cpp | 8002 | Active | GPU-accelerated low-latency inference |
 | vllm-gpu | vLLM | 8003 | Active | High-throughput batch serving |
 | llama-gpu-bf16 | llama.cpp | 8004 | Opt-in | Full-precision endpoint for monitored interpretability traffic (compose profile `interp`) |
+| comfyui | ComfyUI | 8188 | Active | Image and video generation; see [art-generation.md](art-generation.md) |
+| interp-logproxy | — | 8012 | Opt-in | Logging proxy in front of llama-gpu for the interp write-back path (compose profile `interp`) |
+| open-webui | — | 3000 | Active | Web interface, published as `127.0.0.1:3000:8080` |
 
 ## Architecture Summary
 
@@ -97,7 +107,3 @@ qualitative characteristics only.
 - **GPU**: RTX 5090 32GB VRAM (Blackwell architecture)
 - **Memory**: 128GB DDR5-6000 with huge pages enabled
 - **Storage**: NVMe SSD for model storage
-
----
-
-*Last Updated: 2026-01-03*

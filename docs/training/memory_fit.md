@@ -4,7 +4,8 @@ Pre-run VRAM estimation for training recipes (Phase 0 D4). The calculator answer
 before a run starts, whether a recipe fits in the RTX 5090's 32GB VRAM and what the
 maximum micro-batch or sequence length is. Input is always a D5 recipe file, never a
 parallel argument set, so the calculator and the trainer read identical
-configuration by construction.
+configuration by construction. Design record:
+[the D4 investigation](investigations/d4_memory_fit_investigation.md).
 
 ## Usage
 

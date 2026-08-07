@@ -499,5 +499,3 @@ Model compatibility:
 ---
 
 *This vLLM GPU Docker implementation provides transformer model serving on the RTX 5090 Blackwell architecture. The single-stage image installs the vLLM 0.25.0 official cu130 wheel with FlashInfer 0.6.13 attention kernels while maintaining non-root execution and cache isolation.*
-
-*Last Updated: 2026-07-12*

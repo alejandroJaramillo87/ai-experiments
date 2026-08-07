@@ -46,6 +46,60 @@ RETIRED: dict[str, tuple[str, str]] = {
         "siblings (agents, interp, training, rust-harness); a bare `docker "
         "compose` with no -f no longer finds it",
     ),
+    "docs/interpretability": (
+        "docs/interp",
+        "the docs directory was the last place the long form survived; the "
+        "package, the container, the compose file, the make include, the tests, "
+        "and the CLI are all `interp`. Keyed on the path prefix, not the bare "
+        "word, which stays correct English throughout the prose",
+    ),
+    "docs/observability/roadmap.md": (
+        "docs/observability/design-and-roadmap.md",
+        "the operator-facing specification graduated into "
+        "docs/observability/README.md, leaving the design rationale and the "
+        "OBS item ledger; `roadmap.md` no longer described what the file "
+        "held, and a bare `roadmap.md` says nothing about which roadmap",
+    ),
+    "docs/verification/gemma-4-conformance.md": (
+        "docs/verification/investigations/gemma-4-conformance_investigation.md",
+        "the audit was always a frozen record — audit-only, bounded by a "
+        "Limitations section, every finding a quote at a line — but carried no "
+        "class marker and sat among the runbooks, contradicting this "
+        "directory's claim that every document in it is executed. The style "
+        "guide requires a frozen record be findable by path; the new location "
+        "satisfies both patterns instead of relying on the docs/verification/ "
+        "exemption, which exists for operational runbooks",
+    ),
+    "./datasets": (
+        "./scripts/benchmark/datasets",
+        "the llama-cpu mount pointed at a repo-root directory that never held "
+        "the corpus -- the committed Wikitext-2 copy has always been under "
+        "scripts/benchmark/ -- so test_perplexity.sh died at its in-container "
+        "check, and Docker creating the empty root directory made it a "
+        "namespace package that shadowed the `datasets` library for mypy. "
+        "Keyed with the ./ prefix so the bare word, which is the Python "
+        "package throughout pyproject.toml and the smoke tests, stays legal",
+    ),
+    "gpu_benchmark_results": (
+        "/mnt/ai-data/benchmarks/nsys (nsys reports) or "
+        "/mnt/ai-data/benchmarks/gpu (BENCH_RESULTS_DIR)",
+        "benchmark output is run data, and run data lives on the data SSD "
+        "beside models, logs, and training runs rather than in a worktree that "
+        "a branch switch can carry away. The directory had two creators -- the "
+        "nsys bind mounts and a CWD-relative mkdir in benchmark_gpu.sh -- so "
+        "removing either alone would not have stopped it reappearing",
+    ),
+    "perplexity_results": (
+        "/mnt/ai-data/benchmarks/perplexity (BENCH_RESULTS_DIR)",
+        "the sibling of gpu_benchmark_results in test_perplexity.sh, retired "
+        "for the same reason and at the same time",
+    ),
+    "./outputs/comfyui": (
+        "/mnt/ai-data/comfyui/output",
+        "generated images and video are multi-GB data with no reason to sit "
+        "next to source; the mount put them one `git add -A` away from a "
+        "commit, and .gitignore had no entry for the directory",
+    ),
 }
 
 # Directories holding no text of ours.

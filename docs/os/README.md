@@ -1,14 +1,31 @@
-# AI Engineering Workstation OS Setup Guide
+# Workstation OS setup
 
-Guide for configuring Ubuntu 24.04 LTS as an AI engineering workstation for running large language models and AI workloads on the AMD Ryzen 9950X + RTX 5090 hardware configuration.
+Configuring Ubuntu 24.04 LTS for AI work on the AMD Ryzen 9950X + RTX 5090 hardware.
 
 This documentation covers system setup from OS installation through GPU acceleration, containerization, and Python environment configuration. The setup supports both GPU-accelerated inference (models in VRAM) and CPU-based model execution for running multiple models simultaneously.
 
 **Note**: This guide references automation scripts in `scripts/` and configuration files. Review all scripts before execution and adapt them to your requirements and security policies.
 
+## Documents in this directory
+
+This README is the walkthrough; the documents below own their topics in detail.
+
+| Document | Description |
+|----------|-------------|
+| [storage-configuration.md](storage-configuration.md) | Dual-SSD architecture and the `/mnt/ai-data` layout |
+| [backup_and_recovery.md](backup_and_recovery.md) | Backup system configuration and recovery procedures |
+| [gpu-stack/README.md](gpu-stack/README.md) | The three-layer GPU stack: driver, CUDA, cuDNN |
+| [gpu-stack/nvidia-drivers.md](gpu-stack/nvidia-drivers.md) | NVIDIA driver installation and configuration |
+| [gpu-stack/cuda.md](gpu-stack/cuda.md) | CUDA toolkit installation and configuration |
+| [gpu-stack/cudnn.md](gpu-stack/cudnn.md) | cuDNN deep learning acceleration library |
+| [python/setup_python.md](python/setup_python.md) | Python 3.12 installation via uv |
+| [python/uv-dependencies.md](python/uv-dependencies.md) | The annotated reference for every dependency pin — the owner of those facts |
+| [python/pytorch_cuda_update_guide.md](python/pytorch_cuda_update_guide.md) | PyTorch installation against the CUDA 13.0 index |
+
 ## Table of Contents
 
-- [AI Engineering Workstation OS Setup Guide](#ai-engineering-workstation-os-setup-guide)
+- [Workstation OS setup](#workstation-os-setup)
+  - [Documents in this directory](#documents-in-this-directory)
   - [Table of Contents](#table-of-contents)
   - [Implementation Overview](#implementation-overview)
   - [Prerequisites](#prerequisites)
@@ -437,16 +454,19 @@ Python Environment Setup:
 - Configure Transformers and specialized AI frameworks through the pinned dependencies
 
 AI Framework Configuration:
-The project uses uv with exact version pins and a CUDA-specific PyTorch index:
+The project uses uv with exact version pins and a CUDA-specific PyTorch index. The excerpt
+below is illustrative; `pyproject.toml` is the source of truth and
+[python/uv-dependencies.md](python/uv-dependencies.md) is the full annotated reference for
+every pin.
 
 ```toml
 # Core AI/ML frameworks from pyproject.toml [project].dependencies
 dependencies = [
     "torch==2.13.0",         # resolved from the pytorch-cu130 index
     "torchvision==0.28.0",   # resolved from the pytorch-cu130 index
-    "transformers==4.51.3",
-    "datasets==3.6.0",
-    "accelerate==1.10.1",
+    "transformers==5.13.1",
+    "datasets==5.0.0",
+    "accelerate==1.14.0",
 ]
 ```
 
@@ -455,7 +475,7 @@ Specialized AI Libraries:
 - **Quantization**: bitsandbytes for 4-bit and 8-bit model quantization
 - **Optimization**: deepspeed for multi-GPU training and inference
 - **Experiment Tracking**: wandb, mlflow, tensorboard for development workflows
-- **High-Performance**: tensorrt-llm, llama-cpp-python for optimized inference
+- **High-Performance**: llama-cpp-python for optimized inference
 
 Development Environment Features:
 - **JupyterLab**: Interactive development with GPU acceleration
@@ -526,8 +546,3 @@ This OS setup works in conjunction with:
 - **Docker Containers**: Containerized AI inference in `docker/`
 - **Security Architecture**: AI model sandboxing in `docs/sandbox/`
 - **Performance Optimization**: System tuning in `docs/optimizations/`
-
----
-
-*Last Updated: 2025-09-23*
-

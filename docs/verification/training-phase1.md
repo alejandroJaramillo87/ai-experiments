@@ -1,5 +1,7 @@
 # Training phase 1 verification
 
+**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable — both documentation gates exempt this directory by path, so stale references here are not caught for you.**
+
 F1 through F8 as implemented: SFT data preparation, the PEFT recipes, the
 TRL SFT entry point, teacher generation, distillation (online and cached),
 adapter merge and export, the evaluation wrappers, and scorecard promotion.

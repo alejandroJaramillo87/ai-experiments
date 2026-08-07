@@ -204,7 +204,7 @@ watch a single residual-stream element (`watch -l x[<j>]` inside the layer
 loop) and `reverse-continue` to the attention or MLP write that produced
 it. The residual stream is exposed programmatically through the `Tap` seam;
 see the
-[interp substrate design](../interpretability/rust-harness-interp.md).
+[interp substrate design](../interp/rust-harness-interp.md).
 
 ### Acceptance
 
@@ -221,7 +221,7 @@ additive control-vector steering, and an `activation-capture` binary
 writing the interp capture shard format. The design, its compatibility
 contract with the Python interp stack, and the constraint it places on
 future backends are recorded in
-[rust-harness-interp.md](../interpretability/rust-harness-interp.md).
+[rust-harness-interp.md](../interp/rust-harness-interp.md).
 
 ## Run-level records (obs contract)
 
@@ -229,7 +229,7 @@ The three phases above cover the token loop; run-level observability —
 which invocations happened, how long they took, which failed — converges
 on the Python obs stack by contract rather than by code.
 `harness/src/obs.rs` writes the same JSONL shapes `common/obs` defines
-(see `docs/observability/roadmap.md`):
+(see `docs/observability/design-and-roadmap.md`):
 
 - A run id in the shared `R-YYYYMMDD-HHMMSS-xxxxxx` format (UTC stamp,
   six hex characters).

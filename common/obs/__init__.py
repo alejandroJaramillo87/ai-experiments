@@ -1,6 +1,6 @@
 """Observability package: structured logging keyed by an ambient run id.
 
-Specified by docs/observability/roadmap.md. The package grows one module
+Specified by docs/observability/design-and-roadmap.md. The package grows one module
 per roadmap item; ``core`` (OBS-1) holds the logging core and ``dispatch``
 (OBS-4) the traced CLI dispatch.
 """

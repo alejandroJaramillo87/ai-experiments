@@ -53,4 +53,4 @@ into the image.
 - [../pyproject.toml](../pyproject.toml) — `[tool.pytest.ini_options]`, marker definitions, and the coverage floor
 - [../docs/testing/quality-gate.md](../docs/testing/quality-gate.md) — environment provisioning, the skip-count rule, and the gate itself
 - [../AGENTS.md](../AGENTS.md) — the operating rules these follow from
-- [../docs/testing/test_coverage_investigation.md](../docs/testing/test_coverage_investigation.md) — a dated coverage survey
+- [../docs/testing/investigations/test_coverage_investigation.md](../docs/testing/investigations/test_coverage_investigation.md) — a dated coverage survey

@@ -16,6 +16,7 @@ them with set logic; no validator dependency is involved.
 
 - [Why these exist](#why-these-exist)
 - [The contracts](#the-contracts)
+- [Not the report envelope](#not-the-report-envelope)
 - [How enforcement works](#how-enforcement-works)
 - [Changing a contract](#changing-a-contract)
 
@@ -67,6 +68,21 @@ under `notes` as not comparable across writers is a decision, not an oversight:
 `dataset_sha256` hashes a different domain on each side, and
 `tokenizer_fingerprint` is built from different parts. Tests pin those
 differences, so a one-sided change to either fails.
+
+## Not the report envelope
+
+These contracts are unrelated to the JSON *report* envelope documented in
+`/docs/observability/report_schema.md`, and confusing the two is the easiest mistake to make
+here. The envelope is a Python-only convention — `schema_version`, a discriminator, a
+timestamp, and `git_sha` — checked at runtime by `validate_report` in `/common/reports.py`.
+These files are cross-language key inventories checked in tests, with no validator and no
+runtime cost. There is no key in common between the two: `obs_record.json` has no
+`schema_version` or `git_sha`, and the envelope has no `run_id`.
+
+The one place they meet is the metrics file, whose first record is built with
+`report_header("run_metrics")` and must satisfy the envelope. That record is **not** covered
+by any file in this directory; `obs_record.json` covers the run event stream and the run
+catalog only.
 
 ## How enforcement works
 

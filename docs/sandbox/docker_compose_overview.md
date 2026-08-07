@@ -48,7 +48,7 @@ Explanation of the multi-service AI inference orchestration implemented in docke
 
 ## Implementation Overview
 
-The docker-compose.inference.yaml implements a multi-service AI inference platform with defense-in-depth security. The orchestration manages five distinct services across CPU and GPU resources, implementing strict isolation boundaries while maintaining controlled inter-service communication.
+The docker-compose.inference.yaml implements a multi-service AI inference platform with defense-in-depth security. The orchestration manages seven distinct services across CPU and GPU resources, implementing strict isolation boundaries while maintaining controlled inter-service communication.
 
 **Key Security Features:**
 - **Service isolation**: Each AI model runs in its own security-hardened container
@@ -60,8 +60,14 @@ The docker-compose.inference.yaml implements a multi-service AI inference platfo
 
 **Service Distribution:**
 - **1 CPU inference container**: llama-cpu (16 threads on cores 0-15, 96GB RAM)
-- **2 GPU inference containers**: llama-gpu and vllm-gpu (RTX 5090 exclusive access)
+- **4 GPU containers**: llama-gpu, llama-gpu-bf16, vllm-gpu, and comfyui (RTX 5090, one
+  consumer at a time)
 - **1 Web interface**: open-webui for secure user interaction
+- **1 Proxy sidecar**: interp-logproxy, in front of llama-gpu for the interp write-back path
+
+**Two of the seven do not start by default.** `llama-gpu-bf16` and `interp-logproxy` sit
+behind `profiles: ["interp"]`, so a bare `make up` brings up five services; the other two need
+the `interp` profile selected.
 
 ## Service Architecture
 
@@ -108,7 +114,7 @@ llama-gpu:
     - NSYS_PROFILE=${NSYS_PROFILE:-false}
     - NSYS_OUTPUT=${NSYS_OUTPUT:-/app/nsys_output/profile}
   volumes:
-    - ./gpu_benchmark_results:/app/nsys_output
+    - /mnt/ai-data/benchmarks/nsys:/app/nsys_output
   deploy:
     resources:
       reservations:
@@ -145,7 +151,7 @@ vllm-gpu:
     - /app/.config:size=100M,mode=1777 # vLLM usage stats
     - /app/.triton:size=2G,mode=1777,exec  # Triton compilation cache
   volumes:
-    - ./logs/vllm:/app/logs
+    - /mnt/ai-data/benchmarks/nsys:/app/nsys_output
 ```
 - **Security profile**: Same hardening as other GPU services
 - **Process manager**: tini (init: true) for proper signal handling
@@ -155,7 +161,6 @@ vllm-gpu:
   - `/app/cache`: 2GB for HuggingFace downloads
   - `/app/.config`: 100MB for vLLM configuration
   - `/app/.triton`: 2GB with exec for Triton JIT compilation
-- **Log isolation**: Separate `./logs/vllm` directory for vLLM logs
 - **Filesystem immutability**: Read-only root filesystem
 
 ### Web Interface Service
@@ -281,22 +286,22 @@ deploy:
 
 ### Network Isolation
 
-**Custom Bridge Network**
+**Declared Network**
 ```yaml
 networks:
   ai-network:
-    driver: bridge
-    internal: false
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
 ```
 
 **Network Security:**
-- **Dedicated subnet**: 172.20.0.0/16 isolates AI services from host network
-- **Bridge driver**: Layer 2 isolation between containers
-- **Internal flag**: Set to false to allow Docker image pulling
-- **IPAM configuration**: Controlled IP address management
+- **No explicit configuration**: the network is declared by name only, so Docker applies its
+  defaults — the `bridge` driver, a Compose-assigned subnet, and `internal: false`. Do not
+  rely on a fixed subnet; nothing in the file pins one
+- **Bridge driver**: Layer 2 isolation between containers, inherited from the default
+- **Not internal**: containers can reach the network for image pulls and outbound requests
+- **Contrast with the sibling stacks**: `docker-compose.agents.yaml:101` *does* pin a subnet
+  (172.31.0.0/16) and declares `internal: true` for its egress-controlled network, and
+  `docker-compose.training.yaml` marks `training-network` `internal: true`. The inference
+  network is deliberately the permissive one
 
 ### Port Security
 
@@ -305,8 +310,11 @@ networks:
 ports:
   - "127.0.0.1:8001:8001"  # llama-cpu
   - "127.0.0.1:8002:8002"  # llama-gpu
+  - "127.0.0.1:8004:8004"  # llama-gpu-bf16   (profile: interp)
   - "127.0.0.1:8003:8003"  # vllm-gpu
   - "127.0.0.1:3000:8080"  # open-webui
+  - "127.0.0.1:8188:8188"  # comfyui
+  - "127.0.0.1:8012:8012"  # interp-logproxy  (profile: interp)
 ```
 
 **Access Control:**
@@ -345,29 +353,21 @@ volumes:
 - **Host protection**: Containers cannot modify host filesystem
 - **Path consistency**: Uniform /app/models path across services
 
-### Log Directory Isolation
+### Logs
 
-**Writable Log Volumes**
-```yaml
-volumes:
-  - ./logs/cpu:/app/logs    # llama-cpu
-  - ./logs/gpu:/app/logs    # llama-gpu
-  - ./logs/vllm:/app/logs   # vllm-gpu
-```
-
-**Log Management:**
-- **Separated directories**: CPU, GPU llama, and vLLM logs isolated
-- **Host persistence**: Logs survive container restarts
-- **Write access**: Limited to specific log directory
-- **Audit trail**: Persistent logging for security monitoring
+No service mounts a host log directory. Container stdout is read with `make logs` (the
+Docker json driver holds it), and the structured observability records the Python tiers
+write go to `/mnt/ai-data/logs`, identity-mounted by the training and interp stacks. Nothing
+in the inference stack writes into the worktree.
 
 **Additional llama-cpu Volumes**
 ```yaml
 volumes:
-  - ./datasets:/app/datasets  # Dataset storage
-  - /sys:/sys:ro              # Read-only sysfs access
+  - ./scripts/benchmark/datasets:/app/datasets:ro  # Wikitext-2 corpus
+  - /sys:/sys:ro                                   # Read-only sysfs access
 ```
-- **Dataset access**: Writable directory for benchmark datasets
+- **Dataset access**: Read-only; `scripts/benchmark/test_perplexity.sh` reads the same
+  directory on the host, so the two cannot diverge
 - **System info**: Read-only access to kernel sysfs for hardware information
 
 ### Temporary Storage
@@ -591,7 +591,7 @@ The docker-compose.inference.yaml implements security through:
 **Integration Points:**
 - **Dockerfiles**: Provide build-time security configuration
 - **Environment variables**: Enable runtime configuration without rebuilds
-- **Volume mounts**: Separate code, models, and logs
+- **Volume mounts**: Separate code and models; nothing writable in the worktree
 - **Network policies**: Control inter-service communication
 - **Health endpoints**: Enable orchestration and monitoring
 
@@ -602,7 +602,3 @@ The docker-compose.inference.yaml implements security through:
 - Resource limits prevent denial of service
 - Network isolation limits lateral movement
 - Non-root execution reduces compromise impact
-
----
-
-*Last Updated: 2026-01-03*

@@ -1,5 +1,7 @@
 # Hardware stress test verification
 
+**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable — both documentation gates exempt this directory by path, so stale references here are not caught for you.**
+
 One-time firmware stability gate for the BIOS undervolt and overclock stack
 documented in
 [bios-optimizations.md](../optimizations/bios/bios-optimizations.md):
@@ -39,7 +41,7 @@ first long training run (phase 2 of the training tier onward).
 ## HS.0 Preconditions and baseline
 
 Implementation: the `status` target in the root `Makefile` and the
-healthchecks in `docker-compose.yaml`.
+healthchecks in `docker-compose.inference.yaml`.
 
 No other GPU consumer may be active for the duration of the phase:
 inference services down, no benchmark in flight.

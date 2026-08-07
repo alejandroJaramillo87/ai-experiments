@@ -29,9 +29,16 @@ CONTAINER_NAME="llama-cpu"
 TEST_NAME="perplexity"
 THREADS=8
 CTX_SIZE=512
-RESULTS_DIR="perplexity_results"
-DATASET_DIR="datasets"
+# Anchored to this script, not to the caller's directory: the same corpus is bind-mounted
+# into the container at /app/datasets, so a CWD-relative path would let host and container
+# disagree about which copy is under test.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DATASET_DIR="$SCRIPT_DIR/datasets"
 WIKITEXT_FILE="$DATASET_DIR/wikitext-2-raw/wiki.test.raw"
+
+# Results are run data, not source; they live beside the other /mnt/ai-data outputs rather
+# than in the worktree. Override for a machine without the data SSD.
+RESULTS_DIR="${BENCH_RESULTS_DIR:-/mnt/ai-data/benchmarks/perplexity}"
 
 # Model path (extracted from container)
 MODEL_PATH=""
@@ -91,12 +98,13 @@ Examples:
   ./scripts/benchmark/test_perplexity.sh -t 4 -n quick-test
 
 Output:
-  Results are saved to perplexity_results/ with the test name prefix:
+  Results are saved to /mnt/ai-data/benchmarks/perplexity/ with the test name prefix:
     {name}_perplexity.txt  - Raw llama-perplexity output
     {name}_summary.txt     - Parsed summary with PPL value
 
 Environment Variables:
-  NO_COLOR    Disable colored output
+  BENCH_RESULTS_DIR    Results directory (default: /mnt/ai-data/benchmarks/perplexity)
+  NO_COLOR             Disable colored output
 EOF
 }
 
@@ -216,19 +224,28 @@ main() {
     fi
     log_info "Model: $MODEL_PATH"
 
-    # Step 4: Verify llama-perplexity exists in container
+    # Step 4: Verify the container is running. Steps 5-7 all use `docker exec`, which fails
+    # identically on a stopped container -- without this check a crash-looping service is
+    # reported as a missing binary or an unmounted volume.
+    if [[ "$(docker inspect --format '{{.State.Status}}' "$CONTAINER_NAME")" != "running" ]]; then
+        log_error "Container '$CONTAINER_NAME' is not running:"
+        docker ps -a --filter "name=^${CONTAINER_NAME}$" --format '  - {{.Names}} ({{.Status}})'
+        die "Start it with 'make up' and check 'make logs-cpu'; a crash loop usually means MODEL_PATH names a file that is not there."
+    fi
+
+    # Step 5: Verify llama-perplexity exists in container
     log_info "Checking for llama-perplexity binary..."
     if ! docker exec "$CONTAINER_NAME" test -x /app/llama-perplexity 2>/dev/null; then
         die "llama-perplexity not found in container. Rebuild container with llama-perplexity included."
     fi
 
-    # Step 5: Verify dataset is accessible in container
+    # Step 6: Verify dataset is accessible in container
     log_info "Checking dataset accessibility in container..."
     if ! docker exec "$CONTAINER_NAME" test -f /app/datasets/wikitext-2-raw/wiki.test.raw 2>/dev/null; then
         die "Dataset not accessible in container at /app/datasets/wikitext-2-raw/wiki.test.raw. Ensure datasets volume is mounted."
     fi
 
-    # Step 6: Run perplexity test
+    # Step 7: Run perplexity test
     OUTPUT_FILE="$RESULTS_DIR/${TEST_NAME}_perplexity.txt"
     SUMMARY_FILE="$RESULTS_DIR/${TEST_NAME}_summary.txt"
 
@@ -257,11 +274,11 @@ main() {
     echo "=============================================="
     echo ""
 
-    # Step 7: Generate summary
+    # Step 8: Generate summary
     log_info "Generating summary..."
     generate_summary "$OUTPUT_FILE" "$SUMMARY_FILE"
 
-    # Step 8: Print results
+    # Step 9: Print results
     log_info "========== TEST COMPLETE =========="
     echo ""
     cat "$SUMMARY_FILE"

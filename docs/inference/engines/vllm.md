@@ -490,7 +490,3 @@ Common issues and solutions:
 - Run benchmarks to validate projected performance numbers
 - Review [parameters/vllm-parameters.md](../parameters/vllm-parameters.md) for tuning
 - Compare with [llama-cpp.md](llama-cpp.md) for deployment decisions
-
----
-
-*Last Updated: 2026-01-03*

@@ -30,8 +30,9 @@ services:
       - /mnt/ai-data/models/:/app/models:ro
       # Control-vector GGUFs (interp Phase 3 W1); read-only like the models mount
       - /mnt/ai-data/interp/vectors:/app/vectors:ro
-      - ./logs/cpu:/app/logs
-      - ./datasets:/app/datasets
+      # Wikitext-2 corpus for scripts/benchmark/test_perplexity.sh, mounted from the
+      # committed copy; the script reads the same directory on the host
+      - ./scripts/benchmark/datasets:/app/datasets:ro
       - /sys:/sys:ro
     networks:
       - ai-network
@@ -85,10 +86,8 @@ services:
       - /mnt/ai-data/models/:/app/models:ro
       # Control-vector GGUFs (interp Phase 3 W1); read-only like the models mount
       - /mnt/ai-data/interp/vectors:/app/vectors:ro
-      # Log storage
-      - ./logs/gpu:/app/logs
       # Nsys profiling output (only used when NSYS_PROFILE=true)
-      - ./gpu_benchmark_results:/app/nsys_output
+      - /mnt/ai-data/benchmarks/nsys:/app/nsys_output
     networks:
       - ai-network
     healthcheck:
@@ -145,7 +144,6 @@ services:
       - /tmp:size=4G,mode=1777  # CUDA cache and temp files
     volumes:
       - /mnt/ai-data/models/:/app/models:ro
-      - ./logs/gpu-bf16:/app/logs
     networks:
       - ai-network
     healthcheck:
@@ -196,10 +194,8 @@ services:
     volumes:
       # Model storage mount
       - /mnt/ai-data/models/:/app/models:ro
-      # Log storage
-      - ./logs/vllm:/app/logs
       # Nsys profiling output (only used when NSYS_PROFILE=true)
-      - ./gpu_benchmark_results:/app/nsys_output
+      - /mnt/ai-data/benchmarks/nsys:/app/nsys_output
     networks:
       - ai-network
     healthcheck:
@@ -287,9 +283,7 @@ services:
       # Model storage mount
       - /mnt/ai-data/models:/app/models:ro
       # Output directory for generated images
-      - ./outputs/comfyui:/app/output
-      # Log storage
-      - ./logs/comfyui:/app/logs
+      - /mnt/ai-data/comfyui/output:/app/output
       # ComfyUI workflows
       - ./workflows:/app/user/default/workflows
     networks:

@@ -1,5 +1,7 @@
 # Interpretability tier verification
 
+**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable — both documentation gates exempt this directory by path, so stale references here are not caught for you.**
+
 I1 workbench, the PS1 Neuronpedia harness, the write-back path (W1 through
 W4), P4-D1 organisms, P4-D2 activation harvesting with garbage collection,
 and P4-D3 SAE training and evaluation. The interp anchor for pretrained
@@ -98,7 +100,7 @@ Status: PENDING
 
 Implementation: `interp/steering/wiring.py`,
 `interp/commands/steer_scorecard.py`, `interp/steering/scorecard.py`,
-`docker-compose.yaml` (the llama-gpu control-vector environment).
+`docker-compose.inference.yaml` (the llama-gpu control-vector environment).
 
 Command:
 
@@ -157,12 +159,12 @@ Status: PENDING
 ## I.6 Request-log proxy (W3)
 
 Implementation: `docker/interp-logproxy/logproxy.py`,
-`docker/interp-logproxy/Dockerfile`, `docker-compose.yaml` (the
+`docker/interp-logproxy/Dockerfile`, `docker-compose.inference.yaml` (the
 `interp-logproxy` service under profile `interp`).
 
 Note: the rust harness provides an in-band successor to the W3/W4 serving-side
 machinery (I.6, I.6b, I.7). Its runtime scores probes inside the forward pass
-(`docs/interpretability/rust-harness-interp.md`, "In-band monitoring"), which
+(`docs/interp/rust-harness-interp.md`, "In-band monitoring"), which
 removes the proxy, the full-precision endpoint, and the log-replay monitor on
 that path by construction. These entries remain valid and required for the
 llama.cpp GPU serving stack, which the rust CPU runtime does not replace; the
@@ -190,7 +192,7 @@ Status: PENDING
 
 ## I.6b Full-precision monitored endpoint
 
-Implementation: `docker-compose.yaml` (the `llama-gpu-bf16` service under
+Implementation: `docker-compose.inference.yaml` (the `llama-gpu-bf16` service under
 profile `interp`), `docker/interp-logproxy/logproxy.py`.
 
 Precondition for the fidelity claim in I.7. The point of `llama-gpu-bf16` is
@@ -221,7 +223,7 @@ forwards to the bf16 endpoint and the record's `target_service` reads
 
 Record the observed tensor type verbatim below. If the served type is f16
 rather than bf16, that is an acceptable outcome, but it must be written down
-here and in `docs/interpretability/writeback.md`, and the endpoint described as
+here and in `docs/interp/writeback.md`, and the endpoint described as
 f16 from then on. Do not record a bf16 result that was not observed.
 
 Observed:
@@ -321,7 +323,7 @@ envelope) with passing implant and locality checks; the null organism
 (`null.yaml`) fails the implant check, proving the harness measures the
 implant; seal writes the blinded public manifest and check-seal re-verifies
 the hash. The hidden-objective organism is deferred
-(docs/interpretability/experiments/2026-07-16-hidden-objective-organism-deferral.md).
+(docs/interp/experiments/2026-07-16-hidden-objective-organism-deferral.md).
 
 Observed:
 

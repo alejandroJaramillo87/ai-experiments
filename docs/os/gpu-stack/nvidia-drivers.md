@@ -234,8 +234,10 @@ sudo dmesg | grep nvidia
 
 2. **Verify Configuration** (after reboots)
    ```bash
-   # Our verification script
-   scripts/verify_gpu_setup.sh
+   # Driver and CUDA runtime visible to the host
+   nvidia-smi
+   # The repository's GPU-dependent test tier
+   uv run pytest -m hw_smoke tests/hardware/
    ```
 
 3. **Monitor Performance**

@@ -79,7 +79,7 @@ Wiring them up is code work against a settled design, not new design.
 **Tool episodes.** Agent tasks are prefill-heavy: most probe-scored
 positions are the model reading externally authored text — task
 descriptions, tool output, file contents — as recorded in the
-[bridge document](../../docs/interpretability/rust-harness-interp.md#in-band-monitoring).
+[bridge document](../interp/rust-harness-interp.md#in-band-monitoring).
 This is where safety-relevant monitoring lives: the question "is the model
 building representation X while ingesting an injected instruction" can only
 be asked while a model is actually ingesting tool output mid-task. A
@@ -142,7 +142,7 @@ Without chat mode the nearest baseline is a Python-tier capture, which
 crosses a provenance boundary and confounds the comparison.
 
 **Isolating the per-layer-embedding confound.** The
-[PLE caveat](../../docs/interpretability/rust-harness-interp.md#what-per-layer-embeddings-change)
+[PLE caveat](../interp/rust-harness-interp.md#what-per-layer-embeddings-change)
 means a probe may score partly on token identity rather than context. The
 confound is easiest to isolate where the token stream is directly
 controlled, which is a chat prompt, not an agent episode assembled from

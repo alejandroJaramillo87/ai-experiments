@@ -19,7 +19,7 @@ selected per workflow.
 |-----------|---------|-------|
 | ComfyUI | v0.27.1 | Native FLUX.2, Wan 2.2, and LTX video nodes |
 | PyTorch | 2.9.1+cu130 | Matches host driver 580.65.06 / CUDA 13.0.88 |
-| Base image | nvidia/cuda:13.0.0-ubuntu24.04 | Built for Blackwell sm_120 |
+| Base image | nvidia/cuda:13.0.0-devel-ubuntu24.04 (builder), nvidia/cuda:13.0.0-runtime-ubuntu24.04 (final) | Multi-stage; built for Blackwell sm_120 |
 
 The service definition lives in `docker-compose.inference.yaml` (`comfyui`); the image build in
 `/docker/comfyui/Dockerfile.comfyui`. The web interface is bound to
@@ -57,7 +57,7 @@ $ make art-mode             # stop GPU LLM services, start ComfyUI
 ```
 
 Open http://localhost:8188 and load a starter template as described in
-`/workflows/README.md`. Generated files land in `/outputs/comfyui`.
+`workflows/README.md`. Generated files land in `/mnt/ai-data/comfyui/output`.
 
 ## GPU exclusivity
 
@@ -88,4 +88,4 @@ $ curl -sf http://localhost:8188/system_stats   # healthcheck endpoint
 
 Then generate one image (FLUX.2 klein template, default settings) and one 4-second
 720p video (LTX-2.3 template) from the web interface, and confirm both files appear
-under `/outputs/comfyui`.
+under `/mnt/ai-data/comfyui/output`.

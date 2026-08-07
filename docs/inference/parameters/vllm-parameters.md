@@ -23,7 +23,7 @@ vllm serve /app/models/example-model-hf \
     --disable-log-stats
 ```
 
-Prefix caching and chunked prefill are default-on in the vLLM V1 engine, so the legacy `--enable-prefix-caching` and `--enable-chunked-prefill` flags are no longer passed. `--trust-remote-code` and `--quantization` are added only when `TRUST_REMOTE_CODE=true` or `QUANTIZATION` is set (both off by default).
+Prefix caching and chunked prefill are default-on in the vLLM V1 engine, so the legacy `--enable-prefix-caching` and `--enable-chunked-prefill` flags are no longer passed. `--trust-remote-code` and `--quantization` are added only when `TRUST_REMOTE_CODE=true` or `QUANTIZATION` is set (both off by default). `--disable-log-stats` is likewise conditional — `entrypoint.sh:94` appends it only when `DISABLE_LOG_STATS=true`, which is the default, so it appears above but disappears if that variable is overridden.
 
 **Service Status**: Active with vLLM 0.25.0 and CUDA 13.0.2
 
@@ -237,7 +237,3 @@ No benchmark has been run to quantify these on this workstation.
 - **Load balancing**: Request distribution strategies
 - **Model variants**: Different models for different workloads
 - **Resource allocation**: Memory vs throughput trade-offs
-
----
-
-*Last Updated: 2026-07-12*

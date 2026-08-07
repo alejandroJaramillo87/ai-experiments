@@ -1,5 +1,8 @@
 # Test coverage investigation: training and interp tiers
 
+**Frozen record — 2026-07-16. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Audit of the sandbox test suite, its coverage of the training and interp packages, dead
 and duplicated code, and readiness for the forward model policy (Gemma 4 primary, Qwen3
 fallback). Findings are current as of 2026-07-16 at commit 8316e5e (PR #48 merge). The

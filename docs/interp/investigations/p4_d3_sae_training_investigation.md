@@ -1,10 +1,13 @@
 # P4-D3: SAE training and evaluation — implementation investigation
 
+**Frozen record — 2026-07-15. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Investigation of what implementing the P4-D3 deliverable (a trained, evaluated sparse
 autoencoder on an own checkpoint, with standardized quality numbers) entails, given the
 current state of this repository. The repository is the source of truth; where the design
 document disagrees with the code, the code wins and the drift is recorded here. Findings
-are current as of 2026-07-15. Model policy: Gemma 4 is the primary family for every
+Model policy: Gemma 4 is the primary family for every
 feature deliverable, with the Qwen3 family as the fallback.
 
 ## Table of contents

@@ -1,5 +1,7 @@
 # Training phase 0 verification
 
+**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable — both documentation gates exempt this directory by path, so stale references here are not caught for you.**
+
 Phase 0 deliverables as implemented: the container (D1, verified in step
 zero), data preparation (D2), tokenizer training (D3), memory fit (D4),
 recipe validation (D5), the reference loop with tolerance-based resume
@@ -8,7 +10,7 @@ staging and prefetch (D9), and passive watchdog observation (D10).
 
 D8 (the benchmark harness) is NOT implemented; it is out of scope for this
 campaign and has no entry here. When it lands it must adopt the shared
-report envelope (`docs/report_schema.md`).
+report envelope (`docs/observability/report_schema.md`).
 
 Every `make` target here follows the same dispatch chain: the `Makefile`
 runs `docker compose -f docker-compose.training.yaml run --rm training

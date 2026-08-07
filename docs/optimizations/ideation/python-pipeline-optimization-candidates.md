@@ -1,5 +1,8 @@
 # Python pipeline optimization candidates
 
+**Parked proposals — recorded 2026-07-30. Items graduate into the training and interp
+tier documentation once measured; this document is edited only as they do.**
+
 A recorded menu of optimizations for the training tier (`training/runtime/`)
 and the interpretability tier (`interp/probes/`, `interp/sae/`,
 `interp/steering/`), for implementation after the training and interp

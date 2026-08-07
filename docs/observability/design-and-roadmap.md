@@ -1,13 +1,18 @@
-# Runtime observability specification and implementation roadmap
+# Runtime observability: design and roadmap
 
-This document specifies a runtime observability system for the training and
-interpretability command-line interfaces (`python -m training`,
-`python -m interp`) and sequences the work into ordered items that are
-implemented one at a time. Each item is self-contained: it states its goal,
-the files it touches, a concrete design, and an acceptance check, so a single
-implementation session (for example `/task docs/observability/roadmap.md
-OBS-4`) can complete one item without depending on the others beyond the
-stated order.
+Why the runtime observability system for the training and interpretability
+command-line interfaces (`python -m training`, `python -m interp`) is shaped
+the way it is, and the ordered ledger of items that built it. Each item is
+self-contained: it states its goal, its status, the files it touches, a
+concrete design, and an acceptance check, so a single implementation session
+(for example `/task docs/observability/design-and-roadmap.md OBS-4`) can
+complete one item without depending on the others beyond the stated order.
+
+**This document does not describe how to use the system.** The record
+schemas, the file layout, the `OBS_` variables, and the operator commands
+live in [README.md](README.md), which graduated out of this document once
+the items that defined them shipped. What remains here is the reasoning and
+the work ledger.
 
 The scope is a single AI workstation (RTX 5090, AMD Ryzen 9950X). The system
 records what each command does, ties every record to one correlation id,
@@ -21,11 +26,6 @@ may run are local, stateless viewers over the files (see
 
 - [Goals and non-goals](#goals-and-non-goals)
 - [Design overview](#design-overview)
-- [Output streams and the json contract](#output-streams-and-the-json-contract)
-- [The event record schema](#the-event-record-schema)
-- [The metrics record schema](#the-metrics-record-schema)
-- [File and directory layout](#file-and-directory-layout)
-- [Configuration](#configuration)
 - [Implementation roadmap](#implementation-roadmap)
 - [Sequencing and dependencies](#sequencing-and-dependencies)
 - [Acceptance and testing conventions](#acceptance-and-testing-conventions)
@@ -129,204 +129,6 @@ choice, not an architecture fork — both serve the same pages from the same
 files, and the always-on decision can be made after living with the
 ephemeral one.
 
-## Output streams and the json contract
-
-The single load-bearing rule of the system:
-
-- **Standard output is reserved for `--json` payloads.** In `--json` mode a
-  command prints only its result object to standard output, so a caller can
-  parse it. Logs and human status never write to standard output.
-- **Standard error carries all human status and logs.** In the default
-  (non-`--json`) mode, human status lines go to standard error. In `--json`
-  mode the human lines are suppressed, but the structured file record is
-  still written.
-- **The file is always written**, in both modes, so `--json` runs retain a
-  durable log even though their console is quiet.
-
-This is a change from current behavior, where `Printer` writes human status
-to standard output. The change is required so that standard output holds only
-machine output. Tests that assert `Printer` output on captured standard
-output move to captured standard error as part of the fold (item OBS-3).
-The interp CLI's only `--json` flag is on the `runs` subcommand (OBS-9);
-elsewhere the contract still holds with standard output simply remaining
-empty.
-
-Human lines carry no timestamps, and the `Printer` rendering — the
-`[STATUS] Subject: detail` format, colors, and indentation defined in
-`.styles/PYTHON_OUTPUT_STYLE.md` — does not change; only the stream does.
-Timestamps live in the file records, where they are useful; the console
-stays visually identical to today.
-
-## The event record schema
-
-Every record in an event file is one JSON object on one line. All records
-carry a common base; each event type adds fields.
-
-Base fields, present on every record:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `ts` | string | ISO 8601 timestamp with timezone offset, millisecond precision |
-| `level` | string | One of `debug`, `info`, `warning`, `error` |
-| `run_id` | string | The correlation id for the run |
-| `cli` | string | `training` or `interp` |
-| `command` | string | The subcommand name, for example `train-sft` |
-| `pid` | integer | Process id |
-| `event` | string | Machine-readable event name |
-| `msg` | string | Human-readable message; may be empty for pure-data events |
-
-Event types and their added fields:
-
-| `event` | Added fields | Level | Emitted by |
-|---------|--------------|-------|------------|
-| `cmd.start` | `argv` | info | Dispatch wrapper (OBS-4) |
-| `cmd.end` | `exit_code`, `duration_s` | info | Dispatch wrapper (OBS-4) |
-| `phase.start` | `phase` | info | Phase timer (OBS-4) |
-| `phase.end` | `phase`, `duration_s` | info | Phase timer (OBS-4) |
-| `fail` | `exc_type`, `exc_msg`, `traceback` (truncated), `exit_code` | error | Failure recorder (OBS-5) |
-| `run.context` | `git_sha`, `python`, `platform`, `packages`, `gpu` (optional) | info | Context capture (OBS-7) |
-| `run.dir` | `path` | info | Run-directory hook (OBS-10) |
-| `open` | `path`, `mode` | debug | Audit hook (OBS-6) |
-| `import` | `module` | debug | Audit hook (OBS-6) |
-| `spawn` | `argv0`, `argv` | debug | Audit hook (OBS-6) |
-
-Application code emits its own named events (for example `dataset_loaded`
-with an `examples` count) through the logging API. Those records carry the
-base fields plus whatever the call passes.
-
-No record type captures environment variables, and record content — argument
-vectors, exception text, tracebacks — is written as passed, with no masking
-or redaction. The schema carries `git_sha` and `recipe_hash` on purpose, so
-any pattern-based filter would corrupt the records the system depends on.
-
-## The metrics record schema
-
-Metrics live in their own per-run file, separate from events, because they
-are a dense per-step series rather than discrete log records. The file is
-JSON Lines, written by a sink inside the existing `Tracker` fan-out
-(`training/runtime/tracking.py`), alongside the tensorboard, wandb, and
-mlflow sinks. The sink writes metric keys exactly as the loops log them —
-no renaming — so the same names appear here and in tensorboard, and the
-sink stays a pass-through.
-
-The first record is a header that conforms to the shared report envelope
-(`common/reports.py`, `report_header`), so `validate_report` accepts it.
-
-Header record (built with `report_header("run_metrics")`, then extended):
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `schema_version` | integer | From `report_header` |
-| `report` | string | `run_metrics` |
-| `timestamp` | string | From `report_header` |
-| `git_sha` | string | From `report_header` |
-| `run_id` | string | The correlation id, from the ambient context |
-| `cli` | string | `training` or `interp` |
-| `command` | string | The subcommand name |
-| `tier` | string | For example `pretrain`, `sft`, `distill` |
-| `model_id` | string | The model identity |
-| `recipe_hash` | string | Hash of the resolved recipe (`snapshot_hash`) |
-| `schedule` | object | Schedule summary, for example WSD phase boundaries |
-
-The ambient identity comes from `current_run_id()`, `current_cli()`, and
-`current_command()` (`common/obs/core.py`), captured when the sink is
-constructed — always on the dispatching thread. Capture at first-write time
-would race the watchdog sampler thread, which has no bound context and can
-log first. A `Tracker` constructed outside a dispatched CLI writes them as
-empty strings, and `validate_report` still accepts the header — the events
-join is simply unavailable there.
-
-Per-step records carry `step`, `ts`, and the metric keys passed to
-`Tracker.log(metrics, step)`. `ts` uses the event-file timestamp format
-(local ISO 8601, millisecond precision, with offset). Every line is strict
-JSON: numpy scalars coerce through a float default, non-finite values
-(a NaN loss is exactly the record a post-mortem reads) serialize as `null`
-rather than the bare `NaN`/`Infinity` literals that `jq` and browser
-`JSON.parse` reject, and a value that cannot serialize at all skips that
-one record with a warning instead of disabling the sink. The watchdog's
-`alerts.jsonl` applies the same non-finite rule to its `value` field. The
-two loop families use different key
-vocabularies; both are written as-is and the dashboard maps both:
-
-| Series | D6 loop key (`training/runtime/loop.py`) | SFT and distill key (`training/tune/sft_callbacks.py`) |
-|--------|------------------------------------------|--------------------------------------------------------|
-| Training loss | `loss` | `train/loss` |
-| Held-out loss | — | `eval/holdout_loss` |
-| Learning rate | `lr` | `train/lr` |
-| Gradient norm | `grad_norm` | `train/grad_norm` |
-| Throughput (tokens/second) | `tokens_per_s` | `train/tokens_per_s` |
-| Step time (seconds) | `step_time_s` | — |
-| Data wait (milliseconds) | `data_wait_ms` | — |
-| Optimizer step time (offload runs) | `optimizer_step_s` | — |
-| Per-source token counts (mixtures) | `tokens_source_<name>` | — |
-| Device memory (GB) | `gpu_mem_allocated_gb` | — |
-| Distillation CE and KL decomposition | — | `train/ce_loss`, `train/kl_loss` (added by OBS-10) |
-
-Interval records arrive from the watchdog sampler thread
-(`training/runtime/watchdog.py`), which already forwards each hardware
-sample to the tracker with the last training step observed: `gpu_temp_c`,
-`gpu_power_w`, `gpu_vram_used_gb`, `gpu_sm_clock_mhz`,
-`gpu_throttle_active`, `ram_available_gb`, and `disk_free_gb`. They appear
-in the file as ordinary records, distinguishable by their keys.
-
-Marker records reuse the same shape:
-
-| Key | Emitted by | Meaning |
-|-----|------------|---------|
-| `checkpoint_saved` | D6 loop save sites (added by OBS-10) | A checkpoint was written at this step |
-| `watchdog/<signal>` | Watchdog `_alert` (already implemented) | A watchdog signal crossed its threshold |
-| `eval/holdout_loss` | SFT callback (already implemented) | An evaluation ran at this step |
-
-## File and directory layout
-
-- Event files: `${OBS_LOG_DIR}/<cli>/<run_id>.jsonl`, where `OBS_LOG_DIR`
-  defaults to `/mnt/ai-data/logs`. One file per run, named by the
-  correlation id.
-- Run catalog: `${OBS_LOG_DIR}/<cli>/runs.jsonl`, one summary line per
-  completed run (OBS-9).
-- Metrics files: `<run_dir>/metrics.jsonl`, co-located with the run
-  directory the training loop already creates
-  (`${run.output_root}/${run.name}/<timestamp>/`, from
-  `training/recipes/loader.py`, `create_run_dir`). The header record
-  carries the `run_id`, which links the metrics file to the event file.
-- Snapshot dashboard: `<run_dir>/run.html`, written by the `report`
-  subcommand (OBS-11).
-- Vendored chart library: `common/obs/vendor/uplot/` holding
-  `uPlot.iife.min.js` and `uPlot.min.css` from uplot 1.6.32, plus a
-  `README.md` recording the version and the npm tarball checksum (sha256
-  `4b8a8191e425658e3ea8c8c1314b0fc679c861ee3a1af2b20c7b16ba50b5133d`).
-- Shared viewer module: `common/obs/viewer.js`, the chart and log-viewer
-  code inlined into the snapshot page and served by the live viewer.
-- Live viewer: `127.0.0.1:8010` by default (OBS-12, OBS-15). Port 8010 is
-  unclaimed by the services table (8001-8003, 3000, 3001, 8012).
-
-The correlation id is the join key across all files. The `run.dir` event
-records the run directory in the event file once the command creates one,
-so the dashboard can locate the metrics file from the event file and the
-reverse.
-
-## Configuration
-
-Configuration is environment variables in the first version; command-line
-flags are a later refinement noted per item. The variables use an `OBS_`
-prefix: the codebase convention is unprefixed names (`HF_TOKEN`,
-`TRAIN_LOCK_PATH`), but generic unprefixed names collide — `LOG_DIR` is
-already read by `docker/interp-logproxy/logproxy.py` — and the prefix
-scopes these four variables to the observability system.
-
-| Variable | Default | Effect |
-|----------|---------|--------|
-| `OBS_LOG_LEVEL` | `info` | Minimum level written to the console and file |
-| `OBS_LOG_DIR` | `/mnt/ai-data/logs` | Root of the event files and catalogs |
-| `OBS_TRACE` | `0` | When `1`, installs the Layer 2 audit hook (OBS-6) |
-| `OBS_RETENTION_DAYS` | `30` | Age past which event files are pruned (OBS-8); `0` disables |
-| `NO_COLOR` | unset | Existing variable; disables color, already honored by `Printer` |
-
-`MLFLOW_TRACKING_URI` is read at `training/runtime/tracking.py:70` as an
-opt-out guard: when unset, the optional mlflow sink logs to a local file
-store under the run directory. That behavior is orthogonal to this system,
-which does not adopt MLflow and stays with local JSON Lines files.
-
 ## Implementation roadmap
 
 The items are grouped into five phases. Implement them in order within a
@@ -335,7 +137,18 @@ interfaces earlier phases define. Every item ends with the mandatory quality
 gate and its own acceptance check (see
 [Acceptance and testing conventions](#acceptance-and-testing-conventions)).
 
-The observability package is `common/obs/`, a new subpackage of the existing
+Every item carries a **Status** field naming the module and the tests that
+implement it, so the state of the campaign is readable from the item rather
+than inferred from the tree. The current state:
+
+| State | Items |
+|-------|-------|
+| Done | OBS-1, OBS-3 through OBS-12, OBS-14 |
+| Retired | OBS-2 |
+| Open | OBS-13 |
+| Not started, optional | OBS-15 |
+
+The observability package is `common/obs/`, a subpackage of the existing
 `common/` package. It grows one module per item. Do not name any module
 `logging.py`, to avoid shadowing the standard library. Unit tests for
 `common/obs/` modules live under `tests/utils/`, where the existing
@@ -349,6 +162,7 @@ has no `tests/common/` directory.
 - **Goal**: a structured logger that writes a human line to standard error
   and a JSON Lines record to a file, both carrying the ambient correlation id
   and command context.
+- **Status**: done. `common/obs/core.py`; tests in `tests/utils/test_obs_core.py`.
 - **Depends on**: nothing.
 - **Scope**: `common/obs/__init__.py`, `common/obs/core.py`,
   `tests/utils/test_obs_core.py`.
@@ -391,10 +205,12 @@ has no `tests/common/` directory.
 
 #### OBS-2: retired
 
+- **Status**: retired. There is no work to execute under this id.
+
 This item is retired with no replacement work. The general redaction filter
 it specified is removed from the design entirely: no record type captures
 environment variables, and no masking is applied to record content (see
-[the event record schema](#the-event-record-schema)). The id is retained so
+[the event record schema](README.md#the-event-record-schema)). The id is retained so
 later item ids stay stable. There is no work to execute under this id.
 
 #### OBS-3: fold Printer into the logger
@@ -402,6 +218,8 @@ later item ids stay stable. There is no work to execute under this id.
 - **Goal**: `Printer` becomes a front-end over the logging core, so status
   calls produce both the human line and a structured record, and human output
   moves from standard output to standard error.
+- **Status**: done. `common/output.py` routes through the logger; tests in
+  `tests/utils/test_common_output.py`.
 - **Depends on**: OBS-1.
 - **Scope**: `common/output.py`; `.styles/PYTHON_OUTPUT_STYLE.md`;
   `tests/utils/test_common_output.py`; `tests/utils/test_check_py_deps.py`;
@@ -446,7 +264,7 @@ later item ids stay stable. There is no work to execute under this id.
   call writes no console output but does write a file record, and a test
   that `--json` mode leaves standard output holding only the JSON payload.
 - **Out of scope**: adding timestamps to console output (rejected — see
-  [Output streams and the json contract](#output-streams-and-the-json-contract));
+  [Output streams](README.md#output-streams));
   adding `--json` to interp commands.
 
 ### Phase B: event capture
@@ -456,6 +274,8 @@ later item ids stay stable. There is no work to execute under this id.
 - **Goal**: every invocation of either CLI generates a `run_id`, a
   `cmd.start` record, and a `cmd.end` record with exit code and duration, and
   exposes a phase timer for coarse in-command spans.
+- **Status**: done. `common/obs/dispatch.py`; tests in
+  `tests/utils/test_obs_dispatch.py` and `tests/training/test_obs_integration.py`.
 - **Depends on**: OBS-1, OBS-3.
 - **Scope**: `common/obs/dispatch.py`, `training/cli.py` (`main`),
   `interp/cli.py` (`main`), `common/obs/core.py` (phase timer),
@@ -503,6 +323,8 @@ later item ids stay stable. There is no work to execute under this id.
 
 - **Goal**: an uncaught exception in a command is recorded as a `fail` event
   with the exception type, message, and a truncated traceback.
+- **Status**: done. Failure recording in `common/obs/dispatch.py`; tests in
+  `tests/utils/test_obs_failure.py` and `tests/training/test_obs_durability.py`.
 - **Depends on**: OBS-4.
 - **Scope**: `common/obs/core.py` (failure recorder),
   `common/obs/dispatch.py` (wiring), `tests/utils/test_obs_failure.py`.
@@ -510,7 +332,7 @@ later item ids stay stable. There is no work to execute under this id.
   - `record_failure(exc, exit_code)` emits a `fail` event with `exc_type`,
     `exc_msg`, a traceback truncated to the last 30 frames, and the exit
     code. Content is recorded as-is; no masking is applied (see
-    [the event record schema](#the-event-record-schema)). Bounds: the frame
+    [the event record schema](README.md#the-event-record-schema)). Bounds: the frame
     limit applies per exception in a chain and a 32 KiB character cap bounds
     the chain itself (tail kept — the frames nearest the raise); `exc_msg`
     caps at 4 KiB; an exception whose own `str()` raises records
@@ -540,6 +362,7 @@ later item ids stay stable. There is no work to execute under this id.
 - **Goal**: when enabled, record every file opened, module imported, and
   subprocess spawned during a command, using a Python audit hook, at debug
   level.
+- **Status**: done. `common/obs/audit.py`; tests in `tests/utils/test_obs_audit.py`.
 - **Depends on**: OBS-4.
 - **Scope**: `common/obs/audit.py`, wiring into `common/obs/dispatch.py`,
   `tests/utils/test_obs_audit.py`.
@@ -579,6 +402,7 @@ later item ids stay stable. There is no work to execute under this id.
 
 - **Goal**: each run records the environment it ran in, so a failure is
   diagnosable and reproducible.
+- **Status**: done. `common/obs/context.py`; tests in `tests/utils/test_obs_context.py`.
 - **Depends on**: OBS-4.
 - **Scope**: `common/obs/context.py`, wiring into `common/obs/dispatch.py`,
   `tests/utils/test_obs_context.py`.
@@ -592,7 +416,7 @@ later item ids stay stable. There is no work to execute under this id.
     GPU name and driver information is included when a query succeeds and
     omitted when it does not, so the function never fails on a machine
     without a GPU. Environment variables are never captured (see
-    [the event record schema](#the-event-record-schema)).
+    [the event record schema](README.md#the-event-record-schema)).
   - The dispatch wrapper emits the context as a `run.context` record
     immediately after `cmd.start`.
 - **Acceptance check** (sandbox):
@@ -610,6 +434,8 @@ later item ids stay stable. There is no work to execute under this id.
 - **Goal**: bound the disk that event files consume. The catalog
   (`runs.jsonl`) is exempt by design: one summary line per invocation is
   the retention system's own index and grows slowly.
+- **Status**: done. `common/obs/retention.py`; tests in
+  `tests/utils/test_obs_retention.py`.
 - **Depends on**: OBS-1.
 - **Scope**: `common/obs/retention.py`, wiring into `configure`,
   `tests/utils/test_obs_retention.py`.
@@ -646,6 +472,8 @@ later item ids stay stable. There is no work to execute under this id.
 
 - **Goal**: make runs discoverable, so a past run is found by id, time, or
   outcome without reading individual files.
+- **Status**: done. `common/obs/catalog.py`, `training/commands/runs.py`,
+  `interp/commands/runs.py`; tests in `tests/utils/test_obs_catalog.py`.
 - **Depends on**: OBS-4.
 - **Scope**: `common/obs/catalog.py`, `training/commands/runs.py`,
   `interp/commands/runs.py`, registration in `training/cli.py` and
@@ -687,6 +515,8 @@ later item ids stay stable. There is no work to execute under this id.
 - **Goal**: every training run writes a per-run `metrics.jsonl` conforming to
   the metrics schema, emitted by a JSON Lines sink inside the existing
   tracker fan-out, with no changes to how the loops compute or log metrics.
+- **Status**: done. The sink in `training/runtime/tracking.py`; tests in
+  `tests/training/test_obs_metrics.py`.
 - **Depends on**: OBS-1, OBS-4.
 - **Scope**: `training/runtime/tracking.py` (the sink, plus a `header`
   parameter on `Tracker`), `training/recipes/schema.py` (`TrackingConfig`
@@ -769,6 +599,8 @@ later item ids stay stable. There is no work to execute under this id.
 
 - **Goal**: a `report` subcommand renders a run's metrics and logs into one
   self-contained HTML file with no external dependencies.
+- **Status**: done. `common/obs/dashboard.py`, `common/obs/viewer.js`,
+  `training/commands/report.py`; tests in `tests/training/test_report.py`.
 - **Depends on**: OBS-10.
 - **Scope**: `training/commands/report.py` and its registration in
   `training/cli.py`, `common/obs/dashboard.py` (the page builder),
@@ -787,7 +619,7 @@ later item ids stay stable. There is no work to execute under this id.
     counted, with one warning per file.
   - The chart layer is uplot 1.6.32, vendored at `common/obs/vendor/uplot/`
     with its version and tarball checksum recorded (see
-    [File and directory layout](#file-and-directory-layout)) and verified
+    [Where the files are](README.md#where-the-files-are)) and verified
     at vendoring time; the vendor `README.md` carries the version, source
     URL, sha256, and update procedure. uPlot is canvas-based, 51KB
     minified, MIT-licensed, and built for dense time series, which matches
@@ -835,6 +667,9 @@ later item ids stay stable. There is no work to execute under this id.
 - **Goal**: view a running job's dashboard as it progresses — charts
   extending and logs tailing — in any browser, from an ephemeral local
   server that follows the stateless viewer principle.
+- **Status**: done. `common/obs/serve.py` behind `report --serve`; tests in
+  `tests/utils/test_obs_serve.py`, plus the browser check in
+  `scripts/verify/obs_browser/`.
 - **Depends on**: OBS-11.
 - **Scope**: `training/commands/report.py` (`--serve`, `--host`, `--port`
   flags), `common/obs/serve.py`, `common/obs/viewer.js` (follow mode),
@@ -898,6 +733,8 @@ later item ids stay stable. There is no work to execute under this id.
 - **Goal**: one grand dashboard — a long-lived, always-available page
   indexing every run across both CLIs, with links into per-run live and
   snapshot views.
+- **Status**: not started, and optional by design. Implement only if living with
+  OBS-12 shows the ephemeral viewer is insufficient.
 - **Depends on**: OBS-9, OBS-11, OBS-12.
 - **Scope**: `common/obs/serve.py` (index mode), a compose service
   definition, a `make` target, documentation.
@@ -928,6 +765,7 @@ later item ids stay stable. There is no work to execute under this id.
 - **Goal**: document how to answer "which function or file called which" with
   off-the-shelf profilers — the function-level layer of the tracing story
   (see [What tracing means in this system](#what-tracing-means-in-this-system)).
+- **Status**: open. `docs/observability/debugging-runs.md` is not written.
 - **Depends on**: nothing; it can be written at any time.
 - **Scope**: `docs/observability/debugging-runs.md`.
 - **Design**: document, with exact commands, the on-demand tools: `viztracer`
@@ -944,13 +782,15 @@ later item ids stay stable. There is no work to execute under this id.
 
 - **Goal**: a reference that explains, to an operator, how to read logs, find
   runs, and open a dashboard.
+- **Status**: done. [README.md](README.md), the operator reference; the
+  specification sections it needed graduated out of this document at the same time.
 - **Depends on**: the items whose behavior it documents.
 - **Scope**: `docs/observability/README.md`.
 - **Design**: document the file layout, the `OBS_` environment variables, the
   event and metrics schemas, the `runs` and `report`
   subcommands including `--serve`, and example `jq` queries over the event
   files and the catalog. Cross-reference this roadmap and
-  `docs/report_schema.md`.
+  `docs/observability/report_schema.md`.
 - **Acceptance check** (sandbox): the doc conforms to
   `.styles/DOCUMENTATION_STYLE.md` and every command in it is runnable as
   written.

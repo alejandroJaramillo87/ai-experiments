@@ -2,7 +2,8 @@
 
 Batch-generates teacher responses and synthetic instruction data through the
 inference services (Phase 1 F4), producing messages-format JSONL datasets that
-later training consumes. Runs as its own phase: inference up, training idle.
+later training consumes. Runs as its own phase: inference up, training idle. Design
+record: [the F4 investigation](investigations/f4_teacher_synthetic_data_investigation.md).
 
 ## Table of contents
 

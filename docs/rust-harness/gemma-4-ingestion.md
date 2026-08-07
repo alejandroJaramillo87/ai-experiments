@@ -41,7 +41,7 @@ Configuration and tensor facts derive from the safetensors headers of the local 
 
 ## The GGUF contract
 
-`Config::from_gguf` (`/rust-harness/runtime/src/model/cpu.rs:83-96`) requires eleven
+`Config::from_gguf` (`/rust-harness/runtime/src/model/cpu.rs:56`) requires eleven
 architecture keys, all prefixed with the value of `general.architecture`, which must begin with
 `gemma`. Every one is mandatory: a missing key or a wrong value type fails the load.
 
@@ -62,13 +62,13 @@ architecture keys, all prefixed with the value of `general.architecture`, which 
 Two further keys are read outside `Config`: `general.architecture`, and
 `tokenizer.ggml.tokens`, whose length supplies `vocab_size` (there is no `vocab_size` key).
 
-`Config` derives `Copy` (`cpu.rs:39-53`). Every field is a scalar, so the type is structurally
+`Config` derives `Copy` (`cpu.rs:39`). Every field is a scalar, so the type is structurally
 incapable of holding a per-layer vector. This is the single constraint that most shapes the
 rest of this document: every place Gemma 4 varies a quantity per layer, the runtime must either
 express it as a uniform value or refuse the checkpoint.
 
 `attention.value_length` is never read. The forward pass computes
-`kv_dim = n_kv_heads * head_dim` and uses it for both keys and values (`cpu.rs:682-683`), which
+`kv_dim = n_kv_heads * head_dim` and uses it for both keys and values (`cpu.rs:819`), which
 assumes the key and value head dimensions are equal. That assumption holds for Gemma 4 — the
 published files set `value_length` equal to `key_length` — but the code does not check it.
 
@@ -91,8 +91,8 @@ Note that uint32 arrays are still refused even though uint32 scalars are accepte
 
 ### Tensor names the forward pass consumes
 
-Thirteen per-layer tensors (`cpu.rs:156-169`), two top-level (`:172-175`), and one tolerated as
-inert (`:177-180`):
+Thirteen per-layer tensors (`LAYER_TENSORS`, `cpu.rs:201`), two top-level
+(`TOP_LEVEL_TENSORS`, `:220`), and one tolerated as inert (`INERT_TENSORS`, `:225`):
 
 ```
 blk.{L}.attn_norm.weight        blk.{L}.ffn_norm.weight
@@ -154,7 +154,7 @@ for layers 15 through 34. A loader that reads this key as a scalar works on E4B 
 E2B.
 
 **`attention.sliding_window_pattern` is a period, re-encoded.** The runtime interprets the key
-as a stride (`Config::layer_kind`, `cpu.rs:142-149`), while the converter writes a bool array of
+as a stride (`Config::layer_kind`, `cpu.rs:188`), while the converter writes a bool array of
 length `block_count`, with `true` marking a sliding layer and `false` a full-attention layer.
 The encodings differ; the schedules do not. Every shipped array is periodic, and its period is
 exactly the stride the runtime wants:
@@ -203,20 +203,20 @@ three file-level tensors keep the substring, which is what makes the guard fire 
 
 ## What the backend refuses
 
-`check_supported` (`cpu.rs:206-330`) diagnoses unimplemented features by name before falling
+`check_supported` (`cpu.rs:251`) diagnoses unimplemented features by name before falling
 back to a generic report. The design is deliberate: loading is name-directed, so an
 unimplemented feature would otherwise present as ignored tensors and plausible, wrong logits.
 Each refusal below is correct behavior, not a defect.
 
 | Feature | Trigger on a Gemma 4 file | Site |
 |---------|---------------------------|------|
-| Per-layer input embeddings | Any tensor name containing `per_layer` — matches `per_layer_token_embd`, `per_layer_model_proj`, `per_layer_proj_norm` | `cpu.rs:209-217` |
-| Shared KV cache | A layer with `attn_q` but no `attn_k`/`attn_v` | `cpu.rs:219-230` |
-| Per-layer feed-forward width | Any `ffn_up` last dimension differing from `feed_forward_length` — fires on E2B's 12288 layers | `cpu.rs:232-252` |
-| Dual or scaled RoPE | Any `{arch}.rope.*` key other than `freq_base` and `dimension_count` — fires on `rope.freq_base_swa` and `rope.dimension_count_swa` | `cpu.rs:254-280` |
-| Partial rotary | `rope.dimension_count` unequal to `head_dim` | `cpu.rs:265-273` |
-| Logit or attention softcapping | Any `{arch}.*softcapping*` key — fires on `final_logit_softcapping` | `cpu.rs:282-300` |
-| Anything else unconsumed | Tensor families outside the consumed lists | `cpu.rs:302-328` |
+| Per-layer input embeddings | Any tensor name containing `per_layer` — matches `per_layer_token_embd`, `per_layer_model_proj`, `per_layer_proj_norm` | `cpu.rs:256` |
+| Shared KV cache | A layer with `attn_q` but no `attn_k`/`attn_v` | `cpu.rs:268` |
+| Per-layer feed-forward width | Any `ffn_up` last dimension differing from `feed_forward_length` — fires on E2B's 12288 layers | `cpu.rs:283` |
+| Dual or scaled RoPE | Any `{arch}.rope.*` key other than `freq_base` and `dimension_count` — fires on `rope.freq_base_swa` and `rope.dimension_count_swa` | `cpu.rs:320` |
+| Partial rotary | `rope.dimension_count` unequal to `head_dim` | `cpu.rs:312` |
+| Logit or attention softcapping | Any `{arch}.*softcapping*` key — fires on `final_logit_softcapping` | `cpu.rs:338` |
+| Anything else unconsumed | Tensor families outside the consumed lists | `cpu.rs:366` |
 
 The generic backstop catches two Gemma 4 tensor families that no named check covers:
 `blk.{L}.post_norm.weight` (the fifth normalization, on the per-layer embedding path) and
@@ -248,7 +248,7 @@ every projection for every layer, so it does not fire. The metadata refusal list
 softcapping, `attention.scale`, and `logit_scale`, so this key passes through silently. A cache
 allocator would give all 35 or 42 layers independent storage — correct output, more memory than
 the architecture requires. The allowlist-versus-denylist tradeoff is recorded at
-`cpu.rs:285-287`: naming refused keys avoids refusing every descriptive key a converter adds
+`cpu.rs:330-332`: naming refused keys avoids refusing every descriptive key a converter adds
 later, at the cost of gaps like this one.
 
 **`gemma4.embedding_length_per_layer_input`** is present and set to 256. It is likewise not in
@@ -258,8 +258,9 @@ the refused set. In practice the per-layer tensor check fires first.
 
 A positive result, and the one Gemma 4 feature the existing `Config` shape handles without
 change. The runtime derives the attention schedule arithmetically as
-`(i + 1) % sliding_window_pattern == 0 => Global` (`cpu.rs:142-149`,
-`/rust-harness/runtime/src/kv.rs:46-58`). Checked against the published `layer_types` arrays:
+`(i + 1) % sliding_window_pattern == 0 => Global` (`Config::layer_kind`, `cpu.rs:188`;
+`kv::interleaved_layers`, `/rust-harness/runtime/src/kv.rs:47`). Checked against the published
+`layer_types` arrays:
 
 | Model | Layers | Full-attention indices | Period | Rule reproduces the array |
 |-------|--------|------------------------|--------|---------------------------|
@@ -353,7 +354,7 @@ Recorded negative result: **no MTP, altup, or laurel tensors exist in either saf
 checkpoint**, despite the separate `mtp-*.gguf` files.
 
 The per-finding record of these blockers lives in
-`/docs/verification/gemma-4-conformance.md` under the `GC-` and `GH.` identifiers.
+`/docs/verification/investigations/gemma-4-conformance_investigation.md` under the `GC-` and `GH.` identifiers.
 
 ## Resolved from upstream source
 

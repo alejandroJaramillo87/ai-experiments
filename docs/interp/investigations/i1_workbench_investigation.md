@@ -1,5 +1,8 @@
 # Interpretability I1 workbench: implementation investigation
 
+**Frozen record — 2026-07-14. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Investigation of what implementing the interpretability Phase 0 infrastructure deliverable,
 I1 (workbench image and compose integration), entails in this repository. The planning document's design is taken as intent; where it conflicts with the
 repository, the repository is the source of truth and the deviations are recorded here.

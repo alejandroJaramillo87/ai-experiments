@@ -290,5 +290,3 @@ All optimizations prioritize **inference latency** over throughput. These settin
 ---
 
 *This hardware optimization guide minimizes inference latency on the AMD Ryzen 9950X + RTX 5090 AI engineering workstation. Validated Zen 5 optimizations including Curve Optimizer (-15), Curve Shaper, and FCLK 2100 MHz achieved 26.2% performance improvement in testing. Settings prioritize stability and consistency for interactive chatbot applications.*
-
-*Last Updated: 2025-09-23*

@@ -1,5 +1,8 @@
 # Interpretability PS4 autointerp through local serving: implementation investigation
 
+**Frozen record — 2026-07-14. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Investigation and repository-side implementation of interp Phase 2 deliverable PS4
 (autointerp through local serving). The planning document's design is taken as intent;
 the repository is the source of truth. PS4 is tagged orchestrate and depends on PS1

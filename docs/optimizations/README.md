@@ -11,6 +11,7 @@ System optimizations for LLM inference on AMD Ryzen 9950X + RTX 5090: latency-fo
   - [Files](#files)
     - [bios/](#bios)
     - [os/](#os)
+    - [Parked proposals](#parked-proposals)
   - [Implementation Status](#implementation-status)
   - [Quick Verification](#quick-verification)
   - [Container Integration](#container-integration)
@@ -52,9 +53,9 @@ System optimizations are organized by component:
 
 - **bios/** - BIOS firmware settings and benchmark results
 - **os/** - Operating system and memory optimizations
-- **python-pipeline-optimization-candidates.md** - Deferred optimization menu
-  for the training and interp Python pipelines (post-verification; sibling of
-  `docs/optimizations/ideation/rust-harness-optimization-candidates.md`)
+- **ideation/** - Parked proposals: recorded menus of optimization work that is
+  not scheduled. Items graduate into the documents above once measured. See
+  [Parked proposals](#parked-proposals) below.
 
 ## Files
 
@@ -68,12 +69,25 @@ System optimizations are organized by component:
 
 ### os/
 - **os-optimizations.md** - Host operating system optimizations for containerized workloads
-- **os-optimization-candidates.md** - Deferred menu of host-level OS and GPU
-  candidates (July 2026 review; verification pending)
   - Swap disabled
   - CPU governor (performance mode)
   - Memory locking configuration
   - CPU pinning via Docker cpuset
+
+### Parked proposals
+
+Recorded menus under `ideation/`. Nothing in them is scheduled or implemented; each item
+requires host-side verification with before/after numbers before it graduates into the
+documents above.
+
+- **[ideation/os-optimization-candidates.md](ideation/os-optimization-candidates.md)** -
+  Host-level OS and GPU candidates (2026-07-30); graduate into `os/os-optimizations.md`
+- **[ideation/python-pipeline-optimization-candidates.md](ideation/python-pipeline-optimization-candidates.md)** -
+  Training and interp Python pipeline candidates (2026-07-30)
+- **[ideation/rust-harness-optimization-candidates.md](ideation/rust-harness-optimization-candidates.md)** -
+  x86 CPU backend candidates (2026-07-30); blocked on runbook entry RH.1
+- **[ideation/future-inference-optimizations.md](ideation/future-inference-optimizations.md)** -
+  Parked custom CUDA and C++ findings (2026-07-27); gating conditions not met
 
 ## Implementation Status
 
@@ -176,7 +190,3 @@ Validated improvements with optimizations enabled:
 - os/os-optimizations.md - Operating system tuning
 - docker-compose.inference.yaml - Container orchestration
 - docker/llama-cpu/Dockerfile.cpu - Latency-optimized CPU container
-
----
-
-*Last Updated: 2026-01-03*

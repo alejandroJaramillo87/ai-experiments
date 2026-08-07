@@ -12,8 +12,9 @@ which matches a per-step training series of 10,000 or more points.
 | Tarball sha256 | `4b8a8191e425658e3ea8c8c1314b0fc679c861ee3a1af2b20c7b16ba50b5133d` |
 | Files taken | `package/dist/uPlot.iife.min.js`, `package/dist/uPlot.min.css` |
 
-The checksum above is also recorded in `docs/observability/roadmap.md`
-(file and directory layout section); the two must match.
+The checksum above is the sole record of this pin. It was previously
+duplicated in the observability specification; that copy is gone, so verify
+against this table and nothing else.
 
 ## Update procedure
 

@@ -1,5 +1,7 @@
 # Training phase 2 verification
 
+**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable — both documentation gates exempt this directory by path, so stale references here are not caught for you.**
+
 P2-D1 through P2-D5 as implemented: the full-scale data pipeline with
 decontamination, data mixing, WSD schedules, the replay buffer, and
 ZeRO-Offload optimizer offload.

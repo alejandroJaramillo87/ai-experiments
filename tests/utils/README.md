@@ -25,6 +25,6 @@ style-guide status vocabulary, and section headers.
   `check_py_deps_install.py` reports host GPU state; the contract under test is the
   output format, not the host's health.
 - Python human status writes to stderr (`common/output.py` per
-  `docs/observability/roadmap.md` OBS-3), so tests capture status lines from stderr
+  `docs/observability/design-and-roadmap.md` OBS-3), so tests capture status lines from stderr
   and reserve stdout assertions for `--json` payloads. Bash scripts keep their
   stdout output; `test_bash_output_contract.py` is unaffected.

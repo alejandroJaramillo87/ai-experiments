@@ -1,5 +1,8 @@
 # Future inference optimizations
 
+**Parked proposals — recorded 2026-07-27. Nothing here is scheduled; this document is
+edited only as its gating conditions are met or an item graduates out.**
+
 Parked findings from a survey of where custom CUDA or C++ work would help the training and
 interpretability tiers. Nothing here is scheduled. Every item is gated behind the conditions in
 [Gating conditions](#gating-conditions), and the gates are not met at the time of writing.
@@ -37,7 +40,7 @@ No work described here begins before all three hold:
 1. The PENDING acceptance checks in `docs/verification/interp.md` have been executed and
    recorded. At the time of writing every check in that document is PENDING, along with 12 in
    `docs/verification/training-phase1.md` and seven in `docs/verification/training-phase2.md`.
-2. A measured baseline exists. `docs/interpretability/platform.md` currently records no
+2. A measured baseline exists. `docs/interp/platform.md` currently records no
    timings and no VRAM figures. Harvest tokens per second is already a manifest field
    (`interp/harvest.py:418-420`) and costs nothing to collect.
 3. A named capability the current stack cannot deliver has been identified, with the
@@ -63,7 +66,7 @@ form, and even then the first attempt belongs in Triton rather than CUDA C++.
 
 ## The activation read path
 
-`docs/interpretability/writeback.md` states that llama-server has no activation read path. That
+`docs/interp/writeback.md` states that llama-server has no activation read path. That
 is true of llama-server, but the underlying capability exists and the blocker is narrower than
 the sentence implies.
 

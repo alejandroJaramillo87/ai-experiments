@@ -1,7 +1,11 @@
 # OS optimization candidates
 
+**Parked proposals — recorded 2026-07-30. Items graduate into
+[../os/os-optimizations.md](../os/os-optimizations.md) once measured; this document is
+edited only as they do.**
+
 A recorded menu of host-level OS and GPU optimization candidates for the
-AMD Ryzen 9950X + RTX 5090 workstation, current as of July 2026. Nothing in
+AMD Ryzen 9950X + RTX 5090 workstation. Nothing in
 this document is implemented. Every item requires host-side verification run
 by the human, with before/after numbers recorded per the repository
 benchmarking protocol; candidates graduate into

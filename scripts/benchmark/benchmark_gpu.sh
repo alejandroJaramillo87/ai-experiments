@@ -28,7 +28,12 @@ CONTAINER_NAME="llama-gpu"
 BENCHMARK_NAME="gpu-benchmark"
 PROFILE_LEVEL="basic"
 N_PROMPTS=20
-RESULTS_DIR="gpu_benchmark_results"
+# Results are run data, not source; they live beside the other /mnt/ai-data outputs rather
+# than in the worktree. Override for a machine without the data SSD.
+RESULTS_DIR="${BENCH_RESULTS_DIR:-/mnt/ai-data/benchmarks/gpu}"
+# Written by nsys inside the container, so this is the host side of the /app/nsys_output
+# bind mount in docker-compose.inference.yaml, not a path this script creates.
+NSYS_DIR="/mnt/ai-data/benchmarks/nsys"
 
 # Benchmark parameters (matching CPU benchmark)
 N_PARALLEL=1
@@ -98,7 +103,10 @@ Examples:
   ./scripts/benchmark/benchmark_gpu.sh -c vllm-gpu -n vllm-test
 
 Output:
-  Results are saved to gpu_benchmark_results/ with the benchmark name prefix.
+  Results are saved to /mnt/ai-data/benchmarks/gpu/ with the benchmark name prefix.
+
+Environment Variables:
+  BENCH_RESULTS_DIR    Results directory (default: /mnt/ai-data/benchmarks/gpu)
 EOF
 }
 
@@ -286,9 +294,9 @@ generate_summary() {
                 echo "  Stop container to finalize report: docker compose -f docker-compose.inference.yaml stop llama-gpu"
                 echo ""
                 echo "  After stopping, view report with:"
-                echo "    nsys-ui $RESULTS_DIR/<NSYS_OUTPUT>.nsys-rep"
+                echo "    nsys-ui $NSYS_DIR/<NSYS_OUTPUT>.nsys-rep"
                 echo "  Or generate text stats:"
-                echo "    nsys stats $RESULTS_DIR/<NSYS_OUTPUT>.nsys-rep"
+                echo "    nsys stats $NSYS_DIR/<NSYS_OUTPUT>.nsys-rep"
                 ;;
         esac
 
@@ -427,7 +435,7 @@ main() {
     fi
     if [[ "$PROFILE_LEVEL" == "deep" ]]; then
         echo ""
-        echo "Nsight report will be at: $RESULTS_DIR/<NSYS_OUTPUT>.nsys-rep"
+        echo "Nsight report will be at: $NSYS_DIR/<NSYS_OUTPUT>.nsys-rep"
         echo "  (Stop container to finalize: docker compose -f docker-compose.inference.yaml stop llama-gpu)"
     fi
     echo ""

@@ -64,7 +64,7 @@ $ make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/honesty-v1 ATTRIBUTE="
 form. The scorecard drives three arms (unsteered, tuned system prompt, steered at scales
 0.5/1/2), scores behavior and fluency with an LLM judge on a different service, and always
 restores the unsteered state, including on failure. Output follows the benchmark JSON
-conventions and is published to `docs/interpretability/experiments/` whichever arm wins.
+conventions and is published to `docs/interp/experiments/` whichever arm wins.
 
 ## W2: probe toolkit
 

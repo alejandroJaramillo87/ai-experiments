@@ -1,5 +1,8 @@
 # F7: Fine-tuning evaluation wrapper — implementation investigation
 
+**Frozen record — 2026-07-15. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Investigation of what implementing F7 (fine-tuning evaluation wrapper) entails,
 reconciling the scope document against the current state of the repository. Per the
 operating rules, the repository is the source of truth; every point where the scope

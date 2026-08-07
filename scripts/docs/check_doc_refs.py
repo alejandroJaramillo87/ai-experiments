@@ -103,10 +103,14 @@ KNOWN_ABSENT = {
     # about one location; every crate in the workspace has its own.
     (".styles/RUST_STYLE.md", "src/bin/"),
     # Asserts the absence: "the repository has no tests/common/ directory".
-    ("docs/observability/roadmap.md", "tests/common/"),
-    # Roadmap scope lines: the deliverable *is* writing this document.
-    ("docs/observability/roadmap.md", "docs/observability/README.md"),
-    ("docs/observability/roadmap.md", "docs/observability/debugging-runs.md"),
+    ("docs/observability/design-and-roadmap.md", "tests/common/"),
+    # Roadmap scope line: the deliverable *is* writing this document. OBS-14's
+    # entry was deleted when docs/observability/README.md was written; OBS-13
+    # keeps its exemption until debugging-runs.md exists.
+    (
+        "docs/observability/design-and-roadmap.md",
+        "docs/observability/debugging-runs.md",
+    ),
     # A hypothetical malicious plugin, used to describe what the sandbox blocks.
     ("docs/sandbox/agent-sandbox.md", ".opencode/plugin/evil.ts"),
     ("docs/agents/tooling-parity.md", ".opencode/plugin/evil.ts"),

@@ -3,7 +3,8 @@
 Every JSON report the repository emits — evaluation scorecards, verification
 reports, monitor snapshots, serve-eval results — carries one header
 convention so tooling can discover, version, and attribute reports without
-per-emitter knowledge. The convention (documented in docs/report_schema.md):
+per-emitter knowledge. The convention (documented in
+docs/observability/report_schema.md):
 
 - schema_version: int >= 1, bumped on any breaking payload change
 - a type discriminator: exactly one non-empty string among "report",

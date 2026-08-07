@@ -327,7 +327,3 @@ Network Performance Features:
 3. **Lane Preservation**: Avoid expansion cards that would reduce GPU to x8 configuration impacting AI performance
 4. **BIOS Configuration**: Enable Resizable BAR and Above 4G Decoding for optimal GPU memory access
 5. **Performance Validation**: Test GPU performance under AI workloads to confirm optimal PCIe utilization
-
----
-
-*Last Updated: 2025-09-23*

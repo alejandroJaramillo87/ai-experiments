@@ -95,17 +95,23 @@ enforced). The eight steps:
 `docker-compose.agents.yaml`, so `make up` never starts it. The `training` service applies the
 inference stack's hardening (`no-new-privileges`, `cap_drop: ALL`, `read_only: true`,
 non-root `user`), reserves one NVIDIA GPU, sets `shm_size: 16g` for dataloader workers, and
-mounts a tmpfs `/tmp` with the `exec` flag that the Triton and CUDA JIT caches require.
+mounts a tmpfs `/tmp` with the `exec` flag that the Triton and CUDA JIT caches require. Two
+further tmpfs mounts back it: `/app/cache` at 2G, deliberately small because this service
+never resolves a hub id — if it fills, something is reaching the hub that should not be —
+and `/staging`, sized by `TRAIN_STAGING_GB` (default 32G) to match `staging.max_gb` for the
+D9 RAM-disk shard staging.
 
 Volumes:
 
 | Mount | Mode | Purpose |
 |-------|------|---------|
 | `/mnt/ai-data/models/` | read-only | Base model weights, as the inference services mount them |
+| `/mnt/ai-data/models/trained` | read-write | Narrow window for exported GGUFs (D7); the rest of `/app/models` stays read-only via the mount above |
 | `/mnt/ai-data/training` | read-write | Datasets, shards, checkpoints, and run outputs |
 | `/mnt/ai-data/logs` | read-write | Structured observability records, identity-mounted |
 | `./scripts` | read-only | Training scripts and recipes, mounted live for iteration |
-| `./logs/training` | read-write | Container logs |
+| `./training` | read-only | The training package itself, mounted live for iteration |
+| `./common` | read-only | Shared helpers imported by `training/cli.py` at module scope |
 
 ## Network split: one door to the hub
 
@@ -186,7 +192,3 @@ Training and inference must not run at the same time: one GPU consumer at a time
 - `docker-compose.training.yaml` — separate-file service definition with GPU reservation and the
   writable training root.
 - `pyproject.toml` — the `training` dependency group and the `flash-attn` build dependency.
-
----
-
-*Last Updated: 2026-07-14*

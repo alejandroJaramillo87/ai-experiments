@@ -1,5 +1,8 @@
 # F4 teacher and synthetic data harness: implementation investigation
 
+**Frozen record — 2026-07-14. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Comparison of the Phase 1 F4 design (roadmap document, "F4: Teacher and synthetic
 data harness") against the current repository state, with a work breakdown,
 acceptance checks, deviations, and open questions. Per operating rules, the

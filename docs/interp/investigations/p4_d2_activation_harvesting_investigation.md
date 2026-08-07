@@ -1,10 +1,13 @@
 # P4-D2: Activation harvesting — implementation investigation
 
+**Frozen record — 2026-07-15. Drift against the current repository is expected and
+correct; this document is never updated.**
+
 Investigation of what implementing the P4-D2 deliverable (cached residual-stream
 activations on NVMe, wrapping the SAELens v6 activation-caching runner under the repo
 manifest and batch-job conventions) entails, given the current state of this repository.
 The repository is the source of truth; where the design document disagrees with the code,
-the code wins and the drift is recorded here. Findings are current as of 2026-07-15.
+the code wins and the drift is recorded here.
 
 ## Table of contents
 
