@@ -2,27 +2,16 @@
 
 .PHONY: agent-export agent-parity agent-preflight agent-role-tests agent-run agent-sandbox
 .PHONY: agent-sandbox-build agent-sandbox-clean agent-skeptic-test agent-usage
-.PHONY: agent-versions command-sync worktree-clean worktree-ls
+.PHONY: agent-sync agent-versions command-sync worktree-clean worktree-ls
 
-agent-parity: ## Diff shared agent bodies and report forked commands across the two tool dirs
+# Agents are generated, commands are symlinked, and this target checks both are
+# in sync. It used to diff the two agent dirs after the fact, which found
+# divergence but did nothing to prevent it; now the OpenCode side is derived, so
+# the only question left is whether it was regenerated. Same shape as
+# `uv lock --check`.
+agent-parity: ## Check generated agents are current and report forked commands across the two tool dirs
 	@fail=0; \
-	for f in .claude/agents/*.md; do \
-	  name=$$(basename "$$f"); \
-	  other=".opencode/agents/$$name"; \
-	  if [ ! -f "$$other" ]; then \
-	    printf '[WARN] %s: no OpenCode counterpart\n' "$$name"; continue; \
-	  fi; \
-	  a=$$(mktemp); b=$$(mktemp); \
-	  awk 'NR==1&&/^---$$/{f=1;next} f==1&&/^---$$/{f=2;next} f!=1' "$$f" > "$$a"; \
-	  awk 'NR==1&&/^---$$/{f=1;next} f==1&&/^---$$/{f=2;next} f!=1' "$$other" > "$$b"; \
-	  if diff -q "$$a" "$$b" >/dev/null; then \
-	    printf '[OK] %s: bodies match\n' "$$name"; \
-	  else \
-	    printf '[ERROR] %s: bodies differ across the two agent dirs\n' "$$name"; \
-	    fail=1; \
-	  fi; \
-	  rm -f "$$a" "$$b"; \
-	done; \
+	$(RUN_PY) python scripts/agents/gen_opencode_agents.py --check || fail=1; \
 	for c in .opencode/commands/*.md; do \
 	  [ -e "$$c" ] || continue; \
 	  name=$$(basename "$$c"); \
@@ -37,6 +26,9 @@ agent-parity: ## Diff shared agent bodies and report forked commands across the 
 	  fi; \
 	done; \
 	exit $$fail
+
+agent-sync: ## Regenerate .opencode/agents from .claude/agents (the single source)
+	@$(RUN_PY) python scripts/agents/gen_opencode_agents.py
 
 command-sync: ## (Re)create per-file symlinks from .claude/commands into .opencode/commands
 	@mkdir -p .opencode/commands; \
@@ -257,6 +249,25 @@ AGENTS_PROJECT := ai-agents
 # In-session changes (/effort, /model) intentionally last one session only.
 CLAUDE_THEME ?= dark
 CLAUDE_MODEL ?= claude-opus-5[1m]
+
+# The banner names the reachable domains because a denied one gives the session
+# nothing to read: squid cannot put a permission message inside a CONNECT tunnel,
+# so the symptom is a transport error such as `Socket is closed`. Stating the list
+# up front turns a turn spent diagnosing a network fault into a decision the
+# session can make before it tries.
+#
+# Derived from squid.conf rather than restated, because it is the third list of
+# these domains (with .claude/settings.json and opencode.json) and a fourth copy
+# would be a fourth thing to drift. Editing the allowlist stays a one-file edit.
+#
+# Recursive (=) rather than simple (:=) on purpose: the path is relative to the
+# repository root, and this file is also included by makefiles running elsewhere
+# (tests/agents/test_worktree_make.py drives `make -C <tmpdir>`). A simple
+# assignment would run the sed at parse time in every one of those, printing a
+# spurious "can't read" to stderr. Deferred, it runs only in the one recipe that
+# uses it, which always runs from the root.
+PROXY_ALLOWLIST = $(shell sed -n 's/^acl allowed_domains dstdomain //p' \
+                    docker/agents/proxy/squid.conf | tr '\n' ' ')
 CLAUDE_MODEL_OPTIONS := [{\"value\":\"claude-fable-5[1m]\",\"label\":\"Fable\",\"description\":\"Fable 5 - account-gated tier above Opus\"},{\"value\":\"claude-opus-5\",\"label\":\"Opus\",\"description\":\"Opus 5 - flagship tier\"}]
 
 agent-sandbox: ## Contained agent session: AGENT=claude|opencode NAME=<task> [PROMPT="..."] [EFFORT=low] [CLAUDE_MODEL=...] [MODEL=<flag override>]
@@ -288,7 +299,7 @@ agent-sandbox: ## Contained agent session: AGENT=claude|opencode NAME=<task> [PR
 	    seed="printf '{\"theme\":\"$(CLAUDE_THEME)\",\"hasCompletedOnboarding\":true,\"unpinFable5LaunchEffort\":true,\"additionalModelOptionsCache\":$(CLAUDE_MODEL_OPTIONS)}' > ~/.claude.json; \
 	      mkdir -p ~/.claude; \
 	      printf '{\"model\":\"$(CLAUDE_MODEL)\",\"effortLevel\":\"$(EFFORT)\",\"theme\":\"$(CLAUDE_THEME)\"}' > ~/.claude/settings.json; \
-	      printf '# SANDBOX - read this first\nYou are in the contained agent sandbox (make agent-sandbox), not on the host.\nAvailable here: the git worktree at /work (read-write), the pinned CLIs, and network egress only to an allowlist via the proxy.\nNot available: the host, its Docker daemon, the GPU, nvidia-smi, /mnt/ai-data, and the running inference services (ports 8001-8003 and 3000).\nDo not run docker or docker compose, make up/status/logs, nvidia-smi, healthcheck curls, or the benchmark scripts; none can work from here.\nFor any host-side command, print the exact command, stop, and wait for the human to run it and report the output. Never fabricate output.\n' > ~/.claude/CLAUDE.md"; \
+	      printf '# SANDBOX - read this first\nYou are in the contained agent sandbox (make agent-sandbox), not on the host.\nAvailable here: the git worktree at /work (read-write), the pinned CLIs, and network egress only to an allowlist via the proxy.\nThe allowlist is exactly: $(PROXY_ALLOWLIST)(a leading dot covers all subdomains). Anything else fails as a transport error such as `Socket is closed`, not as a permission message, so check this list before treating a failed fetch as a network fault.\nNot available: the host, its Docker daemon, the GPU, nvidia-smi, /mnt/ai-data, and the running inference services (ports 8001-8003 and 3000).\nDo not run docker or docker compose, make up/status/logs, nvidia-smi, healthcheck curls, or the benchmark scripts; none can work from here.\nFor any host-side command, print the exact command, stop, and wait for the human to run it and report the output. Never fabricate output.\n' > ~/.claude/CLAUDE.md"; \
 	    model=""; if [ -n "$(MODEL)" ]; then model=" --model \"$(MODEL)\""; fi; \
 	    if [ -n "$(PROMPT)" ]; then cmd="$$seed; claude -p \"$(PROMPT)\" --effort $(EFFORT)$$model"; else cmd="$$seed; claude$$model"; fi; \
 	    printf '[RUN] contained Claude Code session (worktree %s)\n' "$$dir"; \
@@ -306,10 +317,14 @@ agent-sandbox: ## Contained agent session: AGENT=claude|opencode NAME=<task> [PR
 	  *) printf '[ERROR] AGENT must be claude or opencode (got: %s)\n' "$(AGENT)"; exit 1 ;; \
 	esac
 
-agent-sandbox-build: ## Rebuild the agent sandbox image (required after editing docker/agents/Dockerfile.agents or rust-harness/Cargo.lock)
-	@echo "$(CYAN)Building agent sandbox image...$(RESET)"
-	docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) build agent
-	@echo "$(GREEN)Agent sandbox image built.$(RESET)"
+# Both services, not just `agent`. The proxy was omitted here, so an edited
+# squid.conf took effect only if someone happened to build agent-proxy by hand --
+# and the failure was silent, since a stale allowlist looks exactly like a wrong
+# entry. The proxy image is small and rarely changes, so rebuilding it is cheap.
+agent-sandbox-build: ## Rebuild the agent sandbox images (required after editing docker/agents/Dockerfile.agents, docker/agents/proxy/*, uv.lock, or rust-harness/Cargo.lock)
+	@echo "$(CYAN)Building agent sandbox images...$(RESET)"
+	AGENT_WORKTREE=$(CURDIR) docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) build agent agent-proxy
+	@echo "$(GREEN)Agent sandbox images built.$(RESET)"
 
 # The agent-sandbox docker footprint is shared across every worktree: one proxy
 # container (agent-proxy) plus the agent-internal/agent-egress networks and two
@@ -319,11 +334,11 @@ agent-sandbox-build: ## Rebuild the agent sandbox image (required after editing 
 # stack (docker-compose.inference.yaml), unlike the global `make clean`/`make prune`.
 agent-sandbox-clean: ## Tear down shared agent-sandbox docker resources (proxy + networks); inference stack untouched
 	@printf '[RUN] Removing agent-sandbox proxy and networks (project %s)\n' "$(AGENTS_PROJECT)"
-	-docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) down --remove-orphans
+	-AGENT_WORKTREE=$(CURDIR) docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) down --remove-orphans
 	@for net in $$(docker network ls --format '{{.Name}}' | grep -E '_agent-(internal|egress)$$'); do \
 	  docker network rm "$$net" >/dev/null 2>&1 && printf '[OK] removed leftover network: %s\n' "$$net" || true; \
 	done
-	@printf '[OK] agent-sandbox torn down; built images remain (drop them with: docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) down --rmi local)\n'
+	@printf '[OK] agent-sandbox torn down; built images remain (drop them with: AGENT_WORKTREE=. docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) down --rmi local)\n'
 
 SESSIONS_DIR ?= logs/sessions
 

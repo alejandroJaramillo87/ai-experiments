@@ -9,17 +9,19 @@
  *
  *   - On the workstation, PATH usually leads to a pyenv shim carrying none of
  *     the project's dependencies, while the project environment sits in .venv.
- *   - In a contained agent sandbox the reverse holds: /work/.venv arrives over
- *     a bind mount from the workstation and points at a host interpreter that
- *     does not exist in the container, while the image's own python3 is
- *     provisioned with the sandbox dependency group.
+ *   - In a contained agent sandbox the reverse holds: docker-compose.agents.yaml
+ *     masks /work/.venv with an empty tmpfs, so the workstation's environment is
+ *     not reachable at all, while /opt/pyenv — built from uv.lock with the
+ *     sandbox and dev groups — is first on PATH.
  *
  * Preferring either location unconditionally fixes one environment and breaks
  * the other, so resolution probes candidates instead of assuming:
  *
  *   1. $HARNESS_PYTHON — explicit override, for a caller that knows better.
- *   2. <repo_root>/.venv/bin/python3 — the project environment.
- *   3. python3 on PATH — the sandbox image, and the historical behavior.
+ *   2. <repo_root>/.venv/bin/python3 — the workstation's project environment;
+ *      masked to an empty directory in a sandbox, so the probe falls through.
+ *   3. python3 on PATH — /opt/pyenv in a sandbox, where it is the correct
+ *      answer rather than a fallback.
  *
  * The first candidate that both executes and imports every required module
  * wins; one that cannot is passed over rather than reported. That is what lets

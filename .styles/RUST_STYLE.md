@@ -298,9 +298,9 @@ by `rust-toolchain.toml`, a prefetched crate registry, and the numpy and gguf th
 cross-language tests need. Rebuild it with `make agent-sandbox-build` after changing
 `docker/agents/Dockerfile.agents` or `Cargo.lock`. A sandbox result is therefore real evidence,
 not a placeholder — but read the output for `[SKIP]` lines rather than trusting the exit code,
-and note that Tier 3 tests still require the workstation. See
-`/docs/testing/quality-gate.md` for how the gate differs between the sandbox and the
-workstation, and `/AGENTS.md` for the execution-environment rules.
+and note that Tier 3 tests still require the workstation. The parent gate is likewise one
+command in both environments; see `/docs/testing/quality-gate.md` for its step list and the
+single step a sandbox skips, and `/AGENTS.md` for the execution-environment rules.
 
 The workspace carries a `rust-toolchain.toml`. It is not an exception to the
 no-configuration-files rule below: it pins a version rather than restating a `rustfmt` default,

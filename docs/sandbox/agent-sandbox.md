@@ -108,29 +108,45 @@ the sandbox `opencode.json`'s `autoupdate: false` pair to freeze the pinned vers
 image — the image is the unit of currency, bumped by rebuild. On the host, by contrast, leave
 updates on: given the CVE history, running stale is the larger risk.
 
+The proxy is pinned on the same principle, and more strictly, because it is the component that
+enforces the allowlist: `docker/agents/proxy/Dockerfile.proxy` fixes both the Debian base
+(`bookworm-20250203-slim`) and `squid` itself to an exact package version. That pin comes from
+`bookworm-security`, which supersedes rather than accumulates, so a later security release
+removes the pinned one from the archive and the build fails by name — the intended prompt to
+read the advisory and bump.
+
 `make agent-versions` compares each Dockerfile pin against the npm registry and reports which
-pins are behind. It never edits the Dockerfile: bump one pin at a time and re-run the
-acceptance checks, per the repository operating rules.
+pins are behind. It also checks that `.opencode/package.json` pins `@opencode-ai/plugin` to the
+same version as `OPENCODE_VERSION`: that package publishes in lockstep with the CLI and the
+plugins under `.opencode/plugin/` are typed against the runtime that loads them, so bumping one
+without the other is the drift worth catching. The script never edits anything: bump one pin at
+a time and re-run the acceptance checks, per the repository operating rules.
 
 ### Python toolchain
 
 The image carries `uv 0.11.28` (from `ghcr.io/astral-sh/uv`, matching the workstation), a
-managed CPython `3.12.11` satisfying `pyproject.toml`'s `requires-python`, and the exact
-lint pins from the dev dependency group: `ruff 0.15.21`, `mypy 2.3.0` with
-`types-pyyaml 6.0.12.20250915`, plus `shellcheck` from Debian. An agent can therefore
-syntax-check and lint its own edits instead of routing every Python change through the
-workstation for its first check.
+managed CPython `3.12.11` satisfying `pyproject.toml`'s `requires-python`, and an environment
+at `/opt/pyenv` built by `uv sync --frozen --only-group dev --only-group sandbox` against
+`uv.lock`. The dev group supplies `ruff`, `mypy` with `types-pyyaml`, `pytest`, and
+`shellcheck` (the `shellcheck-py` wheel, not an apt copy); the sandbox group supplies the
+GPU-less test extent. Because the versions are resolved from the lockfile rather than
+transcribed, they are the workstation's by construction. An agent can therefore lint and test
+its own edits instead of routing every Python change through the workstation for its first
+check.
 
 The runtime rootfs is read-only and the home directory is a 256MB tmpfs, so the uv paths are
 fixed at build time: interpreters and tool environments under `/opt/uv`, executables in
 `/usr/local/bin`, and the cache in `/tmp`. A cache written to the default `$HOME` location
 would not survive the tmpfs.
 
-**This does not replace `make quality`.** Four of its five Python steps run here — both ruff
-steps, mypy, and shellcheck — but `uv lock --check` and `make test` reach the pytorch cu130
-index, which the allowlist does not carry, and an unsynced `.venv` resolves different versions
-than the lockfile pins. Treat a clean sandbox run as fast feedback, not as the gate; the
-workstation gate stays mandatory before every push.
+`make quality` and `make test` are therefore the same commands here as on the workstation:
+`make/quality.mk` branches on `AI_SANDBOX`, which this image sets, and drops the
+`uv run --no-sync` prefix so every tool comes from `/opt/pyenv`. The compose file masks the
+worktree's `.venv` with a tmpfs, so the workstation's environment can be neither read nor
+written from inside. One gate step stays out of reach: `uv lock --check` resolves against the
+pytorch cu130 index, which the allowlist does not carry, and the recipe prints an explicit
+`[SKIP]` line for it. Read that line rather than the exit code; the workstation gate covers it
+before every push.
 
 ### Rust toolchain
 
@@ -177,7 +193,8 @@ legitimately needs: the Anthropic API and the Claude subscription-auth endpoints
 `docs.runpod.io`), the code host (`github.com` and its asset domains), and the package
 registries (npm, PyPI). It also carries the reference sources a session needs to avoid guessing:
 Hugging Face (`huggingface.co`) for model configurations, tokenizers, and safetensors headers;
-`crates.io` for Rust dependency metadata; and `ai.google.dev` for Google model documentation.
+`crates.io` and `docs.rs` for Rust dependency metadata and its rendered documentation; and
+`ai.google.dev` for Google model documentation.
 HTTPS is allowlisted by CONNECT host without TLS interception, so no private certificate
 authority is installed. The list grows only with a recorded reason.
 
@@ -197,17 +214,17 @@ identifies itself as `Server: squid/5.7`.
 The redirect target is regional (`us.aws.cdn.hf.co`), which is why the entry is the dotted form
 rather than an exact host.
 
-**A change to `squid.conf` takes effect only after the proxy image is rebuilt.**
-`make agent-sandbox` runs `docker compose run` with no `--build`, so an edited allowlist that
-appears to have no effect indicates a stale image rather than a wrong entry:
-
-```bash
-$ docker compose -f docker-compose.agents.yaml -p ai-agents build agent-proxy
-```
+**A change to `squid.conf` takes effect only after the proxy image is rebuilt**, which
+`make agent-sandbox-build` does — it builds both `agent` and `agent-proxy`. `make agent-sandbox`
+itself runs `docker compose run` with no `--build`, so an edited allowlist that appears to have
+no effect means the build step was skipped.
 
 The symptom of a domain that the allowlist does not carry is a transport error such as
-`Socket is closed`, not a permission message. When a fetch fails that way, check the allowlist
-before assuming a network fault, and confirm with
+`Socket is closed`, not a permission message: squid cannot place an explanation inside a CONNECT
+tunnel it refused to open. That is unfixable at the proxy, so the list is instead stated up front
+in the sandbox banner — `make/agents.mk` derives it from this file with `sed` and seeds it into
+`~/.claude/CLAUDE.md`, so a session knows the boundary before it tries to cross it. When a fetch
+still fails that way, confirm with
 `docker exec agent-proxy cat /var/log/squid/access.log`.
 
 ### Credentials and the never-mount list
@@ -267,7 +284,7 @@ launch: `~/.claude.json` (onboarding flag, theme, model options cache, and
 `unpinFable5LaunchEffort` — without it the CLI pins a Fable session's launch effort to
 its recommended value and silently overrides the seeded `effortLevel`);
 `~/.claude/settings.json` (persistent defaults — `model` from `CLAUDE_MODEL`, default
-`claude-fable-5[1m]`; `effortLevel` from `EFFORT`, default `low`; and `theme` from
+`claude-opus-5[1m]`; `effortLevel` from `EFFORT`, default `low`; and `theme` from
 `CLAUDE_THEME`, default `dark`); and `~/.claude/CLAUDE.md` (a sandbox banner loaded as
 user-scope memory, stating up front that the session is contained — no host, GPU, Docker
 daemon, `/mnt/ai-data`, or running services — so the agent does not spend a turn
@@ -324,8 +341,8 @@ Best-effort layer on top of containment, encoded in both tools (see
   `WebFetch` allow list with a broad `WebFetch` set to `ask`; denies for the host-only tools
   (`docker`, `nvidia-smi`, `make up|down|status|logs|shell-*`) so that a command which cannot
   work from a contained session fails as policy rather than obscurely; and allows for the
-  pinned repo-local tools invoked directly (`ruff`, `mypy`, `shellcheck`, `pytest`, `cargo`)
-  rather than through `uv run --no-sync`. The `WebFetch` domain list is kept in agreement with
+  pinned repo-local tools (`ruff`, `mypy`, `shellcheck`, `pytest`, `cargo`), which the gate
+  invokes without the `uv run --no-sync` prefix here. The `WebFetch` domain list is kept in agreement with
   `docker/agents/proxy/squid.conf`: a domain permitted in one and absent from the other
   produces a confusing transport error instead of a clear refusal.
 - OpenCode server: set `OPENCODE_SERVER_PASSWORD` even for localhost use, and never pass
@@ -360,6 +377,13 @@ read. The `extern` path is covered by `tests/agents/preflight_fixture/`, which p
 - Permission-gap status: has upstream Linux sandboxing for OpenCode landed? If so, evaluate
   whether it changes the containment requirement.
 - Plugin pin bumps: review and update any vendored or referenced plugin versions.
+- Allowlist drift: diff the three lists of permitted domains — `squid.conf`,
+  `.claude/settings.json`, and `opencode.json`. They serve different purposes (squid enforces,
+  the other two are convenience filters), so they need not be identical, but a domain permitted
+  by a tool and absent from squid produces a transport error rather than a refusal. There is no
+  automated check by design: three lists reviewed quarterly does not justify one.
+- Proxy pins: confirm `squid` and the Debian base tag in `docker/agents/proxy/Dockerfile.proxy`
+  are still the intended versions. The proxy is the sole arbiter of egress.
 - Key rotation: rotate the RunPod scoped keys and the Anthropic key; confirm the account-wide
   RunPod key still exists nowhere on disk.
 - Re-run `make agent-preflight PREFLIGHT_DIR=tests/agents/preflight_fixture` and confirm it

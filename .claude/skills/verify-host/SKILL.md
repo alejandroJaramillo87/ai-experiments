@@ -83,9 +83,10 @@ When a result contradicts the expectation, report the contradiction before expla
 
 ## Reading a green result correctly
 
-- **Python suite:** roughly 4 skips is a full run; roughly 40 means the environment is
-  torch-free and the torch-gated tests never executed. Check the skip count before treating
-  green as a pass. Provision with `make worktree-<name> TIER=full` for training or GPU work.
+- **Python suite:** `tests/conftest.py` prints a `[TIER] sandbox:` or `[TIER] full:` line
+  beside the pytest summary. `[TIER] sandbox:` means the environment is torch-free and the
+  torch-gated tests never executed. Read that line and the skip count before treating green as
+  a pass. Provision with `make worktree-<name> TIER=full` for training or GPU work.
 - **Rust gate:** `[SKIP]` lines in the cross-language contract tests mean a dependency or the
   parent tree was absent. The exit code is still 0. Read the output.
 - **`make quality`:** the rust gate needs a `python3` on `PATH` that can import numpy and gguf.

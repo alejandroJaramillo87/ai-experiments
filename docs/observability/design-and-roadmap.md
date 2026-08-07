@@ -843,9 +843,9 @@ minting its own run id.
 
 - Every item ends by running `make quality` and its own acceptance check.
   `make quality` runs the ruff format check, ruff lint, mypy, the uv lockfile
-  check, and shellcheck. The lockfile step fails in the sandbox by the
-  documented caveat (the pytorch index is unreachable); the other four steps
-  must pass before any push.
+  check, the documentation checks, and shellcheck. In a sandbox the lockfile
+  step announces itself as skipped (the pytorch index is unreachable there);
+  every other step runs, and all of them must pass before any push.
 - Sandbox-runnable acceptance checks are unit tests that need no GPU, no
   Docker, and no running service. Most items above are sandbox-runnable in
   full.

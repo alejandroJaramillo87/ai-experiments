@@ -187,9 +187,10 @@ Creating a worktree provisions its `.venv` automatically. `TIER` selects how muc
 | `full` | `uv sync --frozen --all-groups --all-extras` | The full test suite, training, and GPU work. Matches `make install`. |
 
 The `sandbox` tier runs `make quality` and the non-GPU `make test` suite without a manual
-sync. It does not install torch, so the torch-gated tests **skip rather than fail** — a
-suite that reports roughly 40 skips instead of 4 is running on a `sandbox` tier venv, not
-passing a full run. Check the skip count before treating a green suite as a full result.
+sync. It does not install torch, so the torch-gated tests **skip rather than fail**.
+`tests/conftest.py` reports which happened beside the pytest summary: `[TIER] sandbox:`
+means torch was absent and the run is partial, `[TIER] full:` means the whole suite was in
+scope. Read that line, and the skip count, before treating a green suite as a full result.
 
 The `full` tier compiles CUDA extensions (`flash-attn` builds from an sdist against the
 cu130 torch pin), so expect several GB of disk and a long build. `MAX_JOBS` and
@@ -200,10 +201,11 @@ Provisioning itself is best-effort: if it cannot resolve (a stale `uv.lock`, no 
 or `uv` absent), the target prints a `[WARN]` with the manual `make install` command and
 worktree creation still succeeds.
 
-Do not repair a worktree environment with a bare `uv sync`. That command installs the
-default groups only, which **uninstalls** `omegaconf`, `hydra-core`, and `gguf` and breaks
-collection of every `tests/training` module. Use `make install`, or name the groups
-explicitly.
+A bare `uv sync` repairs a worktree environment safely: `[tool.uv] default-groups` in
+`pyproject.toml` names `dev`, `sandbox`, `interp`, and `training`, so the reflexive command
+adds what is missing instead of removing the tiers it was not told about. It installs torch
+into a `sandbox` tier worktree, which is the one cost; `make install` is the fuller form,
+adding the `quant` extra.
 
 Removal accepts the bare name, the `task/<name>` branch, a worktree path, `NAME=<name>`,
 or the suffix form `make worktree-clean-<name>` — all resolve to the same worktree. A bare
