@@ -1,5 +1,5 @@
 GGUF header transcript
-Generated: 2026-08-05T02:16:37Z
+Generated: 2026-08-07T17:05:56Z
 Host: Rico
 Checks: runtime/src/gguf.rs array element types, runtime/src/tensor.rs
         tensor types, tokenizer markers for harness/src/template.rs
@@ -22,8 +22,8 @@ gemma4.attention.key_length_swa [uint32] = 256
 gemma4.attention.layer_norm_rms_epsilon [float32] = 9.999999974752427e-07
 gemma4.attention.shared_kv_layers [uint32] = 20
 gemma4.attention.sliding_window [uint32] = 512
-gemma4.attention.sliding_window_pattern [array of bool, n=35]   <-- REFUSED by gguf.rs
-    [True, True, True, True, False, True, True, True, True, False, True, True, True, True, False, True, True, True, True, False, True, True, True, True, ... (+11 more)]
+gemma4.attention.sliding_window_pattern [array of bool, n=35]
+    [True, True, True, True, False, True, True, True, True, False, True, True, True, True, False, True, True, True, True, False, True, True, True, True, False, True, True, True, True, False, True, True, True, True, False]
 gemma4.attention.value_length [uint32] = 512
 gemma4.attention.value_length_swa [uint32] = 256
 gemma4.block_count [uint32] = 35
@@ -31,7 +31,7 @@ gemma4.context_length [uint32] = 131072
 gemma4.embedding_length [uint32] = 1536
 gemma4.embedding_length_per_layer_input [uint32] = 256
 gemma4.feed_forward_length [array of int32, n=35]
-    [6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, ... (+11 more)]
+    [6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288, 12288]
 gemma4.final_logit_softcapping [float32] = 30.0
 gemma4.rope.dimension_count [uint32] = 512
 gemma4.rope.dimension_count_swa [uint32] = 256
@@ -59,11 +59,10 @@ general.type [string] = 'model'
 
 element type 5 (int32): 2 keys -- accepted
 element type 6 (float32): 1 keys -- accepted
-element type 7 (bool): 1 keys -- REFUSED by gguf.rs:113-117
+element type 7 (bool): 1 keys -- accepted
 element type 8 (string): 3 keys -- accepted
 
-keys rust-harness will refuse:
-  gemma4.attention.sliding_window_pattern (element type 7 = bool)
+no array key uses a refused element type
 
 === tokenizer metadata ===
 
@@ -598,7 +597,7 @@ matching entries: 113
 === tensor inventory ===
 
 ggml tensor types present:
-  BF16 (type 30): 318 tensors -- REFUSED by tensor.rs:143
+  BF16 (type 30): 318 tensors -- loadable
   F32 (type 0): 283 tensors -- loadable
 
 inventory, layer indices collapsed:
@@ -1309,7 +1308,7 @@ tokenizer.ggml.tokens absent
 
 ggml tensor types present:
   F32 (type 0): 1164 tensors -- loadable
-  BF16 (type 30): 247 tensors -- REFUSED by tensor.rs:143
+  BF16 (type 30): 247 tensors -- loadable
 
 inventory, layer indices collapsed:
      16  v.blk.{L}.ln1.weight [768] F32
@@ -2859,7 +2858,7 @@ gemma4-assistant.attention.key_length_swa [uint32] = 256
 gemma4-assistant.attention.layer_norm_rms_epsilon [float32] = 9.999999974752427e-07
 gemma4-assistant.attention.shared_kv_layers [uint32] = 4
 gemma4-assistant.attention.sliding_window [uint32] = 512
-gemma4-assistant.attention.sliding_window_pattern [array of bool, n=4]   <-- REFUSED by gguf.rs
+gemma4-assistant.attention.sliding_window_pattern [array of bool, n=4]
     [True, True, True, False]
 gemma4-assistant.attention.value_length [uint32] = 512
 gemma4-assistant.attention.value_length_swa [uint32] = 256
@@ -2892,11 +2891,10 @@ general.type [string] = 'model'
 
 element type 5 (int32): 1 keys -- accepted
 element type 6 (float32): 1 keys -- accepted
-element type 7 (bool): 1 keys -- REFUSED by gguf.rs:113-117
+element type 7 (bool): 1 keys -- accepted
 element type 8 (string): 3 keys -- accepted
 
-keys rust-harness will refuse:
-  gemma4-assistant.attention.sliding_window_pattern (element type 7 = bool)
+no array key uses a refused element type
 
 === tokenizer metadata ===
 
@@ -3043,7 +3041,7 @@ matching entries: 113
 
 ggml tensor types present:
   F32 (type 0): 26 tensors -- loadable
-  BF16 (type 30): 23 tensors -- REFUSED by tensor.rs:143
+  BF16 (type 30): 23 tensors -- loadable
 
 inventory, layer indices collapsed:
       4  blk.{L}.attn_norm.weight [256] F32
@@ -3136,8 +3134,8 @@ gemma4.attention.key_length_swa [uint32] = 256
 gemma4.attention.layer_norm_rms_epsilon [float32] = 9.999999974752427e-07
 gemma4.attention.shared_kv_layers [uint32] = 18
 gemma4.attention.sliding_window [uint32] = 512
-gemma4.attention.sliding_window_pattern [array of bool, n=42]   <-- REFUSED by gguf.rs
-    [True, True, True, True, True, False, True, True, True, True, True, False, True, True, True, True, True, False, True, True, True, True, True, False, ... (+18 more)]
+gemma4.attention.sliding_window_pattern [array of bool, n=42]
+    [True, True, True, True, True, False, True, True, True, True, True, False, True, True, True, True, True, False, True, True, True, True, True, False, True, True, True, True, True, False, True, True, True, True, True, False, True, True, True, True, True, False]
 gemma4.attention.value_length [uint32] = 512
 gemma4.attention.value_length_swa [uint32] = 256
 gemma4.block_count [uint32] = 42
@@ -3172,11 +3170,10 @@ general.type [string] = 'model'
 
 element type 5 (int32): 1 keys -- accepted
 element type 6 (float32): 1 keys -- accepted
-element type 7 (bool): 1 keys -- REFUSED by gguf.rs:113-117
+element type 7 (bool): 1 keys -- accepted
 element type 8 (string): 3 keys -- accepted
 
-keys rust-harness will refuse:
-  gemma4.attention.sliding_window_pattern (element type 7 = bool)
+no array key uses a refused element type
 
 === tokenizer metadata ===
 
@@ -3711,7 +3708,7 @@ matching entries: 113
 === tensor inventory ===
 
 ggml tensor types present:
-  BF16 (type 30): 381 tensors -- REFUSED by tensor.rs:143
+  BF16 (type 30): 381 tensors -- loadable
   F32 (type 0): 339 tensors -- loadable
 
 inventory, layer indices collapsed:
@@ -4538,7 +4535,7 @@ tokenizer.ggml.tokens absent
 
 ggml tensor types present:
   F32 (type 0): 1164 tensors -- loadable
-  BF16 (type 30): 247 tensors -- REFUSED by tensor.rs:143
+  BF16 (type 30): 247 tensors -- loadable
 
 inventory, layer indices collapsed:
      16  v.blk.{L}.ln1.weight [768] F32
@@ -6088,7 +6085,7 @@ gemma4-assistant.attention.key_length_swa [uint32] = 256
 gemma4-assistant.attention.layer_norm_rms_epsilon [float32] = 9.999999974752427e-07
 gemma4-assistant.attention.shared_kv_layers [uint32] = 4
 gemma4-assistant.attention.sliding_window [uint32] = 512
-gemma4-assistant.attention.sliding_window_pattern [array of bool, n=4]   <-- REFUSED by gguf.rs
+gemma4-assistant.attention.sliding_window_pattern [array of bool, n=4]
     [True, True, True, False]
 gemma4-assistant.attention.value_length [uint32] = 512
 gemma4-assistant.attention.value_length_swa [uint32] = 256
@@ -6121,11 +6118,10 @@ general.type [string] = 'model'
 
 element type 5 (int32): 1 keys -- accepted
 element type 6 (float32): 1 keys -- accepted
-element type 7 (bool): 1 keys -- REFUSED by gguf.rs:113-117
+element type 7 (bool): 1 keys -- accepted
 element type 8 (string): 3 keys -- accepted
 
-keys rust-harness will refuse:
-  gemma4-assistant.attention.sliding_window_pattern (element type 7 = bool)
+no array key uses a refused element type
 
 === tokenizer metadata ===
 
@@ -6272,7 +6268,7 @@ matching entries: 113
 
 ggml tensor types present:
   F32 (type 0): 26 tensors -- loadable
-  BF16 (type 30): 23 tensors -- REFUSED by tensor.rs:143
+  BF16 (type 30): 23 tensors -- loadable
 
 inventory, layer indices collapsed:
       4  blk.{L}.attn_norm.weight [256] F32

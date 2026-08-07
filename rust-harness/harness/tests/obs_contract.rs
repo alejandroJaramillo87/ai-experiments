@@ -16,7 +16,7 @@
  * the real reader.
  *
  * Contract: schemas/obs_record.json. The Python half is
- * tests/utils/test_obs_record_contract.py.
+ * tests/common/test_obs_record_contract.py.
  */
 
 use std::collections::BTreeSet;

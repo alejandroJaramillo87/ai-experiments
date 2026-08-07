@@ -142,16 +142,38 @@ class TestWorktreeClean:
         paths = worktree_paths(throwaway_repo)
         assert paths == [str(throwaway_repo)]
 
-    def test_dirty_worktree_fails_nonzero(self, run_make, throwaway_repo):
+    def test_dirty_worktree_refuses_and_lists_changes(self, run_make, throwaway_repo):
+        """Refusal names the cause and offers the remedy, rather than a generic error.
+
+        The listing is the point: uncommitted work is unrecoverable once removed,
+        so the operator has to see what would be discarded before reaching for
+        FORCE=1. `--force` is the internal git argument and is never shown here.
+        """
         wt = make_worktree(run_make, throwaway_repo, "foo")
         (wt / "dirty.txt").write_text("uncommitted\n")
         result = run_make("worktree-clean", "foo")
         assert result.returncode != 0
-        assert "[ERROR] could not remove" in result.stdout
-        assert "--force" in result.stdout
+        assert "has uncommitted changes" in result.stdout
+        assert "dirty.txt" in result.stdout
+        assert "FORCE=1" in result.stdout
         assert wt.exists()
 
-    def test_nonexistent_name_fails_nonzero(self, run_make):
+    def test_force_removes_dirty_worktree(self, run_make, throwaway_repo):
+        """FORCE=1 is the remedy the refusal advertises, so it has to work."""
+        wt = make_worktree(run_make, throwaway_repo, "foo")
+        (wt / "dirty.txt").write_text("uncommitted\n")
+        result = run_make("worktree-clean", "foo", "FORCE=1")
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "[OK] removed worktree" in result.stdout
+        assert not wt.exists()
+
+    def test_clean_already_removed_skips_and_succeeds(self, run_make):
+        """Removal is idempotent: a worktree already gone is not an error.
+
+        The recipe prunes the stale registration and exits 0, so repeating the
+        command -- or scripting it -- is harmless.
+        """
         result = run_make("worktree-clean-nope")
-        assert result.returncode != 0
-        assert "[ERROR] could not remove" in result.stdout
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "[SKIP] no such worktree" in result.stdout
+        assert "already removed" in result.stdout

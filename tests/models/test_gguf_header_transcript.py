@@ -11,6 +11,11 @@ pure-Python reader). Neither shares an author with the script.
 
 The spec-driven tests then cover what that fixture cannot reach: bool arrays,
 BF16 tensors, and version 2, none of which any in-tree writer produces.
+
+Which types the harness accepts is derived from the Rust source by
+``specbuild.rust_loadable_tensor_types`` and ``rust_ok_array_element_types``
+rather than restated, so this suite cannot drift from the loader the way the
+script's hand-copied sets did.
 """
 
 import importlib.util
@@ -25,8 +30,13 @@ from tests.models.specbuild import (
     GGUF_ARRAY,
     GGUF_BOOL,
     GGUF_STRING,
+    GGUF_UINT32,
     GgufSpec,
     gemma_gguf_spec,
+    metadata_keys,
+    parse_tensor_list,
+    rust_loadable_tensor_types,
+    rust_ok_array_element_types,
     write_gguf,
 )
 
@@ -40,34 +50,6 @@ requires_gguf = pytest.mark.skipif(
     importlib.util.find_spec("gguf") is None,
     reason="gguf package required for the differential check",
 )
-
-
-def parse_tensor_list(text: str) -> dict[str, tuple[list[int], str]]:
-    """Parses the transcript's full tensor name list into {name: (dims, type)}."""
-    out: dict[str, tuple[list[int], str]] = {}
-    body = text.split("=== full tensor name list ===", 1)
-    if len(body) != 2:
-        return out
-    for line in body[1].splitlines():
-        m = re.match(r"^(\S+) \[([0-9, ]*)\] (\S+)$", line.strip())
-        if m:
-            dims = [int(x) for x in m.group(2).split(",") if x.strip()]
-            out[m.group(1)] = (dims, m.group(3))
-    return out
-
-
-def metadata_keys(text: str) -> set[str]:
-    """Keys named in the non-tokenizer metadata section."""
-    keys = set()
-    chunk = text.split("=== metadata keys (non-tokenizer) ===", 1)
-    if len(chunk) != 2:
-        return keys
-    section = chunk[1].split("=== array-valued keys", 1)[0]
-    for line in section.splitlines():
-        m = re.match(r"^(\S+) \[", line)
-        if m:
-            keys.add(m.group(1))
-    return keys
 
 
 def build(tmp_path, spec: GgufSpec, name: str = "m.gguf", **kwargs):
@@ -193,17 +175,42 @@ def test_special_token_strings_are_listed_with_ids(transcribe, tmp_path):
 # --------------------------------------------------------------------------
 
 
-def test_mutation_bool_array_is_flagged_refused(transcribe, tmp_path):
+def test_bool_array_is_accepted_not_refused(transcribe, tmp_path):
+    """gguf.rs decodes bool arrays, so sliding_window_pattern is not a refusal.
+
+    This test used to assert the opposite, because the script carried a stale
+    copy of the accepted set. The Gemma 4 converter writes
+    sliding_window_pattern as a bool array, so a false refusal here reads as
+    "the harness cannot load this checkpoint".
+    """
     spec = gemma_gguf_spec()
-    assert spec.refused_array_keys() == ["gemma4.attention.sliding_window_pattern"], (
-        spec.refused_array_keys()
-    )
+    assert GGUF_BOOL in rust_ok_array_element_types()
+    assert spec.refused_array_keys() == [], spec.refused_array_keys()
+    _, _, out = transcribe(SCRIPT, str(build(tmp_path, spec)))
+    text = out.read_text()
+    assert "gemma4.attention.sliding_window_pattern" in text
+    assert "element type 7 (bool): 1 keys -- accepted" in text
+    assert "REFUSED by gguf.rs" not in text
+
+
+def test_mutation_unsupported_array_element_is_flagged_refused(transcribe, tmp_path):
+    """An element type gguf.rs really does bail on must still be flagged.
+
+    Keeps the positive side of the refusal check alive now that bool is
+    accepted; without it, a script that never printed REFUSED would pass.
+    """
+    unsupported = GGUF_UINT32
+    assert unsupported not in rust_ok_array_element_types()
+    spec = gemma_gguf_spec()
+    # kvs entries are (key, value type, value, array element type).
+    spec.kvs = [
+        (k, vt, v, unsupported) if et == GGUF_BOOL else (k, vt, v, et)
+        for k, vt, v, et in spec.kvs
+    ]
+    assert spec.refused_array_keys() != []
     result, _, out = transcribe(SCRIPT, str(build(tmp_path, spec)))
     text = out.read_text()
-    for key in spec.refused_array_keys():
-        assert key in text
-    assert "REFUSED by gguf.rs:113-117" in text
-    assert "element type 7 (bool)" in text
+    assert "REFUSED by gguf.rs" in text
     assert "[WARN]" in result.stdout
 
 
@@ -218,13 +225,31 @@ def test_mutation_accepted_arrays_only_produce_no_refusal(transcribe, tmp_path):
     assert "no array key uses a refused element type" in text
 
 
-def test_mutation_bf16_tensors_are_flagged_refused(transcribe, tmp_path):
+def test_bf16_tensors_are_loadable_not_refused(transcribe, tmp_path):
+    """tensor.rs dequantizes BF16, the published storage type for Gemma 4.
+
+    This test used to assert the opposite. BF16 is 318 of the 601 tensors in
+    the E2B base checkpoint, so the stale set turned the majority of a real
+    model into a reported refusal.
+    """
     spec = gemma_gguf_spec()
-    assert GGML_BF16 in spec.refused_tensor_types()
-    result, _, out = transcribe(SCRIPT, str(build(tmp_path, spec)))
+    assert GGML_BF16 in rust_loadable_tensor_types()
+    assert spec.refused_tensor_types() == []
+    _, _, out = transcribe(SCRIPT, str(build(tmp_path, spec)))
     text = out.read_text()
     assert "BF16 (type 30)" in text
-    assert "REFUSED by tensor.rs:143" in text
+    assert "REFUSED by tensor.rs" not in text
+
+
+def test_mutation_kquant_tensors_are_flagged_refused(transcribe, tmp_path):
+    """A type tensor.rs really does bail on must still be flagged."""
+    kquant = 12  # Q4_K, absent from tensor.rs
+    assert kquant not in rust_loadable_tensor_types()
+    spec = gemma_gguf_spec()
+    spec.tensors = [(n, d, kquant) for n, d, _ in spec.tensors]
+    assert spec.refused_tensor_types() == [kquant]
+    result, _, out = transcribe(SCRIPT, str(build(tmp_path, spec)))
+    assert "REFUSED by tensor.rs" in out.read_text()
     assert "[WARN]" in result.stdout
 
 
@@ -246,13 +271,13 @@ def test_mutation_version_two_is_flagged_as_harness_incompatible(transcribe, tmp
     _, _, out = transcribe(SCRIPT, str(build(tmp_path, spec)))
     text = out.read_text()
     assert "gguf version: 2" in text
-    assert "REFUSED by gguf.rs:127-130" in text
+    assert "REFUSED by gguf.rs" in text
 
 
 def test_mutation_version_three_is_not_flagged(transcribe, tmp_path):
     """Negative control for the version check."""
     _, _, out = transcribe(SCRIPT, str(build(tmp_path, gemma_gguf_spec())))
-    assert "REFUSED by gguf.rs:127-130" not in out.read_text()
+    assert "REFUSED by gguf.rs" not in out.read_text()
 
 
 def test_mutation_tensor_count_changes_transcript(transcribe, tmp_path):
@@ -372,17 +397,30 @@ def test_defect_d6_summary_attributes_every_refusal_to_its_file(transcribe, tmp_
     keys reported as "1 keys". Under-reporting reads as a smaller problem
     rather than as a missing one.
     """
-    a = build(tmp_path, gemma_gguf_spec(), "one.gguf")
-    b = build(tmp_path, gemma_gguf_spec(), "two.gguf")
+
+    def refusing_spec():
+        # Both refusal paths at once, with types the loader really does reject:
+        # Q4_K tensors and a uint32 array element. Two identical files must
+        # still produce two summary lines each.
+        spec = gemma_gguf_spec()
+        spec.tensors = [(n, d, 12) for n, d, _ in spec.tensors]
+        spec.kvs = [
+            (k, vt, v, GGUF_UINT32) if et == GGUF_BOOL else (k, vt, v, et)
+            for k, vt, v, et in spec.kvs
+        ]
+        return spec
+
+    a = build(tmp_path, refusing_spec(), "one.gguf")
+    b = build(tmp_path, refusing_spec(), "two.gguf")
     result, _, _ = transcribe(SCRIPT, str(a), str(b))
 
     summary = result.stdout.split("Summary:", 1)[1]
     for name in ("one.gguf", "two.gguf"):
-        assert summary.count(f"{name}: BF16 (type 30)") == 1, (
-            f"{name} missing from the BF16 summary:\n{summary}"
+        assert summary.count(f"{name}: Q4_K (type 12)") == 1, (
+            f"{name} missing from the tensor-type summary:\n{summary}"
         )
-        assert summary.count(f"{name}: element type 7 (bool)") == 1, (
-            f"{name} missing from the bool-array summary:\n{summary}"
+        assert summary.count(f"{name}: element type 4 (uint32)") == 1, (
+            f"{name} missing from the array-element summary:\n{summary}"
         )
 
 
@@ -413,3 +451,53 @@ def test_matches_reference_gguf_reader(transcribe, repo_root):
     _, _, out = transcribe(SCRIPT, str(fixture))
     got = parse_tensor_list(out.read_text())
     assert set(got) == {t.name for t in reader.tensors}
+
+
+def test_defect_d8_verdicts_are_derived_from_the_rust_source(
+    transcribe, tmp_path, repo_root
+):
+    """The accepted type sets are read from rust-harness, never restated.
+
+    Both copies had drifted: the script declared tensor types {0, 1, 8} after
+    tensor.rs gained BF16 (30), and array element types {5, 6, 8} after gguf.rs
+    gained bool (7). The committed transcripts therefore carried 14 REFUSED
+    verdicts, every one of them false, including "BF16 (type 30): 318 tensors
+    -- REFUSED" against the E2B checkpoint the harness exists to load.
+    """
+    script = (
+        repo_root / "scripts" / "models" / "gguf_header_transcript.sh"
+    ).read_text()
+    assert "RUST_HARNESS_LOADABLE = {" not in script, "type set restated in the script"
+    assert "RUST_HARNESS_ARRAY_OK = {" not in script
+
+    assert GGML_BF16 in rust_loadable_tensor_types()
+    assert GGUF_BOOL in rust_ok_array_element_types()
+
+    spec = gemma_gguf_spec()
+    _, _, out = transcribe(SCRIPT, str(build(tmp_path, spec)))
+    assert "REFUSED" not in out.read_text()
+
+
+def test_defect_d9_per_layer_schedule_arrays_print_in_full(transcribe, tmp_path):
+    """An array as long as block_count is a schedule and must not truncate.
+
+    summarize() capped every array at 24 entries. sliding_window_pattern has
+    one entry per layer, so on E4B's 42 layers the transcript showed 24 and
+    hid 18 -- and the hidden tail is where the full-attention layers, the
+    second RoPE regime, and the second head dimension live.
+    """
+    spec = gemma_gguf_spec()
+    n_layers = 30  # longer than the old limit of 24
+    spec.kvs = [
+        (k, vt, n_layers, et) if k == "gemma4.block_count" else (k, vt, v, et)
+        for k, vt, v, et in spec.kvs
+    ]
+    pattern = [i % 5 != 4 for i in range(n_layers)]
+    spec.kvs = [
+        (k, vt, pattern, et) if et == GGUF_BOOL else (k, vt, v, et)
+        for k, vt, v, et in spec.kvs
+    ]
+    _, _, out = transcribe(SCRIPT, str(build(tmp_path, spec)))
+    text = out.read_text()
+    assert "more)" not in text, "a per-layer schedule was truncated"
+    assert repr(pattern) in text

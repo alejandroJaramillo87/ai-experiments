@@ -12,7 +12,7 @@
   ],
   "guarded_by": [
     "rust-harness/harness/tests/obs_contract.rs",
-    "tests/utils/test_obs_record_contract.py"
+    "tests/common/test_obs_record_contract.py"
   ],
   "event": {
     "file": "${OBS_LOG_DIR}/<cli>/<run_id>.jsonl",

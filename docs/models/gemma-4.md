@@ -774,8 +774,20 @@ pinned revision before relying on any assumption about them.
 ## Reproducing this document
 
 Every value above regenerates from the pinned revisions with no GPU and no model download
-beyond a few hundred kilobytes. Run these on the workstation; a contained agent sandbox does
-not reach `huggingface.co`.
+beyond a few hundred kilobytes. These run in a contained agent sandbox as well as on the
+workstation: `huggingface.co` and `raw.githubusercontent.com` are both on the sandbox proxy
+allowlist. Only the header transcripts need the workstation, because they read `/mnt/ai-data`.
+
+The upstream sources behind [Resolved from upstream source](#resolved-from-upstream-source)
+are fetched at their pinned SHAs by one script, and the result is committed:
+
+```bash
+$ ./scripts/models/upstream_source_transcript.sh --out docs/models/gemma4-upstream.txt
+```
+
+`tests/models/test_gemma4_facts_contract.py` asserts the line citations in that section
+against the committed transcript, so a revision bump that moves a line fails a test rather
+than leaving a stale citation for a reader to trip over.
 
 Configuration for one variant:
 

@@ -7,7 +7,7 @@ suppression, the TTY/NO_COLOR gating of ANSI color, and the structured file
 record each status call emits through common/obs (roadmap OBS-3). The module is
 loaded by absolute path (as in test_check_py_deps.py) so the test does not
 depend on how the runner sets sys.path; its common.obs import resolves through
-the repo root inserted by conftest.py.
+the repo root inserted by tests/conftest.py.
 """
 
 import contextlib

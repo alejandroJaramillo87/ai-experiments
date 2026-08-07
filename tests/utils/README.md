@@ -6,6 +6,9 @@ state (`nvidia-smi`, `sysctl`, uv, `.venv`, `/mnt/ai-data`), so the tests assert
 stable contract rather than specific values: exit codes, `NO_COLOR` handling, the
 style-guide status vocabulary, and section headers.
 
+The scope is `scripts/utils/` alone. The sibling `tests/common/` suite covers the
+`common/` package, and `tests/docs/` covers the documentation gates in `scripts/docs/`.
+
 ## Test index
 
 | Test file | Covers | Approach |

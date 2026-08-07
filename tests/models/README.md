@@ -36,7 +36,20 @@ and `test_recognized_naming_does_not_trip_the_guard` exist to fail in that case.
 |-----------|--------|----------|
 | `test_gemma4_header_transcript.py` | `scripts/models/gemma4_header_transcript.sh` | Spec round-trip, defect regressions, mutation matrix, robustness, output contract |
 | `test_gguf_header_transcript.py` | `scripts/models/gguf_header_transcript.sh` | Independent-reader cross-check, spec round-trip, refusal detection with negative controls, robustness |
+| `test_gemma4_facts_contract.py` | the committed artifacts, not the scripts | `schemas/gemma4_facts.json` against `docs/models/gemma-4.md`, both header transcripts, the canonical chat template, and every line-number citation |
 | `specbuild.py` | neither (helper) | Not named `test_*` so pytest does not collect it |
+
+**`test_gemma4_facts_contract.py` is the one module that reads recorded transcripts**, which
+the rule above forbids the other two. The distinction is deliberate: they test what the
+scripts *do*, and a golden string would encode a past run's misunderstanding; it tests whether
+the committed artifacts still *agree*, which no fixture can answer. The contract it asserts
+against is authored from the pinned `config.json` bytes rather than from the transcripts, so
+the comparison is between two independent derivations. Regenerating the contract *from* a
+transcript would make every assertion in that module vacuous.
+
+**Which GGML tensor types and GGUF array element types the harness accepts is derived from the
+Rust source**, by `specbuild.rust_loadable_tensor_types` and `rust_ok_array_element_types`.
+Three copies of those sets used to exist and two had drifted; see `d8` below.
 
 ## Defect regressions
 
@@ -52,6 +65,9 @@ Each was confirmed failing against the scripts as written, then fixed. Select wi
 | `test_defect_d5_cited_doc_paths_exist` | a cited `docs/` path did not exist |
 | `test_defect_d6_summary_attributes_every_refusal_to_its_file` | the GGUF summary deduplicated with `sort -u` over lines carrying counts but not filenames, so six files reported as four and four bool-array keys as "1 keys" |
 | `test_defect_d7_config_describing_another_model_fails_loudly` | `config.json` and the weights were never cross-checked, so a snapshot carrying another variant's config passed with only a hash warning |
+| `test_defect_d8_verdicts_are_derived_from_the_rust_source` | the accepted type sets were hand-copied from Rust and had drifted, so every BF16 tensor and bool array was reported `REFUSED` -- 14 false verdicts in the committed transcripts, including 318 of 601 tensors in the E2B base file |
+| `test_defect_d9_per_layer_schedule_arrays_print_in_full` | arrays truncated at 24 entries, hiding 18 of E4B's 42 `sliding_window_pattern` values -- the half that says where the two RoPE regimes and head dimensions change over |
+| `test_defect_d10_attention_section_excludes_tower_projections` | the attention grep was unanchored, so vision and audio tower projections filled the head-dim-split section; the anchor had been applied to the adjacent MLP tally only |
 
 D6 and D7 were found by running the scripts against the real weights, not against
 fixtures. D7 is the one that mattered: the downloaded `gemma-4-E2B` snapshot shipped

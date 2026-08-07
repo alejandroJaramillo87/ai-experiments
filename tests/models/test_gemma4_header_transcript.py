@@ -424,3 +424,37 @@ def test_matches_reference_safetensors_reader(transcribe, model_dir, spec):
         keys = list(f.keys())
     assert f"tensor count: {len(keys)}" in text
     assert len(keys) == len(spec.tensors())
+
+
+def test_defect_d10_attention_section_excludes_tower_projections(transcribe, tmp_path):
+    """The head-dim split section must show language-model layers only.
+
+    The grep matched a bare `self_attn\\.(q|k|v|o)_proj`, but the vision and
+    audio towers carry the same projection names. On the real E2B checkpoint
+    the section ran to 44 rows of which 36 were tower, burying the eight rows
+    that show head_dim 256 against global_head_dim 512 -- and because the rows
+    sort by descending count, the four full-attention rows landed last.
+
+    The MLP tally immediately above was already anchored to the layer
+    convention, with a comment explaining this exact contamination. The fix
+    had been applied to one of the two sites.
+    """
+    spec = ModelSpec(
+        extra_tensors=(
+            (
+                "model.vision_tower.encoder.layers.0.self_attn.q_proj.weight",
+                (4, 4),
+                "BF16",
+            ),
+            ("model.audio_tower.layers.0.self_attn.k_proj.weight", (4, 4), "BF16"),
+        )
+    )
+    d = specbuild.build_model_dir(tmp_path, spec)
+    _, sections, _ = transcribe(SCRIPT, str(d))
+    rows = specbuild.parse_counted(flat_lines(sections, "attention projection shapes"))
+    contaminants = [k for k in rows if "vision_tower" in k or "audio_tower" in k]
+    assert not contaminants, (
+        f"tower projections leaked into the section: {contaminants}"
+    )
+    assert rows, "the section is empty; the anchor matched nothing"
+    assert all("language_model" in k for k in rows), sorted(rows)

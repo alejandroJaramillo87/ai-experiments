@@ -20,6 +20,18 @@ from training.models.families import CHAT_TEMPLATE_VERSION, family_spec
 
 CONTRACT = Path(__file__).resolve().parents[2] / "schemas" / "chat_template.json"
 
+# Google's own template, extracted verbatim from the GGUF checkpoint metadata by
+# tests/models/test_gemma4_facts_contract.py. Until this file existed, the marker
+# list below was hand-transcribed from release material and compared against
+# nothing -- the same posture that let the Gemma 3 markers survive into the
+# harness's Gemma 4 path (see schemas/README.md).
+CANONICAL_TEMPLATE = (
+    Path(__file__).resolve().parents[2]
+    / "docs"
+    / "models"
+    / "gemma4-chat-template.jinja"
+)
+
 
 @pytest.fixture(scope="module")
 def contract() -> dict:
@@ -80,3 +92,62 @@ def test_a_rendered_turn_uses_only_contract_markers(contract: dict) -> None:
     assert text == f"{spec.bos}{spec.turn_prefix.format(role='user')}hello{spec.eot}\n"
     for marker in contract["markers"]["rendered"]:
         assert marker in text or marker == spec.eot
+
+
+# --------------------------------------------------------------------------
+# Agreement with Google's canonical template
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def canonical() -> str:
+    if not CANONICAL_TEMPLATE.is_file():
+        pytest.skip(f"canonical template absent: {CANONICAL_TEMPLATE}")
+    return CANONICAL_TEMPLATE.read_text()
+
+
+def test_rendered_markers_occur_in_the_canonical_template(
+    contract: dict, canonical: str
+) -> None:
+    # A marker this tier renders that Google's template never emits is a marker
+    # the tokenizer has no trained id for, which is precisely the Gemma 3
+    # failure: fluent output, wrong tokenization, nothing raised.
+    for marker in contract["markers"]["rendered"]:
+        assert marker in canonical, marker
+
+
+def test_spec_framing_occurs_in_the_canonical_template(
+    contract: dict, canonical: str
+) -> None:
+    spec = contract["spec"]
+    assert spec["eot"] in canonical
+    # turn_prefix is a format string; the literal part is what the template emits.
+    assert spec["turn_prefix"].split("{")[0] in canonical
+
+
+def test_canonical_template_emits_bos_through_the_jinja_variable(
+    canonical: str,
+) -> None:
+    # The literal "<bos>" never appears in Google's template: it emits the
+    # bos_token variable, which the tokenizer resolves. Both tiers here write
+    # the resolved literal instead, which is why the contract's spec.bos is a
+    # string and not a variable name. Asserting the literal against the
+    # template would fail for the wrong reason, so assert the emission point.
+    assert "{{- bos_token -}}" in canonical
+    assert "<bos>" not in canonical
+
+
+def test_assistant_role_is_the_one_the_canonical_template_opens(
+    contract: dict, canonical: str
+) -> None:
+    # Gemma 4 names the assistant turn "model", not "assistant". Getting this
+    # wrong shifts every generation prompt by one turn label.
+    role = contract["spec"]["assistant_role"]
+    prefix = contract["spec"]["turn_prefix"].format(role=role)
+    assert repr(prefix)[1:-1] in canonical or prefix in canonical
+
+
+def test_thinking_markers_occur_in_the_canonical_template(canonical: str) -> None:
+    # sft.py refuses these in source datasets; they must be real markers.
+    for marker in family_spec("gemma4").thinking_markers:
+        assert marker in canonical, marker

@@ -6,7 +6,7 @@ ones -- that a retired name is not found inside a longer name, and above all tha
 the *replacement* never matches the pattern that retired it. Get that wrong and
 the gate can never go green again.
 
-The module is loaded by path, matching tests/utils/test_doc_refs.py --
+The module is loaded by path, matching tests/docs/test_doc_refs.py --
 scripts/ is not an importable package.
 """
 

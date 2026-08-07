@@ -14,7 +14,7 @@ Read `schemas/README.md` before changing a record shape.
 ## Relationship to the rest of the tree
 
 Imports nothing first-party — `common` sits at the bottom. Consumed by `training/` and
-`interp/` (both for `Printer`, `obs.dispatch`, hashing, and provenance), by `tests/utils/`,
+`interp/` (both for `Printer`, `obs.dispatch`, hashing, and provenance), by `tests/common/`,
 and across the language boundary by the Rust harness. `training/serving.py` and
 `interp/manifest.py` deliberately re-export symbols from here with `# noqa: F401` so the
 tiers have one import site.
@@ -30,7 +30,7 @@ No CLI of its own. It is exercised through every `training` and `interp` command
 `common.obs.dispatch.dispatch`, and directly by:
 
 ```bash
-$ pytest tests/utils          # the obs and output suites
+$ pytest tests/common         # the obs and output suites
 ```
 
 ## Where the real docs live
