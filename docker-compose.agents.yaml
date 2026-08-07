@@ -31,6 +31,15 @@ services:
       - SETUID
       - SETGID
     read_only: true
+    # Bounded because this is the container with real internet: an unbounded
+    # proxy defeats the point of bounding the thing it proxies for. squid needs
+    # very little here -- it caches nothing (cache deny all) and its spool and
+    # log directories are the 64M/32M tmpfs below.
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          pids: 256
     tmpfs:
       - /var/spool/squid:size=64M,mode=1777
       - /var/log/squid:size=32M,mode=1777
@@ -84,10 +93,24 @@ services:
     # every layer. 32G fits E4B with headroom and still leaves the 128GB host
     # three quarters free. Raise deliberately; a runaway session can claim all of
     # this.
+    # CPU is capped for a bug rather than an attack: a runaway `cargo build -j`
+    # should degrade the session, not the workstation -- and an unattended
+    # session is exactly when that would happen. 24 of the 9950X's 32 threads
+    # leaves the host responsive while keeping the rust gate well parallelised.
+    #
+    # pids is the fork-bomb ceiling, on the same reasoning.
+    #
+    # All three live under `deploy` rather than the short `cpus:`/`pids_limit:`
+    # forms because compose refuses to see both spellings in one service --
+    # "can't set distinct values on 'cpus' and 'deploy.resources.limits.cpus'" --
+    # and memory was already here. One mechanism per service, so adding the next
+    # limit cannot reintroduce that error.
     deploy:
       resources:
         limits:
           memory: 32G
+          cpus: "24.0"
+          pids: 4096
     # Only the git worktree is mounted, read-write. AGENT_WORKTREE is set by the
     # make wrapper to ../ai-experiments-<name>; damage stays inside that worktree.
     #

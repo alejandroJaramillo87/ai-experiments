@@ -108,9 +108,19 @@ the sandbox `opencode.json`'s `autoupdate: false` pair to freeze the pinned vers
 image — the image is the unit of currency, bumped by rebuild. On the host, by contrast, leave
 updates on: given the CVE history, running stale is the larger risk.
 
+The proxy is pinned on the same principle, and more strictly, because it is the component that
+enforces the allowlist: `docker/agents/proxy/Dockerfile.proxy` fixes both the Debian base
+(`bookworm-20250203-slim`) and `squid` itself to an exact package version. That pin comes from
+`bookworm-security`, which supersedes rather than accumulates, so a later security release
+removes the pinned one from the archive and the build fails by name — the intended prompt to
+read the advisory and bump.
+
 `make agent-versions` compares each Dockerfile pin against the npm registry and reports which
-pins are behind. It never edits the Dockerfile: bump one pin at a time and re-run the
-acceptance checks, per the repository operating rules.
+pins are behind. It also checks that `.opencode/package.json` pins `@opencode-ai/plugin` to the
+same version as `OPENCODE_VERSION`: that package publishes in lockstep with the CLI and the
+plugins under `.opencode/plugin/` are typed against the runtime that loads them, so bumping one
+without the other is the drift worth catching. The script never edits anything: bump one pin at
+a time and re-run the acceptance checks, per the repository operating rules.
 
 ### Python toolchain
 
@@ -183,7 +193,8 @@ legitimately needs: the Anthropic API and the Claude subscription-auth endpoints
 `docs.runpod.io`), the code host (`github.com` and its asset domains), and the package
 registries (npm, PyPI). It also carries the reference sources a session needs to avoid guessing:
 Hugging Face (`huggingface.co`) for model configurations, tokenizers, and safetensors headers;
-`crates.io` for Rust dependency metadata; and `ai.google.dev` for Google model documentation.
+`crates.io` and `docs.rs` for Rust dependency metadata and its rendered documentation; and
+`ai.google.dev` for Google model documentation.
 HTTPS is allowlisted by CONNECT host without TLS interception, so no private certificate
 authority is installed. The list grows only with a recorded reason.
 
@@ -203,17 +214,17 @@ identifies itself as `Server: squid/5.7`.
 The redirect target is regional (`us.aws.cdn.hf.co`), which is why the entry is the dotted form
 rather than an exact host.
 
-**A change to `squid.conf` takes effect only after the proxy image is rebuilt.**
-`make agent-sandbox` runs `docker compose run` with no `--build`, so an edited allowlist that
-appears to have no effect indicates a stale image rather than a wrong entry:
-
-```bash
-$ docker compose -f docker-compose.agents.yaml -p ai-agents build agent-proxy
-```
+**A change to `squid.conf` takes effect only after the proxy image is rebuilt**, which
+`make agent-sandbox-build` does — it builds both `agent` and `agent-proxy`. `make agent-sandbox`
+itself runs `docker compose run` with no `--build`, so an edited allowlist that appears to have
+no effect means the build step was skipped.
 
 The symptom of a domain that the allowlist does not carry is a transport error such as
-`Socket is closed`, not a permission message. When a fetch fails that way, check the allowlist
-before assuming a network fault, and confirm with
+`Socket is closed`, not a permission message: squid cannot place an explanation inside a CONNECT
+tunnel it refused to open. That is unfixable at the proxy, so the list is instead stated up front
+in the sandbox banner — `make/agents.mk` derives it from this file with `sed` and seeds it into
+`~/.claude/CLAUDE.md`, so a session knows the boundary before it tries to cross it. When a fetch
+still fails that way, confirm with
 `docker exec agent-proxy cat /var/log/squid/access.log`.
 
 ### Credentials and the never-mount list
@@ -273,7 +284,7 @@ launch: `~/.claude.json` (onboarding flag, theme, model options cache, and
 `unpinFable5LaunchEffort` — without it the CLI pins a Fable session's launch effort to
 its recommended value and silently overrides the seeded `effortLevel`);
 `~/.claude/settings.json` (persistent defaults — `model` from `CLAUDE_MODEL`, default
-`claude-fable-5[1m]`; `effortLevel` from `EFFORT`, default `low`; and `theme` from
+`claude-opus-5[1m]`; `effortLevel` from `EFFORT`, default `low`; and `theme` from
 `CLAUDE_THEME`, default `dark`); and `~/.claude/CLAUDE.md` (a sandbox banner loaded as
 user-scope memory, stating up front that the session is contained — no host, GPU, Docker
 daemon, `/mnt/ai-data`, or running services — so the agent does not spend a turn
@@ -366,6 +377,13 @@ read. The `extern` path is covered by `tests/agents/preflight_fixture/`, which p
 - Permission-gap status: has upstream Linux sandboxing for OpenCode landed? If so, evaluate
   whether it changes the containment requirement.
 - Plugin pin bumps: review and update any vendored or referenced plugin versions.
+- Allowlist drift: diff the three lists of permitted domains — `squid.conf`,
+  `.claude/settings.json`, and `opencode.json`. They serve different purposes (squid enforces,
+  the other two are convenience filters), so they need not be identical, but a domain permitted
+  by a tool and absent from squid produces a transport error rather than a refusal. There is no
+  automated check by design: three lists reviewed quarterly does not justify one.
+- Proxy pins: confirm `squid` and the Debian base tag in `docker/agents/proxy/Dockerfile.proxy`
+  are still the intended versions. The proxy is the sole arbiter of egress.
 - Key rotation: rotate the RunPod scoped keys and the Anthropic key; confirm the account-wide
   RunPod key still exists nowhere on disk.
 - Re-run `make agent-preflight PREFLIGHT_DIR=tests/agents/preflight_fixture` and confirm it

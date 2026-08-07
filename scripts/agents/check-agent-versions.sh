@@ -75,6 +75,42 @@ check() {
     fi
 }
 
+# The plugin pin is not an ARG and is not checked against the registry, because
+# the version it must track is not "latest" but the OpenCode the image installs:
+# @opencode-ai/plugin publishes in lockstep with opencode-ai, and the plugins in
+# .opencode/plugin/ are typed against the runtime that loads them. So this is a
+# coupling check, and bumping OPENCODE_VERSION alone is what it catches.
+check_plugin_pin() {
+    local pkg_json="${PLUGIN_PACKAGE_JSON:-.opencode/package.json}" pinned opencode
+    if [[ ! -f "$pkg_json" ]]; then
+        print_error "@opencode-ai/plugin: $pkg_json not found"
+        missing=1
+        return 0
+    fi
+    pinned=$(jq -r '.devDependencies["@opencode-ai/plugin"] // empty' "$pkg_json")
+    if [[ -z "$pinned" ]]; then
+        print_error "@opencode-ai/plugin: no pin found in $pkg_json"
+        missing=1
+        return 0
+    fi
+    # A range or wildcard is not a pin. The operating rule is exact versions.
+    if [[ "$pinned" =~ [^0-9.] ]]; then
+        print_error "@opencode-ai/plugin: pin is '$pinned', not an exact version"
+        echo "  Solution: set it to the OPENCODE_VERSION the image installs"
+        missing=1
+        return 0
+    fi
+    opencode=$(pinned_version OPENCODE_VERSION)
+    if [[ "$pinned" == "$opencode" ]]; then
+        print_ok "@opencode-ai/plugin: $pinned (matches OPENCODE_VERSION)"
+    else
+        print_warn "@opencode-ai/plugin: pinned $pinned, OPENCODE_VERSION is $opencode"
+        echo "  Solution: keep the plugin types in lockstep with the installed CLI"
+        echo "  Command: sed -i 's/\"@opencode-ai\/plugin\": \".*\"/\"@opencode-ai\/plugin\": \"$opencode\"/' $pkg_json"
+        behind=1
+    fi
+}
+
 echo "=== Agent CLI version pins ==="
 echo
 
@@ -86,6 +122,7 @@ unverified=0
 check OPENCODE_VERSION    opencode-ai                 latest
 check CLAUDE_CODE_VERSION @anthropic-ai/claude-code   stable
 check PYRIGHT_VERSION     pyright                     latest
+check_plugin_pin
 echo
 
 if [[ "$missing" -eq 1 ]]; then

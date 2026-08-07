@@ -7,8 +7,23 @@
 
 FROM debian:bookworm-20250203-slim
 
+# squid is pinned exactly because this container is the sole arbiter of egress
+# for every agent session: an unversioned install would let the component
+# enforcing the allowlist change underneath a pinned base image. The version is
+# what `apt-cache madison squid` offers for this base, and it is what makes the
+# `Server: squid/5.7` response header a guarantee rather than an observation
+# (see docs/sandbox/agent-sandbox.md).
+#
+# NOTE: this comes from bookworm-security, which supersedes rather than
+# accumulates. When a later u7 lands, u6 is dropped from the archive and this
+# build fails with "Version '...' not found" -- a loud, correct signal to review
+# the advisory and bump. ca-certificates is left unpinned: it is a data package
+# whose whole purpose is to carry the current trust store.
+ARG SQUID_VERSION=5.7-2+deb12u6
+
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends squid ca-certificates \
+    && apt-get install -y --no-install-recommends \
+        squid="${SQUID_VERSION}" ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/agents/proxy/squid.conf /etc/squid/squid.conf

@@ -4,6 +4,6 @@
   "type": "module",
   "description": "Local OpenCode plugins: thin adapters over scripts/agents/ guardrails plus token-usage accounting.",
   "devDependencies": {
-    "@opencode-ai/plugin": "*"
+    "@opencode-ai/plugin": "1.17.18"
   }
 }

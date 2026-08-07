@@ -41,11 +41,21 @@ Known asymmetries — recorded so "the two wirings agree" stays honest:
 
 ## Agents (Phase 2)
 
-Ten roles, authored twice with **byte-identical prompt bodies** and tool-specific
-frontmatter. Do **not** symlink agent files: OpenCode passes unknown frontmatter keys
-through to the provider as model options, so Claude-dialect keys would leak into live API
-calls. `make agent-parity` diffs the bodies to guarantee they stay identical; every role
-below lives at `.claude/agents/<role>.md` and `.opencode/agents/<role>.md`.
+Ten roles, **authored once and generated**. `.claude/agents/<role>.md` is the source;
+`.opencode/agents/<role>.md` is produced from it by `make agent-sync`, which copies the
+prompt body verbatim and translates the frontmatter by the table below.
+
+Do **not** symlink agent files: OpenCode passes unknown frontmatter keys through to the
+provider as model options, so Claude-dialect keys would leak into live API calls. That is
+one-directional, though — it rules out sharing one file, and it is precisely the argument
+for a one-way projection, which is what the generator is.
+
+`make agent-parity` no longer diffs the two trees after the fact. It regenerates and fails
+if the result differs from what is committed, the same shape as `uv lock --check`: a
+divergence is now prevented rather than detected. A role that genuinely needs to fork on the
+OpenCode side may do so by deleting the generated-by marker from its frontmatter; the
+generator then reports it as forked and leaves it alone, mirroring what `command-sync` does
+for `cost.md`.
 
 | Role | Purpose | Writes? |
 |------|---------|---------|
@@ -78,6 +88,10 @@ finding, and `remediator`, whose red-before evidence is a regression test. Prefe
 built-in `Explore` for search, and reach for a QA role for anything test-shaped.
 
 ### Frontmatter translation table
+
+This table is executable: `scripts/agents/gen_opencode_agents.py` implements it, and an
+unmapped key fails the generator rather than being silently dropped. Keep the two in step —
+adding a row here means adding it there.
 
 | OpenCode | Claude Code |
 |----------|-------------|

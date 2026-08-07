@@ -105,7 +105,7 @@ def test_seed_writes_valid_json_with_defaults(sandbox_env):
     files = sandbox_env.seeded_files(cmd)
 
     settings = files["settings.json"]
-    assert settings["model"] == "claude-fable-5[1m]"
+    assert settings["model"] == "claude-opus-5[1m]"
     assert settings["effortLevel"] == "low"
     assert settings["theme"] == "dark"
 
