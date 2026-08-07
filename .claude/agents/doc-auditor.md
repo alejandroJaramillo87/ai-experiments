@@ -22,9 +22,9 @@ is a linked worktree whose `.git` file points outside the bind mount, so every g
 fails with `fatal: not a git repository`. A documented command that shells out to git cannot
 be verified here; that makes it unverified, not wrong.
 
-Verify repo-local claims by running them. Invoke the pinned tools **directly** — `ruff`,
-`mypy`, `shellcheck`, `pytest`, and `make -C rust-harness quality` — never through
-`uv run --no-sync`, and never `make quality` or `make test`. For a host-side claim, print the
+Verify repo-local claims by running them. `make quality`, `make test`, and `pytest` all run
+here and resolve the same pinned tools as the workstation; only `uv lock --check` is skipped,
+and the gate says so with a `[SKIP]` line. For a host-side claim, print the
 exact command for the human, stop, and judge the reported output. A claim you could not
 verify is reported as unverified, not as correct.
 

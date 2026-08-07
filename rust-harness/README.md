@@ -128,8 +128,9 @@ exporters; `obs_contract.rs` parses a run catalog through
 The workstation and the sandbox disagree about where a usable Python lives: on
 the workstation `python3` usually leads to a pyenv shim carrying none of the
 project's dependencies while the environment sits in `.venv`, and in a sandbox
-the reverse holds, because `/work/.venv` arrives over the bind mount and points
-at a host interpreter absent from the container. Resolution probes
+the reverse holds, because `docker-compose.agents.yaml` masks `/work/.venv` with
+an empty tmpfs and the image's own `/opt/pyenv` is first on `PATH`. Resolution
+probes
 `$HARNESS_PYTHON`, then `<repo>/.venv/bin/python3`, then `python3` on `PATH`, and
 takes the first that can import what the caller names. Set `HARNESS_PYTHON` to
 override.

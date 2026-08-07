@@ -192,6 +192,19 @@ training = [
 [tool.uv]
 package = false
 
+# A bare `uv sync` must not be destructive. uv installs the default groups and
+# *removes* everything else, so with the stock default (`dev` alone) the command
+# uninstalls omegaconf, hydra-core, gguf, and xxhash -- after which every
+# tests/training module fails collection on a missing import -- and against a
+# full environment it would also drop torch and flash-attn, whose rebuild costs
+# hours. Naming all four groups makes the reflexive repair command safe in every
+# tier, which is why no document has to warn about it.
+# The tradeoff, deliberate: a bare `uv sync` in a torch-free worktree now
+# installs torch rather than leaving it out. It adds rather than removes, and
+# the tier provisioner keeps narrowing explicitly (make/agents.mk, --only-group).
+# `make install` remains the fuller form: it adds --all-extras (the `quant` extra).
+default-groups = ["dev", "sandbox", "interp", "training"]
+
 # PyTorch CUDA 13.0 wheels; explicit = only packages pinned via [tool.uv.sources]
 [[tool.uv.index]]
 name = "pytorch-cu130"

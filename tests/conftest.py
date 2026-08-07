@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import stat
 import subprocess
@@ -35,6 +36,33 @@ def _tmpdir_is_noexec() -> bool:
             probe.unlink(missing_ok=True)
     except OSError:
         return True
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """State which environment the suite ran against, beside the pass count.
+
+    Torch-gated tests skip rather than fail on a torch-free environment, so a
+    partial run is green and reads as a pass. The skip count distinguishes them,
+    but only for a reader who already knows the expected counts -- so report the
+    determining fact directly, and report it here rather than in a header,
+    because the summary is the line people actually read.
+    """
+    # xdist workers each run this; only the controller has a terminal.
+    if hasattr(config, "workerinput"):
+        return
+    if importlib.util.find_spec("torch") is None:  # not imported: costs seconds
+        terminalreporter.write_line(
+            "[TIER] sandbox: torch absent, so torch-gated tests skipped rather "
+            "than ran. This is a partial run, not a pass.",
+            yellow=True,
+        )
+        terminalreporter.write_line(
+            "        Full extent: make worktree-<name> TIER=full"
+        )
+    else:
+        terminalreporter.write_line(
+            "[TIER] full: torch present, the whole suite was in scope."
+        )
 
 
 def pytest_configure(config):

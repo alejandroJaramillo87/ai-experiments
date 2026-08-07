@@ -115,22 +115,28 @@ acceptance checks, per the repository operating rules.
 ### Python toolchain
 
 The image carries `uv 0.11.28` (from `ghcr.io/astral-sh/uv`, matching the workstation), a
-managed CPython `3.12.11` satisfying `pyproject.toml`'s `requires-python`, and the exact
-lint pins from the dev dependency group: `ruff 0.15.21`, `mypy 2.3.0` with
-`types-pyyaml 6.0.12.20250915`, plus `shellcheck` from Debian. An agent can therefore
-syntax-check and lint its own edits instead of routing every Python change through the
-workstation for its first check.
+managed CPython `3.12.11` satisfying `pyproject.toml`'s `requires-python`, and an environment
+at `/opt/pyenv` built by `uv sync --frozen --only-group dev --only-group sandbox` against
+`uv.lock`. The dev group supplies `ruff`, `mypy` with `types-pyyaml`, `pytest`, and
+`shellcheck` (the `shellcheck-py` wheel, not an apt copy); the sandbox group supplies the
+GPU-less test extent. Because the versions are resolved from the lockfile rather than
+transcribed, they are the workstation's by construction. An agent can therefore lint and test
+its own edits instead of routing every Python change through the workstation for its first
+check.
 
 The runtime rootfs is read-only and the home directory is a 256MB tmpfs, so the uv paths are
 fixed at build time: interpreters and tool environments under `/opt/uv`, executables in
 `/usr/local/bin`, and the cache in `/tmp`. A cache written to the default `$HOME` location
 would not survive the tmpfs.
 
-**This does not replace `make quality`.** Four of its five Python steps run here — both ruff
-steps, mypy, and shellcheck — but `uv lock --check` and `make test` reach the pytorch cu130
-index, which the allowlist does not carry, and an unsynced `.venv` resolves different versions
-than the lockfile pins. Treat a clean sandbox run as fast feedback, not as the gate; the
-workstation gate stays mandatory before every push.
+`make quality` and `make test` are therefore the same commands here as on the workstation:
+`make/quality.mk` branches on `AI_SANDBOX`, which this image sets, and drops the
+`uv run --no-sync` prefix so every tool comes from `/opt/pyenv`. The compose file masks the
+worktree's `.venv` with a tmpfs, so the workstation's environment can be neither read nor
+written from inside. One gate step stays out of reach: `uv lock --check` resolves against the
+pytorch cu130 index, which the allowlist does not carry, and the recipe prints an explicit
+`[SKIP]` line for it. Read that line rather than the exit code; the workstation gate covers it
+before every push.
 
 ### Rust toolchain
 
@@ -324,8 +330,8 @@ Best-effort layer on top of containment, encoded in both tools (see
   `WebFetch` allow list with a broad `WebFetch` set to `ask`; denies for the host-only tools
   (`docker`, `nvidia-smi`, `make up|down|status|logs|shell-*`) so that a command which cannot
   work from a contained session fails as policy rather than obscurely; and allows for the
-  pinned repo-local tools invoked directly (`ruff`, `mypy`, `shellcheck`, `pytest`, `cargo`)
-  rather than through `uv run --no-sync`. The `WebFetch` domain list is kept in agreement with
+  pinned repo-local tools (`ruff`, `mypy`, `shellcheck`, `pytest`, `cargo`), which the gate
+  invokes without the `uv run --no-sync` prefix here. The `WebFetch` domain list is kept in agreement with
   `docker/agents/proxy/squid.conf`: a domain permitted in one and absent from the other
   produces a confusing transport error instead of a clear refusal.
 - OpenCode server: set `OPENCODE_SERVER_PASSWORD` even for localhost use, and never pass

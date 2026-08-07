@@ -16,10 +16,9 @@ skip ahead:
    criteria exactly as written. If the task is ambiguous or already done, say so and stop.
 2. Implement — make the change described by task `$2`, touching only the files it names.
 3. Acceptance-check — if the check is repo-local (no GPU, service, or host Docker), run
-   it and show the full output. Run it **verbatim except** where `/AGENTS.md`'s sandbox rules
-   override the wording: invoke `ruff`, `mypy`, `shellcheck`, and `pytest` directly rather
-   than through `uv run --no-sync`, and never `make test` or a bare `uv sync`. Say so when you
-   substitute. If it is host-side, print the exact command,
+   it and show the full output. Run it verbatim; `make quality`, `make test`, and `pytest`
+   behave identically in a sandbox and on the workstation, so no substitution is needed. Say
+   so if you substitute anyway. If it is host-side, print the exact command,
    stop, and wait for the human to run it and report the output; record the reported
    command and output verbatim. If the check fails, fix and repeat; do not proceed on a
    failing check and never mark the task done without observed or human-reported passing

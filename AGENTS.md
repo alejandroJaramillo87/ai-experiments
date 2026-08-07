@@ -65,11 +65,10 @@ These are standing instructions for anyone (human or agent) making changes in th
   touches the GPU, a running inference service, or the benchmark suite is serialized — exactly
   one such job at a time, regardless of how many sessions or worktrees are active. Never run two
   benchmarks or two GPU jobs at once; results and VRAM will collide.
-- **`make quality` is mandatory before every push, for humans and agents alike.** It runs
-  differently in a sandbox than on the workstation, and a green sandbox run is the weaker
-  result. See [docs/testing/quality-gate.md](docs/testing/quality-gate.md) before running it,
-  and never repair an environment with a bare `uv sync` — it is destructive here, for the
-  reason that document gives.
+- **`make quality` is mandatory before every push, for humans and agents alike.** The same
+  command works in a sandbox and on the workstation, and reports the one step a sandbox cannot
+  run — but a green sandbox run is still the weaker result, because it proves the code and not
+  the hardware. See [docs/testing/quality-gate.md](docs/testing/quality-gate.md).
 - **Renaming a file means adding it to `scripts/docs/check_retired_names.py`.** The table
   there is what makes a rename self-policing; a rename that skips it leaves stragglers for a
   human to find months later.
@@ -85,7 +84,7 @@ Each topic has one owner. Read the owner, not a summary of it.
 | Other stacks | `docker-compose.{training,interp,agents,rust-harness}.yaml` |
 | Hardware | [docs/hardware/README.md](docs/hardware/README.md) |
 | Validated optimizations and their measurements | [docs/optimizations/README.md](docs/optimizations/README.md) |
-| The quality gate, and tool invocation in a sandbox | [docs/testing/quality-gate.md](docs/testing/quality-gate.md) |
+| The quality gate, and what a sandbox run does not cover | [docs/testing/quality-gate.md](docs/testing/quality-gate.md) |
 | The rust harness and its gate | [rust-harness/README.md](rust-harness/README.md) |
 | The test suite, its tiers and markers | [tests/README.md](tests/README.md) |
 | The agent sandbox and tooling parity | [docs/agents/README.md](docs/agents/README.md) |

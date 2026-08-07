@@ -1,7 +1,6 @@
 # Testing documentation
 
-How the repository is tested, and how the test tooling behaves differently depending on where
-it runs.
+How the repository is tested, and what the test tooling covers in each environment it runs in.
 
 The suite itself is at [../../tests/](../../tests/), whose README owns the tiers, the markers,
 and what each test module covers. This directory documents the gate that runs it.
@@ -10,13 +9,14 @@ and what each test module covers. This directory documents the gate that runs it
 
 | Document | Description |
 |----------|-------------|
-| [quality-gate.md](quality-gate.md) | What `make quality` runs, and how to invoke the same tools inside an agent sandbox |
+| [quality-gate.md](quality-gate.md) | What `make quality` runs, and what a sandbox run does not cover |
 
-`make quality` is mandatory before every push. Read
-[quality-gate.md](quality-gate.md) before running it rather than after: the gate behaves
-differently on the workstation than in an agent sandbox, and a green sandbox run is the weaker
-result. The document also records why repairing the environment with a bare `uv sync` is
-destructive here, which is the single most expensive mistake available in this repository.
+`make quality` is mandatory before every push, and it is one command: the recipe in
+`make/quality.mk` branches internally on the `AI_SANDBOX` variable the sandbox image sets, so
+the workstation and a contained agent sandbox run the same pinned tools. Only `uv lock --check`
+is out of reach in a sandbox, and it announces itself with a `[SKIP]` line. Read
+[quality-gate.md](quality-gate.md) for the step list and for what that one skipped step leaves
+uncovered.
 
 ## Frozen records
 
@@ -33,6 +33,6 @@ the suite.
 - [../../tests/README.md](../../tests/README.md) — the suite, its tiers, and its markers
 - [../../rust-harness/README.md](../../rust-harness/README.md) — the Rust workspace runs its
   own gate, `make -C rust-harness quality`
-- [../agents/README.md](../agents/README.md) — the sandbox the asymmetry above comes from
+- [../agents/README.md](../agents/README.md) — the sandbox, and how it is provisioned from `uv.lock`
 - [../verification/](../verification/) — host-side acceptance records, which are evidence
   rather than tests

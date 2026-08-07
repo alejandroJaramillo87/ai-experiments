@@ -308,7 +308,7 @@ agent-sandbox: ## Contained agent session: AGENT=claude|opencode NAME=<task> [PR
 
 agent-sandbox-build: ## Rebuild the agent sandbox image (required after editing docker/agents/Dockerfile.agents or rust-harness/Cargo.lock)
 	@echo "$(CYAN)Building agent sandbox image...$(RESET)"
-	docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) build agent
+	AGENT_WORKTREE=$(CURDIR) docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) build agent
 	@echo "$(GREEN)Agent sandbox image built.$(RESET)"
 
 # The agent-sandbox docker footprint is shared across every worktree: one proxy
@@ -319,11 +319,11 @@ agent-sandbox-build: ## Rebuild the agent sandbox image (required after editing 
 # stack (docker-compose.inference.yaml), unlike the global `make clean`/`make prune`.
 agent-sandbox-clean: ## Tear down shared agent-sandbox docker resources (proxy + networks); inference stack untouched
 	@printf '[RUN] Removing agent-sandbox proxy and networks (project %s)\n' "$(AGENTS_PROJECT)"
-	-docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) down --remove-orphans
+	-AGENT_WORKTREE=$(CURDIR) docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) down --remove-orphans
 	@for net in $$(docker network ls --format '{{.Name}}' | grep -E '_agent-(internal|egress)$$'); do \
 	  docker network rm "$$net" >/dev/null 2>&1 && printf '[OK] removed leftover network: %s\n' "$$net" || true; \
 	done
-	@printf '[OK] agent-sandbox torn down; built images remain (drop them with: docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) down --rmi local)\n'
+	@printf '[OK] agent-sandbox torn down; built images remain (drop them with: AGENT_WORKTREE=. docker compose -f $(AGENTS_COMPOSE) -p $(AGENTS_PROJECT) down --rmi local)\n'
 
 SESSIONS_DIR ?= logs/sessions
 

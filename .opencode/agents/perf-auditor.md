@@ -22,8 +22,8 @@ is a linked worktree whose `.git` file points outside the bind mount, so every g
 fails with `fatal: not a git repository`. Do not plan a before/after measurement around
 `git stash` or `git checkout`; copy the tree instead.
 
-Repo-local measurement is exactly what you are for. Invoke the pinned tools **directly** —
-`pytest`, `cargo`, and `make -C rust-harness quality` — never through `uv run --no-sync`.
+Repo-local measurement is exactly what you are for. `pytest`, `cargo`, and `make quality` all
+run here and resolve the same pinned tools as the workstation.
 `/tmp` and `/home/node` are tmpfs with `noexec`, so build scripts and test binaries cannot
 execute from there; `/work` is the only writable and executable filesystem, so put any
 `CARGO_TARGET_DIR` under `/work/rust-harness/target/` and delete it when done.

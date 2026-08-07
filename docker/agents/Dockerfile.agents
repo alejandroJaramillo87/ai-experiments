@@ -68,19 +68,24 @@ ARG CLAUDE_CODE_VERSION=2.1.212
 # Language-server pin (Python symbol navigation for both CLIs).
 ARG PYRIGHT_VERSION=1.1.411
 
-# Python toolchain pins. uv matches the workstation (uv self version -> 0.11.28)
-# so the sandbox and the host resolve dependencies identically. The interpreter
-# matches the workstation's 3.12.11 and satisfies pyproject.toml's
-# requires-python = ">=3.12,<3.13"; ruff and mypy are the exact pins from
-# pyproject.toml's dev group, so a sandbox lint result means the same thing as
-# `make quality` does on the host.
+# Interpreter pin. uv matches the workstation (uv self version -> 0.11.28) so the
+# sandbox and the host resolve dependencies identically; the interpreter matches
+# the workstation's 3.12.11 and satisfies pyproject.toml's
+# requires-python = ">=3.12,<3.13".
+#
+# No package versions are pinned here. They come from uv.lock, which is the only
+# way a sandbox lint result can be trusted to mean what a workstation result
+# means -- a second hand-maintained copy of the pins would drift, and drift is
+# invisible until a gate disagrees across environments.
 ARG PYTHON_VERSION=3.12.11
-ARG RUFF_VERSION=0.15.21
-ARG MYPY_VERSION=2.3.0
-ARG TYPES_PYYAML_VERSION=6.0.12.20250915
 
 # Runtime tools the agents shell out to. git is required for the worktree
-# workflow; curl/ca-certificates support egress and the acceptance checks.
+# workflow; curl/ca-certificates support egress and the acceptance checks; gcc
+# and libc6-dev build the few source distributions in the dependency groups.
+#
+# shellcheck is deliberately not here: the dev group pins shellcheck-py, which is
+# the binary the workstation gate runs, and an apt copy on PATH would be a second
+# version reachable by the same command.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
@@ -88,7 +93,6 @@ RUN apt-get update \
         ca-certificates \
         jq \
         ripgrep \
-        shellcheck \
         make \
         gcc \
         libc6-dev \
@@ -109,9 +113,9 @@ RUN npm install -g --no-fund --no-audit \
 # interpreter and tool venvs live under /opt (baked into the image), the cache
 # under /tmp (the writable tmpfs), and tool shims on the default PATH.
 #
-# This does NOT substitute for `make quality` on the workstation: `make test`
-# reaches the pytorch cu130 index, and an unsynced .venv resolves different
-# versions than the lockfile pins. It provides fast local feedback, not proof.
+# `make quality` runs here and reports what it skipped, but it does not replace
+# the workstation gate: no GPU, no running services, and the lock check needs an
+# index the allowlist does not carry. It is fast feedback, not proof.
 COPY --from=uv-source /uv /usr/local/bin/uv
 
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
@@ -121,57 +125,41 @@ ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
     UV_CACHE_DIR=/tmp/uv-cache
 
 RUN uv python install "${PYTHON_VERSION}" --default --preview \
-    && uv tool install "ruff==${RUFF_VERSION}" \
-    && uv tool install "mypy==${MYPY_VERSION}" \
-        --with "types-pyyaml==${TYPES_PYYAML_VERSION}" \
     && chmod -R a+rX /opt/uv \
     && rm -rf /tmp/uv-cache
 
-# numpy and gguf are not optional extras: the rust gate hard-depends on them.
-# runtime/src/npz.rs shells out to python3 to re-read a written shard with
-# np.load, so `cargo test` FAILS outright without numpy rather than skipping,
-# and the cross-language contract tests need gguf to exercise the real Python
-# exporters. Both are the exact pins from pyproject.toml, so a sandbox result
-# means what a workstation result means. They live in their own venv placed
-# first on PATH, leaving the ruff and mypy tool venvs above untouched.
+# The sandbox environment, resolved from the lockfile rather than transcribed.
+# `sandbox` is the GPU-less test extent and `dev` carries ruff, mypy, shellcheck,
+# and pytest, so --frozen against uv.lock reproduces the workstation's versions
+# exactly and `make quality` in a sandbox means what it means on the host.
 #
-# The rest of the list is the `sandbox` dependency group from pyproject.toml
-# verbatim, plus pytest from the `dev` group and safetensors. Installing the
-# declared group rather than a hand-picked subset is deliberate: "sandbox tier"
-# then has one definition someone can review against pyproject.toml, and
-# /work/AGENTS.md's "~4 skips, not ~40" heuristic depends on knowing exactly
-# what is present. Without pytest here no Python test runs in a sandbox at all,
-# which pushes an agent into building a venv on the bind-mounted worktree --
-# writable, executable, and visible to the host, which is the pressure the
-# read-only rootfs exists to remove.
+# Two members are load-bearing beyond testing: runtime/src/npz.rs shells out to
+# python3 to re-read a written shard with np.load, so `cargo test` FAILS rather
+# than skips without numpy, and the cross-language contract tests need gguf to
+# exercise the real Python exporters.
 #
-# numpy is pinned explicitly alongside the group so a transitive requirement
-# (scikit-learn's, in particular) cannot silently resolve it downward. A
-# conflict fails the build rather than producing an image whose rust gate is
-# subtly wrong.
-ARG NUMPY_VERSION=2.4.6
-ARG GGUF_VERSION=0.19.0
+# Without pytest here no Python test runs in a sandbox at all, which pushes an
+# agent into building a venv on the bind-mounted worktree -- writable and visible
+# to the host, which is the pressure the read-only rootfs exists to remove.
+#
+# --only-group, not --group: the latter adds the groups *to* [project]
+# dependencies, which would drag in torch and the CUDA stack and then fail
+# building llama-cpp-python, since this image has no C++ compiler. --only-group
+# installs the named groups and nothing else, and is the same form
+# make/agents.mk uses to provision a TIER=sandbox worktree -- so the image and
+# that tier are the same environment by construction. --active because uv
+# otherwise creates ./.venv instead of using /opt/pyenv.
+#
+# NOTE: the image now depends on uv.lock, so `make agent-sandbox-build` is
+# required after a dependency change, as it already is after a Cargo.lock change.
+# The manifests are kept rather than deleted: they are the image's record of what
+# /opt/pyenv was built from, and /work is a bind mount, so they cannot live there.
+COPY pyproject.toml uv.lock /opt/sandbox-env/
 RUN uv venv --python "${PYTHON_VERSION}" /opt/pyenv \
-    && uv pip install --python /opt/pyenv/bin/python \
-        "numpy==${NUMPY_VERSION}" \
-        "gguf==${GGUF_VERSION}" \
-        "omegaconf==2.3.1" \
-        "hydra-core==1.3.2" \
-        "pyyaml==6.0.3" \
-        "xxhash==3.5.0" \
-        "tokenizers==0.22.2" \
-        "scikit-learn==1.9.0" \
-        "fastapi==0.139.0" \
-        "httpx==0.28.1" \
-        "uvicorn==0.51.0" \
-        "requests==2.34.2" \
-        "safetensors==0.8.0" \
-        "pytest==9.1.1" \
-        "pytest-asyncio==1.4.0" \
-        "pytest-mock==3.15.1" \
-        "pytest-xdist==3.8.0" \
-        "pytest-cov==7.1.0" \
-    && chmod -R a+rX /opt/pyenv \
+    && cd /opt/sandbox-env \
+    && VIRTUAL_ENV=/opt/pyenv uv sync --active --frozen \
+        --only-group dev --only-group sandbox \
+    && chmod -R a+rX /opt/pyenv /opt/sandbox-env \
     && rm -rf /tmp/uv-cache
 ENV PATH=/opt/pyenv/bin:$PATH
 
@@ -219,6 +207,14 @@ RUN printf '%s\n' \
     'export PATH' \
     > /etc/profile.d/10-agent-path.sh \
     && chmod 0644 /etc/profile.d/10-agent-path.sh
+
+# Marks a contained sandbox session, so tooling can resolve environment
+# differences itself instead of asking the reader to. make/quality.mk reads it
+# to invoke the pinned tools bare (they are on PATH here, and .venv is masked by
+# the compose file) and to announce the lock check it cannot run behind the
+# egress allowlist. Set as an env var rather than probed from a path, so the
+# signal is explicit and greppable.
+ENV AI_SANDBOX=1
 
 # Native LSP tool in Claude Code (symbol navigation instead of grep sweeps);
 # pyright above serves both CLIs.

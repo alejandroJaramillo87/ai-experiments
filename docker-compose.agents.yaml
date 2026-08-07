@@ -52,13 +52,30 @@ services:
     read_only: true
     # Writable surfaces: the bind-mounted worktree (below) plus ephemeral tmpfs
     # for the home dir and package-manager caches. Nothing else can be written.
+    #
+    # noexec/nosuid/nodev are Docker's defaults for tmpfs, but they are spelled
+    # out because they are load-bearing rather than incidental: tests/conftest.py
+    # relocates pytest's tmp_path base after probing for them, and AGENTS.md tells
+    # agents to build under /work because nothing else here can execute. A future
+    # switch to the long-form mount syntax would drop them silently.
     tmpfs:
-      - /home/node:size=256M,mode=0700,uid=1000,gid=1000
+      - /home/node:size=256M,mode=0700,uid=1000,gid=1000,noexec,nosuid,nodev
       # /tmp also holds CARGO_HOME, seeded from the image's prefetched registry:
       # the .crate cache plus the sources cargo extracts from it. 1G left no
       # headroom once the workspace's dependency tree unpacked. Build artifacts
       # are not here - target/ defaults into the bind-mounted worktree.
-      - /tmp:size=4G,mode=1777
+      - /tmp:size=4G,mode=1777,noexec,nosuid,nodev
+      # Masks the worktree's .venv, which belongs to the workstation: it arrives
+      # over the bind mount pointing at a host interpreter that does not exist in
+      # this container, and a sync against it would write back through the mount
+      # to the workstation.
+      #
+      # Observed effect, not the intended-by-design one: `uv run` here creates a
+      # throwaway venv on this tmpfs and resolves the tool from /opt/pyenv on
+      # PATH, so it succeeds at the pinned version and the write never leaves the
+      # container. Small on purpose -- an actual install would exhaust it and say
+      # so, rather than quietly building a second environment over the mount.
+      - /work/.venv:size=16M,mode=0755,uid=1000,gid=1000,noexec,nosuid,nodev
     # 8G covers editing, linting, and the rust gate against the tiny fixture. The
     # CPU backend dequantizes every tensor to f32 at load, so a real checkpoint
     # costs far more than its on-disk size: E2B's body plus main embedding is
@@ -73,8 +90,13 @@ services:
           memory: 32G
     # Only the git worktree is mounted, read-write. AGENT_WORKTREE is set by the
     # make wrapper to ../ai-experiments-<name>; damage stays inside that worktree.
+    #
+    # Required, with no default: a bare `docker compose run agent` outside the
+    # wrapper would otherwise fall back to the current directory and mount the
+    # repository root, .env included. The build and teardown targets in
+    # make/agents.mk pass a placeholder, since neither uses this mount.
     volumes:
-      - ${AGENT_WORKTREE:-./}:/work:rw
+      - ${AGENT_WORKTREE:?set by make agent-sandbox NAME=<name>; see docs/agents/README.md}:/work:rw
     environment:
       # Exactly one scoped secret is populated by the wrapper; the other stays
       # empty. Claude Code sessions carry a subscription OAuth token minted by

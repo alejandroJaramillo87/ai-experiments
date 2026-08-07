@@ -51,23 +51,17 @@ still need the workstation, so say which parts your run did not exercise.
    and do not present a compile error as evidence of a behavioral gap.
 6. Implement the smallest change that satisfies the test. No drive-by refactoring, no
    reformatting of untouched code, no adjacent improvement — those are separate commits.
-7. Run the gate for what you touched and report the result:
-   - Python and shell: `ruff format --check .`, `ruff check .`, `mypy --no-incremental`,
-     `shellcheck`, and `pytest` for the affected tests. Invoke each directly. Never use
-     `uv run --no-sync`: it resolves `/work/.venv`, which in a worktree is the workstation's
-     venv arriving over the bind mount and pointing at a host interpreter absent from this
-     container — and any `uv sync` against it writes back through the mount.
-   - Rust: `make -C rust-harness quality`, which runs here (see above).
-8. **Report the skip count, not only the exit code.** A green Python suite reporting roughly 40
-   skips instead of roughly 4 is a partial run against a torch-free environment, not a pass. A
-   green Rust gate containing `[SKIP]` lines is weaker than its exit status suggests. State the
-   number.
+7. Run the gate for what you touched and report the result. `make quality` covers Python,
+   shell, and the Rust workspace, and behaves identically here and on the workstation; only
+   `uv lock --check` is skipped, with a `[SKIP]` line saying so. Use `pytest` alone when only
+   the affected tests matter.
+8. **Report the skip count, not only the exit code.** `tests/conftest.py` prints a
+   `[TIER] sandbox:` or `[TIER] full:` line beside the pytest summary; a `[TIER] sandbox:` run
+   is a partial run against a torch-free environment, not a pass. A green Rust gate containing
+   `[SKIP]` lines is weaker than its exit status suggests. State the number.
 
 ## Constraints
 
-- Never repair an environment with a bare `uv sync`; it uninstalls `omegaconf`, `hydra-core`,
-  and `gguf`, and every `tests/training` module then fails collection. Use `make install`, or
-  name the groups explicitly.
 - Never combine a version bump with a functional change in the same step.
 - Compose files and Dockerfiles are the source of truth; when a doc disagrees with them, the
   doc is the bug.

@@ -17,16 +17,15 @@ running inference services. `git` does not work either — the binary is install
 is a linked worktree whose `.git` file points outside the bind mount, so every git command
 fails with `fatal: not a git repository`. You cannot diff against history to see what changed.
 
-Repo-local checks are yours to run, and running them is the point. Invoke the pinned tools
-**directly** — `ruff check .`, `mypy --no-incremental`, `shellcheck`, `pytest`, and
-`make -C rust-harness quality` — never through `uv run --no-sync`, and never root
-`make quality`: its shellcheck step enumerates files with `git ls-files`, which yields nothing
-here, so the step lints zero files and still exits 0. A claim resting on that gate being green
-is a claim you should treat as unverified.
+Repo-local checks are yours to run, and running them is the point. Run `make quality` for the
+full gate and `pytest` for the suite alone; both resolve the same pinned tools here as on the
+workstation. Only `uv lock --check` cannot run here, and the gate prints an explicit `[SKIP]`
+line where it would have.
 
-Read every gate output for `[SKIP]` lines and skip counts. A green suite reporting roughly 40
-skips instead of 4 is a torch-free partial run, and reporting it as a pass is exactly the kind
-of thing you exist to catch.
+Read every gate output for `[SKIP]` lines and skip counts. `tests/conftest.py` prints a
+`[TIER] sandbox:` or `[TIER] full:` line beside the pytest summary; a `[TIER] sandbox:` run is
+a torch-free partial run, and reporting it as a pass is exactly the kind of thing you exist to
+catch.
 
 ## Protocol
 

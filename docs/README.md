@@ -167,7 +167,7 @@ Living documentation for the interp stack (`python -m interp`).
 | [agents/README.md](agents/README.md) | Agent sandbox and tooling |
 | [agents/tooling-parity.md](agents/tooling-parity.md) | OpenCode / Claude Code parity conventions |
 | [testing/README.md](testing/README.md) | The testing tier index: the gate, and the coverage audit |
-| [testing/quality-gate.md](testing/quality-gate.md) | What `make quality` runs, and how to invoke the same tools inside an agent sandbox |
+| [testing/quality-gate.md](testing/quality-gate.md) | What `make quality` runs, and what a sandbox run does not cover |
 | [sandbox/agent-sandbox.md](sandbox/agent-sandbox.md) | The contained agent sandbox: image, mounts, and egress allowlist |
 
 ### Observability

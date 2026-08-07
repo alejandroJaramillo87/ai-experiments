@@ -1,8 +1,8 @@
 # Quality gate
 
-`make quality` is the pre-push gate, mandatory for humans and agents alike. This document
-covers what it runs, and how to invoke the same tools by hand inside a contained agent
-sandbox, where the wrapper commands do not behave the way they do on the workstation.
+`make quality` is the pre-push gate, mandatory for humans and agents alike. It is the same
+command on the workstation and in a contained agent sandbox; this document covers what it
+runs, and what a sandbox run does not cover.
 
 The recipe in `make/quality.mk` is the source of truth for the step list. When this document
 disagrees with it, the recipe is right.
@@ -38,58 +38,57 @@ Both carry an empty-set guard, as the shellcheck step does: enumerating zero fil
 loudly, because a gate that silently checked nothing is indistinguishable from one that
 passed.
 
-## Two environments that disagree
+## One gate, two environments
 
-`make quality` assumes the workstation. In a contained agent sandbox
-(`make agent-sandbox`), invoke the pinned tools **directly**:
+Run `make quality` the same way in both. The difference is resolved inside `make/quality.mk`,
+which reads the `AI_SANDBOX` marker the sandbox image sets:
 
-```bash
-$ ruff format --check .
-$ ruff check .
-$ mypy --no-incremental
-$ shellcheck --severity=warning <files>
-$ pytest
+- **Workstation** — tools come from `.venv` via `uv run --no-sync`, which runs what is already
+  provisioned rather than re-resolving, so no step touches the network.
+- **Sandbox** — tools are invoked from `PATH`. The image builds `/opt/pyenv` with
+  `uv sync --frozen --only-group dev --only-group sandbox` against `uv.lock`, so the versions
+  are the workstation's by construction rather than by transcription. There is no `.venv` to
+  confuse matters: `docker-compose.agents.yaml` masks it with a tmpfs, so the workstation's
+  venv is neither readable nor writable from inside.
+
+One step cannot run in a sandbox, and says so rather than being silently absent:
+
+```
+[SKIP] uv lock --check: resolving the lock reaches the pytorch cu130 index, which the
+       sandbox egress allowlist does not carry. The workstation gate covers it.
 ```
 
-Not through `uv run --no-sync`. The sandbox image (`docker/agents/Dockerfile.agents`) bakes
-in uv 0.11.28, CPython 3.12.11, and the exact dev-group pins — ruff 0.15.21, mypy 2.3.0,
-types-pyyaml 6.0.12.20250915 — so a direct invocation matches the workstation.
-`uv run --no-sync` does not: it resolves whatever `.venv` happens to hold rather than the
-pins. In a worktree that `.venv` is the *workstation's*, arriving over the bind mount and
-pointing at a host interpreter absent from the container — and any `uv sync` against it
-writes back through the mount to the workstation.
+Everything else runs, including `make test` and the whole rust gate — the image carries the
+toolchain pinned by `rust-harness/rust-toolchain.toml`, a prefetched crate registry so no step
+needs the network, and numpy and gguf at the `uv.lock` pins. `runtime/src/npz.rs` shells out
+to `np.load`, so `cargo test` fails outright without numpy rather than skipping. Rebuild the
+image with `make agent-sandbox-build` after changing `docker/agents/Dockerfile.agents`,
+`uv.lock`, or `rust-harness/Cargo.lock`.
 
 Prefer `mypy --no-incremental` when the result matters: a warm `.mypy_cache` makes the
 incremental run non-deterministic, and the same command can pass incrementally while failing
 under `--no-incremental`.
 
-`make test` cannot run in the sandbox because it reaches the pytorch cu130 index the egress
-allowlist does not carry. Invoke `pytest` directly instead; the image bakes the `sandbox`
-dependency group and pytest into `/opt/pyenv`, so a direct call runs against the
-`pyproject.toml` pins.
-
-The rust gate runs in the sandbox too: the image carries the toolchain pinned by
-`rust-harness/rust-toolchain.toml`, a prefetched crate registry so no step needs the network,
-and numpy and gguf at the `pyproject.toml` pins. `runtime/src/npz.rs` shells out to
-`np.load`, so `cargo test` fails outright without numpy rather than skipping. Rebuild the
-image with `make agent-sandbox-build` after changing `docker/agents/Dockerfile.agents` or
-`rust-harness/Cargo.lock`.
-
-What stays workstation-only is GPU work, the service healthchecks, and anything under
-`/mnt/ai-data`. **Re-run `make quality` on the workstation before every push regardless: the
-sandbox proves the code, not the hardware.**
+What stays workstation-only is the lock check above, GPU work, the service healthchecks, and
+anything under `/mnt/ai-data`. **Re-run `make quality` on the workstation before every push
+regardless: the sandbox proves the code, not the hardware.**
 
 ## Provisioning
 
-Never repair the environment with a bare `uv sync`. It installs the default groups only, so
-it *uninstalls* `omegaconf`, `hydra-core`, `gguf`, and `xxhash`, and every `tests/training`
-module then fails collection on a missing import. Use `make install`, which passes
-`--all-groups --all-extras`.
+`make install` is the full provision (`--all-groups --all-extras`). A bare `uv sync` is a safe
+repair: `pyproject.toml` names all four dependency groups in `[tool.uv] default-groups`
+precisely so the reflexive command cannot strip an environment down.
 
-Provision a worktree with `make worktree-<name> TIER=full` when it will run the training
-suite or GPU work. The default `TIER=sandbox` is torch-free and its torch-gated tests skip
-rather than fail, so **check the skip count before reading a green suite as evidence**: about
-40 skips instead of about four means a partial run, not a pass.
+Provision a worktree with `make worktree-<name> TIER=full` when it will run the training suite
+or GPU work. The default `TIER=sandbox` is torch-free, and its torch-gated tests skip rather
+than fail — so a green partial run looks like a pass. The suite states which it was, beside
+the summary:
+
+```
+[TIER] sandbox: torch absent, so torch-gated tests skipped rather than ran. This is a
+       partial run, not a pass.
+[TIER] full: torch present, the whole suite was in scope.
+```
 
 ## Related
 
