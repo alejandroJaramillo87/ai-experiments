@@ -12,9 +12,10 @@
 # enforced structurally). Notebook-support packages are folded into the interp group for the
 # same reason; notebooks never pip-install inside a running container.
 #
-# Base is the CUDA 13.0.2 runtime image, not devel: the interp stack is pure Python plus
-# prebuilt wheels (TransformerLens, nnsight, SAELens compile nothing). If a dependency later
-# needs nvcc, switch this base to devel with a dated comment; do not add a second image.
+# Base is the CUDA 13.0.2 runtime image, not devel: nothing here needs nvcc, and Triton ships
+# its own ptxas and CUDA headers. A C compiler IS needed, but only at runtime -- see the apt
+# layer below. If a dependency later needs nvcc, switch this base to devel with a dated
+# comment; do not add a second image.
 
 # Build arguments
 ARG CUDA_VERSION=13.0.2
@@ -36,13 +37,27 @@ ENV PYTHONUNBUFFERED=1
 # Blackwell sm_120 target, matching the inference and training GPU images
 ENV TORCH_CUDA_ARCH_LIST="12.0"
 
-# Minimal runtime packages: no build toolchain (pure-wheel stack, see header)
+# Runtime packages. Every dependency installs as a prebuilt wheel, so nothing here compiles at
+# build time -- but Triton compiles at *run* time and needs a toolchain in the running
+# container:
+#
+#   torch 2.13 routes some eager ops through Triton kernels (torch/_native/registry.py), and
+#   Triton's first CUDA call builds its driver shim from source
+#   (triton/runtime/build.py:_build). That shim is a CPython extension including <Python.h>
+#   and is compiled with `gcc` found on PATH, so gcc and the Python headers must both be
+#   present. Without them the first GPU forward pass dies with "Failed to find C compiler",
+#   after the model has already loaded (2026-08, a Gemma 4 harvest).
+#
+# libcuda.so.1 is linked from the driver the NVIDIA runtime injects, and cuda.h comes from
+# Triton's own bundled include directory, so no CUDA dev package is required.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends --allow-change-held-packages \
         curl \
         ca-certificates \
+        gcc \
         libgomp1 \
         python${PYTHON_VERSION} \
+        python${PYTHON_VERSION}-dev \
         python${PYTHON_VERSION}-venv && \
     rm -rf /var/lib/apt/lists/*
 
@@ -85,6 +100,13 @@ ENV IPYTHONDIR=/tmp/ipython
 ENV MPLCONFIGDIR=/tmp/mpl
 ENV XDG_CACHE_HOME=/tmp/cache
 ENV TRITON_CACHE_DIR=/tmp/triton
+# wandb stages artifacts, caches and config under $XDG_DATA_HOME (default
+# $HOME/.local/share), which is on the read-only rootfs. SAELens uploads the SAE
+# checkpoint as an artifact at the end of SAETrainingRunner.run(), so an
+# unredirected staging dir fails the whole run after training has completed.
+ENV WANDB_DATA_DIR=/tmp/wandb/data
+ENV WANDB_CACHE_DIR=/tmp/wandb/cache
+ENV WANDB_CONFIG_DIR=/tmp/wandb/config
 
 RUN mkdir -p /app && chown -R appuser:appuser /app
 

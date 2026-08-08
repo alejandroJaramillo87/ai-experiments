@@ -113,7 +113,6 @@ through 3.14, so `pandas` 3.x cannot resolve while `mlflow` remains a dependency
 | `optuna` | 4.9.0 | Hyperparameter optimization |
 | `tiktoken` | 0.13.0 | Byte-pair tokenizer |
 | `requests` | 2.34.2 | HTTP client |
-| `llama-cpp-python` | 0.3.16 | Python bindings for llama.cpp |
 | `fastapi` | 0.139.0 | Model-serving API framework |
 | `uvicorn` | 0.51.0 | ASGI server for FastAPI |
 

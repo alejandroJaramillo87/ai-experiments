@@ -8,15 +8,24 @@ import collections
 import glob
 import json
 import os
+import shutil
 
 import pytest
+import yaml
 from omegaconf import OmegaConf
 
 from interp.harvest import (
+    ARROW_STORAGE_DTYPES,
     ARTIFACT,
+    CHUNKS_SUFFIX,
+    DEFAULT_CHUNK_TOKENS,
+    DTYPE_BYTES,
     HarvestError,
+    buffer_tokens,
+    captured_tokens,
     check_capture,
     check_hook_dims,
+    chunk_plan,
     corpus_identity,
     disk_preflight,
     gc_captures,
@@ -45,7 +54,7 @@ def gemma4_autoconfig(monkeypatch):
     import sys
     from types import SimpleNamespace
 
-    config = SimpleNamespace(model_type="gemma4_text", hidden_size=2304)
+    config = SimpleNamespace(model_type="gemma4_text", hidden_size=1536)
     stub = SimpleNamespace(
         AutoConfig=SimpleNamespace(from_pretrained=lambda *a, **k: config)
     )
@@ -68,19 +77,79 @@ def make_recipe(tmp_path, **harvest_overrides):
     return recipe
 
 
-def fake_runner_factory(calls):
-    def fake_runner(job, out_dir):
-        calls.append(job["hook"])
+class FakeSession:
+    """Stands in for _SaeLensSession: one hook, N chunks, no model.
+
+    capture() writes a marker file per chunk and reports the tokens it was
+    asked for, which is what a corpus larger than the budget would really
+    yield. Tests that care about a short corpus set tokens_written.
+    """
+
+    def __init__(self, job, calls, tokens_written=None, fail_at=None):
+        self.job = job
+        self.calls = calls
+        self.tokens_written = tokens_written
+        self.fail_at = fail_at
+        self.fast_forwarded = 0
+
+    def capture(self, out_dir, chunk_tokens):
+        # SAELens refuses a non-empty output directory before capturing
+        # anything (KB-58), so the fake must too -- that refusal is the
+        # behaviour chunking exists to work around, and a fake that quietly
+        # overwrites would report a resume as working when it does not.
+        if os.path.isdir(out_dir) and os.listdir(out_dir):
+            raise RuntimeError(f"Activations directory ({out_dir}) is not empty")
+        if self.fail_at is not None and len(self.calls) == self.fail_at:
+            # A real crash lands mid-write: the runner has already created
+            # out_dir and filled it with .tmp_shards. Failing cleanly instead
+            # would leave the interrupted chunk's directory absent on resume,
+            # which is precisely the case the refusal above fires on.
+            os.makedirs(out_dir, exist_ok=True)
+            with open(os.path.join(out_dir, ".tmp_shards"), "w") as f:
+                f.write("partial")
+            raise RuntimeError("capture crashed mid-chunk")
+        self.calls.append((self.job["hook"], out_dir, chunk_tokens))
         os.makedirs(out_dir, exist_ok=True)
         with open(os.path.join(out_dir, "cache.bin"), "w") as f:
-            f.write("shards")
-        return {
-            "tokens": job["total_tokens"],
-            "tokenizer_fingerprint": "fp-test",
-            "sae_lens_version": "6.46.0",
-        }
+            f.write("shard")
+        return chunk_tokens if self.tokens_written is None else self.tokens_written
+
+    def fast_forward(self, tokens):
+        self.fast_forwarded = tokens
+
+    def info(self):
+        return {"tokenizer_fingerprint": "fp-test", "sae_lens_version": "6.46.0"}
+
+
+def fake_runner_factory(calls, tokens_written=None, fail_at=None, sessions=None):
+    def fake_runner(job):
+        session = FakeSession(job, calls, tokens_written, fail_at)
+        if sessions is not None:
+            sessions.append(session)
+        return session
 
     return fake_runner
+
+
+def fake_assemble(chunks_dir, out_dir):
+    """Stand-in for _consolidate_shards: flatten chunk dirs, then remove them.
+
+    Mirrors the two properties run_harvest depends on -- every chunk's content
+    ends up under out_dir, and chunks_dir is gone afterwards -- without Arrow.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    for index, shard in enumerate(sorted(os.listdir(chunks_dir))):
+        for entry in sorted(os.listdir(os.path.join(chunks_dir, shard))):
+            os.replace(
+                os.path.join(chunks_dir, shard, entry),
+                os.path.join(out_dir, f"data-{index:05d}-{entry}"),
+            )
+    shutil.rmtree(chunks_dir)
+
+
+def hooks_called(calls):
+    """Just the hook names from the (hook, out_dir, tokens) call log."""
+    return [hook for hook, _, _ in calls]
 
 
 def plenty_of_disk(_path):
@@ -118,13 +187,43 @@ class TestPreflight:
         recipe = make_recipe(
             tmp_path,
             total_tokens=300_000_000,
-            d_model=2304,
+            d_model=1536,
             hook_layers=[7, 15, 22],
             acknowledge_multi_layer=True,
+            dtype="fp16",
         )
-        single = make_recipe(tmp_path, total_tokens=300_000_000, d_model=2304)
-        assert projected_bytes(single.harvest, 2304) == 300_000_000 * 2304 * 2
-        assert projected_bytes(recipe.harvest, 2304) == 3 * 300_000_000 * 2304 * 2
+        single = make_recipe(
+            tmp_path, total_tokens=300_000_000, d_model=1536, dtype="fp16"
+        )
+        # 310_640_640, not 300_000_000: at fp16 a buffer holds 647_168 tokens,
+        # and each of the 20 chunks rounds up to 24 whole buffers. Pricing the
+        # request instead would under-book 33GB on this capture.
+        assert projected_bytes(single.harvest, 1536) == 310_640_640 * 1536 * 2
+        assert projected_bytes(recipe.harvest, 1536) == 3 * 310_640_640 * 1536 * 2
+
+    def test_projection_counts_whole_buffers_not_the_request(self, tmp_path):
+        # The preflight is this tier's only defense against filling the volume,
+        # so it must price what SAELens writes rather than what the recipe
+        # asked for. SAELens writes whole buffers: the projection is always at
+        # or above the request, never below.
+        recipe = make_recipe(
+            tmp_path,
+            total_tokens=2_000_000,
+            d_model=1536,
+            dtype="fp32",
+            chunk_tokens=700_000,
+            context_len=1024,
+            model_batch_size=8,
+        )
+        # The workstation measured exactly this on 2026-08-08 (KB-58).
+        assert captured_tokens(recipe.harvest, 1536) == 2_875_392
+
+    def test_a_narrower_dtype_buffers_more_tokens(self, tmp_path):
+        # The buffer is a byte budget, not a sequence count, so halving the
+        # element size doubles the tokens per buffer. A constant here would
+        # mis-price every fp16 capture -- which is both reference captures.
+        assert buffer_tokens(1536, "fp32", 8, 1024) == 319_488
+        assert buffer_tokens(1536, "fp16", 8, 1024) == 647_168
 
     def test_refuses_when_projection_breaches_floor(self, tmp_path):
         # 1.45TB free, 1.38TB projected leaves 70GB, under the 100GB floor
@@ -170,9 +269,12 @@ class TestRunHarvest:
         calls: list[str] = []
         recipe = make_recipe(tmp_path)
         manifest = run_harvest(
-            recipe, runner_fn=fake_runner_factory(calls), disk_usage_fn=plenty_of_disk
+            recipe,
+            runner_fn=fake_runner_factory(calls),
+            disk_usage_fn=plenty_of_disk,
+            assemble_fn=fake_assemble,
         )
-        assert calls == ["model.layers.15"]
+        assert hooks_called(calls) == ["model.layers.15"]
         assert manifest["artifact"] == ARTIFACT
         assert manifest["hooks"] == ["model.layers.15"]
         assert manifest["corpus"] == "monology/pile-uncopyrighted"
@@ -214,8 +316,9 @@ class TestRunHarvest:
                 recipe,
                 runner_fn=fake_runner_factory(calls),
                 disk_usage_fn=plenty_of_disk,
+                assemble_fn=fake_assemble,
             )
-        assert calls == ["model.layers.15", "model.layers.22"]
+        assert hooks_called(calls) == ["model.layers.15", "model.layers.22"]
         assert manifest["hook_layers"] == [7, 15, 22]
         # Throughput reflects this run only: the wall clock spans the two
         # pending hooks, so counting the pre-completed layer-7 tokens would
@@ -244,7 +347,10 @@ class TestRunHarvest:
             )
         with pytest.raises(HarvestError, match="different harvest config"):
             run_harvest(
-                recipe, runner_fn=fake_runner_factory([]), disk_usage_fn=plenty_of_disk
+                recipe,
+                runner_fn=fake_runner_factory([]),
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=fake_assemble,
             )
 
     def test_resume_under_swapped_hf_corpus_refused(self, tmp_path):
@@ -263,6 +369,9 @@ class TestRunHarvest:
             "corpus_xxh3": None,
             "context_len": 1024,
             "total_tokens": 1000,
+            # Matches the recipe so the corpus is the only thing that changed;
+            # otherwise this asserts against the wrong key.
+            "chunk_tokens": 0,
             "dtype": "bf16",
             "seed": 42,
             "d_model": 8,
@@ -281,36 +390,396 @@ class TestRunHarvest:
             )
         with pytest.raises(HarvestError, match="changed: corpus"):
             run_harvest(
-                recipe, runner_fn=fake_runner_factory([]), disk_usage_fn=plenty_of_disk
+                recipe,
+                runner_fn=fake_runner_factory([]),
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=fake_assemble,
             )
 
     def test_completed_capture_refuses_rerun(self, tmp_path):
         recipe = make_recipe(tmp_path)
         run_harvest(
-            recipe, runner_fn=fake_runner_factory([]), disk_usage_fn=plenty_of_disk
+            recipe,
+            runner_fn=fake_runner_factory([]),
+            disk_usage_fn=plenty_of_disk,
+            assemble_fn=fake_assemble,
         )
         with pytest.raises(HarvestError, match="already complete"):
             run_harvest(
-                recipe, runner_fn=fake_runner_factory([]), disk_usage_fn=plenty_of_disk
+                recipe,
+                runner_fn=fake_runner_factory([]),
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=fake_assemble,
             )
 
     def test_failed_runner_leaves_no_manifest(self, tmp_path):
-        def broken_runner(job, out_dir):
+        def broken_runner(job):
             raise RuntimeError("cuda oom")
 
         recipe = make_recipe(tmp_path)
         with pytest.raises(RuntimeError):
-            run_harvest(recipe, runner_fn=broken_runner, disk_usage_fn=plenty_of_disk)
+            run_harvest(
+                recipe,
+                runner_fn=broken_runner,
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=fake_assemble,
+            )
         capture_dir = os.path.join(recipe.harvest.out_root, "harvest-test")
         with pytest.raises(ManifestError):
             load_manifest(capture_dir)
+
+
+class TestChunkPlan:
+    def test_budgets_sum_to_the_request(self):
+        assert sum(chunk_plan(1000, 300, 10)) == 1000
+        assert sum(chunk_plan(300_000_000, 15_000_000, 1024)) == 300_000_000
+
+    def test_chunks_are_spread_evenly_not_filled_with_a_remainder(self):
+        # 100 in chunks of 30 is four chunks of 25, not 30+30+30+10. A stub
+        # last chunk below one sequence is refused by SAELens's own config
+        # check, hours into a capture.
+        assert chunk_plan(100, 30, 10) == [25, 25, 25, 25]
+
+    def test_uneven_totals_differ_by_at_most_one_token(self):
+        plan = chunk_plan(1001, 100, 10)
+        assert sum(plan) == 1001
+        assert max(plan) - min(plan) <= 1
+
+    def test_zero_selects_the_default(self):
+        assert (
+            chunk_plan(4 * DEFAULT_CHUNK_TOKENS, 0, 1024) == [DEFAULT_CHUNK_TOKENS] * 4
+        )
+
+    def test_a_capture_smaller_than_one_chunk_is_one_chunk(self):
+        assert chunk_plan(500, 15_000, 128) == [500]
+
+    def test_chunk_size_never_falls_below_one_sequence(self):
+        # A chunk shorter than context_len cannot hold a whole sequence.
+        assert chunk_plan(4096, 10, 1024) == [1024] * 4
+
+
+class TestChunkedCapture:
+    def capture_dir(self, recipe):
+        return os.path.join(recipe.harvest.out_root, "harvest-test")
+
+    def test_one_capture_call_per_chunk_with_distinct_dirs(self, tmp_path):
+        calls: list = []
+        recipe = make_recipe(
+            tmp_path, total_tokens=900, context_len=100, chunk_tokens=300
+        )
+        run_harvest(
+            recipe,
+            runner_fn=fake_runner_factory(calls),
+            disk_usage_fn=plenty_of_disk,
+            assemble_fn=fake_assemble,
+        )
+        assert len(calls) == 3
+        assert [tokens for _, _, tokens in calls] == [300, 300, 300]
+        out_dirs = [out_dir for _, out_dir, _ in calls]
+        assert len(set(out_dirs)) == 3
+        assert [os.path.basename(d) for d in out_dirs] == [
+            "shard_00000",
+            "shard_00001",
+            "shard_00002",
+        ]
+
+    def test_assembly_runs_at_a_single_chunk(self, tmp_path):
+        # The smoke path and the reference path must be the same code path:
+        # skipping assembly at N=1 is how it would first run in anger 17
+        # hours into a capture.
+        assembled: list = []
+        recipe = make_recipe(
+            tmp_path, total_tokens=300, context_len=100, chunk_tokens=300
+        )
+
+        def recording_assemble(chunks_dir, out_dir):
+            assembled.append((chunks_dir, out_dir))
+            fake_assemble(chunks_dir, out_dir)
+
+        run_harvest(
+            recipe,
+            runner_fn=fake_runner_factory([]),
+            disk_usage_fn=plenty_of_disk,
+            assemble_fn=recording_assemble,
+        )
+        assert len(assembled) == 1
+
+    def test_assembly_leaves_the_path_the_sae_trainer_reads(self, tmp_path):
+        # interp/sae/train.py joins <capture_dir>/<hook> independently of the
+        # harvest, so the chunk staging directory must be gone and the hook
+        # directory must hold the payload.
+        recipe = make_recipe(
+            tmp_path, total_tokens=600, context_len=100, chunk_tokens=200
+        )
+        run_harvest(
+            recipe,
+            runner_fn=fake_runner_factory([]),
+            disk_usage_fn=plenty_of_disk,
+            assemble_fn=fake_assemble,
+        )
+        hook_dir = os.path.join(self.capture_dir(recipe), "model.layers.15")
+        assert os.path.isdir(hook_dir)
+        assert len(os.listdir(hook_dir)) == 3
+        assert not os.path.exists(hook_dir + ".chunks")
+
+    def test_a_crash_loses_only_the_unfinished_chunk(self, tmp_path):
+        calls: list = []
+        recipe = make_recipe(
+            tmp_path, total_tokens=1000, context_len=100, chunk_tokens=200
+        )
+        with pytest.raises(RuntimeError, match="crashed mid-chunk"):
+            run_harvest(
+                recipe,
+                runner_fn=fake_runner_factory(calls, fail_at=3),
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=fake_assemble,
+            )
+        with open(os.path.join(self.capture_dir(recipe), "progress.json")) as f:
+            progress = json.load(f)
+        # Three chunks banked, the fourth lost, the fifth never attempted.
+        assert progress["completed_chunks"] == {"model.layers.15": 3}
+        assert progress["completed_hooks"] == []
+
+    def test_resume_restarts_at_the_first_uncaptured_chunk(self, tmp_path):
+        recipe = make_recipe(
+            tmp_path, total_tokens=1000, context_len=100, chunk_tokens=200
+        )
+        crashed: list = []
+        with pytest.raises(RuntimeError):
+            run_harvest(
+                recipe,
+                runner_fn=fake_runner_factory(crashed, fail_at=3),
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=fake_assemble,
+            )
+        resumed: list = []
+        sessions: list = []
+        manifest = run_harvest(
+            recipe,
+            runner_fn=fake_runner_factory(resumed, sessions=sessions),
+            disk_usage_fn=plenty_of_disk,
+            assemble_fn=fake_assemble,
+        )
+        assert [os.path.basename(d) for _, d, _ in resumed] == [
+            "shard_00003",
+            "shard_00004",
+        ]
+        # The corpus stream is fresh in a new process, so the three banked
+        # chunks' tokens must be skipped or the capture would duplicate them.
+        assert sessions[0].fast_forwarded == 600
+        assert manifest["chunks"] == 5
+
+    def test_the_interrupted_chunks_debris_is_cleared_before_recapture(self, tmp_path):
+        # The chunk a crash lands in has a directory full of .tmp_shards, and
+        # that directory is the one the resume writes next. Leaving it in place
+        # reproduces KB-58 one level down: SAELens refuses it and the resume
+        # fails exactly where the original run did. Found on the workstation
+        # (2026-08) after the happy path had already passed.
+        recipe = make_recipe(
+            tmp_path, total_tokens=600, context_len=100, chunk_tokens=200
+        )
+        with pytest.raises(RuntimeError):
+            run_harvest(
+                recipe,
+                runner_fn=fake_runner_factory([], fail_at=1),
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=fake_assemble,
+            )
+        capture_dir = self.capture_dir(recipe)
+        hook = "model.layers.15"
+        debris = os.path.join(
+            capture_dir, hook + CHUNKS_SUFFIX, "shard_00001", ".tmp_shards"
+        )
+        assert os.path.exists(debris), (
+            "the fake must leave a crash the way SAELens does"
+        )
+
+        resumed: list = []
+        run_harvest(
+            recipe,
+            runner_fn=fake_runner_factory(resumed),
+            disk_usage_fn=plenty_of_disk,
+            assemble_fn=fake_assemble,
+        )
+        assert [os.path.basename(d) for _, d, _ in resumed] == [
+            "shard_00001",
+            "shard_00002",
+        ]
+        # Cleared, not merged into: debris left beside the recaptured chunk
+        # would be consolidated into the assembled capture.
+        assert not os.path.exists(debris)
+
+    def test_a_hook_needing_only_assembly_builds_no_session(self, tmp_path):
+        # A crash between the last chunk and assembly leaves work that needs
+        # no model. Building a session would cost a load and a fast_forward
+        # over the entire corpus to capture nothing.
+        recipe = make_recipe(
+            tmp_path, total_tokens=600, context_len=100, chunk_tokens=200
+        )
+
+        def die_before_assembling(chunks_dir, out_dir):
+            # Nothing created, nothing moved: the process died between the
+            # last chunk's progress write and the start of assembly.
+            raise RuntimeError("killed before assembly")
+
+        with pytest.raises(RuntimeError, match="killed before assembly"):
+            run_harvest(
+                recipe,
+                runner_fn=fake_runner_factory([]),
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=die_before_assembling,
+            )
+        sessions: list = []
+        manifest = run_harvest(
+            recipe,
+            runner_fn=fake_runner_factory([], sessions=sessions),
+            disk_usage_fn=plenty_of_disk,
+            assemble_fn=fake_assemble,
+        )
+        assert sessions == []
+        # The tokenizer and SAELens version were banked before the first
+        # chunk, so the manifest can still name them without a session.
+        assert manifest["sae_lens_version"] == "6.46.0"
+        assert manifest["total_tokens"] == 600
+
+    def test_resume_under_a_changed_chunk_size_is_refused(self, tmp_path):
+        # Chunk size fixes where the boundaries fall, so resuming across a
+        # change leaves a gap or an overlap at the seam.
+        recipe = make_recipe(
+            tmp_path, total_tokens=1000, context_len=100, chunk_tokens=200
+        )
+        with pytest.raises(RuntimeError):
+            run_harvest(
+                recipe,
+                runner_fn=fake_runner_factory([], fail_at=2),
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=fake_assemble,
+            )
+        wider = make_recipe(
+            tmp_path, total_tokens=1000, context_len=100, chunk_tokens=500
+        )
+        with pytest.raises(HarvestError, match="changed: chunk_tokens"):
+            run_harvest(
+                wider,
+                runner_fn=fake_runner_factory([]),
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=fake_assemble,
+            )
+
+    def test_an_interrupted_assembly_refuses_rather_than_truncating(self, tmp_path):
+        # Assembly moves files out of the staging directory, so an assembly
+        # killed part-way leaves neither side whole. Continuing would publish
+        # a truncated capture as complete.
+        recipe = make_recipe(
+            tmp_path, total_tokens=400, context_len=100, chunk_tokens=200
+        )
+
+        def assemble_then_die(chunks_dir, out_dir):
+            fake_assemble(chunks_dir, out_dir)
+            raise RuntimeError("killed during assembly")
+
+        with pytest.raises(RuntimeError, match="killed during assembly"):
+            run_harvest(
+                recipe,
+                runner_fn=fake_runner_factory([]),
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=assemble_then_die,
+            )
+        with pytest.raises(HarvestError, match="assembly was interrupted"):
+            run_harvest(
+                recipe,
+                runner_fn=fake_runner_factory([]),
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=fake_assemble,
+            )
+
+    def test_manifest_records_measured_tokens_not_the_request(self, tmp_path):
+        # SAELens starts a new epoch instead of stopping when the corpus runs
+        # dry, and rows are lost to the sequence boundary, so the requested
+        # budget is not evidence of what landed on disk.
+        recipe = make_recipe(
+            tmp_path, total_tokens=900, context_len=100, chunk_tokens=300
+        )
+        manifest = run_harvest(
+            recipe,
+            runner_fn=fake_runner_factory([], tokens_written=250),
+            disk_usage_fn=plenty_of_disk,
+            assemble_fn=fake_assemble,
+        )
+        assert manifest["total_tokens"] == 750
+        assert manifest["requested_tokens"] == 900
+
+    def test_measured_tokens_survive_a_resume(self, tmp_path):
+        recipe = make_recipe(
+            tmp_path, total_tokens=1000, context_len=100, chunk_tokens=200
+        )
+        with pytest.raises(RuntimeError):
+            run_harvest(
+                recipe,
+                runner_fn=fake_runner_factory([], fail_at=3),
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=fake_assemble,
+            )
+        manifest = run_harvest(
+            recipe,
+            runner_fn=fake_runner_factory([]),
+            disk_usage_fn=plenty_of_disk,
+            assemble_fn=fake_assemble,
+        )
+        # Chunks banked before the crash count toward what the capture holds,
+        # even though this run did not write them.
+        assert manifest["total_tokens"] == 1000
+
+    def test_preflight_prices_pending_chunks_not_whole_hooks(self, tmp_path):
+        # A hook priced at 1000GB in five chunks of 200GB. With 350GB free
+        # and a 100GB floor, a fresh capture cannot fit and must be refused,
+        # but a run resuming at the last chunk needs only 200GB and fits.
+        # Pricing the resumed run at a whole hook would refuse a capture that
+        # has the space for what is left of it.
+        recipe = make_recipe(
+            tmp_path,
+            total_tokens=1_000_000,
+            context_len=100,
+            chunk_tokens=200_000,
+            d_model=(1000 * GB) // (1_000_000 * DTYPE_BYTES["bf16"]),
+        )
+
+        def tight_disk(_path):
+            return Usage(total=2000 * GB, used=1650 * GB, free=350 * GB)
+
+        with pytest.raises(HarvestError, match="disk preflight refused"):
+            run_harvest(
+                recipe,
+                runner_fn=fake_runner_factory([]),
+                disk_usage_fn=tight_disk,
+                assemble_fn=fake_assemble,
+            )
+        # Bank four of the five chunks, then resume with one left to write.
+        with pytest.raises(RuntimeError):
+            run_harvest(
+                recipe,
+                runner_fn=fake_runner_factory([], fail_at=4),
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=fake_assemble,
+            )
+        calls: list = []
+        run_harvest(
+            recipe,
+            runner_fn=fake_runner_factory(calls),
+            disk_usage_fn=tight_disk,
+            assemble_fn=fake_assemble,
+        )
+        assert [os.path.basename(d) for _, d, _ in calls] == ["shard_00004"]
 
 
 class TestDownstreamGate:
     def test_check_capture_matches_and_refuses(self, tmp_path):
         recipe = make_recipe(tmp_path)
         run_harvest(
-            recipe, runner_fn=fake_runner_factory([]), disk_usage_fn=plenty_of_disk
+            recipe,
+            runner_fn=fake_runner_factory([]),
+            disk_usage_fn=plenty_of_disk,
+            assemble_fn=fake_assemble,
         )
         capture_dir = os.path.join(recipe.harvest.out_root, "harvest-test")
         check_capture(capture_dir, {"model_id": "google/gemma-4-E2B"})
@@ -328,7 +797,10 @@ class TestRetention:
     def make_capture(self, tmp_path, name, created):
         recipe = make_recipe(tmp_path, name=name)
         manifest = run_harvest(
-            recipe, runner_fn=fake_runner_factory([]), disk_usage_fn=plenty_of_disk
+            recipe,
+            runner_fn=fake_runner_factory([]),
+            disk_usage_fn=plenty_of_disk,
+            assemble_fn=fake_assemble,
         )
         capture_dir = os.path.join(recipe.harvest.out_root, name)
         manifest["created"] = created
@@ -344,11 +816,12 @@ class TestRetention:
         assert deleted == [collected]
         assert os.listdir(collected) == ["manifest.json"]
         # The kept capture is untouched: its shard payloads survive alongside
-        # the manifest.
+        # the manifest. Assembly renumbers each chunk's files as it flattens
+        # them, so the payload is matched by prefix rather than by name.
         kept_files = []
         for _root_dir, _, files in os.walk(kept):
             kept_files.extend(files)
-        assert "cache.bin" in kept_files
+        assert any(f.startswith("data-") for f in kept_files)
         assert len(os.listdir(kept)) > 1
 
     def test_gc_oldest_first_and_dry_run(self, tmp_path):
@@ -409,13 +882,15 @@ class TestResolveModelMeta:
             model_type="gemma4",
             text_config=SimpleNamespace(
                 model_type="gemma4_text",
-                hidden_size=2304,
+                hidden_size=1536,
+                num_hidden_layers=35,
                 hidden_size_per_layer_input=256,
             ),
         )
         self.fake_transformers(monkeypatch, composite)
-        d_model, spec = resolve_model_meta("fake/gemma-4", None)
-        assert d_model == 2304
+        d_model, spec, depth = resolve_model_meta("fake/gemma-4", None)
+        assert d_model == 1536
+        assert depth == 35  # read after the same text-config unwrap
         assert spec.model_type == "gemma4_text"
 
     def test_flat_config_reads_hidden_size(self, monkeypatch):
@@ -424,7 +899,7 @@ class TestResolveModelMeta:
         self.fake_transformers(
             monkeypatch, SimpleNamespace(model_type="qwen3", hidden_size=2048)
         )
-        d_model, spec = resolve_model_meta("fake/qwen3", None)
+        d_model, spec, _ = resolve_model_meta("fake/qwen3", None)
         assert d_model == 2048
         assert spec.model_type == "qwen3"
 
@@ -441,7 +916,7 @@ class TestResolveModelMeta:
         from types import SimpleNamespace
 
         self.fake_transformers(monkeypatch, SimpleNamespace(model_type="gemma2"))
-        d_model, spec = resolve_model_meta("fake/model", None, d_model_override=8)
+        d_model, spec, _ = resolve_model_meta("fake/model", None, d_model_override=8)
         assert d_model == 8
         assert spec.model_type == "gemma2"
 
@@ -453,6 +928,86 @@ class TestResolveModelMeta:
         )
         with pytest.raises(HarvestError, match="hook-point registry"):
             resolve_model_meta("fake/mystery", None)
+
+
+def test_every_resolve_model_meta_caller_unpacks_the_whole_tuple():
+    """Arity drift here fails at runtime, and one caller is GPU-gated.
+
+    ``tests/hardware/test_gpu.py`` unpacks this result inside a
+    ``try/except Exception: pytest.skip(...)``, so widening ModelMeta without
+    updating it does not fail that test -- it silently skips it with a message
+    blaming absent weights. Neither the sandbox nor a torch-free workstation
+    run executes that file, so nothing else would notice.
+    """
+    import ast
+    from pathlib import Path
+
+    from interp.harvest import ModelMeta
+
+    root = Path(REPO_ROOT)
+    arity = len(ModelMeta._fields)
+    offenders = []
+    for path in sorted(root.rglob("*.py")):
+        if "__pycache__" in path.parts or ".venv" in path.parts:
+            continue
+        try:
+            tree = ast.parse(path.read_text())
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            call = node.value
+            if not isinstance(call, ast.Call):
+                continue
+            name = call.func
+            if getattr(name, "id", getattr(name, "attr", None)) != "resolve_model_meta":
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Tuple) and len(target.elts) != arity:
+                    offenders.append(
+                        f"{path.relative_to(root)}:{node.lineno} unpacks "
+                        f"{len(target.elts)} of {arity}"
+                    )
+    assert not offenders, f"ModelMeta has {arity} fields: {offenders}"
+
+
+class TestHookLayerBounds:
+    """The depth bound validate_harvest cannot apply: it sees only the recipe."""
+
+    def test_index_past_the_last_layer_is_refused(self):
+        from interp.harvest import check_hook_layer_bounds
+
+        # The exact regression the recipes carried: layer 15 was justified as
+        # "50 percent of a 30-layer stack", and E2B has 35 layers. An index
+        # beyond the real depth must not survive to the capture.
+        with pytest.raises(HarvestError, match=r"\[35\].*35 layers"):
+            check_hook_layer_bounds([35], 35, "google/gemma-4-E2B")
+
+    def test_last_valid_index_is_accepted(self):
+        from interp.harvest import check_hook_layer_bounds
+
+        check_hook_layer_bounds([34], 35, "google/gemma-4-E2B")
+
+    def test_every_out_of_range_index_is_named_at_once(self):
+        from interp.harvest import check_hook_layer_bounds
+
+        with pytest.raises(HarvestError, match=r"\[40, 41\]"):
+            check_hook_layer_bounds([17, 41, 40, 41], 35, "google/gemma-4-E2B")
+
+    def test_unknown_depth_does_not_block(self):
+        from interp.harvest import check_hook_layer_bounds
+
+        # 0 means the config stated no depth. Refusing there would block a run
+        # on a config shape the check cannot judge.
+        check_hook_layer_bounds([999], 0, "fake/opaque")
+
+    def test_e4b_accepts_a_layer_e2b_would_refuse(self):
+        from interp.harvest import check_hook_layer_bounds
+
+        check_hook_layer_bounds([38], 42, "google/gemma-4-E4B")
+        with pytest.raises(HarvestError):
+            check_hook_layer_bounds([38], 35, "google/gemma-4-E2B")
 
 
 class TestHookDimGate:
@@ -483,3 +1038,56 @@ class TestHookDimGate:
         monkeypatch.setitem(sys.modules, "transformers", stub_transformers)
         with pytest.raises(HarvestError, match="flat text-model layout"):
             check_hook_dims("fake/composite", [3])
+
+
+class TestShippedRecipeStorageDtype:
+    """Every shipped harvest recipe must be runnable, or say why it is not.
+
+    KB-57: SAELens resolves harvest.dtype twice, once through DTYPE_MAP to a
+    torch dtype and once as the datasets.Array2D storage type. Arrow has no
+    bfloat16, so a bf16 recipe type-checks here, passes validate_harvest, and
+    then dies inside the runner before the first shard. Every recipe shipped
+    that way, which is why this guard exists rather than a unit test on a
+    synthetic recipe.
+
+    Two reference captures are still bf16 on purpose: fp32 does not fit the
+    volume for either (see the recipes). Those are allowed through only while
+    they name the bug, so a new bf16 recipe cannot join them silently.
+    """
+
+    def recipes(self):
+        pattern = os.path.join(
+            REPO_ROOT, "training", "recipes", "interp", "harvest-*.yaml"
+        )
+        paths = sorted(glob.glob(pattern))
+        assert paths, "no harvest recipes found; the glob is wrong"
+        return paths
+
+    def test_every_recipe_is_arrow_storable_or_names_the_blocker(self):
+        for path in self.recipes():
+            with open(path, encoding="utf-8") as handle:
+                text = handle.read()
+            harvest = yaml.safe_load(text)["harvest"]
+            name = os.path.relpath(path, REPO_ROOT)
+            # Omitting dtype inherits the schema default, which is bf16 and so
+            # cannot run. A harvest recipe must say what it captures at.
+            assert "dtype" in harvest, (
+                f"{name} omits harvest.dtype and would inherit the bf16 schema "
+                f"default, which Arrow cannot store (KB-57). State it explicitly."
+            )
+            dtype = harvest["dtype"]
+            assert dtype in DTYPE_BYTES, f"{name} sets an unknown dtype {dtype!r}"
+            if dtype in ARROW_STORAGE_DTYPES:
+                continue
+            assert "KB-57" in text, (
+                f"{name} captures at {dtype!r}, which Arrow cannot store, and "
+                f"does not cite KB-57. Either move it to one of "
+                f"{sorted(ARROW_STORAGE_DTYPES)} or record why it cannot."
+            )
+
+    def test_the_guard_would_catch_an_undocumented_bf16_recipe(self, tmp_path):
+        """The mutation this guard exists to fail on."""
+        text = "harvest:\n  dtype: bf16\n"
+        loaded = yaml.safe_load(text)["harvest"]["dtype"]
+        assert loaded not in ARROW_STORAGE_DTYPES
+        assert "KB-57" not in text

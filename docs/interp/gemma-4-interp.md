@@ -47,10 +47,15 @@ both spellings, and both are present:
 composite configuration resolves through `gemma4_text`. Registering both means a caller that
 passes either the wrapper or the unwrapped text configuration succeeds.
 
-`architectures[0]` is `Gemma4ForConditionalGeneration` on both variants. Note that this is a
-conditional-generation class while the harvest path loads through `AutoModelForCausalLM`
-(`/interp/harvest.py:179-181`); see
-[The module path is composite](#the-module-path-is-composite).
+`architectures[0]` is `Gemma4ForConditionalGeneration` on both variants, while the harvest
+path loads through `AutoModelForCausalLM` (`interp/harvest.py`, in `check_hook_dims` and
+`_saelens_runner`). That mismatch is resolved and benign: transformers 5.13.1 registers six
+`gemma4*` keys in `MODEL_FOR_CAUSAL_LM_MAPPING_NAMES`, and `AutoModelForCausalLM.from_config`
+returns `Gemma4ForConditionalGeneration` rather than refusing. Verified on the workstation;
+the output is recorded in
+[gemma-4-training.md](../training/gemma-4-training.md). This matters beyond our own code
+because SAELens hardcodes `model_class_name="AutoModelForCausalLM"` with no override hook.
+See also [The module path is composite](#the-module-path-is-composite).
 
 ## Residual width and layer counts
 
@@ -68,10 +73,22 @@ The value flows to `d_model` in the harvest manifest (`harvest.py:141-165`) and 
 — a sixth of E2B's residual stream — and it describes an auxiliary input path, not the stream
 itself.
 
-The layer counts matter because `validate_harvest` (`harvest.py:59-89`) checks only that a hook
-layer index is non-negative. It has no upper bound and no knowledge of the model's depth, so a
-recipe naming layer 15 as "50 percent of a 30-layer stack" passes validation while being wrong
-for a 35-layer model. Bound hook layers against the values above.
+The layer counts matter because `validate_harvest` sees only the recipe, and depth is a property
+of the model. It checks that a hook index is non-negative and can go no further. The upper bound
+lives in `check_hook_layer_bounds` (`harvest.py`), which reads `num_hidden_layers` from the same
+single config read that resolves the width and family, and refuses an index the subject has no
+layer for. It runs in the preflight before the weights load and again in `run_harvest`.
+
+That bounds the range, which is all a depth can decide. It does **not** catch an in-range index
+chosen for a wrong reason: a recipe naming layer 15 as "50 percent of a 30-layer stack" is a
+legal index on a 35-layer model, merely the wrong one. Recipes stating a width or depth that
+contradicts `schemas/gemma4_facts.json` are caught separately, by
+`tests/models/test_gemma4_facts_propagation.py`.
+
+Note also that layer 15 is the worst available choice on E2B: it is the
+`num_hidden_layers - num_kv_shared_layers` boundary (35 − 20), so it is simultaneously the first
+shared-KV layer and the first double-wide-MLP layer. The reference recipes hook layer 17, the
+midpoint of indices 0–34 and a plain sliding-attention block.
 
 ## Uniform post-block width
 
@@ -110,6 +127,14 @@ projection. The tensors are:
 | `model.language_model.layers.{L}.per_layer_projection.weight` | `[1536, 256]` | `[2560, 256]` |
 | `model.language_model.layers.{L}.post_per_layer_input_norm.weight` | `[1536]` | `[2560]` |
 
+The upstream sources settle how these join the stream, which the shapes alone do not say. The
+per-layer input is gated **multiplicatively** in 256-dimensional space, projected back to
+`hidden_size`, and added as a **third residual update, after the feed-forward block**. The
+layer order is attention, feed-forward, per-layer embedding, then `layer_scalar`. So a hook on
+the decoder layer's output captures the residual with the per-layer contribution already
+folded in — it is not a separable side channel. Derivations and line citations are in
+[docs/models/gemma-4.md](../models/gemma-4.md).
+
 A hook must return the post-block residual, never one of these. `check_hook_dims`
 (`harvest.py:168-224`) exists for exactly this, and its docstring names Gemma 4: the check
 "proves the hook output is the hidden_size residual and not a PLE tensor."
@@ -127,6 +152,56 @@ proceeding to harvest (`/interp/commands/harvest.py:56-63`). `run_harvest` never
 the check and the harvest are two separate invocations, and nothing enforces that the check ran
 first, or that it ran against the same recipe. `/interp/probes/capture.py:66-118` performs no
 width check at all.
+
+## `layer_scalar` scales what the hook captures
+
+Every decoder layer carries `layer_scalar`, a shape-`[1]` buffer declared as
+`nn.Buffer(torch.ones(1))` and applied as the **last operation of the layer**, after all three
+residual updates. It multiplies the entire layer output, which is precisely the tensor a
+residual-stream hook records.
+
+Two consequences for this tier:
+
+- Captured activations are scaled by it. It is a per-layer scalar, so it cannot change the
+  direction of any activation vector or the geometry of a probe or SAE trained on one layer.
+  It does rescale magnitudes, so a comparison of raw magnitudes *across* layers is comparing
+  differently-scaled quantities.
+- It has no `config.json` field, so nothing in the config or the manifest records it. Reading
+  it requires the checkpoint.
+
+Resolved: the released checkpoints store values well away from 1.0. E2B spans 0.0186 at layer 0
+to 0.879 at layer 30, with layer 17 — the hook layer of the reference captures — at 0.641. The
+values are in the `layer_scalar stored values` sections of `docs/models/gemma4-safetensors.txt`;
+[docs/models/gemma-4.md](../models/gemma-4.md#layer_scalar) owns the derivation.
+
+What that means here, stated carefully because the answer is reassuring and the reasoning is
+the only reason to believe it:
+
+- **Captures are correct as taken.** The hook is a forward hook on the decoder layer module
+  (`interp/families.py`, `_COMPOSITE_DECODER_TEMPLATE`), and the multiply is that module's last
+  operation, so the tensor the hook receives is already scaled. It is the same tensor the next
+  layer consumes. No correction factor is needed, and none should be applied.
+- **Magnitude measurements inherit the scaling.** The fp16 headroom figures in
+  [harvest-precision-and-resume.md](harvest-precision-and-resume.md) were measured through the
+  same hook, so they describe post-scale values. Since every scalar is below 1, the scaling can
+  only reduce magnitudes, which widens headroom rather than narrowing it. The fp16 decision is
+  unaffected.
+- **Cross-layer magnitude comparisons are not provisional, they are wrong** unless the scalars
+  are divided out. A 47x spread in per-layer scale sits underneath any such comparison. This is
+  no longer a caveat pending measurement; it is a known factor with known values.
+
+Within-layer work — which is where this tier operates — is unaffected throughout.
+
+## Key and value share a projection on full-attention layers
+
+`attention_k_eq_v` is narrower than its name suggests. It applies only where the layer is
+**not** sliding, so on the seven full-attention layers and nowhere else. On those layers
+`v_proj` is not constructed at all: the value states are the key projection's output taken
+before `k_norm` and before the rotary embedding, with `v_norm` applied to them separately.
+
+This explains the `self_attn.v_norm` warning below. The module exists in a config-built tree
+because the code constructs the norm; no checkpoint tensor backs it because the projection it
+would normalise was never built.
 
 ## The module path is composite
 
@@ -212,8 +287,13 @@ decodes losslessly, and what still refuses them is architectural rather than for
 - **No Gemma-Scope or Neuronpedia assets exist for Gemma 4.** `gemma2` is registered in the
   family table specifically as the anchor for that ecosystem (`families.py:8-11`); Gemma 4
   sparse autoencoders must be trained in-tree.
-- **TransformerLens has no Gemma 4 support**, so `HookedTransformer` aliases are not used
-  (`families.py:14-15`). Hooks go through nnsight or plain torch.
+- **TransformerLens has no Gemma 4 support in its architecture registry**, so
+  `HookedTransformer` aliases are not used (`families.py:14-15`). Hooks go through nnsight or
+  plain torch. The reason is the registry rather than the library: `HookedTransformer`
+  converts a fixed set of families, and Gemma 4 is not among them at our 3.5.1 pin. TL 3.x
+  does ship `TransformerBridge`, which wraps arbitrary HF models including multimodal ones,
+  so a future revisit would go through the bridge rather than waiting for an alias table
+  entry. Current upstream is 3.7.0; the gap between that and our pin has not been surveyed.
 - **`gemma4_unified_text` is not registered.** That is the 12B text `model_type`, deliberately
   refused rather than mapped to the flat template.
 

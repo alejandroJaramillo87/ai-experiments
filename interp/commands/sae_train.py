@@ -8,6 +8,7 @@ manifest. Exit codes: 0 success, 1 failure, 2 invalid usage.
 from __future__ import annotations
 
 import argparse
+import os
 
 from common.output import Printer
 
@@ -61,7 +62,13 @@ def cmd(args: argparse.Namespace) -> int:
         return 1
     out.ok(
         f"SAE training complete: {manifest['name']}, width {manifest['width']}, "
-        f"k {manifest['k']}, final loss {manifest['final_loss']}, "
-        f"{manifest['wall_clock_s']}s"
+        f"k {manifest['k']}, {manifest['wall_clock_s']}s"
     )
+    # k is the requested sparsity, honestly labelled. No quality number is
+    # printed here because training does not measure one -- the evaluation
+    # step does, against held-out activations. Naming the exact command is
+    # the point: a trained SAE that is never evaluated carries no quality
+    # signal at all, and this line is the only thing that says so.
+    sae_dir = os.path.join(recipe.sae.out_root, manifest["name"])
+    out.line(f"  Next: make sae-eval SAE={sae_dir} CAPTURE={recipe.sae.capture_dir}")
     return 0

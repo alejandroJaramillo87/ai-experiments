@@ -116,6 +116,12 @@ ENV TRITON_CACHE_DIR=/tmp/triton
 # torch cpp_extension JIT builds (~/.cache/torch_extensions) on the exec tmpfs;
 # the rootfs is read-only at runtime (matches docker/interp/Dockerfile.interp)
 ENV XDG_CACHE_HOME=/tmp/cache
+# wandb stages artifacts, caches and config under $XDG_DATA_HOME (default
+# $HOME/.local/share) on the read-only rootfs; an artifact upload at run
+# teardown fails without this (matches docker/interp/Dockerfile.interp)
+ENV WANDB_DATA_DIR=/tmp/wandb/data
+ENV WANDB_CACHE_DIR=/tmp/wandb/cache
+ENV WANDB_CONFIG_DIR=/tmp/wandb/config
 RUN mkdir -p /app/cache /app/logs && chown -R appuser:appuser /app
 
 WORKDIR /app

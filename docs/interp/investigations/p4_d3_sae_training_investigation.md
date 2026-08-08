@@ -243,6 +243,14 @@ New code, in build order:
    tests. Manifest (`artifact: "sae"`) written on completion, chaining
    `capture_manifest_xxhash`, recording architecture, width, measured L0, final loss,
    sae_lens version, seed, wall clock.
+
+   > **Correction, 2026-08-08 (KB-62).** The measured-L0 and final-loss fields
+   > described here shipped, but could never hold a measurement: SAELens discards
+   > the trainer that owns those numbers, so both fell through to defaults on every
+   > run — `final_loss` to `0.0` and `measured_l0` to the *requested* `k`. Both
+   > fields have been removed. Quality belongs to the evaluation wrapper in item 4,
+   > which measures L0 against held-out activations; the manifest is provenance
+   > only. The design as originally written is left above as the historical record.
 3. **Registry.** `interp/sae/registry.py` mirroring `interp/probes/registry.py` over
    `/mnt/ai-data/interp/saes` — P4-D4's import script and the steering `sae_row`
    backend become consumers.

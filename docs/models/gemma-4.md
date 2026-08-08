@@ -32,6 +32,8 @@ of scope. The vision and audio towers are documented structurally in
 - [Tokenizer and special tokens](#tokenizer-and-special-tokens)
 - [Modality towers](#modality-towers)
 - [Traps and discrepancies](#traps-and-discrepancies)
+- [Resolved from upstream source](#resolved-from-upstream-source)
+- [Per-tier support](#per-tier-support)
 - [Open questions](#open-questions)
 - [Reproducing this document](#reproducing-this-document)
 
@@ -437,8 +439,9 @@ Structural observations:
   (`input_layernorm`, `post_attention_layernorm`, `pre_feedforward_layernorm`,
   `post_feedforward_layernorm`), the Gemma sandwich-normalization pattern, plus a fifth
   (`post_per_layer_input_norm`) for the per-layer embedding path.
-- Each layer carries a scalar tensor `layer_scalar` of shape `[1]`. Its role is not documented
-  in the configuration. See [Open questions](#open-questions).
+- Each layer carries a scalar tensor `layer_scalar` of shape `[1]`, which scales the whole
+  layer output as its final operation. It has no `config.json` field, and its stored values are
+  not 1.0 — E2B spans 0.0186 to 0.879. See [`layer_scalar`](#layer_scalar).
 - The multimodal projections `model.embed_audio.embedding_projection.weight`
   (`[2560, 1536]` on E4B) and `model.embed_vision.embedding_projection.weight`
   (`[2560, 768]` on E4B) bridge the towers into the language model width.
@@ -649,9 +652,48 @@ return hidden_states
 
 That is `modeling_gemma4.py`, line 1444. It multiplies the entire layer output, including the
 residual carried through the layer, and is not confined to the attention or feed-forward branch.
-Initialization is `init.ones_(module.layer_scalar)` (line 1523), so an untrained value is
-1.0 and a checkpoint value of 1.0 is a no-op. It is a buffer rather than a parameter and has no
-`config.json` field, which is why it appears in the weights and not in the configuration.
+Initialization is `init.ones_(module.layer_scalar)` (line 1523), so an *untrained* value is 1.0.
+It is a buffer rather than a parameter and has no `config.json` field, which is why it appears
+in the weights and not in the configuration.
+
+#### The stored values are not 1.0
+
+Read from the released checkpoints and recorded in the `layer_scalar stored values` sections of
+`docs/models/gemma4-safetensors.txt`. This is a measurement, not an inference from the source:
+
+| | E2B (35 layers) | E4B (42 layers) |
+|---|---|---|
+| Minimum | 0.0185546875 (layer 0) | 0.431640625 and below |
+| Maximum | 0.87890625 (layer 30) | 0.703125 and above |
+| Mean | 0.5366 | — |
+
+Every layer attenuates. The profile is structured rather than noisy: layer 0 is scaled by
+0.0186, roughly a 54x reduction; layers 13 and 14 sit near 0.05-0.07; layers 26 through 32
+approach pass-through at 0.83-0.88; and the final layer returns to 0.161.
+
+The initialization is therefore misleading as a guide to the released weights. `nn.Buffer` is
+not an `nn.Parameter`, so no optimizer updates it and reading line 1523 alone suggests the
+multiply is inert. It is not: the values were set during Google's training and saved into the
+checkpoint. **Any reimplementation that omits this multiplication diverges from the reference
+model**, and by a factor of about 54 in the first layer.
+
+The reason this was worth measuring rather than assuming, in three parts, because each looked
+like a hazard and each resolves differently:
+
+- **Activation capture (interp) is unaffected.** The harvest hook is a forward hook on the
+  decoder layer module, and the multiply is that module's last operation, so the captured
+  tensor is the post-scale output — the values the next layer actually receives. See
+  [docs/interp/gemma-4-interp.md](../interp/gemma-4-interp.md).
+- **GGUF serving is unaffected.** The llama.cpp converter does not drop the tensor; it renames
+  it, and the pinned GGUF carries `blk.{n}.layer_output_scale.weight [1] F32` for every layer
+  (`docs/models/gemma4-gguf.txt`).
+- **Fine-tuning is unaffected.** A buffer is absent from `named_parameters()`, which is what
+  the freeze filters iterate, so no freeze pattern can expose it to an optimizer. See
+  [docs/training/gemma-4-training.md](../training/gemma-4-training.md).
+
+What remains is the rust harness, which does not read the tensor under either name — a gap
+that matters only when Gemma 4 support is implemented there, and which is recorded in
+[docs/rust-harness/gemma-4-ingestion.md](../rust-harness/gemma-4-ingestion.md).
 
 ### The per-layer embedding data path
 
@@ -744,6 +786,41 @@ it applies, `v_proj` is not constructed at all (lines 1206-1212) and the forward
 `with_scale=False` (line 1201). Key and value therefore share the projection output, not the
 post-norm post-rotary tensor.
 
+## Per-tier support
+
+What each tier does with a real checkpoint today. The target is E2B and E4B; 12B and 31B are
+out of scope until the E-series pair is settled.
+
+The distinction that matters here is between reading the geometry and running the model. All
+three tiers read it generically — no layer count, width, or stride is hardcoded in any of them,
+and the schedule comes from the `layer_types` array rather than a stride constant. Loading a
+checkpoint and producing logits is a separate question, and for the CPU backend the answer is
+currently no for both variants.
+
+| Tier | E2B | E4B | What decides it |
+|------|-----|-----|-----------------|
+| `rust-harness` CPU backend | Refused | Refused | `check_supported` rejects per-layer embeddings, which both variants carry |
+| `rust-harness` GGUF metadata reader | Yes | Yes | Every value read by key; schedule decoded from the bool array, E2B stride 5 and E4B 6 |
+| `training` | Yes | Yes | `spec_from_hf_config` maps any config carrying the field names; reference recipes exist for both |
+| `interp` | Yes | Yes (no recipe) | No geometry constants at all; hook path and width resolve from the loaded config |
+
+Three refusals stand between the CPU backend and a real checkpoint. Each is a declared
+unimplemented feature that fails loudly, not a silent wrong answer:
+
+- **Per-layer embeddings.** `check_supported` bails on any tensor whose name contains
+  `per_layer`. Both variants have them, so both are refused. This is the binding one.
+- **Cross-layer KV sharing.** A layer with `attn_q` but no `attn_k`/`attn_v` is refused. Note
+  this signature does not actually fire on the released checkpoints, which carry K and V on
+  every block — see the first open question below.
+- **Per-layer feed-forward widths.** `Config::from_gguf` refuses a `feed_forward_length` that
+  varies per layer, because a single `Config::ffn_dim` cannot express it. This affects E2B
+  only: `use_double_wide_mlp` doubles the MLP on its KV-shared tail, so its array holds two
+  widths, while E4B sets the flag false and ships one.
+
+`training` and `interp` need no such work. Their E-series gap is coverage rather than
+capability: every interp recipe under `training/recipes/interp/` names an E2B subject, so E4B
+is supported but unexercised there.
+
 ## Open questions
 
 Recorded rather than guessed. Resolve these against the `transformers` implementation at the
@@ -755,7 +832,7 @@ pinned revision before relying on any assumption about them.
   projections. The E2B safetensors headers record `k_proj.weight` on all 35 language-model layers
   (28 at `[256, 1536]` and 7 at `[512, 1536]`, `docs/models/gemma4-safetensors.txt` lines 414 and 529),
   and the GGUF inventory likewise lists `attn_k.weight` for all 35 blocks
-  (`docs/models/gemma4-gguf.txt` lines 613-628). The code and the checkpoint disagree about whether
+  (`docs/models/gemma4-gguf.txt` lines 613 and 625). The code and the checkpoint disagree about whether
   shared layers carry key and value weights. Whether the surplus tensors are unused residue, or
   the released weights predate the code, was not settled from the sources read. This matters
   because it means the absence of `attn_k` is **not** a reliable shared-KV signature for these
@@ -767,9 +844,9 @@ pinned revision before relying on any assumption about them.
   `self.is_causal = config.use_bidirectional_attention != "all"`, so the `"vision"` value takes
   the same branch as `null` for that flag. Whether it changes the text path through the mask
   construction was not traced and remains undetermined.
-- **The numeric value of `layer_scalar` in the released checkpoints.** The transcripts record the
-  shape `[1]` but not the stored value, so whether the multiplication is a no-op in practice is
-  not established.
+The numeric value of `layer_scalar` was an open question here and is no longer: the transcript
+records the stored values, and they are not 1.0 — E2B spans 0.0186 to 0.879. The derivation
+moved to [`layer_scalar`](#layer_scalar).
 
 ## Reproducing this document
 

@@ -1,6 +1,6 @@
 # Interpretability tier verification
 
-**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable — both documentation gates exempt this directory by path, so stale references here are not caught for you.**
+**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
 I1 workbench, the PS1 Neuronpedia harness, the write-back path (W1 through
 W4), P4-D1 organisms, P4-D2 activation harvesting with garbage collection,
@@ -73,8 +73,7 @@ Implementation: `interp/commands/steer_extract.py`,
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
-- KB-31 — `interp/steering/extract.py:106` — extract_repeng never passes its computed layer list to ControlVector.train, so layer_range is silently ignored …
-- KB-32 — `interp/steering/extract.py:78` — Pinned repeng 0.4.0 cannot be imported under pinned numpy 2.4.6: np.float_ in eagerly evaluated annotations …
+- KB-32 — `interp/steering/extract.py:78` — Pinned repeng 0.4.0 cannot be imported under pinned numpy 2.4.6: np.float_ in eagerly evaluated annotations … repeng is also absent from the interp image, so the import fails on absence first. Expect this step to fail at import until the `extract_repeng` refactor lands.
 
 Command:
 
@@ -129,10 +128,6 @@ Implementation: `interp/commands/probe_capture.py` with
 `interp/probes/capture.py`; `interp/commands/probe_train.py` with
 `interp/probes/train.py` and `interp/probes/registry.py`;
 `interp/commands/probe_eval.py` with `interp/probes/evaluate.py`.
-
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-37 — `interp/probes/capture.py:93` — capture_activations indexes the batch dimension: decoder blocks return a bare tensor under pinned transformers …
 
 Command:
 
@@ -244,10 +239,6 @@ replay design on the rust path — per-position scoring in the serving process,
 no replay-model disclaimer (see the I.6 note). This entry still verifies the
 monitor for llama.cpp-served traffic.
 
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-40 — `interp/probes/monitor.py:211` — Monitor replay always loads the hub 'main' revision: run_monitor never plumbs a revision to score_texts, and …
-
 Command (batch job; refuses while inference is up):
 
 ```bash
@@ -298,10 +289,6 @@ Implementation: `interp/commands/organism.py`,
 `interp/organisms/generate.py`, `interp/organisms/verify.py`,
 `interp/organisms/seal.py`; the pipeline re-invokes the phase 1 SFT and
 export commands.
-
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-45 — `interp/organisms/verify.py:221` — locality_check's passed verdict ignores unmatched metrics despite its documented contract
 
 Command (stages have separate GPU/serving preconditions; `make organism
 RECIPE=...` prints this pipeline):
@@ -356,12 +343,71 @@ registry-derived `hooks`, `model_type`, and throughput. A projection
 exceeding free space minus the floor refuses with the disk-preflight
 message (verifiable with an absurd `--override harvest.total_tokens=...`).
 
-Observed:
+The capture is chunked (KB-58): `harvest-smoke.yaml` sets
+`chunk_tokens: 700000` against 2M tokens, so expect three
+`Caching activations` progress bars, not one. The reported token count
+exceeds the request — 2875392 against 2000000 — because SAELens writes
+whole buffers; that is correct, and `manifest.json` records both figures.
+
+Observed (2026-08-08):
 
 ```
+Caching activations: 100%|...| 3/3 [00:25<00:00,  8.46s/it]
+[OK] Harvest complete: 2875392 tokens/hook,
+     hooks ['model.language_model.layers.17'], 34125.6 tokens/s
 ```
 
-Status: PENDING
+Status: VERIFIED
+
+## I.9b Chunked-capture crash recovery (P4-D2, KB-58)
+
+Implementation: `interp/harvest.py` (`chunk_plan`, `_SaeLensSession`,
+`_consolidate_chunks`), `tests/interp/test_saelens_contract.py`.
+
+The point of chunking is behaviour under a crash, so a clean I.9 run
+verifies nothing about it. Interrupt a chunked capture and resume it.
+
+Command:
+
+```bash
+$ rm -rf /mnt/ai-data/interp/activations/harvest-smoke
+$ make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml
+```
+
+Press Ctrl-C once a `3/3` progress bar has appeared at least once and
+before `[OK] Harvest complete`; any kill in that window banks at least one
+chunk. Then inspect and resume — do not delete the capture directory:
+
+```bash
+$ cat /mnt/ai-data/interp/activations/harvest-smoke/progress.json
+$ make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml
+```
+
+Expected signal: `progress.json` records `completed_chunks` for the hook;
+the rerun does **not** raise `Activations directory ... is not empty`, runs
+only the outstanding chunks, and reports the same total as an
+uninterrupted run. That equality is the criterion: it is what shows the
+resume neither dropped nor duplicated a chunk.
+
+Observed (2026-08-08), killed inside chunk 3:
+
+```
+{ "completed_chunks": { "model.language_model.layers.17": 2 },
+  "measured_tokens": { "model.language_model.layers.17": 1916928 } }
+```
+
+```
+Caching activations: 100%|...| 3/3 [00:24<00:00,  8.17s/it]
+[OK] Harvest complete: 2875392 tokens/hook,
+     hooks ['model.language_model.layers.17'], 26535.4 tokens/s
+```
+
+1916928 banked plus 958464 recaptured equals 2875392, the uninterrupted
+total. This run found a defect in the KB-58 fix itself (the interrupted
+chunk's directory was not cleared before recapture); the output above is
+from the repaired code.
+
+Status: VERIFIED
 
 ## I.10 Capture garbage collection (P4-D2)
 
@@ -388,13 +434,25 @@ Status: PENDING
 
 ## I.11 SAE training and evaluation (P4-D3)
 
+**Known bugs likely to surface here:** KB-61, confirmed fixed on 2026-08-08.
+The first `make sae-train` failed with `ValueError: You must either pass in a
+dataset or specify a dataset_path in your configutation` — SAELens requires a
+dataset even when every activation is read from disk.
+
+Reaching a completed train-and-evaluate round trip took five further defects,
+all found by this step and all fixed on 2026-08-08: KB-63 (W&B artifact
+staging against the read-only rootfs, which killed a finished run at
+teardown), KB-64 (SAELens `output_path` leaking 50MB of weights into the
+repository root), KB-65 (a second W&B run directory in the CWD), KB-62 (the
+manifest recording a `final_loss` and a `measured_l0` it never measured) and
+KB-66 (a redundant `save_model` overwriting the inference-format checkpoint,
+so no SAE could be loaded back). They surfaced in that order because each had
+to be cleared before the next became observable, which is why the step needed
+six runs rather than one.
+
 Implementation: `interp/commands/sae_train.py` with `interp/sae/train.py`;
 `interp/commands/sae_eval.py` with `interp/sae/evaluate.py`;
 `interp/sae/registry.py`.
-
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-50 — `interp/sae/train.py:223` — capture_manifest_xxhash is invalidated by mark_validated within the same run: run_sae_training hashes the …
 
 Command (the calibration pair targets Gemma-2-2B by the ecosystem-anchor
 decision; the smoke recipe targets Gemma 4):
@@ -409,12 +467,36 @@ manifest mismatch), writes SAE weights plus manifest; evaluation writes the
 report (`artifact: sae_eval`, shared envelope) with core metrics
 (reconstruction, L0) and optional delta LM loss.
 
-Observed:
+Observed (2026-08-08, after the six fixes above):
 
 ```
+$ make sae-train RECIPE=training/recipes/interp/sae-smoke.yaml
+[OK] SAE training complete: sae-smoke, width 4096, k 32, 22.8s
+  Next: make sae-eval SAE=/mnt/ai-data/interp/saes/sae-smoke CAPTURE=/mnt/ai-data/interp/activations/harvest-smoke
+
+$ python -c "import json;print(json.load(open('/mnt/ai-data/interp/saes/sae-smoke/cfg.json'))['architecture'])"
+jumprelu
+
+$ make sae-eval SAE=/mnt/ai-data/interp/saes/sae-smoke CAPTURE=/mnt/ai-data/interp/activations/harvest-smoke
+[OK] Evaluation complete: explained variance 0.324558, L0 30.13, 1000000 tokens
 ```
 
-Status: PENDING
+`eval_report.json` core block: `explained_variance 0.324558`, `l0 30.13`,
+`mse 1.173056`, `tokens_evaluated 1000000`. The manifest carries no quality
+field, only the `quality_metrics` pointer at the report.
+
+The L0 is the signal worth reading. It is 30.13 against a configured `k` of
+32: BatchTopK selects k on average during training, and on held-out
+activations some features fall below the learned threshold. Before KB-62 this
+field read exactly `32.0` in the manifest, because it was the target copied
+into a slot labelled "measured" — a 6% sparsity shortfall that no artifact
+recorded. The two `mse` figures are consistent despite looking unrelated:
+`core_metrics` divides by element (`acts.size`) while W&B sums over `d_in` per
+token, and 1.173056 x 1536 = 1802 against W&B's 1938 on the training slice.
+`explained_variance` 0.3247 held-out against 0.3110 training is the expected
+small gap.
+
+Status: VERIFIED
 
 ## I.12 SAEBench isolated environment (P4-D3)
 

@@ -1,9 +1,9 @@
 # sae-smoke.yaml
 #
 # P4-D3 CI-sized smoke run: train a small SAE from the P4-D2 smoke capture
-# (Gemma 4 E2B, 2M tokens, model.layers.15). Exercises the exact cached-
-# activation training path the reference run uses and completes in minutes
-# in the workbench.
+# (Gemma 4 E2B, 2M tokens, model.language_model.layers.17). Exercises the
+# exact cached-activation training path the reference run uses and completes
+# in minutes in the workbench.
 #
 # Run: make sae-train RECIPE=training/recipes/interp/sae-smoke.yaml
 

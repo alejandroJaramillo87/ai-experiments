@@ -337,7 +337,12 @@ Best-effort layer on top of containment, encoded in both tools (see
 - `opencode.json`: `webfetch` allowlist (`docs.runpod.io`, `github.com`, else `ask`); bash
   denies for `cat *.env*`, `* ~/.ssh/*`, `* ~/.aws/*` (the read-tool `.env` deny does not
   cover bash).
-- `.claude/settings.json`: `Read(~/.ssh/**)` and `Read(~/.aws/**)` denies; a per-domain
+- `.claude/settings.json`: `Read(**)`, `Grep(**)`, and `Glob(**)` allows, so reading the
+  repository does not prompt — the container is the boundary, and the deny rules below still
+  precede the allows; narrow shell-listing allows (`ls`, `tree`, `wc -l`, `head -n`, `tail -n`)
+  but deliberately not `cat`, `grep`, or `find`, none of which is read-only once a redirect or
+  `-delete` is involved; `Read(~/.ssh/**)` and `Read(~/.aws/**)` denies, now backed by matching
+  patterns in `guard.sh` rather than standing alone; a per-domain
   `WebFetch` allow list with a broad `WebFetch` set to `ask`; denies for the host-only tools
   (`docker`, `nvidia-smi`, `make up|down|status|logs|shell-*`) so that a command which cannot
   work from a contained session fails as policy rather than obscurely; and allows for the

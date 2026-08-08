@@ -1,6 +1,6 @@
 # Training phase 2 verification
 
-**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable — both documentation gates exempt this directory by path, so stale references here are not caught for you.**
+**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
 P2-D1 through P2-D5 as implemented: the full-scale data pipeline with
 decontamination, data mixing, WSD schedules, the replay buffer, and
@@ -41,10 +41,6 @@ Status: PENDING
 Implementation: `training/commands/prepare_corpus.py`,
 `training/data/pipeline.py`, `training/data/shards.py`,
 `training/data/staging.py`.
-
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-26 — `training/data/pipeline.py:224` — Stale datatrove completion markers make prepare_corpus reruns silently reuse old stage output while the …
 
 Command:
 
@@ -152,11 +148,9 @@ Status: PENDING
 Implementation: `training/runtime/offload.py`, `training/runtime/loop.py`,
 `training/runtime/watchdog.py`.
 
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
+**Fix to confirm here** (details in [known-bugs.md](known-bugs.md)):
 
-- KB-28 — `training/runtime/loop.py:241` — memory.offload=zero_offload with a non-cpu_adam optimizer silently disables offload while the calculator and …
-- KB-29 — `training/runtime/loop.py:258` — Plain loop silently ignores model.trainable_filter unless memory.offload is zero_offload, training …
-- KB-30 — `training/runtime/offload.py:119` — build_ds_config's steps_per_print: 0 makes DeepSpeed 0.19.2 raise ZeroDivisionError on the first optimizer …
+- KB-30 — `training/runtime/offload.py:119` — build_ds_config's steps_per_print: 0 made DeepSpeed 0.19.2 raise ZeroDivisionError on the first optimizer … `offload.py:124` now sets `steps_per_print: None`. This is the only run that can confirm it.
 
 Command:
 

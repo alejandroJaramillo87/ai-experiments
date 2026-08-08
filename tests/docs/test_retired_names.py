@@ -112,7 +112,6 @@ class TestIsExempt:
         "rel",
         [
             "docs/training/investigations/d7_train_serve_investigation.md",
-            "docs/verification/interp.md",
             "docs/training/investigations/unified_cli_investigation.md",
             "scripts/docs/check_retired_names.py",
         ],
@@ -120,7 +119,18 @@ class TestIsExempt:
     def test_frozen_records_and_the_table_itself_are_exempt(self, mod, rel):
         assert mod.is_exempt(rel)
 
-    @pytest.mark.parametrize("rel", ["README.md", "make/ops.mk", "common/serving.py"])
+    @pytest.mark.parametrize(
+        "rel",
+        [
+            "README.md",
+            "make/ops.mk",
+            "common/serving.py",
+            # Exempt until 2026-08-08. The runbooks are executed, so a retired
+            # name in one is a command that fails in the operator's hands.
+            "docs/verification/interp.md",
+            "docs/verification/known-bugs.md",
+        ],
+    )
     def test_living_files_are_in_scope(self, mod, rel):
         assert not mod.is_exempt(rel)
 

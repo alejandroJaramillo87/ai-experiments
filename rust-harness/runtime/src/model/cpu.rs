@@ -1502,7 +1502,11 @@ mod tests {
 
     #[test]
     fn a_matformer_sliced_feed_forward_array_is_refused_naming_both_widths() {
-        // E2B is a MatFormer slice of E4B: 6144 for layers 0..15, 12288 after.
+        // E2B's feed-forward width varies by layer: 6144 for layers 0..=14 and
+        // 12288 for 15..=34. The cause is use_double_wide_mlp, which doubles
+        // the MLP on the KV-shared tail (num_hidden_layers - num_kv_shared_layers
+        // = 35 - 20 = 15), not a MatFormer slice of E4B -- E4B sets the flag
+        // false and carries one width. See schemas/gemma4_facts.json.
         // check_supported already refuses per-layer widths with a precise
         // message, but Config::from_gguf never reached it -- the array killed
         // the load first with a bare type error. Refusing here must name what

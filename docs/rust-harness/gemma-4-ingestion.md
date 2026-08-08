@@ -233,8 +233,16 @@ varies per layer, this is the only axis the runtime cannot name.
 
 **`layer_scalar`.** Every layer carries a scalar of shape `[1]`
 (`blk.{L}.layer_output_scale.weight` in GGUF) with no corresponding configuration field. It
-reaches the generic unconsumed-tensor backstop. Its role in the residual or attention path is
-undetermined; see [Open questions](#open-questions).
+reaches the generic unconsumed-tensor backstop, which means the runtime loads the file, reports
+the family as unconsumed, and computes without it.
+
+That is currently harmless only because Gemma 4 is refused before inference. It must not stay
+harmless when support lands: the tensor scales the entire layer output as the layer's last
+operation, and the released checkpoints store values from **0.0186 to 0.879**, not 1.0. A
+forward pass that ignores it diverges from the reference model by roughly 54x in the first
+layer. The values are measured in the `layer_scalar stored values` sections of
+`docs/models/gemma4-safetensors.txt`; see
+[`layer_scalar` in docs/models/gemma-4.md](../models/gemma-4.md#layer_scalar).
 
 ## Refusals that do not fire
 
@@ -403,7 +411,7 @@ values = [1.0] * n_rot_full + [1e30] * n_unrot_full
 That is 64 entries of 1.0 followed by 192 entries of 1e30, a 256-element vector. Dividing an
 inverse frequency by 1e30 drives the angle to approximately zero, reproducing the Hugging Face
 identity. The GGUF inventory confirms the tensor and its length: `rope_freqs.weight [256] F32`,
-one per file (`docs/models/gemma4-gguf.txt` lines 631 and 640). The converter's comment at lines
+one per file (`docs/models/gemma4-gguf.txt` lines 630 and 639). The converter's comment at lines
 703-706 records that the tensor is a workaround, because the Hugging Face split-half ordering is
 `cc000000ss000000` while ggml's neox rotation supports only `ccss000000000000`, and the head
 cannot be rearranged without breaking `use_alternative_attention`.
@@ -434,6 +442,12 @@ The GGUF name is `blk.{bid}.layer_output_scale` (`constants.py`, line 1320), map
 `model.layers.{bid}.layer_scalar` (`tensor_mapping.py`, lines 735-738). The converter appends the
 `.weight` suffix in `Gemma4Model.filter_tensors` (`conversion/gemma.py`, lines 747-748), which is
 why the transcript shows `blk.{L}.layer_output_scale.weight [1] F32`.
+
+Note that `filter_tensors` **renames** rather than drops it: the `name.endswith("layer_scalar")`
+branch appends a suffix and falls through to `super().filter_tensors`. The tensor survives
+conversion, and the GGUF carries one per layer. The stored values are not 1.0, so a backend that
+reads the GGUF and ignores this tensor is not merely omitting a no-op — see
+[the two axes with no named diagnostic](#the-two-axes-with-no-named-diagnostic).
 
 ### The per-layer embedding data path
 
@@ -493,7 +507,7 @@ knowing the architecture.
 
 The guard at `cpu.rs:256` nevertheless fires on these files, because the three file-level tensors
 retain the substring and are present in every per-layer-embedding checkpoint
-(`docs/models/gemma4-gguf.txt` lines 633-636 and 642). The bail message names the first matching tensor,
+(`docs/models/gemma4-gguf.txt` lines 632-635 and 641). The bail message names the first matching tensor,
 which will be one of those three. The guard is therefore sound for refusal, but it is not a sound
 basis for *enumerating* the per-layer-embedding tensor set: an implementation that later
 whitelists by the same substring would silently omit `inp_gate`, `proj`, and `post_norm`.
@@ -506,7 +520,7 @@ Recorded rather than guessed.
   `modeling_gemma4.py` line 1199 builds `k_proj` and `v_proj` only for non-shared layers, which
   for E2B means 15 of 35. Both transcripts disagree with that: `docs/models/gemma4-safetensors.txt`
   lines 414 and 529 record `k_proj.weight` on 28 plus 7 language-model layers, and
-  `docs/models/gemma4-gguf.txt` lines 613-628 record `attn_k.weight` on 28 plus 7 blocks, 35 in total.
+  `docs/models/gemma4-gguf.txt` lines 613 and 625 record `attn_k.weight` on 28 plus 7 blocks, 35 in total.
   Nothing in `conversion/gemma.py` drops shared-layer key or value tensors, so the converter is
   passing through what the checkpoint holds. Whether these are unused residue or the code and the
   weights are out of step was not settled from the sources read.

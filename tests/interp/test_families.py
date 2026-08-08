@@ -50,7 +50,7 @@ class TestRegistry:
 
 class TestConfigResolution:
     def test_unwrap_descends_into_text_config(self):
-        inner = SimpleNamespace(model_type="gemma4_text", hidden_size=2304)
+        inner = SimpleNamespace(model_type="gemma4_text", hidden_size=1536)
         composite = SimpleNamespace(model_type="gemma4", text_config=inner)
         assert unwrap_text_config(composite) is inner
         assert unwrap_text_config(inner) is inner
@@ -58,7 +58,7 @@ class TestConfigResolution:
     def test_family_from_config_uses_unwrapped_model_type(self):
         composite = SimpleNamespace(
             model_type="gemma4",
-            text_config=SimpleNamespace(model_type="gemma4_text", hidden_size=2304),
+            text_config=SimpleNamespace(model_type="gemma4_text", hidden_size=1536),
         )
         assert family_from_config(composite).model_type == "gemma4_text"
         flat = SimpleNamespace(model_type="qwen3", hidden_size=2048)
@@ -100,10 +100,10 @@ class TestConfigResolution:
     def test_residual_width_unwraps_and_defaults_to_zero(self):
         composite = SimpleNamespace(
             text_config=SimpleNamespace(
-                hidden_size=2304, hidden_size_per_layer_input=256
+                hidden_size=1536, hidden_size_per_layer_input=256
             )
         )
-        assert residual_width(composite) == 2304
+        assert residual_width(composite) == 1536
         assert residual_width(SimpleNamespace()) == 0
 
 

@@ -3,8 +3,8 @@
 # P4-D3 fallback-family rehearsal capture: Qwen3-1.7B at layer 14 (50
 # percent of a 28-layer stack). Small budget (resolved decision: this run
 # validates plumbing on the fallback family and cross-checks metric
-# implementations against SAEBench, not quality) — ~200GB at d_model 2048
-# bf16.
+# implementations against SAEBench, not quality) — ~410GB at d_model 2048
+# fp32.
 #
 # Run: make harvest RECIPE=training/recipes/interp/harvest-calibration-qwen3.yaml
 
@@ -20,7 +20,10 @@ harvest:
   corpus: monology/pile-uncopyrighted
   context_len: 1024
   total_tokens: 50000000
-  dtype: bf16
+  # fp32 for the same reason as harvest-smoke.yaml (KB-57): Arrow has no
+  # bfloat16, so a bf16 capture cannot start. At 50M tokens the doubled
+  # footprint still fits the drive.
+  dtype: fp32
   model_batch_size: 8
 
 watchdog:

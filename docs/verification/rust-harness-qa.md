@@ -1,6 +1,6 @@
 # Rust harness quality assurance campaign
 
-**Operational runbook. Executed in an agent sandbox rather than against the host, so it needs no GPU or model data. Keep the commands runnable — both documentation gates exempt this directory by path, so stale references here are not caught for you.**
+**Operational runbook. Executed in an agent sandbox rather than against the host, so it needs no GPU or model data. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
 Sandbox-executable quality review of the `rust-harness/` workspace,
 structured as phases a Claude Code session runs in order. Complementary to

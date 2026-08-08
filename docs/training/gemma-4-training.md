@@ -208,9 +208,15 @@ The two effective patterns overlap on `embed_tokens_per_layer`, which is harmles
 freezes the main embedding and every per-layer-embedding term, which is the documented intent.
 `lm_head` matching nothing is expected, not a bug.
 
-Note that `layer_scalar` does **not** match any pattern and therefore stays trainable under
-`transformer_stack`. Whether that is correct depends on what `layer_scalar` does, which is
-undetermined; see [Open questions](#open-questions).
+Note that `layer_scalar` matches no pattern, but that is not the same as staying trainable. It
+is an `nn.Buffer`, so it never appears in `named_parameters()` — which is what the freeze
+filters iterate (`training/runtime/offload.py`) — and no freeze pattern can expose a buffer to
+an optimizer. It is untrainable by construction rather than by filter.
+
+This is worth stating explicitly because the stored values are **not** 1.0: they span 0.0186 to
+0.879 on E2B, so a scalar that did reach the optimizer would be a live tuning knob rather than
+an inert one. It does not. See
+[`layer_scalar` in docs/models/gemma-4.md](../models/gemma-4.md#layer_scalar).
 
 ## Dispatch, identity, and export
 
@@ -307,21 +313,64 @@ varlen packing at `/training/tune/sft.py:80-127` treats a position reset as a se
 which is a global-attention assumption. At the sequence lengths in use (up to 4096) this is a
 question about correctness of the mask, not about memory.
 
+## Resolved from upstream source
+
+Three questions previously recorded here are settled against the pinned `transformers`
+sources. [docs/models/gemma-4.md](../models/gemma-4.md) holds the full derivations with line
+citations; `docs/models/gemma4-upstream.txt` is the committed transcript they cite, and
+`tests/models/test_gemma4_facts_contract.py` asserts those citations still resolve.
+
+- **`layer_scalar` is a buffer applied last.** `modeling_gemma4.py` declares it as
+  `nn.Buffer(torch.ones(1))` and multiplies the whole layer output by it as the final
+  operation, after all three residual updates. It is initialised to ones and has no
+  `config.json` field. Because it is a buffer rather than a parameter, it is not trainable
+  under the `transformer_stack` filter and the calculator is right not to count it. The
+  released checkpoints **do** store values other than 1.0 — 0.0186 to 0.879 on E2B — so the
+  multiplication is not a no-op, though it remains outside the optimizer's reach.
+- **The per-layer embedding gate is multiplicative, and joins after the feed-forward block.**
+  The per-layer input is gated in 256-dimensional space, projected back to `hidden_size`, and
+  added as a third residual update following attention and the feed-forward block. The layer
+  order is therefore attention, feed-forward, per-layer embedding, then `layer_scalar`.
+- **The shared-KV boundary is `num_hidden_layers - num_kv_shared_layers`**, giving index 15 on
+  E2B and 24 on E4B. E4B's boundary is no longer an assumption. The same computation also
+  gates the double-wide MLP, which is why the two regions coincide on E2B.
+
+  Upstream also **revises** what this document previously implied: there are **two** donor
+  layers, not one, keyed by layer type. A shared layer reads the donor matching its own
+  sliding or full attention type. An implementation that designates a single donor for every
+  shared layer is wrong for one of the two regimes.
+
+## Resolved: the auto-class accepts Gemma 4
+
+The merge path in `training/export/merge.py` loads through `AutoModelForCausalLM` while the
+checkpoint declares `Gemma4ForConditionalGeneration`, and the committed transcript carries no
+auto-class mapping, so acceptance was unverified. It is now verified against a real load on
+the workstation:
+
+```
+transformers 5.13.1
+gemma4 in causal-lm map: ['gemma4', 'gemma4_assistant', 'gemma4_text',
+                          'gemma4_unified', 'gemma4_unified_assistant',
+                          'gemma4_unified_text']
+has Gemma4ForConditionalGeneration: True
+config type: Gemma4Config | model_type: gemma4
+AutoModelForCausalLM OK: Gemma4ForConditionalGeneration
+```
+
+`MODEL_FOR_CAUSAL_LM_MAPPING_NAMES` registers six `gemma4*` keys, and
+`AutoModelForCausalLM.from_config` returns `Gemma4ForConditionalGeneration` rather than
+refusing. Both the composite `gemma4` and the text-only `gemma4_text` config resolve, so the
+merge path and any caller that hardcodes the causal-LM auto-class work unmodified. This also
+clears the interp harvest, which reaches the model through SAELens's hardcoded
+`model_class_name="AutoModelForCausalLM"`.
+
 ## Open questions
 
 Recorded rather than guessed.
 
-- **`layer_scalar`.** Every layer carries a scalar of shape `[1]` with no configuration field
-  and no documented position in the residual or attention path. It is unmodeled by the
-  calculator and stays trainable under the `transformer_stack` filter.
-- **The per-layer embedding data path.** Tensor names establish which projections exist. The
-  order of operations, the join point with the residual stream, and whether
-  `per_layer_input_gate` gates additively or multiplicatively are not determined by shapes.
-- **The E4B shared-KV boundary.** E2B's 20 shared layers are indices 15 through 34, corroborated
-  by the double-wide region. E4B's 18-layer boundary has no corroborating signal and is assumed.
-- **Whether `AutoModelForCausalLM` accepts `Gemma4ForConditionalGeneration`.** The merge path at
-  `/training/export/merge.py:148-160` uses `AutoModelForCausalLM`; the checkpoint declares a
-  conditional-generation class. Unverified against a real load.
+None outstanding for this document. The last one — the stored value of `layer_scalar` — was
+resolved by reading it out of the released checkpoints: the values are not 1.0, and the
+consequences for this tier are covered under the freeze filter above.
 
 ## Reproducing this document
 
@@ -329,6 +378,13 @@ The safetensors transcript regenerates on the workstation with no GPU and no net
 
 ```bash
 $ ./scripts/models/gemma4_header_transcript.sh
+```
+
+The upstream sources behind [Resolved from upstream source](#resolved-from-upstream-source)
+are fetched at their pinned SHAs by a second script, which needs no workstation:
+
+```bash
+$ ./scripts/models/upstream_source_transcript.sh --out docs/models/gemma4-upstream.txt
 ```
 
 Parameter totals recompute from the tensor inventory in that transcript by summing the product

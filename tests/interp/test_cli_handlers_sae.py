@@ -11,6 +11,7 @@ from __future__ import annotations
 import collections
 import json
 import os
+import shutil
 
 import numpy as np
 import pytest
@@ -38,26 +39,42 @@ def plenty_of_disk(_path):
     return Usage(total=4000 * GB, used=100 * GB, free=3900 * GB)
 
 
-def fake_runner(job, out_dir):
+class FakeSession:
+    """Stand-in for _SaeLensSession: one chunk in, one marker file out."""
+
+    def capture(self, out_dir, chunk_tokens):
+        os.makedirs(out_dir, exist_ok=True)
+        with open(os.path.join(out_dir, "cache.bin"), "w") as f:
+            f.write("shards")
+        return chunk_tokens
+
+    def fast_forward(self, tokens):
+        pass
+
+    def info(self):
+        return {"tokenizer_fingerprint": "fp-test", "sae_lens_version": "6.46.0"}
+
+
+def fake_runner(job):
+    return FakeSession()
+
+
+def fake_assemble(chunks_dir, out_dir):
     os.makedirs(out_dir, exist_ok=True)
-    with open(os.path.join(out_dir, "cache.bin"), "w") as f:
-        f.write("shards")
-    return {
-        "tokens": job["total_tokens"],
-        "tokenizer_fingerprint": "fp-test",
-        "sae_lens_version": "6.46.0",
-    }
+    for shard in sorted(os.listdir(chunks_dir)):
+        for entry in sorted(os.listdir(os.path.join(chunks_dir, shard))):
+            os.replace(
+                os.path.join(chunks_dir, shard, entry),
+                os.path.join(out_dir, f"{shard}-{entry}"),
+            )
+    shutil.rmtree(chunks_dir)
 
 
 def fake_trainer(job, out_dir, tracker=None):
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "sae_weights.safetensors"), "w") as f:
         f.write("weights")
-    return {
-        "final_loss": 0.125,
-        "measured_l0": float(job["k"]),
-        "sae_lens_version": "6.46.0",
-    }
+    return {"sae_lens_version": "6.46.0"}
 
 
 def identity_sae(acts):
@@ -93,7 +110,10 @@ def patch_run_harvest(monkeypatch):
     monkeypatch.setattr(
         "interp.harvest.run_harvest",
         lambda recipe: real(
-            recipe, runner_fn=fake_runner, disk_usage_fn=plenty_of_disk
+            recipe,
+            runner_fn=fake_runner,
+            disk_usage_fn=plenty_of_disk,
+            assemble_fn=fake_assemble,
         ),
     )
 
@@ -228,7 +248,10 @@ class TestHarvest:
         capture_dir = str(tmp_path / "activations" / "harvest-test")
         manifest = load_manifest(capture_dir)
         assert manifest["total_tokens"] == 2000  # dotlist override applied
-        assert os.path.isfile(os.path.join(capture_dir, "model.layers.15", "cache.bin"))
+        # Assembly renames each chunk's files as it flattens them into the
+        # hook directory, which is the path the SAE trainer reads.
+        hook_dir = os.path.join(capture_dir, "model.layers.15")
+        assert any(f.endswith("cache.bin") for f in os.listdir(hook_dir))
 
     def test_check_hooks_reports_widths_without_capturing(
         self, tmp_path, monkeypatch, capsys
@@ -275,10 +298,13 @@ class TestSaeTrain:
         assert run_cli(["sae-train", "--recipe", recipe]) == 0
         out = capsys.readouterr().err
         assert f"[RUN] Training SAE from capture: {capture_dir}" in out
-        assert (
-            "[OK] SAE training complete: sae-test, width 64, k 8, final loss 0.125"
-        ) in out
+        assert "[OK] SAE training complete: sae-test, width 64, k 8" in out
+        # No quality number in the completion line: training measures none
+        # (KB-62). The operator is pointed at the step that does, because a
+        # trained-but-unevaluated SAE has no quality signal anywhere.
+        assert "final loss" not in out
         sae_dir = str(tmp_path / "saes" / "sae-test")
+        assert f"Next: make sae-eval SAE={sae_dir} CAPTURE={capture_dir}" in out
         manifest = load_manifest(sae_dir)
         assert manifest["capture_dir"] == capture_dir
         assert os.path.isfile(os.path.join(sae_dir, "sae_weights.safetensors"))

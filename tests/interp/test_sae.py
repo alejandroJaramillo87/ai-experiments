@@ -88,11 +88,7 @@ def fake_trainer_factory(calls):
         os.makedirs(out_dir, exist_ok=True)
         with open(os.path.join(out_dir, "sae_weights.safetensors"), "w") as f:
             f.write("weights")
-        return {
-            "final_loss": 0.125,
-            "measured_l0": float(job["k"]),
-            "sae_lens_version": "6.46.0",
-        }
+        return {"sae_lens_version": "6.46.0"}
 
     return fake_trainer
 
@@ -188,10 +184,22 @@ class TestTraining:
         assert manifest["model_hash"] == "hash-test"
         assert manifest["hook"] == "model.layers.15"
         assert manifest["d_in"] == D_MODEL
-        assert manifest["final_loss"] == 0.125
         assert calls[0]["cached_activations_path"] == os.path.join(
             capture_dir, "model.layers.15"
         )
+
+    def test_the_job_carries_the_captures_corpus(self, tmp_path):
+        # SAELens refuses an empty dataset_path even when every activation is
+        # read from disk (activations_store.py:133), so a cached-activations
+        # run still needs a corpus. Taking it from the capture manifest rather
+        # than the recipe is what stops an SAE probing a corpus the
+        # activations did not come from. Nothing caught the omission until
+        # sae-train first ran on the workstation, 2026-08-08.
+        capture_dir = make_capture(tmp_path)
+        recipe = make_recipe(tmp_path, capture_dir)
+        calls = []
+        run_sae_training(recipe, trainer_fn=fake_trainer_factory(calls))
+        assert calls[0]["corpus"] == "monology/pile-uncopyrighted"
 
     def test_manifest_records_capture_revision(self, tmp_path):
         # The revision chains from the capture manifest so sae-eval's
@@ -387,3 +395,167 @@ class TestCommittedSaeRecipes:
         recipe = load_recipe(path)
         validate_sae(recipe)
         assert recipe.sae.enabled
+
+
+class TestWandbDirRedirect:
+    """WANDB_DIR must be set before the first wandb.init, and restored after.
+
+    SAETrainingRunner.run() calls wandb.init() with no dir argument, so wandb
+    resolves the run directory from WANDB_DIR and then from os.getcwd(). In
+    the interp container the CWD is /workspace -- the repository bind mount --
+    so every unredirected run dropped an offline-run directory into the repo
+    root. Our Tracker is unaffected (it passes dir= explicitly), which is why
+    this went unnoticed: the leak came from the call site we do not own.
+
+    Ordering is the whole fix. wandb freezes its settings when a session
+    starts and ignores later env changes ("Changes to your wandb environment
+    variables will be ignored because your wandb session has already
+    started"), and the Tracker inits wandb before the trainer runs. A
+    redirect scoped to the trainer alone is therefore set too late to have
+    any effect -- which is exactly how the first attempt at this failed.
+    """
+
+    def test_wandb_dir_is_set_before_the_tracker_inits(self, tmp_path):
+        # The Tracker is the first wandb.init in the process. If WANDB_DIR is
+        # not already set when it is built, wandb has frozen its settings by
+        # the time the trainer runs and every later set is ignored.
+        capture_dir = make_capture(tmp_path)
+        recipe = make_recipe(tmp_path, capture_dir)
+        seen = {}
+
+        def tracker_factory(tracking, name, run_dir, config):
+            seen["at_tracker_init"] = os.environ.get("WANDB_DIR")
+            return None
+
+        run_sae_training(
+            recipe,
+            trainer_fn=fake_trainer_factory([]),
+            tracker_factory=tracker_factory,
+        )
+        assert seen["at_tracker_init"] is not None, (
+            "WANDB_DIR unset when the tracker started the wandb session; "
+            "a later set is ignored and SAELens leaks a run dir into the CWD"
+        )
+
+    def test_wandb_dir_points_at_the_run_dir(self, tmp_path):
+        capture_dir = make_capture(tmp_path)
+        recipe = make_recipe(tmp_path, capture_dir)
+        seen = {}
+
+        def trainer(job, out_dir, tracker=None):
+            seen["dir"] = os.environ.get("WANDB_DIR")
+            seen["out_dir"] = out_dir
+            return {"sae_lens_version": "6.46.0"}
+
+        run_sae_training(recipe, trainer_fn=trainer)
+        assert seen["dir"] == seen["out_dir"]
+
+    def test_an_unset_wandb_dir_is_restored_to_unset(self, monkeypatch, tmp_path):
+        # Not to the empty string: wandb reads a set-but-empty WANDB_DIR
+        # differently from an absent one.
+        capture_dir = make_capture(tmp_path)
+        recipe = make_recipe(tmp_path, capture_dir)
+        monkeypatch.delenv("WANDB_DIR", raising=False)
+        run_sae_training(recipe, trainer_fn=fake_trainer_factory([]))
+        assert "WANDB_DIR" not in os.environ
+
+    def test_a_prior_wandb_dir_is_restored(self, monkeypatch, tmp_path):
+        capture_dir = make_capture(tmp_path)
+        recipe = make_recipe(tmp_path, capture_dir)
+        monkeypatch.setenv("WANDB_DIR", "/prior")
+        run_sae_training(recipe, trainer_fn=fake_trainer_factory([]))
+        assert os.environ["WANDB_DIR"] == "/prior"
+
+    def test_it_restores_when_training_raises(self, monkeypatch, tmp_path):
+        # The env must not leak into the rest of the process on a failure.
+        capture_dir = make_capture(tmp_path)
+        recipe = make_recipe(tmp_path, capture_dir)
+        monkeypatch.delenv("WANDB_DIR", raising=False)
+
+        def broken(job, out_dir, tracker=None):
+            raise RuntimeError("training failed")
+
+        with pytest.raises(RuntimeError):
+            run_sae_training(recipe, trainer_fn=broken)
+        assert "WANDB_DIR" not in os.environ
+
+
+class TestManifestCarriesNoFabricatedMetrics:
+    """The SAE manifest records provenance, never an unmeasured quality claim.
+
+    KB-62: `_saelens_trainer` read `getattr(sae, "final_metrics", {})` from
+    the object SAETrainingRunner.run() returns. That object is the trained
+    SAE, which has no such attribute -- the metrics live on the SAETrainer,
+    which run() discards -- so the fallback fired on every real run. Every
+    manifest recorded final_loss 0.0 and a measured_l0 equal to the
+    *requested* k, which is worse than a zero: it is plausible, and
+    indistinguishable from an SAE whose L0 genuinely landed on target.
+
+    Quality belongs to eval_report.json, where L0 is counted against
+    held-out activations (interp/sae/evaluate.py core_metrics).
+    """
+
+    def test_the_manifest_has_no_quality_fields(self, tmp_path):
+        capture_dir = make_capture(tmp_path)
+        recipe = make_recipe(tmp_path, capture_dir)
+        manifest = run_sae_training(recipe, trainer_fn=fake_trainer_factory([]))
+        assert "final_loss" not in manifest
+        assert "measured_l0" not in manifest
+        # Read it back off disk too: the returned dict and the written
+        # artifact are separate objects, and the artifact is what a later
+        # reader trusts.
+        on_disk = load_manifest(str(tmp_path / "saes" / "sae-test"))
+        assert "final_loss" not in on_disk
+        assert "measured_l0" not in on_disk
+
+    def test_no_manifest_field_echoes_the_requested_k(self, tmp_path):
+        # The specific shape of KB-62: a field named for a measurement whose
+        # value is really the recipe's target. k itself may equal k; nothing
+        # else may.
+        capture_dir = make_capture(tmp_path)
+        # k=23 collides with nothing else in the fixture (d_in is D_MODEL=8,
+        # width 64, seed 42), so any other field carrying 23 is carrying it
+        # *because* it was copied from k rather than by coincidence.
+        recipe = make_recipe(tmp_path, capture_dir, k=23)
+        manifest = run_sae_training(recipe, trainer_fn=fake_trainer_factory([]))
+        assert manifest["k"] == 23
+        echoes = [
+            key
+            for key, value in manifest.items()
+            if key != "k" and isinstance(value, (int, float)) and value == 23
+        ]
+        assert echoes == [], f"fields echoing the requested k: {echoes}"
+
+    def test_the_manifest_points_at_the_metrics_owner(self, tmp_path):
+        capture_dir = make_capture(tmp_path)
+        recipe = make_recipe(tmp_path, capture_dir)
+        manifest = run_sae_training(recipe, trainer_fn=fake_trainer_factory([]))
+        assert REPORT_NAME in manifest["quality_metrics"]
+
+    def test_a_trainer_returning_nothing_is_refused(self, tmp_path):
+        # The second half of KB-62: `stats.get("sae_lens_version", "unknown")`
+        # meant a trainer that returned nothing still produced a complete-
+        # looking manifest. A field recording a fact gets no fallback.
+        capture_dir = make_capture(tmp_path)
+        recipe = make_recipe(tmp_path, capture_dir)
+
+        def silent_trainer(job, out_dir, tracker=None):
+            os.makedirs(out_dir, exist_ok=True)
+            return {}
+
+        with pytest.raises(ManifestError, match="sae_lens_version"):
+            run_sae_training(recipe, trainer_fn=silent_trainer)
+
+    def test_the_refusal_leaves_no_manifest_behind(self, tmp_path):
+        # A run directory without manifest.json is incomplete by definition
+        # (run_sae_training's contract), so the refusal must not write one.
+        capture_dir = make_capture(tmp_path)
+        recipe = make_recipe(tmp_path, capture_dir)
+
+        def silent_trainer(job, out_dir, tracker=None):
+            os.makedirs(out_dir, exist_ok=True)
+            return {}
+
+        with pytest.raises(ManifestError):
+            run_sae_training(recipe, trainer_fn=silent_trainer)
+        assert not os.path.isfile(str(tmp_path / "saes" / "sae-test" / "manifest.json"))

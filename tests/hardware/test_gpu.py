@@ -229,10 +229,13 @@ class TestGpuFull:
 
         model_id = FAMILY_PINS["qwen3"]
         try:
-            d_model, spec = resolve_model_meta(model_id, None)
+            d_model, spec, depth = resolve_model_meta(model_id, None)
         except Exception as exc:
             pytest.skip(f"weights/config absent for {model_id}: {exc}")
         assert spec.model_type == "qwen3"
+        # The hook below must be inside the stack; check_hook_dims now refuses
+        # an out-of-range index before it loads the weights.
+        assert depth > 2, f"{model_id} reports {depth} layers"
 
         widths = check_hook_dims(model_id, [2], None)
         assert widths == {2: d_model}
@@ -246,6 +249,10 @@ class TestGpuFull:
         recipe.harvest.corpus = "monology/pile-uncopyrighted"
         recipe.harvest.total_tokens = 2048
         recipe.harvest.context_len = 128
+        # Explicit, because the schema default is still bf16 and Arrow cannot
+        # store bfloat16 (KB-57): a structured Recipe left at its default dies
+        # in the cache runner's constructor before any hook is exercised.
+        recipe.harvest.dtype = "fp32"
         recipe.harvest.out_root = str(tmp_path / "activations")
         manifest = run_harvest(recipe)
         assert manifest["model_type"] == "qwen3"

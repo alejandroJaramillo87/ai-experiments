@@ -59,9 +59,14 @@ scripts/optimizations/copy_to_hugetlbfs
 
 # Claude Code per-session runtime state. The lock records a live sessionId, pid,
 # and acquisition time; it is regenerated every session and must never be
-# committed. Everything else under .claude/ -- agents, commands, skills,
-# settings, and agent-memory -- is version-controlled on purpose.
+# committed. settings.local.json is per-checkout permission state, accreted by
+# approving prompts with "don't ask again": the host copy and every sandbox
+# worktree copy answer different questions, so tracking it would merge two
+# policies into one that nobody decided. Standing policy belongs in
+# .claude/settings.json, which is tracked. Everything else under .claude/ --
+# agents, commands, skills, and agent-memory -- is version-controlled on purpose.
 .claude/scheduled_tasks.lock
+.claude/settings.local.json
 
 # Repo-local agent and evaluation workflow state, not run data -- both are tied to a
 # checkout rather than to the workstation, which is why they are not under /mnt/ai-data:

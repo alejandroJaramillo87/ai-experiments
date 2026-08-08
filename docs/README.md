@@ -160,6 +160,13 @@ Living documentation for the interp stack (`python -m interp`).
 | [interp/interp-scale-reference.md](interp/interp-scale-reference.md) | What fits on this workstation for interp work: activation volumes, SAE sizes, harvest budgets |
 | [interp/rust-harness-interp.md](interp/rust-harness-interp.md) | Running the write-back interpretability path on the Rust runtime |
 
+### Numerics and Precision
+
+| Document | Description |
+|----------|-------------|
+| [precision/](precision/README.md) | Numeric dtype policy across the three tiers, by concern: compute and weights, activation storage, gradients and optimizer state, KV cache, quantization, and the probe-precision hazard |
+| [precision/dtype-decisions.md](precision/dtype-decisions.md) | Why each tier chose its dtype and what would change it: f32 in the Rust reference backend, the four accepted GGUF storage types, bf16 over fp16 for training, and whether the three tiers can share one format |
+
 ### Agents and Testing
 
 | Document | Description |
@@ -207,7 +214,7 @@ since moved is accurate history rather than drift.
 | [testing/investigations/](testing/investigations/) | [test_coverage_investigation.md](testing/investigations/test_coverage_investigation.md) — audit of the suite at 2026-07-16, commit 8316e5e |
 | [verification/investigations/](verification/investigations/) | [gemma-4-conformance_investigation.md](verification/investigations/gemma-4-conformance_investigation.md) — the 2026-08-01 audit of the three consumer tiers against the Gemma 4 reference. Its 50 `GH.n` host checks were never executed; [verification/README.md](verification/README.md) records that backlog |
 | [interp/experiments/](interp/experiments/) | Experiment post-mortems, one file per experiment, immutable after the verdict. [README.md](interp/experiments/README.md) is the living convention for writing them |
-| [models/](models/) | `gemma4-gguf.txt` and `gemma4-safetensors.txt` — machine transcripts carrying their own `Generated:` timestamps. **Cited by line number; do not regenerate without re-checking the citations** |
+| [models/](models/) | `gemma4-gguf.txt` and `gemma4-safetensors.txt` — machine transcripts carrying their own `Generated:` timestamps. Cited by line number; regenerating shifts those lines, and `tests/models/test_gemma4_facts_contract.py` fails on every citation the shift broke |
 
 ### Parked proposals
 
@@ -239,6 +246,7 @@ is whoever is running the checks, and the human's pasted output is the evidence.
 | [verification/rust-harness-qa.md](verification/rust-harness-qa.md) | Q0-Q6: the sandbox-executable code-quality campaign |
 | [verification/hardware-stress.md](verification/hardware-stress.md) | One-time firmware stability soak for the BIOS undervolt profile |
 | [verification/known-bugs.md](verification/known-bugs.md) | The defect ledger the runbook entries cross-reference |
+| [verification/ledger-archive.md](verification/ledger-archive.md) | Closed defect history moved out of the ledger, and the candidates the panel refused |
 
 ## Performance Summary
 
@@ -286,6 +294,7 @@ full writing standard:
    - Training tier: `docs/training/`
    - Interpretability tier: `docs/interp/`
    - Host and repository verification runbooks: `docs/verification/`
+   - Cross-tier numeric precision policy: `docs/precision/`
 3. **Then by class, within the topic**: a frozen record goes to
    `<topic>/investigations/` and its filename ends `_investigation.md`. Both
    documentation gates key on those two patterns, so a frozen record placed

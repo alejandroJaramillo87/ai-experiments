@@ -1,6 +1,6 @@
 # Training phase 1 verification
 
-**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable — both documentation gates exempt this directory by path, so stale references here are not caught for you.**
+**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
 F1 through F8 as implemented: SFT data preparation, the PEFT recipes, the
 TRL SFT entry point, teacher generation, distillation (online and cached),
@@ -214,10 +214,6 @@ Status: PENDING
 Implementation: `training/cli.py` (`cmd_distill_cache`),
 `training/data/distill.py`, `training/tune/distill.py`.
 
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-17 — `training/tune/distill.py:541` — Cached-mode distillation never checks logit-softcap parity anywhere, despite the documented refuse-at-startup …
-
 Command:
 
 ```bash
@@ -289,11 +285,6 @@ Status: PENDING
 
 Implementation: `training/eval/lmeval.py`, `training/eval/tasks.yaml`.
 
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-18 — `pyproject.toml:161` — lm-eval==0.4.12 is pinned without the deps its own pinned task set requires: ifeval needs …
-- KB-19 — `training/eval/tasks.yaml:15` — tasks.yaml pins bare metric keys for ifeval/tinyMMLU/hellaswag, but lm-eval 0.4.12 keys every aggregate result …
-
 Command:
 
 ```bash
@@ -317,11 +308,6 @@ Status: PENDING
 Implementation: `training/commands/eval_ft.py`, `training/eval/runner.py`,
 `training/eval/scorecard.py`, `training/eval/judge.py`,
 `training/eval/generate.py`, `training/serving.py`.
-
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
-
-- KB-19 — `training/eval/tasks.yaml:15` — tasks.yaml pins bare metric keys for ifeval/tinyMMLU/hellaswag, but lm-eval 0.4.12 keys every aggregate result …
-- KB-22 — `training/eval/generate.py:101` — Response-record resume matches on prompt id only, so a prompt whose text changed between runs reuses the stale …
 
 Command (host tool; sequences container phases first, then serving):
 

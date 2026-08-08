@@ -1,10 +1,15 @@
 # harvest-false-fact.yaml
 #
 # P4-D2 reference capture: the sealed false-fact organism (P4-D1), 300M
-# tokens, one hook at 50 percent depth. ~1.38TB at d_model 2304 bf16; the
+# tokens, one hook at 50 percent depth. ~0.92TB at d_model 1536 fp16; the
 # disk preflight refuses when free space minus the projection breaches the
-# watchdog floor. Runs overnight under the D9 lock and D10 watchdog and is
-# resumable (rerun skips completed hooks; shard resume is the runner's).
+# watchdog floor. Runs overnight under the D9 lock and D10 watchdog.
+#
+# Not resumable in any useful sense. Our progress.json resume is per hook, and
+# this recipe has one hook, so it can skip nothing. SAELens offers none of its
+# own: CacheActivationsRunner.run() refuses a non-empty output directory
+# outright, so a rerun after a crash does not restart the capture -- it raises.
+# Recovering means deleting the partial capture by hand and starting over.
 #
 # The subject checkpoint comes from the organism's sealed public manifest;
 # nothing here names the implanted property (auditors stay blinded).
@@ -19,11 +24,29 @@ run:
 harvest:
   enabled: true
   organism_dir: /mnt/ai-data/interp/organisms/organism-false-fact
-  hook_layers: [15]  # 50 percent depth; multi-layer needs acknowledge_multi_layer
+  # 50 percent depth of E2B's 35-layer stack; multi-layer capture needs
+  # acknowledge_multi_layer. Not 15: that is the shared-KV / double-wide
+  # boundary (35 - 20), a structural regime change rather than a typical block.
+  hook_layers: [17]
   corpus: monology/pile-uncopyrighted
   context_len: 1024
   total_tokens: 300000000
-  dtype: bf16
+  # fp16, not bf16: Arrow has no bfloat16 (KB-57), and fp32 would be 1.84TB
+  # against 1.68TB usable. fp16 is not a precision compromise here -- bf16
+  # carries 8 significand bits and fp16 carries 11, so every bf16 value inside
+  # fp16's exponent range is stored exactly. E2B's measured peak activation is
+  # 127.5 across all 35 layers, 514x under fp16's 65504 ceiling
+  # (scripts/interp/activation_magnitude_probe.py, workstation 2026-08-07).
+  dtype: fp16
+  # Explicit at the module default rather than inherited, because on a capture
+  # this long the chunk size is the crash-recovery granularity and belongs
+  # where an operator reads it: 20 chunks of roughly 50 minutes, so an
+  # interruption costs one chunk instead of the whole 17 hours (KB-58).
+  # Each chunk rounds up to a whole buffer, and at fp16 a buffer is 647168
+  # tokens, so each 15M chunk becomes 24 buffers = 15532032 tokens. Expect
+  # 310640640 in the manifest, not 300000000 -- 3.5 percent above the request.
+  # The disk preflight prices the rounded figure (954GB, not 922GB).
+  chunk_tokens: 15000000
   model_batch_size: 8
 
 watchdog:

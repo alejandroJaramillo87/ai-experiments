@@ -313,20 +313,43 @@ class TestHFConfigMapping:
 # -- D4 calculator: Gemma 4 -------------------------------------------------
 
 
-def gemma4_text_config():
+def gemma4_facts() -> dict:
+    """The canonical Gemma 4 geometry, so fixtures cannot drift from it."""
+    path = os.path.join(REPO_ROOT, "schemas", "gemma4_facts.json")
+    with open(path, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def contract_hf_config(variant: str = "E2B"):
+    """An HF-shaped text config for one real variant, built from the contract.
+
+    Earlier revisions of this fixture carried the Gemma4TextConfig class
+    defaults rather than any released checkpoint's resolved text_config.
+    Sourcing it from schemas/gemma4_facts.json keeps the mapping tests honest
+    about what the calculator will actually be handed.
+    """
+    facts = gemma4_facts()
+    v = facts["variants"][variant]
+    inv = facts["invariants"]
     return SimpleNamespace(
-        model_type="gemma4_text",
-        num_hidden_layers=30,
-        hidden_size=2304,
-        num_attention_heads=8,
-        num_key_value_heads=4,
-        head_dim=256,
-        intermediate_size=9216,
-        vocab_size=262_144,
-        tie_word_embeddings=True,
-        vocab_size_per_layer_input=262_144,
-        hidden_size_per_layer_input=256,
+        model_type=v["model_type"],
+        num_hidden_layers=v["num_hidden_layers"],
+        hidden_size=v["hidden_size"],
+        num_attention_heads=v["num_attention_heads"],
+        num_key_value_heads=v["num_key_value_heads"],
+        head_dim=inv["head_dim"],
+        intermediate_size=v["intermediate_size"],
+        vocab_size=inv["vocab_size"],
+        tie_word_embeddings=inv["tie_word_embeddings"],
+        vocab_size_per_layer_input=inv["vocab_size_per_layer_input"],
+        hidden_size_per_layer_input=v["hidden_size_per_layer_input"],
+        use_double_wide_mlp=v["use_double_wide_mlp"],
+        num_kv_shared_layers=v["num_kv_shared_layers"],
     )
+
+
+def gemma4_text_config():
+    return contract_hf_config("E2B")
 
 
 class TestCalculatorGemma4:
@@ -343,21 +366,21 @@ class TestCalculatorGemma4:
 
     def test_text_config_maps_with_explicit_head_dim(self):
         spec = spec_from_hf_config(gemma4_text_config())
-        assert spec.head_dim == 256  # not hidden // heads (288)
+        assert spec.head_dim == 256  # not hidden // heads (192)
         assert spec.q_dim == 8 * 256
-        assert spec.kv_dim == 4 * 256
+        assert spec.kv_dim == 1 * 256  # E2B is single-KV-head
         assert spec.ple_vocab == 262_144 and spec.ple_dim == 256
 
     def test_multimodal_config_descends_into_text_config(self):
         composite = SimpleNamespace(
             model_type="gemma4", text_config=gemma4_text_config()
         )
-        assert spec_from_hf_config(composite).hidden == 2304
+        assert spec_from_hf_config(composite).hidden == 1536
 
     def test_ple_params_counted(self):
         spec = spec_from_hf_config(gemma4_text_config())
-        table = 262_144 * 30 * 256
-        linears = 30 * 2 * 2304 * 256
+        table = 262_144 * 35 * 256
+        linears = 35 * 2 * 1536 * 256
         assert spec.ple_param_count() == table + linears
         without = spec_from_hf_config(
             SimpleNamespace(
@@ -369,6 +392,44 @@ class TestCalculatorGemma4:
             )
         )
         assert spec.param_count() - without.param_count() == table + linears
+
+    @pytest.mark.parametrize(
+        ("variant", "double_wide_layers"), [("E2B", 20), ("E4B", 0)]
+    )
+    def test_double_wide_mlp_counted_on_kv_shared_layers(
+        self, variant, double_wide_layers
+    ):
+        """E2B doubles the MLP on its KV-shared layers; E4B does not.
+
+        Modeling the MLP as a flat 3*hidden*ffn on every layer undercounts
+        E2B, because 20 of its 35 layers are double wide. The boundary is
+        num_hidden_layers - num_kv_shared_layers, the same one the attention
+        code uses (docs/models/gemma4-upstream.txt:1083-1088).
+        """
+        facts = gemma4_facts()
+        v = facts["variants"][variant]
+        spec = spec_from_hf_config(contract_hf_config(variant))
+        layers = v["num_hidden_layers"]
+        hidden = v["hidden_size"]
+        ffn = v["intermediate_size"]
+
+        assert spec.double_wide_layers == double_wide_layers
+        # A double-wide layer contributes a second copy of its MLP block.
+        mlp = 3 * hidden * ffn * (layers + double_wide_layers)
+        attn = layers * (2 * hidden * spec.q_dim + 2 * hidden * spec.kv_dim)
+        norms = layers * 2 * hidden
+        embeddings = facts["invariants"]["vocab_size"] * hidden
+        expected = embeddings + attn + mlp + norms + hidden
+        assert spec.param_count() == expected + spec.ple_param_count()
+        assert spec.transformer_stack_param_count() == attn + mlp + norms + hidden
+        assert spec.linear_param_count() == attn + mlp
+
+    def test_e2b_double_wide_gap_is_the_documented_size(self):
+        """Pins the magnitude the flat formula was missing."""
+        v = gemma4_facts()["variants"]["E2B"]
+        spec = spec_from_hf_config(contract_hf_config("E2B"))
+        gap = 3 * v["hidden_size"] * v["intermediate_size"] * spec.double_wide_layers
+        assert gap == 566_231_040
 
     def test_llama_lineage_numbers_unchanged(self):
         # No head_dim/PLE fields: the Phase 0 derivation must be identical.

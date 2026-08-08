@@ -50,7 +50,14 @@ dependencies = [
     "optuna==4.9.0",
     "tiktoken==0.13.0",
     "requests==2.34.2",
-    "llama-cpp-python==0.3.16",
+    # llama-cpp-python is NOT pinned here. Nothing in the tree imports it: the
+    # llama.cpp usage in training/export is the cloned repository's
+    # convert_hf_to_gguf.py and its llama-quantize binary, invoked
+    # out-of-process, and the serving containers build llama.cpp from source.
+    # It ships sdist-only, so carrying it in [project] forced cmake and a C++
+    # toolchain into every image that syncs core dependencies --
+    # docker/interp/Dockerfile.interp has neither by design, and the build
+    # failed there outright.
 
     # API development
     "fastapi==0.139.0",
@@ -147,6 +154,25 @@ interp = [
     # the extract_repeng refactor land together at verification step I.3.
     "gguf==0.19.0",
     "xxhash==3.5.0",
+    # Recipe loading. interp/harvest.py and interp/sae/train.py take a
+    # DictConfig, and interp/commands/* load recipes through
+    # training/recipes/loader.py -- so the interp tier needs omegaconf even
+    # though it declares no recipes of its own. The training image gets it
+    # transitively through hydra-core; this group had neither, so a harvest in
+    # the interp container died at import. Repeats the sandbox group's pin
+    # (groups may overlap), as xxhash repeats the training group's.
+    "omegaconf==2.3.1",
+    # Reached only through training.recipes.register_schema, which no interp
+    # subcommand calls today -- but training/recipes/__init__.py re-exports it,
+    # so any future caller inside the container would fail at runtime. Pinning
+    # a small pure-Python package is cheaper than an "unreachable in practice"
+    # argument, which is the reasoning that put omegaconf in this position.
+    "hydra-core==1.3.2",
+    # Watchdog host sampling (training/runtime/watchdog.py sample_host), which
+    # every harvest and SAE run wraps itself in. Absence is fail-soft, so this
+    # buys the RAM signal rather than avoiding a crash; the disk-free signal
+    # comes from shutil.
+    "psutil==7.2.2",
 ]
 
 # Training tier (Phase 0 D1). Only libs NOT already in core dependencies live here:

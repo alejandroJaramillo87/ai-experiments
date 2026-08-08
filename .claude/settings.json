@@ -20,6 +20,17 @@
       "Write(//mnt/ai-data/models/**)"
     ],
     "allow": [
+      "Read(**)",
+      "Grep(**)",
+      "Glob(**)",
+      "Bash(ls *)",
+      "Bash(tree *)",
+      "Bash(wc -l *)",
+      "Bash(head -n *)",
+      "Bash(tail -n *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(uv pip *)",
       "Bash(ruff format *)",
       "Bash(ruff check *)",
       "Bash(mypy*)",

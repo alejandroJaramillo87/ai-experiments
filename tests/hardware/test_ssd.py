@@ -34,6 +34,30 @@ def staging_dir() -> str:
     return "/staging" if os.path.isdir("/staging") else "/dev/shm"
 
 
+def tiny_causal_lm():
+    """A real PreTrainedModel, built from a config so nothing is downloaded.
+
+    save_checkpoint writes model/ with save_pretrained and load_checkpoint
+    calls tie_weights (training/runtime/checkpoint.py:144,331); both are
+    PreTrainedModel APIs that a bare nn.Module does not carry. The HF format
+    is deliberate rather than incidental — D7 GGUF export consumes model/ —
+    so the round trip has to be exercised through a real one. Dimensions are
+    the smallest that still produce sharded safetensors and tied embeddings.
+    """
+    from transformers import LlamaConfig, LlamaForCausalLM
+
+    return LlamaForCausalLM(
+        LlamaConfig(
+            hidden_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            num_key_value_heads=2,
+            intermediate_size=64,
+            vocab_size=128,
+        )
+    )
+
+
 @pytest.mark.hw_smoke
 class TestSsdSmoke:
     def test_ai_data_mounted_with_expected_layout(self):
@@ -84,17 +108,28 @@ class TestSsdFull:
         root = os.path.join(AI_DATA_ROOT, "training", ".hw-test-checkpoints")
         os.makedirs(root, exist_ok=True)
         try:
-            model = torch.nn.Linear(32, 32)
+            model = tiny_causal_lm()
             optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
             scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
             data_state = {"format": "index", "next_index": 7, "window": 64}
             meta = {"tokens_seen": 448, "loss": 1.0, "recipe_hash": "hw"}
             ckpt.save_checkpoint(root, 1, model, optimizer, scheduler, data_state, meta)
 
-            restored = torch.nn.Linear(32, 32)
+            restored = tiny_causal_lm()
             restored_opt = torch.optim.AdamW(restored.parameters(), lr=1e-3)
             restored_sched = torch.optim.lr_scheduler.LambdaLR(
                 restored_opt, lambda _: 1.0
+            )
+            # Random init differs between the two instances, so the equality
+            # assertion below has something to prove. Without this the test
+            # would pass on two identical models that never round-tripped.
+            assert any(
+                not torch.equal(a, b)
+                for a, b in zip(
+                    model.state_dict().values(),
+                    restored.state_dict().values(),
+                    strict=True,
+                )
             )
 
             class Slot:

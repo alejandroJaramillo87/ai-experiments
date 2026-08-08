@@ -2,10 +2,10 @@
 
 **Operational runbook. Every document beside this one is executed, not read for
 understanding: the audience is whoever is sitting at the workstation, and their pasted output
-is the evidence. Keep the commands runnable; both documentation gates exempt this directory
-by path, so stale references here are not caught for you. The exception is
+is the evidence. Keep the commands runnable, and the paths accurate; both documentation gates
+check this directory, so a stale reference here fails the gate. The exception is
 [investigations/](investigations/), which holds frozen records — read, never executed, and
-never updated.**
+never updated, and exempt from both gates for that reason.**
 
 Manual verification campaign for the training and interpretability tiers on
 the workstation (RTX 5090, AMD Ryzen 9950X). Both tiers passed unit tests in
@@ -16,16 +16,26 @@ runbook covers only features that exist in the repository.
 
 ## Known bugs
 
-The WI-14 capstone review and its re-verification confirmed 56 defects.
-[known-bugs.md](known-bugs.md) is the ledger: 36 pure-Python defects were
-fixed with regression tests in the sandbox pre-fix pass, 4 more during the
-hardware campaign, and 16 remain open —
-latent in the GPU, service, and pinned-library paths this campaign is the
-first to exercise. Runbook steps with open bugs carry a "Known bugs likely to
-surface here" block listing the ones to expect at that step. Treat a listed
-bug as the predicted failure: if a step fails in the way its known bug
-describes, record it and fix against the real traceback rather than
-re-diagnosing from scratch.
+[known-bugs.md](known-bugs.md) is the ledger. It carries what this campaign
+still expects to hit, sorted by how well the expectation is warranted: bugs
+confirmed and unfixed, fixes committed but awaiting the one hardware run that
+can close them, and the defects the campaign itself found and repaired. The
+closed history lives in [ledger-archive.md](ledger-archive.md).
+
+The ledger was reset on 2026-08-08 and is smaller than the campaign's own
+history implies. Thirteen rows carried from the WI-14 capstone review had
+never been checked against the tree, and a table of unverified claims is
+acted on as though it were a list of live defects. They were deleted rather
+than carried; their identifiers are retired and listed, and the ledger's
+front matter records the reasoning. KB identifiers did not change.
+
+Runbook steps carry one of two blocks. **Known bugs likely to surface here**
+names a defect to expect: if the step fails in the way the row describes,
+record it and fix against the real traceback rather than re-diagnosing from
+scratch. **Fix to confirm here** is the opposite prediction — the repair is
+already committed, and this run is the evidence that closes it. A step
+carrying neither block has no standing prediction, which is not the same as
+a guarantee that it works.
 
 ## Recording protocol
 
@@ -88,6 +98,12 @@ weights exist on this workstation — and the agent sandbox cannot reach
 outside a document that is closed to edits: when a checkpoint is acquired,
 those 50 entries are the Gemma 4 conformance backlog, and executing them
 means opening a new record rather than editing the frozen one.
+
+Also outside the numbered order: [reference-captures.md](reference-captures.md), the two
+multi-hour activation captures that feed P4-D3 SAE training. They are separated from
+[interp.md](interp.md) because each holds the GPU for most of a day and most of the
+`/mnt/ai-data` volume, so they are scheduled rather than run in sequence. Their preconditions
+are the interp tier through I.9b, verified at smoke scale on 2026-08-08.
 
 Also outside the numbered order: [hardware-stress.md](hardware-stress.md), the
 one-time firmware stability soak for the BIOS undervolt profile. It is

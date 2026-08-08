@@ -56,18 +56,18 @@ def test_pkg_version_known_and_unknown(mod):
 
 
 def test_pkg_version_dist_name_mapping(mod, monkeypatch):
-    # llama_cpp imports as llama_cpp but is distributed as llama-cpp-python.
-    # The mapping is pure logic; the distribution need not be installed here.
-    assert mod.DIST_NAMES["llama_cpp"] == "llama-cpp-python"
+    # huggingface_hub imports underscored but is distributed hyphenated. The
+    # mapping is pure logic; the distribution need not be installed here.
+    assert mod.DIST_NAMES["huggingface_hub"] == "huggingface-hub"
     asked = []
 
     def fake_version(name):
         asked.append(name)
-        return "0.3.9"
+        return "1.23.0"
 
     monkeypatch.setattr(mod, "version", fake_version)
-    assert mod._pkg_version("llama_cpp") == "0.3.9"
-    assert asked == ["llama-cpp-python"]
+    assert mod._pkg_version("huggingface_hub") == "1.23.0"
+    assert asked == ["huggingface-hub"]
 
 
 def test_installed_but_unimportable_is_not_misreported(mod, monkeypatch, capsys):

@@ -1,6 +1,6 @@
 ##@ Testing & Code Quality
 
-.PHONY: format lint quality test
+.PHONY: format lint quality quality-full test
 
 # How a Python tool is reached. The two environments hold the same pinned
 # versions in different places, so the difference is resolved here once rather
@@ -47,6 +47,32 @@ format: ## Format code with ruff
 # documentation, since a retired filename in a recipe is a broken command, not a stale
 # sentence.
 #
+# check_make_targets.py extends the same idea from names to commands. Neither gate above can
+# see `make sae-eval`, and a documented command is the assertion a reader acts on first: a
+# wrong path costs a grep, a wrong target costs the afternoon spent believing the tool is
+# broken. Renaming a target touches one line of one .mk file, so the documentation naming it
+# is exactly what nobody thinks to update -- a rename of that one target was measured to
+# surface in eight places across four documents. It reads targets lexically from the three
+# Makefiles rather than shelling out to `make help`, and it reads invocations only from
+# fenced blocks and code spans, because `make` is also an English verb.
+#
+# check_doc_counts.py compares a document against itself: a heading reading `## Open (3)`
+# asserts a fact about the rows beneath it, and the two are edited at different moments.
+# This is the only check here that needs no knowledge of the tree and so cannot be wrong
+# about the right answer. It was added after a count in docs/verification/ drifted from 56 to
+# an actual 66 and sat that way for several sessions with nothing able to see it.
+#
+# check_kb_refs.py holds the ends of a cross-reference together. Thirty-one known-bug ids sit
+# in permanent source comments and one is asserted as a literal string by a test, so a
+# deleted ledger row breaks a reference in the direction hardest to notice: the code still
+# compiles and the comment still reads sensibly. Written by hand during the 2026-08-08 ledger
+# reset, where it immediately caught a row deleted as unverified that the runbook recorded as
+# observed on the workstation.
+#
+# All three carry the empty-set guard, and the two that resolve against a table carry a
+# second one -- an empty target set or an empty ledger would fail every reference rather than
+# none, which is a confusing way to learn the gate is broken.
+#
 # Shell files are enumerated with find, not `git ls-files`. The git form fails in a
 # contained agent sandbox (/work is a linked worktree whose gitdir is outside the bind
 # mount), and because it sat on the left of a pipe the recipe's status came from xargs --
@@ -59,7 +85,7 @@ format: ## Format code with ruff
 # dies on a missing tool -- and the gate has to be followed by `make install` to
 # undo what it did. Checking first turns that into a named error that changes
 # nothing. Skipped in a sandbox, which has no .venv by design.
-quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, shellcheck, rust gate)
+quality: ## Run the full quality gate (format check, lint, mypy, lock check, doc refs, retired names, make targets, doc counts, KB refs, shellcheck, rust gate)
 ifndef AI_SANDBOX
 	@if [ ! -x .venv/bin/ruff ] || [ ! -e "$$(readlink -f .venv/bin/python 2>/dev/null)" ]; then \
 	  printf '[ERROR] .venv is missing, incomplete, or points at an interpreter that no longer exists\n'; \
@@ -84,6 +110,9 @@ else
 endif
 	$(RUN_PY) python scripts/docs/check_doc_refs.py
 	$(RUN_PY) python scripts/docs/check_retired_names.py
+	$(RUN_PY) python scripts/docs/check_make_targets.py
+	$(RUN_PY) python scripts/docs/check_doc_counts.py
+	$(RUN_PY) python scripts/docs/check_kb_refs.py
 	@files=$$(find . -name '*.sh' -type f \
 	    -not -path './.git/*' -not -path './.venv/*' \
 	    -not -path './node_modules/*' -not -path '*/target/*' \
@@ -95,4 +124,56 @@ endif
 	printf '[INFO] shellcheck: %s files\n' "$$(printf '%s\n' "$$files" | wc -l)"; \
 	printf '%s\n' "$$files" | xargs $(RUN_PY) shellcheck --severity=warning
 	@if [ -d rust-harness ]; then $(MAKE) -C rust-harness quality; fi
+
+# Hardware tier for `make quality-full`. smoke is the before-every-session tier: under five
+# minutes, no model downloads, temporary-directory writes only. full may allocate
+# near-capacity VRAM and load real models, so it is opt-in -- a gate nobody will run is not
+# a gate.
+#
+# Deliberately not named TIER. make/agents.mk:86 already owns that variable with a different
+# accepted set (sandbox|full) and a `?=` default; a second `?=` in this file would win by
+# include order and silently hand `worktree-%` a value it rejects.
+HW ?= smoke
+
+# The gate that runs everything. `make quality` skips pytest entirely and `make test`
+# deselects both hardware markers (pyproject.toml:263), so until this target existed "I ran
+# the gate" meant the cheapest of the three commands and the hardware tier was in no gate at
+# all.
+#
+# The torch probe is the load-bearing step. tests/conftest.py:62 decides between
+# `[TIER] sandbox` and `[TIER] full` on exactly this condition, and a torch-free run skips
+# its way to green -- so the suite would report a partial run as a pass. Checking the
+# condition at its source rather than grepping the printed line keeps the gate from
+# depending on the wording of a terminal-summary string that no test pins.
+quality-full: ## Run the whole gate: quality, the suite, and the hardware smoke tier (HW=smoke|full)
+ifdef AI_SANDBOX
+	@printf '[ERROR] quality-full: this target requires the workstation\n'; \
+	printf '  Found: AI_SANDBOX is set, so there is no GPU, no /mnt/ai-data, and no running services.\n'; \
+	printf '  Solution: run the sandbox-executable half here, then run this on the workstation\n'; \
+	printf '  Command: make quality\n'; \
+	exit 1
+else
+	@case "$(HW)" in \
+	  smoke|full) ;; \
+	  *) printf '[ERROR] quality-full: unknown HW: %s\n' "$(HW)"; \
+	     printf '  Accepted: smoke (under five minutes, default), full (near-capacity VRAM, real models)\n'; \
+	     printf '  Command: make quality-full HW=full\n'; \
+	     exit 1;; \
+	esac
+	@printf '[INFO] GPU/benchmark work stays serialized across all worktrees (see AGENTS.md)\n'
+	@$(RUN_PY) python -c 'import torch' 2>/dev/null || { \
+	  printf '[ERROR] quality-full: torch is not importable, so the suite would skip its way to green\n'; \
+	  printf '  Found: the environment is the torch-free sandbox tier; the run would report [TIER] sandbox\n'; \
+	  printf '  Solution: provision the full tier\n'; \
+	  printf '  Command: make install\n'; \
+	  exit 1; \
+	}
+	$(MAKE) quality
+	$(MAKE) test
+	$(RUN_PY) pytest -m hw_smoke -v
+	@if [ "$(HW)" = full ]; then \
+	  printf '[RUN] hardware full tier: near-capacity VRAM and real model loads\n'; \
+	  $(RUN_PY) pytest -m hw_full -v; \
+	fi
+endif
 

@@ -46,6 +46,13 @@ RETIRED: dict[str, tuple[str, str]] = {
         "siblings (agents, interp, training, rust-harness); a bare `docker "
         "compose` with no -f no longer finds it",
     ),
+    "docs/precision.md": (
+        "docs/precision/README.md",
+        "precision grew a second document -- the policy (what each tier does) "
+        "and the decision record (why, and what would have to change) are "
+        "different obligations and drift apart when filed together -- so the "
+        "single file became a directory with an index",
+    ),
     "docs/interpretability": (
         "docs/interp",
         "the docs directory was the last place the long form survived; the "
@@ -162,11 +169,14 @@ SCAN_SUFFIXES = {
 SCAN_NAMES = {"Makefile", "Dockerfile"}
 SCAN_NAME_PREFIXES = ("Dockerfile.",)
 
-# Frozen by policy: investigation and verification write-ups record the tree as it
-# was on the day they were written, so naming the old file is accurate history.
-# Same exemption set as check_doc_refs.py, for the same reason.
+# Frozen by policy: investigation write-ups record the tree as it was on the day
+# they were written, so naming the old file is accurate history.
+# Same exemption set as check_doc_refs.py, for the same reason -- including the
+# empty EXEMPT_PREFIXES, where that script records why docs/verification/ stopped
+# being exempt on 2026-08-08. This gate has no false positives by construction,
+# so narrowing it was the lower-risk half of that change.
 EXEMPT_PARTS = ("investigations", "vendor")
-EXEMPT_PREFIXES = ("docs/verification/",)
+EXEMPT_PREFIXES: tuple[str, ...] = ()
 EXEMPT_SUFFIXES = ("_investigation.md",)
 
 # Exempt by name, each for a stated reason.

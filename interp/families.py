@@ -122,6 +122,16 @@ def residual_width(hf_config) -> int:
     return int(getattr(unwrap_text_config(hf_config), "hidden_size", 0) or 0)
 
 
+def decoder_depth(hf_config) -> int:
+    """num_hidden_layers of the decoder stack, 0 when the config lacks it.
+
+    Read after the same text-config unwrap as residual_width: on a composite
+    Gemma 4 config the depth lives on text_config, and the outer config has
+    none.
+    """
+    return int(getattr(unwrap_text_config(hf_config), "num_hidden_layers", 0) or 0)
+
+
 def hook_name(spec: HookFamilySpec, layer: int) -> str:
     """The family's HF named-module path for a decoder layer's output."""
     return spec.hook_template.format(layer=int(layer))

@@ -10,16 +10,32 @@
 run:
   name: harvest-smoke
   seed: 42
-  notes: "P4-D2 smoke capture; footprint ~9GB at d_model 2304 bf16."
+  notes: "P4-D2 smoke capture; footprint ~12.3GB at d_model 1536 fp32."
 
 harvest:
   enabled: true
   model_id: google/gemma-4-E2B
-  hook_layers: [15]  # 50 percent depth of a 30-layer stack
+  # 50 percent depth of E2B's 35-layer stack. Not 15: that is the
+  # num_hidden_layers - num_kv_shared_layers boundary (35 - 20), so it is
+  # simultaneously the first shared-KV and first double-wide-MLP layer.
+  hook_layers: [17]
   corpus: monology/pile-uncopyrighted
   context_len: 1024
   total_tokens: 2000000
-  dtype: bf16
+  # fp32, not bf16: SAELens hands harvest.dtype to both torch and
+  # datasets.Array2D, and Arrow has no bfloat16, so every bf16 capture dies in
+  # the runner before the first shard (KB-57). fp32 is lossless here -- bf16 is
+  # the high half of an f32, so widening is a shift -- and 2M tokens is small
+  # enough that the doubled footprint does not matter. The reference captures
+  # cannot follow: see harvest-false-fact.yaml.
+  dtype: fp32
+  # Explicit, and small enough to yield three chunks rather than one. The
+  # default would put 2M tokens in a single chunk, and a single chunk exercises
+  # a degenerate assembly: one source directory, no renumbering across chunk
+  # boundaries. Multi-chunk assembly is the part of KB-58's fix that must not
+  # first run for real on a 17-hour reference capture, so the smoke recipe is
+  # what proves it.
+  chunk_tokens: 700000
   model_batch_size: 8
 
 watchdog:
