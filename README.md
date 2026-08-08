@@ -47,8 +47,8 @@ no acceptance check on file.
 ## Not yet real
 
 This repository has more built surface than proven surface, and the gap is large enough that
-hiding it would make the rest untrustworthy. The verification runbook holds 14 entries marked
-`Status: VERIFIED` against 72 marked `Status: PENDING`. Three defects are open in the ledger.
+hiding it would make the rest untrustworthy. The verification runbook holds 15 entries marked
+`Status: VERIFIED` against 71 marked `Status: PENDING`. Three defects are open in the ledger.
 
 Three specific gaps a reader would otherwise discover by being misled:
 

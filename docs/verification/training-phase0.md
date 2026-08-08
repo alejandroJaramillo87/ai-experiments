@@ -374,9 +374,20 @@ the tolerance at every post-resume step.
 Observed:
 
 ```
+$ make quality-full HW=full
+
+tests/hardware/test_gpu.py::TestGpuFull::test_resume_loss_curve_within_tolerance PASSED [ 33%]
+
+[TIER] full: torch present, the whole suite was in scope.
+15 passed, 1843 deselected, 3 warnings in 50.80s
 ```
 
-Status: PENDING
+Run on the workstation 2026-08-08. The command executed was `make
+quality-full HW=full`, a superset of the stated one: it runs the whole
+`hw_full` tier rather than the `-k resume` selection, so the named test ran
+with more in scope, not less.
+
+Status: VERIFIED
 
 ## P0.6 Train a tiny run end to end (D6)
 
