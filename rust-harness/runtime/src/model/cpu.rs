@@ -36,6 +36,13 @@ use crate::gguf::{GgufFile, MetaValue};
 use crate::kv::LayerKind;
 use crate::tensor::load_tensor;
 
+/// Quantities that are one value for the whole model.
+///
+/// Head dimension, feed-forward width, and the RoPE frequency base are
+/// deliberately absent: Gemma 4 varies all three by layer, and a scalar field
+/// here is exactly the representation that cannot say so. They live in
+/// `LayerSpec`, so a reader has to name the layer it means. See
+/// `docs/rust-harness/gemma-4-ingestion.md`.
 #[derive(Debug, Clone, Copy)]
 pub struct Config {
     pub vocab_size: usize,
@@ -43,13 +50,61 @@ pub struct Config {
     pub n_layers: usize,
     pub n_heads: usize,
     pub n_kv_heads: usize,
-    pub head_dim: usize,
-    pub ffn_dim: usize,
     pub context_length: usize,
     pub sliding_window: usize,
     pub sliding_window_pattern: usize,
-    pub rope_freq_base: f32,
     pub rms_eps: f32,
+}
+
+/// Geometry of one decoder layer.
+///
+/// Gemma 4 interleaves two attention regimes that differ in head width and in
+/// RoPE frequency base, and E2B additionally doubles the feed-forward width
+/// over its trailing layers. Each axis is per-layer here even when a given
+/// checkpoint holds it uniform, so the uniform case is a value this type
+/// happens to carry rather than an assumption it encodes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LayerSpec {
+    pub kind: LayerKind,
+    /// Width of one attention head. `attention.key_length` on global layers,
+    /// `attention.key_length_swa` on sliding layers where the checkpoint
+    /// declares one. Note this is the *global* head dim on a Gemma 4 file
+    /// (512), not the `head_dim` of its Hugging Face configuration (256).
+    pub head_dim: usize,
+    pub ffn_dim: usize,
+    pub rope_freq_base: f32,
+}
+
+/// A checkpoint's complete declared shape: the model-wide scalars plus one
+/// `LayerSpec` per layer.
+///
+/// `check_supported` and `CpuModel::from_gguf` both take this, so the
+/// `gguf-info` inspection tool and the loader cannot disagree about what a
+/// file declares.
+#[derive(Debug, Clone)]
+pub struct ModelSpec {
+    pub config: Config,
+    pub layers: Vec<LayerSpec>,
+}
+
+impl ModelSpec {
+    /// Widest head across the layer stack, the figure a shared scratch buffer
+    /// must be sized against. Sizing against layer 0 underflows the moment a
+    /// checkpoint interleaves two head widths.
+    pub fn max_head_dim(&self) -> usize {
+        self.layers.iter().map(|l| l.head_dim).max().unwrap_or(0)
+    }
+
+    /// Widest feed-forward width across the layer stack. Same reasoning.
+    pub fn max_ffn_dim(&self) -> usize {
+        self.layers.iter().map(|l| l.ffn_dim).max().unwrap_or(0)
+    }
+
+    /// Cached elements per token in one layer's K (or V) tensor. Varies by
+    /// layer because the head width does.
+    pub fn kv_dim(&self, layer: usize) -> usize {
+        self.config.n_kv_heads * self.layers[layer].head_dim
+    }
 }
 
 impl Config {
@@ -67,25 +122,6 @@ impl Config {
                 Some(MetaValue::U32(v)) => Ok(*v as usize),
                 Some(other) => bail!("{arch}.{key}: expected u32, got {other:?}"),
                 None => bail!("missing {arch}.{key}"),
-            }
-        };
-        // llama.cpp encodes two Gemma 4 keys per layer where this backend
-        // models a scalar. Both decode when the per-layer form collapses to
-        // the scalar; neither is reinterpreted when it does not.
-        let width = |key: &str| -> Result<usize> {
-            match file.metadata.get(&format!("{arch}.{key}")) {
-                Some(MetaValue::ArrI32(widths)) => {
-                    let first = *widths.first().unwrap_or(&0);
-                    if let Some(other) = widths.iter().find(|w| **w != first) {
-                        bail!(
-                            "{arch}.{key} varies per layer ({first} and {other}); \
-                             per-layer widths are MatFormer slicing, which this \
-                             backend does not implement"
-                        );
-                    }
-                    Ok(usize::try_from(first).unwrap_or(0))
-                }
-                _ => u(key),
             }
         };
         // A bool array marks each layer sliding-window (true) or global
@@ -131,12 +167,9 @@ impl Config {
             n_layers: u("block_count")?,
             n_heads: u("attention.head_count")?,
             n_kv_heads: u("attention.head_count_kv")?,
-            head_dim: u("attention.key_length")?,
-            ffn_dim: width("feed_forward_length")?,
             context_length: u("context_length")?,
             sliding_window: u("attention.sliding_window")?,
             sliding_window_pattern: schedule("attention.sliding_window_pattern")?,
-            rope_freq_base: f("rope.freq_base")?,
             rms_eps: f("attention.layer_norm_rms_epsilon")?,
         };
         // Each dimension below divides or strides something in the forward
@@ -148,8 +181,6 @@ impl Config {
             ("embedding_length", config.embed_dim),
             ("block_count", config.n_layers),
             ("attention.head_count", config.n_heads),
-            ("attention.key_length", config.head_dim),
-            ("feed_forward_length", config.ffn_dim),
         ] {
             ensure!(value > 0, "{arch}.{key} is 0, must be positive");
         }
@@ -176,21 +207,132 @@ impl Config {
             config.n_heads,
             config.n_kv_heads
         );
-        ensure!(
-            config.head_dim.is_multiple_of(2),
-            "head_dim {} must be even for RoPE",
-            config.head_dim
-        );
         Ok(config)
     }
 
     /// Attention kind of layer `i`, matching `kv::interleaved_layers`.
-    fn layer_kind(&self, i: usize) -> LayerKind {
+    pub fn layer_kind(&self, i: usize) -> LayerKind {
         if (i + 1).is_multiple_of(self.sliding_window_pattern) {
             LayerKind::Global
         } else {
             LayerKind::SlidingWindow(self.sliding_window)
         }
+    }
+}
+
+impl ModelSpec {
+    /// Read the model scalars and then one `LayerSpec` per layer.
+    ///
+    /// The per-layer axes come from paired keys: llama.cpp writes the
+    /// full-attention value unsuffixed and the sliding-window value with an
+    /// `_swa` suffix (`attention.key_length` and `attention.key_length_swa`,
+    /// `rope.freq_base` and `rope.freq_base_swa`). A checkpoint that declares
+    /// no `_swa` variant is uniform on that axis, and every layer takes the
+    /// unsuffixed value.
+    pub fn from_gguf(file: &GgufFile) -> Result<ModelSpec> {
+        let config = Config::from_gguf(file)?;
+        let arch = architecture(file)?;
+        let u = |key: &str| -> Result<usize> {
+            match file.metadata.get(&format!("{arch}.{key}")) {
+                Some(MetaValue::U32(v)) => Ok(*v as usize),
+                Some(other) => bail!("{arch}.{key}: expected u32, got {other:?}"),
+                None => bail!("missing {arch}.{key}"),
+            }
+        };
+        // Optional paired key. Absent means the axis is uniform, which is a
+        // fact about the checkpoint rather than a defaulted guess; a present
+        // key of the wrong type is still an error, because silently ignoring
+        // it would apply the global value to the sliding layers.
+        let u_opt = |key: &str| -> Result<Option<usize>> {
+            match file.metadata.get(&format!("{arch}.{key}")) {
+                Some(MetaValue::U32(v)) => Ok(Some(*v as usize)),
+                Some(other) => bail!("{arch}.{key}: expected u32, got {other:?}"),
+                None => Ok(None),
+            }
+        };
+        let f = |key: &str| -> Result<f32> {
+            match file.metadata.get(&format!("{arch}.{key}")) {
+                Some(MetaValue::F32(v)) => Ok(*v),
+                Some(other) => bail!("{arch}.{key}: expected f32, got {other:?}"),
+                None => bail!("missing {arch}.{key}"),
+            }
+        };
+
+        let head_dim_global = u("attention.key_length")?;
+        let head_dim_sliding = u_opt("attention.key_length_swa")?.unwrap_or(head_dim_global);
+        let rope_base_global = f("rope.freq_base")?;
+
+        // Feed-forward width is a uint32 scalar on E4B and an int32 array of
+        // block_count entries on E2B, where the trailing layers are twice as
+        // wide. Both forms are read into the same per-layer vector, so the
+        // caller never learns which spelling the converter chose.
+        let ffn_dims: Vec<usize> = match file.metadata.get(&format!("{arch}.feed_forward_length")) {
+            Some(MetaValue::ArrI32(widths)) => {
+                ensure!(
+                    widths.len() == config.n_layers,
+                    "{arch}.feed_forward_length has {} entries for {} layers",
+                    widths.len(),
+                    config.n_layers
+                );
+                widths
+                    .iter()
+                    .map(|w| usize::try_from(*w).unwrap_or(0))
+                    .collect()
+            }
+            _ => vec![u("feed_forward_length")?; config.n_layers],
+        };
+
+        let layers: Vec<LayerSpec> = (0..config.n_layers)
+            .map(|i| {
+                let kind = config.layer_kind(i);
+                let head_dim = match kind {
+                    LayerKind::Global => head_dim_global,
+                    LayerKind::SlidingWindow(_) => head_dim_sliding,
+                };
+                LayerSpec {
+                    kind,
+                    head_dim,
+                    ffn_dim: ffn_dims[i],
+                    rope_freq_base: rope_base_global,
+                }
+            })
+            .collect();
+
+        // Each dimension divides or strides something in the forward pass, so
+        // a zero reaches the arithmetic instead of a guard rather than failing
+        // here: 0 is even, so a zero head width cleared the RoPE check and
+        // then aborted the process at `chunks_mut(0)` on the first token.
+        // Errors name the metadata key rather than only the layer, because
+        // the key is what a reader has to go and fix.
+        for (i, layer) in layers.iter().enumerate() {
+            let head_key = match layer.kind {
+                LayerKind::Global => "attention.key_length",
+                LayerKind::SlidingWindow(_) => {
+                    if file
+                        .metadata
+                        .contains_key(&format!("{arch}.attention.key_length_swa"))
+                    {
+                        "attention.key_length_swa"
+                    } else {
+                        "attention.key_length"
+                    }
+                }
+            };
+            ensure!(
+                layer.head_dim > 0,
+                "{arch}.{head_key} is 0 for layer {i}, must be positive"
+            );
+            ensure!(
+                layer.head_dim.is_multiple_of(2),
+                "{arch}.{head_key} is {} for layer {i}, must be even for RoPE",
+                layer.head_dim
+            );
+            ensure!(
+                layer.ffn_dim > 0,
+                "{arch}.feed_forward_length is 0 for layer {i}, must be positive"
+            );
+        }
+        Ok(ModelSpec { config, layers })
     }
 }
 
@@ -248,7 +390,8 @@ pub fn tensor_family(name: &str) -> String {
 ///
 /// Called by `CpuModel::from_gguf` and by the `gguf-info` binary, so the
 /// inspection tool and the loader cannot disagree.
-pub fn check_supported(file: &GgufFile, config: &Config) -> Result<()> {
+pub fn check_supported(file: &GgufFile, spec: &ModelSpec) -> Result<()> {
+    let config = &spec.config;
     let names: Vec<&str> = file.tensors.iter().map(|t| t.name.as_str()).collect();
 
     // Per-layer embeddings: a token-identity table plus a projection, summed
@@ -274,26 +417,41 @@ pub fn check_supported(file: &GgufFile, config: &Config) -> Result<()> {
         }
     }
 
-    // MatFormer slicing can vary the feed-forward width per layer, which a
-    // single Config::ffn_dim cannot express.
+    // Per-layer feed-forward widths are supported, so this is a consistency
+    // check rather than a refusal: the declared width for a layer must be the
+    // width its weights actually carry. A disagreement means the metadata and
+    // the tensors describe different models, and the forward pass slices by
+    // the metadata.
+    //
+    // Not "MatFormer": that word appears nowhere in the architecture
+    // reference. E2B varies the width because `use_double_wide_mlp` doubles
+    // its trailing layers, and E4B is uniform despite sharing KV over the same
+    // region, so the widening is not implied by the tail (docs/models/gemma-4.md).
     for info in &file.tensors {
         let Some(rest) = info.name.strip_prefix("blk.") else {
             continue;
         };
-        if !rest.ends_with(".ffn_up.weight") {
+        let Some((index, suffix)) = rest.split_once('.') else {
+            continue;
+        };
+        if suffix != "ffn_up.weight" {
             continue;
         }
+        let Ok(layer) = index.parse::<usize>() else {
+            continue;
+        };
+        let Some(declared) = spec.layers.get(layer) else {
+            continue;
+        };
         let width = info.dims.last().copied().unwrap_or(0);
-        if width != config.ffn_dim as u64 {
-            bail!(
-                "tensor {} has feed-forward width {width}, but {}.feed_forward_length \
-                 is {}; per-layer widths are MatFormer slicing, which this backend \
-                 does not implement",
-                info.name,
-                architecture(file)?,
-                config.ffn_dim
-            );
-        }
+        ensure!(
+            width == declared.ffn_dim as u64,
+            "tensor {} has feed-forward width {width}, but {}.feed_forward_length \
+             declares {} for layer {layer}",
+            info.name,
+            architecture(file)?,
+            declared.ffn_dim
+        );
     }
 
     // RoPE configuration. A dimension count below head_dim is partial rotation
@@ -308,13 +466,19 @@ pub fn check_supported(file: &GgufFile, config: &Config) -> Result<()> {
         match suffix {
             "freq_base" => {}
             "dimension_count" => {
-                if let Some(MetaValue::U32(v)) = file.metadata.get(key) {
-                    ensure!(
-                        *v as usize == config.head_dim,
-                        "{key} is {v} but head_dim is {}; partial rotary embedding \
-                         (p-RoPE) is not implemented",
-                        config.head_dim
-                    );
+                // Typed exhaustively rather than with a bare `if let`: a
+                // value decoded as anything but u32 used to fall through the
+                // match arm and be accepted as inert, so a rotation width the
+                // forward pass ignores reached the numerics unremarked.
+                let widest = spec.max_head_dim();
+                match file.metadata.get(key) {
+                    Some(MetaValue::U32(v)) => ensure!(
+                        *v as usize == widest,
+                        "{key} is {v} but the widest head is {widest}; partial rotary \
+                         embedding (p-RoPE) is not implemented"
+                    ),
+                    Some(other) => bail!("{key}: expected u32, got {other:?}"),
+                    None => {}
                 }
             }
             _ => bail!(
@@ -383,6 +547,14 @@ fn architecture(file: &GgufFile) -> Result<&str> {
 }
 
 struct LayerWeights {
+    /// This layer's declared geometry, carried beside its weights so the
+    /// forward pass never reaches for a model-wide width.
+    spec: LayerSpec,
+    /// Per-pair RoPE frequency table for this layer's head width and
+    /// frequency base. Derived, not loaded. Layers that agree on both still
+    /// each hold a copy; the table is `head_dim / 2` floats, and sharing it
+    /// would trade a measurable amount of nothing for an aliasing rule.
+    rope_freqs: Vec<f32>,
     attn_norm: Vec<f32>,
     wq: Vec<f32>,
     wk: Vec<f32>,
@@ -403,10 +575,6 @@ struct Weights {
     embed: Vec<f32>,
     layers: Vec<LayerWeights>,
     output_norm: Vec<f32>,
-    /// Derived, not loaded: the `rope_frequencies` table for the configured
-    /// head width and frequency base. Lives beside the weights because it is
-    /// immutable and fixed at load, so forks share the one table.
-    rope_freqs: Vec<f32>,
 }
 
 /// Per-layer KV cache. Correctness-first: every layer stores the full
@@ -535,12 +703,19 @@ struct Scratch {
 }
 
 impl Scratch {
-    fn new(c: &Config) -> Scratch {
-        let (q_dim, kv_dim) = (c.n_heads * c.head_dim, c.n_kv_heads * c.head_dim);
+    /// Sized against the widest layer, not against layer 0 or a model-wide
+    /// scalar. Gemma 4's global layers carry twice the head width of its
+    /// sliding layers and E2B doubles the feed-forward width over its trailing
+    /// layers, so a buffer cut to either one alone is short for the other; the
+    /// views are re-carved to each layer's own widths inside `forward_one`.
+    fn new(spec: &ModelSpec) -> Scratch {
+        let c = &spec.config;
+        let hd = spec.max_head_dim();
+        let (q_dim, kv_dim) = (c.n_heads * hd, c.n_kv_heads * hd);
         // Widths of the views `forward_one` carves, in its order: x,
         // normed, q, k, v, attn_out, projected, post, gate, up, mixed,
-        // down. It asserts that the carving consumes exactly this many.
-        let elements = 5 * c.embed_dim + 2 * q_dim + 2 * kv_dim + 3 * c.ffn_dim;
+        // down. The carving asserts it never exceeds this.
+        let elements = 5 * c.embed_dim + 2 * q_dim + 2 * kv_dim + 3 * spec.max_ffn_dim();
         Scratch {
             buf: vec![0.0; elements],
             scores: Vec::new(),
@@ -559,6 +734,9 @@ fn carve<'a>(rest: &mut &'a mut [f32], n: usize) -> &'a mut [f32] {
 
 pub struct CpuModel {
     config: Config,
+    /// Declared shape, shared with forks. Immutable after load. `config` is a
+    /// `Copy` duplicate of `spec.config` kept for the many scalar reads.
+    spec: Arc<ModelSpec>,
     weights: Arc<Weights>,
     kv: Vec<LayerKv>,
     cached_len: usize,
@@ -689,10 +867,11 @@ fn softmax_in_place(scores: &mut [f32]) {
 
 impl CpuModel {
     pub fn from_gguf(file: &GgufFile, data: &[u8]) -> Result<CpuModel> {
-        let config = Config::from_gguf(file)?;
+        let spec = ModelSpec::from_gguf(file)?;
+        let config = spec.config;
         // Refuse unimplemented architecture features before loading a single
         // weight: a partial load emits fluent, wrong text.
-        check_supported(file, &config)?;
+        check_supported(file, &spec)?;
         // Every tensor is length-checked against the config as it loads.
         // Loading is name-directed and the forward pass slices by strides
         // computed from the metadata, so a tensor whose shape disagrees with
@@ -714,14 +893,21 @@ impl CpuModel {
             );
             Ok(values)
         };
-        let (embed_dim, head_dim) = (config.embed_dim, config.head_dim);
-        let q_dim = config.n_heads * head_dim;
-        let kv_dim = config.n_kv_heads * head_dim;
+        let embed_dim = config.embed_dim;
         let embed = tensor("token_embd.weight", config.vocab_size * embed_dim)?;
         let mut layers = Vec::with_capacity(config.n_layers);
-        for i in 0..config.n_layers {
+        for (i, ls) in spec.layers.iter().enumerate() {
+            // Widths come from this layer's own spec, so a checkpoint that
+            // interleaves head widths or feed-forward widths is length-checked
+            // against what it declares for each layer rather than against the
+            // first one.
+            let (head_dim, ffn_dim) = (ls.head_dim, ls.ffn_dim);
+            let q_dim = config.n_heads * head_dim;
+            let kv_dim = config.n_kv_heads * head_dim;
             let t = |suffix: &str, want: usize| tensor(&format!("blk.{i}.{suffix}"), want);
             layers.push(LayerWeights {
+                spec: *ls,
+                rope_freqs: rope_frequencies(head_dim, ls.rope_freq_base),
                 attn_norm: t("attn_norm.weight", embed_dim)?,
                 wq: t("attn_q.weight", embed_dim * q_dim)?,
                 wk: t("attn_k.weight", embed_dim * kv_dim)?,
@@ -731,9 +917,9 @@ impl CpuModel {
                 wo: t("attn_output.weight", q_dim * embed_dim)?,
                 post_attn_norm: t("post_attention_norm.weight", embed_dim)?,
                 ffn_norm: t("ffn_norm.weight", embed_dim)?,
-                w_gate: t("ffn_gate.weight", embed_dim * config.ffn_dim)?,
-                w_up: t("ffn_up.weight", embed_dim * config.ffn_dim)?,
-                w_down: t("ffn_down.weight", config.ffn_dim * embed_dim)?,
+                w_gate: t("ffn_gate.weight", embed_dim * ffn_dim)?,
+                w_up: t("ffn_up.weight", embed_dim * ffn_dim)?,
+                w_down: t("ffn_down.weight", ffn_dim * embed_dim)?,
                 post_ffw_norm: t("post_ffw_norm.weight", embed_dim)?,
             });
         }
@@ -741,17 +927,28 @@ impl CpuModel {
         Ok(CpuModel {
             kv: vec![LayerKv::default(); config.n_layers],
             config,
+            scratch: Scratch::new(&spec),
+            spec: Arc::new(spec),
             weights: Arc::new(Weights {
                 embed,
                 layers,
                 output_norm,
-                rope_freqs: rope_frequencies(head_dim, config.rope_freq_base),
             }),
             cached_len: 0,
-            scratch: Scratch::new(&config),
             tap: None,
             control: None,
         })
+    }
+
+    /// Per-layer geometry, in layer order.
+    pub fn layer_specs(&self) -> &[LayerSpec] {
+        &self.spec.layers
+    }
+
+    /// Cached K (or V) elements per token in layer `i`. Varies with the
+    /// layer's head width, so every cache walk has to ask per layer.
+    fn kv_dim(&self, layer: usize) -> usize {
+        self.spec.kv_dim(layer)
     }
 
     pub fn config(&self) -> &Config {
@@ -816,30 +1013,14 @@ impl CpuModel {
             ..
         } = self;
         let w: &Weights = weights;
-        let (hd, kv_dim) = (c.head_dim, c.n_kv_heads * c.head_dim);
-        let (q_dim, heads_per_kv) = (c.n_heads * hd, c.n_heads / c.n_kv_heads);
+        let heads_per_kv = c.n_heads / c.n_kv_heads;
 
+        // `x` is the residual stream and outlives the layer loop; everything
+        // else is re-carved per layer, because head width and feed-forward
+        // width vary by layer and a single carving would size them all to
+        // whichever layer happened to be first.
         let Scratch { buf, scores } = scratch;
-        let mut rest: &mut [f32] = buf;
-        let x = carve(&mut rest, c.embed_dim);
-        let normed = carve(&mut rest, c.embed_dim);
-        let q = carve(&mut rest, q_dim);
-        let k = carve(&mut rest, kv_dim);
-        let v = carve(&mut rest, kv_dim);
-        let attn_out = carve(&mut rest, q_dim);
-        let projected = carve(&mut rest, c.embed_dim);
-        let post = carve(&mut rest, c.embed_dim);
-        let gate = carve(&mut rest, c.ffn_dim);
-        let up = carve(&mut rest, c.ffn_dim);
-        let mixed = carve(&mut rest, c.ffn_dim);
-        let down = carve(&mut rest, c.embed_dim);
-        // `Scratch::new` sizes the allocation from these same widths, and
-        // `carve` panics if one runs short; an exhausted remainder is the
-        // other half of the check that the two still agree.
-        assert!(
-            rest.is_empty(),
-            "scratch is wider than the views carved from it"
-        );
+        let (x, work) = buf.split_at_mut(c.embed_dim);
 
         // Embedding, scaled by sqrt(embed_dim) per Gemma convention.
         let row = &w.embed[token as usize * c.embed_dim..(token as usize + 1) * c.embed_dim];
@@ -849,6 +1030,26 @@ impl CpuModel {
         }
 
         for (i, layer) in w.layers.iter().enumerate() {
+            let hd = layer.spec.head_dim;
+            let (q_dim, kv_dim) = (c.n_heads * hd, c.n_kv_heads * hd);
+            let ffn_dim = layer.spec.ffn_dim;
+            // Reborrowed per iteration so each layer carves the same storage
+            // to its own widths. `Scratch::new` reserves for the widest layer
+            // and `carve` panics if a view runs short, so a scratch sized
+            // against the wrong layer fails here rather than as wrong logits.
+            let mut rest: &mut [f32] = &mut *work;
+            let normed = carve(&mut rest, c.embed_dim);
+            let q = carve(&mut rest, q_dim);
+            let k = carve(&mut rest, kv_dim);
+            let v = carve(&mut rest, kv_dim);
+            let attn_out = carve(&mut rest, q_dim);
+            let projected = carve(&mut rest, c.embed_dim);
+            let post = carve(&mut rest, c.embed_dim);
+            let gate = carve(&mut rest, ffn_dim);
+            let up = carve(&mut rest, ffn_dim);
+            let mixed = carve(&mut rest, ffn_dim);
+            let down = carve(&mut rest, c.embed_dim);
+
             // Attention block.
             rms_norm_into(x, &layer.attn_norm, c.rms_eps, normed);
             matvec_into(&layer.wq, normed, q);
@@ -856,11 +1057,11 @@ impl CpuModel {
             matvec_into(&layer.wv, normed, v);
             for head in q.chunks_mut(hd) {
                 rms_norm_in_place(head, &layer.q_norm, c.rms_eps);
-                rope(head, position, &w.rope_freqs);
+                rope(head, position, &layer.rope_freqs);
             }
             for head in k.chunks_mut(hd) {
                 rms_norm_in_place(head, &layer.k_norm, c.rms_eps);
-                rope(head, position, &w.rope_freqs);
+                rope(head, position, &layer.rope_freqs);
             }
             let cache = &mut kv[i];
             cache.k.extend_from_slice(k);
@@ -868,7 +1069,7 @@ impl CpuModel {
 
             // Causal attention over the cache; sliding-window layers see
             // only the trailing `window` positions including this one.
-            let first = match c.layer_kind(i) {
+            let first = match layer.spec.kind {
                 LayerKind::Global => 0,
                 LayerKind::SlidingWindow(win) => (position + 1).saturating_sub(win),
             };
@@ -927,6 +1128,8 @@ impl CpuModel {
         // Final norm and tied LM head: logits[t] = embed_row(t) . x. The
         // logits vector is the return value, so it is the one allocation
         // per token the forward pass still owes its caller.
+        let mut rest: &mut [f32] = work;
+        let normed = carve(&mut rest, c.embed_dim);
         rms_norm_into(x, &w.output_norm, c.rms_eps, normed);
         let hidden: &[f32] = normed;
         let logits = (0..c.vocab_size)
@@ -1002,8 +1205,8 @@ impl Model for CpuModel {
 
     fn truncate(&mut self, len: usize) -> Result<()> {
         ensure!(len <= self.cached_len, "truncate beyond cached length");
-        let kv_dim = self.config.n_kv_heads * self.config.head_dim;
-        for cache in &mut self.kv {
+        for (i, cache) in self.kv.iter_mut().enumerate() {
+            let kv_dim = self.spec.kv_dim(i);
             cache.k.truncate(len * kv_dim);
             cache.v.truncate(len * kv_dim);
         }
@@ -1016,6 +1219,7 @@ impl Model for CpuModel {
         // sharing stays deferred per the runtime design.
         Ok(Box::new(CpuModel {
             config: self.config,
+            spec: Arc::clone(&self.spec),
             weights: Arc::clone(&self.weights),
             kv: self.kv.clone(),
             cached_len: self.cached_len,
@@ -1023,7 +1227,7 @@ impl Model for CpuModel {
             // written before it is read at every position, so it carries no
             // state worth copying, and sharing it would let interleaved
             // parent and child decodes overwrite each other mid-token.
-            scratch: Scratch::new(&self.config),
+            scratch: Scratch::new(&self.spec),
             tap: None,
             control: self.control.clone(),
         }))
@@ -1031,18 +1235,23 @@ impl Model for CpuModel {
 
     // Cache layout on disk: n_layers u64, cached_len u64, then per layer the
     // K vector followed by the V vector as little-endian f32. Lengths are
-    // implied (cached_len x n_kv_heads x head_dim; the CPU backend stores
-    // the full sequence in every layer, windowed or not), so a length
-    // mismatch on load is a hard error rather than a guess.
+    // implied (cached_len x n_kv_heads x that layer's head width; the CPU
+    // backend stores the full sequence in every layer, windowed or not), so a
+    // length mismatch on load is a hard error rather than a guess.
+    //
+    // The per-layer head width is why the row length is recomputed per layer
+    // rather than hoisted: a checkpoint interleaving two head widths writes
+    // rows of two sizes, and one hoisted stride would read the second regime
+    // at the first regime's offset.
     fn save_state(&self, w: &mut dyn std::io::Write) -> Result<()> {
-        let kv_dim = self.config.n_kv_heads * self.config.head_dim;
         w.write_all(&(self.kv.len() as u64).to_le_bytes())?;
         w.write_all(&(self.cached_len as u64).to_le_bytes())?;
-        for cache in &self.kv {
+        for (i, cache) in self.kv.iter().enumerate() {
+            let kv_dim = self.kv_dim(i);
             ensure!(
                 cache.k.len() == self.cached_len * kv_dim
                     && cache.v.len() == self.cached_len * kv_dim,
-                "KV cache length inconsistent with cached_len"
+                "layer {i} KV cache length inconsistent with cached_len"
             );
             // Block at a time rather than four bytes at a time: a real
             // checkpoint's cache is hundreds of megabytes, and one write_all
@@ -1078,8 +1287,6 @@ impl Model for CpuModel {
             "saved state of {cached_len} tokens exceeds context length {}",
             self.config.context_length
         );
-        let kv_dim = self.config.n_kv_heads * self.config.head_dim;
-        let elements = cached_len * kv_dim;
         // Capacity reserved before a single payload byte has arrived. The
         // length is a header field and `context_length` is whatever the
         // checkpoint claims, so reserving for the claim outright let a
@@ -1095,7 +1302,8 @@ impl Model for CpuModel {
         // wrong logits, which this backend refuses to produce.
         let mut restored = vec![LayerKv::default(); self.kv.len()];
         let mut block = Vec::new();
-        for cache in &mut restored {
+        for (i, cache) in restored.iter_mut().enumerate() {
+            let elements = cached_len * self.spec.kv_dim(i);
             for vec in [&mut cache.k, &mut cache.v] {
                 vec.reserve_exact(elements.min(RESERVE_ELEMENTS));
                 // Read in blocks for the same reason save_state writes in
@@ -1218,11 +1426,11 @@ mod tests {
     /// Parsed synthetic checkpoint, for mutating the tensor directory or
     /// metadata in place. `check_supported` reads names, dims, and metadata
     /// only, so a mutated directory needs no re-encoded payload.
-    fn tiny_parsed() -> (Vec<u8>, crate::gguf::GgufFile, Config) {
+    fn tiny_parsed() -> (Vec<u8>, crate::gguf::GgufFile, ModelSpec) {
         let image = build_tiny_model(&TinySpec::default());
         let file = crate::gguf::parse(&image).unwrap();
-        let config = Config::from_gguf(&file).unwrap();
-        (image, file, config)
+        let spec = ModelSpec::from_gguf(&file).unwrap();
+        (image, file, spec)
     }
 
     fn extra_tensor(name: &str) -> crate::gguf::TensorInfo {
@@ -1238,16 +1446,16 @@ mod tests {
     fn the_synthetic_fixture_consumes_every_tensor_it_ships() {
         // Couples the guard's tensor lists to the loader: a tensor the loader
         // reads but the lists omit makes the guard refuse this fixture.
-        let (_, file, config) = tiny_parsed();
-        check_supported(&file, &config).unwrap();
+        let (_, file, spec) = tiny_parsed();
+        check_supported(&file, &spec).unwrap();
     }
 
     #[test]
     fn per_layer_embedding_tensors_are_refused() {
-        let (_, mut file, config) = tiny_parsed();
+        let (_, mut file, spec) = tiny_parsed();
         file.tensors
             .push(extra_tensor("per_layer_token_embd.weight"));
-        let err = check_supported(&file, &config).unwrap_err().to_string();
+        let err = check_supported(&file, &spec).unwrap_err().to_string();
         assert!(err.contains("per-layer embeddings"), "{err}");
     }
 
@@ -1266,63 +1474,50 @@ mod tests {
     }
 
     #[test]
-    fn per_layer_feed_forward_widths_are_refused_as_matformer() {
-        let (_, mut file, config) = tiny_parsed();
-        let t = file
-            .tensors
-            .iter_mut()
-            .find(|t| t.name == "blk.1.ffn_up.weight")
-            .unwrap();
-        *t.dims.last_mut().unwrap() += 8;
-        let err = check_supported(&file, &config).unwrap_err().to_string();
-        assert!(err.contains("MatFormer"), "{err}");
-    }
-
-    #[test]
     fn partial_rotary_dimension_count_is_refused() {
-        let (_, mut file, config) = tiny_parsed();
+        let (_, mut file, spec) = tiny_parsed();
         file.metadata.insert(
             "gemma4.rope.dimension_count".into(),
-            MetaValue::U32(config.head_dim as u32 / 2),
+            MetaValue::U32(spec.max_head_dim() as u32 / 2),
         );
-        let err = check_supported(&file, &config).unwrap_err().to_string();
+        let err = check_supported(&file, &spec).unwrap_err().to_string();
         assert!(err.contains("p-RoPE"), "{err}");
         // The same key equal to head_dim is a full rotation: accepted.
         file.metadata.insert(
             "gemma4.rope.dimension_count".into(),
-            MetaValue::U32(config.head_dim as u32),
+            MetaValue::U32(spec.max_head_dim() as u32),
         );
-        check_supported(&file, &config).unwrap();
+        check_supported(&file, &spec).unwrap();
     }
 
     #[test]
     fn a_second_rope_frequency_base_is_refused() {
-        let (_, mut file, config) = tiny_parsed();
+        let (_, mut file, spec) = tiny_parsed();
         file.metadata.insert(
             "gemma4.rope.local_freq_base".into(),
             MetaValue::F32(10000.0),
         );
-        let err = check_supported(&file, &config).unwrap_err().to_string();
+        let err = check_supported(&file, &spec).unwrap_err().to_string();
         assert!(err.contains("dual or scaled RoPE"), "{err}");
     }
 
     #[test]
     fn unknown_tensor_families_are_refused_and_collapsed_by_layer() {
-        let (_, mut file, config) = tiny_parsed();
-        for i in 0..config.n_layers {
+        let (_, mut file, spec) = tiny_parsed();
+        for i in 0..spec.config.n_layers {
             file.tensors
                 .push(extra_tensor(&format!("blk.{i}.attn_v_norm.weight")));
         }
-        let err = check_supported(&file, &config).unwrap_err().to_string();
+        let err = check_supported(&file, &spec).unwrap_err().to_string();
         assert!(err.contains("1 tensor family"), "{err}");
         assert!(err.contains("blk.*.attn_v_norm.weight"), "{err}");
     }
 
     #[test]
     fn inert_tensors_do_not_trip_the_guard() {
-        let (_, mut file, config) = tiny_parsed();
+        let (_, mut file, spec) = tiny_parsed();
         file.tensors.push(extra_tensor("rope_freqs.weight"));
-        check_supported(&file, &config).unwrap();
+        check_supported(&file, &spec).unwrap();
     }
 
     #[test]
@@ -1336,9 +1531,9 @@ mod tests {
             ("gemma4.attention.scale", 0.0625),
             ("gemma4.logit_scale", 1.5),
         ] {
-            let (_, mut file, config) = tiny_parsed();
+            let (_, mut file, spec) = tiny_parsed();
             file.metadata.insert(key.into(), MetaValue::F32(value));
-            let err = match check_supported(&file, &config) {
+            let err = match check_supported(&file, &spec) {
                 Ok(()) => panic!("{key} must not load"),
                 Err(e) => e.to_string(),
             };
@@ -1346,10 +1541,10 @@ mod tests {
         }
         // The guard names the numeric keys instead of inverting the rope
         // check into an allowlist, so a descriptive key still loads.
-        let (_, mut file, config) = tiny_parsed();
+        let (_, mut file, spec) = tiny_parsed();
         file.metadata
             .insert("gemma4.vocab_size".into(), MetaValue::U32(288));
-        check_supported(&file, &config).unwrap();
+        check_supported(&file, &spec).unwrap();
     }
 
     #[test]
@@ -1489,48 +1684,81 @@ mod tests {
 
     #[test]
     fn a_uniform_per_layer_feed_forward_array_decodes_to_that_width() {
-        // E4B writes one width; E2B writes an array. An array whose entries
-        // agree is expressible as the scalar this Config holds.
-        let (_, mut file, _) = tiny_parsed();
-        let width = Config::from_gguf(&file).unwrap().ffn_dim;
+        // E4B writes one width as a scalar; E2B writes an array. Both reach
+        // the same per-layer vector, so nothing downstream learns which
+        // spelling the converter chose.
+        let (_, mut file, spec) = tiny_parsed();
+        let width = spec.layers[0].ffn_dim;
+        let n = spec.config.n_layers;
         file.metadata.insert(
             "gemma4.feed_forward_length".into(),
-            MetaValue::ArrI32(vec![width as i32; 4]),
+            MetaValue::ArrI32(vec![width as i32; n]),
         );
-        assert_eq!(Config::from_gguf(&file).unwrap().ffn_dim, width);
+        let reparsed = ModelSpec::from_gguf(&file).unwrap();
+        assert!(
+            reparsed.layers.iter().all(|l| l.ffn_dim == width),
+            "{:?}",
+            reparsed.layers
+        );
     }
 
     #[test]
-    fn a_matformer_sliced_feed_forward_array_is_refused_naming_both_widths() {
+    fn a_per_layer_feed_forward_array_decodes_to_one_width_per_layer() {
         // E2B's feed-forward width varies by layer: 6144 for layers 0..=14 and
         // 12288 for 15..=34. The cause is use_double_wide_mlp, which doubles
-        // the MLP on the KV-shared tail (num_hidden_layers - num_kv_shared_layers
-        // = 35 - 20 = 15), not a MatFormer slice of E4B -- E4B sets the flag
-        // false and carries one width. See schemas/gemma4_facts.json.
-        // check_supported already refuses per-layer widths with a precise
-        // message, but Config::from_gguf never reached it -- the array killed
-        // the load first with a bare type error. Refusing here must name what
-        // the file actually contains.
-        let (_, mut file, _) = tiny_parsed();
-        let mut widths = vec![6144i32; 15];
-        widths.extend(std::iter::repeat_n(12288i32, 20));
+        // the MLP over the KV-shared tail (num_hidden_layers -
+        // num_kv_shared_layers = 35 - 20 = 15). E4B sets the flag false and
+        // carries one width despite sharing KV over the same region, so the
+        // widening follows the flag and not the tail. Neither is a MatFormer
+        // slice; that word appears nowhere in the architecture reference.
+        // See schemas/gemma4_facts.json and docs/models/gemma-4.md.
+        let (_, mut file, spec) = tiny_parsed();
+        let narrow = spec.layers[0].ffn_dim;
+        let wide = narrow * 2;
+        assert_eq!(spec.config.n_layers, 2, "fixture shape assumed below");
         file.metadata.insert(
             "gemma4.feed_forward_length".into(),
-            MetaValue::ArrI32(widths),
+            MetaValue::ArrI32(vec![narrow as i32, wide as i32]),
         );
-        let err = match Config::from_gguf(&file) {
-            Ok(_) => panic!("a MatFormer-sliced width array must not decode"),
-            Err(e) => e.to_string(),
-        };
+        let reparsed = ModelSpec::from_gguf(&file).unwrap();
+        assert_eq!(reparsed.layers[0].ffn_dim, narrow, "{:?}", reparsed.layers);
+        assert_eq!(reparsed.layers[1].ffn_dim, wide, "{:?}", reparsed.layers);
+        assert_eq!(reparsed.max_ffn_dim(), wide);
+    }
+
+    #[test]
+    fn a_feed_forward_array_of_the_wrong_length_is_refused_naming_both_counts() {
+        // An array is one entry per layer by definition. A shorter or longer
+        // one describes a different model, and indexing it by layer would
+        // either panic or silently read a neighbour's width.
+        let (_, mut file, spec) = tiny_parsed();
+        let width = spec.layers[0].ffn_dim as i32;
+        file.metadata.insert(
+            "gemma4.feed_forward_length".into(),
+            MetaValue::ArrI32(vec![width; spec.config.n_layers + 1]),
+        );
+        let err = ModelSpec::from_gguf(&file).unwrap_err().to_string();
         assert!(err.contains("feed_forward_length"), "{err}");
-        assert!(err.contains("6144") && err.contains("12288"), "{err}");
-        // The unfixed loader's type error embeds the whole array, so it
-        // satisfies both assertions above by accident. Name the mechanism.
-        assert!(
-            !err.contains("expected u32"),
-            "refused as a type error: {err}"
-        );
-        assert!(err.contains("MatFormer"), "{err}");
+        assert!(err.contains("3") && err.contains("2"), "{err}");
+    }
+
+    #[test]
+    fn a_declared_width_that_the_weights_contradict_is_refused_naming_the_layer() {
+        // Per-layer widths are supported, so the guard is no longer a refusal
+        // of the feature but a check that metadata and tensors agree. The
+        // forward pass slices by the metadata, so a disagreement reads the
+        // wrong rows.
+        let (_, mut file, spec) = tiny_parsed();
+        let t = file
+            .tensors
+            .iter_mut()
+            .find(|t| t.name == "blk.1.ffn_up.weight")
+            .unwrap();
+        *t.dims.last_mut().unwrap() += 8;
+        let err = check_supported(&file, &spec).unwrap_err().to_string();
+        assert!(err.contains("blk.1.ffn_up.weight"), "{err}");
+        assert!(err.contains("feed-forward width"), "{err}");
+        assert!(err.contains("layer 1"), "{err}");
     }
 
     #[test]
@@ -1550,7 +1778,10 @@ mod tests {
             let (_, mut file, _) = tiny_parsed();
             file.metadata
                 .insert(format!("gemma4.{key}"), MetaValue::U32(0));
-            let err = match Config::from_gguf(&file) {
+            // Through ModelSpec, which carries the whole declared shape: head
+            // width and feed-forward width are per-layer axes now, validated
+            // there rather than on the model-wide Config.
+            let err = match ModelSpec::from_gguf(&file) {
                 Ok(_) => panic!("gemma4.{key} = 0 must not parse"),
                 Err(e) => e.to_string(),
             };

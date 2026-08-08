@@ -15,7 +15,11 @@ pub enum LayerKind {
     SlidingWindow(usize),
 }
 
-/// Per-layer cache geometry, shared by every layer of a model.
+/// Cache geometry of one layer.
+///
+/// `head_dim` is per layer, not per model: Gemma 4's global layers are twice
+/// as wide as its sliding layers, so one model-wide value under-reports the
+/// budget by the difference across every global layer.
 #[derive(Debug, Clone, Copy)]
 pub struct KvGeometry {
     pub n_kv_heads: usize,
@@ -30,16 +34,25 @@ impl KvGeometry {
     }
 }
 
-/// Total cache bytes for `max_context` tokens across `layers`.
-pub fn budget_bytes(layers: &[LayerKind], geometry: KvGeometry, max_context: usize) -> usize {
-    let per_token = geometry.bytes_per_token();
+/// Total cache bytes for `max_context` tokens across `layers`, each paired
+/// with its own geometry.
+pub fn budget_bytes(layers: &[(LayerKind, KvGeometry)], max_context: usize) -> usize {
     layers
         .iter()
-        .map(|layer| match layer {
-            LayerKind::Global => max_context * per_token,
-            LayerKind::SlidingWindow(w) => max_context.min(*w) * per_token,
+        .map(|(layer, geometry)| {
+            let per_token = geometry.bytes_per_token();
+            match layer {
+                LayerKind::Global => max_context * per_token,
+                LayerKind::SlidingWindow(w) => max_context.min(*w) * per_token,
+            }
         })
         .sum()
+}
+
+/// Pair a uniform geometry with every layer, for a model whose head width
+/// does not vary.
+pub fn uniform(layers: &[LayerKind], geometry: KvGeometry) -> Vec<(LayerKind, KvGeometry)> {
+    layers.iter().map(|l| (*l, geometry)).collect()
 }
 
 /// Gemma-style layer pattern: one global layer every `period` layers,
@@ -85,14 +98,14 @@ mod tests {
             LayerKind::SlidingWindow(1024),
         ];
         let expected = 2 * 8192 * 2048 + 2 * 1024 * 2048;
-        assert_eq!(budget_bytes(&layers, GEO, 8192), expected);
+        assert_eq!(budget_bytes(&uniform(&layers, GEO), 8192), expected);
     }
 
     #[test]
     fn short_context_never_exceeds_the_window() {
         let layers = [LayerKind::SlidingWindow(1024), LayerKind::Global];
         // Context below the window: both layers cost context x per-token.
-        assert_eq!(budget_bytes(&layers, GEO, 512), 2 * 512 * 2048);
+        assert_eq!(budget_bytes(&uniform(&layers, GEO), 512), 2 * 512 * 2048);
     }
 
     #[test]
@@ -120,16 +133,16 @@ mod tests {
     #[test]
     fn zero_layers_and_zero_context_are_empty_budgets() {
         assert_eq!(interleaved_layers(0, 3, 512), Vec::<LayerKind>::new());
-        assert_eq!(budget_bytes(&[], GEO, 8192), 0);
-        assert_eq!(budget_bytes(&[LayerKind::Global], GEO, 0), 0);
+        assert_eq!(budget_bytes(&[], 8192), 0);
+        assert_eq!(budget_bytes(&uniform(&[LayerKind::Global], GEO), 0), 0);
     }
 
     #[test]
     fn windowed_budget_is_flat_beyond_the_window() {
         // The whole point: doubling context only grows the global layers.
         let layers = interleaved_layers(6, 3, 1024);
-        let at_8k = budget_bytes(&layers, GEO, 8192);
-        let at_16k = budget_bytes(&layers, GEO, 16384);
+        let at_8k = budget_bytes(&uniform(&layers, GEO), 8192);
+        let at_16k = budget_bytes(&uniform(&layers, GEO), 16384);
         let global_growth = 2 * 8192 * 2048; // two global layers, 8192 more tokens
         assert_eq!(at_16k - at_8k, global_growth);
     }

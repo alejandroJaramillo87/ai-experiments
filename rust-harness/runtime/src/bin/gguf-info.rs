@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use std::process::ExitCode;
 
 use runtime::gguf::{self, GgufFile, MetaValue};
-use runtime::model::cpu::{self, Config};
+use runtime::model::cpu;
 use runtime::tensor::{GGML_BF16, GGML_F16, GGML_F32, GGML_Q8_0};
 
 fn main() -> ExitCode {
@@ -110,8 +110,8 @@ fn summarize(file: &GgufFile) -> bool {
         );
     }
 
-    // Feed-forward widths: one line when uniform, a table when MatFormer
-    // slicing varies them per layer.
+    // Feed-forward widths: one line when uniform, a table when they vary per
+    // layer, as E2B's double-wide trailing region does.
     let widths: Vec<(String, u64)> = file
         .tensors
         .iter()
@@ -127,7 +127,7 @@ fn summarize(file: &GgufFile) -> bool {
             );
         }
         Some(_) => {
-            println!("Feed-forward widths: NOT uniform (MatFormer per-layer slicing):");
+            println!("Feed-forward widths: NOT uniform (per-layer widths):");
             for (name, w) in &widths {
                 println!("  {name}  {w}");
             }
@@ -188,7 +188,31 @@ fn summarize(file: &GgufFile) -> bool {
     }
 
     println!();
-    match Config::from_gguf(file).and_then(|c| cpu::check_supported(file, &c)) {
+    match cpu::ModelSpec::from_gguf(file).and_then(|s| {
+        // Print the geometry the loader derived before its verdict, so a
+        // refusal is read beside the per-layer widths that produced it.
+        println!("Per-layer geometry (head width, feed-forward width, RoPE base):");
+        let mut runs: Vec<(cpu::LayerSpec, usize, usize)> = Vec::new();
+        for (i, l) in s.layers.iter().enumerate() {
+            match runs.last_mut() {
+                Some((prev, _, end)) if prev == l => *end = i,
+                _ => runs.push((*l, i, i)),
+            }
+        }
+        for (l, start, end) in &runs {
+            let span = if start == end {
+                format!("layer {start}")
+            } else {
+                format!("layers {start}-{end}")
+            };
+            println!(
+                "  {span}: {:?}, head {}, ffn {}, rope base {}",
+                l.kind, l.head_dim, l.ffn_dim, l.rope_freq_base
+            );
+        }
+        println!();
+        cpu::check_supported(file, &s)
+    }) {
         Ok(()) => {
             println!("[OK] CPU backend compatibility: supported");
             true

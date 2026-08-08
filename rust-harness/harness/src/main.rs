@@ -248,14 +248,27 @@ fn build_generator(
     };
     {
         let c = cpu.config();
-        let layers =
-            runtime::kv::interleaved_layers(c.n_layers, c.sliding_window_pattern, c.sliding_window);
-        let geometry = runtime::kv::KvGeometry {
-            n_kv_heads: c.n_kv_heads,
-            head_dim: c.head_dim,
-            bytes_per_element: 4, // CPU backend caches f32
-        };
-        let bytes = runtime::kv::budget_bytes(&layers, geometry, max_context);
+        let n_kv_heads = c.n_kv_heads;
+        // Geometry per layer, taken from the loaded spec rather than from one
+        // model-wide head width. Gemma 4's global layers are twice as wide as
+        // its sliding layers, so a single width silently under-reports the
+        // budget across every global layer -- enough to keep the warning below
+        // from firing on a checkpoint that would exceed it.
+        let layers: Vec<_> = cpu
+            .layer_specs()
+            .iter()
+            .map(|l| {
+                (
+                    l.kind,
+                    runtime::kv::KvGeometry {
+                        n_kv_heads,
+                        head_dim: l.head_dim,
+                        bytes_per_element: 4, // CPU backend caches f32
+                    },
+                )
+            })
+            .collect();
+        let bytes = runtime::kv::budget_bytes(&layers, max_context);
         let gib = bytes as f64 / (1024.0 * 1024.0 * 1024.0);
         eprintln!("[INFO] KV budget: {max_context} tokens, estimated {gib:.2} GiB f32");
         if bytes > 2 << 30 {
