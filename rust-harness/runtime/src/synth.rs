@@ -61,6 +61,17 @@ pub struct TinySpec {
     /// a clean multiple downstream and could not be read off the logits
     /// anyway.
     pub layer_output_scale: Option<f32>,
+    /// Width of one layer's slice of the per-layer input embedding. `Some(n)`
+    /// writes `embedding_length_per_layer_input` and the six tensor families
+    /// the feature needs; `None` writes none of them, the shape the committed
+    /// fixture ships.
+    ///
+    /// The token-identity table is emitted with exactly `vocab_size` rows.
+    /// The real checkpoints carry their own `vocab_size_per_layer_input`,
+    /// which the loader reads off the tensor rather than from metadata, so a
+    /// wider table is a case worth a fixture of its own rather than the
+    /// default here.
+    pub ple_dim: Option<usize>,
     pub rms_eps: f32,
     pub seed: u64,
     /// Weight storage type. Defaults to F32, which is what the committed
@@ -86,6 +97,7 @@ impl Default for TinySpec {
             rope_rotating_pairs: None,
             logit_softcap: None,
             layer_output_scale: None,
+            ple_dim: None,
             rms_eps: 1e-6,
             seed: 42,
             storage: TensorStorage::F32,
@@ -326,6 +338,9 @@ pub fn build_tiny_model(spec: &TinySpec) -> Vec<u8> {
     if let Some(cap) = spec.logit_softcap {
         w.kv_f32("gemma4.final_logit_softcapping", cap);
     }
+    if let Some(pd) = spec.ple_dim {
+        w.kv_u32("gemma4.embedding_length_per_layer_input", pd as u32);
+    }
 
     let (pieces, scores, kinds) = tiny_vocab(spec.vocab_size);
     w.kv_arr_str("tokenizer.ggml.tokens", &pieces);
@@ -394,6 +409,65 @@ pub fn build_tiny_model(spec: &TinySpec) -> Vec<u8> {
 
     let output_norm = ws.norm_tensor(spec.embed_dim);
     w.tensor("output_norm.weight", &[d], &output_norm, spec.storage);
+
+    // Per-layer input embeddings, drawn last so that turning the feature on
+    // appends to the weight stream instead of shifting it. Every other tensor
+    // is then bit-identical between a `ple_dim: Some(n)` image and a `None`
+    // one, which is what makes the difference between their outputs
+    // attributable to this feature alone rather than to a reshuffled stream.
+    //
+    // Tensor order within the file is not otherwise meaningful: the loader
+    // finds tensors by name.
+    if let Some(pd) = spec.ple_dim {
+        let pd64 = pd as u64;
+        // The token-identity table's row is the whole stack's worth,
+        // `n_layers * ple_dim`, as in the published files -- one tensor for
+        // the loader to split into rows, not a stack of per-layer tables.
+        let packed = spec.n_layers as u64 * pd64;
+        let table_dims = [packed, spec.vocab_size as u64];
+        let table = ws.tensor(n(&table_dims));
+        w.tensor(
+            "per_layer_token_embd.weight",
+            &table_dims,
+            &table,
+            spec.storage,
+        );
+        let proj_dims = [d, packed];
+        let model_proj = ws.tensor(n(&proj_dims));
+        w.tensor(
+            "per_layer_model_proj.weight",
+            &proj_dims,
+            &model_proj,
+            spec.storage,
+        );
+        let proj_norm = ws.norm_tensor(pd);
+        w.tensor(
+            "per_layer_proj_norm.weight",
+            &[pd64],
+            &proj_norm,
+            spec.storage,
+        );
+        // The three per-block families, under the names the GGUF converter
+        // gives them: `per_layer_input_gate` becomes `inp_gate`,
+        // `per_layer_projection` becomes `proj`, and
+        // `post_per_layer_input_norm` becomes `post_norm`. None of the three
+        // keeps the `per_layer` substring, which is the trap the loader's
+        // explicit tensor list exists to avoid.
+        for i in 0..spec.n_layers {
+            for (suffix, dims) in [
+                ("inp_gate.weight", vec![d, pd64]),
+                ("proj.weight", vec![pd64, d]),
+                ("post_norm.weight", vec![d]),
+            ] {
+                let values = if suffix.ends_with("norm.weight") {
+                    ws.norm_tensor(n(&dims))
+                } else {
+                    ws.tensor(n(&dims))
+                };
+                w.tensor(&format!("blk.{i}.{suffix}"), &dims, &values, spec.storage);
+            }
+        }
+    }
     // LM head is tied to token_embd, llama.cpp Gemma convention: no
     // output.weight tensor.
     w.finish()

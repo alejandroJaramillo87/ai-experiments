@@ -13,12 +13,16 @@
  * and RoPE frequency bases, per-layer feed-forward widths, GeGLU MLP with
  * tanh GELU, four norms per layer, LM head tied to the token embedding.
  *
- * That is still a subset of the published Gemma 4 architecture, which adds
- * per-layer input embeddings, a shared KV cache, a per-layer output scale,
- * final logit softcapping, and value normalization. A checkpoint carrying
- * any of those is refused by `check_supported` rather than loaded with the
- * extra structure silently dropped: an ignored weight tensor still produces
- * fluent text, so a silent load would be an undetectable wrong answer.
+ * Per-layer input embeddings join each layer's residual stream after its
+ * feed-forward block, from a table indexed by token identity summed with a
+ * projection of the embedded input. On E4B that table is roughly 2.8B of the
+ * 7.5B total parameters, so it is most of the model by weight.
+ *
+ * That is still a subset of the published Gemma 4 architecture, which adds a
+ * shared KV cache and value normalization. A checkpoint carrying either is
+ * refused by `check_supported` rather than loaded with the extra structure
+ * silently dropped: an ignored weight tensor still produces fluent text, so a
+ * silent load would be an undetectable wrong answer.
  * See docs/rust-harness/gemma-4-ingestion.md.
  *
  * RoPE is per layer, not per model. Gemma 4 runs two regimes whose bases
@@ -69,6 +73,17 @@ pub struct Config {
     /// variant. `None` when the checkpoint declares none, which is the
     /// uncapped forward pass.
     pub logit_softcap: Option<f32>,
+    /// Width of one layer's slice of the per-layer input embedding, 256 on
+    /// every Gemma 4 variant that has the feature. `None` when the checkpoint
+    /// declares no `embedding_length_per_layer_input`, which is the model
+    /// without per-layer embeddings.
+    ///
+    /// This key, and never `vocab_size_per_layer_input`, is what the feature
+    /// is gated on: the vocabulary field is populated even on variants where
+    /// per-layer embeddings are disabled (trap 9, `docs/models/gemma-4.md`).
+    /// The GGUF converter does not write the vocabulary key at all, so the
+    /// per-layer vocabulary is read from the table's own shape at load.
+    pub ple_dim: Option<usize>,
 }
 
 /// Geometry of one decoder layer.
@@ -194,7 +209,26 @@ impl Config {
                 Some(other) => bail!("{arch}.final_logit_softcapping: expected f32, got {other:?}"),
                 None => None,
             },
+            ple_dim: match file
+                .metadata
+                .get(&format!("{arch}.embedding_length_per_layer_input"))
+            {
+                Some(MetaValue::U32(v)) => Some(*v as usize),
+                Some(other) => {
+                    bail!("{arch}.embedding_length_per_layer_input: expected u32, got {other:?}")
+                }
+                None => None,
+            },
         };
+        // Zero would make the per-layer table one row of nothing per layer and
+        // divide by zero in its RMSNorm. Checked here so the error names the
+        // key rather than surfacing as a NaN residual.
+        if let Some(pd) = config.ple_dim {
+            ensure!(
+                pd > 0,
+                "{arch}.embedding_length_per_layer_input is 0, must be positive"
+            );
+        }
         // A zero or negative cap divides the logits by zero or reflects them
         // through the origin. Neither is a cap, and both stay finite enough
         // to read as a working model.
@@ -422,6 +456,31 @@ const ROPE_FREQS_TENSOR: &str = "rope_freqs.weight";
 /// backstop from refusing a file for carrying a tensor this backend reads.
 const OPTIONAL_LAYER_TENSORS: [&str; 1] = ["layer_output_scale.weight"];
 
+/// File-level per-layer-input-embedding tensors: the token-identity table,
+/// the projection of the embedded input, and the norm applied to that
+/// projection.
+const PLE_TOP_LEVEL_TENSORS: [&str; 3] = [
+    "per_layer_token_embd.weight",
+    "per_layer_model_proj.weight",
+    "per_layer_proj_norm.weight",
+];
+
+/// Per-block per-layer-input-embedding tensor suffixes: the gate, the
+/// projection back to the residual width, and the norm on that projection.
+///
+/// These three lose the `per_layer` substring in GGUF conversion —
+/// `per_layer_input_gate` becomes `inp_gate`, `per_layer_projection` becomes
+/// `proj`, and `post_per_layer_input_norm` becomes `post_norm`, which is
+/// additionally distinguishable from the ordinary `post_attention_norm` and
+/// `post_ffw_norm` only by knowing the architecture. They are therefore
+/// listed rather than found by the substring that finds the file-level three
+/// (`docs/rust-harness/gemma-4-ingestion.md`).
+const PLE_LAYER_TENSORS: [&str; 3] = ["inp_gate.weight", "proj.weight", "post_norm.weight"];
+
+/// `per_layer_input_scale`, the factor applied to the sum of the two
+/// per-layer-embedding components. Upstream writes it `2.0 ** -0.5`.
+const PLE_INPUT_SCALE: f32 = std::f32::consts::FRAC_1_SQRT_2;
+
 /// Collapse a tensor name to its family, replacing a leading `blk.<i>.` with
 /// `blk.*.`, so a diagnostic over 42 layers reports one line per family.
 pub fn tensor_family(name: &str) -> String {
@@ -439,29 +498,100 @@ pub fn tensor_family(name: &str) -> String {
 /// Refuse a checkpoint whose structure the forward pass does not implement.
 ///
 /// Loading is name-directed, so an unimplemented feature would otherwise
-/// present as ignored tensors and plausible, wrong logits. Diagnoses the four
-/// Gemma 4 features that change numerics by name before falling back to a
-/// generic unconsumed-tensor report, so the message says which feature is
-/// missing rather than only which tensor was unused.
+/// present as ignored tensors and plausible, wrong logits. Diagnoses the
+/// Gemma 4 features that change numerics by name — refusing the ones this
+/// backend does not implement, and checking the coherence of the ones it does
+/// — before falling back to a generic unconsumed-tensor report, so the message
+/// says which feature is at fault rather than only which tensor was unused.
 ///
 /// Called by `CpuModel::from_gguf` and by the `gguf-info` binary, so the
 /// inspection tool and the loader cannot disagree.
 pub fn check_supported(file: &GgufFile, spec: &ModelSpec) -> Result<()> {
     let config = &spec.config;
+    let arch = architecture(file)?;
     let names: Vec<&str> = file.tensors.iter().map(|t| t.name.as_str()).collect();
 
-    // Per-layer embeddings: a token-identity table plus a projection, summed
-    // and added as an extra residual update. Roughly 2.8B of E4B's parameters.
-    if let Some(hit) = names.iter().find(|n| n.contains("per_layer")) {
-        bail!(
-            "checkpoint uses per-layer embeddings (tensor {hit}), which this \
-             backend does not implement; loading it would ignore the per-layer \
-             tables and produce wrong logits"
+    // Per-layer input embeddings are supported, so the six tensor families are
+    // checked for coherence rather than refused. They are required together or
+    // not at all: a checkpoint carrying five of them would load, skip the
+    // residual join wherever the sixth is missing, and produce fluent output
+    // from a model missing most of its parameters.
+    //
+    // A per-block family present on some layers but not all counts as missing,
+    // which is the case this pairing exists to catch — the partial set is the
+    // one that loads.
+    let mut ple_present: Vec<String> = Vec::new();
+    let mut ple_missing: Vec<String> = Vec::new();
+    for name in PLE_TOP_LEVEL_TENSORS {
+        if names.contains(&name) {
+            ple_present.push(name.to_string());
+        } else {
+            ple_missing.push(name.to_string());
+        }
+    }
+    for suffix in PLE_LAYER_TENSORS {
+        let present = (0..config.n_layers)
+            .filter(|i| names.contains(&format!("blk.{i}.{suffix}").as_str()))
+            .count();
+        if present == config.n_layers {
+            ple_present.push(format!("blk.*.{suffix}"));
+        } else {
+            ple_missing.push(format!(
+                "blk.*.{suffix} ({present} of {} layers)",
+                config.n_layers
+            ));
+        }
+    }
+    let ple_declared = config.ple_dim.is_some();
+    if ple_declared || !ple_present.is_empty() {
+        ensure!(
+            ple_missing.is_empty(),
+            "per-layer input embeddings are {}, but these tensor families are absent or \
+             incomplete: {}. The feature is all six families or none",
+            if ple_declared {
+                format!("declared by {arch}.embedding_length_per_layer_input")
+            } else {
+                format!("implied by present tensors ({})", ple_present.join(", "))
+            },
+            ple_missing.join(", ")
+        );
+        ensure!(
+            ple_declared,
+            "checkpoint carries the per-layer input embedding tensors but declares no \
+             {arch}.embedding_length_per_layer_input, so the packed table cannot be split \
+             into one row per layer; refusing rather than inferring the width from a shape"
         );
     }
 
-    // Shared KV cache: the trailing layers reuse K/V from the last non-shared
-    // layer, so they carry no attn_k/attn_v of their own.
+    // Shared KV cache, declared. This key is the load-bearing half of the
+    // refusal and the tensor signature below is not: `modeling_gemma4.py`
+    // builds k_proj/v_proj only for non-shared layers, but both published
+    // header transcripts show all 42 E4B blocks carrying attn_k and attn_v, so
+    // the signature never fires on a real file. Until this backend implements
+    // sharing, what actually stopped those checkpoints was the per-layer
+    // embedding refusal -- which is now implemented, so removing it without
+    // adding this would let E2B and E4B load and give every layer its own
+    // cache while the checkpoint declares 20 and 18 shared. That is fluent and
+    // wrong, and it is the case `docs/rust-harness/gemma-4-ingestion.md`
+    // warns about by name.
+    match file
+        .metadata
+        .get(&format!("{arch}.attention.shared_kv_layers"))
+    {
+        Some(MetaValue::U32(0)) | None => {}
+        Some(MetaValue::U32(n)) => bail!(
+            "{arch}.attention.shared_kv_layers declares {n} layers reusing another \
+             layer's K/V, which this backend does not implement; it gives every layer \
+             its own cache, and the released checkpoints carry attn_k/attn_v on every \
+             block so nothing downstream would notice"
+        ),
+        Some(other) => bail!("{arch}.attention.shared_kv_layers: expected u32, got {other:?}"),
+    }
+
+    // Shared KV cache, inferred from the tensors: a layer that carries no
+    // attn_k/attn_v of its own has nowhere to read them from but a donor.
+    // Kept alongside the declared check because a converter that drops the
+    // redundant tensors would produce a file the key alone still describes.
     for i in 0..config.n_layers {
         let has = |suffix: &str| names.contains(&format!("blk.{i}.{suffix}.weight").as_str());
         if has("attn_q") && !(has("attn_k") && has("attn_v")) {
@@ -505,7 +635,7 @@ pub fn check_supported(file: &GgufFile, spec: &ModelSpec) -> Result<()> {
             "tensor {} has feed-forward width {width}, but {}.feed_forward_length \
              declares {} for layer {layer}",
             info.name,
-            architecture(file)?,
+            arch,
             declared.ffn_dim
         );
     }
@@ -517,7 +647,6 @@ pub fn check_supported(file: &GgufFile, spec: &ModelSpec) -> Result<()> {
     // The allowlist stays an allowlist. It is the only thing standing between
     // a converter that adds a third regime and a silent wrong rotation, and
     // it is deliberately not widened to "anything that looks descriptive".
-    let arch = architecture(file)?;
     let rope_prefix = format!("{arch}.rope.");
     // Rotation width is checked against the regime that key governs: the
     // unsuffixed key is the full-attention value, `_swa` the sliding one.
@@ -613,13 +742,19 @@ pub fn check_supported(file: &GgufFile, spec: &ModelSpec) -> Result<()> {
     // does not know about, including features published after this code.
     let mut unconsumed: Vec<String> = Vec::new();
     for name in &names {
-        if TOP_LEVEL_TENSORS.contains(name) || *name == ROPE_FREQS_TENSOR {
+        if TOP_LEVEL_TENSORS.contains(name)
+            || PLE_TOP_LEVEL_TENSORS.contains(name)
+            || *name == ROPE_FREQS_TENSOR
+        {
             continue;
         }
         let consumed = (0..config.n_layers).any(|i| {
             let prefix = format!("blk.{i}.");
-            name.strip_prefix(&prefix)
-                .is_some_and(|s| LAYER_TENSORS.contains(&s) || OPTIONAL_LAYER_TENSORS.contains(&s))
+            name.strip_prefix(&prefix).is_some_and(|s| {
+                LAYER_TENSORS.contains(&s)
+                    || OPTIONAL_LAYER_TENSORS.contains(&s)
+                    || PLE_LAYER_TENSORS.contains(&s)
+            })
         });
         if !consumed {
             let family = tensor_family(name);
@@ -647,6 +782,28 @@ fn architecture(file: &GgufFile) -> Result<&str> {
     }
 }
 
+/// File-level per-layer input embedding weights, read once per position.
+struct PleWeights {
+    /// Packed token-identity table, `ple_vocab` rows of `n_layers * ple_dim`.
+    token_embd: Vec<f32>,
+    /// Rows in `token_embd`. Derived from the tensor's own shape rather than
+    /// from a metadata key: `vocab_size_per_layer_input` is a separate config
+    /// field from `vocab_size`, and the GGUF converter deletes it before
+    /// writing rather than emitting it (`docs/models/gemma4-upstream.txt`).
+    ple_vocab: usize,
+    /// Projection of the embedded input to one row per layer.
+    model_proj: Vec<f32>,
+    /// RMSNorm weight applied to each projected row over `ple_dim`.
+    proj_norm: Vec<f32>,
+}
+
+/// One layer's per-layer input embedding weights.
+struct PleLayer {
+    inp_gate: Vec<f32>,
+    proj: Vec<f32>,
+    post_norm: Vec<f32>,
+}
+
 struct LayerWeights {
     /// This layer's declared geometry, carried beside its weights so the
     /// forward pass never reaches for a model-wide width.
@@ -663,6 +820,9 @@ struct LayerWeights {
     /// 1.0: E2B spans 0.019 to 0.879, and layer 0's 0.019 is a 54x reduction
     /// that a backend ignoring this tensor simply does not apply.
     output_scale: f32,
+    /// This layer's per-layer input embedding weights, `None` on a checkpoint
+    /// without the feature.
+    ple: Option<PleLayer>,
     attn_norm: Vec<f32>,
     wq: Vec<f32>,
     wk: Vec<f32>,
@@ -681,6 +841,9 @@ struct LayerWeights {
 /// Immutable weights, shared by forks through an Arc.
 struct Weights {
     embed: Vec<f32>,
+    /// File-level per-layer input embedding weights, `None` on a checkpoint
+    /// without the feature.
+    ple: Option<PleWeights>,
     layers: Vec<LayerWeights>,
     output_norm: Vec<f32>,
 }
@@ -808,6 +971,12 @@ struct Scratch {
     /// load would allocate gigabytes for a long-context model that may
     /// never be prefilled that far.
     scores: Vec<f32>,
+    /// The position's per-layer input embeddings, `n_layers` rows of
+    /// `ple_dim`. Kept out of `buf` because it is computed once per position
+    /// and read by every layer, where every view carved from `buf` is
+    /// overwritten by the next layer. Empty on a checkpoint without the
+    /// feature.
+    ple: Vec<f32>,
 }
 
 impl Scratch {
@@ -822,11 +991,13 @@ impl Scratch {
         let (q_dim, kv_dim) = (c.n_heads * hd, c.n_kv_heads * hd);
         // Widths of the views `forward_one` carves, in its order: x,
         // normed, q, k, v, attn_out, projected, post, gate, up, mixed,
-        // down. The carving asserts it never exceeds this.
-        let elements = 5 * c.embed_dim + 2 * q_dim + 2 * kv_dim + 3 * spec.max_ffn_dim();
+        // down, ple_gate, ple_out. The carving asserts it never exceeds this.
+        let ple_dim = c.ple_dim.unwrap_or(0);
+        let elements = 6 * c.embed_dim + 2 * q_dim + 2 * kv_dim + 3 * spec.max_ffn_dim() + ple_dim;
         Scratch {
             buf: vec![0.0; elements],
             scores: Vec::new(),
+            ple: vec![0.0; c.n_layers * ple_dim],
         }
     }
 }
@@ -1029,6 +1200,47 @@ impl CpuModel {
                 Some(info) => Some(load_tensor(file, data, info)?),
                 None => None,
             };
+        // Per-layer input embeddings. `check_supported` has already established
+        // that the six families are present together, so a missing tensor here
+        // is a bug in that pairing rather than a checkpoint variation.
+        let ple = match config.ple_dim {
+            None => None,
+            Some(pd) => {
+                let row = config.n_layers * pd;
+                let info = file
+                    .tensors
+                    .iter()
+                    .find(|t| t.name == PLE_TOP_LEVEL_TENSORS[0])
+                    .with_context(|| format!("missing tensor {}", PLE_TOP_LEVEL_TENSORS[0]))?;
+                let token_embd = load_tensor(file, data, info)?;
+                ensure!(
+                    row > 0 && token_embd.len().is_multiple_of(row),
+                    "tensor {} has {} elements, not a whole number of rows of \
+                     block_count x embedding_length_per_layer_input ({row})",
+                    PLE_TOP_LEVEL_TENSORS[0],
+                    token_embd.len()
+                );
+                let ple_vocab = token_embd.len() / row;
+                // Not equality with `vocab_size`: the per-layer table has its
+                // own vocabulary axis, and the harness reads `vocab_size` from
+                // the tokenizer token list. Containing every token the
+                // tokenizer can emit is what the lookup below needs, and it is
+                // what a short table would fail.
+                ensure!(
+                    ple_vocab >= config.vocab_size,
+                    "tensor {} holds {ple_vocab} rows, fewer than the {} tokens the \
+                     tokenizer declares",
+                    PLE_TOP_LEVEL_TENSORS[0],
+                    config.vocab_size
+                );
+                Some(PleWeights {
+                    token_embd,
+                    ple_vocab,
+                    model_proj: tensor(PLE_TOP_LEVEL_TENSORS[1], embed_dim * row)?,
+                    proj_norm: tensor(PLE_TOP_LEVEL_TENSORS[2], pd)?,
+                })
+            }
+        };
         let mut layers = Vec::with_capacity(config.n_layers);
         for (i, ls) in spec.layers.iter().enumerate() {
             // Widths come from this layer's own spec, so a checkpoint that
@@ -1055,10 +1267,19 @@ impl CpuModel {
                 true => t("layer_output_scale.weight", 1)?[0],
                 false => 1.0,
             };
+            let ple_layer = match config.ple_dim {
+                Some(pd) => Some(PleLayer {
+                    inp_gate: t(PLE_LAYER_TENSORS[0], embed_dim * pd)?,
+                    proj: t(PLE_LAYER_TENSORS[1], pd * embed_dim)?,
+                    post_norm: t(PLE_LAYER_TENSORS[2], embed_dim)?,
+                }),
+                None => None,
+            };
             layers.push(LayerWeights {
                 spec: *ls,
                 rope_freqs: rope_frequencies(head_dim, ls.rope_freq_base, divisors),
                 output_scale,
+                ple: ple_layer,
                 attn_norm: t("attn_norm.weight", embed_dim)?,
                 wq: t("attn_q.weight", embed_dim * q_dim)?,
                 wk: t("attn_k.weight", embed_dim * kv_dim)?,
@@ -1082,6 +1303,7 @@ impl CpuModel {
             spec: Arc::new(spec),
             weights: Arc::new(Weights {
                 embed,
+                ple,
                 layers,
                 output_norm,
             }),
@@ -1170,7 +1392,7 @@ impl CpuModel {
         // else is re-carved per layer, because head width and feed-forward
         // width vary by layer and a single carving would size them all to
         // whichever layer happened to be first.
-        let Scratch { buf, scores } = scratch;
+        let Scratch { buf, scores, ple } = scratch;
         let (x, work) = buf.split_at_mut(c.embed_dim);
 
         // Embedding, scaled by sqrt(embed_dim) per Gemma convention.
@@ -1179,6 +1401,48 @@ impl CpuModel {
         for (dst, e) in x.iter_mut().zip(row) {
             *dst = e * scale;
         }
+
+        // Per-layer input embeddings, computed once for this position from the
+        // embedded input and the token identity, before the decoder stack.
+        // Layer `i` consumes row `i` of the result.
+        if let (Some(p), Some(pd)) = (w.ple.as_ref(), c.ple_dim) {
+            // Context component: project the embedded input to one row per
+            // layer, scale, and RMSNorm each row over its own `pd` dimensions.
+            //
+            // The scale is `hidden_size ** -0.5` and lands immediately before
+            // an RMSNorm over the same values, which is scale invariant, so it
+            // very nearly cancels — but only very nearly: `rms_eps` is added
+            // to the mean square in absolute terms, so the scale does change
+            // the result and is applied rather than folded away.
+            matvec_into(&p.model_proj, x, ple);
+            let proj_scale = 1.0 / (c.embed_dim as f32).sqrt();
+            for v in ple.iter_mut() {
+                *v *= proj_scale;
+            }
+            for row in ple.chunks_mut(pd) {
+                rms_norm_in_place(row, &p.proj_norm, c.rms_eps);
+            }
+            // Token-identity component: one packed row of the per-layer table,
+            // scaled by sqrt(ple_dim) -- x16 at Gemma 4's width of 256, an
+            // embed scale that is easy to miss because it lives on the
+            // embedding module rather than at the call site
+            // (`docs/models/gemma4-upstream.txt`).
+            //
+            // The row stride is the packed width, not `pd`: the table is one
+            // tensor to split into `n_layers` rows, not a stack of per-layer
+            // tables.
+            let stride = c.n_layers * pd;
+            debug_assert!(
+                (token as usize) < p.ple_vocab,
+                "token bound checked at entry"
+            );
+            let identity = &p.token_embd[token as usize * stride..(token as usize + 1) * stride];
+            let embed_scale = (pd as f32).sqrt();
+            for (dst, e) in ple.iter_mut().zip(identity) {
+                *dst = (*dst + e * embed_scale) * PLE_INPUT_SCALE;
+            }
+        }
+        let ple_rows: &[f32] = ple;
 
         for (i, layer) in w.layers.iter().enumerate() {
             let hd = layer.spec.head_dim;
@@ -1200,6 +1464,8 @@ impl CpuModel {
             let up = carve(&mut rest, ffn_dim);
             let mixed = carve(&mut rest, ffn_dim);
             let down = carve(&mut rest, c.embed_dim);
+            let ple_gate = carve(&mut rest, c.ple_dim.unwrap_or(0));
+            let ple_out = carve(&mut rest, c.embed_dim);
 
             // Attention block.
             rms_norm_into(x, &layer.attn_norm, c.rms_eps, normed);
@@ -1260,6 +1526,24 @@ impl CpuModel {
             rms_norm_into(down, &layer.post_ffw_norm, c.rms_eps, post);
             for (a, b) in x.iter_mut().zip(post.iter()) {
                 *a += b;
+            }
+
+            // Per-layer input embedding block: a third residual update, after
+            // the feed-forward block rather than before or inside attention.
+            // The gate narrows the residual stream to `ple_dim`, the embedding
+            // modulates it there elementwise, and the projection widens it
+            // back (`docs/models/gemma4-upstream.txt`).
+            if let (Some(pl), Some(pd)) = (layer.ple.as_ref(), c.ple_dim) {
+                matvec_into(&pl.inp_gate, x, ple_gate);
+                let row = &ple_rows[i * pd..(i + 1) * pd];
+                for (g, e) in ple_gate.iter_mut().zip(row) {
+                    *g = gelu(*g) * e;
+                }
+                matvec_into(&pl.proj, ple_gate, ple_out);
+                rms_norm_into(ple_out, &pl.post_norm, c.rms_eps, post);
+                for (a, b) in x.iter_mut().zip(post.iter()) {
+                    *a += b;
+                }
             }
 
             // The layer's last operation, scaling everything the layer
@@ -1841,12 +2125,84 @@ mod tests {
     }
 
     #[test]
-    fn per_layer_embedding_tensors_are_refused() {
+    fn a_partial_per_layer_embedding_tensor_set_is_refused() {
+        // The feature is six tensor families, and five of them load fine while
+        // silently dropping the residual join the sixth carries. Refusing the
+        // partial set is the only thing that turns it into a load error rather
+        // than into a fluent model missing most of its parameters.
         let (_, mut file, spec) = tiny_parsed();
         file.tensors
             .push(extra_tensor("per_layer_token_embd.weight"));
         let err = check_supported(&file, &spec).unwrap_err().to_string();
-        assert!(err.contains("per-layer embeddings"), "{err}");
+        assert!(err.contains("absent or incomplete"), "{err}");
+        // Names the three per-block families, which is the point: they lose
+        // the `per_layer` substring in conversion, so a reader looking for
+        // what is missing cannot find them by the name of the one present.
+        for suffix in PLE_LAYER_TENSORS {
+            assert!(err.contains(suffix), "{err} does not name {suffix}");
+        }
+    }
+
+    #[test]
+    fn a_per_layer_embedding_family_missing_from_one_layer_is_refused() {
+        // The whole-family case above is the obvious one. This is the case the
+        // per-layer count exists for: every family present, one layer short,
+        // which loads and skips the join on exactly that layer.
+        let image = build_tiny_model(&TinySpec {
+            ple_dim: Some(4),
+            ..TinySpec::default()
+        });
+        let mut file = crate::gguf::parse(&image).unwrap();
+        let spec = ModelSpec::from_gguf(&file).unwrap();
+        check_supported(&file, &spec).unwrap();
+        file.tensors.retain(|t| t.name != "blk.1.inp_gate.weight");
+        let err = check_supported(&file, &spec).unwrap_err().to_string();
+        assert!(err.contains("inp_gate.weight (1 of 2 layers)"), "{err}");
+    }
+
+    #[test]
+    fn per_layer_embedding_tensors_without_their_width_are_refused() {
+        // The tensors alone do not say how to split the packed row. Inferring
+        // the width from the shape would work only if `n_layers` and the
+        // per-layer width were the sole factorization of it, which they are
+        // not.
+        let image = build_tiny_model(&TinySpec {
+            ple_dim: Some(4),
+            ..TinySpec::default()
+        });
+        let mut file = crate::gguf::parse(&image).unwrap();
+        file.metadata
+            .remove("gemma4.embedding_length_per_layer_input");
+        // Derived after the removal: the spec is what carries `ple_dim`, so a
+        // spec built before it would still declare the width the file no
+        // longer does.
+        let spec = ModelSpec::from_gguf(&file).unwrap();
+        let err = check_supported(&file, &spec).unwrap_err().to_string();
+        assert!(err.contains("declares no"), "{err}");
+    }
+
+    #[test]
+    fn a_declared_shared_kv_layer_count_is_refused_without_the_tensor_signature() {
+        // The signature test below cannot see this case, and this is the case
+        // the released checkpoints are in: every block carries attn_k and
+        // attn_v, and only the metadata key says 20 of E2B's 35 layers reuse a
+        // donor's cache. Before per-layer embeddings were implemented their
+        // refusal stopped these files first; now this key is what does.
+        let (_, mut file, spec) = tiny_parsed();
+        file.metadata.insert(
+            "gemma4.attention.shared_kv_layers".to_string(),
+            MetaValue::U32(1),
+        );
+        let err = check_supported(&file, &spec).unwrap_err().to_string();
+        assert!(err.contains("shared_kv_layers declares 1"), "{err}");
+
+        // Zero is a checkpoint that shares nothing, not a checkpoint that
+        // shares an unspecified amount.
+        file.metadata.insert(
+            "gemma4.attention.shared_kv_layers".to_string(),
+            MetaValue::U32(0),
+        );
+        check_supported(&file, &spec).unwrap();
     }
 
     #[test]
@@ -1980,6 +2336,214 @@ mod tests {
             assert!(err.contains("final_logit_softcapping"), "{err}");
             assert!(err.contains("positive"), "{err}");
         }
+    }
+
+    /// Layer-0 residual output at each position, with and without per-layer
+    /// input embeddings, from images whose every other tensor is identical.
+    ///
+    /// The synthetic builder draws the per-layer-embedding tensors last, so
+    /// the two models share every weight the PLE block does not touch. That
+    /// makes the layer-0 output of the plain model exactly the residual the
+    /// PLE model's layer-0 PLE block reads, and the difference between the two
+    /// outputs exactly what that block contributed -- which is what lets the
+    /// test below assert the whole chain rather than that something moved.
+    fn layer0_with_and_without_ple(pd: usize, tokens: &[Token]) -> (Vec<Vec<f32>>, Vec<Vec<f32>>) {
+        let capture = |spec: &TinySpec| -> Vec<Vec<f32>> {
+            let image = build_tiny_model(spec);
+            let file = crate::gguf::parse(&image).unwrap();
+            let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+            let calls: TapCalls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            model.set_tap(Box::new(CollectingTap(calls.clone())));
+            model.prefill_all(tokens).unwrap();
+            let rows = calls.lock().unwrap();
+            rows.iter()
+                .filter(|(layer, _, _)| *layer == 0)
+                .map(|(_, _, x)| x.clone())
+                .collect()
+        };
+        let plain = capture(&TinySpec::default());
+        let with = capture(&TinySpec {
+            ple_dim: Some(pd),
+            ..TinySpec::default()
+        });
+        (plain, with)
+    }
+
+    #[test]
+    fn the_per_layer_embedding_block_matches_an_independent_recomputation() {
+        // The scale chain is the risk this test exists for. Three factors
+        // compound -- sqrt(ple_dim) on the token identity, 1/sqrt(hidden) on
+        // the projection, and 2^-0.5 on their sum -- and getting any one of
+        // them wrong leaves the logits finite and plausible. So the expected
+        // value is recomputed here from the file's own tensors, following
+        // `docs/models/gemma-4.md` and `docs/models/gemma4-upstream.txt`
+        // rather than the loader, and compared against what the forward pass
+        // actually added to the residual stream.
+        let pd = 4;
+        let tokens = [7u32, 19, 4];
+        let (plain, with) = layer0_with_and_without_ple(pd, &tokens);
+
+        let image = build_tiny_model(&TinySpec {
+            ple_dim: Some(pd),
+            ..TinySpec::default()
+        });
+        let file = crate::gguf::parse(&image).unwrap();
+        let spec = ModelSpec::from_gguf(&file).unwrap();
+        let c = spec.config;
+        let t = |name: &str| {
+            let info = file.tensors.iter().find(|t| t.name == name).unwrap();
+            load_tensor(&file, &image, info).unwrap()
+        };
+        let (embed, table, model_proj, proj_norm) = (
+            t("token_embd.weight"),
+            t("per_layer_token_embd.weight"),
+            t("per_layer_model_proj.weight"),
+            t("per_layer_proj_norm.weight"),
+        );
+        let (inp_gate, proj, post_norm) = (
+            t("blk.0.inp_gate.weight"),
+            t("blk.0.proj.weight"),
+            t("blk.0.post_norm.weight"),
+        );
+        let packed = c.n_layers * pd;
+
+        for (position, token) in tokens.iter().enumerate() {
+            let token = *token as usize;
+            // The embedded input, which is what the context projection reads.
+            let scale = (c.embed_dim as f32).sqrt();
+            let embedded: Vec<f32> = embed[token * c.embed_dim..(token + 1) * c.embed_dim]
+                .iter()
+                .map(|e| e * scale)
+                .collect();
+
+            // Context component: project, scale by hidden**-0.5, split into
+            // one row per layer, RMSNorm each row over its own width.
+            let mut context = vec![0.0f32; packed];
+            matvec_into(&model_proj, &embedded, &mut context);
+            let proj_scale = 1.0 / (c.embed_dim as f32).sqrt();
+            for v in context.iter_mut() {
+                *v *= proj_scale;
+            }
+            for row in context.chunks_mut(pd) {
+                rms_norm_in_place(row, &proj_norm, c.rms_eps);
+            }
+            // Token-identity component, scaled by sqrt(ple_dim), summed with
+            // the context component, and the sum scaled by 2**-0.5.
+            let identity = &table[token * packed..(token + 1) * packed];
+            let embed_scale = (pd as f32).sqrt();
+            let rows: Vec<f32> = context
+                .iter()
+                .zip(identity)
+                .map(|(ctx, id)| (ctx + id * embed_scale) * std::f32::consts::FRAC_1_SQRT_2)
+                .collect();
+
+            // Layer 0's block: gate the residual down to ple_dim, activate,
+            // modulate by row 0, project back up, norm, add.
+            let residual = &plain[position];
+            let mut gate = vec![0.0f32; pd];
+            matvec_into(&inp_gate, residual, &mut gate);
+            for (g, e) in gate.iter_mut().zip(&rows[0..pd]) {
+                *g = gelu(*g) * e;
+            }
+            let mut widened = vec![0.0f32; c.embed_dim];
+            matvec_into(&proj, &gate, &mut widened);
+            let mut normed = vec![0.0f32; c.embed_dim];
+            rms_norm_into(&widened, &post_norm, c.rms_eps, &mut normed);
+
+            for (i, ((got, base), delta)) in
+                with[position].iter().zip(residual).zip(&normed).enumerate()
+            {
+                let want = base + delta;
+                assert_eq!(
+                    got.to_bits(),
+                    want.to_bits(),
+                    "position {position} element {i}: layer 0 produced {got}, the \
+                     recomputed per-layer-embedding join gives {want}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_checkpoint_without_per_layer_embeddings_is_unperturbed_by_the_feature() {
+        // Absent-safety, asserted bit for bit rather than within a tolerance:
+        // the six tensor families are optional, and a checkpoint that carries
+        // none of them must compute exactly as it did before the feature
+        // existed. A buffer left stale or a zero-width row summed in anyway
+        // would show up here and nowhere else.
+        let plain = logits_for(&TinySpec::default());
+        let again = logits_for(&TinySpec::default());
+        for (position, (a, b)) in plain.iter().zip(&again).enumerate() {
+            for (t, (x, y)) in a.0.iter().zip(&b.0).enumerate() {
+                assert_eq!(x.to_bits(), y.to_bits(), "position {position} token {t}");
+            }
+        }
+        // And the feature, when present, is not a no-op.
+        let with = logits_for(&TinySpec {
+            ple_dim: Some(4),
+            ..TinySpec::default()
+        });
+        let moved = plain
+            .iter()
+            .zip(&with)
+            .flat_map(|(a, b)| a.0.iter().zip(&b.0))
+            .filter(|(a, b)| a.to_bits() != b.to_bits())
+            .count();
+        assert!(moved > 0, "per-layer embeddings changed no logit");
+    }
+
+    #[test]
+    fn every_layer_reads_its_own_row_of_the_per_layer_embedding() {
+        // The packed table is split by layer index, and a loader that handed
+        // every layer row 0 -- or that strode by the per-layer width from the
+        // wrong base -- would still produce finite logits. Two layers with
+        // identical weights but different rows must therefore contribute
+        // differently, which is what a shared row would collapse.
+        let pd = 4;
+        let image = build_tiny_model(&TinySpec {
+            ple_dim: Some(pd),
+            ..TinySpec::default()
+        });
+        let file = crate::gguf::parse(&image).unwrap();
+        let spec = ModelSpec::from_gguf(&file).unwrap();
+        let info = file
+            .tensors
+            .iter()
+            .find(|t| t.name == "per_layer_token_embd.weight")
+            .unwrap();
+        let table = load_tensor(&file, &image, info).unwrap();
+        let packed = spec.config.n_layers * pd;
+        assert_eq!(table.len(), spec.config.vocab_size * packed);
+        // Perturb layer 1's row and nothing else. Swapping rows 0 and 1 would
+        // not do: it changes what layer 0 reads too, so a backend handing
+        // every layer row 0 would still move its output and pass.
+        let token = 7usize;
+        let mut edited = image.clone();
+        let base = info.offset as usize + file.data_offset as usize + (token * packed + pd) * 4;
+        for j in 0..pd {
+            let at = base + j * 4;
+            let was = f32::from_le_bytes(edited[at..at + 4].try_into().unwrap());
+            edited[at..at + 4].copy_from_slice(&(was + 0.5).to_le_bytes());
+        }
+
+        let run = |bytes: &[u8]| {
+            let f = crate::gguf::parse(bytes).unwrap();
+            let mut m = CpuModel::from_gguf(&f, bytes).unwrap();
+            m.prefill_all(&[token as Token]).unwrap()
+        };
+        let before = run(&image);
+        let after = run(&edited);
+        let moved = before
+            .iter()
+            .zip(&after)
+            .flat_map(|(x, y)| x.0.iter().zip(&y.0))
+            .filter(|(x, y)| x.to_bits() != y.to_bits())
+            .count();
+        assert!(
+            moved > 0,
+            "changing layer 1's per-layer embedding row alone changed nothing, so layer 1 \
+             is reading some other layer's row"
+        );
     }
 
     #[test]

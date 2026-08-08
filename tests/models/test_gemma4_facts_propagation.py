@@ -290,9 +290,8 @@ DOC = REPO_ROOT / "docs" / "models" / "gemma-4.md"
 # cpu.rs that implements it. Implementing one of these deletes its bail, which
 # fails this test -- the prompt to update the table rather than let it rot.
 REFUSALS = {
-    "per-layer embeddings": 'n.contains("per_layer")',
     "shared KV cache": "does not implement KV sharing",
-    "per-layer feed-forward widths": "per-layer widths are MatFormer slicing",
+    "declared shared KV layer count": "shared_kv_layers declares",
 }
 
 

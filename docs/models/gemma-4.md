@@ -795,27 +795,30 @@ The distinction that matters here is between reading the geometry and running th
 three tiers read it generically — no layer count, width, or stride is hardcoded in any of them,
 and the schedule comes from the `layer_types` array rather than a stride constant. Loading a
 checkpoint and producing logits is a separate question, and for the CPU backend the answer is
-currently no for both variants.
+currently no for both variants, on one remaining feature rather than the original three.
 
 | Tier | E2B | E4B | What decides it |
 |------|-----|-----|-----------------|
-| `rust-harness` CPU backend | Refused | Refused | `check_supported` rejects per-layer embeddings, which both variants carry |
+| `rust-harness` CPU backend | Refused | Refused | `check_supported` rejects the declared shared-KV layer count, which both variants carry |
 | `rust-harness` GGUF metadata reader | Yes | Yes | Every value read by key; schedule decoded from the bool array, E2B stride 5 and E4B 6 |
 | `training` | Yes | Yes | `spec_from_hf_config` maps any config carrying the field names; reference recipes exist for both |
 | `interp` | Yes | Yes (no recipe) | No geometry constants at all; hook path and width resolve from the loaded config |
 
-Three refusals stand between the CPU backend and a real checkpoint. Each is a declared
+One feature now stands between the CPU backend and a real checkpoint. It is a declared
 unimplemented feature that fails loudly, not a silent wrong answer:
 
-- **Per-layer embeddings.** `check_supported` bails on any tensor whose name contains
-  `per_layer`. Both variants have them, so both are refused. This is the binding one.
-- **Cross-layer KV sharing.** A layer with `attn_q` but no `attn_k`/`attn_v` is refused. Note
-  this signature does not actually fire on the released checkpoints, which carry K and V on
-  every block — see the first open question below.
-- **Per-layer feed-forward widths.** `Config::from_gguf` refuses a `feed_forward_length` that
-  varies per layer, because a single `Config::ffn_dim` cannot express it. This affects E2B
-  only: `use_double_wide_mlp` doubles the MLP on its KV-shared tail, so its array holds two
-  widths, while E4B sets the flag false and ships one.
+- **Cross-layer KV sharing.** Refused on two independent signals. The first is the metadata
+  key: a non-zero `attention.shared_kv_layers` is refused outright, which is what stops E2B at
+  20 and E4B at 18. The second is the tensor signature, a layer with `attn_q` but no
+  `attn_k`/`attn_v`. Only the first fires on the released checkpoints, which carry K and V on
+  every block — see the first open question below. The signature is kept for a converter that
+  drops the redundant tensors.
+
+Per-layer embeddings, per-layer feed-forward widths, per-layer head dimensions, dual RoPE, the
+per-layer output scale, and final logit softcapping were refusals and are now implemented. The
+per-layer embedding refusal was the binding one, and removing it is why the shared-KV metadata
+key had to become a refusal in its own right: until then that key was ignored, and the tensor
+signature that was supposed to catch sharing does not fire on either published file.
 
 `training` and `interp` need no such work. Their E-series gap is coverage rather than
 capability: every interp recipe under `training/recipes/interp/` names an E2B subject, so E4B
