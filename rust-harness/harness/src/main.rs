@@ -254,10 +254,16 @@ fn build_generator(
         // its sliding layers, so a single width silently under-reports the
         // budget across every global layer -- enough to keep the warning below
         // from firing on a checkpoint that would exceed it.
+        //
+        // Shared-KV layers are skipped rather than listed: they store nothing,
+        // and counting them over-reports by the whole shared tail -- 18 of
+        // E4B's 42 layers, 20 of E2B's 35.
         let layers: Vec<_> = cpu
             .layer_specs()
             .iter()
-            .map(|l| {
+            .enumerate()
+            .filter(|(i, l)| l.kv_source == *i)
+            .map(|(_, l)| {
                 (
                     l.kind,
                     runtime::kv::KvGeometry {

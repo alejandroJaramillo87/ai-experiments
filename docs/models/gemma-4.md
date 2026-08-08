@@ -794,31 +794,39 @@ out of scope until the E-series pair is settled.
 The distinction that matters here is between reading the geometry and running the model. All
 three tiers read it generically — no layer count, width, or stride is hardcoded in any of them,
 and the schedule comes from the `layer_types` array rather than a stride constant. Loading a
-checkpoint and producing logits is a separate question, and for the CPU backend the answer is
-currently no for both variants, on one remaining feature rather than the original three.
+checkpoint and producing logits is a separate question, and for the CPU backend every
+architectural feature the two E-series variants declare is now implemented.
 
 | Tier | E2B | E4B | What decides it |
 |------|-----|-----|-----------------|
-| `rust-harness` CPU backend | Refused | Refused | `check_supported` rejects the declared shared-KV layer count, which both variants carry |
+| `rust-harness` CPU backend | Yes (unverified against real weights) | Yes (unverified against real weights) | Every declared feature implemented; correctness checked against synthetic fixtures only |
 | `rust-harness` GGUF metadata reader | Yes | Yes | Every value read by key; schedule decoded from the bool array, E2B stride 5 and E4B 6 |
 | `training` | Yes | Yes | `spec_from_hf_config` maps any config carrying the field names; reference recipes exist for both |
 | `interp` | Yes | Yes (no recipe) | No geometry constants at all; hook path and width resolve from the loaded config |
 
-One feature now stands between the CPU backend and a real checkpoint. It is a declared
-unimplemented feature that fails loudly, not a silent wrong answer:
-
-- **Cross-layer KV sharing.** Refused on two independent signals. The first is the metadata
-  key: a non-zero `attention.shared_kv_layers` is refused outright, which is what stops E2B at
-  20 and E4B at 18. The second is the tensor signature, a layer with `attn_q` but no
-  `attn_k`/`attn_v`. Only the first fires on the released checkpoints, which carry K and V on
-  every block — see the first open question below. The signature is kept for a converter that
-  drops the redundant tensors.
-
 Per-layer embeddings, per-layer feed-forward widths, per-layer head dimensions, dual RoPE, the
-per-layer output scale, and final logit softcapping were refusals and are now implemented. The
-per-layer embedding refusal was the binding one, and removing it is why the shared-KV metadata
-key had to become a refusal in its own right: until then that key was ignored, and the tensor
-signature that was supposed to catch sharing does not fire on either published file.
+per-layer output scale, final logit softcapping, and cross-layer KV sharing were all refusals
+and are now implemented. Sharing was the last of them, and the order mattered: the per-layer
+embedding refusal was the binding one on a real file, so implementing it first left the
+shared-KV metadata key as the only thing standing between a released checkpoint and a load
+that would have given all 42 layers independent caches. That key was briefly a refusal in its
+own right for exactly that reason, and is now read.
+
+Two caveats on the "yes" in the table above, both material:
+
+- **No real weights have been run through it.** Every feature is verified against synthetic
+  fixtures and, where the arithmetic allows, an independent recomputation. Two implementations
+  written from the same documents agree on a shared misreading; only Google's actual
+  checkpoint breaks that tie, and that run is workstation-only.
+- **The shared-KV weight layout follows the modeling code, which the checkpoints contradict.**
+  Shared layers' own `attn_k` and `attn_v` are left unread — see the first open question
+  below. If that reading is wrong, the result is fluent and wrong rather than a load error,
+  which makes it the highest-risk assumption in the backend.
+
+The tensor signature for sharing — a layer with `attn_q` but no `attn_k`/`attn_v` — is no
+longer a refusal, because it is now the legitimate shape of a shared layer. It survives
+inverted: a layer that *owns* its cache and lacks those tensors has nothing to attend over, and
+that is still refused.
 
 `training` and `interp` need no such work. Their E-series gap is coverage rather than
 capability: every interp recipe under `training/recipes/interp/` names an E2B subject, so E4B

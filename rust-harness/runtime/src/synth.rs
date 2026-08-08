@@ -72,6 +72,16 @@ pub struct TinySpec {
     /// wider table is a case worth a fixture of its own rather than the
     /// default here.
     pub ple_dim: Option<usize>,
+    /// Trailing layers that read a donor's K/V instead of storing their own,
+    /// written as `attention.shared_kv_layers`. Zero writes no key, the shape
+    /// the committed fixture ships.
+    ///
+    /// The key alone changes the model: every layer's `attn_k` and `attn_v`
+    /// are still emitted, exactly as the released checkpoints carry them over
+    /// their own shared tails. A `shared_kv_layers: 0` image and a `2` image
+    /// are therefore bit-identical but for this one metadata value, which is
+    /// what makes a difference in their outputs attributable to sharing alone.
+    pub shared_kv_layers: usize,
     pub rms_eps: f32,
     pub seed: u64,
     /// Weight storage type. Defaults to F32, which is what the committed
@@ -98,6 +108,7 @@ impl Default for TinySpec {
             logit_softcap: None,
             layer_output_scale: None,
             ple_dim: None,
+            shared_kv_layers: 0,
             rms_eps: 1e-6,
             seed: 42,
             storage: TensorStorage::F32,
@@ -340,6 +351,12 @@ pub fn build_tiny_model(spec: &TinySpec) -> Vec<u8> {
     }
     if let Some(pd) = spec.ple_dim {
         w.kv_u32("gemma4.embedding_length_per_layer_input", pd as u32);
+    }
+    if spec.shared_kv_layers > 0 {
+        w.kv_u32(
+            "gemma4.attention.shared_kv_layers",
+            spec.shared_kv_layers as u32,
+        );
     }
 
     let (pieces, scores, kinds) = tiny_vocab(spec.vocab_size);

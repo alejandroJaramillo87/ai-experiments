@@ -15,7 +15,16 @@ use super::model::{Logits, Model, Token};
 use super::sampler::Sampler;
 
 const SNAPSHOT_MAGIC: &[u8; 4] = b"HKV1";
-const SNAPSHOT_VERSION: u32 = 1;
+/// Version 2: cross-layer KV sharing. A shared-KV layer stores no rows, so the
+/// backend payload for a checkpoint with a shared tail is shorter than a
+/// version 1 snapshot of the same weights.
+///
+/// The bump is what makes that safe, and `model_hash` is not: the hash
+/// fingerprints the *weights*, so a snapshot written by the previous binary
+/// over the same file carries a matching hash and a payload the current reader
+/// would walk at the wrong offsets. Refusing on version is a clear error where
+/// reinterpreting would be silent.
+const SNAPSHOT_VERSION: u32 = 2;
 const SNAPSHOT_DTYPE_F32: u8 = 0;
 /// Tokens moved per `write_all`/`read_exact` when saving and restoring.
 ///

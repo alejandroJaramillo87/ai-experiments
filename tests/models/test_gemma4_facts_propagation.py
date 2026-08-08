@@ -286,21 +286,42 @@ def test_calculator_models_the_double_wide_mlp(contract):
 CPU_RS = REPO_ROOT / "rust-harness" / "runtime" / "src" / "model" / "cpu.rs"
 DOC = REPO_ROOT / "docs" / "models" / "gemma-4.md"
 
-# Each refusal the "Per-tier support" table depends on, and the substring in
-# cpu.rs that implements it. Implementing one of these deletes its bail, which
-# fails this test -- the prompt to update the table rather than let it rot.
-REFUSALS = {
-    "shared KV cache": "does not implement KV sharing",
-    "declared shared KV layer count": "shared_kv_layers declares",
+# The CPU backend refuses none of the E-series architecture any more. This
+# table ran the other way while it did: each entry named a refusal the support
+# matrix depended on, and implementing one deleted its bail and failed the
+# test, which is what forced the doc update.
+#
+# It is inverted rather than deleted, because the drift it guards against did
+# not go away -- it reversed. The table now claims these features work, so the
+# tripwire is that the code implementing them is still there.
+IMPLEMENTED = {
+    "cross-layer KV sharing": "kv_source",
+    "per-layer input embeddings": "ple_dim",
+    "final logit softcapping": "logit_softcap",
+    "per-layer output scale": "output_scale",
 }
 
 
-@pytest.mark.parametrize("feature", sorted(REFUSALS))
-def test_support_matrix_refusals_are_still_in_the_backend(feature):
-    """A documented refusal must still be performed by the code."""
-    assert REFUSALS[feature] in CPU_RS.read_text(), (
-        f"cpu.rs no longer refuses {feature}; the 'Per-tier support' table in "
-        f"docs/models/gemma-4.md says it does, so one of the two is now wrong"
+@pytest.mark.parametrize("feature", sorted(IMPLEMENTED))
+def test_support_matrix_features_are_still_in_the_backend(feature):
+    """A feature the table claims works must still be implemented."""
+    assert IMPLEMENTED[feature] in CPU_RS.read_text(), (
+        f"cpu.rs no longer implements {feature}; the 'Per-tier support' table "
+        f"in docs/models/gemma-4.md says it does, so one of the two is now wrong"
+    )
+
+
+def test_the_support_table_does_not_claim_the_cpu_backend_refuses():
+    """The CPU row and the prose below it have to agree.
+
+    They disagreed once already: the table said "Refused" against a feature
+    list that had been implemented one stage at a time.
+    """
+    section = DOC.read_text().split("## Per-tier support", 1)[1].split("\n## ", 1)[0]
+    cpu_row = next(line for line in section.splitlines() if "CPU backend" in line)
+    assert "Refused" not in cpu_row, (
+        "the CPU backend row still reads 'Refused', but cpu.rs implements every "
+        f"feature the E-series declares: {cpu_row.strip()}"
     )
 
 

@@ -18,12 +18,22 @@
  * projection of the embedded input. On E4B that table is roughly 2.8B of the
  * 7.5B total parameters, so it is most of the model by weight.
  *
- * That is still a subset of the published Gemma 4 architecture, which adds a
- * shared KV cache and value normalization. A checkpoint carrying either is
- * refused by `check_supported` rather than loaded with the extra structure
- * silently dropped: an ignored weight tensor still produces fluent text, so a
- * silent load would be an undetectable wrong answer.
- * See docs/rust-harness/gemma-4-ingestion.md.
+ * The trailing layers of a Gemma 4 checkpoint compute no keys or values of
+ * their own and attend over an earlier layer's cache. There are two donors,
+ * one per attention regime, so a shared sliding layer reads the last
+ * non-shared sliding layer and a shared global layer the last non-shared
+ * global one. This is a property of the declared metadata and of nothing in
+ * the tensor list: the released files carry key and value projections on every
+ * block including the shared tail, so a reader that ignores
+ * `attention.shared_kv_layers` gives all 42 layers independent caches with no
+ * tensor left over to notice.
+ *
+ * That is still a subset of the published Gemma 4 architecture, which adds
+ * value normalization and, on the larger tiers, key-equals-value attention. A
+ * checkpoint carrying either is refused by `check_supported` rather than
+ * loaded with the extra structure silently dropped: an ignored weight tensor
+ * still produces fluent text, so a silent load would be an undetectable wrong
+ * answer. See docs/rust-harness/gemma-4-ingestion.md.
  *
  * RoPE is per layer, not per model. Gemma 4 runs two regimes whose bases
  * differ by two orders of magnitude (1e6 global against 1e4 sliding), and
@@ -36,10 +46,16 @@
  * rotates 128 -- finite, fluent, wrong. See the proportional-RoPE derivation
  * in docs/rust-harness/gemma-4-ingestion.md.
  *
- * The K/V cache stores the full sequence for every layer; the sliding
- * window is applied as an attention mask only. Capping sliding-window
- * storage to the kv.rs budget (a ring buffer) is deferred to the
- * real-model work, where the memory matters.
+ * The K/V cache stores the full sequence for every layer that owns one; the
+ * sliding window is applied as an attention mask only. Capping sliding-window
+ * storage to the kv.rs budget (a ring buffer) is deferred to the real-model
+ * work, where the memory matters -- and KV sharing constrains that future
+ * change: a shared sliding layer reads its donor's rows, and the donor must
+ * therefore retain the full sequence even though its own attention never looks
+ * past the window. Upstream hits the same wall and answers it by consulting a
+ * separate full-length `shared_kv_states` rather than the cache. A ring buffer
+ * applied uniformly to every sliding layer would silently truncate what the
+ * shared tail reads.
  */
 
 use std::sync::Arc;
@@ -103,6 +119,18 @@ pub struct LayerSpec {
     pub head_dim: usize,
     pub ffn_dim: usize,
     pub rope_freq_base: f32,
+    /// Index of the layer whose K/V cache this layer attends over. Equal to
+    /// the layer's own index unless the checkpoint declares a shared-KV tail,
+    /// in which case it is the donor's.
+    ///
+    /// There are two donors on a Gemma 4 file, not one: upstream picks the
+    /// last non-shared layer *of each layer type*, so a shared sliding layer
+    /// reads the last non-shared sliding layer and a shared global layer the
+    /// last non-shared global one. Designating a single donor for the whole
+    /// tail is wrong for one of the two regimes, which is why this is a
+    /// per-layer index rather than a model-wide boundary the forward pass
+    /// re-derives (`docs/models/gemma-4.md`).
+    pub kv_source: usize,
 }
 
 /// A checkpoint's complete declared shape: the model-wide scalars plus one
@@ -134,6 +162,38 @@ impl ModelSpec {
     /// layer because the head width does.
     pub fn kv_dim(&self, layer: usize) -> usize {
         self.config.n_kv_heads * self.layers[layer].head_dim
+    }
+
+    /// Whether layer `i` stores its own K/V rather than reading a donor's.
+    ///
+    /// The single predicate every cache walk consults — the forward pass, the
+    /// snapshot, `truncate`, and the memory budget. A layer that does not own
+    /// its cache holds no rows at all, so a walk that computes
+    /// `cached_len * kv_dim(i)` without asking this over-counts by the whole
+    /// shared tail: 18 of E4B's 42 layers, 20 of E2B's 35.
+    pub fn owns_cache(&self, i: usize) -> bool {
+        self.layers[i].kv_source == i
+    }
+
+    /// Number of layers that store K/V. `n_layers` on a checkpoint without a
+    /// shared-KV tail.
+    pub fn cache_owning_layers(&self) -> usize {
+        (0..self.layers.len())
+            .filter(|&i| self.owns_cache(i))
+            .count()
+    }
+
+    /// Elements one cached token occupies in layer `i`'s own storage: the
+    /// layer's `kv_dim`, or zero where it reads a donor and stores nothing.
+    ///
+    /// Distinct from `kv_dim`, which is the stride the *attention* loop walks
+    /// and which a shared layer asks of its donor. Conflating the two is how a
+    /// shared layer ends up allocating rows it never writes.
+    pub fn cache_row(&self, i: usize) -> usize {
+        match self.owns_cache(i) {
+            true => self.kv_dim(i),
+            false => 0,
+        }
     }
 }
 
@@ -359,6 +419,51 @@ impl ModelSpec {
             _ => vec![u("feed_forward_length")?; config.n_layers],
         };
 
+        // Cross-layer KV sharing. The trailing `shared` layers compute no K or
+        // V of their own and attend over a donor's cache; the boundary is
+        // `block_count - shared`, index 24 on E4B and 15 on E2B.
+        //
+        // Absent means no sharing, which is the pre-Gemma-4 case and the shape
+        // of the committed fixture. Note this key declares a *cache* property,
+        // not a weight one: the released checkpoints carry attn_k and attn_v on
+        // every block including the shared tail, so nothing in the tensor list
+        // reveals the sharing and a reader that ignores this key gives all 42
+        // layers independent caches without any tensor left over to notice
+        // (`docs/rust-harness/gemma-4-ingestion.md`).
+        let shared = u_opt("attention.shared_kv_layers")?.unwrap_or(0);
+        ensure!(
+            shared <= config.n_layers,
+            "{arch}.attention.shared_kv_layers is {shared}, more than the {} layers \
+             {arch}.block_count declares",
+            config.n_layers
+        );
+        let boundary = config.n_layers - shared;
+        // Layer type is what keys the donor, so the two regimes are compared by
+        // discriminant and not by window width.
+        let is_global = |i: usize| matches!(config.layer_kind(i), LayerKind::Global);
+        let donor = |i: usize| -> Result<usize> {
+            if i < boundary {
+                return Ok(i);
+            }
+            // Upstream's `store_full_length_kv`: the last non-shared layer of
+            // this layer's own type. Searching downward from the boundary is
+            // that rule read backwards.
+            (0..boundary)
+                .rev()
+                .find(|&j| is_global(j) == is_global(i))
+                .with_context(|| {
+                    format!(
+                        "layer {i} is a shared-KV {} layer but no {} layer precedes the \
+                         shared-KV boundary at {boundary}, so it has no donor to read; \
+                         {arch}.attention.shared_kv_layers ({shared}) and the {}-layer \
+                         attention schedule describe a model that cannot run",
+                        if is_global(i) { "global" } else { "sliding" },
+                        if is_global(i) { "global" } else { "sliding" },
+                        config.sliding_window_pattern,
+                    )
+                })
+        };
+
         let layers: Vec<LayerSpec> = (0..config.n_layers)
             .map(|i| {
                 let kind = config.layer_kind(i);
@@ -366,14 +471,15 @@ impl ModelSpec {
                     LayerKind::Global => (head_dim_global, rope_base_global),
                     LayerKind::SlidingWindow(_) => (head_dim_sliding, rope_base_sliding),
                 };
-                LayerSpec {
+                Ok(LayerSpec {
                     kind,
                     head_dim,
                     ffn_dim: ffn_dims[i],
                     rope_freq_base,
-                }
+                    kv_source: donor(i)?,
+                })
             })
-            .collect();
+            .collect::<Result<_>>()?;
 
         // Each dimension divides or strides something in the forward pass, so
         // a zero reaches the arithmetic instead of a guard rather than failing
@@ -563,42 +669,29 @@ pub fn check_supported(file: &GgufFile, spec: &ModelSpec) -> Result<()> {
         );
     }
 
-    // Shared KV cache, declared. This key is the load-bearing half of the
-    // refusal and the tensor signature below is not: `modeling_gemma4.py`
-    // builds k_proj/v_proj only for non-shared layers, but both published
-    // header transcripts show all 42 E4B blocks carrying attn_k and attn_v, so
-    // the signature never fires on a real file. Until this backend implements
-    // sharing, what actually stopped those checkpoints was the per-layer
-    // embedding refusal -- which is now implemented, so removing it without
-    // adding this would let E2B and E4B load and give every layer its own
-    // cache while the checkpoint declares 20 and 18 shared. That is fluent and
-    // wrong, and it is the case `docs/rust-harness/gemma-4-ingestion.md`
-    // warns about by name.
-    match file
-        .metadata
-        .get(&format!("{arch}.attention.shared_kv_layers"))
-    {
-        Some(MetaValue::U32(0)) | None => {}
-        Some(MetaValue::U32(n)) => bail!(
-            "{arch}.attention.shared_kv_layers declares {n} layers reusing another \
-             layer's K/V, which this backend does not implement; it gives every layer \
-             its own cache, and the released checkpoints carry attn_k/attn_v on every \
-             block so nothing downstream would notice"
-        ),
-        Some(other) => bail!("{arch}.attention.shared_kv_layers: expected u32, got {other:?}"),
-    }
-
-    // Shared KV cache, inferred from the tensors: a layer that carries no
-    // attn_k/attn_v of its own has nowhere to read them from but a donor.
-    // Kept alongside the declared check because a converter that drops the
-    // redundant tensors would produce a file the key alone still describes.
+    // Cross-layer KV sharing is supported, so the tensor check narrows to the
+    // layers that still need their own projections: a donor, or any layer
+    // outside the shared tail, cannot attend without attn_k and attn_v.
+    //
+    // A *shared* layer legitimately carries neither, because upstream builds
+    // k_proj and v_proj only for non-shared layers. The released checkpoints
+    // nonetheless carry both on every block, which is the recorded conflict
+    // between the modeling code and the weights
+    // (`docs/rust-harness/gemma-4-ingestion.md`); this backend follows the
+    // modeling code and leaves those tensors unread, so it must accept the
+    // file either way rather than requiring the shape one source predicts.
     for i in 0..config.n_layers {
+        if !spec.owns_cache(i) {
+            continue;
+        }
         let has = |suffix: &str| names.contains(&format!("blk.{i}.{suffix}.weight").as_str());
         if has("attn_q") && !(has("attn_k") && has("attn_v")) {
             bail!(
-                "layer {i} has no attn_k/attn_v tensors, the shared-KV-cache \
-                 signature; this backend gives every layer its own cache and \
-                 does not implement KV sharing"
+                "layer {i} has no attn_k/attn_v tensors, but it stores its own K/V \
+                 rather than reading a donor's, so there is nothing to attend over; \
+                 {arch}.attention.shared_kv_layers puts the shared-KV boundary at \
+                 layer {}",
+                spec.cache_owning_layers()
             );
         }
     }
@@ -1275,6 +1368,28 @@ impl CpuModel {
                 }),
                 None => None,
             };
+            // A shared-KV layer reads a donor's post-norm, post-rotary K/V and
+            // computes none of its own, so its key and value projections and
+            // its key norm are never evaluated. They are left unloaded rather
+            // than loaded and ignored: on E4B that is 18 layers of dead
+            // projections, and an allocated-but-unread weight is exactly the
+            // shape of the silent wrong answer this backend refuses elsewhere.
+            //
+            // The released checkpoints do carry these tensors on the shared
+            // tail, which the modeling code says should not exist. Following
+            // the modeling code is a decision, not a certainty -- see the
+            // recorded conflict in `docs/rust-harness/gemma-4-ingestion.md`
+            // and the test that names it. If the workstation run against real
+            // weights disagrees, this branch is where it flips.
+            let owns_cache = spec.owns_cache(i);
+            let (wk, wv, k_norm) = match owns_cache {
+                true => (
+                    t("attn_k.weight", embed_dim * kv_dim)?,
+                    t("attn_v.weight", embed_dim * kv_dim)?,
+                    t("attn_k_norm.weight", head_dim)?,
+                ),
+                false => (Vec::new(), Vec::new(), Vec::new()),
+            };
             layers.push(LayerWeights {
                 spec: *ls,
                 rope_freqs: rope_frequencies(head_dim, ls.rope_freq_base, divisors),
@@ -1282,10 +1397,10 @@ impl CpuModel {
                 ple: ple_layer,
                 attn_norm: t("attn_norm.weight", embed_dim)?,
                 wq: t("attn_q.weight", embed_dim * q_dim)?,
-                wk: t("attn_k.weight", embed_dim * kv_dim)?,
-                wv: t("attn_v.weight", embed_dim * kv_dim)?,
+                wk,
+                wv,
                 q_norm: t("attn_q_norm.weight", head_dim)?,
-                k_norm: t("attn_k_norm.weight", head_dim)?,
+                k_norm,
                 wo: t("attn_output.weight", q_dim * embed_dim)?,
                 post_attn_norm: t("post_attention_norm.weight", embed_dim)?,
                 ffn_norm: t("ffn_norm.weight", embed_dim)?,
@@ -1316,12 +1431,6 @@ impl CpuModel {
     /// Per-layer geometry, in layer order.
     pub fn layer_specs(&self) -> &[LayerSpec] {
         &self.spec.layers
-    }
-
-    /// Cached K (or V) elements per token in layer `i`. Varies with the
-    /// layer's head width, so every cache walk has to ask per layer.
-    fn kv_dim(&self, layer: usize) -> usize {
-        self.spec.kv_dim(layer)
     }
 
     pub fn config(&self) -> &Config {
@@ -1470,22 +1579,41 @@ impl CpuModel {
             // Attention block.
             rms_norm_into(x, &layer.attn_norm, c.rms_eps, normed);
             matvec_into(&layer.wq, normed, q);
-            matvec_into(&layer.wk, normed, k);
-            matvec_into(&layer.wv, normed, v);
             for head in q.chunks_mut(hd) {
                 rms_norm_in_place(head, &layer.q_norm, c.rms_eps);
                 rope(head, position, &layer.rope_freqs);
             }
-            for head in k.chunks_mut(hd) {
-                rms_norm_in_place(head, &layer.k_norm, c.rms_eps);
-                rope(head, position, &layer.rope_freqs);
+            // K and V only where this layer owns its cache. A shared-KV layer
+            // computes its query and nothing else, then attends over the
+            // donor's rows -- which are already post-k_norm and post-rotary,
+            // and already carry this position, because the donor is an earlier
+            // layer in this same loop.
+            let src = layer.spec.kv_source;
+            if src == i {
+                matvec_into(&layer.wk, normed, k);
+                matvec_into(&layer.wv, normed, v);
+                for head in k.chunks_mut(hd) {
+                    rms_norm_in_place(head, &layer.k_norm, c.rms_eps);
+                    rope(head, position, &layer.rope_freqs);
+                }
+                let cache = &mut kv[i];
+                cache.k.extend_from_slice(k);
+                cache.v.extend_from_slice(v);
             }
-            let cache = &mut kv[i];
-            cache.k.extend_from_slice(k);
-            cache.v.extend_from_slice(v);
+            // The donor shares this layer's type and therefore its head width,
+            // so the reading layer's stride is the donor's stride. Asserted
+            // rather than assumed: a donor rule that crossed layer types would
+            // read the cache at the wrong stride and produce finite garbage.
+            debug_assert_eq!(
+                w.layers[src].spec.head_dim, hd,
+                "donor layer {src} and reader layer {i} disagree on head width"
+            );
+            let cache = &kv[src];
 
             // Causal attention over the cache; sliding-window layers see
-            // only the trailing `window` positions including this one.
+            // only the trailing `window` positions including this one. The
+            // bound comes from the *reading* layer's own kind: sharing supplies
+            // the states, it does not change which of them are visible.
             let first = match layer.spec.kind {
                 LayerKind::Global => 0,
                 LayerKind::SlidingWindow(win) => (position + 1).saturating_sub(win),
@@ -1671,7 +1799,7 @@ impl Model for CpuModel {
     fn truncate(&mut self, len: usize) -> Result<()> {
         ensure!(len <= self.cached_len, "truncate beyond cached length");
         for (i, cache) in self.kv.iter_mut().enumerate() {
-            let kv_dim = self.spec.kv_dim(i);
+            let kv_dim = self.spec.cache_row(i);
             cache.k.truncate(len * kv_dim);
             cache.v.truncate(len * kv_dim);
         }
@@ -1701,18 +1829,21 @@ impl Model for CpuModel {
     // Cache layout on disk: n_layers u64, cached_len u64, then per layer the
     // K vector followed by the V vector as little-endian f32. Lengths are
     // implied (cached_len x n_kv_heads x that layer's head width; the CPU
-    // backend stores the full sequence in every layer, windowed or not), so a
-    // length mismatch on load is a hard error rather than a guess.
+    // backend stores the full sequence in every layer it stores at all,
+    // windowed or not), so a length mismatch on load is a hard error rather
+    // than a guess.
     //
     // The per-layer head width is why the row length is recomputed per layer
     // rather than hoisted: a checkpoint interleaving two head widths writes
     // rows of two sizes, and one hoisted stride would read the second regime
-    // at the first regime's offset.
+    // at the first regime's offset. A shared-KV layer contributes a row length
+    // of zero and so occupies no payload at all -- the layer count in the
+    // header still covers every layer, so the reader walks the same indices.
     fn save_state(&self, w: &mut dyn std::io::Write) -> Result<()> {
         w.write_all(&(self.kv.len() as u64).to_le_bytes())?;
         w.write_all(&(self.cached_len as u64).to_le_bytes())?;
         for (i, cache) in self.kv.iter().enumerate() {
-            let kv_dim = self.kv_dim(i);
+            let kv_dim = self.spec.cache_row(i);
             ensure!(
                 cache.k.len() == self.cached_len * kv_dim
                     && cache.v.len() == self.cached_len * kv_dim,
@@ -1768,7 +1899,7 @@ impl Model for CpuModel {
         let mut restored = vec![LayerKv::default(); self.kv.len()];
         let mut block = Vec::new();
         for (i, cache) in restored.iter_mut().enumerate() {
-            let elements = cached_len * self.spec.kv_dim(i);
+            let elements = cached_len * self.spec.cache_row(i);
             for vec in [&mut cache.k, &mut cache.v] {
                 vec.reserve_exact(elements.min(RESERVE_ELEMENTS));
                 // Read in blocks for the same reason save_state writes in
@@ -2182,41 +2313,312 @@ mod tests {
     }
 
     #[test]
-    fn a_declared_shared_kv_layer_count_is_refused_without_the_tensor_signature() {
-        // The signature test below cannot see this case, and this is the case
-        // the released checkpoints are in: every block carries attn_k and
-        // attn_v, and only the metadata key says 20 of E2B's 35 layers reuse a
-        // donor's cache. Before per-layer embeddings were implemented their
-        // refusal stopped these files first; now this key is what does.
-        let (_, mut file, spec) = tiny_parsed();
-        file.metadata.insert(
-            "gemma4.attention.shared_kv_layers".to_string(),
-            MetaValue::U32(1),
-        );
-        let err = check_supported(&file, &spec).unwrap_err().to_string();
-        assert!(err.contains("shared_kv_layers declares 1"), "{err}");
-
-        // Zero is a checkpoint that shares nothing, not a checkpoint that
-        // shares an unspecified amount.
-        file.metadata.insert(
-            "gemma4.attention.shared_kv_layers".to_string(),
-            MetaValue::U32(0),
-        );
-        check_supported(&file, &spec).unwrap();
-    }
-
-    #[test]
-    fn a_layer_without_kv_tensors_is_refused_as_shared_kv() {
-        // Diagnosed as KV sharing, not as a bare missing tensor, and refused
-        // by the loader before any weight is read.
+    fn a_cache_owning_layer_without_kv_tensors_is_refused() {
+        // A layer outside the shared tail has no donor, so a missing attn_v
+        // leaves it nothing to attend over. Refused by the loader before any
+        // weight is read. Layer 1 of the default fixture owns its cache --
+        // that fixture declares no sharing at all.
         let (image, mut file, _) = tiny_parsed();
         file.tensors.retain(|t| t.name != "blk.1.attn_v.weight");
         let err = match CpuModel::from_gguf(&file, &image) {
-            Ok(_) => panic!("a checkpoint missing attn_v must not load"),
+            Ok(_) => panic!("a cache-owning layer missing attn_v must not load"),
             Err(e) => e.to_string(),
         };
-        assert!(err.contains("shared-KV-cache"), "{err}");
+        assert!(err.contains("stores its own K/V"), "{err}");
         assert!(err.contains("layer 1"), "{err}");
+    }
+
+    /// Four layers on a period-2 schedule, so layers 0 and 2 are sliding and
+    /// layers 1 and 3 are global. With one shared layer the tail is layer 3
+    /// alone; with two it is layers 2 and 3, one of each type -- the geometry
+    /// where a single-donor rule and the per-type rule give different answers.
+    fn sharing_spec(shared: usize) -> TinySpec {
+        TinySpec {
+            n_layers: 4,
+            sliding_window_pattern: 2,
+            shared_kv_layers: shared,
+            ..TinySpec::default()
+        }
+    }
+
+    fn sharing_spec_model(shared: usize) -> (Vec<u8>, CpuModel) {
+        let image = build_tiny_model(&sharing_spec(shared));
+        let file = crate::gguf::parse(&image).unwrap();
+        let model = CpuModel::from_gguf(&file, &image).unwrap();
+        (image, model)
+    }
+
+    #[test]
+    fn each_shared_layer_reads_the_last_non_shared_layer_of_its_own_type() {
+        // The correction that matters most in this stage: two donors keyed by
+        // layer type, not one donor for the whole tail. With layers 2 and 3
+        // shared, the boundary is 2, so the candidates are layers 0 (sliding)
+        // and 1 (global). A single-donor implementation would point both
+        // shared layers at layer 1, the last non-shared layer outright.
+        let (_, model) = sharing_spec_model(2);
+        let specs = model.layer_specs();
+        assert_eq!(specs[0].kv_source, 0, "non-shared layers own their cache");
+        assert_eq!(specs[1].kv_source, 1, "non-shared layers own their cache");
+        assert_eq!(
+            specs[2].kv_source, 0,
+            "layer 2 is sliding, so its donor is the last non-shared sliding \
+             layer (0), not the last non-shared layer (1)"
+        );
+        assert_eq!(
+            specs[3].kv_source, 1,
+            "layer 3 is global, so its donor is the last non-shared global layer"
+        );
+        assert_eq!(model.spec.cache_owning_layers(), 2);
+    }
+
+    #[test]
+    fn a_shared_layer_stores_no_cache_rows_of_its_own() {
+        // The memory claim, asserted on the cache rather than on an estimate:
+        // the shared tail holds nothing at all, at every position.
+        let (_, mut model) = sharing_spec_model(2);
+        model.prefill_all(&[1, 4, 5, 6]).unwrap();
+        for i in 0..4 {
+            let owns = model.spec.owns_cache(i);
+            let rows = model.kv[i].k.len();
+            match owns {
+                true => assert_eq!(rows, 4 * model.spec.kv_dim(i), "layer {i} owns its cache"),
+                false => assert_eq!(rows, 0, "layer {i} reads a donor and must store nothing"),
+            }
+            assert_eq!(model.kv[i].v.len(), rows, "layer {i} K and V lengths agree");
+        }
+    }
+
+    #[test]
+    fn a_shared_layer_reads_its_donors_rows_and_not_a_stale_prefix() {
+        // The donor is an earlier layer in the same loop, so by the time a
+        // shared layer attends, the donor's cache already carries the current
+        // position. Asserted directly, because the failure it guards against
+        // -- a shared layer attending over every position but the newest --
+        // stays finite and fluent.
+        let (_, mut model) = sharing_spec_model(2);
+        let tokens = [1u32, 7, 9, 4];
+        model.prefill_all(&tokens).unwrap();
+        for i in 0..model.config.n_layers {
+            let src = model.spec.layers[i].kv_source;
+            if src == i {
+                continue;
+            }
+            assert_eq!(
+                model.spec.layers[src].head_dim, model.spec.layers[i].head_dim,
+                "donor {src} and reader {i} must share a head width, or the \
+                 reader walks the cache at the wrong stride"
+            );
+            assert_eq!(
+                model.kv[src].k.len(),
+                tokens.len() * model.spec.kv_dim(src),
+                "donor {src} must retain every position for reader {i}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_shared_layer_follows_the_donors_cache_when_the_donor_changes() {
+        // Perturb only the donor's key projection and the shared layer that
+        // reads it must move. This is what distinguishes reading the donor's
+        // cache from computing K/V locally and merely being told not to store
+        // it -- both leave the tail with zero rows, and only this separates
+        // them.
+        let spec = sharing_spec(2);
+        let base = build_tiny_model(&spec);
+        let file = crate::gguf::parse(&base).unwrap();
+        let run = |img: &[u8]| -> Vec<f32> {
+            let f = crate::gguf::parse(img).unwrap();
+            let mut m = CpuModel::from_gguf(&f, img).unwrap();
+            m.prefill_all(&[1, 7, 9, 4]).unwrap().pop().unwrap().0
+        };
+        let before = run(&base);
+
+        // Layer 0 is the sliding donor, read by layer 2 and by nothing else.
+        let mut image = base.clone();
+        let info = file
+            .tensors
+            .iter()
+            .find(|t| t.name == "blk.0.attn_k.weight")
+            .unwrap();
+        let start = file.data_offset as usize + info.offset as usize;
+        let count = info.dims.iter().product::<u64>() as usize;
+        for j in 0..count {
+            let at = start + j * 4;
+            let v = f32::from_le_bytes(image[at..at + 4].try_into().unwrap());
+            image[at..at + 4].copy_from_slice(&(v + 0.5).to_le_bytes());
+        }
+        assert_ne!(
+            before,
+            run(&image),
+            "the donor's key projection must reach the layers that read its cache"
+        );
+    }
+
+    #[test]
+    fn sharing_changes_the_logits_it_is_supposed_to_change() {
+        // The two images differ in one metadata value and in nothing else --
+        // every tensor, including the shared tail's attn_k and attn_v, is
+        // drawn from the same stream and written identically. So any
+        // difference in output is attributable to the sharing rule alone.
+        //
+        // Without this, a backend that read the key and then ignored it would
+        // pass every structural test above.
+        let logits = |shared: usize| -> Vec<f32> {
+            let (_, mut model) = sharing_spec_model(shared);
+            model.prefill_all(&[1, 7, 9, 4]).unwrap().pop().unwrap().0
+        };
+        let plain = logits(0);
+        let shared = logits(2);
+        assert_eq!(plain.len(), shared.len());
+        assert!(
+            plain.iter().zip(&shared).any(|(a, b)| a != b),
+            "declaring a shared-KV tail must change the forward pass"
+        );
+        assert!(
+            shared.iter().all(|v| v.is_finite()),
+            "a shared-KV forward pass must stay finite"
+        );
+    }
+
+    #[test]
+    fn a_shared_layers_own_key_and_value_weights_are_deliberately_unread() {
+        // Names a decision, not a discovery. `modeling_gemma4.py` builds
+        // k_proj and v_proj only for non-shared layers, but every released
+        // E-series checkpoint carries them on the shared tail too, and nothing
+        // in the converter drops them. This backend follows the modeling code
+        // and leaves them unread; that is the recorded conflict in
+        // `docs/rust-harness/gemma-4-ingestion.md`, not a settled fact.
+        //
+        // Perturbing those tensors must therefore change nothing. If a
+        // workstation run against real weights shows it should, this test is
+        // the one that fails, and it fails saying why.
+        let spec = sharing_spec(2);
+        let mut image = build_tiny_model(&spec);
+        let file = crate::gguf::parse(&image).unwrap();
+        let before = {
+            let mut m = CpuModel::from_gguf(&file, &image).unwrap();
+            m.prefill_all(&[1, 7, 9, 4]).unwrap().pop().unwrap().0
+        };
+
+        // Layers 2 and 3 are the shared tail; layer 1 is a donor and is left
+        // alone, so this cannot pass by perturbing nothing.
+        let mut perturbed = 0usize;
+        for name in [
+            "blk.2.attn_k.weight",
+            "blk.2.attn_v.weight",
+            "blk.3.attn_k.weight",
+        ] {
+            let info = file.tensors.iter().find(|t| t.name == name).unwrap();
+            let start = file.data_offset as usize + info.offset as usize;
+            let count = info.dims.iter().product::<u64>() as usize;
+            for j in 0..count {
+                let at = start + j * 4;
+                let v = f32::from_le_bytes(image[at..at + 4].try_into().unwrap());
+                image[at..at + 4].copy_from_slice(&(v + 0.5).to_le_bytes());
+            }
+            perturbed += count;
+        }
+        assert!(
+            perturbed > 0,
+            "the tensors to perturb must exist in the image"
+        );
+
+        let file = crate::gguf::parse(&image).unwrap();
+        let after = {
+            let mut m = CpuModel::from_gguf(&file, &image).unwrap();
+            m.prefill_all(&[1, 7, 9, 4]).unwrap().pop().unwrap().0
+        };
+        assert_eq!(
+            before, after,
+            "a shared layer's own key and value weights must not reach the numerics"
+        );
+    }
+
+    #[test]
+    fn a_shared_kv_tail_without_a_donor_of_its_type_is_a_load_error() {
+        // Sharing every layer leaves the tail with nothing below the boundary
+        // to read. Diagnosed at load rather than reaching the forward pass,
+        // where it would index a cache that was never written.
+        let image = build_tiny_model(&sharing_spec(4));
+        let file = crate::gguf::parse(&image).unwrap();
+        let err = ModelSpec::from_gguf(&file).unwrap_err().to_string();
+        assert!(err.contains("no donor to read"), "{err}");
+    }
+
+    #[test]
+    fn more_shared_layers_than_the_model_has_is_a_load_error() {
+        let (_, mut file, _) = tiny_parsed();
+        file.metadata.insert(
+            "gemma4.attention.shared_kv_layers".to_string(),
+            MetaValue::U32(99),
+        );
+        let err = ModelSpec::from_gguf(&file).unwrap_err().to_string();
+        assert!(err.contains("more than the"), "{err}");
+    }
+
+    #[test]
+    fn a_shared_kv_model_survives_the_snapshot_and_cache_edit_paths() {
+        // The cache lifecycle under sharing: save, restore, truncate, fork.
+        // Every one of these walks the layer list computing a row length, and
+        // a walk that forgets the shared tail either writes rows that are not
+        // there or reads a payload at the wrong offsets. Exercised together
+        // because they share the one predicate, and none of them was reachable
+        // by any existing test -- the fixtures they use declare no sharing.
+        let (_, mut model) = sharing_spec_model(2);
+        let tokens = [1u32, 7, 9, 4];
+        model.prefill_all(&tokens).unwrap();
+
+        let mut snapshot = Vec::new();
+        model.save_state(&mut snapshot).unwrap();
+        // The shared tail contributes no payload: two owning layers of K and V
+        // at four positions, plus the two u64 header fields.
+        let owned: usize = (0..4)
+            .filter(|&i| model.spec.owns_cache(i))
+            .map(|i| model.spec.kv_dim(i))
+            .sum();
+        assert_eq!(snapshot.len(), 16 + 2 * owned * tokens.len() * 4);
+
+        // Taken before the parent advances, so the fork and the parent are
+        // asked for the same next token from the same cached prefix.
+        let mut forked = model.fork().unwrap();
+        let reference = model.prefill(&[5]).unwrap().0;
+
+        let (_, mut restored) = sharing_spec_model(2);
+        restored.load_state(&mut snapshot.as_slice()).unwrap();
+        assert_eq!(restored.cached_len, tokens.len());
+        assert_eq!(
+            restored.prefill(&[5]).unwrap().0,
+            reference,
+            "a restored shared-KV cache must continue bit-identically"
+        );
+
+        assert_eq!(
+            forked.prefill(&[5]).unwrap().0,
+            reference,
+            "a fork of a shared-KV cache must continue bit-identically"
+        );
+
+        let (_, mut rebuilt) = sharing_spec_model(2);
+        rebuilt.prefill_all(&tokens).unwrap();
+        rebuilt.truncate(2).unwrap();
+        rebuilt.prefill_all(&tokens[2..]).unwrap();
+        assert_eq!(
+            rebuilt.prefill(&[5]).unwrap().0,
+            reference,
+            "truncate then re-prefill must land where the original was"
+        );
+    }
+
+    #[test]
+    fn a_checkpoint_without_sharing_is_unperturbed_by_the_feature() {
+        // Absent-safety, the standing requirement of every stage: a file that
+        // declares no shared tail must load and compute exactly as before.
+        let (_, model) = sharing_spec_model(0);
+        assert!(
+            (0..4).all(|i| model.spec.owns_cache(i)),
+            "no key means every layer owns its cache"
+        );
+        assert_eq!(model.spec.cache_owning_layers(), 4);
     }
 
     #[test]
