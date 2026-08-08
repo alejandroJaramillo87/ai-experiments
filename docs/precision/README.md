@@ -39,7 +39,7 @@ cost is mantissa: bfloat16 resolves roughly three decimal digits against fp16's 
 Two consequences follow, and both are load-bearing elsewhere in this document. bfloat16
 is bit-exactly the high half of an f32, so widening is a shift and never rounds — the
 `bf16_widening_is_a_shift_for_every_input` test in
-[`rust-harness/runtime/src/tensor.rs`](../rust-harness/runtime/src/tensor.rs) asserts
+[`rust-harness/runtime/src/tensor.rs`](../../rust-harness/runtime/src/tensor.rs) asserts
 this over a strided sweep of every 16-bit pattern. And fp32 is a lossless *storage*
 substitute for bf16 at twice the bytes, which is why an fp32 capture is a valid stand-in
 for a bf16 one.
@@ -69,14 +69,14 @@ storage format in this repository and nowhere a compute one.
 **rust-harness.** The CPU backend computes in plain f32 and holds no other numeric type.
 Every supported storage type is dequantized to a dense `Vec<f32>` at load time; the
 supported set is F32, F16, BF16, and Q8_0, declared as the `GGML_*` constants in
-[`rust-harness/runtime/src/tensor.rs`](../rust-harness/runtime/src/tensor.rs). Any other
+[`rust-harness/runtime/src/tensor.rs`](../../rust-harness/runtime/src/tensor.rs). Any other
 GGML type is a hard error naming the tensor, so an unsupported quantization surfaces at
 load rather than as silent garbage. Because BF16 is the published storage type for Gemma 4
 and the format the training tier emits, the widening to f32 is exact and the checkpoint's
 own values reach the forward pass unrounded.
 
 **training.** `precision.dtype` in
-[`training/recipes/schema.py`](../training/recipes/schema.py) (`PrecisionConfig`) selects
+[`training/recipes/schema.py`](../../training/recipes/schema.py) (`PrecisionConfig`) selects
 the run's compute dtype, defaults to `bf16`, and drives both the torch dtype
 (`training/models/model.py`) and the trainer flags (`training/tune/sft.py`,
 `training/runtime/offload.py`).
@@ -87,7 +87,7 @@ loaded for the write-back path.
 
 ### The two allowed dtype sets in the training schema
 
-[`training/recipes/schema.py`](../training/recipes/schema.py) declares two tuples of
+[`training/recipes/schema.py`](../../training/recipes/schema.py) declares two tuples of
 allowed dtype names, and they do not agree:
 
 | Constant | Governs | Members |
@@ -95,7 +95,7 @@ allowed dtype names, and they do not agree:
 | `PRECISION_DTYPES` | `precision.dtype` — the run-level compute dtype | `bf16`, `fp8` |
 | `COMPUTE_DTYPES` | `peft.compute_dtype` (the PEFT compute dtype over an nf4 base) and `harvest.dtype` (the interp capture dtype) | `bf16`, `fp16`, `fp32` |
 
-Both are enforced in [`training/recipes/validate.py`](../training/recipes/validate.py):
+Both are enforced in [`training/recipes/validate.py`](../../training/recipes/validate.py):
 `precision.dtype` is checked against `PRECISION_DTYPES`, `peft.compute_dtype` against
 `COMPUTE_DTYPES`. The sets are therefore disjoint except for `bf16` — fp16 and fp32 are
 reachable for a PEFT compute dtype or a harvest, never for the run's own precision, and
@@ -115,7 +115,7 @@ source.
 
 **interp.** A harvest writes residual-stream activations to Arrow through the SAELens
 activation-caching runner. Two constants near the top of
-[`interp/harvest.py`](../interp/harvest.py) govern the format:
+[`interp/harvest.py`](../../interp/harvest.py) govern the format:
 
 | Constant | Meaning |
 |----------|---------|
@@ -126,14 +126,14 @@ activation-caching runner. Two constants near the top of
 `bf16` is in `DTYPE_BYTES` and absent from `ARROW_STORAGE_DTYPES` because Arrow has no
 bfloat16 type in any version. This is not a tunable: a `bf16` capture cannot run at all.
 `tests/interp/test_harvest.py` enforces the split against the committed recipes.
-[`docs/interp/harvest-precision-and-resume.md`](interp/harvest-precision-and-resume.md)
+[`docs/interp/harvest-precision-and-resume.md`](../interp/harvest-precision-and-resume.md)
 owns the defect (KB-57), the SAELens reading behind it, and what the options cost; the
-ledger row is in [`docs/verification/known-bugs.md`](verification/known-bugs.md).
+ledger row is in [`docs/verification/known-bugs.md`](../verification/known-bugs.md).
 
 **One field, two type systems.** `harvest.dtype` is a single recipe field that sets both
 the Arrow on-disk storage type *and* the precision the SAE is later trained at. The SAE
 side reads it back out of the capture manifest: `capture_dtype()` in
-[`interp/sae/train.py`](../interp/sae/train.py) refuses a manifest dtype it cannot train
+[`interp/sae/train.py`](../../interp/sae/train.py) refuses a manifest dtype it cannot train
 at, and the trainer job dict takes its `dtype` from that manifest rather than from the SAE
 recipe — the comment there records the reason, that training an SAE at a precision the
 activations were not harvested at is a silent numerics mismatch. The consistency is
@@ -148,7 +148,7 @@ not from a full-precision workbench — see the hazard below.
 
 ## Gradients and optimizer state
 
-[`docs/training/memory_fit.md`](training/memory_fit.md) owns this concern in full: its
+[`docs/training/memory_fit.md`](../training/memory_fit.md) owns this concern in full: its
 memory-model table prices gradients, optimizer states, and the fp32 logit upcast, and its
 figures are calibrated against measured workstation runs. The three facts to carry away,
 with the detail left where it lives:
@@ -162,7 +162,7 @@ with the detail left where it lives:
 - Logits are upcast to fp32 for the cross-entropy computation, and the upcast is a costed
   line in the activation inventory rather than a rounding detail.
 
-Read [`training/memory_fit.md`](training/memory_fit.md) for the byte-level model and the
+Read [`training/memory_fit.md`](../training/memory_fit.md) for the byte-level model and the
 calibration record before sizing anything.
 
 ## KV cache
@@ -180,8 +180,8 @@ at a long context exceeds what the CPU backend can hold in memory. There is no K
 quantization option in the harness.
 
 For the containerized engines, the KV cache dtype is the engine's own setting; see
-[`docs/inference/parameters/llama-cpp-parameters.md`](inference/parameters/llama-cpp-parameters.md)
-and [`docs/inference/parameters/vllm-parameters.md`](inference/parameters/vllm-parameters.md).
+[`docs/inference/parameters/llama-cpp-parameters.md`](../inference/parameters/llama-cpp-parameters.md)
+and [`docs/inference/parameters/vllm-parameters.md`](../inference/parameters/vllm-parameters.md).
 
 ## Quantization
 
@@ -208,11 +208,11 @@ model rather than the served one. Nothing errors; the numbers simply stop meanin
 they appear to mean.
 
 The mitigation is the `llama-gpu-bf16` service in
-[`docker-compose.inference.yaml`](../docker-compose.inference.yaml), started by `make
+[`docker-compose.inference.yaml`](../../docker-compose.inference.yaml), started by `make
 fullprec-up`, which answers monitored traffic at the precision the probes were fitted at.
 The compose file carries the reason inline; the operating instructions, the port, the
 subject-model choice, and the GGUF conversion caveat are owned by
-[`docs/interp/writeback.md`](interp/writeback.md). Read that section before running the
+[`docs/interp/writeback.md`](../interp/writeback.md). Read that section before running the
 probe monitor against any endpoint.
 
 Note that `rust-harness/runtime/src/bin/activation-capture.rs` takes the opposite approach
@@ -241,9 +241,9 @@ the ends of the range, and only there.
 
 That turns "is fp16 safe for this capture?" into a question about magnitudes, which is
 measurable rather than arguable. It is measured per subject by
-[`scripts/interp/activation_magnitude_probe.py`](../scripts/interp/activation_magnitude_probe.py),
+[`scripts/interp/activation_magnitude_probe.py`](../../scripts/interp/activation_magnitude_probe.py),
 and the results are recorded in
-[`docs/interp/harvest-precision-and-resume.md`](interp/harvest-precision-and-resume.md).
+[`docs/interp/harvest-precision-and-resume.md`](../interp/harvest-precision-and-resume.md).
 
 The practical consequence: storing a bf16 activation as fp32 preserves every bit at twice
 the disk cost, and storing it as fp16 preserves every bit at the same cost as bf16 *provided

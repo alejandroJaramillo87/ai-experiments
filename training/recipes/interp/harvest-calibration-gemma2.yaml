@@ -37,6 +37,14 @@ harvest:
   context_len: 1024
   total_tokens: 300000000
   dtype: fp16
+  # Explicit at the module default rather than inherited: on a capture this
+  # long the chunk size is the crash-recovery granularity, and it belongs
+  # where an operator reads it. 20 chunks, so an interruption costs one chunk
+  # rather than the whole run (KB-58). Each chunk rounds up to a whole buffer
+  # -- 425984 tokens at d_model 2304 and fp16 -- so 36 buffers per chunk puts
+  # the manifest at 306708480, 2.2 percent above the request, and the disk
+  # preflight prices 1413GB rather than 1382GB.
+  chunk_tokens: 15000000
   model_batch_size: 8
 
 watchdog:

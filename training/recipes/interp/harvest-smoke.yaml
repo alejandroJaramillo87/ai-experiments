@@ -29,6 +29,13 @@ harvest:
   # enough that the doubled footprint does not matter. The reference captures
   # cannot follow: see harvest-false-fact.yaml.
   dtype: fp32
+  # Explicit, and small enough to yield three chunks rather than one. The
+  # default would put 2M tokens in a single chunk, and a single chunk exercises
+  # a degenerate assembly: one source directory, no renumbering across chunk
+  # boundaries. Multi-chunk assembly is the part of KB-58's fix that must not
+  # first run for real on a 17-hour reference capture, so the smoke recipe is
+  # what proves it.
+  chunk_tokens: 700000
   model_batch_size: 8
 
 watchdog:

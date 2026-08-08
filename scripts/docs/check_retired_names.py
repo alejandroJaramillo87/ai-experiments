@@ -46,6 +46,13 @@ RETIRED: dict[str, tuple[str, str]] = {
         "siblings (agents, interp, training, rust-harness); a bare `docker "
         "compose` with no -f no longer finds it",
     ),
+    "docs/precision.md": (
+        "docs/precision/README.md",
+        "precision grew a second document -- the policy (what each tier does) "
+        "and the decision record (why, and what would have to change) are "
+        "different obligations and drift apart when filed together -- so the "
+        "single file became a directory with an index",
+    ),
     "docs/interpretability": (
         "docs/interp",
         "the docs directory was the last place the long form survived; the "

@@ -421,6 +421,11 @@ class HarvestConfig:
     corpus: str = ""  # HF dataset id or local JSONL path (content-hashed)
     context_len: int = 1024
     total_tokens: int = 300_000_000
+    # Tokens per chunk. A capture is taken as a sequence of chunks and
+    # assembled afterwards, so an interrupted run resumes at a chunk boundary
+    # instead of losing everything (KB-58). 0 selects interp.harvest's
+    # DEFAULT_CHUNK_TOKENS; smaller means finer resume at more consolidations.
+    chunk_tokens: int = 0
     # One of COMPUTE_DTYPES. The default is the dtype we want and cannot yet
     # use: SAELens hands this field to both torch and datasets.Array2D, and
     # Arrow has no bfloat16, so a recipe left at the default fails in the cache

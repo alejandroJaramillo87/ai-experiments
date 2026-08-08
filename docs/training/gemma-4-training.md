@@ -208,9 +208,15 @@ The two effective patterns overlap on `embed_tokens_per_layer`, which is harmles
 freezes the main embedding and every per-layer-embedding term, which is the documented intent.
 `lm_head` matching nothing is expected, not a bug.
 
-Note that `layer_scalar` does **not** match any pattern and therefore stays trainable under
-`transformer_stack`. Whether that is correct depends on what `layer_scalar` does, which is
-undetermined; see [Open questions](#open-questions).
+Note that `layer_scalar` matches no pattern, but that is not the same as staying trainable. It
+is an `nn.Buffer`, so it never appears in `named_parameters()` — which is what the freeze
+filters iterate (`training/runtime/offload.py`) — and no freeze pattern can expose a buffer to
+an optimizer. It is untrainable by construction rather than by filter.
+
+This is worth stating explicitly because the stored values are **not** 1.0: they span 0.0186 to
+0.879 on E2B, so a scalar that did reach the optimizer would be a live tuning knob rather than
+an inert one. It does not. See
+[`layer_scalar` in docs/models/gemma-4.md](../models/gemma-4.md#layer_scalar).
 
 ## Dispatch, identity, and export
 
@@ -318,8 +324,9 @@ citations; `docs/models/gemma4-upstream.txt` is the committed transcript they ci
   `nn.Buffer(torch.ones(1))` and multiplies the whole layer output by it as the final
   operation, after all three residual updates. It is initialised to ones and has no
   `config.json` field. Because it is a buffer rather than a parameter, it is not trainable
-  under the `transformer_stack` filter and the calculator is right not to count it. Whether
-  the released checkpoints store a value other than 1.0 is still open — see below.
+  under the `transformer_stack` filter and the calculator is right not to count it. The
+  released checkpoints **do** store values other than 1.0 — 0.0186 to 0.879 on E2B — so the
+  multiplication is not a no-op, though it remains outside the optimizer's reach.
 - **The per-layer embedding gate is multiplicative, and joins after the feed-forward block.**
   The per-layer input is gated in 256-dimensional space, projected back to `hidden_size`, and
   added as a third residual update following attention and the feed-forward block. The layer
@@ -361,8 +368,9 @@ clears the interp harvest, which reaches the model through SAELens's hardcoded
 
 Recorded rather than guessed.
 
-- **The stored value of `layer_scalar`.** The transcripts record the shape `[1]` but not the
-  value, so whether the multiplication is a no-op in the released checkpoints is unestablished.
+None outstanding for this document. The last one — the stored value of `layer_scalar` — was
+resolved by reading it out of the released checkpoints: the values are not 1.0, and the
+consequences for this tier are covered under the freeze filter above.
 
 ## Reproducing this document
 

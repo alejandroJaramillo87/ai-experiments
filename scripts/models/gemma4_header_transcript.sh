@@ -6,9 +6,11 @@
 # Usage: gemma4_header_transcript.sh [--no-color] [--out FILE] [model-dir ...]
 #
 # Produces the evidence needed to verify docs/models/gemma-4.md against the
-# actual weights rather than against the session that wrote it. Reads only the
-# safetensors header (a few hundred kilobytes of a multi-gigabyte file) plus the
-# JSON side files, so it needs no GPU and does not load a model.
+# actual weights rather than against the session that wrote it. Reads the
+# safetensors header (a few hundred kilobytes of a multi-gigabyte file), the
+# JSON side files, and the payload of individually addressed scalar tensors --
+# tens of bytes, seeked to rather than scanned. It needs no GPU and does not
+# load a model.
 #
 # Defaults to the E2B and E4B directories under $MODEL_ROOT/hf. Pass explicit
 # directories to override.
@@ -149,6 +151,93 @@ d = json.load(open(sys.argv[1]))
 for name, info in d.items():
     if name != "__metadata__":
         print(name, info["shape"], info["dtype"])
+EOF
+}
+
+# dump_scalar_values <header.json> <weights> <name-regex> — print the stored
+# value of every tensor whose name matches, tallied by distinct value.
+#
+# The sections above answer questions from the header alone. This one cannot:
+# a tensor's value lives in the payload, so this seeks to the recorded
+# data_offsets and reads it. The read stays cheap because it is addressed --
+# 35 tensors of one element each is 70 bytes out of a multi-gigabyte file, not
+# a scan -- which is what keeps the script's no-GPU, no-model-load contract.
+#
+# Restricted to single-element tensors on purpose. It exists to settle whether
+# layer_scalar's multiplication is a no-op in the released checkpoints
+# (docs/models/gemma-4.md, "layer_scalar"), and a helper that would happily
+# dump a [12288, 1536] projection into the transcript is a footgun, not a
+# generalization.
+#
+# shellcheck disable=SC2317  # invoked indirectly through run_step
+dump_scalar_values() {
+    python3 - "$1" "$2" "$3" <<'EOF'
+import json
+import re
+import struct
+import sys
+from collections import Counter
+
+header_path, weights, pattern = sys.argv[1], sys.argv[2], sys.argv[3]
+
+header = json.load(open(header_path))
+# The payload starts after the 8-byte length prefix and the header JSON, so
+# every data_offset is relative to that base rather than to the file start.
+with open(weights, "rb") as f:
+    base = 8 + int.from_bytes(f.read(8), "little")
+
+    matched = sorted(
+        name
+        for name, info in header.items()
+        if name != "__metadata__" and re.search(pattern, name)
+    )
+    if not matched:
+        print(f"no tensor matches {pattern!r}")
+        sys.exit(0)
+
+    values = {}
+    for name in matched:
+        info = header[name]
+        count = 1
+        for dim in info["shape"]:
+            count *= dim
+        if count != 1:
+            print(f"{name} has {count} elements; only scalars are read")
+            continue
+        start, end = info["data_offsets"]
+        f.seek(base + start)
+        raw = f.read(end - start)
+        dtype = info["dtype"]
+        if dtype == "BF16":
+            # bf16 is the high half of an f32, so widening is a shift into the
+            # high 16 bits with zero fill -- exact, and no numpy needed.
+            (bits,) = struct.unpack("<H", raw)
+            (value,) = struct.unpack("<f", struct.pack("<I", bits << 16))
+        elif dtype == "F16":
+            (value,) = struct.unpack("<e", raw)
+        elif dtype == "F32":
+            (value,) = struct.unpack("<f", raw)
+        else:
+            print(f"{name} has dtype {dtype}, which this reader does not decode")
+            continue
+        values[name] = value
+
+print(f"tensors matched: {len(matched)}, values read: {len(values)}")
+print()
+
+# Tallied by distinct value rather than listed per layer: 35 identical rows
+# hide the one answer being sought. A checkpoint where the layers disagree is
+# the case that would matter most, so every distinct value is listed with the
+# layers holding it, and nothing is collapsed away.
+tally = Counter(values.values())
+for value, count in sorted(tally.items(), key=lambda kv: -kv[1]):
+    print(f"{count:>7} tensors  value {value!r}")
+
+if len(tally) > 1:
+    print()
+    print("values differ across tensors:")
+    for name, value in values.items():
+        print(f"  {name} = {value!r}")
 EOF
 }
 
@@ -504,6 +593,15 @@ print(t.get("num_hidden_layers", ""))
     section "$name — non-language_model tensor families"
     grep -v language_model "$flat" | collapse \
         | awk '{print $1}' | cut -d. -f1-3 | sort | uniq -c | sort -rn >> "$OUT" || true
+
+    # Deliberately the last section in each model's block. Adding a section
+    # anywhere earlier renumbers every line below it, and the transcript line
+    # citations in tests/models/test_gemma4_facts_contract.py are hand-
+    # maintained with no repair helper -- a shift means re-grepping each needle
+    # by hand. Appending here moves no cited line.
+    section "$name — layer_scalar stored values"
+    run_step "  layer_scalar values" \
+        dump_scalar_values "$hdr_json" "$weights" 'layer_scalar$'
 
     rm -f "$hdr_json" "$flat"
     trap - EXIT

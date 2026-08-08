@@ -475,7 +475,8 @@ Specialized AI Libraries:
 - **Quantization**: bitsandbytes for 4-bit and 8-bit model quantization
 - **Optimization**: deepspeed for multi-GPU training and inference
 - **Experiment Tracking**: wandb, mlflow, tensorboard for development workflows
-- **High-Performance**: llama-cpp-python for optimized inference
+- **GGUF inference**: the llama.cpp serving containers, and its converter and
+  `llama-quantize` binary invoked out-of-process by the training tier's export path
 
 Development Environment Features:
 - **JupyterLab**: Interactive development with GPU acceleration

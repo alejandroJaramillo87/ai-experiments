@@ -43,7 +43,6 @@ KEY_PACKAGES = {
     "bitsandbytes": ("bitsandbytes", True),
     "peft": ("peft", True),
     "sentence_transformers": ("sentence_transformers", True),
-    "llama_cpp": ("llama_cpp", True),
     "vllm": ("vllm", False),
 }
 
@@ -51,7 +50,6 @@ KEY_PACKAGES = {
 # import name used above.
 DIST_NAMES = {
     "huggingface_hub": "huggingface-hub",
-    "llama_cpp": "llama-cpp-python",
     "sentence_transformers": "sentence-transformers",
 }
 

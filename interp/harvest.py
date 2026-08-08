@@ -6,11 +6,13 @@ passes over a corpus at harvest.dtype, caching residual-stream activations under
 the operational envelope — disk preflight against the watchdog floor, the D9
 run lock, the D10 watchdog sampler, and hook-level resume.
 
-Resume is hook-level and nothing more. SAELens provides none within a hook:
-CacheActivationsRunner.run() raises when its output directory is not empty, so
-a hook interrupted part-way cannot be resumed or even retried in place -- the
-partial capture must be deleted first. Since every shipped recipe captures a
-single hook, an interrupted capture is lost work in full.
+Resume is chunk-level. SAELens provides none of its own: run() raises when its
+output directory is not empty, so a hook captured in one call cannot be resumed
+or even retried in place. Capturing each hook as a sequence of chunks routes
+around that -- every chunk writes a fresh directory, so the refusal never fires
+-- and a crash costs one chunk instead of the whole run. Chunks are assembled
+into the single directory the SAE trainer reads once the last one lands
+(KB-58).
 
 Hooks are HF named-module paths resolved per model family through the
 interp/families.py registry; the layout follows the config the caller loaded,
@@ -33,6 +35,7 @@ import this module and tests can inject a fake runner function.
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import time
@@ -49,6 +52,7 @@ from interp.manifest import (
     git_sha,
     load_manifest,
     require_match,
+    require_stat,
     utc_now,
     write_manifest,
 )
@@ -66,6 +70,23 @@ ARROW_STORAGE_DTYPES = frozenset({"fp16", "fp32"})
 DTYPE_NAMES = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32"}
 PROGRESS_NAME = "progress.json"  # completed hooks; deleted when the manifest lands
 ARTIFACT = "activation_harvest"
+
+# Token budget per chunk when harvest.chunk_tokens is 0. A crash costs at most
+# one chunk, so this trades resume granularity against the per-chunk overhead
+# of a consolidation and a progress write. At 15M tokens the 300M-token
+# reference capture is 20 chunks of roughly 50 minutes each.
+DEFAULT_CHUNK_TOKENS = 15_000_000
+
+# SAELens's per-buffer memory budget (`CacheActivationsRunnerConfig
+# .buffer_size_gb`), capped at 2GB by the comment there because the HF datasets
+# writer struggles with shards above it. Replicated rather than imported so the
+# disk preflight can price a capture without loading sae_lens or a model.
+SAELENS_BUFFER_GB = 2.0
+
+# Suffix of the staging directory holding one completed chunk per subdirectory.
+# Chunks are named shard_{i:05d} because SAELens's _consolidate_shards requires
+# that prefix and skips anything else in the directory -- see _assemble_chunks.
+CHUNKS_SUFFIX = ".chunks"
 
 
 class HarvestError(Exception):
@@ -103,6 +124,16 @@ def validate_harvest(recipe: DictConfig) -> None:
         problems.append("harvest.total_tokens: must be positive")
     if cfg.context_len <= 0:
         problems.append("harvest.context_len: must be positive")
+    if cfg.chunk_tokens < 0:
+        problems.append("harvest.chunk_tokens: must be >= 0 (0 selects the default)")
+    elif cfg.chunk_tokens and cfg.chunk_tokens < cfg.context_len:
+        # A chunk shorter than one sequence has no whole sequence to write, and
+        # SAELens refuses context_size > training_tokens in its own config.
+        problems.append(
+            f"harvest.chunk_tokens: {cfg.chunk_tokens} is below "
+            f"harvest.context_len ({cfg.context_len}); a chunk must hold at "
+            f"least one full sequence"
+        )
     if problems:
         lines = "\n".join(f"  - {p}" for p in problems)
         raise HarvestError(
@@ -137,9 +168,69 @@ def corpus_identity(corpus: str) -> tuple[str, str | None]:
     return corpus, None
 
 
+def chunk_plan(total_tokens: int, chunk_tokens: int, context_len: int) -> list[int]:
+    """Per-chunk token budgets for one hook, summing to exactly total_tokens.
+
+    Budgets are spread evenly rather than filled to chunk_tokens with a
+    remainder, so no chunk is a stub: a 100-token capture in 30-token chunks
+    is 25+25+25+25, not 30+30+30+10. A stub chunk is not merely inelegant --
+    SAELens refuses a config whose context_size exceeds its training_tokens,
+    so a remainder below one sequence would fail at the last chunk, hours in.
+
+    chunk_tokens of 0 selects DEFAULT_CHUNK_TOKENS. A capture smaller than one
+    chunk yields a single chunk, which still goes through assembly.
+    """
+    size = min(chunk_tokens or DEFAULT_CHUNK_TOKENS, total_tokens)
+    size = max(size, context_len)
+    count = max(1, math.ceil(total_tokens / size))
+    base, extra = divmod(total_tokens, count)
+    return [base + (1 if i < extra else 0) for i in range(count)]
+
+
+def buffer_tokens(
+    d_model: int, dtype: str, model_batch_size: int, context_len: int
+) -> int:
+    """Tokens SAELens writes per buffer -- its indivisible unit of capture.
+
+    Sized in bytes rather than sequences (`CacheActivationsRunnerConfig
+    .n_tokens_in_buffer`): a 2GB budget divided by d_model * itemsize, floored
+    to a whole model batch. dtype therefore changes it -- the same recipe at
+    fp16 buffers twice as many tokens as at fp32 -- which is why this cannot be
+    a constant. `tests/interp/test_saelens_contract.py` pins the formula and
+    the 2.0GB default against the pinned wheel.
+    """
+    per_token = d_model * DTYPE_BYTES[dtype]
+    raw = int(SAELENS_BUFFER_GB * 1e9) // per_token
+    batch = model_batch_size * context_len
+    return max(raw - (raw % batch), batch)
+
+
+def captured_tokens(cfg: DictConfig, d_model: int) -> int:
+    """Tokens a capture actually writes, which exceeds what it was asked for.
+
+    SAELens writes ceil(chunk / buffer) whole buffers per chunk, so each chunk
+    overshoots by up to one buffer and none of them undershoots. Chunking moves
+    that rounding from once per capture to once per chunk, so it is a cost of
+    the KB-58 fix: the 300M-token reference capture at fp16 in 15M-token chunks
+    lands at 310.6M, 3.5 percent high. The preflight is this tier's only
+    defense against filling the volume, and pricing the request rather than the
+    capture under-priced it by 33GB there.
+    """
+    buffer = buffer_tokens(
+        d_model, cfg.dtype, int(cfg.model_batch_size), int(cfg.context_len)
+    )
+    plan = chunk_plan(
+        int(cfg.total_tokens), int(cfg.chunk_tokens), int(cfg.context_len)
+    )
+    return sum(math.ceil(chunk / buffer) * buffer for chunk in plan)
+
+
 def projected_bytes(cfg: DictConfig, d_model: int) -> int:
     return (
-        int(cfg.total_tokens) * d_model * DTYPE_BYTES[cfg.dtype] * len(cfg.hook_layers)
+        captured_tokens(cfg, d_model)
+        * d_model
+        * DTYPE_BYTES[cfg.dtype]
+        * len(cfg.hook_layers)
     )
 
 
@@ -308,61 +399,151 @@ def _tokenizer_fingerprint(model_id: str, revision: str | None) -> str:
     )
 
 
-def _saelens_runner(job: dict, out_dir: str) -> dict:
-    """Default runner: SAELens v6 CacheActivationsRunner over an HF model.
+class _SaeLensSession:
+    """One loaded model and one corpus stream, captured in contiguous chunks.
+
+    SAELens's CacheActivationsRunner refuses a non-empty output directory, so
+    a chunk that crashes cannot be resumed or retried in place (KB-58). Chunks
+    are how that becomes survivable: each run() writes a fresh directory, so
+    the refusal never fires, and a crash costs one chunk instead of the run.
+
+    Reusing one runner across chunks is what makes them contiguous.
+    CacheActivationsRunner.__init__ loads the model and builds the activations
+    store once, and the store carries the corpus stream position; every
+    per-chunk quantity SAELens derives (n_buffers, n_seq_in_buffer) is a
+    property recomputed from cfg.training_tokens at access time. So chunk i+1
+    resumes exactly where chunk i stopped, and no corpus-offset parameter is
+    needed -- the store has no token budget of its own to re-apply
+    (total_training_tokens is stored and never read back).
+    """
+
+    def __init__(self, job: dict):
+        import importlib.metadata
+
+        from sae_lens import CacheActivationsRunner, CacheActivationsRunnerConfig
+
+        self._job = job
+        self._context_len = int(job["context_len"])
+        self._cfg = CacheActivationsRunnerConfig(
+            model_name=job["model_id"],
+            model_class_name="AutoModelForCausalLM",
+            hook_name=job["hook"],
+            d_in=int(job["d_in"]),  # required by sae-lens 6.46.0
+            dataset_path=job["corpus"],
+            context_size=self._context_len,
+            # Per chunk, not the capture total: every derived buffer count
+            # reads this field, so it is what sizes a single run().
+            training_tokens=int(job["chunk_tokens"]),
+            new_cached_activations_path=None,  # reassigned per chunk below
+            model_batch_size=job["model_batch_size"],
+            dtype=DTYPE_NAMES[job["dtype"]],
+            seed=job["seed"],
+            device="cuda",
+            model_from_pretrained_kwargs=(
+                {"revision": job["revision"]} if job["revision"] else {}
+            ),
+        )
+        self._runner = CacheActivationsRunner(self._cfg)
+        self._version = importlib.metadata.version("sae-lens")
+
+    def capture(self, out_dir: str, chunk_tokens: int) -> int:
+        """Capture one chunk into an empty out_dir; return the tokens written.
+
+        The count is measured rather than assumed. SAELens silently starts a
+        new epoch when the corpus runs dry -- get_raw_llm_batch defaults to
+        raise_on_epoch_end=False, so the store resets its iterator and keeps
+        yielding -- which means a requested budget is not evidence of what
+        landed on disk. run() returns the Dataset, so the rows are countable.
+        """
+        self._cfg.training_tokens = int(chunk_tokens)
+        self._cfg.new_cached_activations_path = out_dir
+        dataset = self._runner.run()
+        return len(dataset) * self._context_len
+
+    def fast_forward(self, tokens: int) -> None:
+        """Advance the corpus stream past tokens already captured.
+
+        Only needed after a crash: within one process the stream is already in
+        the right place. A resumed run is a new process, so the store starts
+        at the beginning of the corpus and would re-capture what earlier
+        chunks already hold.
+
+        This pulls tokens without running the model. get_batch_tokens is the
+        tokenization half of get_raw_llm_batch, and only the token iterator
+        carries stream position -- so skipping the forward pass advances the
+        stream identically at a fraction of the cost. It is still real work
+        (streaming and tokenizing the skipped corpus), which is why it is paid
+        only on resume.
+        """
+        store = self._runner.activations_store
+        batch_tokens = store.store_batch_size_prompts * self._context_len
+        for _ in range(tokens // batch_tokens):
+            store.get_batch_tokens()
+
+    def info(self) -> dict:
+        return {
+            "tokenizer_fingerprint": _tokenizer_fingerprint(
+                self._job["model_id"], self._job["revision"]
+            ),
+            "sae_lens_version": self._version,
+        }
+
+
+def _saelens_runner(job: dict) -> _SaeLensSession:
+    """Default session factory: SAELens v6 over an HF model.
 
     job carries model_id, revision, hook, d_in, corpus, context_len,
-    total_tokens, dtype, seed, model_batch_size. Returns {"tokens": n,
-    "tokenizer_fingerprint": str, "sae_lens_version": str}. Exact config field
-    names are pinned by the workbench smoke run.
-
-    Rerunning with the same out_dir does not resume: run() refuses a non-empty
-    directory and raises. Its per-buffer shards land under out_dir/.tmp_shards
-    and survive a crash, but run() counts that directory as non-empty too, so
-    they are unreachable without deleting them.
+    chunk_tokens, dtype, seed, model_batch_size. Exact config field names are
+    pinned by the workbench smoke run.
 
     job["dtype"] reaches two type systems: DTYPE_NAMES maps it to a torch dtype
     for the forward pass, and the same string becomes the datasets.Array2D
     storage type. Arrow has no bfloat16, so "bf16" type-checks in one and fails
     in the other (KB-57).
     """
-    import importlib.metadata
+    return _SaeLensSession(job)
 
-    from sae_lens import CacheActivationsRunner, CacheActivationsRunnerConfig
 
-    cfg = CacheActivationsRunnerConfig(
-        model_name=job["model_id"],
-        model_class_name="AutoModelForCausalLM",
-        hook_name=job["hook"],
-        d_in=int(job["d_in"]),  # required by sae-lens 6.46.0
-        dataset_path=job["corpus"],
-        context_size=job["context_len"],
-        training_tokens=job["total_tokens"],
-        new_cached_activations_path=out_dir,
-        model_batch_size=job["model_batch_size"],
-        dtype=DTYPE_NAMES[job["dtype"]],
-        seed=job["seed"],
-        device="cuda",
-        model_from_pretrained_kwargs=(
-            {"revision": job["revision"]} if job["revision"] else {}
-        ),
+def _consolidate_chunks(chunks_dir: str, out_dir: str) -> None:
+    """Flatten completed chunk directories into one dataset at out_dir.
+
+    Delegates to CacheActivationsRunner._consolidate_shards, which is the same
+    function run() uses to flatten its own per-buffer shards. Reimplementing it
+    would mean reimplementing the dataset fingerprint derivation
+    (generate_fingerprint over a loaded Dataset) against an unpublished
+    contract, to get a worse copy of a function that already ships. The cost is
+    a dependency on a private name; tests/interp/test_saelens_contract.py pins
+    it so an upgrade that renames it fails in the sandbox rather than 16 hours
+    into a capture.
+
+    copy_files=False makes each arrow file a same-filesystem shutil.move, so
+    the whole step is metadata: seconds for a terabyte, and no second copy to
+    fit on the volume. It removes chunks_dir on success.
+
+    Creating out_dir belongs here rather than in the caller: _consolidate_shards
+    requires it to exist and be empty, and the caller reads its existence as
+    the signal that assembly began.
+    """
+    from pathlib import Path
+
+    from sae_lens import CacheActivationsRunner
+
+    os.makedirs(out_dir, exist_ok=True)
+    CacheActivationsRunner._consolidate_shards(
+        Path(chunks_dir), Path(out_dir), copy_files=False
     )
-    CacheActivationsRunner(cfg).run()
-    return {
-        "tokens": job["total_tokens"],
-        "tokenizer_fingerprint": _tokenizer_fingerprint(
-            job["model_id"], job["revision"]
-        ),
-        "sae_lens_version": importlib.metadata.version("sae-lens"),
-    }
 
 
 def _load_progress(capture_dir: str) -> dict:
     path = os.path.join(capture_dir, PROGRESS_NAME)
     if os.path.isfile(path):
         with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    return {"completed_hooks": []}
+            loaded = json.load(f)
+        # completed_chunks arrived with chunked capture; a progress.json
+        # written before it is still readable, with every hook at zero.
+        loaded.setdefault("completed_chunks", {})
+        return loaded
+    return {"completed_hooks": [], "completed_chunks": {}}
 
 
 def _save_progress(capture_dir: str, progress: dict) -> None:
@@ -373,13 +554,24 @@ def _save_progress(capture_dir: str, progress: dict) -> None:
     os.replace(tmp, path)
 
 
-def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
+def run_harvest(
+    recipe: DictConfig, runner_fn=None, disk_usage_fn=None, assemble_fn=None
+) -> dict:
     """Validate, preflight, lock, watch, harvest each hook; return the manifest.
 
     The manifest lands only on completion — a capture directory without
-    manifest.json is incomplete by definition. Rerunning skips hooks recorded
-    in progress.json; a hook that was interrupted part-way is not resumable
-    (see _saelens_runner) and its directory must be deleted before the rerun.
+    manifest.json is incomplete by definition.
+
+    Each hook is captured as a sequence of chunks (see chunk_plan), written to
+    <hook>.chunks/shard_NNNNN and assembled into <hook> when the last one
+    lands. Rerunning skips hooks recorded complete in progress.json and
+    resumes an interrupted hook at its first uncaptured chunk, so a crash
+    costs one chunk rather than the run.
+
+    runner_fn builds a capture session for one hook (see _SaeLensSession);
+    assemble_fn flattens that hook's chunks into a single dataset. Both are
+    injectable so the CPU sandbox can exercise the whole driver without
+    SAELens, a GPU, or a model.
     """
     from training.runtime.lock import run_lock
     from training.runtime.watchdog import Watchdog
@@ -420,12 +612,19 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
         "corpus_xxh3": corpus_hash,
         "context_len": int(cfg.context_len),
         "total_tokens": int(cfg.total_tokens),
+        # Chunk size fixes where the boundaries fall, so resuming across a
+        # change would leave a gap or an overlap at the seam.
+        "chunk_tokens": int(cfg.chunk_tokens),
         "dtype": cfg.dtype,
         "seed": int(recipe.run.seed),
         "d_model": d_model,
     }
     prior = progress.get("config")
-    if progress["completed_hooks"] and prior is not None and prior != identity:
+    # Chunks count as prior work too: a hook part-way through has no entry in
+    # completed_hooks, and resuming it under a changed config is exactly the
+    # stitching this refusal exists to prevent.
+    started_before = bool(progress["completed_hooks"] or progress["completed_chunks"])
+    if started_before and prior is not None and prior != identity:
         changed = sorted(k for k in identity if prior.get(k) != identity[k])
         raise HarvestError(
             f"progress.json in {capture_dir} was written under a different "
@@ -434,20 +633,36 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
         )
     progress["config"] = identity
     stats: dict = progress.get("stats", {})
+    plan = chunk_plan(
+        int(cfg.total_tokens), int(cfg.chunk_tokens), int(cfg.context_len)
+    )
     pending = [
         layer
         for layer in cfg.hook_layers
         if hook_name(layer, spec) not in progress["completed_hooks"]
     ]
+    # Prorate by pending chunks, not pending hooks: a run resuming at chunk 18
+    # of 20 needs two chunks' worth of space, and pricing it at a whole hook
+    # would refuse a capture that fits. Assembly moves rather than copies, so
+    # there is no second copy to budget for.
+    pending_chunks = sum(
+        len(plan) - progress["completed_chunks"].get(hook_name(layer, spec), 0)
+        for layer in pending
+    )
     disk_preflight(
         cfg.out_root,
-        projected_bytes(cfg, d_model) * len(pending) // max(len(cfg.hook_layers), 1),
+        projected_bytes(cfg, d_model)
+        * pending_chunks
+        // max(len(plan) * len(cfg.hook_layers), 1),
         recipe.watchdog.disk_free_floor_gb,
         disk_usage_fn=disk_usage_fn,
     )
 
-    runner = runner_fn or _saelens_runner
+    make_session = runner_fn or _saelens_runner
+    assemble = assemble_fn or _consolidate_chunks
     watchdog = None
+    captured_tokens = 0
+    measured: dict[str, int] = dict(progress.get("measured_tokens", {}))
     started = time.monotonic()
     with run_lock(f"harvest-{name}"):
         if recipe.watchdog.enabled:
@@ -456,33 +671,91 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
         try:
             for layer in pending:
                 hook = hook_name(layer, spec)
-                stats = runner(
-                    {
-                        "model_id": model_id,
-                        "revision": revision,
-                        "hook": hook,
-                        "d_in": d_model,
-                        "corpus": corpus,
-                        "context_len": int(cfg.context_len),
-                        "total_tokens": int(cfg.total_tokens),
-                        "dtype": cfg.dtype,
-                        "seed": int(recipe.run.seed),
-                        "model_batch_size": int(cfg.model_batch_size),
-                    },
-                    os.path.join(capture_dir, hook),
-                )
+                hook_dir = os.path.join(capture_dir, hook)
+                chunks_dir = hook_dir + CHUNKS_SUFFIX
+                done = int(progress["completed_chunks"].get(hook, 0))
+                if os.path.isdir(hook_dir):
+                    # Assembly moves files out of chunks_dir, so an assembly
+                    # interrupted part-way leaves neither side whole and
+                    # cannot be redone. It is a seconds-long metadata step, so
+                    # this window is tiny -- but silently continuing would
+                    # publish a truncated capture as complete.
+                    raise HarvestError(
+                        f"{hook_dir} already exists without {hook} being "
+                        f"recorded complete: a previous assembly was "
+                        f"interrupted and cannot be resumed. Delete "
+                        f"{hook_dir} and {chunks_dir}, then rerun"
+                    )
+                # Only when there is something left to capture. A hook whose
+                # last chunk landed before a crash needs assembling, not a
+                # model load -- and building a session to do nothing would
+                # cost minutes of load and a pass over the whole corpus in
+                # fast_forward.
+                if done < len(plan):
+                    session = make_session(
+                        {
+                            "model_id": model_id,
+                            "revision": revision,
+                            "hook": hook,
+                            "d_in": d_model,
+                            "corpus": corpus,
+                            "context_len": int(cfg.context_len),
+                            "chunk_tokens": plan[0],
+                            "dtype": cfg.dtype,
+                            "seed": int(recipe.run.seed),
+                            "model_batch_size": int(cfg.model_batch_size),
+                        }
+                    )
+                    # Recorded before the first chunk rather than after the
+                    # last, so a crash mid-hook still leaves the manifest able
+                    # to name the tokenizer and the SAELens version.
+                    stats = session.info()
+                    progress["stats"] = stats
+                    if done:
+                        session.fast_forward(sum(plan[:done]))
+                    for index in range(done, len(plan)):
+                        chunk_dir = os.path.join(chunks_dir, f"shard_{index:05d}")
+                        # A chunk is recorded complete only after capture
+                        # returns, below, so anything already at this path is
+                        # debris from the attempt that crashed -- including the
+                        # .tmp_shards that make KB-58 fatal. Clearing it is what
+                        # keeps SAELens's non-empty-directory refusal from
+                        # firing on the one chunk a crash interrupted, which is
+                        # otherwise every resume.
+                        shutil.rmtree(chunk_dir, ignore_errors=True)
+                        written = session.capture(chunk_dir, plan[index])
+                        captured_tokens += written
+                        # Per hook and cumulative across runs, so a capture
+                        # that resumed still reports what the whole capture
+                        # holds.
+                        measured[hook] = measured.get(hook, 0) + written
+                        progress["completed_chunks"][hook] = index + 1
+                        progress["measured_tokens"] = measured
+                        _save_progress(capture_dir, progress)
+                # Unconditional, including at one chunk: a capture that skipped
+                # assembly for a single chunk would give the smoke recipe a
+                # different code path from the reference captures, and this
+                # step would first meet reality 17 hours into a run.
+                #
+                # Creating hook_dir is assembly's job, not this loop's. That
+                # is what lets the check above distinguish "assembly started
+                # and did not finish" from "assembly never began" -- if this
+                # loop created the directory first, the two would be
+                # indistinguishable and every crash would demand a manual
+                # delete.
+                assemble(chunks_dir, hook_dir)
                 progress["completed_hooks"].append(hook)
-                progress["stats"] = stats
+                progress["completed_chunks"].pop(hook, None)
                 _save_progress(capture_dir, progress)
         finally:
             if watchdog is not None:
                 watchdog.stop()
     wall_clock_s = time.monotonic() - started
 
-    # Throughput covers only the hooks this run captured: the wall clock
-    # spans pending hooks, so counting pre-completed hooks' tokens would
+    # Throughput covers only the chunks this run captured: the wall clock
+    # spans pending work, so counting pre-completed chunks' tokens would
     # inflate the recorded number on resume.
-    tokens = int(cfg.total_tokens) * len(pending)
+    tokens = captured_tokens
     manifest = {
         "schema_version": 1,
         "artifact": ARTIFACT,
@@ -496,11 +769,23 @@ def run_harvest(recipe: DictConfig, runner_fn=None, disk_usage_fn=None) -> dict:
         "corpus": corpus,
         "corpus_xxh3": corpus_hash,
         "context_len": int(cfg.context_len),
-        "total_tokens": int(cfg.total_tokens),
+        # Measured, not requested. SAELens starts a new epoch rather than
+        # stopping when the corpus runs dry, and rows are lost to the
+        # sequence boundary, so what landed on disk is not what was asked
+        # for. The smallest hook's count is the honest bound for a consumer
+        # reading one number for the whole capture.
+        "total_tokens": min(measured.values(), default=0),
+        "requested_tokens": int(cfg.total_tokens),
+        "chunks": len(plan),
         "dtype": cfg.dtype,
         "seed": int(recipe.run.seed),
-        "tokenizer_fingerprint": stats.get("tokenizer_fingerprint", "unknown"),
-        "sae_lens_version": stats.get("sae_lens_version", "unknown"),
+        # No "unknown" fallback: an identity field that silently degrades to
+        # a sentinel is the KB-62 shape, and tokenizer_fingerprint is the
+        # field every downstream require_match gates on.
+        "tokenizer_fingerprint": require_stat(
+            stats, "tokenizer_fingerprint", capture_dir
+        ),
+        "sae_lens_version": require_stat(stats, "sae_lens_version", capture_dir),
         "tokens_per_second": (
             round(tokens / wall_clock_s, 1) if wall_clock_s and tokens else 0.0
         ),

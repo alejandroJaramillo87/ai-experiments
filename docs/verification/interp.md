@@ -356,12 +356,71 @@ registry-derived `hooks`, `model_type`, and throughput. A projection
 exceeding free space minus the floor refuses with the disk-preflight
 message (verifiable with an absurd `--override harvest.total_tokens=...`).
 
-Observed:
+The capture is chunked (KB-58): `harvest-smoke.yaml` sets
+`chunk_tokens: 700000` against 2M tokens, so expect three
+`Caching activations` progress bars, not one. The reported token count
+exceeds the request — 2875392 against 2000000 — because SAELens writes
+whole buffers; that is correct, and `manifest.json` records both figures.
+
+Observed (2026-08-08):
 
 ```
+Caching activations: 100%|...| 3/3 [00:25<00:00,  8.46s/it]
+[OK] Harvest complete: 2875392 tokens/hook,
+     hooks ['model.language_model.layers.17'], 34125.6 tokens/s
 ```
 
-Status: PENDING
+Status: VERIFIED
+
+## I.9b Chunked-capture crash recovery (P4-D2, KB-58)
+
+Implementation: `interp/harvest.py` (`chunk_plan`, `_SaeLensSession`,
+`_consolidate_chunks`), `tests/interp/test_saelens_contract.py`.
+
+The point of chunking is behaviour under a crash, so a clean I.9 run
+verifies nothing about it. Interrupt a chunked capture and resume it.
+
+Command:
+
+```bash
+$ rm -rf /mnt/ai-data/interp/activations/harvest-smoke
+$ make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml
+```
+
+Press Ctrl-C once a `3/3` progress bar has appeared at least once and
+before `[OK] Harvest complete`; any kill in that window banks at least one
+chunk. Then inspect and resume — do not delete the capture directory:
+
+```bash
+$ cat /mnt/ai-data/interp/activations/harvest-smoke/progress.json
+$ make harvest RECIPE=training/recipes/interp/harvest-smoke.yaml
+```
+
+Expected signal: `progress.json` records `completed_chunks` for the hook;
+the rerun does **not** raise `Activations directory ... is not empty`, runs
+only the outstanding chunks, and reports the same total as an
+uninterrupted run. That equality is the criterion: it is what shows the
+resume neither dropped nor duplicated a chunk.
+
+Observed (2026-08-08), killed inside chunk 3:
+
+```
+{ "completed_chunks": { "model.language_model.layers.17": 2 },
+  "measured_tokens": { "model.language_model.layers.17": 1916928 } }
+```
+
+```
+Caching activations: 100%|...| 3/3 [00:24<00:00,  8.17s/it]
+[OK] Harvest complete: 2875392 tokens/hook,
+     hooks ['model.language_model.layers.17'], 26535.4 tokens/s
+```
+
+1916928 banked plus 958464 recaptured equals 2875392, the uninterrupted
+total. This run found a defect in the KB-58 fix itself (the interrupted
+chunk's directory was not cleared before recapture); the output above is
+from the repaired code.
+
+Status: VERIFIED
 
 ## I.10 Capture garbage collection (P4-D2)
 
@@ -388,13 +447,19 @@ Status: PENDING
 
 ## I.11 SAE training and evaluation (P4-D3)
 
+**Known bugs likely to surface here:** KB-61. The first `make sae-train` on
+2026-08-08 failed with `ValueError: You must either pass in a dataset or
+specify a dataset_path in your configutation` — SAELens requires a dataset
+even when every activation is read from disk. Fixed in the tree, unconfirmed:
+this step is the confirmation.
+
 Implementation: `interp/commands/sae_train.py` with `interp/sae/train.py`;
 `interp/commands/sae_eval.py` with `interp/sae/evaluate.py`;
 `interp/sae/registry.py`.
 
 **Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
 
-- KB-50 — `interp/sae/train.py:223` — capture_manifest_xxhash is invalidated by mark_validated within the same run: run_sae_training hashes the …
+- KB-50 — `interp/sae/train.py:310` — capture_manifest_xxhash is invalidated by mark_validated within the same run: run_sae_training hashes the …
 
 Command (the calibration pair targets Gemma-2-2B by the ecosystem-anchor
 decision; the smoke recipe targets Gemma 4):

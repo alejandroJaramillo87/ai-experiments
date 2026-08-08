@@ -12,6 +12,7 @@ import collections
 import contextlib
 import hashlib
 import os
+import shutil
 import sys
 import threading
 from types import SimpleNamespace
@@ -125,15 +126,39 @@ def make_sae_recipe(tmp_path, capture_dir, **sae_overrides):
     return recipe
 
 
-def fake_harvest_runner(job, out_dir):
+class FakeHarvestSession:
+    """Minimal stand-in for _SaeLensSession; see tests/interp/test_harvest.py
+    for the fake that the chunking tests drive in detail."""
+
+    def __init__(self, job):
+        self.job = job
+
+    def capture(self, out_dir, chunk_tokens):
+        os.makedirs(out_dir, exist_ok=True)
+        with open(os.path.join(out_dir, "cache.bin"), "w") as f:
+            f.write("shards")
+        return chunk_tokens
+
+    def fast_forward(self, tokens):
+        pass
+
+    def info(self):
+        return {"tokenizer_fingerprint": "fp-test", "sae_lens_version": "6.46.0"}
+
+
+def fake_harvest_runner(job):
+    return FakeHarvestSession(job)
+
+
+def fake_harvest_assemble(chunks_dir, out_dir):
     os.makedirs(out_dir, exist_ok=True)
-    with open(os.path.join(out_dir, "cache.bin"), "w") as f:
-        f.write("shards")
-    return {
-        "tokens": job["total_tokens"],
-        "tokenizer_fingerprint": "fp-test",
-        "sae_lens_version": "6.46.0",
-    }
+    for shard in sorted(os.listdir(chunks_dir)):
+        for entry in sorted(os.listdir(os.path.join(chunks_dir, shard))):
+            os.replace(
+                os.path.join(chunks_dir, shard, entry),
+                os.path.join(out_dir, f"{shard}-{entry}"),
+            )
+    shutil.rmtree(chunks_dir)
 
 
 class TestValidationProblems:
@@ -284,21 +309,38 @@ class TestSaelensRunnerMapping:
     """The recipe-to-CacheActivationsRunnerConfig field mapping is pinned by
     the workbench smoke run; these tests freeze it against a stub sae_lens."""
 
-    def install_stubs(self, monkeypatch, created, tokenizer_calls):
+    def install_stubs(self, monkeypatch, created, tokenizer_calls, rows=4):
         class FakeCacheConfig:
             def __init__(self, **kwargs):
-                self.kwargs = kwargs
+                # Both a record of the construction call and live attributes:
+                # a session reassigns training_tokens and
+                # new_cached_activations_path between chunks, so the stub has
+                # to behave like a settable dataclass and not just a dict.
+                self.kwargs = dict(kwargs)
+                for key, value in kwargs.items():
+                    setattr(self, key, value)
+
+        class FakeDataset:
+            """Only len() matters: it is how a chunk's tokens are measured."""
+
+            def __len__(self):
+                return rows
 
         class FakeCacheRunner:
             def __init__(self, cfg):
                 self.cfg = cfg
+                self.activations_store = SimpleNamespace(
+                    store_batch_size_prompts=cfg.model_batch_size,
+                    get_batch_tokens=lambda: None,
+                )
                 created.append(cfg)
 
             def run(self):
-                out = self.cfg.kwargs["new_cached_activations_path"]
+                out = self.cfg.new_cached_activations_path
                 os.makedirs(out, exist_ok=True)
                 with open(os.path.join(out, "cache.bin"), "w") as f:
                     f.write("shards")
+                return FakeDataset()
 
         def fake_tokenizer(*args, **kwargs):
             tokenizer_calls.append((args, kwargs))
@@ -337,7 +379,7 @@ class TestSaelensRunnerMapping:
         pin_dist_version(monkeypatch, version_calls)
 
         out_dir = str(tmp_path / "capture" / "model.layers.15")
-        stats = _saelens_runner(
+        session = _saelens_runner(
             {
                 "model_id": "fake/subject",
                 "revision": revision,
@@ -345,13 +387,14 @@ class TestSaelensRunnerMapping:
                 "d_in": D_MODEL,
                 "corpus": "monology/pile-uncopyrighted",
                 "context_len": 1024,
-                "total_tokens": 1000,
+                "chunk_tokens": 1000,
                 "dtype": "bf16",
                 "seed": 42,
                 "model_batch_size": 8,
-            },
-            out_dir,
+            }
         )
+        tokens = session.capture(out_dir, 1000)
+        stats = session.info()
 
         cfg = created[0].kwargs
         assert cfg["model_name"] == "fake/subject"
@@ -360,8 +403,12 @@ class TestSaelensRunnerMapping:
         assert cfg["d_in"] == D_MODEL  # required by sae-lens 6.46.0
         assert cfg["dataset_path"] == "monology/pile-uncopyrighted"
         assert cfg["context_size"] == 1024
+        # Sized per chunk, not per capture: every buffer count SAELens derives
+        # reads this field, so it is what sizes a single run().
         assert cfg["training_tokens"] == 1000
-        assert cfg["new_cached_activations_path"] == out_dir
+        # Assigned per chunk by capture(), so construction leaves it unset.
+        assert cfg["new_cached_activations_path"] is None
+        assert created[0].new_cached_activations_path == out_dir
         assert cfg["model_batch_size"] == 8
         assert cfg["dtype"] == "bfloat16"
         assert cfg["seed"] == 42
@@ -370,8 +417,10 @@ class TestSaelensRunnerMapping:
         # The stub run() wrote shards into out_dir, proving it was invoked
         # against the hook directory, not some other path.
         assert os.path.isfile(os.path.join(out_dir, "cache.bin"))
+        # Measured from the returned dataset (4 rows of context_len), not
+        # echoed back from the requested budget of 1000.
+        assert tokens == 4 * 1024
         assert stats == {
-            "tokens": 1000,
             "tokenizer_fingerprint": EXPECTED_FINGERPRINT,
             "sae_lens_version": "6.46.0-test",
         }
@@ -380,8 +429,13 @@ class TestSaelensRunnerMapping:
 
 
 class TestSaelensTrainerMapping:
-    """The recipe-to-LanguageModelSAERunnerConfig field mapping, including
-    the metric fallbacks when the trained SAE reports no final_metrics."""
+    """The recipe-to-LanguageModelSAERunnerConfig field mapping.
+
+    Stub-based, so it pins the mapping we wrote rather than the one SAELens
+    requires -- the limitation KB-61 was filed against. Assertions that a
+    stub cannot honestly make belong in test_saelens_contract.py, which runs
+    against the real package.
+    """
 
     JOB = {
         "model_id": "google/gemma-4-E2B",
@@ -396,18 +450,16 @@ class TestSaelensTrainerMapping:
         "seed": 42,
         "cached_activations_path": "/cache/model.layers.15",
         "dtype": "bf16",
+        "corpus": "monology/pile-uncopyrighted",
     }
 
-    def install_stubs(self, monkeypatch, created, metrics):
+    def install_stubs(self, monkeypatch, created):
         class FakeSae:
-            def __init__(self):
-                if metrics is not None:
-                    self.final_metrics = metrics
-
-            def save_model(self, out_dir):
-                os.makedirs(out_dir, exist_ok=True)
-                with open(os.path.join(out_dir, "sae_weights.safetensors"), "w") as f:
-                    f.write("weights")
+            # Deliberately bare: the real TrainingSAE returned by
+            # SAETrainingRunner.run() carries no metrics attribute, and a
+            # fake that invents one is how KB-62 stayed invisible. It also
+            # has no save_model call site any more -- see FakeTrainRunner.
+            pass
 
         class FakeTrainConfig:
             def __init__(self, **kwargs):
@@ -418,7 +470,21 @@ class TestSaelensTrainerMapping:
                 created.append(cfg)
 
             def run(self):
+                # The runner writes the checkpoint, not the caller: real
+                # run() ends in save_final_sae(output_path) -> the SAE's
+                # save_inference_model(). Writing it from the returned SAE
+                # instead is KB-66, where our save_model(out_dir) landed
+                # second and replaced the loadable inference checkpoint with
+                # the training one.
+                out_dir = self.cfg_output_path
+                os.makedirs(out_dir, exist_ok=True)
+                with open(os.path.join(out_dir, "sae_weights.safetensors"), "w") as f:
+                    f.write("weights")
                 return FakeSae()
+
+            @property
+            def cfg_output_path(self):
+                return created[-1].kwargs["output_path"]
 
         class FakeSaeConfig:
             def __init__(self, **kwargs):
@@ -434,20 +500,10 @@ class TestSaelensTrainerMapping:
             ),
         )
 
-    @pytest.mark.parametrize(
-        "metrics,final_loss,measured_l0",
-        [
-            ({"loss": 0.25, "l0": 48.0}, 0.25, 48.0),
-            # No final_metrics attribute: loss defaults to 0.0, l0 to job k.
-            (None, 0.0, 8.0),
-        ],
-    )
-    def test_job_maps_to_trainer_config(
-        self, tmp_path, monkeypatch, metrics, final_loss, measured_l0
-    ):
+    def test_job_maps_to_trainer_config(self, tmp_path, monkeypatch):
         created: list = []
         version_calls: list = []
-        self.install_stubs(monkeypatch, created, metrics)
+        self.install_stubs(monkeypatch, created)
         pin_dist_version(monkeypatch, version_calls)
 
         out_dir = str(tmp_path / "sae-run")
@@ -463,6 +519,11 @@ class TestSaelensTrainerMapping:
         assert cfg["hook_name"] == "model.layers.15"
         assert cfg["use_cached_activations"] is True
         assert cfg["cached_activations_path"] == "/cache/model.layers.15"
+        # Mandatory even on the cached path: SAELens refuses an empty
+        # dataset_path in ActivationsStore.from_config regardless of
+        # use_cached_activations (KB-61). The stub below cannot enforce that,
+        # which is why the omission survived to the workstation.
+        assert cfg["dataset_path"] == "monology/pile-uncopyrighted"
         assert cfg["context_size"] == 1024
         assert cfg["training_tokens"] == 1000
         assert cfg["train_batch_size_tokens"] == 4096
@@ -472,11 +533,10 @@ class TestSaelensTrainerMapping:
         assert cfg["device"] == "cuda"
         assert cfg["checkpoint_path"] == out_dir
         assert os.path.isfile(os.path.join(out_dir, "sae_weights.safetensors"))
-        assert stats == {
-            "final_loss": final_loss,
-            "measured_l0": measured_l0,
-            "sae_lens_version": "6.46.0-test",
-        }
+        # Provenance only. No quality metric crosses this seam: the trained
+        # SAE carries none (KB-62), and a fallback here is what let the
+        # manifest claim a measurement it never made.
+        assert stats == {"sae_lens_version": "6.46.0-test"}
         assert version_calls == ["sae-lens"]
 
     def test_the_sae_trains_at_the_dtype_the_capture_was_harvested_at(
@@ -486,7 +546,7 @@ class TestSaelensTrainerMapping:
         # capture manifest, so an fp32 harvest trained at bf16 with nothing
         # reporting the mismatch.
         created: list = []
-        self.install_stubs(monkeypatch, created, None)
+        self.install_stubs(monkeypatch, created)
         pin_dist_version(monkeypatch, [])
         job = dict(self.JOB)
         job["dtype"] = "fp32"
@@ -515,7 +575,10 @@ class TestWatchdogEnvelope:
     def test_harvest_completes_under_watchdog(self, tmp_path):
         recipe = self.enable_watchdog(make_harvest_recipe(tmp_path))
         manifest = run_harvest(
-            recipe, runner_fn=fake_harvest_runner, disk_usage_fn=plenty_of_disk
+            recipe,
+            runner_fn=fake_harvest_runner,
+            disk_usage_fn=plenty_of_disk,
+            assemble_fn=fake_harvest_assemble,
         )
         capture_dir = os.path.join(recipe.harvest.out_root, "harvest-test")
         assert manifest["artifact"] == HARVEST_ARTIFACT
@@ -523,12 +586,17 @@ class TestWatchdogEnvelope:
         assert sampler_threads() == []
 
     def test_harvest_failure_still_stops_watchdog(self, tmp_path):
-        def broken_runner(job, out_dir):
+        def broken_runner(job):
             raise RuntimeError("cuda oom")
 
         recipe = self.enable_watchdog(make_harvest_recipe(tmp_path))
         with pytest.raises(RuntimeError, match="cuda oom"):
-            run_harvest(recipe, runner_fn=broken_runner, disk_usage_fn=plenty_of_disk)
+            run_harvest(
+                recipe,
+                runner_fn=broken_runner,
+                disk_usage_fn=plenty_of_disk,
+                assemble_fn=fake_harvest_assemble,
+            )
         assert sampler_threads() == []
 
     def test_sae_training_completes_under_watchdog(self, tmp_path):
@@ -536,11 +604,7 @@ class TestWatchdogEnvelope:
         recipe = self.enable_watchdog(make_sae_recipe(tmp_path, capture_dir))
 
         def fake_trainer(job, out_dir, tracker=None):
-            return {
-                "final_loss": 0.125,
-                "measured_l0": 8.0,
-                "sae_lens_version": "6.46.0",
-            }
+            return {"sae_lens_version": "6.46.0"}
 
         manifest = run_sae_training(recipe, trainer_fn=fake_trainer)
         sae_dir = os.path.join(recipe.sae.out_root, "sae-test")
@@ -563,11 +627,7 @@ class TestTrackerWiring:
 
         def fake_trainer(job, out_dir, tracker=None):
             received.append(tracker)
-            return {
-                "final_loss": 0.125,
-                "measured_l0": 8.0,
-                "sae_lens_version": "6.46.0",
-            }
+            return {"sae_lens_version": "6.46.0"}
 
         manifest = run_sae_training(
             recipe, trainer_fn=fake_trainer, tracker_factory=tracker_factory

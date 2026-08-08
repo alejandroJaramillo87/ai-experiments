@@ -95,6 +95,24 @@ def load_manifest(directory: str) -> dict:
     return manifest
 
 
+def require_stat(stats: dict, key: str, context: str) -> object:
+    """Read a manifest field from a runner seam, refusing a default.
+
+    A field that records a fact gets no fallback value. KB-62 is what the
+    alternative looks like: `stats.get(key, <plausible default>)` let a
+    runner that returned nothing write a confident-looking value into the
+    artifact, and nothing downstream could tell it apart from a measurement.
+    Raising costs the GPU hours already spent, which is why the message names
+    the seam and the keys it did return rather than raising a bare KeyError.
+    """
+    if key not in stats:
+        raise ManifestError(
+            f"{context}: runner returned no {key!r}; a runner must supply "
+            f"every manifest field it owns (got keys {sorted(stats)})"
+        )
+    return stats[key]
+
+
 def require_match(manifest: dict, key: str, expected: str, context: str) -> None:
     """Refuse (raise ManifestError) when a manifest field mismatches.
 

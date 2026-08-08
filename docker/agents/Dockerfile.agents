@@ -143,8 +143,11 @@ RUN uv python install "${PYTHON_VERSION}" --default --preview \
 # to the host, which is the pressure the read-only rootfs exists to remove.
 #
 # --only-group, not --group: the latter adds the groups *to* [project]
-# dependencies, which would drag in torch and the CUDA stack and then fail
-# building llama-cpp-python, since this image has no C++ compiler. --only-group
+# dependencies, which would drag in torch and the whole CUDA stack -- gigabytes
+# this image has no use for. (It also used to fail outright building
+# llama-cpp-python, an sdist-only core dependency, since there is no C++
+# compiler here; that dependency was dropped as unused, but the sizing reason
+# stands on its own.) --only-group
 # installs the named groups and nothing else, and is the same form
 # make/agents.mk uses to provision a TIER=sandbox worktree -- so the image and
 # that tier are the same environment by construction. --active because uv

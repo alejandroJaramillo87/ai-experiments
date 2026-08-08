@@ -169,10 +169,28 @@ Two consequences for this tier:
 - It has no `config.json` field, so nothing in the config or the manifest records it. Reading
   it requires the checkpoint.
 
-Whether the released checkpoints store anything other than 1.0 is still open — the transcripts
-record the shape but not the value. Until that is settled, treat cross-layer magnitude
-comparisons as provisional. Nothing here affects within-layer work, which is where this tier
-operates.
+Resolved: the released checkpoints store values well away from 1.0. E2B spans 0.0186 at layer 0
+to 0.879 at layer 30, with layer 17 — the hook layer of the reference captures — at 0.641. The
+values are in the `layer_scalar stored values` sections of `docs/models/gemma4-safetensors.txt`;
+[docs/models/gemma-4.md](../models/gemma-4.md#layer_scalar) owns the derivation.
+
+What that means here, stated carefully because the answer is reassuring and the reasoning is
+the only reason to believe it:
+
+- **Captures are correct as taken.** The hook is a forward hook on the decoder layer module
+  (`interp/families.py`, `_COMPOSITE_DECODER_TEMPLATE`), and the multiply is that module's last
+  operation, so the tensor the hook receives is already scaled. It is the same tensor the next
+  layer consumes. No correction factor is needed, and none should be applied.
+- **Magnitude measurements inherit the scaling.** The fp16 headroom figures in
+  [harvest-precision-and-resume.md](harvest-precision-and-resume.md) were measured through the
+  same hook, so they describe post-scale values. Since every scalar is below 1, the scaling can
+  only reduce magnitudes, which widens headroom rather than narrowing it. The fp16 decision is
+  unaffected.
+- **Cross-layer magnitude comparisons are not provisional, they are wrong** unless the scalars
+  are divided out. A 47x spread in per-layer scale sits underneath any such comparison. This is
+  no longer a caveat pending measurement; it is a known factor with known values.
+
+Within-layer work — which is where this tier operates — is unaffected throughout.
 
 ## Key and value share a projection on full-attention layers
 

@@ -5,7 +5,7 @@ harvest is thin glue over SAELens's `CacheActivationsRunner`, and that runner's 
 narrower than `interp/harvest.py` assumed. This document records what was established, how,
 and what the options cost. It owns KB-57 and KB-58; the ledger rows point here.
 
-For the wider question of which dtype each tier computes in, see [precision.md](../precision.md).
+For the wider question of which dtype each tier computes in, see [precision/](../precision/README.md).
 This document is only about the activation cache on disk.
 
 ## What was established
@@ -88,8 +88,11 @@ run, and the operator's first rerun fails with a message about accidental deleti
 than resuming.
 
 The tree claimed otherwise in three places — the `interp/harvest.py` module docstring, the
-`_saelens_runner` docstring, and `harvest-false-fact.yaml`. All three are corrected. The
-defect itself is not fixed.
+`_saelens_runner` docstring, and `harvest-false-fact.yaml`. All three are corrected.
+
+**The fix is chunked capture**, described under [what was implemented](#what-was-implemented)
+below. It does not remove the refusal; it stops the refusal from ever firing, by giving every
+`run()` call a directory that is empty because it has just been created.
 
 ## Why fp32 is not the answer
 
@@ -214,16 +217,113 @@ resume.
 | Subclass the runner | small | unpublished internals |
 | Own writer | see above | nothing in SAELens's cache path |
 
-**Chunking** splits `total_tokens` into N sequential sub-runs, each with its own `out_dir` and
-corpus offset, read afterwards as a set of shards. Every chunk starts against an empty
-directory, so the non-empty refusal never trips, and a crash costs one chunk. At 300M tokens
-in 20 chunks the worst-case loss is under an hour. It needs no SAELens patching and depends
-only on behaviour that is stable across versions. It composes with every storage option
-above.
+**Chunking** splits `total_tokens` into N sequential sub-runs, each with its own `out_dir`,
+assembled afterwards into one dataset. Every chunk starts against an empty directory, so the
+non-empty refusal never trips, and a crash costs one chunk. At 300M tokens in 20 chunks the
+worst-case loss is under an hour. It composes with every storage option above. **This is what
+was implemented**; the section below records what reading the pinned source changed about it.
 
 **Recovering `.tmp_shards`** is possible in principle — the shards are intact and
 `_consolidate_shards` is a static method that takes a source and output directory — but it
-depends on shard naming and on `state.json` layout, neither of which is a published contract.
+depends on shard naming and on `state.json` layout inside a *partial* run, neither of which is
+a published contract. Chunking makes the recoverable loss one chunk, which is enough.
+
+## What was implemented
+
+Chunked capture, in `interp/harvest.py`. Three things read from the pinned sae-lens 6.46.0
+source changed the design from the sketch above, and each is worth recording because each was
+a guess that turned out to be wrong in a useful direction.
+
+**No corpus offset is needed.** The sketch assumed each chunk would have to seek into the
+corpus. It does not: `CacheActivationsRunner.__init__` builds the activations store once, the
+store holds the stream position, and `total_training_tokens` is assigned in the store and never
+read back — it has no budget to re-apply. So one runner reused across N `run()` calls produces
+contiguous chunks by construction. Every per-chunk quantity SAELens derives (`n_buffers`,
+`n_seq_in_buffer`, `n_tokens_in_buffer`) is a property recomputed from `cfg.training_tokens` at
+access time, so reassigning that field between chunks is all the resizing required.
+
+**Assembly is SAELens's own function, not ours.** The intent had been to hand-write the merge
+rather than call a private name. Reading it inverted the judgement:
+`CacheActivationsRunner._consolidate_shards` is a static method whose docstring specifies the
+input and output layouts exactly, it is the same function `run()` uses on its own per-buffer
+shards, and it recomputes the dataset fingerprint via `generate_fingerprint`. Reimplementing
+would mean reimplementing that fingerprint derivation against an unpublished contract, to get a
+worse copy of a function that already ships. Chunk directories are therefore named
+`shard_{i:05d}`, which is the prefix it requires. The dependency on a private name is real, and
+`tests/interp/test_saelens_contract.py` pins it — a rename fails in the sandbox rather than at
+the one step that runs after all the expensive work is already on disk.
+
+Assembly is called with `copy_files=False`, making each arrow file a same-filesystem
+`shutil.move`. The whole step is metadata: seconds for a terabyte, and no second copy to fit on
+the volume. `concatenate_datasets` plus `save_to_disk` — the public-API route — would re-encode
+and need 2.76 TB against 1.68 TB usable, so it is ruled out by disk before it is ruled out by
+time.
+
+**Resume needs a fast-forward, and the manifest was lying.** A resumed run is a new process, so
+the store starts at the beginning of the corpus; banked chunks' tokens must be skipped or the
+capture duplicates them. The skip pulls tokens without running the model (`get_batch_tokens` is
+the tokenization half of `get_raw_llm_batch`, and only the token iterator carries position), so
+it is streaming and tokenization cost, not GPU cost — and it is paid only after a crash.
+
+Separately, the manifest's `total_tokens` was the *requested* budget echoed back, never
+measured. `run()` returns the `Dataset`, so the rows are countable; the manifest now records the
+measured total and keeps the request as `requested_tokens`. This matters more than it looks:
+SAELens starts a **new epoch** rather than stopping when the corpus runs dry
+(`get_raw_llm_batch` defaults to `raise_on_epoch_end=False`, so the store resets its iterator
+and keeps yielding), which means a corpus smaller than the token budget is silently re-read and
+duplicated into the capture. The only signal is a construction-time warning that compares a
+sample count against a token count. That epoch-wrap behaviour is a separate hazard from KB-58,
+is not fixed here, and is now filed as KB-60.
+
+## What the workstation added
+
+Three things the sandbox could not have established, from the 2026-08-08 confirmation runs.
+
+**The fix reproduced the defect one level down.** The first resume attempt failed with the same
+`Activations directory ... is not empty` exception KB-58 is about. The chunk loop passed SAELens
+the output directory of the chunk the crash had landed in; a chunk is recorded complete only
+after `capture()` returns, so that directory still held the crashed attempt's `.tmp_shards`. The
+loop now removes a pending chunk's directory before recapturing it, which is sound precisely
+because anything at that path is by definition debris.
+
+Why the tests missed it is the part worth carrying elsewhere. `FakeSession.capture` raised
+*before* creating its output directory, so a simulated crash left none of the wreckage a real
+one leaves — the fake was testing a crash that cannot happen. It now refuses a non-empty
+directory the way SAELens does, and writes `.tmp_shards` before raising. With the fix backed
+out, three pre-existing tests fail, including the one whose name claims this coverage. A fake
+that fails more cleanly than the thing it stands for will report a recovery path as working when
+it does not.
+
+**A capture overshoots its request, and the disk preflight was under-pricing it.** The smoke
+capture requested 2,000,000 tokens and measured 2,875,392, 44 percent high. SAELens writes whole
+buffers and each chunk rounds up to the next one, so a capture overshoots by under one buffer
+per chunk and never undershoots.
+
+The buffer is a **byte** budget, not a sequence count —
+`CacheActivationsRunnerConfig.n_tokens_in_buffer` is 2 GB divided by `d_model * itemsize`,
+floored to a whole model batch. Narrowing the dtype therefore widens the buffer, which is the
+part that is easy to get backwards:
+
+| Capture | dtype | Buffer | Chunk budget | Buffers per chunk | Captured | Overshoot |
+|---------|-------|--------|--------------|-------------------|----------|-----------|
+| `harvest-smoke` | fp32 | 319,488 tokens | 666,667 | 2.09, rounds to 3 | 2,875,392 | 44 percent |
+| `harvest-false-fact` | fp16 | 647,168 tokens | 15,000,000 | 23.18, rounds to 24 | 310,640,640 | 3.5 percent |
+
+Chunking moves this rounding from once per capture to once per chunk, so the overshoot is a
+cost of the KB-58 fix. It is not negligible at reference scale: 3.5 percent of the false-fact
+capture is 33 GB, and `projected_bytes` priced the *request*, so the disk preflight under-booked
+by that much — on a tier where the preflight, not cleanup, is the documented defense against
+filling the volume. It now prices whole buffers via `captured_tokens`, and
+`tests/interp/test_saelens_contract.py` checks the replicated formula against the pinned wheel
+so a drift in SAELens's default is a red sandbox run rather than a silent mis-projection.
+
+Predict the measured number before a long capture rather than reading it afterwards. A manifest
+reporting more tokens than were asked for is correct here, and alarming otherwise.
+
+**The image did not carry what the tier needs at run time.** Three failures — a dependency
+building from source with no compiler, a missing `omegaconf`, and no C compiler for Triton's
+runtime driver shim — cost an image build and a model load each to find. That is KB-59, and
+`tests/interp/test_image_dependencies.py` is the guard.
 
 ## Recommendation
 
@@ -233,11 +333,16 @@ depends on shard naming and on `state.json` layout, neither of which is a publis
 2. **Measure any new subject before capturing it.** The probe is a GPU-minute and the two
    results differ by 23x. `scripts/interp/activation_magnitude_probe.py` exits non-zero when
    the margin is under 8x, so it can gate a capture.
-3. **Implement chunked capture.** With storage resolved, resume is the remaining defect and
-   the largest operational risk in the interp tier: a 17-hour job that loses everything on a
-   crash, and whose rerun refuses to start.
-4. The own-writer route is now unnecessary for storage. It remains the cleanest single fix
-   for resume, but chunking gets most of that benefit for far less work.
+3. **Chunked capture is implemented and confirmed.** The workstation ran the chunked smoke
+   capture and the interrupt-and-resume check on 2026-08-08; the resumed run reported the same
+   2,875,392 tokens as the uninterrupted one, which is what shows the resume neither dropped nor
+   duplicated a chunk. The crash check is the one that mattered — it found a defect the clean
+   run could not. KB-58 is resolved.
+4. **Set `chunk_tokens` explicitly on any long capture.** The default divides a capture into
+   15M-token chunks; the smoke recipe pins a smaller value so that multi-chunk assembly — the
+   part that must not first run for real on a 17-hour job — is exercised by CI-sized work.
+5. The own-writer route is now unnecessary for both defects. It remains the cleanest single
+   fix in principle, but chunking got the benefit for far less work.
 
 ## On buying storage
 

@@ -233,8 +233,16 @@ varies per layer, this is the only axis the runtime cannot name.
 
 **`layer_scalar`.** Every layer carries a scalar of shape `[1]`
 (`blk.{L}.layer_output_scale.weight` in GGUF) with no corresponding configuration field. It
-reaches the generic unconsumed-tensor backstop. Its role in the residual or attention path is
-undetermined; see [Open questions](#open-questions).
+reaches the generic unconsumed-tensor backstop, which means the runtime loads the file, reports
+the family as unconsumed, and computes without it.
+
+That is currently harmless only because Gemma 4 is refused before inference. It must not stay
+harmless when support lands: the tensor scales the entire layer output as the layer's last
+operation, and the released checkpoints store values from **0.0186 to 0.879**, not 1.0. A
+forward pass that ignores it diverges from the reference model by roughly 54x in the first
+layer. The values are measured in the `layer_scalar stored values` sections of
+`docs/models/gemma4-safetensors.txt`; see
+[`layer_scalar` in docs/models/gemma-4.md](../models/gemma-4.md#layer_scalar).
 
 ## Refusals that do not fire
 
@@ -434,6 +442,12 @@ The GGUF name is `blk.{bid}.layer_output_scale` (`constants.py`, line 1320), map
 `model.layers.{bid}.layer_scalar` (`tensor_mapping.py`, lines 735-738). The converter appends the
 `.weight` suffix in `Gemma4Model.filter_tensors` (`conversion/gemma.py`, lines 747-748), which is
 why the transcript shows `blk.{L}.layer_output_scale.weight [1] F32`.
+
+Note that `filter_tensors` **renames** rather than drops it: the `name.endswith("layer_scalar")`
+branch appends a suffix and falls through to `super().filter_tensors`. The tensor survives
+conversion, and the GGUF carries one per layer. The stored values are not 1.0, so a backend that
+reads the GGUF and ignores this tensor is not merely omitting a no-op — see
+[the two axes with no named diagnostic](#the-two-axes-with-no-named-diagnostic).
 
 ### The per-layer embedding data path
 

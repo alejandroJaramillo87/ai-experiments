@@ -38,6 +38,15 @@ harvest:
   # 127.5 across all 35 layers, 514x under fp16's 65504 ceiling
   # (scripts/interp/activation_magnitude_probe.py, workstation 2026-08-07).
   dtype: fp16
+  # Explicit at the module default rather than inherited, because on a capture
+  # this long the chunk size is the crash-recovery granularity and belongs
+  # where an operator reads it: 20 chunks of roughly 50 minutes, so an
+  # interruption costs one chunk instead of the whole 17 hours (KB-58).
+  # Each chunk rounds up to a whole buffer, and at fp16 a buffer is 647168
+  # tokens, so each 15M chunk becomes 24 buffers = 15532032 tokens. Expect
+  # 310640640 in the manifest, not 300000000 -- 3.5 percent above the request.
+  # The disk preflight prices the rounded figure (954GB, not 922GB).
+  chunk_tokens: 15000000
   model_batch_size: 8
 
 watchdog:

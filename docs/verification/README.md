@@ -89,6 +89,12 @@ outside a document that is closed to edits: when a checkpoint is acquired,
 those 50 entries are the Gemma 4 conformance backlog, and executing them
 means opening a new record rather than editing the frozen one.
 
+Also outside the numbered order: [reference-captures.md](reference-captures.md), the two
+multi-hour activation captures that feed P4-D3 SAE training. They are separated from
+[interp.md](interp.md) because each holds the GPU for most of a day and most of the
+`/mnt/ai-data` volume, so they are scheduled rather than run in sequence. Their preconditions
+are the interp tier through I.9b, verified at smoke scale on 2026-08-08.
+
 Also outside the numbered order: [hardware-stress.md](hardware-stress.md), the
 one-time firmware stability soak for the BIOS undervolt profile. It is
 independent of the software phases and may run any time its own

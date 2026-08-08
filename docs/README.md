@@ -164,7 +164,8 @@ Living documentation for the interp stack (`python -m interp`).
 
 | Document | Description |
 |----------|-------------|
-| [precision.md](precision.md) | Numeric dtype policy across the three tiers, by concern: compute and weights, activation storage, gradients and optimizer state, KV cache, quantization, and the probe-precision hazard |
+| [precision/](precision/README.md) | Numeric dtype policy across the three tiers, by concern: compute and weights, activation storage, gradients and optimizer state, KV cache, quantization, and the probe-precision hazard |
+| [precision/dtype-decisions.md](precision/dtype-decisions.md) | Why each tier chose its dtype and what would change it: f32 in the Rust reference backend, the four accepted GGUF storage types, bf16 over fp16 for training, and whether the three tiers can share one format |
 
 ### Agents and Testing
 
@@ -292,7 +293,7 @@ full writing standard:
    - Training tier: `docs/training/`
    - Interpretability tier: `docs/interp/`
    - Host and repository verification runbooks: `docs/verification/`
-   - Cross-tier numeric precision policy: `docs/precision.md`
+   - Cross-tier numeric precision policy: `docs/precision/`
 3. **Then by class, within the topic**: a frozen record goes to
    `<topic>/investigations/` and its filename ends `_investigation.md`. Both
    documentation gates key on those two patterns, so a frozen record placed

@@ -441,64 +441,75 @@ def test_canonical_template_is_identical_across_e2b_and_e4b(gguf_blocks):
 # (citing document, its line, cited transcript, cited line, required substring).
 CITATIONS = [
     (
+        # The measured layer_scalar value. The needle is the value rather than
+        # the tensor name: "layer_scalar" also appears in the shape-inventory
+        # rows above, so a name-anchored needle would pass against a transcript
+        # that had lost the values section entirely.
         "docs/models/gemma-4.md",
-        793,
+        662,
+        "docs/models/gemma4-safetensors.txt",
+        741,
+        "value 0.0185546875",
+    ),
+    (
+        "docs/models/gemma-4.md",
+        833,
         "docs/models/gemma4-safetensors.txt",
         414,
         "self_attn.k_proj.weight [256, 1536]",
     ),
     (
         "docs/models/gemma-4.md",
-        793,
+        833,
         "docs/models/gemma4-safetensors.txt",
         529,
         "self_attn.k_proj.weight [512, 1536]",
     ),
     (
         "docs/models/gemma-4.md",
-        795,
+        835,
         "docs/models/gemma4-gguf.txt",
         613,
         "blk.{L}.attn_k.weight [1536, 256]",
     ),
     (
         "docs/models/gemma-4.md",
-        795,
+        835,
         "docs/models/gemma4-gguf.txt",
         625,
         "blk.{L}.attn_k.weight [1536, 512]",
     ),
     (
         "docs/rust-harness/gemma-4-ingestion.md",
-        406,
+        414,
         "docs/models/gemma4-gguf.txt",
         630,
         "rope_freqs.weight [256] F32",
     ),
     (
         "docs/rust-harness/gemma-4-ingestion.md",
-        406,
+        414,
         "docs/models/gemma4-gguf.txt",
         639,
         "rope_freqs.weight [256] F32",
     ),
     (
         "docs/rust-harness/gemma-4-ingestion.md",
-        496,
+        510,
         "docs/models/gemma4-gguf.txt",
         632,
         "per_layer_token_embd.weight [8960, 262144]",
     ),
     (
         "docs/rust-harness/gemma-4-ingestion.md",
-        496,
+        510,
         "docs/models/gemma4-gguf.txt",
         641,
         "per_layer_token_embd.weight [8960, 262144]",
     ),
     (
         "docs/rust-harness/gemma-4-ingestion.md",
-        509,
+        523,
         "docs/models/gemma4-gguf.txt",
         613,
         "attn_k.weight",
