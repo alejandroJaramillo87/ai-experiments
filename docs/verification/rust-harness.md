@@ -145,6 +145,110 @@ Observed:
 
 Status: PENDING
 
+### RH.1a Shared-KV weight conflict
+
+Implementation: `rust-harness/runtime/src/model/cpu.rs` (the loader's
+`owns_cache` branch and the tensors it declines to read).
+
+Decides the one open question the CPU backend already had to answer in order
+to run. `modeling_gemma4.py` builds `k_proj`, `v_proj`, and `k_norm` only for
+non-shared layers; every released E-series checkpoint carries all three on
+every layer. The backend follows the modeling code and leaves the shared
+tail's copies unread. If that reading is wrong, 18 of E4B's 42 layers attend
+over the wrong keys and the output is fluent and wrong rather than an error.
+The evidence on both sides is in
+[The shared-KV weight conflict](../models/gemma-4.md#the-shared-kv-weight-conflict).
+
+Run the two checks in order. The first is cheap and may settle it; the second
+is definitive and costs a model load.
+
+**Check 1 — do the surplus tensors look trained?** An untrained tensor that
+was allocated and never updated keeps its initialization distribution. A
+trained one does not. Compare the shared tail against the layers that
+certainly are trained, at matched head width, since E2B's sliding and global
+layers differ in shape.
+
+```bash
+$ cd /home/user/ai-experiments
+$ .venv/bin/python - <<'EOF'
+import json, numpy as np
+from safetensors import safe_open
+
+PATH = "/mnt/ai-data/models/hf/gemma-4-E2B-it/model.safetensors"
+SHARED = 20                      # num_kv_shared_layers, E2B
+with safe_open(PATH, framework="numpy") as f:
+    keys = [k for k in f.keys() if k.endswith("self_attn.k_proj.weight")]
+    rows = []
+    for k in sorted(keys, key=lambda s: int(s.split(".layers.")[1].split(".")[0])):
+        layer = int(k.split(".layers.")[1].split(".")[0])
+        w = f.get_tensor(k).astype(np.float32)
+        rows.append((layer, w.shape, float(w.std()), float(np.abs(w).mean())))
+n = max(r[0] for r in rows) + 1
+print(f"{n} layers, boundary at {n - SHARED}")
+for layer, shape, std, absmean in rows:
+    tag = "shared" if layer >= n - SHARED else "owns  "
+    print(f"  layer {layer:2d} {tag} shape={shape} std={std:.5f} |mean|={absmean:.5f}")
+EOF
+```
+
+Expected signal: group the printed rows by `shape`, then compare `std` within
+each shape group across the boundary. If the shared rows sit at a visibly
+different scale from the owning rows of the same shape — or are identical to
+each other — the tensors are untrained residue and the modeling code is
+authoritative, which is what the backend already implements. If the shared
+rows are statistically indistinguishable from the owning ones, that is
+evidence the weights are meaningful and check 2 becomes mandatory rather than
+confirmatory.
+
+This check reads tensor data and needs no GPU. It is not conclusive on its
+own: a trained-then-frozen tensor and a trained-and-used tensor look alike.
+
+**Check 2 — do the logits agree?** The definitive test. Generate greedily from
+the same prompt through `transformers` and through the harness, and compare.
+
+```bash
+$ cd /home/user/ai-experiments/rust-harness
+$ cargo run --release -p harness -- \
+    --model /mnt/ai-data/models/gguf/gemma-4-E2B-it/gemma-4-E2B-it-BF16.gguf \
+    --prompt 'The capital of France is' --max-tokens 16 --temperature 0
+```
+
+Then the reference, on the same prompt and the same decoding rule:
+
+```bash
+$ cd /home/user/ai-experiments
+$ .venv/bin/python - <<'EOF'
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+MODEL = "/mnt/ai-data/models/hf/gemma-4-E2B-it"
+tok = AutoTokenizer.from_pretrained(MODEL)
+model = AutoModelForCausalLM.from_pretrained(MODEL, dtype=torch.float32)
+model.eval()
+ids = tok("The capital of France is", return_tensors="pt")
+with torch.no_grad():
+    out = model.generate(**ids, max_new_tokens=16, do_sample=False)
+print(tok.decode(out[0], skip_special_tokens=True))
+EOF
+```
+
+Expected signal: matching token sequences mean the backend's reading is
+correct. Divergence that begins early and does not recover means it is not —
+in which case flip the `owns_cache` branch in the loader so shared layers
+compute their own K/V, rebuild, and rerun. One of the two settles it.
+
+Capture the `from_pretrained` output verbatim, warnings included. A warning
+naming the shared layers' `k_proj`, `v_proj`, or `k_norm` as unexpected keys
+is direct confirmation that the code treats them as surplus, and is worth more
+than either check above. Silence there is equally informative.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
 ## RH.2 Real-model load and generation smoke
 
 Implementation: `rust-harness/harness/src/main.rs`,

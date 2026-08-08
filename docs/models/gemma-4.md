@@ -786,6 +786,58 @@ it applies, `v_proj` is not constructed at all (lines 1206-1212) and the forward
 `with_scale=False` (line 1201). Key and value therefore share the projection output, not the
 post-norm post-rotary tensor.
 
+### The shared-KV weight conflict
+
+The modeling code and the released weights disagree about whether shared-KV layers carry key
+and value projections at all. Both sides are quoted below because the disagreement is real and
+neither source is obviously the stale one.
+
+**What the code says.** `Gemma4TextAttention.__init__` guards four modules behind
+`if not self.is_kv_shared_layer:` — `k_norm`, `v_norm`, `k_proj`, and `v_proj`
+(`docs/models/gemma4-upstream.txt` lines 1213-1227, upstream 1198-1212), under the comment
+"Layers sharing kv states don't need any weight matrices". For E2B that means 15 of 35 layers
+construct them.
+
+**What the weights say.** All 35 E2B layers carry `k_proj`, `v_proj`, and `k_norm`. The
+safetensors headers record 28 at head width 256 and 7 at 512
+(`docs/models/gemma4-safetensors.txt` lines 414 and 529); the GGUF inventory lists
+`attn_k.weight`, `attn_v.weight`, and `attn_k_norm.weight` for the same 35 blocks
+(`docs/models/gemma4-gguf.txt` lines 613 and 625). Note `k_norm` is inside the same guard, so
+the surplus is four tensor families and not two.
+
+**The converter is not the cause.** `conversion/gemma.py` computes `first_kv_shared_layer_idx`
+and uses it for one purpose only — widening the feed-forward layers when `use_double_wide_mlp`
+is set (`docs/models/gemma4-upstream.txt` lines 4851-4854, upstream 682-686). It never filters
+key or value tensors. The GGUF therefore mirrors the safetensors, and the safetensors are where
+the surplus originates.
+
+**The file contradicts itself, which is the sharpest evidence available.** E2B's published FFN
+widths are not uniform: 20 layers at 12288 and 15 at 6144
+(`docs/models/gemma4-gguf.txt` lines 617-622). That split is `num_kv_shared_layers = 20` applied
+by the converter. So the same boundary value is simultaneously honored — the trailing 20 layers
+are double-wide — and contradicted, because those same 20 layers also carry the key and value
+projections the code says a shared layer does not have. Whatever produced these files acted on
+`num_kv_shared_layers` for the MLP and not for attention.
+
+Two readings remain, and they are not equally cheap to be wrong about:
+
+| Reading | Implication | Cost if wrong |
+|---------|-------------|---------------|
+| The code is authoritative; the tensors are residue | Shared layers read a donor's K/V; the surplus tensors are dead | 18 of E4B's 42 layers attend over the wrong keys — fluent, wrong output, no error |
+| The weights are authoritative; the code is ahead of them | Every layer computes its own K/V, and `num_kv_shared_layers` describes cache reuse only | Wasted memory, correct output |
+
+The `rust-harness` CPU backend implements the first reading. The choice is marked in the loader
+and pinned by `a_shared_layers_own_key_and_value_weights_are_deliberately_unread` in
+`rust-harness/runtime/src/model/cpu.rs`, which is a tripwire rather than evidence: it asserts
+the tensors stay unread, so it passes by construction and fails only if someone changes the
+loader without reading this section.
+
+**Resolving it requires the host.** Nothing in this repository distinguishes the two readings —
+both load, both produce fluent text, and the transcripts record the conflict rather than
+settling it. The procedure is RH.1a in
+[docs/verification/rust-harness.md](../verification/rust-harness.md), which runs the cheap
+weight-statistics test before the definitive logit comparison.
+
 ## Per-tier support
 
 What each tier does with a real checkpoint today. The target is E2B and E4B; 12B and 31B are
@@ -838,16 +890,10 @@ Recorded rather than guessed. Resolve these against the `transformers` implement
 pinned revision before relying on any assumption about them.
 
 - **Whether the released E-series checkpoints match the shared-KV weight layout of the modeling
-  code.** `modeling_gemma4.py` line 1199 constructs `k_proj` and `v_proj` only when
-  `not self.is_kv_shared_layer`, which for E2B implies 15 layers carrying key and value
-  projections. The E2B safetensors headers record `k_proj.weight` on all 35 language-model layers
-  (28 at `[256, 1536]` and 7 at `[512, 1536]`, `docs/models/gemma4-safetensors.txt` lines 414 and 529),
-  and the GGUF inventory likewise lists `attn_k.weight` for all 35 blocks
-  (`docs/models/gemma4-gguf.txt` lines 613 and 625). The code and the checkpoint disagree about whether
-  shared layers carry key and value weights. Whether the surplus tensors are unused residue, or
-  the released weights predate the code, was not settled from the sources read. This matters
-  because it means the absence of `attn_k` is **not** a reliable shared-KV signature for these
-  files.
+  code.** See [The shared-KV weight conflict](#the-shared-kv-weight-conflict) below, which states
+  the evidence on both sides and the host procedure that decides it. This is the only open
+  question the CPU backend has already had to answer in order to run, so it is the one whose
+  resolution changes code rather than prose.
 - **Tensor-level data for 12B and 31B.** Not collected. All statements about those two models
   derive from `config.json`.
 - **`use_bidirectional_attention: "vision"`.** Present on 12B and 31B, `null` on the E-series.

@@ -525,11 +525,19 @@ Recorded rather than guessed.
   passing through what the checkpoint holds. Whether these are unused residue or the code and the
   weights are out of step was not settled from the sources read.
 
-  This is directly load-bearing for `cpu.rs:266-275`, which detects shared KV by finding a block
-  with `attn_q` but without `attn_k` and `attn_v`. On these two files that condition is never
-  true, so the shared-KV refusal does not fire and the `per_layer` guard at `cpu.rs:256` is what
-  actually stops the load. Any future backend that removes the per-layer-embedding refusal must
-  not rely on the missing-`attn_k` signature for these checkpoints.
+  This was directly load-bearing for the missing-`attn_k` signature, which on these two files is
+  never true, so the shared-KV refusal never fired and the `per_layer` guard was what actually
+  stopped the load. Both refusals are now gone: the backend implements sharing, keyed on
+  `attention.shared_kv_layers`, and the tensor signature survives only inverted — a layer that
+  owns its cache and lacks `attn_k`/`attn_v` has nothing to attend over.
+
+  The backend resolves the question by following the modeling code and leaving the shared tail's
+  key and value tensors unread. That is a decision made under the uncertainty recorded here, not
+  a resolution of it, and it is the one open question whose answer changes code. The evidence on
+  both sides is collected in
+  [docs/models/gemma-4.md](../models/gemma-4.md#the-shared-kv-weight-conflict), and the host
+  procedure that decides it is RH.1a in
+  [docs/verification/rust-harness.md](../verification/rust-harness.md).
 - **The stored value of `layer_output_scale`.** The transcripts record the shape `[1]` but not the
   value, so whether the multiplication is a no-op in the released weights is unverified.
 - **The `1e30` divisor as an exact identity.** `conversion/gemma.py` line 715 uses 1e30 rather
