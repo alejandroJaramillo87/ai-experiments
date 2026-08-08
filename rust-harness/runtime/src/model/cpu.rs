@@ -7,19 +7,30 @@
  * backend is diffed against (through the phase 1 flight recorder) and makes
  * the full harness runnable in a sandbox against synthetic weights.
  *
- * Architecture (Gemma-3-style, to be reconciled against the real E4B GGUF
- * dump): RMSNorm scaled by the stored weight, embedding scaled by
+ * Architecture: RMSNorm scaled by the stored weight, embedding scaled by
  * sqrt(embed_dim), grouped-query attention with per-head QK-norm and NEOX
- * RoPE, interleaved sliding-window/global layers, GeGLU MLP with tanh GELU,
- * four norms per layer, LM head tied to the token embedding.
+ * RoPE, interleaved sliding-window/global layers with their own head widths
+ * and RoPE frequency bases, per-layer feed-forward widths, GeGLU MLP with
+ * tanh GELU, four norms per layer, LM head tied to the token embedding.
  *
- * That is a strict subset of the published Gemma 4 architecture, which adds
- * per-layer embeddings, a shared KV cache, MatFormer per-layer feed-forward
- * widths, dual RoPE, and value normalization. A checkpoint carrying any of
- * those is refused by `check_supported` rather than loaded with the extra
- * structure silently dropped: an ignored weight tensor still produces
+ * That is still a subset of the published Gemma 4 architecture, which adds
+ * per-layer input embeddings, a shared KV cache, a per-layer output scale,
+ * final logit softcapping, and value normalization. A checkpoint carrying
+ * any of those is refused by `check_supported` rather than loaded with the
+ * extra structure silently dropped: an ignored weight tensor still produces
  * fluent text, so a silent load would be an undetectable wrong answer.
- * See docs/rust-harness/runtime-design.md.
+ * See docs/rust-harness/gemma-4-ingestion.md.
+ *
+ * RoPE is per layer, not per model. Gemma 4 runs two regimes whose bases
+ * differ by two orders of magnitude (1e6 global against 1e4 sliding), and
+ * the global regime rotates only a quarter of each head: `rope_freqs.weight`
+ * carries divisors that drive the remaining frequencies to zero, so the
+ * rotation is performed at full width with most pairs inert. That tensor was
+ * previously treated as inert itself, on the reasoning that frequencies are
+ * recomputed from the base. They are, but not from the base alone, and a
+ * reader that skips the divisors rotates 512 dimensions where the reference
+ * rotates 128 -- finite, fluent, wrong. See the proportional-RoPE derivation
+ * in docs/rust-harness/gemma-4-ingestion.md.
  *
  * The K/V cache stores the full sequence for every layer; the sliding
  * window is applied as an attention mask only. Capping sliding-window
@@ -257,10 +268,21 @@ impl ModelSpec {
                 None => bail!("missing {arch}.{key}"),
             }
         };
+        let f_opt = |key: &str| -> Result<Option<f32>> {
+            match file.metadata.get(&format!("{arch}.{key}")) {
+                Some(MetaValue::F32(v)) => Ok(Some(*v)),
+                Some(other) => bail!("{arch}.{key}: expected f32, got {other:?}"),
+                None => Ok(None),
+            }
+        };
 
         let head_dim_global = u("attention.key_length")?;
         let head_dim_sliding = u_opt("attention.key_length_swa")?.unwrap_or(head_dim_global);
         let rope_base_global = f("rope.freq_base")?;
+        // The sliding regime's base, two orders of magnitude below the global
+        // one on Gemma 4. Absent means one regime, which is the pre-Gemma-4
+        // case and the shape of the committed fixture.
+        let rope_base_sliding = f_opt("rope.freq_base_swa")?.unwrap_or(rope_base_global);
 
         // Feed-forward width is a uint32 scalar on E4B and an int32 array of
         // block_count entries on E2B, where the trailing layers are twice as
@@ -285,15 +307,15 @@ impl ModelSpec {
         let layers: Vec<LayerSpec> = (0..config.n_layers)
             .map(|i| {
                 let kind = config.layer_kind(i);
-                let head_dim = match kind {
-                    LayerKind::Global => head_dim_global,
-                    LayerKind::SlidingWindow(_) => head_dim_sliding,
+                let (head_dim, rope_freq_base) = match kind {
+                    LayerKind::Global => (head_dim_global, rope_base_global),
+                    LayerKind::SlidingWindow(_) => (head_dim_sliding, rope_base_sliding),
                 };
                 LayerSpec {
                     kind,
                     head_dim,
                     ffn_dim: ffn_dims[i],
-                    rope_freq_base: rope_base_global,
+                    rope_freq_base,
                 }
             })
             .collect();
@@ -361,10 +383,14 @@ const LAYER_TENSORS: [&str; 13] = [
 /// `output.weight`.
 const TOP_LEVEL_TENSORS: [&str; 2] = ["token_embd.weight", "output_norm.weight"];
 
-/// Tensors a converter may emit that carry no learned parameters this backend
-/// needs: RoPE frequencies are recomputed from `rope_freq_base`, so their
-/// presence changes no numerics.
-const INERT_TENSORS: [&str; 1] = ["rope_freqs.weight"];
+/// Proportional-RoPE frequency divisors, one per rotating pair of a
+/// full-attention head.
+///
+/// Optional: a checkpoint whose global regime rotates its full width carries
+/// no such tensor, and every frequency divides by an implicit 1.0. Present,
+/// it is consumed rather than tolerated — see the file banner for why
+/// treating it as inert was a latent wrong answer.
+const ROPE_FREQS_TENSOR: &str = "rope_freqs.weight";
 
 /// Collapse a tensor name to its family, replacing a leading `blk.<i>.` with
 /// `blk.*.`, so a diagnostic over 42 layers reports one line per family.
@@ -454,38 +480,73 @@ pub fn check_supported(file: &GgufFile, spec: &ModelSpec) -> Result<()> {
         );
     }
 
-    // RoPE configuration. A dimension count below head_dim is partial rotation
-    // (p-RoPE); any other rope key implies a second frequency base or a
-    // scaling scheme the single-theta implementation ignores.
+    // RoPE configuration. Both regimes are implemented, so the paired keys
+    // are accepted and checked rather than refused; anything else under the
+    // `rope.` prefix is still a scaling scheme the forward pass would ignore.
+    //
+    // The allowlist stays an allowlist. It is the only thing standing between
+    // a converter that adds a third regime and a silent wrong rotation, and
+    // it is deliberately not widened to "anything that looks descriptive".
     let arch = architecture(file)?;
     let rope_prefix = format!("{arch}.rope.");
+    // Rotation width is checked against the regime that key governs: the
+    // unsuffixed key is the full-attention value, `_swa` the sliding one.
+    // Comparing both against one width is how a 256-wide sliding regime gets
+    // read as a partial rotation of a 512-wide head, or vice versa.
+    let regime_width = |global: bool| -> usize {
+        spec.layers
+            .iter()
+            .filter(|l| matches!(l.kind, LayerKind::Global) == global)
+            .map(|l| l.head_dim)
+            .next()
+            .unwrap_or(0)
+    };
     for key in file.metadata.keys() {
         let Some(suffix) = key.strip_prefix(&rope_prefix) else {
             continue;
         };
-        match suffix {
-            "freq_base" => {}
-            "dimension_count" => {
-                // Typed exhaustively rather than with a bare `if let`: a
-                // value decoded as anything but u32 used to fall through the
-                // match arm and be accepted as inert, so a rotation width the
-                // forward pass ignores reached the numerics unremarked.
-                let widest = spec.max_head_dim();
-                match file.metadata.get(key) {
-                    Some(MetaValue::U32(v)) => ensure!(
-                        *v as usize == widest,
-                        "{key} is {v} but the widest head is {widest}; partial rotary \
-                         embedding (p-RoPE) is not implemented"
-                    ),
-                    Some(other) => bail!("{key}: expected u32, got {other:?}"),
-                    None => {}
-                }
-            }
+        let width = match suffix {
+            "freq_base" | "freq_base_swa" => continue,
+            "dimension_count" => regime_width(true),
+            "dimension_count_swa" => regime_width(false),
             _ => bail!(
-                "metadata key {key} configures RoPE beyond a single frequency base; \
-                 dual or scaled RoPE is not implemented"
+                "metadata key {key} configures RoPE beyond the two frequency bases and \
+                 rotation widths this backend implements"
             ),
+        };
+        // No layer in that regime means the key describes nothing here, which
+        // is not a disagreement. Typed exhaustively rather than with a bare
+        // `if let`: a value decoded as anything but u32 used to fall through
+        // and be accepted as inert, so a rotation width the forward pass
+        // ignores reached the numerics unremarked.
+        if width == 0 {
+            continue;
         }
+        match file.metadata.get(key) {
+            Some(MetaValue::U32(v)) => ensure!(
+                *v as usize == width,
+                "{key} is {v} but that regime's head width is {width}; a rotation \
+                 narrower than the head is partial rotary embedding applied by slicing, \
+                 which this backend does not implement -- Gemma 4 expresses its partial \
+                 rotation through rope_freqs.weight at full width instead"
+            ),
+            Some(other) => bail!("{key}: expected u32, got {other:?}"),
+            None => {}
+        }
+    }
+
+    // Proportional-RoPE divisors, if present. One entry per rotating pair of
+    // a global head: 64 ones followed by 192 values of 1e30 on E4B, which
+    // drive those angles to zero. Length is checked here because the loader
+    // divides by it elementwise and a short tensor would leave the tail
+    // rotating at full frequency.
+    if let Some(info) = file.tensors.iter().find(|t| t.name == ROPE_FREQS_TENSOR) {
+        let want = regime_width(true) / 2;
+        let got = info.dims.iter().product::<u64>() as usize;
+        ensure!(
+            want > 0 && got == want,
+            "{ROPE_FREQS_TENSOR} has {got} entries, but the global head width implies {want}"
+        );
     }
 
     // Numeric-affecting metadata carries no tensor, so the unconsumed-tensor
@@ -512,7 +573,7 @@ pub fn check_supported(file: &GgufFile, spec: &ModelSpec) -> Result<()> {
     // does not know about, including features published after this code.
     let mut unconsumed: Vec<String> = Vec::new();
     for name in &names {
-        if TOP_LEVEL_TENSORS.contains(name) || INERT_TENSORS.contains(name) {
+        if TOP_LEVEL_TENSORS.contains(name) || *name == ROPE_FREQS_TENSOR {
             continue;
         }
         let consumed = (0..config.n_layers).any(|i| {
@@ -834,9 +895,27 @@ fn gelu(x: f32) -> f32 {
 /// `head_dim/2` values. Computing it once and indexing it is bit-identical —
 /// `powf` is a pure function of its arguments — and leaves `sin_cos`, which
 /// does depend on the position, as the only transcendental in the loop.
-fn rope_frequencies(head_dim: usize, freq_base: f32) -> Vec<f32> {
+/// `divisors`, when the checkpoint supplies them, are the proportional-RoPE
+/// frequency divisors from `rope_freqs.weight`, applied here rather than in
+/// the decode loop: they are fixed at load like the rest of the table, and
+/// folding them in leaves `rope` a function of one table as before.
+///
+/// The divisor is applied to the inverse frequency, matching the converter
+/// that writes the tensor. Gemma 4's values are 1.0 over the rotating pairs
+/// and 1e30 over the rest, so the second group's angle collapses to
+/// approximately zero and those pairs pass through. Upstream uses 1e30
+/// rather than infinity, so the angle is very small rather than exactly
+/// zero; that residual is the reference's behavior, not an approximation of
+/// it, and is reproduced rather than rounded away.
+fn rope_frequencies(head_dim: usize, freq_base: f32, divisors: Option<&[f32]>) -> Vec<f32> {
     (0..head_dim / 2)
-        .map(|j| freq_base.powf(-2.0 * j as f32 / head_dim as f32))
+        .map(|j| {
+            let freq = freq_base.powf(-2.0 * j as f32 / head_dim as f32);
+            match divisors {
+                Some(d) => freq / d[j],
+                None => freq,
+            }
+        })
         .collect()
 }
 
@@ -895,6 +974,14 @@ impl CpuModel {
         };
         let embed_dim = config.embed_dim;
         let embed = tensor("token_embd.weight", config.vocab_size * embed_dim)?;
+        // Divisors apply to the full-attention regime only: the sliding
+        // regime rotates its full width, and its rotation width is already
+        // the whole head (docs/rust-harness/gemma-4-ingestion.md).
+        let rope_divisors: Option<Vec<f32>> =
+            match file.tensors.iter().find(|t| t.name == ROPE_FREQS_TENSOR) {
+                Some(info) => Some(load_tensor(file, data, info)?),
+                None => None,
+            };
         let mut layers = Vec::with_capacity(config.n_layers);
         for (i, ls) in spec.layers.iter().enumerate() {
             // Widths come from this layer's own spec, so a checkpoint that
@@ -904,10 +991,14 @@ impl CpuModel {
             let (head_dim, ffn_dim) = (ls.head_dim, ls.ffn_dim);
             let q_dim = config.n_heads * head_dim;
             let kv_dim = config.n_kv_heads * head_dim;
+            let divisors = match (ls.kind, rope_divisors.as_deref()) {
+                (LayerKind::Global, Some(d)) => Some(d),
+                _ => None,
+            };
             let t = |suffix: &str, want: usize| tensor(&format!("blk.{i}.{suffix}"), want);
             layers.push(LayerWeights {
                 spec: *ls,
-                rope_freqs: rope_frequencies(head_dim, ls.rope_freq_base),
+                rope_freqs: rope_frequencies(head_dim, ls.rope_freq_base, divisors),
                 attn_norm: t("attn_norm.weight", embed_dim)?,
                 wq: t("attn_q.weight", embed_dim * q_dim)?,
                 wk: t("attn_k.weight", embed_dim * kv_dim)?,
@@ -1393,7 +1484,7 @@ mod tests {
         // determinism tests, and a frequency off by one mantissa bit would
         // surface there with no local cause to read.
         for (head_dim, base) in [(8usize, 10000.0f32), (128, 1_000_000.0), (256, 10000.0)] {
-            let table = rope_frequencies(head_dim, base);
+            let table = rope_frequencies(head_dim, base, None);
             assert_eq!(table.len(), head_dim / 2);
             assert_eq!(table[0], 1.0, "pair 0 rotates at the position itself");
             for (j, f) in table.iter().enumerate() {
@@ -1409,6 +1500,215 @@ mod tests {
                 "frequency must fall with pair index"
             );
         }
+    }
+
+    #[test]
+    fn proportional_rope_divisors_make_the_padded_pairs_inert() {
+        // Gemma 4's global regime rotates a quarter of each head, expressed
+        // as a full-width rotation whose trailing frequencies are divided by
+        // 1e30 rather than as a narrowed slice. Reproduce the shape at E4B's
+        // proportions: head 512, 64 rotating pairs, 192 padded.
+        let head_dim = 512;
+        let mut divisors = vec![1.0f32; 64];
+        divisors.extend(std::iter::repeat_n(1e30f32, 192));
+        let plain = rope_frequencies(head_dim, 1_000_000.0, None);
+        let table = rope_frequencies(head_dim, 1_000_000.0, Some(&divisors));
+
+        // The rotating pairs are untouched: dividing by 1.0 is exact.
+        for j in 0..64 {
+            assert_eq!(table[j].to_bits(), plain[j].to_bits(), "pair {j}");
+        }
+        // The padded pairs are inert: at the largest position Gemma 4's
+        // context allows, the rotation is the identity in f32. Asserted as
+        // the identity rather than as a small angle, because that is the
+        // property the forward pass depends on. Not asserted as an exactly
+        // zero frequency: upstream divides by 1e30 rather than infinity, and
+        // reproducing that residual instead of rounding it away is the point.
+        for (j, f) in table.iter().enumerate().skip(64) {
+            assert!(*f > 0.0, "pair {j} divided to zero, losing the residual");
+            let (sin, cos) = (131_072.0f32 * f).sin_cos();
+            assert_eq!(cos, 1.0, "pair {j} cos {cos}");
+            assert_eq!(
+                sin,
+                131_072.0f32 * f,
+                "pair {j} sin departed from the angle"
+            );
+            assert!(
+                sin.abs() < f32::EPSILON,
+                "pair {j} still rotates: sin {sin}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_two_rope_regimes_take_their_own_base_and_head_width() {
+        // A1-R04 was refuted only because every path refused a second base
+        // before reaching the numerics. Now that both regimes load, the
+        // per-layer assignment is the thing under test rather than the
+        // refusal that used to stand in front of it.
+        let (_, mut file, _) = tiny_parsed();
+        file.metadata
+            .insert("gemma4.rope.freq_base_swa".into(), MetaValue::F32(10000.0));
+        file.metadata
+            .insert("gemma4.rope.freq_base".into(), MetaValue::F32(1_000_000.0));
+        let spec = ModelSpec::from_gguf(&file).unwrap();
+        // The tiny fixture is layer 0 sliding, layer 1 global.
+        assert_eq!(spec.layers[0].kind, LayerKind::SlidingWindow(4));
+        assert_eq!(spec.layers[1].kind, LayerKind::Global);
+        assert_eq!(spec.layers[0].rope_freq_base, 10000.0);
+        assert_eq!(spec.layers[1].rope_freq_base, 1_000_000.0);
+    }
+
+    #[test]
+    fn a_sliding_head_width_is_read_from_the_swa_key() {
+        let (_, mut file, _) = tiny_parsed();
+        file.metadata
+            .insert("gemma4.attention.key_length_swa".into(), MetaValue::U32(4));
+        let spec = ModelSpec::from_gguf(&file).unwrap();
+        assert_eq!(
+            spec.layers[0].head_dim, 4,
+            "sliding layer takes the _swa key"
+        );
+        assert_eq!(spec.layers[1].head_dim, 8, "global layer keeps key_length");
+        assert_eq!(spec.max_head_dim(), 8);
+    }
+
+    #[test]
+    fn each_rotation_width_is_checked_against_its_own_regime() {
+        // One width checked against both regimes reads a 4-wide sliding
+        // rotation as a partial rotation of an 8-wide head. Give the two
+        // regimes different widths and confirm each key is held to its own.
+        let (_, mut file, _) = tiny_parsed();
+        file.metadata
+            .insert("gemma4.attention.key_length_swa".into(), MetaValue::U32(4));
+        file.metadata.insert(
+            "gemma4.rope.dimension_count".into(),
+            MetaValue::U32(8), // global head width
+        );
+        file.metadata.insert(
+            "gemma4.rope.dimension_count_swa".into(),
+            MetaValue::U32(4), // sliding head width
+        );
+        let spec = ModelSpec::from_gguf(&file).unwrap();
+        check_supported(&file, &spec).unwrap();
+
+        // Swapping them makes each key wrong for the regime it governs.
+        file.metadata
+            .insert("gemma4.rope.dimension_count_swa".into(), MetaValue::U32(8));
+        let err = check_supported(&file, &spec).unwrap_err().to_string();
+        assert!(err.contains("dimension_count_swa"), "{err}");
+        assert!(err.contains("head width is 4"), "{err}");
+    }
+
+    #[test]
+    fn an_unknown_rope_key_is_still_refused() {
+        // The allowlist is what stands between a converter that adds a third
+        // regime and a silent wrong rotation. Widening it to the two Gemma 4
+        // regimes must not have widened it to anything else.
+        let (_, mut file, spec) = tiny_parsed();
+        file.metadata
+            .insert("gemma4.rope.scaling.factor".into(), MetaValue::F32(8.0));
+        let err = check_supported(&file, &spec).unwrap_err().to_string();
+        assert!(err.contains("gemma4.rope.scaling.factor"), "{err}");
+    }
+
+    #[test]
+    fn the_rope_divisor_tensor_reaches_the_logits() {
+        // The regression this whole change exists for. `rope_freqs.weight`
+        // was listed inert on the reasoning that frequencies are recomputed
+        // from the base -- true, but not from the base alone. While it was
+        // ignored, a checkpoint carrying it loaded and produced finite,
+        // fluent, wrong logits with nothing to notice. Asserting only that
+        // the loader accepts the tensor would pass against that same bug, so
+        // the assertion is that the numerics move.
+        let load = |spec: &TinySpec| {
+            let image = build_tiny_model(spec);
+            let file = crate::gguf::parse(&image).unwrap();
+            let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+            model.prefill_all(&[1, 5, 9, 13, 3, 8, 21, 2]).unwrap()
+        };
+        let plain = load(&TinySpec::default());
+        // Head width 8 gives 4 pairs; rotate one, pad three.
+        let partial = load(&TinySpec {
+            rope_rotating_pairs: Some(1),
+            ..TinySpec::default()
+        });
+        assert_eq!(plain.len(), partial.len());
+        let moved = plain
+            .iter()
+            .zip(&partial)
+            .flat_map(|(a, b)| a.0.iter().zip(&b.0))
+            .filter(|(a, b)| a.to_bits() != b.to_bits())
+            .count();
+        assert!(
+            moved > 0,
+            "divisors changed no logit: the tensor is still inert"
+        );
+
+        // All-ones divisors are the identity, so a checkpoint that declares
+        // a full rotation must be bit-identical to one that declares none.
+        // This is the other half: the tensor must not perturb the case it
+        // does not describe.
+        let full = load(&TinySpec {
+            rope_rotating_pairs: Some(4),
+            ..TinySpec::default()
+        });
+        for (position, (a, b)) in plain.iter().zip(&full).enumerate() {
+            for (t, (x, y)) in a.0.iter().zip(&b.0).enumerate() {
+                assert_eq!(
+                    x.to_bits(),
+                    y.to_bits(),
+                    "position {position} token {t}: dividing by 1.0 moved a logit"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn only_the_global_regime_takes_the_rope_divisors() {
+        // The divisors are the full-attention regime's partial rotation; the
+        // sliding regime rotates its whole head. Applying them to both would
+        // silence three quarters of every sliding layer's rotation, which
+        // still reads as a working model.
+        let spec = TinySpec {
+            rope_rotating_pairs: Some(1),
+            ..TinySpec::default()
+        };
+        let image = build_tiny_model(&spec);
+        let file = crate::gguf::parse(&image).unwrap();
+        let model = CpuModel::from_gguf(&file, &image).unwrap();
+        let plain = rope_frequencies(spec.head_dim, spec.rope_freq_base, None);
+
+        // Layer 0 sliding: table untouched. Layer 1 global: padded pairs
+        // driven to nothing.
+        let sliding = &model.weights.layers[0].rope_freqs;
+        let global = &model.weights.layers[1].rope_freqs;
+        assert_eq!(model.spec.layers[0].kind, LayerKind::SlidingWindow(4));
+        assert_eq!(model.spec.layers[1].kind, LayerKind::Global);
+        for (j, f) in plain.iter().enumerate() {
+            assert_eq!(sliding[j].to_bits(), f.to_bits(), "sliding pair {j}");
+        }
+        assert_eq!(global[0].to_bits(), plain[0].to_bits(), "rotating pair 0");
+        for (j, f) in global.iter().enumerate().skip(1) {
+            assert!(
+                *f < plain[j] * 1e-20,
+                "global pair {j} was not divided: {f}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_rope_divisor_tensor_of_the_wrong_length_is_refused() {
+        // The loader divides elementwise, so a short tensor would either
+        // panic or leave the tail rotating at full frequency depending on
+        // where it ran out.
+        let (_, mut file, spec) = tiny_parsed();
+        let mut info = extra_tensor(ROPE_FREQS_TENSOR);
+        info.dims = vec![3]; // global head width 8 implies 4
+        file.tensors.push(info);
+        let err = check_supported(&file, &spec).unwrap_err().to_string();
+        assert!(err.contains(ROPE_FREQS_TENSOR), "{err}");
+        assert!(err.contains("3") && err.contains("4"), "{err}");
     }
 
     #[test]
@@ -1474,15 +1774,21 @@ mod tests {
     }
 
     #[test]
-    fn partial_rotary_dimension_count_is_refused() {
+    fn a_rotation_narrower_than_the_head_is_refused() {
+        // Gemma 4 does rotate a quarter of each global head, but it expresses
+        // that at full width through rope_freqs.weight. A dimension_count
+        // below the head width means the other encoding -- rotate a slice,
+        // leave the remainder alone -- which is a different operation and is
+        // not implemented.
         let (_, mut file, spec) = tiny_parsed();
         file.metadata.insert(
             "gemma4.rope.dimension_count".into(),
             MetaValue::U32(spec.max_head_dim() as u32 / 2),
         );
         let err = check_supported(&file, &spec).unwrap_err().to_string();
-        assert!(err.contains("p-RoPE"), "{err}");
-        // The same key equal to head_dim is a full rotation: accepted.
+        assert!(err.contains("dimension_count"), "{err}");
+        assert!(err.contains("rope_freqs.weight"), "{err}");
+        // The same key equal to the head width is a full rotation: accepted.
         file.metadata.insert(
             "gemma4.rope.dimension_count".into(),
             MetaValue::U32(spec.max_head_dim() as u32),
@@ -1491,14 +1797,18 @@ mod tests {
     }
 
     #[test]
-    fn a_second_rope_frequency_base_is_refused() {
+    fn a_rope_key_outside_the_two_implemented_regimes_is_refused() {
+        // gemma3's local base arrives under a different spelling from
+        // gemma4's `freq_base_swa`, and nothing in the forward pass would
+        // read it.
         let (_, mut file, spec) = tiny_parsed();
         file.metadata.insert(
             "gemma4.rope.local_freq_base".into(),
             MetaValue::F32(10000.0),
         );
         let err = check_supported(&file, &spec).unwrap_err().to_string();
-        assert!(err.contains("dual or scaled RoPE"), "{err}");
+        assert!(err.contains("gemma4.rope.local_freq_base"), "{err}");
+        assert!(err.contains("two frequency bases"), "{err}");
     }
 
     #[test]

@@ -39,6 +39,17 @@ pub struct TinySpec {
     /// Every `sliding_window_pattern`-th layer is global (kv.rs convention).
     pub sliding_window_pattern: usize,
     pub rope_freq_base: f32,
+    /// Frequency base for the sliding-window regime. `None` writes no
+    /// `rope.freq_base_swa` key, the single-regime shape the committed
+    /// fixture ships.
+    pub rope_freq_base_swa: Option<f32>,
+    /// Rotating pairs of a global head, when the checkpoint expresses a
+    /// partial rotation. `Some(n)` writes `rope_freqs.weight` as `n` ones
+    /// followed by `head_dim / 2 - n` divisors of 1e30, the construction
+    /// llama.cpp's converter emits for Gemma 4's proportional RoPE. Held as
+    /// a count rather than a vector so the spec stays `Copy`, and because
+    /// the count is the parameter the converter itself is given.
+    pub rope_rotating_pairs: Option<usize>,
     pub rms_eps: f32,
     pub seed: u64,
     /// Weight storage type. Defaults to F32, which is what the committed
@@ -60,6 +71,8 @@ impl Default for TinySpec {
             sliding_window: 4,
             sliding_window_pattern: 2,
             rope_freq_base: 10000.0,
+            rope_freq_base_swa: None,
+            rope_rotating_pairs: None,
             rms_eps: 1e-6,
             seed: 42,
             storage: TensorStorage::F32,
@@ -294,6 +307,9 @@ pub fn build_tiny_model(spec: &TinySpec) -> Vec<u8> {
     );
     w.kv_f32("gemma4.attention.layer_norm_rms_epsilon", spec.rms_eps);
     w.kv_f32("gemma4.rope.freq_base", spec.rope_freq_base);
+    if let Some(swa) = spec.rope_freq_base_swa {
+        w.kv_f32("gemma4.rope.freq_base_swa", swa);
+    }
 
     let (pieces, scores, kinds) = tiny_vocab(spec.vocab_size);
     w.kv_arr_str("tokenizer.ggml.tokens", &pieces);
@@ -334,6 +350,22 @@ pub fn build_tiny_model(spec: &TinySpec) -> Vec<u8> {
             w.tensor(&format!("blk.{i}.{suffix}"), &dims, &values, spec.storage);
         }
     }
+    // Proportional-RoPE divisors, matching the converter's own construction:
+    // ones over the rotating pairs, 1e30 over the rest. Written F32
+    // regardless of `spec.storage`, as llama.cpp writes it: the padded value
+    // is far outside bfloat16's range and rounds to infinity, which would
+    // turn the reference's very small residual angle into an exact zero.
+    if let Some(rotating) = spec.rope_rotating_pairs {
+        let half = spec.head_dim / 2;
+        assert!(
+            rotating <= half,
+            "rope_rotating_pairs {rotating} exceeds the {half} pairs of a head"
+        );
+        let mut divisors = vec![1.0f32; rotating];
+        divisors.extend(std::iter::repeat_n(1e30f32, half - rotating));
+        w.tensor_f32("rope_freqs.weight", &[half as u64], &divisors);
+    }
+
     let output_norm = ws.norm_tensor(spec.embed_dim);
     w.tensor("output_norm.weight", &[d], &output_norm, spec.storage);
     // LM head is tied to token_embd, llama.cpp Gemma convention: no
