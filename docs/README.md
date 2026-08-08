@@ -246,6 +246,7 @@ is whoever is running the checks, and the human's pasted output is the evidence.
 | [verification/rust-harness-qa.md](verification/rust-harness-qa.md) | Q0-Q6: the sandbox-executable code-quality campaign |
 | [verification/hardware-stress.md](verification/hardware-stress.md) | One-time firmware stability soak for the BIOS undervolt profile |
 | [verification/known-bugs.md](verification/known-bugs.md) | The defect ledger the runbook entries cross-reference |
+| [verification/ledger-archive.md](verification/ledger-archive.md) | Closed defect history moved out of the ledger, and the candidates the panel refused |
 
 ## Performance Summary
 

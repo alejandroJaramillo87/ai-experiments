@@ -49,8 +49,19 @@ PRUNE_DIRS = {
 # were written, so a reference that has since moved is accurate history rather
 # than drift. vendor/ is third-party and not ours to correct.
 EXEMPT_PARTS = ("investigations", "vendor")
-EXEMPT_PREFIXES = ("docs/verification/",)
 EXEMPT_SUFFIXES = ("_investigation.md",)
+
+# Empty on purpose, and kept as a mechanism rather than deleted. docs/verification/
+# was exempt here until 2026-08-08, justified by the deliberately stale pre-fix
+# paths in the ledger. Measured, that justification did not hold: the frozen
+# ledger-archive.md contributes no dead paths at all, because its staleness lives
+# in :NNN line suffixes that LINE_SUFFIX strips before resolution, and the one
+# genuinely stale document (the Gemma 4 conformance record) is already exempt
+# twice over through EXEMPT_PARTS and EXEMPT_SUFFIXES. The exemption bought
+# nothing and cost coverage of the runbook, which is the most path-dense
+# documentation in the tree and the documentation a human trusts most. Removing
+# it surfaced four references, all recorded in KNOWN_ABSENT below.
+EXEMPT_PREFIXES: tuple[str, ...] = ()
 
 # Exempt by name, each for a stated reason.
 EXEMPT_FILES = {
@@ -133,6 +144,17 @@ KNOWN_ABSENT = {
     # An illustrative link inside a fenced markdown example demonstrating link
     # syntax. The target is invented for the example and names nothing.
     (".styles/DOCUMENTATION_STYLE.md", "../optimizations/gpu/gpu-optimizations.md"),
+    # The four references surfaced by ending the docs/verification/ exemption.
+    # Installed-package paths inside the KB-59 row, naming the two site-packages
+    # files whose interaction produced the defect. They describe the container's
+    # environment, not this tree.
+    ("docs/verification/known-bugs.md", "torch/_native/registry.py"),
+    ("docs/verification/known-bugs.md", "triton/runtime/build.py"),
+    # The same unwritten OBS-13 deliverable already exempted for the roadmap
+    # above. The runbook step names it because the step is what would confirm it.
+    ("docs/verification/observability.md", "docs/observability/debugging-runs.md"),
+    # Created on the host by the flight recorder at run time; nothing commits it.
+    ("docs/verification/rust-harness.md", "sessions/rust-harness/"),
 }
 
 BACKTICKED = re.compile(r"`([^`\n]+)`")

@@ -1,6 +1,6 @@
 # Step zero: environment
 
-**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable — both documentation gates exempt this directory by path, so stale references here are not caught for you.**
+**Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
 Blocks all other phases. The `interp` and `training` dependency groups carry
 provisional pins resolved offline, and the committed `uv.lock` predates the

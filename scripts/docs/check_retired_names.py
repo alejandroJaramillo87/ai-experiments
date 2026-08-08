@@ -169,11 +169,14 @@ SCAN_SUFFIXES = {
 SCAN_NAMES = {"Makefile", "Dockerfile"}
 SCAN_NAME_PREFIXES = ("Dockerfile.",)
 
-# Frozen by policy: investigation and verification write-ups record the tree as it
-# was on the day they were written, so naming the old file is accurate history.
-# Same exemption set as check_doc_refs.py, for the same reason.
+# Frozen by policy: investigation write-ups record the tree as it was on the day
+# they were written, so naming the old file is accurate history.
+# Same exemption set as check_doc_refs.py, for the same reason -- including the
+# empty EXEMPT_PREFIXES, where that script records why docs/verification/ stopped
+# being exempt on 2026-08-08. This gate has no false positives by construction,
+# so narrowing it was the lower-risk half of that change.
 EXEMPT_PARTS = ("investigations", "vendor")
-EXEMPT_PREFIXES = ("docs/verification/",)
+EXEMPT_PREFIXES: tuple[str, ...] = ()
 EXEMPT_SUFFIXES = ("_investigation.md",)
 
 # Exempt by name, each for a stated reason.

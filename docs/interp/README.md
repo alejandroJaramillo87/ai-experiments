@@ -20,8 +20,8 @@ Verification records live in [../verification/interp.md](../verification/interp.
 `platform.md` and `writeback.md` are titled runbooks but are living reference documents, not
 operational runbooks in the sense `.styles/DOCUMENTATION_STYLE.md` defines: they are read for
 understanding and are corrected when the tree moves. The operational runbooks executed against
-the host are under [../verification/](../verification/), which both documentation gates exempt
-by path.
+the host are under [../verification/](../verification/), which both documentation gates check
+in the same way they check this directory.
 
 ## Frozen records
 

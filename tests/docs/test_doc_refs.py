@@ -125,7 +125,20 @@ class TestIsExempt:
     def test_dated_records_and_vendored_trees_are_exempt(self, mod, rel):
         assert mod.is_exempt(rel)
 
-    @pytest.mark.parametrize("rel", ["AGENTS.md", "docs/README.md", "tests/README.md"])
+    @pytest.mark.parametrize(
+        "rel",
+        [
+            "AGENTS.md",
+            "docs/README.md",
+            "tests/README.md",
+            # Exempt until 2026-08-08, when the exemption was measured to be
+            # protecting nothing: the one genuinely stale document under this
+            # directory is the conformance investigation, which stays exempt
+            # through EXEMPT_PARTS and EXEMPT_SUFFIXES either way.
+            "docs/verification/known-bugs.md",
+            "docs/verification/training-phase2.md",
+        ],
+    )
     def test_living_documents_are_in_scope(self, mod, rel):
         assert not mod.is_exempt(rel)
 

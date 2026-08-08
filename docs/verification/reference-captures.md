@@ -1,8 +1,8 @@
 # Reference activation captures
 
 **Operational runbook. Executed against the workstation, not read for understanding: the
-operator's pasted output is the evidence. Keep the commands runnable — both documentation gates
-exempt this directory by path, so stale references here are not caught for you.**
+operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
+both documentation gates check this directory, so a stale reference here fails the gate.**
 
 The two multi-hour activation captures that feed P4-D3 SAE training: the false-fact organism
 capture and the Gemma-2-2B calibration capture. They are separated from
