@@ -68,7 +68,9 @@ These are standing instructions for anyone (human or agent) making changes in th
 - **`make quality` is mandatory before every push, for humans and agents alike.** The same
   command works in a sandbox and on the workstation, and reports the one step a sandbox cannot
   run — but a green sandbox run is still the weaker result, because it proves the code and not
-  the hardware. See [docs/testing/quality-gate.md](docs/testing/quality-gate.md).
+  the hardware. It also runs no tests: `make quality-full` is the workstation superset that adds
+  the suite and the hardware smoke tier, and it is a GPU consumer, so the serialization rule
+  above applies to it. See [docs/testing/quality-gate.md](docs/testing/quality-gate.md).
 - **Renaming a file means adding it to `scripts/docs/check_retired_names.py`.** The table
   there is what makes a rename self-policing; a rename that skips it leaves stragglers for a
   human to find months later.

@@ -2,14 +2,15 @@
 
 `make quality` is the pre-push gate, mandatory for humans and agents alike. It is the same
 command on the workstation and in a contained agent sandbox; this document covers what it
-runs, and what a sandbox run does not cover.
+runs, and what a sandbox run does not cover. `make quality-full` is its workstation superset,
+adding the test suite and the hardware smoke tier.
 
 The recipe in `make/quality.mk` is the source of truth for the step list. When this document
 disagrees with it, the recipe is right.
 
 ## What it runs
 
-Seven steps, cheapest first, failing on the first error:
+Ten steps, cheapest first, failing on the first error:
 
 1. `ruff format --check .` — formatting.
 2. `ruff check .` — lint.
@@ -19,7 +20,16 @@ Seven steps, cheapest first, failing on the first error:
    does not exist.
 6. `scripts/docs/check_retired_names.py` — fails when anything still uses a name that was
    deliberately retired, and names the replacement.
-7. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
+7. `scripts/docs/check_make_targets.py` — fails when a documented `make <target>` does not
+   resolve, reading invocations from fenced blocks and code spans only.
+8. `scripts/docs/check_doc_counts.py` — compares a document against itself, so a heading
+   reading `## Open (3)` must have three rows beneath it.
+9. `scripts/docs/check_kb_refs.py` — fails when a known-bug id cited in source has no ledger
+   row, or the reverse.
+10. `shellcheck --severity=warning` — shell scripts, enumerated with `find`.
+
+Note what is absent: **`make quality` does not run pytest.** See
+[The full gate](#the-full-gate) below.
 
 It then chains the rust-harness gate when that directory exists. That half is documented in
 [../../rust-harness/README.md](../../rust-harness/README.md): its five steps, the
@@ -73,6 +83,51 @@ What stays workstation-only is the lock check above, GPU work, the service healt
 anything under `/mnt/ai-data`. **Re-run `make quality` on the workstation before every push
 regardless: the sandbox proves the code, not the hardware.**
 
+## The full gate
+
+`make quality` is the pre-push gate and stops at the ten steps above. It never runs pytest, and
+`make test` deselects both hardware markers by default (`addopts` in `pyproject.toml`). So the
+three commands cover three different amounts of ground, and the cheapest is the one everyone
+reaches for. `make quality-full` is the one that runs all of it, on the workstation:
+
+```
+make quality-full            # quality, then the suite, then the hw_smoke tier
+make quality-full HW=full    # ... and the hw_full tier as well
+```
+
+`HW=full` is opt-in because that tier may allocate near-capacity VRAM and load real models. It
+is a separate variable from the `TIER=sandbox|full` of `make worktree-<name>`, which selects how
+a venv is provisioned rather than which tests run.
+
+Two refusals, both before any work is done. In a contained agent sandbox the target does not
+run at all:
+
+```
+[ERROR] quality-full: this target requires the workstation
+  Found: AI_SANDBOX is set, so there is no GPU, no /mnt/ai-data, and no running services.
+  Solution: run the sandbox-executable half here, then run this on the workstation
+  Command: make quality
+```
+
+And on a workstation whose environment is the torch-free tier, where the suite would skip its
+way to green:
+
+```
+[ERROR] quality-full: torch is not importable, so the suite would skip its way to green
+  Found: the environment is the torch-free sandbox tier; the run would report [TIER] sandbox
+  Solution: provision the full tier
+  Command: make install
+```
+
+That second check reads the same condition the suite itself reports on, at its source, rather
+than scraping the printed `[TIER]` line — the line stays a message to the reader, not an
+interface.
+
+`quality-full` touches the GPU, so the serialization rule in
+[../../AGENTS.md](../../AGENTS.md) applies: exactly one such job at a time across every
+worktree, regardless of how many sessions are open. The target prints the reminder rather than
+enforcing it.
+
 ## Provisioning
 
 `make install` is the full provision (`--all-groups --all-extras`). A bare `uv sync` is a safe
@@ -89,6 +144,11 @@ the summary:
        partial run, not a pass.
 [TIER] full: torch present, the whole suite was in scope.
 ```
+
+Under `make quality-full` the distinction is enforced rather than reported: the torch probe
+refuses the run before the suite starts, so a `[TIER] sandbox` line cannot appear in a green
+`quality-full` output. Seeing one there means the probe and the suite disagree, which is a defect
+in one of them.
 
 ## Related
 

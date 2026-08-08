@@ -29,6 +29,31 @@ rules and the Phase 4 `guard.sh` PreToolUse hook are the safety floor and fire r
 permission mode. Review the deny rules (`.claude/settings.json`, `opencode.json`) before the
 first unattended run.
 
+### The two settings files
+
+The effective Claude Code policy is the union of `.claude/settings.json` and
+`.claude/settings.local.json`. Only the first is version-controlled. The local file is git-ignored, so it is per-checkout
+state that never reaches a review, never reaches a branch, and is destroyed with the worktree
+it grew in. `scripts/agents/preflight-scan.sh` inspects it anyway, because being local is not
+the same as being trusted.
+
+The division follows from that:
+
+- `settings.json` holds standing policy: every `deny`, every `ask`, and the allows that
+  describe how work is done in this repository regardless of who is doing it. Anything that
+  should survive a worktree, or that anyone else should inherit, belongs here.
+- `settings.local.json` holds only what is specific to one checkout or one image — in a
+  sandbox worktree, currently the absolute `/opt/pyenv/bin/python3` path.
+
+An allow accretes there whenever a prompt is approved with "don't ask again", so the file
+drifts toward being policy that nobody decided and that nobody else can see. Two checkouts of
+this repository will hold different files, each shaped by what happened to be inconvenient
+that day. Re-read it periodically and empty it: promote what is genuinely policy into
+`settings.json`, and delete the rest rather than carrying it. `tests/agents/test_settings.py`
+asserts the two do not overlap and that the key-material denies survive whatever the allow
+list grows into; it treats an absent local file as normal, because on a fresh clone that is
+the correct state.
+
 ### Rung 4: the quality campaign
 
 Rungs 1–3 do a task. Rung 4 audits a subsystem that nobody has a task for — the shape of

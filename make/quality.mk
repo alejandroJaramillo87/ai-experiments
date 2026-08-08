@@ -1,6 +1,6 @@
 ##@ Testing & Code Quality
 
-.PHONY: format lint quality test
+.PHONY: format lint quality quality-full test
 
 # How a Python tool is reached. The two environments hold the same pinned
 # versions in different places, so the difference is resolved here once rather
@@ -124,4 +124,56 @@ endif
 	printf '[INFO] shellcheck: %s files\n' "$$(printf '%s\n' "$$files" | wc -l)"; \
 	printf '%s\n' "$$files" | xargs $(RUN_PY) shellcheck --severity=warning
 	@if [ -d rust-harness ]; then $(MAKE) -C rust-harness quality; fi
+
+# Hardware tier for `make quality-full`. smoke is the before-every-session tier: under five
+# minutes, no model downloads, temporary-directory writes only. full may allocate
+# near-capacity VRAM and load real models, so it is opt-in -- a gate nobody will run is not
+# a gate.
+#
+# Deliberately not named TIER. make/agents.mk:86 already owns that variable with a different
+# accepted set (sandbox|full) and a `?=` default; a second `?=` in this file would win by
+# include order and silently hand `worktree-%` a value it rejects.
+HW ?= smoke
+
+# The gate that runs everything. `make quality` skips pytest entirely and `make test`
+# deselects both hardware markers (pyproject.toml:263), so until this target existed "I ran
+# the gate" meant the cheapest of the three commands and the hardware tier was in no gate at
+# all.
+#
+# The torch probe is the load-bearing step. tests/conftest.py:62 decides between
+# `[TIER] sandbox` and `[TIER] full` on exactly this condition, and a torch-free run skips
+# its way to green -- so the suite would report a partial run as a pass. Checking the
+# condition at its source rather than grepping the printed line keeps the gate from
+# depending on the wording of a terminal-summary string that no test pins.
+quality-full: ## Run the whole gate: quality, the suite, and the hardware smoke tier (HW=smoke|full)
+ifdef AI_SANDBOX
+	@printf '[ERROR] quality-full: this target requires the workstation\n'; \
+	printf '  Found: AI_SANDBOX is set, so there is no GPU, no /mnt/ai-data, and no running services.\n'; \
+	printf '  Solution: run the sandbox-executable half here, then run this on the workstation\n'; \
+	printf '  Command: make quality\n'; \
+	exit 1
+else
+	@case "$(HW)" in \
+	  smoke|full) ;; \
+	  *) printf '[ERROR] quality-full: unknown HW: %s\n' "$(HW)"; \
+	     printf '  Accepted: smoke (under five minutes, default), full (near-capacity VRAM, real models)\n'; \
+	     printf '  Command: make quality-full HW=full\n'; \
+	     exit 1;; \
+	esac
+	@printf '[INFO] GPU/benchmark work stays serialized across all worktrees (see AGENTS.md)\n'
+	@$(RUN_PY) python -c 'import torch' 2>/dev/null || { \
+	  printf '[ERROR] quality-full: torch is not importable, so the suite would skip its way to green\n'; \
+	  printf '  Found: the environment is the torch-free sandbox tier; the run would report [TIER] sandbox\n'; \
+	  printf '  Solution: provision the full tier\n'; \
+	  printf '  Command: make install\n'; \
+	  exit 1; \
+	}
+	$(MAKE) quality
+	$(MAKE) test
+	$(RUN_PY) pytest -m hw_smoke -v
+	@if [ "$(HW)" = full ]; then \
+	  printf '[RUN] hardware full tier: near-capacity VRAM and real model loads\n'; \
+	  $(RUN_PY) pytest -m hw_full -v; \
+	fi
+endif
 

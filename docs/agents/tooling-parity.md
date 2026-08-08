@@ -28,10 +28,16 @@ document are run by the human on the workstation, and agents work from the repor
 
 Known asymmetries — recorded so "the two wirings agree" stays honest:
 
-- `Read(**/.env*)` and `Edit/Write(//mnt/ai-data/models/**)` **path**-denies exist only in
-  the Claude encoding. OpenCode's permission schema is bash-pattern + coarse verbs and
-  cannot express per-path globs; it covers these via the `* /mnt/ai-data/models*` bash
-  rule and (Phase 4) the shared hook backstop.
+- `Read(**/.env*)`, `Read(~/.ssh/**)`, `Read(~/.aws/**)`, and
+  `Edit/Write(//mnt/ai-data/models/**)` **path**-denies exist only in the Claude encoding.
+  OpenCode's permission schema is bash-pattern + coarse verbs and cannot express per-path
+  globs; it covers these via the `cat *.env*`, `* ~/.ssh/*`, `* ~/.aws/*`, and
+  `* /mnt/ai-data/models*` bash rules and the shared hook backstop. The hook covers the
+  `.env` and key-material paths in both tools; it does **not** cover the models-dir path
+  denies for reads, which are write-only rules by design.
+- Claude Code allows `Read`, `Grep`, and `Glob` repository-wide (`Read(**)` and siblings);
+  OpenCode has no read verb to gate and has always behaved this way. The two encodings agree
+  here by the Claude side moving, not the OpenCode side.
 - `share: "disabled"`, LSP config, and compaction settings are **OpenCode-only** (Claude
   Code has no equivalent keys and manages compaction automatically).
 - Claude Code denies access outside the project directory by default; OpenCode makes the
@@ -242,10 +248,13 @@ catches it because it inspects the resolved command.
 | RunPod idle | `scripts/agents/runpod-idle-check.sh` | `hooks.Stop` + `hooks.SessionEnd` | `.opencode/plugin/runpod-idle.ts` on `session.idle` (toast) |
 | token usage | — | built-in `/usage` | `.opencode/plugin/usage.ts` (writes usage state) |
 
-- **guard.sh** blocks reads/writes of `*.env*`, writes under `/mnt/ai-data/models`, and any
-  bash command that references an env file or writes under the models dir. Both adapters send
-  the identical `{tool_name, tool_input}` shape, so the `.env`-via-indirection block is
-  enforced the same way in both tools.
+- **guard.sh** blocks reads/writes of `*.env*` and of key material (`.ssh/`, `.aws/credentials`
+  and `config`, `id_rsa`, `id_ed25519`, `.pem`, `.p12`, `.key`), writes under
+  `/mnt/ai-data/models`, and any bash command that names one of those or writes under the
+  models dir. Both adapters send the identical `{tool_name, tool_input}` shape, so the
+  block-via-indirection behaviour is enforced the same way in both tools. The key-material
+  patterns live in one `SECRET_RE` used by both branches, because two copies of a security
+  list is how the two copies diverge.
 - **runpod-idle-check.sh** is non-blocking (always exit 0). It queries the RunPod GraphQL API
   with `RUNPOD_API_KEY`, `[SKIP]`s cleanly without a key, and supports `RUNPOD_IDLE_FIXTURE=
   <file.json>` to simulate a warm endpoint for testing. `RUNPOD_REPORT=1` emits a spend line

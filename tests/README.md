@@ -38,10 +38,16 @@ expression rather than adding to it.** So `-m gpu` silently re-enables `hw_smoke
 ## Entry points
 
 ```bash
+$ make quality-full           # everything: the gate, the suite, and hw_smoke (workstation only)
 $ make test                   # the whole suite, in either environment
 $ pytest tests/common -v      # one directory
 $ pytest -m hw_smoke          # workstation only
 ```
+
+`make quality-full` is the only command that covers a hardware tier; add `HW=full` to include
+`hw_full`. It refuses to run in a sandbox, and refuses on a torch-free environment where the
+suite would skip its way to green. See
+[../docs/testing/quality-gate.md](../docs/testing/quality-gate.md).
 
 `make test` runs the same way in a contained agent sandbox as on the workstation:
 `make/quality.mk` branches on the `AI_SANDBOX` variable set by the sandbox image, dropping

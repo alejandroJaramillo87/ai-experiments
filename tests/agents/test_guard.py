@@ -102,6 +102,56 @@ def test_downloader_write_under_models_dir_blocked(run_script):
         assert "protected models dir" in result.stderr, command
 
 
+def test_key_material_read_blocked(run_script):
+    # settings.json denies Read(~/.ssh/**) and Read(~/.aws/**) by pattern. These
+    # assert the hook denies the same paths independently, so the two layers the
+    # documentation claims actually both exist.
+    for path in (
+        "/home/node/.ssh/id_ed25519",
+        "/home/node/.aws/credentials",
+        "/home/node/.aws/config",
+        "/work/certs/server.pem",
+        "/work/certs/client.p12",
+        "/work/certs/tls.key",
+    ):
+        result = run_script(
+            "agents/guard.sh", stdin=guard_input("Read", file_path=path)
+        )
+        assert result.returncode == 2, path
+        assert "key material" in result.stderr, path
+
+
+def test_key_material_indirection_blocked(run_script):
+    # The reason the hook exists: the permission matcher cannot see through
+    # $(...), so the same path reached indirectly must be caught on the command.
+    for command in (
+        "cat $(echo ~/.ssh/id_rsa)",
+        "grep -r AKIA ~/.aws/credentials",
+        "openssl x509 -in /work/certs/server.pem -noout",
+    ):
+        result = run_script(
+            "agents/guard.sh", stdin=guard_input("Bash", command=command)
+        )
+        assert result.returncode == 2, command
+        assert "key material" in result.stderr, command
+
+
+def test_key_material_patterns_do_not_overreach(run_script):
+    # A rule that blocks everything passes the two tests above and is useless.
+    # Each case here names a construct the secret patterns nearly match:
+    # a word ending in "key", a directory that is not .ssh, and ordinary work.
+    for command in (
+        "grep -rn api_keys docs/",
+        "ls docs/sshd/",
+        "make quality",
+    ):
+        result = run_script(
+            "agents/guard.sh", stdin=guard_input("Bash", command=command)
+        )
+        assert result.returncode == 0, command
+        assert result.stderr == "", command
+
+
 def test_models_dir_read_allowed(run_script):
     result = run_script(
         "agents/guard.sh",
