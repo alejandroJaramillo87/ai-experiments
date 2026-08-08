@@ -50,6 +50,17 @@ pub struct TinySpec {
     /// a count rather than a vector so the spec stays `Copy`, and because
     /// the count is the parameter the converter itself is given.
     pub rope_rotating_pairs: Option<usize>,
+    /// Ceiling written to `final_logit_softcapping`. `None` writes no key.
+    pub logit_softcap: Option<f32>,
+    /// Writes a `layer_output_scale.weight` of this value on every layer.
+    ///
+    /// Uniform rather than varied per layer so that `Some(1.0)` is a true
+    /// identity and can be compared against `None` bit for bit. Which layer
+    /// the scale lands on is pinned by the tap instead: RMSNorm is scale
+    /// invariant, so a scale applied at the wrong layer does not reappear as
+    /// a clean multiple downstream and could not be read off the logits
+    /// anyway.
+    pub layer_output_scale: Option<f32>,
     pub rms_eps: f32,
     pub seed: u64,
     /// Weight storage type. Defaults to F32, which is what the committed
@@ -73,6 +84,8 @@ impl Default for TinySpec {
             rope_freq_base: 10000.0,
             rope_freq_base_swa: None,
             rope_rotating_pairs: None,
+            logit_softcap: None,
+            layer_output_scale: None,
             rms_eps: 1e-6,
             seed: 42,
             storage: TensorStorage::F32,
@@ -310,6 +323,9 @@ pub fn build_tiny_model(spec: &TinySpec) -> Vec<u8> {
     if let Some(swa) = spec.rope_freq_base_swa {
         w.kv_f32("gemma4.rope.freq_base_swa", swa);
     }
+    if let Some(cap) = spec.logit_softcap {
+        w.kv_f32("gemma4.final_logit_softcapping", cap);
+    }
 
     let (pieces, scores, kinds) = tiny_vocab(spec.vocab_size);
     w.kv_arr_str("tokenizer.ggml.tokens", &pieces);
@@ -348,6 +364,16 @@ pub fn build_tiny_model(spec: &TinySpec) -> Vec<u8> {
                 ws.tensor(n(&dims))
             };
             w.tensor(&format!("blk.{i}.{suffix}"), &dims, &values, spec.storage);
+        }
+        // Written F32 whatever `spec.storage` says, matching the converter:
+        // the published GGUF carries `blk.{n}.layer_output_scale.weight [1]
+        // F32` even in an otherwise BF16 file.
+        if let Some(scale) = spec.layer_output_scale {
+            w.tensor_f32(
+                &format!("blk.{i}.layer_output_scale.weight"),
+                &[1],
+                &[scale],
+            );
         }
     }
     // Proportional-RoPE divisors, matching the converter's own construction:

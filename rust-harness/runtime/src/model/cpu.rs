@@ -65,6 +65,10 @@ pub struct Config {
     pub sliding_window: usize,
     pub sliding_window_pattern: usize,
     pub rms_eps: f32,
+    /// Ceiling the output logits are squashed toward, `30.0` on every Gemma 4
+    /// variant. `None` when the checkpoint declares none, which is the
+    /// uncapped forward pass.
+    pub logit_softcap: Option<f32>,
 }
 
 /// Geometry of one decoder layer.
@@ -182,7 +186,24 @@ impl Config {
             sliding_window: u("attention.sliding_window")?,
             sliding_window_pattern: schedule("attention.sliding_window_pattern")?,
             rms_eps: f("attention.layer_norm_rms_epsilon")?,
+            logit_softcap: match file
+                .metadata
+                .get(&format!("{arch}.final_logit_softcapping"))
+            {
+                Some(MetaValue::F32(v)) => Some(*v),
+                Some(other) => bail!("{arch}.final_logit_softcapping: expected f32, got {other:?}"),
+                None => None,
+            },
         };
+        // A zero or negative cap divides the logits by zero or reflects them
+        // through the origin. Neither is a cap, and both stay finite enough
+        // to read as a working model.
+        if let Some(cap) = config.logit_softcap {
+            ensure!(
+                cap > 0.0,
+                "{arch}.final_logit_softcapping is {cap}, must be positive"
+            );
+        }
         // Each dimension below divides or strides something in the forward
         // pass, so a zero reaches the arithmetic instead of a guard: 0 is
         // even, so key_length = 0 cleared the RoPE check and then aborted
@@ -392,6 +413,15 @@ const TOP_LEVEL_TENSORS: [&str; 2] = ["token_embd.weight", "output_norm.weight"]
 /// treating it as inert was a latent wrong answer.
 const ROPE_FREQS_TENSOR: &str = "rope_freqs.weight";
 
+/// Per-layer tensor suffixes the forward pass consumes when a checkpoint
+/// carries them, and computes without when it does not.
+///
+/// Separate from `LAYER_TENSORS`, whose entries are mandatory: a missing one
+/// is a load error, while a missing one of these is a checkpoint that does
+/// not have the feature. Listing them here is what keeps the unconsumed
+/// backstop from refusing a file for carrying a tensor this backend reads.
+const OPTIONAL_LAYER_TENSORS: [&str; 1] = ["layer_output_scale.weight"];
+
 /// Collapse a tensor name to its family, replacing a leading `blk.<i>.` with
 /// `blk.*.`, so a diagnostic over 42 layers reports one line per family.
 pub fn tensor_family(name: &str) -> String {
@@ -555,11 +585,21 @@ pub fn check_supported(file: &GgufFile, spec: &ModelSpec) -> Result<()> {
     // The refused keys are named rather than inverted into an allowlist of
     // inert keys, which would also refuse every descriptive key a converter
     // adds later — a far larger behavioral change than closing this gap.
+    //
+    // `final_logit_softcapping` is implemented and so is read rather than
+    // refused. It is named explicitly instead of loosening the substring
+    // test, because `attn_logit_softcapping` is the other key that matches
+    // and it caps attention scores inside the layer, which nothing here
+    // does. Gemma 2 publishes both, so a substring relaxation would accept
+    // one silently while implementing the other.
     let arch_prefix = format!("{arch}.");
     for key in file.metadata.keys() {
         let Some(suffix) = key.strip_prefix(&arch_prefix) else {
             continue;
         };
+        if suffix == "final_logit_softcapping" {
+            continue;
+        }
         if suffix.contains("softcapping") || matches!(suffix, "attention.scale" | "logit_scale") {
             bail!(
                 "metadata key {key} caps or rescales attention scores or logits, which \
@@ -579,7 +619,7 @@ pub fn check_supported(file: &GgufFile, spec: &ModelSpec) -> Result<()> {
         let consumed = (0..config.n_layers).any(|i| {
             let prefix = format!("blk.{i}.");
             name.strip_prefix(&prefix)
-                .is_some_and(|s| LAYER_TENSORS.contains(&s))
+                .is_some_and(|s| LAYER_TENSORS.contains(&s) || OPTIONAL_LAYER_TENSORS.contains(&s))
         });
         if !consumed {
             let family = tensor_family(name);
@@ -616,6 +656,13 @@ struct LayerWeights {
     /// each hold a copy; the table is `head_dim / 2` floats, and sharing it
     /// would trade a measurable amount of nothing for an aliasing rule.
     rope_freqs: Vec<f32>,
+    /// `layer_output_scale`, multiplying the whole layer output as its last
+    /// operation. 1.0 when the checkpoint carries no such tensor, which is
+    /// also the initialization value upstream, so the absent case and the
+    /// untrained case compute alike. The released Gemma 4 weights are not
+    /// 1.0: E2B spans 0.019 to 0.879, and layer 0's 0.019 is a 54x reduction
+    /// that a backend ignoring this tensor simply does not apply.
+    output_scale: f32,
     attn_norm: Vec<f32>,
     wq: Vec<f32>,
     wk: Vec<f32>,
@@ -996,9 +1043,22 @@ impl CpuModel {
                 _ => None,
             };
             let t = |suffix: &str, want: usize| tensor(&format!("blk.{i}.{suffix}"), want);
+            // Absent is 1.0 rather than an error: a checkpoint without the
+            // tensor does not have the feature. Length-checked like every
+            // other tensor, so a converter emitting a vector under this name
+            // is a load error and not a silently-used first element.
+            let output_scale = match file
+                .tensors
+                .iter()
+                .any(|t| t.name == format!("blk.{i}.layer_output_scale.weight"))
+            {
+                true => t("layer_output_scale.weight", 1)?[0],
+                false => 1.0,
+            };
             layers.push(LayerWeights {
                 spec: *ls,
                 rope_freqs: rope_frequencies(head_dim, ls.rope_freq_base, divisors),
+                output_scale,
                 attn_norm: t("attn_norm.weight", embed_dim)?,
                 wq: t("attn_q.weight", embed_dim * q_dim)?,
                 wk: t("attn_k.weight", embed_dim * kv_dim)?,
@@ -1202,7 +1262,27 @@ impl CpuModel {
                 *a += b;
             }
 
-            // Steering before the tap, so captures see the steered stream.
+            // The layer's last operation, scaling everything the layer
+            // produced including the residual carried through it. Upstream
+            // applies it after all of the layer's residual updates and
+            // returns immediately, so it is the boundary between this layer
+            // and the next.
+            if layer.output_scale != 1.0 {
+                for a in x.iter_mut() {
+                    *a *= layer.output_scale;
+                }
+            }
+
+            // Steering after the scale and before the tap, in that order, so
+            // both seams keep their stated meaning: a control vector is added
+            // to the block's output the way llama.cpp adds it, and the tap
+            // observes exactly what the next block consumes. Putting the tap
+            // before the scale would break the correspondence with the Python
+            // forward hook, which fires on the decoder module and therefore
+            // receives the already-scaled tensor -- a per-layer discrepancy
+            // spanning 47x across the stack, and one that would make probes
+            // trained on one capture path score the other with plausible
+            // numbers. See docs/interp/gemma-4-interp.md.
             if let Some(dir) = control.as_ref().and_then(|cv| cv.direction(i)) {
                 let scale = control.as_ref().expect("checked above").scale;
                 for (a, b) in x.iter_mut().zip(dir) {
@@ -1210,7 +1290,7 @@ impl CpuModel {
                 }
             }
 
-            // Interp tap seam: the layer's complete residual output.
+            // Interp tap seam: the layer's complete output.
             if let Some(tap) = tap.as_mut() {
                 tap.on_residual(i, position, x);
             }
@@ -1226,7 +1306,17 @@ impl CpuModel {
         let logits = (0..c.vocab_size)
             .map(|t| {
                 let row = &w.embed[t * c.embed_dim..(t + 1) * c.embed_dim];
-                row.iter().zip(hidden).map(|(a, b)| a * b).sum()
+                let logit: f32 = row.iter().zip(hidden).map(|(a, b)| a * b).sum();
+                // Softcap, when the checkpoint declares one: a smooth squash
+                // toward +/-cap rather than a clamp. Monotone, so it moves no
+                // argmax and greedy decoding cannot detect its absence --
+                // perplexity, sampled decoding, and every captured logprob
+                // can, which is why omitting it is a silent defect and why
+                // its tests are not written against argmax.
+                match c.logit_softcap {
+                    Some(cap) => (logit / cap).tanh() * cap,
+                    None => logit,
+                }
             })
             .collect();
         Ok(Logits(logits))
@@ -1823,6 +1913,159 @@ mod tests {
         assert!(err.contains("blk.*.attn_v_norm.weight"), "{err}");
     }
 
+    /// Prefill the standard probe prompt against a spec, for the tests below
+    /// that compare one architecture switch against its absence.
+    fn logits_for(spec: &TinySpec) -> Vec<Logits> {
+        let image = build_tiny_model(spec);
+        let file = crate::gguf::parse(&image).unwrap();
+        let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+        model.prefill_all(&[1, 5, 9, 13, 3, 8, 21, 2]).unwrap()
+    }
+
+    #[test]
+    fn the_logit_softcap_squashes_without_moving_any_argmax() {
+        // Both halves matter, and the second is why this test exists. The cap
+        // is monotone, so it reorders nothing and greedy decoding is
+        // bit-identical with and without it: a backend that omitted the cap
+        // would pass any argmax-based check while every perplexity, sampled
+        // draw, and captured logprob came out wrong. The assertion is
+        // therefore on the values, and the argmax invariance is asserted as
+        // the reason a value assertion was needed.
+        let cap = 0.5f32; // well inside the fixture's logit range
+        let plain = logits_for(&TinySpec::default());
+        let capped = logits_for(&TinySpec {
+            logit_softcap: Some(cap),
+            ..TinySpec::default()
+        });
+
+        let mut moved = 0;
+        for (position, (a, b)) in plain.iter().zip(&capped).enumerate() {
+            for (t, (raw, got)) in a.0.iter().zip(&b.0).enumerate() {
+                let want = (raw / cap).tanh() * cap;
+                assert_eq!(
+                    got.to_bits(),
+                    want.to_bits(),
+                    "position {position} token {t}: {got} is not tanh({raw}/{cap})*{cap}"
+                );
+                assert!(got.abs() < cap, "position {position} token {t}: {got}");
+                if raw.to_bits() != got.to_bits() {
+                    moved += 1;
+                }
+            }
+            let argmax = |r: &Logits| {
+                r.0.iter()
+                    .enumerate()
+                    .max_by(|x, y| x.1.total_cmp(y.1))
+                    .unwrap()
+                    .0
+            };
+            assert_eq!(
+                argmax(a),
+                argmax(b),
+                "position {position}: the cap moved an argmax, so it is not monotone"
+            );
+        }
+        assert!(moved > 0, "the cap changed no logit at all");
+    }
+
+    #[test]
+    fn a_nonpositive_logit_softcap_is_a_load_error() {
+        // Zero divides every logit by zero; a negative cap reflects them
+        // through the origin. Both stay finite enough to read as a model.
+        for cap in [0.0f32, -30.0] {
+            let (_, mut file, _) = tiny_parsed();
+            file.metadata
+                .insert("gemma4.final_logit_softcapping".into(), MetaValue::F32(cap));
+            let err = ModelSpec::from_gguf(&file).unwrap_err().to_string();
+            assert!(err.contains("final_logit_softcapping"), "{err}");
+            assert!(err.contains("positive"), "{err}");
+        }
+    }
+
+    #[test]
+    fn the_layer_output_scale_multiplies_the_whole_layer_output() {
+        // Not a no-op in the released weights: E2B stores 0.019 to 0.879, and
+        // layer 0's value is a 54x reduction. A backend that loads the tensor
+        // and never applies it produces fluent text and wrong numerics, so
+        // the assertion is that the logits move.
+        let scaled = logits_for(&TinySpec {
+            layer_output_scale: Some(0.25),
+            ..TinySpec::default()
+        });
+        let plain = logits_for(&TinySpec::default());
+        let moved = plain
+            .iter()
+            .zip(&scaled)
+            .flat_map(|(a, b)| a.0.iter().zip(&b.0))
+            .filter(|(a, b)| a.to_bits() != b.to_bits())
+            .count();
+        assert!(moved > 0, "the layer scale changed no logit");
+
+        // A scale of exactly 1.0 is the identity, which is both the absent
+        // case and the upstream initialization value. The two must agree bit
+        // for bit, or the feature perturbs checkpoints that do not use it.
+        let ones = logits_for(&TinySpec {
+            layer_output_scale: Some(1.0),
+            ..TinySpec::default()
+        });
+        for (position, (a, b)) in plain.iter().zip(&ones).enumerate() {
+            for (t, (x, y)) in a.0.iter().zip(&b.0).enumerate() {
+                assert_eq!(
+                    x.to_bits(),
+                    y.to_bits(),
+                    "position {position} token {t}: a unit scale moved a logit"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_tap_observes_the_layer_output_after_its_scale() {
+        // The seam contract: the tap fires on the layer's complete output,
+        // which under Gemma 4's ordering is after layer_output_scale, not
+        // after the last residual add. The Python forward hook fires on the
+        // decoder module and so receives the already-scaled tensor; a tap
+        // firing earlier would diverge from it by the scale, per-layer, and
+        // probes trained on one path would score the other with plausible
+        // numbers. See docs/interp/gemma-4-interp.md.
+        let base = 0.25f32;
+        let spec = TinySpec {
+            layer_output_scale: Some(base),
+            ..TinySpec::default()
+        };
+        let capture = |spec: &TinySpec| {
+            let image = build_tiny_model(spec);
+            let file = crate::gguf::parse(&image).unwrap();
+            let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+            let calls: TapCalls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            model.set_tap(Box::new(CollectingTap(calls.clone())));
+            model.prefill_all(&[1, 5]).unwrap();
+            let rows = calls.lock().unwrap().clone();
+            rows
+        };
+        let unscaled = capture(&TinySpec::default());
+        let scaled = capture(&spec);
+
+        // Layer 0's rows must be the unscaled run's rows times exactly the
+        // scale. Layer 0 is the one layer where that holds cleanly: RMSNorm
+        // is scale invariant, so the scale does not propagate as a multiple
+        // into layer 1, which is also why the logits alone cannot say where
+        // it was applied and why this has to be read off the tap.
+        let layer0: Vec<_> = unscaled.iter().filter(|(l, _, _)| *l == 0).collect();
+        let scaled0: Vec<_> = scaled.iter().filter(|(l, _, _)| *l == 0).collect();
+        assert!(!layer0.is_empty());
+        for ((_, pos, plain), (_, _, got)) in layer0.iter().zip(&scaled0) {
+            for (j, (p, g)) in plain.iter().zip(got.iter()).enumerate() {
+                let want = p * base;
+                assert!(
+                    (g - want).abs() <= want.abs() * 1e-6,
+                    "position {pos} element {j}: tap saw {g}, expected {want} \
+                     (the tap fired before the scale)"
+                );
+            }
+        }
+    }
+
     #[test]
     fn inert_tensors_do_not_trip_the_guard() {
         let (_, mut file, spec) = tiny_parsed();
@@ -1835,9 +2078,15 @@ mod tests {
         // A pure-metadata feature leaves no tensor for the unconsumed-tensor
         // backstop to catch, so a Gemma-2 checkpoint's softcapping was
         // ignored and every logit came out wrong with nothing to notice.
+        //
+        // `final_logit_softcapping` has since been implemented and is absent
+        // from this list on purpose; see the softcap tests below. The others
+        // stay refused, and `attn_logit_softcapping` in particular must:
+        // it is the sibling key that caps attention scores inside the layer,
+        // Gemma 2 publishes both, and a substring relaxation for one would
+        // have silently accepted the other.
         for (key, value) in [
             ("gemma4.attn_logit_softcapping", 50.0f32),
-            ("gemma4.final_logit_softcapping", 30.0),
             ("gemma4.attention.scale", 0.0625),
             ("gemma4.logit_scale", 1.5),
         ] {
