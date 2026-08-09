@@ -4,8 +4,13 @@
  * the identical committed GGUF fixture. A mismatch localizes to the first
  * divergent position, per the phase 1 bisection workflow.
  *
+ * Two fixtures run through every golden here. The uniform one declares none
+ * of Gemma 4's optional features and proves they are absent-safe; the
+ * E4B-shaped one declares all seven and proves they are right.
+ *
  * Fixture regeneration (from rust-harness/):
  *   cargo run -p runtime --bin tiny-model -- fixtures/tiny-gemma4.gguf
+ *   cargo run -p runtime --bin tiny-model -- fixtures/tiny-gemma4-e4b.gguf e4b
  *   python3 fixtures/reference_logits.py
  */
 
@@ -18,16 +23,28 @@ fn fixture_path(name: &str) -> std::path::PathBuf {
         .join(name)
 }
 
+/// The uniform fixture, and the E4B-shaped one that carries all seven
+/// architectural features. Both run through every golden below: the uniform
+/// image is what proves the features are absent-safe, and the E4B-shaped one
+/// is what proves they are right.
+const UNIFORM: &str = "tiny-gemma4";
+const E4B: &str = "tiny-gemma4-e4b";
+
 #[test]
 fn cpu_backend_matches_the_python_reference() {
-    let image = std::fs::read(fixture_path("tiny-gemma4.gguf")).unwrap();
+    check_logits(UNIFORM);
+}
+
+#[test]
+fn cpu_backend_matches_the_python_reference_on_the_e4b_fixture() {
+    check_logits(E4B);
+}
+
+fn check_logits(stem: &str) {
+    let (image, golden) = load_golden_named(stem);
     let file = runtime::gguf::parse(&image).unwrap();
     let mut model = CpuModel::from_gguf(&file, &image).unwrap();
 
-    let golden: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(fixture_path("tiny-gemma4-logits.json")).unwrap(),
-    )
-    .unwrap();
     let prompt: Vec<u32> = golden["prompt"]
         .as_array()
         .unwrap()
@@ -57,19 +74,24 @@ fn cpu_backend_matches_the_python_reference() {
         for (t, (g, w)) in got.0.iter().zip(want).enumerate() {
             assert!(
                 (g - w).abs() <= TOLERANCE,
-                "first divergence at position {position}, token {t}: got {g}, reference {w}"
+                "{stem}: first divergence at position {position}, token {t}: \
+                 got {g}, reference {w}"
             );
         }
     }
 }
 
-fn load_golden() -> (Vec<u8>, serde_json::Value) {
-    let image = std::fs::read(fixture_path("tiny-gemma4.gguf")).unwrap();
+fn load_golden_named(stem: &str) -> (Vec<u8>, serde_json::Value) {
+    let image = std::fs::read(fixture_path(&format!("{stem}.gguf"))).unwrap();
     let golden = serde_json::from_str(
-        &std::fs::read_to_string(fixture_path("tiny-gemma4-logits.json")).unwrap(),
+        &std::fs::read_to_string(fixture_path(&format!("{stem}-logits.json"))).unwrap(),
     )
     .unwrap();
     (image, golden)
+}
+
+fn load_golden() -> (Vec<u8>, serde_json::Value) {
+    load_golden_named(UNIFORM)
 }
 
 fn f32_row(v: &serde_json::Value) -> Vec<f32> {
@@ -84,10 +106,23 @@ const TOLERANCE: f32 = 2e-4;
 
 #[test]
 fn tap_rows_match_the_python_reference_residuals() {
+    check_tap_rows(UNIFORM);
+}
+
+/// On the E4B-shaped fixture this also pins where the layer scalar lands:
+/// the reference multiplies by `layer_output_scale` as the layer's last
+/// operation, so a backend that applied it before the per-layer-embedding
+/// residual would diverge here even though its logits could still agree.
+#[test]
+fn tap_rows_match_the_python_reference_residuals_on_the_e4b_fixture() {
+    check_tap_rows(E4B);
+}
+
+fn check_tap_rows(stem: &str) {
     use runtime::model::cpu::Tap;
     use std::sync::{Arc, Mutex};
 
-    let (image, golden) = load_golden();
+    let (image, golden) = load_golden_named(stem);
     let file = runtime::gguf::parse(&image).unwrap();
     let mut model = CpuModel::from_gguf(&file, &image).unwrap();
     let prompt: Vec<u32> = golden["prompt"]
@@ -116,7 +151,7 @@ fn tap_rows_match_the_python_reference_residuals() {
         for (j, (g, w)) in got.iter().zip(f32_row(want)).enumerate() {
             assert!(
                 (g - w).abs() <= TOLERANCE,
-                "layer {layer} residual element {j}: got {g}, reference {w}"
+                "{stem}: layer {layer} residual element {j}: got {g}, reference {w}"
             );
         }
     }
@@ -124,9 +159,18 @@ fn tap_rows_match_the_python_reference_residuals() {
 
 #[test]
 fn steered_logits_match_the_python_reference() {
+    check_steered(UNIFORM);
+}
+
+#[test]
+fn steered_logits_match_the_python_reference_on_the_e4b_fixture() {
+    check_steered(E4B);
+}
+
+fn check_steered(stem: &str) {
     use runtime::model::cpu::ControlVector;
 
-    let (image, golden) = load_golden();
+    let (image, golden) = load_golden_named(stem);
     let file = runtime::gguf::parse(&image).unwrap();
     let mut model = CpuModel::from_gguf(&file, &image).unwrap();
     let embed_dim = model.config().embed_dim;
@@ -307,4 +351,56 @@ fn fixture_gguf_matches_the_generator() {
     let committed = std::fs::read(fixture_path("tiny-gemma4.gguf")).unwrap();
     let generated = runtime::synth::build_tiny_model(&runtime::synth::TinySpec::default());
     assert_eq!(committed, generated, "regenerate the fixture (see header)");
+}
+
+#[test]
+fn e4b_fixture_gguf_matches_the_generator() {
+    let committed = std::fs::read(fixture_path("tiny-gemma4-e4b.gguf")).unwrap();
+    let generated = runtime::synth::build_tiny_model(&runtime::synth::TinySpec::e4b_shaped());
+    assert_eq!(committed, generated, "regenerate the fixture (see header)");
+}
+
+/// The geometry choices the E4B-shaped fixture exists to make observable.
+/// Each one is a convention the committed uniform fixture cannot distinguish,
+/// which is QA finding A1-15; asserting them here means a later edit to the
+/// spec cannot quietly reintroduce the blindness while the goldens still pass.
+#[test]
+fn the_e4b_fixture_geometry_separates_the_ambiguous_conventions() {
+    let spec = runtime::synth::TinySpec::e4b_shaped();
+    assert_ne!(
+        spec.head_dim,
+        spec.embed_dim / spec.n_heads,
+        "sliding head width equals embed_dim / n_heads, so the two candidate \
+         QK scales coincide and the golden cannot tell them apart"
+    );
+    assert_ne!(
+        spec.head_dim_global.unwrap(),
+        spec.embed_dim / spec.n_heads,
+        "global head width equals embed_dim / n_heads, same blindness"
+    );
+    assert_ne!(
+        spec.head_dim,
+        spec.head_dim_global.unwrap(),
+        "both regimes share a head width, so per-layer head dim is untested"
+    );
+    assert!(
+        spec.n_kv_heads > 1 && spec.n_heads / spec.n_kv_heads > 1,
+        "blocked and interleaved GQA mappings agree unless there are several \
+         KV heads and several query heads per KV head"
+    );
+    // The shared tail must span both attention regimes, or the single-donor
+    // rule and the per-type rule agree and the fixture cannot separate them.
+    let boundary = spec.n_layers - spec.shared_kv_layers;
+    let is_global = |i: usize| (i + 1).is_multiple_of(spec.sliding_window_pattern);
+    assert!(
+        (boundary..spec.n_layers).any(is_global)
+            && (boundary..spec.n_layers).any(|i| !is_global(i)),
+        "the shared-KV tail is all one layer kind, so one donor and two \
+         donors give the same answer"
+    );
+    assert!(
+        spec.sliding_window < 8,
+        "the window must be narrower than the reference prompt or the sliding \
+         layers never drop a position"
+    );
 }

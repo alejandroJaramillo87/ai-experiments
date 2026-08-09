@@ -32,8 +32,27 @@ pub struct TinySpec {
     pub n_layers: usize,
     pub n_heads: usize,
     pub n_kv_heads: usize,
+    /// Head width of the sliding-window regime, and of every layer when
+    /// `head_dim_global` is `None`.
     pub head_dim: usize,
+    /// Head width of the global regime, when it differs. `Some(n)` writes
+    /// `attention.key_length` as `n` and `attention.key_length_swa` as
+    /// `head_dim`; `None` writes only `attention.key_length`, the
+    /// single-width shape the committed fixture ships.
+    ///
+    /// The two regimes then carry differently shaped `attn_q`, `attn_k`,
+    /// `attn_v`, `attn_output`, `attn_q_norm`, and `attn_k_norm`, which is
+    /// the layout E4B ships and the one a uniform fixture cannot exercise.
+    pub head_dim_global: Option<usize>,
     pub ffn_dim: usize,
+    /// Doubles the feed-forward width over the shared-KV tail and writes
+    /// `feed_forward_length` as a per-layer int32 array rather than a scalar.
+    ///
+    /// This is Gemma 4's `use_double_wide_mlp`, which E2B sets and E4B does
+    /// not. The rule is reproduced here because the emitter stands in for the
+    /// converter; the loader reads the widths from the array and uses the
+    /// rule only as a check.
+    pub double_wide_mlp: bool,
     pub context_length: usize,
     pub sliding_window: usize,
     /// Every `sliding_window_pattern`-th layer is global (kv.rs convention).
@@ -98,7 +117,9 @@ impl Default for TinySpec {
             n_heads: 2,
             n_kv_heads: 1,
             head_dim: 8,
+            head_dim_global: None,
             ffn_dim: 32,
+            double_wide_mlp: false,
             context_length: 1024,
             sliding_window: 4,
             sliding_window_pattern: 2,
@@ -112,6 +133,50 @@ impl Default for TinySpec {
             rms_eps: 1e-6,
             seed: 42,
             storage: TensorStorage::F32,
+        }
+    }
+}
+
+impl TinySpec {
+    /// An E4B-shaped tiny model: every architectural feature the E-series
+    /// declares, at a geometry chosen so each one is observable.
+    ///
+    /// The geometry is not arbitrary. Four layers on a period of two put the
+    /// two-layer shared-KV tail across one sliding and one global layer,
+    /// which is the only arrangement where a single donor and the per-type
+    /// donor rule disagree. `head_dim` differs from `embed_dim / n_heads`
+    /// (8 and 12 against 6), so the two candidate QK scales separate rather
+    /// than coincide. Four query heads over two KV heads make the blocked and
+    /// interleaved GQA mappings disagree. The committed uniform fixture has
+    /// none of those three properties, which is QA finding A1-15: it cannot
+    /// tell either convention apart.
+    pub fn e4b_shaped() -> Self {
+        Self {
+            embed_dim: 24,
+            n_layers: 4,
+            n_heads: 4,
+            n_kv_heads: 2,
+            head_dim: 8,
+            head_dim_global: Some(12),
+            ffn_dim: 32,
+            double_wide_mlp: true,
+            // Narrower than the prompt, so the sliding layers actually drop
+            // positions and the two regimes attend over different spans.
+            sliding_window: 3,
+            sliding_window_pattern: 2,
+            rope_freq_base: 1_000_000.0,
+            rope_freq_base_swa: Some(10_000.0),
+            // Two rotating pairs of the global head's six: the proportional
+            // rotation E4B expresses through rope_freqs.weight.
+            rope_rotating_pairs: Some(2),
+            logit_softcap: Some(30.0),
+            layer_output_scale: Some(0.75),
+            ple_dim: Some(4),
+            shared_kv_layers: 2,
+            // Distinct from the uniform fixture's seed so the two files share
+            // no weights, and a golden copied between them fails loudly.
+            seed: 4242,
+            ..Self::default()
         }
     }
 }
@@ -319,20 +384,45 @@ impl GgufWriter {
 /// Build the complete synthetic model image for `spec`.
 pub fn build_tiny_model(spec: &TinySpec) -> Vec<u8> {
     let d = spec.embed_dim as u64;
-    let hd = spec.head_dim as u64;
-    let q_out = spec.n_heads as u64 * hd;
-    let kv_out = spec.n_kv_heads as u64 * hd;
-    let ffn = spec.ffn_dim as u64;
+    let hd_global = spec.head_dim_global.unwrap_or(spec.head_dim);
+    // Layer `i` is global when `i + 1` divides by the pattern, matching
+    // `Config::layer_kind` and `kv::interleaved_layers`.
+    let is_global = |i: usize| (i + 1).is_multiple_of(spec.sliding_window_pattern);
+    let head_dim_of = |i: usize| match is_global(i) {
+        true => hd_global,
+        false => spec.head_dim,
+    };
+    // Double-wide applies to the shared-KV tail, the region
+    // `use_double_wide_mlp` widens. With no shared tail declared there is no
+    // region to widen, and the widths stay uniform.
+    let boundary = spec.n_layers - spec.shared_kv_layers;
+    let ffn_dim_of = |i: usize| match spec.double_wide_mlp && i >= boundary {
+        true => spec.ffn_dim * 2,
+        false => spec.ffn_dim,
+    };
     let mut w = GgufWriter::new();
 
     w.kv_str("general.architecture", "gemma4");
     w.kv_u32("gemma4.block_count", spec.n_layers as u32);
     w.kv_u32("gemma4.context_length", spec.context_length as u32);
     w.kv_u32("gemma4.embedding_length", spec.embed_dim as u32);
-    w.kv_u32("gemma4.feed_forward_length", spec.ffn_dim as u32);
+    // Scalar when uniform, per-layer int32 array when the tail is widened --
+    // the two forms the converter emits, and both read by the loader.
+    match spec.double_wide_mlp {
+        true => w.kv_arr_i32(
+            "gemma4.feed_forward_length",
+            &(0..spec.n_layers)
+                .map(|i| ffn_dim_of(i) as i32)
+                .collect::<Vec<_>>(),
+        ),
+        false => w.kv_u32("gemma4.feed_forward_length", spec.ffn_dim as u32),
+    }
     w.kv_u32("gemma4.attention.head_count", spec.n_heads as u32);
     w.kv_u32("gemma4.attention.head_count_kv", spec.n_kv_heads as u32);
-    w.kv_u32("gemma4.attention.key_length", spec.head_dim as u32);
+    w.kv_u32("gemma4.attention.key_length", hd_global as u32);
+    if spec.head_dim_global.is_some() {
+        w.kv_u32("gemma4.attention.key_length_swa", spec.head_dim as u32);
+    }
     w.kv_u32(
         "gemma4.attention.sliding_window",
         spec.sliding_window as u32,
@@ -373,6 +463,10 @@ pub fn build_tiny_model(spec: &TinySpec) -> Vec<u8> {
     let embd = ws.tensor(n(&embd_dims));
     w.tensor("token_embd.weight", &embd_dims, &embd, spec.storage);
     for i in 0..spec.n_layers {
+        let hd = head_dim_of(i) as u64;
+        let q_out = spec.n_heads as u64 * hd;
+        let kv_out = spec.n_kv_heads as u64 * hd;
+        let ffn = ffn_dim_of(i) as u64;
         // Weight matrices: GGUF layout [ne0 = input dim, ne1 = output dim],
         // rows of ne0 contiguous per output element.
         for (suffix, dims) in [
@@ -413,8 +507,11 @@ pub fn build_tiny_model(spec: &TinySpec) -> Vec<u8> {
     // regardless of `spec.storage`, as llama.cpp writes it: the padded value
     // is far outside bfloat16's range and rounds to infinity, which would
     // turn the reference's very small residual angle into an exact zero.
+    // Sized against the global head width, not the sliding one: the divisors
+    // apply to the global regime only, and the loader length-checks them
+    // against `attention.key_length / 2`.
     if let Some(rotating) = spec.rope_rotating_pairs {
-        let half = spec.head_dim / 2;
+        let half = hd_global / 2;
         assert!(
             rotating <= half,
             "rope_rotating_pairs {rotating} exceeds the {half} pairs of a head"
