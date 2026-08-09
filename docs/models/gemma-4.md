@@ -819,24 +819,38 @@ are double-wide — and contradicted, because those same 20 layers also carry th
 projections the code says a shared layer does not have. Whatever produced these files acted on
 `num_kv_shared_layers` for the MLP and not for attention.
 
-Two readings remain, and they are not equally cheap to be wrong about:
+Two readings were possible, and they were not equally cheap to be wrong about:
 
 | Reading | Implication | Cost if wrong |
 |---------|-------------|---------------|
 | The code is authoritative; the tensors are residue | Shared layers read a donor's K/V; the surplus tensors are dead | 18 of E4B's 42 layers attend over the wrong keys — fluent, wrong output, no error |
 | The weights are authoritative; the code is ahead of them | Every layer computes its own K/V, and `num_kv_shared_layers` describes cache reuse only | Wasted memory, correct output |
 
-The `rust-harness` CPU backend implements the first reading. The choice is marked in the loader
-and pinned by `a_shared_layers_own_key_and_value_weights_are_deliberately_unread` in
-`rust-harness/runtime/src/model/cpu.rs`, which is a tripwire rather than evidence: it asserts
-the tensors stay unread, so it passes by construction and fails only if someone changes the
-loader without reading this section.
+**Resolved 2026-08-09 in favor of the modeling code.** RH.1a check 1 in
+[docs/verification/rust-harness.md](../verification/rust-harness.md) measured the distribution
+*shape* of all four attention projections in every E2B layer, rather than their scale. Scale
+does not separate the two readings: `initializer_range` places an untrained tensor at
+approximately the same standard deviation as a trained one. Shape does.
 
-**Resolving it requires the host.** Nothing in this repository distinguishes the two readings —
-both load, both produce fluent text, and the transcripts record the conflict rather than
-settling it. The procedure is RH.1a in
-[docs/verification/rust-harness.md](../verification/rust-harness.md), which runs the cheap
-weight-statistics test before the definitive logit comparison.
+Across the 20 shared layers, `k_proj` and `v_proj` hold a `|mean| / std` ratio of 0.8217 with a
+spread of 0.0010 and excess kurtosis between -0.64 and -0.63 on every layer — a truncated
+normal with its tails intact. In those same layers `q_proj` and `o_proj`, which the modeling
+code does construct, average 0.7295 and 0.7635 with positive excess kurtosis, matching the
+trained projections in layers 0-14. Two tensors of one module cannot lose kurtosis relative to
+their initialization while the two beside them gain it, so the disputed tensors were allocated
+and never entered the gradient path.
+
+The surplus `k_proj`, `v_proj`, and `k_norm` are therefore initialization residue that
+`transformers` allocates and the converter faithfully copies. The `rust-harness` CPU backend
+implements this reading. The choice is marked in the loader and pinned by
+`a_shared_layers_own_key_and_value_weights_are_deliberately_unread` in
+`rust-harness/runtime/src/model/cpu.rs`, which remains a tripwire rather than evidence: it
+asserts the tensors stay unread, so it passes by construction and fails only if someone changes
+the loader without reading this section.
+
+One caveat belongs in the record. This is statistical inference over weight distributions, not
+a logit comparison. RH.1a check 2 — greedy generation through the harness against
+`transformers` on the same prompt — remains listed as confirmation and is not blocking.
 
 ## Per-tier support
 
@@ -871,9 +885,11 @@ Two caveats on the "yes" in the table above, both material:
   written from the same documents agree on a shared misreading; only Google's actual
   checkpoint breaks that tie, and that run is workstation-only.
 - **The shared-KV weight layout follows the modeling code, which the checkpoints contradict.**
-  Shared layers' own `attn_k` and `attn_v` are left unread — see the first open question
-  below. If that reading is wrong, the result is fluent and wrong rather than a load error,
-  which makes it the highest-risk assumption in the backend.
+  Shared layers' own `attn_k` and `attn_v` are left unread. This was the highest-risk
+  assumption in the backend until 2026-08-09, when weight-distribution statistics showed the
+  surplus tensors are untrained initialization residue — see
+  [The shared-KV weight conflict](#the-shared-kv-weight-conflict). The reading is now
+  corroborated by the checkpoint itself rather than by the modeling source alone.
 
 The tensor signature for sharing — a layer with `attn_q` but no `attn_k`/`attn_v` — is no
 longer a refusal, because it is now the legitimate shape of a shared layer. It survives
@@ -889,11 +905,12 @@ is supported but unexercised there.
 Recorded rather than guessed. Resolve these against the `transformers` implementation at the
 pinned revision before relying on any assumption about them.
 
-- **Whether the released E-series checkpoints match the shared-KV weight layout of the modeling
-  code.** See [The shared-KV weight conflict](#the-shared-kv-weight-conflict) below, which states
-  the evidence on both sides and the host procedure that decides it. This is the only open
-  question the CPU backend has already had to answer in order to run, so it is the one whose
-  resolution changes code rather than prose.
+- ~~**Whether the released E-series checkpoints match the shared-KV weight layout of the
+  modeling code.**~~ Resolved 2026-08-09 in favor of the modeling code; the surplus tensors are
+  untrained residue. The evidence and the measurement are in
+  [The shared-KV weight conflict](#the-shared-kv-weight-conflict). Retained here struck through
+  rather than deleted because this was the only open question the CPU backend had to answer in
+  order to run, and its resolution licenses code that is already written.
 - **Tensor-level data for 12B and 31B.** Not collected. All statements about those two models
   derive from `config.json`.
 - **`use_bidirectional_attention: "vision"`.** Present on 12B and 31B, `null` on the E-series.

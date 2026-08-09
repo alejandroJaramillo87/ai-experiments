@@ -531,13 +531,15 @@ Recorded rather than guessed.
   `attention.shared_kv_layers`, and the tensor signature survives only inverted — a layer that
   owns its cache and lacks `attn_k`/`attn_v` has nothing to attend over.
 
-  The backend resolves the question by following the modeling code and leaving the shared tail's
-  key and value tensors unread. That is a decision made under the uncertainty recorded here, not
-  a resolution of it, and it is the one open question whose answer changes code. The evidence on
-  both sides is collected in
-  [docs/models/gemma-4.md](../models/gemma-4.md#the-shared-kv-weight-conflict), and the host
-  procedure that decides it is RH.1a in
-  [docs/verification/rust-harness.md](../verification/rust-harness.md).
+  The backend follows the modeling code and leaves the shared tail's key and value tensors
+  unread. That began as a decision made under the uncertainty recorded here. It is now a
+  resolution: RH.1a check 1, run on 2026-08-09, showed the shared tail's `k_proj` and `v_proj`
+  retain their truncated-normal initialization — a `|mean| / std` ratio of 0.8217 with a spread
+  of 0.0010 and negative excess kurtosis on all 20 E2B layers — while `q_proj` and `o_proj` in
+  the same layers carry the trained signature. The surplus tensors never entered the gradient
+  path. The measurement is in
+  [docs/models/gemma-4.md](../models/gemma-4.md#the-shared-kv-weight-conflict) and the procedure
+  is RH.1a in [docs/verification/rust-harness.md](../verification/rust-harness.md).
 - **The stored value of `layer_output_scale`.** The transcripts record the shape `[1]` but not the
   value, so whether the multiplication is a no-op in the released weights is unverified.
 - **The `1e30` divisor as an exact identity.** `conversion/gemma.py` line 715 uses 1e30 rather

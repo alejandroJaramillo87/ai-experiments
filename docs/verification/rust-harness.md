@@ -159,57 +159,91 @@ over the wrong keys and the output is fluent and wrong rather than an error.
 The evidence on both sides is in
 [The shared-KV weight conflict](../models/gemma-4.md#the-shared-kv-weight-conflict).
 
-Run the two checks in order. The first is cheap and may settle it; the second
-is definitive and costs a model load.
+Run the two checks in order. The first is cheap and settles the question on
+its own; the second is a logit-level confirmation and costs a model load.
 
-**Check 1 — do the surplus tensors look trained?** An untrained tensor that
-was allocated and never updated keeps its initialization distribution. A
-trained one does not. Compare the shared tail against the layers that
-certainly are trained, at matched head width, since E2B's sliding and global
-layers differ in shape.
+**Check 1 — were the surplus tensors ever trained?** A tensor that was
+allocated and never updated keeps the *shape* of its initialization
+distribution. Scale is the wrong statistic to test: `initializer_range`
+places an untrained tensor at close to the same standard deviation as a
+trained one, so the two are indistinguishable by `std`. Distribution shape
+separates them. Two shape statistics suffice:
+
+- `|mean| / std`. A Gaussian gives 0.7979. A truncated normal, which is what
+  `transformers` initializes with, gives a higher value because the tails are
+  cut. Trained weights become heavy-tailed and give a lower one.
+- Excess kurtosis. Negative for a truncated normal, positive for trained
+  weights.
+
+Compare all four attention projections in the same layer. Within the shared
+tail, `q_proj` and `o_proj` are used and must be trained; `k_proj` and
+`v_proj` are the tensors in dispute. Two tensors of one module diverging from
+the other two isolates the effect to the gradient path, which no
+whole-layer comparison can do.
 
 ```bash
 $ cd /home/user/ai-experiments
 $ .venv/bin/python - <<'EOF'
-import json, numpy as np
+import json, numpy as np, torch
 from safetensors import safe_open
 
-PATH = "/mnt/ai-data/models/hf/gemma-4-E2B-it/model.safetensors"
-SHARED = 20                      # num_kv_shared_layers, E2B
-with safe_open(PATH, framework="numpy") as f:
-    keys = [k for k in f.keys() if k.endswith("self_attn.k_proj.weight")]
-    rows = []
-    for k in sorted(keys, key=lambda s: int(s.split(".layers.")[1].split(".")[0])):
-        layer = int(k.split(".layers.")[1].split(".")[0])
-        w = f.get_tensor(k).astype(np.float32)
-        rows.append((layer, w.shape, float(w.std()), float(np.abs(w).mean())))
-n = max(r[0] for r in rows) + 1
-print(f"{n} layers, boundary at {n - SHARED}")
-for layer, shape, std, absmean in rows:
-    tag = "shared" if layer >= n - SHARED else "owns  "
-    print(f"  layer {layer:2d} {tag} shape={shape} std={std:.5f} |mean|={absmean:.5f}")
+DIR = "/mnt/ai-data/models/hf/gemma-4-E2B"
+GAUSS = np.sqrt(2 / np.pi)
+
+text = json.load(open(f"{DIR}/config.json"))["text_config"]
+n, shared = text["num_hidden_layers"], text["num_kv_shared_layers"]
+boundary = n - shared
+print(f"{n} layers, boundary {boundary}, Gaussian |mean|/std = {GAUSS:.4f}\n")
+
+PROJ = ["q_proj", "k_proj", "v_proj", "o_proj"]
+stats = {}
+with safe_open(f"{DIR}/model.safetensors", framework="pt") as f:
+    names = set(f.keys())
+    for layer in range(n):
+        for p in PROJ:
+            key = f"model.language_model.layers.{layer}.self_attn.{p}.weight"
+            if key not in names:
+                key = f"language_model.model.layers.{layer}.self_attn.{p}.weight"
+            if key not in names:
+                continue
+            w = f.get_tensor(key).float().numpy().ravel()
+            s = w.std()
+            stats[(layer, p)] = (
+                float(np.abs(w).mean() / s),
+                float(((w / s) ** 4).mean() - 3.0),
+            )
+
+print("group means (ratio)")
+for p in PROJ:
+    o = [stats[(l, p)][0] for l in range(boundary) if (l, p) in stats]
+    s = [stats[(l, p)][0] for l in range(boundary, n) if (l, p) in stats]
+    f2 = lambda g: f"{np.mean(g):.4f} (spread {max(g) - min(g):.4f})" if g else "-"
+    print(f"  {p:8s} owns {f2(o)}   shared {f2(s)}")
 EOF
 ```
 
-Expected signal: group the printed rows by `shape`, then compare `std` within
-each shape group across the boundary. If the shared rows sit at a visibly
-different scale from the owning rows of the same shape — or are identical to
-each other — the tensors are untrained residue and the modeling code is
-authoritative, which is what the backend already implements. If the shared
-rows are statistically indistinguishable from the owning ones, that is
-evidence the weights are meaningful and check 2 becomes mandatory rather than
+The script reads tensor data and needs no GPU. The `E4B` directory
+substitutes for `E2B` unchanged; the base and instruction-tuned variants
+carry identical tensor layouts, so whichever is on disk serves.
+
+Expected signal: if the shared tail's `k_proj` and `v_proj` cluster tightly
+above the Gaussian ratio with negative kurtosis while `q_proj` and `o_proj`
+in the same layers scatter below it with positive kurtosis, the disputed
+tensors never entered the gradient path, the modeling code is authoritative,
+and the backend's reading is correct. If all four projections move together,
+the weights are meaningful and check 2 becomes mandatory rather than
 confirmatory.
 
-This check reads tensor data and needs no GPU. It is not conclusive on its
-own: a trained-then-frozen tensor and a trained-and-used tensor look alike.
-
-**Check 2 — do the logits agree?** The definitive test. Generate greedily from
-the same prompt through `transformers` and through the harness, and compare.
+**Check 2 — do the logits agree?** Generate greedily from the same prompt
+through `transformers` and through the harness, and compare. Confirm the GGUF
+filename against the directory before running; the conversion output name
+depends on the quantization chosen at conversion time.
 
 ```bash
+$ ls /mnt/ai-data/models/gguf/
 $ cd /home/user/ai-experiments/rust-harness
 $ cargo run --release -p harness -- \
-    --model /mnt/ai-data/models/gguf/gemma-4-E2B-it/gemma-4-E2B-it-BF16.gguf \
+    --model /mnt/ai-data/models/gguf/gemma-4-E2B/gemma-4-E2B-BF16.gguf \
     --prompt 'The capital of France is' --max-tokens 16 --temperature 0
 ```
 
@@ -221,7 +255,7 @@ $ .venv/bin/python - <<'EOF'
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-MODEL = "/mnt/ai-data/models/hf/gemma-4-E2B-it"
+MODEL = "/mnt/ai-data/models/hf/gemma-4-E2B"
 tok = AutoTokenizer.from_pretrained(MODEL)
 model = AutoModelForCausalLM.from_pretrained(MODEL, dtype=torch.float32)
 model.eval()
@@ -235,19 +269,56 @@ EOF
 Expected signal: matching token sequences mean the backend's reading is
 correct. Divergence that begins early and does not recover means it is not —
 in which case flip the `owns_cache` branch in the loader so shared layers
-compute their own K/V, rebuild, and rerun. One of the two settles it.
+compute their own K/V, rebuild, and rerun.
 
 Capture the `from_pretrained` output verbatim, warnings included. A warning
 naming the shared layers' `k_proj`, `v_proj`, or `k_norm` as unexpected keys
-is direct confirmation that the code treats them as surplus, and is worth more
-than either check above. Silence there is equally informative.
+is direct confirmation that the code treats them as surplus. Silence there is
+equally informative.
 
 Observed:
 
 ```
+2026-08-09, check 1, gemma-4-E2B base weights, 35 layers, boundary 15.
+
+group means (ratio)
+  q_proj   owns 0.7416 (spread 0.0609)   shared 0.7295 (spread 0.0355)
+  k_proj   owns 0.7471 (spread 0.0725)   shared 0.8217 (spread 0.0010)
+  v_proj   owns 0.7523 (spread 0.1085)   shared 0.8217 (spread 0.0011)
+  o_proj   owns 0.7578 (spread 0.0480)   shared 0.7635 (spread 0.0335)
+
+Excess kurtosis, shared layers 15-34: k_proj and v_proj between -0.64 and
+-0.63 on every one of the 20 layers; q_proj between +1.34 and +6.91; o_proj
+between +0.75 and +3.12. Owning layers 0-14 are positive on all four
+projections.
+
+Per-layer k_proj shapes confirm the attention schedule independently: 512
+wide at layers 4, 9, 14, 19, 24, 29, 34 and 256 wide elsewhere, so the last
+non-shared global layer is 14 and the last non-shared sliding layer is 13.
+
+Configuration sweep, both variants: enable_moe_block false, num_experts null,
+attention_bias false, attention_k_eq_v false. use_double_wide_mlp is true on
+E2B and false on E4B.
 ```
 
-Status: PENDING
+Interpretation: within a single shared layer, `q_proj` and `o_proj` carry the
+distributional signature of trained weights while `k_proj` and `v_proj` are
+pinned to four significant figures with negative excess kurtosis on all 20
+layers. A tensor cannot lose kurtosis relative to its initialization while
+the tensors beside it in the same module gain kurtosis, so the disputed
+tensors were allocated and never updated. The checkpoint's surplus `k_proj`
+and `v_proj` are initialization residue, `modeling_gemma4.py` is
+authoritative, and the loader's `owns_cache` branch is correct as
+implemented. `k_norm` was not measured directly; its head-width shape makes
+the same statistic noisy, and the inference from `k_proj` and `v_proj`
+covers it.
+
+Check 2 remains listed because check 1 is statistical inference over weight
+distributions rather than a logit comparison. Run it opportunistically when
+the GGUF conversion is available. It is confirmatory, not blocking.
+
+Status: RESOLVED 2026-08-09 in favor of the modeling code, on check 1.
+Check 2 outstanding as confirmation.
 
 ## RH.2 Real-model load and generation smoke
 
