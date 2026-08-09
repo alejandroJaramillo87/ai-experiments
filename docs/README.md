@@ -81,7 +81,7 @@ Design and reference documentation for the `rust-harness` workspace.
 | [rust-harness/README.md](rust-harness/README.md) | Directory index |
 | [rust-harness/runtime-design.md](rust-harness/runtime-design.md) | Harness and runtime architecture, and the implementation roadmap |
 | [rust-harness/observability.md](rust-harness/observability.md) | Observability and debuggability as first-class code |
-| [rust-harness/gemma-4-ingestion.md](rust-harness/gemma-4-ingestion.md) | What the runtime requires to ingest a Gemma 4 checkpoint, and what it refuses |
+| [rust-harness/gemma-4-ingestion.md](rust-harness/gemma-4-ingestion.md) | What the runtime requires to ingest a Gemma 4 checkpoint, and what it checks on load |
 | [rust-harness/observation-frames.md](rust-harness/observation-frames.md) | What the agent loop and chat mode contribute to the training and interp programs, and the acceptance bar for new features |
 | [rust-harness/live-events.md](rust-harness/live-events.md) | Live run-state events as JSONL, with a serve mode and an HTML view that also replays finished runs |
 
@@ -93,7 +93,7 @@ audit.
 
 | Document | Description |
 |----------|-------------|
-| [rust-harness/gemma-4-ingestion.md](rust-harness/gemma-4-ingestion.md) | Gemma 4 for the inference runtime: GGUF contract, translation, refusals (E2B, E4B) |
+| [rust-harness/gemma-4-ingestion.md](rust-harness/gemma-4-ingestion.md) | Gemma 4 for the inference runtime: GGUF contract, translation, load-time checks (E2B, E4B) |
 | [training/gemma-4-training.md](training/gemma-4-training.md) | Gemma 4 for the training tier: parameter accounting, memory, tensor names, tokenizer (E2B, E4B) |
 | [interp/gemma-4-interp.md](interp/gemma-4-interp.md) | Gemma 4 for the interp tier: residual width, layer counts, hook hazards (E2B, E4B) |
 | [models/gemma-4.md](models/gemma-4.md) | Gemma 4 dense family (E2B, E4B, 12B, 31B): general architecture reference, and the citation target of `verification/investigations/gemma-4-conformance_investigation.md` |

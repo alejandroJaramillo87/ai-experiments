@@ -50,12 +50,21 @@ pub trait Tap: Send {
 }
 ```
 
-The tap fires after each decoder layer's final residual add. This matches
-the hidden state nnsight exposes as `block.output[0]`, which is what
-`interp/probes/capture.py` records — probes trained on Python captures and
-rust captures observe the same tensor. Taps are optional (`None` costs one
-branch per layer), do not transfer across forks, and fire after steering is
-applied, so captures observe the stream downstream layers actually consume.
+The tap fires on the decoder layer's output, which under Gemma 4 is not the
+final residual add. A layer applies, in order: the attention residual, the
+feed-forward residual, the per-layer-embedding residual, then a multiply by
+`layer_output_scale`. The scale is the module's last operation, so the tap
+fires after it. Stored scales run 0.0186 to 0.879, a spread of roughly 54x
+across the stack, so the distinction is not academic — tapping before the
+multiply would report a differently scaled tensor at every layer.
+
+This still matches the hidden state nnsight exposes as `block.output[0]`,
+which is what `interp/probes/capture.py` records: the Python forward hook
+receives the already-scaled tensor, so no correction factor is needed and
+none is applied. Probes trained on Python captures and rust captures observe
+the same tensor. Taps are optional (`None` costs one branch per layer), do
+not transfer across forks, and fire after steering is applied, so captures
+observe the stream downstream layers actually consume.
 
 ## Steering
 
@@ -66,7 +75,8 @@ steers decoder block `N`, matching llama.cpp and the repeng training
 semantics that produce these files, so the same `vector.gguf` steers the
 same block here as under `llama-cpu` and `llama-gpu`. Numbering starts at
 1 and block 0 is unsteerable, as upstream. `scale * direction` is added to
-the residual after the named block.
+the named block's output, after that block's `layer_output_scale` multiply
+and before the tap fires.
 Steering carries across forks, so a steered agent's subagents serve the same
 steered model. Binary flags:
 
@@ -246,9 +256,10 @@ the language boundary. One residual stream survives, so none of that changes.
 
 Retaining PLE shifts what a tapped vector means. Each layer sums a
 token-identity embedding lookup with a projection of the input embedding and
-adds the result to the residual stream at the end of the block. The tap point
-stays well defined, and it stays the same tensor the Python capture path
-records, because the injection lands before the block's output. What changes
+adds the result to the residual stream after the feed-forward residual. The
+tap point stays well defined, and it stays the same tensor the Python capture
+path records, because the injection lands before both the
+`layer_output_scale` multiply and the block's output. What changes
 is the interpretation: a component of the tapped vector is a function of the
 current token identity and the layer index alone, not of context. A probe
 trained on that stream may therefore score partly on token identity, and a
@@ -265,7 +276,8 @@ than a semantic direction is visible rather than assumed away.
 
 The tap seam is part of the `Model` backend contract from now on: the CUDA
 backend (roadmap phase A) must implement `Tap` delivery with the same
-semantics (post-layer residual, steering applied first). On the GPU this
+semantics: the layer output after the `layer_output_scale` multiply, with
+steering applied first. On the GPU this
 implies a device-to-host copy per tapped layer; taps stay optional so the
 untapped serving path pays nothing. The full set of CUDA-backend
 interpretability constraints (determinism requirement, provenance world,

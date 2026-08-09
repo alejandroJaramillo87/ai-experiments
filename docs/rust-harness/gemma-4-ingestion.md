@@ -1,7 +1,7 @@
 # Gemma 4 ingestion reference
 
 What the `rust-harness` runtime requires to ingest a Gemma 4 checkpoint, what the published
-checkpoints actually contain, and which architecture features the backend refuses by name.
+checkpoints actually contain, and which architecture features the backend checks by name.
 
 This document exists because the runtime reads GGUF and the model is published as safetensors
 with a Hugging Face `config.json`. The two use different key names, different value types, and
@@ -16,8 +16,7 @@ no code path here. The general family reference is `/docs/models/gemma-4.md`.
 - [Provenance](#provenance)
 - [The GGUF contract](#the-gguf-contract)
 - [Hugging Face to GGUF translation](#hugging-face-to-gguf-translation)
-- [What the backend refuses](#what-the-backend-refuses)
-- [Refusals that do not fire](#refusals-that-do-not-fire)
+- [What the backend checks](#what-the-backend-checks)
 - [The layer schedule is expressible](#the-layer-schedule-is-expressible)
 - [Chat markers](#chat-markers)
 - [Status of the local GGUF files](#status-of-the-local-gguf-files)
@@ -41,31 +40,53 @@ Configuration and tensor facts derive from the safetensors headers of the local 
 
 ## The GGUF contract
 
-`Config::from_gguf` (`/rust-harness/runtime/src/model/cpu.rs:56`) requires eleven
+`ModelSpec::from_gguf` (`/rust-harness/runtime/src/model/cpu.rs:358`) requires eleven
 architecture keys, all prefixed with the value of `general.architecture`, which must begin with
 `gemma`. Every one is mandatory: a missing key or a wrong value type fails the load.
 
 | Key (after the `{arch}.` prefix) | Required type | Becomes |
 |----------------------------------|---------------|---------|
-| `embedding_length` | uint32 | `embed_dim` |
-| `block_count` | uint32 | `n_layers` |
-| `attention.head_count` | uint32 | `n_heads` |
-| `attention.head_count_kv` | uint32 | `n_kv_heads` |
-| `attention.key_length` | uint32 | `head_dim` |
-| `feed_forward_length` | uint32 | `ffn_dim` |
-| `context_length` | uint32 | `context_length` |
-| `attention.sliding_window` | uint32 | `sliding_window` |
-| `attention.sliding_window_pattern` | uint32 | `sliding_window_pattern` |
-| `rope.freq_base` | float32 | `rope_freq_base` |
-| `attention.layer_norm_rms_epsilon` | float32 | `rms_eps` |
+| `embedding_length` | uint32 | `Config::embed_dim` |
+| `block_count` | uint32 | `Config::n_layers` |
+| `attention.head_count` | uint32 | `Config::n_heads` |
+| `attention.head_count_kv` | uint32 | `Config::n_kv_heads` |
+| `context_length` | uint32 | `Config::context_length` |
+| `attention.sliding_window` | uint32 | `Config::sliding_window` |
+| `attention.sliding_window_pattern` | uint32 or bool array | `Config::sliding_window_pattern` |
+| `attention.layer_norm_rms_epsilon` | float32 | `Config::rms_eps` |
+| `attention.key_length` | uint32 | `LayerSpec::head_dim`, global regime |
+| `rope.freq_base` | float32 | `LayerSpec::rope_freq_base`, global regime |
+| `feed_forward_length` | uint32 or int32 array | `LayerSpec::ffn_dim` |
+
+Six further architecture keys are optional. Absent means the checkpoint does not have the
+feature, which is a fact about the file rather than a defaulted guess; a present key of the
+wrong type is still an error.
+
+| Key (after the `{arch}.` prefix) | Required type | Absent means |
+|----------------------------------|---------------|--------------|
+| `attention.key_length_swa` | uint32 | one head width for every layer |
+| `rope.freq_base_swa` | float32 | one RoPE regime |
+| `attention.shared_kv_layers` | uint32 | every layer owns its cache |
+| `final_logit_softcapping` | float32 | the uncapped forward pass |
+| `embedding_length_per_layer_input` | uint32 | no per-layer input embeddings |
+
+Two more keys under the `rope.` prefix, `dimension_count` and `dimension_count_swa`, are read
+but supply no value. Each is checked against the head width of the regime it governs, and a
+narrower value fails the load: a rotation narrower than the head is partial rotary embedding
+applied by slicing, which this backend does not implement. Gemma 4 expresses its partial
+rotation through `rope_freqs.weight` at full width instead. Any other key under that prefix is
+refused, because it configures a RoPE scaling scheme the forward pass would ignore.
 
 Two further keys are read outside `Config`: `general.architecture`, and
 `tokenizer.ggml.tokens`, whose length supplies `vocab_size` (there is no `vocab_size` key).
 
-`Config` derives `Copy` (`cpu.rs:39`). Every field is a scalar, so the type is structurally
-incapable of holding a per-layer vector. This is the single constraint that most shapes the
-rest of this document: every place Gemma 4 varies a quantity per layer, the runtime must either
-express it as a uniform value or refuse the checkpoint.
+`Config` still derives `Copy` and still holds only scalars, but it no longer holds everything.
+It was once the whole configuration, and because a scalar field cannot say "512 on this layer
+and 256 on that one", every axis Gemma 4 varies per layer had to be either flattened to a
+uniform value or refused. That constraint shaped most of this document, and it is gone:
+`ModelSpec` pairs the `Config` scalars with one `LayerSpec` per layer, carrying head width,
+feed-forward width, RoPE frequency base, and KV donor. `Config` keeps the quantities that are
+genuine model-wide invariants; anything per-layer has to name the layer it means.
 
 `attention.value_length` is never read. The forward pass computes
 `kv_dim = n_kv_heads * head_dim` and uses it for both keys and values (`cpu.rs:819`), which
@@ -201,71 +222,66 @@ per-layer embeddings by substring (see below), and those three names do not cont
 three file-level tensors keep the substring, which is what makes the guard fire at all. See
 [The `per_layer` substring guard](#the-per_layer-substring-guard).
 
-## What the backend refuses
+## What the backend checks
 
-`check_supported` (`cpu.rs:251`) diagnoses unimplemented features by name before falling
-back to a generic report. The design is deliberate: loading is name-directed, so an
-unimplemented feature would otherwise present as ignored tensors and plausible, wrong logits.
-Each refusal below is correct behavior, not a defect.
+`check_supported` (`cpu.rs:616`) diagnoses by name before falling back to a generic report.
+The design is deliberate: loading is name-directed, so an unimplemented feature would otherwise
+present as ignored tensors and plausible, wrong logits.
 
-| Feature | Trigger on a Gemma 4 file | Site |
+Seven architecture features were once refused here and are now implemented. Each refusal has
+become a coherence check on the same signal: the load still fails if the metadata and the
+tensors describe different models, but no longer merely because the feature is present.
+
+| Feature | What replaced the refusal | Site |
 |---------|---------------------------|------|
-| Per-layer input embeddings | Any tensor name containing `per_layer` — matches `per_layer_token_embd`, `per_layer_model_proj`, `per_layer_proj_norm` | `cpu.rs:256` |
-| Shared KV cache | A layer with `attn_q` but no `attn_k`/`attn_v` | `cpu.rs:268` |
-| Per-layer feed-forward width | Any `ffn_up` last dimension differing from `feed_forward_length` — fires on E2B's 12288 layers | `cpu.rs:283` |
-| Dual or scaled RoPE | Any `{arch}.rope.*` key other than `freq_base` and `dimension_count` — fires on `rope.freq_base_swa` and `rope.dimension_count_swa` | `cpu.rs:320` |
-| Partial rotary | `rope.dimension_count` unequal to `head_dim` | `cpu.rs:312` |
-| Logit or attention softcapping | Any `{arch}.*softcapping*` key — fires on `final_logit_softcapping` | `cpu.rs:338` |
-| Anything else unconsumed | Tensor families outside the consumed lists | `cpu.rs:366` |
+| Per-layer input embeddings | All six tensor families are required together, and the declared width must be present so the packed table can be split | `cpu.rs:622-668` |
+| Shared KV cache | Only a layer that owns its cache must carry `attn_k`/`attn_v`; a shared layer legitimately carries neither | `cpu.rs:670-698` |
+| Per-layer feed-forward width | Each `ffn_up` last dimension must equal the width `feed_forward_length` declares for that layer | `cpu.rs:700-734` |
+| Per-layer head dimension | `rope.dimension_count` and `dimension_count_swa` are each checked against the head width of the regime they govern | `cpu.rs:747-787` |
+| Dual RoPE | `rope.freq_base` and `freq_base_swa` are read; any other `{arch}.rope.*` key is still refused | `cpu.rs:761` |
+| Logit softcapping | `final_logit_softcapping` is read; `attn_logit_softcapping`, `attention.scale`, and `logit_scale` are still refused | `cpu.rs:813-831` |
+| `layer_output_scale` | Listed in `OPTIONAL_LAYER_TENSORS`, so it is consumed rather than reported unconsumed | `cpu.rs:563` |
 
-The generic backstop catches two Gemma 4 tensor families that no named check covers:
-`blk.{L}.post_norm.weight` (the fifth normalization, on the per-layer embedding path) and
-`blk.{L}.layer_output_scale.weight`. Both report as unconsumed families rather than by feature
-name.
+Four things still refuse a checkpoint outright, and all four remain correct behavior:
 
-### The two axes with no named diagnostic
+- **Partial rotary applied by slicing.** A `rope.dimension_count` narrower than its regime's
+  head width. Gemma 4 expresses its partial rotation through `rope_freqs.weight` at full width
+  instead, so a narrower declaration describes a different model.
+- **Attention softcapping or logit rescaling.** `attn_logit_softcapping`, `attention.scale`, and
+  `logit_scale` carry no tensor, so the unconsumed backstop cannot see them and either would
+  change every logit silently. Gemma 2 publishes both softcapping keys, which is why the test
+  names `final_logit_softcapping` explicitly rather than relaxing to a substring.
+- **Any other `{arch}.rope.*` key.** The allowlist stays an allowlist: it is what stands between
+  a converter that adds a third RoPE regime and a silent wrong rotation.
+- **Anything else unconsumed** (`cpu.rs:834-866`). Tensor families outside the consumed lists,
+  including features published after this code. Value normalization and key-equals-value
+  attention, the two published Gemma 4 features this backend does not implement, arrive here.
 
-**Per-layer head dimension.** Sliding layers use 256 and full-attention layers use 512, visible
-directly in the weight shapes. `Config::head_dim` is one scalar. There is no check for this,
-and no error message names it: a mismatch surfaces only when the tensor loader finds a shape it
-did not expect, and the message reports a shape rather than the feature. Of everything Gemma 4
-varies per layer, this is the only axis the runtime cannot name.
+### The axis with no named diagnostic
 
-**`layer_scalar`.** Every layer carries a scalar of shape `[1]`
-(`blk.{L}.layer_output_scale.weight` in GGUF) with no corresponding configuration field. It
-reaches the generic unconsumed-tensor backstop, which means the runtime loads the file, reports
-the family as unconsumed, and computes without it.
+One remains. **Per-layer head dimension** is now carried by `LayerSpec::head_dim` and read from
+`attention.key_length` and `attention.key_length_swa`, but a checkpoint whose weight shapes
+disagree with those keys is still caught only by the tensor loader, which reports a shape rather
+than the feature. The `rope.dimension_count` cross-check narrows the gap without closing it: it
+fires only when the checkpoint declares a rotation width at all.
 
-That is currently harmless only because Gemma 4 is refused before inference. It must not stay
-harmless when support lands: the tensor scales the entire layer output as the layer's last
+### `layer_output_scale`
+
+Every layer carries a scalar of shape `[1]` (`blk.{L}.layer_output_scale.weight` in GGUF) with
+no corresponding configuration field. It scales the entire layer output as the layer's last
 operation, and the released checkpoints store values from **0.0186 to 0.879**, not 1.0. A
-forward pass that ignores it diverges from the reference model by roughly 54x in the first
-layer. The values are measured in the `layer_scalar stored values` sections of
-`docs/models/gemma4-safetensors.txt`; see
+forward pass that ignored it would diverge from the reference model by roughly 54x in the first
+layer, which is why it is loaded rather than treated as an inert family. The values are measured
+in the `layer_scalar stored values` sections of `docs/models/gemma4-safetensors.txt`; see
 [`layer_scalar` in docs/models/gemma-4.md](../models/gemma-4.md#layer_scalar).
 
-## Refusals that do not fire
-
-Two Gemma 4 features are declared in the GGUF metadata, are not implemented by the forward
-pass, and are **not** refused. Neither currently causes a wrong result, because an earlier
-refusal stops the load first. Both would matter if the earlier refusals were lifted.
-
-**`gemma4.attention.shared_kv_layers`** is present and set (20 on E2B, 18 on E4B). The named
-shared-KV check looks for *missing* `attn_k`/`attn_v` tensors, and the published files carry
-every projection for every layer, so it does not fire. The metadata refusal list names only
-softcapping, `attention.scale`, and `logit_scale`, so this key passes through silently. A cache
-allocator would give all 35 or 42 layers independent storage — correct output, more memory than
-the architecture requires. The allowlist-versus-denylist tradeoff is recorded at
-`cpu.rs:330-332`: naming refused keys avoids refusing every descriptive key a converter adds
-later, at the cost of gaps like this one.
-
-**`gemma4.embedding_length_per_layer_input`** is present and set to 256. It is likewise not in
-the refused set. In practice the per-layer tensor check fires first.
+Because the tensor is optional rather than required, a checkpoint that omits it loads and
+computes as though every scale were 1.0. That is the correct reading of an absent tensor, and it
+is why the absent case is covered by its own committed fixture rather than by assertion.
 
 ## The layer schedule is expressible
 
-A positive result, and the one Gemma 4 feature the existing `Config` shape handles without
-change. The runtime derives the attention schedule arithmetically as
+The runtime models the attention schedule as a stride,
 `(i + 1) % sliding_window_pattern == 0 => Global` (`Config::layer_kind`, `cpu.rs:188`;
 `kv::interleaved_layers`, `/rust-harness/runtime/src/kv.rs:47`). Checked against the published
 `layer_types` arrays:
@@ -277,7 +293,13 @@ change. The runtime derives the attention schedule arithmetically as
 
 Both variants place a full-attention layer last. No per-layer array is needed to express either
 schedule; a converter that wrote `sliding_window_pattern` as the uint32 period 5 or 6 would
-satisfy the runtime exactly. The published files write a bool array instead.
+satisfy the runtime exactly. The published files write a bool array instead, and the loader
+decodes it: `Config::from_gguf` reads `attention.sliding_window_pattern` as either a uint32
+stride or a bool array marking each layer sliding (`cpu.rs:221-241`). Given an array it takes
+the first global layer as the period and then verifies every remaining entry against that
+stride, so a schedule that is not periodic fails the load naming the key rather than being
+approximated. The three shipped schedules and the non-periodic refusal are covered at
+`cpu.rs:3155` and `cpu.rs:3180`.
 
 ## Chat markers
 
@@ -338,18 +360,22 @@ the parser refused before any tensor was read. Bool arrays now decode. Note this
 blocker requantizing would *not* have cleared, since it is a metadata property the converter
 emits regardless of weight type.
 
-**What still refuses these files, correctly.** E2B publishes `feed_forward_length` as an int32
-array, and both variants publish `rope.freq_base_swa` and `final_logit_softcapping`. The config
-layer or `check_supported` refuses each in turn, and the per-layer embedding tensors trip the
-named check first. The failure now lands on the architecture, with a message naming the
-feature, rather than on a storage type — which is where it belongs.
+**Architecture — resolved.** The features that once refused these files are implemented. E2B
+publishes `feed_forward_length` as an int32 array, both variants publish `rope.freq_base_swa`,
+`final_logit_softcapping`, `attention.shared_kv_layers`, and the per-layer embedding tensors,
+and every one of those is now read. Nothing in the published `gemma4` architecture is known to
+refuse.
 
-**Parsing the schedule is not consuming it.** `sliding_window_pattern` now decodes as a bool
-array, but `Config::layer_kind` still expects a uint32 stride and ignores the array. A file
-whose schedule disagrees with the derived `(i + 1) % period` rule would therefore be built as
-though the rule held. Both published variants happen to match the rule (see
-[The layer schedule is expressible](#the-layer-schedule-is-expressible)), and the architectural
-refusals above stop these files well before it matters, but the gap is real and open.
+That is a claim about the synthetic fixtures, not about these files. Both the uniform and the
+E4B-shaped fixture match an independently written numpy reference within `2e-4`, but two
+implementations written from the same documents agree on a shared misreading. Loading a real
+checkpoint is runbook entry RH.2 and remains outstanding.
+
+**The schedule is consumed, not merely parsed.** `Config::from_gguf` decodes the bool array to
+the stride `Config::layer_kind` uses, and refuses a schedule that is not periodic rather than
+approximating it (see
+[The layer schedule is expressible](#the-layer-schedule-is-expressible)). Both published
+variants are periodic.
 
 The `mtp-*.gguf` files carry a separate `gemma4-assistant` architecture with `block_count` 4.
 They are not a text model for this runtime.
@@ -447,7 +473,7 @@ Note that `filter_tensors` **renames** rather than drops it: the `name.endswith(
 branch appends a suffix and falls through to `super().filter_tensors`. The tensor survives
 conversion, and the GGUF carries one per layer. The stored values are not 1.0, so a backend that
 reads the GGUF and ignores this tensor is not merely omitting a no-op — see
-[the two axes with no named diagnostic](#the-two-axes-with-no-named-diagnostic).
+[`layer_output_scale`](#layer_output_scale).
 
 ### The per-layer embedding data path
 
@@ -505,12 +531,16 @@ which additionally collides in appearance with the ordinary Gemma post-norm nami
 distinguishable from `blk.{bid}.post_attention_norm` and `blk.{bid}.post_ffw_norm` only by
 knowing the architecture.
 
-The guard at `cpu.rs:256` nevertheless fires on these files, because the three file-level tensors
-retain the substring and are present in every per-layer-embedding checkpoint
-(`docs/models/gemma4-gguf.txt` lines 632-635 and 641). The bail message names the first matching tensor,
-which will be one of those three. The guard is therefore sound for refusal, but it is not a sound
-basis for *enumerating* the per-layer-embedding tensor set: an implementation that later
-whitelists by the same substring would silently omit `inp_gate`, `proj`, and `post_norm`.
+The substring was once how the backend detected the feature, and it worked only because the three
+file-level tensors retain it and are present in every per-layer-embedding checkpoint
+(`docs/models/gemma4-gguf.txt` lines 632-635 and 641). It was sound for refusal and would have
+been unsound for enumeration: a whitelist keyed on the same substring silently omits `inp_gate`,
+`proj`, and `post_norm`, which is three of the six families and every per-block one.
+
+The implementation does not key on it. `PLE_TOP_LEVEL_TENSORS` and `PLE_LAYER_TENSORS`
+(`cpu.rs:568` and `cpu.rs:584`) list all six by name, and `check_supported` requires them
+together: a checkpoint carrying five loads nothing, rather than skipping the residual join
+wherever the sixth is missing.
 
 ## Open questions
 
@@ -540,8 +570,13 @@ Recorded rather than guessed.
   path. The measurement is in
   [docs/models/gemma-4.md](../models/gemma-4.md#the-shared-kv-weight-conflict) and the procedure
   is RH.1a in [docs/verification/rust-harness.md](../verification/rust-harness.md).
-- **The stored value of `layer_output_scale`.** The transcripts record the shape `[1]` but not the
-  value, so whether the multiplication is a no-op in the released weights is unverified.
+- ~~**The stored value of `layer_output_scale`.** The transcripts record the shape `[1]` but not
+  the value, so whether the multiplication is a no-op in the released weights is unverified.~~
+
+  Resolved, and stale when written: the `layer_scalar stored values` sections of
+  `docs/models/gemma4-safetensors.txt` dump every layer, and the values run 0.0186 to 0.879, a
+  spread of roughly 54x. The multiplication is not a no-op on any layer. The forward pass
+  applies it as the layer's last operation.
 - **The `1e30` divisor as an exact identity.** `conversion/gemma.py` line 715 uses 1e30 rather
   than infinity, so the resulting angle is very small rather than exactly zero. Whether the
   residual differs from the Hugging Face exact-zero frequency at F32 precision was not measured.

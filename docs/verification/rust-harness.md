@@ -18,9 +18,11 @@ Scope is CPU only. Not covered, and why:
   feature-gated stubs awaiting the cuda backend (roadmap phase A). Their
   fixture-generation commands are documented in the test files and enter
   the runbook with that phase.
-- The chat-template golden test (`harness/src/template.rs`,
-  `rendered_token_ids_match_hf_reference`) has an unimplemented body; it
-  needs code work before a runbook entry can exercise it.
+- There is no chat-template token-stream golden test. An earlier `#[ignore]`d
+  stub was removed with the Gemma 3 markers it was written against, and no
+  replacement was added; writing one needs both code work and a
+  workstation-generated tokenizer fixture before a runbook entry can
+  exercise it.
 - The KV cache holds the full sequence with the sliding window applied as
   a mask; the budgeted ring buffer is deferred by design
   (`docs/rust-harness/observability.md`).
@@ -103,9 +105,12 @@ dual RoPE; the
 records those findings and their confidence. Those sources are secondhand,
 so this entry decides the question for the checkpoint that actually exists.
 
-The backend refuses a checkpoint carrying any of those features rather than
-loading it and ignoring the extra weights, so this entry produces a verdict
-rather than a judgment call. Four questions decide the follow-up work:
+The backend now implements those features rather than refusing them, and
+`check_supported` retains each refusal as a coherence check: a file whose
+metadata and tensors describe different models still fails the load rather
+than loading with the extra weights ignored. So this entry produces a
+verdict rather than a judgment call. Four questions decide the follow-up
+work:
 
 1. Are there per-layer embedding tensors?
 2. Do any layers lack `attn_k`/`attn_v` (the shared-KV signature)?

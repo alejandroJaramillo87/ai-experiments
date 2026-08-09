@@ -466,10 +466,24 @@ sixteen, including one critical and five high.
   earlier still in parsing. The wrong behavior is unreachable — every path
   refuses first. The residual is an imprecise guarantee in the `cpu.rs`
   header, folded into the documentation work.
-- **A1-15 (medium).** `runtime/src/synth.rs:36` — the fixture shape makes
-  the golden structurally blind to two conventions: `head_dim` equals
+
+  The refutation was correct when written and its reasoning no longer
+  holds: dual RoPE is implemented, so `freq_base_swa` is read rather than
+  refused and no path refuses first. Per-layer base selection is now under
+  test directly — `ModelSpec::from_gguf` assigns each regime its own base,
+  and the E4B-shaped fixture declares both.
+- **A1-15 (medium, fixed).** `runtime/src/synth.rs:36` — the fixture shape
+  makes the golden structurally blind to two conventions: `head_dim` equals
   `embed_dim / n_heads`, so the two candidate QK scales coincide, and
   `n_kv_heads` is 1, so blocked and interleaved GQA mappings agree.
+
+  Closed by the second fixture, `fixtures/tiny-gemma4-e4b.gguf`, whose
+  geometry has neither property in either attention regime. Both
+  conventions are now separable, and
+  `the_e4b_fixture_geometry_separates_the_ambiguous_conventions`
+  (`runtime/tests/cpu_reference.rs`) asserts the separating properties
+  directly, so a later change to the fixture spec cannot reintroduce the
+  blindness while the goldens still pass.
 - **A1-12 (medium).** `runtime/src/model/cpu.rs:580` — `sliding_window = 0`
   is accepted and yields empty attention, silently producing a
   context-blind model; the ecosystem reading of 0 is that windowing is
@@ -804,26 +818,28 @@ in a clean worktree rather than trusting the claim.
 | D-N01 recording coverage | Refuted | — |
 | G-28 startup fingerprint | Waived, measured | — |
 | A1-R05 monitor position semantics | Waived, documented | — |
-| A1-15 fixture blind to QK scale and GQA mapping | Deferred | — |
+| A1-15 fixture blind to QK scale and GQA mapping | Fixed | 7c53120 |
 | G-31 full-vocabulary sampler allocation | Deferred | — |
 | G-35 grammar mask simulates every piece | Deferred | — |
 | G-30 GGUF bytes retained across restore | Deferred | — |
 | G-34 prompt tokenized twice per turn | Deferred | — |
 | A2-18 `sha256_hex` copies its input | Deferred | — |
 
-**Six findings are deferred**, carrying neither a fix nor a waiver. Five
-are performance work the perf batch did not reach: G-31 and G-35 both need
-a sampler and grammar redesign rather than a local change, G-30 needs the
-GGUF byte vector dropped once the dense weights are built, G-34 needs the
-rendered prompt cached across a turn, and A2-18 needs a streaming SHA-256
-in place of the copy in both duplicated implementations
-(`harness/src/main.rs` and `runtime/src/bin/activation-capture.rs`). The
-sixth, A1-15, is not performance work and matters more: the committed
-fixture sets `head_dim` to `embed_dim / n_heads` and `n_kv_heads` to 1, so
-the two candidate QK scales coincide and the blocked and interleaved GQA
-mappings agree. The golden is therefore structurally blind to both
-conventions, which is the same class of blindness A1-R03 demonstrated. It
-needs a second fixture at a geometry that separates them.
+**Five findings are deferred**, carrying neither a fix nor a waiver. All
+five are performance work the perf batch did not reach: G-31 and G-35 both
+need a sampler and grammar redesign rather than a local change, G-30 needs
+the GGUF byte vector dropped once the dense weights are built, G-34 needs
+the rendered prompt cached across a turn, and A2-18 needs a streaming
+SHA-256 in place of the copy in both duplicated implementations
+(`harness/src/main.rs` and `runtime/src/bin/activation-capture.rs`).
+
+A sixth, A1-15, was deferred here and has since been fixed. It was not
+performance work and mattered more: the committed fixture set `head_dim`
+to `embed_dim / n_heads` and `n_kv_heads` to 1, so the two candidate QK
+scales coincided and the blocked and interleaved GQA mappings agreed,
+leaving the golden structurally blind to both conventions — the same class
+of blindness A1-R03 demonstrated. The second fixture that separates them
+landed in `7c53120`.
 
 Two findings were closed that no package owned, both raised by an
 integrator auditing a batch rather than by a finder: `Session::restore`
@@ -847,9 +863,14 @@ The rust gate exits 0 at every commit and twice at HEAD, the second run
 watching for the tracing flake Campaign 1 recorded. 306 tests pass and 6
 remain ignored: five Tier 3 entries in `cuda_acceptance.rs` and
 `eval_acceptance.rs` whose bodies are `unimplemented!()` stubs awaiting the
-GPU, and `rendered_token_ids_match_hf_reference`
-(`harness/src/template.rs:141`), which needs a workstation-generated
-tokenizer golden rather than a GPU. The Python steps
+GPU, and a chat-template token-stream golden needing a
+workstation-generated tokenizer fixture rather than a GPU.
+
+Both counts are the campaign's own measurement and are not maintained. At
+`7c53120` the workspace runs 383 passing tests with five ignored: the Tier
+3 stubs are all that remain, because the chat-template golden was removed
+rather than filled in when the Gemma 3 markers it tested were replaced.
+Writing a replacement is still outstanding. The Python steps
 `ruff format --check` and `ruff check` pass; `mypy` reports three
 pre-existing missing-stub errors in unmodified `training/` files, and
 `uv lock --check` is skipped per the documented sandbox caveat.
@@ -889,10 +910,6 @@ encoded the same wrong convention.
 
 Recorded, not fixed, with the reason each was left:
 
-- **A second golden fixture at a geometry that separates the QK scale from
-  the GQA mapping**, per deferred finding A1-15 above. The current fixture
-  cannot distinguish either pair of conventions, which is the blindness
-  A1-R03 exploited.
 - **The five deferred performance findings** (G-30, G-31, G-34, G-35,
   A2-18) listed under Dispositions. Each needs a redesign rather than a
   local change, and none alters output.

@@ -95,11 +95,16 @@ scratch workspace removes allocator traffic and stabilizes latency. Profile
 first; do not assume.
 
 **f16 KV cache and windowed ring buffers.** Halving KV element size cuts the
-128k-token worst case from roughly 17.5 GB to 8.7 GB, and bounding windowed
-layers to their attention window (a ring buffer instead of full-sequence
-storage) shrinks it further. The `HKV1` snapshot format already reserves a
-dtype byte for f16, so the on-disk format absorbs this without a version
-bump. Numerics effect on golden tests must be measured, not assumed.
+128k-token worst case from 14.00 GiB to 7.00 GiB. Shared KV removes 18 of
+E4B's 42 layers from the cache, leaving 24 owning layers: four global at head
+dim 512 and 20 sliding at 256, each holding K and V for two KV heads across
+131072 positions. Bounding windowed layers to their attention window (a ring
+buffer instead of full-sequence storage) shrinks it further, but not across
+all 20 sliding owners — a sliding layer that donates its states to a shared
+layer must retain them full-length (`cpu.rs:24-27`). The `HKV1` snapshot
+format already reserves a dtype byte for f16, so the on-disk format absorbs
+this without a version bump. Numerics effect on golden tests must be
+measured, not assumed.
 
 **Huge pages.** The TLB-pressure argument behind the parent repository's
 26% llama.cpp improvement transfers to any pass that walks gigabytes of

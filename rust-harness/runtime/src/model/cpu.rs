@@ -950,11 +950,15 @@ struct LayerKv {
     v: Vec<f32>,
 }
 
-/// Observer of the residual stream, the interp tap seam. Fires after each
-/// decoder layer's final residual add — the hidden state nnsight exposes as
-/// `block.output[0]` — so probes trained on Python-captured activations and
-/// on rust-captured activations see the same tensor. Any backend added later
-/// (CUDA) must preserve this seam and its semantics.
+/// Observer of the residual stream, the interp tap seam. Fires on the decoder
+/// layer's output, which is the `layer_output_scale` multiply and not the
+/// final residual add: a layer applies the attention residual, the
+/// feed-forward residual, the per-layer-embedding residual, then the scale.
+/// That is the hidden state nnsight exposes as `block.output[0]`, because the
+/// Python forward hook also receives the already-scaled tensor, so probes
+/// trained on Python-captured activations and on rust-captured activations
+/// see the same tensor. Any backend added later (CUDA) must preserve this
+/// seam and its semantics.
 pub trait Tap: Send {
     fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]);
 }

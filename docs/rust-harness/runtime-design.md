@@ -192,11 +192,13 @@ Ports tutorial phases 1, 2, and 4:
 - **Chat template.** The harness renders Gemma 4's turn format, including the
   function-calling convention. Template bugs are the classic failure mode of local
   harnesses, so the rendered token IDs are to be golden-tested against the Hugging
-  Face reference tokenizer for a fixed corpus of transcripts. That test is not
-  written: `rendered_token_ids_match_hf_reference` in `harness/src/template.rs` is
-  `#[ignore]`d with an `unimplemented!` body, and its fixture
-  (`fixtures/template_goldens.json`) is generated on the workstation from the
-  reference tokenizer, which the sandbox cannot reach. End-to-end runs against the
+  Face reference tokenizer for a fixed corpus of transcripts. That test does not
+  exist: an earlier `#[ignore]`d stub was removed along with the Gemma 3 markers it
+  was written against, and no replacement was added. Writing it needs a
+  `fixtures/template_goldens.json` generated on the workstation from the reference
+  tokenizer, which the sandbox cannot reach. The marker constants themselves are
+  pinned from both language tiers by `/schemas/chat_template.json`, so what is
+  missing is the token-level check and not the marker set. End-to-end runs against the
   synthetic fixture therefore already happen without it; the golden test gates
   trusting a rendered prompt on real weights, not running the harness at all.
 
@@ -319,11 +321,16 @@ More importantly, what governs the code is not the published architecture but wh
 the GGUF file on the workstation stores, after conversion and quantization. Runbook
 entry RH.1 remains the authority.
 
-Pending that entry, the backend refuses rather than guesses. `cpu::check_supported`
-diagnoses per-layer embeddings, shared KV, per-layer feed-forward widths, and
-non-single-theta RoPE by name and fails the load. The alternative was worse than a
-failure: loading is name-directed, so an unimplemented feature presents as ignored
-weight tensors and fluent, wrong output that no machinery test detects. The
+Where the backend does not implement something, it refuses rather than guesses. Per-layer
+embeddings, shared KV, per-layer feed-forward widths, per-layer head dimension,
+dual RoPE, logit softcapping, and `layer_output_scale` were all refused by name and
+are now implemented; `cpu::check_supported` retains each as a coherence check, so a
+file whose metadata and tensors describe different models still fails the load. What
+it still refuses is partial rotary applied by slicing, attention softcapping, logit
+rescaling, unrecognized RoPE keys, and any unconsumed tensor family. The alternative
+was worse than a failure: loading is name-directed, so an unimplemented feature
+presents as ignored weight tensors and fluent, wrong output that no machinery test
+detects. The
 `gguf-info` binary prints the same verdict from the same function, so the
 reconciliation run yields a decision rather than a judgment call.
 
@@ -379,7 +386,8 @@ labeled as such; measured results follow the repository benchmarking protocol.
   (interpretability capture and steering; see
   [rust-harness-interp.md](../interp/rust-harness-interp.md)).
   The CUDA backend must implement the same seam with identical semantics —
-  post-layer residual, steering applied before the tap — which implies a
+  the layer output after the `layer_output_scale` multiply, steering applied
+  before the tap — which implies a
   device-to-host copy per tapped layer; taps stay optional so the untapped
   path pays nothing.
 - **Chat template and tool-call format.** The exact Gemma 4 function-calling

@@ -20,7 +20,7 @@ live in `/docs/verification/`, not here.
 
 | Document | Description |
 |----------|-------------|
-| [gemma-4-ingestion.md](gemma-4-ingestion.md) | What the runtime requires to ingest a Gemma 4 checkpoint: the GGUF metadata contract, the Hugging Face to GGUF translation, and every architecture feature the backend refuses by name |
+| [gemma-4-ingestion.md](gemma-4-ingestion.md) | What the runtime requires to ingest a Gemma 4 checkpoint: the GGUF metadata contract, the Hugging Face to GGUF translation, and every architecture feature the backend checks by name |
 
 ## Forward looking
 
