@@ -484,7 +484,12 @@ impl GgufWriter {
 /// The GGUF and safetensors emitters are two sinks over the same list rather
 /// than two geometry walks, because two walks drift and the loader inherits
 /// the drift. The weight stream is drawn here exactly once, in emission order,
-/// so both containers hold identical values.
+/// so the two containers describe the same model.
+///
+/// They do not spell it identically. `values` is the GGUF convention — for a
+/// norm tensor the effective multiplier, with Gemma's runtime `+1` already
+/// folded in — and the safetensors sink unshifts those on the way out. See
+/// `build_tiny_safetensors`.
 pub struct SynthTensor {
     /// llama.cpp name, for example `blk.0.attn_q.weight`.
     pub gguf_name: String,
@@ -499,8 +504,25 @@ pub struct SynthTensor {
     /// convention. The safetensors emitter therefore reverses the dims and
     /// writes the same bytes; there is no data transpose between the two.
     pub dims: Vec<u64>,
+    /// Effective RMSNorm multiplier for a norm tensor: the GGUF convention.
+    /// The safetensors sink unshifts these; see `build_tiny_safetensors`.
     pub values: Vec<f32>,
     pub storage: TensorStorage,
+    /// Whether this is an RMSNorm weight, which the two containers spell
+    /// differently. Set from `is_norm_tensor`, the same predicate that chose
+    /// the draw, so the emitted values and the flag cannot disagree.
+    pub norm: bool,
+}
+
+/// Whether a tensor name denotes an RMSNorm weight.
+///
+/// Every norm in the Gemma tensor set ends `norm.weight` and nothing else
+/// does, so the suffix is exact rather than a heuristic. It is a function
+/// rather than an inline check because two things depend on agreeing about
+/// it: which stream draw a tensor takes, and whether the safetensors sink
+/// unshifts it.
+fn is_norm_tensor(gguf_name: &str) -> bool {
+    gguf_name.ends_with("norm.weight")
 }
 
 impl SynthTensor {
@@ -595,6 +617,7 @@ pub fn tiny_tensors(spec: &TinySpec) -> Vec<SynthTensor> {
     let mut push = |name: String, dims: Vec<u64>, values: Vec<f32>, storage: TensorStorage| {
         out.push(SynthTensor {
             hf_name: hf_tensor_name(&name),
+            norm: is_norm_tensor(&name),
             gguf_name: name,
             dims,
             values,
@@ -633,7 +656,7 @@ pub fn tiny_tensors(spec: &TinySpec) -> Vec<SynthTensor> {
             ("ffn_down.weight", vec![ffn, d]),
             ("post_ffw_norm.weight", vec![d]),
         ] {
-            let values = if suffix.ends_with("norm.weight") {
+            let values = if is_norm_tensor(suffix) {
                 ws.norm_tensor(n(&dims))
             } else {
                 ws.tensor(n(&dims))
@@ -734,7 +757,7 @@ pub fn tiny_tensors(spec: &TinySpec) -> Vec<SynthTensor> {
                 ("proj.weight", vec![pd64, d]),
                 ("post_norm.weight", vec![d]),
             ] {
-                let values = if suffix.ends_with("norm.weight") {
+                let values = if is_norm_tensor(suffix) {
                     ws.norm_tensor(n(&dims))
                 } else {
                     ws.tensor(n(&dims))
@@ -941,12 +964,34 @@ pub fn build_tiny_config_json(spec: &TinySpec) -> anyhow::Result<Vec<u8>> {
 
 /// The synthetic model's `model.safetensors`.
 ///
-/// Two things differ from the GGUF image and they are the whole risk of the
+/// Three things differ from the GGUF image and they are the whole risk of the
 /// loader that follows. Names are the Hugging Face ones (`hf_tensor_name`),
 /// and shapes are row-major `[out, in]` — which is the *same byte layout* the
 /// GGUF already holds, since GGUF dims are `ne` order with `ne0` contiguous.
 /// So this reverses the dims and writes the identical payload; there is no
 /// data transpose, and a future loader that transposes is wrong.
+///
+/// The third is RMSNorm. A published checkpoint stores the *unshifted*
+/// parameter and transformers adds 1.0 at runtime; the GGUF converter
+/// resolves that shift before writing, so `SynthTensor::values` holds the
+/// already-shifted effective multiplier. This sink therefore subtracts 1.0
+/// from every norm tensor, which is the converter's transformation run
+/// backwards. `cpu.rs` applies `x * (1 + w)` to what it reads here and lands
+/// on the same effective multiplier the GGUF path uses, which is why the
+/// committed logits goldens are unchanged by the move between containers.
+///
+/// In f32 the round trip is exact, not merely close: the draw is
+/// `1.0 + u` for `u` in `[-0.1, 0.1)`, so every norm weight lies in
+/// `[0.5, 2.0]` where Sterbenz's lemma makes `w - 1.0` exactly
+/// representable, and `1.0 + (w - 1.0)` recovers `w` bit for bit. The
+/// equality test in `cpu_reference` asserts that rather than assuming it.
+///
+/// Under `TensorStorage::Bf16` the two containers deliberately do *not* agree
+/// on norm tensors: truncating `w - 1.0` keeps far more significant bits than
+/// truncating `w`, because the value sits near zero instead of near one. That
+/// is the real relationship too — a converted GGUF loses precision on norms
+/// that the published checkpoint retains — so this sink is the more faithful
+/// of the two rather than the divergent one.
 ///
 /// Tensors with no published counterpart are skipped, which today means the
 /// precomputed RoPE divisors.
@@ -959,17 +1004,19 @@ pub fn build_tiny_safetensors(spec: &TinySpec) -> anyhow::Result<Vec<u8>> {
         .iter()
         .filter_map(|t| {
             let name = t.hf_name.clone()?;
+            // Unshift before narrowing, so a bf16 norm keeps the precision of
+            // the small value rather than of the value near one.
+            let shift = if t.norm { 1.0f32 } else { 0.0f32 };
+            let values = t.values.iter().map(|v| v - shift);
             let (dtype, bytes) = match t.storage {
                 TensorStorage::F32 => (
                     Dtype::F32,
-                    t.values.iter().flat_map(|v| v.to_le_bytes()).collect(),
+                    values.flat_map(|v| v.to_le_bytes()).collect::<Vec<u8>>(),
                 ),
-                // Truncating, matching `GgufWriter::tensor`, so the two
-                // containers hold bit-identical weights.
+                // Truncating, matching `GgufWriter::tensor`.
                 TensorStorage::Bf16 => (
                     Dtype::BF16,
-                    t.values
-                        .iter()
+                    values
                         .flat_map(|v| ((v.to_bits() >> 16) as u16).to_le_bytes())
                         .collect::<Vec<u8>>(),
                 ),
@@ -1026,9 +1073,16 @@ mod tests {
     }
 
     /// The safetensors image holds the same weights as the GGUF one, tensor for
-    /// tensor. Nothing reads it yet, so this is what stands in for a loader:
+    /// tensor, once the norm shift the two containers spell differently is put
+    /// back. This is what stands in for a loader at the writer's own level:
     /// without it the writer could emit wrong shapes for a whole package before
     /// anything noticed.
+    ///
+    /// Norm tensors are stored unshifted here and reconstructed as `1 + w`, the
+    /// arithmetic `cpu.rs` performs. Under F32 that is exact and asserted as
+    /// equality; under Bf16 the two containers genuinely differ, and the
+    /// expectation is built from the same truncation the writer applied rather
+    /// than from the GGUF value.
     #[test]
     fn safetensors_holds_the_same_tensors_as_the_gguf_image() {
         for (label, spec) in [
@@ -1068,20 +1122,100 @@ mod tests {
                     TensorStorage::F32 => GGML_F32,
                     TensorStorage::Bf16 => GGML_BF16,
                 };
-                let got =
+                let stored =
                     crate::tensor::dequantize(ggml_type, view.data(), t.values.len()).unwrap();
-                let want = match t.storage {
+                // What the loader will compute from what it read.
+                let shift = if t.norm { 1.0f32 } else { 0.0f32 };
+                let got: Vec<f32> = stored.iter().map(|v| v + shift).collect();
+                let want: Vec<f32> = match t.storage {
                     TensorStorage::F32 => t.values.clone(),
                     TensorStorage::Bf16 => t
                         .values
                         .iter()
-                        .map(|v| f32::from_bits(v.to_bits() & 0xffff_0000))
+                        .map(|v| f32::from_bits((v - shift).to_bits() & 0xffff_0000) + shift)
                         .collect(),
                 };
                 for (i, (&g, &w)) in got.iter().zip(want.iter()).enumerate() {
-                    assert_eq!(g, w, "{label}: {name} element {i}: got {g}, expected {w}");
+                    assert_eq!(
+                        g, w,
+                        "{label}: {name} element {i}: reconstructed {g}, expected {w}"
+                    );
                 }
             }
+        }
+    }
+
+    /// The norm flag selects exactly the tensors drawn from `norm_tensor`, and
+    /// those are exactly the RMSNorm weights of the architecture.
+    ///
+    /// The flag decides an arithmetic transformation in the safetensors sink,
+    /// so a tensor wrongly marked would be off by one for the whole run while
+    /// still loading, still having the right shape, and still producing
+    /// fluent output. Naming the expected set here means adding a norm to the
+    /// architecture and forgetting the shift fails a test rather than moving
+    /// a golden.
+    #[test]
+    fn the_norm_flag_marks_every_rmsnorm_weight_and_nothing_else() {
+        let spec = TinySpec {
+            ple_dim: Some(4),
+            ..TinySpec::e4b_shaped()
+        };
+        let expected_suffixes = [
+            "attn_norm.weight",
+            "attn_q_norm.weight",
+            "attn_k_norm.weight",
+            "post_attention_norm.weight",
+            "ffn_norm.weight",
+            "post_ffw_norm.weight",
+            "post_norm.weight",
+        ];
+        let tensors = tiny_tensors(&spec);
+        let mut seen: Vec<&str> = Vec::new();
+        for t in &tensors {
+            let want = t.gguf_name == "output_norm.weight"
+                || t.gguf_name == "per_layer_proj_norm.weight"
+                || expected_suffixes
+                    .iter()
+                    .any(|s| t.gguf_name.ends_with(&format!(".{s}")));
+            assert_eq!(
+                t.norm, want,
+                "{} is marked norm={}, expected {want}",
+                t.gguf_name, t.norm
+            );
+            if t.norm && !seen.contains(&t.gguf_name.as_str()) {
+                seen.push(&t.gguf_name);
+            }
+        }
+        // Every family is actually present, so the assertion above is not
+        // passing vacuously over a spec that happens to carry no norms.
+        assert_eq!(
+            seen.len(),
+            2 + expected_suffixes.len() * spec.n_layers,
+            "norm families found: {seen:?}"
+        );
+    }
+
+    /// Unshifting a norm and adding the shift back recovers the GGUF value
+    /// bit for bit at f32, which is what lets the logits goldens survive the
+    /// move between containers unchanged.
+    ///
+    /// This is a property of the draw, not luck: `norm_tensor` yields
+    /// `1.0 + u` for `u` in `[-0.1, 0.1)`, so every value lies in `[0.5, 2.0]`
+    /// where Sterbenz's lemma makes the subtraction exact.
+    #[test]
+    fn the_norm_unshift_round_trips_exactly_at_f32() {
+        let mut ws = WeightStream::new(7);
+        let weights = ws.norm_tensor(4096);
+        for (i, &w) in weights.iter().enumerate() {
+            assert!(
+                (0.5..=2.0).contains(&w),
+                "norm draw {i} is {w}, outside the range the exactness argument assumes"
+            );
+            assert_eq!(
+                1.0f32 + (w - 1.0f32),
+                w,
+                "element {i} of {w} did not recover"
+            );
         }
     }
 

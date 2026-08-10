@@ -13,6 +13,7 @@
 // reaches hardware through Candle, which owns the FFI.
 #![forbid(unsafe_code)]
 
+pub mod checkpoint;
 pub mod eval;
 pub mod gguf;
 pub mod grammar;
