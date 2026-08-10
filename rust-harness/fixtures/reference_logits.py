@@ -21,6 +21,18 @@ and the upstream transcript beside it -- and not from the Rust. A reference
 transcribed from the implementation it checks is not independent, and would
 agree with it about a misreading.
 
+That protection is weaker than it sounds, and P9.6 is the proof. Two bugs --
+a 1/sqrt(head_dim) applied to attention logits Gemma 4 does not scale, and a
+missing scale-free norm on the value states -- were present here and in the
+Rust simultaneously, because the same reader transcribed the same
+misunderstanding twice. Both survived every green gate. A second
+implementation catches a slip; it does not catch a belief. What catches a
+belief is real weights and an oracle written by someone else, which is what
+fixtures/reference_capture.py and the layer-diff bin exist to provide.
+
+So: these goldens pin the Rust against this file on random weights. They do
+not establish that either matches Gemma 4.
+
 Regenerate with:
 
     cargo run -p runtime --bin tiny-model -- fixtures/tiny-gemma4
@@ -181,6 +193,15 @@ def rms_norm(x, w, eps):
     # loader makes the same choice, which is why the two agree bit for bit.
     inv = np.float32(1.0) / np.sqrt(np.mean(x * x, dtype=np.float32) + np.float32(eps))
     return (x * inv * w).astype(np.float32)
+
+
+def rms_norm_scaleless(x, eps):
+    # Gemma4RMSNorm(..., with_scale=False) (upstream:1201), used on the value
+    # states. It allocates no weight parameter, so unlike every other norm in
+    # this model it contributes nothing to the checkpoint -- which is why an
+    # audit that reads tensor names cannot notice it is missing.
+    inv = np.float32(1.0) / np.sqrt(np.mean(x * x, dtype=np.float32) + np.float32(eps))
+    return (x * inv).astype(np.float32)
 
 
 def gelu(x):
@@ -393,8 +414,15 @@ def forward(config, tensors, prompt, steered=False):
                         for kh in k.reshape(n_kv, hd)
                     ]
                 )
+                # Value states are normed without a learnable scale and never
+                # rotated (upstream:1201, 1253-1254). `with_scale=False` means
+                # the norm owns no weight, so it leaves no tensor behind and
+                # is invisible to any check that compares checkpoint keys.
+                v = np.stack(
+                    [rms_norm_scaleless(vh, eps) for vh in v.reshape(n_kv, hd)]
+                )
                 caches[i]["k"].append(k)
-                caches[i]["v"].append(v.reshape(n_kv, hd))
+                caches[i]["v"].append(v)
             # The window bound comes from the reading layer's own kind:
             # sharing supplies states, it does not change the mask.
             first = 0 if is_global(i) else max(0, position + 1 - window)
@@ -407,7 +435,10 @@ def forward(config, tensors, prompt, steered=False):
                 vals = np.stack(
                     [caches[src]["v"][p][kvh] for p in range(first, position + 1)]
                 )
-                scores = (keys @ q[qh]) / np.float32(math.sqrt(hd))
+                # No 1/sqrt(head_dim): Gemma 4 sets scaling to 1.0 and passes
+                # it, so upstream's head_dim**-0.5 fallback never runs
+                # (upstream:1181, 829-835). q_norm and k_norm set the scale.
+                scores = keys @ q[qh]
                 scores = np.exp(scores - scores.max(), dtype=np.float32)
                 scores = (scores / scores.sum(dtype=np.float32)).astype(np.float32)
                 attn[qh] = scores @ vals

@@ -58,7 +58,8 @@
  * shared tail reads.
  */
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{bail, ensure, Context, Result};
 
@@ -677,6 +678,59 @@ pub trait Tap: Send {
     fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]);
 }
 
+/// Tap keeping only the most recent row per requested layer, so after a
+/// prefill the surviving rows are the last position's.
+///
+/// Shared by `activation-capture`, which writes those rows as probe training
+/// data, and by `layer-diff`, which compares them against a transformers
+/// capture. Both want the same thing for the same reason: the Python forward
+/// hook fires once per layer per forward and yields the last position, so a
+/// capture that kept every position would have to discard all but one to
+/// compare against it.
+///
+/// Cloneable, and clones share one map: the caller keeps a handle to read the
+/// rows after `set_tap` has taken ownership of the model's copy.
+#[derive(Clone)]
+pub struct LastRowTap {
+    layers: Vec<usize>,
+    rows: Arc<Mutex<HashMap<usize, Vec<f32>>>>,
+}
+
+impl LastRowTap {
+    pub fn new(layers: Vec<usize>) -> Self {
+        Self {
+            layers,
+            rows: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// The captured row for `layer`, or `None` when the layer was not
+    /// requested or no prefill has run since the last `clear`.
+    pub fn row(&self, layer: usize) -> Option<Vec<f32>> {
+        self.rows
+            .lock()
+            .expect("tap map not poisoned")
+            .get(&layer)
+            .cloned()
+    }
+
+    /// Drop every captured row, between examples.
+    pub fn clear(&self) {
+        self.rows.lock().expect("tap map not poisoned").clear();
+    }
+}
+
+impl Tap for LastRowTap {
+    fn on_residual(&mut self, layer: usize, _position: usize, x: &[f32]) {
+        if self.layers.contains(&layer) {
+            self.rows
+                .lock()
+                .expect("tap map not poisoned")
+                .insert(layer, x.to_vec());
+        }
+    }
+}
+
 /// Additive steering directions in the llama.cpp control-vector GGUF
 /// layout: one f32 tensor per layer named `direction.<layer>`.
 ///
@@ -905,6 +959,40 @@ fn rms_norm_in_place(x: &mut [f32], w: &[f32], eps: f32) {
     let inv = rms_inv(x, eps);
     for (v, g) in x.iter_mut().zip(w) {
         *v = *v * inv * g;
+    }
+}
+
+/// Attention logit for one query head against one cached position.
+///
+/// The plain dot product, deliberately without the `1/sqrt(head_dim)` an
+/// ordinary transformer applies here. Gemma 4 sets `self.scaling = 1.0`
+/// (upstream:1181) and passes it explicitly, so upstream's
+/// `eager_attention_forward` never reaches its
+/// `scaling = module.head_dim**-0.5` fallback (upstream:829-835); `q_norm`
+/// and `k_norm` set the magnitude instead.
+///
+/// A named function rather than an inline `.sum()` so the absence of the
+/// divide is a property a test can assert. It went missing for nine packages
+/// because nothing could state it.
+fn attn_logit(q: &[f32], k: &[f32]) -> f32 {
+    q.iter().zip(k).map(|(a, b)| a * b).sum()
+}
+
+/// Gemma RMSNorm with no learnable scale, for the value states.
+///
+/// Upstream builds this as `Gemma4RMSNorm(head_dim, eps, with_scale=False)`
+/// (upstream:1201), and `with_scale=False` allocates no `weight` parameter at
+/// all. So the norm exists in the computation but contributes nothing to the
+/// checkpoint, and every audit that works by comparing tensor names against
+/// the model walks straight past it.
+///
+/// Written as its own function rather than a call with a unit-weight slice:
+/// the absence of a weight is the fact worth stating, and allocating 256 ones
+/// to multiply by would state the opposite.
+fn rms_norm_scaleless_in_place(x: &mut [f32], eps: f32) {
+    let inv = rms_inv(x, eps);
+    for v in x.iter_mut() {
+        *v *= inv;
     }
 }
 
@@ -1314,6 +1402,14 @@ impl CpuModel {
                     rms_norm_in_place(head, &layer.k_norm, c.rms_eps);
                     rope(head, position, &layer.rope_freqs);
                 }
+                // Value states are normed and never rotated: position enters
+                // attention through q and k alone (upstream:1253-1254). The
+                // norm carries no learnable scale, so it puts no tensor in the
+                // checkpoint and no name-based audit of the weights can find
+                // it missing -- which is how it went missing.
+                for head in v.chunks_mut(hd) {
+                    rms_norm_scaleless_in_place(head, c.rms_eps);
+                }
                 let cache = &mut kv[i];
                 cache.k.extend_from_slice(k);
                 cache.v.extend_from_slice(v);
@@ -1336,7 +1432,15 @@ impl CpuModel {
                 LayerKind::Global => 0,
                 LayerKind::SlidingWindow(win) => (position + 1).saturating_sub(win),
             };
-            let attn_scale = 1.0 / (hd as f32).sqrt();
+            // No 1/sqrt(head_dim) here. Gemma 4 sets `self.scaling = 1.0`
+            // (upstream:1181) and passes it explicitly, so upstream's
+            // `eager_attention_forward` never reaches the
+            // `scaling = module.head_dim**-0.5` fallback it would use for an
+            // ordinary transformer (upstream:829-835); `q_norm` and `k_norm`
+            // fix the magnitude instead. Dividing here would scale every logit
+            // by 1/16 on a 256-wide head and flatten the softmax toward
+            // uniform. Stated as a comment rather than a `let scale = 1.0`,
+            // which reads as an oversight and invites the divide back.
             attn_out.fill(0.0);
             for qh in 0..c.n_heads {
                 let kvh = qh / heads_per_kv;
@@ -1344,7 +1448,7 @@ impl CpuModel {
                 scores.clear();
                 scores.extend((first..=position).map(|p| {
                     let kp = &cache.k[p * kv_dim + kvh * hd..p * kv_dim + (kvh + 1) * hd];
-                    qv.iter().zip(kp).map(|(a, b)| a * b).sum::<f32>() * attn_scale
+                    attn_logit(qv, kp)
                 }));
                 softmax_in_place(scores);
                 let out = &mut attn_out[qh * hd..(qh + 1) * hd];
@@ -1866,6 +1970,74 @@ mod tests {
         // A zero weight annihilates its channel; under `1 + w` it would pass
         // the value through unchanged.
         assert_eq!(rms_norm(&x, &[0.0; 4], 0.0), vec![0.0; 4]);
+    }
+
+    #[test]
+    fn an_attention_logit_is_the_plain_dot_product_with_no_head_width_divide() {
+        // Gemma 4 passes `scaling = 1.0` (upstream:1181), so the fallback
+        // `head_dim**-0.5` in upstream:829-835 never runs. The width here is
+        // E4B's real global head width, so the constant this test would show
+        // under the old code -- 512/sqrt(512), or 22.6 -- is the actual error
+        // that was applied to every attention logit on the workstation.
+        let q = vec![1.0f32; 512];
+        let k = vec![1.0f32; 512];
+        let got = attn_logit(&q, &k);
+        assert_eq!(
+            got,
+            512.0,
+            "a 1/sqrt(head_dim) divide would report {}",
+            512.0 / (512.0f32).sqrt()
+        );
+
+        // Asymmetric inputs, so a test passing on all-ones alone cannot hide
+        // a divide that happens to cancel.
+        assert_eq!(attn_logit(&[3.0, -4.0], &[2.0, 0.5]), 4.0);
+    }
+
+    #[test]
+    fn the_scaleless_norm_divides_by_the_rms_and_multiplies_by_nothing() {
+        // `Gemma4RMSNorm(..., with_scale=False)` (upstream:1201) allocates no
+        // weight, so this must agree exactly with the weighted form given
+        // unit weights -- and exactness is the property, hence `assert_eq`
+        // rather than a tolerance.
+        let x = [3.0f32, -4.0, 0.0, 5.0];
+        let mut got = x;
+        rms_norm_scaleless_in_place(&mut got, 0.0);
+        assert_eq!(got.to_vec(), rms_norm(&x, &[1.0; 4], 0.0));
+
+        // The defining property, stated directly: unit RMS out.
+        let rms = (got.iter().map(|v| v * v).sum::<f32>() / 4.0).sqrt();
+        assert!((rms - 1.0).abs() < 1e-6, "{rms}");
+    }
+
+    #[test]
+    fn cached_value_heads_are_unit_rms_after_prefill() {
+        // The forward-pass guard for the norm above: an unnormalized value
+        // row is what shipped, and it reads as a plausible activation from
+        // every angle except this one. Random fixture weights make the
+        // pre-norm RMS something other than 1 with certainty, so the
+        // assertion has content.
+        let spec = TinySpec::default();
+        let mut model = model_of(&spec);
+        model.prefill_all(&[1, 2, 3]).unwrap();
+
+        for (i, layer) in model.weights.layers.iter().enumerate() {
+            // Only cache-owning layers write rows; a sharing layer's vector
+            // is empty and reads the donor's.
+            if layer.spec.kv_source != i {
+                continue;
+            }
+            let hd = layer.spec.head_dim;
+            let v = &model.kv[i].v;
+            assert!(!v.is_empty(), "layer {i} owns its cache but wrote no rows");
+            for (h, head) in v.chunks(hd).enumerate() {
+                let rms = (head.iter().map(|x| x * x).sum::<f32>() / hd as f32).sqrt();
+                assert!(
+                    (rms - 1.0).abs() < 1e-4,
+                    "layer {i} head {h}: value RMS {rms}, so v_norm did not run"
+                );
+            }
+        }
     }
 
     #[test]

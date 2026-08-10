@@ -75,8 +75,32 @@ catching what the previous one misses:
 
 Current status: the perplexity math is implemented and unit-tested against
 hand-calculated values on the mock; the three real-model layers are ignored
-tests awaiting the cuda backend and workstation fixtures. No output-quality
-claim is made until they pass.
+tests awaiting workstation fixtures. No output-quality claim is made until
+they pass.
+
+### What the committed goldens are worth
+
+`fixtures/*-logits.json` pin the CPU backend against `fixtures/reference_logits.py`
+on the tiny synthetic checkpoints. Both sides are read as a cross-language
+check, and that is a real guard against a one-sided slip.
+
+It is not a correctness claim, for two reasons. The fixtures hold random
+weights, so a wrong arrangement produces noise that looks exactly like the
+right arrangement's noise. And both implementations were transcribed from the
+architecture documents by the same reader, so a misreading lands in both and
+they agree about it.
+
+That is not hypothetical. Two defects — a `1/sqrt(head_dim)` applied to
+attention logits Gemma 4 leaves unscaled, and a missing scale-free norm on the
+value states — were present in both implementations through nine work packages
+of green gate, and were found by reading `docs/models/gemma4-upstream.txt`
+after a real checkpoint produced noise. The second contributes no tensor to a
+checkpoint, so no name-based audit of the weights could have found it.
+
+Real-weight verification is `runtime/src/bin/layer-diff.rs` against
+`fixtures/reference_capture.py`, which compares the residual stream layer by
+layer to transformers itself. Until that reports clean, the goldens are
+regression pins and nothing more.
 
 ## What works today
 

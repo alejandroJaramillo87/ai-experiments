@@ -15,11 +15,10 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::{Arc, Mutex};
 
 use anyhow::{bail, ensure, Context, Result};
 
-use runtime::model::cpu::{CpuModel, Tap};
+use runtime::model::cpu::{CpuModel, LastRowTap};
 use runtime::model::Model;
 use runtime::npz::{npy_f32, npy_i64, NpzWriter};
 use runtime::tokenizer::Tokenizer;
@@ -30,22 +29,6 @@ const SHARD_SIZE: usize = 2048;
 struct Example {
     text: String,
     label: i64,
-}
-
-/// Keeps only the most recent row per requested layer; after a prefill the
-/// surviving rows are the last position's.
-#[derive(Clone)]
-struct LastRowTap {
-    layers: Vec<usize>,
-    rows: Arc<Mutex<HashMap<usize, Vec<f32>>>>,
-}
-
-impl Tap for LastRowTap {
-    fn on_residual(&mut self, layer: usize, _position: usize, x: &[f32]) {
-        if self.layers.contains(&layer) {
-            self.rows.lock().unwrap().insert(layer, x.to_vec());
-        }
-    }
 }
 
 fn load_dataset(path: &Path) -> Result<Vec<Example>> {
@@ -220,10 +203,7 @@ fn run(
     let tokenizer = Tokenizer::from_file(&tokenizer_path).context("load tokenizer")?;
     let examples = load_dataset(dataset_path)?;
 
-    let tap = LastRowTap {
-        layers: layers.to_vec(),
-        rows: Arc::new(Mutex::new(HashMap::new())),
-    };
+    let tap = LastRowTap::new(layers.to_vec());
     model.set_tap(Box::new(tap.clone()));
 
     // One f32 row per example per layer, captured at the last prompt token
@@ -231,7 +211,7 @@ fn run(
     let mut collected: HashMap<usize, Vec<f32>> = layers.iter().map(|&l| (l, Vec::new())).collect();
     for (i, example) in examples.iter().enumerate() {
         model.truncate(0).context("reset KV cache")?;
-        tap.rows.lock().unwrap().clear();
+        tap.clear();
         let mut tokens = vec![tokenizer.bos()];
         tokens.extend(tokenizer.encode(&example.text)?);
         ensure!(
@@ -242,10 +222,9 @@ fn run(
             config.context_length
         );
         model.prefill(&tokens)?;
-        let rows = tap.rows.lock().unwrap();
         for &l in layers {
-            let row = rows
-                .get(&l)
+            let row = tap
+                .row(l)
                 .with_context(|| format!("example {}: no tap row for layer {l}", i + 1))?;
             collected
                 .get_mut(&l)
