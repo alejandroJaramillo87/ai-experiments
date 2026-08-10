@@ -3,10 +3,18 @@
 What the `rust-harness` runtime requires to ingest a Gemma 4 checkpoint, what the published
 checkpoints actually contain, and which architecture features the backend checks by name.
 
-This document exists because the runtime reads GGUF and the model is published as safetensors
+> **Historical, pending rewrite.** This document was written when the runtime read GGUF while
+> the model is published as safetensors, so most of it describes a translation that no longer
+> happens: the runtime reads `config.json` and `model.safetensors` directly
+> (`runtime/src/checkpoint.rs`). The GGUF-side observations are kept because the published GGUFs
+> still exist and llama.cpp still serves them, but nothing below describes the loader's current
+> behaviour unless it says so. Retired symbol names are corrected in place so the gate can see
+> them; the narrative is not.
+
+This document existed because the runtime read GGUF and the model is published as safetensors
 with a Hugging Face `config.json`. The two use different key names, different value types, and
-in one case different semantics for the same key. A reader who knows the Hugging Face
-configuration still cannot predict what the loader will do.
+in one case different semantics for the same key. A reader who knew the Hugging Face
+configuration still could not predict what the loader would do.
 
 Scope: E2B and E4B, the two variants present on this workstation. The 12B and 31B variants have
 no code path here. The general family reference is `/docs/models/gemma-4.md`.
@@ -40,7 +48,7 @@ Configuration and tensor facts derive from the safetensors headers of the local 
 
 ## The GGUF contract
 
-`ModelSpec::from_gguf` (`/rust-harness/runtime/src/model/cpu.rs:358`) requires eleven
+The GGUF loader, since replaced by `ModelSpec::from_checkpoint`, required eleven
 architecture keys, all prefixed with the value of `general.architecture`, which must begin with
 `gemma`. Every one is mandatory: a missing key or a wrong value type fails the load.
 
@@ -186,7 +194,7 @@ exactly the stride the runtime wants:
 | E4B | `[t,t,t,t,t,f]` x 7, n=42 | 6 |
 | mtp | `[t,t,t,f]`, n=4 | 4 |
 
-`Config::from_gguf` therefore derives the stride from the array and verifies that the derived
+The GGUF loader therefore derived the stride from the array and verified that the derived
 period reproduces every entry, refusing a non-periodic array rather than reinterpreting it. An
 earlier revision of this document asserted the key "is not a period"; that was wrong.
 
@@ -294,7 +302,7 @@ The runtime models the attention schedule as a stride,
 Both variants place a full-attention layer last. No per-layer array is needed to express either
 schedule; a converter that wrote `sliding_window_pattern` as the uint32 period 5 or 6 would
 satisfy the runtime exactly. The published files write a bool array instead, and the loader
-decodes it: `Config::from_gguf` reads `attention.sliding_window_pattern` as either a uint32
+decoded it: the GGUF loader read `attention.sliding_window_pattern` as either a uint32
 stride or a bool array marking each layer sliding (`cpu.rs:221-241`). Given an array it takes
 the first global layer as the period and then verifies every remaining entry against that
 stride, so a schedule that is not periodic fails the load naming the key rather than being
@@ -371,7 +379,7 @@ E4B-shaped fixture match an independently written numpy reference within `2e-4`,
 implementations written from the same documents agree on a shared misreading. Loading a real
 checkpoint is runbook entry RH.2 and remains outstanding.
 
-**The schedule is consumed, not merely parsed.** `Config::from_gguf` decodes the bool array to
+**The schedule was consumed, not merely parsed.** The GGUF loader decoded the bool array to
 the stride `Config::layer_kind` uses, and refuses a schedule that is not periodic rather than
 approximating it (see
 [The layer schedule is expressible](#the-layer-schedule-is-expressible)). Both published
@@ -590,10 +598,11 @@ $ ./scripts/models/gemma4_header_transcript.sh    # safetensors headers and conf
 $ ./scripts/models/gguf_header_transcript.sh      # GGUF metadata and tensor inventory
 ```
 
-To inspect a single GGUF file against the runtime's own limits, use the inspection binary,
-which calls the same `check_supported` the loader does, so the tool and the loader cannot
-disagree:
+To inspect a checkpoint against the runtime's own limits, use the inspection binary, which
+calls the same `check_supported_checkpoint` the loader does, so the tool and the loader cannot
+disagree. It reads a checkpoint directory, not a GGUF: the runtime no longer has a reader for
+one, and llama.cpp's own tooling covers the served files.
 
 ```bash
-$ cargo run --bin gguf-info -- /mnt/ai-data/models/gguf/gemma-4-E2B-it/gemma-4-E2B-it-BF16.gguf
+$ cargo run --bin checkpoint-info -- <checkpoint-dir>
 ```

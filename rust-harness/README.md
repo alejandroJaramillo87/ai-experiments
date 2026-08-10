@@ -28,17 +28,18 @@ trees rather than specified in prose.
 ```
 Cargo.toml        workspace: harness, runtime
 harness/          bin crate: agent loop, tools, permissions, chat, streaming, obs records
-runtime/          lib crate: sessions, sampler, grammar, KV cache, GGUF, tokenizer, model
-fixtures/         committed fixtures: synthetic tiny-model GGUF, numpy reference
-                  logits and generator script, probe and control-vector GGUFs
+runtime/          lib crate: sessions, sampler, grammar, KV cache, checkpoint, tokenizer, model
+fixtures/         committed fixtures: synthetic tiny-model checkpoints, numpy
+                  reference logits and generator script, probe and
+                  control-vector GGUFs
                   written by the Python exporters plus their generator;
                   real-model Tier 3 fixtures pending
 ```
 
-Utility binaries: `gguf-info` dumps GGUF metadata and the tensor directory,
+Utility binaries: `checkpoint-info` dumps a checkpoint's config and tensor table,
 then derives an architecture summary and the backend's compatibility verdict
 (architecture reconciliation against the real checkpoint); `tiny-model`
-writes the synthetic fixture GGUF; `activation-capture` writes last-token
+writes the synthetic fixture checkpoint; `activation-capture` writes last-token
 residual activations in the interp capture shard format (consumed unchanged
 by the parent repository's `interp/probes` toolkit).
 
@@ -86,9 +87,9 @@ grammar-constrained decoding, subagent fork/interleave, and the perplexity
 evaluator.
 
 Numerics come from a hand-rolled single-threaded CPU backend
-(`runtime/src/model/cpu.rs`) implementing a Gemma-4-style forward pass from GGUF
-weights. It is a strict subset of the published architecture, so
-`cpu::check_supported` refuses a checkpoint carrying per-layer embeddings, a
+(`runtime/src/model/cpu.rs`) implementing a Gemma-4-style forward pass from a
+Hugging Face checkpoint. It is a strict subset of the published architecture, so
+`cpu::check_supported_checkpoint` refuses a checkpoint carrying per-layer embeddings, a
 shared KV cache, MatFormer feed-forward widths, or dual RoPE — naming the
 feature rather than loading the model and silently ignoring the extra weights.
 Its logits match an independent numpy reference over the committed synthetic
@@ -102,8 +103,8 @@ serialized on exit and restored at startup — continuation logits after a resto
 are bit-identical to an unbroken run.
 
 Remaining workstation work: architecture reconciliation against the real E4B
-GGUF, the rr acceptance run, and the Tier 3 fixtures. The cuda backend slots in
-at the same `Model` seam.
+checkpoint, the rr acceptance run, and the Tier 3 fixtures. The cuda backend
+slots in at the same `Model` seam.
 
 ## Quality gate
 

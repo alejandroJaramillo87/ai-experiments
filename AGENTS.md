@@ -74,6 +74,17 @@ These are standing instructions for anyone (human or agent) making changes in th
 - **Renaming a file means adding it to `scripts/docs/check_retired_names.py`.** The table
   there is what makes a rename self-policing; a rename that skips it leaves stragglers for a
   human to find months later.
+- **GGUF is llama.cpp's format, and only llama.cpp's.** The rust harness reads Hugging Face
+  checkpoints — `config.json` and `model.safetensors` — because for a model format the
+  reference implementation and the specification are the same artifact, and a converter's
+  metadata can only imply what a checkpoint states. Everything still producing or naming GGUF
+  does so for llama.cpp to serve, and stays: `training/export/` (`convert_hf_to_gguf` →
+  `llama-quantize` → the served model, plus the manifest sha256 `serve_eval.py` verifies),
+  `common/serving.py`'s `quant_from_name`, and `interp/steering/export.py`, whose `vector.gguf`
+  the llama-cpu and llama-gpu entrypoints pass as `--control-vector-scaled`. The two GGUF
+  readers left in `rust-harness` exist for the probe and control-vector images the Python interp
+  exporters write (`schemas/gguf_artifacts.json`); they go when the harness serves the interp
+  pipeline itself.
 
 ## Where things are
 

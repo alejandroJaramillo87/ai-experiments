@@ -107,6 +107,48 @@ RETIRED: dict[str, tuple[str, str]] = {
         "next to source; the mount put them one `git add -A` away from a "
         "commit, and .gitignore had no entry for the directory",
     ),
+    # The GGUF-to-checkpoint move (rust-harness P2-P8). Keys are qualified,
+    # because gguf.rs and the two artifact readers survive: the Python interp
+    # exporters write probe and control-vector images in that container, and
+    # llama.cpp consumes the control vector. A bare `from_gguf` or `gguf.rs`
+    # key would fire on live code.
+    "CpuModel::from_gguf": (
+        "CpuModel::from_checkpoint",
+        "the CPU backend loads config.json and model.safetensors instead of a "
+        "GGUF; the converter's metadata could only imply what a checkpoint "
+        "states, and a SentencePiece-unigram reading of a BPE vocabulary is "
+        "what that cost the project once already",
+    ),
+    "ModelSpec::from_gguf": (
+        "ModelSpec::from_checkpoint",
+        "retired with the loader above; layer_types, partial_rotary_factor and "
+        "global_head_dim are named config.json fields rather than a stride, a "
+        "divisor tensor, and a key that does not exist",
+    ),
+    "Config::from_gguf": (
+        "ModelSpec::from_checkpoint",
+        "folded into the spec constructor with the loader above; Config no "
+        "longer carries sliding_window_pattern, which was a GGUF spelling "
+        "nothing outside that function read",
+    ),
+    "cpu::check_supported": (
+        "cpu::check_supported_checkpoint",
+        "the half that policed GGUF metadata namespaces went with the "
+        "container -- named config.json fields are validated by "
+        "TextConfig::validate -- and the architectural refusals it kept are "
+        "now expressed over Hugging Face tensor names",
+    ),
+    "gguf-info": (
+        "checkpoint-info",
+        "the inspection tool follows the format the backend loads; it echoes "
+        "config.json and tabulates safetensors dtypes and shapes rather than "
+        "reconstructing both from metadata keys and ggml type ids",
+    ),
+    "gguf_info_check.rs": (
+        "checkpoint_info_check.rs",
+        "renamed with the binary it tests; the --check exit-code contract it "
+        "pins is unchanged",
+    ),
     # The tests/utils/ split. Keyed per file rather than on the directory:
     # tests/utils/ still exists and still holds the scripts/utils/ reporters, so
     # a bare `tests/utils` key would fire on the files that correctly stayed.
@@ -176,7 +218,11 @@ SCAN_NAME_PREFIXES = ("Dockerfile.",)
 # being exempt on 2026-08-08. This gate has no false positives by construction,
 # so narrowing it was the lower-risk half of that change.
 EXEMPT_PARTS = ("investigations", "vendor")
-EXEMPT_PREFIXES: tuple[str, ...] = ()
+# Agent memory records carry a `verified:` date and a `stale_when:` condition:
+# they state what was true when written, and a record whose condition has fired
+# is closed rather than rewritten. Renaming the symbols inside one would make it
+# claim to have observed something it did not.
+EXEMPT_PREFIXES: tuple[str, ...] = (".claude/agent-memory/",)
 EXEMPT_SUFFIXES = ("_investigation.md",)
 
 # Exempt by name, each for a stated reason.
@@ -185,6 +231,11 @@ EXEMPT_FILES = {
     "scripts/docs/check_retired_names.py",
     # The unit tests, which assert on the table and so quote its keys.
     "tests/docs/test_retired_names.py",
+    # A dated QA campaign ledger. Its findings record what was run against
+    # which function at the time, so rewriting the names in them would
+    # falsify the record rather than update it -- the same reason
+    # investigations/ and *_investigation.md are exempt.
+    "docs/verification/rust-harness-qa.md",
 }
 
 

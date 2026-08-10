@@ -135,9 +135,9 @@ pub struct LayerSpec {
 /// A checkpoint's complete declared shape: the model-wide scalars plus one
 /// `LayerSpec` per layer.
 ///
-/// `check_supported` and `CpuModel::from_gguf` both take this, so the
-/// `gguf-info` inspection tool and the loader cannot disagree about what a
-/// file declares.
+/// `check_supported_checkpoint` and `CpuModel::from_checkpoint` both take
+/// this, so the `checkpoint-info` inspection tool and the loader cannot
+/// disagree about what a file declares.
 #[derive(Debug, Clone)]
 pub struct ModelSpec {
     pub config: Config,
@@ -292,9 +292,9 @@ impl ModelSpec {
 }
 
 /// Per-layer tensor suffixes the forward pass consumes. Kept in step with the
-/// `LayerWeights` literal in `CpuModel::from_gguf`; the fixture-shape test
-/// fails if the two drift, because an unlisted consumed tensor makes
-/// `check_supported` refuse the synthetic model.
+/// `LayerWeights` literal in `CpuModel::from_checkpoint`; the fixture-shape
+/// test fails if the two drift, because an unlisted consumed tensor makes
+/// `check_supported_checkpoint` refuse the synthetic model.
 const LAYER_TENSORS: [&str; 13] = [
     "attn_norm.weight",
     "attn_q.weight",
@@ -768,7 +768,7 @@ pub struct CpuModel {
 /// The shape check is a real assertion rather than a `debug_assert`: a
 /// matrix longer than `in_dim * out_dim` stays in bounds and silently uses
 /// its leading rows, so the compiled-out version left release builds — the
-/// builds that matter — with no guard at all. `CpuModel::from_gguf` now
+/// builds that matter — with no guard at all. `CpuModel::from_checkpoint` now
 /// makes this unreachable from a loaded checkpoint, and one integer
 /// comparison against `in_dim * out_dim` multiply-accumulates is free. It
 /// also catches a `Scratch` buffer sized against the wrong dimension, which

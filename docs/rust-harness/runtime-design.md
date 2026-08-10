@@ -324,14 +324,14 @@ entry RH.1 remains the authority.
 Where the backend does not implement something, it refuses rather than guesses. Per-layer
 embeddings, shared KV, per-layer feed-forward widths, per-layer head dimension,
 dual RoPE, logit softcapping, and `layer_output_scale` were all refused by name and
-are now implemented; `cpu::check_supported` retains each as a coherence check, so a
+are now implemented; `cpu::check_supported_checkpoint` retains each as a coherence check, so a
 file whose metadata and tensors describe different models still fails the load. What
 it still refuses is partial rotary applied by slicing, attention softcapping, logit
 rescaling, unrecognized RoPE keys, and any unconsumed tensor family. The alternative
 was worse than a failure: loading is name-directed, so an unimplemented feature
 presents as ignored weight tensors and fluent, wrong output that no machinery test
 detects. The
-`gguf-info` binary prints the same verdict from the same function, so the
+`checkpoint-info` binary prints the same verdict from the same function, so the
 reconciliation run yields a decision rather than a judgment call.
 
 Sources: the [Gemma 4 technical report](https://arxiv.org/abs/2607.02770)

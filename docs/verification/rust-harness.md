@@ -124,11 +124,11 @@ Command:
 ```bash
 $ ls -la /mnt/ai-data/models/gguf/
 $ cd rust-harness
-$ cargo run -p runtime --bin gguf-info -- /mnt/ai-data/models/gguf/<e4b>.gguf
+$ cargo run -p runtime --bin checkpoint-info -- /mnt/ai-data/models/gguf/<e4b>.gguf
 ```
 
 Expected signal: the run ends in a compatibility verdict, printed by the same
-`cpu::check_supported` function the loader calls, so the tool and the loader
+`cpu::check_supported_checkpoint` function the loader calls, so the tool and the loader
 cannot disagree. `[OK] CPU backend compatibility: supported` means the
 checkpoint is within the implemented subset and RH.2 can proceed.
 `[ERROR] CPU backend compatibility: ...` names the unimplemented feature and

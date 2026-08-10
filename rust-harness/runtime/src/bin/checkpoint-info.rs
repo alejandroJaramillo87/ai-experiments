@@ -12,9 +12,10 @@
  * through `ModelSpec::from_checkpoint`, the same path the loader takes, so this
  * tool and the loader cannot disagree about a file.
  *
- * This replaces `gguf-info`. The sections it lost went with the container: a
- * GGUF states its architecture in metadata keys that have to be hunted for by
- * suffix, and its dtypes as ggml type ids that a histogram had to name. A
+ * This replaces the GGUF inspector. The sections it lost went with the
+ * container: a GGUF states its architecture in metadata keys that have to be
+ * hunted for by suffix, and its dtypes as ggml type ids that a histogram had
+ * to name. A
  * checkpoint states both directly, so the tool prints them instead of
  * reconstructing them.
  */

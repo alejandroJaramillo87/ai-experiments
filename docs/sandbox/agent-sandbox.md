@@ -181,7 +181,7 @@ dequantizes every tensor to f32 at load, so resident cost far exceeds on-disk si
 plus main embedding is roughly 2.28B parameters (~9.1GB as f32) and E4B's roughly 4.67B
 (~18.7GB). The container limit is 32GB for that reason.
 
-Header inspection needs none of that memory. `gguf-info` reads only the metadata and tensor
+Header inspection needs none of that memory. `checkpoint-info` reads only the metadata and tensor
 directory, never the weight payload, so architecture reconciliation and tokenizer questions are
 answerable well inside the limit.
 

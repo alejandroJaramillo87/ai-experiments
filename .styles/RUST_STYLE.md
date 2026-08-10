@@ -161,7 +161,7 @@ facade — callers name the module they depend on. Group implementations of one 
 directory with `mod.rs` holding the trait, as `runtime/src/model/` does for `cpu`, `mock`,
 `probe`, and `record`.
 
-Binaries live in `src/bin/` with kebab-case names (`gguf-info`, `activation-capture`);
+Binaries live in `src/bin/` with kebab-case names (`checkpoint-info`, `activation-capture`);
 `main.rs` stays a thin entry point over library modules.
 
 Naming follows standard Rust casing: `snake_case` for functions and modules, `CamelCase` for

@@ -48,7 +48,7 @@ flame:
 
 # Debugging (workstation only): record a failing run once under rr, then
 # replay it in gdb with reverse execution. Usage:
-#   make debug-record ARGS='--model fixtures/tiny-gemma4.gguf say hello'
+#   make debug-record ARGS='--model fixtures/tiny-gemma4 say hello'
 #   make debug-replay
 .PHONY: debug-record debug-replay
 debug-record:
