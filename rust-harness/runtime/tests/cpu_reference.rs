@@ -11,7 +11,12 @@
  * Fixture regeneration (from rust-harness/):
  *   cargo run -p runtime --bin tiny-model -- fixtures/tiny-gemma4.gguf
  *   cargo run -p runtime --bin tiny-model -- fixtures/tiny-gemma4-e4b.gguf e4b
+ *   cargo run -p runtime --bin tiny-model -- fixtures/tiny-bpe.tokenizer.json bpe
  *   python3 fixtures/reference_logits.py
+ *
+ * Each model invocation writes its GGUF and the tokenizer.json beside it. The
+ * bpe invocation writes a tokenizer only: its vocabulary carries a merge list,
+ * which the model fixtures cannot, and it is what covers BPE segmentation.
  */
 
 use runtime::model::cpu::CpuModel;
@@ -358,6 +363,41 @@ fn e4b_fixture_gguf_matches_the_generator() {
     let committed = std::fs::read(fixture_path("tiny-gemma4-e4b.gguf")).unwrap();
     let generated = runtime::synth::build_tiny_model(&runtime::synth::TinySpec::e4b_shaped());
     assert_eq!(committed, generated, "regenerate the fixture (see header)");
+}
+
+/// The tokenizer fixtures are pinned the same way the GGUFs are, for the same
+/// reason and one more: the serialized form is produced by `tokenizers`, so a
+/// dependency upgrade that changes it shows up here as a fixture diff rather
+/// than as a silent change in how prompts are segmented.
+#[test]
+fn tokenizer_fixtures_match_the_generator() {
+    for (name, generated) in [
+        (
+            "tiny-gemma4.tokenizer.json",
+            runtime::synth::build_tiny_tokenizer_json(&runtime::synth::TinySpec::default())
+                .unwrap(),
+        ),
+        (
+            "tiny-gemma4-e4b.tokenizer.json",
+            runtime::synth::build_tiny_tokenizer_json(&runtime::synth::TinySpec::e4b_shaped())
+                .unwrap(),
+        ),
+        (
+            "tiny-bpe.tokenizer.json",
+            runtime::synth::merge_fixture_tokenizer_json().unwrap(),
+        ),
+    ] {
+        let committed = std::fs::read(fixture_path(name))
+            .unwrap_or_else(|e| panic!("read fixture {name}: {e} (regenerate; see header)"));
+        assert_eq!(
+            committed.len(),
+            generated.len(),
+            "{name}: committed is {} bytes, generator writes {} (regenerate; see header)",
+            committed.len(),
+            generated.len()
+        );
+        assert_eq!(committed, generated, "{name}: regenerate (see header)");
+    }
 }
 
 /// The geometry choices the E4B-shaped fixture exists to make observable.
