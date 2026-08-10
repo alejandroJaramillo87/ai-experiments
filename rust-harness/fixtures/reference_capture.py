@@ -41,6 +41,7 @@ regenerated whenever the question changes.
 import argparse
 import json
 import sys
+from pathlib import Path
 
 
 def parse_args():
@@ -197,6 +198,20 @@ def capture(model, ids):
 def main():
     args = parse_args()
 
+    # Prepared here rather than beside the write, because the write is the last
+    # thing this script does and the forward pass before it is minutes of CPU on
+    # a 42-layer checkpoint. The E4B reference directories are gitignored, so
+    # they are absent in a fresh clone and this is the ordinary case, not an
+    # edge one -- paying for a full model load to learn the path is wrong is a
+    # cost with nothing to show for it.
+    out = Path(args.out)
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"[ERROR] Destination: {out.parent} is not usable: {e}", file=sys.stderr)
+        print("  Solution: name a writable directory for --out", file=sys.stderr)
+        return 1
+
     # Imported here rather than at module scope so --help works on a machine
     # without torch, which is every sandbox.
     try:
@@ -234,7 +249,7 @@ def main():
     payload = capture(model, ids)
     payload["prompt"] = args.prompt
     payload["dtype"] = args.dtype
-    with open(args.out, "w") as f:
+    with open(out, "w") as f:
         json.dump(payload, f)
 
     logits = payload["logits"]
@@ -243,7 +258,7 @@ def main():
     )
     top = max(range(len(logits)), key=logits.__getitem__)
     print(
-        f"[OK] Wrote {args.out}: {payload['n_layers']} layers x "
+        f"[OK] Wrote {out}: {payload['n_layers']} layers x "
         f"{len(payload['layers']['0'])}, {len(logits)} logits, prelude {prelude}, "
         f"argmax {top} ({tokenizer.decode([top])!r})",
         file=sys.stderr,
