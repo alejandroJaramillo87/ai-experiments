@@ -85,15 +85,29 @@ impl Sampler {
         let supported = |i: usize, l: f32| l.is_finite() && mask.is_none_or(|m| m[i]);
 
         if self.params.temperature <= 0.0 {
-            // Argmax without the candidate allocation. `>=` keeps the last
-            // index on ties, matching the previous max_by behavior that the
-            // Tier 2 scripts rely on.
+            // Argmax without the candidate allocation. Strictly `>`, so a tie
+            // keeps the *first* supported index, which is what `torch.argmax`
+            // returns and therefore what greedy decoding has to do to be
+            // comparable against the reference implementation at all.
+            //
+            // This read `>=` until the correctness ladder needed greedy
+            // parity. Leaving the sampler on the other convention while the
+            // ladder used torch's would have made the ladder pass while the
+            // shipping decoder did something else -- the precise shape of
+            // gate that proves nothing. Exact ties are rare in f32 over a
+            // 262144-wide vocabulary but not absent: grammar masking and
+            // logit-softcap saturation both produce them, and both are here.
+            //
+            // `metrics::argmax_first` is the same rule without a mask, and
+            // the two are pinned to agree by a test below rather than shared
+            // as one function: threading an optional mask through a metrics
+            // helper would complicate it for a single caller.
             let mut best: Option<(Token, f32)> = None;
             let mut support = 0usize;
             for (i, &l) in logits.0.iter().enumerate() {
                 if supported(i, l) {
                     support += 1;
-                    if best.is_none_or(|(_, b)| l >= b) {
+                    if best.is_none_or(|(_, b)| l > b) {
                         best = Some((i as Token, l));
                     }
                 }
@@ -182,11 +196,34 @@ mod tests {
     }
 
     #[test]
-    fn temperature_zero_is_argmax_and_ties_pick_the_last_index() {
+    fn temperature_zero_is_argmax_and_ties_pick_the_first_index_as_torch_does() {
         let mut s = sampler(0.0, 0.95, 0);
         assert_eq!(s.sample(&logits(&[0.1, 2.0, 0.3]), None).unwrap(), 1);
-        // Flat logits: last index wins, preserved for script determinism.
-        assert_eq!(s.sample(&logits(&[1.0, 1.0, 1.0]), None).unwrap(), 2);
+        // Flat logits: the first index wins. This test asserted the last
+        // index until greedy parity with transformers became a gate; the
+        // choice is arbitrary in isolation and is not arbitrary once a
+        // reference implementation exists to disagree with.
+        assert_eq!(s.sample(&logits(&[1.0, 1.0, 1.0]), None).unwrap(), 0);
+        assert_eq!(s.sample(&logits(&[0.0, 2.0, 2.0, 1.0]), None).unwrap(), 1);
+    }
+
+    #[test]
+    fn greedy_sampling_and_the_metrics_argmax_resolve_ties_the_same_way() {
+        // The two implementations exist separately because the sampler
+        // carries a mask and the metric does not. That is a reason for two
+        // functions, not for two conventions, so the agreement is asserted
+        // rather than assumed -- a later edit to either one fails here.
+        let mut s = sampler(0.0, 0.95, 0);
+        for row in [
+            vec![1.0f32, 1.0, 1.0],
+            vec![0.0, 2.0, 2.0, 1.0],
+            vec![-3.0, -1.0, -5.0],
+            vec![5.0, 4.0, 3.0],
+        ] {
+            let got = s.sample(&logits(&row), None).unwrap();
+            let want = crate::metrics::argmax_first(&row) as Token;
+            assert_eq!(got, want, "row {row:?}");
+        }
     }
 
     #[test]
