@@ -30,6 +30,23 @@ use anyhow::{ensure, Context, Result};
 
 use super::model::Token;
 
+/// Chat template revision, matching `CHAT_TEMPLATE_VERSION` in
+/// `training/models/families.py`.
+///
+/// Defined here rather than in `harness::template`, which renders with it and
+/// re-exports it under its own name. Two consumers need it and they cannot see
+/// each other: the renderer lives in `harness`, which depends on `runtime`, and
+/// the ladder's L0 rung lives in `runtime`, where it checks that a parity
+/// artifact's rendered-turn case came from the revision this harness actually
+/// renders. Comparing a v2 artifact against a v3 renderer would measure a
+/// string no prompt would ever contain, and report the result as a tokenizer
+/// verdict.
+///
+/// The three tiers render one conversation to one byte string, so a change to
+/// any of them bumps all of them; `harness/tests/template_contract.rs` pins the
+/// Rust and Python sides together.
+pub const CHAT_TEMPLATE_VERSION: u32 = 2;
+
 /// The tokenizer that belongs to a checkpoint at `model`.
 ///
 /// Resolution probes rather than assumes, in the shape `pyenv.rs` uses for the

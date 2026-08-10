@@ -39,10 +39,11 @@ regenerated whenever the question changes.
 """
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
+
+from reference_common import ensure_destination, provenance
 
 
 def parse_args():
@@ -216,25 +217,14 @@ def capture(model, ids):
 def main():
     args = parse_args()
 
-    # Prepared here rather than beside the write, because the write is the last
-    # thing this script does and the forward pass before it is minutes of CPU on
-    # a 42-layer checkpoint. The E4B reference directories are gitignored, so
-    # they are absent in a fresh clone and this is the ordinary case, not an
-    # edge one -- paying for a full model load to learn the path is wrong is a
-    # cost with nothing to show for it.
     out = Path(args.out)
-    try:
-        out.parent.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        print(f"[ERROR] Destination: {out.parent} is not usable: {e}", file=sys.stderr)
-        print("  Solution: name a writable directory for --out", file=sys.stderr)
+    if not ensure_destination(out):
         return 1
 
     # Imported here rather than at module scope so --help works on a machine
     # without torch, which is every sandbox.
     try:
         import torch
-        import transformers
         from transformers import AutoModelForCausalLM, AutoTokenizer
     except ImportError as e:
         print(f"[ERROR] Import: {e}", file=sys.stderr)
@@ -300,25 +290,7 @@ def main():
             file=sys.stderr,
         )
 
-    # Provenance, in the field names build_tiny_reference.py's manifest already
-    # uses, so the two tiers spell the same facts the same way. A number nobody
-    # can reproduce is not evidence, and these are what a reader needs to
-    # reproduce one.
-    #
-    # The checkpoint is identified by its config.json hash rather than by
-    # hashing the weights: the weights are tens of gigabytes, and a config
-    # change is what silently alters the architecture under a stored capture.
-    # No version is asserted anywhere against these. Tier T pins transformers
-    # because its artifacts are committed and must not drift; a Tier E capture
-    # is regenerated on every run, so a pin here would only produce friction.
-    payload["model"] = str(Path(args.model))
-    payload["transformers"] = transformers.__version__
-    payload["torch"] = torch.__version__
-    config = Path(args.model) / "config.json"
-    if config.is_file():
-        payload["checkpoint_config_sha256"] = hashlib.sha256(
-            config.read_bytes()
-        ).hexdigest()
+    payload.update(provenance(args.model))
     with open(out, "w") as f:
         json.dump(payload, f)
 

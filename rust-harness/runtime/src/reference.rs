@@ -15,9 +15,9 @@
 
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::{ensure, Context, Result};
 
-use crate::ladder::Activations;
+use crate::ladder::{Activations, TokenizerCase};
 use crate::model::Token;
 
 /// A reference forward pass: what was fed in, and what came out at each stage.
@@ -136,6 +136,103 @@ pub fn load_capture(path: &Path, stages: &[&'static str]) -> Result<Option<Captu
     }))
 }
 
+/// The token ids under `key`, which must be a present array of integers.
+///
+/// Unlike `optional_row`, absence is an error: every caller here reads a field
+/// the format requires, and a case with no ids would compare our encoding
+/// against nothing and call it agreement.
+fn required_ids(v: &serde_json::Value, key: &str) -> Result<Vec<Token>> {
+    let node = v
+        .get(key)
+        .and_then(|t| t.as_array())
+        .with_context(|| format!("{key} is missing or not an array"))?;
+    node.iter()
+        .map(|t| {
+            t.as_u64()
+                .map(|n| n as Token)
+                .with_context(|| format!("{key} holds a non-integer"))
+        })
+        .collect()
+}
+
+/// Load the L0 parity cases written by `fixtures/reference_tokenizer.py`.
+///
+/// Same contract as `load_capture`: absent is `Ok(None)` and a skipped rung,
+/// present and malformed is an error.
+///
+/// `chat_template_version` is checked against the harness's own constant. The
+/// rendered-turn case is the whole reason this artifact exists, and a
+/// reference generated under one template revision compared against a renderer
+/// at another would report a tokenizer defect for what is a version skew.
+pub fn load_tokenizer_parity(
+    path: &Path,
+    chat_template_version: u32,
+) -> Result<Option<Vec<TokenizerCase>>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("read reference {}", path.display()))?;
+    let v: serde_json::Value = serde_json::from_str(&text)
+        .with_context(|| format!("parse reference {}", path.display()))?;
+
+    let want = v
+        .get("chat_template_version")
+        .and_then(serde_json::Value::as_u64)
+        .context("parity artifact carries no chat_template_version")? as u32;
+    ensure!(
+        want == chat_template_version,
+        "parity artifact was generated at chat template version {want}, \
+         and this harness renders version {chat_template_version}",
+    );
+
+    let cases = v
+        .get("cases")
+        .and_then(|t| t.as_array())
+        .context("parity artifact carries no cases array")?;
+
+    cases
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let name = c
+                .get("name")
+                .and_then(|t| t.as_str())
+                .with_context(|| format!("case {i} has no name"))?
+                .to_string();
+            let text = c
+                .get("text")
+                .and_then(|t| t.as_str())
+                .with_context(|| format!("case {name} has no text"))?
+                .to_string();
+            // Absent means the empty allowlist, which is `encode`: a case that
+            // vouches for nothing is the ordinary one, and requiring the field
+            // would make the common case the verbose one.
+            let allowed = match c.get("allowed") {
+                None => Vec::new(),
+                Some(a) => a
+                    .as_array()
+                    .with_context(|| format!("case {name}: allowed is not an array"))?
+                    .iter()
+                    .map(|s| {
+                        s.as_str()
+                            .map(str::to_string)
+                            .with_context(|| format!("case {name}: allowed holds a non-string"))
+                    })
+                    .collect::<Result<_>>()?,
+            };
+            let ids = required_ids(c, "ids").with_context(|| format!("case {name}"))?;
+            Ok(TokenizerCase {
+                name,
+                text,
+                allowed,
+                ids,
+            })
+        })
+        .collect::<Result<Vec<_>>>()
+        .map(Some)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,6 +284,65 @@ mod tests {
         );
         let err = load_capture(&path, &[]).expect_err("expected an error");
         assert!(err.to_string().contains("missing layer 1"), "{err}");
+    }
+
+    fn write_parity(dir: &Path, body: &str) -> std::path::PathBuf {
+        let path = dir.join("tokenizer_parity.json");
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    #[test]
+    fn an_absent_parity_artifact_is_none_rather_than_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let got = load_tokenizer_parity(&dir.path().join("nothing.json"), 2).unwrap();
+        assert!(got.is_none());
+    }
+
+    #[test]
+    fn parity_cases_round_trip_their_text_allowlist_and_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_parity(
+            dir.path(),
+            r#"{"chat_template_version": 2, "cases": [
+                {"name": "plain", "text": "hi", "ids": [7, 8]},
+                {"name": "turn", "text": "<|turn>u", "allowed": ["<|turn>"], "ids": [3]}]}"#,
+        );
+        let cases = load_tokenizer_parity(&path, 2).unwrap().unwrap();
+        assert_eq!(cases.len(), 2, "{cases:?}");
+        // Absent `allowed` is the empty allowlist, not a parse failure.
+        assert!(cases[0].allowed.is_empty(), "{:?}", cases[0]);
+        assert_eq!(cases[1].allowed, vec!["<|turn>".to_string()]);
+        assert_eq!(cases[1].ids, vec![3]);
+    }
+
+    #[test]
+    fn a_parity_artifact_from_another_chat_template_version_is_an_error() {
+        // The rendered-turn case is the reason the artifact exists. Comparing
+        // it across a template revision would report a tokenizer defect for
+        // what is a version skew, which is the wrong thing to send a reader
+        // looking for.
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_parity(
+            dir.path(),
+            r#"{"chat_template_version": 1, "cases": [{"name": "a", "text": "b", "ids": [1]}]}"#,
+        );
+        let err = load_tokenizer_parity(&path, 2).expect_err("expected an error");
+        assert!(
+            err.to_string().contains("version 1") && err.to_string().contains("version 2"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_parity_case_with_no_ids_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_parity(
+            dir.path(),
+            r#"{"chat_template_version": 2, "cases": [{"name": "a", "text": "b"}]}"#,
+        );
+        let err = load_tokenizer_parity(&path, 2).expect_err("expected an error");
+        assert!(err.to_string().contains("case a"), "{err}");
     }
 
     #[test]

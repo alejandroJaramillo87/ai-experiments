@@ -593,6 +593,103 @@ pub const TIER_E: Tolerance = Tolerance {
     argmax: 0.98,
 };
 
+/// One tokenizer case the reference encoded.
+///
+/// Carries the text and not only the ids, because a disagreement is read by
+/// eye and "case 3 differs" is not enough to act on. `allowed` is part of the
+/// case rather than a property of the run: the same string encodes to
+/// different ids depending on which special literals the caller vouched for,
+/// and an artifact that did not record the allowlist would be comparing two
+/// different questions.
+#[derive(Debug, Clone)]
+pub struct TokenizerCase {
+    pub name: String,
+    pub text: String,
+    /// The special literals this case permits, for `encode_prompt`'s
+    /// allowlist. Empty means `encode`: nothing is resolved, and a `<bos>` in
+    /// the text is bytes.
+    pub allowed: Vec<String>,
+    pub ids: Vec<Token>,
+}
+
+/// The head of a token sequence, for a divergence note.
+///
+/// Truncated because a chat-rendered prompt runs to hundreds of ids and the
+/// useful part of a tokenizer disagreement is always near its start -- BPE is
+/// left-to-right, so the first differing id is the defect and everything after
+/// it is that defect's consequence.
+fn head(ids: &[Token]) -> String {
+    const SHOWN: usize = 12;
+    let shown: Vec<String> = ids.iter().take(SHOWN).map(|t| t.to_string()).collect();
+    match ids.len() > SHOWN {
+        true => format!("[{}, ... {} total]", shown.join(", "), ids.len()),
+        false => format!("[{}]", shown.join(", ")),
+    }
+}
+
+/// L0: token ids for the rendered prompt.
+///
+/// Exact equality, with no tolerance and deliberately no `Tolerance` field to
+/// hold one. Every rung above this one assumes both sides fed the model the
+/// same tokens, so a near miss here is not a small error -- it is the
+/// withdrawal of that assumption, and L1's agreement on a different token
+/// sequence would be luck rather than evidence.
+///
+/// Expressed as a `Measure` at threshold 1.0 like every other rung, so
+/// `render` needs no special case for it.
+pub fn rung_tokenizer(
+    tok: &crate::tokenizer::Tokenizer,
+    cases: &[TokenizerCase],
+) -> Result<RungResult> {
+    ensure!(
+        !cases.is_empty(),
+        "no tokenizer cases to compare -- an empty parity artifact would \
+         otherwise report perfect agreement over nothing"
+    );
+
+    let mut matched = 0usize;
+    // The first disagreement only. After it, the note would list consequences
+    // of one wrong merge rather than additional findings.
+    let mut first: Option<String> = None;
+
+    for case in cases {
+        let allowed: Vec<&str> = case.allowed.iter().map(String::as_str).collect();
+        let ours = tok
+            .encode_prompt(&case.text, &allowed)
+            .with_context(|| format!("encode tokenizer case {}", case.name))?;
+        if ours == case.ids {
+            matched += 1;
+        } else if first.is_none() {
+            let at = ours
+                .iter()
+                .zip(&case.ids)
+                .position(|(a, b)| a != b)
+                .unwrap_or_else(|| ours.len().min(case.ids.len()));
+            first = Some(format!(
+                "case {} diverges at index {at}: ours {} against {}",
+                case.name,
+                head(&ours),
+                head(&case.ids)
+            ));
+        }
+    }
+
+    let note = match &first {
+        None => format!("{} cases, every id identical", cases.len()),
+        Some(what) => what.clone(),
+    };
+    Ok(RungResult::measured(
+        Rung::L0Tokenizer,
+        vec![Measure::new(
+            "case agreement",
+            matched as f64 / cases.len() as f64,
+            1.0,
+            Cmp::AtLeast,
+        )],
+        note,
+    ))
+}
+
 /// What a divergence at a named pre-stack stage points at.
 ///
 /// Here rather than in the binary that prints it because the rung and the
@@ -1279,6 +1376,115 @@ mod tests {
             })
             .collect();
         MockModel::new(vocab, script)
+    }
+
+    /// The committed tiny BPE vocabulary, as a tokenizer to encode against.
+    ///
+    /// A real `Tokenizer` rather than a stub: `rung_tokenizer`'s job is to
+    /// drive `encode_prompt` with a per-case allowlist, and a stub that
+    /// returned canned ids would exercise the comparison while skipping the
+    /// call the rung exists to make.
+    fn tiny_tokenizer() -> crate::tokenizer::Tokenizer {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../fixtures/tiny-bpe.tokenizer.json");
+        crate::tokenizer::Tokenizer::from_file(&path).unwrap()
+    }
+
+    /// A case whose ids are whatever our tokenizer produces for it, so a test
+    /// can then perturb exactly one of them.
+    fn parity_case(tok: &crate::tokenizer::Tokenizer, name: &str, text: &str) -> TokenizerCase {
+        TokenizerCase {
+            name: name.to_string(),
+            text: text.to_string(),
+            allowed: Vec::new(),
+            ids: tok.encode(text).unwrap(),
+        }
+    }
+
+    #[test]
+    fn tokenizer_cases_that_encode_identically_pass() {
+        let tok = tiny_tokenizer();
+        let cases = vec![
+            parity_case(&tok, "plain", "hello world"),
+            parity_case(&tok, "punctuation", "a, b; c."),
+        ];
+        let r = rung_tokenizer(&tok, &cases).unwrap();
+        assert_eq!(r.status, Status::Pass, "{r:?}");
+        assert_eq!(r.measures[0].value, 1.0, "{:?}", r.measures);
+    }
+
+    #[test]
+    fn one_wrong_id_fails_the_tokenizer_rung_and_the_note_names_its_case() {
+        let tok = tiny_tokenizer();
+        let mut cases = vec![
+            parity_case(&tok, "plain", "hello world"),
+            parity_case(&tok, "perturbed", "a, b; c."),
+        ];
+        // The reference is perturbed rather than the tokenizer, so the only
+        // difference between this test and the one above is the single id.
+        let victim = &mut cases[1].ids;
+        victim[0] = victim[0].wrapping_add(1);
+        let r = rung_tokenizer(&tok, &cases).unwrap();
+        assert_eq!(r.status, Status::Fail, "{r:?}");
+        assert!(
+            r.note.contains("perturbed") && r.note.contains("index 0"),
+            "note does not localize the divergence: {}",
+            r.note
+        );
+        assert_eq!(r.measures[0].value, 0.5, "{:?}", r.measures);
+    }
+
+    #[test]
+    fn a_tokenizer_artifact_with_no_cases_is_an_error_rather_than_a_vacuous_pass() {
+        let tok = tiny_tokenizer();
+        // `matched / cases.len()` over an empty list is 0/0 = NaN, which
+        // `Cmp::holds` fails -- so this would report FAIL rather than PASS
+        // even without the guard. Still an error: a red rung would send the
+        // reader looking for a tokenizer defect that is not there, when what
+        // happened is that the generator wrote an empty artifact.
+        let e = rung_tokenizer(&tok, &[]).unwrap_err();
+        assert!(
+            e.to_string().contains("no tokenizer cases"),
+            "unexpected error: {e}"
+        );
+    }
+
+    #[test]
+    fn a_case_resolves_only_the_specials_it_allows() {
+        let tok = tiny_tokenizer();
+        // Taken from the vocabulary rather than written as a literal: the
+        // tiny fixture spells its sequence opener `<s>` where a Gemma
+        // vocabulary spells it `<bos>`, and a hardcoded literal would make
+        // this test silently stop resolving anything on one of them.
+        let bos = tok.piece(tok.bos()).unwrap().to_string();
+        let text = format!("{bos}hi");
+        let bare = tok.encode(&text).unwrap();
+        let resolved = tok.encode_prompt(&text, &[&bos]).unwrap();
+        assert_ne!(
+            bare, resolved,
+            "the fixture vocabulary does not distinguish an allowed special, \
+             so this test cannot measure that the rung honours the allowlist"
+        );
+
+        // The same text under the two allowlists, each judged against the
+        // encoding that allowlist produces. Both pass only if the rung passes
+        // each case's own `allowed` through rather than a single run-wide one.
+        let cases = vec![
+            TokenizerCase {
+                name: "literal".to_string(),
+                text: text.clone(),
+                allowed: Vec::new(),
+                ids: bare,
+            },
+            TokenizerCase {
+                name: "resolved".to_string(),
+                text: text.clone(),
+                allowed: vec![bos.clone()],
+                ids: resolved,
+            },
+        ];
+        let r = rung_tokenizer(&tok, &cases).unwrap();
+        assert_eq!(r.status, Status::Pass, "{r:?}");
     }
 
     fn ppl_reference(model: &mut dyn Model, corpus: &[Token], chunk: usize) -> PplReference {

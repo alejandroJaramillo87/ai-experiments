@@ -42,6 +42,12 @@ Workstation only: every command below needs the real checkpoint and a torch envi
 `docs/testing/quality-gate.md` for where this sits relative to `make quality`.
 
 ```bash
+# L0: token ids for a plain string, for text carrying specials that must stay
+# bytes, and for a real rendered chat turn.
+python rust-harness/fixtures/reference_tokenizer.py \
+    --model <checkpoint-dir> \
+    --out rust-harness/fixtures/reference/e4b/quick/tokenizer_parity.json
+
 # L1 and L2: per-layer residual stream, the pre-stack stages, and the
 # final-position distribution. --generate also writes L4's continuation.
 python rust-harness/fixtures/reference_capture.py \
@@ -50,6 +56,22 @@ python rust-harness/fixtures/reference_capture.py \
     --generate 16 \
     --out rust-harness/fixtures/reference/e4b/quick/layers.json
 ```
+
+Every artifact the ladder reads lives directly under the `--reference`
+directory. L0's does not vary with `SIZE`, and is regenerated into each size
+directory rather than resolved from a parent: the duplication costs
+milliseconds, and one placement rule is worth more than the special case it
+would take to avoid it.
+
+### What L0 can and cannot ask
+
+`Tokenizer::encode_prompt` takes a per-call allowlist of special literals; the
+reference has one global `split_special_tokens` switch. Only the two extremes
+are therefore expressible on both sides — an empty allowlist, where nothing in
+the text resolves, and an allowlist covering every special the text contains,
+where all of them do. `reference_tokenizer.py` refuses to write a case whose
+text carries a special outside its own allowlist, rather than emitting one
+whose two sides answer different questions.
 
 A leading `<bos>` is prepended by default. This was measured, not assumed: on E4B the same
 prompt captured without one put its highest probability on repeating its own last token, which
@@ -71,6 +93,9 @@ reproduce is not evidence. Every one carries:
   `fixtures/build_tiny_reference.py`'s manifest uses, so both tiers spell them the same way,
 - whether a leading `<bos>` was prepended: the two conventions produce different distributions
   from one prompt, and Gemma is trained with it,
+- for L0, the chat template revision, so an artifact rendered at one revision cannot be
+  compared against a harness that renders another — the loader errors rather than reporting a
+  tokenizer defect for what is a version skew,
 - the token IDs, not only the prompt text — the tokenizer is itself under test at L0,
 - for L2, the explicit list of positions scored, since the set is capped and
   `ladder::rung_logits` asserts it scored exactly those,

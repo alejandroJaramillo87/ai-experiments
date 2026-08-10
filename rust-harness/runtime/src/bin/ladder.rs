@@ -29,6 +29,7 @@ use runtime::model::cpu::{CpuModel, PRELUDE_STAGES};
 fn run_rung(
     rung: Rung,
     model: &mut CpuModel,
+    model_path: &Path,
     reference_dir: &Path,
     tol: Tolerance,
     // The prompt length L1 and L2 scored, reported back so the table can say
@@ -37,6 +38,22 @@ fn run_rung(
     prompt_tokens: &mut Option<usize>,
 ) -> Result<Option<RungResult>> {
     match rung {
+        Rung::L0Tokenizer => {
+            let path = reference_dir.join("tokenizer_parity.json");
+            let Some(cases) = runtime::reference::load_tokenizer_parity(
+                &path,
+                runtime::tokenizer::CHAT_TEMPLATE_VERSION,
+            )?
+            else {
+                return Ok(None);
+            };
+            // Resolved and loaded inside the arm: a run with no L0 artifact --
+            // the ordinary case for a reference directory written before this
+            // rung existed -- should not pay to read a 30 MB tokenizer.json.
+            let tokenizer_path = runtime::tokenizer::resolve_tokenizer(model_path, None)?;
+            let tok = runtime::tokenizer::Tokenizer::from_file(&tokenizer_path)?;
+            ladder::rung_tokenizer(&tok, &cases).map(Some)
+        }
         Rung::L1Layers => {
             let path = reference_dir.join("layers.json");
             let Some(reference) = runtime::reference::load_capture(&path, &PRELUDE_STAGES)? else {
@@ -66,10 +83,10 @@ fn run_rung(
             };
             ladder::rung_logits(model, &reference.token_ids, &logits, tol).map(Some)
         }
-        // The remaining rungs' artifacts do not have a format yet: L0's
-        // tokenizer parity file and the tiny transformers fixture land with
-        // the generator that writes them. Reported as skipped, which is
-        // exactly what they are -- no reference, rather than no rung.
+        // L3 and L4 have finished rung bodies and reference types, but no
+        // artifact format yet; they land with the generators that write them.
+        // Reported as skipped, which is exactly what they are -- no reference,
+        // rather than no rung.
         _ => Ok(None),
     }
 }
@@ -104,6 +121,7 @@ fn run(
             None => match run_rung(
                 rung,
                 &mut model,
+                model_path,
                 reference_dir,
                 ladder::TIER_E,
                 &mut prompt_tokens,
