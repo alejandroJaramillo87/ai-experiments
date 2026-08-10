@@ -156,6 +156,45 @@ pub struct CheckpointConfig {
     pub text_config: TextConfig,
 }
 
+/// The text architecture from a `config.json`, nested or flat.
+///
+/// Two spellings, both written by transformers. A multimodal release --
+/// `Gemma4ForConditionalGeneration`, which is what gemma-4-E4B publishes as --
+/// nests the text tower under `text_config` beside `vision_config` and
+/// `audio_config`. A text-only release -- `Gemma4ForCausalLM`, which is what
+/// `save_pretrained` writes for the Tier T fixture -- has one architecture and
+/// puts its fields at the top level, tagged `model_type: gemma4_text`.
+///
+/// Only the nested spelling was accepted until the fixture existed, so the
+/// loader could not read a checkpoint transformers itself had just written.
+/// That gap was invisible because every checkpoint this workspace had was
+/// either the released E4B or one `synth.rs` wrote in the released E4B's
+/// image -- the same one-belief-written-twice that the fixture exists to
+/// break.
+///
+/// The document is walked as a `Value` first, rather than the two shapes being
+/// an untagged enum, so that a genuinely malformed config still fails with
+/// serde naming the field it could not find. Untagged would collapse every
+/// such failure into "did not match any variant", which is the property the
+/// `TextConfig` doc comment above claims and this would quietly remove.
+pub fn parse_text_config(bytes: &[u8]) -> Result<TextConfig> {
+    let doc: serde_json::Value =
+        serde_json::from_slice(bytes).context("config.json is not valid JSON")?;
+    let nested = doc.get("text_config").is_some();
+    let text = match doc.get("text_config") {
+        Some(value) => value.clone(),
+        None => doc,
+    };
+    serde_json::from_value(text).with_context(|| {
+        if nested {
+            "read the text_config block of config.json"
+        } else {
+            "read config.json as a text-only checkpoint (it has no text_config \
+             block, so its top level is the text architecture)"
+        }
+    })
+}
+
 /// A block of checkpoint bytes, however it was obtained.
 ///
 /// `read` maps the weights file; tests and in-memory callers build one from a
@@ -214,6 +253,16 @@ pub struct Checkpoint<'a> {
     /// a statement about how the checkpoint is being read, not a property of
     /// the checkpoint, which is why it lives here and not in `TextConfig`.
     pub text_only: bool,
+    /// The checkpoint spells its text tensors `model.` and not
+    /// `model.language_model.`.
+    ///
+    /// Set by `parse` from the file rather than from the config, and never
+    /// read outside this module's three accessors. Everything above them
+    /// speaks the multimodal name -- `hf_tensor_name` mints it, the
+    /// unconsumed-tensor guard compares it, the diagnostics print it -- and
+    /// the file's own spelling is resolved at the boundary. One vocabulary
+    /// inside the engine, two on disk.
+    flat_text_names: bool,
 }
 
 impl TextConfig {
@@ -627,16 +676,26 @@ impl CheckpointFiles {
 
 /// Parse a checkpoint's architecture and index its tensors.
 pub fn parse(files: &CheckpointFiles) -> Result<Checkpoint<'_>> {
-    let parsed: CheckpointConfig = serde_json::from_slice(&files.config)
+    let config = parse_text_config(&files.config)
         .with_context(|| format!("parse {}", files.dir.join(CONFIG_FILE).display()))?;
-    parsed.text_config.validate()?;
+    config.validate()?;
     let tensors = safetensors::SafeTensors::deserialize(&files.weights)
         .map_err(|e| anyhow::anyhow!("parse {}: {e}", files.dir.join(WEIGHTS_FILE).display()))?;
+    // Which spelling this file uses, decided by looking. A text-only release
+    // -- `Gemma4ForCausalLM`, what save_pretrained writes -- has one tower and
+    // puts it at `model.`; the released multimodal E4B nests it under
+    // `model.language_model.` beside the vision and audio towers. Detected
+    // from the presence of the deeper prefix rather than from the config's
+    // `architectures`, because the tensors are what actually get read and a
+    // config can disagree with them.
+    let flat_text_names = !tensors.names().iter().any(|n| n.starts_with(TEXT_PREFIX));
+
     Ok(Checkpoint {
-        config: parsed.text_config,
+        config,
         tensors,
         dir: files.dir.clone(),
         text_only: false,
+        flat_text_names,
     })
 }
 
@@ -648,10 +707,23 @@ impl Checkpoint<'_> {
     /// most exposed to. `[out, in]` here is row-major with the input index
     /// contiguous, the layout `matvec_into` already assumes -- so a loader
     /// that transposes is wrong, and this is the check that says so.
+    /// The canonical name as this file spells it.
+    ///
+    /// The only place the two spellings meet. Errors and diagnostics keep
+    /// reporting the canonical name the caller asked for, because that is the
+    /// name the rest of the codebase, the tests and the docs all use; the
+    /// on-disk variant would be a second vocabulary for a reader to learn.
+    fn on_disk<'n>(&self, name: &'n str) -> std::borrow::Cow<'n, str> {
+        match name.strip_prefix(TEXT_PREFIX) {
+            Some(tail) if self.flat_text_names => std::borrow::Cow::Owned(format!("model.{tail}")),
+            _ => std::borrow::Cow::Borrowed(name),
+        }
+    }
+
     pub fn tensor(&self, name: &str, want: &[usize]) -> Result<Vec<f32>> {
         let view = self
             .tensors
-            .tensor(name)
+            .tensor(&self.on_disk(name))
             .map_err(|e| anyhow::anyhow!("missing tensor {name}: {e}"))?;
         ensure!(
             view.shape() == want,
@@ -661,14 +733,41 @@ impl Checkpoint<'_> {
         widen(name, view.dtype(), view.data())
     }
 
+    /// A tensor's declared shape, without widening it.
+    ///
+    /// For the one axis a config does not state: the per-layer embedding
+    /// table's own vocabulary, which is read from the table rather than
+    /// assumed equal to `vocab_size`. An accessor rather than a reach into
+    /// `tensors`, because a caller that indexes the raw map bypasses the
+    /// name resolution and fails on exactly the checkpoints that need it.
+    pub fn shape(&self, name: &str) -> Result<Vec<usize>> {
+        self.tensors
+            .tensor(&self.on_disk(name))
+            .map(|v| v.shape().to_vec())
+            .map_err(|e| anyhow::anyhow!("missing tensor {name}: {e}"))
+    }
+
     /// Whether the checkpoint carries a tensor, for optional families.
     pub fn has(&self, name: &str) -> bool {
-        self.tensors.tensor(name).is_ok()
+        self.tensors.tensor(&self.on_disk(name)).is_ok()
     }
 
     /// Every tensor name, sorted, for the unconsumed-tensor guard.
+    ///
+    /// Reported in the canonical spelling, so the guard's set arithmetic is
+    /// against the same names `hf_tensor_name` produces. A flat checkpoint
+    /// that returned its own spelling here would look like a file of entirely
+    /// unknown tensors.
     pub fn names(&self) -> Vec<String> {
-        let mut names: Vec<String> = self.tensors.names().into_iter().map(String::from).collect();
+        let mut names: Vec<String> = self
+            .tensors
+            .names()
+            .into_iter()
+            .map(|n| match n.strip_prefix("model.") {
+                Some(tail) if self.flat_text_names => format!("{TEXT_PREFIX}{tail}"),
+                _ => n.to_string(),
+            })
+            .collect();
         names.sort();
         names
     }
@@ -722,8 +821,77 @@ mod tests {
 
     fn config_of(spec: &TinySpec) -> TextConfig {
         let bytes = build_tiny_config_json(spec).unwrap();
-        let parsed: CheckpointConfig = serde_json::from_slice(&bytes).unwrap();
-        parsed.text_config
+        parse_text_config(&bytes).unwrap()
+    }
+
+    /// The flat spelling, read off the artifact transformers actually wrote.
+    ///
+    /// Hand-building a flat document here would test this reader against this
+    /// reader's idea of what `save_pretrained` emits, which is the mistake the
+    /// Tier T fixture exists to stop making. The committed bytes are the
+    /// claim; the manifest test next door is what keeps them honest.
+    #[test]
+    fn a_text_only_checkpoint_reads_without_a_text_config_block() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../fixtures/tiny-hf-gemma4/config.json");
+        let Ok(bytes) = std::fs::read(&path) else {
+            crate::testlog::skip(
+                "flat config parse",
+                "fixtures/tiny-hf-gemma4 has not been generated",
+            );
+            return;
+        };
+        let raw: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(
+            raw.get("text_config").is_none(),
+            "the fixture grew a text_config block, so it no longer covers the \
+             flat spelling this test is here for"
+        );
+
+        let config = parse_text_config(&bytes).expect("read the flat config");
+        config.validate().expect("the flat config is a valid model");
+        assert_eq!(config.num_hidden_layers, 4);
+        assert_eq!(config.hidden_size, 32);
+        assert_eq!(config.hidden_size_per_layer_input, Some(4));
+        // Scalar, and it broadcasts. The released checkpoint carries a scalar
+        // too; `PerLayer` is reachable only from a config synth.rs writes.
+        assert_eq!(config.intermediate_sizes().unwrap(), vec![128; 4]);
+    }
+
+    /// A malformed config still names the field it is missing.
+    ///
+    /// The reason `parse_text_config` walks a `Value` instead of being an
+    /// untagged enum over the two spellings. Untagged reports "did not match
+    /// any variant" and names nothing, which would turn every real config
+    /// mistake into a hunt.
+    #[test]
+    fn a_missing_field_is_reported_by_name_in_either_spelling() {
+        let spec = TinySpec::e4b_shaped();
+        let bytes = build_tiny_config_json(&spec).unwrap();
+        let mut doc: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        doc["text_config"]
+            .as_object_mut()
+            .unwrap()
+            .remove("num_hidden_layers");
+
+        let nested = doc.to_string();
+        let flat = doc["text_config"].to_string();
+        for (spelling, text) in [("nested", nested), ("flat", flat)] {
+            // `{:#}` and not `{}`: anyhow's plain Display prints only the
+            // outermost context, and the field name serde reports is the
+            // source beneath it. The alternate form is the whole chain, which
+            // is what a caller surfaces -- `main` returning Err prints the
+            // chain too -- so this is the message a human actually reads.
+            let err = format!(
+                "{:#}",
+                parse_text_config(text.as_bytes())
+                    .expect_err("a config with no num_hidden_layers is not a model")
+            );
+            assert!(
+                err.contains("num_hidden_layers"),
+                "{spelling} spelling lost the field name: {err}"
+            );
+        }
     }
 
     /// The writer and the reader agree, field for field. `synth` builds this

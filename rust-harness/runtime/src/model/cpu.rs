@@ -1219,11 +1219,8 @@ impl CpuModel {
                 // separate config field from `vocab_size` and one the GGUF
                 // converter drops. Read from the tensor's own shape in both
                 // loaders, so a wider table stays loadable.
-                let view = ck
-                    .tensors
-                    .tensor(&name)
-                    .map_err(|e| anyhow::anyhow!("missing tensor {name}: {e}"))?;
-                let ple_vocab = match view.shape() {
+                let shape = ck.shape(&name)?;
+                let ple_vocab = match shape.as_slice() {
                     [rows, packed] if *packed == row => *rows,
                     other => bail!(
                         "tensor {name} has shape {other:?}, expected \
