@@ -30,19 +30,20 @@ own save_pretrained), capture.json (the reference forward pass), and
 manifest.json (sha256 of each of those, of this script, of the transformers
 and torch versions, and of the seed).
 
-FIRST DRAFT. The field names below are this reader's best understanding of
-Gemma4TextConfig and have not been run against an installed transformers --
-that is the one step of this package a sandbox cannot do, and it is the step
-with real unknown-unknowns. The first run confirmed it, rejecting
-`intermediate_size` as a list. Fix SHAPE here rather than working around the
-rejection at the call site: a config built by hand around a rejected field is
-the transcription this script exists to remove.
+SECOND DRAFT. SHAPE has now been checked against an installed transformers
+once, on the workstation -- the one step of this package a sandbox cannot do,
+and the step with real unknown-unknowns. That run found one: SHAPE described
+per-layer feed-forward widths that no Gemma 4 has. SHAPE is now read off the
+released gemma-4-E4B config.json rather than off the synth.rs fixture beside
+it. Fix it here rather than working around a rejection at the call site: a
+config built by hand around a rejected field is the transcription this script
+exists to remove.
 
 Two aids for that, because the author of this script cannot reach a machine
 with transformers on it and one rejected keyword per round trip is the wrong
 shape for the work. `--describe` prints the field vocabulary the installed
-class declares. Failing that, the build preflights every SHAPE entry
-separately and reports all the rejections at once instead of only the first.
+class declares. And when the config fails to build, every field is retried
+individually so the report names all of them rather than only the first.
 """
 
 import argparse
@@ -57,16 +58,34 @@ from pathlib import Path
 # in a pattern, a non-zero shared-KV count, per-layer input embeddings, head
 # widths that differ between the two attention regimes, and a non-default
 # rms_norm_eps are each a place the CPU backend can be wrong; a fixture
-# without them is green about code it never ran. These mirror the feature set
-# of fixtures/tiny-gemma4-e4b/config.json, which synth.rs writes -- the
-# difference is only that transformers serializes these.
+# without them is green about code it never ran.
+#
+# Every value here is now either read off the released gemma-4-E4B config.json
+# or scaled down from it, rather than mirrored from
+# fixtures/tiny-gemma4-e4b/config.json. Those two sources disagreed, and the
+# released config wins: the synth.rs fixture is another artifact this reader
+# wrote, so agreeing with it proves only that one belief was written twice.
+#
+# The disagreement was real. synth.rs writes a per-layer list for
+# intermediate_size and sets use_double_wide_mlp; the released config carries
+# a scalar 10240 and use_double_wide_mlp false, and Gemma4TextConfig types the
+# field `int`. So the fixture is uniform-width, which does mean the per-layer
+# branch of checkpoint.rs `Widths` goes unexercised here -- correctly, because
+# no released checkpoint can reach it.
+#
+# Last layer must be full_attention; transformers rewrites layer_types
+# otherwise and says so. The pattern below already ends there.
 SEED = 20260810
 SHAPE = {
     "hidden_size": 32,
-    "intermediate_size": [48, 48, 64, 64],
+    # Released E4B is 10240 over hidden 2560, so 4x; kept at 4x here.
+    "intermediate_size": 128,
     "num_hidden_layers": 4,
     "num_attention_heads": 4,
     "num_key_value_heads": 2,
+    # Released E4B widens the full-attention heads over the sliding ones
+    # (256 -> 512). Kept different, and kept a non-power-of-two ratio, so a
+    # backend that assumes one head width fails rather than coincides.
     "head_dim": 8,
     "global_head_dim": 12,
     "num_kv_shared_layers": 2,
@@ -76,6 +95,10 @@ SHAPE = {
     "max_position_embeddings": 1024,
     "final_logit_softcapping": 30.0,
     "tie_word_embeddings": True,
+    "hidden_activation": "gelu_pytorch_tanh",
+    # False on the released checkpoint. Set explicitly rather than left to the
+    # default, because it is the field the synth.rs fixture disagrees about.
+    "use_double_wide_mlp": False,
     "layer_types": [
         "sliding_attention",
         "full_attention",
@@ -165,20 +188,44 @@ def describe_config():
     return 0
 
 
-def rejected_fields(vocab_size):
+# Fields the rest of SHAPE is validated against. Sizes are interdependent --
+# layer_types is checked against num_hidden_layers, head counts against the
+# hidden size -- so a candidate probed against transformers' defaults is
+# probed against the wrong model. The first version of this preflight did
+# exactly that and reported layer_types as rejected because the default config
+# has 30 layers, which is a manufactured failure and worse than the single
+# real one it was added to find.
+STRUCTURAL = (
+    "hidden_size",
+    "num_hidden_layers",
+    "num_attention_heads",
+    "num_key_value_heads",
+)
+
+
+def rejected_fields(vocab_size, base):
     """Every SHAPE entry the installed Gemma4TextConfig will not accept.
 
-    One keyword at a time, so the report names all of them. The constructor
-    raises on the first bad field and says nothing about the rest, which turns
-    a config this reader got wrong in four places into four round trips to a
-    machine the author of this script cannot reach. Each candidate is tried
-    against an otherwise-default config, so the failures are independent.
+    Localization only, and only reached once the whole config has already
+    failed to build. The constructor stops at the first bad keyword and says
+    nothing about the rest, which turns a SHAPE that is wrong in four places
+    into four round trips to a machine this script's author cannot reach.
+
+    Each candidate is retried on top of `base` -- the structural fields plus
+    the vocabulary -- rather than on top of transformers' defaults, so a field
+    is judged against the model it belongs to.
+
+    Interdependence is not fully removed by that, only reduced: a field that
+    is invalid solely in combination with another non-structural field shows
+    up as valid here. The full-config error is still printed for that reason.
     """
     cls = config_class()
     bad = []
     for key, value in SHAPE.items():
+        if key in STRUCTURAL:
+            continue
         try:
-            cls(vocab_size=vocab_size, **{key: value})
+            cls(vocab_size=vocab_size, **base, **{key: value})
         except Exception as e:  # noqa: BLE001 - any rejection is the signal
             bad.append((key, value, f"{type(e).__name__}: {e}"))
     return bad
@@ -193,27 +240,48 @@ def build_config(vocab_size):
     defaults nobody chose. Passing them as keywords means an unknown field is
     an error here instead of a silent default.
 
-    The preflight does not repair anything. A rejected field means SHAPE
+    The whole config is built first and the per-field localization runs only
+    if that fails, so a working SHAPE is never described by a probe. The
+    localization does not repair anything either: a rejected field means SHAPE
     describes a model transformers would not build, and the repair is to
     correct SHAPE against the released config -- dropping the field, or
     coercing it to whatever the validator wanted, would produce a fixture that
     is quietly not the architecture the harness has to match.
+
+    `vocab_size_per_layer_input` tracks `vocab_size` because it does on the
+    released checkpoint, and it is derived here rather than written into SHAPE
+    so the two cannot drift when the tokenizer changes.
     """
-    bad = rejected_fields(vocab_size)
-    if bad:
+    cls = config_class()
+    resolved = dict(SHAPE, vocab_size_per_layer_input=vocab_size)
+    try:
+        return cls(vocab_size=vocab_size, **resolved)
+    except Exception as whole:  # noqa: BLE001 - localize, then re-report
+        print("[ERROR] Config: transformers rejects SHAPE", file=sys.stderr)
         print(
-            "[ERROR] Config: transformers rejects these SHAPE entries", file=sys.stderr
-        )
-        for key, value, message in bad:
-            print(f"  {key} = {value!r}", file=sys.stderr)
-            print(f"    {message}", file=sys.stderr)
-        print(
-            "  Solution: correct SHAPE in this script against the released "
-            "config.json and --describe output; do not drop the field",
+            f"  building the whole config: {type(whole).__name__}: {whole}",
             file=sys.stderr,
         )
-        raise SystemExit(1)
-    return config_class()(vocab_size=vocab_size, **SHAPE)
+
+    base = {k: SHAPE[k] for k in STRUCTURAL if k in SHAPE}
+    bad = rejected_fields(vocab_size, base)
+    if bad:
+        print("  fields rejected on their own:", file=sys.stderr)
+        for key, value, message in bad:
+            print(f"    {key} = {value!r}", file=sys.stderr)
+            print(f"      {message}", file=sys.stderr)
+    else:
+        print(
+            "  no single field is rejected on its own, so the failure is in "
+            "a combination of them",
+            file=sys.stderr,
+        )
+    print(
+        "  Solution: correct SHAPE in this script against the released "
+        "config.json and --describe output; do not drop the field",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
 
 
 def seeded_weights(model, seed):
