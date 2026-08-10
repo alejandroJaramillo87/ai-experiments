@@ -54,6 +54,17 @@ test:
 .PHONY: ladder
 SIZE ?= quick
 REFERENCE ?= fixtures/reference/e4b/$(SIZE)
+# The released E4B is Gemma4ForConditionalGeneration: a text tower beside a
+# vision and an audio one. The CPU backend serves text and refuses a
+# multimodal checkpoint unless told to decline the rest, and the ladder
+# measures the text stack by construction -- there is no rung it could point
+# at a vision tower. So the decline is this target's default rather than
+# something every invocation has to remember. TEXT_ONLY=0 restores the
+# refusal, which is what a text-only checkpoint should be run with.
+TEXT_ONLY ?= 1
+ifeq ($(TEXT_ONLY),1)
+LADDER_TEXT_ONLY := --text-only
+endif
 ladder:
 ifdef AI_SANDBOX
 	@printf '[ERROR] make ladder needs the real checkpoint and the GPU host; the sandbox has neither\n'
@@ -74,7 +85,7 @@ endif
 	  printf '  Command: make ladder SIZE=quick MODEL=%s\n' '$(MODEL)'; \
 	  exit 1 ;; esac
 	cargo run --release -p runtime --bin ladder -- \
-	  --size $(SIZE) --model $(MODEL) --reference $(REFERENCE)
+	  $(LADDER_TEXT_ONLY) --size $(SIZE) --model $(MODEL) --reference $(REFERENCE)
 
 # Profiling (workstation only): flame graph of a harness run. Requires
 # cargo-flamegraph and perf; MockModel has no hot path, so meaningful

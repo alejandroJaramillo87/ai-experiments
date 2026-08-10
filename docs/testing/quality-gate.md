@@ -148,6 +148,10 @@ stay fast, and the ladder loads the real checkpoint. The half that does run insi
 Tier T: the same rungs against a tiny Gemma 4 that `transformers` itself built, committed
 whole, measured in milliseconds.
 
+The target passes `--text-only` by default, because the released E4B carries a vision and an
+audio tower the CPU backend refuses to load and the ladder has no rung that could measure
+either. `TEXT_ONLY=0` restores the refusal for a checkpoint that is text-only already.
+
 `SIZE` selects how much work the perplexity and greedy rungs do. It is a third variable
 alongside `HW` and `TIER` and means neither of them; the sizes are nested prefixes of one
 corpus, so a `deep` run reproduces a `quick` run's number on its first tokens exactly.
