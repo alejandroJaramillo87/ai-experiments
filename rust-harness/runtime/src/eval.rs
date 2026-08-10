@@ -62,11 +62,32 @@ fn nll(logits: &Logits, target: Token) -> Result<f64> {
     Ok(log_sum - logits.0[target] as f64)
 }
 
-/// Perplexity of `corpus` under `model`, evaluated in windows of `chunk`
-/// tokens. Each full window is prefilled from an empty cache; positions in
-/// the second half score the next token. The trailing partial window is
-/// dropped, matching the llama.cpp convention.
-pub fn perplexity(model: &mut dyn Model, corpus: &[Token], chunk: usize) -> Result<PplResult> {
+/// One scored token: where it sits in the corpus, and what it cost.
+///
+/// The corpus position travels with the number because a per-token comparison
+/// against a reference is only actionable if a disagreement can be pointed at
+/// a token. An index into the scored sequence is not that: warmup positions
+/// are skipped and partial windows dropped, so the two numberings differ.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScoredToken {
+    /// Index in `corpus` of the token whose probability was scored.
+    pub position: usize,
+    pub target: Token,
+    pub nll: f64,
+}
+
+/// Per-token negative log-likelihood over `corpus`, in scoring order.
+///
+/// The windowing is `perplexity`'s, and `perplexity` is defined as the sum of
+/// this: one loop, so the two can never disagree about which tokens were
+/// scored. Summation is left to the caller in the same order the tokens were
+/// produced, which keeps the total bit-identical to the accumulating loop this
+/// replaced.
+pub fn per_token_nll(
+    model: &mut dyn Model,
+    corpus: &[Token],
+    chunk: usize,
+) -> Result<Vec<ScoredToken>> {
     ensure!(chunk >= 2, "chunk must be at least 2 tokens");
     ensure!(
         corpus.len() >= chunk,
@@ -74,11 +95,8 @@ pub fn perplexity(model: &mut dyn Model, corpus: &[Token], chunk: usize) -> Resu
         corpus.len()
     );
     let warmup = chunk / 2;
-    let mut result = PplResult {
-        nll_sum: 0.0,
-        tokens: 0,
-    };
-    for window in corpus.chunks_exact(chunk) {
+    let mut scored = Vec::new();
+    for (w, window) in corpus.chunks_exact(chunk).enumerate() {
         model.truncate(0)?;
         let rows = model.prefill_all(window)?;
         ensure!(
@@ -87,12 +105,27 @@ pub fn perplexity(model: &mut dyn Model, corpus: &[Token], chunk: usize) -> Resu
         );
         // Row p holds logits after token p, predicting token p + 1.
         for p in warmup..chunk - 1 {
-            result.nll_sum += nll(&rows[p], window[p + 1])?;
-            result.tokens += 1;
+            scored.push(ScoredToken {
+                position: w * chunk + p + 1,
+                target: window[p + 1],
+                nll: nll(&rows[p], window[p + 1])?,
+            });
         }
     }
-    ensure!(result.tokens > 0, "no tokens scored");
-    Ok(result)
+    ensure!(!scored.is_empty(), "no tokens scored");
+    Ok(scored)
+}
+
+/// Perplexity of `corpus` under `model`, evaluated in windows of `chunk`
+/// tokens. Each full window is prefilled from an empty cache; positions in
+/// the second half score the next token. The trailing partial window is
+/// dropped, matching the llama.cpp convention.
+pub fn perplexity(model: &mut dyn Model, corpus: &[Token], chunk: usize) -> Result<PplResult> {
+    let scored = per_token_nll(model, corpus, chunk)?;
+    Ok(PplResult {
+        nll_sum: scored.iter().map(|s| s.nll).sum(),
+        tokens: scored.len(),
+    })
 }
 
 #[cfg(test)]
@@ -191,6 +224,42 @@ mod tests {
         let mut m = MockModel::new(4, vec![row; 8]);
         let r = perplexity(&mut m, &[0u32; 8], 8).unwrap();
         assert!((r.ppl() - 3.0).abs() < 1e-6, "{}", r.ppl());
+    }
+
+    #[test]
+    fn scored_positions_are_corpus_indices_of_the_predicted_token() {
+        // The per-token view exists so a disagreement can be pointed at a
+        // token, which requires the corpus index rather than an index into
+        // the scored sequence: warmup skips four positions per window and the
+        // two numberings part company immediately.
+        let mut m = MockModel::new(4, vec![]);
+        let corpus: Vec<Token> = (0..16).map(|i| i % 4).collect();
+        let scored = per_token_nll(&mut m, &corpus, 8).unwrap();
+        let positions: Vec<usize> = scored.iter().map(|s| s.position).collect();
+        assert_eq!(positions, vec![5, 6, 7, 13, 14, 15], "{positions:?}");
+        for s in &scored {
+            assert_eq!(s.target, corpus[s.position], "position {}", s.position);
+        }
+    }
+
+    #[test]
+    fn perplexity_is_exactly_the_sum_of_the_per_token_view() {
+        // Not approximately: `perplexity` is implemented as this sum, and the
+        // test pins that so a later fast path cannot quietly reorder the
+        // accumulation.
+        let corpus: Vec<Token> = (0..32).map(|i| (i * 5) % 16).collect();
+        let script: Vec<Vec<f32>> = (0..32)
+            .map(|p| {
+                let mut l = vec![0.0; 16];
+                l[p % 16] = 3.0;
+                l
+            })
+            .collect();
+        let scored = per_token_nll(&mut MockModel::new(16, script.clone()), &corpus, 16).unwrap();
+        let r = perplexity(&mut MockModel::new(16, script), &corpus, 16).unwrap();
+        assert_eq!(r.tokens, scored.len());
+        let sum: f64 = scored.iter().map(|s| s.nll).sum();
+        assert_eq!(r.nll_sum, sum, "{} vs {sum}", r.nll_sum);
     }
 
     #[test]

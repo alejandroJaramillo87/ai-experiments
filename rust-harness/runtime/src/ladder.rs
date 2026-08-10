@@ -23,7 +23,10 @@
 
 use std::fmt::Write as _;
 
-use crate::model::Token;
+use anyhow::{ensure, Result};
+
+use crate::model::{Model, Token};
+use crate::sampler::{Sampler, SamplingParams};
 
 /// One rung of the ladder, in the order they are climbed.
 ///
@@ -440,6 +443,237 @@ pub fn render(l: &Ladder) -> String {
     s
 }
 
+/// The tolerances every rung is judged against.
+///
+/// PROVISIONAL, all of them. Not one has been set by a measurement of this
+/// engine against transformers, because that measurement is what the ladder
+/// exists to make possible. They are collected here rather than spread
+/// through the rung bodies so the provisional ones can be counted, and so a
+/// change to one is a diff a reviewer sees.
+///
+/// **A threshold is never tuned to make the current run pass.** A value that
+/// lands between "clearly fine" and the threshold is a finding, and moving
+/// the threshold to swallow it converts a finding into a green gate, which is
+/// the failure the whole package is a response to.
+pub mod thresholds {
+    /// Relative perplexity delta against the reference. PROVISIONAL.
+    pub const PPL_DELTA: f64 = 0.01;
+    /// Worst single-token NLL delta, in nats. PROVISIONAL.
+    ///
+    /// Separate from the mean because perplexity is an average and averages
+    /// hide one badly wrong token in a thousand ordinary ones -- which is
+    /// exactly what a rare-path bug (a sliding-window boundary, a shared-KV
+    /// layer) looks like.
+    pub const PPL_MAX_TOKEN_DELTA: f64 = 0.05;
+    /// Fraction of greedy positions that must match the reference token.
+    /// PROVISIONAL.
+    pub const GREEDY_AGREEMENT: f64 = 0.98;
+    /// Mean common prefix, as a fraction of the continuation length.
+    /// PROVISIONAL.
+    ///
+    /// A fraction rather than a token count so the threshold survives a
+    /// change to the continuation length. Position-wise agreement and prefix
+    /// length measure different failures: one late wrong token barely moves
+    /// agreement but halves the prefix, and greedy decoding is
+    /// autoregressive, so everything after a divergence is a different run
+    /// rather than more evidence.
+    pub const GREEDY_PREFIX: f64 = 0.75;
+}
+
+/// Reference perplexity for one corpus, as the reference implementation
+/// scored it.
+///
+/// Carries `chunk` because a perplexity computed in different windows is a
+/// different quantity, and an artifact that does not say which windows it
+/// used cannot be compared to anything.
+#[derive(Debug, Clone)]
+pub struct PplReference {
+    pub chunk: usize,
+    /// Per-token NLL in scoring order, paired with the corpus index of the
+    /// scored token.
+    pub scored: Vec<(usize, f64)>,
+}
+
+impl PplReference {
+    fn nll_sum(&self) -> f64 {
+        self.scored.iter().map(|(_, n)| n).sum()
+    }
+
+    fn ppl(&self) -> f64 {
+        (self.nll_sum() / self.scored.len() as f64).exp()
+    }
+}
+
+/// L3: perplexity over a token window, against the reference's own NLLs.
+///
+/// Errors rather than fails when the artifact and the run disagree about
+/// *which* tokens were scored: that is a broken or mismatched reference, not
+/// evidence about the engine, and reporting it as a red rung would send the
+/// reader looking for a numerics bug that is not there.
+pub fn rung_perplexity(
+    model: &mut dyn Model,
+    corpus: &[Token],
+    reference: &PplReference,
+) -> Result<RungResult> {
+    let scored = crate::eval::per_token_nll(model, corpus, reference.chunk)?;
+    ensure!(
+        scored.len() == reference.scored.len(),
+        "reference scored {} tokens, this run scored {} -- the corpus or the \
+         {}-token window does not match the artifact",
+        reference.scored.len(),
+        scored.len(),
+        reference.chunk
+    );
+
+    let mut worst = (0usize, 0.0f64);
+    for (ours, &(position, want)) in scored.iter().zip(&reference.scored) {
+        ensure!(
+            ours.position == position,
+            "reference scores corpus position {position} where this run scores {}",
+            ours.position
+        );
+        let delta = (ours.nll - want).abs();
+        if delta > worst.1 {
+            worst = (position, delta);
+        }
+    }
+
+    let ours_ppl = (scored.iter().map(|s| s.nll).sum::<f64>() / scored.len() as f64).exp();
+    let want_ppl = reference.ppl();
+    // Relative, because perplexity's scale depends on the corpus: half a nat
+    // is nothing at ppl 200 and enormous at ppl 1.2.
+    let delta = ((ours_ppl - want_ppl) / want_ppl).abs();
+
+    Ok(RungResult::measured(
+        Rung::L3Perplexity,
+        vec![
+            Measure::new("ppl delta", delta, thresholds::PPL_DELTA, Cmp::AtMost),
+            Measure::new(
+                "worst token nll",
+                worst.1,
+                thresholds::PPL_MAX_TOKEN_DELTA,
+                Cmp::AtMost,
+            ),
+        ],
+        format!(
+            "ppl {ours_ppl:.4} against {want_ppl:.4} over {} tokens; worst token at corpus \
+             position {}",
+            scored.len(),
+            worst.0
+        ),
+    ))
+}
+
+/// One greedy continuation the reference implementation produced.
+#[derive(Debug, Clone)]
+pub struct GreedyReference {
+    pub prompt: Vec<Token>,
+    /// What `generate(do_sample=False)` emitted, in order.
+    pub continuation: Vec<Token>,
+}
+
+/// Whether the largest finite logit occurs more than once.
+///
+/// Counted rather than assumed absent. Exact ties in f32 over a 262144-wide
+/// vocabulary are rare but not absent -- logit softcapping saturates and
+/// grammar masking flattens -- and a tie is the one position where our
+/// tie-break convention, not our arithmetic, decides the token. A future
+/// disagreement is attributable only if the count was reported at the time.
+fn has_tie(logits: &[f32]) -> bool {
+    let best = logits
+        .iter()
+        .copied()
+        .filter(|l| l.is_finite())
+        .fold(f32::NEG_INFINITY, f32::max);
+    logits.iter().filter(|&&l| l == best).count() > 1
+}
+
+/// L4: greedy continuations, decoded through the shipping sampler.
+///
+/// Through `Sampler` at temperature zero rather than a local argmax: a
+/// ladder-only argmax would let this rung go green while the decoder every
+/// caller actually uses did something else, which is the shape of gate this
+/// package exists to remove.
+pub fn rung_greedy(model: &mut dyn Model, references: &[GreedyReference]) -> Result<RungResult> {
+    ensure!(!references.is_empty(), "no greedy references to compare");
+    let mut sampler = Sampler::new(SamplingParams {
+        temperature: 0.0,
+        ..SamplingParams::default()
+    });
+
+    let mut matched = 0usize;
+    let mut total = 0usize;
+    let mut prefix_fraction = 0.0f64;
+    let mut ties = 0usize;
+    // The earliest divergence anywhere, as (prompt index, offset). The report
+    // names one position rather than all of them because after a greedy
+    // decode diverges its remaining tokens are a different continuation, not
+    // more findings.
+    let mut first: Option<(usize, usize)> = None;
+
+    for (p, r) in references.iter().enumerate() {
+        ensure!(!r.prompt.is_empty(), "greedy reference {p} has no prompt");
+        ensure!(
+            !r.continuation.is_empty(),
+            "greedy reference {p} has no continuation"
+        );
+        model.truncate(0)?;
+        let mut logits = model.prefill(&r.prompt)?;
+        let mut prefix = r.continuation.len();
+        for (i, &want) in r.continuation.iter().enumerate() {
+            if has_tie(&logits.0) {
+                ties += 1;
+            }
+            let got = sampler.sample(&logits, None)?;
+            total += 1;
+            if got == want {
+                matched += 1;
+            } else {
+                if prefix == r.continuation.len() {
+                    prefix = i;
+                }
+                if first.is_none() {
+                    first = Some((p, i));
+                }
+            }
+            // Fed our own token, not the reference's. Feeding the reference's
+            // would measure teacher-forced agreement, which is L2 again with
+            // extra steps; the question here is whether an unattended decode
+            // stays on the same trajectory.
+            logits = model.prefill(&[got])?;
+        }
+        prefix_fraction += prefix as f64 / r.continuation.len() as f64;
+    }
+
+    let agreement = matched as f64 / total as f64;
+    let mean_prefix = prefix_fraction / references.len() as f64;
+    let note = match first {
+        None => format!("{} prompts, {ties} ties", references.len()),
+        Some((p, i)) => {
+            format!("first divergence in prompt {p} at continuation offset {i}; {ties} ties")
+        }
+    };
+
+    Ok(RungResult::measured(
+        Rung::L4Greedy,
+        vec![
+            Measure::new(
+                "token agreement",
+                agreement,
+                thresholds::GREEDY_AGREEMENT,
+                Cmp::AtLeast,
+            ),
+            Measure::new(
+                "mean common prefix",
+                mean_prefix,
+                thresholds::GREEDY_PREFIX,
+                Cmp::AtLeast,
+            ),
+        ],
+        note,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -614,5 +848,183 @@ mod tests {
             assert_eq!(Size::parse(size.label()), Some(size));
         }
         assert_eq!(Size::parse("thorough"), None);
+    }
+
+    // The rung bodies below are tested against a scripted mock and a
+    // reference derived from that same mock. That is circular as a
+    // correctness check and is not meant to be one: what is under test is the
+    // rung's own reporting -- that an exact match passes, that a single
+    // perturbed token fails, and that the note names the position that moved.
+    // A rung which localizes a divergence to the wrong token is a defect no
+    // real-weight run could distinguish from the divergence itself.
+
+    use crate::model::mock::MockModel;
+
+    /// A mock whose logits at position `p` peak on `peak(p)`, so a scripted
+    /// continuation is predictable by hand.
+    fn peaked(vocab: usize, len: usize, peak: impl Fn(usize) -> usize) -> MockModel {
+        let script = (0..len)
+            .map(|p| {
+                let mut l = vec![0.0; vocab];
+                l[peak(p) % vocab] = 8.0;
+                l
+            })
+            .collect();
+        MockModel::new(vocab, script)
+    }
+
+    fn ppl_reference(model: &mut dyn Model, corpus: &[Token], chunk: usize) -> PplReference {
+        let scored = crate::eval::per_token_nll(model, corpus, chunk).unwrap();
+        PplReference {
+            chunk,
+            scored: scored.iter().map(|s| (s.position, s.nll)).collect(),
+        }
+    }
+
+    #[test]
+    fn perplexity_matching_the_reference_exactly_passes() {
+        let corpus: Vec<Token> = (0..16).map(|i| (i * 3) % 8).collect();
+        let reference = ppl_reference(&mut peaked(8, 16, |p| p + 1), &corpus, 8);
+        let r = rung_perplexity(&mut peaked(8, 16, |p| p + 1), &corpus, &reference).unwrap();
+        assert_eq!(r.status, Status::Pass, "{r:?}");
+        for m in &r.measures {
+            assert_eq!(m.value, 0.0, "{}", m.name);
+        }
+    }
+
+    #[test]
+    fn one_perturbed_token_fails_perplexity_and_the_note_names_its_position() {
+        let corpus: Vec<Token> = (0..16).map(|i| (i * 3) % 8).collect();
+        let mut reference = ppl_reference(&mut peaked(8, 16, |p| p + 1), &corpus, 8);
+        // Position 6 of the corpus, the second scored token of the first
+        // window. Perturbing the reference rather than the model keeps the
+        // model the same scripted object in both tests, so the only
+        // difference between passing and failing is the one number.
+        let victim = reference.scored[1];
+        reference.scored[1] = (victim.0, victim.1 + 1.5);
+        let r = rung_perplexity(&mut peaked(8, 16, |p| p + 1), &corpus, &reference).unwrap();
+        assert_eq!(r.status, Status::Fail, "{r:?}");
+        assert!(
+            r.note.contains(&format!("position {}", victim.0)),
+            "note does not name the perturbed position {}: {}",
+            victim.0,
+            r.note
+        );
+        let worst = r
+            .measures
+            .iter()
+            .find(|m| m.name == "worst token nll")
+            .unwrap();
+        assert!((worst.value - 1.5).abs() < 1e-9, "{}", worst.value);
+    }
+
+    #[test]
+    fn a_reference_scoring_different_positions_is_an_error_not_a_failed_rung() {
+        // A mismatched artifact is not evidence about the engine. Reporting
+        // it as a red L3 sends the reader hunting a numerics bug that is not
+        // there, and the ladder short-circuits every rung below it.
+        let corpus: Vec<Token> = (0..16).map(|i| (i * 3) % 8).collect();
+        let mut reference = ppl_reference(&mut peaked(8, 16, |p| p + 1), &corpus, 8);
+        reference.scored[2].0 += 1;
+        let err = rung_perplexity(&mut peaked(8, 16, |p| p + 1), &corpus, &reference)
+            .expect_err("expected an error");
+        assert!(err.to_string().contains("corpus position"), "{err}");
+
+        reference.scored.pop();
+        let err = rung_perplexity(&mut peaked(8, 16, |p| p + 1), &corpus, &reference)
+            .expect_err("expected an error");
+        assert!(
+            err.to_string().contains("does not match the artifact"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_greedy_continuation_reproducing_the_reference_passes() {
+        // The mock peaks on p % 4 at position p, and the prompt is 2 tokens,
+        // so the continuation after prefill is positions 1, 2, 3, 4 -> tokens
+        // 1, 2, 3, 0.
+        let refs = vec![GreedyReference {
+            prompt: vec![0, 0],
+            continuation: vec![1, 2, 3, 0],
+        }];
+        let r = rung_greedy(&mut peaked(4, 16, |p| p), &refs).unwrap();
+        assert_eq!(r.status, Status::Pass, "{r:?} note={}", r.note);
+        assert!(r.note.contains("0 ties"), "{}", r.note);
+    }
+
+    #[test]
+    fn one_wrong_greedy_token_fails_and_the_note_names_the_offset() {
+        let refs = vec![GreedyReference {
+            prompt: vec![0, 0],
+            continuation: vec![1, 2, 3, 0],
+        }];
+        let mut wrong = refs.clone();
+        wrong[0].continuation[2] = 1;
+        let r = rung_greedy(&mut peaked(4, 16, |p| p), &wrong).unwrap();
+        assert_eq!(r.status, Status::Fail, "{r:?}");
+        assert!(
+            r.note.contains("prompt 0 at continuation offset 2"),
+            "{}",
+            r.note
+        );
+        // Agreement stays high on a single wrong token while the prefix
+        // collapses to half. That the two measures move differently is the
+        // reason both are reported.
+        let agree = r
+            .measures
+            .iter()
+            .find(|m| m.name == "token agreement")
+            .unwrap();
+        let prefix = r
+            .measures
+            .iter()
+            .find(|m| m.name == "mean common prefix")
+            .unwrap();
+        assert!((agree.value - 0.75).abs() < 1e-9, "{}", agree.value);
+        assert!((prefix.value - 0.5).abs() < 1e-9, "{}", prefix.value);
+    }
+
+    #[test]
+    fn greedy_reports_the_ties_it_had_to_break() {
+        // A mock past the end of its script returns all-zero logits: every
+        // token ties, and the first-index rule decides all four. The count is
+        // what makes a later disagreement with torch attributable rather than
+        // mysterious.
+        let refs = vec![GreedyReference {
+            prompt: vec![0, 0],
+            continuation: vec![0, 0, 0, 0],
+        }];
+        let r = rung_greedy(&mut MockModel::new(4, vec![]), &refs).unwrap();
+        assert_eq!(r.status, Status::Pass, "{r:?}");
+        assert!(r.note.contains("4 ties"), "{}", r.note);
+    }
+
+    #[test]
+    fn greedy_feeds_back_its_own_token_rather_than_the_references() {
+        // Teacher forcing would make this rung L2 with extra steps: every
+        // position would be scored from the reference's own trajectory and a
+        // model that diverges once but recovers would look identical to one
+        // that never diverged. The mock is position-keyed, so the check is
+        // that exactly one token is prefilled per step and the cache advances
+        // with the decode.
+        let refs = vec![GreedyReference {
+            prompt: vec![0, 0, 0],
+            continuation: vec![3, 0, 1],
+        }];
+        let mut m = peaked(4, 16, |p| p);
+        rung_greedy(&mut m, &refs).unwrap();
+        let steps: Vec<usize> = m.records().iter().map(|r| r.tokens.len()).collect();
+        assert_eq!(steps, vec![3, 1, 1, 1], "{steps:?}");
+        assert_eq!(m.cached_len(), 6);
+    }
+
+    #[test]
+    fn greedy_with_no_references_is_an_error_rather_than_a_vacuous_pass() {
+        // Zero of zero positions agreeing is 100% agreement, and an empty
+        // reference set would otherwise report a green rung having compared
+        // nothing at all.
+        let err = rung_greedy(&mut peaked(4, 8, |p| p), &[]).expect_err("expected an error");
+        assert!(err.to_string().contains("no greedy references"), "{err}");
     }
 }
