@@ -39,6 +39,43 @@ doc:
 test:
 	cargo test --workspace -- --nocapture
 
+# The correctness ladder (workstation only): the five rungs against the real
+# checkpoint and reference artifacts generated from transformers.
+#
+# Deliberately not part of `make quality`. The gate is mandatory before every
+# push and has to stay fast; this loads a 15 GB checkpoint and runs a real
+# forward pass. Tier T -- the same rungs against the committed tiny fixture --
+# is what runs inside the gate.
+#
+# SIZE is this target's own name for how much work L3 and L4 do. Not HW, which
+# make/quality.mk owns and means smoke|full, and not TIER, which make/agents.mk
+# owns and means sandbox|full; a third meaning on either would be resolved by
+# include order and silently mis-set.
+.PHONY: ladder
+SIZE ?= quick
+REFERENCE ?= fixtures/reference/e4b/$(SIZE)
+ladder:
+ifdef AI_SANDBOX
+	@printf '[ERROR] make ladder needs the real checkpoint and the GPU host; the sandbox has neither\n'
+	@printf '  The sandbox mounts only the worktree, so /mnt/ai-data is not reachable.\n'
+	@printf '  Solution: run this on the workstation\n'
+	@printf '  Command: cd rust-harness && make ladder SIZE=%s MODEL=<checkpoint-dir>\n' '$(SIZE)'
+	@exit 1
+endif
+	@if [ -z "$(MODEL)" ]; then \
+	  printf '[ERROR] MODEL is not set: the ladder has no checkpoint to measure\n'; \
+	  printf '  Solution: name the checkpoint directory\n'; \
+	  printf '  Command: make ladder SIZE=%s MODEL=<checkpoint-dir>\n' '$(SIZE)'; \
+	  exit 1; \
+	fi
+	@case '$(SIZE)' in quick|standard|deep) ;; *) \
+	  printf '[ERROR] SIZE=%s is not a run size\n' '$(SIZE)'; \
+	  printf '  Solution: use one of quick, standard, deep\n'; \
+	  printf '  Command: make ladder SIZE=quick MODEL=%s\n' '$(MODEL)'; \
+	  exit 1 ;; esac
+	cargo run --release -p runtime --bin ladder -- \
+	  --size $(SIZE) --model $(MODEL) --reference $(REFERENCE)
+
 # Profiling (workstation only): flame graph of a harness run. Requires
 # cargo-flamegraph and perf; MockModel has no hot path, so meaningful
 # profiles arrive with the first real backend.

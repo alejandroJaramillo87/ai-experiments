@@ -128,6 +128,36 @@ interface.
 worktree, regardless of how many sessions are open. The target prints the reminder rather than
 enforcing it.
 
+## The correctness ladder
+
+Neither gate measures whether the inference engine computes the right numbers. `make quality`
+and `make quality-full` are machinery gates: they prove the code builds, the tests agree with
+themselves, and the documentation resolves. A forward pass with a transposed weight or a wrong
+norm convention passes both and emits fluent text.
+
+That is what the correctness ladder is for. Five rungs, each against `transformers` rather than
+against any earlier output of ours, run on the workstation under their own target:
+
+```
+cd rust-harness
+make ladder SIZE=quick MODEL=<checkpoint-dir>      # also standard, deep
+```
+
+It is deliberately outside `make quality`. The gate is mandatory before every push and has to
+stay fast, and the ladder loads the real checkpoint. The half that does run inside the gate is
+Tier T: the same rungs against a tiny Gemma 4 that `transformers` itself built, committed
+whole, measured in milliseconds.
+
+`SIZE` selects how much work the perplexity and greedy rungs do. It is a third variable
+alongside `HW` and `TIER` and means neither of them; the sizes are nested prefixes of one
+corpus, so a `deep` run reproduces a `quick` run's number on its first tokens exactly.
+
+Like `quality-full`, the target refuses in a contained sandbox before doing any work, and it
+loads the checkpoint, so the one-GPU-consumer-at-a-time rule applies. See
+[../../rust-harness/README.md](../../rust-harness/README.md) for the rungs and
+[../../rust-harness/fixtures/reference/README.md](../../rust-harness/fixtures/reference/README.md)
+for the reference artifacts.
+
 ## Provisioning
 
 `make install` is the full provision (`--all-groups --all-extras`). A bare `uv sync` is a safe

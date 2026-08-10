@@ -416,6 +416,16 @@ pub fn render(l: &Ladder) -> String {
 
     let _ = writeln!(s);
     match l.first_failure() {
+        // A run that measured nothing is not a pass. The status of each rung
+        // is honest either way, but the summary line is what a reader takes
+        // away, and "every rung within tolerance" over five skips is a green
+        // gate that compared nothing.
+        None if l.skipped() == Rung::ALL.len() => {
+            let _ = writeln!(
+                s,
+                "[WARN] Ladder: no rung had a reference; nothing was measured"
+            );
+        }
         None => {
             let _ = writeln!(
                 s,
@@ -1021,6 +1031,16 @@ mod tests {
         assert!(l.ok());
         assert_eq!(l.skipped(), 1);
         assert!(render(&l).contains("(1 skipped)"), "{}", render(&l));
+    }
+
+    #[test]
+    fn a_ladder_that_measured_nothing_does_not_summarize_as_a_pass() {
+        // Five skips and an [OK] line is a green gate that compared nothing,
+        // and the summary line is what a reader takes away from the table.
+        let l = climb(Size::Quick, "m", "r", |_| None);
+        let out = render(&l);
+        assert!(out.contains("nothing was measured"), "{out}");
+        assert!(!out.contains("[OK]"), "{out}");
     }
 
     #[test]

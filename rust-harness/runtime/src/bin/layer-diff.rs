@@ -28,7 +28,7 @@ use anyhow::{ensure, Context, Result};
 
 use runtime::metrics::vec_diff;
 use runtime::model::cpu::{CpuModel, LastRowTap, PRELUDE_STAGES};
-use runtime::model::{Model, Token};
+use runtime::model::Model;
 
 /// Cosine similarity below which a layer is reported as divergent.
 ///
@@ -52,97 +52,6 @@ const COSINE_FLOOR: f64 = 0.9999;
 /// checkpoints carry at values as low as 0.049. Direction and magnitude are
 /// independent failures and each needs its own threshold.
 const REL_L2_CEILING: f64 = 1e-3;
-
-struct Reference {
-    token_ids: Vec<Token>,
-    dtype: String,
-    layers: Vec<Vec<f32>>,
-    /// The named pre-stack stages the capture carried, in `PRELUDE_STAGES`
-    /// order. A stage is absent from an older capture, and from a model that
-    /// does not reach it.
-    stages: Vec<(&'static str, Vec<f32>)>,
-}
-
-/// A float array under `key`, or `None` when the capture does not carry it.
-fn optional_row(v: &serde_json::Value, key: &str) -> Result<Option<Vec<f32>>> {
-    let Some(node) = v.get(key) else {
-        return Ok(None);
-    };
-    let row = node
-        .as_array()
-        .with_context(|| format!("{key} is present but not an array"))?;
-    row.iter()
-        .map(|x| {
-            x.as_f64()
-                .map(|f| f as f32)
-                .with_context(|| format!("{key} holds a non-number"))
-        })
-        .collect::<Result<Vec<f32>>>()
-        .map(Some)
-}
-
-fn load_reference(path: &Path) -> Result<Reference> {
-    let text = std::fs::read_to_string(path)
-        .with_context(|| format!("read reference {}", path.display()))?;
-    let v: serde_json::Value = serde_json::from_str(&text).context("parse reference JSON")?;
-
-    let ids = v
-        .get("token_ids")
-        .and_then(|t| t.as_array())
-        .context("reference carries no token_ids array")?;
-    let token_ids: Vec<Token> = ids
-        .iter()
-        .map(|t| {
-            t.as_u64()
-                .map(|n| n as Token)
-                .context("token_ids holds a non-integer")
-        })
-        .collect::<Result<_>>()?;
-
-    let n_layers = v
-        .get("n_layers")
-        .and_then(serde_json::Value::as_u64)
-        .context("reference carries no n_layers")? as usize;
-    let rows = v
-        .get("layers")
-        .and_then(|t| t.as_object())
-        .context("reference carries no layers object")?;
-
-    let mut layers = Vec::with_capacity(n_layers);
-    for i in 0..n_layers {
-        let row = rows
-            .get(&i.to_string())
-            .and_then(|t| t.as_array())
-            .with_context(|| format!("reference is missing layer {i}"))?;
-        layers.push(
-            row.iter()
-                .map(|x| {
-                    x.as_f64()
-                        .map(|f| f as f32)
-                        .with_context(|| format!("layer {i} holds a non-number"))
-                })
-                .collect::<Result<_>>()?,
-        );
-    }
-
-    let dtype = v
-        .get("dtype")
-        .and_then(|t| t.as_str())
-        .unwrap_or("unknown")
-        .to_string();
-    let mut stages = Vec::new();
-    for name in PRELUDE_STAGES {
-        if let Some(row) = optional_row(&v, name)? {
-            stages.push((name, row));
-        }
-    }
-    Ok(Reference {
-        token_ids,
-        dtype,
-        layers,
-        stages,
-    })
-}
 
 /// Print one table row, and report whether it diverged.
 ///
@@ -174,7 +83,8 @@ fn run(
     floor: f64,
     ceiling: f64,
 ) -> Result<bool> {
-    let reference = load_reference(reference_path)?;
+    let reference = runtime::reference::load_capture(reference_path, &PRELUDE_STAGES)?
+        .with_context(|| format!("reference {} does not exist", reference_path.display()))?;
     ensure!(
         !reference.token_ids.is_empty(),
         "reference carries no tokens"
@@ -187,10 +97,10 @@ fn run(
     let mut model = CpuModel::from_checkpoint(&ck).context("load CPU model")?;
     let n_layers = model.config().n_layers;
     ensure!(
-        n_layers == reference.layers.len(),
+        n_layers == reference.activations.layers.len(),
         "reference captured {} layers, the checkpoint has {n_layers}: the two are not \
          the same model",
-        reference.layers.len()
+        reference.activations.layers.len()
     );
 
     let tap = LastRowTap::new((0..n_layers).collect()).capturing_prelude();
@@ -216,7 +126,7 @@ fn run(
     // Stages are a chain, so the first divergence is the term rather than
     // any sum it feeds: `ple` is wrong whenever either half is.
     let mut prelude_bad: Option<&str> = None;
-    for (name, want) in &reference.stages {
+    for (name, want) in &reference.activations.stages {
         let got = tap
             .stage(name)
             .with_context(|| format!("{name}: the tap captured no row"))?;
@@ -230,8 +140,13 @@ fn run(
         let got = tap
             .row(i)
             .with_context(|| format!("layer {i}: the tap captured no row"))?;
-        if report(&i.to_string(), &got, &reference.layers[i], floor, ceiling)?
-            && first_bad.is_none()
+        if report(
+            &i.to_string(),
+            &got,
+            &reference.activations.layers[i],
+            floor,
+            ceiling,
+        )? && first_bad.is_none()
         {
             first_bad = Some(i);
         }

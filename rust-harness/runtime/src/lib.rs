@@ -31,6 +31,7 @@ pub mod metrics;
 pub mod model;
 pub mod npz;
 pub mod pyenv;
+pub mod reference;
 pub mod sampler;
 pub mod session;
 pub mod synth;
