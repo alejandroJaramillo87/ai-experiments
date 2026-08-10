@@ -84,18 +84,39 @@ fn run_rung(
             };
             ladder::rung_logits(model, &reference.token_ids, &logits, tol).map(Some)
         }
+        Rung::L3Perplexity => {
+            let path = reference_dir.join("ppl.json");
+            let corpus_path =
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/reference/corpus.txt");
+            let Some((corpus, reference)) =
+                runtime::reference::load_perplexity(&path, &corpus_path)?
+            else {
+                return Ok(None);
+            };
+            // The artifact scored a prefix of the corpus chosen by its own
+            // --size. A mismatch here means the reference and this run
+            // disagree about how much text is being measured, which would
+            // otherwise surface as a scored-token-count error inside the rung
+            // and read as a numerics problem.
+            anyhow::ensure!(
+                corpus.len() == size.tokens(),
+                "perplexity artifact scored {} tokens and size {} reads {} -- \
+                 regenerate it at this size",
+                corpus.len(),
+                size.label(),
+                size.tokens()
+            );
+            ladder::rung_perplexity(model, &corpus, &reference).map(Some)
+        }
         Rung::L4Greedy => {
             let path = reference_dir.join("greedy.json");
             let Some(references) = runtime::reference::load_greedy(&path, size.prompts())? else {
                 return Ok(None);
             };
             ladder::rung_greedy(model, &references).map(Some)
-        }
-        // L3 has a finished rung body and a reference type, but no artifact
-        // format yet; it lands with the generator that writes it. Reported as
-        // skipped, which is exactly what it is -- no reference, rather than no
-        // rung.
-        _ => Ok(None),
+        } // Every rung is wired; the match stays exhaustive by arm rather than
+          // by wildcard so a sixth rung has to be handled here rather than
+          // silently reporting skipped forever.
     }
 }
 

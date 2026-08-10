@@ -276,6 +276,79 @@ pub fn load_greedy(path: &Path, want: usize) -> Result<Option<Vec<GreedyReferenc
         .map(Some)
 }
 
+/// The corpus tokens and per-token NLLs written by
+/// `fixtures/reference_perplexity.py`.
+///
+/// Returns the reference beside the token ids it scored: the caller feeds
+/// those ids to the engine rather than re-tokenizing the corpus, because the
+/// tokenizer is itself under test at L0 and a loader that re-derived them
+/// would agree with whatever we did wrong.
+///
+/// `corpus` is hashed and checked against what the artifact recorded. The
+/// corpus is committed and the artifact is not, so the pair drifts in exactly
+/// one direction -- an artifact outliving an edit to the text it scored -- and
+/// the resulting per-token comparison would be against a different document
+/// with no sign of it in the output.
+pub fn load_perplexity(
+    path: &Path,
+    corpus: &Path,
+) -> Result<Option<(Vec<Token>, crate::ladder::PplReference)>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("read reference {}", path.display()))?;
+    let v: serde_json::Value = serde_json::from_str(&text)
+        .with_context(|| format!("parse reference {}", path.display()))?;
+
+    let want = v
+        .get("corpus_sha256")
+        .and_then(|t| t.as_str())
+        .context("perplexity artifact carries no corpus_sha256")?;
+    let bytes =
+        std::fs::read(corpus).with_context(|| format!("read corpus {}", corpus.display()))?;
+    let got = crate::digest::sha256_hex(&bytes);
+    ensure!(
+        got == want,
+        "perplexity artifact scored a corpus with sha256 {want} and {} hashes to {got}",
+        corpus.display()
+    );
+
+    let chunk = v
+        .get("chunk")
+        .and_then(serde_json::Value::as_u64)
+        .context("perplexity artifact carries no chunk")? as usize;
+    let token_ids = required_ids(&v, "token_ids")?;
+
+    let rows = v
+        .get("scored")
+        .and_then(|t| t.as_array())
+        .context("perplexity artifact carries no scored array")?;
+    let scored = rows
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            let pair = r
+                .as_array()
+                .filter(|p| p.len() == 2)
+                .with_context(|| format!("scored entry {i} is not a [position, nll] pair"))?;
+            let position = pair[0]
+                .as_u64()
+                .with_context(|| format!("scored entry {i} has a non-integer position"))?
+                as usize;
+            let nll = pair[1]
+                .as_f64()
+                .with_context(|| format!("scored entry {i} has a non-number nll"))?;
+            Ok((position, nll))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(Some((
+        token_ids,
+        crate::ladder::PplReference { chunk, scored },
+    )))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -432,6 +505,71 @@ mod tests {
         let path = write_greedy(dir.path(), r#"{"prompts": [{"ids": [1]}]}"#);
         let err = load_greedy(&path, 1).expect_err("expected an error");
         assert!(err.to_string().contains("greedy prompt 0"), "{err}");
+    }
+
+    /// A corpus file and an artifact that scored it, agreeing by construction.
+    fn ppl_pair(
+        dir: &Path,
+        corpus_text: &str,
+        recorded: Option<&str>,
+    ) -> (std::path::PathBuf, std::path::PathBuf) {
+        let corpus = dir.join("corpus.txt");
+        std::fs::write(&corpus, corpus_text).unwrap();
+        let hash = recorded
+            .map(str::to_string)
+            .unwrap_or_else(|| crate::digest::sha256_hex(corpus_text.as_bytes()));
+        let path = dir.join("ppl.json");
+        std::fs::write(
+            &path,
+            format!(
+                r#"{{"chunk": 4, "corpus_sha256": "{hash}", "token_ids": [1, 2, 3, 4],
+                    "scored": [[2, 0.5], [3, 1.5]]}}"#
+            ),
+        )
+        .unwrap();
+        (path, corpus)
+    }
+
+    #[test]
+    fn a_perplexity_artifact_round_trips_its_corpus_chunk_and_scored_pairs() {
+        let dir = tempfile::tempdir().unwrap();
+        let (path, corpus) = ppl_pair(dir.path(), "the corpus", None);
+        let (ids, reference) = load_perplexity(&path, &corpus).unwrap().unwrap();
+        assert_eq!(ids, vec![1, 2, 3, 4]);
+        assert_eq!(reference.chunk, 4);
+        assert_eq!(reference.scored, vec![(2, 0.5), (3, 1.5)]);
+    }
+
+    #[test]
+    fn a_perplexity_artifact_that_scored_a_different_corpus_is_an_error() {
+        // The corpus is committed and the artifact is not, so the pair drifts
+        // in exactly one direction: an artifact outliving an edit to the text
+        // it scored. Without this the per-token comparison would run against
+        // a different document and say nothing about it.
+        let dir = tempfile::tempdir().unwrap();
+        let (path, corpus) = ppl_pair(dir.path(), "the corpus", None);
+        std::fs::write(&corpus, "a different corpus").unwrap();
+        let err = load_perplexity(&path, &corpus).expect_err("expected an error");
+        assert!(err.to_string().contains("hashes to"), "{err}");
+    }
+
+    #[test]
+    fn a_perplexity_artifact_with_a_ragged_scored_entry_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let corpus = dir.path().join("corpus.txt");
+        std::fs::write(&corpus, "x").unwrap();
+        let hash = crate::digest::sha256_hex(b"x");
+        let path = dir.path().join("ppl.json");
+        std::fs::write(
+            &path,
+            format!(
+                r#"{{"chunk": 4, "corpus_sha256": "{hash}", "token_ids": [1],
+                    "scored": [[2]]}}"#
+            ),
+        )
+        .unwrap();
+        let err = load_perplexity(&path, &corpus).expect_err("expected an error");
+        assert!(err.to_string().contains("scored entry 0"), "{err}");
     }
 
     #[test]

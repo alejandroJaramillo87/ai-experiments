@@ -56,6 +56,13 @@ python rust-harness/fixtures/reference_capture.py \
     --generate 16 \
     --out rust-harness/fixtures/reference/e4b/quick/layers.json
 
+# L3: per-token NLL over a prefix of the committed corpus, in 256-token
+# windows. The slowest of the four.
+python rust-harness/fixtures/reference_perplexity.py \
+    --model <checkpoint-dir> \
+    --size quick \
+    --out rust-harness/fixtures/reference/e4b/quick/ppl.json
+
 # L4: a 64-token greedy continuation per prompt, for as many prompts as the
 # size decodes.
 python rust-harness/fixtures/reference_greedy.py \
@@ -69,6 +76,33 @@ directory. L0's does not vary with `SIZE`, and is regenerated into each size
 directory rather than resolved from a parent: the duplication costs
 milliseconds, and one placement rule is worth more than the special case it
 would take to avoid it.
+
+### The perplexity corpus
+
+`corpus.txt` is committed and is not in this repository's voice: it is
+*The Adventures of Sherlock Holmes*, Arthur Conan Doyle, 1892, from Project
+Gutenberg ebook 1661, with Gutenberg's own packaging stripped. The work is
+public domain; their trademark license covers their file rather than the text.
+`fetch_corpus.py` performs the fetch and the normalization deterministically,
+so the bytes are reproducible rather than pasted, and it needs network access
+that a contained sandbox does not have.
+
+Not WikiText-2, deliberately. L3 compares our per-token NLL against the
+reference's on the same token ids from the same checkpoint — a differential
+test, in which the corpus is arbitrary. WikiText-2's one advantage is
+comparability with published perplexity figures, which nothing here uses.
+
+Ordinary narrative prose is a numerical choice, not a literary one:
+off-distribution input widens the gap between two implementations of one model
+measurably, and the same prompt captured without a BOS gave rel_L2 3.3e-5 where
+the in-distribution version gave 5.0e-6.
+
+The sizes are nested prefixes of the tokenized corpus, so a `deep` run
+reproduces a `quick` run's first scored tokens exactly. The artifact records
+the corpus sha256 and the loader checks it: the corpus is committed and the
+artifact is not, so the pair can only drift one way — an artifact outliving an
+edit to the text it scored — and that comparison would otherwise run against a
+different document with no sign of it in the output.
 
 ### The greedy prompts
 
@@ -103,8 +137,7 @@ prompt captured without one put its highest probability on repeating its own las
 is what a model does with a sequence it does not believe has begun. `--no-bos` reproduces that
 if there is ever a reason to.
 
-The remaining rungs' generators land with the runner; this file is updated as each one does,
-and a rung whose artifact is absent reports `skipped` rather than passing.
+A rung whose artifact is absent reports `skipped` rather than passing.
 
 ## What an artifact must record
 

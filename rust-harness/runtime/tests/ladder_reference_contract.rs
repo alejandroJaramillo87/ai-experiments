@@ -21,25 +21,27 @@
 
 use std::path::{Path, PathBuf};
 
-use runtime::ladder::{Size, GREEDY_TOKENS};
+use runtime::ladder::{Size, CHUNK, GREEDY_TOKENS};
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// The generator's own constants, as it declares them.
+/// The generators' own constants, as they declare them.
 ///
-/// Mandatory rather than skippable: the module imports nothing outside the
-/// standard library, so an interpreter that cannot read it is a broken
-/// environment rather than an absent optional dependency, and a gate that
-/// silently stopped checking this would be worth nothing.
+/// Mandatory rather than skippable: neither module imports anything outside
+/// the standard library at scope, so an interpreter that cannot read them is a
+/// broken environment rather than an absent optional dependency, and a gate
+/// that silently stopped checking this would be worth nothing.
 fn generator_constants() -> serde_json::Value {
     let root = repo_root();
     let python = runtime::pyenv::interpreter_or_panic(&root, &[]);
     const SCRIPT: &str = "import json, sys\n\
          sys.path.insert(0, sys.argv[1])\n\
          import reference_greedy as g\n\
-         json.dump({'prompts': g.PROMPTS, 'tokens': g.TOKENS}, sys.stdout)\n";
+         import reference_perplexity as p\n\
+         json.dump({'prompts': g.PROMPTS, 'tokens': g.TOKENS,\n\
+                    'chunk': p.CHUNK, 'corpus_tokens': p.TOKENS}, sys.stdout)\n";
     let fixtures = root.join("rust-harness/fixtures");
     let out = std::process::Command::new(&python)
         .args(["-c", SCRIPT])
@@ -83,6 +85,32 @@ fn the_greedy_generator_continues_for_as_long_as_the_rung_expects() {
 }
 
 #[test]
+fn the_perplexity_generator_scores_the_windows_and_prefixes_the_rung_expects() {
+    // The windowing is the whole comparability of L3: perplexity computed in
+    // different windows is a different quantity, and the two sides would
+    // disagree about which tokens were scored rather than about the numbers.
+    let got = generator_constants();
+    let chunk = got["chunk"].as_u64().expect("CHUNK is an integer") as usize;
+    assert_eq!(
+        chunk, CHUNK,
+        "ladder::CHUNK is {CHUNK} and the generator windows at {chunk}"
+    );
+    for size in Size::ALL {
+        let theirs = got["corpus_tokens"][size.label()]
+            .as_u64()
+            .unwrap_or_else(|| panic!("reference_perplexity.py declares no size {}", size.label()))
+            as usize;
+        assert_eq!(
+            theirs,
+            size.tokens(),
+            "size {} scores {} tokens and the generator writes {theirs}",
+            size.label(),
+            size.tokens()
+        );
+    }
+}
+
+#[test]
 fn the_prompt_file_holds_enough_prompts_for_the_largest_size() {
     // Committed, so this is checkable in the sandbox with no model at all --
     // and the failure it prevents is a deep run that dies after loading a
@@ -98,5 +126,31 @@ fn the_prompt_file_holds_enough_prompts_for_the_largest_size() {
     assert!(
         prompts >= want,
         "prompts.txt holds {prompts} prompts and the largest size needs {want}"
+    );
+}
+
+#[test]
+fn the_corpus_is_long_enough_for_the_largest_size() {
+    // Characters rather than tokens: this runs in the sandbox, where there is
+    // no checkpoint tokenizer to ask. English runs roughly four characters to
+    // a token, and the margin below is wide enough that the approximation
+    // cannot be what makes this pass.
+    //
+    // Cheap here and expensive later: without it, a deep run learns the corpus
+    // is short after loading a 15 GB checkpoint.
+    let path = repo_root().join("rust-harness/fixtures/reference/corpus.txt");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        runtime::testlog::skip(
+            "L3 corpus length",
+            "fixtures/reference/corpus.txt has not been fetched; \
+             run fixtures/fetch_corpus.py on a machine with network access",
+        );
+        return;
+    };
+    let want = Size::ALL.iter().map(|s| s.tokens()).max().unwrap();
+    let chars = text.chars().count();
+    assert!(
+        chars >= want * 4,
+        "corpus.txt is {chars} characters and the largest size scores {want} tokens"
     );
 }
