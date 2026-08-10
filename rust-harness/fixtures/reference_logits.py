@@ -1,6 +1,7 @@
 """Independent reference forward pass for the tiny synthetic models.
 
-Reads the committed GGUF fixtures (written by the tiny-model bin), runs the
+Reads the committed checkpoint fixtures (config.json and model.safetensors,
+written by the tiny-model bin), runs the
 same Gemma-4-style forward pass in numpy float32, and writes the per-position
 logits for a fixed prompt to <stem>-logits.json, together with the
 last-position per-layer residuals (the Tap seam observable) and the
@@ -22,9 +23,12 @@ agree with it about a misreading.
 
 Regenerate with:
 
-    cargo run -p runtime --bin tiny-model -- fixtures/tiny-gemma4.gguf
-    cargo run -p runtime --bin tiny-model -- fixtures/tiny-gemma4-e4b.gguf e4b
-    python3 fixtures/reference_logits.py
+    cargo run -p runtime --bin tiny-model -- fixtures/tiny-gemma4
+    cargo run -p runtime --bin tiny-model -- fixtures/tiny-gemma4-e4b e4b
+    .venv/bin/python3 fixtures/reference_logits.py
+
+The interpreter matters: numpy lives in the project venv, and a bare python3
+on either the workstation or the sandbox may not have it.
 """
 
 import json
@@ -69,72 +73,102 @@ def probe_score(x, d):
     return float(1.0 / (1.0 + np.exp(-logit, dtype=np.float32)))
 
 
-def parse_gguf(data):
-    pos = [0]
+# Hugging Face tensor name for each name this reference uses internally.
+#
+# Transcribed from the published checkpoint's key list, not from the Rust
+# table it mirrors. That is the point: the Rust loader maps these names in the
+# other direction, and if the two transcriptions disagree the goldens below
+# stop matching. A shared table would make the disagreement unobservable.
+HF_NAMES = {
+    "token_embd.weight": "model.embed_tokens.weight",
+    "output_norm.weight": "model.norm.weight",
+    "per_layer_token_embd.weight": "model.embed_tokens_per_layer.weight",
+    "per_layer_model_proj.weight": "model.per_layer_model_projection.weight",
+    "per_layer_proj_norm.weight": "model.per_layer_projection_norm.weight",
+}
+HF_LAYER_NAMES = {
+    "attn_norm.weight": "input_layernorm.weight",
+    "attn_q.weight": "self_attn.q_proj.weight",
+    "attn_k.weight": "self_attn.k_proj.weight",
+    "attn_v.weight": "self_attn.v_proj.weight",
+    "attn_q_norm.weight": "self_attn.q_norm.weight",
+    "attn_k_norm.weight": "self_attn.k_norm.weight",
+    "attn_output.weight": "self_attn.o_proj.weight",
+    "post_attention_norm.weight": "post_attention_layernorm.weight",
+    "ffn_norm.weight": "pre_feedforward_layernorm.weight",
+    "ffn_gate.weight": "mlp.gate_proj.weight",
+    "ffn_up.weight": "mlp.up_proj.weight",
+    "ffn_down.weight": "mlp.down_proj.weight",
+    "post_ffw_norm.weight": "post_feedforward_layernorm.weight",
+    "layer_output_scale.weight": "layer_output_scale.weight",
+    "inp_gate.weight": "per_layer_input_gate.weight",
+    "proj.weight": "per_layer_projection.weight",
+    "post_norm.weight": "post_per_layer_input_layernorm.weight",
+}
 
-    def take(n):
-        chunk = data[pos[0] : pos[0] + n]
-        assert len(chunk) == n, "truncated GGUF"
-        pos[0] += n
-        return chunk
+# RMSNorm weights, which the checkpoint stores unshifted. See `rms_norm`.
+NORM_SUFFIX = "norm.weight"
 
-    def u32():
-        return struct.unpack("<I", take(4))[0]
 
-    def u64():
-        return struct.unpack("<Q", take(8))[0]
+def parse_safetensors(data):
+    """Tensors from a model.safetensors, keyed by this reference's own names.
 
-    def string():
-        return take(u64()).decode()
+    The container is simple enough that reading it directly costs less than a
+    dependency: an 8-byte little-endian header length, a JSON header mapping
+    each name to its dtype, shape and byte range, then the payload. The venv
+    carries no safetensors package, and adding one to read 40 lines of format
+    would put a third party between the reference and the bytes it exists to
+    check independently.
 
-    assert take(4) == b"GGUF" and u32() == 3
-    tensor_count, kv_count = u64(), u64()
-    metadata = {}
-    for _ in range(kv_count):
-        key = string()
-        value_type = u32()
-        if value_type == 4:
-            metadata[key] = u32()
-        elif value_type == 6:
-            metadata[key] = struct.unpack("<f", take(4))[0]
-        elif value_type == 8:
-            metadata[key] = string()
-        elif value_type == 9:
-            elem, count = u32(), u64()
-            if elem == 5:
-                metadata[key] = list(struct.unpack(f"<{count}i", take(4 * count)))
-            elif elem == 6:
-                metadata[key] = list(struct.unpack(f"<{count}f", take(4 * count)))
-            elif elem == 8:
-                metadata[key] = [string() for _ in range(count)]
-            else:
-                raise ValueError(f"array element type {elem}")
-        else:
-            raise ValueError(f"value type {value_type}")
-    directory = []
-    for _ in range(tensor_count):
-        name = string()
-        dims = [u64() for _ in range(u32())]
-        ggml_type, offset = u32(), u64()
-        assert ggml_type == 0, "reference reader handles F32 only"
-        directory.append((name, dims, offset))
-    alignment = metadata.get("general.alignment", 32)
-    data_start = (pos[0] + alignment - 1) // alignment * alignment
+    F32 only, by assertion, as the GGUF reader was. The committed fixtures are
+    F32 and numpy has no native bfloat16; the bf16 path is proven in Rust
+    instead, against a model whose exact logits are known.
+    """
+    (header_len,) = struct.unpack("<Q", data[:8])
+    header = json.loads(data[8 : 8 + header_len])
+    payload = 8 + header_len
+
+    inverse = {v: k for k, v in HF_NAMES.items()}
     tensors = {}
-    for name, dims, offset in directory:
-        count = math.prod(dims)
-        start = data_start + offset
-        flat = np.frombuffer(data, dtype="<f4", count=count, offset=start)
-        # GGUF layout [ne0=in, ne1=out]: row-major with ne0 contiguous.
-        tensors[name] = flat.reshape(list(reversed(dims))).astype(np.float32)
-    return metadata, tensors
+    for hf_name, entry in header.items():
+        if hf_name == "__metadata__":
+            continue
+        assert entry["dtype"] == "F32", (
+            f"{hf_name} is {entry['dtype']}; this reference reads F32 only"
+        )
+        start, end = entry["data_offsets"]
+        shape = entry["shape"]
+        count = math.prod(shape) if shape else 1
+        flat = np.frombuffer(data, dtype="<f4", count=count, offset=payload + start)
+        assert end - start == count * 4, f"{hf_name}: byte range disagrees with shape"
+
+        # Rename to the internal spelling. Safetensors shapes are already
+        # row-major [out, in], the same layout and the same bytes the GGUF
+        # held under reversed dims, so nothing is transposed here.
+        name = inverse.get(hf_name)
+        if name is None:
+            prefix = "model.layers."
+            assert hf_name.startswith(prefix), f"unrecognized tensor {hf_name}"
+            index, tail = hf_name[len(prefix) :].split(".", 1)
+            suffix = next((k for k, v in HF_LAYER_NAMES.items() if v == tail), None)
+            assert suffix is not None, f"unrecognized tensor {hf_name}"
+            name = f"blk.{index}.{suffix}"
+
+        # Undo the shift the checkpoint stores norms without, so every tensor
+        # in this dict is the effective multiplier `rms_norm` applies.
+        values = flat.reshape(shape).astype(np.float32)
+        if name.endswith(NORM_SUFFIX):
+            values = values + np.float32(1.0)
+        tensors[name] = values
+    return tensors
 
 
 def rms_norm(x, w, eps):
-    # The stored tensor is the effective multiplier: the GGUF converter
-    # resolves Gemma's runtime +1 before writing (folded into the tensor for
-    # gemma1-3, already shifted for gemma3n/gemma4), and the llama.cpp graph
-    # applies a plain multiply.
+    # `w` is the effective multiplier, with Gemma's runtime +1 already in it.
+    # A published checkpoint stores the raw parameter and transformers adds
+    # one at every use; parse_safetensors folds that in as it reads, so the
+    # shift happens once per weight here rather than once per call. The Rust
+    # loader makes the same choice, which is why the two agree bit for bit.
     inv = np.float32(1.0) / np.sqrt(np.mean(x * x, dtype=np.float32) + np.float32(eps))
     return (x * inv * w).astype(np.float32)
 
@@ -164,32 +198,40 @@ def rope(head, position, freq_base, divisors=None):
     return out
 
 
-def forward(metadata, tensors, prompt, steered=False):
-    arch = metadata["general.architecture"]
-
+def forward(config, tensors, prompt, steered=False):
     def m(key):
-        return metadata[f"{arch}.{key}"]
+        return config[key]
 
     def opt(key, default=None):
-        return metadata.get(f"{arch}.{key}", default)
+        return config.get(key, default)
 
-    d = m("embedding_length")
-    n_layers = m("block_count")
-    n_heads = m("attention.head_count")
-    n_kv = m("attention.head_count_kv")
-    eps = m("attention.layer_norm_rms_epsilon")
-    window = m("attention.sliding_window")
-    pattern = m("attention.sliding_window_pattern")
+    d = m("hidden_size")
+    n_layers = m("num_hidden_layers")
+    n_heads = m("num_attention_heads")
+    n_kv = m("num_key_value_heads")
+    eps = m("rms_norm_eps")
+    window = m("sliding_window")
     heads_per_kv = n_heads // n_kv
 
-    def is_global(i):
-        return (i + 1) % pattern == 0
+    # An explicit per-layer list, not a stride to infer. The GGUF spelling
+    # could only express a periodic schedule; this one states each layer.
+    layer_types = m("layer_types")
+    assert len(layer_types) == n_layers, (
+        f"layer_types has {len(layer_types)} entries for {n_layers} layers"
+    )
 
-    # Per-layer head width. The unsuffixed key names the global regime and
-    # the _swa suffix the sliding one; a file carrying only the former is
-    # uniform.
-    hd_global = m("attention.key_length")
-    hd_swa = opt("attention.key_length_swa", hd_global)
+    def is_global(i):
+        kind = layer_types[i]
+        assert kind in ("full_attention", "sliding_attention"), (
+            f"layer_types[{i}] is {kind!r}"
+        )
+        return kind == "full_attention"
+
+    # Per-layer head width. `head_dim` names the sliding regime and
+    # `global_head_dim` the full-attention one; a checkpoint carrying only
+    # the former is uniform.
+    hd_swa = m("head_dim")
+    hd_global = opt("global_head_dim", hd_swa)
 
     def head_dim(i):
         return hd_global if is_global(i) else hd_swa
@@ -200,7 +242,7 @@ def forward(metadata, tensors, prompt, steered=False):
     # validated, because a checkpoint whose declared widths contradict its
     # tensors is a file the loader must reject rather than one this
     # reference should quietly follow.
-    ffn_meta = m("feed_forward_length")
+    ffn_meta = m("intermediate_size")
     for i in range(n_layers):
         want = ffn_meta[i] if isinstance(ffn_meta, list) else ffn_meta
         got = tensors[f"blk.{i}.ffn_gate.weight"].shape[0]
@@ -208,9 +250,24 @@ def forward(metadata, tensors, prompt, steered=False):
 
     # Dual RoPE: the two regimes carry separate bases, and only the global
     # one takes the proportional divisors.
-    freq_base = m("rope.freq_base")
-    freq_base_swa = opt("rope.freq_base_swa", freq_base)
-    rope_divisors = tensors.get("rope_freqs.weight")
+    freq_base = m("rope_theta")
+    freq_base_swa = opt("rope_local_base_freq", freq_base)
+
+    # The divisors are derived from the rotation factor rather than read from
+    # a tensor. llama.cpp precomputes them at conversion time and ships
+    # rope_freqs.weight; a published checkpoint states partial_rotary_factor
+    # and leaves the construction to the loader. Ones over the rotating pairs,
+    # 1e30 over the rest -- large enough to drive those angles to zero.
+    half = hd_global // 2
+    factor = opt("partial_rotary_factor")
+    rope_divisors = None
+    if factor is not None:
+        rotating = round(factor * hd_global / 2)
+        assert 0 < rotating <= half, f"partial_rotary_factor {factor} gives {rotating}"
+        if rotating < half:
+            rope_divisors = np.array(
+                [1.0] * rotating + [1e30] * (half - rotating), dtype=np.float32
+            )
 
     def rope_for(i):
         if is_global(i):
@@ -221,7 +278,7 @@ def forward(metadata, tensors, prompt, steered=False):
     # or value and attend over a donor's cache; the donor is the last layer
     # below the boundary of the same kind, so there are two of them, one per
     # attention regime.
-    boundary = n_layers - opt("attention.shared_kv_layers", 0)
+    boundary = n_layers - opt("num_kv_shared_layers", 0)
 
     def kv_source(i):
         if i < boundary:
@@ -231,7 +288,7 @@ def forward(metadata, tensors, prompt, steered=False):
         return max(same)
 
     softcap = opt("final_logit_softcapping")
-    ple_dim = opt("embedding_length_per_layer_input")
+    ple_dim = opt("hidden_size_per_layer_input")
 
     embed = tensors["token_embd.weight"]  # [vocab, d]
     caches = [{"k": [], "v": []} for _ in range(n_layers)]
@@ -366,14 +423,18 @@ def forward(metadata, tensors, prompt, steered=False):
 
 
 def generate(stem, regen_hint):
-    gguf_path = FIXTURE_DIR / f"{stem}.gguf"
-    if not gguf_path.exists():
-        print(f"[ERROR] Fixture not found: {gguf_path}", file=sys.stderr)
-        print(f"  Solution: {regen_hint}", file=sys.stderr)
-        return 1
-    metadata, tensors = parse_gguf(gguf_path.read_bytes())
-    logits, residuals, probe_scores = forward(metadata, tensors, PROMPT)
-    steered_logits, _, _ = forward(metadata, tensors, PROMPT, steered=True)
+    checkpoint = FIXTURE_DIR / stem
+    config_path = checkpoint / "config.json"
+    weights_path = checkpoint / "model.safetensors"
+    for path in (config_path, weights_path):
+        if not path.exists():
+            print(f"[ERROR] Fixture not found: {path}", file=sys.stderr)
+            print(f"  Solution: {regen_hint}", file=sys.stderr)
+            return 1
+    config = json.loads(config_path.read_text())["text_config"]
+    tensors = parse_safetensors(weights_path.read_bytes())
+    logits, residuals, probe_scores = forward(config, tensors, PROMPT)
+    steered_logits, _, _ = forward(config, tensors, PROMPT, steered=True)
     out = {
         "prompt": PROMPT,
         "logits": logits,
@@ -401,7 +462,7 @@ def main():
     for stem, variant in (("tiny-gemma4", ""), ("tiny-gemma4-e4b", " e4b")):
         failures += generate(
             stem,
-            f"cargo run -p runtime --bin tiny-model -- fixtures/{stem}.gguf{variant}",
+            f"cargo run -p runtime --bin tiny-model -- fixtures/{stem}{variant}",
         )
     return 1 if failures else 0
 

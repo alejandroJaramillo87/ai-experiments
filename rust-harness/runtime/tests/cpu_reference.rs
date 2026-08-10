@@ -9,14 +9,16 @@
  * E4B-shaped one declares all seven and proves they are right.
  *
  * Fixture regeneration (from rust-harness/):
- *   cargo run -p runtime --bin tiny-model -- fixtures/tiny-gemma4.gguf
- *   cargo run -p runtime --bin tiny-model -- fixtures/tiny-gemma4-e4b.gguf e4b
+ *   cargo run -p runtime --bin tiny-model -- fixtures/tiny-gemma4
+ *   cargo run -p runtime --bin tiny-model -- fixtures/tiny-gemma4-e4b e4b
  *   cargo run -p runtime --bin tiny-model -- fixtures/tiny-bpe.tokenizer.json bpe
- *   python3 fixtures/reference_logits.py
+ *   ../.venv/bin/python3 fixtures/reference_logits.py
  *
- * Each model invocation writes its GGUF and the tokenizer.json beside it. The
- * bpe invocation writes a tokenizer only: its vocabulary carries a merge list,
- * which the model fixtures cannot, and it is what covers BPE segmentation.
+ * Each model invocation writes four artifacts from one TinySpec: the GGUF, the
+ * tokenizer.json beside it, and a checkpoint directory holding config.json and
+ * model.safetensors. The bpe invocation writes a tokenizer only: its
+ * vocabulary carries a merge list, which the model fixtures cannot, and it is
+ * what covers BPE segmentation. The oracle needs the venv's numpy.
  */
 
 use runtime::model::cpu::CpuModel;
@@ -546,5 +548,78 @@ fn the_checkpoint_loader_and_the_gguf_loader_agree_bit_for_bit() {
             from_gguf[0].0.iter().any(|v| v.abs() > 1e-6),
             "{label}: logits are degenerate, so equality proves nothing"
         );
+    }
+}
+
+/// The committed checkpoint fixtures are what the generator writes.
+///
+/// The same pin the GGUF and tokenizer fixtures carry, extended to
+/// `config.json` and `model.safetensors`. Without it the committed
+/// checkpoint could drift from `TinySpec` while every in-memory test stayed
+/// green, and the Python oracle -- which reads the committed files and
+/// nothing else -- would be describing a different model from the one the
+/// Rust tests load.
+#[test]
+fn checkpoint_fixtures_match_the_generator() {
+    use runtime::synth::{build_tiny_config_json, build_tiny_safetensors, TinySpec};
+
+    for (stem, spec) in [
+        (UNIFORM, TinySpec::default()),
+        (E4B, TinySpec::e4b_shaped()),
+    ] {
+        for (file, generated) in [
+            ("config.json", build_tiny_config_json(&spec).unwrap()),
+            ("model.safetensors", build_tiny_safetensors(&spec).unwrap()),
+        ] {
+            let name = format!("{stem}/{file}");
+            let committed = std::fs::read(fixture_path(&name))
+                .unwrap_or_else(|e| panic!("read fixture {name}: {e} (regenerate; see header)"));
+            assert_eq!(
+                committed.len(),
+                generated.len(),
+                "{name}: committed is {} bytes, generator writes {} (regenerate; see header)",
+                committed.len(),
+                generated.len()
+            );
+            assert_eq!(committed, generated, "{name}: regenerate (see header)");
+        }
+    }
+}
+
+/// The committed checkpoint loads, and its logits are the committed goldens.
+///
+/// The goldens were computed by the numpy oracle reading these same
+/// safetensors files, so this closes the loop the equality test opens: that
+/// one proves the two loaders agree with each other in memory, and this one
+/// proves the checkpoint loader agrees with an independent implementation
+/// over the bytes on disk.
+#[test]
+fn the_committed_checkpoint_matches_the_python_reference() {
+    for stem in [UNIFORM, E4B] {
+        let dir = fixture_path(stem);
+        let files = runtime::checkpoint::CheckpointFiles::read(&dir)
+            .unwrap_or_else(|e| panic!("{stem}: {e:#}"));
+        let ck = runtime::checkpoint::parse(&files).unwrap_or_else(|e| panic!("{stem}: {e:#}"));
+        let mut model = CpuModel::from_checkpoint(&ck).unwrap_or_else(|e| panic!("{stem}: {e:#}"));
+
+        let (_, golden) = load_golden_named(stem);
+        let prompt: Vec<u32> = golden["prompt"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_u64().unwrap() as u32)
+            .collect();
+        let expected = golden["logits"].as_array().unwrap();
+        let rows = model.prefill_all(&prompt).unwrap();
+        assert_eq!(rows.len(), expected.len(), "{stem}: row count");
+        for (pos, (row, want)) in rows.iter().zip(expected).enumerate() {
+            let want = f32_row(want);
+            for (token, (&got, &w)) in row.0.iter().zip(&want).enumerate() {
+                assert!(
+                    (got - w).abs() < TOLERANCE,
+                    "{stem}: position {pos} token {token}: got {got}, reference {w}"
+                );
+            }
+        }
     }
 }

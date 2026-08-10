@@ -5,24 +5,57 @@
  * the committed fixture always reproduces identical bytes; the committed
  * Python reference (fixtures/reference_logits.py) reads the same file.
  *
- * Writes the GGUF image the CPU backend loads today, and beside it the
- * tokenizer.json the Hugging Face tokenizer reads. Both come from one
- * TinySpec, so a fixture pair cannot describe two different models.
+ * Given a stem, writes four artifacts describing one model:
+ *
+ *   <stem>.gguf                    the image the GGUF loader reads
+ *   <stem>.tokenizer.json          the vocabulary, for the tokenizers crate
+ *   <stem>/config.json             the checkpoint's architecture
+ *   <stem>/model.safetensors       the checkpoint's weights
+ *
+ * All four come from one TinySpec, so a fixture set cannot describe two
+ * different models. The GGUF and the checkpoint hold the same weights in the
+ * two containers' respective spellings, which is what lets `cpu_reference`
+ * assert the two loaders agree bit for bit.
  */
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use runtime::synth::{
-    build_tiny_model, build_tiny_tokenizer_json, merge_fixture_tokenizer_json, TinySpec,
+    build_tiny_config_json, build_tiny_model, build_tiny_safetensors, build_tiny_tokenizer_json,
+    merge_fixture_tokenizer_json, TinySpec,
 };
 
-/// `<stem>.gguf` becomes `<stem>.tokenizer.json`, so the pair stays adjacent
-/// and sorts together whatever the fixture is called.
-fn tokenizer_path(model: &str) -> String {
-    match Path::new(model).extension().map(|e| e == "gguf") {
-        Some(true) => format!("{}.tokenizer.json", &model[..model.len() - 5]),
-        _ => format!("{model}.tokenizer.json"),
+/// Drop a trailing `.gguf`, so the stem is the same whether the caller names
+/// the image or the fixture. Every other artifact hangs off this.
+fn stem_of(path: &str) -> &str {
+    match Path::new(path).extension().map(|e| e == "gguf") {
+        Some(true) => &path[..path.len() - 5],
+        _ => path,
+    }
+}
+
+/// Write `bytes` to `path`, reporting either way. Returns false on failure so
+/// the caller can stop at the first one rather than leaving a half-written
+/// fixture set that looks complete.
+fn write(path: &Path, bytes: &[u8]) -> bool {
+    if let Some(dir) = path.parent() {
+        if !dir.as_os_str().is_empty() {
+            if let Err(e) = std::fs::create_dir_all(dir) {
+                eprintln!("[ERROR] Create {}: {e}", dir.display());
+                return false;
+            }
+        }
+    }
+    match std::fs::write(path, bytes) {
+        Ok(()) => {
+            eprintln!("[OK] Wrote {} bytes to {}", bytes.len(), path.display());
+            true
+        }
+        Err(e) => {
+            eprintln!("[ERROR] Write {}: {e}", path.display());
+            false
+        }
     }
 }
 
@@ -48,29 +81,44 @@ fn main() -> ExitCode {
             };
         }
         _ => {
-            eprintln!("usage: tiny-model <output.gguf> [e4b] | <output.json> bpe");
+            eprintln!("usage: tiny-model <output-stem> [e4b] | <output.json> bpe");
             return ExitCode::from(2);
         }
     };
-    let image = build_tiny_model(&spec);
-    if let Err(e) = std::fs::write(path, &image) {
-        eprintln!("[ERROR] Write {path}: {e}");
-        return ExitCode::from(1);
-    }
-    eprintln!("[OK] Wrote {} bytes to {path}", image.len());
+    let stem = stem_of(path);
+    let checkpoint = PathBuf::from(stem);
 
-    let tokenizer_path = tokenizer_path(path);
-    let tokenizer = match build_tiny_tokenizer_json(&spec) {
-        Ok(bytes) => bytes,
+    let artifacts: Vec<(PathBuf, Vec<u8>)> = match (|| -> anyhow::Result<_> {
+        Ok(vec![
+            (
+                PathBuf::from(format!("{stem}.gguf")),
+                build_tiny_model(&spec),
+            ),
+            (
+                PathBuf::from(format!("{stem}.tokenizer.json")),
+                build_tiny_tokenizer_json(&spec)?,
+            ),
+            (
+                checkpoint.join(runtime::checkpoint::CONFIG_FILE),
+                build_tiny_config_json(&spec)?,
+            ),
+            (
+                checkpoint.join(runtime::checkpoint::WEIGHTS_FILE),
+                build_tiny_safetensors(&spec)?,
+            ),
+        ])
+    })() {
+        Ok(a) => a,
         Err(e) => {
-            eprintln!("[ERROR] Build tokenizer for {path}: {e:#}");
+            eprintln!("[ERROR] Build fixtures for {stem}: {e:#}");
             return ExitCode::from(1);
         }
     };
-    if let Err(e) = std::fs::write(&tokenizer_path, &tokenizer) {
-        eprintln!("[ERROR] Write {tokenizer_path}: {e}");
-        return ExitCode::from(1);
+    // Built before any is written, so a failure leaves no partial set behind.
+    for (path, bytes) in &artifacts {
+        if !write(path, bytes) {
+            return ExitCode::from(1);
+        }
     }
-    eprintln!("[OK] Wrote {} bytes to {tokenizer_path}", tokenizer.len());
     ExitCode::SUCCESS
 }
