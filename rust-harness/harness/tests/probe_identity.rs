@@ -15,6 +15,12 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+/// Prefix of the startup line main.rs prints once the model is loaded and the
+/// cache is sized. Two tests depend on it in opposite directions -- one that
+/// a successful run emits it, one that a refusal happens before it -- so it
+/// is named here rather than spelled twice.
+const KV_CACHE_LINE: &str = "[INFO] KV cache:";
+
 fn fixture_model() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../fixtures")
@@ -143,6 +149,10 @@ fn a_probe_recording_the_served_models_sha256_loads_and_the_run_completes() {
     assert!(!err.contains("trained on a different model"), "{err}");
     assert!(!err.contains("check skipped"), "{err}");
     assert!(err.contains("[INFO] Probe identity-probe:"), "{err}");
+    // Anchors the literal the refusal test below asserts the *absence* of.
+    // Without a run that proves the line is printed at all, a rename in
+    // main.rs would leave that negative assertion passing vacuously.
+    assert!(err.contains(KV_CACHE_LINE), "{err}");
     assert!(run.root.join("probe-flags.jsonl").is_file());
 }
 
@@ -161,10 +171,10 @@ fn a_probe_recording_a_different_model_hash_is_refused_naming_both_hashes() {
         err.contains(&served),
         "refusal omits the served hash: {err}"
     );
-    // Refused at load time: the KV budget line is printed further down
+    // Refused at load time: the KV cache line is printed further down
     // build_generator, so its absence pins the refusal ahead of session
     // construction, and no generation ran to leave a snapshot or flags.
-    assert!(!err.contains("KV budget"), "{err}");
+    assert!(!err.contains(KV_CACHE_LINE), "{err}");
     assert!(!run.root.join("session.kv").exists());
     assert!(!run.root.join("probe-flags.jsonl").exists());
 }

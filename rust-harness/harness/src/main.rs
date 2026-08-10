@@ -234,12 +234,10 @@ fn build_generator(
         }
         None => None,
     };
-    // --context caps the budget below the model's trained window; raising
-    // it above the checkpoint's max_position_embeddings is refused because
-    // the model was not trained there. The KV estimate warns before a budget the CPU backend cannot
-    // realistically hold in memory (it stores f32 K/V for the full
-    // sequence, so windowed layers are estimated at their window size and
-    // the true cost is an upper bound of context length for every layer).
+    // --context caps the cache below the model's trained window; raising it
+    // above the checkpoint's max_position_embeddings is refused because the
+    // model was not trained there. The estimate below then warns before a
+    // context the CPU backend cannot realistically hold.
     let trained = cpu.config().context_length;
     let max_context = match context {
         Some(n) => {
@@ -279,13 +277,24 @@ fn build_generator(
                 )
             })
             .collect();
-        let bytes = runtime::kv::budget_bytes(&layers, max_context);
+        // `resident_bytes`, not `budget_bytes`: the CPU backend applies the
+        // sliding window as an attention mask and stores the full sequence in
+        // every owning layer (`LayerKv` in runtime/src/model/cpu.rs). Charging
+        // windowed layers at their window size, as the design intends, reports
+        // less than the process goes on to take -- by (context - window) per
+        // windowed layer, which on a real checkpoint at its trained context is
+        // enough to keep the warning below from firing on a run that will not
+        // fit.
+        let bytes = runtime::kv::resident_bytes(&layers, max_context);
         let gib = bytes as f64 / (1024.0 * 1024.0 * 1024.0);
-        eprintln!("[INFO] KV budget: {max_context} tokens, estimated {gib:.2} GiB f32");
+        eprintln!(
+            "[INFO] KV cache: {max_context} tokens, {gib:.2} GiB f32 resident \
+             (full sequence per layer; the window is a mask, not a storage cap)"
+        );
         if bytes > 2 << 30 {
             eprintln!(
-                "[WARN] KV estimate above 2 GiB: consider --context to cap the budget \
-                 (compaction keeps long sessions inside it)"
+                "[WARN] KV cache above 2 GiB: consider --context to cap it \
+                 (compaction keeps long sessions inside the cap)"
             );
         }
     }

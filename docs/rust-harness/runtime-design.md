@@ -159,13 +159,20 @@ as compile-time constants, so one build serves every Gemma 4 size variant and th
 loader can refuse a checkpoint whose metadata falls outside the implemented
 subset.
 
-**KV cache.** Gemma interleaves sliding-window and global attention layers.
-Sliding-window layers cap their cache at window size regardless of context length,
-so the total budget is computable exactly at startup: fixed cost for windowed
-layers plus a per-token cost for global layers only. The cache is allocated once
-per session and persists across turns. The expected win is turn latency
-proportional to the appended delta rather than the full transcript; the magnitude
-is unmeasured until phase B of the roadmap.
+**KV cache.** Gemma interleaves sliding-window and global attention layers, and
+the cost is computable exactly at startup either way. The design is that windowed
+layers cap their cache at the window regardless of context length, giving a fixed
+cost for those plus a per-token cost for global layers only — `kv::budget_bytes`.
+**The CPU backend does not do this yet:** it applies the window as an attention
+mask and stores the full sequence in every cache-owning layer, so what a run
+actually holds is `kv::resident_bytes`, which is what the harness reports at
+startup. Closing that gap is a roadmap item of its own; until it lands, the
+windowed figure is a target rather than a measurement.
+
+Layers that share a donor's K/V store nothing and are excluded from both figures.
+The cache is allocated once per session and persists across turns. The expected
+win is turn latency proportional to the appended delta rather than the full
+transcript; the magnitude is unmeasured until phase B of the roadmap.
 
 **Sampling and grammar.** Sampling runs on trimmed logits with temperature and
 top-p. When the harness requests a tool call, a compiled JSON grammar for the tool
