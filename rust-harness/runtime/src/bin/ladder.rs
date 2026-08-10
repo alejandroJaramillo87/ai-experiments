@@ -31,6 +31,7 @@ fn run_rung(
     model: &mut CpuModel,
     model_path: &Path,
     reference_dir: &Path,
+    size: Size,
     tol: Tolerance,
     // The prompt length L1 and L2 scored, reported back so the table can say
     // how many tokens the agreement covers. Only these rungs know it -- they
@@ -83,10 +84,17 @@ fn run_rung(
             };
             ladder::rung_logits(model, &reference.token_ids, &logits, tol).map(Some)
         }
-        // L3 and L4 have finished rung bodies and reference types, but no
-        // artifact format yet; they land with the generators that write them.
-        // Reported as skipped, which is exactly what they are -- no reference,
-        // rather than no rung.
+        Rung::L4Greedy => {
+            let path = reference_dir.join("greedy.json");
+            let Some(references) = runtime::reference::load_greedy(&path, size.prompts())? else {
+                return Ok(None);
+            };
+            ladder::rung_greedy(model, &references).map(Some)
+        }
+        // L3 has a finished rung body and a reference type, but no artifact
+        // format yet; it lands with the generator that writes it. Reported as
+        // skipped, which is exactly what it is -- no reference, rather than no
+        // rung.
         _ => Ok(None),
     }
 }
@@ -123,6 +131,7 @@ fn run(
                 &mut model,
                 model_path,
                 reference_dir,
+                size,
                 ladder::TIER_E,
                 &mut prompt_tokens,
             ) {

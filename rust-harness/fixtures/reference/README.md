@@ -55,6 +55,13 @@ python rust-harness/fixtures/reference_capture.py \
     --prompt "The capital of France is" \
     --generate 16 \
     --out rust-harness/fixtures/reference/e4b/quick/layers.json
+
+# L4: a 64-token greedy continuation per prompt, for as many prompts as the
+# size decodes.
+python rust-harness/fixtures/reference_greedy.py \
+    --model <checkpoint-dir> \
+    --size quick \
+    --out rust-harness/fixtures/reference/e4b/quick/greedy.json
 ```
 
 Every artifact the ladder reads lives directly under the `--reference`
@@ -62,6 +69,24 @@ directory. L0's does not vary with `SIZE`, and is regenerated into each size
 directory rather than resolved from a parent: the duplication costs
 milliseconds, and one placement rule is worth more than the special case it
 would take to avoid it.
+
+### The greedy prompts
+
+`prompts.txt` is committed, and its order is load-bearing: a size takes a
+prefix, so a `quick` run reproduces the first rows of a `deep` run exactly.
+Append to the end; never insert.
+
+The prompts are written as continuations rather than as questions. E4B at the
+pinned revision is a base model — a measured 16-token probe on "The capital of
+France is" returned `" a city that is full of history and culture"`, which is
+a healthy base model and a weak prompt at once. A question in this file
+produces a fluent non-answer that reads like a defect and is not.
+
+`reference_greedy.py`'s `PROMPTS` and `TOKENS` restate `Size::prompts()` and
+`ladder::GREEDY_TOKENS` on the Python side. `runtime/tests/ladder_reference_contract.rs`
+pins them together: a generator writing fewer prompts than a size reads is
+caught by the loader, but one writing more would produce an artifact that
+loads, passes, and measures less than the header claims.
 
 ### What L0 can and cannot ask
 

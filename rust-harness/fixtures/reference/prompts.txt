@@ -1,0 +1,49 @@
+# Greedy prompts for L4, one per line. Blank lines and lines opening with a
+# hash are skipped.
+#
+# Written as continuations, not as questions. E4B at the pinned revision is a
+# base model: asked "What is the capital of France?" it does not answer, and a
+# reader who expects one will read a fluent non-answer as a defect. This was
+# measured rather than assumed -- a 16-token greedy probe on "The capital of
+# France is" returned " a city that is full of history and culture", which is
+# a healthy base model and a weak prompt at the same time.
+#
+# Order is load-bearing. SIZE takes a prefix of this list -- 2 prompts for
+# quick, 8 for standard, 32 for deep -- so a quick run reproduces the first
+# rows of a deep run exactly. Append to the end; never insert.
+#
+# Ordinary modern prose on purpose. Off-distribution input widens the gap
+# between two implementations measurably: the same prompt captured without a
+# BOS gave rel_L2 3.3e-5 where the in-distribution version gave 5.0e-6.
+The capital of France is
+In the morning she opened the window and
+The most common mistake beginners make when learning to cook is
+He had been walking for hours before he realized
+The difference between a good manager and a bad one is
+Water boils at a lower temperature at high altitude because
+When the train finally arrived, the platform was
+The first thing to check when a laptop will not turn on is
+Over the last decade the price of solar panels has
+She put down the book and said
+The problem with that argument is that it assumes
+By the time the letter reached him, the war had
+Most people believe that reading faster means
+The garden had not been tended in years, and
+A good way to remember someone's name is to
+The engine made a sound that he had never
+Historians disagree about why the city was
+If you have never made bread before, the hardest part is
+The dog waited by the door every afternoon until
+What surprised her most about living abroad was
+The report concluded that the failure had been caused by
+Before electricity, people kept food cold by
+He wrote the letter three times and burned
+The best advice I ever received about money was
+Rivers change course slowly, and over centuries a valley can
+She had always assumed her grandmother was born in
+The meeting ended without a decision because
+Learning a second language as an adult is difficult mainly because
+The old bridge was closed to traffic after inspectors found
+On clear nights in winter you can see
+The recipe called for an ingredient nobody in the house had
+It took three attempts before the rocket

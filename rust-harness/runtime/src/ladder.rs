@@ -289,6 +289,21 @@ impl Size {
 /// incomparable in a way that is invisible in the output.
 pub const CHUNK: usize = 256;
 
+/// How many tokens L4 continues each prompt for.
+///
+/// Fixed across sizes for the reason `CHUNK` is: `Size` varies how many
+/// prompts are decoded, not how far each one runs, so a quick run's rows are
+/// the same measurement as a deep run's rather than a shorter one. Long enough
+/// that a divergence has somewhere to show -- greedy decoding is
+/// autoregressive, so a wrong token at offset 3 sends the rest of the
+/// continuation somewhere else entirely, and a length of 8 would report that
+/// as a near miss.
+///
+/// The artifact records it as well, so a stored reference states its own
+/// length rather than inheriting whatever this constant happens to be when it
+/// is read back.
+pub const GREEDY_TOKENS: usize = 64;
+
 /// The prefix of `corpus` this size scores.
 ///
 /// Sizes are nested prefixes of one corpus rather than separate corpora, so a

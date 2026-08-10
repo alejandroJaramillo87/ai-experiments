@@ -17,7 +17,7 @@ use std::path::Path;
 
 use anyhow::{ensure, Context, Result};
 
-use crate::ladder::{Activations, TokenizerCase};
+use crate::ladder::{Activations, GreedyReference, TokenizerCase};
 use crate::model::Token;
 
 /// A reference forward pass: what was fed in, and what came out at each stage.
@@ -233,6 +233,49 @@ pub fn load_tokenizer_parity(
         .map(Some)
 }
 
+/// Load the L4 greedy continuations written by `fixtures/reference_greedy.py`.
+///
+/// `want` prompts are taken from the front of the artifact, which is what
+/// makes a `deep` reference a valid `quick` one: the generator writes prompts
+/// in the order `prompts.txt` lists them, and every size is a prefix of that
+/// list. An artifact with fewer than `want` is an error rather than a shorter
+/// run, because the header would otherwise claim a prompt count nothing
+/// measured.
+pub fn load_greedy(path: &Path, want: usize) -> Result<Option<Vec<GreedyReference>>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("read reference {}", path.display()))?;
+    let v: serde_json::Value = serde_json::from_str(&text)
+        .with_context(|| format!("parse reference {}", path.display()))?;
+
+    let prompts = v
+        .get("prompts")
+        .and_then(|t| t.as_array())
+        .context("greedy artifact carries no prompts array")?;
+    ensure!(
+        prompts.len() >= want,
+        "greedy artifact holds {} prompts and this size needs {want} -- \
+         regenerate it at this size or larger",
+        prompts.len()
+    );
+
+    prompts
+        .iter()
+        .take(want)
+        .enumerate()
+        .map(|(i, p)| {
+            Ok(GreedyReference {
+                prompt: required_ids(p, "ids").with_context(|| format!("greedy prompt {i}"))?,
+                continuation: required_ids(p, "continuation_ids")
+                    .with_context(|| format!("greedy prompt {i}"))?,
+            })
+        })
+        .collect::<Result<Vec<_>>>()
+        .map(Some)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,6 +386,52 @@ mod tests {
         );
         let err = load_tokenizer_parity(&path, 2).expect_err("expected an error");
         assert!(err.to_string().contains("case a"), "{err}");
+    }
+
+    fn write_greedy(dir: &Path, body: &str) -> std::path::PathBuf {
+        let path = dir.join("greedy.json");
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    const GREEDY: &str = r#"{"tokens": 2, "prompts": [
+        {"ids": [1, 2], "continuation_ids": [7, 8]},
+        {"ids": [3], "continuation_ids": [9, 10]},
+        {"ids": [4], "continuation_ids": [11, 12]}]}"#;
+
+    #[test]
+    fn a_larger_greedy_artifact_serves_a_smaller_size_from_its_front() {
+        // The nested-prefix property, at the artifact rather than the corpus:
+        // the generator writes prompts in prompts.txt order and every size is
+        // a prefix of that list, so a deep reference is a valid quick one and
+        // the two runs measure the same first rows.
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_greedy(dir.path(), GREEDY);
+        let got = load_greedy(&path, 2).unwrap().unwrap();
+        assert_eq!(got.len(), 2, "{got:?}");
+        assert_eq!(got[0].prompt, vec![1, 2]);
+        assert_eq!(got[1].continuation, vec![9, 10]);
+    }
+
+    #[test]
+    fn a_greedy_artifact_with_too_few_prompts_is_an_error() {
+        // Not a shorter run: the header would claim a prompt count that
+        // nothing measured.
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_greedy(dir.path(), GREEDY);
+        let err = load_greedy(&path, 8).expect_err("expected an error");
+        assert!(
+            err.to_string().contains("holds 3 prompts") && err.to_string().contains("needs 8"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_greedy_prompt_missing_its_continuation_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_greedy(dir.path(), r#"{"prompts": [{"ids": [1]}]}"#);
+        let err = load_greedy(&path, 1).expect_err("expected an error");
+        assert!(err.to_string().contains("greedy prompt 0"), "{err}");
     }
 
     #[test]
