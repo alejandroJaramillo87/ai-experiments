@@ -480,19 +480,36 @@ pub fn check_supported_checkpoint(
     // Split what is left in two. A non-text tower is a known part of a
     // multimodal release and the caller can decline it; anything else is
     // structure this backend has never heard of, and no flag accepts it.
+    //
+    // The two are summarized differently on purpose. An unknown family is a
+    // surprise, so every one is named. A tower is a known, whole subsystem: E4B
+    // carries 114 non-text families, and listing them turns the refusal into a
+    // wall of text that buries the flag the reader needs. The tower prefixes
+    // and a family count say the same thing in one line, and
+    // `checkpoint-info` prints the full list in its own section for anyone who
+    // wants it.
     let mut unconsumed: Vec<String> = Vec::new();
-    let mut towers: Vec<String> = Vec::new();
+    let mut towers: Vec<&str> = Vec::new();
+    let mut tower_families: Vec<String> = Vec::new();
     for name in &names {
         if consumable.contains(name) {
             continue;
         }
-        let bucket = match NON_TEXT_PREFIXES.iter().any(|p| name.starts_with(p)) {
-            true => &mut towers,
-            false => &mut unconsumed,
-        };
         let family = hf_tensor_family(name);
-        if !bucket.contains(&family) {
-            bucket.push(family);
+        match NON_TEXT_PREFIXES.iter().find(|p| name.starts_with(**p)) {
+            Some(prefix) => {
+                if !towers.contains(prefix) {
+                    towers.push(prefix);
+                }
+                if !tower_families.contains(&family) {
+                    tower_families.push(family);
+                }
+            }
+            None => {
+                if !unconsumed.contains(&family) {
+                    unconsumed.push(family);
+                }
+            }
         }
     }
     ensure!(
@@ -505,11 +522,14 @@ pub fn check_supported_checkpoint(
     );
     ensure!(
         towers.is_empty() || ck.text_only,
-        "checkpoint is multimodal: it carries {} tensor famil{} outside the text stack \
-         ({}), and this backend serves text only. Pass --text-only to load the text \
-         stack and decline the rest",
-        towers.len(),
-        if towers.len() == 1 { "y" } else { "ies" },
+        "checkpoint is multimodal: it carries {} tensor famil{} in {}, and this backend \
+         serves text only. Pass --text-only to load the text stack and decline the rest",
+        tower_families.len(),
+        if tower_families.len() == 1 {
+            "y"
+        } else {
+            "ies"
+        },
         towers.join(", ")
     );
     Ok(())
@@ -3386,18 +3406,15 @@ mod tests {
         let err = verdict_text_only(&files, false).unwrap_err().to_string();
         assert!(err.contains("multimodal"), "{err}");
         assert!(err.contains("--text-only"), "{err}");
-        assert!(
-            err.contains("model.audio_tower.layers.*.norm_out.weight"),
-            "{err}"
-        );
-        assert!(
-            err.contains("model.vision_tower.layers.*.norm_out.weight"),
-            "{err}"
-        );
-        assert!(
-            err.contains("model.embed_audio.embedding_projection.weight"),
-            "{err}"
-        );
+        // The towers by prefix, and how much was found in them -- not every
+        // family, which on a real release is 114 lines of noise around the one
+        // sentence the reader needs.
+        assert!(err.contains("model.audio_tower."), "{err}");
+        assert!(err.contains("model.vision_tower."), "{err}");
+        assert!(err.contains("model.embed_audio."), "{err}");
+        assert!(err.contains("3 tensor families"), "{err}");
+        // The one tower the file does not carry stays out of the message.
+        assert!(!err.contains("model.embed_vision."), "{err}");
         // Not reported as unparseable structure, which is the other message.
         assert!(!err.contains("does not consume"), "{err}");
 
