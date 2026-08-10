@@ -56,10 +56,27 @@ def parse_args():
         choices=["float32", "bfloat16"],
         help="reference precision (default float32)",
     )
+    # BOS is on by default, from a measurement rather than from principle.
+    # Captured against E4B on "The capital of France is": without BOS the top
+    # prediction was token 563, ' is' -- the prompt's own last token, which is
+    # what a model does with a sequence it does not believe has begun. With
+    # BOS it was 496, ' a', an ordinary continuation. Gemma is trained with a
+    # leading BOS and the harness's chat path emits one
+    # (harness/src/template.rs), so a capture without one measures the model
+    # off-distribution and predicts nothing about how the harness is used.
     p.add_argument(
-        "--add-bos",
-        action="store_true",
-        help="prepend BOS, matching the harness's own prompt construction",
+        "--no-bos",
+        action="store_false",
+        dest="add_bos",
+        default=True,
+        help="omit the leading BOS; the model then runs off-distribution",
+    )
+    p.add_argument(
+        "--generate",
+        type=int,
+        default=0,
+        metavar="N",
+        help="also greedily continue N tokens, for L4 and as a coherence check",
     )
     return p.parse_args()
 
@@ -258,6 +275,30 @@ def main():
     # the harness's own chat path emits one (harness/src/template.rs), so a
     # capture taken without one measures the model off-distribution.
     payload["add_bos"] = args.add_bos
+
+    # Greedy continuation: L4's reference, and the only cheap way to tell a
+    # weak prompt from a broken model. A single argmax cannot -- ' a' after
+    # "The capital of France is" is either a base model continuing fluently or
+    # a checkpoint that is not what we think it is, and a dozen tokens
+    # separate the two at a glance.
+    #
+    # do_sample=False rather than temperature=0, and it matches the harness's
+    # own greedy path: sampler.rs resolves ties to the first index precisely so
+    # that torch.argmax and our decoder cannot disagree on a tie.
+    if args.generate > 0:
+        with torch.no_grad():
+            grown = model.generate(
+                torch.tensor([ids]),
+                max_new_tokens=args.generate,
+                do_sample=False,
+            )
+        continuation = grown[0, len(ids) :].tolist()
+        payload["continuation_ids"] = continuation
+        payload["continuation"] = tokenizer.decode(continuation)
+        print(
+            f"[OK] Generated: {len(continuation)} tokens {payload['continuation']!r}",
+            file=sys.stderr,
+        )
 
     # Provenance, in the field names build_tiny_reference.py's manifest already
     # uses, so the two tiers spell the same facts the same way. A number nobody

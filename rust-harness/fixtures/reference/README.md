@@ -42,12 +42,19 @@ Workstation only: every command below needs the real checkpoint and a torch envi
 `docs/testing/quality-gate.md` for where this sits relative to `make quality`.
 
 ```bash
-# L1: per-layer residual stream and the pre-stack stages.
+# L1 and L2: per-layer residual stream, the pre-stack stages, and the
+# final-position distribution. --generate also writes L4's continuation.
 python rust-harness/fixtures/reference_capture.py \
     --model <checkpoint-dir> \
     --prompt "The capital of France is" \
+    --generate 16 \
     --out rust-harness/fixtures/reference/e4b/quick/layers.json
 ```
+
+A leading `<bos>` is prepended by default. This was measured, not assumed: on E4B the same
+prompt captured without one put its highest probability on repeating its own last token, which
+is what a model does with a sequence it does not believe has begun. `--no-bos` reproduces that
+if there is ever a reason to.
 
 The remaining rungs' generators land with the runner; this file is updated as each one does,
 and a rung whose artifact is absent reports `skipped` rather than passing.
