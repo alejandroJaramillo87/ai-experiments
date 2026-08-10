@@ -23,7 +23,7 @@ fn tiny_checkpoint() -> runtime::checkpoint::CheckpointFiles {
     let spec = TinySpec::default();
     runtime::checkpoint::CheckpointFiles {
         config: build_tiny_config_json(&spec).unwrap(),
-        weights: build_tiny_safetensors(&spec).unwrap(),
+        weights: build_tiny_safetensors(&spec).unwrap().into(),
         dir: std::path::PathBuf::from("<memory>"),
     }
 }

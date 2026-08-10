@@ -8,10 +8,18 @@
  */
 
 // This crate produces the training and interp numerics, so memory safety here
-// is not negotiable: forbid rather than deny, because forbid cannot be lifted
-// by a module-level allow. Nothing in the crate needs unsafe — the GPU backend
-// reaches hardware through Candle, which owns the FFI.
-#![forbid(unsafe_code)]
+// is still the default: deny, and every exception is a written argument at the
+// site. The one exception is `checkpoint::CheckpointFiles::read`, which
+// memory-maps model.safetensors because `fs::read` of a 15 GB checkpoint costs
+// a private copy of the whole file on top of the f32 expansion; `Mmap::map` is
+// unsafe and there is no safe wrapper for it. The numerics themselves reach no
+// further than safe Rust, and the GPU backend reaches hardware through Candle,
+// which owns the FFI.
+//
+// This was `forbid` until the checkpoint loader needed the map. `deny` is the
+// weaker guarantee on purpose: an `allow` can now be written, so the review
+// question moves from "does this compile" to "is the SAFETY comment true".
+#![deny(unsafe_code)]
 
 pub mod checkpoint;
 pub mod eval;

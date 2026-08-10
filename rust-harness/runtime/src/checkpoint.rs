@@ -109,16 +109,48 @@ pub struct CheckpointConfig {
     pub text_config: TextConfig,
 }
 
-/// The bytes of a checkpoint, owned.
+/// A block of checkpoint bytes, however it was obtained.
+///
+/// `read` maps the weights file; tests and in-memory callers build one from a
+/// `Vec<u8>`. Both deref to `[u8]`, so nothing downstream of this type knows
+/// which it holds -- `parse` and `widen` see one slice either way.
+#[derive(Debug)]
+pub enum Bytes {
+    Owned(Vec<u8>),
+    Mapped(memmap2::Mmap),
+}
+
+impl std::ops::Deref for Bytes {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        match self {
+            Bytes::Owned(v) => v,
+            Bytes::Mapped(m) => m,
+        }
+    }
+}
+
+impl From<Vec<u8>> for Bytes {
+    fn from(v: Vec<u8>) -> Bytes {
+        Bytes::Owned(v)
+    }
+}
+
+/// The bytes of a checkpoint.
 ///
 /// Separate from `Checkpoint` because `safetensors::SafeTensors` borrows the
 /// buffer it parses, so the owner and the view cannot be one struct. This
 /// mirrors the GGUF path, where callers hold a `Vec<u8>` and pass it beside
 /// the parsed header.
+///
+/// `config` is a plain `Vec<u8>` because it is a few kilobytes and mapping it
+/// would buy nothing; only `weights` is large enough for the distinction to
+/// matter.
 #[derive(Debug)]
 pub struct CheckpointFiles {
     pub config: Vec<u8>,
-    pub weights: Vec<u8>,
+    pub weights: Bytes,
     /// Directory the two were read from, for error messages.
     pub dir: PathBuf,
 }
@@ -391,13 +423,19 @@ pub fn resolve(model: &Path) -> Result<PathBuf> {
 }
 
 impl CheckpointFiles {
-    /// Read `config.json` and `model.safetensors` from a checkpoint.
+    /// Read `config.json` and map `model.safetensors` from a checkpoint.
     ///
-    /// `fs::read` rather than a memory map: the `runtime` crate forbids
-    /// unsafe at the crate level and `memmap2::Mmap::map` is unsafe. This
-    /// matches what the GGUF path did, so it is not a regression, but a real
-    /// E4B checkpoint is fully resident and then widened to f32 on top.
-    /// Reducing that is its own piece of work.
+    /// The weights are mapped rather than read because `from_checkpoint`
+    /// widens every tensor into an owned `Vec<f32>` anyway: an `fs::read`
+    /// would hold a private copy of the whole file alongside that expansion,
+    /// which on a 15 GB E4B checkpoint is 15 GB of anonymous memory that is
+    /// never read twice. A map costs page cache instead, which the kernel can
+    /// evict.
+    ///
+    /// What this does *not* do is make loading lazy. `widen` copies out
+    /// regardless, so the f32 expansion is unchanged and every page a tensor
+    /// touches is faulted in. The tools that only read the header --
+    /// `checkpoint-info` -- are the ones that get the whole benefit.
     pub fn read(model: &Path) -> Result<CheckpointFiles> {
         let dir = resolve(model)?;
         let config_path = dir.join(CONFIG_FILE);
@@ -410,11 +448,29 @@ impl CheckpointFiles {
                 path.file_name().unwrap_or_default().to_string_lossy()
             );
         }
+        let config = std::fs::read(&config_path)
+            .with_context(|| format!("read {}", config_path.display()))?;
+        let file = std::fs::File::open(&weights_path)
+            .with_context(|| format!("open {}", weights_path.display()))?;
+        // SAFETY: the obligation `Mmap::map` carries is not pointer validity
+        // -- it hands back a slice the borrow checker tracks -- but external
+        // mutation. If another process truncates or rewrites this file while
+        // the map is live, reads through the slice are undefined behaviour,
+        // and no Rust-level guard can prevent that.
+        //
+        // The assumption being made, rather than proved, is that a checkpoint
+        // is a published read-only artifact: nothing in this repository writes
+        // under a model directory while a harness runs, and the training
+        // export pipeline writes a new directory rather than editing one in
+        // place. That assumption is the price of not copying 15 GB, and it is
+        // stated here so a future writer of an in-place model updater knows
+        // what it would break.
+        #[allow(unsafe_code)]
+        let weights = unsafe { memmap2::Mmap::map(&file) }
+            .with_context(|| format!("map {}", weights_path.display()))?;
         Ok(CheckpointFiles {
-            config: std::fs::read(&config_path)
-                .with_context(|| format!("read {}", config_path.display()))?,
-            weights: std::fs::read(&weights_path)
-                .with_context(|| format!("read {}", weights_path.display()))?,
+            config,
+            weights: Bytes::Mapped(weights),
             dir,
         })
     }
@@ -712,7 +768,7 @@ mod tests {
         let weights = build_tiny_safetensors(&spec).unwrap();
         let files = CheckpointFiles {
             config: build_tiny_config_json(&spec).unwrap(),
-            weights,
+            weights: weights.into(),
             dir: PathBuf::from("<memory>"),
         };
         let ck = parse(&files).unwrap();
@@ -760,7 +816,7 @@ mod tests {
         };
         let files = CheckpointFiles {
             config: build_tiny_config_json(&spec).unwrap(),
-            weights: build_tiny_safetensors(&spec).unwrap(),
+            weights: build_tiny_safetensors(&spec).unwrap().into(),
             dir: PathBuf::from("<memory>"),
         };
         let ck = parse(&files).unwrap();
@@ -825,5 +881,50 @@ mod tests {
         .unwrap();
         let err = CheckpointFiles::read(dir.path()).unwrap_err().to_string();
         assert!(err.contains(WEIGHTS_FILE), "{err}");
+    }
+
+    /// The mapped and the owned byte source are the same checkpoint.
+    ///
+    /// `read` maps the weights while every in-memory caller wraps a `Vec<u8>`,
+    /// so the two `Bytes` variants are exercised by different halves of the
+    /// suite and nothing else compares them. A map that handed back a
+    /// truncated or misaligned view would widen to different floats here and
+    /// pass everywhere else.
+    #[test]
+    fn a_mapped_checkpoint_and_an_owned_one_widen_to_the_same_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let spec = TinySpec::default();
+        let config = build_tiny_config_json(&spec).unwrap();
+        let weights = build_tiny_safetensors(&spec).unwrap();
+        std::fs::write(dir.path().join(CONFIG_FILE), &config).unwrap();
+        std::fs::write(dir.path().join(WEIGHTS_FILE), &weights).unwrap();
+
+        let mapped = CheckpointFiles::read(dir.path()).unwrap();
+        assert!(
+            matches!(mapped.weights, Bytes::Mapped(_)),
+            "read did not map the weights"
+        );
+        let owned = CheckpointFiles {
+            config,
+            weights: weights.into(),
+            dir: PathBuf::from("<memory>"),
+        };
+
+        let mapped_ck = parse(&mapped).unwrap();
+        let owned_ck = parse(&owned).unwrap();
+        let names = mapped_ck.names();
+        assert_eq!(names, owned_ck.names());
+        assert!(!names.is_empty(), "the fixture wrote no tensors");
+        for name in &names {
+            let want = mapped_ck.tensors.tensor(name).unwrap();
+            let shape = want.shape().to_vec();
+            // Exact comparison: the two paths read the same bytes through the
+            // same widener, so any difference is a defect rather than drift.
+            assert_eq!(
+                mapped_ck.tensor(name, &shape).unwrap(),
+                owned_ck.tensor(name, &shape).unwrap(),
+                "{name}"
+            );
+        }
     }
 }

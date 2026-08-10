@@ -42,6 +42,13 @@ anyhow = "1.0"
 # flock only: the obs run-log holds a shared lock so the Python retention
 # pruner treats the live event file as in use (common/obs/retention.py)
 libc = "0.2"
+# `Mmap::map` only, at exactly one call site: checkpoint::CheckpointFiles::read
+# maps model.safetensors instead of reading it, so a 15 GB checkpoint costs
+# evictable page cache rather than a private copy on top of the f32 expansion.
+# safetensors parses from a &[u8] and offers no mapping helper of its own, so
+# the caller owns the map. Pure Rust, so `cargo tree -p runtime -i cc` stays
+# empty.
+memmap2 = "0.9"
 # Checkpoint container: header-plus-bytes reader over model.safetensors, used
 # for tensor names, Dtype, shape and the raw byte slice. HuggingFace's own
 # crate, so it tracks the format rather than a transcription of it.

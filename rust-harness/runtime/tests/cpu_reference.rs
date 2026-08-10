@@ -361,12 +361,12 @@ fn a_bfloat16_model_matches_the_f32_model_holding_the_same_values() {
     let dir = std::path::PathBuf::from("<memory>");
     let bf16_files = CheckpointFiles {
         config: config.clone(),
-        weights: bf16_weights,
+        weights: bf16_weights.into(),
         dir: dir.clone(),
     };
     let f32_files = CheckpointFiles {
         config,
-        weights: truncated_weights,
+        weights: truncated_weights.into(),
         dir,
     };
     let bf16_ck = runtime::checkpoint::parse(&bf16_files).unwrap();

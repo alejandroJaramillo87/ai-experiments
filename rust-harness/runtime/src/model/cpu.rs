@@ -1577,7 +1577,7 @@ mod tests {
     fn checkpoint_of(spec: &TinySpec) -> crate::checkpoint::CheckpointFiles {
         crate::checkpoint::CheckpointFiles {
             config: crate::synth::build_tiny_config_json(spec).unwrap(),
-            weights: crate::synth::build_tiny_safetensors(spec).unwrap(),
+            weights: crate::synth::build_tiny_safetensors(spec).unwrap().into(),
             dir: std::path::PathBuf::from("<memory>"),
         }
     }
@@ -1639,7 +1639,7 @@ mod tests {
             .collect();
         crate::checkpoint::CheckpointFiles {
             config: crate::synth::build_tiny_config_json(spec).unwrap(),
-            weights: safetensors::serialize(views, None).unwrap(),
+            weights: safetensors::serialize(views, None).unwrap().into(),
             dir: std::path::PathBuf::from("<memory>"),
         }
     }
@@ -1679,7 +1679,7 @@ mod tests {
             .collect();
         crate::checkpoint::CheckpointFiles {
             config: crate::synth::build_tiny_config_json(spec).unwrap(),
-            weights: safetensors::serialize(views, None).unwrap(),
+            weights: safetensors::serialize(views, None).unwrap().into(),
             dir: std::path::PathBuf::from("<memory>"),
         }
     }
@@ -2775,7 +2775,7 @@ mod tests {
         let spec = TinySpec::default();
         let files = crate::checkpoint::CheckpointFiles {
             config: crate::synth::build_tiny_config_json(&spec).unwrap(),
-            weights: crate::synth::build_tiny_safetensors(&spec).unwrap(),
+            weights: crate::synth::build_tiny_safetensors(&spec).unwrap().into(),
             dir: std::path::PathBuf::from("<memory>"),
         };
         let ck = crate::checkpoint::parse(&files).unwrap();

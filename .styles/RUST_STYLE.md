@@ -119,20 +119,32 @@ noise; a panicking test is a failing test.
 
 ## Unsafe code
 
-The `runtime` crate forbids unsafe entirely:
+The `runtime` crate denies unsafe, and grants exactly one exception:
 
 ```rust
-// forbid, not deny: a module-level allow cannot lift it, and this crate
-// produces training and interpretability numerics.
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 ```
 
-Choose `forbid` over `deny` for any crate where a later module-level `#[allow]` would be a
-mistake rather than an escape hatch.
+**This was `forbid` until the checkpoint loader needed a memory map.**
+`CheckpointFiles::read` maps `model.safetensors` rather than reading it, because a 15 GB
+checkpoint otherwise costs a private copy of the whole file on top of the f32 expansion
+`from_checkpoint` produces. `memmap2::Mmap::map` is unsafe and has no safe wrapper, and
+`forbid` cannot be lifted at the site — so the crate attribute moved to `deny` and the call
+carries an `#[allow(unsafe_code)]`.
+
+Weigh that trade before repeating it. `deny` is the weaker guarantee on purpose: the review
+question is no longer "does this compile" but "is the `SAFETY` comment true", which is a
+question a reader has to actually answer. Prefer `forbid` for a new crate, and reach for
+`deny` only where a specific unavoidable call can be named in the attribute's own comment, as
+`runtime/src/lib.rs` names this one. The numerics themselves — sampling, the KV cache, the
+forward pass — remain unsafe-free, and that is the property the original `forbid` was
+protecting.
 
 Where `unsafe` is unavoidable, confine it to the smallest possible block and precede every
 occurrence with a `// SAFETY:` comment that reasons about the specific obligation — descriptor
-ownership, pointer validity, lifetime — rather than asserting that the call is safe:
+ownership, pointer validity, lifetime, external mutation — rather than asserting that the call
+is safe. Where the obligation cannot be discharged in Rust, as with a mapped file another
+process could truncate, say so plainly and name the assumption being made instead:
 
 ```rust
 // SAFETY: 'events' owns the descriptor and stays alive past this call,
@@ -334,7 +346,7 @@ the `release-with-debug` profile) and `make debug-record` / `make debug-replay` 
 - `mul_add` and any FMA-introducing rewrite — breaks bit-identical replay
 - Reordering floating-point arithmetic for style
 - `thiserror` or hand-rolled error enums where `anyhow` with context suffices
-- `unsafe` in `runtime`, which forbids it at the crate level
+- `unsafe` in `runtime` beyond the one allowed checkpoint map, which the crate attribute names
 - `unsafe` anywhere without a specific `// SAFETY:` justification
 - An RNG crate in place of the seeded in-tree generators
 - `test_` prefixes on test names
