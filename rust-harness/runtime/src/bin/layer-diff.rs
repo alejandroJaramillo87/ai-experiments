@@ -26,6 +26,7 @@ use std::process::ExitCode;
 
 use anyhow::{ensure, Context, Result};
 
+use runtime::metrics::vec_diff;
 use runtime::model::cpu::{CpuModel, LastRowTap, PRELUDE_STAGES};
 use runtime::model::{Model, Token};
 
@@ -143,40 +144,6 @@ fn load_reference(path: &Path) -> Result<Reference> {
     })
 }
 
-/// Cosine similarity, max absolute difference, and relative L2 of `got`
-/// against `want`. f64 throughout: the sums run over thousands of terms and
-/// the quantity being measured is itself a small difference of large numbers.
-fn compare(got: &[f32], want: &[f32]) -> (f64, f64, f64) {
-    let mut dot = 0.0f64;
-    let mut ng = 0.0f64;
-    let mut nw = 0.0f64;
-    let mut max_abs = 0.0f64;
-    let mut diff_sq = 0.0f64;
-    for (a, b) in got.iter().zip(want) {
-        let (a, b) = (*a as f64, *b as f64);
-        dot += a * b;
-        ng += a * a;
-        nw += b * b;
-        let d = (a - b).abs();
-        if d > max_abs {
-            max_abs = d;
-        }
-        diff_sq += (a - b) * (a - b);
-    }
-    // A zero row on either side has no direction, so cosine is undefined
-    // rather than 1.0. Reported as 0.0, which fails the floor and prints,
-    // instead of silently passing as a perfect match of nothing.
-    let cosine = match ng > 0.0 && nw > 0.0 {
-        true => dot / (ng.sqrt() * nw.sqrt()),
-        false => 0.0,
-    };
-    let rel_l2 = match nw > 0.0 {
-        true => diff_sq.sqrt() / nw.sqrt(),
-        false => f64::INFINITY,
-    };
-    (cosine, max_abs, rel_l2)
-}
-
 /// Print one table row, and report whether it diverged.
 ///
 /// Either failure alone is a divergence, and the mark says which, so a
@@ -188,7 +155,8 @@ fn report(label: &str, got: &[f32], want: &[f32], floor: f64, ceiling: f64) -> R
         got.len(),
         want.len()
     );
-    let (cosine, max_abs, rel_l2) = compare(got, want);
+    let d = vec_diff(got, want);
+    let (cosine, max_abs, rel_l2) = (d.cosine, d.max_abs, d.rel_l2);
     let mark = match (cosine < floor, rel_l2 > ceiling) {
         (true, true) => "  <-- diverges",
         (true, false) => "  <-- diverges (direction)",
@@ -386,41 +354,5 @@ fn main() -> ExitCode {
             eprintln!("[ERROR] {e:#}");
             ExitCode::from(1)
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn identical_rows_compare_as_a_perfect_match() {
-        let x = [1.0f32, -2.0, 3.5, 0.25];
-        let (cosine, max_abs, rel_l2) = compare(&x, &x);
-        assert!((cosine - 1.0).abs() < 1e-12, "{cosine}");
-        assert_eq!(max_abs, 0.0);
-        assert_eq!(rel_l2, 0.0);
-    }
-
-    #[test]
-    fn a_uniformly_scaled_row_keeps_its_direction_and_fails_on_magnitude() {
-        // The shape a missing output scale produces: same direction, wrong
-        // size. Cosine alone would pass it, which is why the table prints
-        // rel_l2 beside it rather than cosine on its own.
-        let x = [1.0f32, -2.0, 3.5, 0.25];
-        let scaled: Vec<f32> = x.iter().map(|v| v * 0.5).collect();
-        let (cosine, _, rel_l2) = compare(&scaled, &x);
-        assert!((cosine - 1.0).abs() < 1e-12, "{cosine}");
-        assert!((rel_l2 - 0.5).abs() < 1e-12, "{rel_l2}");
-    }
-
-    #[test]
-    fn a_zero_row_is_reported_as_no_match_rather_than_a_perfect_one() {
-        // 0/0 would be NaN, and NaN < floor is false -- so an unhooked layer
-        // capturing zeros would read as passing. Reported as 0.0 instead,
-        // which fails the floor.
-        let (cosine, _, rel_l2) = compare(&[0.0; 4], &[1.0, 2.0, 3.0, 4.0]);
-        assert_eq!(cosine, 0.0);
-        assert!(rel_l2.is_finite(), "{rel_l2}");
     }
 }
