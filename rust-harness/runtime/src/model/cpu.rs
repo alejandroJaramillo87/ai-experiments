@@ -1161,16 +1161,20 @@ impl CpuModel {
     /// comment. Nothing downstream would catch a transpose: the forward pass
     /// slices by strides from the config and returns finite, wrong logits.
     ///
-    /// RMSNorm weights get Gemma's runtime `+1` folded in as they load. A
-    /// published checkpoint stores the raw parameter and transformers adds one
-    /// at every use; the GGUF converter resolves the shift before writing. So
-    /// the two containers spell the same tensor differently, and this is where
-    /// the checkpoint spelling is translated into the effective multiplier
-    /// `rms_norm_into` expects. Folding at load rather than in the kernel is
-    /// deliberate: it is the same arithmetic performed once per weight instead
-    /// of once per weight per token, it keeps one norm kernel rather than two
-    /// during the transition, and it avoids a subtract-then-add round trip
-    /// that is lossy for the large norm values real Gemma checkpoints carry.
+    /// RMSNorm weights load as the checkpoint stores them, with no shift.
+    ///
+    /// This applied `1 + w` until the Tier T fixture measured it. Gemma 1
+    /// through Gemma 3 store a parameter initialized to zero and add one at
+    /// every use, and that convention was carried forward here; Gemma 4's
+    /// `Gemma4RMSNorm` initializes `weight` to `torch.ones` and multiplies by
+    /// plain `w`. Adding one to a weight that is already about one scaled
+    /// every normalized activation by roughly two.
+    ///
+    /// The GGUF converter agreed, for what that was worth: it writes
+    /// `norm_shift` 0.0 for gemma3n and gemma4, so the shift was ours alone.
+    /// Nothing in this repository could say so, because `synth.rs` wrote
+    /// `v - 1.0` into the fixture and `reference_logits.py` added one back --
+    /// one belief, spelled at three ends, agreeing with itself.
     pub fn from_checkpoint(ck: &crate::checkpoint::Checkpoint) -> Result<CpuModel> {
         use crate::checkpoint::hf_tensor_name;
 
@@ -1187,10 +1191,12 @@ impl CpuModel {
         };
         let tensor =
             |gguf: &str, want: &[usize]| -> Result<Vec<f32>> { ck.tensor(&hf(gguf)?, want) };
-        // A norm weight, shifted into the effective multiplier.
+        // A norm weight is the effective multiplier already: see the note on
+        // this function. Kept as a named binding rather than folded into
+        // `tensor` so the debug assertion still says which tensors are norms.
         let norm = |gguf: &str, want: &[usize]| -> Result<Vec<f32>> {
             debug_assert!(gguf.ends_with("norm.weight"), "{gguf} is not a norm");
-            Ok(tensor(gguf, want)?.into_iter().map(|w| 1.0 + w).collect())
+            tensor(gguf, want)
         };
 
         let embed_dim = config.embed_dim;
@@ -1942,11 +1948,17 @@ mod tests {
 
     /// A checkpoint whose stored values have been edited in place.
     ///
-    /// `edit` sees each tensor's Hugging Face name and its stored values --
-    /// unshifted, as the file holds them. Perturbing a weight is how a test
-    /// shows which layers actually read it, and doing it through the writer
-    /// rather than by patching serialized bytes keeps the test independent of
-    /// where safetensors chose to place a payload.
+    /// `edit` sees each tensor's Hugging Face name and its stored values, as
+    /// the file holds them. Perturbing a weight is how a test shows which
+    /// layers actually read it, and doing it through the writer rather than
+    /// by patching serialized bytes keeps the test independent of where
+    /// safetensors chose to place a payload.
+    ///
+    /// This must write exactly what `build_tiny_safetensors` writes, or a
+    /// perturbed checkpoint differs from the unperturbed one in ways the edit
+    /// did not ask for -- which is what happened when the sink stopped
+    /// unshifting norms and this did not: every norm came out a full 1.0 low
+    /// and the comparison blamed the perturbation.
     fn checkpoint_edited(
         spec: &TinySpec,
         edit: impl Fn(&str, &mut Vec<f32>),
@@ -1958,8 +1970,7 @@ mod tests {
             let Some(name) = t.hf_name.clone() else {
                 continue;
             };
-            let shift = if t.norm { 1.0f32 } else { 0.0 };
-            let mut values: Vec<f32> = t.values.iter().map(|v| v - shift).collect();
+            let mut values: Vec<f32> = t.values.clone();
             edit(&name, &mut values);
             let bytes: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
             payloads.push((name, t.hf_shape(), bytes));
@@ -2001,25 +2012,23 @@ mod tests {
         files
     }
 
-    /// One tensor's effective values, named in the llama.cpp spelling the
-    /// tests use, with the RMSNorm shift applied exactly as the loader applies
-    /// it. Independent-recomputation tests want the numbers the forward pass
-    /// sees, not the geometry, so there is no shape argument.
+    /// One tensor's values, named in the llama.cpp spelling the tests use.
+    ///
+    /// Independent-recomputation tests want the numbers the forward pass
+    /// sees, not the geometry, so there is no shape argument. That used to
+    /// mean adding 1.0 to norm weights here, mirroring the loader; the loader
+    /// no longer shifts, so neither does this, and the stored value is what
+    /// the forward pass sees.
     fn tensor_of(ck: &crate::checkpoint::Checkpoint, gguf_name: &str) -> Vec<f32> {
         let hf = crate::checkpoint::hf_tensor_name(gguf_name)
             .unwrap_or_else(|| panic!("no published name for {gguf_name}"));
-        let view = ck
-            .tensors
-            .tensor(&hf)
+        // Shape read from the file and handed straight back, so `tensor`'s
+        // shape check is a no-op here and the name resolution still runs.
+        let shape = ck
+            .shape(&hf)
             .unwrap_or_else(|e| panic!("missing {hf}: {e:?}"));
-        let shift = match gguf_name.ends_with("norm.weight") {
-            true => 1.0f32,
-            false => 0.0,
-        };
-        view.data()
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]) + shift)
-            .collect()
+        ck.tensor(&hf, &shape)
+            .unwrap_or_else(|e| panic!("read {hf}: {e:?}"))
     }
 
     /// `check_supported_checkpoint`'s verdict on a perturbed tensor set.
@@ -3190,22 +3199,21 @@ mod tests {
         assert!(err.contains("layer 1"), "{err}");
     }
 
-    /// The checkpoint loader folds Gemma's runtime `+1` into every RMSNorm
-    /// weight, and does it to norms only.
+    /// The checkpoint loader shifts nothing: a norm weight loads as stored.
     ///
-    /// `rms_norm_into` multiplies by the stored weight, so the shift has to be
-    /// applied somewhere or every norm is off by one for the whole run --
-    /// which still loads, still has the right shapes, and still emits fluent
-    /// text. It is applied here, at load, rather than in the kernel: the
-    /// arithmetic is identical, it happens once per weight instead of once
-    /// per token, and it leaves one norm kernel serving both loaders.
+    /// This test asserted the opposite until the Tier T fixture measured it
+    /// (`runtime/tests/ladder_tiny.rs`). Gemma 1 through 3 store a norm
+    /// parameter initialized to zero and add one at every use; Gemma 4's
+    /// `Gemma4RMSNorm` initializes `weight` to ones and multiplies by plain
+    /// `w`, so the `1 + w` carried over from the older models doubled every
+    /// normalized activation.
     ///
-    /// The two-loader equality test in `cpu_reference` is what proves the
-    /// shift is right end to end. This names the convention so that a reader
-    /// of `from_checkpoint` finds the reason rather than an unexplained
-    /// `1.0 +`.
+    /// Kept as a test rather than deleted with the code, because the shift is
+    /// the natural thing to reintroduce: it is what Gemma is famous for and
+    /// what three of this repository's own files used to do. This is the
+    /// statement that Gemma 4 is the exception.
     #[test]
-    fn the_checkpoint_loader_shifts_norm_weights_and_only_norm_weights() {
+    fn the_checkpoint_loader_does_not_shift_norm_weights() {
         let spec = TinySpec::default();
         let files = crate::checkpoint::CheckpointFiles {
             config: crate::synth::build_tiny_config_json(&spec).unwrap(),
@@ -3223,29 +3231,26 @@ mod tests {
                 .collect()
         };
 
-        // A norm arrives shifted.
-        let want: Vec<f32> = stored(&hf("blk.0.attn_norm.weight"))
-            .iter()
-            .map(|w| 1.0 + w)
-            .collect();
+        // A norm arrives exactly as stored.
+        let file = stored(&hf("blk.0.attn_norm.weight"));
         assert_eq!(
-            model.weights.layers[0].attn_norm, want,
-            "attn_norm did not take the shift"
+            model.weights.layers[0].attn_norm, file,
+            "attn_norm was transformed on the way in"
         );
-        // And the file really does store the unshifted value, so the
-        // assertion above is not comparing a tensor to itself.
+        // And the stored values sit near one, so a stray `1 + w` would be a
+        // visible doubling rather than a rounding difference. Without this
+        // the assertion above would still pass on a fixture whose norms were
+        // near zero, where both conventions nearly agree.
         assert!(
-            stored(&hf("blk.0.attn_norm.weight"))
-                .iter()
-                .all(|w| w.abs() < 0.5),
-            "the checkpoint already holds shifted norms, so this proves nothing"
+            file.iter().all(|w| (0.5..=2.0).contains(w)),
+            "the fixture's norms are not near one, so this proves little"
         );
 
-        // A projection does not.
+        // A projection is likewise untouched.
         assert_eq!(
             model.weights.layers[0].wq,
             stored(&hf("blk.0.attn_q.weight")),
-            "q_proj was shifted; the shift is for norms only"
+            "q_proj was transformed"
         );
         assert_eq!(
             model.weights.embed,

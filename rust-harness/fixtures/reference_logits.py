@@ -128,9 +128,6 @@ HF_LAYER_NAMES = {
     "post_norm.weight": "post_per_layer_input_norm.weight",
 }
 
-# RMSNorm weights, which the checkpoint stores unshifted. See `rms_norm`.
-NORM_SUFFIX = "norm.weight"
-
 
 def parse_safetensors(data):
     """Tensors from a model.safetensors, keyed by this reference's own names.
@@ -176,21 +173,19 @@ def parse_safetensors(data):
             assert suffix is not None, f"unrecognized tensor {hf_name}"
             name = f"blk.{index}.{suffix}"
 
-        # Undo the shift the checkpoint stores norms without, so every tensor
-        # in this dict is the effective multiplier `rms_norm` applies.
-        values = flat.reshape(shape).astype(np.float32)
-        if name.endswith(NORM_SUFFIX):
-            values = values + np.float32(1.0)
-        tensors[name] = values
+        # No shift. Gemma 4's RMSNorm multiplies by the stored weight, which
+        # is initialized to ones rather than zeros; this added 1.0 until the
+        # Tier T fixture measured the difference against transformers itself.
+        tensors[name] = flat.reshape(shape).astype(np.float32)
     return tensors
 
 
 def rms_norm(x, w, eps):
-    # `w` is the effective multiplier, with Gemma's runtime +1 already in it.
-    # A published checkpoint stores the raw parameter and transformers adds
-    # one at every use; parse_safetensors folds that in as it reads, so the
-    # shift happens once per weight here rather than once per call. The Rust
-    # loader makes the same choice, which is why the two agree bit for bit.
+    # `w` is the stored weight, applied as stored. Gemma4RMSNorm is
+    # `normed * self.weight` over a weight initialized to ones (upstream:197),
+    # not the `1 + w` of Gemma 1 through 3. This file added the shift, cpu.rs
+    # added it too, and synth.rs subtracted it when writing the fixture, so
+    # all three agreed and no test here could tell.
     inv = np.float32(1.0) / np.sqrt(np.mean(x * x, dtype=np.float32) + np.float32(eps))
     return (x * inv * w).astype(np.float32)
 

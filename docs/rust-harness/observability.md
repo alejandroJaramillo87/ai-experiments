@@ -128,8 +128,11 @@ code. The bar is correctness and readability, not throughput.
 
 ### Architecture assumption and reconciliation
 
-The forward pass implements a Gemma-3-style architecture: RMSNorm with
-`(1 + weight)` scaling, embedding scaled by the square root of the embedding
+The forward pass implements a Gemma-3-style architecture: RMSNorm by the
+stored weight, with no `(1 + weight)` shift — Gemma 4 initializes the norm
+weight to ones, unlike Gemma 1 through 3, and
+[runtime-design.md](runtime-design.md) records how long that took to
+establish. Embedding scaled by the square root of the embedding
 dimension, grouped-query attention with per-head QK-norm and NEOX RoPE,
 interleaved sliding-window/global layers, a GeGLU MLP with tanh GELU, four
 norms per layer, and an LM head tied to the token embedding. Whether the real

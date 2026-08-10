@@ -861,27 +861,17 @@ pub fn build_tiny_config_json(spec: &TinySpec) -> anyhow::Result<Vec<u8>> {
 /// So this reverses the dims and writes the identical payload; there is no
 /// data transpose, and a future loader that transposes is wrong.
 ///
-/// The third is RMSNorm. A published checkpoint stores the *unshifted*
-/// parameter and transformers adds 1.0 at runtime; the GGUF converter
-/// resolves that shift before writing, so `SynthTensor::values` holds the
-/// already-shifted effective multiplier. This sink therefore subtracts 1.0
-/// from every norm tensor, which is the converter's transformation run
-/// backwards. `cpu.rs` applies `x * (1 + w)` to what it reads here and lands
-/// on the same effective multiplier the GGUF path uses, which is why the
-/// committed logits goldens are unchanged by the move between containers.
+/// The third was RMSNorm, and is no longer anything. This sink used to write
+/// `w - 1.0` for every norm tensor, compensating for a `1 + w` the CPU loader
+/// applied on the way back in. Gemma 4 has no such shift — upstream
+/// `Gemma4RMSNorm` initializes `weight` to ones and multiplies by plain `w` —
+/// so both halves are gone and a norm weight is written exactly as it is held.
 ///
-/// In f32 the round trip is exact, not merely close: the draw is
-/// `1.0 + u` for `u` in `[-0.1, 0.1)`, so every norm weight lies in
-/// `[0.5, 2.0]` where Sterbenz's lemma makes `w - 1.0` exactly
-/// representable, and `1.0 + (w - 1.0)` recovers `w` bit for bit. The
-/// equality test in `cpu_reference` asserts that rather than assuming it.
-///
-/// Under `TensorStorage::Bf16` the two containers deliberately do *not* agree
-/// on norm tensors: truncating `w - 1.0` keeps far more significant bits than
-/// truncating `w`, because the value sits near zero instead of near one. That
-/// is the real relationship too — a converted GGUF loses precision on norms
-/// that the published checkpoint retains — so this sink is the more faithful
-/// of the two rather than the divergent one.
+/// Worth recording why the pair survived nine work packages: it was
+/// self-consistent. The fixture unshifted, the loader reshifted, and every
+/// golden agreed, so nothing in this repository could see it. The Tier T
+/// fixture, whose reference transformers wrote, saw it on the first run
+/// (`runtime/tests/ladder_tiny.rs`).
 ///
 /// Tensors with no published counterpart are skipped, which today means the
 /// precomputed RoPE divisors.
@@ -894,10 +884,7 @@ pub fn build_tiny_safetensors(spec: &TinySpec) -> anyhow::Result<Vec<u8>> {
         .iter()
         .filter_map(|t| {
             let name = t.hf_name.clone()?;
-            // Unshift before narrowing, so a bf16 norm keeps the precision of
-            // the small value rather than of the value near one.
-            let shift = if t.norm { 1.0f32 } else { 0.0f32 };
-            let values = t.values.iter().map(|v| v - shift);
+            let values = t.values.iter().copied();
             let (dtype, bytes) = match t.storage {
                 TensorStorage::F32 => (
                     Dtype::F32,
@@ -999,15 +986,15 @@ mod tests {
                 };
                 let stored =
                     crate::tensor::dequantize(ggml_type, view.data(), t.values.len()).unwrap();
-                // What the loader will compute from what it read.
-                let shift = if t.norm { 1.0f32 } else { 0.0f32 };
-                let got: Vec<f32> = stored.iter().map(|v| v + shift).collect();
+                // What the loader will compute from what it read. No shift
+                // in either direction now: the stored value is the multiplier.
+                let got: Vec<f32> = stored.clone();
                 let want: Vec<f32> = match t.storage {
                     TensorStorage::F32 => t.values.clone(),
                     TensorStorage::Bf16 => t
                         .values
                         .iter()
-                        .map(|v| f32::from_bits((v - shift).to_bits() & 0xffff_0000) + shift)
+                        .map(|v| f32::from_bits(v.to_bits() & 0xffff_0000))
                         .collect(),
                 };
                 for (i, (&g, &w)) in got.iter().zip(want.iter()).enumerate() {

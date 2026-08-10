@@ -296,11 +296,19 @@ to the token embedding. Published descriptions of Gemma 4 E4B describe a superse
 of that.
 
 The norm scaling is the one place where the checkpoint, not the reference
-implementation, settles the convention. Gemma's reference code adds 1.0 to each
-norm parameter at run time, but the GGUF converter resolves that shift before
-writing — folded into the tensor for gemma1 through gemma3, stored already
-shifted for gemma3n and gemma4 — so a `1 + w` multiply here would double-count it
-on every real checkpoint.
+implementation, settles the convention, and it was settled the wrong way for
+nine work packages. Gemma 1 through Gemma 3 store a norm parameter initialized
+to zero and add 1.0 at run time. Gemma 4 does not: `Gemma4RMSNorm` initializes
+`weight` to ones and multiplies by plain `w`. The kernel here has always been a
+plain multiply, but the checkpoint loader folded a `+1` in as it read, which
+doubled every normalized activation on any checkpoint we did not write
+ourselves.
+
+Nothing in this repository could detect it, because the fixture writer
+subtracted 1.0 and the numpy oracle added it back — one belief spelled at three
+ends, agreeing with itself. The transformers-authored Tier T fixture caught it
+on its first run; see `rust-harness/runtime/tests/ladder_tiny.rs`. The GGUF
+converter agreed all along, writing `norm_shift` 0.0 for gemma3n and gemma4.
 
 | Feature | Status in Gemma 4 E4B | Implemented | Confidence |
 |---------|-----------------------|-------------|------------|
