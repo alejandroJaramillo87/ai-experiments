@@ -57,8 +57,13 @@ and a rung whose artifact is absent reports `skipped` rather than passing.
 An artifact that does not say what produced it cannot be reproduced, and a number nobody can
 reproduce is not evidence. Every one carries:
 
-- the checkpoint path and its revision,
-- the `transformers` and `torch` versions,
+- the checkpoint path, and the sha256 of its `config.json` as its revision — the weights run
+  to tens of gigabytes, and it is a config change that silently alters the architecture under
+  a stored capture,
+- the `transformers` and `torch` versions, in the field names
+  `fixtures/build_tiny_reference.py`'s manifest uses, so both tiers spell them the same way,
+- whether a leading `<bos>` was prepended: the two conventions produce different distributions
+  from one prompt, and Gemma is trained with it,
 - the token IDs, not only the prompt text — the tokenizer is itself under test at L0,
 - for L2, the explicit list of positions scored, since the set is capped and
   `ladder::rung_logits` asserts it scored exactly those,

@@ -39,6 +39,7 @@ regenerated whenever the question changes.
 """
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -216,6 +217,7 @@ def main():
     # without torch, which is every sandbox.
     try:
         import torch
+        import transformers
         from transformers import AutoModelForCausalLM, AutoTokenizer
     except ImportError as e:
         print(f"[ERROR] Import: {e}", file=sys.stderr)
@@ -230,7 +232,8 @@ def main():
     print(f"[RUN] Load tokenizer: {args.model}", file=sys.stderr)
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     ids = tokenizer(args.prompt, add_special_tokens=args.add_bos)["input_ids"]
-    print(f"[OK] Tokenized: {len(ids)} tokens {ids}", file=sys.stderr)
+    bos = "with bos" if args.add_bos else "no bos"
+    print(f"[OK] Tokenized: {len(ids)} tokens, {bos} {ids}", file=sys.stderr)
 
     print(
         f"[RUN] Load model: {args.dtype} on cpu, this reads the whole file",
@@ -249,6 +252,32 @@ def main():
     payload = capture(model, ids)
     payload["prompt"] = args.prompt
     payload["dtype"] = args.dtype
+    # Recorded because the two conventions produce different distributions from
+    # the same prompt text, and an artifact that does not say which one it used
+    # cannot be compared with another. Gemma is trained with a leading <bos>;
+    # the harness's own chat path emits one (harness/src/template.rs), so a
+    # capture taken without one measures the model off-distribution.
+    payload["add_bos"] = args.add_bos
+
+    # Provenance, in the field names build_tiny_reference.py's manifest already
+    # uses, so the two tiers spell the same facts the same way. A number nobody
+    # can reproduce is not evidence, and these are what a reader needs to
+    # reproduce one.
+    #
+    # The checkpoint is identified by its config.json hash rather than by
+    # hashing the weights: the weights are tens of gigabytes, and a config
+    # change is what silently alters the architecture under a stored capture.
+    # No version is asserted anywhere against these. Tier T pins transformers
+    # because its artifacts are committed and must not drift; a Tier E capture
+    # is regenerated on every run, so a pin here would only produce friction.
+    payload["model"] = str(Path(args.model))
+    payload["transformers"] = transformers.__version__
+    payload["torch"] = torch.__version__
+    config = Path(args.model) / "config.json"
+    if config.is_file():
+        payload["checkpoint_config_sha256"] = hashlib.sha256(
+            config.read_bytes()
+        ).hexdigest()
     with open(out, "w") as f:
         json.dump(payload, f)
 
