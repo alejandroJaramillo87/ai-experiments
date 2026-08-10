@@ -26,6 +26,7 @@ pub mod eval;
 pub mod gguf;
 pub mod grammar;
 pub mod kv;
+pub mod ladder;
 pub mod metrics;
 pub mod model;
 pub mod npz;
