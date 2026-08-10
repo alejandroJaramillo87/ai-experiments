@@ -54,6 +54,15 @@ impl Rung {
         Rung::L4Greedy,
     ];
 
+    /// Whether this rung reads the sized corpus.
+    ///
+    /// Only perplexity and greedy decoding scale with `Size`; L0 through L2
+    /// score one recorded prompt and report `tier n/a`. The header uses this
+    /// to decide whether a token count describes anything that ran.
+    pub fn uses_corpus(self) -> bool {
+        matches!(self, Rung::L3Perplexity | Rung::L4Greedy)
+    }
+
     /// The short label used in the table's first column.
     pub fn label(self) -> &'static str {
         match self {
@@ -300,6 +309,13 @@ pub struct Ladder {
     pub model: String,
     pub reference: String,
     pub results: Vec<RungResult>,
+    /// Length of the prompt L0-L2 scored, when the caller knows it.
+    ///
+    /// Those rungs score one recorded prompt rather than the sized corpus, and
+    /// its length appeared nowhere in the table -- the first real run reported
+    /// agreement over five tokens under a header saying 512. `climb` cannot
+    /// know it (the rung bodies read the artifact), so the runner fills it in.
+    pub prompt_tokens: Option<usize>,
 }
 
 /// Climb the rungs in order, stopping at the first failure.
@@ -337,10 +353,21 @@ pub fn climb(
         model: model.into(),
         reference: reference.into(),
         results,
+        prompt_tokens: None,
     }
 }
 
 impl Ladder {
+    /// Whether any rung that reads the sized corpus actually ran.
+    ///
+    /// A rung that failed still read it, so this is deliberately not "passed":
+    /// a failure is exactly when the corpus length matters most.
+    pub fn measured_the_corpus(&self) -> bool {
+        self.results
+            .iter()
+            .any(|r| r.rung.uses_corpus() && matches!(r.status, Status::Pass | Status::Fail))
+    }
+
     /// The first rung that failed, if any.
     pub fn first_failure(&self) -> Option<&RungResult> {
         self.results.iter().find(|r| r.status == Status::Fail)
@@ -368,13 +395,24 @@ impl Ladder {
 /// terminal loses its context immediately otherwise.
 pub fn render(l: &Ladder) -> String {
     let mut s = String::new();
-    let _ = writeln!(
-        s,
-        "size={} tokens={} prompts={}",
-        l.size.label(),
-        l.size.tokens(),
-        l.size.prompts()
-    );
+    // The counts are printed only when a rung that reads the corpus actually
+    // read it. The size is what was asked for and always prints; a token count
+    // beside four skipped rungs describes work that did not happen, which is
+    // the opposite of what this line is for.
+    if l.measured_the_corpus() {
+        let _ = writeln!(
+            s,
+            "size={} tokens={} prompts={}",
+            l.size.label(),
+            l.size.tokens(),
+            l.size.prompts()
+        );
+    } else {
+        let _ = writeln!(s, "size={} (no rung read the corpus)", l.size.label());
+    }
+    if let Some(n) = l.prompt_tokens {
+        let _ = writeln!(s, "prompt={n} tokens");
+    }
     let _ = writeln!(s, "model={}", l.model);
     let _ = writeln!(s, "reference={}", l.reference);
     let _ = writeln!(s);
@@ -1101,6 +1139,38 @@ mod tests {
         );
         assert!(out.contains("/models/e4b"), "{out}");
         assert!(out.contains("/ref/std"), "{out}");
+    }
+
+    #[test]
+    fn the_header_omits_the_corpus_counts_when_no_rung_consumed_the_corpus() {
+        // The first real E4B run printed "tokens=512 prompts=2" with L3 and L4
+        // -- the only rungs those numbers describe -- skipped for want of a
+        // reference. Both numbers were of work that did not happen, in the one
+        // line whose job is to keep a copied number's context. A size is what
+        // was asked for and still prints; a count is what was done.
+        let l = climb(Size::Quick, "m", "r", |r| {
+            matches!(r, Rung::L1Layers | Rung::L2Logits).then(|| pass(r))
+        });
+        let out = render(&l);
+        assert!(out.contains("size=quick"), "{out}");
+        assert!(!out.contains("tokens="), "{out}");
+        assert!(!out.contains("prompts="), "{out}");
+    }
+
+    #[test]
+    fn the_header_carries_the_corpus_counts_when_a_corpus_rung_failed() {
+        // A failed rung consumed the corpus, so its counts are exactly what
+        // the reader needs. Absent-when-skipped must not become
+        // absent-unless-passing.
+        let l = climb(Size::Quick, "m", "r", |r| {
+            Some(if r == Rung::L3Perplexity {
+                fail(r)
+            } else {
+                pass(r)
+            })
+        });
+        let out = render(&l);
+        assert!(out.contains("tokens=512"), "{out}");
     }
 
     #[test]

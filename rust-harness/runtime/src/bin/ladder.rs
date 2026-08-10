@@ -31,6 +31,10 @@ fn run_rung(
     model: &mut CpuModel,
     reference_dir: &Path,
     tol: Tolerance,
+    // The prompt length L1 and L2 scored, reported back so the table can say
+    // how many tokens the agreement covers. Only these rungs know it -- they
+    // are the ones that read the capture -- and it is not the sized corpus.
+    prompt_tokens: &mut Option<usize>,
 ) -> Result<Option<RungResult>> {
     match rung {
         Rung::L1Layers => {
@@ -38,6 +42,7 @@ fn run_rung(
             let Some(reference) = runtime::reference::load_capture(&path, &PRELUDE_STAGES)? else {
                 return Ok(None);
             };
+            *prompt_tokens = Some(reference.token_ids.len());
             let ours = ladder::capture_ours(model, &reference.token_ids, &reference.activations)?;
             ladder::rung_layers(&ours, &reference.activations, tol).map(Some)
         }
@@ -53,6 +58,7 @@ fn run_rung(
             let Some(row) = reference.logits else {
                 return Ok(None);
             };
+            *prompt_tokens = Some(reference.token_ids.len());
             let last = reference.token_ids.len().saturating_sub(1);
             let logits = ladder::LogitReference {
                 positions: vec![last],
@@ -85,7 +91,8 @@ fn run(
     // mismatched artifact says nothing about the engine. It is raised rather
     // than folded into the table, so it cannot be read as a red rung.
     let mut error = None;
-    let l = ladder::climb(
+    let mut prompt_tokens = None;
+    let mut l = ladder::climb(
         size,
         model_path.display().to_string(),
         reference_dir.display().to_string(),
@@ -94,7 +101,13 @@ fn run(
             // vanishing, so the table still shows what was not run.
             _ if only.is_some_and(|r| r != rung) => None,
             Some(_) => None,
-            None => match run_rung(rung, &mut model, reference_dir, ladder::TIER_E) {
+            None => match run_rung(
+                rung,
+                &mut model,
+                reference_dir,
+                ladder::TIER_E,
+                &mut prompt_tokens,
+            ) {
                 Ok(result) => result,
                 Err(e) => {
                     error = Some(e.context(rung.label()));
@@ -106,6 +119,7 @@ fn run(
     if let Some(e) = error {
         return Err(e);
     }
+    l.prompt_tokens = prompt_tokens;
     print!("{}", ladder::render(&l));
     // Every rung skipped is not a pass. The ladder library is right to treat
     // a skip as neutral -- it does not know whether the caller asked for one
