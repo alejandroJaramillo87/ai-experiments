@@ -161,6 +161,7 @@ fn control_vector_model_hash(path: &Path) -> Option<String> {
 #[allow(clippy::too_many_arguments)]
 fn build_generator(
     model_path: Option<&Path>,
+    tokenizer_path: Option<&Path>,
     record: Option<&Path>,
     control_vector: Option<&Path>,
     control_scale: f32,
@@ -318,7 +319,9 @@ fn build_generator(
             Err(e) => return Err(e).with_context(|| format!("open snapshot {}", path.display())),
         }
     }
-    let tokenizer = runtime::tokenizer::Tokenizer::from_gguf(&file).context("load tokenizer")?;
+    let tokenizer_path = runtime::tokenizer::resolve_tokenizer(model_path, tokenizer_path)?;
+    let tokenizer =
+        runtime::tokenizer::Tokenizer::from_file(&tokenizer_path).context("load tokenizer")?;
     let generator = SessionGenerator::new(session, tokenizer, sampling, max_tokens)?;
     Ok((generator, monitor, model_hash))
 }
@@ -379,6 +382,7 @@ fn run(
     root: &Path,
     task: &str,
     model: Option<&Path>,
+    tokenizer: Option<&Path>,
     record: Option<&Path>,
     control_vector: Option<&Path>,
     control_scale: f32,
@@ -399,6 +403,7 @@ fn run(
     let snapshot_path = root.join("session.kv");
     let (mut generator, monitor, model_hash) = build_generator(
         model,
+        tokenizer,
         record,
         control_vector,
         control_scale,
@@ -500,7 +505,8 @@ fn flag_value_error(flag: &str, value: &str) -> Option<String> {
 }
 
 fn main() -> ExitCode {
-    const USAGE: &str = "usage: harness --model <path.gguf> [--record <path>] \
+    const USAGE: &str = "usage: harness --model <path.gguf> [--tokenizer <path.json>] \
+         [--record <path>] \
          [--trace-chrome <path>] [--control-vector <path.gguf>] \
          [--control-vector-scale <f>] [--probe <path.gguf>] \
          [--probe-out <path>] [--temperature <f>] [--top-p <f>] \
@@ -530,6 +536,7 @@ fn main() -> ExitCode {
     // --compact-at <f>: automatic-compaction threshold as a fraction of the
     // context budget (default 0.8, must be in (0, 1]).
     let mut model: Option<std::path::PathBuf> = None;
+    let mut tokenizer: Option<std::path::PathBuf> = None;
     let mut record: Option<std::path::PathBuf> = None;
     let mut trace_chrome: Option<std::path::PathBuf> = None;
     let mut control_vector: Option<std::path::PathBuf> = None;
@@ -549,6 +556,7 @@ fn main() -> ExitCode {
         ("--control-vector", &mut control_vector),
         ("--control-vector-scale", &mut control_scale_arg),
         ("--probe", &mut probe),
+        ("--tokenizer", &mut tokenizer),
         ("--probe-out", &mut probe_out),
         ("--temperature", &mut temperature_arg),
         ("--top-p", &mut top_p_arg),
@@ -684,6 +692,7 @@ fn main() -> ExitCode {
         &root,
         &task,
         model.as_deref(),
+        tokenizer.as_deref(),
         record.as_deref(),
         control_vector.as_deref(),
         control_scale,

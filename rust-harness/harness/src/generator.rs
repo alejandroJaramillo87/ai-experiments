@@ -104,9 +104,11 @@ mod tests {
     use runtime::tokenizer::Tokenizer;
 
     fn fixture_tokenizer() -> Tokenizer {
-        let image = runtime::synth::build_tiny_model(&runtime::synth::TinySpec::default());
-        let file = runtime::gguf::parse(&image).unwrap();
-        Tokenizer::from_gguf(&file).unwrap()
+        Tokenizer::from_json(
+            &runtime::synth::build_tiny_tokenizer_json(&runtime::synth::TinySpec::default())
+                .unwrap(),
+        )
+        .unwrap()
     }
 
     #[test]

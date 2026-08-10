@@ -209,7 +209,8 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
             config.n_layers
         );
     }
-    let tokenizer = Tokenizer::from_gguf(&file).context("load tokenizer")?;
+    let tokenizer_path = runtime::tokenizer::resolve_tokenizer(model_path, None)?;
+    let tokenizer = Tokenizer::from_file(&tokenizer_path).context("load tokenizer")?;
     let examples = load_dataset(dataset_path)?;
 
     let tap = LastRowTap {

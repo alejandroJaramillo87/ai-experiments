@@ -21,7 +21,10 @@ fn generator(image: &[u8]) -> SessionGenerator {
     let cpu = CpuModel::from_gguf(&file, image).unwrap();
     let max_context = cpu.config().context_length;
     let session = Session::new(Box::new(cpu), max_context).unwrap();
-    let tokenizer = Tokenizer::from_gguf(&file).unwrap();
+    let tokenizer = Tokenizer::from_json(
+        &runtime::synth::build_tiny_tokenizer_json(&TinySpec::default()).unwrap(),
+    )
+    .unwrap();
     // Short generation bound: random weights rarely emit EOS, and the
     // context budget must hold prompt + output.
     SessionGenerator::new(session, tokenizer, SamplingParams::default(), 48).unwrap()

@@ -115,7 +115,7 @@ rust-harness/
       grammar.rs        # tool-call JSON grammar compilation
       kv.rs             # per-layer cache allocation and delta prefill
       gguf.rs           # weight loading, vision tensors skipped
-      tokenizer.rs      # SentencePiece unigram over the GGUF vocabulary
+      tokenizer.rs      # wrapper over the `tokenizers` crate, reading tokenizer.json
       model/cpu.rs      # hand-rolled CPU backend, tap and steering seams
       model/mock.rs     # scripted backend the sandbox tests run against
 ```

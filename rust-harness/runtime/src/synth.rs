@@ -1207,10 +1207,10 @@ mod tests {
 
     #[test]
     fn tokenizer_loads_from_the_tiny_model() {
-        let image = build_tiny_model(&TinySpec::default());
-        let file = gguf::parse(&image).unwrap();
-        let tok = crate::tokenizer::Tokenizer::from_gguf(&file).unwrap();
+        let json = build_tiny_tokenizer_json(&TinySpec::default()).unwrap();
+        let tok = crate::tokenizer::Tokenizer::from_json(&json).unwrap();
         assert_eq!(tok.bos(), 1);
         assert_eq!(tok.eos(), 2);
+        assert_eq!(tok.vocab_len(), TinySpec::default().vocab_size);
     }
 }

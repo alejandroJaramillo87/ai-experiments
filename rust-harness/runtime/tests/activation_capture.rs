@@ -182,7 +182,10 @@ impl Tap for LastRows {
 fn reference_rows(texts: &[&str], layer: usize) -> Vec<Vec<f32>> {
     let image = std::fs::read(fixture_model()).unwrap();
     let file = runtime::gguf::parse(&image).unwrap();
-    let tokenizer = Tokenizer::from_gguf(&file).unwrap();
+    let tokenizer = Tokenizer::from_file(
+        &runtime::tokenizer::resolve_tokenizer(&fixture_model(), None).unwrap(),
+    )
+    .unwrap();
     texts
         .iter()
         .map(|text| {

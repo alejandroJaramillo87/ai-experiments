@@ -81,7 +81,7 @@ claim is made until they pass.
 
 The agent loop and everything above the forward pass are implemented and tested
 against a scripted `MockModel`: tools, permissions, transcript, chat template,
-SentencePiece tokenizer, sessions with a hard context budget, sampler,
+tokenizer, sessions with a hard context budget, sampler,
 grammar-constrained decoding, subagent fork/interleave, and the perplexity
 evaluator.
 

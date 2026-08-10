@@ -25,13 +25,13 @@ fn byte_tokenizer() -> Tokenizer {
         "<bos>".to_string(),
         "<eos>".to_string(),
     ];
-    let mut types = vec![3i32; 3];
     for b in 0..=255u8 {
         pieces.push(format!("<0x{b:02X}>"));
-        types.push(6);
     }
-    let scores = vec![0.0; pieces.len()];
-    Tokenizer::from_parts(pieces, scores, &types, 1, 2).unwrap()
+    // No content pieces and no merges, so byte fallback covers everything and
+    // the id of a byte is its value plus the three specials ahead of it.
+    let json = runtime::synth::tokenizer_json_from_parts(&pieces, &[], "<pad>").unwrap();
+    Tokenizer::from_json(&json).unwrap()
 }
 
 fn byte_token(b: u8) -> Token {
