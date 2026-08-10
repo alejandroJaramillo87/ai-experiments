@@ -3,8 +3,8 @@
  *
  * Wires the full stack: permissions from permissions.yaml, a durable JSONL
  * transcript, the agent loop, and a SessionGenerator over the runtime. The
- * generator runs the hand-rolled CPU backend against the GGUF passed via
- * --model; the cuda backend (phase A) will slot in at the same seam.
+ * generator runs the hand-rolled CPU backend against the checkpoint passed
+ * via --model; the cuda backend (phase A) will slot in at the same seam.
  */
 
 use std::io::Write;
@@ -120,7 +120,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// `interp/steering/wiring.py`). Only two real hashes can disagree: the
 /// `unknown` sentinel downgrades to a skipped check, which is what keeps
 /// Python-captured artifacts loading. The served digest arrives as a
-/// closure because producing it hashes a multi-gigabyte GGUF, a cost a
+/// closure because producing it hashes multi-gigabyte weights, a cost a
 /// skipped check must not pay.
 fn check_model_identity(
     artifact: &str,
@@ -155,7 +155,7 @@ fn control_vector_model_hash(path: &Path) -> Option<String> {
     manifest.get("model_hash")?.as_str().map(str::to_string)
 }
 
-/// Construct the generator over the CPU backend for the GGUF at
+/// Construct the generator over the CPU backend for the checkpoint at
 /// `model_path`, wrapping the model in the flight recorder when `record`
 /// names a path. There is no mock fallback in the shipping binary.
 #[allow(clippy::too_many_arguments)]
@@ -179,20 +179,24 @@ fn build_generator(
     };
     let Some(model_path) = model_path else {
         anyhow::bail!(
-            "no model: pass --model <path.gguf> to run on the CPU backend; \
+            "no model: pass --model <checkpoint-dir> to run on the CPU backend; \
              the cuda backend (roadmap phase A) has not landed"
         )
     };
-    let data = std::fs::read(model_path)
+    let files = runtime::checkpoint::CheckpointFiles::read(model_path)
         .with_context(|| format!("read model {}", model_path.display()))?;
-    let file = runtime::gguf::parse(&data).context("parse GGUF")?;
-    let mut cpu = CpuModel::from_gguf(&file, &data).context("load CPU model")?;
+    let ck = runtime::checkpoint::parse(&files).context("parse checkpoint")?;
+    let mut cpu = CpuModel::from_checkpoint(&ck).context("load CPU model")?;
+    // Model identity for the interp artifacts and the snapshot header. The
+    // weights alone, not config.json: a checkpoint is a directory, and the
+    // weights are what an artifact was fitted on.
+    let data = &files.weights;
     if let Some(path) = control_vector {
         let cv_data = std::fs::read(path)
             .with_context(|| format!("read control vector {}", path.display()))?;
         let cv_file = runtime::gguf::parse(&cv_data).context("parse control-vector GGUF")?;
         match control_vector_model_hash(path) {
-            Some(hash) => check_model_identity("control vector", &hash, || sha256_hex(&data))?,
+            Some(hash) => check_model_identity("control vector", &hash, || sha256_hex(data))?,
             None => eprintln!(
                 "[WARN] Model identity: no readable manifest.json beside {}, \
                  control vector unchecked",
@@ -211,7 +215,7 @@ fn build_generator(
                 std::fs::read(path).with_context(|| format!("read probe {}", path.display()))?;
             let p_file = runtime::gguf::parse(&p_data).context("parse probe GGUF")?;
             let p = std::sync::Arc::new(Probe::from_gguf(&p_file, &p_data).context("load probe")?);
-            check_model_identity("probe", &p.model_hash, || sha256_hex(&data))?;
+            check_model_identity("probe", &p.model_hash, || sha256_hex(data))?;
             anyhow::ensure!(
                 p.width() == cpu.config().embed_dim,
                 "probe width {} does not match model embedding dimension {}",
@@ -231,8 +235,8 @@ fn build_generator(
         None => None,
     };
     // --context caps the budget below the model's trained window; raising
-    // it above the GGUF value is refused because the model was not trained
-    // there. The KV estimate warns before a budget the CPU backend cannot
+    // it above the checkpoint's max_position_embeddings is refused because
+    // the model was not trained there. The KV estimate warns before a budget the CPU backend cannot
     // realistically hold in memory (it stores f32 K/V for the full
     // sequence, so windowed layers are estimated at their window size and
     // the true cost is an upper bound of context length for every layer).
@@ -295,7 +299,7 @@ fn build_generator(
     // removed; a missing file is the normal first run. Whether the restored
     // tokens still match the transcript is settled later by sync's prefix
     // matching, which degrades to a full re-prefill at worst.
-    let model_hash = runtime::session::fingerprint(&data);
+    let model_hash = runtime::session::fingerprint(data);
     if let Some(path) = snapshot {
         match std::fs::File::open(path) {
             Ok(f) => {
@@ -505,7 +509,7 @@ fn flag_value_error(flag: &str, value: &str) -> Option<String> {
 }
 
 fn main() -> ExitCode {
-    const USAGE: &str = "usage: harness --model <path.gguf> [--tokenizer <path.json>] \
+    const USAGE: &str = "usage: harness --model <checkpoint-dir> [--tokenizer <path.json>] \
          [--record <path>] \
          [--trace-chrome <path>] [--control-vector <path.gguf>] \
          [--control-vector-scale <f>] [--probe <path.gguf>] \
@@ -516,7 +520,8 @@ fn main() -> ExitCode {
     // Snapshot before flag extraction mutates args: cmd.start records the
     // invocation as given, program name excluded (the shape common/obs logs).
     let argv_full = args.clone();
-    // --model <path.gguf>: checkpoint for the CPU backend.
+    // --model <checkpoint-dir>: config.json and model.safetensors for the
+    // CPU backend. A path to the weights file resolves to its directory.
     // --record <path>: wrap the model in the flight recorder, appending every
     // forward call to a JSONL file replayable as a MockModel script.
     // --trace-chrome <path>: write a Perfetto-loadable trace of the span
@@ -532,7 +537,8 @@ fn main() -> ExitCode {
     // (defaults 0.8 / 0.95 / 0; seed 0 replays a run exactly).
     // --max-tokens <n>: per-turn generation budget (default 256).
     // --context <n>: cap the context budget below the model's trained
-    // window (never above it; the GGUF value is the default and maximum).
+    // window (never above it; max_position_embeddings is the default and
+    // the maximum).
     // --compact-at <f>: automatic-compaction threshold as a fraction of the
     // context budget (default 0.8, must be in (0, 1]).
     let mut model: Option<std::path::PathBuf> = None;

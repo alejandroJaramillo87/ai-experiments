@@ -38,7 +38,7 @@ const DATASET: [(&str, i64); 4] = [
 fn fixture_model() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../fixtures")
-        .join("tiny-gemma4.gguf")
+        .join("tiny-gemma4")
 }
 
 fn dataset_jsonl(rows: &[(&str, i64)]) -> String {
@@ -180,8 +180,8 @@ impl Tap for LastRows {
 /// so a comparison against these pins the row-to-example mapping instead of
 /// restating whatever order the binary happened to write.
 fn reference_rows(texts: &[&str], layer: usize) -> Vec<Vec<f32>> {
-    let image = std::fs::read(fixture_model()).unwrap();
-    let file = runtime::gguf::parse(&image).unwrap();
+    let files = runtime::checkpoint::CheckpointFiles::read(&fixture_model()).unwrap();
+    let ck = runtime::checkpoint::parse(&files).unwrap();
     let tokenizer = Tokenizer::from_file(
         &runtime::tokenizer::resolve_tokenizer(&fixture_model(), None).unwrap(),
     )
@@ -189,7 +189,7 @@ fn reference_rows(texts: &[&str], layer: usize) -> Vec<Vec<f32>> {
     texts
         .iter()
         .map(|text| {
-            let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+            let mut model = CpuModel::from_checkpoint(&ck).unwrap();
             let tap = LastRows::default();
             model.set_tap(Box::new(tap.clone()));
             let mut tokens = vec![tokenizer.bos()];

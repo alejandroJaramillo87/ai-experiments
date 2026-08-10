@@ -135,13 +135,13 @@ interleaved sliding-window/global layers, a GeGLU MLP with tanh GELU, four
 norms per layer, and an LM head tied to the token embedding. Whether the real
 E4B checkpoint deviates (MatFormer or per-layer-embedding inheritance from
 Gemma 3n is the open design-doc risk) is resolved with evidence: the
-`gguf-info` binary (`runtime/src/bin/gguf-info.rs`) dumps metadata and the
-tensor directory of a GGUF file; the human runs it against the real E4B on
+`checkpoint-info` binary (`runtime/src/bin/checkpoint-info.rs`) dumps the
+config and the tensor table of a checkpoint; the human runs it against the real E4B on
 the workstation and the reported output is reconciled against the
 implementation. Numerics are validated in the sandbox against an independent
 numpy implementation of the same forward pass
 (`rust-harness/fixtures/reference_logits.py`) over a committed synthetic
-checkpoint (`rust-harness/fixtures/tiny-gemma4.gguf`, written by the
+checkpoint (`rust-harness/fixtures/tiny-gemma4/`, written by the
 `tiny-model` binary).
 
 One storage decision is recorded as deferred: the K/V cache holds the full

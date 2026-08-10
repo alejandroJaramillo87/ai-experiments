@@ -957,7 +957,10 @@ pub fn check_supported(file: &GgufFile, spec: &ModelSpec) -> Result<()> {
 /// The unconsumed-tensor backstop is the important survivor. Loading is
 /// name-directed, so a feature published after this code presents as tensors
 /// nothing reads and logits that are merely wrong.
-fn check_supported_checkpoint(ck: &crate::checkpoint::Checkpoint, spec: &ModelSpec) -> Result<()> {
+pub fn check_supported_checkpoint(
+    ck: &crate::checkpoint::Checkpoint,
+    spec: &ModelSpec,
+) -> Result<()> {
     use crate::checkpoint::hf_tensor_name;
 
     let config = &spec.config;
@@ -1087,7 +1090,7 @@ fn check_supported_checkpoint(ck: &crate::checkpoint::Checkpoint, spec: &ModelSp
 /// Collapse a Hugging Face tensor name to its family, replacing the layer
 /// index in `model.layers.<i>.` with `*`, so a diagnostic over 42 layers
 /// reports one line per family rather than 42.
-fn hf_tensor_family(name: &str) -> String {
+pub fn hf_tensor_family(name: &str) -> String {
     let Some(rest) = name.strip_prefix("model.layers.") else {
         return name.to_string();
     };

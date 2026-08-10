@@ -18,7 +18,14 @@ use std::path::{Path, PathBuf};
 fn fixture_model() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../fixtures")
-        .join("tiny-gemma4.gguf")
+        .join("tiny-gemma4")
+}
+
+/// The bytes the harness hashes for model identity: the weights alone, not
+/// the whole checkpoint directory. An artifact is fitted on weights, and
+/// config.json changing should not invalidate a probe.
+fn fixture_weights() -> PathBuf {
+    fixture_model().join(runtime::checkpoint::WEIGHTS_FILE)
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -55,12 +62,11 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// refused by the width guard, which would mask the identity outcome the
 /// tests below are reading.
 fn model_width() -> usize {
-    let image = std::fs::read(fixture_model()).unwrap();
-    let file = runtime::gguf::parse(&image).unwrap();
-    runtime::model::cpu::CpuModel::from_gguf(&file, &image)
+    let files = runtime::checkpoint::CheckpointFiles::read(&fixture_model()).unwrap();
+    runtime::checkpoint::parse(&files)
         .unwrap()
-        .config()
-        .embed_dim
+        .config
+        .hidden_size
 }
 
 /// A loadable probe over layer 0 recording `model_hash`. The threshold is
@@ -128,7 +134,7 @@ fn run_with_probe(probe_image: &[u8]) -> Run {
 
 #[test]
 fn a_probe_recording_the_served_models_sha256_loads_and_the_run_completes() {
-    let served = sha256_hex(&std::fs::read(fixture_model()).unwrap());
+    let served = sha256_hex(&std::fs::read(fixture_weights()).unwrap());
     let run = run_with_probe(&probe_gguf(&served));
     let err = run.stderr();
     assert!(run.output.status.success(), "{err}");
@@ -149,7 +155,7 @@ fn a_probe_recording_a_different_model_hash_is_refused_naming_both_hashes() {
     let run = run_with_probe(&probe_gguf(&wrong));
     let err = run.stderr();
     assert!(!run.output.status.success(), "{err}");
-    let served = sha256_hex(&std::fs::read(fixture_model()).unwrap());
+    let served = sha256_hex(&std::fs::read(fixture_weights()).unwrap());
     assert!(err.contains(&wrong), "refusal omits the probe hash: {err}");
     assert!(
         err.contains(&served),

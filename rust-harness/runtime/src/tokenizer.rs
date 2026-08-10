@@ -55,6 +55,12 @@ pub fn resolve_tokenizer(model: &Path, explicit: Option<&Path>) -> Result<PathBu
         return Ok(path.to_path_buf());
     }
     let mut candidates: Vec<PathBuf> = Vec::new();
+    // A published checkpoint is a directory holding its own tokenizer.json,
+    // and `--model` names that directory. Probed first, because a sibling
+    // file of the same name would otherwise shadow the checkpoint's own.
+    if model.is_dir() {
+        candidates.push(model.join("tokenizer.json"));
+    }
     candidates.push(model.with_extension("tokenizer.json"));
     if let Some(dir) = model.parent() {
         candidates.push(dir.join("tokenizer.json"));

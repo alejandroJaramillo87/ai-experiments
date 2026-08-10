@@ -197,10 +197,10 @@ fn check_row_counts(
 }
 
 fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path) -> Result<()> {
-    let data = std::fs::read(model_path)
+    let files = runtime::checkpoint::CheckpointFiles::read(model_path)
         .with_context(|| format!("read model {}", model_path.display()))?;
-    let file = runtime::gguf::parse(&data).context("parse GGUF")?;
-    let mut model = CpuModel::from_gguf(&file, &data).context("load CPU model")?;
+    let ck = runtime::checkpoint::parse(&files).context("parse checkpoint")?;
+    let mut model = CpuModel::from_checkpoint(&ck).context("load CPU model")?;
     let config = *model.config();
     for &l in layers {
         ensure!(
@@ -300,8 +300,13 @@ fn run(model_path: &Path, dataset_path: &Path, layers: &[usize], out_dir: &Path)
         "schema_version": 1,
         "artifact": "activation_capture",
         "model_id": model_name,
-        "model_revision": "gguf",
-        "model_hash": sha256_hex(&data),
+        // The container the weights were read from, not a revision -- the
+        // field name is the interp capture-shard schema's and predates this
+        // backend. It said "gguf" while a GGUF was loaded and must not keep
+        // saying so now that a checkpoint is, because the interp toolkit reads
+        // this to know what produced a shard.
+        "model_revision": "safetensors",
+        "model_hash": sha256_hex(&files.weights),
         "layers": sorted_layers,
         "position": "last",
         "dataset_path": dataset_path.display().to_string(),
@@ -345,7 +350,7 @@ fn parse_layers(arg: &str) -> Result<Vec<usize>> {
 }
 
 fn main() -> ExitCode {
-    const USAGE: &str = "usage: activation-capture --model <path.gguf> \
+    const USAGE: &str = "usage: activation-capture --model <checkpoint-dir> \
          --dataset <examples.jsonl> --layers <l0,l1,...> --out <dir>";
     let args: Vec<String> = std::env::args().skip(1).collect();
     let get = |flag: &str| -> Option<String> {

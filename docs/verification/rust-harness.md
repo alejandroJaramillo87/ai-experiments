@@ -91,8 +91,8 @@ Status: PENDING
 
 ## RH.1 Model location and architecture reconciliation
 
-Implementation: `rust-harness/runtime/src/bin/gguf-info.rs`,
-`rust-harness/runtime/src/gguf.rs`,
+Implementation: `rust-harness/runtime/src/bin/checkpoint-info.rs`,
+`rust-harness/runtime/src/checkpoint.rs`,
 `rust-harness/runtime/src/model/cpu.rs` (the capability guard).
 
 **Risks likely to surface here.** This is the highest-risk entry of the
