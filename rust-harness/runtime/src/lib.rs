@@ -22,6 +22,7 @@
 #![deny(unsafe_code)]
 
 pub mod checkpoint;
+pub mod digest;
 pub mod eval;
 pub mod gguf;
 pub mod grammar;

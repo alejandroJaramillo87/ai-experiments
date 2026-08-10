@@ -86,42 +86,20 @@ def find_text_model(model):
     raise SystemExit("[ERROR] Decoder layers: no layers list found on the model")
 
 
-def main():
-    args = parse_args()
+def capture(model, ids):
+    """Run `ids` through `model` and return everything the ladder compares.
 
-    # Imported here rather than at module scope so --help works on a machine
-    # without torch, which is every sandbox.
-    try:
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-    except ImportError as e:
-        print(f"[ERROR] Import: {e}", file=sys.stderr)
-        print(
-            "  Solution: run on the workstation venv with torch installed",
-            file=sys.stderr,
-        )
-        return 1
+    Importable rather than inlined in main() because two callers need it: this
+    script against the real checkpoint, and build_tiny_reference.py against
+    the tiny transformers-authored fixture. One capture implementation, two
+    callers, or the tiny gate stops predicting what the real one will find --
+    which is the entire reason the tiny gate exists.
 
-    dtype = {"float32": torch.float32, "bfloat16": torch.bfloat16}[args.dtype]
-
-    print(f"[RUN] Load tokenizer: {args.model}", file=sys.stderr)
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
-    ids = tokenizer(args.prompt, add_special_tokens=args.add_bos)["input_ids"]
-    print(f"[OK] Tokenized: {len(ids)} tokens {ids}", file=sys.stderr)
-
-    print(
-        f"[RUN] Load model: {args.dtype} on cpu, this reads the whole file",
-        file=sys.stderr,
-    )
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model,
-        dtype=dtype,
-        device_map="cpu",
-        # Eager, so the comparison is against the reference formulation of
-        # attention rather than against a fused kernel's rounding.
-        attn_implementation="eager",
-    )
-    model.eval()
+    Returns a dict with token_ids, n_layers, the per-layer last-position
+    residual rows, the last-position logits, and whichever pre-stack stages
+    this model reaches.
+    """
+    import torch
 
     path, text_model = find_text_model(model)
     layers = text_model.layers
@@ -204,26 +182,69 @@ def main():
 
     missing = [i for i in range(len(layers)) if i not in captured]
     if missing:
-        print(f"[ERROR] Capture: layers {missing} produced no output", file=sys.stderr)
-        return 1
+        raise SystemExit(f"[ERROR] Capture: layers {missing} produced no output")
 
-    logits = out.logits[0, -1, :].detach().to(torch.float32).tolist()
     payload = {
-        "prompt": args.prompt,
-        "token_ids": ids,
-        "dtype": args.dtype,
+        "token_ids": list(ids),
         "n_layers": len(layers),
         "layers": {str(i): captured[i] for i in range(len(layers))},
-        "logits": logits,
+        "logits": out.logits[0, -1, :].detach().to(torch.float32).tolist(),
     }
     payload.update(prelude)
+    return payload
+
+
+def main():
+    args = parse_args()
+
+    # Imported here rather than at module scope so --help works on a machine
+    # without torch, which is every sandbox.
+    try:
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+    except ImportError as e:
+        print(f"[ERROR] Import: {e}", file=sys.stderr)
+        print(
+            "  Solution: run on the workstation venv with torch installed",
+            file=sys.stderr,
+        )
+        return 1
+
+    dtype = {"float32": torch.float32, "bfloat16": torch.bfloat16}[args.dtype]
+
+    print(f"[RUN] Load tokenizer: {args.model}", file=sys.stderr)
+    tokenizer = AutoTokenizer.from_pretrained(args.model)
+    ids = tokenizer(args.prompt, add_special_tokens=args.add_bos)["input_ids"]
+    print(f"[OK] Tokenized: {len(ids)} tokens {ids}", file=sys.stderr)
+
+    print(
+        f"[RUN] Load model: {args.dtype} on cpu, this reads the whole file",
+        file=sys.stderr,
+    )
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model,
+        dtype=dtype,
+        device_map="cpu",
+        # Eager, so the comparison is against the reference formulation of
+        # attention rather than against a fused kernel's rounding.
+        attn_implementation="eager",
+    )
+    model.eval()
+
+    payload = capture(model, ids)
+    payload["prompt"] = args.prompt
+    payload["dtype"] = args.dtype
     with open(args.out, "w") as f:
         json.dump(payload, f)
 
+    logits = payload["logits"]
+    prelude = sorted(
+        k for k in payload if k in ("embed", "ple", "ple_identity", "ple_context")
+    )
     top = max(range(len(logits)), key=logits.__getitem__)
     print(
-        f"[OK] Wrote {args.out}: {len(layers)} layers x {len(captured[0])}, "
-        f"{len(logits)} logits, prelude {sorted(prelude)}, "
+        f"[OK] Wrote {args.out}: {payload['n_layers']} layers x "
+        f"{len(payload['layers']['0'])}, {len(logits)} logits, prelude {prelude}, "
         f"argmax {top} ({tokenizer.decode([top])!r})",
         file=sys.stderr,
     )
