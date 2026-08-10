@@ -55,7 +55,20 @@ scripts/optimizations/copy_to_hugetlbfs
 # they are the golden inputs the runtime's tests load, and rust-harness/fixtures
 # is where regenerating them writes. Without these negations `git add` would need
 # -f every time the fixture is regenerated.
+#
+# The safetensors negation is not a convenience. Until it existed the tiny
+# checkpoints were ignored while their config.json was tracked, so a fresh clone
+# carried half a fixture and `make quality` failed three cpu_reference tests with
+# "missing model.safetensors" until someone happened to run `tiny-model` by hand.
+# The generator is still the source of truth -- cpu_reference regenerates and
+# byte-compares, so a stale committed fixture fails the gate -- but the gate now
+# passes on a clone, which is the whole point of a gate.
+#
+# It also makes the transformers-authored fixture possible at all. That one is
+# built by torch and cannot be regenerated in the sandbox, so committing its
+# weights is the only way the sandbox can check anything against it.
 !rust-harness/fixtures/*.gguf
+!rust-harness/fixtures/**/*.safetensors
 
 # Claude Code per-session runtime state. The lock records a live sessionId, pid,
 # and acquisition time; it is regenerated every session and must never be

@@ -19,6 +19,15 @@
  * The bpe invocation writes a tokenizer only: its
  * vocabulary carries a merge list, which the model fixtures cannot, and it is
  * what covers BPE segmentation. The oracle needs the venv's numpy.
+ *
+ * Regeneration is for changing a fixture, not for running the gate. Every
+ * artifact above is committed, including model.safetensors -- until it was,
+ * `.gitignore`'s blanket `*.safetensors` kept the weights out while tracking
+ * their config.json, so a fresh clone held half a fixture and three tests
+ * here failed on a missing file until someone ran `tiny-model` by hand. The
+ * generator remains the source of truth: `checkpoint_fixtures_match_the_generator`
+ * regenerates and byte-compares, so a committed fixture that drifts from the
+ * spec still fails.
  */
 
 use runtime::model::cpu::CpuModel;
