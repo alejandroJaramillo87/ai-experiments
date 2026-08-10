@@ -674,25 +674,56 @@ struct LayerKv {
 /// trained on Python-captured activations and on rust-captured activations
 /// see the same tensor. Any backend added later (CUDA) must preserve this
 /// seam and its semantics.
+/// The residual stream as layer 0 receives it: the embedding row after the
+/// `sqrt(embed_dim)` scale.
+pub const STAGE_EMBED: &str = "embed";
+
+/// The token-identity half of the per-layer inputs: one packed row of
+/// `per_layer_token_embd`, scaled by `sqrt(ple_dim)`.
+pub const STAGE_PLE_IDENTITY: &str = "ple_identity";
+
+/// The context half: the embedded input projected to one row per layer,
+/// scaled by `1/sqrt(embed_dim)` and normed over each row.
+pub const STAGE_PLE_CONTEXT: &str = "ple_context";
+
+/// The two halves summed and scaled by `1/sqrt(2)` -- what the decoder
+/// stack consumes.
+pub const STAGE_PLE: &str = "ple";
+
+/// Every stage a prelude capture reports, in the order they are computed.
+///
+/// Ordered because the reader wants the first divergence and the stages are
+/// a chain: `ple` is wrong whenever either half is, so reporting it first
+/// would name the sum instead of the term.
+pub const PRELUDE_STAGES: [&str; 4] = [
+    STAGE_EMBED,
+    STAGE_PLE_IDENTITY,
+    STAGE_PLE_CONTEXT,
+    STAGE_PLE,
+];
+
 pub trait Tap: Send {
     fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]);
 
-    /// The residual stream as layer 0 receives it: the embedding row after
-    /// the `sqrt(embed_dim)` scale, before any decoder layer.
+    /// Whether this tap wants the named stages below.
     ///
-    /// Defaulted to nothing, because only `layer-diff` wants it. It exists
-    /// because "layer 0 diverges" has two very different causes -- a wrong
-    /// input to the stack, or a wrong layer 0 -- and the layer table cannot
-    /// tell them apart. This is the row that does.
-    fn on_embedding(&mut self, _position: usize, _x: &[f32]) {}
+    /// Asked before the work is done, not after: `PLE_IDENTITY` has no
+    /// buffer of its own in the forward pass and materializing it costs an
+    /// allocation per position, which a probe capture should not pay for a
+    /// diagnostic it never reads.
+    fn wants_stages(&self) -> bool {
+        false
+    }
 
-    /// The composed per-layer input embeddings, `n_layers * ple_dim`, as the
-    /// decoder stack will consume them.
+    /// A named intermediate from before the decoder stack.
     ///
-    /// The other candidate cause of a layer-0 divergence, and the one with
-    /// the most arithmetic between the checkpoint and the residual stream:
-    /// two embeddings, two scales, a projection and a norm.
-    fn on_ple(&mut self, _position: usize, _rows: &[f32]) {}
+    /// Named rather than one method per point, because localizing a bug is
+    /// bisection and bisection does not stop at a depth chosen in advance.
+    /// "Layer 0 diverges" turned out to mean "the per-layer embeddings
+    /// diverge"; "the per-layer embeddings diverge" means one of four
+    /// components, and finding out which needs stages the trait did not have
+    /// yesterday. It will need more.
+    fn on_stage(&mut self, _stage: &str, _position: usize, _x: &[f32]) {}
 }
 
 /// Tap keeping only the most recent row per requested layer, so after a
@@ -711,13 +742,12 @@ pub trait Tap: Send {
 pub struct LastRowTap {
     layers: Vec<usize>,
     rows: Arc<Mutex<HashMap<usize, Vec<f32>>>>,
-    /// Whether to also keep the two rows that precede layer 0. Off by
+    /// Whether to also keep the named stages that precede layer 0. Off by
     /// default: `activation-capture` writes probe training data and has no
     /// use for them, and keeping them would copy `n_layers * ple_dim` floats
     /// per position for nobody.
     prelude: bool,
-    embed: Arc<Mutex<Option<Vec<f32>>>>,
-    ple: Arc<Mutex<Option<Vec<f32>>>>,
+    stages: Arc<Mutex<HashMap<String, Vec<f32>>>>,
 }
 
 impl LastRowTap {
@@ -726,26 +756,24 @@ impl LastRowTap {
             layers,
             rows: Arc::new(Mutex::new(HashMap::new())),
             prelude: false,
-            embed: Arc::new(Mutex::new(None)),
-            ple: Arc::new(Mutex::new(None)),
+            stages: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    /// Also keep the scaled embedding and the composed per-layer inputs.
+    /// Also keep the named pre-stack stages, `PRELUDE_STAGES`.
     pub fn capturing_prelude(mut self) -> Self {
         self.prelude = true;
         self
     }
 
-    /// The scaled embedding row, when `capturing_prelude` was set.
-    pub fn embedding(&self) -> Option<Vec<f32>> {
-        self.embed.lock().expect("tap map not poisoned").clone()
-    }
-
-    /// The composed per-layer input rows, when `capturing_prelude` was set
-    /// and the checkpoint carries per-layer embeddings.
-    pub fn ple_rows(&self) -> Option<Vec<f32>> {
-        self.ple.lock().expect("tap map not poisoned").clone()
+    /// A captured stage, or `None` when the prelude was not requested or the
+    /// checkpoint does not reach that stage.
+    pub fn stage(&self, name: &str) -> Option<Vec<f32>> {
+        self.stages
+            .lock()
+            .expect("tap map not poisoned")
+            .get(name)
+            .cloned()
     }
 
     /// The captured row for `layer`, or `None` when the layer was not
@@ -761,8 +789,7 @@ impl LastRowTap {
     /// Drop every captured row, between examples.
     pub fn clear(&self) {
         self.rows.lock().expect("tap map not poisoned").clear();
-        *self.embed.lock().expect("tap map not poisoned") = None;
-        *self.ple.lock().expect("tap map not poisoned") = None;
+        self.stages.lock().expect("tap map not poisoned").clear();
     }
 }
 
@@ -776,15 +803,16 @@ impl Tap for LastRowTap {
         }
     }
 
-    fn on_embedding(&mut self, _position: usize, x: &[f32]) {
-        if self.prelude {
-            *self.embed.lock().expect("tap map not poisoned") = Some(x.to_vec());
-        }
+    fn wants_stages(&self) -> bool {
+        self.prelude
     }
 
-    fn on_ple(&mut self, _position: usize, rows: &[f32]) {
+    fn on_stage(&mut self, stage: &str, _position: usize, x: &[f32]) {
         if self.prelude {
-            *self.ple.lock().expect("tap map not poisoned") = Some(rows.to_vec());
+            self.stages
+                .lock()
+                .expect("tap map not poisoned")
+                .insert(stage.to_string(), x.to_vec());
         }
     }
 }
@@ -1375,7 +1403,7 @@ impl CpuModel {
             *dst = e * scale;
         }
         if let Some(tap) = tap.as_mut() {
-            tap.on_embedding(position, x);
+            tap.on_stage(STAGE_EMBED, position, x);
         }
 
         // Per-layer input embeddings, computed once for this position from the
@@ -1398,6 +1426,9 @@ impl CpuModel {
             for row in ple.chunks_mut(pd) {
                 rms_norm_in_place(row, &p.proj_norm, c.rms_eps);
             }
+            if let Some(tap) = tap.as_mut() {
+                tap.on_stage(STAGE_PLE_CONTEXT, position, ple);
+            }
             // Token-identity component: one packed row of the per-layer table,
             // scaled by sqrt(ple_dim) -- x16 at Gemma 4's width of 256, an
             // embed scale that is easy to miss because it lives on the
@@ -1414,16 +1445,20 @@ impl CpuModel {
             );
             let identity = &p.token_embd[token as usize * stride..(token as usize + 1) * stride];
             let embed_scale = (pd as f32).sqrt();
+            // The identity half has no buffer of its own -- it is read
+            // straight out of the packed table and summed in place -- so
+            // reporting it costs an allocation, taken only when a tap has
+            // asked for stages.
+            if tap.as_ref().is_some_and(|t| t.wants_stages()) {
+                let scaled: Vec<f32> = identity.iter().map(|e| e * embed_scale).collect();
+                let tap = tap.as_mut().expect("checked above");
+                tap.on_stage(STAGE_PLE_IDENTITY, position, &scaled);
+            }
             for (dst, e) in ple.iter_mut().zip(identity) {
                 *dst = (*dst + e * embed_scale) * PLE_INPUT_SCALE;
             }
-        }
-        // Guarded on the weights rather than fired unconditionally: without
-        // per-layer embeddings the scratch is an empty slice, and reporting
-        // that as a captured row would read downstream as a match of nothing.
-        if w.ple.is_some() {
             if let Some(tap) = tap.as_mut() {
-                tap.on_ple(position, ple);
+                tap.on_stage(STAGE_PLE, position, ple);
             }
         }
         let ple_rows: &[f32] = ple;
@@ -2132,7 +2167,7 @@ mod tests {
         let tokens = [1u32, 2, 3];
         model.prefill_all(&tokens).unwrap();
 
-        let embed = tap.embedding().expect("prelude capture requested");
+        let embed = tap.stage(STAGE_EMBED).expect("prelude capture requested");
         assert_eq!(embed.len(), c.embed_dim);
         let last = *tokens.last().unwrap() as usize;
         let scale = (c.embed_dim as f32).sqrt();
@@ -2145,15 +2180,38 @@ mod tests {
         // shape the decoder stack indexes into -- not a per-layer stack, and
         // the difference is the row stride that made this worth tapping.
         let pd = c.ple_dim.expect("the E4B-shaped fixture carries PLE");
-        let ple = tap.ple_rows().expect("prelude capture requested");
-        assert_eq!(ple.len(), c.n_layers * pd);
+        for name in [STAGE_PLE_IDENTITY, STAGE_PLE_CONTEXT, STAGE_PLE] {
+            let row = tap.stage(name).expect("prelude capture requested");
+            assert_eq!(row.len(), c.n_layers * pd, "{name}");
+        }
 
-        // And the opt-in is real: the default tap keeps neither.
+        // The composition, checked as the arithmetic it is. This is the stage
+        // that diverged against a released E4B while both of its halves are
+        // yet to be judged, so the relationship between the three is the
+        // thing worth pinning rather than any one of them.
+        let (identity, context, composed) = (
+            tap.stage(STAGE_PLE_IDENTITY).unwrap(),
+            tap.stage(STAGE_PLE_CONTEXT).unwrap(),
+            tap.stage(STAGE_PLE).unwrap(),
+        );
+        for j in 0..composed.len() {
+            let want = (context[j] + identity[j]) * PLE_INPUT_SCALE;
+            assert!(
+                (composed[j] - want).abs() < 1e-6,
+                "element {j}: {} is not ({} + {}) / sqrt(2)",
+                composed[j],
+                context[j],
+                identity[j]
+            );
+        }
+
+        // And the opt-in is real: the default tap keeps no stage at all.
         let plain = LastRowTap::new(vec![]);
         model.set_tap(Box::new(plain.clone()));
         model.prefill_all(&[4]).unwrap();
-        assert!(plain.embedding().is_none());
-        assert!(plain.ple_rows().is_none());
+        for name in PRELUDE_STAGES {
+            assert!(plain.stage(name).is_none(), "{name}");
+        }
     }
 
     #[test]

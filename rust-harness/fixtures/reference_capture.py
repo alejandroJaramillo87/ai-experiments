@@ -142,31 +142,54 @@ def main():
 
     handles = [layer.register_forward_hook(hook(i)) for i, layer in enumerate(layers)]
 
-    # The two points before layer 0. "Layer 0 diverges" has two unrelated
-    # causes -- the stack was handed the wrong input, or layer 0 computed the
-    # wrong thing with the right one -- and the per-layer table cannot
-    # distinguish them, because layer 0 is the first row it has.
+    # The stages before layer 0. "Layer 0 diverges" has two unrelated causes
+    # -- the stack was handed the wrong input, or layer 0 computed the wrong
+    # thing with the right one -- and the per-layer table cannot distinguish
+    # them, because layer 0 is the first row it has. The per-layer embeddings
+    # then decompose the same way: a divergence in the composed rows is a
+    # divergence in one of the two halves, or in the sum of them.
+    #
+    # Names and order must match runtime/src/model/cpu.rs PRELUDE_STAGES.
     prelude = {}
 
-    def embed_hook(_module, _inputs, output):
-        # embed_tokens is a Gemma4TextScaledWordEmbedding, so its output is
-        # already multiplied by sqrt(hidden_size) (upstream:1458-1459). That
-        # is the tensor layer 0 consumes, and the one the Rust tap reports.
-        prelude["embed"] = output[0, -1, :].detach().to(torch.float32).tolist()
+    def row(tensor):
+        return tensor[0, -1].reshape(-1).detach().to(torch.float32).tolist()
 
-    handles.append(text_model.embed_tokens.register_forward_hook(embed_hook))
+    def stage_hook(name):
+        def fn(_module, _inputs, output):
+            prelude[name] = row(output)
+
+        return fn
+
+    # embed_tokens is a Gemma4TextScaledWordEmbedding, so its output is
+    # already multiplied by sqrt(hidden_size) (upstream:1458-1459). That is
+    # the tensor layer 0 consumes, and the one the Rust tap reports.
+    handles.append(text_model.embed_tokens.register_forward_hook(stage_hook("embed")))
+
+    # The token-identity half, likewise already scaled -- by
+    # sqrt(hidden_size_per_layer_input) this time (upstream:1608). Captured
+    # packed, before the reshape, which is the layout the Rust indexes.
+    identity = getattr(text_model, "embed_tokens_per_layer", None)
+    if identity is not None:
+        handles.append(identity.register_forward_hook(stage_hook("ple_identity")))
+
+    # The context half, after its norm and before the two are summed
+    # (upstream:1796).
+    context = getattr(text_model, "per_layer_projection_norm", None)
+    if context is not None:
+        handles.append(context.register_forward_hook(stage_hook("ple_context")))
 
     # project_per_layer_inputs is a method rather than a module, so there is
     # nothing to hang a forward hook on; it is wrapped instead. Its return
     # value is the composed [batch, seq, n_layers, ple_dim] tensor -- both
-    # embeddings, both scales, the projection and the norm, all applied --
-    # which is exactly the stage the Rust computes once before the layer loop.
+    # halves, both scales, and the 1/sqrt(2) -- which is exactly what the Rust
+    # computes once before the layer loop.
     project = getattr(text_model, "project_per_layer_inputs", None)
     if project is not None:
 
         def wrapped(*a, **kw):
             out = project(*a, **kw)
-            prelude["ple"] = out[0, -1].reshape(-1).detach().to(torch.float32).tolist()
+            prelude["ple"] = row(out)
             return out
 
         text_model.project_per_layer_inputs = wrapped

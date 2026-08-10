@@ -26,7 +26,7 @@ use std::process::ExitCode;
 
 use anyhow::{ensure, Context, Result};
 
-use runtime::model::cpu::{CpuModel, LastRowTap};
+use runtime::model::cpu::{CpuModel, LastRowTap, PRELUDE_STAGES};
 use runtime::model::{Model, Token};
 
 /// Cosine similarity below which a layer is reported as divergent.
@@ -56,12 +56,10 @@ struct Reference {
     token_ids: Vec<Token>,
     dtype: String,
     layers: Vec<Vec<f32>>,
-    /// The scaled embedding row, absent from a capture written before the
-    /// prelude existed.
-    embed: Option<Vec<f32>>,
-    /// The composed per-layer inputs, absent both from an older capture and
-    /// from a model without per-layer embeddings.
-    ple: Option<Vec<f32>>,
+    /// The named pre-stack stages the capture carried, in `PRELUDE_STAGES`
+    /// order. A stage is absent from an older capture, and from a model that
+    /// does not reach it.
+    stages: Vec<(&'static str, Vec<f32>)>,
 }
 
 /// A float array under `key`, or `None` when the capture does not carry it.
@@ -131,12 +129,17 @@ fn load_reference(path: &Path) -> Result<Reference> {
         .and_then(|t| t.as_str())
         .unwrap_or("unknown")
         .to_string();
+    let mut stages = Vec::new();
+    for name in PRELUDE_STAGES {
+        if let Some(row) = optional_row(&v, name)? {
+            stages.push((name, row));
+        }
+    }
     Ok(Reference {
         token_ids,
         dtype,
         layers,
-        embed: optional_row(&v, "embed")?,
-        ple: optional_row(&v, "ple")?,
+        stages,
     })
 }
 
@@ -192,7 +195,7 @@ fn report(label: &str, got: &[f32], want: &[f32], floor: f64, ceiling: f64) -> R
         (false, true) => "  <-- diverges (magnitude)",
         (false, false) => "",
     };
-    println!("{label:>5}  {cosine:<11.8}  {max_abs:<11.3e}  {rel_l2:<11.3e}{mark}");
+    println!("{label:>12}  {cosine:<11.8}  {max_abs:<11.3e}  {rel_l2:<11.3e}{mark}");
     Ok(!mark.is_empty())
 }
 
@@ -236,27 +239,21 @@ fn run(
     );
     println!("Cosine floor: {floor}, relative-L2 ceiling: {ceiling}");
     println!();
-    println!("layer  cosine       max_abs      rel_l2");
+    println!("{:>12}  cosine       max_abs      rel_l2", "stage/layer");
 
     // The prelude rows first, and they are the rows to read first. A wrong
     // input to the stack makes every layer wrong without any layer being at
     // fault, and the layer table alone cannot say so: layer 0 is the first
     // row it has, so it takes the blame either way.
+    // Stages are a chain, so the first divergence is the term rather than
+    // any sum it feeds: `ple` is wrong whenever either half is.
     let mut prelude_bad: Option<&str> = None;
-    if let Some(want) = reference.embed.as_ref() {
+    for (name, want) in &reference.stages {
         let got = tap
-            .embedding()
-            .context("the tap captured no embedding row")?;
-        if report("embed", &got, want, floor, ceiling)? {
-            prelude_bad = Some("embed");
-        }
-    }
-    if let Some(want) = reference.ple.as_ref() {
-        let got = tap
-            .ple_rows()
-            .context("the tap captured no per-layer input rows")?;
-        if report("ple", &got, want, floor, ceiling)? && prelude_bad.is_none() {
-            prelude_bad = Some("ple");
+            .stage(name)
+            .with_context(|| format!("{name}: the tap captured no row"))?;
+        if report(name, &got, want, floor, ceiling)? && prelude_bad.is_none() {
+            prelude_bad = Some(name);
         }
     }
 
@@ -282,10 +279,16 @@ fn run(
                 "the token IDs, the embedding table, or the sqrt(embed_dim) scale -- \
                  not any decoder layer"
             }
-            _ => {
-                "the per-layer embedding pipeline: the packed table's row stride, \
-                 either embed scale, the projection, or its norm"
+            "ple_identity" => {
+                "the packed per-layer table: its row stride, or the sqrt(ple_dim) \
+                 embed scale"
             }
+            "ple_context" => {
+                "the per-layer projection: its weight orientation, the \
+                 1/sqrt(embed_dim) scale, or the norm over each row"
+            }
+            // Both halves clean and the sum wrong leaves only the sum.
+            _ => "the composition of the two halves, which is only the 1/sqrt(2) scale",
         };
         println!("[ERROR] Residual stream: the stack's input diverges at '{stage}'");
         println!("  Look at {cause}.");
