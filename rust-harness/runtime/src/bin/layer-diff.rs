@@ -242,22 +242,10 @@ fn run(
         // Reported before the layer verdict and instead of it: with the input
         // to layer 0 already wrong, the layer table below measures a stack
         // fed bad data and says nothing about the layers themselves.
-        let cause = match stage {
-            "embed" => {
-                "the token IDs, the embedding table, or the sqrt(embed_dim) scale -- \
-                 not any decoder layer"
-            }
-            "ple_identity" => {
-                "the packed per-layer table: its row stride, or the sqrt(ple_dim) \
-                 embed scale"
-            }
-            "ple_context" => {
-                "the per-layer projection: its weight orientation, the \
-                 1/sqrt(embed_dim) scale, or the norm over each row"
-            }
-            // Both halves clean and the sum wrong leaves only the sum.
-            _ => "the composition of the two halves, which is only the 1/sqrt(2) scale",
-        };
+        // From the ladder rather than restated here: L1 reports the same
+        // divergence, and two wordings for one failure is how a reader ends
+        // up believing they are two failures.
+        let cause = runtime::ladder::stage_cause(stage);
         println!("[ERROR] Residual stream: the stack's input diverges at '{stage}'");
         println!("  Look at {cause}.");
         println!(

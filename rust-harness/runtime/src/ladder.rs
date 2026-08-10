@@ -23,7 +23,7 @@
 
 use std::fmt::Write as _;
 
-use anyhow::{ensure, Result};
+use anyhow::{bail, ensure, Context, Result};
 
 use crate::model::{Model, Token};
 use crate::sampler::{Sampler, SamplingParams};
@@ -478,6 +478,280 @@ pub mod thresholds {
     /// autoregressive, so everything after a divergence is a different run
     /// rather than more evidence.
     pub const GREEDY_PREFIX: f64 = 0.75;
+}
+
+/// The tolerances L1 and L2 are judged against, which differ by oracle.
+///
+/// One struct rather than two sets of loose constants, so a caller cannot mix
+/// the tiny fixture's cosine floor with the real checkpoint's KL ceiling and
+/// get a threshold nobody chose.
+#[derive(Debug, Clone, Copy)]
+pub struct Tolerance {
+    /// L1: cosine floor. Direction.
+    pub cosine: f64,
+    /// L1: relative-L2 ceiling. Magnitude.
+    ///
+    /// Separate from `cosine` because the two failures are independent: a
+    /// residual stream correct in shape and wrong in size passes any cosine
+    /// floor perfectly, which is the exact signature of a missing
+    /// `layer_scalar` -- a tensor released checkpoints carry at values as low
+    /// as 0.049.
+    pub rel_l2: f64,
+    /// L2: mean KL in nats across the scored positions.
+    pub mean_kl: f64,
+    /// L2: worst single-position KL in nats.
+    ///
+    /// The mean alone would let one badly wrong position hide among many
+    /// right ones, and one position is all a rare-path bug touches.
+    pub worst_kl: f64,
+    /// L2: how deep the overlap check looks.
+    pub top_k: usize,
+    /// L2: worst top-k overlap across the scored positions.
+    pub overlap: f64,
+    /// L2: fraction of positions whose argmax matches.
+    ///
+    /// Reported but weak on its own, and never the only L2 measure: a
+    /// monotone error such as a missing logit softcap cannot move an argmax
+    /// at all, so a rung resting on it would be blind to exactly the defect
+    /// class this checkpoint has already produced once.
+    pub argmax: f64,
+}
+
+/// Tier T: the tiny transformers-authored fixture, f32 against f32 on a few
+/// dozen dimensions. Tight on purpose -- there is nothing here for a
+/// tolerance to absorb except accumulation order, so if it needs more than
+/// this to pass, something is wrong and loosening hides it.
+pub const TIER_T: Tolerance = Tolerance {
+    cosine: 0.99999,
+    rel_l2: 1e-5,
+    mean_kl: 1e-6,
+    worst_kl: 1e-5,
+    top_k: 50,
+    overlap: 1.0,
+    argmax: 1.0,
+};
+
+/// Tier E: the real checkpoint. Looser, because thousands of dimensions and
+/// dozens of layers accumulate reordering differences that Tier T's handful
+/// cannot. PROVISIONAL apart from the two L1 numbers, which `layer-diff`
+/// has already argued and used against real weights.
+pub const TIER_E: Tolerance = Tolerance {
+    cosine: 0.9999,
+    rel_l2: 1e-3,
+    mean_kl: 1e-3,
+    worst_kl: 5e-3,
+    top_k: 50,
+    overlap: 0.98,
+    argmax: 0.98,
+};
+
+/// What a divergence at a named pre-stack stage points at.
+///
+/// Here rather than in the binary that prints it because the rung and the
+/// tool have to name the same cause: two wordings for one failure is how a
+/// reader ends up believing they are two failures.
+pub fn stage_cause(stage: &str) -> &'static str {
+    match stage {
+        "embed" => {
+            "the token IDs, the embedding table, or the sqrt(embed_dim) scale -- \
+             not any decoder layer"
+        }
+        "ple_identity" => {
+            "the packed per-layer table: its row stride, or the sqrt(ple_dim) embed scale"
+        }
+        "ple_context" => {
+            "the per-layer projection: its weight orientation, the 1/sqrt(embed_dim) \
+             scale, or the norm over each row"
+        }
+        // Both halves clean and the sum wrong leaves only the sum.
+        _ => "the composition of the two halves, which is only the 1/sqrt(2) scale",
+    }
+}
+
+/// Activations at one position: the named pre-stack stages, then one row per
+/// decoder layer.
+///
+/// Both the reference and our own capture use this type, so `rung_layers`
+/// compares two values of one shape and needs no model. That is what makes
+/// the rung's own reporting testable: a rung that localizes a divergence to
+/// the wrong row is a defect, and it is one no real-weight run can tell apart
+/// from the divergence itself.
+#[derive(Debug, Clone, Default)]
+pub struct Activations {
+    /// Named stages in computation order. `PRELUDE_STAGES` order matters: the
+    /// stages are a chain, so the first divergence is the term rather than
+    /// any sum it feeds.
+    pub stages: Vec<(String, Vec<f32>)>,
+    pub layers: Vec<Vec<f32>>,
+}
+
+/// L1: the residual stream and the stages feeding it.
+///
+/// First divergence, not worst. Once row k is wrong every later row is wrong
+/// downstream of it, so a table read by magnitude points at the end of the
+/// stack rather than at the cause. Stages are checked before layers and their
+/// verdict displaces the layer verdict entirely: with the input to layer 0
+/// already wrong, the layer rows measure a stack fed bad data and are not
+/// evidence about the layers.
+pub fn rung_layers(got: &Activations, want: &Activations, tol: Tolerance) -> Result<RungResult> {
+    ensure!(
+        got.layers.len() == want.layers.len(),
+        "reference captured {} layers, this run captured {} -- the two are not the \
+         same model",
+        want.layers.len(),
+        got.layers.len()
+    );
+    ensure!(!want.layers.is_empty(), "reference captured no layers");
+
+    let mut worst_cosine = f64::INFINITY;
+    let mut worst_rel_l2: f64 = 0.0;
+    let mut first_bad: Option<String> = None;
+    let mut in_prelude = true;
+
+    // Stages the reference carried, then the layers. A stage absent from our
+    // capture is an error rather than a skip: the reference measured it, so
+    // not measuring it is missing evidence dressed as agreement.
+    let stage_rows = want.stages.iter().map(|(name, row)| {
+        let ours = got
+            .stages
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, r)| r.as_slice());
+        (name.clone(), ours, row.as_slice())
+    });
+    let layer_rows = (0..want.layers.len()).map(|i| {
+        (
+            format!("layer {i}"),
+            Some(got.layers[i].as_slice()),
+            want.layers[i].as_slice(),
+        )
+    });
+
+    for (label, ours, theirs) in stage_rows.chain(layer_rows) {
+        // The stage half of the chain is exhausted once a "layer " label
+        // appears, and only a stage divergence gets the displacing verdict.
+        if label.starts_with("layer ") {
+            if in_prelude && first_bad.is_some() {
+                break;
+            }
+            in_prelude = false;
+        }
+        let ours = ours.with_context(|| format!("{label}: this run captured no row"))?;
+        ensure!(
+            ours.len() == theirs.len(),
+            "{label}: this run's row is {} wide, the reference's is {} wide",
+            ours.len(),
+            theirs.len()
+        );
+        let d = crate::metrics::vec_diff(ours, theirs);
+        worst_cosine = worst_cosine.min(d.cosine);
+        worst_rel_l2 = worst_rel_l2.max(d.rel_l2);
+        if (d.cosine < tol.cosine || d.rel_l2 > tol.rel_l2) && first_bad.is_none() {
+            first_bad = Some(label);
+        }
+    }
+
+    let note = match &first_bad {
+        None => format!("{} layers within tolerance", want.layers.len()),
+        Some(label) if label.starts_with("layer ") => {
+            format!("first divergence at {label}; every later layer is downstream of it")
+        }
+        Some(stage) => format!(
+            "the stack's input diverges at '{stage}' -- look at {}",
+            stage_cause(stage)
+        ),
+    };
+
+    Ok(RungResult::measured(
+        Rung::L1Layers,
+        vec![
+            Measure::new("worst cosine", worst_cosine, tol.cosine, Cmp::AtLeast),
+            Measure::new("worst rel_l2", worst_rel_l2, tol.rel_l2, Cmp::AtMost),
+        ],
+        note,
+    ))
+}
+
+/// Reference logits at a recorded set of prefill positions.
+#[derive(Debug, Clone)]
+pub struct LogitReference {
+    /// Indices into the prompt whose rows were captured.
+    ///
+    /// Recorded in the artifact and re-asserted here rather than implied by
+    /// row order, because scoring every position of a long prompt is what
+    /// makes L2 unaffordable, so the set is capped -- and a capped set that
+    /// does not say which positions it holds is a set nobody can reproduce.
+    pub positions: Vec<usize>,
+    pub rows: Vec<Vec<f32>>,
+}
+
+/// L2: the output distribution at the recorded positions.
+pub fn rung_logits(
+    model: &mut dyn Model,
+    prompt: &[Token],
+    reference: &LogitReference,
+    tol: Tolerance,
+) -> Result<RungResult> {
+    ensure!(
+        reference.positions.len() == reference.rows.len(),
+        "reference names {} positions but carries {} rows",
+        reference.positions.len(),
+        reference.rows.len()
+    );
+    ensure!(!reference.rows.is_empty(), "reference carries no rows");
+    if let Some(&p) = reference.positions.iter().find(|&&p| p >= prompt.len()) {
+        bail!(
+            "reference scores position {p} of a {}-token prompt",
+            prompt.len()
+        );
+    }
+
+    model.truncate(0)?;
+    let ours = model.prefill_all(prompt)?;
+    ensure!(
+        ours.len() == prompt.len(),
+        "prefill_all returned {} rows for {} tokens",
+        ours.len(),
+        prompt.len()
+    );
+
+    let mut kl_sum = 0.0;
+    let mut worst = (0usize, 0.0f64);
+    let mut worst_overlap = f64::INFINITY;
+    let mut argmax_matches = 0usize;
+    for (&position, want) in reference.positions.iter().zip(&reference.rows) {
+        let d = crate::metrics::logit_diff(want, &ours[position].0, tol.top_k)
+            .with_context(|| format!("position {position}"))?;
+        kl_sum += d.kl;
+        if d.kl > worst.1 {
+            worst = (position, d.kl);
+        }
+        worst_overlap = worst_overlap.min(d.top_k);
+        if d.argmax_same {
+            argmax_matches += 1;
+        }
+    }
+    let n = reference.rows.len();
+    let top_k_name: &'static str = match tol.top_k {
+        50 => "worst top-50 overlap",
+        _ => "worst top-k overlap",
+    };
+
+    Ok(RungResult::measured(
+        Rung::L2Logits,
+        vec![
+            Measure::new("mean kl", kl_sum / n as f64, tol.mean_kl, Cmp::AtMost),
+            Measure::new("worst kl", worst.1, tol.worst_kl, Cmp::AtMost),
+            Measure::new(top_k_name, worst_overlap, tol.overlap, Cmp::AtLeast),
+            Measure::new(
+                "argmax agreement",
+                argmax_matches as f64 / n as f64,
+                tol.argmax,
+                Cmp::AtLeast,
+            ),
+        ],
+        format!("{n} positions scored; worst at prompt position {}", worst.0),
+    ))
 }
 
 /// Reference perplexity for one corpus, as the reference implementation
@@ -1017,6 +1291,203 @@ mod tests {
         let steps: Vec<usize> = m.records().iter().map(|r| r.tokens.len()).collect();
         assert_eq!(steps, vec![3, 1, 1, 1], "{steps:?}");
         assert_eq!(m.cached_len(), 6);
+    }
+
+    /// A capture with `stages` named stages and `layers` layers, every row a
+    /// distinct direction so a perturbation cannot coincidentally agree.
+    fn activations(stages: &[&str], layers: usize) -> Activations {
+        let row = |seed: usize| -> Vec<f32> {
+            (0..8).map(|j| (seed + 1) as f32 * (j + 1) as f32).collect()
+        };
+        Activations {
+            stages: stages
+                .iter()
+                .enumerate()
+                .map(|(i, n)| ((*n).to_string(), row(i)))
+                .collect(),
+            layers: (0..layers).map(|i| row(100 + i)).collect(),
+        }
+    }
+
+    #[test]
+    fn an_exact_activation_capture_passes_the_tight_tier_t_tolerance() {
+        let want = activations(&["embed", "ple_context", "ple"], 4);
+        let r = rung_layers(&want.clone(), &want, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Pass, "{r:?}");
+        assert!(r.note.contains("4 layers within tolerance"), "{}", r.note);
+    }
+
+    #[test]
+    fn a_perturbed_layer_fails_and_the_note_names_the_first_one_not_the_worst() {
+        // Layer 1 is nudged off direction and layer 3 much further. The
+        // report has to name 1: once a layer is wrong every later layer is
+        // wrong downstream of it, so a table read by magnitude points at the
+        // end of the stack instead of the cause.
+        let want = activations(&["embed"], 5);
+        let mut got = want.clone();
+        got.layers[1][0] += 0.5;
+        got.layers[3][0] += 40.0;
+        let r = rung_layers(&got, &want, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Fail, "{r:?}");
+        assert!(r.note.contains("first divergence at layer 1"), "{}", r.note);
+    }
+
+    #[test]
+    fn a_diverging_stage_displaces_the_layer_verdict_and_names_a_cause() {
+        // With the input to layer 0 already wrong, the layer rows measure a
+        // stack fed bad data. Reporting a layer here would send the reader
+        // to a decoder layer that is doing exactly what it was told.
+        let want = activations(&["embed", "ple_context", "ple"], 3);
+        let mut got = want.clone();
+        got.stages[1].1[2] += 3.0;
+        got.layers[0][0] += 9.0;
+        let r = rung_layers(&got, &want, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Fail, "{r:?}");
+        assert!(r.note.contains("'ple_context'"), "{}", r.note);
+        assert!(r.note.contains("per-layer projection"), "{}", r.note);
+        assert!(
+            !r.note.contains("layer 0"),
+            "a stage divergence must not be reported as a layer: {}",
+            r.note
+        );
+    }
+
+    #[test]
+    fn a_uniformly_scaled_layer_fails_on_magnitude_with_its_direction_intact() {
+        // The signature of a missing layer_scalar, and the reason cosine is
+        // not the only L1 measure: every cosine here is exactly 1.
+        let want = activations(&[], 3);
+        let mut got = want.clone();
+        for v in got.layers[2].iter_mut() {
+            *v *= 1.5;
+        }
+        let r = rung_layers(&got, &want, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Fail, "{r:?}");
+        let cosine = r
+            .measures
+            .iter()
+            .find(|m| m.name == "worst cosine")
+            .unwrap();
+        assert!(cosine.ok(), "direction is intact: {}", cosine.value);
+        let rel = r
+            .measures
+            .iter()
+            .find(|m| m.name == "worst rel_l2")
+            .unwrap();
+        assert!(!rel.ok(), "{}", rel.value);
+    }
+
+    #[test]
+    fn a_capture_missing_a_stage_the_reference_measured_is_an_error() {
+        // Not a skip. The reference measured it, so not measuring it is
+        // missing evidence dressed up as agreement.
+        let want = activations(&["embed", "ple"], 2);
+        let mut got = want.clone();
+        got.stages.remove(1);
+        let err = rung_layers(&got, &want, TIER_T).expect_err("expected an error");
+        assert!(err.to_string().contains("captured no row"), "{err}");
+    }
+
+    #[test]
+    fn a_reference_with_a_different_layer_count_is_a_different_model() {
+        let want = activations(&[], 4);
+        let got = activations(&[], 5);
+        let err = rung_layers(&got, &want, TIER_T).expect_err("expected an error");
+        assert!(err.to_string().contains("not the same model"), "{err}");
+    }
+
+    #[test]
+    fn logits_reproducing_the_reference_exactly_pass() {
+        let script: Vec<Vec<f32>> = (0..8)
+            .map(|p| (0..6).map(|j| ((p + j) % 5) as f32).collect())
+            .collect();
+        let positions = vec![1usize, 3, 5];
+        let reference = LogitReference {
+            rows: positions.iter().map(|&p| script[p].clone()).collect(),
+            positions,
+        };
+        let mut m = MockModel::new(6, script);
+        let r = rung_logits(&mut m, &[0; 8], &reference, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Pass, "{r:?}");
+        assert!(r.note.contains("3 positions scored"), "{}", r.note);
+    }
+
+    #[test]
+    fn a_single_wrong_position_fails_l2_and_the_note_names_that_position() {
+        let script: Vec<Vec<f32>> = (0..8)
+            .map(|p| (0..6).map(|j| ((p + j) % 5) as f32).collect())
+            .collect();
+        let positions = vec![1usize, 3, 5];
+        let mut reference = LogitReference {
+            rows: positions.iter().map(|&p| script[p].clone()).collect(),
+            positions,
+        };
+        reference.rows[1][4] += 6.0;
+        let mut m = MockModel::new(6, script);
+        let r = rung_logits(&mut m, &[0; 8], &reference, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Fail, "{r:?}");
+        assert!(r.note.contains("worst at prompt position 3"), "{}", r.note);
+    }
+
+    #[test]
+    fn l2_scores_exactly_the_positions_the_artifact_records() {
+        // The set is capped -- scoring every position of a long prompt is
+        // what makes L2 unaffordable -- so which positions were scored is
+        // part of the artifact, and a position outside the prompt is a
+        // mismatched artifact rather than a divergence.
+        let script: Vec<Vec<f32>> = (0..4).map(|_| vec![0.0; 6]).collect();
+        let reference = LogitReference {
+            positions: vec![0, 9],
+            rows: vec![vec![0.0; 6], vec![0.0; 6]],
+        };
+        let mut m = MockModel::new(6, script);
+        let err = rung_logits(&mut m, &[0; 4], &reference, TIER_T).expect_err("expected an error");
+        assert!(err.to_string().contains("position 9"), "{err}");
+
+        let ragged = LogitReference {
+            positions: vec![0, 1],
+            rows: vec![vec![0.0; 6]],
+        };
+        let err = rung_logits(&mut m, &[0; 4], &ragged, TIER_T).expect_err("expected an error");
+        assert!(err.to_string().contains("carries 1 rows"), "{err}");
+    }
+
+    #[test]
+    fn an_argmax_preserving_distortion_still_fails_l2() {
+        // A monotone error -- a missing logit softcap is the one this
+        // checkpoint has already produced -- cannot move an argmax at all.
+        // A rung resting on argmax agreement would be blind to it, so this
+        // test exists to keep argmax from becoming the measure that matters.
+        let script: Vec<Vec<f32>> = (0..4)
+            .map(|_| vec![4.0f32, 1.0, 0.5, 0.25, 0.1, 0.0])
+            .collect();
+        let reference = LogitReference {
+            positions: vec![2],
+            // Same ordering throughout, so the argmax and the whole top-k
+            // ranking agree; only the shape of the distribution differs.
+            rows: vec![vec![8.0f32, 2.0, 1.0, 0.5, 0.2, 0.0]],
+        };
+        let mut m = MockModel::new(6, script);
+        let r = rung_logits(&mut m, &[0; 4], &reference, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Fail, "{r:?}");
+        let argmax = r
+            .measures
+            .iter()
+            .find(|m| m.name == "argmax agreement")
+            .unwrap();
+        assert!(argmax.ok(), "the argmax never moved: {}", argmax.value);
+        let overlap = r
+            .measures
+            .iter()
+            .find(|m| m.name == "worst top-50 overlap")
+            .unwrap();
+        assert!(overlap.ok(), "the ranking never moved: {}", overlap.value);
+        let kl = r.measures.iter().find(|m| m.name == "mean kl").unwrap();
+        assert!(
+            !kl.ok(),
+            "KL is the measure that has to catch this: {}",
+            kl.value
+        );
     }
 
     #[test]
