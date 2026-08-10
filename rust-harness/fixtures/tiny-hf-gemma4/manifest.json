@@ -1,0 +1,11 @@
+{
+  "artifacts": {
+    "capture.json": "be0ed3a19562901a0adab7ea2bd2d4f3206be827ae881f69357f0295ed1062b0",
+    "config.json": "973c387714d577e89f29577f3028a1071a1b8d809b3de0ee1162dd661431130e",
+    "model.safetensors": "4a8dbd6788861b0e197e08fc5d06244bd6797e8a3db99fed633047da47dedbf0"
+  },
+  "generator_sha256": "d107ce346142afba8c23a9bac58b4ad1a589fb1fe9c85f6c6bff11ff9719831b",
+  "seed": 20260810,
+  "torch": "2.13.0+cu130",
+  "transformers": "5.13.1"
+}
