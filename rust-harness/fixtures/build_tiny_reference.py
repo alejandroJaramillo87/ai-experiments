@@ -33,10 +33,16 @@ and torch versions, and of the seed).
 FIRST DRAFT. The field names below are this reader's best understanding of
 Gemma4TextConfig and have not been run against an installed transformers --
 that is the one step of this package a sandbox cannot do, and it is the step
-with real unknown-unknowns. Expect the first run to fail on a keyword and
-expect to fix it here rather than to work around it at the call site: a config
-built by hand around a rejected field is the transcription this script exists
-to remove.
+with real unknown-unknowns. The first run confirmed it, rejecting
+`intermediate_size` as a list. Fix SHAPE here rather than working around the
+rejection at the call site: a config built by hand around a rejected field is
+the transcription this script exists to remove.
+
+Two aids for that, because the author of this script cannot reach a machine
+with transformers on it and one rejected keyword per round trip is the wrong
+shape for the work. `--describe` prints the field vocabulary the installed
+class declares. Failing that, the build preflights every SHAPE entry
+separately and reports all the rejections at once instead of only the first.
 """
 
 import argparse
@@ -101,6 +107,13 @@ def parse_args():
         "committed tiny BPE, so L0 has a tokenizer both sides already agree "
         "exists)",
     )
+    p.add_argument(
+        "--describe",
+        action="store_true",
+        help="print the fields Gemma4TextConfig declares and exit, without "
+        "building anything (workstation only, and the fastest way to correct "
+        "SHAPE against the installed transformers)",
+    )
     return p.parse_args()
 
 
@@ -116,6 +129,61 @@ def vocab_size_of(tokenizer_path):
     return len(model["vocab"])
 
 
+def config_class():
+    from transformers.models.gemma4 import Gemma4TextConfig
+
+    return Gemma4TextConfig
+
+
+def describe_config():
+    """Print every field Gemma4TextConfig declares, with its type and default.
+
+    The whole point of this fixture is that transformers, not this reader,
+    decides what a Gemma 4 config is. That only works if the field vocabulary
+    is read off the installed class rather than recalled, so this mode exists
+    to be run once on the workstation and pasted back. It is also the answer
+    to the open question SHAPE cannot settle from a sandbox: whether per-layer
+    feed-forward widths are a list on `intermediate_size` or are derived by
+    transformers from a scalar plus `use_double_wide_mlp`.
+    """
+    import dataclasses
+
+    cls = config_class()
+    fields = getattr(cls, "__dataclass_fields__", None)
+    if not fields:
+        # Not a dataclass in this release; fall back to a default instance,
+        # which is the only other place the field names are written down.
+        instance = cls()
+        for name, value in sorted(vars(instance).items()):
+            print(f"{name}: {type(value).__name__} = {value!r}")
+        return 0
+    for name, field in sorted(fields.items()):
+        default = field.default
+        if default is dataclasses.MISSING:
+            default = "<required>"
+        print(f"{name}: {field.type} = {default!r}")
+    return 0
+
+
+def rejected_fields(vocab_size):
+    """Every SHAPE entry the installed Gemma4TextConfig will not accept.
+
+    One keyword at a time, so the report names all of them. The constructor
+    raises on the first bad field and says nothing about the rest, which turns
+    a config this reader got wrong in four places into four round trips to a
+    machine the author of this script cannot reach. Each candidate is tried
+    against an otherwise-default config, so the failures are independent.
+    """
+    cls = config_class()
+    bad = []
+    for key, value in SHAPE.items():
+        try:
+            cls(vocab_size=vocab_size, **{key: value})
+        except Exception as e:  # noqa: BLE001 - any rejection is the signal
+            bad.append((key, value, f"{type(e).__name__}: {e}"))
+    return bad
+
+
 def build_config(vocab_size):
     """A Gemma 4 config built from transformers' own class.
 
@@ -123,11 +191,29 @@ def build_config(vocab_size):
     config.json is another transcription: it would record what this reader
     believes the field names are, and transformers would fill the rest with
     defaults nobody chose. Passing them as keywords means an unknown field is
-    an error at this line instead of a silent default.
-    """
-    from transformers.models.gemma4 import Gemma4TextConfig
+    an error here instead of a silent default.
 
-    return Gemma4TextConfig(vocab_size=vocab_size, **SHAPE)
+    The preflight does not repair anything. A rejected field means SHAPE
+    describes a model transformers would not build, and the repair is to
+    correct SHAPE against the released config -- dropping the field, or
+    coercing it to whatever the validator wanted, would produce a fixture that
+    is quietly not the architecture the harness has to match.
+    """
+    bad = rejected_fields(vocab_size)
+    if bad:
+        print(
+            "[ERROR] Config: transformers rejects these SHAPE entries", file=sys.stderr
+        )
+        for key, value, message in bad:
+            print(f"  {key} = {value!r}", file=sys.stderr)
+            print(f"    {message}", file=sys.stderr)
+        print(
+            "  Solution: correct SHAPE in this script against the released "
+            "config.json and --describe output; do not drop the field",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    return config_class()(vocab_size=vocab_size, **SHAPE)
 
 
 def seeded_weights(model, seed):
@@ -176,6 +262,9 @@ def main():
             file=sys.stderr,
         )
         return 1
+
+    if args.describe:
+        return describe_config()
 
     sys.path.insert(0, str(Path(__file__).parent))
     from reference_capture import capture
