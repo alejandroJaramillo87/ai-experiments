@@ -676,6 +676,23 @@ struct LayerKv {
 /// seam and its semantics.
 pub trait Tap: Send {
     fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]);
+
+    /// The residual stream as layer 0 receives it: the embedding row after
+    /// the `sqrt(embed_dim)` scale, before any decoder layer.
+    ///
+    /// Defaulted to nothing, because only `layer-diff` wants it. It exists
+    /// because "layer 0 diverges" has two very different causes -- a wrong
+    /// input to the stack, or a wrong layer 0 -- and the layer table cannot
+    /// tell them apart. This is the row that does.
+    fn on_embedding(&mut self, _position: usize, _x: &[f32]) {}
+
+    /// The composed per-layer input embeddings, `n_layers * ple_dim`, as the
+    /// decoder stack will consume them.
+    ///
+    /// The other candidate cause of a layer-0 divergence, and the one with
+    /// the most arithmetic between the checkpoint and the residual stream:
+    /// two embeddings, two scales, a projection and a norm.
+    fn on_ple(&mut self, _position: usize, _rows: &[f32]) {}
 }
 
 /// Tap keeping only the most recent row per requested layer, so after a
@@ -694,6 +711,13 @@ pub trait Tap: Send {
 pub struct LastRowTap {
     layers: Vec<usize>,
     rows: Arc<Mutex<HashMap<usize, Vec<f32>>>>,
+    /// Whether to also keep the two rows that precede layer 0. Off by
+    /// default: `activation-capture` writes probe training data and has no
+    /// use for them, and keeping them would copy `n_layers * ple_dim` floats
+    /// per position for nobody.
+    prelude: bool,
+    embed: Arc<Mutex<Option<Vec<f32>>>>,
+    ple: Arc<Mutex<Option<Vec<f32>>>>,
 }
 
 impl LastRowTap {
@@ -701,7 +725,27 @@ impl LastRowTap {
         Self {
             layers,
             rows: Arc::new(Mutex::new(HashMap::new())),
+            prelude: false,
+            embed: Arc::new(Mutex::new(None)),
+            ple: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Also keep the scaled embedding and the composed per-layer inputs.
+    pub fn capturing_prelude(mut self) -> Self {
+        self.prelude = true;
+        self
+    }
+
+    /// The scaled embedding row, when `capturing_prelude` was set.
+    pub fn embedding(&self) -> Option<Vec<f32>> {
+        self.embed.lock().expect("tap map not poisoned").clone()
+    }
+
+    /// The composed per-layer input rows, when `capturing_prelude` was set
+    /// and the checkpoint carries per-layer embeddings.
+    pub fn ple_rows(&self) -> Option<Vec<f32>> {
+        self.ple.lock().expect("tap map not poisoned").clone()
     }
 
     /// The captured row for `layer`, or `None` when the layer was not
@@ -717,6 +761,8 @@ impl LastRowTap {
     /// Drop every captured row, between examples.
     pub fn clear(&self) {
         self.rows.lock().expect("tap map not poisoned").clear();
+        *self.embed.lock().expect("tap map not poisoned") = None;
+        *self.ple.lock().expect("tap map not poisoned") = None;
     }
 }
 
@@ -727,6 +773,18 @@ impl Tap for LastRowTap {
                 .lock()
                 .expect("tap map not poisoned")
                 .insert(layer, x.to_vec());
+        }
+    }
+
+    fn on_embedding(&mut self, _position: usize, x: &[f32]) {
+        if self.prelude {
+            *self.embed.lock().expect("tap map not poisoned") = Some(x.to_vec());
+        }
+    }
+
+    fn on_ple(&mut self, _position: usize, rows: &[f32]) {
+        if self.prelude {
+            *self.ple.lock().expect("tap map not poisoned") = Some(rows.to_vec());
         }
     }
 }
@@ -1316,6 +1374,9 @@ impl CpuModel {
         for (dst, e) in x.iter_mut().zip(row) {
             *dst = e * scale;
         }
+        if let Some(tap) = tap.as_mut() {
+            tap.on_embedding(position, x);
+        }
 
         // Per-layer input embeddings, computed once for this position from the
         // embedded input and the token identity, before the decoder stack.
@@ -1355,6 +1416,14 @@ impl CpuModel {
             let embed_scale = (pd as f32).sqrt();
             for (dst, e) in ple.iter_mut().zip(identity) {
                 *dst = (*dst + e * embed_scale) * PLE_INPUT_SCALE;
+            }
+        }
+        // Guarded on the weights rather than fired unconditionally: without
+        // per-layer embeddings the scratch is an empty slice, and reporting
+        // that as a captured row would read downstream as a match of nothing.
+        if w.ple.is_some() {
+            if let Some(tap) = tap.as_mut() {
+                tap.on_ple(position, ple);
             }
         }
         let ple_rows: &[f32] = ple;
@@ -2038,6 +2107,53 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn the_prelude_tap_reports_the_scaled_embedding_and_the_composed_ple_rows() {
+        // The seam layer-diff needs to tell "the stack was handed the wrong
+        // input" apart from "layer 0 computed the wrong thing", which the
+        // per-layer table cannot do because layer 0 is its first row.
+        //
+        // Asserted against values recomputed here rather than against a
+        // golden: a golden would only pin the tap to whatever it emitted
+        // first, and the property that matters is that the embedding row is
+        // the table row times sqrt(embed_dim) and nothing else.
+        //
+        // The E4B-shaped spec rather than the default one, because the
+        // default carries no per-layer embeddings and would leave half of
+        // this untested.
+        let spec = TinySpec::e4b_shaped();
+        let mut model = model_of(&spec);
+        let c = *model.config();
+        let tap = LastRowTap::new(vec![]).capturing_prelude();
+        model.set_tap(Box::new(tap.clone()));
+
+        let tokens = [1u32, 2, 3];
+        model.prefill_all(&tokens).unwrap();
+
+        let embed = tap.embedding().expect("prelude capture requested");
+        assert_eq!(embed.len(), c.embed_dim);
+        let last = *tokens.last().unwrap() as usize;
+        let scale = (c.embed_dim as f32).sqrt();
+        for (j, got) in embed.iter().enumerate() {
+            let want = model.weights.embed[last * c.embed_dim + j] * scale;
+            assert_eq!(*got, want, "embedding element {j}");
+        }
+
+        // The per-layer rows are one flat block of n_layers * ple_dim, the
+        // shape the decoder stack indexes into -- not a per-layer stack, and
+        // the difference is the row stride that made this worth tapping.
+        let pd = c.ple_dim.expect("the E4B-shaped fixture carries PLE");
+        let ple = tap.ple_rows().expect("prelude capture requested");
+        assert_eq!(ple.len(), c.n_layers * pd);
+
+        // And the opt-in is real: the default tap keeps neither.
+        let plain = LastRowTap::new(vec![]);
+        model.set_tap(Box::new(plain.clone()));
+        model.prefill_all(&[4]).unwrap();
+        assert!(plain.embedding().is_none());
+        assert!(plain.ple_rows().is_none());
     }
 
     #[test]

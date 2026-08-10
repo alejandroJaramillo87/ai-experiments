@@ -56,6 +56,30 @@ struct Reference {
     token_ids: Vec<Token>,
     dtype: String,
     layers: Vec<Vec<f32>>,
+    /// The scaled embedding row, absent from a capture written before the
+    /// prelude existed.
+    embed: Option<Vec<f32>>,
+    /// The composed per-layer inputs, absent both from an older capture and
+    /// from a model without per-layer embeddings.
+    ple: Option<Vec<f32>>,
+}
+
+/// A float array under `key`, or `None` when the capture does not carry it.
+fn optional_row(v: &serde_json::Value, key: &str) -> Result<Option<Vec<f32>>> {
+    let Some(node) = v.get(key) else {
+        return Ok(None);
+    };
+    let row = node
+        .as_array()
+        .with_context(|| format!("{key} is present but not an array"))?;
+    row.iter()
+        .map(|x| {
+            x.as_f64()
+                .map(|f| f as f32)
+                .with_context(|| format!("{key} holds a non-number"))
+        })
+        .collect::<Result<Vec<f32>>>()
+        .map(Some)
 }
 
 fn load_reference(path: &Path) -> Result<Reference> {
@@ -111,6 +135,8 @@ fn load_reference(path: &Path) -> Result<Reference> {
         token_ids,
         dtype,
         layers,
+        embed: optional_row(&v, "embed")?,
+        ple: optional_row(&v, "ple")?,
     })
 }
 
@@ -148,6 +174,28 @@ fn compare(got: &[f32], want: &[f32]) -> (f64, f64, f64) {
     (cosine, max_abs, rel_l2)
 }
 
+/// Print one table row, and report whether it diverged.
+///
+/// Either failure alone is a divergence, and the mark says which, so a
+/// wrong-magnitude row is not read as a wrong-direction one.
+fn report(label: &str, got: &[f32], want: &[f32], floor: f64, ceiling: f64) -> Result<bool> {
+    ensure!(
+        got.len() == want.len(),
+        "{label}: backend row is {} wide, reference row is {} wide",
+        got.len(),
+        want.len()
+    );
+    let (cosine, max_abs, rel_l2) = compare(got, want);
+    let mark = match (cosine < floor, rel_l2 > ceiling) {
+        (true, true) => "  <-- diverges",
+        (true, false) => "  <-- diverges (direction)",
+        (false, true) => "  <-- diverges (magnitude)",
+        (false, false) => "",
+    };
+    println!("{label:>5}  {cosine:<11.8}  {max_abs:<11.3e}  {rel_l2:<11.3e}{mark}");
+    Ok(!mark.is_empty())
+}
+
 fn run(
     model_path: &Path,
     reference_path: &Path,
@@ -174,7 +222,7 @@ fn run(
         reference.layers.len()
     );
 
-    let tap = LastRowTap::new((0..n_layers).collect());
+    let tap = LastRowTap::new((0..n_layers).collect()).capturing_prelude();
     model.set_tap(Box::new(tap.clone()));
     model
         .prefill(&reference.token_ids)
@@ -190,34 +238,63 @@ fn run(
     println!();
     println!("layer  cosine       max_abs      rel_l2");
 
+    // The prelude rows first, and they are the rows to read first. A wrong
+    // input to the stack makes every layer wrong without any layer being at
+    // fault, and the layer table alone cannot say so: layer 0 is the first
+    // row it has, so it takes the blame either way.
+    let mut prelude_bad: Option<&str> = None;
+    if let Some(want) = reference.embed.as_ref() {
+        let got = tap
+            .embedding()
+            .context("the tap captured no embedding row")?;
+        if report("embed", &got, want, floor, ceiling)? {
+            prelude_bad = Some("embed");
+        }
+    }
+    if let Some(want) = reference.ple.as_ref() {
+        let got = tap
+            .ple_rows()
+            .context("the tap captured no per-layer input rows")?;
+        if report("ple", &got, want, floor, ceiling)? && prelude_bad.is_none() {
+            prelude_bad = Some("ple");
+        }
+    }
+
     let mut first_bad: Option<usize> = None;
     for i in 0..n_layers {
         let got = tap
             .row(i)
             .with_context(|| format!("layer {i}: the tap captured no row"))?;
-        let want = &reference.layers[i];
-        ensure!(
-            got.len() == want.len(),
-            "layer {i}: backend row is {} wide, reference row is {} wide",
-            got.len(),
-            want.len()
-        );
-        let (cosine, max_abs, rel_l2) = compare(&got, want);
-        // Either failure alone is a divergence, and the mark says which, so
-        // a wrong-magnitude layer is not read as a wrong-direction one.
-        let mark = match (cosine < floor, rel_l2 > ceiling) {
-            (true, true) => "  <-- diverges",
-            (true, false) => "  <-- diverges (direction)",
-            (false, true) => "  <-- diverges (magnitude)",
-            (false, false) => "",
-        };
-        println!("{i:>5}  {cosine:<11.8}  {max_abs:<11.3e}  {rel_l2:<11.3e}{mark}");
-        if !mark.is_empty() && first_bad.is_none() {
+        if report(&i.to_string(), &got, &reference.layers[i], floor, ceiling)?
+            && first_bad.is_none()
+        {
             first_bad = Some(i);
         }
     }
 
     println!();
+    if let Some(stage) = prelude_bad {
+        // Reported before the layer verdict and instead of it: with the input
+        // to layer 0 already wrong, the layer table below measures a stack
+        // fed bad data and says nothing about the layers themselves.
+        let cause = match stage {
+            "embed" => {
+                "the token IDs, the embedding table, or the sqrt(embed_dim) scale -- \
+                 not any decoder layer"
+            }
+            _ => {
+                "the per-layer embedding pipeline: the packed table's row stride, \
+                 either embed scale, the projection, or its norm"
+            }
+        };
+        println!("[ERROR] Residual stream: the stack's input diverges at '{stage}'");
+        println!("  Look at {cause}.");
+        println!(
+            "  Every layer below is downstream of this; the layer rows are not \
+             evidence about the layers until this is clean."
+        );
+        return Ok(false);
+    }
     match first_bad {
         None => {
             println!("[OK] Residual stream: all {n_layers} layers within tolerance");

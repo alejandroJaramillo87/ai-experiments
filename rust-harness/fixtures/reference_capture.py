@@ -30,9 +30,12 @@ Usage:
         --prompt "The capital of France is" \\
         --out /tmp/ref-capture.json
 
-Writes JSON: the token IDs, one last-position residual row per layer, and the
-last-position logits. Not committed -- it is 15 GB of weights reduced to a few
-MB of intermediate, regenerated whenever the question changes.
+Writes JSON: the token IDs, one last-position residual row per layer, the
+last-position logits, and the two rows that precede the stack -- the scaled
+embedding and the composed per-layer inputs. Those two are what separate a
+layer-0 divergence caused by a wrong input from one caused by a wrong layer 0.
+Not committed -- it is 15 GB of weights reduced to a few MB of intermediate,
+regenerated whenever the question changes.
 """
 
 import argparse
@@ -59,14 +62,18 @@ def parse_args():
     return p.parse_args()
 
 
-def find_layers(model):
-    """The decoder layer list, wherever this release nests it.
+def find_text_model(model):
+    """The text model module, wherever this release nests it.
 
     Gemma 4 publishes as Gemma4ForConditionalGeneration, so the text stack is
-    one tower among three and sits at model.model.language_model.layers. A
-    text-only release would put it at model.model.layers. Both are probed
-    rather than assumed, because a wrong guess here would hook nothing and the
-    script would report a clean capture of zero layers.
+    one tower among three and sits at model.model.language_model. A text-only
+    release would put it at model.model. Both are probed rather than assumed,
+    because a wrong guess here would hook nothing and the script would report
+    a clean capture of zero layers.
+
+    Returns the module itself and not just its `layers`, because the two
+    points that precede layer 0 -- the scaled embedding and the composed
+    per-layer inputs -- hang off this module rather than off any layer.
     """
     for path in ("model.language_model", "model", "language_model"):
         node = model
@@ -74,9 +81,8 @@ def find_layers(model):
             node = getattr(node, part, None)
             if node is None:
                 break
-        layers = getattr(node, "layers", None)
-        if layers is not None:
-            return path, layers
+        if getattr(node, "layers", None) is not None:
+            return path, node
     raise SystemExit("[ERROR] Decoder layers: no layers list found on the model")
 
 
@@ -117,7 +123,8 @@ def main():
     )
     model.eval()
 
-    path, layers = find_layers(model)
+    path, text_model = find_text_model(model)
+    layers = text_model.layers
     print(f"[OK] Decoder layers: {len(layers)} at {path}.layers", file=sys.stderr)
 
     # A layer's output is a tensor for some releases and a tuple for others;
@@ -135,11 +142,42 @@ def main():
 
     handles = [layer.register_forward_hook(hook(i)) for i, layer in enumerate(layers)]
 
+    # The two points before layer 0. "Layer 0 diverges" has two unrelated
+    # causes -- the stack was handed the wrong input, or layer 0 computed the
+    # wrong thing with the right one -- and the per-layer table cannot
+    # distinguish them, because layer 0 is the first row it has.
+    prelude = {}
+
+    def embed_hook(_module, _inputs, output):
+        # embed_tokens is a Gemma4TextScaledWordEmbedding, so its output is
+        # already multiplied by sqrt(hidden_size) (upstream:1458-1459). That
+        # is the tensor layer 0 consumes, and the one the Rust tap reports.
+        prelude["embed"] = output[0, -1, :].detach().to(torch.float32).tolist()
+
+    handles.append(text_model.embed_tokens.register_forward_hook(embed_hook))
+
+    # project_per_layer_inputs is a method rather than a module, so there is
+    # nothing to hang a forward hook on; it is wrapped instead. Its return
+    # value is the composed [batch, seq, n_layers, ple_dim] tensor -- both
+    # embeddings, both scales, the projection and the norm, all applied --
+    # which is exactly the stage the Rust computes once before the layer loop.
+    project = getattr(text_model, "project_per_layer_inputs", None)
+    if project is not None:
+
+        def wrapped(*a, **kw):
+            out = project(*a, **kw)
+            prelude["ple"] = out[0, -1].reshape(-1).detach().to(torch.float32).tolist()
+            return out
+
+        text_model.project_per_layer_inputs = wrapped
+
     print("[RUN] Forward pass", file=sys.stderr)
     with torch.no_grad():
         out = model(input_ids=torch.tensor([ids]))
     for h in handles:
         h.remove()
+    if project is not None:
+        text_model.project_per_layer_inputs = project
 
     missing = [i for i in range(len(layers)) if i not in captured]
     if missing:
@@ -155,13 +193,15 @@ def main():
         "layers": {str(i): captured[i] for i in range(len(layers))},
         "logits": logits,
     }
+    payload.update(prelude)
     with open(args.out, "w") as f:
         json.dump(payload, f)
 
     top = max(range(len(logits)), key=logits.__getitem__)
     print(
         f"[OK] Wrote {args.out}: {len(layers)} layers x {len(captured[0])}, "
-        f"{len(logits)} logits, argmax {top} ({tokenizer.decode([top])!r})",
+        f"{len(logits)} logits, prelude {sorted(prelude)}, "
+        f"argmax {top} ({tokenizer.decode([top])!r})",
         file=sys.stderr,
     )
     return 0
