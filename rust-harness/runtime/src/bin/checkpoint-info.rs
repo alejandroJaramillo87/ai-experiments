@@ -29,13 +29,17 @@ use runtime::model::cpu;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let (check, rest): (Vec<&String>, Vec<&String>) =
-        args.iter().partition(|a| a.as_str() == "--check");
+    let (flags, rest): (Vec<&String>, Vec<&String>) = args
+        .iter()
+        .partition(|a| a.as_str() == "--check" || a.as_str() == "--text-only");
     let [path] = rest.as_slice() else {
-        eprintln!("usage: checkpoint-info [--check] <checkpoint-dir>");
+        eprintln!("usage: checkpoint-info [--check] [--text-only] <checkpoint-dir>");
         return ExitCode::from(2);
     };
-    let check = !check.is_empty();
+    let check = flags.iter().any(|a| a.as_str() == "--check");
+    // Reported either way (see `describe`); this decides only whether the
+    // backend's verdict treats a multimodal checkpoint as supported.
+    let text_only = flags.iter().any(|a| a.as_str() == "--text-only");
 
     let files = match checkpoint::CheckpointFiles::read(Path::new(path)) {
         Ok(f) => f,
@@ -48,7 +52,7 @@ fn main() -> ExitCode {
     // describing it is the point of the tool -- but `parse` validates, so a
     // refusal surfaces here rather than in the summary. Reported as the
     // finding it is, and turned into an exit code only by `--check`.
-    let ck = match checkpoint::parse(&files) {
+    let mut ck = match checkpoint::parse(&files) {
         Ok(c) => c,
         Err(e) => {
             println!("[ERROR] CPU backend compatibility: {e:#}");
@@ -59,8 +63,11 @@ fn main() -> ExitCode {
         }
     };
 
+    ck.text_only = text_only;
+
     print_config(&files);
     print_tensors(&ck);
+    print_non_text(&ck);
 
     println!();
     let supported = summarize(&ck);
@@ -79,6 +86,25 @@ fn print_config(files: &checkpoint::CheckpointFiles) {
         Ok(text) => println!("{}", text.trim_end()),
         Err(e) => println!("(not valid utf-8: {e})"),
     }
+}
+
+/// Tensor families outside the text stack, collapsed to one line each.
+///
+/// Printed whether or not `--text-only` was passed, because inspecting a file
+/// should not require agreeing to load it: a reader asking what a checkpoint
+/// contains wants the towers named either way. Silent on a text-only
+/// checkpoint, which is most of them.
+fn print_non_text(ck: &Checkpoint) {
+    let families = cpu::non_text_families(ck);
+    if families.is_empty() {
+        return;
+    }
+    println!();
+    println!("=== Non-text towers ({}) ===", families.len());
+    for family in &families {
+        println!("{family}");
+    }
+    println!("This backend serves text only; --text-only declines these and loads the rest.");
 }
 
 /// One line per tensor: name, dtype, shape. Shapes are row-major `[out, in]`.

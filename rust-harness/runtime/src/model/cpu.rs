@@ -270,13 +270,16 @@ impl ModelSpec {
         let donors = kv_donors(&kinds, c.num_kv_shared_layers)
             .context("num_kv_shared_layers and the layer_types schedule")?;
         let ffn_dims = c.intermediate_sizes()?;
+        // Read once, outside the per-layer closure: the accessor resolves the
+        // flat and nested config spellings and is fallible, which a closure
+        // returning a plain `LayerSpec` cannot propagate.
+        let rope_theta = c.rope_theta()?;
+        let rope_local = c.rope_local_base_freq();
         let layers = (0..config.n_layers)
             .map(|i| {
                 let (head_dim, rope_freq_base) = match kinds[i] {
-                    LayerKind::Global => (c.global_head_dim(), c.rope_theta),
-                    LayerKind::SlidingWindow(_) => {
-                        (c.head_dim, c.rope_local_base_freq.unwrap_or(c.rope_theta))
-                    }
+                    LayerKind::Global => (c.global_head_dim(), rope_theta),
+                    LayerKind::SlidingWindow(_) => (c.head_dim, rope_local.unwrap_or(rope_theta)),
                 };
                 LayerSpec {
                     kind: kinds[i],
@@ -474,14 +477,22 @@ pub fn check_supported_checkpoint(
             consumable.extend(hf_tensor_name(&format!("blk.{i}.{suffix}")));
         }
     }
+    // Split what is left in two. A non-text tower is a known part of a
+    // multimodal release and the caller can decline it; anything else is
+    // structure this backend has never heard of, and no flag accepts it.
     let mut unconsumed: Vec<String> = Vec::new();
+    let mut towers: Vec<String> = Vec::new();
     for name in &names {
         if consumable.contains(name) {
             continue;
         }
+        let bucket = match NON_TEXT_PREFIXES.iter().any(|p| name.starts_with(p)) {
+            true => &mut towers,
+            false => &mut unconsumed,
+        };
         let family = hf_tensor_family(name);
-        if !unconsumed.contains(&family) {
-            unconsumed.push(family);
+        if !bucket.contains(&family) {
+            bucket.push(family);
         }
     }
     ensure!(
@@ -492,19 +503,67 @@ pub fn check_supported_checkpoint(
         if unconsumed.len() == 1 { "y" } else { "ies" },
         unconsumed.join(", ")
     );
+    ensure!(
+        towers.is_empty() || ck.text_only,
+        "checkpoint is multimodal: it carries {} tensor famil{} outside the text stack \
+         ({}), and this backend serves text only. Pass --text-only to load the text \
+         stack and decline the rest",
+        towers.len(),
+        if towers.len() == 1 { "y" } else { "ies" },
+        towers.join(", ")
+    );
     Ok(())
 }
 
+/// Tensor prefixes belonging to a tower this backend does not serve.
+///
+/// Named rather than pattern-matched on "not the text prefix", so a fourth
+/// tower in a future release lands in the unconsumed list and is refused,
+/// instead of being silently swept up by `--text-only`. The flag declines
+/// what is listed here and nothing else.
+const NON_TEXT_PREFIXES: [&str; 4] = [
+    "model.audio_tower.",
+    "model.vision_tower.",
+    "model.embed_audio.",
+    "model.embed_vision.",
+];
+
+/// Non-text tensor families a checkpoint carries, collapsed and sorted.
+///
+/// `checkpoint-info` reports these whether or not `--text-only` was passed:
+/// inspecting a file should not require agreeing to load it.
+pub fn non_text_families(ck: &crate::checkpoint::Checkpoint) -> Vec<String> {
+    let mut families: Vec<String> = Vec::new();
+    for name in ck.names() {
+        if !NON_TEXT_PREFIXES.iter().any(|p| name.starts_with(p)) {
+            continue;
+        }
+        let family = hf_tensor_family(&name);
+        if !families.contains(&family) {
+            families.push(family);
+        }
+    }
+    families.sort();
+    families
+}
+
 /// Collapse a Hugging Face tensor name to its family, replacing the layer
-/// index in `model.layers.<i>.` with `*`, so a diagnostic over 42 layers
-/// reports one line per family rather than 42.
+/// index in `layers.<i>.` with `*`, so a diagnostic over 42 layers reports one
+/// line per family rather than 42.
+///
+/// Matched on the `layers.` segment rather than a fixed leading prefix,
+/// because the towers of a multimodal checkpoint are each a stack of their own
+/// -- `model.language_model.layers.<i>.`, `model.audio_tower.layers.<i>.` --
+/// and a diagnostic naming the declined towers wants them collapsed too.
 pub fn hf_tensor_family(name: &str) -> String {
-    let Some(rest) = name.strip_prefix("model.layers.") else {
+    const SEGMENT: &str = "layers.";
+    let Some(at) = name.find(SEGMENT) else {
         return name.to_string();
     };
+    let (head, rest) = name.split_at(at + SEGMENT.len());
     match rest.split_once('.') {
         Some((index, suffix)) if !index.is_empty() && index.bytes().all(|b| b.is_ascii_digit()) => {
-            format!("model.layers.*.{suffix}")
+            format!("{head}*.{suffix}")
         }
         _ => name.to_string(),
     }
@@ -1568,6 +1627,7 @@ impl Model for CpuModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::checkpoint::TEXT_PREFIX;
     use crate::synth::TinySpec;
 
     /// The synthetic checkpoint for `spec`, in memory.
@@ -1642,6 +1702,17 @@ mod tests {
             weights: safetensors::serialize(views, None).unwrap().into(),
             dir: std::path::PathBuf::from("<memory>"),
         }
+    }
+
+    /// Published name of a tensor, from its llama.cpp spelling.
+    ///
+    /// Tests name tensors through the shared table rather than spelling a
+    /// published name literally, because a literal is a second copy of the
+    /// map -- and when the map moved to `model.language_model.` for the real
+    /// multimodal checkpoint, every literal became a test asserting against a
+    /// name no file contains.
+    fn hf(gguf: &str) -> String {
+        crate::checkpoint::hf_tensor_name(gguf).expect("a tensor the table maps")
     }
 
     /// A checkpoint whose stored values have been edited in place.
@@ -1963,7 +2034,7 @@ mod tests {
         // than into a fluent model missing most of its parameters.
         let files = checkpoint_with(
             &TinySpec::default(),
-            &["model.embed_tokens_per_layer.weight"],
+            &[&hf("per_layer_token_embd.weight")],
             &[],
             |_| true,
         );
@@ -1989,12 +2060,12 @@ mod tests {
             ..TinySpec::default()
         };
         verdict(&checkpoint_of(&spec)).unwrap();
-        let files = checkpoint_with(&spec, &[], &[], |n| {
-            n != "model.layers.1.per_layer_input_gate.weight"
-        });
+        let files = checkpoint_with(&spec, &[], &[], |n| n != hf("blk.1.inp_gate.weight"));
         let err = verdict(&files).unwrap_err().to_string();
         assert!(
-            err.contains("model.layers.*.per_layer_input_gate.weight (1 of 2 layers)"),
+            err.contains(&format!(
+                "{TEXT_PREFIX}layers.*.per_layer_input_gate.weight (1 of 2 layers)"
+            )),
             "{err}"
         );
     }
@@ -2029,7 +2100,7 @@ mod tests {
         // weight is read. Layer 1 of the default fixture owns its cache --
         // that fixture declares no sharing at all.
         let files = checkpoint_with(&TinySpec::default(), &[], &[], |n| {
-            n != "model.layers.1.self_attn.v_proj.weight"
+            n != hf("blk.1.attn_v.weight")
         });
         let ck = crate::checkpoint::parse(&files).unwrap();
         let err = match CpuModel::from_checkpoint(&ck) {
@@ -2146,7 +2217,7 @@ mod tests {
         let before = run(&checkpoint_of(&spec));
 
         // Layer 0 is the sliding donor, read by layer 2 and by nothing else.
-        let bumped = checkpoint_bumping(&spec, "model.layers.0.self_attn.k_proj.weight", 0.5);
+        let bumped = checkpoint_bumping(&spec, &hf("blk.0.attn_k.weight"), 0.5);
         assert_ne!(
             before,
             run(&bumped),
@@ -2205,13 +2276,13 @@ mod tests {
         // time: any single one reaching the logits fails the assertion, and
         // naming which one is what makes the failure actionable.
         for name in [
-            "model.layers.2.self_attn.k_proj.weight",
-            "model.layers.2.self_attn.v_proj.weight",
-            "model.layers.3.self_attn.k_proj.weight",
+            hf("blk.2.attn_k.weight"),
+            hf("blk.2.attn_v.weight"),
+            hf("blk.3.attn_k.weight"),
         ] {
             assert_eq!(
                 before,
-                run(&checkpoint_bumping(&spec, name, 0.5)),
+                run(&checkpoint_bumping(&spec, &name, 0.5)),
                 "{name} reached the numerics; a shared layer must not read it"
             );
         }
@@ -2304,7 +2375,7 @@ mod tests {
     fn unknown_tensor_families_are_refused_and_collapsed_by_layer() {
         let spec = TinySpec::default();
         let extra: Vec<String> = (0..spec.n_layers)
-            .map(|i| format!("model.layers.{i}.self_attn.v_norm.weight"))
+            .map(|i| format!("{TEXT_PREFIX}layers.{i}.self_attn.v_norm.weight"))
             .collect();
         let refs: Vec<&str> = extra.iter().map(String::as_str).collect();
         let err = verdict(&checkpoint_with(&spec, &refs, &[], |_| true))
@@ -2312,7 +2383,7 @@ mod tests {
             .to_string();
         assert!(err.contains("1 tensor family"), "{err}");
         assert!(
-            err.contains("model.layers.*.self_attn.v_norm.weight"),
+            err.contains(&format!("{TEXT_PREFIX}layers.*.self_attn.v_norm.weight")),
             "{err}"
         );
     }
@@ -2745,13 +2816,13 @@ mod tests {
             &spec,
             &[],
             &[(
-                "model.layers.1.mlp.up_proj.weight",
+                &hf("blk.1.ffn_up.weight"),
                 &[spec.ffn_dim - 8, spec.embed_dim],
             )],
             |_| true,
         );
         let err = verdict(&files).unwrap_err().to_string();
-        assert!(err.contains("model.layers.1.mlp.up_proj.weight"), "{err}");
+        assert!(err.contains(&hf("blk.1.ffn_up.weight")), "{err}");
         assert!(err.contains("feed-forward width"), "{err}");
         assert!(err.contains("layer 1"), "{err}");
     }
@@ -2790,7 +2861,7 @@ mod tests {
         };
 
         // A norm arrives shifted.
-        let want: Vec<f32> = stored("model.layers.0.input_layernorm.weight")
+        let want: Vec<f32> = stored(&hf("blk.0.attn_norm.weight"))
             .iter()
             .map(|w| 1.0 + w)
             .collect();
@@ -2801,7 +2872,7 @@ mod tests {
         // And the file really does store the unshifted value, so the
         // assertion above is not comparing a tensor to itself.
         assert!(
-            stored("model.layers.0.input_layernorm.weight")
+            stored(&hf("blk.0.attn_norm.weight"))
                 .iter()
                 .all(|w| w.abs() < 0.5),
             "the checkpoint already holds shifted norms, so this proves nothing"
@@ -2810,12 +2881,12 @@ mod tests {
         // A projection does not.
         assert_eq!(
             model.weights.layers[0].wq,
-            stored("model.layers.0.self_attn.q_proj.weight"),
+            stored(&hf("blk.0.attn_q.weight")),
             "q_proj was shifted; the shift is for norms only"
         );
         assert_eq!(
             model.weights.embed,
-            stored("model.embed_tokens.weight"),
+            stored(&hf("token_embd.weight")),
             "the embedding table was shifted"
         );
     }
@@ -3279,5 +3350,90 @@ mod tests {
         let mut child = parent.fork().unwrap();
         child.prefill(&[7]).unwrap();
         assert_eq!(tap.0.lock().unwrap().len(), before);
+    }
+
+    /// Verdict over a checkpoint read with `text_only` set either way, so the
+    /// tower tests below differ in exactly the flag they are about.
+    fn verdict_text_only(
+        files: &crate::checkpoint::CheckpointFiles,
+        text_only: bool,
+    ) -> Result<()> {
+        let mut ck = crate::checkpoint::parse(files)?;
+        ck.text_only = text_only;
+        let spec = ModelSpec::from_checkpoint(&ck.config)?;
+        check_supported_checkpoint(&ck, &spec)
+    }
+
+    /// The default is refusal, and it names the towers and the flag.
+    ///
+    /// A real E4B carries an audio and a vision tower -- 1409 of its 2130
+    /// tensors -- and the generic unconsumed-tensor message would report that
+    /// as though the backend had met something it could not parse. It has not:
+    /// it has met a multimodal release, and declining the other towers is a
+    /// decision the caller makes rather than one this code makes silently.
+    #[test]
+    fn a_multimodal_checkpoint_is_refused_naming_the_towers_and_the_flag() {
+        let files = checkpoint_with(
+            &TinySpec::default(),
+            &[
+                "model.audio_tower.layers.0.norm_out.weight",
+                "model.vision_tower.layers.0.norm_out.weight",
+                "model.embed_audio.embedding_projection.weight",
+            ],
+            &[],
+            |_| true,
+        );
+        let err = verdict_text_only(&files, false).unwrap_err().to_string();
+        assert!(err.contains("multimodal"), "{err}");
+        assert!(err.contains("--text-only"), "{err}");
+        assert!(
+            err.contains("model.audio_tower.layers.*.norm_out.weight"),
+            "{err}"
+        );
+        assert!(
+            err.contains("model.vision_tower.layers.*.norm_out.weight"),
+            "{err}"
+        );
+        assert!(
+            err.contains("model.embed_audio.embedding_projection.weight"),
+            "{err}"
+        );
+        // Not reported as unparseable structure, which is the other message.
+        assert!(!err.contains("does not consume"), "{err}");
+
+        // The same file loads once the caller has said so.
+        verdict_text_only(&files, true).unwrap();
+    }
+
+    /// `--text-only` declines the four named towers and nothing else.
+    ///
+    /// The escape hatch is a list, not "ignore what you do not recognize": a
+    /// fifth tower in a future release is structure this backend has never
+    /// seen, and it must still be a refusal.
+    #[test]
+    fn an_unknown_tensor_family_is_refused_even_with_text_only() {
+        let files = checkpoint_with(
+            &TinySpec::default(),
+            &["model.depth_tower.layers.0.norm_out.weight"],
+            &[],
+            |_| true,
+        );
+        let err = verdict_text_only(&files, true).unwrap_err().to_string();
+        assert!(err.contains("does not consume"), "{err}");
+        assert!(
+            err.contains("model.depth_tower.layers.*.norm_out.weight"),
+            "{err}"
+        );
+        assert!(!err.contains("--text-only"), "{err}");
+    }
+
+    /// A text-only checkpoint is unaffected by the flag in either position,
+    /// which is what keeps the refusal from becoming a tax on every load.
+    #[test]
+    fn a_text_only_checkpoint_loads_with_the_flag_either_way() {
+        let files = checkpoint_of(&TinySpec::e4b_shaped());
+        verdict_text_only(&files, false).unwrap();
+        verdict_text_only(&files, true).unwrap();
+        assert!(non_text_families(&crate::checkpoint::parse(&files).unwrap()).is_empty());
     }
 }

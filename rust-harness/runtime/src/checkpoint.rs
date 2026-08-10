@@ -33,9 +33,54 @@ pub const CONFIG_FILE: &str = "config.json";
 /// silently mis-evaluated rather than refused.
 const SUPPORTED_ACTIVATION: &str = "gelu_pytorch_tanh";
 
+/// Prefix of every text-stack tensor.
+///
+/// Gemma 4 publishes as `Gemma4ForConditionalGeneration`, so the language
+/// model is one tower among three and its tensors sit a level deeper than a
+/// text-only release would put them. The audio and vision towers live beside
+/// it under `model.` and this backend does not read them
+/// (`cpu::NON_TEXT_PREFIXES`).
+pub const TEXT_PREFIX: &str = "model.language_model.";
+
 /// Attention regime of one layer, as `config.json` spells it.
 const FULL_ATTENTION: &str = "full_attention";
 const SLIDING_ATTENTION: &str = "sliding_attention";
+
+/// RoPE regimes this backend implements, as `rope_parameters.*.rope_type`
+/// spells them.
+///
+/// `proportional` is the name transformers gives partial rotation, and needs
+/// no separate code path here: `_compute_proportional_rope_parameters` divides
+/// the exponent by the full `head_dim` and zero-pads the remainder, so the
+/// rotating set is the leading frequencies of an ordinary RoPE and the rest is
+/// a no-op rotation. That is what `rope_rotating_pairs` and the divisor table
+/// in `CpuModel::from_checkpoint` already build.
+const ROPE_TYPE_DEFAULT: &str = "default";
+const ROPE_TYPE_PROPORTIONAL: &str = "proportional";
+
+/// One attention regime's RoPE parameters, as transformers 5.5 writes them.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RopeRegime {
+    pub rope_theta: f32,
+    /// Absent means the whole head rotates.
+    pub partial_rotary_factor: Option<f64>,
+    /// Read and checked rather than ignored: an unrecognized value is a
+    /// rotation this backend does not implement, and treating it as the
+    /// default would produce finite, wrong logits.
+    pub rope_type: String,
+}
+
+/// The `rope_parameters` block, one entry per attention regime.
+///
+/// transformers 5.5 moved the RoPE fields here from the top of `text_config`,
+/// which is the only reason a real Gemma 4 checkpoint failed to parse against
+/// the flat spelling this module was written for.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RopeParameters {
+    pub full_attention: RopeRegime,
+    /// Absent means a single attention regime.
+    pub sliding_attention: Option<RopeRegime>,
+}
 
 /// Feed-forward width, which is a scalar on a uniform model and a per-layer
 /// list where the widths differ.
@@ -80,17 +125,19 @@ pub struct TextConfig {
     pub sliding_window: usize,
     pub max_position_embeddings: usize,
     pub rms_norm_eps: f32,
-    /// RoPE base of the global regime.
-    pub rope_theta: f32,
-    /// RoPE base of the sliding regime, two orders of magnitude below the
-    /// global one on Gemma 4. Absent means a single regime.
-    pub rope_local_base_freq: Option<f32>,
-    /// Fraction of each global head that rotates.
-    ///
-    /// Absent means the whole head rotates. The GGUF carries the divisors this
-    /// implies as a tensor; here the factor itself is stated and the divisors
-    /// are derived at load, which is what transformers does.
-    pub partial_rotary_factor: Option<f64>,
+    /// The three RoPE fields in their pre-5.5 flat spelling, read through
+    /// `rope_theta()`, `rope_local_base_freq()` and `partial_rotary_factor()`
+    /// so no caller has to know which spelling the file used. Private for
+    /// that reason: a caller reaching a raw field would see `None` on a real
+    /// checkpoint and a value on a fixture.
+    #[serde(rename = "rope_theta")]
+    flat_rope_theta: Option<f32>,
+    #[serde(rename = "rope_local_base_freq")]
+    flat_rope_local_base_freq: Option<f32>,
+    #[serde(rename = "partial_rotary_factor")]
+    flat_partial_rotary_factor: Option<f64>,
+    /// The 5.5 nested spelling, which wins where a file carries both.
+    rope_parameters: Option<RopeParameters>,
     pub hidden_activation: String,
     pub tie_word_embeddings: bool,
     pub intermediate_size: Widths,
@@ -160,6 +207,13 @@ pub struct Checkpoint<'a> {
     pub config: TextConfig,
     pub tensors: safetensors::SafeTensors<'a>,
     pub dir: PathBuf,
+    /// Consume the text stack and decline the checkpoint's other towers.
+    ///
+    /// `parse` sets this false, so a caller that says nothing gets the
+    /// refusal rather than a model quietly serving a third of the file. It is
+    /// a statement about how the checkpoint is being read, not a property of
+    /// the checkpoint, which is why it lives here and not in `TextConfig`.
+    pub text_only: bool,
 }
 
 impl TextConfig {
@@ -183,6 +237,69 @@ impl TextConfig {
     /// checkpoint declares one width for both.
     pub fn global_head_dim(&self) -> usize {
         self.global_head_dim.unwrap_or(self.head_dim)
+    }
+
+    /// RoPE base of the global regime.
+    ///
+    /// transformers 5.5 nests this under `rope_parameters.full_attention`;
+    /// before that it was flat in `text_config`. Both spell the same model, so
+    /// both load, and the nested one wins where a file carries both. A file
+    /// carrying neither is an error rather than a default, because every base
+    /// this backend could pick is a rotation the forward pass would apply
+    /// without complaint.
+    pub fn rope_theta(&self) -> Result<f32> {
+        if let Some(rope) = &self.rope_parameters {
+            return Ok(rope.full_attention.rope_theta);
+        }
+        self.flat_rope_theta.context(
+            "config.json states no RoPE base: expected rope_parameters.full_attention.rope_theta \
+             (transformers 5.5 and later) or a flat rope_theta",
+        )
+    }
+
+    /// RoPE base of the sliding regime, two orders of magnitude below the
+    /// global one on Gemma 4. `None` means a single regime.
+    pub fn rope_local_base_freq(&self) -> Option<f32> {
+        match &self.rope_parameters {
+            Some(rope) => rope.sliding_attention.as_ref().map(|r| r.rope_theta),
+            None => self.flat_rope_local_base_freq,
+        }
+    }
+
+    /// Fraction of each global head that rotates.
+    ///
+    /// `None` means the whole head rotates. The GGUF carries the divisors this
+    /// implies as a tensor; here the factor itself is stated and the divisors
+    /// are derived at load, which is what transformers does.
+    pub fn partial_rotary_factor(&self) -> Option<f64> {
+        match &self.rope_parameters {
+            Some(rope) => rope.full_attention.partial_rotary_factor,
+            None => self.flat_partial_rotary_factor,
+        }
+    }
+
+    /// Overwrite the global RoPE base in whichever spelling this config
+    /// carries.
+    ///
+    /// Test-only, and spelling-agnostic on purpose: a setter that wrote the
+    /// flat field would be silently inert on a config parsed from the nested
+    /// form, and every fixture now writes the nested form. A test asserting a
+    /// refusal would then pass while asserting nothing.
+    #[cfg(test)]
+    pub fn set_rope_theta(&mut self, base: f32) {
+        match &mut self.rope_parameters {
+            Some(rope) => rope.full_attention.rope_theta = base,
+            None => self.flat_rope_theta = Some(base),
+        }
+    }
+
+    /// Overwrite the partial rotary factor. Test-only, as `set_rope_theta`.
+    #[cfg(test)]
+    pub fn set_partial_rotary_factor(&mut self, factor: Option<f64>) {
+        match &mut self.rope_parameters {
+            Some(rope) => rope.full_attention.partial_rotary_factor = factor,
+            None => self.flat_partial_rotary_factor = factor,
+        }
     }
 
     /// Whether layer `i` is a full-attention layer.
@@ -212,14 +329,18 @@ impl TextConfig {
     /// whole head rotates.
     pub fn rope_rotating_pairs(&self) -> Result<usize> {
         let half = self.global_head_dim() / 2;
-        let Some(factor) = self.partial_rotary_factor else {
+        let Some(factor) = self.partial_rotary_factor() else {
             return Ok(half);
         };
         ensure!(
             factor.is_finite() && factor > 0.0 && factor <= 1.0,
             "partial_rotary_factor is {factor}, must be in (0, 1]"
         );
-        let rotating = (factor * self.global_head_dim() as f64 / 2.0).round() as usize;
+        // Floor, matching upstream's `int(rope_proportion * head_dim // 2)`.
+        // The two agree at 0.25 on a 512-wide head (64 pairs of 256) and
+        // diverge only on a factor landing between two pair counts, where
+        // matching transformers is the only defensible tie-break.
+        let rotating = (factor * self.global_head_dim() as f64 / 2.0).floor() as usize;
         ensure!(
             rotating > 0 && rotating <= half,
             "partial_rotary_factor {factor} implies {rotating} rotating pairs \
@@ -279,9 +400,26 @@ impl TextConfig {
                 "{field} is {width}, must be even for RoPE"
             );
         }
+        // Every regime the file declares, before either base is read: an
+        // unrecognized `rope_type` is a rotation this backend does not
+        // implement, and running it as `default` yields finite, wrong logits.
+        if let Some(rope) = &self.rope_parameters {
+            for (regime, spec) in [
+                (FULL_ATTENTION, Some(&rope.full_attention)),
+                (SLIDING_ATTENTION, rope.sliding_attention.as_ref()),
+            ] {
+                let Some(spec) = spec else { continue };
+                ensure!(
+                    spec.rope_type == ROPE_TYPE_DEFAULT || spec.rope_type == ROPE_TYPE_PROPORTIONAL,
+                    "rope_parameters.{regime}.rope_type is {:?}, this backend implements \
+                     only {ROPE_TYPE_DEFAULT:?} and {ROPE_TYPE_PROPORTIONAL:?}",
+                    spec.rope_type
+                );
+            }
+        }
         for (field, base) in [
-            ("rope_theta", Some(self.rope_theta)),
-            ("rope_local_base_freq", self.rope_local_base_freq),
+            ("rope_theta", Some(self.rope_theta()?)),
+            ("rope_local_base_freq", self.rope_local_base_freq()),
         ] {
             if let Some(b) = base {
                 ensure!(
@@ -343,13 +481,16 @@ impl TextConfig {
 /// a converter artifact with no published counterpart.
 ///
 /// One table, shared by the loader that inverts it and the fixture writer
-/// that applies it, because two copies of a naming map drift. The
-/// attention and feed-forward families are the Gemma naming the transformers
-/// implementation uses. The per-layer-embedding names are provisional: they are
-/// reconstructed from the converter's own renaming and have not been checked
-/// against a real checkpoint's key list, which is a workstation step. Nothing
-/// reads the safetensors output yet, so a wrong entry here is a one-line fix
-/// rather than a defect in flight.
+/// that applies it, because two copies of a naming map drift.
+///
+/// Every entry is now verified against the key list of a released checkpoint
+/// -- `google/gemma-4-E4B`, 2130 tensors, read 2026-08-10 -- rather than
+/// reconstructed from the llama.cpp converter's renaming, which is how the
+/// three per-layer-embedding names were derived before. Two of those three
+/// were right (`per_layer_input_gate`, `per_layer_projection`); the third
+/// published as `post_per_layer_input_norm`, not `..._layernorm`. Do not
+/// re-derive any of this from the converter: where the two disagree, the
+/// checkpoint is the authority, because it is what gets read.
 pub fn hf_tensor_name(gguf_name: &str) -> Option<String> {
     // Not in the checkpoint: llama.cpp precomputes the proportional-RoPE
     // divisors at conversion time, while transformers derives them from
@@ -358,10 +499,10 @@ pub fn hf_tensor_name(gguf_name: &str) -> Option<String> {
         return None;
     }
     if gguf_name == "token_embd.weight" {
-        return Some("model.embed_tokens.weight".to_string());
+        return Some(format!("{TEXT_PREFIX}embed_tokens.weight"));
     }
     if gguf_name == "output_norm.weight" {
-        return Some("model.norm.weight".to_string());
+        return Some(format!("{TEXT_PREFIX}norm.weight"));
     }
     if let Some(rest) = gguf_name.strip_prefix("per_layer_") {
         let tail = match rest {
@@ -370,7 +511,7 @@ pub fn hf_tensor_name(gguf_name: &str) -> Option<String> {
             "proj_norm.weight" => "per_layer_projection_norm.weight",
             other => other,
         };
-        return Some(format!("model.{tail}"));
+        return Some(format!("{TEXT_PREFIX}{tail}"));
     }
     let rest = gguf_name.strip_prefix("blk.")?;
     let (index, suffix) = rest.split_once('.')?;
@@ -388,15 +529,23 @@ pub fn hf_tensor_name(gguf_name: &str) -> Option<String> {
         "ffn_up.weight" => "mlp.up_proj.weight",
         "ffn_down.weight" => "mlp.down_proj.weight",
         "post_ffw_norm.weight" => "post_feedforward_layernorm.weight",
-        "layer_output_scale.weight" => "layer_output_scale.weight",
-        // Provisional, as above: the converter drops the `per_layer` substring
-        // from these three, so the published names are reconstructed.
+        // The one published name without a `.weight` suffix: upstream declares
+        // it `nn.Buffer(torch.ones(1))` and multiplies it into the layer
+        // output, so it is a buffer rather than a parameter. The internal
+        // GGUF-side key keeps the suffix, because that vocabulary is uniform.
+        //
+        // Initialized to ones and trained away from them: the released
+        // checkpoints carry 42 distinct per-layer values between 0.049 and
+        // 0.879 (`docs/models/gemma4-safetensors.txt`). A loader treating this
+        // as an inert buffer would scale every layer output wrong.
+        "layer_output_scale.weight" => "layer_scalar",
+        // The converter drops the `per_layer` substring from these three.
         "inp_gate.weight" => "per_layer_input_gate.weight",
         "proj.weight" => "per_layer_projection.weight",
-        "post_norm.weight" => "post_per_layer_input_layernorm.weight",
+        "post_norm.weight" => "post_per_layer_input_norm.weight",
         _ => return None,
     };
-    Some(format!("model.layers.{index}.{tail}"))
+    Some(format!("{TEXT_PREFIX}layers.{index}.{tail}"))
 }
 
 /// Locate a checkpoint from a `--model` argument.
@@ -487,6 +636,7 @@ pub fn parse(files: &CheckpointFiles) -> Result<Checkpoint<'_>> {
         config: parsed.text_config,
         tensors,
         dir: files.dir.clone(),
+        text_only: false,
     })
 }
 
@@ -592,8 +742,8 @@ mod tests {
         assert_eq!(c.global_head_dim(), spec.head_dim_global.unwrap());
         assert_eq!(c.sliding_window, spec.sliding_window);
         assert_eq!(c.num_kv_shared_layers, spec.shared_kv_layers);
-        assert_eq!(c.rope_theta, spec.rope_freq_base);
-        assert_eq!(c.rope_local_base_freq, spec.rope_freq_base_swa);
+        assert_eq!(c.rope_theta().unwrap(), spec.rope_freq_base);
+        assert_eq!(c.rope_local_base_freq(), spec.rope_freq_base_swa);
         assert_eq!(c.final_logit_softcapping, spec.logit_softcap);
         assert_eq!(c.hidden_size_per_layer_input, spec.ple_dim);
         c.validate().unwrap();
@@ -662,11 +812,11 @@ mod tests {
         let mut c = config_of(&TinySpec::default());
         c.head_dim = 256;
         c.global_head_dim = Some(256);
-        c.partial_rotary_factor = None;
+        c.set_partial_rotary_factor(None);
         assert_eq!(c.rope_rotating_pairs().unwrap(), 128, "absent means whole");
-        c.partial_rotary_factor = Some(0.5);
+        c.set_partial_rotary_factor(Some(0.5));
         assert_eq!(c.rope_rotating_pairs().unwrap(), 64);
-        c.partial_rotary_factor = Some(0.25);
+        c.set_partial_rotary_factor(Some(0.25));
         assert_eq!(c.rope_rotating_pairs().unwrap(), 32);
     }
 
@@ -676,7 +826,7 @@ mod tests {
     fn an_out_of_range_rotary_factor_is_refused() {
         let mut c = config_of(&TinySpec::default());
         for bad in [0.0, -0.5, 1.5, f64::NAN] {
-            c.partial_rotary_factor = Some(bad);
+            c.set_partial_rotary_factor(Some(bad));
             let err = c.rope_rotating_pairs().unwrap_err().to_string();
             assert!(
                 err.contains("partial_rotary_factor"),
@@ -733,7 +883,7 @@ mod tests {
             ),
             (
                 "rope_theta",
-                Box::new(|c: &mut TextConfig| c.rope_theta = 0.0),
+                Box::new(|c: &mut TextConfig| c.set_rope_theta(0.0)),
             ),
         ];
         for (field, mutate) in cases {
@@ -773,21 +923,18 @@ mod tests {
         };
         let ck = parse(&files).unwrap();
 
+        // Named through the shared table, never spelled literally: a test
+        // hard-coding a published name is a second copy of the map.
+        let embed_name = hf_tensor_name("token_embd.weight").unwrap();
         // Row-major [out, in]: the embedding table is [vocab, hidden].
         let embed = ck
-            .tensor(
-                "model.embed_tokens.weight",
-                &[spec.vocab_size, spec.embed_dim],
-            )
+            .tensor(&embed_name, &[spec.vocab_size, spec.embed_dim])
             .unwrap();
         assert_eq!(embed.len(), spec.vocab_size * spec.embed_dim);
 
         // A transposed request is refused, which element counts could not do.
         let err = ck
-            .tensor(
-                "model.embed_tokens.weight",
-                &[spec.embed_dim, spec.vocab_size],
-            )
+            .tensor(&embed_name, &[spec.embed_dim, spec.vocab_size])
             .unwrap_err()
             .to_string();
         assert!(err.contains("shape"), "{err}");
@@ -798,7 +945,7 @@ mod tests {
             .to_string();
         assert!(err.contains("model.nonexistent.weight"), "{err}");
 
-        assert!(ck.has("model.norm.weight"));
+        assert!(ck.has(&hf_tensor_name("output_norm.weight").unwrap()));
         assert!(!ck.has("model.absent.weight"));
         assert!(
             ck.names().windows(2).all(|w| w[0] <= w[1]),
@@ -822,7 +969,7 @@ mod tests {
         let ck = parse(&files).unwrap();
         let got = ck
             .tensor(
-                "model.embed_tokens.weight",
+                &hf_tensor_name("token_embd.weight").unwrap(),
                 &[spec.vocab_size, spec.embed_dim],
             )
             .unwrap();
@@ -925,6 +1072,169 @@ mod tests {
                 owned_ck.tensor(name, &shape).unwrap(),
                 "{name}"
             );
+        }
+    }
+
+    /// A `text_config` value with the RoPE fields removed, so a test can put
+    /// back exactly the spelling it wants to exercise.
+    fn text_config_without_rope() -> serde_json::Value {
+        let bytes = build_tiny_config_json(&TinySpec::default()).unwrap();
+        let mut doc: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let text = doc["text_config"].as_object_mut().unwrap();
+        text.remove("rope_parameters");
+        text.remove("rope_theta");
+        text.remove("rope_local_base_freq");
+        text.remove("partial_rotary_factor");
+        doc["text_config"].clone()
+    }
+
+    fn config_from(text: serde_json::Value) -> Result<TextConfig> {
+        let doc = serde_json::json!({ "text_config": text });
+        let parsed: CheckpointConfig = serde_json::from_value(doc)?;
+        Ok(parsed.text_config)
+    }
+
+    /// The flat spelling is what `text_config` carried before transformers
+    /// 5.5, and checkpoints written against it must keep loading.
+    #[test]
+    fn the_flat_rope_spelling_still_loads() {
+        let mut text = text_config_without_rope();
+        let obj = text.as_object_mut().unwrap();
+        obj.insert("rope_theta".into(), 1_000_000.0.into());
+        obj.insert("rope_local_base_freq".into(), 10_000.0.into());
+        obj.insert("partial_rotary_factor".into(), 0.25.into());
+        let c = config_from(text).unwrap();
+        assert_eq!(c.rope_theta().unwrap(), 1_000_000.0);
+        assert_eq!(c.rope_local_base_freq(), Some(10_000.0));
+        assert_eq!(c.partial_rotary_factor(), Some(0.25));
+    }
+
+    /// The nested spelling, with the values a released E4B carries. The three
+    /// accessors are what let the loader read either without knowing which.
+    #[test]
+    fn the_nested_rope_spelling_loads_with_the_same_values() {
+        let mut text = text_config_without_rope();
+        text.as_object_mut().unwrap().insert(
+            "rope_parameters".into(),
+            serde_json::json!({
+                "full_attention": {
+                    "rope_theta": 1_000_000.0,
+                    "partial_rotary_factor": 0.25,
+                    "rope_type": "proportional",
+                },
+                "sliding_attention": { "rope_theta": 10_000.0, "rope_type": "default" },
+            }),
+        );
+        let c = config_from(text).unwrap();
+        assert_eq!(c.rope_theta().unwrap(), 1_000_000.0);
+        assert_eq!(c.rope_local_base_freq(), Some(10_000.0));
+        assert_eq!(c.partial_rotary_factor(), Some(0.25));
+    }
+
+    /// A file carrying both is resolved one way, not left to field order.
+    #[test]
+    fn the_nested_rope_spelling_wins_over_the_flat_one() {
+        let mut text = text_config_without_rope();
+        let obj = text.as_object_mut().unwrap();
+        obj.insert("rope_theta".into(), 111.0.into());
+        obj.insert("rope_local_base_freq".into(), 222.0.into());
+        obj.insert("partial_rotary_factor".into(), 0.5.into());
+        obj.insert(
+            "rope_parameters".into(),
+            serde_json::json!({
+                "full_attention": {
+                    "rope_theta": 333.0,
+                    "partial_rotary_factor": 0.25,
+                    "rope_type": "proportional",
+                },
+                "sliding_attention": { "rope_theta": 444.0, "rope_type": "default" },
+            }),
+        );
+        let c = config_from(text).unwrap();
+        assert_eq!(c.rope_theta().unwrap(), 333.0);
+        assert_eq!(c.rope_local_base_freq(), Some(444.0));
+        assert_eq!(c.partial_rotary_factor(), Some(0.25));
+    }
+
+    /// Neither spelling is an error naming both, rather than a defaulted base
+    /// the forward pass would rotate by without complaint.
+    #[test]
+    fn a_config_stating_no_rope_base_is_refused_naming_both_spellings() {
+        let c = config_from(text_config_without_rope()).unwrap();
+        let err = c.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("rope_parameters.full_attention.rope_theta"),
+            "{err}"
+        );
+        assert!(err.contains("rope_theta"), "{err}");
+    }
+
+    /// An unimplemented rotation is refused naming the value. Running it as
+    /// the default would produce finite, wrong logits.
+    #[test]
+    fn an_unrecognized_rope_type_is_refused_naming_it() {
+        for (regime, other) in [
+            ("full_attention", "sliding_attention"),
+            ("sliding_attention", "full_attention"),
+        ] {
+            let mut text = text_config_without_rope();
+            text.as_object_mut().unwrap().insert(
+                "rope_parameters".into(),
+                serde_json::json!({
+                    regime: { "rope_theta": 10_000.0, "rope_type": "yarn" },
+                    other: { "rope_theta": 10_000.0, "rope_type": "default" },
+                }),
+            );
+            let err = config_from(text)
+                .unwrap()
+                .validate()
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("yarn"), "{regime}: {err}");
+            assert!(err.contains(regime), "{regime}: {err}");
+        }
+    }
+
+    /// The published names, asserted literally in the one place a literal
+    /// belongs: these are facts read off `google/gemma-4-E4B`, and a test is
+    /// where a fact goes. Everywhere else names come from this table.
+    #[test]
+    fn the_published_names_are_the_ones_a_released_checkpoint_carries() {
+        for (gguf, published) in [
+            (
+                "token_embd.weight",
+                "model.language_model.embed_tokens.weight",
+            ),
+            ("output_norm.weight", "model.language_model.norm.weight"),
+            (
+                "per_layer_token_embd.weight",
+                "model.language_model.embed_tokens_per_layer.weight",
+            ),
+            (
+                "blk.7.attn_q.weight",
+                "model.language_model.layers.7.self_attn.q_proj.weight",
+            ),
+            (
+                "blk.7.inp_gate.weight",
+                "model.language_model.layers.7.per_layer_input_gate.weight",
+            ),
+            (
+                "blk.7.proj.weight",
+                "model.language_model.layers.7.per_layer_projection.weight",
+            ),
+            // Not `..._layernorm`, which is what the converter's renaming
+            // implied and what this table said until a real key list settled it.
+            (
+                "blk.7.post_norm.weight",
+                "model.language_model.layers.7.post_per_layer_input_norm.weight",
+            ),
+            // The one entry with no `.weight` suffix: a buffer, not a parameter.
+            (
+                "blk.7.layer_output_scale.weight",
+                "model.language_model.layers.7.layer_scalar",
+            ),
+        ] {
+            assert_eq!(hf_tensor_name(gguf).as_deref(), Some(published), "{gguf}");
         }
     }
 }

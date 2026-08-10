@@ -20,7 +20,12 @@
     "num_key_value_heads": 1,
     "num_kv_shared_layers": 0,
     "rms_norm_eps": 9.999999974752427e-7,
-    "rope_theta": 10000.0,
+    "rope_parameters": {
+      "full_attention": {
+        "rope_theta": 10000.0,
+        "rope_type": "default"
+      }
+    },
     "sliding_window": 4,
     "tie_word_embeddings": true,
     "use_double_wide_mlp": false,

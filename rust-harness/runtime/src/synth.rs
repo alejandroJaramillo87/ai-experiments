@@ -799,7 +799,6 @@ pub fn build_tiny_config_json(spec: &TinySpec) -> anyhow::Result<Vec<u8>> {
         "sliding_window": spec.sliding_window,
         "max_position_embeddings": spec.context_length,
         "rms_norm_eps": spec.rms_eps,
-        "rope_theta": spec.rope_freq_base,
         "hidden_activation": "gelu_pytorch_tanh",
         "tie_word_embeddings": true,
         "use_double_wide_mlp": spec.double_wide_mlp,
@@ -811,21 +810,40 @@ pub fn build_tiny_config_json(spec: &TinySpec) -> anyhow::Result<Vec<u8>> {
     let obj = text
         .as_object_mut()
         .expect("json! literal above is an object");
-    if let Some(swa) = spec.rope_freq_base_swa {
-        obj.insert("rope_local_base_freq".to_string(), swa.into());
+    // The nested spelling transformers 5.5 writes, and the one a released
+    // Gemma 4 checkpoint carries. The loader still reads the flat fields this
+    // used to emit, but a fixture writing them would leave the spelling real
+    // weights use untested by everything above the unit tests.
+    //
+    // The GGUF carries precomputed rotation divisors; the checkpoint carries
+    // the factor they were computed from. `rope_rotating_pairs` counts
+    // rotating pairs out of `hd_global / 2`, and the factor is the fraction of
+    // the head rotated -- which is what upstream names `proportional`.
+    let mut full = serde_json::json!({
+        "rope_theta": spec.rope_freq_base,
+        "rope_type": "default",
+    });
+    if let Some(rotating) = spec.rope_rotating_pairs {
+        let obj = full.as_object_mut().expect("json! literal is an object");
+        let factor = (2 * rotating) as f64 / hd_global as f64;
+        obj.insert("partial_rotary_factor".to_string(), factor.into());
+        obj.insert("rope_type".to_string(), "proportional".into());
     }
+    let mut rope = serde_json::json!({ "full_attention": full });
+    if let Some(swa) = spec.rope_freq_base_swa {
+        rope.as_object_mut()
+            .expect("json! literal is an object")
+            .insert(
+                "sliding_attention".to_string(),
+                serde_json::json!({ "rope_theta": swa, "rope_type": "default" }),
+            );
+    }
+    obj.insert("rope_parameters".to_string(), rope);
     if let Some(cap) = spec.logit_softcap {
         obj.insert("final_logit_softcapping".to_string(), cap.into());
     }
     if let Some(pd) = spec.ple_dim {
         obj.insert("hidden_size_per_layer_input".to_string(), pd.into());
-    }
-    // The GGUF carries precomputed divisors; the checkpoint carries the factor
-    // they were computed from. `rope_rotating_pairs` counts rotating pairs out
-    // of `hd_global / 2`, and the factor is the fraction of the head rotated.
-    if let Some(rotating) = spec.rope_rotating_pairs {
-        let factor = (2 * rotating) as f64 / hd_global as f64;
-        obj.insert("partial_rotary_factor".to_string(), factor.into());
     }
 
     Ok(serde_json::to_vec_pretty(&serde_json::json!({
@@ -1131,15 +1149,38 @@ mod tests {
             assert_eq!(t, want, "layer {i} in {types:?}");
         }
 
-        // The factor the divisors were computed from, not the divisors.
+        // The factor the divisors were computed from, not the divisors --
+        // and nested under the regime it applies to, which is where
+        // transformers 5.5 puts it and where a released checkpoint carries
+        // it. `rope_type` names partial rotation `proportional`.
         let rotating = spec.rope_rotating_pairs.unwrap();
         let half = spec.head_dim_global.unwrap_or(spec.head_dim) / 2;
         let want = (2 * rotating) as f64 / (2 * half) as f64;
+        let full = &text["rope_parameters"]["full_attention"];
         assert_eq!(
-            text["partial_rotary_factor"].as_f64().unwrap(),
+            full["partial_rotary_factor"].as_f64().unwrap(),
             want,
-            "partial_rotary_factor for {rotating} of {half} pairs"
+            "partial_rotary_factor for {rotating} of {half} pairs in {full}"
         );
+        assert_eq!(full["rope_type"], "proportional", "{full}");
+        assert_eq!(
+            full["rope_theta"].as_f64().unwrap(),
+            spec.rope_freq_base as f64
+        );
+        // The two regimes carry separate bases on Gemma 4, and the flat
+        // spelling this replaced could only state one of them per field.
+        let sliding = &text["rope_parameters"]["sliding_attention"];
+        assert_eq!(
+            sliding["rope_theta"].as_f64().unwrap(),
+            spec.rope_freq_base_swa.unwrap() as f64,
+            "{sliding}"
+        );
+        assert_eq!(sliding["rope_type"], "default", "{sliding}");
+        // Nothing left at the top of text_config: a file carrying both
+        // spellings would load, but a fixture writing both would stop
+        // exercising the resolution order.
+        assert!(text["rope_theta"].is_null(), "{text}");
+        assert!(text["partial_rotary_factor"].is_null(), "{text}");
     }
 
     /// The emitted tokenizer.json is loadable by `tokenizers` and round-trips

@@ -170,6 +170,7 @@ fn build_generator(
     max_tokens: usize,
     context: Option<usize>,
     snapshot: Option<&Path>,
+    text_only: bool,
 ) -> Result<(SessionGenerator, Option<MonitorHandle>, u64)> {
     use runtime::model::{
         cpu::{ControlVector, CpuModel},
@@ -185,7 +186,8 @@ fn build_generator(
     };
     let files = runtime::checkpoint::CheckpointFiles::read(model_path)
         .with_context(|| format!("read model {}", model_path.display()))?;
-    let ck = runtime::checkpoint::parse(&files).context("parse checkpoint")?;
+    let mut ck = runtime::checkpoint::parse(&files).context("parse checkpoint")?;
+    ck.text_only = text_only;
     let mut cpu = CpuModel::from_checkpoint(&ck).context("load CPU model")?;
     // Model identity for the interp artifacts and the snapshot header. The
     // weights alone, not config.json: a checkpoint is a directory, and the
@@ -406,6 +408,7 @@ fn run(
     context: Option<usize>,
     compact_at: f32,
     chat: bool,
+    text_only: bool,
 ) -> Result<()> {
     let transcript = Transcript::open(&root.join("session.jsonl")).context("session.jsonl")?;
     // HARNESS.md: persistent memory read once at startup and injected as a
@@ -425,6 +428,7 @@ fn run(
         max_tokens,
         context,
         Some(&snapshot_path),
+        text_only,
     )?;
     // The task's outcome is held rather than propagated: the bookkeeping
     // below runs either way, so flags collected before a failure survive it.
@@ -524,7 +528,7 @@ fn main() -> ExitCode {
          [--control-vector-scale <f>] [--probe <path.gguf>] \
          [--probe-out <path>] [--temperature <f>] [--top-p <f>] \
          [--seed <n>] [--max-tokens <n>] [--context <n>] \
-         [--compact-at <f>] (--chat | <task description>)";
+         [--compact-at <f>] [--text-only] (--chat | <task description>)";
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     // Snapshot before flag extraction mutates args: cmd.start records the
     // invocation as given, program name excluded (the shape common/obs logs).
@@ -663,6 +667,15 @@ fn main() -> ExitCode {
         },
         None => 0.8,
     };
+    // --text-only: load the text stack of a multimodal checkpoint and decline
+    // its audio and vision towers. Required rather than implied, so nobody
+    // runs a multimodal model text-blind without having said so.
+    let text_only = if let Some(i) = args.iter().position(|a| a == "--text-only") {
+        args.remove(i);
+        true
+    } else {
+        false
+    };
     // --chat: interactive REPL instead of a one-shot task; the two are
     // mutually exclusive, so leftover positional args are a usage error.
     let chat = if let Some(i) = args.iter().position(|a| a == "--chat") {
@@ -718,6 +731,7 @@ fn main() -> ExitCode {
         context,
         compact_at,
         chat,
+        text_only,
     ) {
         // The answer, if any, was printed by `run` before its bookkeeping.
         Ok(()) => {

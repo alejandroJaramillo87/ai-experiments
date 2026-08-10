@@ -79,12 +79,18 @@ def probe_score(x, d):
 # table it mirrors. That is the point: the Rust loader maps these names in the
 # other direction, and if the two transcriptions disagree the goldens below
 # stop matching. A shared table would make the disagreement unobservable.
+#
+# Verified against google/gemma-4-E4B (2130 tensors, read 2026-08-10). Gemma 4
+# publishes as Gemma4ForConditionalGeneration, so the text stack sits under
+# model.language_model. beside the audio and vision towers this reference does
+# not read.
+TEXT_PREFIX = "model.language_model."
 HF_NAMES = {
-    "token_embd.weight": "model.embed_tokens.weight",
-    "output_norm.weight": "model.norm.weight",
-    "per_layer_token_embd.weight": "model.embed_tokens_per_layer.weight",
-    "per_layer_model_proj.weight": "model.per_layer_model_projection.weight",
-    "per_layer_proj_norm.weight": "model.per_layer_projection_norm.weight",
+    "token_embd.weight": TEXT_PREFIX + "embed_tokens.weight",
+    "output_norm.weight": TEXT_PREFIX + "norm.weight",
+    "per_layer_token_embd.weight": TEXT_PREFIX + "embed_tokens_per_layer.weight",
+    "per_layer_model_proj.weight": TEXT_PREFIX + "per_layer_model_projection.weight",
+    "per_layer_proj_norm.weight": TEXT_PREFIX + "per_layer_projection_norm.weight",
 }
 HF_LAYER_NAMES = {
     "attn_norm.weight": "input_layernorm.weight",
@@ -100,10 +106,14 @@ HF_LAYER_NAMES = {
     "ffn_up.weight": "mlp.up_proj.weight",
     "ffn_down.weight": "mlp.down_proj.weight",
     "post_ffw_norm.weight": "post_feedforward_layernorm.weight",
-    "layer_output_scale.weight": "layer_output_scale.weight",
+    # The one published name without a .weight suffix: upstream declares it
+    # nn.Buffer(torch.ones(1)) and multiplies it into the layer output. Trained
+    # away from ones -- the released checkpoints carry distinct per-layer
+    # values between 0.049 and 0.879 -- so it is read, never assumed.
+    "layer_output_scale.weight": "layer_scalar",
     "inp_gate.weight": "per_layer_input_gate.weight",
     "proj.weight": "per_layer_projection.weight",
-    "post_norm.weight": "post_per_layer_input_layernorm.weight",
+    "post_norm.weight": "post_per_layer_input_norm.weight",
 }
 
 # RMSNorm weights, which the checkpoint stores unshifted. See `rms_norm`.
@@ -147,7 +157,7 @@ def parse_safetensors(data):
         # held under reversed dims, so nothing is transposed here.
         name = inverse.get(hf_name)
         if name is None:
-            prefix = "model.layers."
+            prefix = TEXT_PREFIX + "layers."
             assert hf_name.startswith(prefix), f"unrecognized tensor {hf_name}"
             index, tail = hf_name[len(prefix) :].split(".", 1)
             suffix = next((k for k, v in HF_LAYER_NAMES.items() if v == tail), None)
@@ -250,8 +260,29 @@ def forward(config, tensors, prompt, steered=False):
 
     # Dual RoPE: the two regimes carry separate bases, and only the global
     # one takes the proportional divisors.
-    freq_base = m("rope_theta")
-    freq_base_swa = opt("rope_local_base_freq", freq_base)
+    #
+    # transformers 5.5 nests the three RoPE fields under rope_parameters,
+    # keyed by attention regime; before that they were flat in text_config.
+    # Both spellings are read, and the nested one wins, matching the Rust
+    # accessors -- independently transcribed, as the whole file is.
+    rope_params = opt("rope_parameters")
+    if rope_params is not None:
+        full = rope_params["full_attention"]
+        sliding = rope_params.get("sliding_attention")
+        for regime, block in (("full_attention", full), ("sliding_attention", sliding)):
+            if block is None:
+                continue
+            kind = block["rope_type"]
+            assert kind in ("default", "proportional"), (
+                f"rope_parameters.{regime}.rope_type is {kind!r}"
+            )
+        freq_base = full["rope_theta"]
+        freq_base_swa = sliding["rope_theta"] if sliding else freq_base
+        factor = full.get("partial_rotary_factor")
+    else:
+        freq_base = m("rope_theta")
+        freq_base_swa = opt("rope_local_base_freq", freq_base)
+        factor = opt("partial_rotary_factor")
 
     # The divisors are derived from the rotation factor rather than read from
     # a tensor. llama.cpp precomputes them at conversion time and ships
@@ -259,10 +290,11 @@ def forward(config, tensors, prompt, steered=False):
     # and leaves the construction to the loader. Ones over the rotating pairs,
     # 1e30 over the rest -- large enough to drive those angles to zero.
     half = hd_global // 2
-    factor = opt("partial_rotary_factor")
     rope_divisors = None
     if factor is not None:
-        rotating = round(factor * hd_global / 2)
+        # Floor, matching transformers' int(rope_proportion * head_dim // 2)
+        # and the Rust rope_rotating_pairs.
+        rotating = int(factor * hd_global // 2)
         assert 0 < rotating <= half, f"partial_rotary_factor {factor} gives {rotating}"
         if rotating < half:
             rope_divisors = np.array(
