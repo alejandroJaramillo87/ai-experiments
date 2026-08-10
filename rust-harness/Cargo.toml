@@ -33,14 +33,39 @@ rust-version = "1.87"
 [workspace.lints.rust]
 warnings = "deny"
 
+# Format parsing is the one area where this workspace takes an upstream
+# dependency instead of implementing in-tree, because for a checkpoint format
+# the reference implementation and the specification are the same artifact.
+# See the dependency paragraph in /.styles/RUST_STYLE.md.
 [workspace.dependencies]
 anyhow = "1.0"
 # flock only: the obs run-log holds a shared lock so the Python retention
 # pruner treats the live event file as in use (common/obs/retention.py)
 libc = "0.2"
+# Checkpoint container: header-plus-bytes reader over model.safetensors, used
+# for tensor names, Dtype, shape and the raw byte slice. HuggingFace's own
+# crate, so it tracks the format rather than a transcription of it.
+safetensors = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
+# tokenizer.json loading and encoding only. HuggingFace's own crate, and the
+# reason this workspace does not hand-roll the tokenizer: Gemma 4 ships a BPE
+# vocabulary with 514906 merges behind a Replace normalizer and a Split
+# pre-tokenizer, and a conformant reimplementation of that pipeline is how the
+# project would acquire a second silent tokenizer bug after the first one.
+#
+# The feature set is load-bearing, not tidiness. The defaults are
+# ["progressbar", "onig", "esaxx_fast"]; onig and esaxx_fast are C/C++, and
+# neither the agent image nor the release builder carries a C++ toolchain.
+# fancy-regex is the pure-Rust regex engine tokenizers offers in place of onig,
+# and it is mandatory rather than optional: with no engine selected the crate
+# fails to compile on an unresolved SysRegex. Leaving esaxx_fast off keeps
+# esaxx-rs on its pure-Rust path, and leaving http/hf-hub off keeps the gate
+# network-free and suits a container that runs with network_mode: none.
+# After any version bump, re-check with `cargo tree -p runtime -i cc`, which
+# must report no match.
+tokenizers = { version = "0.23", default-features = false, features = ["fancy-regex"] }
 tokio = { version = "1", features = ["rt", "macros", "sync", "time", "process"] }
 tempfile = "3"
 tracing = "0.1"

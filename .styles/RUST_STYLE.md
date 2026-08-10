@@ -59,6 +59,26 @@ Pin dependencies in `[workspace.dependencies]` and reference them from members a
 present and how much of it is used, for example `libc` noted as `flock only`. A dependency
 without a justification comment is incomplete.
 
+**Checkpoint formats are the one standing exception to implementing in-tree.** For a model
+format the reference implementation and the specification are the same artifact, so a
+transcription of it is a guess that compiles. The workspace learned this the expensive way: a
+hand-rolled SentencePiece unigram tokenizer read a Gemma 4 vocabulary that is BPE, and every
+prompt it segmented against real weights was wrong. `safetensors` and `tokenizers` are
+HuggingFace's own crates and track the formats they define, so they are preferred over
+reimplementation. The exception is bounded — it covers parsing a checkpoint and nothing
+downstream of it. Numerics, sampling, the KV cache and the forward pass stay in-tree, where
+determinism is enforceable.
+
+Two constraints ride along. Select features so the graph stays pure Rust: neither the agent
+image nor the release builder carries a C++ toolchain, and `cargo tree -p runtime -i cc` must
+report no match. And nothing may pull a network client into the gate, which is offline by
+contract.
+
+The `Prohibited` list below rules out an RNG crate *in place of* the seeded in-tree generators.
+It governs what the harness uses for sampling and fixture synthesis, not what a transitive
+dependency happens to link; the in-tree seeded generators remain the only source of randomness
+the harness itself calls. New lockfile entries under a format crate are not a violation.
+
 ## Errors
 
 Use `anyhow`. The workspace defines no error enums, implements no `std::error::Error`, and does
