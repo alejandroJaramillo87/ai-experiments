@@ -307,6 +307,66 @@ impl TextConfig {
     }
 }
 
+/// Hugging Face name for a llama.cpp tensor name, or `None` when the tensor is
+/// a converter artifact with no published counterpart.
+///
+/// One table, shared by the loader that inverts it and the fixture writer
+/// that applies it, because two copies of a naming map drift. The
+/// attention and feed-forward families are the Gemma naming the transformers
+/// implementation uses. The per-layer-embedding names are provisional: they are
+/// reconstructed from the converter's own renaming and have not been checked
+/// against a real checkpoint's key list, which is a workstation step. Nothing
+/// reads the safetensors output yet, so a wrong entry here is a one-line fix
+/// rather than a defect in flight.
+pub fn hf_tensor_name(gguf_name: &str) -> Option<String> {
+    // Not in the checkpoint: llama.cpp precomputes the proportional-RoPE
+    // divisors at conversion time, while transformers derives them from
+    // partial_rotary_factor at load time.
+    if gguf_name == "rope_freqs.weight" {
+        return None;
+    }
+    if gguf_name == "token_embd.weight" {
+        return Some("model.embed_tokens.weight".to_string());
+    }
+    if gguf_name == "output_norm.weight" {
+        return Some("model.norm.weight".to_string());
+    }
+    if let Some(rest) = gguf_name.strip_prefix("per_layer_") {
+        let tail = match rest {
+            "token_embd.weight" => "embed_tokens_per_layer.weight",
+            "model_proj.weight" => "per_layer_model_projection.weight",
+            "proj_norm.weight" => "per_layer_projection_norm.weight",
+            other => other,
+        };
+        return Some(format!("model.{tail}"));
+    }
+    let rest = gguf_name.strip_prefix("blk.")?;
+    let (index, suffix) = rest.split_once('.')?;
+    let tail = match suffix {
+        "attn_norm.weight" => "input_layernorm.weight",
+        "attn_q.weight" => "self_attn.q_proj.weight",
+        "attn_k.weight" => "self_attn.k_proj.weight",
+        "attn_v.weight" => "self_attn.v_proj.weight",
+        "attn_q_norm.weight" => "self_attn.q_norm.weight",
+        "attn_k_norm.weight" => "self_attn.k_norm.weight",
+        "attn_output.weight" => "self_attn.o_proj.weight",
+        "post_attention_norm.weight" => "post_attention_layernorm.weight",
+        "ffn_norm.weight" => "pre_feedforward_layernorm.weight",
+        "ffn_gate.weight" => "mlp.gate_proj.weight",
+        "ffn_up.weight" => "mlp.up_proj.weight",
+        "ffn_down.weight" => "mlp.down_proj.weight",
+        "post_ffw_norm.weight" => "post_feedforward_layernorm.weight",
+        "layer_output_scale.weight" => "layer_output_scale.weight",
+        // Provisional, as above: the converter drops the `per_layer` substring
+        // from these three, so the published names are reconstructed.
+        "inp_gate.weight" => "per_layer_input_gate.weight",
+        "proj.weight" => "per_layer_projection.weight",
+        "post_norm.weight" => "post_per_layer_input_layernorm.weight",
+        _ => return None,
+    };
+    Some(format!("model.layers.{index}.{tail}"))
+}
+
 /// Locate a checkpoint from a `--model` argument.
 ///
 /// Accepts the directory itself or a path to the weights file inside it, so a

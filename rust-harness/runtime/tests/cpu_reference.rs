@@ -444,3 +444,107 @@ fn the_e4b_fixture_geometry_separates_the_ambiguous_conventions() {
          layers never drop a position"
     );
 }
+
+/// The two loaders produce the same model, bit for bit.
+///
+/// This is the load-bearing test of the move from GGUF to safetensors, and it
+/// is stronger than either loader matching a golden. A golden proves each
+/// loader agrees with a file; this proves the new loader agrees with the one
+/// that was already verified against the numpy oracle, over every tensor the
+/// spec carries, without a fixture in between that could have been
+/// regenerated to fit.
+///
+/// Equality and not a tolerance. The two containers hold the same weights --
+/// `tiny_tensors` draws the stream once and both sinks write it -- and the
+/// one transformation between them, the RMSNorm shift, is exact at f32 for
+/// values in `[0.5, 2.0]`. Any tolerance here would hide precisely the class
+/// of defect the test exists to catch: a transposed matrix, a misnamed
+/// tensor, an off-by-one donor, a shift applied twice or not at all. Each of
+/// those produces finite, plausible, wrong logits.
+///
+/// Runs on the E4B-shaped spec plus the feature variations the two loaders
+/// resolve differently -- per-layer embeddings, the shared-KV tail, partial
+/// rotary, and the layer output scale -- because a uniform model exercises
+/// none of the code where the two formats disagree.
+#[test]
+fn the_checkpoint_loader_and_the_gguf_loader_agree_bit_for_bit() {
+    use runtime::synth::{
+        build_tiny_config_json, build_tiny_model, build_tiny_safetensors, TinySpec,
+    };
+
+    let prompt: Vec<u32> = vec![1, 5, 9, 13, 3, 8, 21, 2];
+    let cases: Vec<(&str, TinySpec)> = vec![
+        ("uniform", TinySpec::default()),
+        ("e4b", TinySpec::e4b_shaped()),
+        (
+            "e4b+ple",
+            TinySpec {
+                ple_dim: Some(4),
+                ..TinySpec::e4b_shaped()
+            },
+        ),
+        (
+            "e4b+rotary",
+            TinySpec {
+                rope_rotating_pairs: Some(2),
+                ..TinySpec::e4b_shaped()
+            },
+        ),
+        (
+            "e4b+scale+softcap",
+            TinySpec {
+                layer_output_scale: Some(0.5),
+                logit_softcap: Some(30.0),
+                ..TinySpec::e4b_shaped()
+            },
+        ),
+    ];
+
+    for (label, spec) in cases {
+        let image = build_tiny_model(&spec);
+        let file = runtime::gguf::parse(&image).unwrap();
+        let from_gguf = CpuModel::from_gguf(&file, &image)
+            .unwrap_or_else(|e| panic!("{label}: gguf load: {e:#}"))
+            .prefill_all(&prompt)
+            .unwrap();
+
+        let files = runtime::checkpoint::CheckpointFiles {
+            config: build_tiny_config_json(&spec).unwrap(),
+            weights: build_tiny_safetensors(&spec).unwrap(),
+            dir: std::path::PathBuf::from("<memory>"),
+        };
+        let ck = runtime::checkpoint::parse(&files)
+            .unwrap_or_else(|e| panic!("{label}: checkpoint parse: {e:#}"));
+        let from_checkpoint = CpuModel::from_checkpoint(&ck)
+            .unwrap_or_else(|e| panic!("{label}: checkpoint load: {e:#}"))
+            .prefill_all(&prompt)
+            .unwrap();
+
+        assert_eq!(
+            from_gguf.len(),
+            from_checkpoint.len(),
+            "{label}: {} rows from gguf, {} from the checkpoint",
+            from_gguf.len(),
+            from_checkpoint.len()
+        );
+        for (pos, (g, c)) in from_gguf.iter().zip(&from_checkpoint).enumerate() {
+            assert_eq!(
+                g.0.len(),
+                c.0.len(),
+                "{label}: position {pos} logit widths differ"
+            );
+            for (token, (&a, &b)) in g.0.iter().zip(&c.0).enumerate() {
+                assert_eq!(
+                    a, b,
+                    "{label}: position {pos} token {token}: gguf {a}, checkpoint {b}"
+                );
+            }
+        }
+        // Guards against a spec whose logits are all zero, which would make
+        // the comparison above pass without exercising the weights.
+        assert!(
+            from_gguf[0].0.iter().any(|v| v.abs() > 1e-6),
+            "{label}: logits are degenerate, so equality proves nothing"
+        );
+    }
+}

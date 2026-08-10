@@ -83,7 +83,6 @@ pub struct Config {
     pub n_kv_heads: usize,
     pub context_length: usize,
     pub sliding_window: usize,
-    pub sliding_window_pattern: usize,
     pub rms_eps: f32,
     /// Ceiling the output logits are squashed toward, `30.0` on every Gemma 4
     /// variant. `None` when the checkpoint declares none, which is the
@@ -198,6 +197,42 @@ impl ModelSpec {
 }
 
 impl Config {
+    /// The attention schedule as a stride: every `stride`-th layer is global.
+    ///
+    /// A bool array marks each layer sliding-window (true) or global (false),
+    /// and a stride reproduces it exactly when the global layers are periodic
+    /// -- the only form Gemma 4 ships, E2B stride 5, E4B 6, the mtp head 4.
+    /// An aperiodic schedule is refused here, which is a limit of this
+    /// spelling and not of the backend: `config.json` states the schedule
+    /// per layer, so the checkpoint loader accepts one.
+    fn schedule_stride(file: &GgufFile, arch: &str) -> Result<usize> {
+        let key = "attention.sliding_window_pattern";
+        let full = format!("{arch}.{key}");
+        let Some(MetaValue::ArrBool(pattern)) = file.metadata.get(&full) else {
+            return match file.metadata.get(&full) {
+                Some(MetaValue::U32(v)) => Ok(*v as usize),
+                Some(other) => bail!("{full}: expected u32, got {other:?}"),
+                None => bail!("missing {full}"),
+            };
+        };
+        let Some(first_global) = pattern.iter().position(|sliding| !sliding) else {
+            bail!(
+                "{full} marks no layer global, so it encodes no periodic \
+                 stride; an all-sliding-window schedule is not expressible here"
+            );
+        };
+        let stride = first_global + 1;
+        for (i, sliding) in pattern.iter().enumerate() {
+            if *sliding == (i + 1).is_multiple_of(stride) {
+                bail!(
+                    "{full} is not periodic: it implies stride {stride} from \
+                     layer {first_global}, but layer {i} contradicts it"
+                );
+            }
+        }
+        Ok(stride)
+    }
+
     pub fn from_gguf(file: &GgufFile) -> Result<Config> {
         let arch = match file.metadata.get("general.architecture") {
             Some(MetaValue::Str(a)) => a.as_str(),
@@ -213,32 +248,6 @@ impl Config {
                 Some(other) => bail!("{arch}.{key}: expected u32, got {other:?}"),
                 None => bail!("missing {arch}.{key}"),
             }
-        };
-        // A bool array marks each layer sliding-window (true) or global
-        // (false); `layer_kind` makes every `stride`-th layer global. The two
-        // agree exactly when the global layers are periodic, which is the
-        // only form Gemma 4 ships -- E2B stride 5, E4B 6, the mtp head 4.
-        let schedule = |key: &str| -> Result<usize> {
-            let Some(MetaValue::ArrBool(pattern)) = file.metadata.get(&format!("{arch}.{key}"))
-            else {
-                return u(key);
-            };
-            let Some(first_global) = pattern.iter().position(|sliding| !sliding) else {
-                bail!(
-                    "{arch}.{key} marks no layer global, so it encodes no periodic \
-                     stride; an all-sliding-window schedule is not expressible here"
-                );
-            };
-            let stride = first_global + 1;
-            for (i, sliding) in pattern.iter().enumerate() {
-                if *sliding == (i + 1).is_multiple_of(stride) {
-                    bail!(
-                        "{arch}.{key} is not periodic: it implies stride {stride} from \
-                         layer {first_global}, but layer {i} contradicts it"
-                    );
-                }
-            }
-            Ok(stride)
         };
         let f = |key: &str| -> Result<f32> {
             match file.metadata.get(&format!("{arch}.{key}")) {
@@ -259,7 +268,6 @@ impl Config {
             n_kv_heads: u("attention.head_count_kv")?,
             context_length: u("context_length")?,
             sliding_window: u("attention.sliding_window")?,
-            sliding_window_pattern: schedule("attention.sliding_window_pattern")?,
             rms_eps: f("attention.layer_norm_rms_epsilon")?,
             logit_softcap: match file
                 .metadata
@@ -324,10 +332,6 @@ impl Config {
              a zero-token window is not disabled windowing"
         );
         ensure!(
-            config.sliding_window_pattern > 0,
-            "{arch}.attention.sliding_window_pattern is 0, must be positive"
-        );
-        ensure!(
             config.n_heads.is_multiple_of(config.n_kv_heads.max(1)) && config.n_kv_heads > 0,
             "head_count {} not divisible by head_count_kv {}",
             config.n_heads,
@@ -335,15 +339,48 @@ impl Config {
         );
         Ok(config)
     }
+}
 
-    /// Attention kind of layer `i`, matching `kv::interleaved_layers`.
-    pub fn layer_kind(&self, i: usize) -> LayerKind {
-        if (i + 1).is_multiple_of(self.sliding_window_pattern) {
-            LayerKind::Global
-        } else {
-            LayerKind::SlidingWindow(self.sliding_window)
-        }
-    }
+/// Which non-shared layer each layer reads K/V from.
+///
+/// The trailing `shared` layers compute no K or V of their own and attend over
+/// a donor's cache; every layer before the boundary is its own donor. Shared
+/// between the two loaders because the rule is subtle and an off-by-one is
+/// invisible: the wrong donor still has the right shape, and the model still
+/// emits fluent text.
+///
+/// Upstream's `store_full_length_kv` picks the last non-shared layer *of this
+/// layer's own attention regime*, so searching downward from the boundary is
+/// that rule read backwards. Regimes are compared by discriminant rather than
+/// by window width, since two sliding layers with different windows are still
+/// both sliding.
+fn kv_donors(kinds: &[LayerKind], shared: usize) -> Result<Vec<usize>> {
+    let n = kinds.len();
+    ensure!(
+        shared <= n,
+        "{shared} shared-KV layers declared, more than the {n} layers in the model"
+    );
+    let boundary = n - shared;
+    let is_global = |i: usize| matches!(kinds[i], LayerKind::Global);
+    (0..n)
+        .map(|i| {
+            if i < boundary {
+                return Ok(i);
+            }
+            (0..boundary)
+                .rev()
+                .find(|&j| is_global(j) == is_global(i))
+                .with_context(|| {
+                    let regime = if is_global(i) { "global" } else { "sliding" };
+                    format!(
+                        "layer {i} is a shared-KV {regime} layer but no {regime} layer \
+                         precedes the shared-KV boundary at {boundary}, so it has no \
+                         donor to read; {shared} shared layers and this attention \
+                         schedule describe a model that cannot run"
+                    )
+                })
+        })
+        .collect()
 }
 
 impl ModelSpec {
@@ -358,6 +395,21 @@ impl ModelSpec {
     pub fn from_gguf(file: &GgufFile) -> Result<ModelSpec> {
         let config = Config::from_gguf(file)?;
         let arch = architecture(file)?;
+        // The attention schedule, as a stride. Local rather than a `Config`
+        // field because it is a GGUF spelling and nothing outside this
+        // function reads it: `config.json` states the schedule as an explicit
+        // per-layer list, and `LayerSpec::kind` is what the forward pass asks.
+        let stride = Config::schedule_stride(file, arch)?;
+        ensure!(
+            stride > 0,
+            "{arch}.attention.sliding_window_pattern is 0, must be positive"
+        );
+        let kinds: Vec<LayerKind> = (0..config.n_layers)
+            .map(|i| match (i + 1).is_multiple_of(stride) {
+                true => LayerKind::Global,
+                false => LayerKind::SlidingWindow(config.sliding_window),
+            })
+            .collect();
         let u = |key: &str| -> Result<usize> {
             match file.metadata.get(&format!("{arch}.{key}")) {
                 Some(MetaValue::U32(v)) => Ok(*v as usize),
@@ -437,36 +489,13 @@ impl ModelSpec {
              {arch}.block_count declares",
             config.n_layers
         );
-        let boundary = config.n_layers - shared;
-        // Layer type is what keys the donor, so the two regimes are compared by
-        // discriminant and not by window width.
-        let is_global = |i: usize| matches!(config.layer_kind(i), LayerKind::Global);
-        let donor = |i: usize| -> Result<usize> {
-            if i < boundary {
-                return Ok(i);
-            }
-            // Upstream's `store_full_length_kv`: the last non-shared layer of
-            // this layer's own type. Searching downward from the boundary is
-            // that rule read backwards.
-            (0..boundary)
-                .rev()
-                .find(|&j| is_global(j) == is_global(i))
-                .with_context(|| {
-                    format!(
-                        "layer {i} is a shared-KV {} layer but no {} layer precedes the \
-                         shared-KV boundary at {boundary}, so it has no donor to read; \
-                         {arch}.attention.shared_kv_layers ({shared}) and the {}-layer \
-                         attention schedule describe a model that cannot run",
-                        if is_global(i) { "global" } else { "sliding" },
-                        if is_global(i) { "global" } else { "sliding" },
-                        config.sliding_window_pattern,
-                    )
-                })
-        };
+        let donors = kv_donors(&kinds, shared).with_context(|| {
+            format!("{arch}.attention.shared_kv_layers and the stride-{stride} schedule")
+        })?;
 
         let layers: Vec<LayerSpec> = (0..config.n_layers)
             .map(|i| {
-                let kind = config.layer_kind(i);
+                let kind = kinds[i];
                 let (head_dim, rope_freq_base) = match kind {
                     LayerKind::Global => (head_dim_global, rope_base_global),
                     LayerKind::SlidingWindow(_) => (head_dim_sliding, rope_base_sliding),
@@ -476,7 +505,7 @@ impl ModelSpec {
                     head_dim,
                     ffn_dim: ffn_dims[i],
                     rope_freq_base,
-                    kv_source: donor(i)?,
+                    kv_source: donors[i],
                 })
             })
             .collect::<Result<_>>()?;
@@ -515,6 +544,55 @@ impl ModelSpec {
                 "{arch}.feed_forward_length is 0 for layer {i}, must be positive"
             );
         }
+        Ok(ModelSpec { config, layers })
+    }
+
+    /// Read the declared shape from a checkpoint's `config.json`.
+    ///
+    /// Shorter than `from_gguf` because the checkpoint states what the GGUF
+    /// implies. There is no stride to infer and no periodicity to enforce,
+    /// no paired `_swa` keys to resolve against their unsuffixed partners,
+    /// and no scalar-or-array union to normalize: `TextConfig` has already
+    /// validated its own fields, so this is a mapping and not a parse.
+    pub fn from_checkpoint(c: &crate::checkpoint::TextConfig) -> Result<ModelSpec> {
+        let config = Config {
+            vocab_size: c.vocab_size,
+            embed_dim: c.hidden_size,
+            n_layers: c.num_hidden_layers,
+            n_heads: c.num_attention_heads,
+            n_kv_heads: c.num_key_value_heads,
+            context_length: c.max_position_embeddings,
+            sliding_window: c.sliding_window,
+            rms_eps: c.rms_norm_eps,
+            logit_softcap: c.final_logit_softcapping,
+            ple_dim: c.hidden_size_per_layer_input,
+        };
+        let kinds: Vec<LayerKind> = (0..config.n_layers)
+            .map(|i| match c.is_global(i)? {
+                true => Ok(LayerKind::Global),
+                false => Ok(LayerKind::SlidingWindow(config.sliding_window)),
+            })
+            .collect::<Result<_>>()?;
+        let donors = kv_donors(&kinds, c.num_kv_shared_layers)
+            .context("num_kv_shared_layers and the layer_types schedule")?;
+        let ffn_dims = c.intermediate_sizes()?;
+        let layers = (0..config.n_layers)
+            .map(|i| {
+                let (head_dim, rope_freq_base) = match kinds[i] {
+                    LayerKind::Global => (c.global_head_dim(), c.rope_theta),
+                    LayerKind::SlidingWindow(_) => {
+                        (c.head_dim, c.rope_local_base_freq.unwrap_or(c.rope_theta))
+                    }
+                };
+                LayerSpec {
+                    kind: kinds[i],
+                    head_dim,
+                    ffn_dim: ffn_dims[i],
+                    rope_freq_base,
+                    kv_source: donors[i],
+                }
+            })
+            .collect();
         Ok(ModelSpec { config, layers })
     }
 }
@@ -865,6 +943,160 @@ pub fn check_supported(file: &GgufFile, spec: &ModelSpec) -> Result<()> {
         unconsumed.join(", ")
     );
     Ok(())
+}
+
+/// Refuse a checkpoint whose structure the forward pass does not implement.
+///
+/// The architectural half of `check_supported`. Most of that function is
+/// concerned with metadata keys that only the GGUF spelling has -- the
+/// `rope.*` allowlist, the `dimension_count` width check, the softcapping
+/// keys -- and `TextConfig::validate` covers the equivalent ground by having
+/// named fields to check instead of a namespace to police. What is left is
+/// what the *tensors* have to satisfy, which no config field can state.
+///
+/// The unconsumed-tensor backstop is the important survivor. Loading is
+/// name-directed, so a feature published after this code presents as tensors
+/// nothing reads and logits that are merely wrong.
+fn check_supported_checkpoint(ck: &crate::checkpoint::Checkpoint, spec: &ModelSpec) -> Result<()> {
+    use crate::checkpoint::hf_tensor_name;
+
+    let config = &spec.config;
+    let names = ck.names();
+    let has = |gguf: &str| hf_tensor_name(gguf).is_some_and(|n| names.contains(&n));
+
+    // Per-layer input embeddings are all six families or none. A checkpoint
+    // carrying five would load, skip the residual join wherever the sixth is
+    // missing, and produce fluent output from a model missing most of its
+    // parameters. A per-block family present on some layers but not all
+    // counts as missing -- the partial set is the one that loads.
+    let mut present: Vec<String> = Vec::new();
+    let mut missing: Vec<String> = Vec::new();
+    for name in PLE_TOP_LEVEL_TENSORS {
+        match has(name) {
+            true => present.push(name.to_string()),
+            false => missing.push(name.to_string()),
+        }
+    }
+    for suffix in PLE_LAYER_TENSORS {
+        let found = (0..config.n_layers)
+            .filter(|i| has(&format!("blk.{i}.{suffix}")))
+            .count();
+        match found == config.n_layers {
+            true => present.push(format!("blk.*.{suffix}")),
+            false => missing.push(format!(
+                "blk.*.{suffix} ({found} of {} layers)",
+                config.n_layers
+            )),
+        }
+    }
+    let declared = config.ple_dim.is_some();
+    if declared || !present.is_empty() {
+        ensure!(
+            missing.is_empty(),
+            "per-layer input embeddings are {}, but these tensor families are absent \
+             or incomplete: {}. The feature is all six families or none",
+            match declared {
+                true => "declared by hidden_size_per_layer_input".to_string(),
+                false => format!("implied by present tensors ({})", present.join(", ")),
+            },
+            missing.join(", ")
+        );
+        ensure!(
+            declared,
+            "checkpoint carries the per-layer input embedding tensors but declares no \
+             hidden_size_per_layer_input, so the packed table cannot be split into one \
+             row per layer; refusing rather than inferring the width from a shape"
+        );
+    }
+
+    // A layer that stores its own K/V cannot attend without k_proj and
+    // v_proj. A shared layer legitimately carries neither -- and the released
+    // checkpoints carry both anyway, which is the recorded conflict between
+    // the modeling code and the weights -- so this narrows to cache owners.
+    for i in 0..config.n_layers {
+        if !spec.owns_cache(i) {
+            continue;
+        }
+        if has(&format!("blk.{i}.attn_q.weight"))
+            && !(has(&format!("blk.{i}.attn_k.weight")) && has(&format!("blk.{i}.attn_v.weight")))
+        {
+            bail!(
+                "layer {i} has no k_proj/v_proj tensors, but it stores its own K/V \
+                 rather than reading a donor's, so there is nothing to attend over; \
+                 num_kv_shared_layers leaves {} layers owning a cache",
+                spec.cache_owning_layers()
+            );
+        }
+    }
+
+    // Declared feed-forward width against the width the weights carry. A
+    // disagreement means config.json and the tensors describe different
+    // models, and the forward pass slices by the config.
+    for (i, layer) in spec.layers.iter().enumerate() {
+        let Some(name) = hf_tensor_name(&format!("blk.{i}.ffn_up.weight")) else {
+            continue;
+        };
+        let Ok(view) = ck.tensors.tensor(&name) else {
+            continue;
+        };
+        let width = view.shape().first().copied().unwrap_or(0);
+        ensure!(
+            width == layer.ffn_dim,
+            "tensor {name} has feed-forward width {width}, but intermediate_size \
+             declares {} for layer {i}",
+            layer.ffn_dim
+        );
+    }
+
+    // Generic backstop: anything left unconsumed is structure this backend
+    // does not know about, including features published after this code.
+    let mut consumable: Vec<String> = Vec::new();
+    for name in TOP_LEVEL_TENSORS.iter().chain(PLE_TOP_LEVEL_TENSORS.iter()) {
+        consumable.extend(hf_tensor_name(name));
+    }
+    for i in 0..config.n_layers {
+        for suffix in LAYER_TENSORS
+            .iter()
+            .chain(OPTIONAL_LAYER_TENSORS.iter())
+            .chain(PLE_LAYER_TENSORS.iter())
+        {
+            consumable.extend(hf_tensor_name(&format!("blk.{i}.{suffix}")));
+        }
+    }
+    let mut unconsumed: Vec<String> = Vec::new();
+    for name in &names {
+        if consumable.contains(name) {
+            continue;
+        }
+        let family = hf_tensor_family(name);
+        if !unconsumed.contains(&family) {
+            unconsumed.push(family);
+        }
+    }
+    ensure!(
+        unconsumed.is_empty(),
+        "checkpoint carries {} tensor famil{} this backend does not consume: {}; \
+         refusing rather than ignoring learned weights",
+        unconsumed.len(),
+        if unconsumed.len() == 1 { "y" } else { "ies" },
+        unconsumed.join(", ")
+    );
+    Ok(())
+}
+
+/// Collapse a Hugging Face tensor name to its family, replacing the layer
+/// index in `model.layers.<i>.` with `*`, so a diagnostic over 42 layers
+/// reports one line per family rather than 42.
+fn hf_tensor_family(name: &str) -> String {
+    let Some(rest) = name.strip_prefix("model.layers.") else {
+        return name.to_string();
+    };
+    match rest.split_once('.') {
+        Some((index, suffix)) if !index.is_empty() && index.bytes().all(|b| b.is_ascii_digit()) => {
+            format!("model.layers.*.{suffix}")
+        }
+        _ => name.to_string(),
+    }
 }
 
 /// Architecture string, the prefix of every model metadata key.
@@ -1260,6 +1492,178 @@ fn softmax_in_place(scores: &mut [f32]) {
 }
 
 impl CpuModel {
+    /// Load from a Hugging Face checkpoint: `config.json` and
+    /// `model.safetensors`.
+    ///
+    /// Two things differ from `from_gguf` beyond the container.
+    ///
+    /// Tensors are checked by *shape*, not element count. A transposed matrix
+    /// has the same element count, so the GGUF path's check could not see one
+    /// -- and while the layout is in fact identical between the two formats
+    /// (GGUF `ne` order reversed is already row-major `[out, in]`, which is
+    /// what `matvec_into` walks), that is a fact worth a guard rather than a
+    /// comment. Nothing downstream would catch a transpose: the forward pass
+    /// slices by strides from the config and returns finite, wrong logits.
+    ///
+    /// RMSNorm weights get Gemma's runtime `+1` folded in as they load. A
+    /// published checkpoint stores the raw parameter and transformers adds one
+    /// at every use; the GGUF converter resolves the shift before writing. So
+    /// the two containers spell the same tensor differently, and this is where
+    /// the checkpoint spelling is translated into the effective multiplier
+    /// `rms_norm_into` expects. Folding at load rather than in the kernel is
+    /// deliberate: it is the same arithmetic performed once per weight instead
+    /// of once per weight per token, it keeps one norm kernel rather than two
+    /// during the transition, and it avoids a subtract-then-add round trip
+    /// that is lossy for the large norm values real Gemma checkpoints carry.
+    pub fn from_checkpoint(ck: &crate::checkpoint::Checkpoint) -> Result<CpuModel> {
+        use crate::checkpoint::hf_tensor_name;
+
+        let spec = ModelSpec::from_checkpoint(&ck.config)?;
+        let config = spec.config;
+        check_supported_checkpoint(ck, &spec)?;
+
+        // Named by the GGUF spelling and translated through the one shared
+        // table, so the loader and the fixture writer cannot disagree about a
+        // name. The GGUF spelling stays the internal vocabulary while both
+        // loaders exist; it is the loader being removed that should change it.
+        let hf = |gguf: &str| -> Result<String> {
+            hf_tensor_name(gguf).with_context(|| format!("no published name for tensor {gguf}"))
+        };
+        let tensor =
+            |gguf: &str, want: &[usize]| -> Result<Vec<f32>> { ck.tensor(&hf(gguf)?, want) };
+        // A norm weight, shifted into the effective multiplier.
+        let norm = |gguf: &str, want: &[usize]| -> Result<Vec<f32>> {
+            debug_assert!(gguf.ends_with("norm.weight"), "{gguf} is not a norm");
+            Ok(tensor(gguf, want)?.into_iter().map(|w| 1.0 + w).collect())
+        };
+
+        let embed_dim = config.embed_dim;
+        let embed = tensor("token_embd.weight", &[config.vocab_size, embed_dim])?;
+        // The divisor tensor the GGUF carries is derived here instead, from
+        // the factor the checkpoint states. Ones over the rotating pairs and
+        // 1e30 over the rest, matching the converter's own construction, so
+        // `rope_frequencies` sees the same input either way.
+        let rotating = ck.config.rope_rotating_pairs()?;
+        let half = ck.config.global_head_dim() / 2;
+        let rope_divisors: Option<Vec<f32>> = match rotating < half {
+            true => {
+                let mut d = vec![1.0f32; rotating];
+                d.extend(std::iter::repeat_n(1e30f32, half - rotating));
+                Some(d)
+            }
+            false => None,
+        };
+
+        let ple = match config.ple_dim {
+            None => None,
+            Some(pd) => {
+                let row = config.n_layers * pd;
+                let name = hf(PLE_TOP_LEVEL_TENSORS[0])?;
+                // The per-layer table has its own vocabulary axis, which is a
+                // separate config field from `vocab_size` and one the GGUF
+                // converter drops. Read from the tensor's own shape in both
+                // loaders, so a wider table stays loadable.
+                let view = ck
+                    .tensors
+                    .tensor(&name)
+                    .map_err(|e| anyhow::anyhow!("missing tensor {name}: {e}"))?;
+                let ple_vocab = match view.shape() {
+                    [rows, packed] if *packed == row => *rows,
+                    other => bail!(
+                        "tensor {name} has shape {other:?}, expected \
+                         [vocab, num_hidden_layers x hidden_size_per_layer_input ({row})]"
+                    ),
+                };
+                ensure!(
+                    ple_vocab >= config.vocab_size,
+                    "tensor {name} holds {ple_vocab} rows, fewer than the {} tokens \
+                     vocab_size declares",
+                    config.vocab_size
+                );
+                Some(PleWeights {
+                    token_embd: tensor(PLE_TOP_LEVEL_TENSORS[0], &[ple_vocab, row])?,
+                    ple_vocab,
+                    model_proj: tensor(PLE_TOP_LEVEL_TENSORS[1], &[row, embed_dim])?,
+                    proj_norm: norm(PLE_TOP_LEVEL_TENSORS[2], &[pd])?,
+                })
+            }
+        };
+
+        let mut layers = Vec::with_capacity(config.n_layers);
+        for (i, ls) in spec.layers.iter().enumerate() {
+            let (head_dim, ffn_dim) = (ls.head_dim, ls.ffn_dim);
+            let q_dim = config.n_heads * head_dim;
+            let kv_dim = config.n_kv_heads * head_dim;
+            let divisors = match (ls.kind, rope_divisors.as_deref()) {
+                (LayerKind::Global, Some(d)) => Some(d),
+                _ => None,
+            };
+            // Row-major `[out, in]`, the transpose of the GGUF `ne` order and
+            // the same bytes.
+            let t = |suffix: &str, want: &[usize]| tensor(&format!("blk.{i}.{suffix}"), want);
+            let n = |suffix: &str, want: &[usize]| norm(&format!("blk.{i}.{suffix}"), want);
+            let output_scale = match ck.has(&hf(&format!("blk.{i}.layer_output_scale.weight"))?) {
+                true => t("layer_output_scale.weight", &[1])?[0],
+                false => 1.0,
+            };
+            let ple_layer = match config.ple_dim {
+                Some(pd) => Some(PleLayer {
+                    inp_gate: t(PLE_LAYER_TENSORS[0], &[pd, embed_dim])?,
+                    proj: t(PLE_LAYER_TENSORS[1], &[embed_dim, pd])?,
+                    post_norm: n(PLE_LAYER_TENSORS[2], &[embed_dim])?,
+                }),
+                None => None,
+            };
+            // Left unloaded on a shared-KV layer for the reason `from_gguf`
+            // records: the modeling code never evaluates them, and an
+            // allocated-but-unread weight is the shape of a silent wrong
+            // answer.
+            let (wk, wv, k_norm) = match spec.owns_cache(i) {
+                true => (
+                    t("attn_k.weight", &[kv_dim, embed_dim])?,
+                    t("attn_v.weight", &[kv_dim, embed_dim])?,
+                    n("attn_k_norm.weight", &[head_dim])?,
+                ),
+                false => (Vec::new(), Vec::new(), Vec::new()),
+            };
+            layers.push(LayerWeights {
+                spec: *ls,
+                rope_freqs: rope_frequencies(head_dim, ls.rope_freq_base, divisors),
+                output_scale,
+                ple: ple_layer,
+                attn_norm: n("attn_norm.weight", &[embed_dim])?,
+                wq: t("attn_q.weight", &[q_dim, embed_dim])?,
+                wk,
+                wv,
+                q_norm: n("attn_q_norm.weight", &[head_dim])?,
+                k_norm,
+                wo: t("attn_output.weight", &[embed_dim, q_dim])?,
+                post_attn_norm: n("post_attention_norm.weight", &[embed_dim])?,
+                ffn_norm: n("ffn_norm.weight", &[embed_dim])?,
+                w_gate: t("ffn_gate.weight", &[ffn_dim, embed_dim])?,
+                w_up: t("ffn_up.weight", &[ffn_dim, embed_dim])?,
+                w_down: t("ffn_down.weight", &[embed_dim, ffn_dim])?,
+                post_ffw_norm: n("post_ffw_norm.weight", &[embed_dim])?,
+            });
+        }
+        let output_norm = norm("output_norm.weight", &[embed_dim])?;
+        Ok(CpuModel {
+            kv: vec![LayerKv::default(); config.n_layers],
+            config,
+            scratch: Scratch::new(&spec),
+            spec: Arc::new(spec),
+            weights: Arc::new(Weights {
+                embed,
+                ple,
+                layers,
+                output_norm,
+            }),
+            cached_len: 0,
+            tap: None,
+            control: None,
+        })
+    }
+
     pub fn from_gguf(file: &GgufFile, data: &[u8]) -> Result<CpuModel> {
         let spec = ModelSpec::from_gguf(file)?;
         let config = spec.config;
@@ -2228,8 +2632,8 @@ mod tests {
         assert_eq!(c.n_layers, 2);
         assert_eq!(c.n_heads, 2);
         assert_eq!(c.n_kv_heads, 1);
-        assert_eq!(c.layer_kind(0), LayerKind::SlidingWindow(4));
-        assert_eq!(c.layer_kind(1), LayerKind::Global);
+        assert_eq!(m.layer_specs()[0].kind, LayerKind::SlidingWindow(4));
+        assert_eq!(m.layer_specs()[1].kind, LayerKind::Global);
     }
 
     /// Parsed synthetic checkpoint, for mutating the tensor directory or
@@ -2545,8 +2949,12 @@ mod tests {
         // where it would index a cache that was never written.
         let image = build_tiny_model(&sharing_spec(4));
         let file = crate::gguf::parse(&image).unwrap();
-        let err = ModelSpec::from_gguf(&file).unwrap_err().to_string();
+        // Alternate form, so the assertion sees the whole anyhow chain: the
+        // donor rule is shared with the checkpoint loader and reports through
+        // a context layer that names the metadata key.
+        let err = format!("{:#}", ModelSpec::from_gguf(&file).unwrap_err());
         assert!(err.contains("no donor to read"), "{err}");
+        assert!(err.contains("shared_kv_layers"), "{err}");
     }
 
     #[test]
@@ -3163,15 +3571,14 @@ mod tests {
                 "gemma4.attention.sliding_window_pattern".into(),
                 MetaValue::ArrBool(pattern.clone()),
             );
-            let config = Config::from_gguf(&file)
+            let stride = Config::schedule_stride(&file, "gemma4")
                 .unwrap_or_else(|e| panic!("{name} schedule must decode: {e}"));
-            assert_eq!(config.sliding_window_pattern, want_stride, "{name}");
+            assert_eq!(stride, want_stride, "{name}");
             // The stride is only correct if it reproduces the array it came
             // from; asserting the number alone would pass on an off-by-one.
             for (i, &sliding) in pattern.iter().enumerate() {
-                let kind = config.layer_kind(i);
-                let global = matches!(kind, LayerKind::Global);
-                assert_eq!(!sliding, global, "{name} layer {i}: {kind:?}");
+                let global = (i + 1).is_multiple_of(stride);
+                assert_eq!(!sliding, global, "{name} layer {i}");
             }
         }
     }
@@ -3192,11 +3599,8 @@ mod tests {
                 "gemma4.attention.sliding_window_pattern".into(),
                 MetaValue::ArrBool(pattern.clone()),
             );
-            let err = match Config::from_gguf(&file) {
-                Ok(c) => panic!(
-                    "{pattern:?} must not decode, got stride {}",
-                    c.sliding_window_pattern
-                ),
+            let err = match Config::schedule_stride(&file, "gemma4") {
+                Ok(stride) => panic!("{pattern:?} must not decode, got stride {stride}"),
                 Err(e) => e.to_string(),
             };
             assert!(err.contains("sliding_window_pattern"), "{err}");
@@ -3320,13 +3724,18 @@ mod tests {
 
     #[test]
     fn a_zero_sliding_window_or_pattern_is_a_load_error() {
-        // Pattern 0 makes every layer sliding-window in `layer_kind` while
+        // Pattern 0 makes every layer sliding-window in the schedule while
         // `kv::interleaved_layers` asserts a positive period and aborts, so
         // the loader, the budget calculator, and gguf-info disagreed about
         // one file. Window 0 reads as disabled windowing across the
         // ecosystem (the numpy reference raises on it) but yields an empty
         // attention span here: a context-blind model that still reads as
         // fluent.
+        //
+        // Through `ModelSpec::from_gguf` rather than `Config::from_gguf`,
+        // because the schedule is no longer a `Config` field: the stride is a
+        // GGUF spelling that the spec resolves into per-layer kinds. The
+        // window is still refused by `Config`, and both errors surface here.
         for key in [
             "attention.sliding_window",
             "attention.sliding_window_pattern",
@@ -3334,12 +3743,76 @@ mod tests {
             let (_, mut file, _) = tiny_parsed();
             file.metadata
                 .insert(format!("gemma4.{key}"), MetaValue::U32(0));
-            let err = match Config::from_gguf(&file) {
+            let err = match ModelSpec::from_gguf(&file) {
                 Ok(_) => panic!("gemma4.{key} = 0 must not parse"),
                 Err(e) => e.to_string(),
             };
             assert!(err.contains(key), "{err}");
         }
+    }
+
+    /// The checkpoint loader folds Gemma's runtime `+1` into every RMSNorm
+    /// weight, and does it to norms only.
+    ///
+    /// `rms_norm_into` multiplies by the stored weight, so the shift has to be
+    /// applied somewhere or every norm is off by one for the whole run --
+    /// which still loads, still has the right shapes, and still emits fluent
+    /// text. It is applied here, at load, rather than in the kernel: the
+    /// arithmetic is identical, it happens once per weight instead of once
+    /// per token, and it leaves one norm kernel serving both loaders.
+    ///
+    /// The two-loader equality test in `cpu_reference` is what proves the
+    /// shift is right end to end. This names the convention so that a reader
+    /// of `from_checkpoint` finds the reason rather than an unexplained
+    /// `1.0 +`.
+    #[test]
+    fn the_checkpoint_loader_shifts_norm_weights_and_only_norm_weights() {
+        let spec = TinySpec::default();
+        let files = crate::checkpoint::CheckpointFiles {
+            config: crate::synth::build_tiny_config_json(&spec).unwrap(),
+            weights: crate::synth::build_tiny_safetensors(&spec).unwrap(),
+            dir: std::path::PathBuf::from("<memory>"),
+        };
+        let ck = crate::checkpoint::parse(&files).unwrap();
+        let model = CpuModel::from_checkpoint(&ck).unwrap();
+
+        let stored = |name: &str| -> Vec<f32> {
+            let view = ck.tensors.tensor(name).unwrap();
+            view.data()
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect()
+        };
+
+        // A norm arrives shifted.
+        let want: Vec<f32> = stored("model.layers.0.input_layernorm.weight")
+            .iter()
+            .map(|w| 1.0 + w)
+            .collect();
+        assert_eq!(
+            model.weights.layers[0].attn_norm, want,
+            "attn_norm did not take the shift"
+        );
+        // And the file really does store the unshifted value, so the
+        // assertion above is not comparing a tensor to itself.
+        assert!(
+            stored("model.layers.0.input_layernorm.weight")
+                .iter()
+                .all(|w| w.abs() < 0.5),
+            "the checkpoint already holds shifted norms, so this proves nothing"
+        );
+
+        // A projection does not.
+        assert_eq!(
+            model.weights.layers[0].wq,
+            stored("model.layers.0.self_attn.q_proj.weight"),
+            "q_proj was shifted; the shift is for norms only"
+        );
+        assert_eq!(
+            model.weights.embed,
+            stored("model.embed_tokens.weight"),
+            "the embedding table was shifted"
+        );
     }
 
     #[test]
