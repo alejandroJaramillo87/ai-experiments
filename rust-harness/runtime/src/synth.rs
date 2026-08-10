@@ -1,13 +1,17 @@
 /*
- * synth — synthetic tiny-model GGUF builder for tests and sandbox smoke runs.
+ * synth — synthetic tiny-model checkpoint builder for tests and sandbox runs.
  *
- * Produces a complete, valid GGUF image of a two-layer Gemma-4-style model
- * with seeded pseudo-random weights, small enough to commit as a fixture and
- * run in a sandbox. The metadata keys, tensor names, and layouts follow the
- * llama.cpp GGUF conventions the real E4B checkpoint uses, so the CPU
- * backend exercises the identical load path. Weights are deterministic in
- * the seed: the committed Python reference recomputes logits from the same
- * file bytes.
+ * Produces a complete two-layer Gemma-4-style checkpoint with seeded
+ * pseudo-random weights, small enough to commit as a fixture and run in a
+ * sandbox: config.json, model.safetensors, and the tokenizer.json beside
+ * them. The field names, tensor names, and layouts follow the published
+ * checkpoint the CPU backend loads, so the fixture exercises the identical
+ * load path. Weights are deterministic in the seed, and the committed Python
+ * reference recomputes logits from the same files.
+ *
+ * GgufWriter stays here for a different job: the probe and control-vector
+ * images the Python interp exporters write are GGUF, and the tests that read
+ * them need a writer.
  */
 
 use super::tensor::{GGML_BF16, GGML_F32};
@@ -712,79 +716,6 @@ pub fn tiny_tensors(spec: &TinySpec) -> Vec<SynthTensor> {
     out
 }
 
-/// Build the complete synthetic model image for `spec`.
-pub fn build_tiny_model(spec: &TinySpec) -> Vec<u8> {
-    let hd_global = spec.head_dim_global.unwrap_or(spec.head_dim);
-    // Double-wide applies to the shared-KV tail, the region
-    // `use_double_wide_mlp` widens. With no shared tail declared there is no
-    // region to widen, and the widths stay uniform.
-    let boundary = spec.n_layers - spec.shared_kv_layers;
-    let ffn_dim_of = |i: usize| match spec.double_wide_mlp && i >= boundary {
-        true => spec.ffn_dim * 2,
-        false => spec.ffn_dim,
-    };
-    let mut w = GgufWriter::new();
-
-    w.kv_str("general.architecture", "gemma4");
-    w.kv_u32("gemma4.block_count", spec.n_layers as u32);
-    w.kv_u32("gemma4.context_length", spec.context_length as u32);
-    w.kv_u32("gemma4.embedding_length", spec.embed_dim as u32);
-    // Scalar when uniform, per-layer int32 array when the tail is widened --
-    // the two forms the converter emits, and both read by the loader.
-    match spec.double_wide_mlp {
-        true => w.kv_arr_i32(
-            "gemma4.feed_forward_length",
-            &(0..spec.n_layers)
-                .map(|i| ffn_dim_of(i) as i32)
-                .collect::<Vec<_>>(),
-        ),
-        false => w.kv_u32("gemma4.feed_forward_length", spec.ffn_dim as u32),
-    }
-    w.kv_u32("gemma4.attention.head_count", spec.n_heads as u32);
-    w.kv_u32("gemma4.attention.head_count_kv", spec.n_kv_heads as u32);
-    w.kv_u32("gemma4.attention.key_length", hd_global as u32);
-    if spec.head_dim_global.is_some() {
-        w.kv_u32("gemma4.attention.key_length_swa", spec.head_dim as u32);
-    }
-    w.kv_u32(
-        "gemma4.attention.sliding_window",
-        spec.sliding_window as u32,
-    );
-    w.kv_u32(
-        "gemma4.attention.sliding_window_pattern",
-        spec.sliding_window_pattern as u32,
-    );
-    w.kv_f32("gemma4.attention.layer_norm_rms_epsilon", spec.rms_eps);
-    w.kv_f32("gemma4.rope.freq_base", spec.rope_freq_base);
-    if let Some(swa) = spec.rope_freq_base_swa {
-        w.kv_f32("gemma4.rope.freq_base_swa", swa);
-    }
-    if let Some(cap) = spec.logit_softcap {
-        w.kv_f32("gemma4.final_logit_softcapping", cap);
-    }
-    if let Some(pd) = spec.ple_dim {
-        w.kv_u32("gemma4.embedding_length_per_layer_input", pd as u32);
-    }
-    if spec.shared_kv_layers > 0 {
-        w.kv_u32(
-            "gemma4.attention.shared_kv_layers",
-            spec.shared_kv_layers as u32,
-        );
-    }
-
-    let (pieces, scores, kinds) = tiny_vocab(spec.vocab_size);
-    w.kv_arr_str("tokenizer.ggml.tokens", &pieces);
-    w.kv_arr_f32("tokenizer.ggml.scores", &scores);
-    w.kv_arr_i32("tokenizer.ggml.token_type", &kinds);
-    w.kv_u32("tokenizer.ggml.bos_token_id", 1);
-    w.kv_u32("tokenizer.ggml.eos_token_id", 2);
-
-    for t in tiny_tensors(spec) {
-        w.tensor(&t.gguf_name, &t.dims, &t.values, t.storage);
-    }
-    w.finish()
-}
-
 /// The synthetic model's `tokenizer.json`.
 ///
 /// Built from `tiny_vocab`, whose 288 pieces are three specials, 256 byte
@@ -981,35 +912,20 @@ pub fn build_tiny_safetensors(spec: &TinySpec) -> anyhow::Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gguf;
 
-    #[test]
-    fn tiny_model_parses_with_expected_shape() {
-        let image = build_tiny_model(&TinySpec::default());
-        let file = gguf::parse(&image).unwrap();
-        assert_eq!(
-            file.metadata["general.architecture"],
-            gguf::MetaValue::Str("gemma4".into())
-        );
-        assert_eq!(file.metadata["gemma4.block_count"], gguf::MetaValue::U32(2));
-        // 1 embedding + 2 layers x 13 tensors + 1 output norm.
-        assert_eq!(file.tensors.len(), 28);
-        // Every tensor payload is loadable and dequantizes to finite values.
-        for info in &file.tensors {
-            let values = crate::tensor::load_tensor(&file, &image, info).unwrap();
-            assert!(values.iter().all(|v| v.is_finite()), "{}", info.name);
-        }
-    }
-
+    /// The committed fixtures are regenerated from this writer, so a run that
+    /// did not reproduce the same bytes would show up as a spurious diff on
+    /// every regeneration rather than as a failure here.
     #[test]
     fn same_seed_reproduces_identical_bytes() {
-        let a = build_tiny_model(&TinySpec::default());
-        let b = build_tiny_model(&TinySpec::default());
+        let a = build_tiny_safetensors(&TinySpec::default()).unwrap();
+        let b = build_tiny_safetensors(&TinySpec::default()).unwrap();
         assert_eq!(a, b);
-        let c = build_tiny_model(&TinySpec {
+        let c = build_tiny_safetensors(&TinySpec {
             seed: 7,
             ..TinySpec::default()
-        });
+        })
+        .unwrap();
         assert_ne!(a, c);
     }
 

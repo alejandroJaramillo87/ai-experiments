@@ -13,12 +13,24 @@ use harness::transcript::Transcript;
 use runtime::model::cpu::CpuModel;
 use runtime::sampler::SamplingParams;
 use runtime::session::Session;
-use runtime::synth::{build_tiny_model, TinySpec};
+use runtime::synth::{build_tiny_config_json, build_tiny_safetensors, TinySpec};
 use runtime::tokenizer::Tokenizer;
 
-fn generator(image: &[u8]) -> SessionGenerator {
-    let file = runtime::gguf::parse(image).unwrap();
-    let cpu = CpuModel::from_gguf(&file, image).unwrap();
+/// The synthetic checkpoint, in memory. Built once per test and borrowed by
+/// each generator, since two generators over the same weights is what the
+/// determinism assertion below compares.
+fn tiny_checkpoint() -> runtime::checkpoint::CheckpointFiles {
+    let spec = TinySpec::default();
+    runtime::checkpoint::CheckpointFiles {
+        config: build_tiny_config_json(&spec).unwrap(),
+        weights: build_tiny_safetensors(&spec).unwrap(),
+        dir: std::path::PathBuf::from("<memory>"),
+    }
+}
+
+fn generator(files: &runtime::checkpoint::CheckpointFiles) -> SessionGenerator {
+    let ck = runtime::checkpoint::parse(files).unwrap();
+    let cpu = CpuModel::from_checkpoint(&ck).unwrap();
     let max_context = cpu.config().context_length;
     let session = Session::new(Box::new(cpu), max_context).unwrap();
     let tokenizer = Tokenizer::from_json(
@@ -32,7 +44,7 @@ fn generator(image: &[u8]) -> SessionGenerator {
 
 #[test]
 fn harness_runs_a_task_end_to_end_on_the_cpu_backend() {
-    let image = build_tiny_model(&TinySpec::default());
+    let image = tiny_checkpoint();
     let dir = tempfile::tempdir().unwrap();
     let transcript = Transcript::open(&dir.path().join("session.jsonl")).unwrap();
     let permissions = Permissions::from_yaml("rules: []").unwrap();

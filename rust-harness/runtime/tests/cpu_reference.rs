@@ -1,7 +1,7 @@
 /*
  * cpu_reference — phase 3 golden test: the CPU backend's logits match an
  * independent numpy implementation of the same forward pass, computed from
- * the identical committed GGUF fixture. A mismatch localizes to the first
+ * the identical committed checkpoint. A mismatch localizes to the first
  * divergent position, per the phase 1 bisection workflow.
  *
  * Two fixtures run through every golden here. The uniform one declares none
@@ -14,9 +14,9 @@
  *   cargo run -p runtime --bin tiny-model -- fixtures/tiny-bpe.tokenizer.json bpe
  *   ../.venv/bin/python3 fixtures/reference_logits.py
  *
- * Each model invocation writes four artifacts from one TinySpec: the GGUF, the
- * tokenizer.json beside it, and a checkpoint directory holding config.json and
- * model.safetensors. The bpe invocation writes a tokenizer only: its
+ * Each model invocation writes a checkpoint directory holding config.json and
+ * model.safetensors, plus the tokenizer.json beside it, all from one TinySpec.
+ * The bpe invocation writes a tokenizer only: its
  * vocabulary carries a merge list, which the model fixtures cannot, and it is
  * what covers BPE segmentation. The oracle needs the venv's numpy.
  */
@@ -48,9 +48,9 @@ fn cpu_backend_matches_the_python_reference_on_the_e4b_fixture() {
 }
 
 fn check_logits(stem: &str) {
-    let (image, golden) = load_golden_named(stem);
-    let file = runtime::gguf::parse(&image).unwrap();
-    let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+    let (files, golden) = load_golden_named(stem);
+    let ck = runtime::checkpoint::parse(&files).unwrap();
+    let mut model = CpuModel::from_checkpoint(&ck).unwrap();
 
     let prompt: Vec<u32> = golden["prompt"]
         .as_array()
@@ -88,16 +88,21 @@ fn check_logits(stem: &str) {
     }
 }
 
-fn load_golden_named(stem: &str) -> (Vec<u8>, serde_json::Value) {
-    let image = std::fs::read(fixture_path(&format!("{stem}.gguf"))).unwrap();
+/// The committed checkpoint's bytes, owned so a `Checkpoint` can borrow them.
+fn checkpoint_files(stem: &str) -> runtime::checkpoint::CheckpointFiles {
+    runtime::checkpoint::CheckpointFiles::read(&fixture_path(stem))
+        .unwrap_or_else(|e| panic!("read fixture {stem}: {e:#} (regenerate; see header)"))
+}
+
+fn load_golden_named(stem: &str) -> (runtime::checkpoint::CheckpointFiles, serde_json::Value) {
     let golden = serde_json::from_str(
         &std::fs::read_to_string(fixture_path(&format!("{stem}-logits.json"))).unwrap(),
     )
     .unwrap();
-    (image, golden)
+    (checkpoint_files(stem), golden)
 }
 
-fn load_golden() -> (Vec<u8>, serde_json::Value) {
+fn load_golden() -> (runtime::checkpoint::CheckpointFiles, serde_json::Value) {
     load_golden_named(UNIFORM)
 }
 
@@ -129,9 +134,9 @@ fn check_tap_rows(stem: &str) {
     use runtime::model::cpu::Tap;
     use std::sync::{Arc, Mutex};
 
-    let (image, golden) = load_golden_named(stem);
-    let file = runtime::gguf::parse(&image).unwrap();
-    let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+    let (files, golden) = load_golden_named(stem);
+    let ck = runtime::checkpoint::parse(&files).unwrap();
+    let mut model = CpuModel::from_checkpoint(&ck).unwrap();
     let prompt: Vec<u32> = golden["prompt"]
         .as_array()
         .unwrap()
@@ -177,9 +182,9 @@ fn steered_logits_match_the_python_reference_on_the_e4b_fixture() {
 fn check_steered(stem: &str) {
     use runtime::model::cpu::ControlVector;
 
-    let (image, golden) = load_golden_named(stem);
-    let file = runtime::gguf::parse(&image).unwrap();
-    let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+    let (files, golden) = load_golden_named(stem);
+    let ck = runtime::checkpoint::parse(&files).unwrap();
+    let mut model = CpuModel::from_checkpoint(&ck).unwrap();
     let embed_dim = model.config().embed_dim;
     let prompt: Vec<u32> = golden["prompt"]
         .as_array()
@@ -244,9 +249,9 @@ fn probe_monitor_scores_match_the_python_reference() {
     use runtime::model::probe::{Probe, ProbeMonitor};
     use std::sync::Arc;
 
-    let (image, golden) = load_golden();
-    let file = runtime::gguf::parse(&image).unwrap();
-    let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+    let (files, golden) = load_golden();
+    let ck = runtime::checkpoint::parse(&files).unwrap();
+    let mut model = CpuModel::from_checkpoint(&ck).unwrap();
     let embed_dim = model.config().embed_dim;
     let prompt: Vec<u32> = golden["prompt"]
         .as_array()
@@ -266,7 +271,7 @@ fn probe_monitor_scores_match_the_python_reference() {
     model.set_tap(Box::new(tap));
 
     let baseline = {
-        let mut plain = CpuModel::from_gguf(&file, &image).unwrap();
+        let mut plain = CpuModel::from_checkpoint(&ck).unwrap();
         plain.prefill_all(&prompt).unwrap()
     };
     let rows = model.prefill_all(&prompt).unwrap();
@@ -297,44 +302,77 @@ fn a_bfloat16_model_matches_the_f32_model_holding_the_same_values() {
     //
     // This is what lets a bf16 Gemma 4 checkpoint be loaded into the f32
     // backend without a fidelity caveat.
-    use runtime::synth::{build_tiny_model, TensorStorage, TinySpec};
+    use runtime::checkpoint::CheckpointFiles;
+    use runtime::synth::{build_tiny_config_json, build_tiny_safetensors, TensorStorage, TinySpec};
+    use safetensors::tensor::{SafeTensors, TensorView};
 
-    let bf16_image = build_tiny_model(&TinySpec {
+    let spec = TinySpec::default();
+    let config = build_tiny_config_json(&spec).unwrap();
+    let bf16_weights = build_tiny_safetensors(&TinySpec {
         storage: TensorStorage::Bf16,
-        ..TinySpec::default()
-    });
-    let bf16_file = runtime::gguf::parse(&bf16_image).unwrap();
-    assert!(
-        bf16_file
-            .tensors
-            .iter()
-            .all(|t| t.ggml_type == runtime::tensor::GGML_BF16),
-        "fixture must actually be bf16, or the test proves nothing"
-    );
-    let mut bf16_model = CpuModel::from_gguf(&bf16_file, &bf16_image).unwrap();
+        ..spec
+    })
+    .unwrap();
+    {
+        let parsed = SafeTensors::deserialize(&bf16_weights).unwrap();
+        assert!(
+            parsed
+                .tensors()
+                .iter()
+                .all(|(_, v)| v.dtype() == safetensors::Dtype::BF16),
+            "fixture must actually be bf16, or the test proves nothing"
+        );
+    }
 
     // The f32 twin: identical weights with the low 16 mantissa bits cleared,
-    // which is exactly what the bf16 writer truncates away.
-    let truncated_image = {
-        let image = build_tiny_model(&TinySpec {
-            storage: TensorStorage::F32,
-            ..TinySpec::default()
-        });
-        let file = runtime::gguf::parse(&image).unwrap();
-        let mut out = image.clone();
-        for info in &file.tensors {
-            let n: usize = info.dims.iter().product::<u64>() as usize;
-            let start = file.data_offset + info.offset as usize;
-            for i in 0..n {
-                let at = start + i * 4;
-                let bits = u32::from_le_bytes(out[at..at + 4].try_into().unwrap());
-                out[at..at + 4].copy_from_slice(&(bits & 0xffff_0000).to_le_bytes());
-            }
-        }
-        out
+    // which is exactly what the bf16 writer truncates away. Masked after the
+    // norm unshift rather than before, because that is the order the bf16
+    // writer applies them and the two must narrow the same value.
+    let f32_weights = build_tiny_safetensors(&spec).unwrap();
+    let truncated_weights = {
+        let parsed = SafeTensors::deserialize(&f32_weights).unwrap();
+        let masked: Vec<(String, safetensors::Dtype, Vec<usize>, Vec<u8>)> = parsed
+            .tensors()
+            .into_iter()
+            .map(|(name, v)| {
+                let bytes = v
+                    .data()
+                    .chunks_exact(4)
+                    .flat_map(|c| {
+                        let bits = u32::from_le_bytes([c[0], c[1], c[2], c[3]]);
+                        (bits & 0xffff_0000).to_le_bytes()
+                    })
+                    .collect();
+                (name, v.dtype(), v.shape().to_vec(), bytes)
+            })
+            .collect();
+        let views: Vec<(&str, TensorView)> = masked
+            .iter()
+            .map(|(n, d, shape, bytes)| {
+                (
+                    n.as_str(),
+                    TensorView::new(*d, shape.clone(), bytes).unwrap(),
+                )
+            })
+            .collect();
+        safetensors::serialize(views, None).unwrap()
     };
-    let truncated_file = runtime::gguf::parse(&truncated_image).unwrap();
-    let mut f32_model = CpuModel::from_gguf(&truncated_file, &truncated_image).unwrap();
+
+    let dir = std::path::PathBuf::from("<memory>");
+    let bf16_files = CheckpointFiles {
+        config: config.clone(),
+        weights: bf16_weights,
+        dir: dir.clone(),
+    };
+    let f32_files = CheckpointFiles {
+        config,
+        weights: truncated_weights,
+        dir,
+    };
+    let bf16_ck = runtime::checkpoint::parse(&bf16_files).unwrap();
+    let f32_ck = runtime::checkpoint::parse(&f32_files).unwrap();
+    let mut bf16_model = CpuModel::from_checkpoint(&bf16_ck).unwrap();
+    let mut f32_model = CpuModel::from_checkpoint(&f32_ck).unwrap();
 
     let prompt: Vec<u32> = vec![1, 5, 9, 13, 3, 8, 21, 2];
     let from_bf16 = bf16_model.prefill_all(&prompt).unwrap();
@@ -351,23 +389,7 @@ fn a_bfloat16_model_matches_the_f32_model_holding_the_same_values() {
     );
 }
 
-#[test]
-fn fixture_gguf_matches_the_generator() {
-    // The committed fixture must be exactly what the tiny-model bin writes;
-    // a drifted fixture would silently invalidate the golden logits.
-    let committed = std::fs::read(fixture_path("tiny-gemma4.gguf")).unwrap();
-    let generated = runtime::synth::build_tiny_model(&runtime::synth::TinySpec::default());
-    assert_eq!(committed, generated, "regenerate the fixture (see header)");
-}
-
-#[test]
-fn e4b_fixture_gguf_matches_the_generator() {
-    let committed = std::fs::read(fixture_path("tiny-gemma4-e4b.gguf")).unwrap();
-    let generated = runtime::synth::build_tiny_model(&runtime::synth::TinySpec::e4b_shaped());
-    assert_eq!(committed, generated, "regenerate the fixture (see header)");
-}
-
-/// The tokenizer fixtures are pinned the same way the GGUFs are, for the same
+/// The tokenizer fixtures are pinned the same way the weights are, for the same
 /// reason and one more: the serialized form is produced by `tokenizers`, so a
 /// dependency upgrade that changes it shows up here as a fixture diff rather
 /// than as a silent change in how prompts are segmented.
@@ -445,110 +467,6 @@ fn the_e4b_fixture_geometry_separates_the_ambiguous_conventions() {
         "the window must be narrower than the reference prompt or the sliding \
          layers never drop a position"
     );
-}
-
-/// The two loaders produce the same model, bit for bit.
-///
-/// This is the load-bearing test of the move from GGUF to safetensors, and it
-/// is stronger than either loader matching a golden. A golden proves each
-/// loader agrees with a file; this proves the new loader agrees with the one
-/// that was already verified against the numpy oracle, over every tensor the
-/// spec carries, without a fixture in between that could have been
-/// regenerated to fit.
-///
-/// Equality and not a tolerance. The two containers hold the same weights --
-/// `tiny_tensors` draws the stream once and both sinks write it -- and the
-/// one transformation between them, the RMSNorm shift, is exact at f32 for
-/// values in `[0.5, 2.0]`. Any tolerance here would hide precisely the class
-/// of defect the test exists to catch: a transposed matrix, a misnamed
-/// tensor, an off-by-one donor, a shift applied twice or not at all. Each of
-/// those produces finite, plausible, wrong logits.
-///
-/// Runs on the E4B-shaped spec plus the feature variations the two loaders
-/// resolve differently -- per-layer embeddings, the shared-KV tail, partial
-/// rotary, and the layer output scale -- because a uniform model exercises
-/// none of the code where the two formats disagree.
-#[test]
-fn the_checkpoint_loader_and_the_gguf_loader_agree_bit_for_bit() {
-    use runtime::synth::{
-        build_tiny_config_json, build_tiny_model, build_tiny_safetensors, TinySpec,
-    };
-
-    let prompt: Vec<u32> = vec![1, 5, 9, 13, 3, 8, 21, 2];
-    let cases: Vec<(&str, TinySpec)> = vec![
-        ("uniform", TinySpec::default()),
-        ("e4b", TinySpec::e4b_shaped()),
-        (
-            "e4b+ple",
-            TinySpec {
-                ple_dim: Some(4),
-                ..TinySpec::e4b_shaped()
-            },
-        ),
-        (
-            "e4b+rotary",
-            TinySpec {
-                rope_rotating_pairs: Some(2),
-                ..TinySpec::e4b_shaped()
-            },
-        ),
-        (
-            "e4b+scale+softcap",
-            TinySpec {
-                layer_output_scale: Some(0.5),
-                logit_softcap: Some(30.0),
-                ..TinySpec::e4b_shaped()
-            },
-        ),
-    ];
-
-    for (label, spec) in cases {
-        let image = build_tiny_model(&spec);
-        let file = runtime::gguf::parse(&image).unwrap();
-        let from_gguf = CpuModel::from_gguf(&file, &image)
-            .unwrap_or_else(|e| panic!("{label}: gguf load: {e:#}"))
-            .prefill_all(&prompt)
-            .unwrap();
-
-        let files = runtime::checkpoint::CheckpointFiles {
-            config: build_tiny_config_json(&spec).unwrap(),
-            weights: build_tiny_safetensors(&spec).unwrap(),
-            dir: std::path::PathBuf::from("<memory>"),
-        };
-        let ck = runtime::checkpoint::parse(&files)
-            .unwrap_or_else(|e| panic!("{label}: checkpoint parse: {e:#}"));
-        let from_checkpoint = CpuModel::from_checkpoint(&ck)
-            .unwrap_or_else(|e| panic!("{label}: checkpoint load: {e:#}"))
-            .prefill_all(&prompt)
-            .unwrap();
-
-        assert_eq!(
-            from_gguf.len(),
-            from_checkpoint.len(),
-            "{label}: {} rows from gguf, {} from the checkpoint",
-            from_gguf.len(),
-            from_checkpoint.len()
-        );
-        for (pos, (g, c)) in from_gguf.iter().zip(&from_checkpoint).enumerate() {
-            assert_eq!(
-                g.0.len(),
-                c.0.len(),
-                "{label}: position {pos} logit widths differ"
-            );
-            for (token, (&a, &b)) in g.0.iter().zip(&c.0).enumerate() {
-                assert_eq!(
-                    a, b,
-                    "{label}: position {pos} token {token}: gguf {a}, checkpoint {b}"
-                );
-            }
-        }
-        // Guards against a spec whose logits are all zero, which would make
-        // the comparison above pass without exercising the weights.
-        assert!(
-            from_gguf[0].0.iter().any(|v| v.abs() > 1e-6),
-            "{label}: logits are degenerate, so equality proves nothing"
-        );
-    }
 }
 
 /// The committed checkpoint fixtures are what the generator writes.

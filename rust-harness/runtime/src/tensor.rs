@@ -3,7 +3,7 @@
  *
  * The CPU backend computes in plain f32, so every supported storage type
  * dequantizes to a dense Vec<f32> at load time. Supported types are the ones
- * the target checkpoints actually use: F32, F16, BF16, and Q8_0; anything
+ * the artifacts actually use: F32, F16 and BF16; anything
  * else is a hard error naming the tensor, so a new quantization shows up at
  * load time rather than as silent garbage.
  *
@@ -19,12 +19,7 @@ use super::gguf::{GgufFile, TensorInfo};
 // GGML storage type ids, from the GGUF specification.
 pub const GGML_F32: u32 = 0;
 pub const GGML_F16: u32 = 1;
-pub const GGML_Q8_0: u32 = 8;
 pub const GGML_BF16: u32 = 30;
-
-/// Q8_0 block layout: an f16 scale followed by 32 signed byte weights.
-const Q8_0_BLOCK_ELEMENTS: usize = 32;
-const Q8_0_BLOCK_BYTES: usize = 2 + Q8_0_BLOCK_ELEMENTS;
 
 /// Number of elements a tensor holds; empty dims is a scalar.
 ///
@@ -52,13 +47,6 @@ pub fn byte_size(ggml_type: u32, n: usize) -> Result<usize> {
         GGML_F32 => scaled(4)?,
         GGML_F16 => scaled(2)?,
         GGML_BF16 => scaled(2)?,
-        GGML_Q8_0 => {
-            ensure!(
-                n.is_multiple_of(Q8_0_BLOCK_ELEMENTS),
-                "Q8_0 element count {n} is not a multiple of the block size {Q8_0_BLOCK_ELEMENTS}"
-            );
-            (n / Q8_0_BLOCK_ELEMENTS) * Q8_0_BLOCK_BYTES
-        }
         t => bail!("unsupported GGML tensor type {t}"),
     })
 }
@@ -118,14 +106,6 @@ pub fn dequantize(ggml_type: u32, bytes: &[u8], n: usize) -> Result<Vec<f32>> {
             .chunks_exact(2)
             .map(|c| bf16_to_f32(u16::from_le_bytes(c.try_into().unwrap())))
             .collect(),
-        GGML_Q8_0 => {
-            let mut out = Vec::with_capacity(n);
-            for block in bytes.chunks_exact(Q8_0_BLOCK_BYTES) {
-                let scale = f16_to_f32(u16::from_le_bytes([block[0], block[1]]));
-                out.extend(block[2..].iter().map(|&b| (b as i8) as f32 * scale));
-            }
-            out
-        }
         t => bail!("unsupported GGML tensor type {t}"),
     })
 }
@@ -199,20 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn q8_0_block_dequantizes_scale_times_weight() {
-        // One block: scale 0.5 (f16 0x3800), weights 0..31 alternating sign.
-        let mut bytes = 0x3800u16.to_le_bytes().to_vec();
-        let weights: Vec<i8> = (0..32).map(|i| if i % 2 == 0 { i } else { -i }).collect();
-        bytes.extend(weights.iter().map(|&w| w as u8));
-        let out = dequantize(GGML_Q8_0, &bytes, 32).unwrap();
-        for (i, (&w, &v)) in weights.iter().zip(&out).enumerate() {
-            assert_eq!(v, w as f32 * 0.5, "element {i}");
-        }
-    }
-
-    #[test]
-    fn q8_0_requires_whole_blocks() {
-        assert!(byte_size(GGML_Q8_0, 33).is_err());
+    fn hostile_dimensions_are_errors_rather_than_overflow_panics() {
         // Hostile header: dims bound only by count, so the product and the
         // byte size must be errors rather than overflow panics.
         assert!(element_count(&[u64::MAX, 2]).is_err());
@@ -222,7 +189,6 @@ mod tests {
         assert_eq!(element_count(&[]).unwrap(), 1);
         assert_eq!(element_count(&[2, 3, 4]).unwrap(), 24);
         assert!(byte_size(GGML_F32, usize::MAX / 2).is_err());
-        assert_eq!(byte_size(GGML_Q8_0, 64).unwrap(), 68);
     }
 
     #[test]

@@ -5,24 +5,21 @@
  * the committed fixture always reproduces identical bytes; the committed
  * Python reference (fixtures/reference_logits.py) reads the same file.
  *
- * Given a stem, writes four artifacts describing one model:
+ * Given a stem, writes three artifacts describing one model:
  *
- *   <stem>.gguf                    the image the GGUF loader reads
  *   <stem>.tokenizer.json          the vocabulary, for the tokenizers crate
  *   <stem>/config.json             the checkpoint's architecture
  *   <stem>/model.safetensors       the checkpoint's weights
  *
- * All four come from one TinySpec, so a fixture set cannot describe two
- * different models. The GGUF and the checkpoint hold the same weights in the
- * two containers' respective spellings, which is what lets `cpu_reference`
- * assert the two loaders agree bit for bit.
+ * All three come from one TinySpec, so a fixture set cannot describe two
+ * different models.
  */
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use runtime::synth::{
-    build_tiny_config_json, build_tiny_model, build_tiny_safetensors, build_tiny_tokenizer_json,
+    build_tiny_config_json, build_tiny_safetensors, build_tiny_tokenizer_json,
     merge_fixture_tokenizer_json, TinySpec,
 };
 
@@ -90,10 +87,6 @@ fn main() -> ExitCode {
 
     let artifacts: Vec<(PathBuf, Vec<u8>)> = match (|| -> anyhow::Result<_> {
         Ok(vec![
-            (
-                PathBuf::from(format!("{stem}.gguf")),
-                build_tiny_model(&spec),
-            ),
             (
                 PathBuf::from(format!("{stem}.tokenizer.json")),
                 build_tiny_tokenizer_json(&spec)?,

@@ -1,6 +1,5 @@
 """Shared fixtures for the model header-transcriber tests."""
 
-import sys
 from pathlib import Path
 
 import pytest
@@ -14,7 +13,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 # independent pure-Python reader of it. Together they are the one cross-check
 # in this suite that shares no author with the code under test.
 RUST_FIXTURE_DIR = REPO_ROOT / "rust-harness" / "fixtures"
-TINY_GGUF = RUST_FIXTURE_DIR / "tiny-gemma4.gguf"
+# Written by the upstream `gguf` package through interp/probes/export.py,
+# so neither the bash reader under test nor the Python reader it is
+# checked against had a hand in producing it.
+TINY_GGUF = RUST_FIXTURE_DIR / "python-probe.gguf"
 
 
 @pytest.fixture
@@ -49,18 +51,12 @@ def transcribe(run_script, tmp_path):
 
 @pytest.fixture
 def reference_parse_gguf():
-    """The in-tree independent GGUF reader from the rust-harness fixtures.
+    """The independent GGUF reader the bash script is checked against.
 
-    Imported by path because rust-harness is not a Python package. Skips
-    rather than fails when numpy is absent, since reference_logits.py imports
-    it at module scope for the forward pass this suite does not use.
+    Skips rather than fails when numpy is absent, since the reader returns
+    tensor payloads as arrays.
     """
-    numpy = pytest.importorskip("numpy", reason="reference_logits.py imports numpy")
-    del numpy
-    sys.path.insert(0, str(RUST_FIXTURE_DIR))
-    try:
-        import reference_logits
+    pytest.importorskip("numpy", reason="the reference reader returns numpy arrays")
+    from tests.models.gguf_reference_reader import parse_gguf
 
-        return reference_logits.parse_gguf
-    finally:
-        sys.path.remove(str(RUST_FIXTURE_DIR))
+    return parse_gguf

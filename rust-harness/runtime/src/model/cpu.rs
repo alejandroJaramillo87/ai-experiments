@@ -63,7 +63,7 @@ use std::sync::Arc;
 use anyhow::{bail, ensure, Context, Result};
 
 use super::{Logits, Model, Token};
-use crate::gguf::{GgufFile, MetaValue};
+use crate::gguf::GgufFile;
 use crate::kv::LayerKind;
 use crate::tensor::load_tensor;
 
@@ -196,150 +196,7 @@ impl ModelSpec {
     }
 }
 
-impl Config {
-    /// The attention schedule as a stride: every `stride`-th layer is global.
-    ///
-    /// A bool array marks each layer sliding-window (true) or global (false),
-    /// and a stride reproduces it exactly when the global layers are periodic
-    /// -- the only form Gemma 4 ships, E2B stride 5, E4B 6, the mtp head 4.
-    /// An aperiodic schedule is refused here, which is a limit of this
-    /// spelling and not of the backend: `config.json` states the schedule
-    /// per layer, so the checkpoint loader accepts one.
-    fn schedule_stride(file: &GgufFile, arch: &str) -> Result<usize> {
-        let key = "attention.sliding_window_pattern";
-        let full = format!("{arch}.{key}");
-        let Some(MetaValue::ArrBool(pattern)) = file.metadata.get(&full) else {
-            return match file.metadata.get(&full) {
-                Some(MetaValue::U32(v)) => Ok(*v as usize),
-                Some(other) => bail!("{full}: expected u32, got {other:?}"),
-                None => bail!("missing {full}"),
-            };
-        };
-        let Some(first_global) = pattern.iter().position(|sliding| !sliding) else {
-            bail!(
-                "{full} marks no layer global, so it encodes no periodic \
-                 stride; an all-sliding-window schedule is not expressible here"
-            );
-        };
-        let stride = first_global + 1;
-        for (i, sliding) in pattern.iter().enumerate() {
-            if *sliding == (i + 1).is_multiple_of(stride) {
-                bail!(
-                    "{full} is not periodic: it implies stride {stride} from \
-                     layer {first_global}, but layer {i} contradicts it"
-                );
-            }
-        }
-        Ok(stride)
-    }
-
-    pub fn from_gguf(file: &GgufFile) -> Result<Config> {
-        let arch = match file.metadata.get("general.architecture") {
-            Some(MetaValue::Str(a)) => a.as_str(),
-            _ => bail!("missing general.architecture"),
-        };
-        ensure!(
-            arch.starts_with("gemma"),
-            "unsupported architecture {arch}, expected a gemma variant"
-        );
-        let u = |key: &str| -> Result<usize> {
-            match file.metadata.get(&format!("{arch}.{key}")) {
-                Some(MetaValue::U32(v)) => Ok(*v as usize),
-                Some(other) => bail!("{arch}.{key}: expected u32, got {other:?}"),
-                None => bail!("missing {arch}.{key}"),
-            }
-        };
-        let f = |key: &str| -> Result<f32> {
-            match file.metadata.get(&format!("{arch}.{key}")) {
-                Some(MetaValue::F32(v)) => Ok(*v),
-                Some(other) => bail!("{arch}.{key}: expected f32, got {other:?}"),
-                None => bail!("missing {arch}.{key}"),
-            }
-        };
-        let vocab_size = match file.metadata.get("tokenizer.ggml.tokens") {
-            Some(MetaValue::ArrStr(v)) => v.len(),
-            _ => bail!("missing tokenizer.ggml.tokens"),
-        };
-        let config = Config {
-            vocab_size,
-            embed_dim: u("embedding_length")?,
-            n_layers: u("block_count")?,
-            n_heads: u("attention.head_count")?,
-            n_kv_heads: u("attention.head_count_kv")?,
-            context_length: u("context_length")?,
-            sliding_window: u("attention.sliding_window")?,
-            rms_eps: f("attention.layer_norm_rms_epsilon")?,
-            logit_softcap: match file
-                .metadata
-                .get(&format!("{arch}.final_logit_softcapping"))
-            {
-                Some(MetaValue::F32(v)) => Some(*v),
-                Some(other) => bail!("{arch}.final_logit_softcapping: expected f32, got {other:?}"),
-                None => None,
-            },
-            ple_dim: match file
-                .metadata
-                .get(&format!("{arch}.embedding_length_per_layer_input"))
-            {
-                Some(MetaValue::U32(v)) => Some(*v as usize),
-                Some(other) => {
-                    bail!("{arch}.embedding_length_per_layer_input: expected u32, got {other:?}")
-                }
-                None => None,
-            },
-        };
-        // Zero would make the per-layer table one row of nothing per layer and
-        // divide by zero in its RMSNorm. Checked here so the error names the
-        // key rather than surfacing as a NaN residual.
-        if let Some(pd) = config.ple_dim {
-            ensure!(
-                pd > 0,
-                "{arch}.embedding_length_per_layer_input is 0, must be positive"
-            );
-        }
-        // A zero or negative cap divides the logits by zero or reflects them
-        // through the origin. Neither is a cap, and both stay finite enough
-        // to read as a working model.
-        if let Some(cap) = config.logit_softcap {
-            ensure!(
-                cap > 0.0,
-                "{arch}.final_logit_softcapping is {cap}, must be positive"
-            );
-        }
-        // Each dimension below divides or strides something in the forward
-        // pass, so a zero reaches the arithmetic instead of a guard: 0 is
-        // even, so key_length = 0 cleared the RoPE check and then aborted
-        // the process at `chunks_mut(0)` on the first token. Positivity is
-        // checked first so the error names the key.
-        for (key, value) in [
-            ("embedding_length", config.embed_dim),
-            ("block_count", config.n_layers),
-            ("attention.head_count", config.n_heads),
-        ] {
-            ensure!(value > 0, "{arch}.{key} is 0, must be positive");
-        }
-        // The window keys are dimensions too, but a zero in either has a
-        // specific wrong reading here. Pattern 0 makes every layer
-        // sliding-window in `layer_kind` while `kv::interleaved_layers`
-        // asserts a positive period and aborts, so the loader, the budget
-        // calculator, and gguf-info disagree about one file. Window 0 means
-        // windowing is disabled everywhere else in the ecosystem (the numpy
-        // reference raises on it) but yields an empty attention span here:
-        // a context-blind model that still reads as fluent.
-        ensure!(
-            config.sliding_window > 0,
-            "{arch}.attention.sliding_window is 0, must be positive; \
-             a zero-token window is not disabled windowing"
-        );
-        ensure!(
-            config.n_heads.is_multiple_of(config.n_kv_heads.max(1)) && config.n_kv_heads > 0,
-            "head_count {} not divisible by head_count_kv {}",
-            config.n_heads,
-            config.n_kv_heads
-        );
-        Ok(config)
-    }
-}
+impl Config {}
 
 /// Which non-shared layer each layer reads K/V from.
 ///
@@ -384,169 +241,6 @@ fn kv_donors(kinds: &[LayerKind], shared: usize) -> Result<Vec<usize>> {
 }
 
 impl ModelSpec {
-    /// Read the model scalars and then one `LayerSpec` per layer.
-    ///
-    /// The per-layer axes come from paired keys: llama.cpp writes the
-    /// full-attention value unsuffixed and the sliding-window value with an
-    /// `_swa` suffix (`attention.key_length` and `attention.key_length_swa`,
-    /// `rope.freq_base` and `rope.freq_base_swa`). A checkpoint that declares
-    /// no `_swa` variant is uniform on that axis, and every layer takes the
-    /// unsuffixed value.
-    pub fn from_gguf(file: &GgufFile) -> Result<ModelSpec> {
-        let config = Config::from_gguf(file)?;
-        let arch = architecture(file)?;
-        // The attention schedule, as a stride. Local rather than a `Config`
-        // field because it is a GGUF spelling and nothing outside this
-        // function reads it: `config.json` states the schedule as an explicit
-        // per-layer list, and `LayerSpec::kind` is what the forward pass asks.
-        let stride = Config::schedule_stride(file, arch)?;
-        ensure!(
-            stride > 0,
-            "{arch}.attention.sliding_window_pattern is 0, must be positive"
-        );
-        let kinds: Vec<LayerKind> = (0..config.n_layers)
-            .map(|i| match (i + 1).is_multiple_of(stride) {
-                true => LayerKind::Global,
-                false => LayerKind::SlidingWindow(config.sliding_window),
-            })
-            .collect();
-        let u = |key: &str| -> Result<usize> {
-            match file.metadata.get(&format!("{arch}.{key}")) {
-                Some(MetaValue::U32(v)) => Ok(*v as usize),
-                Some(other) => bail!("{arch}.{key}: expected u32, got {other:?}"),
-                None => bail!("missing {arch}.{key}"),
-            }
-        };
-        // Optional paired key. Absent means the axis is uniform, which is a
-        // fact about the checkpoint rather than a defaulted guess; a present
-        // key of the wrong type is still an error, because silently ignoring
-        // it would apply the global value to the sliding layers.
-        let u_opt = |key: &str| -> Result<Option<usize>> {
-            match file.metadata.get(&format!("{arch}.{key}")) {
-                Some(MetaValue::U32(v)) => Ok(Some(*v as usize)),
-                Some(other) => bail!("{arch}.{key}: expected u32, got {other:?}"),
-                None => Ok(None),
-            }
-        };
-        let f = |key: &str| -> Result<f32> {
-            match file.metadata.get(&format!("{arch}.{key}")) {
-                Some(MetaValue::F32(v)) => Ok(*v),
-                Some(other) => bail!("{arch}.{key}: expected f32, got {other:?}"),
-                None => bail!("missing {arch}.{key}"),
-            }
-        };
-        let f_opt = |key: &str| -> Result<Option<f32>> {
-            match file.metadata.get(&format!("{arch}.{key}")) {
-                Some(MetaValue::F32(v)) => Ok(Some(*v)),
-                Some(other) => bail!("{arch}.{key}: expected f32, got {other:?}"),
-                None => Ok(None),
-            }
-        };
-
-        let head_dim_global = u("attention.key_length")?;
-        let head_dim_sliding = u_opt("attention.key_length_swa")?.unwrap_or(head_dim_global);
-        let rope_base_global = f("rope.freq_base")?;
-        // The sliding regime's base, two orders of magnitude below the global
-        // one on Gemma 4. Absent means one regime, which is the pre-Gemma-4
-        // case and the shape of the committed fixture.
-        let rope_base_sliding = f_opt("rope.freq_base_swa")?.unwrap_or(rope_base_global);
-
-        // Feed-forward width is a uint32 scalar on E4B and an int32 array of
-        // block_count entries on E2B, where the trailing layers are twice as
-        // wide. Both forms are read into the same per-layer vector, so the
-        // caller never learns which spelling the converter chose.
-        let ffn_dims: Vec<usize> = match file.metadata.get(&format!("{arch}.feed_forward_length")) {
-            Some(MetaValue::ArrI32(widths)) => {
-                ensure!(
-                    widths.len() == config.n_layers,
-                    "{arch}.feed_forward_length has {} entries for {} layers",
-                    widths.len(),
-                    config.n_layers
-                );
-                widths
-                    .iter()
-                    .map(|w| usize::try_from(*w).unwrap_or(0))
-                    .collect()
-            }
-            _ => vec![u("feed_forward_length")?; config.n_layers],
-        };
-
-        // Cross-layer KV sharing. The trailing `shared` layers compute no K or
-        // V of their own and attend over a donor's cache; the boundary is
-        // `block_count - shared`, index 24 on E4B and 15 on E2B.
-        //
-        // Absent means no sharing, which is the pre-Gemma-4 case and the shape
-        // of the committed fixture. Note this key declares a *cache* property,
-        // not a weight one: the released checkpoints carry attn_k and attn_v on
-        // every block including the shared tail, so nothing in the tensor list
-        // reveals the sharing and a reader that ignores this key gives all 42
-        // layers independent caches without any tensor left over to notice
-        // (`docs/rust-harness/gemma-4-ingestion.md`).
-        let shared = u_opt("attention.shared_kv_layers")?.unwrap_or(0);
-        ensure!(
-            shared <= config.n_layers,
-            "{arch}.attention.shared_kv_layers is {shared}, more than the {} layers \
-             {arch}.block_count declares",
-            config.n_layers
-        );
-        let donors = kv_donors(&kinds, shared).with_context(|| {
-            format!("{arch}.attention.shared_kv_layers and the stride-{stride} schedule")
-        })?;
-
-        let layers: Vec<LayerSpec> = (0..config.n_layers)
-            .map(|i| {
-                let kind = kinds[i];
-                let (head_dim, rope_freq_base) = match kind {
-                    LayerKind::Global => (head_dim_global, rope_base_global),
-                    LayerKind::SlidingWindow(_) => (head_dim_sliding, rope_base_sliding),
-                };
-                Ok(LayerSpec {
-                    kind,
-                    head_dim,
-                    ffn_dim: ffn_dims[i],
-                    rope_freq_base,
-                    kv_source: donors[i],
-                })
-            })
-            .collect::<Result<_>>()?;
-
-        // Each dimension divides or strides something in the forward pass, so
-        // a zero reaches the arithmetic instead of a guard rather than failing
-        // here: 0 is even, so a zero head width cleared the RoPE check and
-        // then aborted the process at `chunks_mut(0)` on the first token.
-        // Errors name the metadata key rather than only the layer, because
-        // the key is what a reader has to go and fix.
-        for (i, layer) in layers.iter().enumerate() {
-            let head_key = match layer.kind {
-                LayerKind::Global => "attention.key_length",
-                LayerKind::SlidingWindow(_) => {
-                    if file
-                        .metadata
-                        .contains_key(&format!("{arch}.attention.key_length_swa"))
-                    {
-                        "attention.key_length_swa"
-                    } else {
-                        "attention.key_length"
-                    }
-                }
-            };
-            ensure!(
-                layer.head_dim > 0,
-                "{arch}.{head_key} is 0 for layer {i}, must be positive"
-            );
-            ensure!(
-                layer.head_dim.is_multiple_of(2),
-                "{arch}.{head_key} is {} for layer {i}, must be even for RoPE",
-                layer.head_dim
-            );
-            ensure!(
-                layer.ffn_dim > 0,
-                "{arch}.feed_forward_length is 0 for layer {i}, must be positive"
-            );
-        }
-        Ok(ModelSpec { config, layers })
-    }
-
     /// Read the declared shape from a checkpoint's `config.json`.
     ///
     /// Shorter than `from_gguf` because the checkpoint states what the GGUF
@@ -622,15 +316,6 @@ const LAYER_TENSORS: [&str; 13] = [
 /// `output.weight`.
 const TOP_LEVEL_TENSORS: [&str; 2] = ["token_embd.weight", "output_norm.weight"];
 
-/// Proportional-RoPE frequency divisors, one per rotating pair of a
-/// full-attention head.
-///
-/// Optional: a checkpoint whose global regime rotates its full width carries
-/// no such tensor, and every frequency divides by an implicit 1.0. Present,
-/// it is consumed rather than tolerated — see the file banner for why
-/// treating it as inert was a latent wrong answer.
-const ROPE_FREQS_TENSOR: &str = "rope_freqs.weight";
-
 /// Per-layer tensor suffixes the forward pass consumes when a checkpoint
 /// carries them, and computes without when it does not.
 ///
@@ -665,286 +350,6 @@ const PLE_LAYER_TENSORS: [&str; 3] = ["inp_gate.weight", "proj.weight", "post_no
 /// per-layer-embedding components. Upstream writes it `2.0 ** -0.5`.
 const PLE_INPUT_SCALE: f32 = std::f32::consts::FRAC_1_SQRT_2;
 
-/// Collapse a tensor name to its family, replacing a leading `blk.<i>.` with
-/// `blk.*.`, so a diagnostic over 42 layers reports one line per family.
-pub fn tensor_family(name: &str) -> String {
-    let Some(rest) = name.strip_prefix("blk.") else {
-        return name.to_string();
-    };
-    match rest.split_once('.') {
-        Some((index, suffix)) if !index.is_empty() && index.bytes().all(|b| b.is_ascii_digit()) => {
-            format!("blk.*.{suffix}")
-        }
-        _ => name.to_string(),
-    }
-}
-
-/// Refuse a checkpoint whose structure the forward pass does not implement.
-///
-/// Loading is name-directed, so an unimplemented feature would otherwise
-/// present as ignored tensors and plausible, wrong logits. Diagnoses the
-/// Gemma 4 features that change numerics by name — refusing the ones this
-/// backend does not implement, and checking the coherence of the ones it does
-/// — before falling back to a generic unconsumed-tensor report, so the message
-/// says which feature is at fault rather than only which tensor was unused.
-///
-/// Called by `CpuModel::from_gguf` and by the `gguf-info` binary, so the
-/// inspection tool and the loader cannot disagree.
-pub fn check_supported(file: &GgufFile, spec: &ModelSpec) -> Result<()> {
-    let config = &spec.config;
-    let arch = architecture(file)?;
-    let names: Vec<&str> = file.tensors.iter().map(|t| t.name.as_str()).collect();
-
-    // Per-layer input embeddings are supported, so the six tensor families are
-    // checked for coherence rather than refused. They are required together or
-    // not at all: a checkpoint carrying five of them would load, skip the
-    // residual join wherever the sixth is missing, and produce fluent output
-    // from a model missing most of its parameters.
-    //
-    // A per-block family present on some layers but not all counts as missing,
-    // which is the case this pairing exists to catch — the partial set is the
-    // one that loads.
-    let mut ple_present: Vec<String> = Vec::new();
-    let mut ple_missing: Vec<String> = Vec::new();
-    for name in PLE_TOP_LEVEL_TENSORS {
-        if names.contains(&name) {
-            ple_present.push(name.to_string());
-        } else {
-            ple_missing.push(name.to_string());
-        }
-    }
-    for suffix in PLE_LAYER_TENSORS {
-        let present = (0..config.n_layers)
-            .filter(|i| names.contains(&format!("blk.{i}.{suffix}").as_str()))
-            .count();
-        if present == config.n_layers {
-            ple_present.push(format!("blk.*.{suffix}"));
-        } else {
-            ple_missing.push(format!(
-                "blk.*.{suffix} ({present} of {} layers)",
-                config.n_layers
-            ));
-        }
-    }
-    let ple_declared = config.ple_dim.is_some();
-    if ple_declared || !ple_present.is_empty() {
-        ensure!(
-            ple_missing.is_empty(),
-            "per-layer input embeddings are {}, but these tensor families are absent or \
-             incomplete: {}. The feature is all six families or none",
-            if ple_declared {
-                format!("declared by {arch}.embedding_length_per_layer_input")
-            } else {
-                format!("implied by present tensors ({})", ple_present.join(", "))
-            },
-            ple_missing.join(", ")
-        );
-        ensure!(
-            ple_declared,
-            "checkpoint carries the per-layer input embedding tensors but declares no \
-             {arch}.embedding_length_per_layer_input, so the packed table cannot be split \
-             into one row per layer; refusing rather than inferring the width from a shape"
-        );
-    }
-
-    // Cross-layer KV sharing is supported, so the tensor check narrows to the
-    // layers that still need their own projections: a donor, or any layer
-    // outside the shared tail, cannot attend without attn_k and attn_v.
-    //
-    // A *shared* layer legitimately carries neither, because upstream builds
-    // k_proj and v_proj only for non-shared layers. The released checkpoints
-    // nonetheless carry both on every block, which is the recorded conflict
-    // between the modeling code and the weights
-    // (`docs/rust-harness/gemma-4-ingestion.md`); this backend follows the
-    // modeling code and leaves those tensors unread, so it must accept the
-    // file either way rather than requiring the shape one source predicts.
-    for i in 0..config.n_layers {
-        if !spec.owns_cache(i) {
-            continue;
-        }
-        let has = |suffix: &str| names.contains(&format!("blk.{i}.{suffix}.weight").as_str());
-        if has("attn_q") && !(has("attn_k") && has("attn_v")) {
-            bail!(
-                "layer {i} has no attn_k/attn_v tensors, but it stores its own K/V \
-                 rather than reading a donor's, so there is nothing to attend over; \
-                 {arch}.attention.shared_kv_layers puts the shared-KV boundary at \
-                 layer {}",
-                spec.cache_owning_layers()
-            );
-        }
-    }
-
-    // Per-layer feed-forward widths are supported, so this is a consistency
-    // check rather than a refusal: the declared width for a layer must be the
-    // width its weights actually carry. A disagreement means the metadata and
-    // the tensors describe different models, and the forward pass slices by
-    // the metadata.
-    //
-    // Not "MatFormer": that word appears nowhere in the architecture
-    // reference. E2B varies the width because `use_double_wide_mlp` doubles
-    // its trailing layers, and E4B is uniform despite sharing KV over the same
-    // region, so the widening is not implied by the tail (docs/models/gemma-4.md).
-    for info in &file.tensors {
-        let Some(rest) = info.name.strip_prefix("blk.") else {
-            continue;
-        };
-        let Some((index, suffix)) = rest.split_once('.') else {
-            continue;
-        };
-        if suffix != "ffn_up.weight" {
-            continue;
-        }
-        let Ok(layer) = index.parse::<usize>() else {
-            continue;
-        };
-        let Some(declared) = spec.layers.get(layer) else {
-            continue;
-        };
-        let width = info.dims.last().copied().unwrap_or(0);
-        ensure!(
-            width == declared.ffn_dim as u64,
-            "tensor {} has feed-forward width {width}, but {}.feed_forward_length \
-             declares {} for layer {layer}",
-            info.name,
-            arch,
-            declared.ffn_dim
-        );
-    }
-
-    // RoPE configuration. Both regimes are implemented, so the paired keys
-    // are accepted and checked rather than refused; anything else under the
-    // `rope.` prefix is still a scaling scheme the forward pass would ignore.
-    //
-    // The allowlist stays an allowlist. It is the only thing standing between
-    // a converter that adds a third regime and a silent wrong rotation, and
-    // it is deliberately not widened to "anything that looks descriptive".
-    let rope_prefix = format!("{arch}.rope.");
-    // Rotation width is checked against the regime that key governs: the
-    // unsuffixed key is the full-attention value, `_swa` the sliding one.
-    // Comparing both against one width is how a 256-wide sliding regime gets
-    // read as a partial rotation of a 512-wide head, or vice versa.
-    let regime_width = |global: bool| -> usize {
-        spec.layers
-            .iter()
-            .filter(|l| matches!(l.kind, LayerKind::Global) == global)
-            .map(|l| l.head_dim)
-            .next()
-            .unwrap_or(0)
-    };
-    for key in file.metadata.keys() {
-        let Some(suffix) = key.strip_prefix(&rope_prefix) else {
-            continue;
-        };
-        let width = match suffix {
-            "freq_base" | "freq_base_swa" => continue,
-            "dimension_count" => regime_width(true),
-            "dimension_count_swa" => regime_width(false),
-            _ => bail!(
-                "metadata key {key} configures RoPE beyond the two frequency bases and \
-                 rotation widths this backend implements"
-            ),
-        };
-        // No layer in that regime means the key describes nothing here, which
-        // is not a disagreement. Typed exhaustively rather than with a bare
-        // `if let`: a value decoded as anything but u32 used to fall through
-        // and be accepted as inert, so a rotation width the forward pass
-        // ignores reached the numerics unremarked.
-        if width == 0 {
-            continue;
-        }
-        match file.metadata.get(key) {
-            Some(MetaValue::U32(v)) => ensure!(
-                *v as usize == width,
-                "{key} is {v} but that regime's head width is {width}; a rotation \
-                 narrower than the head is partial rotary embedding applied by slicing, \
-                 which this backend does not implement -- Gemma 4 expresses its partial \
-                 rotation through rope_freqs.weight at full width instead"
-            ),
-            Some(other) => bail!("{key}: expected u32, got {other:?}"),
-            None => {}
-        }
-    }
-
-    // Proportional-RoPE divisors, if present. One entry per rotating pair of
-    // a global head: 64 ones followed by 192 values of 1e30 on E4B, which
-    // drive those angles to zero. Length is checked here because the loader
-    // divides by it elementwise and a short tensor would leave the tail
-    // rotating at full frequency.
-    if let Some(info) = file.tensors.iter().find(|t| t.name == ROPE_FREQS_TENSOR) {
-        let want = regime_width(true) / 2;
-        let got = info.dims.iter().product::<u64>() as usize;
-        ensure!(
-            want > 0 && got == want,
-            "{ROPE_FREQS_TENSOR} has {got} entries, but the global head width implies {want}"
-        );
-    }
-
-    // Numeric-affecting metadata carries no tensor, so the unconsumed-tensor
-    // backstop below cannot see it: Gemma-2 publishes both softcapping keys,
-    // and either one changes every logit with nothing left over to notice.
-    // The refused keys are named rather than inverted into an allowlist of
-    // inert keys, which would also refuse every descriptive key a converter
-    // adds later — a far larger behavioral change than closing this gap.
-    //
-    // `final_logit_softcapping` is implemented and so is read rather than
-    // refused. It is named explicitly instead of loosening the substring
-    // test, because `attn_logit_softcapping` is the other key that matches
-    // and it caps attention scores inside the layer, which nothing here
-    // does. Gemma 2 publishes both, so a substring relaxation would accept
-    // one silently while implementing the other.
-    let arch_prefix = format!("{arch}.");
-    for key in file.metadata.keys() {
-        let Some(suffix) = key.strip_prefix(&arch_prefix) else {
-            continue;
-        };
-        if suffix == "final_logit_softcapping" {
-            continue;
-        }
-        if suffix.contains("softcapping") || matches!(suffix, "attention.scale" | "logit_scale") {
-            bail!(
-                "metadata key {key} caps or rescales attention scores or logits, which \
-                 this forward pass does not implement; it carries no tensor, so loading \
-                 would change every logit silently"
-            );
-        }
-    }
-
-    // Generic backstop: anything left unconsumed is structure this backend
-    // does not know about, including features published after this code.
-    let mut unconsumed: Vec<String> = Vec::new();
-    for name in &names {
-        if TOP_LEVEL_TENSORS.contains(name)
-            || PLE_TOP_LEVEL_TENSORS.contains(name)
-            || *name == ROPE_FREQS_TENSOR
-        {
-            continue;
-        }
-        let consumed = (0..config.n_layers).any(|i| {
-            let prefix = format!("blk.{i}.");
-            name.strip_prefix(&prefix).is_some_and(|s| {
-                LAYER_TENSORS.contains(&s)
-                    || OPTIONAL_LAYER_TENSORS.contains(&s)
-                    || PLE_LAYER_TENSORS.contains(&s)
-            })
-        });
-        if !consumed {
-            let family = tensor_family(name);
-            if !unconsumed.contains(&family) {
-                unconsumed.push(family);
-            }
-        }
-    }
-    ensure!(
-        unconsumed.is_empty(),
-        "checkpoint carries {} tensor famil{} this backend does not consume: {}; \
-         refusing rather than ignoring learned weights",
-        unconsumed.len(),
-        if unconsumed.len() == 1 { "y" } else { "ies" },
-        unconsumed.join(", ")
-    );
-    Ok(())
-}
-
 /// Refuse a checkpoint whose structure the forward pass does not implement.
 ///
 /// The architectural half of `check_supported`. Most of that function is
@@ -974,22 +379,25 @@ pub fn check_supported_checkpoint(
     // counts as missing -- the partial set is the one that loads.
     let mut present: Vec<String> = Vec::new();
     let mut missing: Vec<String> = Vec::new();
+    // Reported in the Hugging Face spelling, which is what a reader looking
+    // at the checkpoint sees. The three per-block families lose the
+    // `per_layer` substring in the llama.cpp naming, so reporting that
+    // spelling would name tensors no file on disk contains.
+    let published = |gguf: &str| hf_tensor_name(gguf).unwrap_or_else(|| gguf.to_string());
     for name in PLE_TOP_LEVEL_TENSORS {
         match has(name) {
-            true => present.push(name.to_string()),
-            false => missing.push(name.to_string()),
+            true => present.push(published(name)),
+            false => missing.push(published(name)),
         }
     }
     for suffix in PLE_LAYER_TENSORS {
         let found = (0..config.n_layers)
             .filter(|i| has(&format!("blk.{i}.{suffix}")))
             .count();
+        let family = hf_tensor_family(&published(&format!("blk.0.{suffix}")));
         match found == config.n_layers {
-            true => present.push(format!("blk.*.{suffix}")),
-            false => missing.push(format!(
-                "blk.*.{suffix} ({found} of {} layers)",
-                config.n_layers
-            )),
+            true => present.push(family),
+            false => missing.push(format!("{family} ({found} of {} layers)", config.n_layers)),
         }
     }
     let declared = config.ple_dim.is_some();
@@ -1099,14 +507,6 @@ pub fn hf_tensor_family(name: &str) -> String {
             format!("model.layers.*.{suffix}")
         }
         _ => name.to_string(),
-    }
-}
-
-/// Architecture string, the prefix of every model metadata key.
-fn architecture(file: &GgufFile) -> Result<&str> {
-    match file.metadata.get("general.architecture") {
-        Some(MetaValue::Str(a)) => Ok(a.as_str()),
-        _ => bail!("missing general.architecture"),
     }
 }
 
@@ -1667,178 +1067,6 @@ impl CpuModel {
         })
     }
 
-    pub fn from_gguf(file: &GgufFile, data: &[u8]) -> Result<CpuModel> {
-        let spec = ModelSpec::from_gguf(file)?;
-        let config = spec.config;
-        // Refuse unimplemented architecture features before loading a single
-        // weight: a partial load emits fluent, wrong text.
-        check_supported(file, &spec)?;
-        // Every tensor is length-checked against the config as it loads.
-        // Loading is name-directed and the forward pass slices by strides
-        // computed from the metadata, so a tensor whose shape disagrees with
-        // the config is caught nowhere later: it reads the wrong rows and
-        // returns finite, wrong logits, or slices past the end and panics
-        // mid-forward. Both are silent to a caller that only sees fluent
-        // text, which is what this backend refuses to be.
-        let tensor = |name: &str, want: usize| -> Result<Vec<f32>> {
-            let info = file
-                .tensors
-                .iter()
-                .find(|t| t.name == name)
-                .with_context(|| format!("missing tensor {name}"))?;
-            let values = load_tensor(file, data, info)?;
-            ensure!(
-                values.len() == want,
-                "tensor {name} has {} elements, the configuration implies {want}",
-                values.len()
-            );
-            Ok(values)
-        };
-        let embed_dim = config.embed_dim;
-        let embed = tensor("token_embd.weight", config.vocab_size * embed_dim)?;
-        // Divisors apply to the full-attention regime only: the sliding
-        // regime rotates its full width, and its rotation width is already
-        // the whole head (docs/rust-harness/gemma-4-ingestion.md).
-        let rope_divisors: Option<Vec<f32>> =
-            match file.tensors.iter().find(|t| t.name == ROPE_FREQS_TENSOR) {
-                Some(info) => Some(load_tensor(file, data, info)?),
-                None => None,
-            };
-        // Per-layer input embeddings. `check_supported` has already established
-        // that the six families are present together, so a missing tensor here
-        // is a bug in that pairing rather than a checkpoint variation.
-        let ple = match config.ple_dim {
-            None => None,
-            Some(pd) => {
-                let row = config.n_layers * pd;
-                let info = file
-                    .tensors
-                    .iter()
-                    .find(|t| t.name == PLE_TOP_LEVEL_TENSORS[0])
-                    .with_context(|| format!("missing tensor {}", PLE_TOP_LEVEL_TENSORS[0]))?;
-                let token_embd = load_tensor(file, data, info)?;
-                ensure!(
-                    row > 0 && token_embd.len().is_multiple_of(row),
-                    "tensor {} has {} elements, not a whole number of rows of \
-                     block_count x embedding_length_per_layer_input ({row})",
-                    PLE_TOP_LEVEL_TENSORS[0],
-                    token_embd.len()
-                );
-                let ple_vocab = token_embd.len() / row;
-                // Not equality with `vocab_size`: the per-layer table has its
-                // own vocabulary axis, and the harness reads `vocab_size` from
-                // the tokenizer token list. Containing every token the
-                // tokenizer can emit is what the lookup below needs, and it is
-                // what a short table would fail.
-                ensure!(
-                    ple_vocab >= config.vocab_size,
-                    "tensor {} holds {ple_vocab} rows, fewer than the {} tokens the \
-                     tokenizer declares",
-                    PLE_TOP_LEVEL_TENSORS[0],
-                    config.vocab_size
-                );
-                Some(PleWeights {
-                    token_embd,
-                    ple_vocab,
-                    model_proj: tensor(PLE_TOP_LEVEL_TENSORS[1], embed_dim * row)?,
-                    proj_norm: tensor(PLE_TOP_LEVEL_TENSORS[2], pd)?,
-                })
-            }
-        };
-        let mut layers = Vec::with_capacity(config.n_layers);
-        for (i, ls) in spec.layers.iter().enumerate() {
-            // Widths come from this layer's own spec, so a checkpoint that
-            // interleaves head widths or feed-forward widths is length-checked
-            // against what it declares for each layer rather than against the
-            // first one.
-            let (head_dim, ffn_dim) = (ls.head_dim, ls.ffn_dim);
-            let q_dim = config.n_heads * head_dim;
-            let kv_dim = config.n_kv_heads * head_dim;
-            let divisors = match (ls.kind, rope_divisors.as_deref()) {
-                (LayerKind::Global, Some(d)) => Some(d),
-                _ => None,
-            };
-            let t = |suffix: &str, want: usize| tensor(&format!("blk.{i}.{suffix}"), want);
-            // Absent is 1.0 rather than an error: a checkpoint without the
-            // tensor does not have the feature. Length-checked like every
-            // other tensor, so a converter emitting a vector under this name
-            // is a load error and not a silently-used first element.
-            let output_scale = match file
-                .tensors
-                .iter()
-                .any(|t| t.name == format!("blk.{i}.layer_output_scale.weight"))
-            {
-                true => t("layer_output_scale.weight", 1)?[0],
-                false => 1.0,
-            };
-            let ple_layer = match config.ple_dim {
-                Some(pd) => Some(PleLayer {
-                    inp_gate: t(PLE_LAYER_TENSORS[0], embed_dim * pd)?,
-                    proj: t(PLE_LAYER_TENSORS[1], pd * embed_dim)?,
-                    post_norm: t(PLE_LAYER_TENSORS[2], embed_dim)?,
-                }),
-                None => None,
-            };
-            // A shared-KV layer reads a donor's post-norm, post-rotary K/V and
-            // computes none of its own, so its key and value projections and
-            // its key norm are never evaluated. They are left unloaded rather
-            // than loaded and ignored: on E4B that is 18 layers of dead
-            // projections, and an allocated-but-unread weight is exactly the
-            // shape of the silent wrong answer this backend refuses elsewhere.
-            //
-            // The released checkpoints do carry these tensors on the shared
-            // tail, which the modeling code says should not exist. Following
-            // the modeling code is a decision, not a certainty -- see the
-            // recorded conflict in `docs/rust-harness/gemma-4-ingestion.md`
-            // and the test that names it. If the workstation run against real
-            // weights disagrees, this branch is where it flips.
-            let owns_cache = spec.owns_cache(i);
-            let (wk, wv, k_norm) = match owns_cache {
-                true => (
-                    t("attn_k.weight", embed_dim * kv_dim)?,
-                    t("attn_v.weight", embed_dim * kv_dim)?,
-                    t("attn_k_norm.weight", head_dim)?,
-                ),
-                false => (Vec::new(), Vec::new(), Vec::new()),
-            };
-            layers.push(LayerWeights {
-                spec: *ls,
-                rope_freqs: rope_frequencies(head_dim, ls.rope_freq_base, divisors),
-                output_scale,
-                ple: ple_layer,
-                attn_norm: t("attn_norm.weight", embed_dim)?,
-                wq: t("attn_q.weight", embed_dim * q_dim)?,
-                wk,
-                wv,
-                q_norm: t("attn_q_norm.weight", head_dim)?,
-                k_norm,
-                wo: t("attn_output.weight", q_dim * embed_dim)?,
-                post_attn_norm: t("post_attention_norm.weight", embed_dim)?,
-                ffn_norm: t("ffn_norm.weight", embed_dim)?,
-                w_gate: t("ffn_gate.weight", embed_dim * ffn_dim)?,
-                w_up: t("ffn_up.weight", embed_dim * ffn_dim)?,
-                w_down: t("ffn_down.weight", ffn_dim * embed_dim)?,
-                post_ffw_norm: t("post_ffw_norm.weight", embed_dim)?,
-            });
-        }
-        let output_norm = tensor("output_norm.weight", embed_dim)?;
-        Ok(CpuModel {
-            kv: vec![LayerKv::default(); config.n_layers],
-            config,
-            scratch: Scratch::new(&spec),
-            spec: Arc::new(spec),
-            weights: Arc::new(Weights {
-                embed,
-                ple,
-                layers,
-                output_norm,
-            }),
-            cached_len: 0,
-            tap: None,
-            control: None,
-        })
-    }
-
     /// Per-layer geometry, in layer order.
     pub fn layer_specs(&self) -> &[LayerSpec] {
         &self.spec.layers
@@ -2340,12 +1568,180 @@ impl Model for CpuModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::synth::{build_tiny_model, TinySpec};
+    use crate::synth::TinySpec;
+
+    /// The synthetic checkpoint for `spec`, in memory.
+    ///
+    /// Owned separately from the `Checkpoint` that borrows it, so a test that
+    /// loads two models from one spec holds the bytes once.
+    fn checkpoint_of(spec: &TinySpec) -> crate::checkpoint::CheckpointFiles {
+        crate::checkpoint::CheckpointFiles {
+            config: crate::synth::build_tiny_config_json(spec).unwrap(),
+            weights: crate::synth::build_tiny_safetensors(spec).unwrap(),
+            dir: std::path::PathBuf::from("<memory>"),
+        }
+    }
+
+    /// A checkpoint whose tensor set has been perturbed: `extra` Hugging Face
+    /// names are added as one-element tensors, and any name for which `keep`
+    /// returns false is dropped.
+    ///
+    /// The refusals these serve are about which tensors exist and what shape
+    /// they are, not what they contain, so an added tensor's single element is
+    /// enough. Built from `tiny_tensors` rather than by editing a serialized
+    /// image, because safetensors offsets are computed at serialization and
+    /// patching them by hand is how a test starts asserting against a file no
+    /// loader would ever see.
+    fn checkpoint_with(
+        spec: &TinySpec,
+        extra: &[&str],
+        reshape: &[(&str, &[usize])],
+        keep: impl Fn(&str) -> bool,
+    ) -> crate::checkpoint::CheckpointFiles {
+        use safetensors::tensor::{Dtype, TensorView};
+
+        let mut payloads: Vec<(String, Vec<usize>, Vec<u8>)> = Vec::new();
+        for t in crate::synth::tiny_tensors(spec) {
+            let Some(name) = t.hf_name.clone() else {
+                continue;
+            };
+            if !keep(&name) {
+                continue;
+            }
+            let shift = if t.norm { 1.0f32 } else { 0.0 };
+            let bytes: Vec<u8> = t
+                .values
+                .iter()
+                .flat_map(|v| (v - shift).to_le_bytes())
+                .collect();
+            // A self-consistent wrong shape: the header declares it and the
+            // payload supplies exactly that many elements, so nothing but the
+            // loader's own check can notice.
+            match reshape.iter().find(|(n, _)| *n == name) {
+                Some((_, shape)) => {
+                    let n: usize = shape.iter().product();
+                    payloads.push((name, shape.to_vec(), bytes[..n * 4].to_vec()));
+                }
+                None => payloads.push((name, t.hf_shape(), bytes)),
+            }
+        }
+        for name in extra {
+            payloads.push(((*name).to_string(), vec![1], 0.0f32.to_le_bytes().to_vec()));
+        }
+        let views: Vec<(&str, TensorView)> = payloads
+            .iter()
+            .map(|(n, shape, bytes)| {
+                (
+                    n.as_str(),
+                    TensorView::new(Dtype::F32, shape.clone(), bytes).unwrap(),
+                )
+            })
+            .collect();
+        crate::checkpoint::CheckpointFiles {
+            config: crate::synth::build_tiny_config_json(spec).unwrap(),
+            weights: safetensors::serialize(views, None).unwrap(),
+            dir: std::path::PathBuf::from("<memory>"),
+        }
+    }
+
+    /// A checkpoint whose stored values have been edited in place.
+    ///
+    /// `edit` sees each tensor's Hugging Face name and its stored values --
+    /// unshifted, as the file holds them. Perturbing a weight is how a test
+    /// shows which layers actually read it, and doing it through the writer
+    /// rather than by patching serialized bytes keeps the test independent of
+    /// where safetensors chose to place a payload.
+    fn checkpoint_edited(
+        spec: &TinySpec,
+        edit: impl Fn(&str, &mut Vec<f32>),
+    ) -> crate::checkpoint::CheckpointFiles {
+        use safetensors::tensor::{Dtype, TensorView};
+
+        let mut payloads: Vec<(String, Vec<usize>, Vec<u8>)> = Vec::new();
+        for t in crate::synth::tiny_tensors(spec) {
+            let Some(name) = t.hf_name.clone() else {
+                continue;
+            };
+            let shift = if t.norm { 1.0f32 } else { 0.0 };
+            let mut values: Vec<f32> = t.values.iter().map(|v| v - shift).collect();
+            edit(&name, &mut values);
+            let bytes: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
+            payloads.push((name, t.hf_shape(), bytes));
+        }
+        let views: Vec<(&str, TensorView)> = payloads
+            .iter()
+            .map(|(n, shape, bytes)| {
+                (
+                    n.as_str(),
+                    TensorView::new(Dtype::F32, shape.clone(), bytes).unwrap(),
+                )
+            })
+            .collect();
+        crate::checkpoint::CheckpointFiles {
+            config: crate::synth::build_tiny_config_json(spec).unwrap(),
+            weights: safetensors::serialize(views, None).unwrap(),
+            dir: std::path::PathBuf::from("<memory>"),
+        }
+    }
+
+    /// `checkpoint_edited` for the common case: one whole tensor shifted.
+    fn checkpoint_bumping(
+        spec: &TinySpec,
+        target: &str,
+        delta: f32,
+    ) -> crate::checkpoint::CheckpointFiles {
+        let mut hit = false;
+        let files = checkpoint_edited(spec, |name, values| {
+            if name == target {
+                for v in values.iter_mut() {
+                    *v += delta;
+                }
+            }
+        });
+        for t in crate::synth::tiny_tensors(spec) {
+            hit |= t.hf_name.as_deref() == Some(target);
+        }
+        assert!(hit, "no tensor named {target} to perturb");
+        files
+    }
+
+    /// One tensor's effective values, named in the llama.cpp spelling the
+    /// tests use, with the RMSNorm shift applied exactly as the loader applies
+    /// it. Independent-recomputation tests want the numbers the forward pass
+    /// sees, not the geometry, so there is no shape argument.
+    fn tensor_of(ck: &crate::checkpoint::Checkpoint, gguf_name: &str) -> Vec<f32> {
+        let hf = crate::checkpoint::hf_tensor_name(gguf_name)
+            .unwrap_or_else(|| panic!("no published name for {gguf_name}"));
+        let view = ck
+            .tensors
+            .tensor(&hf)
+            .unwrap_or_else(|e| panic!("missing {hf}: {e:?}"));
+        let shift = match gguf_name.ends_with("norm.weight") {
+            true => 1.0f32,
+            false => 0.0,
+        };
+        view.data()
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]) + shift)
+            .collect()
+    }
+
+    /// `check_supported_checkpoint`'s verdict on a perturbed tensor set.
+    fn verdict(files: &crate::checkpoint::CheckpointFiles) -> Result<()> {
+        let ck = crate::checkpoint::parse(files)?;
+        let spec = ModelSpec::from_checkpoint(&ck.config)?;
+        check_supported_checkpoint(&ck, &spec)
+    }
+
+    /// A model loaded from `spec`, the shape most tests below want.
+    fn model_of(spec: &TinySpec) -> CpuModel {
+        let files = checkpoint_of(spec);
+        let ck = crate::checkpoint::parse(&files).unwrap();
+        CpuModel::from_checkpoint(&ck).unwrap()
+    }
 
     fn tiny() -> CpuModel {
-        let image = build_tiny_model(&TinySpec::default());
-        let file = crate::gguf::parse(&image).unwrap();
-        CpuModel::from_gguf(&file, &image).unwrap()
+        model_of(&TinySpec::default())
     }
 
     /// Allocating wrapper over `rms_norm_into`, so the convention tests read
@@ -2457,78 +1853,6 @@ mod tests {
     }
 
     #[test]
-    fn the_two_rope_regimes_take_their_own_base_and_head_width() {
-        // A1-R04 was refuted only because every path refused a second base
-        // before reaching the numerics. Now that both regimes load, the
-        // per-layer assignment is the thing under test rather than the
-        // refusal that used to stand in front of it.
-        let (_, mut file, _) = tiny_parsed();
-        file.metadata
-            .insert("gemma4.rope.freq_base_swa".into(), MetaValue::F32(10000.0));
-        file.metadata
-            .insert("gemma4.rope.freq_base".into(), MetaValue::F32(1_000_000.0));
-        let spec = ModelSpec::from_gguf(&file).unwrap();
-        // The tiny fixture is layer 0 sliding, layer 1 global.
-        assert_eq!(spec.layers[0].kind, LayerKind::SlidingWindow(4));
-        assert_eq!(spec.layers[1].kind, LayerKind::Global);
-        assert_eq!(spec.layers[0].rope_freq_base, 10000.0);
-        assert_eq!(spec.layers[1].rope_freq_base, 1_000_000.0);
-    }
-
-    #[test]
-    fn a_sliding_head_width_is_read_from_the_swa_key() {
-        let (_, mut file, _) = tiny_parsed();
-        file.metadata
-            .insert("gemma4.attention.key_length_swa".into(), MetaValue::U32(4));
-        let spec = ModelSpec::from_gguf(&file).unwrap();
-        assert_eq!(
-            spec.layers[0].head_dim, 4,
-            "sliding layer takes the _swa key"
-        );
-        assert_eq!(spec.layers[1].head_dim, 8, "global layer keeps key_length");
-        assert_eq!(spec.max_head_dim(), 8);
-    }
-
-    #[test]
-    fn each_rotation_width_is_checked_against_its_own_regime() {
-        // One width checked against both regimes reads a 4-wide sliding
-        // rotation as a partial rotation of an 8-wide head. Give the two
-        // regimes different widths and confirm each key is held to its own.
-        let (_, mut file, _) = tiny_parsed();
-        file.metadata
-            .insert("gemma4.attention.key_length_swa".into(), MetaValue::U32(4));
-        file.metadata.insert(
-            "gemma4.rope.dimension_count".into(),
-            MetaValue::U32(8), // global head width
-        );
-        file.metadata.insert(
-            "gemma4.rope.dimension_count_swa".into(),
-            MetaValue::U32(4), // sliding head width
-        );
-        let spec = ModelSpec::from_gguf(&file).unwrap();
-        check_supported(&file, &spec).unwrap();
-
-        // Swapping them makes each key wrong for the regime it governs.
-        file.metadata
-            .insert("gemma4.rope.dimension_count_swa".into(), MetaValue::U32(8));
-        let err = check_supported(&file, &spec).unwrap_err().to_string();
-        assert!(err.contains("dimension_count_swa"), "{err}");
-        assert!(err.contains("head width is 4"), "{err}");
-    }
-
-    #[test]
-    fn an_unknown_rope_key_is_still_refused() {
-        // The allowlist is what stands between a converter that adds a third
-        // regime and a silent wrong rotation. Widening it to the two Gemma 4
-        // regimes must not have widened it to anything else.
-        let (_, mut file, spec) = tiny_parsed();
-        file.metadata
-            .insert("gemma4.rope.scaling.factor".into(), MetaValue::F32(8.0));
-        let err = check_supported(&file, &spec).unwrap_err().to_string();
-        assert!(err.contains("gemma4.rope.scaling.factor"), "{err}");
-    }
-
-    #[test]
     fn the_rope_divisor_tensor_reaches_the_logits() {
         // The regression this whole change exists for. `rope_freqs.weight`
         // was listed inert on the reasoning that frequencies are recomputed
@@ -2538,9 +1862,9 @@ mod tests {
         // the loader accepts the tensor would pass against that same bug, so
         // the assertion is that the numerics move.
         let load = |spec: &TinySpec| {
-            let image = build_tiny_model(spec);
-            let file = crate::gguf::parse(&image).unwrap();
-            let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+            let image = checkpoint_of(spec);
+            let file = crate::checkpoint::parse(&image).unwrap();
+            let mut model = CpuModel::from_checkpoint(&file).unwrap();
             model.prefill_all(&[1, 5, 9, 13, 3, 8, 21, 2]).unwrap()
         };
         let plain = load(&TinySpec::default());
@@ -2590,9 +1914,7 @@ mod tests {
             rope_rotating_pairs: Some(1),
             ..TinySpec::default()
         };
-        let image = build_tiny_model(&spec);
-        let file = crate::gguf::parse(&image).unwrap();
-        let model = CpuModel::from_gguf(&file, &image).unwrap();
+        let model = model_of(&spec);
         let plain = rope_frequencies(spec.head_dim, spec.rope_freq_base, None);
 
         // Layer 0 sliding: table untouched. Layer 1 global: padded pairs
@@ -2614,20 +1936,6 @@ mod tests {
     }
 
     #[test]
-    fn a_rope_divisor_tensor_of_the_wrong_length_is_refused() {
-        // The loader divides elementwise, so a short tensor would either
-        // panic or leave the tail rotating at full frequency depending on
-        // where it ran out.
-        let (_, mut file, spec) = tiny_parsed();
-        let mut info = extra_tensor(ROPE_FREQS_TENSOR);
-        info.dims = vec![3]; // global head width 8 implies 4
-        file.tensors.push(info);
-        let err = check_supported(&file, &spec).unwrap_err().to_string();
-        assert!(err.contains(ROPE_FREQS_TENSOR), "{err}");
-        assert!(err.contains("3") && err.contains("4"), "{err}");
-    }
-
-    #[test]
     fn config_parses_from_the_tiny_model() {
         let m = tiny();
         let c = m.config();
@@ -2639,31 +1947,12 @@ mod tests {
         assert_eq!(m.layer_specs()[1].kind, LayerKind::Global);
     }
 
-    /// Parsed synthetic checkpoint, for mutating the tensor directory or
-    /// metadata in place. `check_supported` reads names, dims, and metadata
-    /// only, so a mutated directory needs no re-encoded payload.
-    fn tiny_parsed() -> (Vec<u8>, crate::gguf::GgufFile, ModelSpec) {
-        let image = build_tiny_model(&TinySpec::default());
-        let file = crate::gguf::parse(&image).unwrap();
-        let spec = ModelSpec::from_gguf(&file).unwrap();
-        (image, file, spec)
-    }
-
-    fn extra_tensor(name: &str) -> crate::gguf::TensorInfo {
-        crate::gguf::TensorInfo {
-            name: name.to_string(),
-            dims: vec![4],
-            ggml_type: crate::tensor::GGML_F32,
-            offset: 0,
-        }
-    }
-
     #[test]
     fn the_synthetic_fixture_consumes_every_tensor_it_ships() {
         // Couples the guard's tensor lists to the loader: a tensor the loader
         // reads but the lists omit makes the guard refuse this fixture.
-        let (_, file, spec) = tiny_parsed();
-        check_supported(&file, &spec).unwrap();
+        verdict(&checkpoint_of(&TinySpec::default())).unwrap();
+        verdict(&checkpoint_of(&TinySpec::e4b_shaped())).unwrap();
     }
 
     #[test]
@@ -2672,16 +1961,21 @@ mod tests {
         // silently dropping the residual join the sixth carries. Refusing the
         // partial set is the only thing that turns it into a load error rather
         // than into a fluent model missing most of its parameters.
-        let (_, mut file, spec) = tiny_parsed();
-        file.tensors
-            .push(extra_tensor("per_layer_token_embd.weight"));
-        let err = check_supported(&file, &spec).unwrap_err().to_string();
+        let files = checkpoint_with(
+            &TinySpec::default(),
+            &["model.embed_tokens_per_layer.weight"],
+            &[],
+            |_| true,
+        );
+        let err = verdict(&files).unwrap_err().to_string();
         assert!(err.contains("absent or incomplete"), "{err}");
         // Names the three per-block families, which is the point: they lose
         // the `per_layer` substring in conversion, so a reader looking for
         // what is missing cannot find them by the name of the one present.
         for suffix in PLE_LAYER_TENSORS {
-            assert!(err.contains(suffix), "{err} does not name {suffix}");
+            let hf = crate::checkpoint::hf_tensor_name(&format!("blk.0.{suffix}")).unwrap();
+            let family = hf_tensor_family(&hf);
+            assert!(err.contains(&family), "{err} lacks {family}");
         }
     }
 
@@ -2690,16 +1984,19 @@ mod tests {
         // The whole-family case above is the obvious one. This is the case the
         // per-layer count exists for: every family present, one layer short,
         // which loads and skips the join on exactly that layer.
-        let image = build_tiny_model(&TinySpec {
+        let spec = TinySpec {
             ple_dim: Some(4),
             ..TinySpec::default()
+        };
+        verdict(&checkpoint_of(&spec)).unwrap();
+        let files = checkpoint_with(&spec, &[], &[], |n| {
+            n != "model.layers.1.per_layer_input_gate.weight"
         });
-        let mut file = crate::gguf::parse(&image).unwrap();
-        let spec = ModelSpec::from_gguf(&file).unwrap();
-        check_supported(&file, &spec).unwrap();
-        file.tensors.retain(|t| t.name != "blk.1.inp_gate.weight");
-        let err = check_supported(&file, &spec).unwrap_err().to_string();
-        assert!(err.contains("inp_gate.weight (1 of 2 layers)"), "{err}");
+        let err = verdict(&files).unwrap_err().to_string();
+        assert!(
+            err.contains("model.layers.*.per_layer_input_gate.weight (1 of 2 layers)"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -2708,32 +2005,36 @@ mod tests {
         // the width from the shape would work only if `n_layers` and the
         // per-layer width were the sole factorization of it, which they are
         // not.
-        let image = build_tiny_model(&TinySpec {
+        let files = checkpoint_of(&TinySpec {
             ple_dim: Some(4),
             ..TinySpec::default()
         });
-        let mut file = crate::gguf::parse(&image).unwrap();
-        file.metadata
-            .remove("gemma4.embedding_length_per_layer_input");
-        // Derived after the removal: the spec is what carries `ple_dim`, so a
-        // spec built before it would still declare the width the file no
-        // longer does.
-        let spec = ModelSpec::from_gguf(&file).unwrap();
-        let err = check_supported(&file, &spec).unwrap_err().to_string();
+        let mut config: serde_json::Value = serde_json::from_slice(&files.config).unwrap();
+        config["text_config"]
+            .as_object_mut()
+            .unwrap()
+            .remove("hidden_size_per_layer_input");
+        let files = crate::checkpoint::CheckpointFiles {
+            config: serde_json::to_vec(&config).unwrap(),
+            ..files
+        };
+        let err = verdict(&files).unwrap_err().to_string();
         assert!(err.contains("declares no"), "{err}");
     }
 
     #[test]
     fn a_cache_owning_layer_without_kv_tensors_is_refused() {
-        // A layer outside the shared tail has no donor, so a missing attn_v
+        // A layer outside the shared tail has no donor, so a missing v_proj
         // leaves it nothing to attend over. Refused by the loader before any
         // weight is read. Layer 1 of the default fixture owns its cache --
         // that fixture declares no sharing at all.
-        let (image, mut file, _) = tiny_parsed();
-        file.tensors.retain(|t| t.name != "blk.1.attn_v.weight");
-        let err = match CpuModel::from_gguf(&file, &image) {
-            Ok(_) => panic!("a cache-owning layer missing attn_v must not load"),
-            Err(e) => e.to_string(),
+        let files = checkpoint_with(&TinySpec::default(), &[], &[], |n| {
+            n != "model.layers.1.self_attn.v_proj.weight"
+        });
+        let ck = crate::checkpoint::parse(&files).unwrap();
+        let err = match CpuModel::from_checkpoint(&ck) {
+            Ok(_) => panic!("a cache-owning layer missing v_proj must not load"),
+            Err(e) => format!("{e:#}"),
         };
         assert!(err.contains("stores its own K/V"), "{err}");
         assert!(err.contains("layer 1"), "{err}");
@@ -2752,11 +2053,13 @@ mod tests {
         }
     }
 
-    fn sharing_spec_model(shared: usize) -> (Vec<u8>, CpuModel) {
-        let image = build_tiny_model(&sharing_spec(shared));
-        let file = crate::gguf::parse(&image).unwrap();
-        let model = CpuModel::from_gguf(&file, &image).unwrap();
-        (image, model)
+    fn sharing_spec_model(shared: usize) -> (crate::checkpoint::CheckpointFiles, CpuModel) {
+        let files = checkpoint_of(&sharing_spec(shared));
+        let model = {
+            let ck = crate::checkpoint::parse(&files).unwrap();
+            CpuModel::from_checkpoint(&ck).unwrap()
+        };
+        (files, model)
     }
 
     #[test]
@@ -2835,32 +2138,18 @@ mod tests {
         // it -- both leave the tail with zero rows, and only this separates
         // them.
         let spec = sharing_spec(2);
-        let base = build_tiny_model(&spec);
-        let file = crate::gguf::parse(&base).unwrap();
-        let run = |img: &[u8]| -> Vec<f32> {
-            let f = crate::gguf::parse(img).unwrap();
-            let mut m = CpuModel::from_gguf(&f, img).unwrap();
+        let run = |files: &crate::checkpoint::CheckpointFiles| -> Vec<f32> {
+            let ck = crate::checkpoint::parse(files).unwrap();
+            let mut m = CpuModel::from_checkpoint(&ck).unwrap();
             m.prefill_all(&[1, 7, 9, 4]).unwrap().pop().unwrap().0
         };
-        let before = run(&base);
+        let before = run(&checkpoint_of(&spec));
 
         // Layer 0 is the sliding donor, read by layer 2 and by nothing else.
-        let mut image = base.clone();
-        let info = file
-            .tensors
-            .iter()
-            .find(|t| t.name == "blk.0.attn_k.weight")
-            .unwrap();
-        let start = file.data_offset as usize + info.offset as usize;
-        let count = info.dims.iter().product::<u64>() as usize;
-        for j in 0..count {
-            let at = start + j * 4;
-            let v = f32::from_le_bytes(image[at..at + 4].try_into().unwrap());
-            image[at..at + 4].copy_from_slice(&(v + 0.5).to_le_bytes());
-        }
+        let bumped = checkpoint_bumping(&spec, "model.layers.0.self_attn.k_proj.weight", 0.5);
         assert_ne!(
             before,
-            run(&image),
+            run(&bumped),
             "the donor's key projection must reach the layers that read its cache"
         );
     }
@@ -2904,45 +2193,28 @@ mod tests {
         // workstation run against real weights shows it should, this test is
         // the one that fails, and it fails saying why.
         let spec = sharing_spec(2);
-        let mut image = build_tiny_model(&spec);
-        let file = crate::gguf::parse(&image).unwrap();
-        let before = {
-            let mut m = CpuModel::from_gguf(&file, &image).unwrap();
+        let run = |files: &crate::checkpoint::CheckpointFiles| -> Vec<f32> {
+            let ck = crate::checkpoint::parse(files).unwrap();
+            let mut m = CpuModel::from_checkpoint(&ck).unwrap();
             m.prefill_all(&[1, 7, 9, 4]).unwrap().pop().unwrap().0
         };
+        let before = run(&checkpoint_of(&spec));
 
         // Layers 2 and 3 are the shared tail; layer 1 is a donor and is left
-        // alone, so this cannot pass by perturbing nothing.
-        let mut perturbed = 0usize;
+        // alone, so this cannot pass by perturbing nothing. Applied one at a
+        // time: any single one reaching the logits fails the assertion, and
+        // naming which one is what makes the failure actionable.
         for name in [
-            "blk.2.attn_k.weight",
-            "blk.2.attn_v.weight",
-            "blk.3.attn_k.weight",
+            "model.layers.2.self_attn.k_proj.weight",
+            "model.layers.2.self_attn.v_proj.weight",
+            "model.layers.3.self_attn.k_proj.weight",
         ] {
-            let info = file.tensors.iter().find(|t| t.name == name).unwrap();
-            let start = file.data_offset as usize + info.offset as usize;
-            let count = info.dims.iter().product::<u64>() as usize;
-            for j in 0..count {
-                let at = start + j * 4;
-                let v = f32::from_le_bytes(image[at..at + 4].try_into().unwrap());
-                image[at..at + 4].copy_from_slice(&(v + 0.5).to_le_bytes());
-            }
-            perturbed += count;
+            assert_eq!(
+                before,
+                run(&checkpoint_bumping(&spec, name, 0.5)),
+                "{name} reached the numerics; a shared layer must not read it"
+            );
         }
-        assert!(
-            perturbed > 0,
-            "the tensors to perturb must exist in the image"
-        );
-
-        let file = crate::gguf::parse(&image).unwrap();
-        let after = {
-            let mut m = CpuModel::from_gguf(&file, &image).unwrap();
-            m.prefill_all(&[1, 7, 9, 4]).unwrap().pop().unwrap().0
-        };
-        assert_eq!(
-            before, after,
-            "a shared layer's own key and value weights must not reach the numerics"
-        );
     }
 
     #[test]
@@ -2950,25 +2222,17 @@ mod tests {
         // Sharing every layer leaves the tail with nothing below the boundary
         // to read. Diagnosed at load rather than reaching the forward pass,
         // where it would index a cache that was never written.
-        let image = build_tiny_model(&sharing_spec(4));
-        let file = crate::gguf::parse(&image).unwrap();
+        let image = checkpoint_of(&sharing_spec(4));
+        let file = crate::checkpoint::parse(&image).unwrap();
         // Alternate form, so the assertion sees the whole anyhow chain: the
-        // donor rule is shared with the checkpoint loader and reports through
-        // a context layer that names the metadata key.
-        let err = format!("{:#}", ModelSpec::from_gguf(&file).unwrap_err());
-        assert!(err.contains("no donor to read"), "{err}");
-        assert!(err.contains("shared_kv_layers"), "{err}");
-    }
-
-    #[test]
-    fn more_shared_layers_than_the_model_has_is_a_load_error() {
-        let (_, mut file, _) = tiny_parsed();
-        file.metadata.insert(
-            "gemma4.attention.shared_kv_layers".to_string(),
-            MetaValue::U32(99),
+        // donor rule reports through a context layer that names the config
+        // field a reader has to go and fix.
+        let err = format!(
+            "{:#}",
+            ModelSpec::from_checkpoint(&file.config).unwrap_err()
         );
-        let err = ModelSpec::from_gguf(&file).unwrap_err().to_string();
-        assert!(err.contains("more than the"), "{err}");
+        assert!(err.contains("no donor to read"), "{err}");
+        assert!(err.contains("num_kv_shared_layers"), "{err}");
     }
 
     #[test]
@@ -3037,61 +2301,28 @@ mod tests {
     }
 
     #[test]
-    fn a_rotation_narrower_than_the_head_is_refused() {
-        // Gemma 4 does rotate a quarter of each global head, but it expresses
-        // that at full width through rope_freqs.weight. A dimension_count
-        // below the head width means the other encoding -- rotate a slice,
-        // leave the remainder alone -- which is a different operation and is
-        // not implemented.
-        let (_, mut file, spec) = tiny_parsed();
-        file.metadata.insert(
-            "gemma4.rope.dimension_count".into(),
-            MetaValue::U32(spec.max_head_dim() as u32 / 2),
-        );
-        let err = check_supported(&file, &spec).unwrap_err().to_string();
-        assert!(err.contains("dimension_count"), "{err}");
-        assert!(err.contains("rope_freqs.weight"), "{err}");
-        // The same key equal to the head width is a full rotation: accepted.
-        file.metadata.insert(
-            "gemma4.rope.dimension_count".into(),
-            MetaValue::U32(spec.max_head_dim() as u32),
-        );
-        check_supported(&file, &spec).unwrap();
-    }
-
-    #[test]
-    fn a_rope_key_outside_the_two_implemented_regimes_is_refused() {
-        // gemma3's local base arrives under a different spelling from
-        // gemma4's `freq_base_swa`, and nothing in the forward pass would
-        // read it.
-        let (_, mut file, spec) = tiny_parsed();
-        file.metadata.insert(
-            "gemma4.rope.local_freq_base".into(),
-            MetaValue::F32(10000.0),
-        );
-        let err = check_supported(&file, &spec).unwrap_err().to_string();
-        assert!(err.contains("gemma4.rope.local_freq_base"), "{err}");
-        assert!(err.contains("two frequency bases"), "{err}");
-    }
-
-    #[test]
     fn unknown_tensor_families_are_refused_and_collapsed_by_layer() {
-        let (_, mut file, spec) = tiny_parsed();
-        for i in 0..spec.config.n_layers {
-            file.tensors
-                .push(extra_tensor(&format!("blk.{i}.attn_v_norm.weight")));
-        }
-        let err = check_supported(&file, &spec).unwrap_err().to_string();
+        let spec = TinySpec::default();
+        let extra: Vec<String> = (0..spec.n_layers)
+            .map(|i| format!("model.layers.{i}.self_attn.v_norm.weight"))
+            .collect();
+        let refs: Vec<&str> = extra.iter().map(String::as_str).collect();
+        let err = verdict(&checkpoint_with(&spec, &refs, &[], |_| true))
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("1 tensor family"), "{err}");
-        assert!(err.contains("blk.*.attn_v_norm.weight"), "{err}");
+        assert!(
+            err.contains("model.layers.*.self_attn.v_norm.weight"),
+            "{err}"
+        );
     }
 
     /// Prefill the standard probe prompt against a spec, for the tests below
     /// that compare one architecture switch against its absence.
     fn logits_for(spec: &TinySpec) -> Vec<Logits> {
-        let image = build_tiny_model(spec);
-        let file = crate::gguf::parse(&image).unwrap();
-        let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+        let image = checkpoint_of(spec);
+        let file = crate::checkpoint::parse(&image).unwrap();
+        let mut model = CpuModel::from_checkpoint(&file).unwrap();
         model.prefill_all(&[1, 5, 9, 13, 3, 8, 21, 2]).unwrap()
     }
 
@@ -3141,20 +2372,6 @@ mod tests {
         assert!(moved > 0, "the cap changed no logit at all");
     }
 
-    #[test]
-    fn a_nonpositive_logit_softcap_is_a_load_error() {
-        // Zero divides every logit by zero; a negative cap reflects them
-        // through the origin. Both stay finite enough to read as a model.
-        for cap in [0.0f32, -30.0] {
-            let (_, mut file, _) = tiny_parsed();
-            file.metadata
-                .insert("gemma4.final_logit_softcapping".into(), MetaValue::F32(cap));
-            let err = ModelSpec::from_gguf(&file).unwrap_err().to_string();
-            assert!(err.contains("final_logit_softcapping"), "{err}");
-            assert!(err.contains("positive"), "{err}");
-        }
-    }
-
     /// Layer-0 residual output at each position, with and without per-layer
     /// input embeddings, from images whose every other tensor is identical.
     ///
@@ -3166,9 +2383,9 @@ mod tests {
     /// test below assert the whole chain rather than that something moved.
     fn layer0_with_and_without_ple(pd: usize, tokens: &[Token]) -> (Vec<Vec<f32>>, Vec<Vec<f32>>) {
         let capture = |spec: &TinySpec| -> Vec<Vec<f32>> {
-            let image = build_tiny_model(spec);
-            let file = crate::gguf::parse(&image).unwrap();
-            let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+            let image = checkpoint_of(spec);
+            let file = crate::checkpoint::parse(&image).unwrap();
+            let mut model = CpuModel::from_checkpoint(&file).unwrap();
             let calls: TapCalls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
             model.set_tap(Box::new(CollectingTap(calls.clone())));
             model.prefill_all(tokens).unwrap();
@@ -3200,17 +2417,14 @@ mod tests {
         let tokens = [7u32, 19, 4];
         let (plain, with) = layer0_with_and_without_ple(pd, &tokens);
 
-        let image = build_tiny_model(&TinySpec {
+        let image = checkpoint_of(&TinySpec {
             ple_dim: Some(pd),
             ..TinySpec::default()
         });
-        let file = crate::gguf::parse(&image).unwrap();
-        let spec = ModelSpec::from_gguf(&file).unwrap();
+        let file = crate::checkpoint::parse(&image).unwrap();
+        let spec = ModelSpec::from_checkpoint(&file.config).unwrap();
         let c = spec.config;
-        let t = |name: &str| {
-            let info = file.tensors.iter().find(|t| t.name == name).unwrap();
-            load_tensor(&file, &image, info).unwrap()
-        };
+        let t = |name: &str| tensor_of(&file, name);
         let (embed, table, model_proj, proj_norm) = (
             t("token_embd.weight"),
             t("per_layer_token_embd.weight"),
@@ -3317,35 +2531,38 @@ mod tests {
         // identical weights but different rows must therefore contribute
         // differently, which is what a shared row would collapse.
         let pd = 4;
-        let image = build_tiny_model(&TinySpec {
+        let image = checkpoint_of(&TinySpec {
             ple_dim: Some(pd),
             ..TinySpec::default()
         });
-        let file = crate::gguf::parse(&image).unwrap();
-        let spec = ModelSpec::from_gguf(&file).unwrap();
-        let info = file
-            .tensors
-            .iter()
-            .find(|t| t.name == "per_layer_token_embd.weight")
-            .unwrap();
-        let table = load_tensor(&file, &image, info).unwrap();
+        let file = crate::checkpoint::parse(&image).unwrap();
+        let spec = ModelSpec::from_checkpoint(&file.config).unwrap();
+        let table = tensor_of(&file, "per_layer_token_embd.weight");
         let packed = spec.config.n_layers * pd;
         assert_eq!(table.len(), spec.config.vocab_size * packed);
         // Perturb layer 1's row and nothing else. Swapping rows 0 and 1 would
         // not do: it changes what layer 0 reads too, so a backend handing
         // every layer row 0 would still move its output and pass.
         let token = 7usize;
-        let mut edited = image.clone();
-        let base = info.offset as usize + file.data_offset as usize + (token * packed + pd) * 4;
-        for j in 0..pd {
-            let at = base + j * 4;
-            let was = f32::from_le_bytes(edited[at..at + 4].try_into().unwrap());
-            edited[at..at + 4].copy_from_slice(&(was + 0.5).to_le_bytes());
-        }
+        let table_name = crate::checkpoint::hf_tensor_name("per_layer_token_embd.weight").unwrap();
+        let edited = checkpoint_edited(
+            &TinySpec {
+                ple_dim: Some(pd),
+                ..TinySpec::default()
+            },
+            |name, values| {
+                if name == table_name {
+                    // Layer 1's slice of this token's packed row.
+                    for j in 0..pd {
+                        values[token * packed + pd + j] += 0.5;
+                    }
+                }
+            },
+        );
 
-        let run = |bytes: &[u8]| {
-            let f = crate::gguf::parse(bytes).unwrap();
-            let mut m = CpuModel::from_gguf(&f, bytes).unwrap();
+        let run = |files: &crate::checkpoint::CheckpointFiles| {
+            let ck = crate::checkpoint::parse(files).unwrap();
+            let mut m = CpuModel::from_checkpoint(&ck).unwrap();
             m.prefill_all(&[token as Token]).unwrap()
         };
         let before = run(&image);
@@ -3415,9 +2632,9 @@ mod tests {
             ..TinySpec::default()
         };
         let capture = |spec: &TinySpec| {
-            let image = build_tiny_model(spec);
-            let file = crate::gguf::parse(&image).unwrap();
-            let mut model = CpuModel::from_gguf(&file, &image).unwrap();
+            let image = checkpoint_of(spec);
+            let file = crate::checkpoint::parse(&image).unwrap();
+            let mut model = CpuModel::from_checkpoint(&file).unwrap();
             let calls: TapCalls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
             model.set_tap(Box::new(CollectingTap(calls.clone())));
             model.prefill_all(&[1, 5]).unwrap();
@@ -3449,42 +2666,13 @@ mod tests {
 
     #[test]
     fn inert_tensors_do_not_trip_the_guard() {
-        let (_, mut file, spec) = tiny_parsed();
-        file.tensors.push(extra_tensor("rope_freqs.weight"));
-        check_supported(&file, &spec).unwrap();
-    }
-
-    #[test]
-    fn numeric_metadata_with_no_tensor_to_notice_is_refused() {
-        // A pure-metadata feature leaves no tensor for the unconsumed-tensor
-        // backstop to catch, so a Gemma-2 checkpoint's softcapping was
-        // ignored and every logit came out wrong with nothing to notice.
-        //
-        // `final_logit_softcapping` has since been implemented and is absent
-        // from this list on purpose; see the softcap tests below. The others
-        // stay refused, and `attn_logit_softcapping` in particular must:
-        // it is the sibling key that caps attention scores inside the layer,
-        // Gemma 2 publishes both, and a substring relaxation for one would
-        // have silently accepted the other.
-        for (key, value) in [
-            ("gemma4.attn_logit_softcapping", 50.0f32),
-            ("gemma4.attention.scale", 0.0625),
-            ("gemma4.logit_scale", 1.5),
-        ] {
-            let (_, mut file, spec) = tiny_parsed();
-            file.metadata.insert(key.into(), MetaValue::F32(value));
-            let err = match check_supported(&file, &spec) {
-                Ok(()) => panic!("{key} must not load"),
-                Err(e) => e.to_string(),
-            };
-            assert!(err.contains(key), "{err}");
-        }
-        // The guard names the numeric keys instead of inverting the rope
-        // check into an allowlist, so a descriptive key still loads.
-        let (_, mut file, spec) = tiny_parsed();
-        file.metadata
-            .insert("gemma4.vocab_size".into(), MetaValue::U32(288));
-        check_supported(&file, &spec).unwrap();
+        // The optional per-layer scale is consumed when present and absent-safe
+        // when not, so a checkpoint carrying it must still pass the guard.
+        verdict(&checkpoint_of(&TinySpec {
+            layer_output_scale: Some(0.5),
+            ..TinySpec::default()
+        }))
+        .unwrap();
     }
 
     #[test]
@@ -3495,31 +2683,33 @@ mod tests {
         // through the wrong rows and returns finite, wrong logits (a norm
         // tensor) or slices past the end and panics mid-forward (a per-head
         // norm). ffn_up is absent because its width already had a check.
-        for (name, elements, want) in [
-            ("blk.0.attn_norm.weight", 8, 16),
-            ("blk.1.post_ffw_norm.weight", 4, 16),
-            ("blk.1.attn_q_norm.weight", 4, 8),
-            ("blk.0.attn_k_norm.weight", 2, 8),
-            ("blk.0.attn_q.weight", 128, 256),
-            ("blk.0.attn_k.weight", 64, 128),
-            ("blk.1.attn_v.weight", 64, 128),
-            ("blk.0.attn_output.weight", 128, 256),
-            ("blk.0.ffn_gate.weight", 256, 512),
-            ("blk.0.ffn_down.weight", 256, 512),
-            ("blk.1.ffn_norm.weight", 8, 16),
-            ("blk.1.post_attention_norm.weight", 8, 16),
-            ("output_norm.weight", 8, 16),
+        // Named in the llama.cpp spelling and translated through the one
+        // shared table, so the case list stays readable beside the loader.
+        for (name, wrong, want) in [
+            ("blk.0.attn_norm.weight", vec![8], vec![16]),
+            ("blk.1.post_ffw_norm.weight", vec![4], vec![16]),
+            ("blk.1.attn_q_norm.weight", vec![4], vec![8]),
+            ("blk.0.attn_k_norm.weight", vec![2], vec![8]),
+            ("blk.0.attn_q.weight", vec![8, 16], vec![16, 16]),
+            ("blk.0.attn_k.weight", vec![4, 16], vec![8, 16]),
+            ("blk.1.attn_v.weight", vec![4, 16], vec![8, 16]),
+            ("blk.0.attn_output.weight", vec![16, 8], vec![16, 16]),
+            ("blk.0.ffn_gate.weight", vec![16, 16], vec![32, 16]),
+            ("blk.0.ffn_down.weight", vec![16, 16], vec![16, 32]),
+            ("blk.1.ffn_norm.weight", vec![8], vec![16]),
+            ("blk.1.post_attention_norm.weight", vec![8], vec![16]),
+            ("output_norm.weight", vec![8], vec![16]),
         ] {
-            let (image, mut file, _) = tiny_parsed();
-            let info = file.tensors.iter_mut().find(|t| t.name == name).unwrap();
-            info.dims = vec![elements as u64];
-            let err = match CpuModel::from_gguf(&file, &image) {
-                Ok(_) => panic!("{name} at {elements} elements must not load"),
-                Err(e) => e.to_string(),
+            let hf = crate::checkpoint::hf_tensor_name(name).unwrap();
+            let files = checkpoint_with(&TinySpec::default(), &[], &[(&hf, &wrong)], |_| true);
+            let ck = crate::checkpoint::parse(&files).unwrap();
+            let err = match CpuModel::from_checkpoint(&ck) {
+                Ok(_) => panic!("{hf} at shape {wrong:?} must not load"),
+                Err(e) => format!("{e:#}"),
             };
-            assert!(err.contains(name), "{err}");
-            assert!(err.contains(&elements.to_string()), "{err}");
-            assert!(err.contains(&want.to_string()), "{err}");
+            assert!(err.contains(&hf), "{err}");
+            assert!(err.contains(&format!("{wrong:?}")), "{err}");
+            assert!(err.contains(&format!("{want:?}")), "{err}");
         }
     }
 
@@ -3538,220 +2728,32 @@ mod tests {
             ffn_dim: 40,
             ..TinySpec::default()
         };
-        let image = build_tiny_model(&spec);
-        let file = crate::gguf::parse(&image).unwrap();
-        let mut m = CpuModel::from_gguf(&file, &image).unwrap();
+        let mut m = model_of(&spec);
         let logits = m.prefill(&[1, 5, 9]).unwrap();
         assert_eq!(logits.0.len(), spec.vocab_size);
         assert!(logits.0.iter().all(|v| v.is_finite()));
     }
 
-    /// The three shipped Gemma 4 schedules, as `gguf-info` reports them:
-    /// (name, per-layer bool array, the stride it is equivalent to).
-    /// `false` marks a global-attention layer.
-    fn shipped_schedules() -> Vec<(&'static str, Vec<bool>, usize)> {
-        let repeat = |period: usize, layers: usize| -> Vec<bool> {
-            (0..layers)
-                .map(|i| !(i + 1).is_multiple_of(period))
-                .collect()
-        };
-        vec![
-            ("E2B", repeat(5, 35), 5),
-            ("E4B", repeat(6, 42), 6),
-            ("mtp", repeat(4, 4), 4),
-        ]
-    }
-
-    #[test]
-    fn a_bool_attention_schedule_decodes_to_the_stride_it_encodes() {
-        // llama.cpp writes Gemma 4's schedule as a per-layer bool array where
-        // this backend models a u32 stride. The two are the same schedule in
-        // different encodings, so the array must decode rather than be
-        // refused -- but only the periodic case, which is what ships.
-        for (name, pattern, want_stride) in shipped_schedules() {
-            let (_, mut file, _) = tiny_parsed();
-            file.metadata.insert(
-                "gemma4.attention.sliding_window_pattern".into(),
-                MetaValue::ArrBool(pattern.clone()),
-            );
-            let stride = Config::schedule_stride(&file, "gemma4")
-                .unwrap_or_else(|e| panic!("{name} schedule must decode: {e}"));
-            assert_eq!(stride, want_stride, "{name}");
-            // The stride is only correct if it reproduces the array it came
-            // from; asserting the number alone would pass on an off-by-one.
-            for (i, &sliding) in pattern.iter().enumerate() {
-                let global = (i + 1).is_multiple_of(stride);
-                assert_eq!(!sliding, global, "{name} layer {i}");
-            }
-        }
-    }
-
-    #[test]
-    fn a_bool_schedule_that_is_not_a_stride_is_refused_naming_the_key() {
-        // Deriving a period from the first global layer and then not checking
-        // the rest would silently mis-schedule attention for every later
-        // layer, which reads as a fluent but context-blind model rather than
-        // as an error. Both shapes below share a first-false index with a
-        // schedule that is periodic.
-        for pattern in [
-            vec![true, true, false, true, false, true], // period drifts
-            vec![true, true, true, true],               // no global layer at all
-        ] {
-            let (_, mut file, _) = tiny_parsed();
-            file.metadata.insert(
-                "gemma4.attention.sliding_window_pattern".into(),
-                MetaValue::ArrBool(pattern.clone()),
-            );
-            let err = match Config::schedule_stride(&file, "gemma4") {
-                Ok(stride) => panic!("{pattern:?} must not decode, got stride {stride}"),
-                Err(e) => e.to_string(),
-            };
-            assert!(err.contains("sliding_window_pattern"), "{err}");
-            // Without this, the test passes against the unfixed loader, which
-            // refuses every bool array with a bare type error that happens to
-            // name the key. The refusal has to be about periodicity.
-            assert!(
-                !err.contains("expected u32"),
-                "refused as a type error: {err}"
-            );
-            assert!(err.contains("periodic"), "{err}");
-        }
-    }
-
-    #[test]
-    fn a_uniform_per_layer_feed_forward_array_decodes_to_that_width() {
-        // E4B writes one width as a scalar; E2B writes an array. Both reach
-        // the same per-layer vector, so nothing downstream learns which
-        // spelling the converter chose.
-        let (_, mut file, spec) = tiny_parsed();
-        let width = spec.layers[0].ffn_dim;
-        let n = spec.config.n_layers;
-        file.metadata.insert(
-            "gemma4.feed_forward_length".into(),
-            MetaValue::ArrI32(vec![width as i32; n]),
-        );
-        let reparsed = ModelSpec::from_gguf(&file).unwrap();
-        assert!(
-            reparsed.layers.iter().all(|l| l.ffn_dim == width),
-            "{:?}",
-            reparsed.layers
-        );
-    }
-
-    #[test]
-    fn a_per_layer_feed_forward_array_decodes_to_one_width_per_layer() {
-        // E2B's feed-forward width varies by layer: 6144 for layers 0..=14 and
-        // 12288 for 15..=34. The cause is use_double_wide_mlp, which doubles
-        // the MLP over the KV-shared tail (num_hidden_layers -
-        // num_kv_shared_layers = 35 - 20 = 15). E4B sets the flag false and
-        // carries one width despite sharing KV over the same region, so the
-        // widening follows the flag and not the tail. Neither is a MatFormer
-        // slice; that word appears nowhere in the architecture reference.
-        // See schemas/gemma4_facts.json and docs/models/gemma-4.md.
-        let (_, mut file, spec) = tiny_parsed();
-        let narrow = spec.layers[0].ffn_dim;
-        let wide = narrow * 2;
-        assert_eq!(spec.config.n_layers, 2, "fixture shape assumed below");
-        file.metadata.insert(
-            "gemma4.feed_forward_length".into(),
-            MetaValue::ArrI32(vec![narrow as i32, wide as i32]),
-        );
-        let reparsed = ModelSpec::from_gguf(&file).unwrap();
-        assert_eq!(reparsed.layers[0].ffn_dim, narrow, "{:?}", reparsed.layers);
-        assert_eq!(reparsed.layers[1].ffn_dim, wide, "{:?}", reparsed.layers);
-        assert_eq!(reparsed.max_ffn_dim(), wide);
-    }
-
-    #[test]
-    fn a_feed_forward_array_of_the_wrong_length_is_refused_naming_both_counts() {
-        // An array is one entry per layer by definition. A shorter or longer
-        // one describes a different model, and indexing it by layer would
-        // either panic or silently read a neighbour's width.
-        let (_, mut file, spec) = tiny_parsed();
-        let width = spec.layers[0].ffn_dim as i32;
-        file.metadata.insert(
-            "gemma4.feed_forward_length".into(),
-            MetaValue::ArrI32(vec![width; spec.config.n_layers + 1]),
-        );
-        let err = ModelSpec::from_gguf(&file).unwrap_err().to_string();
-        assert!(err.contains("feed_forward_length"), "{err}");
-        assert!(err.contains("3") && err.contains("2"), "{err}");
-    }
-
     #[test]
     fn a_declared_width_that_the_weights_contradict_is_refused_naming_the_layer() {
         // Per-layer widths are supported, so the guard is no longer a refusal
-        // of the feature but a check that metadata and tensors agree. The
-        // forward pass slices by the metadata, so a disagreement reads the
+        // of the feature but a check that config and tensors agree. The
+        // forward pass slices by the config, so a disagreement reads the
         // wrong rows.
-        let (_, mut file, spec) = tiny_parsed();
-        let t = file
-            .tensors
-            .iter_mut()
-            .find(|t| t.name == "blk.1.ffn_up.weight")
-            .unwrap();
-        *t.dims.last_mut().unwrap() += 8;
-        let err = check_supported(&file, &spec).unwrap_err().to_string();
-        assert!(err.contains("blk.1.ffn_up.weight"), "{err}");
+        let spec = TinySpec::default();
+        let files = checkpoint_with(
+            &spec,
+            &[],
+            &[(
+                "model.layers.1.mlp.up_proj.weight",
+                &[spec.ffn_dim - 8, spec.embed_dim],
+            )],
+            |_| true,
+        );
+        let err = verdict(&files).unwrap_err().to_string();
+        assert!(err.contains("model.layers.1.mlp.up_proj.weight"), "{err}");
         assert!(err.contains("feed-forward width"), "{err}");
         assert!(err.contains("layer 1"), "{err}");
-    }
-
-    #[test]
-    fn a_zero_load_bearing_dimension_is_a_load_error_not_a_panic() {
-        // attention.key_length = 0 clears the only dimension check there was
-        // (even, for RoPE) and then reaches `chunks_mut(0)`, aborting the
-        // process on the first token; the others divide or stride by zero
-        // the same way. Hostile metadata owes a positioned error naming the
-        // key, not exit 101.
-        for key in [
-            "embedding_length",
-            "block_count",
-            "attention.head_count",
-            "attention.key_length",
-            "feed_forward_length",
-        ] {
-            let (_, mut file, _) = tiny_parsed();
-            file.metadata
-                .insert(format!("gemma4.{key}"), MetaValue::U32(0));
-            // Through ModelSpec, which carries the whole declared shape: head
-            // width and feed-forward width are per-layer axes now, validated
-            // there rather than on the model-wide Config.
-            let err = match ModelSpec::from_gguf(&file) {
-                Ok(_) => panic!("gemma4.{key} = 0 must not parse"),
-                Err(e) => e.to_string(),
-            };
-            assert!(err.contains(key), "{err}");
-        }
-    }
-
-    #[test]
-    fn a_zero_sliding_window_or_pattern_is_a_load_error() {
-        // Pattern 0 makes every layer sliding-window in the schedule while
-        // `kv::interleaved_layers` asserts a positive period and aborts, so
-        // the loader, the budget calculator, and gguf-info disagreed about
-        // one file. Window 0 reads as disabled windowing across the
-        // ecosystem (the numpy reference raises on it) but yields an empty
-        // attention span here: a context-blind model that still reads as
-        // fluent.
-        //
-        // Through `ModelSpec::from_gguf` rather than `Config::from_gguf`,
-        // because the schedule is no longer a `Config` field: the stride is a
-        // GGUF spelling that the spec resolves into per-layer kinds. The
-        // window is still refused by `Config`, and both errors surface here.
-        for key in [
-            "attention.sliding_window",
-            "attention.sliding_window_pattern",
-        ] {
-            let (_, mut file, _) = tiny_parsed();
-            file.metadata
-                .insert(format!("gemma4.{key}"), MetaValue::U32(0));
-            let err = match ModelSpec::from_gguf(&file) {
-                Ok(_) => panic!("gemma4.{key} = 0 must not parse"),
-                Err(e) => e.to_string(),
-            };
-            assert!(err.contains(key), "{err}");
-        }
     }
 
     /// The checkpoint loader folds Gemma's runtime `+1` into every RMSNorm
@@ -3816,13 +2818,6 @@ mod tests {
             stored("model.embed_tokens.weight"),
             "the embedding table was shifted"
         );
-    }
-
-    #[test]
-    fn tensor_family_collapses_only_numeric_layer_indices() {
-        assert_eq!(tensor_family("blk.17.ffn_up.weight"), "blk.*.ffn_up.weight");
-        assert_eq!(tensor_family("token_embd.weight"), "token_embd.weight");
-        assert_eq!(tensor_family("blk.x.weight"), "blk.x.weight");
     }
 
     #[test]
@@ -3907,9 +2902,7 @@ mod tests {
             context_length: 1 << 30,
             ..TinySpec::default()
         };
-        let image = build_tiny_model(&spec);
-        let file = crate::gguf::parse(&image).unwrap();
-        let mut m = CpuModel::from_gguf(&file, &image).unwrap();
+        let mut m = model_of(&spec);
         let mut header = Vec::new();
         header.extend((m.kv.len() as u64).to_le_bytes());
         header.extend((spec.context_length as u64).to_le_bytes());
@@ -3943,9 +2936,9 @@ mod tests {
         // Every prefix of a valid snapshot is scanned, and the assertion is
         // not that a counter reads zero but that the model computes exactly
         // what a never-loaded one computes.
-        let image = build_tiny_model(&TinySpec::default());
-        let file = crate::gguf::parse(&image).unwrap();
-        let model = || CpuModel::from_gguf(&file, &image).unwrap();
+        let image = checkpoint_of(&TinySpec::default());
+        let file = crate::checkpoint::parse(&image).unwrap();
+        let model = || CpuModel::from_checkpoint(&file).unwrap();
 
         let mut source = model();
         source.prefill(&[1, 5, 9]).unwrap();
@@ -4085,10 +3078,8 @@ mod tests {
             sliding_window: 2,
             ..TinySpec::default()
         };
-        let image = build_tiny_model(&spec);
-        let file = crate::gguf::parse(&image).unwrap();
-        let mut a = CpuModel::from_gguf(&file, &image).unwrap();
-        let mut b = CpuModel::from_gguf(&file, &image).unwrap();
+        let mut a = model_of(&spec);
+        let mut b = model_of(&spec);
         // Window 2 and two layers: information from position 0 can reach at
         // most position 2 (one hop per layer). Position 5 must be blind to it.
         let la = a.prefill_all(&[3, 8, 8, 8, 8, 8]).unwrap();

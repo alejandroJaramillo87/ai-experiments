@@ -18,9 +18,9 @@ that run's misunderstanding. Every fixture is generated from a declarative `Mode
 spec. No test asserts against a recorded transcript.
 
 **One cross-check shares no author with the code under test.**
-`test_reader_agrees_with_reference_parse_gguf` parses `rust-harness/fixtures/tiny-gemma4.gguf`
-— written by Rust (`runtime/src/synth.rs::GgufWriter`) — and compares against
-`rust-harness/fixtures/reference_logits.py::parse_gguf`, an independent pure-Python reader.
+`test_reader_agrees_with_reference_parse_gguf` parses `rust-harness/fixtures/python-probe.gguf`
+— written by the upstream `gguf` package through `interp/probes/export.py` — and compares
+against `tests/models/gguf_reference_reader.py::parse_gguf`, an independent pure-Python reader.
 This is the check that keeps the hand-rolled GGUF reader honest, per the
 independent-verification principle in `.styles/RUST_STYLE.md`. It must **run**, never skip: if
 it skips, the committed fixture is missing and the suite has no independent check at all.
@@ -86,7 +86,7 @@ unrelated mismatch.
 | `ModelSpec` → `build_model_dir` | `test_gemma4_header_transcript.py` | tensor inventory, dtype tally, double-wide MLP boundary, head-dim split, and zero-dimensional companions are all read from the file rather than assumed |
 | `ModelSpec(prefix="model")` | `d3`, `d4` | a naming convention the script does not expect is reported, not silently skipped |
 | `GgufSpec` → `write_gguf` | `test_gguf_header_transcript.py` | bool arrays, BF16 tensors, and version 2 are flagged as things `rust-harness` refuses |
-| `rust-harness/fixtures/tiny-gemma4.gguf` | keystone cross-check | the hand-rolled GGUF reader agrees with an independent reader on a file neither wrote |
+| `rust-harness/fixtures/python-probe.gguf` | keystone cross-check | the hand-rolled GGUF reader agrees with an independent reader on a file neither wrote |
 
 `specbuild.py` hand-rolls its GGUF writer because no in-tree writer produces the cases under
 test: `runtime/src/synth.rs::GgufWriter` emits F32 tensors and array element types 5/6/8 only,

@@ -477,7 +477,7 @@ sixteen, including one critical and five high.
   `embed_dim / n_heads`, so the two candidate QK scales coincide, and
   `n_kv_heads` is 1, so blocked and interleaved GQA mappings agree.
 
-  Closed by the second fixture, `fixtures/tiny-gemma4-e4b.gguf`, whose
+  Closed by the second fixture, `fixtures/tiny-gemma4-e4b/`, whose
   geometry has neither property in either attention regime. Both
   conventions are now separable, and
   `the_e4b_fixture_geometry_separates_the_ambiguous_conventions`
