@@ -70,6 +70,12 @@ scripts/optimizations/copy_to_hugetlbfs
 !rust-harness/fixtures/*.gguf
 !rust-harness/fixtures/**/*.safetensors
 
+# Tier E ladder references: real-checkpoint captures at a 262144-wide vocab run
+# to tens of megabytes per size, so they are regenerated per run rather than
+# committed. The commands that produce them are in the directory's README,
+# which is tracked.
+/rust-harness/fixtures/reference/e4b/
+
 # Claude Code per-session runtime state. The lock records a live sessionId, pid,
 # and acquisition time; it is regenerated every session and must never be
 # committed. settings.local.json is per-checkout permission state, accreted by

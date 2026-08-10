@@ -50,33 +50,49 @@ Testing is test-first and tiered:
 - **Tier 1 — unit tests**: pure logic, no model, no GPU. Run with `cargo test`.
 - **Tier 2 — mock integration tests**: the full harness, scheduler, grammar, and
   KV-bookkeeping stack against a scripted `MockModel`. Run with `cargo test`.
-- **Tier 3 — host acceptance tests**: real E4B forward pass, logit matching against
-  a Hugging Face reference, and latency measurement. Marked `#[ignore]`, require
-  the `cuda` feature, and run only on the RTX 5090 workstation.
+- **Tier 3 — the correctness ladder** (`runtime/src/ladder.rs`): the real
+  checkpoint against `transformers`, on the workstation, under its own make
+  target. It is not part of `make quality`.
 
 ## Output correctness
 
 Machinery tests (Tiers 1 and 2) cannot detect a numerically wrong forward
-pass: a bad RoPE base or quant kernel still emits fluent text. Output quality
-is guarded by three Tier 3 layers, ordered by diagnostic precision, each
-catching what the previous one misses:
+pass: a bad RoPE base or quant kernel still emits fluent text. Nor can a
+golden test whose oracle we wrote ourselves — `fixtures/reference_logits.py`
+was transcribed from the same architecture documents by the same reader as
+`cpu.rs`, and two implementations of one belief agree perfectly. That gate
+stayed green for nine work packages while the forward pass produced noise.
 
-1. **Logits match** (`runtime/tests/cuda_acceptance.rs`): one forward pass on
-   a fixed prompt against a Hugging Face reference dump, within quantization
-   tolerance. Pinpoints raw numeric divergence at a single position.
-2. **Perplexity** (`runtime/src/eval.rs`, `runtime/tests/eval_acceptance.rs`):
-   chunked negative log-likelihood over a committed WikiText-2 sample, within
-   1% of a recorded llama.cpp `llama-perplexity` reference. The regression
-   scalar for every engine change; catches diffuse degradation.
-3. **Greedy-decode goldens** (`runtime/tests/eval_acceptance.rs`):
-   temperature-0 continuations of fixed prompts byte-match committed token
-   sequences. Catches decode-loop and KV bugs that stay inside per-position
-   tolerance but flip an argmax.
+Output correctness is therefore measured against `transformers`, in five
+rungs, each one only meaningful once the one above it passes:
 
-Current status: the perplexity math is implemented and unit-tested against
-hand-calculated values on the mock; the three real-model layers are ignored
-tests awaiting workstation fixtures. No output-quality claim is made until
-they pass.
+| Rung | Measures | Reference |
+|------|----------|-----------|
+| L0 | token IDs for the rendered prompt | `tok.encode(text, add_special_tokens=False)` |
+| L1 | per-layer residual stream and the stages before it | forward hooks on the decoder layers |
+| L2 | the final-position distribution | `model(...).logits` |
+| L3 | perplexity over a token window | the reference's per-token NLL |
+| L4 | greedy continuations | `model.generate(do_sample=False)` |
+
+L2 is KL divergence over the full distribution rather than a max-abs
+tolerance or argmax agreement: KL in nats is scale-free, which is what a
+262144-wide softcapped vocabulary needs, and a monotone error such as a
+missing logit softcap cannot move an argmax at all.
+
+The ladder short-circuits at the first failing rung and prints all five rows
+regardless. A rung with no reference artifact reports `skipped` — missing
+evidence, not contrary evidence — and does not stop the climb.
+
+It runs against two oracles. Tier T is a tiny Gemma 4 that `transformers`
+itself constructs, committed whole, fast enough for `make quality`. Tier E is
+the real checkpoint on the workstation. See
+[fixtures/reference/README.md](fixtures/reference/README.md) for the
+artifacts and how they are generated.
+
+Current status: the rung bodies and the machinery are implemented and
+unit-tested against a scripted `MockModel`; the reference artifacts are
+outstanding, so no rung has yet run against a real oracle and no
+output-quality claim is made.
 
 ### What the committed goldens are worth
 

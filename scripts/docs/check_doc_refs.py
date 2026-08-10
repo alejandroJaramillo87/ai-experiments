@@ -106,7 +106,12 @@ METACHARS = set("*<>${}|()[]!?")
 # asserting that a path does *not* exist, a deliberate example of something that
 # must never be added, and an artifact created at run time rather than committed.
 # A path that is merely planned does not qualify unless the document is a roadmap
-# declaring it as scope.
+# declaring it as scope. A fourth kind was added when the Tier 3 stubs were
+# deleted: a dated campaign ledger naming a file that has since been removed,
+# where correcting the name would falsify the record of what was scoped on the
+# day. That is the same argument check_retired_names.py records for exempting
+# the same document, and it is entered here per reference rather than per
+# document so the ledger's remaining paths stay checked.
 KNOWN_ABSENT = {
     # Asserts the absence: "The workspace carries no ... .cargo/config.toml".
     (".styles/RUST_STYLE.md", ".cargo/config.toml"),
@@ -131,6 +136,12 @@ KNOWN_ABSENT = {
     # Generated on the workstation from the reference tokenizer; the sandbox
     # cannot reach it, which is why the test it feeds is #[ignore]d.
     ("docs/rust-harness/runtime-design.md", "fixtures/template_goldens.json"),
+    # Scoped by a dated QA campaign against the file as it stood; the Tier 3
+    # stubs were deleted in P9.7 and replaced by runtime/src/ladder.rs.
+    (
+        "docs/verification/rust-harness-qa.md",
+        "rust-harness/runtime/tests/eval_acceptance.rs",
+    ),
     # The postmortem command creates this log if it is absent.
     (".claude/commands/postmortem.md", "docs/research-log.md"),
     (".opencode/commands/postmortem.md", "docs/research-log.md"),

@@ -12,12 +12,15 @@ campaign is the first contact with real hardware and real weights.
 
 Scope is CPU only. Not covered, and why:
 
-- The cuda Tier 3 acceptance tests (`runtime/tests/cuda_acceptance.rs`,
-  `runtime/tests/eval_acceptance.rs`: logits versus the Hugging Face
-  reference, WikiText-2 perplexity, greedy-decode goldens) are
-  feature-gated stubs awaiting the cuda backend (roadmap phase A). Their
-  fixture-generation commands are documented in the test files and enter
-  the runbook with that phase.
+- The Tier 3 correctness ladder (`rust-harness/runtime/src/ladder.rs`: token
+  IDs, residual stream, distribution, perplexity, greedy continuations, each
+  against `transformers`) has its rung bodies implemented and unit-tested
+  against a scripted mock, but no reference artifacts yet. It enters the
+  runbook when they exist; the commands that generate them are in
+  `rust-harness/fixtures/reference/README.md`. It replaces two feature-gated
+  `unimplemented!()` stubs that were never filled in and whose fixture
+  designs compared the harness against a quantized GGUF and against its own
+  first run.
 - There is no chat-template token-stream golden test. An earlier `#[ignore]`d
   stub was removed with the Gemma 3 markers it was written against, and no
   replacement was added; writing one needs both code work and a
