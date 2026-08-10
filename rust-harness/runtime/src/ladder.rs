@@ -595,6 +595,50 @@ pub struct Activations {
     pub layers: Vec<Vec<f32>>,
 }
 
+/// Our side of L1: prefill `tokens` and collect the rows a capture recorded.
+///
+/// Specific to `CpuModel` because the tap is -- the `Model` trait has no
+/// notion of an intermediate row -- and shared by the `ladder` binary and the
+/// Tier T test rather than written once in each. Two copies of "drive the tap
+/// and collect its rows" is two places for the stage order to drift from
+/// `PRELUDE_STAGES`, and the whole rung rests on both sides meaning the same
+/// thing by a stage name.
+///
+/// Only the stages `want` recorded are collected. Asking the tap for a stage
+/// the reference never captured would raise an error inside the rung, where it
+/// would read as a divergence rather than as a capture that did not run.
+pub fn capture_ours(
+    model: &mut crate::model::cpu::CpuModel,
+    tokens: &[Token],
+    want: &Activations,
+) -> Result<Activations> {
+    use crate::model::cpu::LastRowTap;
+
+    let n_layers = model.config().n_layers;
+    let tap = LastRowTap::new((0..n_layers).collect()).capturing_prelude();
+    model.set_tap(Box::new(tap.clone()));
+    model.truncate(0)?;
+    model
+        .prefill(tokens)
+        .context("prefill the reference tokens")?;
+
+    let mut stages = Vec::new();
+    for (name, _) in &want.stages {
+        let row = tap
+            .stage(name)
+            .with_context(|| format!("{name}: the tap captured no row"))?;
+        stages.push((name.clone(), row));
+    }
+    let mut layers = Vec::with_capacity(n_layers);
+    for i in 0..n_layers {
+        layers.push(
+            tap.row(i)
+                .with_context(|| format!("layer {i}: the tap captured no row"))?,
+        );
+    }
+    Ok(Activations { stages, layers })
+}
+
 /// L1: the residual stream and the stages feeding it.
 ///
 /// First divergence, not worst. Once row k is wrong every later row is wrong

@@ -19,8 +19,7 @@ use std::process::ExitCode;
 use anyhow::{Context, Result};
 
 use runtime::ladder::{self, Rung, RungResult, Size, Tolerance};
-use runtime::model::cpu::{CpuModel, LastRowTap, PRELUDE_STAGES};
-use runtime::model::Model;
+use runtime::model::cpu::{CpuModel, PRELUDE_STAGES};
 
 /// Run one rung, or `None` when its reference artifact is absent.
 ///
@@ -39,34 +38,27 @@ fn run_rung(
             let Some(reference) = runtime::reference::load_capture(&path, &PRELUDE_STAGES)? else {
                 return Ok(None);
             };
-            let n_layers = model.config().n_layers;
-            let tap = LastRowTap::new((0..n_layers).collect()).capturing_prelude();
-            model.set_tap(Box::new(tap.clone()));
-            model.truncate(0)?;
-            model
-                .prefill(&reference.token_ids)
-                .context("prefill the reference tokens")?;
-
-            // Only the stages the reference measured. Asking the tap for a
-            // stage it never saw would be an error inside the rung, where it
-            // would read as a divergence rather than as a capture that did
-            // not run.
-            let mut stages = Vec::new();
-            for (name, _) in &reference.activations.stages {
-                let row = tap
-                    .stage(name)
-                    .with_context(|| format!("{name}: the tap captured no row"))?;
-                stages.push((name.clone(), row));
-            }
-            let mut layers = Vec::with_capacity(n_layers);
-            for i in 0..n_layers {
-                layers.push(
-                    tap.row(i)
-                        .with_context(|| format!("layer {i}: the tap captured no row"))?,
-                );
-            }
-            let ours = ladder::Activations { stages, layers };
+            let ours = ladder::capture_ours(model, &reference.token_ids, &reference.activations)?;
             ladder::rung_layers(&ours, &reference.activations, tol).map(Some)
+        }
+        Rung::L2Logits => {
+            let path = reference_dir.join("layers.json");
+            let Some(reference) = runtime::reference::load_capture(&path, &PRELUDE_STAGES)? else {
+                return Ok(None);
+            };
+            // A layers-only capture is a usable L1 reference and no L2
+            // reference at all. Skipped rather than failed: the artifact says
+            // nothing about the distribution, which is not the same as saying
+            // the distribution is wrong.
+            let Some(row) = reference.logits else {
+                return Ok(None);
+            };
+            let last = reference.token_ids.len().saturating_sub(1);
+            let logits = ladder::LogitReference {
+                positions: vec![last],
+                rows: vec![row],
+            };
+            ladder::rung_logits(model, &reference.token_ids, &logits, tol).map(Some)
         }
         // The remaining rungs' artifacts do not have a format yet: L0's
         // tokenizer parity file and the tiny transformers fixture land with

@@ -29,6 +29,12 @@ pub struct Capture {
     /// tolerance, and the number alone does not say which it was.
     pub dtype: String,
     pub activations: Activations,
+    /// The final-position logits, when the capture recorded them.
+    ///
+    /// L2's reference for Tier T, and optional because the capture format
+    /// predates L2 -- a layers-only artifact is a usable L1 reference and
+    /// should skip L2 rather than fail it.
+    pub logits: Option<Vec<f32>>,
 }
 
 /// A float array under `key`, or `None` when the capture does not carry it.
@@ -122,6 +128,7 @@ pub fn load_capture(path: &Path, stages: &[&'static str]) -> Result<Option<Captu
     Ok(Some(Capture {
         token_ids,
         dtype,
+        logits: optional_row(&v, "logits")?,
         activations: Activations {
             stages: named,
             layers,
