@@ -760,16 +760,30 @@ pub trait Tap: Send {
 ///
 /// Cloneable, and clones share one map: the caller keeps a handle to read the
 /// rows after `set_tap` has taken ownership of the model's copy.
+///
+/// "Most recent" means the highest position seen since the last `clear`, not
+/// the last row written. The distinction is invisible while the forward pass
+/// is position-major, and load-bearing the moment a batched prefill walks
+/// layer-major: under that order the final write for a layer is whichever
+/// position the batch happened to finish on. Callers reset per example
+/// (`truncate(0)` then `clear`), so positions always restart from zero
+/// alongside the cache they index.
+/// One retained row per key, carrying the position it came from. Shared
+/// between a `LastRowTap` and its clones.
+type Held<K> = Arc<Mutex<HashMap<K, (usize, Vec<f32>)>>>;
+
 #[derive(Clone)]
 pub struct LastRowTap {
     layers: Vec<usize>,
-    rows: Arc<Mutex<HashMap<usize, Vec<f32>>>>,
+    /// Position alongside the row, so the comparison is against the position
+    /// the row came from rather than against write order.
+    rows: Held<usize>,
     /// Whether to also keep the named stages that precede layer 0. Off by
     /// default: `activation-capture` writes probe training data and has no
     /// use for them, and keeping them would copy `n_layers * ple_dim` floats
     /// per position for nobody.
     prelude: bool,
-    stages: Arc<Mutex<HashMap<String, Vec<f32>>>>,
+    stages: Held<String>,
 }
 
 impl LastRowTap {
@@ -795,7 +809,7 @@ impl LastRowTap {
             .lock()
             .expect("tap map not poisoned")
             .get(name)
-            .cloned()
+            .map(|(_, row)| row.clone())
     }
 
     /// The captured row for `layer`, or `None` when the layer was not
@@ -805,7 +819,7 @@ impl LastRowTap {
             .lock()
             .expect("tap map not poisoned")
             .get(&layer)
-            .cloned()
+            .map(|(_, row)| row.clone())
     }
 
     /// Drop every captured row, between examples.
@@ -816,12 +830,21 @@ impl LastRowTap {
 }
 
 impl Tap for LastRowTap {
-    fn on_residual(&mut self, layer: usize, _position: usize, x: &[f32]) {
-        if self.layers.contains(&layer) {
-            self.rows
-                .lock()
-                .expect("tap map not poisoned")
-                .insert(layer, x.to_vec());
+    fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]) {
+        if !self.layers.contains(&layer) {
+            return;
+        }
+        let mut rows = self.rows.lock().expect("tap map not poisoned");
+        match rows.get_mut(&layer) {
+            Some(held) if held.0 > position => {}
+            Some(held) => {
+                held.0 = position;
+                held.1.clear();
+                held.1.extend_from_slice(x);
+            }
+            None => {
+                rows.insert(layer, (position, x.to_vec()));
+            }
         }
     }
 
@@ -829,12 +852,21 @@ impl Tap for LastRowTap {
         self.prelude
     }
 
-    fn on_stage(&mut self, stage: &str, _position: usize, x: &[f32]) {
-        if self.prelude {
-            self.stages
-                .lock()
-                .expect("tap map not poisoned")
-                .insert(stage.to_string(), x.to_vec());
+    fn on_stage(&mut self, stage: &str, position: usize, x: &[f32]) {
+        if !self.prelude {
+            return;
+        }
+        let mut stages = self.stages.lock().expect("tap map not poisoned");
+        match stages.get_mut(stage) {
+            Some(held) if held.0 > position => {}
+            Some(held) => {
+                held.0 = position;
+                held.1.clear();
+                held.1.extend_from_slice(x);
+            }
+            None => {
+                stages.insert(stage.to_string(), (position, x.to_vec()));
+            }
         }
     }
 }
@@ -4438,13 +4470,65 @@ mod tests {
         m.set_tap(Box::new(tap.clone()));
         m.prefill_all(&[1, 5, 9]).unwrap();
         let calls = tap.0.lock().unwrap();
-        // 2 layers x 3 positions, position-major, layer 0 before layer 1.
         let order: Vec<(usize, usize)> = calls.iter().map(|(l, p, _)| (*l, *p)).collect();
+
+        // The contract, which holds under any traversal: every (layer,
+        // position) pair fires exactly once, and positions ascend within a
+        // layer so a tap keeping the last row keeps the last position.
+        let mut seen = order.clone();
+        seen.sort_unstable();
+        let expected: Vec<(usize, usize)> =
+            (0..2).flat_map(|l| (0..3).map(move |p| (l, p))).collect();
+        assert_eq!(
+            seen, expected,
+            "every layer at every position, exactly once"
+        );
+        for layer in 0..2 {
+            let positions: Vec<usize> = order
+                .iter()
+                .filter(|(l, _)| *l == layer)
+                .map(|(_, p)| *p)
+                .collect();
+            assert!(
+                positions.windows(2).all(|w| w[0] < w[1]),
+                "layer {layer} positions must ascend, got {positions:?}"
+            );
+        }
+
+        // The traversal itself, pinned separately: stepped prefill is
+        // position-major, layer 0 before layer 1. A batched prefill walks
+        // layer-major and this assertion is the one that must change with it.
         assert_eq!(order, [(0, 0), (1, 0), (0, 1), (1, 1), (0, 2), (1, 2)]);
         assert!(calls.iter().all(|(_, _, x)| x.len() == 16));
         assert!(calls
             .iter()
             .all(|(_, _, x)| x.iter().all(|v| v.is_finite())));
+    }
+
+    #[test]
+    fn last_row_tap_keeps_the_highest_position_whatever_the_call_order() {
+        // Layer-major batched prefill finishes a layer on whichever position
+        // the batch ends on, so "last written" and "last position" part ways.
+        // Feed the rows out of order and require the position to decide.
+        let mut tap = LastRowTap::new(vec![0]).capturing_prelude();
+        tap.on_residual(0, 1, &[1.0]);
+        tap.on_residual(0, 2, &[2.0]);
+        tap.on_residual(0, 0, &[0.0]);
+        assert_eq!(tap.row(0), Some(vec![2.0]));
+
+        tap.on_stage("embedding", 2, &[2.0]);
+        tap.on_stage("embedding", 0, &[0.0]);
+        assert_eq!(tap.stage("embedding"), Some(vec![2.0]));
+
+        // A clear restarts the comparison, so the next example's position 0
+        // is not shadowed by the previous example's position 2.
+        tap.clear();
+        tap.on_residual(0, 0, &[9.0]);
+        assert_eq!(tap.row(0), Some(vec![9.0]));
+
+        // Unrequested layers stay absent.
+        tap.on_residual(1, 5, &[3.0]);
+        assert_eq!(tap.row(1), None);
     }
 
     #[test]
