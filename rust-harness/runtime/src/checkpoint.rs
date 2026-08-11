@@ -195,56 +195,245 @@ pub fn parse_text_config(bytes: &[u8]) -> Result<TextConfig> {
     })
 }
 
-/// A block of checkpoint bytes, however it was obtained.
+/// Bytes of the little-endian `u64` that prefixes a safetensors JSON header.
+const LEN_PREFIX: usize = 8;
+
+/// The JSON header of a safetensors image, deserialized.
 ///
-/// `read` maps the weights file; tests and in-memory callers build one from a
-/// `Vec<u8>`. Both deref to `[u8]`, so nothing downstream of this type knows
-/// which it holds -- `parse` and `widen` see one slice either way.
-#[derive(Debug)]
-pub enum Bytes {
-    Owned(Vec<u8>),
-    Mapped(memmap2::Mmap),
+/// **This reads the container envelope, not the tensor schema.** A safetensors
+/// file is a little-endian `u64` byte count followed by that many bytes of
+/// JSON; those two fields are what this type knows. Every field *inside* an
+/// entry -- the dtype spelling, the shape, the payload offsets -- is
+/// deserialized into `safetensors::tensor::TensorInfo`, so the part that could
+/// drift against the format is still the upstream crate's, per the dependency
+/// argument in /.styles/RUST_STYLE.md.
+///
+/// Hand-read rather than taken from `SafeTensors::read_metadata` because that
+/// function asserts `payload_end + 8 + n == buffer.len()` and returns
+/// `MetadataIncompleteBuffer` otherwise -- it cannot be given a header. Only a
+/// memory map supplies a whole-file buffer cheaply, and not needing one is the
+/// point: see `CheckpointFiles::read`.
+/// `the_envelope_reader_agrees_with_safetensors_own_reader` is what keeps this
+/// honest against a container change upstream.
+///
+/// `__metadata__` is named only because serde has to be told to keep the
+/// framework's free-form block out of the flattened tensor map. Nothing reads
+/// it.
+#[derive(Deserialize)]
+struct Header {
+    #[serde(rename = "__metadata__")]
+    _framework: Option<std::collections::HashMap<String, String>>,
+    #[serde(flatten)]
+    tensors: std::collections::HashMap<String, safetensors::tensor::TensorInfo>,
 }
 
-impl std::ops::Deref for Bytes {
-    type Target = [u8];
+/// A safetensors header, and where the payload it describes begins.
+#[derive(Debug)]
+pub struct Envelope {
+    tensors: std::collections::HashMap<String, safetensors::tensor::TensorInfo>,
+    /// `LEN_PREFIX + json.len()`, which is what `data_offsets` count from.
+    data_start: u64,
+    /// The framed header bytes, kept because `fingerprint` hashes them and
+    /// re-reading them from the file to do so would be the same bytes twice.
+    framed: Vec<u8>,
+}
 
-    fn deref(&self) -> &[u8] {
+impl Envelope {
+    /// Parse a framed header: the length prefix followed by exactly that many
+    /// bytes of JSON.
+    fn parse(framed: Vec<u8>, name: &str) -> Result<Envelope> {
+        let json = framed.get(LEN_PREFIX..).unwrap_or_default();
+        let header: Header = serde_json::from_slice(json)
+            .with_context(|| format!("parse the safetensors header of {name}"))?;
+        Ok(Envelope {
+            tensors: header.tensors,
+            data_start: framed.len() as u64,
+            framed,
+        })
+    }
+
+    /// The framed header, read from the front of an in-memory image.
+    fn framed_from(bytes: &[u8], name: &str) -> Result<Vec<u8>> {
+        let prefix = bytes.get(..LEN_PREFIX).with_context(|| {
+            format!(
+                "{name} is {} bytes, too short for a safetensors length prefix",
+                bytes.len()
+            )
+        })?;
+        let len = declared_len(prefix, name)?;
+        let end = LEN_PREFIX
+            .checked_add(len)
+            .filter(|e| *e <= bytes.len())
+            .with_context(|| {
+                format!(
+                    "{name} declares a {len}-byte header but the image is {} bytes",
+                    bytes.len()
+                )
+            })?;
+        Ok(bytes[..end].to_vec())
+    }
+
+    /// The framed header, read from the front of a file.
+    fn framed_from_file(file: &std::fs::File, name: &str) -> Result<Vec<u8>> {
+        use std::os::unix::fs::FileExt;
+        let mut prefix = [0u8; LEN_PREFIX];
+        file.read_exact_at(&mut prefix, 0)
+            .with_context(|| format!("read the safetensors length prefix of {name}"))?;
+        let len = declared_len(&prefix, name)?;
+        let mut framed = vec![0u8; LEN_PREFIX + len];
+        framed[..LEN_PREFIX].copy_from_slice(&prefix);
+        file.read_exact_at(&mut framed[LEN_PREFIX..], LEN_PREFIX as u64)
+            .with_context(|| format!("read the {len}-byte safetensors header of {name}"))?;
+        Ok(framed)
+    }
+
+    /// The byte range of one tensor's payload, checked against the image.
+    ///
+    /// Replaces `safetensors::tensor::Metadata::validate`, which this loader
+    /// no longer reaches. Stronger in one respect: `image_len` comes from the
+    /// filesystem rather than from the length of a slice someone already
+    /// mapped, so a file that shrank between header and payload is caught
+    /// here rather than being undefined behaviour through a stale mapping.
+    fn payload_range(&self, name: &str, image_len: u64) -> Result<(u64, usize)> {
+        let info = self
+            .tensors
+            .get(name)
+            .with_context(|| format!("missing tensor {name}"))?;
+        let (start, end) = info.data_offsets;
+        let len = end.checked_sub(start).with_context(|| {
+            format!("tensor {name}: payload ends at {end}, before its start at {start}")
+        })?;
+        let at = u64::try_from(start)
+            .ok()
+            .and_then(|s| s.checked_add(self.data_start))
+            .with_context(|| format!("tensor {name}: payload offset {start} overflows"))?;
+        let stop = at
+            .checked_add(len as u64)
+            .filter(|s| *s <= image_len)
+            .with_context(|| {
+                format!(
+                    "tensor {name}: payload at offset {at} ({len} bytes) exceeds an image \
+                     of {image_len} bytes"
+                )
+            })?;
+        debug_assert!(
+            stop <= image_len,
+            "payload_range returned a range past the image"
+        );
+        Ok((at, len))
+    }
+}
+
+/// The header length a safetensors image declares in its first eight bytes.
+fn declared_len(prefix: &[u8], name: &str) -> Result<usize> {
+    let arr: [u8; LEN_PREFIX] = prefix
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("{name}: length prefix is {} bytes", prefix.len()))?;
+    usize::try_from(u64::from_le_bytes(arr))
+        .map_err(|_| anyhow::anyhow!("{name} declares a header larger than this machine's usize"))
+}
+
+/// Where a checkpoint's payload bytes come from.
+///
+/// `read` keeps the open file and reads each tensor at its offset; `synth.rs`
+/// and the tests build an image in memory. Nothing downstream distinguishes
+/// them -- `payload_at` serves both and hands `widen` a plain slice either
+/// way.
+///
+/// The file arm is why this type exists at all. Holding a `File` rather than
+/// its contents is what keeps the loader's peak resident set at the size of
+/// the weights it is building, instead of that plus a second copy of the
+/// checkpoint it is building them from.
+#[derive(Debug)]
+pub enum Payload {
+    Owned(Vec<u8>),
+    File {
+        handle: std::fs::File,
+        /// Length at open. A file that shrinks afterwards fails its next read
+        /// with a short-read error naming the tensor, which is the behaviour
+        /// a mapping could not offer.
+        len: u64,
+    },
+}
+
+impl Payload {
+    /// Total bytes of the image, header included.
+    fn len(&self) -> u64 {
         match self {
-            Bytes::Owned(v) => v,
-            Bytes::Mapped(m) => m,
+            Payload::Owned(v) => v.len() as u64,
+            Payload::File { len, .. } => *len,
+        }
+    }
+
+    /// `len` bytes starting at `at`, copied out.
+    fn at(&self, at: u64, len: usize, name: &str) -> Result<Vec<u8>> {
+        match self {
+            Payload::Owned(v) => {
+                let lo = usize::try_from(at)
+                    .map_err(|_| anyhow::anyhow!("tensor {name}: offset {at} overflows"))?;
+                let hi = lo
+                    .checked_add(len)
+                    .filter(|h| *h <= v.len())
+                    .with_context(|| {
+                        format!("tensor {name}: payload at {lo} ({len} bytes) exceeds the image")
+                    })?;
+                Ok(v[lo..hi].to_vec())
+            }
+            Payload::File { handle, .. } => {
+                use std::os::unix::fs::FileExt;
+                let mut buf = vec![0u8; len];
+                handle
+                    .read_exact_at(&mut buf, at)
+                    .with_context(|| format!("read tensor {name}: {len} bytes at offset {at}"))?;
+                Ok(buf)
+            }
         }
     }
 }
 
-impl From<Vec<u8>> for Bytes {
-    fn from(v: Vec<u8>) -> Bytes {
-        Bytes::Owned(v)
+impl From<Vec<u8>> for Payload {
+    fn from(v: Vec<u8>) -> Payload {
+        Payload::Owned(v)
     }
 }
 
-/// The bytes of a checkpoint.
+/// A checkpoint's config bytes, its parsed header, and its payload source.
 ///
-/// Separate from `Checkpoint` because `safetensors::SafeTensors` borrows the
-/// buffer it parses, so the owner and the view cannot be one struct. This
-/// mirrors the GGUF path, where callers hold a `Vec<u8>` and pass it beside
-/// the parsed header.
+/// Separate from `Checkpoint` because the two have different jobs rather than
+/// different lifetimes: this owns the handle and the offsets, `Checkpoint`
+/// owns the validated architecture. Since the payload is read on demand,
+/// neither borrows the other's buffer and `Checkpoint` carries no lifetime.
 ///
-/// `config` is a plain `Vec<u8>` because it is a few kilobytes and mapping it
-/// would buy nothing; only `weights` is large enough for the distinction to
-/// matter.
+/// `config` is a plain `Vec<u8>` because it is a few kilobytes read once.
 #[derive(Debug)]
 pub struct CheckpointFiles {
     pub config: Vec<u8>,
-    pub weights: Bytes,
+    envelope: Envelope,
+    payload: Payload,
     /// Directory the two were read from, for error messages.
     pub dir: PathBuf,
 }
 
-/// A parsed checkpoint: the architecture and a view over the weight bytes.
+impl CheckpointFiles {
+    /// Build one over an image already in memory, for `synth.rs` and tests.
+    pub fn in_memory(config: Vec<u8>, image: Vec<u8>, dir: PathBuf) -> Result<CheckpointFiles> {
+        let name = dir.join(WEIGHTS_FILE).display().to_string();
+        let framed = Envelope::framed_from(&image, &name)?;
+        Ok(CheckpointFiles {
+            config,
+            envelope: Envelope::parse(framed, &name)?,
+            payload: Payload::Owned(image),
+            dir,
+        })
+    }
+}
+
+/// A parsed checkpoint: the architecture, and the offsets to read tensors by.
 pub struct Checkpoint<'a> {
     pub config: TextConfig,
-    pub tensors: safetensors::SafeTensors<'a>,
+    /// Borrowed rather than cloned: the offset map for a 42-layer checkpoint
+    /// is not large, but copying it per `parse` would be a copy for nothing.
+    files: &'a CheckpointFiles,
     pub dir: PathBuf,
     /// Consume the text stack and decline the checkpoint's other towers.
     ///
@@ -621,18 +810,26 @@ pub fn resolve(model: &Path) -> Result<PathBuf> {
 }
 
 impl CheckpointFiles {
-    /// Read `config.json` and map `model.safetensors` from a checkpoint.
+    /// Read `config.json` and the header of `model.safetensors`.
     ///
-    /// The weights are mapped rather than read because the loader copies each
-    /// tensor out anyway: an `fs::read` would hold a private copy of the whole
-    /// file alongside the loader's, which on a 15 GB E4B checkpoint is 15 GB of
-    /// anonymous memory that is never read twice. A map costs page cache
-    /// instead, which the kernel can evict once the load is done.
+    /// **The payload is not read here, and not mapped.** Only the framed JSON
+    /// header comes into memory; each tensor is read at its offset when a
+    /// caller asks for it, straight into the buffer that will own it. That is
+    /// what keeps the loader's peak resident set at the size of the weights
+    /// being built rather than that plus a second copy of the file they come
+    /// from -- 14 GiB rather than 28 on E4B, measured.
     ///
-    /// What this does *not* do is make loading lazy. `weight` and `tensor`
-    /// both copy, so every page a tensor touches is faulted in. The tools that
-    /// only read the header -- `checkpoint-info` -- are the ones that get the
-    /// whole benefit.
+    /// This replaced a memory map, and the map is worth a sentence because
+    /// removing it looks like a regression from a distance. The map existed to
+    /// avoid `fs::read`'s private copy of the whole file, back when it also
+    /// served zero-copy tensor views. Since the storage-preserving loader,
+    /// every tensor is copied out regardless, so the map's only remaining
+    /// effect was to make the checkpoint's pages resident against this process
+    /// while the copy loop walked them. Positioned reads put those bytes in
+    /// page cache the kernel owns instead, and they end the map's one
+    /// unresolvable hazard: a file rewritten underneath a live mapping is
+    /// undefined behaviour, while a file rewritten underneath a `pread` is an
+    /// ordinary short-read error naming the tensor.
     ///
     /// The size of what gets copied is `weight`'s business, not this
     /// function's: it keeps a tensor in its published width, so a bf16
@@ -651,27 +848,18 @@ impl CheckpointFiles {
         }
         let config = std::fs::read(&config_path)
             .with_context(|| format!("read {}", config_path.display()))?;
-        let file = std::fs::File::open(&weights_path)
+        let handle = std::fs::File::open(&weights_path)
             .with_context(|| format!("open {}", weights_path.display()))?;
-        // SAFETY: the obligation `Mmap::map` carries is not pointer validity
-        // -- it hands back a slice the borrow checker tracks -- but external
-        // mutation. If another process truncates or rewrites this file while
-        // the map is live, reads through the slice are undefined behaviour,
-        // and no Rust-level guard can prevent that.
-        //
-        // The assumption being made, rather than proved, is that a checkpoint
-        // is a published read-only artifact: nothing in this repository writes
-        // under a model directory while a harness runs, and the training
-        // export pipeline writes a new directory rather than editing one in
-        // place. That assumption is the price of not copying 15 GB, and it is
-        // stated here so a future writer of an in-place model updater knows
-        // what it would break.
-        #[allow(unsafe_code)]
-        let weights = unsafe { memmap2::Mmap::map(&file) }
-            .with_context(|| format!("map {}", weights_path.display()))?;
+        let len = handle
+            .metadata()
+            .with_context(|| format!("stat {}", weights_path.display()))?
+            .len();
+        let name = weights_path.display().to_string();
+        let framed = Envelope::framed_from_file(&handle, &name)?;
         Ok(CheckpointFiles {
             config,
-            weights: Bytes::Mapped(weights),
+            envelope: Envelope::parse(framed, &name)?,
+            payload: Payload::File { handle, len },
             dir,
         })
     }
@@ -686,41 +874,25 @@ impl CheckpointFiles {
 /// tensor added or removed, a file of a different size.
 ///
 /// What it deliberately does not catch is an in-place edit of weight *values*
-/// leaving the layout untouched. That is not a new assumption. The map in
-/// `CheckpointFiles::read` is already unsound under in-place edits, and its
-/// SAFETY note states the assumption it relies on instead: a checkpoint is a
-/// published read-only artifact. This function leans on the same assumption
-/// rather than faulting in 15 GB at every startup to hedge against it -- which
-/// is what hashing the payload did, for a check whose own documentation calls
-/// itself corruption detection and not a cryptographic guarantee.
+/// leaving the layout untouched. That is a cost-of-hashing decision, and it is
+/// now the only reason: hashing the payload meant reading 15 GB at every
+/// startup, for a check whose own documentation calls itself corruption
+/// detection rather than a cryptographic guarantee. It used to also inherit an
+/// assumption from the memory map -- that a checkpoint is a published
+/// read-only artifact -- but that map is gone, and a file rewritten underneath
+/// this loader now produces a read error rather than undefined behaviour. The
+/// blind spot is narrower than it was: a same-size, same-layout edit of values
+/// between two runs that share a KV snapshot.
 ///
-/// A truncated file -- too short to carry the header length, or to carry the
-/// header it declares -- hashes what is there rather than erroring. The caller
-/// is deciding whether to reuse a cache, and `parse` is about to reject the
-/// file properly a moment later with a message about the format.
+/// A file too short to carry its own header cannot reach here: `read` and
+/// `in_memory` both fail first, with a message about the format.
 pub fn fingerprint(files: &CheckpointFiles) -> u64 {
-    // safetensors frames the file as an 8-byte little-endian header length,
-    // then that many bytes of JSON, then the payload. Reading the frame is
-    // enough to know the identifying bytes without parsing them.
-    const LEN_PREFIX: usize = 8;
-
-    let weights: &[u8] = &files.weights;
-    let header_end = match weights.get(..LEN_PREFIX) {
-        Some(prefix) => {
-            let len = u64::from_le_bytes(prefix.try_into().unwrap_or([0; LEN_PREFIX]));
-            // Saturating and clamped: a corrupt length must not panic here,
-            // for the reason the doc comment gives.
-            usize::try_from(len)
-                .unwrap_or(0)
-                .saturating_add(LEN_PREFIX)
-                .min(weights.len())
-        }
-        None => weights.len(),
-    };
-
+    // The framed header -- every tensor's name, dtype, shape and byte range --
+    // was already read to build the offset map, so identifying the checkpoint
+    // costs no further I/O.
     let hash = crate::session::fingerprint(&files.config);
-    let hash = crate::session::fingerprint_from(hash, &weights[..header_end]);
-    crate::session::fingerprint_from(hash, &weights.len().to_le_bytes())
+    let hash = crate::session::fingerprint_from(hash, &files.envelope.framed);
+    crate::session::fingerprint_from(hash, &files.payload.len().to_le_bytes())
 }
 
 /// Parse a checkpoint's architecture and index its tensors.
@@ -728,8 +900,6 @@ pub fn parse(files: &CheckpointFiles) -> Result<Checkpoint<'_>> {
     let config = parse_text_config(&files.config)
         .with_context(|| format!("parse {}", files.dir.join(CONFIG_FILE).display()))?;
     config.validate()?;
-    let tensors = safetensors::SafeTensors::deserialize(&files.weights)
-        .map_err(|e| anyhow::anyhow!("parse {}: {e}", files.dir.join(WEIGHTS_FILE).display()))?;
     // Which spelling this file uses, decided by looking. A text-only release
     // -- `Gemma4ForCausalLM`, what save_pretrained writes -- has one tower and
     // puts it at `model.`; the released multimodal E4B nests it under
@@ -737,11 +907,15 @@ pub fn parse(files: &CheckpointFiles) -> Result<Checkpoint<'_>> {
     // from the presence of the deeper prefix rather than from the config's
     // `architectures`, because the tensors are what actually get read and a
     // config can disagree with them.
-    let flat_text_names = !tensors.names().iter().any(|n| n.starts_with(TEXT_PREFIX));
+    let flat_text_names = !files
+        .envelope
+        .tensors
+        .keys()
+        .any(|n| n.starts_with(TEXT_PREFIX));
 
     Ok(Checkpoint {
         config,
-        tensors,
+        files,
         dir: files.dir.clone(),
         text_only: false,
         flat_text_names,
@@ -769,17 +943,40 @@ impl Checkpoint<'_> {
         }
     }
 
-    pub fn tensor(&self, name: &str, want: &[usize]) -> Result<Vec<f32>> {
-        let view = self
+    /// The header entry for a tensor, by its canonical name.
+    fn info(&self, name: &str) -> Result<&safetensors::tensor::TensorInfo> {
+        let on_disk = self.on_disk(name);
+        self.files
+            .envelope
             .tensors
-            .tensor(&self.on_disk(name))
-            .map_err(|e| anyhow::anyhow!("missing tensor {name}: {e}"))?;
+            .get(on_disk.as_ref())
+            .with_context(|| format!("missing tensor {name}"))
+    }
+
+    /// One tensor's stored bytes, shape-checked, read at its offset.
+    ///
+    /// The single place a payload enters this module, so the bounds check and
+    /// the shape check each exist once. `tensor` and `weight` differ only in
+    /// what they do with the bytes afterwards.
+    fn stored(&self, name: &str, want: &[usize]) -> Result<(safetensors::Dtype, Vec<u8>)> {
+        let info = self.info(name)?;
         ensure!(
-            view.shape() == want,
+            info.shape == want,
             "tensor {name} has shape {:?}, the configuration implies {want:?}",
-            view.shape()
+            info.shape
         );
-        widen(name, view.dtype(), view.data())
+        let dtype = info.dtype;
+        let on_disk = self.on_disk(name).into_owned();
+        let (at, len) = self
+            .files
+            .envelope
+            .payload_range(&on_disk, self.files.payload.len())?;
+        Ok((dtype, self.files.payload.at(at, len, name)?))
+    }
+
+    pub fn tensor(&self, name: &str, want: &[usize]) -> Result<Vec<f32>> {
+        let (dtype, bytes) = self.stored(name, want)?;
+        widen(name, dtype, &bytes)
     }
 
     /// Read a tensor in the width the file declares, checking its shape.
@@ -796,16 +993,7 @@ impl Checkpoint<'_> {
         use crate::tensor::Weight;
         use safetensors::Dtype;
 
-        let view = self
-            .tensors
-            .tensor(&self.on_disk(name))
-            .map_err(|e| anyhow::anyhow!("missing tensor {name}: {e}"))?;
-        ensure!(
-            view.shape() == want,
-            "tensor {name} has shape {:?}, the configuration implies {want:?}",
-            view.shape()
-        );
-        let bytes = view.data();
+        let (dtype, bytes) = self.stored(name, want)?;
         let narrow = || -> Vec<u16> {
             bytes
                 .chunks_exact(2)
@@ -815,7 +1003,7 @@ impl Checkpoint<'_> {
         // The width check `widen` performs, restated here because the two
         // return different things from the same bytes and neither can call
         // the other without allocating what the caller did not ask for.
-        let width = match view.dtype() {
+        let width = match dtype {
             Dtype::F32 => 4,
             Dtype::F16 | Dtype::BF16 => 2,
             other => bail!(
@@ -827,9 +1015,9 @@ impl Checkpoint<'_> {
             bytes.len().is_multiple_of(width),
             "tensor {name}: {} bytes is not a whole number of {:?} elements",
             bytes.len(),
-            view.dtype()
+            dtype
         );
-        Ok(match view.dtype() {
+        Ok(match dtype {
             Dtype::F32 => Weight::F32(
                 bytes
                     .chunks_exact(4)
@@ -851,15 +1039,21 @@ impl Checkpoint<'_> {
     /// `tensors`, because a caller that indexes the raw map bypasses the
     /// name resolution and fails on exactly the checkpoints that need it.
     pub fn shape(&self, name: &str) -> Result<Vec<usize>> {
-        self.tensors
-            .tensor(&self.on_disk(name))
-            .map(|v| v.shape().to_vec())
-            .map_err(|e| anyhow::anyhow!("missing tensor {name}: {e}"))
+        self.info(name).map(|i| i.shape.clone())
+    }
+
+    /// A tensor's stored dtype, without reading it.
+    ///
+    /// For `checkpoint-info`, which reports what a file declares rather than
+    /// loading it. Beside `shape` for the same reason: the alternative is a
+    /// caller reaching into the header map and losing the name resolution.
+    pub fn dtype(&self, name: &str) -> Result<safetensors::Dtype> {
+        self.info(name).map(|i| i.dtype)
     }
 
     /// Whether the checkpoint carries a tensor, for optional families.
     pub fn has(&self, name: &str) -> bool {
-        self.tensors.tensor(&self.on_disk(name)).is_ok()
+        self.info(name).is_ok()
     }
 
     /// Every tensor name, sorted, for the unconsumed-tensor guard.
@@ -870,9 +1064,10 @@ impl Checkpoint<'_> {
     /// unknown tensors.
     pub fn names(&self) -> Vec<String> {
         let mut names: Vec<String> = self
+            .files
+            .envelope
             .tensors
-            .names()
-            .into_iter()
+            .keys()
             .map(|n| match n.strip_prefix("model.") {
                 Some(tail) if self.flat_text_names => format!("{TEXT_PREFIX}{tail}"),
                 _ => n.to_string(),
@@ -1194,11 +1389,12 @@ mod tests {
     fn tensor_reads_check_shape_and_widen_the_float_dtypes() {
         let spec = TinySpec::default();
         let weights = build_tiny_safetensors(&spec).unwrap();
-        let files = CheckpointFiles {
-            config: build_tiny_config_json(&spec).unwrap(),
-            weights: weights.into(),
-            dir: PathBuf::from("<memory>"),
-        };
+        let files = CheckpointFiles::in_memory(
+            build_tiny_config_json(&spec).unwrap(),
+            weights,
+            PathBuf::from("<memory>"),
+        )
+        .unwrap();
         let ck = parse(&files).unwrap();
 
         // Named through the shared table, never spelled literally: a test
@@ -1239,11 +1435,12 @@ mod tests {
             storage: crate::synth::TensorStorage::Bf16,
             ..TinySpec::default()
         };
-        let files = CheckpointFiles {
-            config: build_tiny_config_json(&spec).unwrap(),
-            weights: build_tiny_safetensors(&spec).unwrap().into(),
-            dir: PathBuf::from("<memory>"),
-        };
+        let files = CheckpointFiles::in_memory(
+            build_tiny_config_json(&spec).unwrap(),
+            build_tiny_safetensors(&spec).unwrap(),
+            PathBuf::from("<memory>"),
+        )
+        .unwrap();
         let ck = parse(&files).unwrap();
         let got = ck
             .tensor(
@@ -1308,13 +1505,101 @@ mod tests {
         assert!(err.contains(WEIGHTS_FILE), "{err}");
     }
 
+    /// The test that licenses reading the container envelope in-tree.
+    ///
+    /// `Envelope` hand-reads the length prefix and the JSON frame because
+    /// `SafeTensors::read_metadata` demands a whole-file buffer. That is only
+    /// defensible while the two agree, so this compares them on the same image
+    /// -- name for name, dtype, shape, and both payload offsets. If the
+    /// container ever gains a field or moves one, the upstream reader will
+    /// follow it and this will go red, which is the whole point of writing it.
+    #[test]
+    fn the_envelope_reader_agrees_with_safetensors_own_reader() {
+        for spec in [TinySpec::default(), TinySpec::e4b_shaped()] {
+            let image = build_tiny_safetensors(&spec).unwrap();
+            let framed = Envelope::framed_from(&image, "<memory>").unwrap();
+            let ours = Envelope::parse(framed, "<memory>").unwrap();
+
+            let (header_len, theirs) = safetensors::SafeTensors::read_metadata(&image).unwrap();
+            assert_eq!(
+                ours.data_start,
+                (LEN_PREFIX + header_len) as u64,
+                "the payload start disagrees with the crate's header length"
+            );
+
+            let theirs = theirs.tensors();
+            assert_eq!(
+                ours.tensors.len(),
+                theirs.len(),
+                "the two readers found different numbers of tensors"
+            );
+            for (name, want) in &theirs {
+                let got = ours
+                    .tensors
+                    .get(name.as_str())
+                    .unwrap_or_else(|| panic!("the envelope reader missed tensor {name}"));
+                assert_eq!(got.dtype, want.dtype, "{name}: dtype");
+                assert_eq!(got.shape, want.shape, "{name}: shape");
+                assert_eq!(got.data_offsets, want.data_offsets, "{name}: offsets");
+            }
+        }
+    }
+
+    /// The check that replaces `Metadata::validate` for a reader that never
+    /// holds the whole image. A payload running past the file has to be named,
+    /// not silently truncated or panicked on.
+    #[test]
+    fn a_tensor_whose_payload_exceeds_the_image_is_named_in_the_error() {
+        let image = build_tiny_safetensors(&TinySpec::default()).unwrap();
+        let framed = Envelope::framed_from(&image, "<memory>").unwrap();
+        let envelope = Envelope::parse(framed, "<memory>").unwrap();
+        let name = envelope.tensors.keys().next().unwrap().clone();
+
+        // The real image is fine at its real length.
+        envelope
+            .payload_range(&name, image.len() as u64)
+            .unwrap_or_else(|e| panic!("a whole image should validate: {e:#}"));
+
+        // One byte short of the end is not, and the message says which tensor
+        // and by reference to what size.
+        let err = envelope
+            .payload_range(&name, envelope.data_start)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains(&name), "error does not name the tensor: {err}");
+        assert!(
+            err.contains(&envelope.data_start.to_string()),
+            "error does not state the image size: {err}"
+        );
+    }
+
+    /// A header that declares more than the file holds is an error at read
+    /// time, not a panic and not a silently short map.
+    #[test]
+    fn a_header_longer_than_its_image_is_refused() {
+        let image = build_tiny_safetensors(&TinySpec::default()).unwrap();
+        let mut lying = image.clone();
+        lying[..LEN_PREFIX].copy_from_slice(&(image.len() as u64 + 1).to_le_bytes());
+        let err = Envelope::framed_from(&lying, "<memory>")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("header"), "{err}");
+
+        // And an image too short to hold even the prefix.
+        let err = Envelope::framed_from(&image[..4], "<memory>")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("length prefix"), "{err}");
+    }
+
     /// An in-memory checkpoint from a spec, for the fingerprint tests.
     fn files_of(spec: &TinySpec) -> CheckpointFiles {
-        CheckpointFiles {
-            config: build_tiny_config_json(spec).unwrap(),
-            weights: build_tiny_safetensors(spec).unwrap().into(),
-            dir: PathBuf::from("<memory>"),
-        }
+        CheckpointFiles::in_memory(
+            build_tiny_config_json(spec).unwrap(),
+            build_tiny_safetensors(spec).unwrap(),
+            PathBuf::from("<memory>"),
+        )
+        .unwrap()
     }
 
     /// Storage width moves the header, so it moves the fingerprint.
@@ -1378,79 +1663,97 @@ mod tests {
     /// Editing a weight value in place does not move the fingerprint.
     ///
     /// Asserted rather than lamented. This is the cost of not reading the
-    /// payload, it is bounded by an assumption `CheckpointFiles::read` already
-    /// makes for its map -- a checkpoint is a published read-only artifact --
-    /// and pinning it here means a future reader finds a decision instead of
-    /// an oversight.
+    /// payload -- 15 GB at every startup, for a check that calls itself
+    /// corruption detection -- and pinning it here means a future reader finds
+    /// a decision instead of an oversight. It no longer rides on the memory
+    /// map's read-only-artifact assumption, because there is no map: a
+    /// checkpoint rewritten under a live loader now fails its next read
+    /// instead of being undefined behaviour. What remains uncovered is
+    /// narrower than it was -- a same-size, same-layout edit of values between
+    /// two runs that share a KV snapshot.
     #[test]
     fn a_checkpoint_fingerprint_does_not_see_an_in_place_weight_edit() {
-        let base = files_of(&TinySpec::default());
-        let mut bytes = base.weights.to_vec();
+        let spec = TinySpec::default();
+        let base = files_of(&spec);
+        let mut bytes = build_tiny_safetensors(&spec).unwrap();
         let header_end = 8 + u64::from_le_bytes(bytes[..8].try_into().unwrap()) as usize;
         assert!(header_end < bytes.len(), "fixture has no payload to edit");
         bytes[header_end] ^= 0xff;
-        let edited = CheckpointFiles {
-            config: base.config.clone(),
-            weights: bytes.into(),
-            dir: PathBuf::from("<memory>"),
-        };
+        let edited =
+            CheckpointFiles::in_memory(base.config.clone(), bytes, PathBuf::from("<memory>"))
+                .unwrap();
         assert_eq!(fingerprint(&base), fingerprint(&edited));
     }
 
-    /// A file too short to carry its own frame is hashed, not panicked on.
+    /// A file too short to carry its own frame is named, not panicked on.
+    ///
+    /// This used to assert that `fingerprint` returned anyway, because the
+    /// hash was taken over a slice and a short slice is merely a short hash.
+    /// With the header parsed at read time there is no `CheckpointFiles` to
+    /// fingerprint until the frame is valid, so the refusal moves earlier and
+    /// the property worth pinning becomes the message.
     #[test]
-    fn a_truncated_checkpoint_still_fingerprints() {
+    fn a_truncated_checkpoint_is_refused_with_a_message_about_the_frame() {
         for len in [0usize, 4, 8] {
-            let files = CheckpointFiles {
-                config: Vec::new(),
-                weights: vec![0xabu8; len].into(),
-                dir: PathBuf::from("<memory>"),
-            };
-            // The assertion is that the call returns at all.
-            let _ = fingerprint(&files);
+            let err = CheckpointFiles::in_memory(
+                Vec::new(),
+                vec![0xabu8; len],
+                PathBuf::from("<memory>"),
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(
+                err.contains("length prefix") || err.contains("header"),
+                "a {len}-byte image was refused without saying why: {err}"
+            );
         }
     }
 
-    /// The mapped and the owned byte source are the same checkpoint.
+    /// The two payload sources are the same checkpoint.
     ///
-    /// `read` maps the weights while every in-memory caller wraps a `Vec<u8>`,
-    /// so the two `Bytes` variants are exercised by different halves of the
-    /// suite and nothing else compares them. A map that handed back a
-    /// truncated or misaligned view would widen to different floats here and
-    /// pass everywhere else.
+    /// `read` holds an open file and reads each tensor at its offset; every
+    /// in-memory caller holds a `Vec<u8>`. The two arms of `Payload` are
+    /// exercised by different halves of the suite and nothing else compares
+    /// them, so a positioned read that landed one tensor at the wrong offset
+    /// would widen to different floats here and pass everywhere else. This is
+    /// the test that would have caught the offset arithmetic being wrong.
     #[test]
-    fn a_mapped_checkpoint_and_an_owned_one_widen_to_the_same_values() {
+    fn a_checkpoint_read_from_disk_and_one_held_in_memory_agree_tensor_for_tensor() {
         let dir = tempfile::tempdir().unwrap();
-        let spec = TinySpec::default();
+        let spec = TinySpec::e4b_shaped();
         let config = build_tiny_config_json(&spec).unwrap();
         let weights = build_tiny_safetensors(&spec).unwrap();
         std::fs::write(dir.path().join(CONFIG_FILE), &config).unwrap();
         std::fs::write(dir.path().join(WEIGHTS_FILE), &weights).unwrap();
 
-        let mapped = CheckpointFiles::read(dir.path()).unwrap();
+        let from_disk = CheckpointFiles::read(dir.path()).unwrap();
         assert!(
-            matches!(mapped.weights, Bytes::Mapped(_)),
-            "read did not map the weights"
+            matches!(from_disk.payload, Payload::File { .. }),
+            "read did not keep the file open"
         );
-        let owned = CheckpointFiles {
-            config,
-            weights: weights.into(),
-            dir: PathBuf::from("<memory>"),
-        };
+        let in_memory =
+            CheckpointFiles::in_memory(config, weights, PathBuf::from("<memory>")).unwrap();
 
-        let mapped_ck = parse(&mapped).unwrap();
-        let owned_ck = parse(&owned).unwrap();
-        let names = mapped_ck.names();
-        assert_eq!(names, owned_ck.names());
+        // The identifying hash must agree too: it is taken over the framed
+        // header and the image length, and both sources have the same file.
+        assert_eq!(
+            fingerprint(&from_disk),
+            fingerprint(&in_memory),
+            "the same checkpoint fingerprinted differently by payload source"
+        );
+
+        let disk_ck = parse(&from_disk).unwrap();
+        let memory_ck = parse(&in_memory).unwrap();
+        let names = disk_ck.names();
+        assert_eq!(names, memory_ck.names());
         assert!(!names.is_empty(), "the fixture wrote no tensors");
         for name in &names {
-            let want = mapped_ck.tensors.tensor(name).unwrap();
-            let shape = want.shape().to_vec();
+            let shape = disk_ck.shape(name).unwrap();
             // Exact comparison: the two paths read the same bytes through the
             // same widener, so any difference is a defect rather than drift.
             assert_eq!(
-                mapped_ck.tensor(name, &shape).unwrap(),
-                owned_ck.tensor(name, &shape).unwrap(),
+                disk_ck.tensor(name, &shape).unwrap(),
+                memory_ck.tensor(name, &shape).unwrap(),
                 "{name}"
             );
         }

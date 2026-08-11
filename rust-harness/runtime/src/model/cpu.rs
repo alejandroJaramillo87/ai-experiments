@@ -465,10 +465,14 @@ pub fn check_supported_checkpoint(
         let Some(name) = hf_tensor_name(&format!("blk.{i}.ffn_up.weight")) else {
             continue;
         };
-        let Ok(view) = ck.tensors.tensor(&name) else {
+        // Through `shape` rather than the raw map: the accessor resolves the
+        // checkpoint's own spelling, and a direct lookup of the canonical name
+        // silently missed on every flat-named checkpoint -- skipping the check
+        // on exactly the files it was written to guard.
+        let Ok(shape) = ck.shape(&name) else {
             continue;
         };
-        let width = view.shape().first().copied().unwrap_or(0);
+        let width = shape.first().copied().unwrap_or(0);
         ensure!(
             width == layer.ffn_dim,
             "tensor {name} has feed-forward width {width}, but intermediate_size \
@@ -2279,11 +2283,12 @@ mod tests {
     /// Owned separately from the `Checkpoint` that borrows it, so a test that
     /// loads two models from one spec holds the bytes once.
     fn checkpoint_of(spec: &TinySpec) -> crate::checkpoint::CheckpointFiles {
-        crate::checkpoint::CheckpointFiles {
-            config: crate::synth::build_tiny_config_json(spec).unwrap(),
-            weights: crate::synth::build_tiny_safetensors(spec).unwrap().into(),
-            dir: std::path::PathBuf::from("<memory>"),
-        }
+        crate::checkpoint::CheckpointFiles::in_memory(
+            crate::synth::build_tiny_config_json(spec).unwrap(),
+            crate::synth::build_tiny_safetensors(spec).unwrap(),
+            std::path::PathBuf::from("<memory>"),
+        )
+        .unwrap()
     }
 
     /// A checkpoint whose tensor set has been perturbed: `extra` Hugging Face
@@ -2341,11 +2346,12 @@ mod tests {
                 )
             })
             .collect();
-        crate::checkpoint::CheckpointFiles {
-            config: crate::synth::build_tiny_config_json(spec).unwrap(),
-            weights: safetensors::serialize(views, None).unwrap().into(),
-            dir: std::path::PathBuf::from("<memory>"),
-        }
+        crate::checkpoint::CheckpointFiles::in_memory(
+            crate::synth::build_tiny_config_json(spec).unwrap(),
+            safetensors::serialize(views, None).unwrap(),
+            std::path::PathBuf::from("<memory>"),
+        )
+        .unwrap()
     }
 
     /// Published name of a tensor, from its llama.cpp spelling.
@@ -2397,11 +2403,12 @@ mod tests {
                 )
             })
             .collect();
-        crate::checkpoint::CheckpointFiles {
-            config: crate::synth::build_tiny_config_json(spec).unwrap(),
-            weights: safetensors::serialize(views, None).unwrap().into(),
-            dir: std::path::PathBuf::from("<memory>"),
-        }
+        crate::checkpoint::CheckpointFiles::in_memory(
+            crate::synth::build_tiny_config_json(spec).unwrap(),
+            safetensors::serialize(views, None).unwrap(),
+            std::path::PathBuf::from("<memory>"),
+        )
+        .unwrap()
     }
 
     /// `checkpoint_edited` for the common case: one whole tensor shifted.
@@ -2500,11 +2507,12 @@ mod tests {
                 )
             })
             .collect();
-        crate::checkpoint::CheckpointFiles {
-            config: files.config.clone(),
-            weights: safetensors::serialize(views, None).unwrap().into(),
-            dir: std::path::PathBuf::from("<widened>"),
-        }
+        crate::checkpoint::CheckpointFiles::in_memory(
+            files.config.clone(),
+            safetensors::serialize(views, None).unwrap(),
+            std::path::PathBuf::from("<widened>"),
+        )
+        .unwrap()
     }
 
     /// Allocating wrapper over `rms_norm_into`, so the convention tests read
@@ -2779,11 +2787,17 @@ mod tests {
     #[test]
     fn the_shared_loader_matches_the_load_sequence_it_replaced() {
         let spec = TinySpec::default();
-        let files = checkpoint_of(&spec);
+        let config = crate::synth::build_tiny_config_json(&spec).unwrap();
+        let weights = crate::synth::build_tiny_safetensors(&spec).unwrap();
+        let files = crate::checkpoint::CheckpointFiles::in_memory(
+            config.clone(),
+            weights.clone(),
+            "<memory>".into(),
+        )
+        .unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("config.json"), &files.config).unwrap();
-        let weights: &[u8] = &files.weights;
-        std::fs::write(dir.path().join("model.safetensors"), weights).unwrap();
+        std::fs::write(dir.path().join("config.json"), &config).unwrap();
+        std::fs::write(dir.path().join("model.safetensors"), &weights).unwrap();
 
         let (loaded, fingerprint) = CpuModel::load(dir.path(), false).unwrap();
         assert_eq!(
@@ -3307,19 +3321,22 @@ mod tests {
         // the width from the shape would work only if `n_layers` and the
         // per-layer width were the sole factorization of it, which they are
         // not.
-        let files = checkpoint_of(&TinySpec {
+        let spec = TinySpec {
             ple_dim: Some(4),
             ..TinySpec::default()
-        });
-        let mut config: serde_json::Value = serde_json::from_slice(&files.config).unwrap();
+        };
+        let mut config: serde_json::Value =
+            serde_json::from_slice(&crate::synth::build_tiny_config_json(&spec).unwrap()).unwrap();
         config["text_config"]
             .as_object_mut()
             .unwrap()
             .remove("hidden_size_per_layer_input");
-        let files = crate::checkpoint::CheckpointFiles {
-            config: serde_json::to_vec(&config).unwrap(),
-            ..files
-        };
+        let files = crate::checkpoint::CheckpointFiles::in_memory(
+            serde_json::to_vec(&config).unwrap(),
+            crate::synth::build_tiny_safetensors(&spec).unwrap(),
+            std::path::PathBuf::from("<memory>"),
+        )
+        .unwrap();
         let err = verdict(&files).unwrap_err().to_string();
         assert!(err.contains("declares no"), "{err}");
     }
@@ -4074,20 +4091,21 @@ mod tests {
     #[test]
     fn the_checkpoint_loader_does_not_shift_norm_weights() {
         let spec = TinySpec::default();
-        let files = crate::checkpoint::CheckpointFiles {
-            config: crate::synth::build_tiny_config_json(&spec).unwrap(),
-            weights: crate::synth::build_tiny_safetensors(&spec).unwrap().into(),
-            dir: std::path::PathBuf::from("<memory>"),
-        };
+        let files = crate::checkpoint::CheckpointFiles::in_memory(
+            crate::synth::build_tiny_config_json(&spec).unwrap(),
+            crate::synth::build_tiny_safetensors(&spec).unwrap(),
+            std::path::PathBuf::from("<memory>"),
+        )
+        .unwrap();
         let ck = crate::checkpoint::parse(&files).unwrap();
         let model = CpuModel::from_checkpoint(&ck).unwrap();
 
+        // Through the public reader rather than the header map: `tensor`
+        // widens and shape-checks but applies no arithmetic, which is exactly
+        // the claim under test.
         let stored = |name: &str| -> Vec<f32> {
-            let view = ck.tensors.tensor(name).unwrap();
-            view.data()
-                .chunks_exact(4)
-                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-                .collect()
+            let shape = ck.shape(name).unwrap();
+            ck.tensor(name, &shape).unwrap()
         };
 
         // A norm arrives exactly as stored.

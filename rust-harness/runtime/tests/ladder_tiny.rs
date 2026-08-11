@@ -54,15 +54,12 @@ fn load(what: &str) -> Option<(CpuModel, runtime::reference::Capture)> {
         .expect("read the reference capture")
         .expect("capture.json exists, so it must load");
 
-    // Leaked so the model can borrow the mapped weights for the whole test.
-    // A checkpoint borrows its tensors from the file bytes, and a test that
-    // ends immediately after is the one place where handing those bytes a
-    // 'static lifetime costs nothing.
-    let files = Box::leak(Box::new(
-        runtime::checkpoint::CheckpointFiles::read(&dir).expect("read the fixture checkpoint"),
-    ));
-    let ck = runtime::checkpoint::parse(files).expect("parse the fixture checkpoint");
-    let model = CpuModel::from_checkpoint(&ck).expect("load the fixture model");
+    // Through the shared loader, which is what every binary uses: it reads
+    // the header, copies each tensor at its offset, and closes the file before
+    // returning. Nothing borrows the checkpoint afterwards, which is why the
+    // `Box::leak` that used to stand here -- giving the mapped bytes a
+    // 'static lifetime so the model could outlive them -- is gone.
+    let (model, _fingerprint) = CpuModel::load(&dir, false).expect("load the fixture checkpoint");
     Some((model, capture))
 }
 

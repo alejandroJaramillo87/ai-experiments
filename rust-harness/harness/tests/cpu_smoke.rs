@@ -21,11 +21,12 @@ use runtime::tokenizer::Tokenizer;
 /// determinism assertion below compares.
 fn tiny_checkpoint() -> runtime::checkpoint::CheckpointFiles {
     let spec = TinySpec::default();
-    runtime::checkpoint::CheckpointFiles {
-        config: build_tiny_config_json(&spec).unwrap(),
-        weights: build_tiny_safetensors(&spec).unwrap().into(),
-        dir: std::path::PathBuf::from("<memory>"),
-    }
+    runtime::checkpoint::CheckpointFiles::in_memory(
+        build_tiny_config_json(&spec).unwrap(),
+        build_tiny_safetensors(&spec).unwrap(),
+        std::path::PathBuf::from("<memory>"),
+    )
+    .unwrap()
 }
 
 fn generator(files: &runtime::checkpoint::CheckpointFiles) -> SessionGenerator {

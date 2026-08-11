@@ -368,16 +368,8 @@ fn a_bfloat16_model_matches_the_f32_model_holding_the_same_values() {
     };
 
     let dir = std::path::PathBuf::from("<memory>");
-    let bf16_files = CheckpointFiles {
-        config: config.clone(),
-        weights: bf16_weights.into(),
-        dir: dir.clone(),
-    };
-    let f32_files = CheckpointFiles {
-        config,
-        weights: truncated_weights.into(),
-        dir,
-    };
+    let bf16_files = CheckpointFiles::in_memory(config.clone(), bf16_weights, dir.clone()).unwrap();
+    let f32_files = CheckpointFiles::in_memory(config, truncated_weights, dir).unwrap();
     let bf16_ck = runtime::checkpoint::parse(&bf16_files).unwrap();
     let f32_ck = runtime::checkpoint::parse(&f32_files).unwrap();
     let mut bf16_model = CpuModel::from_checkpoint(&bf16_ck).unwrap();

@@ -113,9 +113,9 @@ fn print_tensors(ck: &Checkpoint) {
     println!();
     println!("=== Tensors ({}) ===", names.len());
     for name in &names {
-        match ck.tensors.tensor(name) {
-            Ok(view) => println!("{name}  {:?}  {:?}", view.dtype(), view.shape()),
-            Err(e) => println!("{name}  (unreadable: {e:?})"),
+        match (ck.dtype(name), ck.shape(name)) {
+            (Ok(dtype), Ok(shape)) => println!("{name}  {dtype:?}  {shape:?}"),
+            (Err(e), _) | (_, Err(e)) => println!("{name}  (unreadable: {e:#})"),
         }
     }
 }
@@ -138,8 +138,8 @@ fn summarize(ck: &Checkpoint) -> bool {
 
     let mut dtypes: BTreeMap<String, usize> = BTreeMap::new();
     for name in ck.names() {
-        if let Ok(view) = ck.tensors.tensor(&name) {
-            *dtypes.entry(format!("{:?}", view.dtype())).or_default() += 1;
+        if let Ok(dtype) = ck.dtype(&name) {
+            *dtypes.entry(format!("{dtype:?}")).or_default() += 1;
         }
     }
     println!("Dtypes (this backend loads F32, F16 and BF16):");
