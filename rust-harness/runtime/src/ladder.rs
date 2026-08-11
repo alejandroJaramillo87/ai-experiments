@@ -348,6 +348,18 @@ pub struct Ladder {
     /// A run that changed the arithmetic and did not say so would be read as
     /// evidence about the engine rather than about the experiment.
     pub dot: Option<String>,
+
+    /// How many positions a prefill put through the forward pass at once,
+    /// when the runner said.
+    ///
+    /// Like `threads` and unlike `dot`, not a caveat on the numbers: every
+    /// batch width folds each dot in the same order, so two tables taken
+    /// stepped and batched must agree digit for digit. Printed for the same
+    /// reason `threads` is — that agreement is the claim, and a table that
+    /// does not say which run it came from cannot support it. It is also the
+    /// only thing in the header that explains a large wall-clock difference
+    /// between two otherwise identical runs.
+    pub batch: Option<String>,
 }
 
 /// Climb the rungs in order, stopping at the first failure.
@@ -388,6 +400,7 @@ pub fn climb(
         prompt_tokens: None,
         threads: None,
         dot: None,
+        batch: None,
     }
 }
 
@@ -452,6 +465,9 @@ pub fn render(l: &Ladder) -> String {
     }
     if let Some(d) = &l.dot {
         let _ = writeln!(s, "dot={d}");
+    }
+    if let Some(b) = &l.batch {
+        let _ = writeln!(s, "batch={b}");
     }
     let _ = writeln!(s, "model={}", l.model);
     let _ = writeln!(s, "reference={}", l.reference);

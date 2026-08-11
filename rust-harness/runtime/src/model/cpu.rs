@@ -982,27 +982,95 @@ struct Scratch {
     /// overwritten by the next layer. Empty on a checkpoint without the
     /// feature.
     ple: Vec<f32>,
+    /// One matmul's output in feature-major order, `[out_dim][n]`.
+    ///
+    /// The batched kernel fixes an output feature and walks the positions, so
+    /// the `n` results it produces at once are adjacent here and can be handed
+    /// to a worker as one contiguous run. The panel is transposed back to
+    /// position-major immediately after, which costs `n * out_dim` moves
+    /// against the matmul's `n * out_dim * in_dim` folds — under a tenth of a
+    /// percent at E4B's widths, and the price of every elementwise stage
+    /// downstream keeping the contiguous per-position slices it has today.
+    ///
+    /// Sized for one position at load, like the rest of `Scratch`.
+    fm: Vec<f32>,
+    /// Positions the buffers above are currently sized for. `ensure` grows
+    /// them and never shrinks: a model that has prefilled once keeps the
+    /// allocation for the next prefill rather than reallocating per batch.
+    batch: usize,
+}
+
+/// Per-position width of `Scratch::buf`: the residual stream plus every view
+/// `forward_batch` carves after it, in carving order — x, normed, q, k, v,
+/// attn_out, projected, post, gate, up, mixed, down, ple_gate, ple_out. Sized
+/// against the widest layer, not layer 0 or a model-wide scalar: Gemma 4's
+/// global layers carry twice the head width of its sliding layers and E2B
+/// doubles the feed-forward width over its trailing layers, so a buffer cut to
+/// either one alone is short for the other. The carving asserts it never
+/// exceeds this.
+fn scratch_row(spec: &ModelSpec) -> usize {
+    let c = &spec.config;
+    let hd = spec.max_head_dim();
+    let (q_dim, kv_dim) = (c.n_heads * hd, c.n_kv_heads * hd);
+    6 * c.embed_dim + 2 * q_dim + 2 * kv_dim + 3 * spec.max_ffn_dim() + c.ple_dim.unwrap_or(0)
+}
+
+/// Widest output any batched matmul produces, which is what `Scratch::fm` is
+/// sized by.
+///
+/// The tied LM head is deliberately absent. It is the one projection whose
+/// output is the vocabulary rather than a model width, and reserving
+/// `n * vocab_size` would be 268 MB of scratch at E4B and a 256-token batch
+/// for a buffer the head does not use: it runs per position through
+/// `fill_dots`, for the rows `RowsWanted` actually asks for.
+fn panel_row(spec: &ModelSpec) -> usize {
+    let c = &spec.config;
+    let hd = spec.max_head_dim();
+    let ple_rows = c.n_layers * c.ple_dim.unwrap_or(0);
+    [
+        c.embed_dim,
+        c.n_heads * hd,
+        c.n_kv_heads * hd,
+        spec.max_ffn_dim(),
+        ple_rows,
+    ]
+    .into_iter()
+    .max()
+    .expect("non-empty")
 }
 
 impl Scratch {
-    /// Sized against the widest layer, not against layer 0 or a model-wide
-    /// scalar. Gemma 4's global layers carry twice the head width of its
-    /// sliding layers and E2B doubles the feed-forward width over its trailing
-    /// layers, so a buffer cut to either one alone is short for the other; the
-    /// views are re-carved to each layer's own widths inside `forward_one`.
+    /// Grow the buffers to hold `n` positions in flight.
+    ///
+    /// Called once per batch rather than per layer, so the batched pass makes
+    /// at most three allocations however many layers it walks. Never shrinks:
+    /// the decode path asks for one position after a prefill asked for many,
+    /// and returning the memory only to reallocate it on the next prefill
+    /// would trade a bounded resident set for a per-batch allocation.
+    fn ensure(&mut self, spec: &ModelSpec, n: usize) {
+        if n <= self.batch {
+            return;
+        }
+        let c = &spec.config;
+        self.buf.resize(n * scratch_row(spec), 0.0);
+        self.ple
+            .resize(n * c.n_layers * c.ple_dim.unwrap_or(0), 0.0);
+        self.fm.resize(n * panel_row(spec), 0.0);
+        self.batch = n;
+    }
+}
+
+impl Scratch {
+    /// Sized for one position, which is what decode needs. A batched prefill
+    /// calls `ensure` to widen the buffers to its own batch.
     fn new(spec: &ModelSpec) -> Scratch {
         let c = &spec.config;
-        let hd = spec.max_head_dim();
-        let (q_dim, kv_dim) = (c.n_heads * hd, c.n_kv_heads * hd);
-        // Widths of the views `forward_one` carves, in its order: x,
-        // normed, q, k, v, attn_out, projected, post, gate, up, mixed,
-        // down, ple_gate, ple_out. The carving asserts it never exceeds this.
-        let ple_dim = c.ple_dim.unwrap_or(0);
-        let elements = 6 * c.embed_dim + 2 * q_dim + 2 * kv_dim + 3 * spec.max_ffn_dim() + ple_dim;
         Scratch {
-            buf: vec![0.0; elements],
+            buf: vec![0.0; scratch_row(spec)],
             scores: Vec::new(),
-            ple: vec![0.0; c.n_layers * ple_dim],
+            ple: vec![0.0; c.n_layers * c.ple_dim.unwrap_or(0)],
+            fm: vec![0.0; panel_row(spec)],
+            batch: 1,
         }
     }
 }
@@ -1038,6 +1106,9 @@ pub struct CpuModel {
     /// Which dot product the matrix-vector products use. Carried across forks
     /// like `threads`, and unlike `threads` it can change the logits.
     dot: DotKind,
+    /// Positions per prefill forward pass. Carried across forks, and like
+    /// `threads` it cannot change the logits.
+    batch: BatchKind,
 }
 
 /// Output rows below which `par_rows` stays serial.
@@ -1170,6 +1241,96 @@ impl DotKind {
     }
 }
 
+/// Which positions of a batched pass need their logits computed.
+///
+/// The tied LM head is the largest tensor in the checkpoint, so this is not a
+/// micro-optimization: `prefill` wants one row and would otherwise fold the
+/// embedding table once per prefilled position and discard all but the last.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RowsWanted {
+    /// Every position, which is what `prefill_all` returns.
+    All,
+    /// The final position alone.
+    Last,
+    /// No position: a prefill group that is not the last, under a caller that
+    /// asked only for the final logits.
+    None,
+}
+
+/// How many positions a prefill puts through the forward pass at once.
+///
+/// An A/B switch on the `DotKind` pattern, and unlike `DotKind` every variant
+/// here is bit-identical: `Stepped` and `Batched(n)` differ in when a dot
+/// product runs and which weight rows are resident while it runs, never in
+/// what it sums or in what order. `Stepped` is kept as the reference the
+/// batched path is measured against, not as a fallback for a numerics
+/// difference — there is none to fall back from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BatchKind {
+    /// One position per forward pass. The reference.
+    Stepped,
+    /// Up to this many positions per forward pass.
+    Batched(usize),
+    /// The whole prefill in one pass, however long it is.
+    Whole,
+}
+
+/// Positions per pass by default.
+///
+/// A cap rather than `Whole` because scratch scales with the batch: at E4B's
+/// widths a 256-position batch is tens of megabytes, and a prefill that filled
+/// a long context in one pass would scale that by the context length for no
+/// further benefit. The weight-reuse win is already saturated well below this
+/// — the weights are read once per pass either way, so 256 positions amortize
+/// them 256-fold and the next doubling buys 0.2 percent more.
+const DEFAULT_BATCH: usize = 256;
+
+impl Default for BatchKind {
+    fn default() -> BatchKind {
+        BatchKind::Batched(DEFAULT_BATCH)
+    }
+}
+
+impl BatchKind {
+    /// The spelling a command line and a run header use: `stepped`, `whole`,
+    /// or a positive integer.
+    pub fn label(self) -> String {
+        match self {
+            BatchKind::Stepped => "stepped".to_string(),
+            BatchKind::Whole => "whole".to_string(),
+            BatchKind::Batched(n) => n.to_string(),
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<BatchKind> {
+        match s {
+            "stepped" => Some(BatchKind::Stepped),
+            "whole" => Some(BatchKind::Whole),
+            _ => match s.parse::<usize>() {
+                Ok(0) | Err(_) => None,
+                Ok(1) => Some(BatchKind::Stepped),
+                Ok(n) => Some(BatchKind::Batched(n)),
+            },
+        }
+    }
+
+    /// Positions per pass for a prefill of `tokens` tokens.
+    fn chunk(self, tokens: usize) -> usize {
+        match self {
+            BatchKind::Stepped => 1,
+            BatchKind::Batched(n) => n.min(tokens),
+            BatchKind::Whole => tokens,
+        }
+    }
+
+    /// Whether this kind produces the same bits as `Stepped`. Constant, and
+    /// present so a caller recording numerics states the property rather than
+    /// assuming it.
+    pub fn is_bit_identical(self) -> bool {
+        true
+    }
+}
+
 /// Fill one contiguous run of output rows, `R` at a time.
 ///
 /// `post` runs on each element after its dot, inside the worker: the tied LM
@@ -1231,6 +1392,155 @@ fn fill_dots(
     }
 }
 
+/// `par_row_runs` over output *features* of a feature-major panel, handing
+/// each worker a whole number of `[n]` runs.
+///
+/// The partition depends only on the feature count, `n` and `threads`, so
+/// everything `par_rows` argues about determinism carries over unchanged: a
+/// worker's run is a contiguous block of features, no feature is split across
+/// workers, and no accumulator is shared.
+fn par_feature_runs(
+    fm: &mut [f32],
+    n: usize,
+    threads: usize,
+    f: impl Fn(usize, &mut [f32]) + Sync,
+) {
+    debug_assert_eq!(fm.len() % n, 0, "panel is a whole number of features");
+    let feats = fm.len() / n;
+    let threads = threads.min(feats);
+    if threads <= 1 || feats < PARALLEL_MIN_ROWS {
+        f(0, fm);
+        return;
+    }
+    let per = feats.div_ceil(threads);
+    let f = &f;
+    std::thread::scope(|s| {
+        for (chunk, part) in fm.chunks_mut(per * n).enumerate() {
+            let base = chunk * per;
+            s.spawn(move || f(base, part));
+        }
+    });
+}
+
+/// One feature-major run of a batched matmul, `R` output features at a time.
+///
+/// **Bit-identical to the per-position matvec, and that is the entire design
+/// constraint of the batched pass.** Each output element is still one
+/// sequential fold over `in_dim` in index order, because position `p`'s dot
+/// against weight row `o` sums the same products in the same order however
+/// many positions are in flight. What changes is only when it is computed and
+/// what is resident: the `R` weight rows are read once and reused across all
+/// `n` positions, which is the whole point — decode reads roughly 14 GiB of
+/// weights per position, and a 256-token batch reads them once for 256
+/// positions.
+///
+/// Note what is *not* here: no accumulation across positions, and no
+/// `mul_add`. A conventional GEMM would fuse the multiply and add and roughly
+/// double achievable peak FLOPS; `mul_add` keeps a wider intermediate and is
+/// prohibited workspace-wide, so this kernel forgoes that. A known and
+/// accepted cost of bit-identical replay, stated here rather than discovered
+/// as a disappointing benchmark.
+fn fill_panel_blocked<const R: usize>(
+    w: &Weight,
+    x: &[f32],
+    in_dim: usize,
+    n: usize,
+    base: usize,
+    run: &mut [f32],
+) {
+    let feats = run.len() / n;
+    let full = feats / R * R;
+    let (head, tail) = run.split_at_mut(full * n);
+    for (b, block) in head.chunks_exact_mut(R * n).enumerate() {
+        let o = base + b * R;
+        let mut got = [0.0f32; R];
+        for p in 0..n {
+            w.row_dot_block::<R>(o, &x[p * in_dim..(p + 1) * in_dim], &mut got);
+            for (j, g) in got.iter().enumerate() {
+                block[j * n + p] = *g;
+            }
+        }
+    }
+    // Features past the last full block, which need no rule of their own: the
+    // single-row fold gives the same bits the block would have.
+    for (i, acc) in tail.chunks_exact_mut(n).enumerate() {
+        let o = base + full + i;
+        for (p, dst) in acc.iter_mut().enumerate() {
+            *dst = w.row_dot(o, &x[p * in_dim..(p + 1) * in_dim]);
+        }
+    }
+}
+
+/// `fill_panel_blocked` for the kinds that fold one row at a time.
+fn fill_panel_single(
+    w: &Weight,
+    x: &[f32],
+    in_dim: usize,
+    n: usize,
+    base: usize,
+    run: &mut [f32],
+    lanes: bool,
+) {
+    for (i, acc) in run.chunks_exact_mut(n).enumerate() {
+        let o = base + i;
+        for (p, dst) in acc.iter_mut().enumerate() {
+            let xp = &x[p * in_dim..(p + 1) * in_dim];
+            *dst = if lanes {
+                w.row_dot_lanes(o, xp)
+            } else {
+                w.row_dot(o, xp)
+            };
+        }
+    }
+}
+
+/// `out[p] = W x[p]` for `n` positions at once.
+///
+/// `x` and `out` are position-major (`[n][dim]`, so every elementwise stage
+/// downstream keeps the contiguous per-position slice it has today); `fm` is
+/// the feature-major staging panel the kernel writes, transposed back into
+/// `out` here. See `Scratch::fm` for why the transpose is affordable.
+fn matmul_panel(
+    w: &Weight,
+    x: &[f32],
+    out: &mut [f32],
+    fm: &mut [f32],
+    n: usize,
+    threads: usize,
+    dot: DotKind,
+) {
+    let (in_dim, out_dim) = (x.len() / n, out.len() / n);
+    assert_eq!(
+        w.len(),
+        in_dim * out_dim,
+        "matmul_panel: weight of {} elements for a {in_dim} x {out_dim} product",
+        w.len()
+    );
+    let fm = &mut fm[..out_dim * n];
+    match dot {
+        DotKind::Sequential => par_feature_runs(fm, n, threads, |base, run| {
+            fill_panel_single(w, x, in_dim, n, base, run, false);
+        }),
+        DotKind::Lanes16 => par_feature_runs(fm, n, threads, |base, run| {
+            fill_panel_single(w, x, in_dim, n, base, run, true);
+        }),
+        DotKind::Rows4 => par_feature_runs(fm, n, threads, |base, run| {
+            fill_panel_blocked::<4>(w, x, in_dim, n, base, run);
+        }),
+        DotKind::Rows8 => par_feature_runs(fm, n, threads, |base, run| {
+            fill_panel_blocked::<8>(w, x, in_dim, n, base, run);
+        }),
+        DotKind::Rows16 => par_feature_runs(fm, n, threads, |base, run| {
+            fill_panel_blocked::<16>(w, x, in_dim, n, base, run);
+        }),
+    }
+    for (o, feature) in fm.chunks_exact(n).enumerate() {
+        for (p, v) in feature.iter().enumerate() {
+            out[p * out_dim + o] = *v;
+        }
+    }
+}
+
 /// `out = W x` with GGUF layout `[in, out]`: rows of `in` contiguous per
 /// output element. The output width is `out.len()`, and `out` is written in
 /// full, so its previous contents never reach the result.
@@ -1246,6 +1556,12 @@ fn fill_dots(
 ///
 /// `threads` bounds the row split and does not change the result; see
 /// `par_rows`.
+///
+/// Test-only since the batched pass arrived, and kept deliberately: it is the
+/// straightforward per-position matvec that `matmul_panel` must agree with
+/// bit-for-bit, so retiring it would retire the independent statement of what
+/// the panel kernel is supposed to compute.
+#[cfg(test)]
 fn matvec_into(w: &Weight, x: &[f32], out: &mut [f32], threads: usize, dot: DotKind) {
     let (in_dim, out_dim) = (x.len(), out.len());
     assert_eq!(
@@ -1654,6 +1970,7 @@ impl CpuModel {
             control: None,
             threads: default_threads(),
             dot: DotKind::default(),
+            batch: BatchKind::default(),
         })
     }
 
@@ -1700,6 +2017,22 @@ impl CpuModel {
     /// The dot in force, for a runner that reports what it ran.
     pub fn dot(&self) -> DotKind {
         self.dot
+    }
+
+    /// Select how many positions a prefill puts through the forward pass at
+    /// once.
+    ///
+    /// Like `set_threads` and unlike `set_dot` this cannot change the logits;
+    /// see `BatchKind`. It is exposed anyway because it changes the resident
+    /// set and the wall clock by a large factor, and a run that reports one
+    /// should report the other.
+    pub fn set_batch(&mut self, batch: BatchKind) {
+        self.batch = batch;
+    }
+
+    /// The batch in force, for a runner that reports what it ran.
+    pub fn batch(&self) -> BatchKind {
+        self.batch
     }
 
     /// Heap bytes the weights occupy, and the width they are held at.
@@ -1773,6 +2106,7 @@ impl CpuModel {
             // slower after a spawn.
             threads: self.threads,
             dot: self.dot,
+            batch: self.batch,
         }
     }
 
@@ -1818,15 +2152,54 @@ impl CpuModel {
         Ok(())
     }
 
-    /// One decode position: append the token's K/V to every layer cache and
-    /// return the logits at this position.
+    /// One decode position, as the batch of one.
+    ///
+    /// Test-only since the batched pass arrived: decode reaches
+    /// `forward_batch` through `prefill` of a single token, so a second
+    /// production entry point would be a second thing to keep in step. It
+    /// survives because several tests are about a position rather than about a
+    /// prefill, and read better saying so.
+    #[cfg(test)]
     fn forward_one(&mut self, token: Token, position: usize) -> Result<Logits> {
+        Ok(self
+            .forward_batch(&[token], position, RowsWanted::All)?
+            .pop()
+            .expect("a batch of one returns one row"))
+    }
+
+    /// `n` consecutive positions in one pass, starting at absolute position
+    /// `start`: append every token's K/V to every layer cache and return the
+    /// logits for the positions `want` asks for.
+    ///
+    /// **Bit-identical to running the positions one at a time.** The argument
+    /// is in `fill_panel_blocked`, and the gate is
+    /// `batched_prefill_matches_stepped_decode`. Batching changes when each
+    /// dot product is computed and which weight rows are resident while it
+    /// happens; it changes no summation order, so no bit moves.
+    ///
+    /// The traversal is layer-major rather than position-major: every position
+    /// passes through layer `i` before any reaches layer `i + 1`. That is what
+    /// lets the layer's weights be read once for the whole batch, and it is
+    /// visible at exactly one seam — a `Tap` sees `(0, 0), (0, 1), ..., (1,
+    /// 0)` instead of `(0, 0), (1, 0), (0, 1)`. Every pair still fires exactly
+    /// once, and positions still ascend within a layer.
+    fn forward_batch(
+        &mut self,
+        tokens: &[Token],
+        start: usize,
+        want: RowsWanted,
+    ) -> Result<Vec<Logits>> {
         let c = self.config;
+        let n = tokens.len();
+        assert!(n > 0, "forward_batch of zero tokens");
         // Copied out before the field split below, which borrows `self`
         // mutably and would otherwise put these out of reach.
         let threads = self.threads;
         let dot = self.dot;
-        self.check_token(token)?;
+        for &token in tokens {
+            self.check_token(token)?;
+        }
+        self.scratch.ensure(&self.spec, n);
         // Split the borrow by field: the layer loop reads the weights, appends
         // to the caches, and writes the scratch buffers at the same time.
         let CpuModel {
@@ -1840,29 +2213,40 @@ impl CpuModel {
         let w: &Weights = weights;
         let heads_per_kv = c.n_heads / c.n_kv_heads;
 
-        // `x` is the residual stream and outlives the layer loop; everything
-        // else is re-carved per layer, because head width and feed-forward
-        // width vary by layer and a single carving would size them all to
-        // whichever layer happened to be first.
-        let Scratch { buf, scores, ple } = scratch;
-        let (x, work) = buf.split_at_mut(c.embed_dim);
+        // `x` is the residual stream, one row per position, and outlives the
+        // layer loop; everything else is re-carved per layer, because head
+        // width and feed-forward width vary by layer and a single carving
+        // would size them all to whichever layer happened to be first.
+        let Scratch {
+            buf,
+            scores,
+            ple,
+            fm,
+            ..
+        } = scratch;
+        let (x_all, work) = buf.split_at_mut(n * c.embed_dim);
 
         // Embedding, scaled by sqrt(embed_dim) per Gemma convention. Widened
         // into the residual buffer and scaled there: one multiply per element,
         // exactly as when the table was already f32.
-        w.embed.widen_row_into(token as usize, x);
         let scale = (c.embed_dim as f32).sqrt();
-        for dst in x.iter_mut() {
-            *dst *= scale;
-        }
-        if let Some(tap) = tap.as_mut() {
-            tap.on_stage(STAGE_EMBED, position, x);
+        for (p, &token) in tokens.iter().enumerate() {
+            let x = &mut x_all[p * c.embed_dim..(p + 1) * c.embed_dim];
+            w.embed.widen_row_into(token as usize, x);
+            for dst in x.iter_mut() {
+                *dst *= scale;
+            }
+            if let Some(tap) = tap.as_mut() {
+                tap.on_stage(STAGE_EMBED, start + p, x);
+            }
         }
 
-        // Per-layer input embeddings, computed once for this position from the
+        // Per-layer input embeddings, computed once per position from the
         // embedded input and the token identity, before the decoder stack.
-        // Layer `i` consumes row `i` of the result.
-        if let (Some(p), Some(pd)) = (w.ple.as_ref(), c.ple_dim) {
+        // Layer `i` consumes row `i` of the position's result.
+        let ple_stride = c.n_layers * c.ple_dim.unwrap_or(0);
+        if let (Some(p_w), Some(pd)) = (w.ple.as_ref(), c.ple_dim) {
+            let ple_panel = &mut ple[..n * ple_stride];
             // Context component: project the embedded input to one row per
             // layer, scale, and RMSNorm each row over its own `pd` dimensions.
             //
@@ -1871,49 +2255,52 @@ impl CpuModel {
             // very nearly cancels — but only very nearly: `rms_eps` is added
             // to the mean square in absolute terms, so the scale does change
             // the result and is applied rather than folded away.
-            matvec_into(&p.model_proj, x, ple, threads, dot);
+            matmul_panel(&p_w.model_proj, x_all, ple_panel, fm, n, threads, dot);
             let proj_scale = 1.0 / (c.embed_dim as f32).sqrt();
-            for v in ple.iter_mut() {
+            for v in ple_panel.iter_mut() {
                 *v *= proj_scale;
             }
-            for row in ple.chunks_mut(pd) {
-                rms_norm_in_place(row, &p.proj_norm, c.rms_eps);
+            for row in ple_panel.chunks_mut(pd) {
+                rms_norm_in_place(row, &p_w.proj_norm, c.rms_eps);
             }
-            if let Some(tap) = tap.as_mut() {
-                tap.on_stage(STAGE_PLE_CONTEXT, position, ple);
-            }
-            // Token-identity component: one packed row of the per-layer table,
-            // scaled by sqrt(ple_dim) -- x16 at Gemma 4's width of 256, an
-            // embed scale that is easy to miss because it lives on the
-            // embedding module rather than at the call site
-            // (`docs/models/gemma4-upstream.txt`).
-            //
-            // The row stride is the packed width, not `pd`: the table is one
-            // tensor to split into `n_layers` rows, not a stack of per-layer
-            // tables.
-            let stride = c.n_layers * pd;
-            debug_assert!(
-                (token as usize) < p.ple_vocab,
-                "token bound checked at entry"
-            );
-            let identity = token as usize * stride;
             let embed_scale = (pd as f32).sqrt();
-            // The identity half has no buffer of its own -- it is read
-            // straight out of the packed table and summed in place -- so
-            // reporting it costs an allocation, taken only when a tap has
-            // asked for stages.
-            if tap.as_ref().is_some_and(|t| t.wants_stages()) {
-                let scaled: Vec<f32> = (0..stride)
-                    .map(|j| p.token_embd.get(identity + j) * embed_scale)
-                    .collect();
-                let tap = tap.as_mut().expect("checked above");
-                tap.on_stage(STAGE_PLE_IDENTITY, position, &scaled);
-            }
-            for (j, dst) in ple.iter_mut().enumerate() {
-                *dst = (*dst + p.token_embd.get(identity + j) * embed_scale) * PLE_INPUT_SCALE;
-            }
-            if let Some(tap) = tap.as_mut() {
-                tap.on_stage(STAGE_PLE, position, ple);
+            for (p, &token) in tokens.iter().enumerate() {
+                let rows = &mut ple_panel[p * ple_stride..(p + 1) * ple_stride];
+                if let Some(tap) = tap.as_mut() {
+                    tap.on_stage(STAGE_PLE_CONTEXT, start + p, rows);
+                }
+                // Token-identity component: one packed row of the per-layer
+                // table, scaled by sqrt(ple_dim) -- x16 at Gemma 4's width of
+                // 256, an embed scale that is easy to miss because it lives on
+                // the embedding module rather than at the call site
+                // (`docs/models/gemma4-upstream.txt`).
+                //
+                // The row stride is the packed width, not `pd`: the table is
+                // one tensor to split into `n_layers` rows, not a stack of
+                // per-layer tables.
+                debug_assert!(
+                    (token as usize) < p_w.ple_vocab,
+                    "token bound checked at entry"
+                );
+                let identity = token as usize * ple_stride;
+                // The identity half has no buffer of its own -- it is read
+                // straight out of the packed table and summed in place -- so
+                // reporting it costs an allocation, taken only when a tap has
+                // asked for stages.
+                if tap.as_ref().is_some_and(|t| t.wants_stages()) {
+                    let scaled: Vec<f32> = (0..ple_stride)
+                        .map(|j| p_w.token_embd.get(identity + j) * embed_scale)
+                        .collect();
+                    let tap = tap.as_mut().expect("checked above");
+                    tap.on_stage(STAGE_PLE_IDENTITY, start + p, &scaled);
+                }
+                for (j, dst) in rows.iter_mut().enumerate() {
+                    *dst =
+                        (*dst + p_w.token_embd.get(identity + j) * embed_scale) * PLE_INPUT_SCALE;
+                }
+                if let Some(tap) = tap.as_mut() {
+                    tap.on_stage(STAGE_PLE, start + p, rows);
+                }
             }
         }
         let ple_rows: &[f32] = ple;
@@ -1923,43 +2310,53 @@ impl CpuModel {
             let (q_dim, kv_dim) = (c.n_heads * hd, c.n_kv_heads * hd);
             let ffn_dim = layer.spec.ffn_dim;
             // Reborrowed per iteration so each layer carves the same storage
-            // to its own widths. `Scratch::new` reserves for the widest layer
-            // and `carve` panics if a view runs short, so a scratch sized
-            // against the wrong layer fails here rather than as wrong logits.
+            // to its own widths. `Scratch::ensure` reserves for the widest
+            // layer and `carve` panics if a view runs short, so a scratch
+            // sized against the wrong layer fails here rather than as wrong
+            // logits.
             let mut rest: &mut [f32] = &mut *work;
-            let normed = carve(&mut rest, c.embed_dim);
-            let q = carve(&mut rest, q_dim);
-            let k = carve(&mut rest, kv_dim);
-            let v = carve(&mut rest, kv_dim);
-            let attn_out = carve(&mut rest, q_dim);
-            let projected = carve(&mut rest, c.embed_dim);
-            let post = carve(&mut rest, c.embed_dim);
-            let gate = carve(&mut rest, ffn_dim);
-            let up = carve(&mut rest, ffn_dim);
-            let mixed = carve(&mut rest, ffn_dim);
-            let down = carve(&mut rest, c.embed_dim);
-            let ple_gate = carve(&mut rest, c.ple_dim.unwrap_or(0));
-            let ple_out = carve(&mut rest, c.embed_dim);
+            let normed = carve(&mut rest, n * c.embed_dim);
+            let q = carve(&mut rest, n * q_dim);
+            let k = carve(&mut rest, n * kv_dim);
+            let v = carve(&mut rest, n * kv_dim);
+            let attn_out = carve(&mut rest, n * q_dim);
+            let projected = carve(&mut rest, n * c.embed_dim);
+            let post = carve(&mut rest, n * c.embed_dim);
+            let gate = carve(&mut rest, n * ffn_dim);
+            let up = carve(&mut rest, n * ffn_dim);
+            let mixed = carve(&mut rest, n * ffn_dim);
+            let down = carve(&mut rest, n * c.embed_dim);
+            let ple_gate = carve(&mut rest, n * c.ple_dim.unwrap_or(0));
+            let ple_out = carve(&mut rest, n * c.embed_dim);
 
             // Attention block.
-            rms_norm_into(x, &layer.attn_norm, c.rms_eps, normed);
-            matvec_into(&layer.wq, normed, q, threads, dot);
-            for head in q.chunks_mut(hd) {
-                rms_norm_in_place(head, &layer.q_norm, c.rms_eps);
-                rope(head, position, &layer.rope_freqs);
+            for (xp, np) in x_all
+                .chunks_exact(c.embed_dim)
+                .zip(normed.chunks_exact_mut(c.embed_dim))
+            {
+                rms_norm_into(xp, &layer.attn_norm, c.rms_eps, np);
+            }
+            matmul_panel(&layer.wq, normed, q, fm, n, threads, dot);
+            for (p, qp) in q.chunks_exact_mut(q_dim).enumerate() {
+                for head in qp.chunks_mut(hd) {
+                    rms_norm_in_place(head, &layer.q_norm, c.rms_eps);
+                    rope(head, start + p, &layer.rope_freqs);
+                }
             }
             // K and V only where this layer owns its cache. A shared-KV layer
             // computes its query and nothing else, then attends over the
             // donor's rows -- which are already post-k_norm and post-rotary,
-            // and already carry this position, because the donor is an earlier
-            // layer in this same loop.
+            // and already carry every position of this batch, because the
+            // donor is an earlier layer in this same loop.
             let src = layer.spec.kv_source;
             if src == i {
-                matvec_into(&layer.wk, normed, k, threads, dot);
-                matvec_into(&layer.wv, normed, v, threads, dot);
-                for head in k.chunks_mut(hd) {
-                    rms_norm_in_place(head, &layer.k_norm, c.rms_eps);
-                    rope(head, position, &layer.rope_freqs);
+                matmul_panel(&layer.wk, normed, k, fm, n, threads, dot);
+                matmul_panel(&layer.wv, normed, v, fm, n, threads, dot);
+                for (p, kp) in k.chunks_exact_mut(kv_dim).enumerate() {
+                    for head in kp.chunks_mut(hd) {
+                        rms_norm_in_place(head, &layer.k_norm, c.rms_eps);
+                        rope(head, start + p, &layer.rope_freqs);
+                    }
                 }
                 // Value states are normed and never rotated: position enters
                 // attention through q and k alone (upstream:1253-1254). The
@@ -1969,6 +2366,10 @@ impl CpuModel {
                 for head in v.chunks_mut(hd) {
                     rms_norm_scaleless_in_place(head, c.rms_eps);
                 }
+                // Every position's K/V lands before any attention at this
+                // layer, so the rows an earlier member of the batch appended
+                // are visible to a later one -- which is what makes the
+                // triangular mask below both necessary and sufficient.
                 let cache = &mut kv[i];
                 cache.k.extend_from_slice(k);
                 cache.v.extend_from_slice(v);
@@ -1987,10 +2388,13 @@ impl CpuModel {
             // only the trailing `window` positions including this one. The
             // bound comes from the *reading* layer's own kind: sharing supplies
             // the states, it does not change which of them are visible.
-            let first = match layer.spec.kind {
-                LayerKind::Global => 0,
-                LayerKind::SlidingWindow(win) => (position + 1).saturating_sub(win),
-            };
+            //
+            // Both ends of the span are the batch member's own absolute
+            // position, which is what makes the mask triangular within the
+            // batch rather than square: position `start + p` attends over
+            // `first ..= start + p` and never over a later member, even though
+            // that member's row is already in the cache.
+            //
             // No 1/sqrt(head_dim) here. Gemma 4 sets `self.scaling = 1.0`
             // (upstream:1181) and passes it explicitly, so upstream's
             // `eager_attention_forward` never reaches the
@@ -2001,39 +2405,61 @@ impl CpuModel {
             // uniform. Stated as a comment rather than a `let scale = 1.0`,
             // which reads as an oversight and invites the divide back.
             attn_out.fill(0.0);
-            for qh in 0..c.n_heads {
-                let kvh = qh / heads_per_kv;
-                let qv = &q[qh * hd..(qh + 1) * hd];
-                scores.clear();
-                scores.extend((first..=position).map(|p| {
-                    let kp = &cache.k[p * kv_dim + kvh * hd..p * kv_dim + (kvh + 1) * hd];
-                    attn_logit(qv, kp)
-                }));
-                softmax_in_place(scores);
-                let out = &mut attn_out[qh * hd..(qh + 1) * hd];
-                for (s, p) in scores.iter().zip(first..=position) {
-                    let vp = &cache.v[p * kv_dim + kvh * hd..p * kv_dim + (kvh + 1) * hd];
-                    for (o, val) in out.iter_mut().zip(vp) {
-                        *o += s * val;
+            for p in 0..n {
+                let position = start + p;
+                let first = match layer.spec.kind {
+                    LayerKind::Global => 0,
+                    LayerKind::SlidingWindow(win) => (position + 1).saturating_sub(win),
+                };
+                for qh in 0..c.n_heads {
+                    let kvh = qh / heads_per_kv;
+                    let qv = &q[p * q_dim + qh * hd..p * q_dim + (qh + 1) * hd];
+                    scores.clear();
+                    scores.extend((first..=position).map(|t| {
+                        let kt = &cache.k[t * kv_dim + kvh * hd..t * kv_dim + (kvh + 1) * hd];
+                        attn_logit(qv, kt)
+                    }));
+                    softmax_in_place(scores);
+                    let out = &mut attn_out[p * q_dim + qh * hd..p * q_dim + (qh + 1) * hd];
+                    for (s, t) in scores.iter().zip(first..=position) {
+                        let vt = &cache.v[t * kv_dim + kvh * hd..t * kv_dim + (kvh + 1) * hd];
+                        for (o, val) in out.iter_mut().zip(vt) {
+                            *o += s * val;
+                        }
                     }
                 }
             }
-            matvec_into(&layer.wo, attn_out, projected, threads, dot);
-            rms_norm_into(projected, &layer.post_attn_norm, c.rms_eps, post);
-            for (a, b) in x.iter_mut().zip(post.iter()) {
+            matmul_panel(&layer.wo, attn_out, projected, fm, n, threads, dot);
+            for (pr, po) in projected
+                .chunks_exact(c.embed_dim)
+                .zip(post.chunks_exact_mut(c.embed_dim))
+            {
+                rms_norm_into(pr, &layer.post_attn_norm, c.rms_eps, po);
+            }
+            for (a, b) in x_all.iter_mut().zip(post.iter()) {
                 *a += b;
             }
 
             // GeGLU MLP block.
-            rms_norm_into(x, &layer.ffn_norm, c.rms_eps, normed);
-            matvec_into(&layer.w_gate, normed, gate, threads, dot);
-            matvec_into(&layer.w_up, normed, up, threads, dot);
+            for (xp, np) in x_all
+                .chunks_exact(c.embed_dim)
+                .zip(normed.chunks_exact_mut(c.embed_dim))
+            {
+                rms_norm_into(xp, &layer.ffn_norm, c.rms_eps, np);
+            }
+            matmul_panel(&layer.w_gate, normed, gate, fm, n, threads, dot);
+            matmul_panel(&layer.w_up, normed, up, fm, n, threads, dot);
             for ((m, g), u) in mixed.iter_mut().zip(gate.iter()).zip(up.iter()) {
                 *m = gelu(*g) * u;
             }
-            matvec_into(&layer.w_down, mixed, down, threads, dot);
-            rms_norm_into(down, &layer.post_ffw_norm, c.rms_eps, post);
-            for (a, b) in x.iter_mut().zip(post.iter()) {
+            matmul_panel(&layer.w_down, mixed, down, fm, n, threads, dot);
+            for (dn, po) in down
+                .chunks_exact(c.embed_dim)
+                .zip(post.chunks_exact_mut(c.embed_dim))
+            {
+                rms_norm_into(dn, &layer.post_ffw_norm, c.rms_eps, po);
+            }
+            for (a, b) in x_all.iter_mut().zip(post.iter()) {
                 *a += b;
             }
 
@@ -2043,14 +2469,21 @@ impl CpuModel {
             // modulates it there elementwise, and the projection widens it
             // back (`docs/models/gemma4-upstream.txt`).
             if let (Some(pl), Some(pd)) = (layer.ple.as_ref(), c.ple_dim) {
-                matvec_into(&pl.inp_gate, x, ple_gate, threads, dot);
-                let row = &ple_rows[i * pd..(i + 1) * pd];
-                for (g, e) in ple_gate.iter_mut().zip(row) {
-                    *g = gelu(*g) * e;
+                matmul_panel(&pl.inp_gate, x_all, ple_gate, fm, n, threads, dot);
+                for (p, gp) in ple_gate.chunks_exact_mut(pd).enumerate() {
+                    let row = &ple_rows[p * ple_stride + i * pd..p * ple_stride + (i + 1) * pd];
+                    for (g, e) in gp.iter_mut().zip(row) {
+                        *g = gelu(*g) * e;
+                    }
                 }
-                matvec_into(&pl.proj, ple_gate, ple_out, threads, dot);
-                rms_norm_into(ple_out, &pl.post_norm, c.rms_eps, post);
-                for (a, b) in x.iter_mut().zip(post.iter()) {
+                matmul_panel(&pl.proj, ple_gate, ple_out, fm, n, threads, dot);
+                for (po_in, po) in ple_out
+                    .chunks_exact(c.embed_dim)
+                    .zip(post.chunks_exact_mut(c.embed_dim))
+                {
+                    rms_norm_into(po_in, &pl.post_norm, c.rms_eps, po);
+                }
+                for (a, b) in x_all.iter_mut().zip(post.iter()) {
                     *a += b;
                 }
             }
@@ -2061,7 +2494,7 @@ impl CpuModel {
             // returns immediately, so it is the boundary between this layer
             // and the next.
             if layer.output_scale != 1.0 {
-                for a in x.iter_mut() {
+                for a in x_all.iter_mut() {
                     *a *= layer.output_scale;
                 }
             }
@@ -2077,52 +2510,125 @@ impl CpuModel {
             // trained on one capture path score the other with plausible
             // numbers. See docs/interp/gemma-4-interp.md.
             if let Some(dir) = control.as_ref().and_then(|cv| cv.direction(i)) {
-                let scale = control.as_ref().expect("checked above").scale;
-                for (a, b) in x.iter_mut().zip(dir) {
-                    *a += scale * b;
+                let cv_scale = control.as_ref().expect("checked above").scale;
+                for xp in x_all.chunks_exact_mut(c.embed_dim) {
+                    for (a, b) in xp.iter_mut().zip(dir) {
+                        *a += cv_scale * b;
+                    }
                 }
             }
 
-            // Interp tap seam: the layer's complete output.
+            // Interp tap seam: the layer's complete output, once per position
+            // in ascending order.
             if let Some(tap) = tap.as_mut() {
-                tap.on_residual(i, position, x);
+                for (p, xp) in x_all.chunks_exact(c.embed_dim).enumerate() {
+                    tap.on_residual(i, start + p, xp);
+                }
             }
         }
 
-        // Final norm and tied LM head: logits[t] = embed_row(t) . x. The
-        // logits vector is the return value, so it is the one allocation
-        // per token the forward pass still owes its caller.
-        let mut rest: &mut [f32] = work;
-        let normed = carve(&mut rest, c.embed_dim);
-        rms_norm_into(x, &w.output_norm, c.rms_eps, normed);
-        let hidden: &[f32] = normed;
-        // Row-split like every other projection, and for a larger share of the
-        // token than any of them: the tied head folds the whole embedding
-        // table, roughly a tenth of E4B's weights, once per position. Left
-        // serial it would be the Amdahl floor under the rest of the threading.
-        let mut logits = vec![0.0f32; c.vocab_size];
-        // Softcap, when the checkpoint declares one: a smooth squash toward
-        // +/-cap rather than a clamp. Monotone, so it moves no argmax and
-        // greedy decoding cannot detect its absence -- perplexity, sampled
-        // decoding, and every captured logprob can, which is why omitting it
-        // is a silent defect and why its tests are not written against argmax.
+        // Final norm and tied LM head: logits[t] = embed_row(t) . x.
         //
-        // Applied per element inside the worker rather than in a pass of its
-        // own: it is elementwise, and a second walk of the vocabulary to run
-        // a few hundred thousand `tanh` calls serially would cost more than
-        // the cap does.
-        fill_dots(
-            &w.embed,
-            hidden,
-            &mut logits,
-            threads,
-            dot,
-            |logit| match c.logit_softcap {
-                Some(cap) => (logit / cap).tanh() * cap,
-                None => logit,
-            },
+        // Per position rather than as a panel, and only for the positions
+        // `want` asks for. The head is the tied embedding table -- 1.07 GB at
+        // E4B, about 7 percent of the weights -- and `prefill` discards every
+        // row but the last, so computing all of them would be reading the
+        // largest tensor in the checkpoint to throw the answer away.
+        let mut rest: &mut [f32] = work;
+        let normed = carve(&mut rest, n * c.embed_dim);
+        let rows: Vec<usize> = match want {
+            RowsWanted::All => (0..n).collect(),
+            RowsWanted::Last => vec![n - 1],
+            RowsWanted::None => Vec::new(),
+        };
+        for &p in &rows {
+            let (xp, np) = (
+                &x_all[p * c.embed_dim..(p + 1) * c.embed_dim],
+                &mut normed[p * c.embed_dim..(p + 1) * c.embed_dim],
+            );
+            rms_norm_into(xp, &w.output_norm, c.rms_eps, np);
+        }
+        let hidden: &[f32] = normed;
+        let mut out = Vec::with_capacity(rows.len());
+        for &p in &rows {
+            // Row-split like every other projection, and for a larger share of
+            // the token than any of them: the tied head folds the whole
+            // embedding table once per position. Left serial it would be the
+            // Amdahl floor under the rest of the threading.
+            let mut logits = vec![0.0f32; c.vocab_size];
+            // Softcap, when the checkpoint declares one: a smooth squash
+            // toward +/-cap rather than a clamp. Monotone, so it moves no
+            // argmax and greedy decoding cannot detect its absence --
+            // perplexity, sampled decoding, and every captured logprob can,
+            // which is why omitting it is a silent defect and why its tests
+            // are not written against argmax.
+            //
+            // Applied per element inside the worker rather than in a pass of
+            // its own: it is elementwise, and a second walk of the vocabulary
+            // to run a few hundred thousand `tanh` calls serially would cost
+            // more than the cap does.
+            fill_dots(
+                &w.embed,
+                &hidden[p * c.embed_dim..(p + 1) * c.embed_dim],
+                &mut logits,
+                threads,
+                dot,
+                |logit| match c.logit_softcap {
+                    Some(cap) => (logit / cap).tanh() * cap,
+                    None => logit,
+                },
+            );
+            out.push(Logits(logits));
+        }
+        Ok(out)
+    }
+
+    fn prefill_groups(&mut self, tokens: &[Token], last_only: bool) -> Result<Vec<Logits>> {
+        ensure!(!tokens.is_empty(), "prefill of zero tokens");
+        ensure!(
+            self.cached_len + tokens.len() <= self.config.context_length,
+            "prefill of {} tokens past cached {} exceeds context length {}",
+            tokens.len(),
+            self.cached_len,
+            self.config.context_length
         );
-        Ok(Logits(logits))
+        // Prefill is atomic, per the `Model::prefill` contract. The
+        // vocabulary bound needs no forward pass, so scanning the whole batch
+        // here makes the only mid-batch failure the loop can currently raise
+        // unreachable, before any token is committed.
+        for &t in tokens {
+            self.check_token(t)?;
+        }
+        let span =
+            tracing::info_span!("model.forward", start = self.cached_len, len = tokens.len());
+        let _enter = span.enter();
+        let entry = self.cached_len;
+        let chunk = self.batch.chunk(tokens.len());
+        let mut rows = Vec::with_capacity(tokens.len());
+        let groups = tokens.len().div_ceil(chunk);
+        for (g, group) in tokens.chunks(chunk).enumerate() {
+            let start = self.cached_len;
+            let want = match (last_only, g + 1 == groups) {
+                (false, _) => RowsWanted::All,
+                (true, true) => RowsWanted::Last,
+                (true, false) => RowsWanted::None,
+            };
+            // Backstop for any error a future forward pass raises: roll the
+            // cache back to the length prefill was called at, so a failed
+            // batch leaves the model exactly as it found it — including the
+            // groups that already succeeded.
+            let logits = match self.forward_batch(group, start, want) {
+                Ok(logits) => logits,
+                Err(e) => {
+                    self.truncate(entry)
+                        .expect("entry length is a prefix of the current cache");
+                    return Err(e);
+                }
+            };
+            self.cached_len += group.len();
+            rows.extend(logits);
+        }
+        Ok(rows)
     }
 }
 
@@ -2144,47 +2650,17 @@ impl Model for CpuModel {
     }
 
     fn prefill(&mut self, tokens: &[Token]) -> Result<Logits> {
-        Ok(self.prefill_all(tokens)?.pop().expect("non-empty prefill"))
+        // `last_only`, so the groups before the final one skip the tied LM
+        // head entirely rather than folding the embedding table for logits
+        // this caller is about to drop.
+        Ok(self
+            .prefill_groups(tokens, true)?
+            .pop()
+            .expect("non-empty prefill"))
     }
 
     fn prefill_all(&mut self, tokens: &[Token]) -> Result<Vec<Logits>> {
-        ensure!(!tokens.is_empty(), "prefill of zero tokens");
-        ensure!(
-            self.cached_len + tokens.len() <= self.config.context_length,
-            "prefill of {} tokens past cached {} exceeds context length {}",
-            tokens.len(),
-            self.cached_len,
-            self.config.context_length
-        );
-        // Prefill is atomic, per the `Model::prefill` contract. The
-        // vocabulary bound needs no forward pass, so scanning the whole batch
-        // here makes the only mid-batch failure the loop can currently raise
-        // unreachable, before any token is committed.
-        for &t in tokens {
-            self.check_token(t)?;
-        }
-        let span =
-            tracing::info_span!("model.forward", start = self.cached_len, len = tokens.len());
-        let _enter = span.enter();
-        let entry = self.cached_len;
-        let mut rows = Vec::with_capacity(tokens.len());
-        for &t in tokens {
-            let position = self.cached_len;
-            // Backstop for any error a future forward pass raises: roll the
-            // cache back to the length prefill was called at, so a failed
-            // batch leaves the model exactly as it found it.
-            let logits = match self.forward_one(t, position) {
-                Ok(logits) => logits,
-                Err(e) => {
-                    self.truncate(entry)
-                        .expect("entry length is a prefix of the current cache");
-                    return Err(e);
-                }
-            };
-            self.cached_len += 1;
-            rows.push(logits);
-        }
-        Ok(rows)
+        self.prefill_groups(tokens, false)
     }
 
     fn truncate(&mut self, len: usize) -> Result<()> {
@@ -4188,12 +4664,131 @@ mod tests {
 
     #[test]
     fn batched_prefill_matches_stepped_decode() {
+        // The gate for the whole batched pass. Exact equality, not a
+        // tolerance: batching reorders no summation, so the only admissible
+        // result is the same bits. Every batch width is checked against the
+        // one-position-at-a-time reference, including 2 and 4, which do not
+        // divide the token count and therefore exercise a short trailing
+        // group -- the case where an off-by-one in the position arithmetic
+        // would otherwise hide.
         let tokens = [1u32, 5, 9, 13, 3];
-        let mut batched = tiny();
-        let rows = batched.prefill_all(&tokens).unwrap();
         let mut stepped = tiny();
-        for (i, &t) in tokens.iter().enumerate() {
-            assert_eq!(stepped.prefill(&[t]).unwrap(), rows[i], "position {i}");
+        let reference: Vec<Logits> = tokens
+            .iter()
+            .map(|&t| stepped.prefill(&[t]).unwrap())
+            .collect();
+
+        for batch in [
+            BatchKind::Stepped,
+            BatchKind::Batched(1),
+            BatchKind::Batched(2),
+            BatchKind::Batched(4),
+            BatchKind::Batched(5),
+            BatchKind::Batched(64),
+            BatchKind::Whole,
+        ] {
+            let mut m = tiny();
+            m.set_batch(batch);
+            let rows = m.prefill_all(&tokens).unwrap();
+            assert_eq!(rows.len(), tokens.len(), "batch {}", batch.label());
+            for (i, row) in rows.iter().enumerate() {
+                assert_eq!(row, &reference[i], "batch {} position {i}", batch.label());
+            }
+            assert!(batch.is_bit_identical());
+
+            // `prefill` takes the last-row-only path through the same groups,
+            // so it must land on the same final logits as `prefill_all` did.
+            let mut last = tiny();
+            last.set_batch(batch);
+            assert_eq!(
+                last.prefill(&tokens).unwrap(),
+                reference[tokens.len() - 1],
+                "batch {} via prefill",
+                batch.label()
+            );
+        }
+    }
+
+    #[test]
+    fn a_batch_sees_its_own_earlier_positions() {
+        // The intra-batch causality claim, asserted on its own rather than
+        // only through the gate above. Every position of a batch has its K/V
+        // in the cache before any attention runs at that layer, so the mask is
+        // the only thing stopping position 0 from attending to position 1 --
+        // and the only thing letting position 1 attend to position 0.
+        //
+        // Mutation check performed when this was written: ending the span at
+        // the batch's last position instead of the reading position's own
+        // fails this test, so the bound is load-bearing rather than
+        // incidentally correct.
+        let mut stepped = tiny();
+        stepped.set_batch(BatchKind::Stepped);
+        let first = stepped.prefill(&[1]).unwrap();
+        let second = stepped.prefill(&[5]).unwrap();
+
+        let mut whole = tiny();
+        whole.set_batch(BatchKind::Whole);
+        let rows = whole.prefill_all(&[1, 5]).unwrap();
+        assert_eq!(rows[0], first, "position 0 must not see position 1");
+        assert_eq!(rows[1], second, "position 1 must see position 0");
+        assert_ne!(rows[0], rows[1], "the two positions differ at all");
+    }
+
+    #[test]
+    fn the_batch_kind_round_trips_through_its_label() {
+        for kind in [
+            BatchKind::Stepped,
+            BatchKind::Whole,
+            BatchKind::Batched(64),
+            BatchKind::Batched(256),
+        ] {
+            assert_eq!(BatchKind::parse(&kind.label()), Some(kind));
+        }
+        // A width of one is the stepped path spelled as a number, not a
+        // distinct kind that would report itself as "1" forever after.
+        assert_eq!(BatchKind::parse("1"), Some(BatchKind::Stepped));
+        assert_eq!(BatchKind::parse("0"), None);
+        assert_eq!(BatchKind::parse("-4"), None);
+        assert_eq!(BatchKind::parse("all"), None);
+        assert_eq!(BatchKind::default(), BatchKind::Batched(DEFAULT_BATCH));
+    }
+
+    #[test]
+    fn the_batched_panel_matches_the_per_position_matvec() {
+        // `matmul_panel` against `matvec_into` directly, one layer below the
+        // forward pass, so a kernel regression is localized here rather than
+        // showing up only as a moved logit.
+        let (in_dim, out_dim, n) = (37usize, 21usize, 5usize);
+        let w = Weight::F32(
+            (0..in_dim * out_dim)
+                .map(|i| ((i % 19) as f32 - 9.0) / 7.0)
+                .collect(),
+        );
+        let x: Vec<f32> = (0..n * in_dim)
+            .map(|i| ((i % 13) as f32 - 6.0) / 5.0)
+            .collect();
+
+        let mut expected = vec![0.0f32; n * out_dim];
+        for p in 0..n {
+            matvec_into(
+                &w,
+                &x[p * in_dim..(p + 1) * in_dim],
+                &mut expected[p * out_dim..(p + 1) * out_dim],
+                1,
+                DotKind::Sequential,
+            );
+        }
+
+        for dot in DotKind::ALL {
+            if !dot.is_bit_identical() {
+                continue;
+            }
+            for threads in [1usize, 3, 8] {
+                let mut got = vec![0.0f32; n * out_dim];
+                let mut fm = vec![0.0f32; n * out_dim];
+                matmul_panel(&w, &x, &mut got, &mut fm, n, threads, dot);
+                assert_eq!(got, expected, "dot {} threads {threads}", dot.label());
+            }
         }
     }
 
@@ -4495,14 +5090,38 @@ mod tests {
             );
         }
 
-        // The traversal itself, pinned separately: stepped prefill is
-        // position-major, layer 0 before layer 1. A batched prefill walks
-        // layer-major and this assertion is the one that must change with it.
-        assert_eq!(order, [(0, 0), (1, 0), (0, 1), (1, 1), (0, 2), (1, 2)]);
+        // The traversal itself, pinned separately: a batched prefill is
+        // layer-major, every position through layer 0 before any reaches
+        // layer 1. That order is what lets a layer's weights be read once for
+        // the whole batch, so it is a property of the optimization rather than
+        // an accident of the loop nesting.
+        assert_eq!(order, [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2)]);
         assert!(calls.iter().all(|(_, _, x)| x.len() == 16));
         assert!(calls
             .iter()
             .all(|(_, _, x)| x.iter().all(|v| v.is_finite())));
+    }
+
+    #[test]
+    fn a_stepped_prefill_still_fires_the_tap_position_major() {
+        // The other half of the traversal contract: under BatchKind::Stepped
+        // the firing order is the one the pass had before batching, so a
+        // caller that needs position-major has a way to ask for it and the two
+        // orders are pinned against each other rather than one replacing the
+        // other silently.
+        let mut m = tiny();
+        m.set_batch(BatchKind::Stepped);
+        let tap = CollectingTap::default();
+        m.set_tap(Box::new(tap.clone()));
+        m.prefill_all(&[1, 5, 9]).unwrap();
+        let order: Vec<(usize, usize)> = tap
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(l, p, _)| (*l, *p))
+            .collect();
+        assert_eq!(order, [(0, 0), (1, 0), (0, 1), (1, 1), (0, 2), (1, 2)]);
     }
 
     #[test]

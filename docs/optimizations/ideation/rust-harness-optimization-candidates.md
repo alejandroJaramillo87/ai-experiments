@@ -253,11 +253,27 @@ registers and sixteen concurrent read streams; four need one register and four
 streams. The sweep is the reason this is known rather than assumed, and it is
 why R is a named constant with a measurement beside it.
 
-**AVX-512 goes unused, and cannot help.** At 118s the decode moves roughly 15 GB
-per token in about 0.2s — back within sight of the ~96 GB/s ceiling the f32
-engine hit before P10.5. The headroom that measurement bought has now been
-spent. Rungs 2 and 3 below are therefore retired rather than pending: portable
-SIMD and intrinsics would widen arithmetic that is no longer the constraint.
+**AVX-512 goes unused, and cannot help — for decode.** At 118s the decode moves
+roughly 15 GB per token in about 0.2s — back within sight of the ~96 GB/s
+ceiling the f32 engine hit before P10.5. The headroom that measurement bought
+has now been spent. Rungs 2 and 3 below are therefore retired rather than
+pending: portable SIMD and intrinsics would widen arithmetic that is no longer
+the constraint.
+
+That retirement is scoped to decode, and the scope is the point. Decode reads a
+weight row to use it once, about 2 FLOP per byte, which is why every arithmetic
+widening measured against it came back flat. Prefill over N positions reads the
+same row and uses it N times, about 2N FLOP per byte, which walks off the
+bandwidth wall onto the compute wall — and the compute wall is where wide
+vectors pay. Prefill batching below is what moves the engine there, so these
+rungs are retired for decode and live again for prefill.
+
+One constraint travels with them. `mul_add` is prohibited workspace-wide
+because fused multiply-add keeps a wider intermediate and breaks bit-identical
+replay, and a conventional GEMM gets roughly half its peak FLOPS from exactly
+that fusion. Any future prefill kernel is therefore capped near half of the
+machine's nominal peak. That is an accepted cost of the determinism guarantee,
+recorded here so it is not rediscovered as a disappointing benchmark.
 
 **The reordered fold was measured and rejected.** `row_dot_lanes` splits the
 reduction into 16 fixed lanes — deterministic, but a different summation order,
@@ -286,11 +302,40 @@ rather than counted.
 
 ## Tier B: measured moderate wins
 
-**Prefill batching.** Prefill processes one position at a time; processing
-all prompt positions per layer as one matrix-matrix multiply reuses each
-weight block across positions, turning a bandwidth-bound loop into a
-compute-bound one. This is the "prefill-heavy optimization" goal named in
-the runtime design.
+**Prefill batching.** Landed, bit-identical, and not yet measured on the
+workstation. `CpuModel::forward_batch` puts N consecutive positions through the
+stack in one pass, so each layer's weights are read once for the whole batch
+instead of once per position: a 256-token window read roughly 14 GiB of weights
+256 times and now reads them once. This is the "prefill-heavy optimization"
+goal named in the runtime design.
+
+Bit-identity is by construction rather than by tolerance. Each output element
+is still one sequential fold over `in_dim` in index order, because position
+`p`'s dot against weight row `o` sums the same products in the same order
+however many positions are in flight; batching changes only when the fold runs
+and which rows are resident while it runs.
+`batched_prefill_matches_stepped_decode` asserts exact equality against the
+one-position-at-a-time path at every batch width.
+
+Two consequences worth stating rather than discovering. The traversal is now
+layer-major, so a `Tap` observes `(0, 0), (0, 1), ..., (1, 0)` instead of
+`(0, 0), (1, 0), (0, 1)`; every (layer, position) pair still fires exactly once
+and positions still ascend within a layer. And the tied LM head — 1.07 GB, about
+7 percent of E4B's weights — is now computed only for the positions a caller
+asked for, where `prefill` previously folded the embedding table at every
+prefilled position and discarded all but the last.
+
+`--batch stepped|whole|<n>` selects the width and the ladder header reports it.
+The default is 256 positions: the weights are read once per pass either way, so
+256 amortizes them 256-fold and the next doubling buys 0.2 percent more, while
+scratch scales with the batch.
+
+**Measurement pending**, and the prediction is recorded before the run so the
+result can contradict it. `SIZE=quick` is roughly 60s of batchable prefill and
+30s of decode that cannot batch, so the expectation is 120s to 50-70s, not 120s
+to 10s. Quoting a prefill speedup as a ladder speedup is the error to avoid.
+The five-rung table must be identical in every digit; a moved digit means the
+intra-batch causal mask or the accumulation is wrong.
 
 **Scratch-buffer reuse.** If profiling (flight recorder plus `make flame`)
 shows per-token temporary allocations in the forward pass, a preallocated

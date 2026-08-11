@@ -19,7 +19,7 @@ use std::process::ExitCode;
 use anyhow::Result;
 
 use runtime::ladder::{self, Rung, RungResult, Size, Tolerance};
-use runtime::model::cpu::{CpuModel, DotKind, PRELUDE_STAGES};
+use runtime::model::cpu::{BatchKind, CpuModel, DotKind, PRELUDE_STAGES};
 
 /// Run one rung, or `None` when its reference artifact is absent.
 ///
@@ -120,22 +120,34 @@ fn run_rung(
     }
 }
 
+/// The engine knobs a run reports in its header.
+///
+/// Grouped rather than passed one at a time because they travel together:
+/// every one of them is set on the model before the climb and printed after
+/// it, and the next one added should join them rather than lengthen a
+/// signature.
+struct Tuning {
+    threads: Option<usize>,
+    dot: DotKind,
+    batch: BatchKind,
+}
+
 fn run(
     model_path: &Path,
     reference_dir: &Path,
     size: Size,
     only: Option<Rung>,
     text_only: bool,
-    threads: Option<usize>,
-    dot: DotKind,
+    tuning: Tuning,
 ) -> Result<bool> {
     // `load` drops the checkpoint mapping before returning; see its doc
     // comment for why no caller here should open one itself.
     let (mut model, _fingerprint) = CpuModel::load(model_path, text_only)?;
-    if let Some(n) = threads {
+    if let Some(n) = tuning.threads {
         model.set_threads(n);
     }
-    model.set_dot(dot);
+    model.set_dot(tuning.dot);
+    model.set_batch(tuning.batch);
 
     // A rung that errors is not a rung that failed: an unreadable or
     // mismatched artifact says nothing about the engine. It is raised rather
@@ -174,6 +186,7 @@ fn run(
     l.prompt_tokens = prompt_tokens;
     l.threads = Some(model.threads());
     l.dot = Some(model.dot().label().to_string());
+    l.batch = Some(model.batch().label());
     print!("{}", ladder::render(&l));
     // Every rung skipped is not a pass. The ladder library is right to treat
     // a skip as neutral -- it does not know whether the caller asked for one
@@ -192,7 +205,8 @@ fn run(
 }
 
 const USAGE: &str = "usage: ladder [--text-only] [--single-thread] \
-                     [--threads <n>] [--dot <kind>] [--size quick|standard|deep] \
+                     [--threads <n>] [--dot <kind>] [--batch stepped|whole|<n>] \
+                     [--size quick|standard|deep] \
                      [--rung L0|L1|L2|L3|L4] --model <checkpoint-dir> \
                      --reference <reference-dir>";
 
@@ -236,6 +250,7 @@ fn main() -> ExitCode {
     };
 
     let mut dot = DotKind::default();
+    let mut batch = BatchKind::default();
     let mut size = Size::Quick;
     let mut only: Option<Rung> = None;
     let mut model: Option<PathBuf> = None;
@@ -267,6 +282,19 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             },
+            // Takes a value, so it belongs in this loop rather than in the
+            // pre-pass above: only the bare flags (--text-only,
+            // --single-thread) have to be removed by position, because this
+            // loop consumes a value for every argument it sees.
+            "--batch" => match BatchKind::parse(&value) {
+                Some(b) => batch = b,
+                None => {
+                    eprintln!(
+                        "[ERROR] --batch {value}: expected stepped, whole, or a positive integer"
+                    );
+                    return ExitCode::from(2);
+                }
+            },
             "--threads" => match value.parse::<usize>() {
                 Ok(n) if n >= 1 => threads = Some(n),
                 _ => {
@@ -294,7 +322,12 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
 
-    let verdict = run(&model, &reference, size, only, text_only, threads, dot);
+    let tuning = Tuning {
+        threads,
+        dot,
+        batch,
+    };
+    let verdict = run(&model, &reference, size, only, text_only, tuning);
     // After the run, so the figure is the whole run's high-water mark rather
     // than the loader's. Printed even on failure: a rung that failed because
     // the machine was swapping is worth being able to see.
