@@ -95,17 +95,40 @@ and this engine's is `forward_one` in a loop, so the number does not carry
 over. The next real speedup is fewer bytes per token, not more cores: see
 native-width weight storage below.
 
-**Native-width weight storage.** The backend currently widens all weights to
-f32 at load time: a 2x blow-up for BF16, roughly 4x for Q8_0, worse for the
-planned k-quants. BF16 is the case that matters first, because it is the
-published Gemma 4 storage type and the only one the interp and training
-tiers can share without losing fidelity. Holding weights as bf16 and
-widening per use is a shift in the inner loop, needs no new kernel, and
-halves E4B from about 28 GiB resident to 14 — which is the difference
-between not fitting and fitting in the 5090's 32 GB for the CUDA tier.
-`tensor::tensor_bytes` exists as the seam: it does the bounds checking a
-storage-preserving loader needs, so such a loader reuses it rather than
-restating it.
+**Native-width weight storage.** Landed. The backend used to widen every
+weight to f32 at load, a 2x blow-up on the published BF16 — and, because the
+widening reads every page of the map, it left the 15 GB file resident behind
+the 28 GiB expansion. That is where E4B's 42 GB came from.
+
+`tensor::Weight` now holds each tensor at the width its checkpoint declares and
+widens per use. This is the second kind of change from the determinism section
+above, not the first: widening is exact for bf16 (a 16-bit shift) and for f16
+(10 mantissa bits into 23), so widening at use produces the same f32 operands
+in the same order as widening at load. The goldens pin the native path
+directly, and `a_bf16_checkpoint_and_its_widened_twin_produce_identical_logits`
+compares the two arrangements bit for bit.
+
+Storage-preserving rather than bf16-converting: an f32 checkpoint stays f32,
+because narrowing one would be a precision change to the model rather than a
+loader optimization. `an_f32_checkpoint_is_not_narrowed` is the guard.
+
+Two consequences beyond the memory. Decode is bandwidth-bound, so halving the
+bytes read per token is close to halving the time — the row split had already
+taken the engine to the memory wall, and this is the move that lowers the wall
+rather than pushing against it. And 14 GiB of allocation goes away at load, so
+startup drops too.
+
+The paired change is `checkpoint::fingerprint`, which identified a checkpoint
+by hashing all 15 GB of it, one byte at a time, at every startup, to decide
+whether a KV snapshot was still valid. It now hashes the safetensors header,
+`config.json`, and the file length. Both were mmap-laziness questions, which is
+why they were decided together.
+
+Still open on the same axis: **zero-copy weights**, borrowing the bf16 bytes
+out of the map instead of copying them into an owned `Vec<u16>`. It would save
+the load-time copy and let the kernel evict under pressure, at the cost of a
+self-referential `CpuModel`. The owned copy already gets the resident figure to
+roughly the file size, so this buys startup time and nothing steady-state.
 
 **Quantized-weight compute.** Beyond bf16, the mature step is block-wise
 integer arithmetic. The core of llama.cpp's CPU performance keeps

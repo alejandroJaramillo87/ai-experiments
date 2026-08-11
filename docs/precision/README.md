@@ -187,7 +187,7 @@ and [`docs/inference/parameters/vllm-parameters.md`](../inference/parameters/vll
 
 | Tier | What is quantized | Where decided |
 |------|-------------------|---------------|
-| rust-harness | Q8_0 GGUF tensors, dequantized to f32 at load; no quantized arithmetic | `rust-harness/runtime/src/tensor.rs` |
+| rust-harness | Nothing. Weights are held at the checkpoint's published width (`tensor::Weight`) and widened to f32 per use; no quantized arithmetic | `rust-harness/runtime/src/tensor.rs` |
 | training | `peft.quantize_base = nf4` loads the frozen base in 4-bit via bitsandbytes (QLoRA), with `peft.compute_dtype` as the compute dtype over it; `distill.teacher_quantize` does the same for an online teacher | `training/recipes/schema.py`, `training/recipes/validate.py` |
 | training | `precision.dtype = fp8` with `fp8_backend` in `torchao` or `te`; validation of the dimension constraints is a no-op stub pending D8 | `training/recipes/validate.py` (`_check_fp8_dims`) |
 | interp | None of its own; it consumes whatever the serving container loaded | `docker-compose.inference.yaml` |

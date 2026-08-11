@@ -21,7 +21,7 @@ a forward pass has not.
 
 | Tier | Compute | Storage | The governing reason |
 |------|---------|---------|----------------------|
-| rust-harness | f32 | Reads F32, F16, BF16, Q8_0; writes f32 probe shards | It is the reference implementation the CUDA backend is diffed against; a second numeric type is a second source of disagreement |
+| rust-harness | f32 | Holds weights at their published width; writes f32 probe shards | It is the reference implementation the CUDA backend is diffed against; a second *compute* type is a second source of disagreement, but storage width is free because widening is exact |
 | interp | The subject model's dtype, so bf16 in practice | fp16 or fp32 in Arrow, per measured magnitudes | Arrow has no bfloat16 in any version, so the storage format cannot follow the compute one |
 | training | bf16 | Checkpoints in the parameter dtype, so bf16 | Activation magnitudes in a forward pass are unbounded in advance and fp16 saturates at 65504 |
 
@@ -43,9 +43,9 @@ backend is hand-rolled plain f32 loops, Candle was evaluated and rejected, and "
 correctness and readability, not throughput" — the backend exists to be the reference the CUDA
 path is diffed against. Under that bar:
 
-- **One numeric type in the runtime is one fewer thing that can disagree.** Every supported GGUF
-  storage type dequantizes to a dense `Vec<f32>` at load, so the forward pass has a single
-  representation and no conversion sites to get wrong.
+- **One numeric type in the runtime is one fewer thing that can disagree.** Every arithmetic
+  operation in the forward pass is on f32, so there is a single representation to reason about
+  and no conversion site inside the numerics to get wrong.
 - **Rust has no scalar bf16 arithmetic.** `f32` and `f64` are language primitives with hardware
   operations; bf16 is a library type (`half::bf16`) whose scalar ops are emulated as
   widen-compute-narrow. Computing in bf16 on the CPU would mean converting to f32 per operation
@@ -54,6 +54,35 @@ path is diffed against. Under that bar:
   what the training tier emits, and bf16-to-f32 is a left shift by 16 with zero fill. The
   checkpoint's own values reach the forward pass unrounded, so f32 costs no fidelity against
   the weights as published.
+
+### Computing in f32 is not the same as storing in f32
+
+The harness holds each weight tensor in **the width its checkpoint declares** and widens per
+use: `tensor::Weight` in the runtime, loaded by `Checkpoint::weight`. A bf16 checkpoint stays
+bf16 in memory. The arithmetic is still f32 — every multiply and every accumulation — so
+nothing above changes.
+
+The two are separable precisely because widening is exact. Widening at load and widening at use
+produce the same f32 bits in the same order, so the choice buys memory and bandwidth and costs
+no fidelity and no determinism: `cpu.rs`'s
+`a_bf16_checkpoint_and_its_widened_twin_produce_identical_logits` compares the two arrangements
+bit for bit. E4B was measured at 42 GB resident before the change — a 15 GB file expanded to
+28 GiB of f32 with the map still faulted in behind it — and holding it at bf16 removes the
+expansion. Decode also reads half as many bytes per token, which matters because it is
+bandwidth-bound. The post-change figures are the workstation's to report.
+
+Two constraints on that, both load-bearing:
+
+- **Storage-preserving means never narrowing.** An f32 checkpoint stays f32. Narrowing one to
+  bf16 to save memory would be a real precision change, and it would be a change to the model
+  rather than to the loader. `an_f32_checkpoint_is_not_narrowed` is the guard.
+- **This applies to weights, not to the KV cache.** A weight is read from a file that already
+  chose its width; a KV entry is *computed* in f32 and would be narrowed on write, which is
+  lossy. Narrowing the cache is a separate decision with a separate measurement, and the `HKV1`
+  snapshot format reserves a dtype byte for the day it is taken.
+
+This is also a fidelity statement and not only a memory one. Interpretability runs at bf16, so a
+substrate that stores what it studies is describing the same object its experiments are about.
 
 The cost is memory: f32 weights are twice the bytes of the file they came from. That is a real
 cost and it is priced as a candidate optimization in
