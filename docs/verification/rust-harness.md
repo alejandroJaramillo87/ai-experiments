@@ -371,8 +371,10 @@ Implementation: `rust-harness/runtime/src/model/cpu.rs`,
 
 No pass threshold. The measured rate decides whether real-model activation
 capture and rr recording are practical on the CPU backend, and it is the
-baseline the cuda backend is later compared against. The backend is
-single-threaded by design.
+baseline the cuda backend is later compared against. Record the thread width
+alongside the rate: matvec and the LM head split their output rows across
+cores, so a rate without a width is not comparable to another rate. Pass
+`--single-thread` for the serial figure.
 
 Command:
 

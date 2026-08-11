@@ -120,11 +120,19 @@ Gemma 4 E4B, chosen for simplicity of implementation over speed.
 
 Resolved at implementation time: the backend is hand-rolled — naive
 dequantize-then-matmul in owned code (`runtime/src/model/cpu.rs`),
-single-threaded plain f32 loops. Candle CPU was considered and rejected:
+plain f32 loops, single-threaded at the time. Candle CPU was considered and
+rejected:
 upstream Candle has a `gemma4` module but no quantized-GGUF Gemma 4 path, so
 the loader work remains either way; its threaded CPU kernels complicate rr
 determinism; and the correctness-and-readability bar favors owned naive
 code. The bar is correctness and readability, not throughput.
+
+The backend has since acquired one form of threading, and it does not reopen
+that decision. `cpu.rs`'s `par_rows` splits matvec and the tied LM head across
+output rows, which reorders no arithmetic and so leaves the logits identical
+bit-for-bit at every width — the objection to Candle's kernels was that
+threading a reduction does not. `--single-thread` restores the serial path for
+rr, which serializes threads regardless.
 
 ### Architecture assumption and reconciliation
 

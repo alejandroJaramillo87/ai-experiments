@@ -126,9 +126,14 @@ tokenizer, sessions with a hard context budget, sampler,
 grammar-constrained decoding, subagent fork/interleave, and the perplexity
 evaluator.
 
-Numerics come from a hand-rolled single-threaded CPU backend
+Numerics come from a hand-rolled f32 CPU backend
 (`runtime/src/model/cpu.rs`) implementing a Gemma-4-style forward pass from a
-Hugging Face checkpoint. It is a strict subset of the published architecture, so
+Hugging Face checkpoint. Every matrix-vector product and the tied LM head split
+their output rows across cores; that split is bit-identical at every width, so
+the golden tests pin the parallel path and `--single-thread` is for rr rather
+than for correctness. Everything else — the norms, attention, the residual
+updates — is a plain sequential loop, with no SIMD and no wall-clock
+concessions. It is a strict subset of the published architecture, so
 `cpu::check_supported_checkpoint` refuses a checkpoint carrying per-layer embeddings, a
 shared KV cache, MatFormer feed-forward widths, or dual RoPE — naming the
 feature rather than loading the model and silently ignoring the extra weights.

@@ -135,9 +135,9 @@ common prefix and re-prefills from there.
 
 ## Runtime design
 
-**Tensor backend.** The only backend that exists is hand-rolled: a
-single-threaded CPU reference (`runtime/src/model/cpu.rs`) computing the forward
-pass from dequantized GGUF weights, chosen for rr-debuggable numerics and used by
+**Tensor backend.** The only backend that exists is hand-rolled: a CPU
+reference (`runtime/src/model/cpu.rs`) computing the forward pass from a Hugging
+Face checkpoint, chosen for rr-debuggable numerics and used by
 every sandbox test and by the binary, which loads it unconditionally behind
 `--model`. The planned GPU backend is
 [Candle](https://github.com/huggingface/candle) with the CUDA feature, targeting

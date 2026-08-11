@@ -25,27 +25,55 @@ DDR5-6000).
 The CPU backend exists to be a boring, rr-debuggable, bit-reproducible
 reference: golden tests pin exact logits, the flight recorder replays runs,
 and the KV snapshot restore is bit-identical. Floating-point addition is not
-associative, so any change to reduction order — threading a dot product,
-widening it with SIMD — can change logits bit-for-bit even when both answers
-are correct. Most inference engines optimize without this budget; this one
-cannot.
+associative, so a change to *reduction order* can change logits bit-for-bit
+even when both answers are correct. Most inference engines optimize without
+this budget; this one cannot.
 
-The standing rule for every item below: parallel and vectorized paths ship
-behind a flag with a reference fallback (in the style of the planned
-`--single-thread`), the golden tests continue to pin the reference path, and
-the optimized path gets its own tolerance-based comparison against the
-reference rather than inheriting the bit-exact goldens.
+Two kinds of change get confused here, and the distinction decides how much
+apparatus an item needs:
+
+- **Splitting a reduction** — threading a dot product, widening one with SIMD,
+  folding a multiply and an add into an FMA. The summation order changes, so
+  the result changes. These ship behind a flag with a reference fallback, the
+  golden tests continue to pin the reference path, and the optimized path gets
+  its own tolerance-based comparison rather than inheriting the bit-exact
+  goldens.
+- **Splitting across independent outputs** — assigning whole output rows of a
+  matvec to different cores. Nothing is reordered: each output element is
+  still one sequential fold in the original order, and the partition is a
+  function of the output length and the width alone. The result is identical
+  bit-for-bit, so the goldens pin the optimized path directly and there is no
+  second answer to compare against.
+
+This document originally applied the first rule to both. The multithreaded
+matvec, which landed as the second kind, is the correction: `cpu.rs`'s
+`par_rows` carries the argument, and
+`a_threaded_forward_pass_produces_bit_identical_logits` measures it. Before
+budgeting a fallback and a tolerance for an item below, check which kind it
+is.
 
 ## Tier A: order-of-magnitude candidates
 
-**Multithreaded matvec.** Every weight matrix-vector product is
-embarrassingly parallel across output rows. `std::thread::scope` splits the
-row range across cores with no unsafe code and compiler-verified absence of
-data races, and avoids a new dependency (rayon would also work but costs a
-crate in an offline-first repository). Expect near-linear scaling on
-prefill; decode matvec is memory-bandwidth-bound, so DDR5-6000 will likely
-saturate at roughly six to eight effective cores. Requires the
-`--single-thread` fallback for rr and for the bit-exact goldens.
+**Multithreaded matvec.** Landed. Every weight matrix-vector product is
+embarrassingly parallel across output rows, and the tied LM head — a
+hand-rolled row fold rather than a `matvec_into` call, reading 2.1 GiB of
+E4B's roughly 28 per token — is the same shape and would otherwise have been
+the Amdahl floor under the rest. `cpu.rs`'s `par_rows` splits the row range
+with `std::thread::scope`: no unsafe code, compiler-verified absence of data
+races, and no new dependency (rayon would also work but costs a crate in an
+offline-first repository, and its work stealing is wasted on equal chunks
+whose partition has to stay fixed anyway).
+
+Bit-identical at every width, per the second case above, so the goldens pin
+the parallel path and `--single-thread` exists for rr ergonomics rather than
+as a reference fallback. `PARALLEL_MIN_ROWS` keeps small projections serial,
+which is also why the Tier T fixture's goldens still exercise the serial path.
+
+Expect near-linear scaling on prefill; decode matvec is memory-bandwidth-bound,
+so DDR5-6000 will likely saturate at roughly six to eight effective cores. The
+motivating measurement: the first `SIZE=quick` ladder ran at 1.63 s/token
+single-threaded, about 18 GB/s against a memory controller capable of roughly
+90 — one core's line-fill buffers, not the arithmetic.
 
 **Native-width weight storage.** The backend currently widens all weights to
 f32 at load time: a 2x blow-up for BF16, roughly 4x for Q8_0, worse for the

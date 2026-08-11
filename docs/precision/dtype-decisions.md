@@ -39,7 +39,7 @@ the other does not. Overflow does not choose between them.
 
 What does choose between them is the harness's purpose.
 [`docs/rust-harness/observability.md`](../rust-harness/observability.md) records it: the CPU
-backend is hand-rolled single-threaded loops, Candle was evaluated and rejected, and "the bar is
+backend is hand-rolled plain f32 loops, Candle was evaluated and rejected, and "the bar is
 correctness and readability, not throughput" — the backend exists to be the reference the CUDA
 path is diffed against. Under that bar:
 
