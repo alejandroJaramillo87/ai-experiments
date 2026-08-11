@@ -171,6 +171,7 @@ fn build_generator(
     context: Option<usize>,
     snapshot: Option<&Path>,
     text_only: bool,
+    single_thread: bool,
 ) -> Result<(SessionGenerator, Option<MonitorHandle>, u64)> {
     use runtime::model::{
         cpu::{ControlVector, CpuModel},
@@ -189,6 +190,9 @@ fn build_generator(
     let mut ck = runtime::checkpoint::parse(&files).context("parse checkpoint")?;
     ck.text_only = text_only;
     let mut cpu = CpuModel::from_checkpoint(&ck).context("load CPU model")?;
+    if single_thread {
+        cpu.set_threads(1);
+    }
     // Model identity for the interp artifacts and the snapshot header. The
     // weights alone, not config.json: a checkpoint is a directory, and the
     // weights are what an artifact was fitted on.
@@ -409,6 +413,7 @@ fn run(
     compact_at: f32,
     chat: bool,
     text_only: bool,
+    single_thread: bool,
 ) -> Result<()> {
     let transcript = Transcript::open(&root.join("session.jsonl")).context("session.jsonl")?;
     // HARNESS.md: persistent memory read once at startup and injected as a
@@ -429,6 +434,7 @@ fn run(
         context,
         Some(&snapshot_path),
         text_only,
+        single_thread,
     )?;
     // The task's outcome is held rather than propagated: the bookkeeping
     // below runs either way, so flags collected before a failure survive it.
@@ -528,7 +534,8 @@ fn main() -> ExitCode {
          [--control-vector-scale <f>] [--probe <path.gguf>] \
          [--probe-out <path>] [--temperature <f>] [--top-p <f>] \
          [--seed <n>] [--max-tokens <n>] [--context <n>] \
-         [--compact-at <f>] [--text-only] (--chat | <task description>)";
+         [--compact-at <f>] [--text-only] [--single-thread] \
+         (--chat | <task description>)";
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     // Snapshot before flag extraction mutates args: cmd.start records the
     // invocation as given, program name excluded (the shape common/obs logs).
@@ -676,6 +683,15 @@ fn main() -> ExitCode {
     } else {
         false
     };
+    // --single-thread: run the CPU backend's row split at width one. Not a
+    // numerics switch -- the split is bit-identical at every width -- but rr
+    // serializes threads anyway, so `make debug-record` wants it.
+    let single_thread = if let Some(i) = args.iter().position(|a| a == "--single-thread") {
+        args.remove(i);
+        true
+    } else {
+        false
+    };
     // --chat: interactive REPL instead of a one-shot task; the two are
     // mutually exclusive, so leftover positional args are a usage error.
     let chat = if let Some(i) = args.iter().position(|a| a == "--chat") {
@@ -732,6 +748,7 @@ fn main() -> ExitCode {
         compact_at,
         chat,
         text_only,
+        single_thread,
     ) {
         // The answer, if any, was printed by `run` before its bookkeeping.
         Ok(()) => {

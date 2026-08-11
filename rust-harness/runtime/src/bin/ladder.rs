@@ -126,12 +126,16 @@ fn run(
     size: Size,
     only: Option<Rung>,
     text_only: bool,
+    single_thread: bool,
 ) -> Result<bool> {
     let files = runtime::checkpoint::CheckpointFiles::read(model_path)
         .with_context(|| format!("read model {}", model_path.display()))?;
     let mut ck = runtime::checkpoint::parse(&files).context("parse checkpoint")?;
     ck.text_only = text_only;
     let mut model = CpuModel::from_checkpoint(&ck).context("load CPU model")?;
+    if single_thread {
+        model.set_threads(1);
+    }
 
     // A rung that errors is not a rung that failed: an unreadable or
     // mismatched artifact says nothing about the engine. It is raised rather
@@ -168,6 +172,7 @@ fn run(
         return Err(e);
     }
     l.prompt_tokens = prompt_tokens;
+    l.threads = Some(model.threads());
     print!("{}", ladder::render(&l));
     // Every rung skipped is not a pass. The ladder library is right to treat
     // a skip as neutral -- it does not know whether the caller asked for one
@@ -185,7 +190,8 @@ fn run(
     Ok(l.ok())
 }
 
-const USAGE: &str = "usage: ladder [--text-only] [--size quick|standard|deep] \
+const USAGE: &str = "usage: ladder [--text-only] [--single-thread] \
+                     [--size quick|standard|deep] \
                      [--rung L0|L1|L2|L3|L4] --model <checkpoint-dir> \
                      --reference <reference-dir>";
 
@@ -193,6 +199,17 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
 
     let text_only = match args.iter().position(|a| a == "--text-only") {
+        Some(i) => {
+            args.remove(i);
+            true
+        }
+        None => false,
+    };
+    // Not a numerics switch: the row split is bit-identical at every width,
+    // so this run's table matches a parallel one digit for digit. It exists
+    // because rr serializes threads anyway, and because comparing the two
+    // wall-clock times is how the split gets measured at all.
+    let single_thread = match args.iter().position(|a| a == "--single-thread") {
         Some(i) => {
             args.remove(i);
             true
@@ -241,7 +258,7 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
 
-    match run(&model, &reference, size, only, text_only) {
+    match run(&model, &reference, size, only, text_only, single_thread) {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::from(1),
         Err(e) => {

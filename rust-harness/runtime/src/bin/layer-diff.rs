@@ -80,6 +80,7 @@ fn run(
     model_path: &Path,
     reference_path: &Path,
     text_only: bool,
+    single_thread: bool,
     floor: f64,
     ceiling: f64,
 ) -> Result<bool> {
@@ -95,6 +96,9 @@ fn run(
     let mut ck = runtime::checkpoint::parse(&files).context("parse checkpoint")?;
     ck.text_only = text_only;
     let mut model = CpuModel::from_checkpoint(&ck).context("load CPU model")?;
+    if single_thread {
+        model.set_threads(1);
+    }
     let n_layers = model.config().n_layers;
     ensure!(
         n_layers == reference.activations.layers.len(),
@@ -194,7 +198,8 @@ fn run(
     }
 }
 
-const USAGE: &str = "usage: layer-diff [--text-only] [--cosine-floor <f>] \
+const USAGE: &str = "usage: layer-diff [--text-only] [--single-thread] \
+                     [--cosine-floor <f>] \
                      [--rel-l2-ceiling <f>] --model <checkpoint-dir> \
                      --reference <capture.json>";
 
@@ -202,6 +207,18 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
 
     let text_only = match args.iter().position(|a| a == "--text-only") {
+        Some(i) => {
+            args.remove(i);
+            true
+        }
+        None => false,
+    };
+
+    // Serial rather than the machine's width. Not a numerics switch: the row
+    // split is bit-identical at every width, so the cosine and rel-L2 figures
+    // are the same either way. Present for rr, which serializes threads
+    // regardless, and for timing one path against the other.
+    let single_thread = match args.iter().position(|a| a == "--single-thread") {
         Some(i) => {
             args.remove(i);
             true
@@ -250,7 +267,7 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
 
-    match run(&model, &reference, text_only, floor, ceiling) {
+    match run(&model, &reference, text_only, single_thread, floor, ceiling) {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::from(1),
         Err(e) => {

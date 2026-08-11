@@ -119,12 +119,16 @@ fn run(
     layers: &[usize],
     out_dir: &Path,
     text_only: bool,
+    single_thread: bool,
 ) -> Result<()> {
     let files = runtime::checkpoint::CheckpointFiles::read(model_path)
         .with_context(|| format!("read model {}", model_path.display()))?;
     let mut ck = runtime::checkpoint::parse(&files).context("parse checkpoint")?;
     ck.text_only = text_only;
     let mut model = CpuModel::from_checkpoint(&ck).context("load CPU model")?;
+    if single_thread {
+        model.set_threads(1);
+    }
     let config = *model.config();
     for &l in layers {
         ensure!(
@@ -271,7 +275,7 @@ fn parse_layers(arg: &str) -> Result<Vec<usize>> {
 
 fn main() -> ExitCode {
     const USAGE: &str = "usage: activation-capture --model <checkpoint-dir> \
-         --dataset <examples.jsonl> --layers <l0,l1,...> --out <dir> [--text-only]";
+         --dataset <examples.jsonl> --layers <l0,l1,...> --out <dir> [--text-only] [--single-thread]";
     let args: Vec<String> = std::env::args().skip(1).collect();
     let get = |flag: &str| -> Option<String> {
         args.iter()
@@ -291,7 +295,8 @@ fn main() -> ExitCode {
         let layers = parse_layers(&layers_arg)?;
         // Bare presence flag, unlike the four above, which take a value.
         let text_only = args.iter().any(|a| a == "--text-only");
-        run(&model, &dataset, &layers, &out, text_only)
+        let single_thread = args.iter().any(|a| a == "--single-thread");
+        run(&model, &dataset, &layers, &out, text_only, single_thread)
     })();
     match parsed {
         Ok(()) => ExitCode::SUCCESS,

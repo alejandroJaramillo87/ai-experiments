@@ -1,11 +1,16 @@
 /*
  * cpu — hand-rolled CPU reference backend for Gemma-4-style checkpoints.
  *
- * Correctness-first: plain single-threaded f32 loops, no SIMD, no wall
- * clock, no allocation tricks — deterministic by construction so runs
- * record and replay under rr. This backend is the reference the CUDA
- * backend is diffed against (through the phase 1 flight recorder) and makes
- * the full harness runnable in a sandbox against synthetic weights.
+ * Correctness-first: plain f32 loops, no SIMD, no wall clock, no allocation
+ * tricks — deterministic by construction so runs record and replay under rr.
+ * This backend is the reference the CUDA backend is diffed against (through
+ * the phase 1 flight recorder) and makes the full harness runnable in a
+ * sandbox against synthetic weights.
+ *
+ * The one concession to speed is `par_rows`: matvec and the tied LM head
+ * split their output rows across cores. It is not an exception to the rule
+ * above, because it reorders no arithmetic — see the argument on that
+ * function. Everything else runs sequentially.
  *
  * Architecture: RMSNorm scaled by the stored weight, embedding scaled by
  * sqrt(embed_dim), grouped-query attention with per-head QK-norm and NEOX
@@ -978,6 +983,61 @@ pub struct CpuModel {
     /// Steering carries across forks: a steered agent's subagents serve
     /// the same steered model.
     control: Option<Arc<ControlVector>>,
+    /// Width of the row split in `par_rows`. Defaulted from the machine and
+    /// carried across forks. Not a numerics parameter: see `par_rows`.
+    threads: usize,
+}
+
+/// Output rows below which `par_rows` stays serial.
+///
+/// A row split costs one thread spawn per worker, on the order of ten
+/// microseconds, against a saving proportional to the weight bytes the rows
+/// cover. E4B's smallest projection is a 2048-wide fold over 2048 output rows
+/// and clears this by three orders of magnitude; the Tier T fixture's are a
+/// few thousand elements and do not, which is why the fixture goldens still
+/// exercise the serial path. Chosen so a matvec must be worth at least a few
+/// hundred microseconds before it pays for its workers.
+const PARALLEL_MIN_ROWS: usize = 512;
+
+/// Write every element of `out`, splitting the index range across at most
+/// `threads` workers.
+///
+/// **Bit-identical to the serial loop at every width**, and that is the whole
+/// reason this sits in the hot path rather than behind a flag. f32 addition is
+/// not associative, so splitting a *reduction* across threads changes the
+/// result; splitting across *output elements* does not. Each element is still
+/// produced by one sequential fold in the original order, and `f` sees the
+/// same global index it would have seen serially. The partition is
+/// `chunks_mut` over a width derived from `out.len()` and `threads` alone, so
+/// it depends on neither the scheduler, nor how many workers the OS actually
+/// runs at once, nor the order in which they finish.
+///
+/// The consequence worth stating: the golden tests pin the parallel path
+/// directly. There is no reference fallback to maintain and no tolerance
+/// comparison, because there is no second answer.
+fn par_rows(out: &mut [f32], threads: usize, f: impl Fn(usize, &mut f32) + Sync) {
+    let n = out.len();
+    // `threads.min(n)` keeps every worker non-empty, so `chunks_mut` yields
+    // exactly the number of chunks intended rather than a trailing empty one.
+    let threads = threads.min(n);
+    if threads <= 1 || n < PARALLEL_MIN_ROWS {
+        for (i, dst) in out.iter_mut().enumerate() {
+            f(i, dst);
+        }
+        return;
+    }
+    let rows_per = n.div_ceil(threads);
+    let f = &f;
+    std::thread::scope(|s| {
+        for (chunk, part) in out.chunks_mut(rows_per).enumerate() {
+            let base = chunk * rows_per;
+            s.spawn(move || {
+                for (i, dst) in part.iter_mut().enumerate() {
+                    f(base + i, dst);
+                }
+            });
+        }
+    });
 }
 
 /// `out = W x` with GGUF layout `[in, out]`: rows of `in` contiguous per
@@ -992,7 +1052,10 @@ pub struct CpuModel {
 /// comparison against `in_dim * out_dim` multiply-accumulates is free. It
 /// also catches a `Scratch` buffer sized against the wrong dimension, which
 /// would otherwise show up only as wrong logits.
-fn matvec_into(w: &[f32], x: &[f32], out: &mut [f32]) {
+///
+/// `threads` bounds the row split and does not change the result; see
+/// `par_rows`.
+fn matvec_into(w: &[f32], x: &[f32], out: &mut [f32], threads: usize) {
     let (in_dim, out_dim) = (x.len(), out.len());
     assert_eq!(
         w.len(),
@@ -1000,10 +1063,24 @@ fn matvec_into(w: &[f32], x: &[f32], out: &mut [f32]) {
         "matvec: weight of {} elements for a {in_dim} x {out_dim} product",
         w.len()
     );
-    for (o, dst) in out.iter_mut().enumerate() {
+    par_rows(out, threads, |o, dst| {
         let row = &w[o * in_dim..(o + 1) * in_dim];
         *dst = row.iter().zip(x).map(|(a, b)| a * b).sum();
-    }
+    });
+}
+
+/// Row-split width for a freshly loaded model: every core the OS admits.
+///
+/// A hardware-derived default would ordinarily be a determinism defect, and it
+/// is not one here — the width does not reach the logits, so a 4-core sandbox
+/// and a 32-core workstation produce identical bits from identical inputs.
+/// That equivalence is what `a_threaded_forward_pass_produces_bit_identical_logits`
+/// pins, and it is what makes a default this code cannot predict acceptable.
+///
+/// Falls back to serial where the count is unavailable, which is the safe
+/// direction: slow rather than wrong about how much parallelism exists.
+fn default_threads() -> usize {
+    std::thread::available_parallelism().map_or(1, |n| n.get())
 }
 
 /// Reciprocal of the RMS of `x`, the factor RMSNorm scales every element by.
@@ -1320,6 +1397,7 @@ impl CpuModel {
             cached_len: 0,
             tap: None,
             control: None,
+            threads: default_threads(),
         })
     }
 
@@ -1330,6 +1408,56 @@ impl CpuModel {
 
     pub fn config(&self) -> &Config {
         &self.config
+    }
+
+    /// Fix the width of the row split, in place of the machine-derived
+    /// default. `1` restores the strictly serial path.
+    ///
+    /// Serial is what rr replay wants, and not for determinism: `par_rows` is
+    /// bit-identical at every width, so a replay at four threads produces the
+    /// same logits as a recording at one. rr serializes threads onto a single
+    /// core regardless, so a parallel recording is slower to take and harder
+    /// to read, with nothing bought.
+    ///
+    /// A width of zero is one, not a panic: a caller computing it from a
+    /// subtraction should get the serial path rather than an abort deep in a
+    /// decode loop.
+    pub fn set_threads(&mut self, n: usize) {
+        self.threads = n.max(1);
+    }
+
+    /// The width in force, for a runner that reports what it ran.
+    pub fn threads(&self) -> usize {
+        self.threads
+    }
+
+    /// `Model::fork`'s body, returning the concrete type.
+    ///
+    /// Inherent rather than written inline in the trait impl so a test can
+    /// read the child's fields without a downcast: `fork` hands back a
+    /// `Box<dyn Model>`, and the `Model` trait deliberately exposes no
+    /// `as_any`. Weights are shared and the cache deep-copied; prefix sharing
+    /// stays deferred per the runtime design.
+    fn fork_cpu(&self) -> CpuModel {
+        CpuModel {
+            config: self.config,
+            spec: Arc::clone(&self.spec),
+            weights: Arc::clone(&self.weights),
+            kv: self.kv.clone(),
+            cached_len: self.cached_len,
+            // Fresh buffers rather than a clone of the parent's: scratch is
+            // written before it is read at every position, so it carries no
+            // state worth copying, and sharing it would let interleaved
+            // parent and child decodes overwrite each other mid-token.
+            scratch: Scratch::new(&self.spec),
+            tap: None,
+            control: self.control.clone(),
+            // A subagent decodes as wide as its parent. Not a correctness
+            // matter -- the width does not reach the logits -- but a fork that
+            // silently reverted to one core would read as the model getting
+            // slower after a spawn.
+            threads: self.threads,
+        }
     }
 
     /// Install a residual-stream observer; replaces any existing tap.
@@ -1378,6 +1506,9 @@ impl CpuModel {
     /// return the logits at this position.
     fn forward_one(&mut self, token: Token, position: usize) -> Result<Logits> {
         let c = self.config;
+        // Copied out before the field split below, which borrows `self`
+        // mutably and would otherwise put `self.threads` out of reach.
+        let threads = self.threads;
         self.check_token(token)?;
         // Split the borrow by field: the layer loop reads the weights, appends
         // to the caches, and writes the scratch buffers at the same time.
@@ -1421,7 +1552,7 @@ impl CpuModel {
             // very nearly cancels — but only very nearly: `rms_eps` is added
             // to the mean square in absolute terms, so the scale does change
             // the result and is applied rather than folded away.
-            matvec_into(&p.model_proj, x, ple);
+            matvec_into(&p.model_proj, x, ple, threads);
             let proj_scale = 1.0 / (c.embed_dim as f32).sqrt();
             for v in ple.iter_mut() {
                 *v *= proj_scale;
@@ -1491,7 +1622,7 @@ impl CpuModel {
 
             // Attention block.
             rms_norm_into(x, &layer.attn_norm, c.rms_eps, normed);
-            matvec_into(&layer.wq, normed, q);
+            matvec_into(&layer.wq, normed, q, threads);
             for head in q.chunks_mut(hd) {
                 rms_norm_in_place(head, &layer.q_norm, c.rms_eps);
                 rope(head, position, &layer.rope_freqs);
@@ -1503,8 +1634,8 @@ impl CpuModel {
             // layer in this same loop.
             let src = layer.spec.kv_source;
             if src == i {
-                matvec_into(&layer.wk, normed, k);
-                matvec_into(&layer.wv, normed, v);
+                matvec_into(&layer.wk, normed, k, threads);
+                matvec_into(&layer.wv, normed, v, threads);
                 for head in k.chunks_mut(hd) {
                     rms_norm_in_place(head, &layer.k_norm, c.rms_eps);
                     rope(head, position, &layer.rope_freqs);
@@ -1566,7 +1697,7 @@ impl CpuModel {
                     }
                 }
             }
-            matvec_into(&layer.wo, attn_out, projected);
+            matvec_into(&layer.wo, attn_out, projected, threads);
             rms_norm_into(projected, &layer.post_attn_norm, c.rms_eps, post);
             for (a, b) in x.iter_mut().zip(post.iter()) {
                 *a += b;
@@ -1574,12 +1705,12 @@ impl CpuModel {
 
             // GeGLU MLP block.
             rms_norm_into(x, &layer.ffn_norm, c.rms_eps, normed);
-            matvec_into(&layer.w_gate, normed, gate);
-            matvec_into(&layer.w_up, normed, up);
+            matvec_into(&layer.w_gate, normed, gate, threads);
+            matvec_into(&layer.w_up, normed, up, threads);
             for ((m, g), u) in mixed.iter_mut().zip(gate.iter()).zip(up.iter()) {
                 *m = gelu(*g) * u;
             }
-            matvec_into(&layer.w_down, mixed, down);
+            matvec_into(&layer.w_down, mixed, down, threads);
             rms_norm_into(down, &layer.post_ffw_norm, c.rms_eps, post);
             for (a, b) in x.iter_mut().zip(post.iter()) {
                 *a += b;
@@ -1591,12 +1722,12 @@ impl CpuModel {
             // modulates it there elementwise, and the projection widens it
             // back (`docs/models/gemma4-upstream.txt`).
             if let (Some(pl), Some(pd)) = (layer.ple.as_ref(), c.ple_dim) {
-                matvec_into(&pl.inp_gate, x, ple_gate);
+                matvec_into(&pl.inp_gate, x, ple_gate, threads);
                 let row = &ple_rows[i * pd..(i + 1) * pd];
                 for (g, e) in ple_gate.iter_mut().zip(row) {
                     *g = gelu(*g) * e;
                 }
-                matvec_into(&pl.proj, ple_gate, ple_out);
+                matvec_into(&pl.proj, ple_gate, ple_out, threads);
                 rms_norm_into(ple_out, &pl.post_norm, c.rms_eps, post);
                 for (a, b) in x.iter_mut().zip(post.iter()) {
                     *a += b;
@@ -1644,22 +1775,25 @@ impl CpuModel {
         let normed = carve(&mut rest, c.embed_dim);
         rms_norm_into(x, &w.output_norm, c.rms_eps, normed);
         let hidden: &[f32] = normed;
-        let logits = (0..c.vocab_size)
-            .map(|t| {
-                let row = &w.embed[t * c.embed_dim..(t + 1) * c.embed_dim];
-                let logit: f32 = row.iter().zip(hidden).map(|(a, b)| a * b).sum();
-                // Softcap, when the checkpoint declares one: a smooth squash
-                // toward +/-cap rather than a clamp. Monotone, so it moves no
-                // argmax and greedy decoding cannot detect its absence --
-                // perplexity, sampled decoding, and every captured logprob
-                // can, which is why omitting it is a silent defect and why
-                // its tests are not written against argmax.
-                match c.logit_softcap {
-                    Some(cap) => (logit / cap).tanh() * cap,
-                    None => logit,
-                }
-            })
-            .collect();
+        // Row-split like every other projection, and for a larger share of the
+        // token than any of them: the tied head folds the whole embedding
+        // table, 2.1 GiB of E4B's roughly 28, once per position. Left serial it
+        // would be the Amdahl floor under the rest of the threading.
+        let mut logits = vec![0.0f32; c.vocab_size];
+        par_rows(&mut logits, threads, |t, dst| {
+            let row = &w.embed[t * c.embed_dim..(t + 1) * c.embed_dim];
+            let logit: f32 = row.iter().zip(hidden).map(|(a, b)| a * b).sum();
+            // Softcap, when the checkpoint declares one: a smooth squash
+            // toward +/-cap rather than a clamp. Monotone, so it moves no
+            // argmax and greedy decoding cannot detect its absence --
+            // perplexity, sampled decoding, and every captured logprob
+            // can, which is why omitting it is a silent defect and why
+            // its tests are not written against argmax.
+            *dst = match c.logit_softcap {
+                Some(cap) => (logit / cap).tanh() * cap,
+                None => logit,
+            };
+        });
         Ok(Logits(logits))
     }
 }
@@ -1739,20 +1873,7 @@ impl Model for CpuModel {
     fn fork(&self) -> Result<Box<dyn Model>> {
         // Weights shared, cache deep-copied: correctness first, prefix
         // sharing stays deferred per the runtime design.
-        Ok(Box::new(CpuModel {
-            config: self.config,
-            spec: Arc::clone(&self.spec),
-            weights: Arc::clone(&self.weights),
-            kv: self.kv.clone(),
-            cached_len: self.cached_len,
-            // Fresh buffers rather than a clone of the parent's: scratch is
-            // written before it is read at every position, so it carries no
-            // state worth copying, and sharing it would let interleaved
-            // parent and child decodes overwrite each other mid-token.
-            scratch: Scratch::new(&self.spec),
-            tap: None,
-            control: self.control.clone(),
-        }))
+        Ok(Box::new(self.fork_cpu()))
     }
 
     // Cache layout on disk: n_layers u64, cached_len u64, then per layer the
@@ -2220,6 +2341,146 @@ mod tests {
         }
     }
 
+    /// Deterministic non-trivial floats, spread across magnitudes so that a
+    /// reordered summation would round differently and the equality assertions
+    /// below would have something to catch.
+    fn spread(n: usize, seed: u64) -> Vec<f32> {
+        let mut s = seed;
+        (0..n)
+            .map(|_| {
+                s = s.wrapping_mul(6364136223846793005).wrapping_add(1);
+                let m = ((s >> 33) as f64 / (1u64 << 31) as f64) - 1.0;
+                let e = ((s >> 20) & 0xf) as i32 - 8;
+                (m * 2f64.powi(e)) as f32
+            })
+            .collect()
+    }
+
+    #[test]
+    fn par_rows_is_bit_identical_at_every_width() {
+        // The property the whole threading change rests on. Splitting a dot
+        // product across threads reorders a float sum and changes the last
+        // bits; splitting across output rows reorders nothing, because each
+        // row is still one sequential fold. `assert_eq!` rather than a
+        // tolerance: exactness is the assertion, not an approximation of it.
+        let out_dim = PARALLEL_MIN_ROWS * 2;
+        let in_dim = 37;
+        let w = spread(out_dim * in_dim, 1);
+        let x = spread(in_dim, 2);
+
+        let mut serial = vec![0.0f32; out_dim];
+        matvec_into(&w, &x, &mut serial, 1);
+        // Not all-zero, or every width would agree vacuously.
+        assert!(serial.iter().any(|v| *v != 0.0), "degenerate fixture");
+
+        for threads in 2..=8 {
+            let mut got = vec![0.0f32; out_dim];
+            matvec_into(&w, &x, &mut got, threads);
+            let diff = serial.iter().zip(&got).position(|(a, b)| a != b);
+            assert!(
+                diff.is_none(),
+                "width {threads} differs at row {}: {:?} against {:?}",
+                diff.unwrap(),
+                serial[diff.unwrap()],
+                got[diff.unwrap()]
+            );
+        }
+    }
+
+    #[test]
+    fn par_rows_leaves_no_output_element_unwritten() {
+        // `chunks_mut` over `div_ceil` covers the range exactly, but the
+        // arithmetic is off-by-one territory and a missed tail would read as
+        // a plausible logit rather than as an error. Checked at a width that
+        // does not divide the length, which is where a partition drops rows.
+        for threads in [1, 3, 5, 7] {
+            let mut out = vec![f32::NAN; PARALLEL_MIN_ROWS + 13];
+            par_rows(&mut out, threads, |i, dst| *dst = i as f32);
+            for (i, v) in out.iter().enumerate() {
+                assert_eq!(*v, i as f32, "width {threads} row {i}");
+            }
+        }
+    }
+
+    #[test]
+    fn par_rows_below_the_threshold_stays_serial() {
+        // Pins the threshold's existence, so removing it is a deliberate act
+        // rather than a refactor. Observed through the thread ids `f` runs on,
+        // which is the only externally visible difference the split has --
+        // the values are identical either way, by construction.
+        let seen = std::sync::Mutex::new(std::collections::HashSet::new());
+        let mut small = vec![0.0f32; PARALLEL_MIN_ROWS - 1];
+        par_rows(&mut small, 8, |_, dst| {
+            seen.lock().unwrap().insert(std::thread::current().id());
+            *dst = 1.0;
+        });
+        assert_eq!(
+            seen.lock().unwrap().len(),
+            1,
+            "a {}-row split spawned workers below the {PARALLEL_MIN_ROWS}-row threshold",
+            small.len()
+        );
+    }
+
+    #[test]
+    fn a_threaded_forward_pass_produces_bit_identical_logits() {
+        // The test that lets the goldens stay pinned on the parallel path.
+        // Everything above checks `par_rows` in isolation; this checks that
+        // the eleven call sites in `forward_one` -- ten projections and the
+        // tied head -- were wired to it without disturbing the arithmetic.
+        //
+        // Widened past `PARALLEL_MIN_ROWS`, because at the committed fixture's
+        // geometry every matvec is under the threshold and both runs would
+        // silently take the serial path. That vacuous version of this test is
+        // worse than no test: it is the only thing standing between a future
+        // threading change and the goldens, and it would report green.
+        let spec = TinySpec {
+            vocab_size: 1024,
+            embed_dim: 24,
+            ffn_dim: 640,
+            ..TinySpec::e4b_shaped()
+        };
+        assert!(
+            spec.ffn_dim >= PARALLEL_MIN_ROWS && spec.vocab_size >= PARALLEL_MIN_ROWS,
+            "fixture below the {PARALLEL_MIN_ROWS}-row threshold: both runs would be serial"
+        );
+
+        let prompt: Vec<Token> = vec![7, 300, 42, 261, 900, 3];
+        let run = |threads: usize| {
+            let mut m = model_of(&spec);
+            m.set_threads(threads);
+            m.prefill_all(&prompt).unwrap()
+        };
+
+        let serial = run(1);
+        let parallel = run(4);
+        for (pos, (a, b)) in serial.iter().zip(&parallel).enumerate() {
+            let diff = a.0.iter().zip(&b.0).position(|(p, q)| p != q);
+            assert!(
+                diff.is_none(),
+                "position {pos} token {}: serial {:?}, 4 threads {:?}",
+                diff.unwrap(),
+                a.0[diff.unwrap()],
+                b.0[diff.unwrap()]
+            );
+        }
+    }
+
+    #[test]
+    fn a_fork_decodes_as_wide_as_its_parent() {
+        let mut parent = tiny();
+        parent.set_threads(3);
+        let child = parent.fork_cpu();
+        assert_eq!(child.threads, 3, "fork reverted to {}", child.threads);
+    }
+
+    #[test]
+    fn a_zero_thread_width_is_serial_rather_than_a_panic() {
+        let mut m = tiny();
+        m.set_threads(0);
+        assert_eq!(m.threads, 1);
+    }
+
     #[test]
     #[should_panic(expected = "matvec")]
     fn matvec_rejects_a_weight_matrix_that_does_not_match_the_declared_shape() {
@@ -2228,7 +2489,7 @@ mod tests {
         // debug_assert is compiled out exactly where wrong numerics matter.
         // The check costs one integer comparison against in_dim x out_dim
         // multiply-accumulates.
-        matvec_into(&[1.0; 16], &[1.0; 4], &mut [0.0; 2]);
+        matvec_into(&[1.0; 16], &[1.0; 4], &mut [0.0; 2], 1);
     }
 
     #[test]
@@ -2893,7 +3154,7 @@ mod tests {
             // Context component: project, scale by hidden**-0.5, split into
             // one row per layer, RMSNorm each row over its own width.
             let mut context = vec![0.0f32; packed];
-            matvec_into(&model_proj, &embedded, &mut context);
+            matvec_into(&model_proj, &embedded, &mut context, 1);
             let proj_scale = 1.0 / (c.embed_dim as f32).sqrt();
             for v in context.iter_mut() {
                 *v *= proj_scale;
@@ -2915,12 +3176,12 @@ mod tests {
             // modulate by row 0, project back up, norm, add.
             let residual = &plain[position];
             let mut gate = vec![0.0f32; pd];
-            matvec_into(&inp_gate, residual, &mut gate);
+            matvec_into(&inp_gate, residual, &mut gate, 1);
             for (g, e) in gate.iter_mut().zip(&rows[0..pd]) {
                 *g = gelu(*g) * e;
             }
             let mut widened = vec![0.0f32; c.embed_dim];
-            matvec_into(&proj, &gate, &mut widened);
+            matvec_into(&proj, &gate, &mut widened, 1);
             let mut normed = vec![0.0f32; c.embed_dim];
             rms_norm_into(&widened, &post_norm, c.rms_eps, &mut normed);
 

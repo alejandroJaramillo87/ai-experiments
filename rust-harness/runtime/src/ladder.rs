@@ -331,6 +331,13 @@ pub struct Ladder {
     /// agreement over five tokens under a header saying 512. `climb` cannot
     /// know it (the rung bodies read the artifact), so the runner fills it in.
     pub prompt_tokens: Option<usize>,
+    /// Width of the CPU backend's row split, when the runner records it.
+    ///
+    /// Not a caveat on the numbers: the split is bit-identical at every
+    /// width, so two tables taken at one thread and at sixteen must agree
+    /// digit for digit. Printed because that is exactly the claim, and a
+    /// table that does not say which run it came from cannot support it.
+    pub threads: Option<usize>,
 }
 
 /// Climb the rungs in order, stopping at the first failure.
@@ -369,6 +376,7 @@ pub fn climb(
         reference: reference.into(),
         results,
         prompt_tokens: None,
+        threads: None,
     }
 }
 
@@ -427,6 +435,9 @@ pub fn render(l: &Ladder) -> String {
     }
     if let Some(n) = l.prompt_tokens {
         let _ = writeln!(s, "prompt={n} tokens");
+    }
+    if let Some(n) = l.threads {
+        let _ = writeln!(s, "threads={n}");
     }
     let _ = writeln!(s, "model={}", l.model);
     let _ = writeln!(s, "reference={}", l.reference);
