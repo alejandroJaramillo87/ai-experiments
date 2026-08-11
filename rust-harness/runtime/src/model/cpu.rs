@@ -1080,10 +1080,21 @@ fn matvec_into(w: &Weight, x: &[f32], out: &mut [f32], threads: usize) {
 /// 107x — 3.95s to 424.64s, which is `clone` and futex and nothing else.
 /// Only 14.6 of the 32 cores were ever busy.
 ///
-/// Not tuned. This is the starting point for the sweep that will set it:
+/// Measured, not adopted. The `SIZE=quick` E4B sweep on the 32-core
+/// workstation put the knee at exactly this width:
+///
+/// | threads | wall | user | cpu |
+/// |---|---|---|---|
+/// | 4 | 319.44s | 1166.85s | 371% |
+/// | 8 | 236.43s | 1548.63s | 672% |
+/// | 12 | 237.21s | 2244.08s | 975% |
+/// | 16 | 221.72s | 2636.56s | 1231% |
+///
+/// Twelve is slower than eight while burning 45% more CPU, and sixteen buys 6%
+/// of wall clock for 70% more. All four beat the width-32 run's 265.43s.
 /// llama.cpp on the same class of machine optimizes near 12, but that is a
-/// different engine with a different loop, so the number has to be measured
-/// here rather than adopted. Override with `--threads` while measuring.
+/// different engine with a batched prefill, so the number did have to be
+/// measured here. Override with `--threads`.
 const DEFAULT_MAX_THREADS: usize = 8;
 
 /// Row-split width for a freshly loaded model.

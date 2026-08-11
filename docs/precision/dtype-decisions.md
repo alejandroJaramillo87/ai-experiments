@@ -68,8 +68,15 @@ no fidelity and no determinism: `cpu.rs`'s
 `a_bf16_checkpoint_and_its_widened_twin_produce_identical_logits` compares the two arrangements
 bit for bit. E4B was measured at 42 GB resident before the change — a 15 GB file expanded to
 28 GiB of f32 with the map still faulted in behind it — and holding it at bf16 removes the
-expansion. Decode also reads half as many bytes per token, which matters because it is
-bandwidth-bound. The post-change figures are the workstation's to report.
+expansion: 28.15 GiB peak on the workstation afterwards, with the ladder table identical in
+every digit. The residual is the map itself, still counted while its pages are resident.
+
+Halving the bytes read per token did *not* halve the time — 5%, at the same thread width —
+and the reason is recorded in
+[`rust-harness-optimization-candidates.md`](../optimizations/ideation/rust-harness-optimization-candidates.md):
+the engine sat at both its bandwidth ceiling and a scalar-compute floor at once, and this
+change moved only the first. That is a performance finding and not a precision one. Nothing
+above depends on it.
 
 Two constraints on that, both load-bearing:
 
@@ -84,11 +91,10 @@ Two constraints on that, both load-bearing:
 This is also a fidelity statement and not only a memory one. Interpretability runs at bf16, so a
 substrate that stores what it studies is describing the same object its experiments are about.
 
-The cost is memory: f32 weights are twice the bytes of the file they came from. That is a real
-cost and it is priced as a candidate optimization in
-[`docs/optimizations/ideation/rust-harness-optimization-candidates.md`](../optimizations/ideation/rust-harness-optimization-candidates.md),
-which proposes keeping weights resident in their storage format. That proposal is about
-residency; it does not change the compute dtype.
+What remains resident beyond the weights themselves — the mapping they were copied out of —
+is a residency question rather than a dtype one, and is tracked in
+[`docs/optimizations/ideation/rust-harness-optimization-candidates.md`](../optimizations/ideation/rust-harness-optimization-candidates.md).
+Neither that nor anything else on that list changes the compute dtype.
 
 **What would change this decision:** the harness acquiring a throughput obligation, or a CUDA
 backend whose numerics need diffing against a bf16 CPU path rather than an f32 one. Neither is

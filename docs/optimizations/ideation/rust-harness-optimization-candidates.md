@@ -88,12 +88,27 @@ what the memory controller will deliver.
 
 If that reading holds, the row split has taken essentially all there is to
 take, and the wasted CPU is cores idling on memory rather than lost wall
-clock. `DEFAULT_MAX_THREADS` caps the default at 8 on that basis, with
-`--threads` for the sweep that will set the real number — llama.cpp
-optimizes near 12 on this class of machine, but its prefill is a batched GEMM
-and this engine's is `forward_one` in a loop, so the number does not carry
-over. The next real speedup is fewer bytes per token, not more cores: see
-native-width weight storage below.
+clock. `DEFAULT_MAX_THREADS` caps the default at 8 on that basis, and the
+subsequent sweep confirmed the number rather than merely permitting it:
+
+| threads | wall | user | system | cpu |
+|---|---|---|---|---|
+| 4 | 319.44s | 1166.85s | 20.81s | 371% |
+| 8 | 236.43s | 1548.63s | 40.35s | 672% |
+| 12 | 237.21s | 2244.08s | 69.46s | 975% |
+| 16 | 221.72s | 2636.56s | 94.97s | 1231% |
+
+Scaling stops at 8. Twelve is *slower* than eight for 45% more CPU, sixteen
+buys 6% of wall clock for 70% more, and every one of the four beats the
+width-32 run above. llama.cpp optimizes near 12 on this class of machine, but
+its prefill is a batched GEMM and this engine's is `forward_one` in a loop, so
+the number did not carry over and had to be measured.
+
+The shape of that curve says something the speedup does not. Fitting Amdahl to
+the 4-and-8 points leaves roughly 150 of the 236 seconds not scaling with
+width at all. Some of that is the checkpoint load, which is fixed and serial;
+some is attention, which the row split deliberately left sequential. The split
+between them is unmeasured, and `make flame` is the cheapest way to settle it.
 
 **Native-width weight storage.** Landed. The backend used to widen every
 weight to f32 at load, a 2x blow-up on the published BF16 — and, because the
@@ -112,11 +127,41 @@ Storage-preserving rather than bf16-converting: an f32 checkpoint stays f32,
 because narrowing one would be a precision change to the model rather than a
 loader optimization. `an_f32_checkpoint_is_not_narrowed` is the guard.
 
-Two consequences beyond the memory. Decode is bandwidth-bound, so halving the
-bytes read per token is close to halving the time — the row split had already
-taken the engine to the memory wall, and this is the move that lowers the wall
-rather than pushing against it. And 14 GiB of allocation goes away at load, so
-startup drops too.
+Measured on E4B, `SIZE=quick`, width 8, against the same ladder at the same
+width before the change:
+
+| | f32 storage | native bf16 |
+|---|---|---|
+| wall | 236.43s | 224.94s |
+| user | 1548.63s | 1538.83s |
+| max RSS | — | 28.15 GiB |
+
+**The five-rung table is identical in every digit**, which is the claim the
+package existed to make.
+
+Memory behaved as designed. 42 GB against 28.15 is the 14 GiB of f32 expansion
+removed, and the arithmetic closes: 14 GiB of owned bf16 plus roughly 15 GiB of
+still-resident mapped pages, the latter visible as 3.9M minor faults. Peak RSS
+counts mapped file pages while they are resident, which is why the figure is
+not the ~15 GiB predicted — the prediction was about the owned copy and the
+measurement is about both.
+
+**Speed did not follow, and that corrects the diagnosis above.** 5%, not the
+near-halving the bandwidth reading implied, and user time barely moved — if
+the engine had been purely bandwidth-bound, halving the bytes would have cut
+wall clock and CPU-seconds together. The two rates settle it: the f32 run
+sustained 30.1 GB per token in 0.354s, about **85 GB/s**, near the ~96 GB/s
+dual-channel DDR5-6000 ceiling; the bf16 run needs only ~45 GB/s and is no
+faster. The same machine had just demonstrated it can deliver twice that.
+
+So the engine was within a few percent of *both* ceilings at once. Halving the
+bytes moved the memory ceiling out of the way and landed immediately on a
+compute floor underneath it — the scalar multiply-accumulate loop, plus one
+widening shift per element, which is why user time is flat rather than lower.
+
+That makes this change an enabler rather than a win. It bought the headroom
+SIMD needs: widening the arithmetic without it would have hit 85 GB/s within a
+factor of two.
 
 The paired change is `checkpoint::fingerprint`, which identified a checkpoint
 by hashing all 15 GB of it, one byte at a time, at every startup, to decide
@@ -124,11 +169,23 @@ whether a KV snapshot was still valid. It now hashes the safetensors header,
 `config.json`, and the file length. Both were mmap-laziness questions, which is
 why they were decided together.
 
-Still open on the same axis: **zero-copy weights**, borrowing the bf16 bytes
-out of the map instead of copying them into an owned `Vec<u16>`. It would save
-the load-time copy and let the kernel evict under pressure, at the cost of a
-self-referential `CpuModel`. The owned copy already gets the resident figure to
-roughly the file size, so this buys startup time and nothing steady-state.
+**Dropping the map after load.** Small, and worth roughly 14 GiB. Once
+`CpuModel::from_checkpoint` has copied every tensor it wants, the mapping is
+dead weight — but `harness/src/main.rs` keeps `CheckpointFiles` alive for the
+lazy `sha256_hex(data)` in the control-vector and probe identity checks, so
+15 GiB of clean page cache stays resident and counted. Those two callers can
+re-read the file on demand; they run once, at startup, and only when the
+corresponding flag is set. Unmapping puts peak RSS at roughly the owned copy,
+~14 GiB, which is the figure the entry above predicted. The evidence is the
+`Maximum resident set size` line, and the risk is that a caller of `files` is
+missed — `cargo test` plus the ladder cover both identity paths.
+
+Still open beyond that: **zero-copy weights**, borrowing the bf16 bytes out of
+the map instead of copying them into an owned `Vec<u16>`. It would remove the
+owned copy rather than the mapping, at the cost of a self-referential
+`CpuModel`. Taken together with the map drop it is the same ~14 GiB, reached by
+the harder route, so the drop comes first and this is revisited only if load
+time becomes the complaint.
 
 **Quantized-weight compute.** Beyond bf16, the mature step is block-wise
 integer arithmetic. The core of llama.cpp's CPU performance keeps
@@ -139,7 +196,17 @@ f32; a Q4 E4B stays near 4 GB resident instead of tens of GB. This item
 subsumes the deferred Q4_K/Q6_K dequantization work: the kernels replace it
 rather than sit beside it. Largest effort on the list.
 
-**SIMD.** Zen 5 executes full-width AVX-512. Three rungs, cheapest first:
+**SIMD.** Zen 5 executes full-width AVX-512. This was parked on the grounds
+that widening the arithmetic buys nothing while the engine is bandwidth-bound;
+the bf16 measurement above falsified that premise, and it is now the item with
+the clearest case. The scalar loop is the floor, the bf16 widening vectorizes
+into a shift and interleave across a whole vector rather than costing per
+element, and there is roughly 2x of bandwidth headroom to spend before the
+memory wall binds again.
+
+It stays bit-identical on the same terms as everything else here: vectorize
+across *output rows*, where each element is still one sequential fold, and not
+inside the reduction. Three rungs, cheapest first:
 
 1. **Autovectorization.** Build with `-C target-cpu=znver5` and shape hot
    loops so the compiler vectorizes them; `chunks_exact` also eliminates
