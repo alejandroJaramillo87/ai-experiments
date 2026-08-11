@@ -16,7 +16,7 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 use runtime::ladder::{self, Rung, RungResult, Size, Tolerance};
 use runtime::model::cpu::{CpuModel, PRELUDE_STAGES};
@@ -128,11 +128,9 @@ fn run(
     text_only: bool,
     threads: Option<usize>,
 ) -> Result<bool> {
-    let files = runtime::checkpoint::CheckpointFiles::read(model_path)
-        .with_context(|| format!("read model {}", model_path.display()))?;
-    let mut ck = runtime::checkpoint::parse(&files).context("parse checkpoint")?;
-    ck.text_only = text_only;
-    let mut model = CpuModel::from_checkpoint(&ck).context("load CPU model")?;
+    // `load` drops the checkpoint mapping before returning; see its doc
+    // comment for why no caller here should open one itself.
+    let (mut model, _fingerprint) = CpuModel::load(model_path, text_only)?;
     if let Some(n) = threads {
         model.set_threads(n);
     }
@@ -194,6 +192,21 @@ const USAGE: &str = "usage: ladder [--text-only] [--single-thread] \
                      [--threads <n>] [--size quick|standard|deep] \
                      [--rung L0|L1|L2|L3|L4] --model <checkpoint-dir> \
                      --reference <reference-dir>";
+
+/// Report the run's peak resident set size.
+///
+/// The ladder is where memory claims get settled, so it states the number
+/// itself instead of leaving it to whoever remembers `/usr/bin/time -v`.
+/// Silent where `/proc` cannot answer -- an absent measurement must not be
+/// mistaken for a small one.
+fn report_peak_rss() {
+    if let Some(bytes) = runtime::peak_rss_bytes() {
+        eprintln!(
+            "[INFO] Peak RSS: {:.2} GiB",
+            bytes as f64 / (1024.0 * 1024.0 * 1024.0)
+        );
+    }
+}
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
@@ -267,7 +280,12 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
 
-    match run(&model, &reference, size, only, text_only, threads) {
+    let verdict = run(&model, &reference, size, only, text_only, threads);
+    // After the run, so the figure is the whole run's high-water mark rather
+    // than the loader's. Printed even on failure: a rung that failed because
+    // the machine was swapping is worth being able to see.
+    report_peak_rss();
+    match verdict {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::from(1),
         Err(e) => {

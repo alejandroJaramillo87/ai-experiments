@@ -39,3 +39,48 @@ pub mod synth;
 pub mod tensor;
 pub mod testlog;
 pub mod tokenizer;
+
+/// Peak resident set size in bytes, from `/proc/self/status`'s `VmHWM`.
+///
+/// Reported at exit so a memory claim is checkable from the run's own output
+/// rather than from remembering to wrap it in `/usr/bin/time -v`. The repo has
+/// twice reasoned about resident weights from a prediction and been wrong; a
+/// number printed by every run is what turns that into a measurement nobody
+/// has to opt into.
+///
+/// `VmHWM` is the high-water mark, not the current size, and it counts mapped
+/// file pages while they are resident. That is the wanted behaviour: the
+/// checkpoint mapping is exactly what this is watching for, and a metric that
+/// excluded it would have shown no change across the two loader fixes.
+///
+/// `None` off Linux, and on a Linux without `/proc`. A caller prints nothing
+/// rather than guessing -- an absent measurement must not read as a small one.
+pub fn peak_rss_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let field = status.lines().find(|l| l.starts_with("VmHWM:"))?;
+    // "VmHWM:\t   29524612 kB" -- the kernel states the unit and has always
+    // stated kB, but parse it rather than assume it.
+    let mut parts = field.split_whitespace().skip(1);
+    let value: u64 = parts.next()?.parse().ok()?;
+    match parts.next() {
+        Some("kB") => Some(value * 1024),
+        Some(_) | None => None,
+    }
+}
+
+#[cfg(test)]
+mod peak_rss_tests {
+    /// A live process has touched pages, so the floor is "more than nothing".
+    /// The upper bound is deliberately loose -- this pins the parse and the
+    /// unit conversion, not the allocator's behaviour under a test harness.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn peak_rss_reports_a_plausible_live_figure() {
+        let bytes = super::peak_rss_bytes().expect("Linux with /proc reports VmHWM");
+        assert!(
+            (1 << 20..1 << 40).contains(&bytes),
+            "VmHWM of {bytes} bytes is outside anything a test process could hold, \
+             which means the unit conversion is wrong rather than the memory"
+        );
+    }
+}

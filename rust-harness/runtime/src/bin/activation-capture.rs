@@ -121,11 +121,17 @@ fn run(
     text_only: bool,
     single_thread: bool,
 ) -> Result<()> {
-    let files = runtime::checkpoint::CheckpointFiles::read(model_path)
-        .with_context(|| format!("read model {}", model_path.display()))?;
-    let mut ck = runtime::checkpoint::parse(&files).context("parse checkpoint")?;
-    ck.text_only = text_only;
-    let mut model = CpuModel::from_checkpoint(&ck).context("load CPU model")?;
+    // `load` drops the checkpoint mapping before returning; see its doc
+    // comment for why no caller here should open one itself.
+    let (mut model, _fingerprint) = CpuModel::load(model_path, text_only)?;
+    // The manifest records the identity of the weights these activations were
+    // read from, and the harness refuses a probe whose recorded hash does not
+    // match what it serves -- so this digest and `harness`'s must stay the
+    // same function over the same bytes. Both now stream the weights file
+    // through `digest::sha256_file` rather than hashing a mapping, which is
+    // what lets the mapping be dropped above.
+    let weights_path =
+        runtime::checkpoint::resolve(model_path)?.join(runtime::checkpoint::WEIGHTS_FILE);
     if single_thread {
         model.set_threads(1);
     }
@@ -230,7 +236,8 @@ fn run(
         // saying so now that a checkpoint is, because the interp toolkit reads
         // this to know what produced a shard.
         "model_revision": "safetensors",
-        "model_hash": sha256_hex(&files.weights),
+        "model_hash": runtime::digest::sha256_file(&weights_path)
+            .with_context(|| format!("hash {}", weights_path.display()))?,
         "layers": sorted_layers,
         "position": "last",
         "dataset_path": dataset_path.display().to_string(),

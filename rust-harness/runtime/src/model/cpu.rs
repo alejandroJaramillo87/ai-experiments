@@ -1282,6 +1282,35 @@ impl CpuModel {
     /// Nothing in this repository could say so, because `synth.rs` wrote
     /// `v - 1.0` into the fixture and `reference_logits.py` added one back --
     /// one belief, spelled at three ends, agreeing with itself.
+    /// Load a model from a checkpoint directory, leaving nothing mapped.
+    ///
+    /// The one entry point every binary should use. `from_checkpoint` copies
+    /// each tensor out of a mapping and faults in every page it touches, so a
+    /// caller that keeps `CheckpointFiles` alive afterwards holds the whole
+    /// file resident -- roughly 15 GiB for E4B, never read again, and counted
+    /// in peak RSS for the rest of the run. Nothing above the loader needs it.
+    ///
+    /// The snapshot fingerprint comes back alongside the model because it is
+    /// the one thing a caller *would* have kept the checkpoint open for, and
+    /// it is cheap to take here: `checkpoint::fingerprint` reads the
+    /// safetensors header, not the weights.
+    ///
+    /// Written as a function rather than as advice because advice was not
+    /// enough. Each binary grew its own three-line load sequence, the map
+    /// outlived the load in all of them, and fixing one did not fix the
+    /// others -- the measurement was taken with `ladder` while the repair sat
+    /// in `harness`. Here the borrow checker settles it: `Checkpoint` borrows
+    /// from `CheckpointFiles`, both die at the closing brace, and a caller
+    /// cannot hold either.
+    pub fn load(model: &std::path::Path, text_only: bool) -> Result<(CpuModel, u64)> {
+        let files = crate::checkpoint::CheckpointFiles::read(model)
+            .with_context(|| format!("read model {}", model.display()))?;
+        let mut ck = crate::checkpoint::parse(&files).context("parse checkpoint")?;
+        ck.text_only = text_only;
+        let model = CpuModel::from_checkpoint(&ck).context("load CPU model")?;
+        Ok((model, crate::checkpoint::fingerprint(&files)))
+    }
+
     pub fn from_checkpoint(ck: &crate::checkpoint::Checkpoint) -> Result<CpuModel> {
         use crate::checkpoint::hf_tensor_name;
 
@@ -2561,6 +2590,40 @@ mod tests {
             table.iter().any(|v| *v != truncated(*v)),
             "no fixture weight carries bits below the bf16 boundary, so this proves nothing"
         );
+    }
+
+    /// `CpuModel::load` is the manual load sequence, plus the drop.
+    ///
+    /// The drop itself is not observable from a unit test -- it is a peak-RSS
+    /// property of a 15 GB checkpoint. What is testable, and what would
+    /// actually break if `load` were wrong, is that routing every binary
+    /// through it changed nothing: same weights, same fingerprint, same
+    /// logits as the three-line sequence it replaced.
+    #[test]
+    fn the_shared_loader_matches_the_load_sequence_it_replaced() {
+        let spec = TinySpec::default();
+        let files = checkpoint_of(&spec);
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("config.json"), &files.config).unwrap();
+        let weights: &[u8] = &files.weights;
+        std::fs::write(dir.path().join("model.safetensors"), weights).unwrap();
+
+        let (loaded, fingerprint) = CpuModel::load(dir.path(), false).unwrap();
+        assert_eq!(
+            fingerprint,
+            crate::checkpoint::fingerprint(&files),
+            "the loader's fingerprint must be the one a snapshot was written with"
+        );
+
+        let mut direct = model_of(&spec);
+        let mut loaded = loaded;
+        for (position, t) in [1u32, 2, 3].into_iter().enumerate() {
+            assert_eq!(
+                loaded.forward_one(t, position).unwrap(),
+                direct.forward_one(t, position).unwrap(),
+                "the shared loader produced different logits for token {t}"
+            );
+        }
     }
 
     /// `row_dot` folds the widened values, in index order, for every dtype.
