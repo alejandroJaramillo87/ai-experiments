@@ -24,7 +24,14 @@ const SNAPSHOT_MAGIC: &[u8; 4] = b"HKV1";
 /// over the same file carries a matching hash and a payload the current reader
 /// would walk at the wrong offsets. Refusing on version is a clear error where
 /// reinterpreting would be silent.
-const SNAPSHOT_VERSION: u32 = 2;
+///
+/// Version 3: `model_hash` is now `checkpoint::fingerprint`, which identifies a
+/// checkpoint by its header rather than by hashing every weight byte. The
+/// payload format is unchanged and a version 2 snapshot is still numerically
+/// valid, so this bump buys a message rather than safety. Without it a snapshot
+/// written by the previous binary fails on a hash mismatch, which reads as a
+/// changed or corrupt checkpoint -- the one thing that did not happen.
+const SNAPSHOT_VERSION: u32 = 3;
 const SNAPSHOT_DTYPE_F32: u8 = 0;
 /// Tokens moved per `write_all`/`read_exact` when saving and restoring.
 ///
@@ -38,7 +45,21 @@ const SNAPSHOT_TOKEN_BLOCK: usize = 1024;
 /// compatibility checks. Corruption and mismatch detection only — not a
 /// cryptographic guarantee.
 pub fn fingerprint(data: &[u8]) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    fingerprint_from(FNV_OFFSET_BASIS, data)
+}
+
+/// FNV-1a offset basis, the state `fingerprint` starts from.
+const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+
+/// Continue an FNV-1a hash over a further block.
+///
+/// FNV is a streaming hash, so hashing two blocks in sequence equals hashing
+/// their concatenation. Exposed because `checkpoint::fingerprint` identifies a
+/// checkpoint from several disjoint regions -- its config, its header, its
+/// length -- and combining separate hashes by XOR would let two regions cancel
+/// each other. Chaining has no such case.
+pub fn fingerprint_from(seed: u64, data: &[u8]) -> u64 {
+    let mut hash = seed;
     for &b in data {
         hash ^= b as u64;
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);

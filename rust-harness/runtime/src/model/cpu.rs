@@ -71,7 +71,7 @@ use anyhow::{bail, ensure, Context, Result};
 use super::{Logits, Model, Token};
 use crate::gguf::GgufFile;
 use crate::kv::LayerKind;
-use crate::tensor::load_tensor;
+use crate::tensor::{load_tensor, Weight};
 
 /// Quantities that are one value for the whole model.
 ///
@@ -598,22 +598,22 @@ pub fn hf_tensor_family(name: &str) -> String {
 /// File-level per-layer input embedding weights, read once per position.
 struct PleWeights {
     /// Packed token-identity table, `ple_vocab` rows of `n_layers * ple_dim`.
-    token_embd: Vec<f32>,
+    token_embd: Weight,
     /// Rows in `token_embd`. Derived from the tensor's own shape rather than
     /// from a metadata key: `vocab_size_per_layer_input` is a separate config
     /// field from `vocab_size`, and the GGUF converter deletes it before
     /// writing rather than emitting it (`docs/models/gemma4-upstream.txt`).
     ple_vocab: usize,
     /// Projection of the embedded input to one row per layer.
-    model_proj: Vec<f32>,
+    model_proj: Weight,
     /// RMSNorm weight applied to each projected row over `ple_dim`.
     proj_norm: Vec<f32>,
 }
 
 /// One layer's per-layer input embedding weights.
 struct PleLayer {
-    inp_gate: Vec<f32>,
-    proj: Vec<f32>,
+    inp_gate: Weight,
+    proj: Weight,
     post_norm: Vec<f32>,
 }
 
@@ -636,24 +636,28 @@ struct LayerWeights {
     /// This layer's per-layer input embedding weights, `None` on a checkpoint
     /// without the feature.
     ple: Option<PleLayer>,
+    /// The norms stay f32. Every norm in E4B together is a few megabytes, so
+    /// widening them once at load costs nothing worth measuring and leaves
+    /// `rms_norm` reading a plain slice. Only the matrices below — the ones
+    /// whose bytes decode actually reads per token — are held as stored.
     attn_norm: Vec<f32>,
-    wq: Vec<f32>,
-    wk: Vec<f32>,
-    wv: Vec<f32>,
+    wq: Weight,
+    wk: Weight,
+    wv: Weight,
     q_norm: Vec<f32>,
     k_norm: Vec<f32>,
-    wo: Vec<f32>,
+    wo: Weight,
     post_attn_norm: Vec<f32>,
     ffn_norm: Vec<f32>,
-    w_gate: Vec<f32>,
-    w_up: Vec<f32>,
-    w_down: Vec<f32>,
+    w_gate: Weight,
+    w_up: Weight,
+    w_down: Weight,
     post_ffw_norm: Vec<f32>,
 }
 
 /// Immutable weights, shared by forks through an Arc.
 struct Weights {
-    embed: Vec<f32>,
+    embed: Weight,
     /// File-level per-layer input embedding weights, `None` on a checkpoint
     /// without the feature.
     ple: Option<PleWeights>,
@@ -1055,7 +1059,7 @@ fn par_rows(out: &mut [f32], threads: usize, f: impl Fn(usize, &mut f32) + Sync)
 ///
 /// `threads` bounds the row split and does not change the result; see
 /// `par_rows`.
-fn matvec_into(w: &[f32], x: &[f32], out: &mut [f32], threads: usize) {
+fn matvec_into(w: &Weight, x: &[f32], out: &mut [f32], threads: usize) {
     let (in_dim, out_dim) = (x.len(), out.len());
     assert_eq!(
         w.len(),
@@ -1063,10 +1067,7 @@ fn matvec_into(w: &[f32], x: &[f32], out: &mut [f32], threads: usize) {
         "matvec: weight of {} elements for a {in_dim} x {out_dim} product",
         w.len()
     );
-    par_rows(out, threads, |o, dst| {
-        let row = &w[o * in_dim..(o + 1) * in_dim];
-        *dst = row.iter().zip(x).map(|(a, b)| a * b).sum();
-    });
+    par_rows(out, threads, |o, dst| *dst = w.row_dot(o, x));
 }
 
 /// Ceiling on the default row-split width, whatever the core count.
@@ -1286,6 +1287,11 @@ impl CpuModel {
         };
         let tensor =
             |gguf: &str, want: &[usize]| -> Result<Vec<f32>> { ck.tensor(&hf(gguf)?, want) };
+        // The large matrices, kept in the width the file declares rather than
+        // widened to f32. Bit-identical either way -- `tensor::Weight` carries
+        // the argument -- so the split between this and `tensor` is about
+        // bytes resident and bytes read per token, nothing else.
+        let weight = |gguf: &str, want: &[usize]| -> Result<Weight> { ck.weight(&hf(gguf)?, want) };
         // A norm weight is the effective multiplier already: see the note on
         // this function. Kept as a named binding rather than folded into
         // `tensor` so the debug assertion still says which tensors are norms.
@@ -1295,7 +1301,7 @@ impl CpuModel {
         };
 
         let embed_dim = config.embed_dim;
-        let embed = tensor("token_embd.weight", &[config.vocab_size, embed_dim])?;
+        let embed = weight("token_embd.weight", &[config.vocab_size, embed_dim])?;
         // The divisor tensor the GGUF carries is derived here instead, from
         // the factor the checkpoint states. Ones over the rotating pairs and
         // 1e30 over the rest, matching the converter's own construction, so
@@ -1335,9 +1341,9 @@ impl CpuModel {
                     config.vocab_size
                 );
                 Some(PleWeights {
-                    token_embd: tensor(PLE_TOP_LEVEL_TENSORS[0], &[ple_vocab, row])?,
+                    token_embd: weight(PLE_TOP_LEVEL_TENSORS[0], &[ple_vocab, row])?,
                     ple_vocab,
-                    model_proj: tensor(PLE_TOP_LEVEL_TENSORS[1], &[row, embed_dim])?,
+                    model_proj: weight(PLE_TOP_LEVEL_TENSORS[1], &[row, embed_dim])?,
                     proj_norm: norm(PLE_TOP_LEVEL_TENSORS[2], &[pd])?,
                 })
             }
@@ -1355,6 +1361,7 @@ impl CpuModel {
             // Row-major `[out, in]`, the transpose of the GGUF `ne` order and
             // the same bytes.
             let t = |suffix: &str, want: &[usize]| tensor(&format!("blk.{i}.{suffix}"), want);
+            let w = |suffix: &str, want: &[usize]| weight(&format!("blk.{i}.{suffix}"), want);
             let n = |suffix: &str, want: &[usize]| norm(&format!("blk.{i}.{suffix}"), want);
             let output_scale = match ck.has(&hf(&format!("blk.{i}.layer_output_scale.weight"))?) {
                 true => t("layer_output_scale.weight", &[1])?[0],
@@ -1362,8 +1369,8 @@ impl CpuModel {
             };
             let ple_layer = match config.ple_dim {
                 Some(pd) => Some(PleLayer {
-                    inp_gate: t(PLE_LAYER_TENSORS[0], &[pd, embed_dim])?,
-                    proj: t(PLE_LAYER_TENSORS[1], &[embed_dim, pd])?,
+                    inp_gate: w(PLE_LAYER_TENSORS[0], &[pd, embed_dim])?,
+                    proj: w(PLE_LAYER_TENSORS[1], &[embed_dim, pd])?,
                     post_norm: n(PLE_LAYER_TENSORS[2], &[embed_dim])?,
                 }),
                 None => None,
@@ -1374,11 +1381,14 @@ impl CpuModel {
             // answer.
             let (wk, wv, k_norm) = match spec.owns_cache(i) {
                 true => (
-                    t("attn_k.weight", &[kv_dim, embed_dim])?,
-                    t("attn_v.weight", &[kv_dim, embed_dim])?,
+                    w("attn_k.weight", &[kv_dim, embed_dim])?,
+                    w("attn_v.weight", &[kv_dim, embed_dim])?,
                     n("attn_k_norm.weight", &[head_dim])?,
                 ),
-                false => (Vec::new(), Vec::new(), Vec::new()),
+                // An empty `Weight` needs a variant, and the choice is
+                // arbitrary: nothing reads these, and `is_empty` is what the
+                // guards ask.
+                false => (Weight::F32(Vec::new()), Weight::F32(Vec::new()), Vec::new()),
             };
             layers.push(LayerWeights {
                 spec: *ls,
@@ -1386,17 +1396,17 @@ impl CpuModel {
                 output_scale,
                 ple: ple_layer,
                 attn_norm: n("attn_norm.weight", &[embed_dim])?,
-                wq: t("attn_q.weight", &[q_dim, embed_dim])?,
+                wq: w("attn_q.weight", &[q_dim, embed_dim])?,
                 wk,
                 wv,
                 q_norm: n("attn_q_norm.weight", &[head_dim])?,
                 k_norm,
-                wo: t("attn_output.weight", &[embed_dim, q_dim])?,
+                wo: w("attn_output.weight", &[embed_dim, q_dim])?,
                 post_attn_norm: n("post_attention_norm.weight", &[embed_dim])?,
                 ffn_norm: n("ffn_norm.weight", &[embed_dim])?,
-                w_gate: t("ffn_gate.weight", &[ffn_dim, embed_dim])?,
-                w_up: t("ffn_up.weight", &[ffn_dim, embed_dim])?,
-                w_down: t("ffn_down.weight", &[embed_dim, ffn_dim])?,
+                w_gate: w("ffn_gate.weight", &[ffn_dim, embed_dim])?,
+                w_up: w("ffn_up.weight", &[ffn_dim, embed_dim])?,
+                w_down: w("ffn_down.weight", &[embed_dim, ffn_dim])?,
                 post_ffw_norm: n("post_ffw_norm.weight", &[embed_dim])?,
             });
         }
@@ -1447,6 +1457,50 @@ impl CpuModel {
     /// The width in force, for a runner that reports what it ran.
     pub fn threads(&self) -> usize {
         self.threads
+    }
+
+    /// Heap bytes the weights occupy, and the width they are held at.
+    ///
+    /// Reported at startup so the claim that a bf16 checkpoint is not expanded
+    /// is checkable from the run rather than from `ps`. `None` for the width
+    /// on a checkpoint whose tensors are not all one dtype -- possible in the
+    /// format, absent from every checkpoint this loads, and a mixed answer is
+    /// better than a confident wrong one.
+    pub fn weight_bytes(&self) -> (usize, Option<&'static str>) {
+        let w = &self.weights;
+        let mut total = 0;
+        let mut width: Option<&'static str> = None;
+        let mut mixed = false;
+        let mut count = |t: &Weight| {
+            if t.is_empty() {
+                return;
+            }
+            total += t.stored_bytes();
+            let name = match t {
+                Weight::F32(_) => "f32",
+                Weight::F16(_) => "f16",
+                Weight::Bf16(_) => "bf16",
+            };
+            match width {
+                Some(seen) if seen != name => mixed = true,
+                _ => width = Some(name),
+            }
+        };
+        count(&w.embed);
+        if let Some(p) = w.ple.as_ref() {
+            count(&p.token_embd);
+            count(&p.model_proj);
+        }
+        for l in &w.layers {
+            for t in [&l.wq, &l.wk, &l.wv, &l.wo, &l.w_gate, &l.w_up, &l.w_down] {
+                count(t);
+            }
+            if let Some(p) = l.ple.as_ref() {
+                count(&p.inp_gate);
+                count(&p.proj);
+            }
+        }
+        (total, if mixed { None } else { width })
     }
 
     /// `Model::fork`'s body, returning the concrete type.
@@ -1548,11 +1602,13 @@ impl CpuModel {
         let Scratch { buf, scores, ple } = scratch;
         let (x, work) = buf.split_at_mut(c.embed_dim);
 
-        // Embedding, scaled by sqrt(embed_dim) per Gemma convention.
-        let row = &w.embed[token as usize * c.embed_dim..(token as usize + 1) * c.embed_dim];
+        // Embedding, scaled by sqrt(embed_dim) per Gemma convention. Widened
+        // into the residual buffer and scaled there: one multiply per element,
+        // exactly as when the table was already f32.
+        w.embed.widen_row_into(token as usize, x);
         let scale = (c.embed_dim as f32).sqrt();
-        for (dst, e) in x.iter_mut().zip(row) {
-            *dst = e * scale;
+        for dst in x.iter_mut() {
+            *dst *= scale;
         }
         if let Some(tap) = tap.as_mut() {
             tap.on_stage(STAGE_EMBED, position, x);
@@ -1595,19 +1651,21 @@ impl CpuModel {
                 (token as usize) < p.ple_vocab,
                 "token bound checked at entry"
             );
-            let identity = &p.token_embd[token as usize * stride..(token as usize + 1) * stride];
+            let identity = token as usize * stride;
             let embed_scale = (pd as f32).sqrt();
             // The identity half has no buffer of its own -- it is read
             // straight out of the packed table and summed in place -- so
             // reporting it costs an allocation, taken only when a tap has
             // asked for stages.
             if tap.as_ref().is_some_and(|t| t.wants_stages()) {
-                let scaled: Vec<f32> = identity.iter().map(|e| e * embed_scale).collect();
+                let scaled: Vec<f32> = (0..stride)
+                    .map(|j| p.token_embd.get(identity + j) * embed_scale)
+                    .collect();
                 let tap = tap.as_mut().expect("checked above");
                 tap.on_stage(STAGE_PLE_IDENTITY, position, &scaled);
             }
-            for (dst, e) in ple.iter_mut().zip(identity) {
-                *dst = (*dst + e * embed_scale) * PLE_INPUT_SCALE;
+            for (j, dst) in ple.iter_mut().enumerate() {
+                *dst = (*dst + p.token_embd.get(identity + j) * embed_scale) * PLE_INPUT_SCALE;
             }
             if let Some(tap) = tap.as_mut() {
                 tap.on_stage(STAGE_PLE, position, ple);
@@ -1795,12 +1853,11 @@ impl CpuModel {
         let hidden: &[f32] = normed;
         // Row-split like every other projection, and for a larger share of the
         // token than any of them: the tied head folds the whole embedding
-        // table, 2.1 GiB of E4B's roughly 28, once per position. Left serial it
-        // would be the Amdahl floor under the rest of the threading.
+        // table, roughly a tenth of E4B's weights, once per position. Left
+        // serial it would be the Amdahl floor under the rest of the threading.
         let mut logits = vec![0.0f32; c.vocab_size];
         par_rows(&mut logits, threads, |t, dst| {
-            let row = &w.embed[t * c.embed_dim..(t + 1) * c.embed_dim];
-            let logit: f32 = row.iter().zip(hidden).map(|(a, b)| a * b).sum();
+            let logit = w.embed.row_dot(t, hidden);
             // Softcap, when the checkpoint declares one: a smooth squash
             // toward +/-cap rather than a clamp. Monotone, so it moves no
             // argmax and greedy decoding cannot detect its absence --
@@ -2188,6 +2245,51 @@ mod tests {
         model_of(&TinySpec::default())
     }
 
+    /// Rewrite a checkpoint with every tensor widened to f32.
+    ///
+    /// The twin half of the storage-preserving claim. Widening here uses the
+    /// same `bf16_to_f32` the loader would have used, so the two images hold
+    /// *the same numbers* at two widths -- which is the only comparison that
+    /// isolates storage. Regenerating an f32 fixture from the spec instead
+    /// would compare truncated values against unrounded ones and fail for a
+    /// reason that has nothing to do with this code.
+    fn widened_to_f32(
+        files: &crate::checkpoint::CheckpointFiles,
+    ) -> crate::checkpoint::CheckpointFiles {
+        use safetensors::tensor::{Dtype, TensorView};
+
+        let ck = crate::checkpoint::parse(files).unwrap();
+        let payloads: Vec<(String, Vec<usize>, Vec<u8>)> = ck
+            .names()
+            .iter()
+            .map(|name| {
+                let shape = ck.shape(name).unwrap();
+                let bytes = ck
+                    .weight(name, &shape)
+                    .unwrap()
+                    .to_f32()
+                    .iter()
+                    .flat_map(|v| v.to_le_bytes())
+                    .collect();
+                (name.clone(), shape, bytes)
+            })
+            .collect();
+        let views: Vec<(&str, TensorView)> = payloads
+            .iter()
+            .map(|(name, shape, bytes)| {
+                (
+                    name.as_str(),
+                    TensorView::new(Dtype::F32, shape.clone(), bytes).unwrap(),
+                )
+            })
+            .collect();
+        crate::checkpoint::CheckpointFiles {
+            config: files.config.clone(),
+            weights: safetensors::serialize(views, None).unwrap().into(),
+            dir: std::path::PathBuf::from("<widened>"),
+        }
+    }
+
     /// Allocating wrapper over `rms_norm_into`, so the convention tests read
     /// as the arithmetic they check rather than as buffer bookkeeping.
     fn rms_norm(x: &[f32], w: &[f32], eps: f32) -> Vec<f32> {
@@ -2317,7 +2419,7 @@ mod tests {
         let last = *tokens.last().unwrap() as usize;
         let scale = (c.embed_dim as f32).sqrt();
         for (j, got) in embed.iter().enumerate() {
-            let want = model.weights.embed[last * c.embed_dim + j] * scale;
+            let want = model.weights.embed.get(last * c.embed_dim + j) * scale;
             assert_eq!(*got, want, "embedding element {j}");
         }
 
@@ -2374,6 +2476,125 @@ mod tests {
             .collect()
     }
 
+    /// Storage width is not a numerics decision.
+    ///
+    /// The claim the storage-preserving loader rests on, measured the only way
+    /// that isolates it: one checkpoint held as bf16, and a second holding the
+    /// same values widened to f32, run through the same forward pass. Bit
+    /// equality, not a tolerance -- widening is a shift, so anything but exact
+    /// agreement means an operand or an order changed.
+    #[test]
+    fn a_bf16_checkpoint_and_its_widened_twin_produce_identical_logits() {
+        let spec = TinySpec {
+            storage: crate::synth::TensorStorage::Bf16,
+            ..TinySpec::e4b_shaped()
+        };
+        let narrow_files = checkpoint_of(&spec);
+        let wide_files = widened_to_f32(&narrow_files);
+
+        let load = |files: &crate::checkpoint::CheckpointFiles| {
+            let ck = crate::checkpoint::parse(files).unwrap();
+            CpuModel::from_checkpoint(&ck).unwrap()
+        };
+        let (mut narrow, mut wide) = (load(&narrow_files), load(&wide_files));
+
+        // Non-vacuity: if both loaded at the same width the test compares a
+        // model with itself and would pass through any defect here.
+        assert!(
+            matches!(narrow.weights.embed, Weight::Bf16(_)),
+            "the bf16 fixture did not load as bf16"
+        );
+        assert!(
+            matches!(wide.weights.embed, Weight::F32(_)),
+            "the widened twin did not load as f32"
+        );
+        assert!(
+            narrow.weight_bytes().0 * 2 == wide.weight_bytes().0,
+            "{} against {}",
+            narrow.weight_bytes().0,
+            wide.weight_bytes().0
+        );
+
+        let prompt: Vec<Token> = vec![7, 3, 42, 11, 5];
+        let a = narrow.prefill_all(&prompt).unwrap();
+        let b = wide.prefill_all(&prompt).unwrap();
+        assert_eq!(a.len(), b.len(), "position counts differ");
+        for (position, (x, y)) in a.iter().zip(&b).enumerate() {
+            let diff = x.0.iter().zip(&y.0).position(|(p, q)| p != q);
+            assert!(
+                diff.is_none(),
+                "position {position} differs at logit {}: {:?} against {:?}",
+                diff.unwrap(),
+                x.0[diff.unwrap()],
+                y.0[diff.unwrap()]
+            );
+        }
+    }
+
+    /// An f32 checkpoint keeps its low mantissa bits.
+    ///
+    /// The guard against a future simplification that stores everything as
+    /// bf16 to halve memory unconditionally. Storage-preserving means never
+    /// narrowing, and a fixture value with bits below the bf16 boundary is
+    /// what makes the difference observable.
+    #[test]
+    fn an_f32_checkpoint_is_not_narrowed() {
+        let model = tiny();
+        assert!(
+            matches!(model.weights.embed, Weight::F32(_)),
+            "an f32 checkpoint did not load as f32"
+        );
+        let truncated = |v: f32| f32::from_bits(v.to_bits() & 0xffff_0000);
+        let table = model.weights.embed.to_f32();
+        assert!(
+            table.iter().any(|v| *v != truncated(*v)),
+            "no fixture weight carries bits below the bf16 boundary, so this proves nothing"
+        );
+    }
+
+    /// `row_dot` folds the widened values, in index order, for every dtype.
+    #[test]
+    fn weight_row_dot_matches_the_f32_loop_for_every_dtype() {
+        use crate::tensor::{bf16_to_f32, f16_to_f32};
+
+        let (in_dim, out_dim) = (37, 5);
+        let n = in_dim * out_dim;
+        let x = spread(in_dim, 9);
+
+        // Built per dtype rather than from one shared bit pattern, because the
+        // two formats divide the same 16 bits differently: a word that is an
+        // ordinary bf16 is an infinity or a NaN read as f16, and `assert_eq!`
+        // on a NaN fails whatever the code does.
+        let bf16: Vec<u16> = spread(n, 4)
+            .iter()
+            .map(|v| (v.to_bits() >> 16) as u16)
+            .collect();
+        let f16: Vec<u16> = (0..n)
+            .map(|i| {
+                let sign = ((i % 2) as u16) << 15;
+                // Exponent in 1..=30 -- normal, never the subnormal 0 or the
+                // infinity-and-NaN 31.
+                let exponent = 1 + (i as u16 % 30);
+                sign | (exponent << 10) | ((i as u16).wrapping_mul(2027) & 0x03ff)
+            })
+            .collect();
+
+        let check = |label: &str, w: &Weight, bits: &[u16], widen: fn(u16) -> f32| {
+            for o in 0..out_dim {
+                let want: f32 = bits[o * in_dim..(o + 1) * in_dim]
+                    .iter()
+                    .zip(&x)
+                    .map(|(&a, b)| widen(a) * b)
+                    .sum();
+                let got = w.row_dot(o, &x);
+                assert_eq!(got, want, "{label} row {o}: {got} against {want}");
+                assert!(got.is_finite(), "{label}: degenerate fixture at row {o}");
+            }
+        };
+        check("bf16", &Weight::Bf16(bf16.clone()), &bf16, bf16_to_f32);
+        check("f16", &Weight::F16(f16.clone()), &f16, f16_to_f32);
+    }
+
     #[test]
     fn par_rows_is_bit_identical_at_every_width() {
         // The property the whole threading change rests on. Splitting a dot
@@ -2383,7 +2604,7 @@ mod tests {
         // tolerance: exactness is the assertion, not an approximation of it.
         let out_dim = PARALLEL_MIN_ROWS * 2;
         let in_dim = 37;
-        let w = spread(out_dim * in_dim, 1);
+        let w = Weight::F32(spread(out_dim * in_dim, 1));
         let x = spread(in_dim, 2);
 
         let mut serial = vec![0.0f32; out_dim];
@@ -2507,7 +2728,7 @@ mod tests {
         // debug_assert is compiled out exactly where wrong numerics matter.
         // The check costs one integer comparison against in_dim x out_dim
         // multiply-accumulates.
-        matvec_into(&[1.0; 16], &[1.0; 4], &mut [0.0; 2], 1);
+        matvec_into(&Weight::F32(vec![1.0; 16]), &[1.0; 4], &mut [0.0; 2], 1);
     }
 
     #[test]
@@ -3147,17 +3368,17 @@ mod tests {
         let spec = ModelSpec::from_checkpoint(&file.config).unwrap();
         let c = spec.config;
         let t = |name: &str| tensor_of(&file, name);
-        let (embed, table, model_proj, proj_norm) = (
+        let (embed, table, proj_norm) = (
             t("token_embd.weight"),
             t("per_layer_token_embd.weight"),
-            t("per_layer_model_proj.weight"),
             t("per_layer_proj_norm.weight"),
         );
-        let (inp_gate, proj, post_norm) = (
-            t("blk.0.inp_gate.weight"),
-            t("blk.0.proj.weight"),
-            t("blk.0.post_norm.weight"),
-        );
+        let post_norm = t("blk.0.post_norm.weight");
+        // The three matrices this reimplementation multiplies by, in the form
+        // `matvec_into` now takes. Built once: the loop below runs per token.
+        let model_proj = Weight::F32(t("per_layer_model_proj.weight"));
+        let inp_gate = Weight::F32(t("blk.0.inp_gate.weight"));
+        let proj = Weight::F32(t("blk.0.proj.weight"));
         let packed = c.n_layers * pd;
 
         for (position, token) in tokens.iter().enumerate() {
@@ -3527,12 +3748,12 @@ mod tests {
 
         // A projection is likewise untouched.
         assert_eq!(
-            model.weights.layers[0].wq,
+            model.weights.layers[0].wq.to_f32(),
             stored(&hf("blk.0.attn_q.weight")),
             "q_proj was transformed"
         );
         assert_eq!(
-            model.weights.embed,
+            model.weights.embed.to_f32(),
             stored(&hf("token_embd.weight")),
             "the embedding table was shifted"
         );

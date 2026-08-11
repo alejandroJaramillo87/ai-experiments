@@ -291,6 +291,16 @@ fn build_generator(
         // windowed layer, which on a real checkpoint at its trained context is
         // enough to keep the warning below from firing on a run that will not
         // fit.
+        // Weights first, because it is the larger number and the one a reader
+        // is checking against the checkpoint on disk. A bf16 checkpoint held
+        // at its published width reports about the file's size; twice that
+        // would mean the loader had expanded it.
+        let (weight_bytes, width) = cpu.weight_bytes();
+        eprintln!(
+            "[INFO] Weights: {:.2} GiB resident at {}",
+            weight_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+            width.unwrap_or("mixed widths")
+        );
         let bytes = runtime::kv::resident_bytes(&layers, max_context);
         let gib = bytes as f64 / (1024.0 * 1024.0 * 1024.0);
         eprintln!(
@@ -314,7 +324,7 @@ fn build_generator(
     // removed; a missing file is the normal first run. Whether the restored
     // tokens still match the transcript is settled later by sync's prefix
     // matching, which degrades to a full re-prefill at worst.
-    let model_hash = runtime::session::fingerprint(data);
+    let model_hash = runtime::checkpoint::fingerprint(&files);
     if let Some(path) = snapshot {
         match std::fs::File::open(path) {
             Ok(f) => {

@@ -623,17 +623,20 @@ pub fn resolve(model: &Path) -> Result<PathBuf> {
 impl CheckpointFiles {
     /// Read `config.json` and map `model.safetensors` from a checkpoint.
     ///
-    /// The weights are mapped rather than read because `from_checkpoint`
-    /// widens every tensor into an owned `Vec<f32>` anyway: an `fs::read`
-    /// would hold a private copy of the whole file alongside that expansion,
-    /// which on a 15 GB E4B checkpoint is 15 GB of anonymous memory that is
-    /// never read twice. A map costs page cache instead, which the kernel can
-    /// evict.
+    /// The weights are mapped rather than read because the loader copies each
+    /// tensor out anyway: an `fs::read` would hold a private copy of the whole
+    /// file alongside the loader's, which on a 15 GB E4B checkpoint is 15 GB of
+    /// anonymous memory that is never read twice. A map costs page cache
+    /// instead, which the kernel can evict once the load is done.
     ///
-    /// What this does *not* do is make loading lazy. `widen` copies out
-    /// regardless, so the f32 expansion is unchanged and every page a tensor
-    /// touches is faulted in. The tools that only read the header --
-    /// `checkpoint-info` -- are the ones that get the whole benefit.
+    /// What this does *not* do is make loading lazy. `weight` and `tensor`
+    /// both copy, so every page a tensor touches is faulted in. The tools that
+    /// only read the header -- `checkpoint-info` -- are the ones that get the
+    /// whole benefit.
+    ///
+    /// The size of what gets copied is `weight`'s business, not this
+    /// function's: it keeps a tensor in its published width, so a bf16
+    /// checkpoint is held at 15 GB rather than expanded to 28.
     pub fn read(model: &Path) -> Result<CheckpointFiles> {
         let dir = resolve(model)?;
         let config_path = dir.join(CONFIG_FILE);
@@ -672,6 +675,52 @@ impl CheckpointFiles {
             dir,
         })
     }
+}
+
+/// Identify a checkpoint for snapshot compatibility, without reading its weights.
+///
+/// Hashes the safetensors header -- every tensor's name, dtype, shape and byte
+/// range -- together with `config.json` and the weights file's length. That
+/// covers the whole class of change which would make a restored KV cache mean
+/// something else: a different architecture, a retyped or reshaped tensor, a
+/// tensor added or removed, a file of a different size.
+///
+/// What it deliberately does not catch is an in-place edit of weight *values*
+/// leaving the layout untouched. That is not a new assumption. The map in
+/// `CheckpointFiles::read` is already unsound under in-place edits, and its
+/// SAFETY note states the assumption it relies on instead: a checkpoint is a
+/// published read-only artifact. This function leans on the same assumption
+/// rather than faulting in 15 GB at every startup to hedge against it -- which
+/// is what hashing the payload did, for a check whose own documentation calls
+/// itself corruption detection and not a cryptographic guarantee.
+///
+/// A truncated file -- too short to carry the header length, or to carry the
+/// header it declares -- hashes what is there rather than erroring. The caller
+/// is deciding whether to reuse a cache, and `parse` is about to reject the
+/// file properly a moment later with a message about the format.
+pub fn fingerprint(files: &CheckpointFiles) -> u64 {
+    // safetensors frames the file as an 8-byte little-endian header length,
+    // then that many bytes of JSON, then the payload. Reading the frame is
+    // enough to know the identifying bytes without parsing them.
+    const LEN_PREFIX: usize = 8;
+
+    let weights: &[u8] = &files.weights;
+    let header_end = match weights.get(..LEN_PREFIX) {
+        Some(prefix) => {
+            let len = u64::from_le_bytes(prefix.try_into().unwrap_or([0; LEN_PREFIX]));
+            // Saturating and clamped: a corrupt length must not panic here,
+            // for the reason the doc comment gives.
+            usize::try_from(len)
+                .unwrap_or(0)
+                .saturating_add(LEN_PREFIX)
+                .min(weights.len())
+        }
+        None => weights.len(),
+    };
+
+    let hash = crate::session::fingerprint(&files.config);
+    let hash = crate::session::fingerprint_from(hash, &weights[..header_end]);
+    crate::session::fingerprint_from(hash, &weights.len().to_le_bytes())
 }
 
 /// Parse a checkpoint's architecture and index its tensors.
@@ -731,6 +780,67 @@ impl Checkpoint<'_> {
             view.shape()
         );
         widen(name, view.dtype(), view.data())
+    }
+
+    /// Read a tensor in the width the file declares, checking its shape.
+    ///
+    /// The counterpart to `tensor` for the large matrices: same name
+    /// resolution, same shape check, but the bytes are kept as stored instead
+    /// of expanded into f32. See `tensor::Weight` for why that is a bandwidth
+    /// decision and not a numerics one.
+    ///
+    /// `tensor` remains for the small tensors -- every norm -- and for callers
+    /// that genuinely want f32, where the expansion costs nothing measurable
+    /// and an f32 slice is the simpler thing to hand a caller.
+    pub fn weight(&self, name: &str, want: &[usize]) -> Result<crate::tensor::Weight> {
+        use crate::tensor::Weight;
+        use safetensors::Dtype;
+
+        let view = self
+            .tensors
+            .tensor(&self.on_disk(name))
+            .map_err(|e| anyhow::anyhow!("missing tensor {name}: {e}"))?;
+        ensure!(
+            view.shape() == want,
+            "tensor {name} has shape {:?}, the configuration implies {want:?}",
+            view.shape()
+        );
+        let bytes = view.data();
+        let narrow = || -> Vec<u16> {
+            bytes
+                .chunks_exact(2)
+                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .collect()
+        };
+        // The width check `widen` performs, restated here because the two
+        // return different things from the same bytes and neither can call
+        // the other without allocating what the caller did not ask for.
+        let width = match view.dtype() {
+            Dtype::F32 => 4,
+            Dtype::F16 | Dtype::BF16 => 2,
+            other => bail!(
+                "tensor {name} has dtype {other:?}; this backend loads F32, F16 and \
+                 BF16 only, and computes at 16-bit precision or wider by design"
+            ),
+        };
+        ensure!(
+            bytes.len().is_multiple_of(width),
+            "tensor {name}: {} bytes is not a whole number of {:?} elements",
+            bytes.len(),
+            view.dtype()
+        );
+        Ok(match view.dtype() {
+            Dtype::F32 => Weight::F32(
+                bytes
+                    .chunks_exact(4)
+                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect(),
+            ),
+            Dtype::F16 => Weight::F16(narrow()),
+            Dtype::BF16 => Weight::Bf16(narrow()),
+            // Unreachable: `width` above already refused every other dtype.
+            other => bail!("tensor {name}: unexpected dtype {other:?}"),
+        })
     }
 
     /// A tensor's declared shape, without widening it.
@@ -1196,6 +1306,109 @@ mod tests {
         .unwrap();
         let err = CheckpointFiles::read(dir.path()).unwrap_err().to_string();
         assert!(err.contains(WEIGHTS_FILE), "{err}");
+    }
+
+    /// An in-memory checkpoint from a spec, for the fingerprint tests.
+    fn files_of(spec: &TinySpec) -> CheckpointFiles {
+        CheckpointFiles {
+            config: build_tiny_config_json(spec).unwrap(),
+            weights: build_tiny_safetensors(spec).unwrap().into(),
+            dir: PathBuf::from("<memory>"),
+        }
+    }
+
+    /// Storage width moves the header, so it moves the fingerprint.
+    ///
+    /// The strongest of the header-only cases: the two images hold the same
+    /// model at the same shapes and differ only in how each tensor is typed.
+    /// A KV cache computed from one is not a KV cache of the other, and the
+    /// dtype is exactly the kind of change a payload hash would have caught
+    /// for free and a header hash has to be shown to catch.
+    #[test]
+    fn a_checkpoint_fingerprint_changes_with_a_tensors_dtype() {
+        let f32_spec = TinySpec::default();
+        let bf16_spec = TinySpec {
+            storage: crate::synth::TensorStorage::Bf16,
+            ..TinySpec::default()
+        };
+        let (a, b) = (
+            fingerprint(&files_of(&f32_spec)),
+            fingerprint(&files_of(&bf16_spec)),
+        );
+        assert_ne!(a, b, "f32 and bf16 images share a fingerprint: {a:#x}");
+    }
+
+    /// A different architecture is a different checkpoint, weights aside.
+    #[test]
+    fn a_checkpoint_fingerprint_changes_with_the_config() {
+        let base = files_of(&TinySpec::default());
+        let mut edited = files_of(&TinySpec::default());
+        edited.config.extend(b"  ");
+        assert_ne!(fingerprint(&base), fingerprint(&edited));
+    }
+
+    /// The same bytes hash the same, which is the only reason it is usable.
+    ///
+    /// A snapshot is written by one process and read by the next, so a
+    /// fingerprint that varied with anything but the file -- an address, an
+    /// iteration order, a timestamp -- would reject every restore.
+    #[test]
+    fn a_checkpoint_fingerprint_is_stable_across_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let spec = TinySpec::default();
+        std::fs::write(
+            dir.path().join(CONFIG_FILE),
+            build_tiny_config_json(&spec).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join(WEIGHTS_FILE),
+            build_tiny_safetensors(&spec).unwrap(),
+        )
+        .unwrap();
+
+        let first = fingerprint(&CheckpointFiles::read(dir.path()).unwrap());
+        let second = fingerprint(&CheckpointFiles::read(dir.path()).unwrap());
+        assert_eq!(first, second, "{first:#x} then {second:#x}");
+        // And the mapped and owned sources agree, so a test that builds its
+        // checkpoint in memory is testing the same function the harness runs.
+        assert_eq!(first, fingerprint(&files_of(&spec)));
+    }
+
+    /// Editing a weight value in place does not move the fingerprint.
+    ///
+    /// Asserted rather than lamented. This is the cost of not reading the
+    /// payload, it is bounded by an assumption `CheckpointFiles::read` already
+    /// makes for its map -- a checkpoint is a published read-only artifact --
+    /// and pinning it here means a future reader finds a decision instead of
+    /// an oversight.
+    #[test]
+    fn a_checkpoint_fingerprint_does_not_see_an_in_place_weight_edit() {
+        let base = files_of(&TinySpec::default());
+        let mut bytes = base.weights.to_vec();
+        let header_end = 8 + u64::from_le_bytes(bytes[..8].try_into().unwrap()) as usize;
+        assert!(header_end < bytes.len(), "fixture has no payload to edit");
+        bytes[header_end] ^= 0xff;
+        let edited = CheckpointFiles {
+            config: base.config.clone(),
+            weights: bytes.into(),
+            dir: PathBuf::from("<memory>"),
+        };
+        assert_eq!(fingerprint(&base), fingerprint(&edited));
+    }
+
+    /// A file too short to carry its own frame is hashed, not panicked on.
+    #[test]
+    fn a_truncated_checkpoint_still_fingerprints() {
+        for len in [0usize, 4, 8] {
+            let files = CheckpointFiles {
+                config: Vec::new(),
+                weights: vec![0xabu8; len].into(),
+                dir: PathBuf::from("<memory>"),
+            };
+            // The assertion is that the call returns at all.
+            let _ = fingerprint(&files);
+        }
     }
 
     /// The mapped and the owned byte source are the same checkpoint.

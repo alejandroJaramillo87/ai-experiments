@@ -110,6 +110,128 @@ pub fn dequantize(ggml_type: u32, bytes: &[u8], n: usize) -> Result<Vec<f32>> {
     })
 }
 
+/// A weight matrix held in the width its checkpoint published.
+///
+/// **Widening at use is bit-identical to widening at load**, which is what
+/// makes this a memory and bandwidth decision rather than a numerics one.
+/// `bf16_to_f32` is a 16-bit shift and `f16_to_f32` lands 10 mantissa bits in a
+/// 23-bit field, so both are exact for every input; the f32 a fold multiplies
+/// is the same f32 either way, in the same order. The same argument
+/// `cpu::par_rows` makes about splitting rows, applied to storage.
+///
+/// The point is bytes moved. Decode reads every weight once per token and is
+/// bound by memory bandwidth, not arithmetic, so halving the width of the
+/// weights nearly halves the time. Holding a bf16 checkpoint at f32 also costs
+/// a second copy of it on the heap, which is what took E4B to 42 GB resident
+/// for a 15 GB file.
+///
+/// **Storage-preserving, never narrowing.** An f32 checkpoint stays f32. This
+/// type records what a file declared; it does not convert between widths, and
+/// a loader that narrowed an f32 tensor to bf16 to save memory would be
+/// changing the model.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Weight {
+    F32(Vec<f32>),
+    F16(Vec<u16>),
+    Bf16(Vec<u16>),
+}
+
+impl Weight {
+    /// Element count, whatever the width.
+    pub fn len(&self) -> usize {
+        match self {
+            Weight::F32(v) => v.len(),
+            Weight::F16(v) | Weight::Bf16(v) => v.len(),
+        }
+    }
+
+    /// Whether the tensor holds no elements.
+    ///
+    /// Present because a shared-KV layer leaves `wk`, `wv` empty rather than
+    /// allocating weights the modeling code never evaluates.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// One element, widened.
+    ///
+    /// For the readers that walk a row alongside another buffer and have no
+    /// f32 slice to widen into: the packed per-layer embedding table is summed
+    /// straight into the projected rows.
+    #[inline]
+    pub fn get(&self, i: usize) -> f32 {
+        match self {
+            Weight::F32(v) => v[i],
+            Weight::F16(v) => f16_to_f32(v[i]),
+            Weight::Bf16(v) => bf16_to_f32(v[i]),
+        }
+    }
+
+    /// Dot `x` with row `o` of a row-major `[out, in]` matrix.
+    ///
+    /// One sequential fold over `x.len()` in index order — identical to the
+    /// f32 loop this replaced, operand for operand. The dtype is matched once
+    /// per row, never per element, so the inner loop stays a plain zip.
+    #[inline]
+    pub fn row_dot(&self, o: usize, x: &[f32]) -> f32 {
+        let (lo, hi) = (o * x.len(), (o + 1) * x.len());
+        match self {
+            Weight::F32(v) => v[lo..hi].iter().zip(x).map(|(a, b)| a * b).sum(),
+            Weight::F16(v) => v[lo..hi]
+                .iter()
+                .zip(x)
+                .map(|(&a, b)| f16_to_f32(a) * b)
+                .sum(),
+            Weight::Bf16(v) => v[lo..hi]
+                .iter()
+                .zip(x)
+                .map(|(&a, b)| bf16_to_f32(a) * b)
+                .sum(),
+        }
+    }
+
+    /// Widen row `o` of a row-major `[_, dst.len()]` matrix into `dst`.
+    ///
+    /// For the callers that need the values themselves rather than a product:
+    /// the token embedding lookup and the per-layer embedding table.
+    pub fn widen_row_into(&self, o: usize, dst: &mut [f32]) {
+        let (lo, hi) = (o * dst.len(), (o + 1) * dst.len());
+        match self {
+            Weight::F32(v) => dst.copy_from_slice(&v[lo..hi]),
+            Weight::F16(v) => {
+                for (d, &s) in dst.iter_mut().zip(&v[lo..hi]) {
+                    *d = f16_to_f32(s);
+                }
+            }
+            Weight::Bf16(v) => {
+                for (d, &s) in dst.iter_mut().zip(&v[lo..hi]) {
+                    *d = bf16_to_f32(s);
+                }
+            }
+        }
+    }
+
+    /// Bytes of heap this tensor occupies, for the loader's resident report.
+    pub fn stored_bytes(&self) -> usize {
+        match self {
+            Weight::F32(v) => v.len() * 4,
+            Weight::F16(v) | Weight::Bf16(v) => v.len() * 2,
+        }
+    }
+
+    /// The whole tensor widened to f32, for tests and diagnostics.
+    ///
+    /// Never called on a hot path: it allocates the expansion this type exists
+    /// to avoid.
+    pub fn to_f32(&self) -> Vec<f32> {
+        match self {
+            Weight::F32(v) => v.clone(),
+            Weight::F16(v) => v.iter().map(|&b| f16_to_f32(b)).collect(),
+            Weight::Bf16(v) => v.iter().map(|&b| bf16_to_f32(b)).collect(),
+        }
+    }
+}
+
 /// The stored payload of one tensor, bounds-checked against the file.
 ///
 /// Split out from `load_tensor` so a storage format that keeps its own bits
