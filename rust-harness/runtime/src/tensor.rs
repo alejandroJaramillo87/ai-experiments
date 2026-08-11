@@ -110,6 +110,52 @@ pub fn dequantize(ggml_type: u32, bytes: &[u8], n: usize) -> Result<Vec<f32>> {
     })
 }
 
+/// Independent partial sums in `Weight::row_dot_lanes`.
+///
+/// Sixteen and not eight because sixteen f32 is one zmm, two ymm, or four xmm:
+/// the same sixteen accumulators exist whatever vector width the backend
+/// chooses, so the arithmetic does not change with `-C target-cpu`. Eight
+/// would share that property; sixteen additionally gives four independent
+/// chains on the baseline build the sandbox gate compiles, where the loop does
+/// not vectorize at all and instruction-level parallelism is all there is.
+///
+/// Not a tunable, and deliberately not reachable from a command line. A
+/// selectable lane count is a selectable answer; changing it is a commit.
+pub const DOT_LANES: usize = 16;
+
+/// The lane-partitioned fold behind `Weight::row_dot_lanes`.
+///
+/// Generic over the stored element so the three dtype arms share one
+/// accumulation structure rather than three transcriptions of it -- the
+/// ordering rules this function fixes are the load-bearing part, and three
+/// copies is three chances for them to drift apart.
+#[inline]
+fn lane_fold<T: Copy>(w: &[T], x: &[f32], widen: impl Fn(T) -> f32) -> f32 {
+    let mut acc = [0.0f32; DOT_LANES];
+    let mut wc = w.chunks_exact(DOT_LANES);
+    let mut xc = x.chunks_exact(DOT_LANES);
+    for (wb, xb) in wc.by_ref().zip(xc.by_ref()) {
+        for l in 0..DOT_LANES {
+            acc[l] += widen(wb[l]) * xb[l];
+        }
+    }
+    // The tail keeps its own accumulator and joins last, so the result does
+    // not depend on `w.len() % DOT_LANES`.
+    let mut tail = 0.0f32;
+    for (&a, b) in wc.remainder().iter().zip(xc.remainder()) {
+        tail += widen(a) * b;
+    }
+    // Lane 0 through lane 15, left to right, as an accumulating loop rather
+    // than `acc.iter().sum()` -- both compile the same today, but one of them
+    // says the order is the contract rather than the current behaviour of a
+    // library function.
+    let mut total = 0.0f32;
+    for a in acc {
+        total += a;
+    }
+    total + tail
+}
+
 /// A weight matrix held in the width its checkpoint published.
 ///
 /// **Widening at use is bit-identical to widening at load**, which is what
@@ -187,6 +233,52 @@ impl Weight {
                 .zip(x)
                 .map(|(&a, b)| bf16_to_f32(a) * b)
                 .sum(),
+        }
+    }
+
+    /// Dot `x` with row `o`, accumulating into `DOT_LANES` partial sums.
+    ///
+    /// **Not bit-identical to `row_dot`, and that is the entire point of it
+    /// existing separately.** Float addition is not associative, so sixteen
+    /// interleaved accumulators give a different last bit from one sequential
+    /// fold. Both are correct; they are different correct answers. `row_dot`
+    /// remains the reference the golden tests pin, and a caller reaches this
+    /// only through `model::cpu::DotKind::Lanes16`.
+    ///
+    /// This shape is what a vector unit can execute. A sequential `.sum()` is
+    /// a dependency chain LLVM will not vectorize without fast-math, so the
+    /// bf16 widening is paid per element; with sixteen independent chains the
+    /// same loop compiles to a widen-multiply-accumulate over whole vectors.
+    /// Verified rather than assumed -- under the pinned toolchain with
+    /// `-C target-cpu=native` the bf16 arm emits `vpmovzxwd` / `vpslld` /
+    /// `vmulps` / `vaddps`, and without it stays scalar. Loop shape alone
+    /// changes nothing; the target matters too.
+    ///
+    /// Accuracy moves in the same direction as speed, which is worth stating
+    /// because the opposite is the usual assumption. Naive sequential
+    /// summation accumulates error as O(n * eps); k independent accumulators
+    /// bound it by O((n/k + k) * eps). For a 4096-wide row at sixteen lanes
+    /// that is a tighter bound, not a looser one.
+    ///
+    /// Two ordering rules are fixed here in source rather than left to the
+    /// vectorizer, so the result does not vary with `-C target-cpu`, with
+    /// thread width, or between machines:
+    ///
+    /// - **The tail** -- elements past the last full group of `DOT_LANES` --
+    ///   folds into its own accumulator in index order and joins at the very
+    ///   end. Folding it back into `acc[0..r]` instead would make the answer
+    ///   depend on `in_dim % DOT_LANES`, so the same weights zero-padded to a
+    ///   round width would produce different logits.
+    /// - **The lanes combine left to right**, lane 0 through lane 15, written
+    ///   as an explicit loop. LLVM may not reassociate it, so the horizontal
+    ///   reduction is pinned rather than whatever tree the backend prefers.
+    #[inline]
+    pub fn row_dot_lanes(&self, o: usize, x: &[f32]) -> f32 {
+        let (lo, hi) = (o * x.len(), (o + 1) * x.len());
+        match self {
+            Weight::F32(v) => lane_fold(&v[lo..hi], x, |a| a),
+            Weight::F16(v) => lane_fold(&v[lo..hi], x, f16_to_f32),
+            Weight::Bf16(v) => lane_fold(&v[lo..hi], x, bf16_to_f32),
         }
     }
 
@@ -375,6 +467,110 @@ mod tests {
         // The two formats share a width and nothing else: this bit pattern
         // is 1.0 as bfloat16 and 0.00097... as IEEE half.
         assert_ne!(bf16_to_f32(0x3f80), f16_to_f32(0x3f80));
+    }
+
+    /// A row of plausible activation and weight magnitudes, deterministic and
+    /// in-tree. Values straddle zero so cancellation is exercised: a fold that
+    /// only ever adds same-signed terms would hide an ordering difference.
+    fn probe_row(n: usize, seed: u32) -> (Vec<f32>, Vec<f32>) {
+        let mut s = seed;
+        let mut next = || {
+            s = s.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            ((s >> 8) as f32 / (1 << 24) as f32) - 0.5
+        };
+        (
+            (0..n).map(|_| next()).collect(),
+            (0..n).map(|_| next()).collect(),
+        )
+    }
+
+    /// `row_dot_lanes` accumulates exactly the way its doc comment says:
+    /// sixteen interleaved lanes, a separate tail, lanes combined left to
+    /// right. Written as an independent transcription rather than by calling
+    /// `lane_fold`, so a change to the ordering rules fails here instead of
+    /// silently redefining the contract.
+    #[test]
+    fn row_dot_lanes_accumulates_in_the_order_it_documents() {
+        // 37 is not a multiple of 16, so the tail rule is exercised; 64 is,
+        // so the tail path is empty and must contribute nothing.
+        for n in [37usize, 64] {
+            let (w, x) = probe_row(n, 7);
+            let mut acc = [0.0f32; DOT_LANES];
+            let full = n / DOT_LANES * DOT_LANES;
+            for base in (0..full).step_by(DOT_LANES) {
+                for l in 0..DOT_LANES {
+                    acc[l] += w[base + l] * x[base + l];
+                }
+            }
+            let mut tail = 0.0f32;
+            for i in full..n {
+                tail += w[i] * x[i];
+            }
+            let mut want = 0.0f32;
+            for a in acc {
+                want += a;
+            }
+            want += tail;
+
+            let f32_weight = Weight::F32(w.clone());
+            assert_eq!(
+                f32_weight.row_dot_lanes(0, &x),
+                want,
+                "n={n}: the lane fold departed from its documented order"
+            );
+
+            // Same claim for the widening arms, which must differ from the
+            // f32 arm only in the value each element widens to.
+            let bf16: Vec<u16> = w.iter().map(|v| (v.to_bits() >> 16) as u16).collect();
+            let widened: Vec<f32> = bf16.iter().map(|&b| bf16_to_f32(b)).collect();
+            assert_eq!(
+                Weight::Bf16(bf16).row_dot_lanes(0, &x),
+                Weight::F32(widened).row_dot_lanes(0, &x),
+                "n={n}: the bf16 lane fold is not the widened f32 lane fold"
+            );
+        }
+    }
+
+    /// The numerics claim, and it is a tolerance because a tolerance is the
+    /// honest assertion: the two folds are different correct answers, not the
+    /// same answer computed twice.
+    #[test]
+    fn row_dot_lanes_agrees_with_row_dot_to_within_rounding() {
+        // 4096 is E4B's embedding width doubled -- long enough that sequential
+        // summation's O(n * eps) error growth is visible if it is going to be.
+        let (w, x) = probe_row(4096, 19);
+        let weight = Weight::F32(w);
+        let (seq, lanes) = (weight.row_dot(0, &x), weight.row_dot_lanes(0, &x));
+        // Relative to the magnitude of the terms summed, not to the total: the
+        // total is a near-cancelling sum of ~4096 signed products, so its own
+        // magnitude is small and a relative bound against it would be
+        // meaningless.
+        let scale: f32 = match &weight {
+            Weight::F32(v) => v.iter().zip(&x).map(|(a, b)| (a * b).abs()).sum(),
+            _ => unreachable!(),
+        };
+        let rel = (seq - lanes).abs() / scale;
+        assert!(
+            rel < 1e-6,
+            "sequential {seq} and lane {lanes} differ by {rel} of the summed magnitude, \
+             which is more than rounding can explain"
+        );
+    }
+
+    /// Sixteen lanes must not become sixteen lanes plus whatever the tail
+    /// happened to be: a row of zeros in the tail is the degenerate case that
+    /// would pass a weaker test.
+    #[test]
+    fn a_lane_fold_of_one_short_row_is_all_tail() {
+        let (w, x) = probe_row(5, 3);
+        let mut want = 0.0f32;
+        for i in 0..5 {
+            want += w[i] * x[i];
+        }
+        // Shorter than one lane group, so every element takes the tail path
+        // and the result is the plain sequential fold.
+        assert_eq!(Weight::F32(w.clone()).row_dot_lanes(0, &x), want);
+        assert_eq!(Weight::F32(w).row_dot(0, &x), want);
     }
 
     #[test]
