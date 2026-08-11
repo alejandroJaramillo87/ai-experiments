@@ -26,8 +26,10 @@ as a question it can answer:
     allowed == all in text ->  split_special_tokens=False  (all of them resolve)
 
 A partial allowlist has no reference formulation, so no case uses one, and the
-generator refuses to write a case whose text carries a special outside its own
-allowlist rather than emitting one whose two sides mean different things.
+generator refuses to write a case whose non-empty allowlist omits a special its
+text carries, rather than emitting one whose two sides mean different things.
+An empty allowlist is not partial: it is the first extreme above, and the case
+that carries specials it does not allow is exactly the one worth measuring.
 
 `add_special_tokens=False` throughout: the harness owns its own BOS through
 the chat template, and letting the reference inject one would compare two
@@ -145,7 +147,16 @@ def main():
         # A partial allowlist cannot be posed to the reference, whose switch is
         # global. Refused rather than written, because the artifact would look
         # ordinary and the two sides would be answering different questions.
-        stray = sorted(s for s in added if s in text and s not in allowed)
+        #
+        # Only the middle is refused. An empty allowlist is the other extreme,
+        # answered exactly by split_special_tokens=True, and a case whose text
+        # carries specials it does not allow is the safety property this rung
+        # exists to measure -- not a mistake to reject.
+        stray = (
+            sorted(s for s in added if s in text and s not in allowed)
+            if allowed
+            else []
+        )
         if stray:
             print(
                 f"[ERROR] Case {name}: carries specials outside its allowlist: {stray}",
