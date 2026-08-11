@@ -87,11 +87,24 @@ endif
 	cargo run --release -p runtime --bin ladder -- \
 	  $(LADDER_TEXT_ONLY) --size $(SIZE) --model $(MODEL) --reference $(REFERENCE)
 
-# Profiling (workstation only): flame graph of a harness run. Requires
-# cargo-flamegraph and perf; MockModel has no hot path, so meaningful
-# profiles arrive with the first real backend.
+# Profiling (workstation only): flame graph of a harness run. Requires perf and
+# cargo-flamegraph, installed with:
+#
+#   cargo install flamegraph --locked
+#
+# --locked is not optional: without it cargo resolves the dependency tree to
+# latest-compatible, which currently pulls cargo-platform 0.3.3 and its
+# rust-version 1.91 against the toolchain's 1.88. The lockfile shipped in the
+# crate pins versions that build.
+#
+# perf also needs kernel.perf_event_paranoid <= 1 for a non-root user.
 .PHONY: flame
 flame:
+	@command -v cargo-flamegraph >/dev/null 2>&1 || { \
+	  printf '[ERROR] cargo-flamegraph is not installed\n'; \
+	  printf '  Solution: install it with the lockfile pinned\n'; \
+	  printf '  Command: cargo install flamegraph --locked\n'; \
+	  exit 1; }
 	cargo flamegraph --profile release-with-debug --bin harness
 
 # Debugging (workstation only): record a failing run once under rr, then
