@@ -169,16 +169,26 @@ whether a KV snapshot was still valid. It now hashes the safetensors header,
 `config.json`, and the file length. Both were mmap-laziness questions, which is
 why they were decided together.
 
-**Dropping the map after load.** Small, and worth roughly 14 GiB. Once
-`CpuModel::from_checkpoint` has copied every tensor it wants, the mapping is
-dead weight — but `harness/src/main.rs` keeps `CheckpointFiles` alive for the
-lazy `sha256_hex(data)` in the control-vector and probe identity checks, so
-15 GiB of clean page cache stays resident and counted. Those two callers can
-re-read the file on demand; they run once, at startup, and only when the
-corresponding flag is set. Unmapping puts peak RSS at roughly the owned copy,
-~14 GiB, which is the figure the entry above predicted. The evidence is the
-`Maximum resident set size` line, and the risk is that a caller of `files` is
-missed — `cargo test` plus the ladder cover both identity paths.
+**Dropping the map after load.** Landed. Once `CpuModel::from_checkpoint` has
+copied every tensor it wants, the mapping is dead weight, but
+`harness/src/main.rs` kept `CheckpointFiles` alive for the lazy
+`sha256_hex(data)` in the control-vector and probe identity checks — so 15 GiB
+of clean page cache stayed resident and counted for the whole run.
+
+The load now happens in a block that yields the model and the snapshot
+fingerprint and drops everything else. Because `Checkpoint` borrows from
+`CheckpointFiles`, the borrow checker enforces it: a later use of either fails
+to compile rather than quietly keeping the map alive.
+
+The two identity checks re-read the weights file instead, through a streaming
+`sha256_file`. That also removes a second copy nobody had noticed — the
+one-shot `sha256_hex` began with `bytes.to_vec()`, so hashing the weights had
+been allocating a *further* 15 GB whenever a probe or control vector was
+passed. Peak memory of the digest is now the 1 MiB read buffer.
+
+Expected peak RSS is roughly the owned copy, ~14 GiB, against the 28.15
+measured. That is a prediction and not yet a measurement; the previous one on
+this axis was wrong, though for a reason now understood and accounted for.
 
 Still open beyond that: **zero-copy weights**, borrowing the bf16 bytes out of
 the map instead of copying them into an owned `Vec<u16>`. It would remove the
