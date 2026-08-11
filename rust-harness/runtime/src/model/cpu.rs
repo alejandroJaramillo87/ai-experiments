@@ -1069,18 +1069,36 @@ fn matvec_into(w: &[f32], x: &[f32], out: &mut [f32], threads: usize) {
     });
 }
 
-/// Row-split width for a freshly loaded model: every core the OS admits.
+/// Ceiling on the default row-split width, whatever the core count.
+///
+/// Decode is memory-bandwidth-bound, so workers past the point where the
+/// memory controller saturates queue rather than compute, while still paying
+/// to be created and joined. The first threaded E4B ladder measured the cost
+/// of ignoring that: at width 32 on a 32-core workstation, 4.10x wall-clock
+/// against 3.5x more CPU consumed than the serial run, and system time up
+/// 107x — 3.95s to 424.64s, which is `clone` and futex and nothing else.
+/// Only 14.6 of the 32 cores were ever busy.
+///
+/// Not tuned. This is the starting point for the sweep that will set it:
+/// llama.cpp on the same class of machine optimizes near 12, but that is a
+/// different engine with a different loop, so the number has to be measured
+/// here rather than adopted. Override with `--threads` while measuring.
+const DEFAULT_MAX_THREADS: usize = 8;
+
+/// Row-split width for a freshly loaded model.
 ///
 /// A hardware-derived default would ordinarily be a determinism defect, and it
 /// is not one here — the width does not reach the logits, so a 4-core sandbox
 /// and a 32-core workstation produce identical bits from identical inputs.
 /// That equivalence is what `a_threaded_forward_pass_produces_bit_identical_logits`
 /// pins, and it is what makes a default this code cannot predict acceptable.
+/// The same property is why capping it is a free choice: a cap trades speed
+/// for nothing else, and never trades away an answer.
 ///
 /// Falls back to serial where the count is unavailable, which is the safe
 /// direction: slow rather than wrong about how much parallelism exists.
 fn default_threads() -> usize {
-    std::thread::available_parallelism().map_or(1, |n| n.get())
+    std::thread::available_parallelism().map_or(1, |n| n.get().min(DEFAULT_MAX_THREADS))
 }
 
 /// Reciprocal of the RMS of `x`, the factor RMSNorm scales every element by.

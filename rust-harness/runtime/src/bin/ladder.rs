@@ -126,15 +126,15 @@ fn run(
     size: Size,
     only: Option<Rung>,
     text_only: bool,
-    single_thread: bool,
+    threads: Option<usize>,
 ) -> Result<bool> {
     let files = runtime::checkpoint::CheckpointFiles::read(model_path)
         .with_context(|| format!("read model {}", model_path.display()))?;
     let mut ck = runtime::checkpoint::parse(&files).context("parse checkpoint")?;
     ck.text_only = text_only;
     let mut model = CpuModel::from_checkpoint(&ck).context("load CPU model")?;
-    if single_thread {
-        model.set_threads(1);
+    if let Some(n) = threads {
+        model.set_threads(n);
     }
 
     // A rung that errors is not a rung that failed: an unreadable or
@@ -191,7 +191,7 @@ fn run(
 }
 
 const USAGE: &str = "usage: ladder [--text-only] [--single-thread] \
-                     [--size quick|standard|deep] \
+                     [--threads <n>] [--size quick|standard|deep] \
                      [--rung L0|L1|L2|L3|L4] --model <checkpoint-dir> \
                      --reference <reference-dir>";
 
@@ -205,16 +205,18 @@ fn main() -> ExitCode {
         }
         None => false,
     };
-    // Not a numerics switch: the row split is bit-identical at every width,
-    // so this run's table matches a parallel one digit for digit. It exists
-    // because rr serializes threads anyway, and because comparing the two
-    // wall-clock times is how the split gets measured at all.
-    let single_thread = match args.iter().position(|a| a == "--single-thread") {
+    // Neither this nor --threads is a numerics switch: the row split is
+    // bit-identical at every width, so every table this run prints matches
+    // every other width's digit for digit. --single-thread exists because rr
+    // serializes threads anyway; --threads exists because the width that is
+    // actually fastest on a given machine has to be swept for, and rebuilding
+    // between widths would put a recompile inside the measurement.
+    let mut threads = match args.iter().position(|a| a == "--single-thread") {
         Some(i) => {
             args.remove(i);
-            true
+            Some(1)
         }
-        None => false,
+        None => None,
     };
 
     let mut size = Size::Quick;
@@ -238,6 +240,13 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             },
+            "--threads" => match value.parse::<usize>() {
+                Ok(n) if n >= 1 => threads = Some(n),
+                _ => {
+                    eprintln!("[ERROR] --threads {value}: expected a positive integer");
+                    return ExitCode::from(2);
+                }
+            },
             "--rung" => match Rung::ALL.into_iter().find(|r| r.label() == value) {
                 Some(r) => only = Some(r),
                 None => {
@@ -258,7 +267,7 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
 
-    match run(&model, &reference, size, only, text_only, single_thread) {
+    match run(&model, &reference, size, only, text_only, threads) {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::from(1),
         Err(e) => {

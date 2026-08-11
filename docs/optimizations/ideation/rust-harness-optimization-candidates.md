@@ -69,11 +69,31 @@ the parallel path and `--single-thread` exists for rr ergonomics rather than
 as a reference fallback. `PARALLEL_MIN_ROWS` keeps small projections serial,
 which is also why the Tier T fixture's goldens still exercise the serial path.
 
-Expect near-linear scaling on prefill; decode matvec is memory-bandwidth-bound,
-so DDR5-6000 will likely saturate at roughly six to eight effective cores. The
-motivating measurement: the first `SIZE=quick` ladder ran at 1.63 s/token
-single-threaded, about 18 GB/s against a memory controller capable of roughly
-90 — one core's line-fill buffers, not the arithmetic.
+Measured on E4B, `SIZE=quick`, 32-core workstation, width 32:
+
+| | serial | width 32 |
+|---|---|---|
+| wall | 18:07.69 | 4:25.43 |
+| per token | 1.63 s | 0.40 s |
+| user | 1093.99s | 3463.40s |
+| system | 3.95s | 424.64s |
+| cpu | 100% | 1464% |
+
+**4.10x, and the ladder table unchanged in every digit.** Two things the
+speedup alone hides. Only 14.6 of 32 cores were ever busy, and system time
+rose 107x — that is `clone` and futex, roughly 12,000 thread creations per
+token at width 32 over ~380 `par_rows` calls. And 30.1 GB of weights read in
+0.398s is about **76 GB/s**, which on dual-channel DDR5-6000 is at or near
+what the memory controller will deliver.
+
+If that reading holds, the row split has taken essentially all there is to
+take, and the wasted CPU is cores idling on memory rather than lost wall
+clock. `DEFAULT_MAX_THREADS` caps the default at 8 on that basis, with
+`--threads` for the sweep that will set the real number — llama.cpp
+optimizes near 12 on this class of machine, but its prefill is a batched GEMM
+and this engine's is `forward_one` in a loop, so the number does not carry
+over. The next real speedup is fewer bytes per token, not more cores: see
+native-width weight storage below.
 
 **Native-width weight storage.** The backend currently widens all weights to
 f32 at load time: a 2x blow-up for BF16, roughly 4x for Q8_0, worse for the
