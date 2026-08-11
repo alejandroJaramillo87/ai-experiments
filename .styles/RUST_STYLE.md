@@ -119,32 +119,41 @@ noise; a panicking test is a failing test.
 
 ## Unsafe code
 
-The `runtime` crate denies unsafe, and grants exactly one exception:
+The `runtime` crate contains no unsafe code, and is written so that none can be added without
+editing the crate attribute:
 
 ```rust
-#![deny(unsafe_code)]
+#![forbid(unsafe_code)]
 ```
 
-**This was `forbid` until the checkpoint loader needed a memory map.**
-`CheckpointFiles::read` maps `model.safetensors` rather than reading it, because a 15 GB
-checkpoint otherwise costs a private copy of the whole file on top of the f32 expansion
-`from_checkpoint` produces. `memmap2::Mmap::map` is unsafe and has no safe wrapper, and
-`forbid` cannot be lifted at the site — so the crate attribute moved to `deny` and the call
-carries an `#[allow(unsafe_code)]`.
+**This was `deny` for one memory map, and the round trip back is the useful part of the
+story.** `CheckpointFiles::read` mapped `model.safetensors` rather than reading it, because a
+15 GB checkpoint otherwise cost a private copy of the whole file on top of the loader's
+buffers. `memmap2::Mmap::map` is unsafe and has no safe wrapper, and `forbid` cannot be lifted
+at a call site, so the attribute weakened to `deny` and the call carried an
+`#[allow(unsafe_code)]` with a `SAFETY` comment naming the assumption it could not discharge:
+that nothing rewrites a checkpoint underneath a running harness.
 
-Weigh that trade before repeating it. `deny` is the weaker guarantee on purpose: the review
-question is no longer "does this compile" but "is the `SAFETY` comment true", which is a
-question a reader has to actually answer. Prefer `forbid` for a new crate, and reach for
-`deny` only where a specific unavoidable call can be named in the attribute's own comment, as
-`runtime/src/lib.rs` names this one. The numerics themselves — sampling, the KV cache, the
-forward pass — remain unsafe-free, and that is the property the original `forbid` was
-protecting.
+Two things then changed. The storage-preserving loader began copying every tensor out of the
+map anyway, so the map's zero-copy justification expired; and positioned reads
+(`FileExt::read_exact_at`) turned out to do the same job with *less* resident memory, because
+bytes read that way land in page cache the kernel owns rather than in this process. Removing
+the map also removed the undischargeable obligation outright — a file rewritten underneath a
+mapping is undefined behaviour, while a file rewritten underneath a `pread` is an error value
+a caller can report.
 
-Where `unsafe` is unavoidable, confine it to the smallest possible block and precede every
-occurrence with a `// SAFETY:` comment that reasons about the specific obligation — descriptor
-ownership, pointer validity, lifetime, external mutation — rather than asserting that the call
-is safe. Where the obligation cannot be discharged in Rust, as with a mapped file another
-process could truncate, say so plainly and name the assumption being made instead:
+The lesson to carry, since the same trade will be offered again: **an `unsafe` accepted for a
+performance reason should be revisited when the surrounding code changes, because the reason
+can expire quietly.** This one outlived its justification by two packages. Prefer `forbid`,
+and reach for `deny` only where a specific unavoidable call can be named in the attribute's
+own comment — and write that comment so a later reader can tell whether the reason still
+holds.
+
+Where `unsafe` is unavoidable — as in the sibling `harness` crate, which calls `libc::flock`
+— confine it to the smallest possible block and precede every occurrence with a `// SAFETY:`
+comment that reasons about the specific obligation: descriptor ownership, pointer validity,
+lifetime, external mutation. Do not assert that the call is safe. Where the obligation cannot
+be discharged in Rust, say so plainly and name the assumption being made instead:
 
 ```rust
 // SAFETY: 'events' owns the descriptor and stays alive past this call,

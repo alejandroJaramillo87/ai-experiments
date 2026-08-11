@@ -7,19 +7,23 @@
  * and tests without a GPU.
  */
 
-// This crate produces the training and interp numerics, so memory safety here
-// is still the default: deny, and every exception is a written argument at the
-// site. The one exception is `checkpoint::CheckpointFiles::read`, which
-// memory-maps model.safetensors because `fs::read` of a 15 GB checkpoint costs
-// a private copy of the whole file on top of the f32 expansion; `Mmap::map` is
-// unsafe and there is no safe wrapper for it. The numerics themselves reach no
-// further than safe Rust, and the GPU backend reaches hardware through Candle,
-// which owns the FFI.
+// This crate produces the training and interp numerics, so it holds the
+// strongest guarantee the language offers: no unsafe, and no way to write an
+// `allow` that admits one.
 //
-// This was `forbid` until the checkpoint loader needed the map. `deny` is the
-// weaker guarantee on purpose: an `allow` can now be written, so the review
-// question moves from "does this compile" to "is the SAFETY comment true".
-#![deny(unsafe_code)]
+// It was `deny` between P9a and P10.7, for a single memory map in
+// `checkpoint::CheckpointFiles::read` -- `Mmap::map` is unsafe and has no safe
+// wrapper, and `forbid` cannot be lifted at a call site. That map was there to
+// avoid a private copy of a 15 GB checkpoint on top of the loader's own
+// buffers. It stopped earning that once the storage-preserving loader began
+// copying every tensor out regardless, and positioned reads now do the same
+// job with less resident memory. Removing it also removed the one obligation
+// the SAFETY comment could not discharge: a file rewritten underneath a live
+// mapping is undefined behaviour, while a file rewritten underneath a `pread`
+// is an error value.
+//
+// The GPU backend will reach hardware through Candle, which owns that FFI.
+#![forbid(unsafe_code)]
 
 pub mod checkpoint;
 pub mod digest;
