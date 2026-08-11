@@ -338,6 +338,16 @@ pub struct Ladder {
     /// digit for digit. Printed because that is exactly the claim, and a
     /// table that does not say which run it came from cannot support it.
     pub threads: Option<usize>,
+
+    /// Which dot product produced these numbers, when the runner said.
+    ///
+    /// Unlike `threads` this **is** a caveat on the numbers, and that is why
+    /// it is printed rather than assumed: the block kinds are bit-identical
+    /// to the default, but `lanes16` reorders the reduction, so a table taken
+    /// under it is not comparable digit for digit with one taken without it.
+    /// A run that changed the arithmetic and did not say so would be read as
+    /// evidence about the engine rather than about the experiment.
+    pub dot: Option<String>,
 }
 
 /// Climb the rungs in order, stopping at the first failure.
@@ -377,6 +387,7 @@ pub fn climb(
         results,
         prompt_tokens: None,
         threads: None,
+        dot: None,
     }
 }
 
@@ -438,6 +449,9 @@ pub fn render(l: &Ladder) -> String {
     }
     if let Some(n) = l.threads {
         let _ = writeln!(s, "threads={n}");
+    }
+    if let Some(d) = &l.dot {
+        let _ = writeln!(s, "dot={d}");
     }
     let _ = writeln!(s, "model={}", l.model);
     let _ = writeln!(s, "reference={}", l.reference);

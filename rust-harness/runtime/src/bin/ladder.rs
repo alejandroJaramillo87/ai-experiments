@@ -19,7 +19,7 @@ use std::process::ExitCode;
 use anyhow::Result;
 
 use runtime::ladder::{self, Rung, RungResult, Size, Tolerance};
-use runtime::model::cpu::{CpuModel, PRELUDE_STAGES};
+use runtime::model::cpu::{CpuModel, DotKind, PRELUDE_STAGES};
 
 /// Run one rung, or `None` when its reference artifact is absent.
 ///
@@ -127,6 +127,7 @@ fn run(
     only: Option<Rung>,
     text_only: bool,
     threads: Option<usize>,
+    dot: DotKind,
 ) -> Result<bool> {
     // `load` drops the checkpoint mapping before returning; see its doc
     // comment for why no caller here should open one itself.
@@ -134,6 +135,7 @@ fn run(
     if let Some(n) = threads {
         model.set_threads(n);
     }
+    model.set_dot(dot);
 
     // A rung that errors is not a rung that failed: an unreadable or
     // mismatched artifact says nothing about the engine. It is raised rather
@@ -171,6 +173,7 @@ fn run(
     }
     l.prompt_tokens = prompt_tokens;
     l.threads = Some(model.threads());
+    l.dot = Some(model.dot().label().to_string());
     print!("{}", ladder::render(&l));
     // Every rung skipped is not a pass. The ladder library is right to treat
     // a skip as neutral -- it does not know whether the caller asked for one
@@ -189,7 +192,7 @@ fn run(
 }
 
 const USAGE: &str = "usage: ladder [--text-only] [--single-thread] \
-                     [--threads <n>] [--size quick|standard|deep] \
+                     [--threads <n>] [--dot <kind>] [--size quick|standard|deep] \
                      [--rung L0|L1|L2|L3|L4] --model <checkpoint-dir> \
                      --reference <reference-dir>";
 
@@ -232,6 +235,7 @@ fn main() -> ExitCode {
         None => None,
     };
 
+    let mut dot = DotKind::default();
     let mut size = Size::Quick;
     let mut only: Option<Rung> = None;
     let mut model: Option<PathBuf> = None;
@@ -250,6 +254,16 @@ fn main() -> ExitCode {
                 Some(s) => size = s,
                 None => {
                     eprintln!("[ERROR] --size {value}: expected quick, standard, or deep");
+                    return ExitCode::from(2);
+                }
+            },
+            "--dot" => match DotKind::parse(&value) {
+                Some(k) => dot = k,
+                None => {
+                    eprintln!(
+                        "[ERROR] --dot {value}: expected one of {}",
+                        DotKind::ALL.map(|k| k.label()).join(", ")
+                    );
                     return ExitCode::from(2);
                 }
             },
@@ -280,7 +294,7 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
 
-    let verdict = run(&model, &reference, size, only, text_only, threads);
+    let verdict = run(&model, &reference, size, only, text_only, threads, dot);
     // After the run, so the figure is the whole run's high-water mark rather
     // than the loader's. Printed even on failure: a rung that failed because
     // the machine was swapping is worth being able to see.

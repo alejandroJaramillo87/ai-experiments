@@ -990,6 +990,9 @@ pub struct CpuModel {
     /// Width of the row split in `par_rows`. Defaulted from the machine and
     /// carried across forks. Not a numerics parameter: see `par_rows`.
     threads: usize,
+    /// Which dot product the matrix-vector products use. Carried across forks
+    /// like `threads`, and unlike `threads` it can change the logits.
+    dot: DotKind,
 }
 
 /// Output rows below which `par_rows` stays serial.
@@ -1020,14 +1023,29 @@ const PARALLEL_MIN_ROWS: usize = 512;
 /// directly. There is no reference fallback to maintain and no tolerance
 /// comparison, because there is no second answer.
 fn par_rows(out: &mut [f32], threads: usize, f: impl Fn(usize, &mut f32) + Sync) {
+    par_row_runs(out, threads, |base, run| {
+        for (i, dst) in run.iter_mut().enumerate() {
+            f(base + i, dst);
+        }
+    });
+}
+
+/// `par_rows`, handing each worker its whole contiguous run rather than one
+/// element at a time.
+///
+/// Split out when the block folds arrived: a worker that fills rows `R` at a
+/// time needs to see the run, not be called per row. The partition is
+/// unchanged and still depends only on `out.len()` and `threads`, so
+/// everything `par_rows` argues above continues to hold — including for a
+/// caller whose block boundaries fall wherever the run happens to start,
+/// because a block is bit-identical to the rows it covers folded singly.
+fn par_row_runs(out: &mut [f32], threads: usize, f: impl Fn(usize, &mut [f32]) + Sync) {
     let n = out.len();
     // `threads.min(n)` keeps every worker non-empty, so `chunks_mut` yields
     // exactly the number of chunks intended rather than a trailing empty one.
     let threads = threads.min(n);
     if threads <= 1 || n < PARALLEL_MIN_ROWS {
-        for (i, dst) in out.iter_mut().enumerate() {
-            f(i, dst);
-        }
+        f(0, out);
         return;
     }
     let rows_per = n.div_ceil(threads);
@@ -1035,13 +1053,137 @@ fn par_rows(out: &mut [f32], threads: usize, f: impl Fn(usize, &mut f32) + Sync)
     std::thread::scope(|s| {
         for (chunk, part) in out.chunks_mut(rows_per).enumerate() {
             let base = chunk * rows_per;
-            s.spawn(move || {
-                for (i, dst) in part.iter_mut().enumerate() {
-                    f(base + i, dst);
-                }
-            });
+            s.spawn(move || f(base, part));
         }
     });
+}
+
+/// Which dot product the forward pass uses for its matrix-vector products.
+///
+/// An experiment switch, `Sequential` by default, and it is a *numerics*
+/// switch rather than a performance one -- which is why a run reports it
+/// beside the thread width instead of leaving it implicit. `--threads` may be
+/// swept freely because every width produces the same bits; this may not.
+///
+/// The two families differ in what they cost, not only in speed:
+///
+/// - `Rows4`, `Rows8`, `Rows16` fold that many output rows at once, one
+///   accumulator each. **Bit-identical to `Sequential`**, because separate
+///   output rows never shared an accumulator; see `Weight::row_dot_block`.
+///   Nothing downstream can tell these apart from the default.
+/// - `Lanes16` splits the reduction itself into sixteen interleaved partial
+///   sums. Deterministic, and by the usual error bounds more accurate, but
+///   **not bit-identical** -- the goldens, the snapshots and the recorded
+///   replays were all produced under `Sequential`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DotKind {
+    /// One sequential fold per output row. The reference, and the default.
+    #[default]
+    Sequential,
+    /// Four output rows per block.
+    Rows4,
+    /// Eight output rows per block.
+    Rows8,
+    /// Sixteen output rows per block.
+    Rows16,
+    /// Sixteen interleaved partial sums within one row. Changes the bits.
+    Lanes16,
+}
+
+impl DotKind {
+    /// Every kind, in the order a sweep should walk them.
+    pub const ALL: [DotKind; 5] = [
+        DotKind::Sequential,
+        DotKind::Rows4,
+        DotKind::Rows8,
+        DotKind::Rows16,
+        DotKind::Lanes16,
+    ];
+
+    /// The spelling a command line and a run header use.
+    pub fn label(self) -> &'static str {
+        match self {
+            DotKind::Sequential => "sequential",
+            DotKind::Rows4 => "rows4",
+            DotKind::Rows8 => "rows8",
+            DotKind::Rows16 => "rows16",
+            DotKind::Lanes16 => "lanes16",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<DotKind> {
+        DotKind::ALL.into_iter().find(|k| k.label() == s)
+    }
+
+    /// Whether this kind produces the same bits as `Sequential`.
+    ///
+    /// Exposed so a caller that records or compares numerics can say which it
+    /// is holding, rather than every such caller re-deriving it from the
+    /// variant and one of them getting it wrong.
+    pub fn is_bit_identical(self) -> bool {
+        self != DotKind::Lanes16
+    }
+}
+
+/// Fill one contiguous run of output rows, `R` at a time.
+///
+/// `post` runs on each element after its dot, inside the worker: the tied LM
+/// head's softcap is elementwise and there is no reason to pay a second pass
+/// over the vocabulary for it.
+fn fill_run_blocked<const R: usize>(
+    w: &Weight,
+    x: &[f32],
+    base: usize,
+    run: &mut [f32],
+    post: &(impl Fn(f32) -> f32 + Sync),
+) {
+    let full = run.len() / R * R;
+    let (head, tail) = run.split_at_mut(full);
+    for (b, block) in head.chunks_exact_mut(R).enumerate() {
+        let mut got = [0.0f32; R];
+        w.row_dot_block::<R>(base + b * R, x, &mut got);
+        for (dst, g) in block.iter_mut().zip(got) {
+            *dst = post(g);
+        }
+    }
+    // Rows past the last full block, which need no rule of their own: the
+    // single-row fold gives the same bits the block would have.
+    for (i, dst) in tail.iter_mut().enumerate() {
+        *dst = post(w.row_dot(base + full + i, x));
+    }
+}
+
+/// `out[o] = post(dot(W[o], x))` for every `o`, under the selected dot.
+///
+/// The one place the `DotKind` fan-out lives, so `matvec_into` and the tied
+/// head cannot drift into supporting different sets of kinds.
+fn fill_dots(
+    w: &Weight,
+    x: &[f32],
+    out: &mut [f32],
+    threads: usize,
+    dot: DotKind,
+    post: impl Fn(f32) -> f32 + Sync,
+) {
+    match dot {
+        DotKind::Sequential => par_rows(out, threads, |o, dst| *dst = post(w.row_dot(o, x))),
+        DotKind::Lanes16 => par_rows(out, threads, |o, dst| *dst = post(w.row_dot_lanes(o, x))),
+        DotKind::Rows4 => {
+            par_row_runs(out, threads, |b, run| {
+                fill_run_blocked::<4>(w, x, b, run, &post)
+            });
+        }
+        DotKind::Rows8 => {
+            par_row_runs(out, threads, |b, run| {
+                fill_run_blocked::<8>(w, x, b, run, &post)
+            });
+        }
+        DotKind::Rows16 => {
+            par_row_runs(out, threads, |b, run| {
+                fill_run_blocked::<16>(w, x, b, run, &post)
+            });
+        }
+    }
 }
 
 /// `out = W x` with GGUF layout `[in, out]`: rows of `in` contiguous per
@@ -1059,7 +1201,7 @@ fn par_rows(out: &mut [f32], threads: usize, f: impl Fn(usize, &mut f32) + Sync)
 ///
 /// `threads` bounds the row split and does not change the result; see
 /// `par_rows`.
-fn matvec_into(w: &Weight, x: &[f32], out: &mut [f32], threads: usize) {
+fn matvec_into(w: &Weight, x: &[f32], out: &mut [f32], threads: usize, dot: DotKind) {
     let (in_dim, out_dim) = (x.len(), out.len());
     assert_eq!(
         w.len(),
@@ -1067,7 +1209,7 @@ fn matvec_into(w: &Weight, x: &[f32], out: &mut [f32], threads: usize) {
         "matvec: weight of {} elements for a {in_dim} x {out_dim} product",
         w.len()
     );
-    par_rows(out, threads, |o, dst| *dst = w.row_dot(o, x));
+    fill_dots(w, x, out, threads, dot, |v| v);
 }
 
 /// Ceiling on the default row-split width, whatever the core count.
@@ -1466,6 +1608,7 @@ impl CpuModel {
             tap: None,
             control: None,
             threads: default_threads(),
+            dot: DotKind::default(),
         })
     }
 
@@ -1497,6 +1640,21 @@ impl CpuModel {
     /// The width in force, for a runner that reports what it ran.
     pub fn threads(&self) -> usize {
         self.threads
+    }
+
+    /// Select the dot product the matrix-vector products use.
+    ///
+    /// Unlike `set_threads` this can change the logits: `DotKind::Lanes16`
+    /// reorders the reduction. The block kinds do not, and
+    /// `DotKind::is_bit_identical` is the check a caller should make rather
+    /// than matching the variant itself.
+    pub fn set_dot(&mut self, dot: DotKind) {
+        self.dot = dot;
+    }
+
+    /// The dot in force, for a runner that reports what it ran.
+    pub fn dot(&self) -> DotKind {
+        self.dot
     }
 
     /// Heap bytes the weights occupy, and the width they are held at.
@@ -1569,6 +1727,7 @@ impl CpuModel {
             // silently reverted to one core would read as the model getting
             // slower after a spawn.
             threads: self.threads,
+            dot: self.dot,
         }
     }
 
@@ -1619,8 +1778,9 @@ impl CpuModel {
     fn forward_one(&mut self, token: Token, position: usize) -> Result<Logits> {
         let c = self.config;
         // Copied out before the field split below, which borrows `self`
-        // mutably and would otherwise put `self.threads` out of reach.
+        // mutably and would otherwise put these out of reach.
         let threads = self.threads;
+        let dot = self.dot;
         self.check_token(token)?;
         // Split the borrow by field: the layer loop reads the weights, appends
         // to the caches, and writes the scratch buffers at the same time.
@@ -1666,7 +1826,7 @@ impl CpuModel {
             // very nearly cancels — but only very nearly: `rms_eps` is added
             // to the mean square in absolute terms, so the scale does change
             // the result and is applied rather than folded away.
-            matvec_into(&p.model_proj, x, ple, threads);
+            matvec_into(&p.model_proj, x, ple, threads, dot);
             let proj_scale = 1.0 / (c.embed_dim as f32).sqrt();
             for v in ple.iter_mut() {
                 *v *= proj_scale;
@@ -1738,7 +1898,7 @@ impl CpuModel {
 
             // Attention block.
             rms_norm_into(x, &layer.attn_norm, c.rms_eps, normed);
-            matvec_into(&layer.wq, normed, q, threads);
+            matvec_into(&layer.wq, normed, q, threads, dot);
             for head in q.chunks_mut(hd) {
                 rms_norm_in_place(head, &layer.q_norm, c.rms_eps);
                 rope(head, position, &layer.rope_freqs);
@@ -1750,8 +1910,8 @@ impl CpuModel {
             // layer in this same loop.
             let src = layer.spec.kv_source;
             if src == i {
-                matvec_into(&layer.wk, normed, k, threads);
-                matvec_into(&layer.wv, normed, v, threads);
+                matvec_into(&layer.wk, normed, k, threads, dot);
+                matvec_into(&layer.wv, normed, v, threads, dot);
                 for head in k.chunks_mut(hd) {
                     rms_norm_in_place(head, &layer.k_norm, c.rms_eps);
                     rope(head, position, &layer.rope_freqs);
@@ -1813,7 +1973,7 @@ impl CpuModel {
                     }
                 }
             }
-            matvec_into(&layer.wo, attn_out, projected, threads);
+            matvec_into(&layer.wo, attn_out, projected, threads, dot);
             rms_norm_into(projected, &layer.post_attn_norm, c.rms_eps, post);
             for (a, b) in x.iter_mut().zip(post.iter()) {
                 *a += b;
@@ -1821,12 +1981,12 @@ impl CpuModel {
 
             // GeGLU MLP block.
             rms_norm_into(x, &layer.ffn_norm, c.rms_eps, normed);
-            matvec_into(&layer.w_gate, normed, gate, threads);
-            matvec_into(&layer.w_up, normed, up, threads);
+            matvec_into(&layer.w_gate, normed, gate, threads, dot);
+            matvec_into(&layer.w_up, normed, up, threads, dot);
             for ((m, g), u) in mixed.iter_mut().zip(gate.iter()).zip(up.iter()) {
                 *m = gelu(*g) * u;
             }
-            matvec_into(&layer.w_down, mixed, down, threads);
+            matvec_into(&layer.w_down, mixed, down, threads, dot);
             rms_norm_into(down, &layer.post_ffw_norm, c.rms_eps, post);
             for (a, b) in x.iter_mut().zip(post.iter()) {
                 *a += b;
@@ -1838,12 +1998,12 @@ impl CpuModel {
             // modulates it there elementwise, and the projection widens it
             // back (`docs/models/gemma4-upstream.txt`).
             if let (Some(pl), Some(pd)) = (layer.ple.as_ref(), c.ple_dim) {
-                matvec_into(&pl.inp_gate, x, ple_gate, threads);
+                matvec_into(&pl.inp_gate, x, ple_gate, threads, dot);
                 let row = &ple_rows[i * pd..(i + 1) * pd];
                 for (g, e) in ple_gate.iter_mut().zip(row) {
                     *g = gelu(*g) * e;
                 }
-                matvec_into(&pl.proj, ple_gate, ple_out, threads);
+                matvec_into(&pl.proj, ple_gate, ple_out, threads, dot);
                 rms_norm_into(ple_out, &pl.post_norm, c.rms_eps, post);
                 for (a, b) in x.iter_mut().zip(post.iter()) {
                     *a += b;
@@ -1896,19 +2056,27 @@ impl CpuModel {
         // table, roughly a tenth of E4B's weights, once per position. Left
         // serial it would be the Amdahl floor under the rest of the threading.
         let mut logits = vec![0.0f32; c.vocab_size];
-        par_rows(&mut logits, threads, |t, dst| {
-            let logit = w.embed.row_dot(t, hidden);
-            // Softcap, when the checkpoint declares one: a smooth squash
-            // toward +/-cap rather than a clamp. Monotone, so it moves no
-            // argmax and greedy decoding cannot detect its absence --
-            // perplexity, sampled decoding, and every captured logprob
-            // can, which is why omitting it is a silent defect and why
-            // its tests are not written against argmax.
-            *dst = match c.logit_softcap {
+        // Softcap, when the checkpoint declares one: a smooth squash toward
+        // +/-cap rather than a clamp. Monotone, so it moves no argmax and
+        // greedy decoding cannot detect its absence -- perplexity, sampled
+        // decoding, and every captured logprob can, which is why omitting it
+        // is a silent defect and why its tests are not written against argmax.
+        //
+        // Applied per element inside the worker rather than in a pass of its
+        // own: it is elementwise, and a second walk of the vocabulary to run
+        // a few hundred thousand `tanh` calls serially would cost more than
+        // the cap does.
+        fill_dots(
+            &w.embed,
+            hidden,
+            &mut logits,
+            threads,
+            dot,
+            |logit| match c.logit_softcap {
                 Some(cap) => (logit / cap).tanh() * cap,
                 None => logit,
-            };
-        });
+            },
+        );
         Ok(Logits(logits))
     }
 }
@@ -2682,13 +2850,13 @@ mod tests {
         let x = spread(in_dim, 2);
 
         let mut serial = vec![0.0f32; out_dim];
-        matvec_into(&w, &x, &mut serial, 1);
+        matvec_into(&w, &x, &mut serial, 1, DotKind::Sequential);
         // Not all-zero, or every width would agree vacuously.
         assert!(serial.iter().any(|v| *v != 0.0), "degenerate fixture");
 
         for threads in 2..=8 {
             let mut got = vec![0.0f32; out_dim];
-            matvec_into(&w, &x, &mut got, threads);
+            matvec_into(&w, &x, &mut got, threads, DotKind::Sequential);
             let diff = serial.iter().zip(&got).position(|(a, b)| a != b);
             assert!(
                 diff.is_none(),
@@ -2733,6 +2901,108 @@ mod tests {
             "a {}-row split spawned workers below the {PARALLEL_MIN_ROWS}-row threshold",
             small.len()
         );
+    }
+
+    #[test]
+    fn the_block_dots_produce_bit_identical_logits_at_every_width() {
+        // `Weight::row_dot_block` is pinned in isolation by its own test in
+        // `tensor`. This is the other half: that the eleven call sites in
+        // `forward_one` reach it through `fill_dots` without disturbing the
+        // arithmetic, and that a block boundary landing anywhere inside a
+        // worker's run is still bit-identical.
+        //
+        // The thread widths are the point of the sweep. `par_row_runs` hands
+        // each worker a contiguous run, so the width decides where the runs
+        // begin and therefore where every block boundary falls. A block fold
+        // that quietly depended on its origin would agree at one width and
+        // disagree at another.
+        //
+        // Widened past `PARALLEL_MIN_ROWS` for the same reason the threaded
+        // test is: at the committed fixture's geometry every matvec takes the
+        // serial path and the sweep would compare five identical runs.
+        let spec = TinySpec {
+            vocab_size: 1024,
+            embed_dim: 24,
+            ffn_dim: 640,
+            ..TinySpec::e4b_shaped()
+        };
+        // 640 and 1024 are both multiples of 16, so a partial trailing block
+        // needs a width that does not divide the run. 3 and 6 supply it:
+        // 640 over 3 workers is runs of 214, and 214 % 16 is 6.
+        let prompt: Vec<Token> = vec![7, 300, 42, 261, 900, 3];
+        let run = |threads: usize, dot: DotKind| {
+            let mut m = model_of(&spec);
+            m.set_threads(threads);
+            m.set_dot(dot);
+            m.prefill_all(&prompt).unwrap()
+        };
+
+        let want = run(1, DotKind::Sequential);
+        for dot in [DotKind::Rows4, DotKind::Rows8, DotKind::Rows16] {
+            assert!(dot.is_bit_identical(), "{} claims to reorder", dot.label());
+            for threads in [1usize, 3, 4, 6, 8] {
+                let got = run(threads, dot);
+                for (pos, (a, b)) in want.iter().zip(&got).enumerate() {
+                    let at = a.0.iter().zip(&b.0).position(|(p, q)| p != q);
+                    assert!(
+                        at.is_none(),
+                        "{} at {threads} threads, position {pos}, logit {}: \
+                         sequential {:?} against {:?}",
+                        dot.label(),
+                        at.unwrap(),
+                        a.0[at.unwrap()],
+                        b.0[at.unwrap()]
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_lane_dot_changes_the_logits_and_says_so() {
+        // The negative of the test above, and it earns its place by failing
+        // if someone "fixes" `row_dot_lanes` into a bit-identical alias: the
+        // experiment would then be measuring nothing while reporting a
+        // difference of zero as a result.
+        let spec = TinySpec {
+            vocab_size: 1024,
+            embed_dim: 24,
+            ffn_dim: 640,
+            ..TinySpec::e4b_shaped()
+        };
+        let prompt: Vec<Token> = vec![7, 300, 42, 261, 900, 3];
+        let run = |dot: DotKind| {
+            let mut m = model_of(&spec);
+            m.set_dot(dot);
+            m.prefill_all(&prompt).unwrap()
+        };
+        assert!(!DotKind::Lanes16.is_bit_identical());
+        let (want, got) = (run(DotKind::Sequential), run(DotKind::Lanes16));
+
+        let differs = want
+            .iter()
+            .zip(&got)
+            .any(|(a, b)| a.0.iter().zip(&b.0).any(|(p, q)| p != q));
+        assert!(
+            differs,
+            "the lane fold produced identical bits, so either it stopped \
+             reordering or the fixture is too small to accumulate a difference"
+        );
+        // Different, but only by rounding: a difference large enough to move
+        // an argmax would mean a bug rather than a reordering.
+        for (pos, (a, b)) in want.iter().zip(&got).enumerate() {
+            let argmax = |v: &[f32]| {
+                v.iter()
+                    .enumerate()
+                    .max_by(|x, y| x.1.total_cmp(y.1))
+                    .map(|(i, _)| i)
+            };
+            assert_eq!(
+                argmax(&a.0),
+                argmax(&b.0),
+                "position {pos}: the lane fold moved the argmax"
+            );
+        }
     }
 
     #[test]
@@ -2802,7 +3072,13 @@ mod tests {
         // debug_assert is compiled out exactly where wrong numerics matter.
         // The check costs one integer comparison against in_dim x out_dim
         // multiply-accumulates.
-        matvec_into(&Weight::F32(vec![1.0; 16]), &[1.0; 4], &mut [0.0; 2], 1);
+        matvec_into(
+            &Weight::F32(vec![1.0; 16]),
+            &[1.0; 4],
+            &mut [0.0; 2],
+            1,
+            DotKind::Sequential,
+        );
     }
 
     #[test]
@@ -3467,7 +3743,7 @@ mod tests {
             // Context component: project, scale by hidden**-0.5, split into
             // one row per layer, RMSNorm each row over its own width.
             let mut context = vec![0.0f32; packed];
-            matvec_into(&model_proj, &embedded, &mut context, 1);
+            matvec_into(&model_proj, &embedded, &mut context, 1, DotKind::Sequential);
             let proj_scale = 1.0 / (c.embed_dim as f32).sqrt();
             for v in context.iter_mut() {
                 *v *= proj_scale;
@@ -3489,12 +3765,12 @@ mod tests {
             // modulate by row 0, project back up, norm, add.
             let residual = &plain[position];
             let mut gate = vec![0.0f32; pd];
-            matvec_into(&inp_gate, residual, &mut gate, 1);
+            matvec_into(&inp_gate, residual, &mut gate, 1, DotKind::Sequential);
             for (g, e) in gate.iter_mut().zip(&rows[0..pd]) {
                 *g = gelu(*g) * e;
             }
             let mut widened = vec![0.0f32; c.embed_dim];
-            matvec_into(&proj, &gate, &mut widened, 1);
+            matvec_into(&proj, &gate, &mut widened, 1, DotKind::Sequential);
             let mut normed = vec![0.0f32; c.embed_dim];
             rms_norm_into(&widened, &post_norm, c.rms_eps, &mut normed);
 
