@@ -156,6 +156,37 @@ fn lane_fold<T: Copy>(w: &[T], x: &[f32], widen: impl Fn(T) -> f32) -> f32 {
     total + tail
 }
 
+/// The block fold behind `Weight::row_dot_block`.
+///
+/// `R` is a const parameter rather than a runtime length because the whole
+/// effect depends on the inner loop being fully unrolled into `R` independent
+/// accumulators that the backend can then place in vector lanes. A runtime
+/// count compiles to a loop over an array and reverts to scalar.
+///
+/// The rows are sliced **before** the `k` loop, and that is load-bearing
+/// rather than tidy: indexing `w[(o + j) * n + k]` inside the loop keeps a
+/// bounds check per access that the vectorizer will not hoist, and the whole
+/// body stays scalar. Measured, not guessed -- the two spellings differ by
+/// every packed instruction in the loop.
+#[inline]
+fn block_fold<T: Copy, const R: usize>(
+    w: &[T],
+    o: usize,
+    x: &[f32],
+    widen: impl Fn(T) -> f32,
+    out: &mut [f32; R],
+) {
+    let n = x.len();
+    let rows: [&[T]; R] = std::array::from_fn(|j| &w[(o + j) * n..(o + j + 1) * n]);
+    let mut acc = [0.0f32; R];
+    for (k, &xk) in x.iter().enumerate() {
+        for j in 0..R {
+            acc[j] += widen(rows[j][k]) * xk;
+        }
+    }
+    *out = acc;
+}
+
 /// A weight matrix held in the width its checkpoint published.
 ///
 /// **Widening at use is bit-identical to widening at load**, which is what
@@ -279,6 +310,40 @@ impl Weight {
             Weight::F32(v) => lane_fold(&v[lo..hi], x, |a| a),
             Weight::F16(v) => lane_fold(&v[lo..hi], x, f16_to_f32),
             Weight::Bf16(v) => lane_fold(&v[lo..hi], x, bf16_to_f32),
+        }
+    }
+
+    /// Dot `x` with rows `o..o + R` at once, one accumulator per row.
+    ///
+    /// **Bit-identical to calling `row_dot` on each of the `R` rows**, and it
+    /// is the same argument `par_rows` makes one level up: nothing is
+    /// reordered. Accumulator `j` sums row `j`'s products over `k` in index
+    /// order, exactly as the single-row fold does. What changes is only that
+    /// `R` of those independent folds are in flight together, so the machine
+    /// has something to issue while each one waits on its own add.
+    ///
+    /// That is the difference from `row_dot_lanes`, and it is the whole reason
+    /// this exists. Both turn one dependency chain into several; only this one
+    /// does it without touching summation order, because the independence was
+    /// already there in the problem -- separate output rows never shared an
+    /// accumulator to begin with.
+    ///
+    /// The backend places the `R` accumulators in the lanes of a vector
+    /// register and broadcasts `x[k]` across them, so a fold that is
+    /// bit-identical by construction still compiles to packed multiply-add.
+    /// Verified under the pinned toolchain: at `R` of 4, 8 and 16 the bf16 arm
+    /// emits no scalar float instruction at all, and unlike `row_dot_lanes` it
+    /// vectorizes on the baseline build too, with no `-C target-cpu` needed.
+    ///
+    /// Rows past the last full block are the caller's problem, and they need
+    /// no rule: `row_dot` on the remainder gives the same bits, so a partial
+    /// block is a fallback rather than a special case.
+    #[inline]
+    pub fn row_dot_block<const R: usize>(&self, o: usize, x: &[f32], out: &mut [f32; R]) {
+        match self {
+            Weight::F32(v) => block_fold(v, o, x, |a| a, out),
+            Weight::F16(v) => block_fold(v, o, x, f16_to_f32, out),
+            Weight::Bf16(v) => block_fold(v, o, x, bf16_to_f32, out),
         }
     }
 
@@ -528,6 +593,51 @@ mod tests {
                 Weight::F32(widened).row_dot_lanes(0, &x),
                 "n={n}: the bf16 lane fold is not the widened f32 lane fold"
             );
+        }
+    }
+
+    /// The claim `row_dot_block` is built on, asserted the only way it can
+    /// honestly be asserted: exact equality, per row, per dtype. A tolerance
+    /// here would be admitting the property does not hold.
+    #[test]
+    fn a_block_of_rows_is_bit_identical_to_the_rows_folded_one_at_a_time() {
+        const IN: usize = 67; // not a multiple of any block width tested
+        const OUT: usize = 16;
+        let (w, x) = probe_row(IN * OUT, 11);
+        let x = &x[..IN];
+
+        let bf16: Vec<u16> = w.iter().map(|v| (v.to_bits() >> 16) as u16).collect();
+        let f16: Vec<u16> = w.iter().map(|v| (v.to_bits() >> 17) as u16).collect();
+        let cases = [
+            ("f32", Weight::F32(w.clone())),
+            ("bf16", Weight::Bf16(bf16)),
+            ("f16", Weight::F16(f16)),
+        ];
+
+        for (name, weight) in cases {
+            // Every block origin, not just zero: an off-by-one in the row
+            // slicing would still pass at o = 0.
+            for o in [0usize, 1, 4, 7] {
+                let mut got = [0.0f32; 4];
+                weight.row_dot_block::<4>(o, x, &mut got);
+                for (j, g) in got.iter().enumerate() {
+                    assert_eq!(
+                        *g,
+                        weight.row_dot(o + j, x),
+                        "{name}: block of 4 at row {o} disagreed with row_dot on row {}",
+                        o + j
+                    );
+                }
+            }
+            let mut wide = [0.0f32; 8];
+            weight.row_dot_block::<8>(0, x, &mut wide);
+            for (j, g) in wide.iter().enumerate() {
+                assert_eq!(
+                    *g,
+                    weight.row_dot(j, x),
+                    "{name}: block of 8 differed at row {j}"
+                );
+            }
         }
     }
 
