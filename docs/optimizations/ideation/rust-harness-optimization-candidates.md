@@ -32,25 +32,33 @@ this budget; this one cannot.
 Two kinds of change get confused here, and the distinction decides how much
 apparatus an item needs:
 
-- **Splitting a reduction** — threading a dot product, widening one with SIMD,
-  folding a multiply and an add into an FMA. The summation order changes, so
-  the result changes. These ship behind a flag with a reference fallback, the
-  golden tests continue to pin the reference path, and the optimized path gets
-  its own tolerance-based comparison rather than inheriting the bit-exact
-  goldens.
+- **Splitting a reduction** — partitioning one dot product's summation across
+  lanes or threads, or folding a multiply and an add into an FMA. The
+  summation order changes, so the result changes. These ship behind a flag
+  with a reference fallback, the golden tests continue to pin the reference
+  path, and the optimized path gets its own tolerance-based comparison rather
+  than inheriting the bit-exact goldens.
 - **Splitting across independent outputs** — assigning whole output rows of a
-  matvec to different cores. Nothing is reordered: each output element is
-  still one sequential fold in the original order, and the partition is a
-  function of the output length and the width alone. The result is identical
-  bit-for-bit, so the goldens pin the optimized path directly and there is no
-  second answer to compare against.
+  matvec to different cores, or evaluating several output rows in the lanes of
+  one vector register. Nothing is reordered: each output element is still one
+  sequential fold in the original order, and the partition is a function of
+  the output length and the width alone. The result is identical bit-for-bit,
+  so the goldens pin the optimized path directly and there is no second answer
+  to compare against.
 
-This document originally applied the first rule to both. The multithreaded
-matvec, which landed as the second kind, is the correction: `cpu.rs`'s
-`par_rows` carries the argument, and
-`a_threaded_forward_pass_produces_bit_identical_logits` measures it. Before
-budgeting a fallback and a tolerance for an item below, check which kind it
-is.
+This document originally applied the first rule to both, and has now been
+corrected twice in the same direction. The multithreaded matvec was the first
+correction: `cpu.rs`'s `par_rows` carries the argument and
+`a_threaded_forward_pass_produces_bit_identical_logits` measures it. **SIMD was
+the second.** Vectorizing was listed above as inherently order-changing, which
+is true only of vectorizing *within* a reduction; putting R output rows in R
+lanes of one register leaves every fold in its original order and is the second
+kind. That distinction was worth 1.87x at no cost, and the measured
+order-changing alternative added 1%.
+
+Before budgeting a fallback and a tolerance for an item below, check which kind
+it is — and check whether the item can be *rewritten* as the second kind, which
+is what both corrections turned out to be.
 
 ## Tier A: order-of-magnitude candidates
 
@@ -206,28 +214,75 @@ f32; a Q4 E4B stays near 4 GB resident instead of tens of GB. This item
 subsumes the deferred Q4_K/Q6_K dequantization work: the kernels replace it
 rather than sit beside it. Largest effort on the list.
 
-**SIMD.** Zen 5 executes full-width AVX-512. This was parked on the grounds
-that widening the arithmetic buys nothing while the engine is bandwidth-bound;
-the bf16 measurement above falsified that premise, and it is now the item with
-the clearest case. The scalar loop is the floor, the bf16 widening vectorizes
-into a shift and interleave across a whole vector rather than costing per
-element, and there is roughly 2x of bandwidth headroom to spend before the
-memory wall binds again.
+**SIMD.** Landed, as the second kind of change: **1.87x, bit-identical, and
+without AVX-512.** `SIZE=quick` on E4B at width 8 went 220.38s to 118.08s, and
+user time 1501.93s to 713.15s — half the CPU-seconds, so this is work deleted
+rather than overlap improved.
 
-It stays bit-identical on the same terms as everything else here: vectorize
-across *output rows*, where each element is still one sequential fold, and not
-inside the reduction. Three rungs, cheapest first:
+`Weight::row_dot_block` folds R output rows against one input in a single pass.
+Each row keeps its own accumulator over `in_dim` in index order, so nothing is
+reordered and the goldens pin the optimized path directly. What makes it vector
+code is that LLVM puts the R row accumulators in the R lanes of one register
+and broadcasts `x[k]` across them: `vpmovzxwd` widens R bf16 values, one per
+row, `vmulps` against the broadcast, `vaddps` into the lane accumulators. The
+bf16 widening that cost 40.43% of `row_dot`'s children disappears into the load
+path.
 
-1. **Autovectorization.** Build with `-C target-cpu=znver5` and shape hot
-   loops so the compiler vectorizes them; `chunks_exact` also eliminates
-   bounds checks. A build-configuration change plus loop hygiene, no unsafe.
-2. **Portable SIMD.** `std::simd` remains nightly-only; on stable, the
-   idiomatic path is rung 1 plus inspecting generated assembly to confirm
-   vectorization.
-3. **Intrinsics.** `core::arch::x86_64` AVX-512 intrinsics behind
-   `is_x86_feature_detected!`, in `unsafe` blocks with safety comments —
-   only for loops where profiles show rung 1 left real throughput on the
-   table.
+The measurements, five dot kinds against two builds, `SIZE=quick`, threads 8,
+wall clock in seconds:
+
+| dot | baseline | znver5 | vs sequential | logits |
+|-----|---------:|-------:|--------------:|--------|
+| sequential | 220.38 | 216.56 | 1.00x | reference |
+| **rows4** | **118.08** | **116.18** | **1.87x** | identical |
+| rows8 | 118.90 | 117.64 | 1.85x | identical |
+| rows16 | 124.26 | 122.68 | 1.77x | identical |
+| lanes16 | 116.82 | 108.34 | 1.89x | differs |
+
+Four findings, three of which contradict what this section said before.
+
+**Loop shape is nearly everything; the build target is not.** `-C
+target-cpu=znver5` is worth 1.6% on rows4 and 7% on lanes16, and nothing at all
+on the sequential fold. Rung 1's premise — that the win comes from building for
+the machine — was backwards. Codegen inspection under the pinned toolchain
+shows why: the multi-row shape emits packed arithmetic on the *baseline* build,
+because four f32 lanes is one xmm register and needs no ISA extension.
+
+**Wider is worse.** rows16 loses to rows4 by 5%. Sixteen accumulators need four
+registers and sixteen concurrent read streams; four need one register and four
+streams. The sweep is the reason this is known rather than assumed, and it is
+why R is a named constant with a measurement beside it.
+
+**AVX-512 goes unused, and cannot help.** At 118s the decode moves roughly 15 GB
+per token in about 0.2s — back within sight of the ~96 GB/s ceiling the f32
+engine hit before P10.5. The headroom that measurement bought has now been
+spent. Rungs 2 and 3 below are therefore retired rather than pending: portable
+SIMD and intrinsics would widen arithmetic that is no longer the constraint.
+
+**The reordered fold was measured and rejected.** `row_dot_lanes` splits the
+reduction into 16 fixed lanes — deterministic, but a different summation order,
+so it needs the flag-and-fallback apparatus this document prescribes. It is the
+fastest number in the table and it is not adopted: 1.89x against rows4's 1.87x
+does not buy a change to every logit the project has published. It stays in the
+tree behind `--dot lanes16`, off, because a CUDA kernel will face the identical
+question and the precedent is worth keeping cheap.
+
+Worth recording for that future: **the reordered fold is measurably more
+accurate.** Against the transformers reference it reports L1 rel_l2 0.000003
+where sequential reports 0.000005, and perplexity 55.5427 against sequential's
+55.5420 with the reference at 55.5438. That is the textbook result — naive
+sequential summation accumulates error as O(n * eps) against O((n/k + k) * eps)
+for k accumulators — and it means today's reference path is the least accurate
+of the three, not the most. Bit-reproducibility is what it is chosen for;
+accuracy is not the argument for it.
+
+Diagnostic that gated all of this: `perf stat` on the ladder reported IPC 2.82
+with frontend stalls at 3.2% of cycles, against a stated prediction of
+memory-bound at IPC below 1.5. 265 billion instructions for a load and a
+six-token prefill is a scalar loop paying one instruction per element per
+operation. `stalled-cycles-backend` and `LLC-load-misses` are `<not supported>`
+on this kernel and CPU, so the backend-stall fraction is inferred from IPC
+rather than counted.
 
 ## Tier B: measured moderate wins
 
@@ -254,13 +309,31 @@ format already reserves a dtype byte for f16, so the on-disk format absorbs
 this without a version bump. Numerics effect on golden tests must be
 measured, not assumed.
 
-**Huge pages.** The TLB-pressure argument behind the parent repository's
-26% llama.cpp improvement transfers to any pass that walks gigabytes of
-weights, but the mechanism does not: the existing
-`hugepage_mmap_wrapper.cpp` intercepts `mmap()` of large files, and this
-runtime reads the GGUF with `std::fs::read` and walks dequantized heap
-buffers, so there is no mapping to intercept. Owning the allocation sites
-allows direct allocation instead. The workstation disables transparent huge
+**Huge pages.** Now the most likely next lever, and the argument against it has
+expired. The TLB-pressure reasoning behind the parent repository's 26%
+llama.cpp improvement transfers to any pass that walks gigabytes of weights,
+and the mechanism now transfers too: `hugepage_mmap_wrapper.cpp` intercepts
+`mmap()` of large files, which this runtime no longer relies on — since P10.5
+the weights are owned `Vec<u16>` buffers this crate allocates itself, and since
+the SIMD measurement the engine is bandwidth-bound again with the arithmetic no
+longer in the way. 14 GiB of weights on 4 KiB pages is roughly 3.7 million
+pages against an L2 TLB holding a few thousand entries; the last measured run
+took 3,887,891 minor faults, which is that number. 2 MiB pages would cut it by
+512x.
+
+This converges with the loader change under "Zero-copy weights" in Tier A: reading
+each tensor with `pread` into a buffer allocated `MAP_HUGETLB` from the
+reserved pool gets huge pages, drops the load-time RSS peak from 28 GiB to
+~14, and removes `memmap2` in one change. The cost is that it keeps
+`deny(unsafe_code)` where a `pread`-only version would restore `forbid`.
+
+**Not yet measured**, and it should be before it is written: the `perf stat`
+run that produced the IPC figure omitted the TLB counters, so the page-walk
+cost is currently inferred from the fault count rather than counted.
+`dTLB-load-misses` plus a table-walk event on the multi-row path is the
+prerequisite.
+
+The workstation disables transparent huge
 pages entirely and reserves a 90 GB explicit pool (`vm.nr_hugepages`, see
 `docs/optimizations/README.md` in the parent repository), so
 `madvise(MADV_HUGEPAGE)` is a no-op there; the working approach is explicit

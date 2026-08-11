@@ -133,9 +133,12 @@ their output rows across cores; that split is bit-identical at every width, so
 the golden tests pin the parallel path and `--single-thread` is for rr rather
 than for correctness. Weights are held in the width the checkpoint published —
 bf16 stays bf16, widened per use — which is likewise bit-identical, because
-widening is a shift and the arithmetic is f32 either way. Everything else — the norms, attention, the residual
-updates — is a plain sequential loop, with no SIMD and no wall-clock
-concessions. It is a strict subset of the published architecture, so
+widening is a shift and the arithmetic is f32 either way. Within a core, four
+output rows are folded in one pass so the compiler can place them in the lanes
+of a vector register; that is SIMD without reordering anything, since each row
+is still one sequential fold over the input in its original order, and it is
+worth 1.87x on E4B. Everything else — the norms, attention, the residual
+updates — is a plain sequential loop, with no wall-clock concessions. It is a strict subset of the published architecture, so
 `cpu::check_supported_checkpoint` refuses a checkpoint carrying per-layer embeddings, a
 shared KV cache, MatFormer feed-forward widths, or dual RoPE — naming the
 feature rather than loading the model and silently ignoring the extra weights.

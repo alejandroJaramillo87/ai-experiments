@@ -1,16 +1,25 @@
 /*
  * cpu — hand-rolled CPU reference backend for Gemma-4-style checkpoints.
  *
- * Correctness-first: plain f32 loops, no SIMD, no wall clock, no allocation
+ * Correctness-first: plain f32 arithmetic, no wall clock, no allocation
  * tricks — deterministic by construction so runs record and replay under rr.
  * This backend is the reference the CUDA backend is diffed against (through
  * the phase 1 flight recorder) and makes the full harness runnable in a
  * sandbox against synthetic weights.
  *
- * The one concession to speed is `par_rows`: matvec and the tied LM head
- * split their output rows across cores. It is not an exception to the rule
- * above, because it reorders no arithmetic — see the argument on that
- * function. Everything else runs sequentially.
+ * Two concessions to speed, and neither is an exception to the rule above
+ * because neither reorders any arithmetic. `par_rows` splits matvec and the
+ * tied LM head across cores by output row. `Weight::row_dot_block::<R>`
+ * evaluates R output rows in one pass, which the compiler places in the R
+ * lanes of one vector register — so the loop is SIMD, while each row's fold
+ * stays sequential over in_dim in its original order. Both carry their
+ * arguments at their definitions. Everything else runs sequentially.
+ *
+ * A reordered reduction does exist, in `Weight::row_dot_lanes`, and it is not
+ * the default. It is 1% faster than the block fold and produces different
+ * logits; it stays reachable through `DotKind::Lanes16` because a CUDA kernel
+ * will face the same question. See the optimization candidates document for
+ * the measurement that rejected it.
  *
  * Architecture: RMSNorm scaled by the stored weight, embedding scaled by
  * sqrt(embed_dim), grouped-query attention with per-head QK-norm and NEOX
