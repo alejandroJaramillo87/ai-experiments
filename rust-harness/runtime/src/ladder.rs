@@ -22,6 +22,7 @@
  */
 
 use std::fmt::Write as _;
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, ensure, Context, Result};
 
@@ -192,6 +193,15 @@ pub struct RungResult {
     /// One line of context: which layer diverged, which prompt, why skipped.
     /// Empty when the rung has nothing to add beyond its measures.
     pub note: String,
+    /// Wall clock for this rung's body, when it ran.
+    ///
+    /// Stamped by `climb` rather than by a rung body, so no rung can report a
+    /// duration that excludes part of its own work. `None` for a rung that was
+    /// never reached -- an absent time and a zero time are different claims.
+    ///
+    /// This is the only field in a result that is not reproducible, which is
+    /// why `render` keeps it out of the table entirely. See the timing block.
+    pub elapsed: Option<Duration>,
 }
 
 impl RungResult {
@@ -210,6 +220,7 @@ impl RungResult {
             status,
             measures,
             note: note.into(),
+            elapsed: None,
         }
     }
 
@@ -220,6 +231,7 @@ impl RungResult {
             status: Status::Skipped,
             measures: Vec::new(),
             note: why.into(),
+            elapsed: None,
         }
     }
 
@@ -229,6 +241,7 @@ impl RungResult {
             status: Status::NotReached,
             measures: Vec::new(),
             note: format!("{} failed", blamed.label()),
+            elapsed: None,
         }
     }
 }
@@ -383,8 +396,13 @@ pub fn climb(
         match failed {
             Some(blamed) => results.push(RungResult::not_reached(rung, blamed)),
             None => {
-                let result = run(rung)
+                let began = Instant::now();
+                let mut result = run(rung)
                     .unwrap_or_else(|| RungResult::skipped(rung, "no reference for this rung"));
+                // Stamped around the closure call, which includes a skipped
+                // rung's attempt to find its reference. A skip is usually fast,
+                // but "fast" is a measurement and this is what takes it.
+                result.elapsed = Some(began.elapsed());
                 if result.status == Status::Fail {
                     failed = Some(rung);
                 }
@@ -506,6 +524,35 @@ pub fn render(l: &Ladder) -> String {
         if !r.note.is_empty() {
             let _ = writeln!(s, "      {}", r.note);
         }
+    }
+
+    // Timing is a separate block rather than a column in the table above, and
+    // the separation is the point. Two runs that differ only in `--batch` or
+    // `--threads` must agree digit for digit, so the instruction for reading
+    // an A/B is "the table is identical". A duration column would make that
+    // "the table is identical except one column", and a qualified comparison
+    // is one someone eventually reads as a pass.
+    //
+    // The total is the sum of the rung bodies, not the process. It excludes
+    // model load, which for E4B is the larger part of a short run.
+    let timed: Vec<_> = l
+        .results
+        .iter()
+        .filter_map(|r| r.elapsed.map(|d| (r.rung, d)))
+        .collect();
+    if !timed.is_empty() {
+        let total: Duration = timed.iter().map(|(_, d)| *d).sum();
+        let _ = writeln!(s);
+        let _ = writeln!(s, "timing (not compared; expected to differ between runs)");
+        for (rung, d) in &timed {
+            let _ = writeln!(s, "  {:<4}  {:>8.2}s", rung.label(), d.as_secs_f64());
+        }
+        let _ = writeln!(
+            s,
+            "  {:<4}  {:>8.2}s  (rung bodies only, excludes model load)",
+            "sum",
+            total.as_secs_f64()
+        );
     }
 
     let _ = writeln!(s);
@@ -1250,6 +1297,46 @@ mod tests {
         }
         assert!(out.contains("not reached"), "{out}");
         assert!(out.contains("[ERROR] Ladder: L1 failed"), "{out}");
+    }
+
+    #[test]
+    fn a_rung_that_ran_is_timed_and_one_that_was_never_reached_is_not() {
+        // The distinction the Option carries: a rung that did no work has no
+        // duration, and must not report 0.00s beside rungs that took minutes.
+        // A zero would read as "instant", which is a measurement nobody took.
+        let l = climb(Size::Quick, "m", "r", |rung| {
+            Some(match rung {
+                Rung::L1Layers => fail(rung),
+                _ => pass(rung),
+            })
+        });
+        for r in &l.results {
+            match r.status {
+                Status::NotReached => assert!(r.elapsed.is_none(), "{:?}", r.rung),
+                _ => assert!(r.elapsed.is_some(), "{:?}", r.rung),
+            }
+        }
+    }
+
+    #[test]
+    fn timings_stay_out_of_the_compared_table() {
+        // The A/B this exists for -- stepped against batched -- is read by
+        // checking the table is identical. That instruction only survives if
+        // the durations, which are expected to differ, sit outside it. Two
+        // runs differing only in wall clock must render the same table.
+        let build = |d: Duration| {
+            let mut l = climb(Size::Quick, "m", "r", |rung| Some(pass(rung)));
+            for r in &mut l.results {
+                r.elapsed = Some(d);
+            }
+            render(&l)
+        };
+        let fast = build(Duration::from_millis(1));
+        let slow = build(Duration::from_secs(600));
+        let head = |s: &str| s.split("timing (").next().unwrap().to_string();
+        assert_eq!(head(&fast), head(&slow), "\n{fast}\n---\n{slow}");
+        assert_ne!(fast, slow, "the timing block itself must show the change");
+        assert!(fast.contains("excludes model load"), "{fast}");
     }
 
     #[test]
