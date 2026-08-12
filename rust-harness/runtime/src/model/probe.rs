@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{bail, ensure, Context, Result};
 
-use super::cpu::Tap;
+use super::cpu::{Site, Tap};
 use crate::gguf::{GgufFile, MetaValue};
 use crate::tensor::load_tensor;
 
@@ -27,7 +27,7 @@ use crate::tensor::load_tensor;
 pub struct Probe {
     pub name: String,
     pub model_hash: String,
-    /// 0-based decoder layer whose post-block residual the probe scores.
+    /// 0-based decoder layer whose residual the probe scores, at `SITE`.
     pub layer: usize,
     pub threshold: f32,
     weights: Vec<f32>,
@@ -37,6 +37,14 @@ pub struct Probe {
 }
 
 impl Probe {
+    /// The tap site a probe is trained on and scored at.
+    ///
+    /// Stated rather than assumed: the GGUF carries `probe.layer` and no site,
+    /// so a probe file names half of where it belongs and the other half is
+    /// this constant. Teaching `interp/probes/export.py` to write the site is
+    /// the change that would let a probe say so itself.
+    pub const SITE: Site = Site::LayerOutput;
+
     pub fn from_gguf(file: &GgufFile, data: &[u8]) -> Result<Probe> {
         let s = |key: &str| -> Result<String> {
             match file.metadata.get(key) {
@@ -177,8 +185,8 @@ impl ProbeMonitor {
 }
 
 impl Tap for ProbeMonitor {
-    fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]) {
-        if layer != self.probe.layer {
+    fn on_residual(&mut self, layer: usize, site: Site, position: usize, x: &[f32]) {
+        if site != Probe::SITE || layer != self.probe.layer {
             return;
         }
         // A row of another width belongs to a model this probe was not
@@ -251,8 +259,8 @@ mod tests {
         let mut probe = test_probe(0.0);
         probe.threshold = probe.score(&[1.5, 1.0, 1.0]).unwrap(); // exact score of position 0
         let (mut monitor, state) = ProbeMonitor::new(Arc::new(probe));
-        monitor.on_residual(1, 0, &[1.5, 1.0, 1.0]); // score == threshold: not flagged
-        monitor.on_residual(1, 1, &[9.0, 1.0, 1.0]); // large positive logit: flagged
+        monitor.on_residual(1, Site::LayerOutput, 0, &[1.5, 1.0, 1.0]); // score == threshold: not flagged
+        monitor.on_residual(1, Site::LayerOutput, 1, &[9.0, 1.0, 1.0]); // large positive logit: flagged
         let state = state.lock().unwrap();
         assert_eq!(state.scored, 2);
         assert_eq!(state.flags.len(), 1);
@@ -262,8 +270,8 @@ mod tests {
     #[test]
     fn monitor_ignores_other_layers_and_width_mismatches() {
         let (mut monitor, state) = ProbeMonitor::new(Arc::new(test_probe(0.5)));
-        monitor.on_residual(0, 0, &[1.5, 1.0, 1.0]); // wrong layer
-        monitor.on_residual(1, 0, &[1.5, 1.0]); // wrong width
+        monitor.on_residual(0, Site::LayerOutput, 0, &[1.5, 1.0, 1.0]); // wrong layer
+        monitor.on_residual(1, Site::LayerOutput, 0, &[1.5, 1.0]); // wrong width
         assert_eq!(state.lock().unwrap().scored, 0);
     }
 
@@ -325,7 +333,7 @@ mod tests {
         // NaN residual. `score > threshold` is false for NaN, so an unflagged
         // position would read as clean in the "N scored, 0 flagged" summary.
         let (mut monitor, state) = ProbeMonitor::new(Arc::new(test_probe(0.5)));
-        monitor.on_residual(1, 3, &[f32::NAN, 1.0, 1.0]);
+        monitor.on_residual(1, Site::LayerOutput, 3, &[f32::NAN, 1.0, 1.0]);
         let state = state.lock().unwrap();
         assert_eq!(state.scored, 1);
         assert_eq!(state.flags.len(), 1);

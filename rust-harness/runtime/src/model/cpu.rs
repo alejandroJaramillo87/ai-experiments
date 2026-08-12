@@ -87,6 +87,7 @@
  */
 
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{bail, ensure, Context, Result};
@@ -844,8 +845,55 @@ pub const PRELUDE_STAGES: [&str; 4] = [
     STAGE_PLE,
 ];
 
+/// Which point within a decoder block a tapped row came from.
+///
+/// One variant today, and the widening is the whole of it: a tap keyed on the
+/// layer alone records "layer 7" for a row whose meaning is fixed by prose
+/// somewhere else, and a stored row carries that ambiguity into the artifact.
+/// Naming the site costs nothing while there is one of them and cannot be
+/// added cheaply once several implementations and a stored format have grown
+/// around the narrower key.
+///
+/// `#[non_exhaustive]`, so a second point is an additive change for a tap in
+/// another crate. Within this crate it is not: a `match` here must name every
+/// variant, which is the compiler telling each in-crate tap to decide.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Site {
+    /// The block's complete output -- after the post-MLP residual add and the
+    /// layer output scale, the point this seam has always fired at.
+    LayerOutput,
+}
+
+/// The site's name in a stored artifact. Parsed back by `FromStr`, so the two
+/// stay one decision.
+impl fmt::Display for Site {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Site::LayerOutput => "layer_output",
+        })
+    }
+}
+
+impl std::str::FromStr for Site {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Site> {
+        match s {
+            "layer_output" => Ok(Site::LayerOutput),
+            other => bail!("unknown tap site {other:?}"),
+        }
+    }
+}
+
 pub trait Tap: Send {
-    fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]);
+    /// A residual row, at `site` of decoder block `layer`, for `position`.
+    ///
+    /// A tap that wants only one site says so by comparing rather than by
+    /// matching: `if site != Site::LayerOutput { return; }`. Within this crate
+    /// a `match` with a `_` arm is an unreachable pattern while the enum has
+    /// one variant, and the gate runs `-D warnings`.
+    fn on_residual(&mut self, layer: usize, site: Site, position: usize, x: &[f32]);
 
     /// Whether this tap wants the named stages below.
     ///
@@ -950,8 +998,10 @@ impl LastRowTap {
 }
 
 impl Tap for LastRowTap {
-    fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]) {
-        if !self.layers.contains(&layer) {
+    fn on_residual(&mut self, layer: usize, site: Site, position: usize, x: &[f32]) {
+        // Keyed by layer alone, so a second site would collide with the first
+        // in `rows`: take only the site the capture format names.
+        if site != Site::LayerOutput || !self.layers.contains(&layer) {
             return;
         }
         let mut rows = self.rows.lock().expect("tap map not poisoned");
@@ -2831,7 +2881,7 @@ impl CpuModel {
             // in ascending order.
             if let Some(tap) = tap.as_mut() {
                 for (p, xp) in x_all.chunks_exact(c.embed_dim).enumerate() {
-                    tap.on_residual(i, start + p, xp);
+                    tap.on_residual(i, Site::LayerOutput, start + p, xp);
                 }
             }
         }
@@ -5625,7 +5675,10 @@ mod tests {
     struct CollectingTap(TapCalls);
 
     impl Tap for CollectingTap {
-        fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]) {
+        fn on_residual(&mut self, layer: usize, site: Site, position: usize, x: &[f32]) {
+            if site != Site::LayerOutput {
+                return;
+            }
             self.0.lock().unwrap().push((layer, position, x.to_vec()));
         }
     }
@@ -5674,6 +5727,77 @@ mod tests {
             .all(|(_, _, x)| x.iter().all(|v| v.is_finite())));
     }
 
+    /// `TapCalls` with the site kept, for the tap that filters nothing.
+    type SitedCalls = std::sync::Arc<std::sync::Mutex<Vec<(usize, Site, usize, Vec<f32>)>>>;
+
+    /// Records every site it is handed, so what a filtering tap drops is
+    /// visible rather than inferred.
+    #[derive(Clone, Default)]
+    struct EverySiteTap(SitedCalls);
+
+    impl Tap for EverySiteTap {
+        fn on_residual(&mut self, layer: usize, site: Site, position: usize, x: &[f32]) {
+            self.0
+                .lock()
+                .unwrap()
+                .push((layer, site, position, x.to_vec()));
+        }
+    }
+
+    #[test]
+    fn filtering_on_the_site_observes_what_accepting_every_site_does() {
+        // The widening is meant to be inert: a tap that takes only
+        // LayerOutput must see exactly the rows it saw when the trait had no
+        // site at all, bit-for-bit. Demonstrated rather than asserted in
+        // prose, by running the filtering tap against one that filters
+        // nothing -- so the day a second fire site lands, this test fails and
+        // names the taps that have to decide about it.
+        let mut m = tiny();
+        let filtering = CollectingTap::default();
+        m.set_tap(Box::new(filtering.clone()));
+        m.prefill_all(&[1, 5, 9]).unwrap();
+
+        let mut m = tiny();
+        let everything = EverySiteTap::default();
+        m.set_tap(Box::new(everything.clone()));
+        m.prefill_all(&[1, 5, 9]).unwrap();
+
+        let all = everything.0.lock().unwrap();
+        assert!(
+            all.iter().all(|(_, s, _, _)| *s == Site::LayerOutput),
+            "the seam fires a site the filtering taps drop: {:?}",
+            all.iter()
+                .map(|(_, s, _, _)| *s)
+                .filter(|s| *s != Site::LayerOutput)
+                .collect::<Vec<_>>()
+        );
+        let dropped: Vec<(usize, usize, Vec<f32>)> =
+            all.iter().map(|(l, _, p, x)| (*l, *p, x.clone())).collect();
+        assert_eq!(
+            *filtering.0.lock().unwrap(),
+            dropped,
+            "filtering on the site changed what a tap observes"
+        );
+    }
+
+    #[test]
+    fn a_site_round_trips_through_its_stored_name() {
+        // The artifact spelling. A capture manifest stores this text and a
+        // reader parses it back, so the two directions are one decision and a
+        // rename that touched only Display would be silent until a reader
+        // hit an old file.
+        assert_eq!(Site::LayerOutput.to_string(), "layer_output");
+        assert_eq!(
+            "layer_output".parse::<Site>().unwrap(),
+            Site::LayerOutput,
+            "the name Display writes must parse back"
+        );
+        assert!(
+            "post_attention".parse::<Site>().is_err(),
+            "an unknown site must be an error, not a default"
+        );
+    }
+
     #[test]
     fn a_stepped_prefill_still_fires_the_tap_position_major() {
         // The other half of the traversal contract: under BatchKind::Stepped
@@ -5702,9 +5826,9 @@ mod tests {
         // the batch ends on, so "last written" and "last position" part ways.
         // Feed the rows out of order and require the position to decide.
         let mut tap = LastRowTap::new(vec![0]).capturing_prelude();
-        tap.on_residual(0, 1, &[1.0]);
-        tap.on_residual(0, 2, &[2.0]);
-        tap.on_residual(0, 0, &[0.0]);
+        tap.on_residual(0, Site::LayerOutput, 1, &[1.0]);
+        tap.on_residual(0, Site::LayerOutput, 2, &[2.0]);
+        tap.on_residual(0, Site::LayerOutput, 0, &[0.0]);
         assert_eq!(tap.row(0), Some(vec![2.0]));
 
         tap.on_stage("embedding", 2, &[2.0]);
@@ -5714,11 +5838,11 @@ mod tests {
         // A clear restarts the comparison, so the next example's position 0
         // is not shadowed by the previous example's position 2.
         tap.clear();
-        tap.on_residual(0, 0, &[9.0]);
+        tap.on_residual(0, Site::LayerOutput, 0, &[9.0]);
         assert_eq!(tap.row(0), Some(vec![9.0]));
 
         // Unrequested layers stay absent.
-        tap.on_residual(1, 5, &[3.0]);
+        tap.on_residual(1, Site::LayerOutput, 5, &[3.0]);
         assert_eq!(tap.row(1), None);
     }
 

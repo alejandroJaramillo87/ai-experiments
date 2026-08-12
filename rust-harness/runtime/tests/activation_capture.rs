@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use runtime::model::cpu::{CpuModel, Tap};
+use runtime::model::cpu::{CpuModel, Site, Tap};
 use runtime::model::Model;
 use runtime::tokenizer::Tokenizer;
 
@@ -170,7 +170,10 @@ fn f32_rows(shard: &serde_json::Value, key: &str) -> Vec<Vec<f32>> {
 struct LastRows(Arc<Mutex<HashMap<usize, Vec<f32>>>>);
 
 impl Tap for LastRows {
-    fn on_residual(&mut self, layer: usize, _position: usize, x: &[f32]) {
+    fn on_residual(&mut self, layer: usize, site: Site, _position: usize, x: &[f32]) {
+        if site != Site::LayerOutput {
+            return;
+        }
         self.0.lock().unwrap().insert(layer, x.to_vec());
     }
 }

@@ -140,7 +140,7 @@ fn tap_rows_match_the_python_reference_residuals_on_the_e4b_fixture() {
 }
 
 fn check_tap_rows(stem: &str) {
-    use runtime::model::cpu::Tap;
+    use runtime::model::cpu::{Site, Tap};
     use std::sync::{Arc, Mutex};
 
     let (files, golden) = load_golden_named(stem);
@@ -156,7 +156,10 @@ fn check_tap_rows(stem: &str) {
     #[derive(Clone, Default)]
     struct LastRows(Arc<Mutex<std::collections::HashMap<usize, Vec<f32>>>>);
     impl Tap for LastRows {
-        fn on_residual(&mut self, layer: usize, _position: usize, x: &[f32]) {
+        fn on_residual(&mut self, layer: usize, site: Site, _position: usize, x: &[f32]) {
+            if site != Site::LayerOutput {
+                return;
+            }
             self.0.lock().unwrap().insert(layer, x.to_vec());
         }
     }
