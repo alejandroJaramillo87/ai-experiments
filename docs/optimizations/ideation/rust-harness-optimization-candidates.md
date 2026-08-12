@@ -390,6 +390,12 @@ not move. The magnitude did not: L3 fell 1.65x, not several-fold. The 1.65x is
 itself a floor on the prefill speedup, because L3 prefills a window and then
 scores it, and the scoring does not batch.
 
+**The scoring that does not batch has since been located: it is the tied LM
+head** (`cpu.rs`, the head block at the end of `forward_batch`). Everything
+above it batches; the head folded the whole embedding table once per row it
+produced. See "The head, and what is left in prefill" below, which also
+corrects one of the two readings that follow.
+
 Two readings of this table matter more than the speedup, and both are about
 what is no longer true:
 
@@ -398,6 +404,21 @@ noise. Quadrupling the reuse bought nothing. Reuse only pays while memory
 traffic is the limiter, so this is the direct statement that after batching,
 **it is not**. The engine is off the bandwidth wall it sat against for every
 measurement in this document above, which is what the package was for.
+
+> **Correction, 2026-08-12. This inference is not available from this
+> measurement.** Head traffic is `vocab x embed x n_positions` and is
+> *invariant to the batch width*: widening the group from 64 to 256 changes how
+> often the **body's** weights are read and does not change how often the head's
+> table is read at all. At the time of this run the head was the larger traffic
+> term — 84 percent of a scored window's bytes — so the dominant term could not
+> respond to the knob being varied. A null result here is consistent with a
+> bandwidth-bound engine and an arithmetic-bound one alike, and settles neither.
+>
+> The user-time reading below is a separate and better argument, and it
+> survives; it now carries the conclusion alone. The `DEFAULT_BATCH = 64`
+> decision that rests on this pair is left in place — it is very likely still
+> right, since a batched head reads the table 4 times per window at 64 and once
+> at 256, both negligible — but it is no longer supported by two arguments.
 
 **User time fell nearly in proportion to wall clock**, 727.5s to 508.7s at a
 roughly constant 6x CPU. Had the stepped arm been stalled on memory, batching
@@ -524,6 +545,71 @@ pages entirely and reserves a 90 GB explicit pool (`vm.nr_hugepages`, see
 chain to regular pages, drawing from the same reserved pool llama-cpu
 uses. Acceptance evidence is host-side: tokens/second with and without,
 plus `HugePages_Free` movement in `/proc/meminfo`.
+
+**The head, and what is left in prefill.** The scoring the batching entry above
+called a floor is the tied LM head, and splitting the roofline by phase says
+both why it dominated the traffic and why it cannot dominate the time. Per
+256-token window at batch 64:
+
+| phase | bytes | GFLOP | flop/byte |
+|---|---|---:|---:|
+| body (4 groups x ~13 GB) | 52 GB | 3328 | 64 |
+| head, per position (256 x 1.07 GB) | 274 GB | 275 | 1.0 |
+
+The head is **84 percent of the bytes and 7.6 percent of the arithmetic**. The
+body is compute-bound and already batched. So L3's floor with a free head is
+`2 x 3603 GFLOP / C` — **40-48s against 52.09s** — and that is the entire budget
+for anything done to the head.
+
+Stating this before the fact rather than after is deliberate. Reasoning from the
+head's traffic share alone gives a prediction near 33s, and traffic-share
+reasoning is exactly what produced the three misses recorded above.
+
+Two wastes follow, and they are not equally worth doing.
+
+**Landed: not computing rows nobody reads.** `eval::per_token_nll` scores the
+second half of each window, so 127 of 256 rows are read and the head computed
+all of them. `RowsWanted::From` and `Model::prefill_from` let the caller ask for
+the suffix. This halves the head's arithmetic *and* its traffic, needs no kernel
+work, and takes about 134 MB off peak RSS by halving the live logits set.
+Predicted 43-49s, point 47s. **Measurement outstanding** — see the protocol note
+below; it must be run before this paragraph carries a number.
+
+**Deferred: panelizing the head.** Routing the head through the panel kernels
+would take its table reads from one per position to one per group. But it leaves
+the arithmetic untouched, so on the roofline above it is worth roughly
+**1.05-1.12x** for real kernel work on the bit-identity critical path, and it was
+deferred on that basis rather than refuted. The design, so it need not be
+re-derived:
+
+- Extract the `DotKind` match out of `matmul_panel` into a shared
+  `fill_panel_run(w, x, in_dim, n, base, run, dot)`. `base` is the global output
+  feature, which every kernel already takes, so a run starting partway down a
+  tensor needs no `Weight` subslicing. Leave `matmul_panel`'s shape assert and
+  its seven call sites alone.
+- Chunk the vocabulary through a fixed staging panel rather than reserving
+  `n * vocab_size`, which would be 268 MB at E4B and a 256-token batch. A 2 MB
+  panel walked in chunks keeps the scatter writing long contiguous runs.
+- Carry the softcap into the panel worker, never into the serial transpose. At
+  E4B under `All` that transpose is 67M `tanh` calls per window; on one thread
+  it would cost more than the change saves. This is the property the head's
+  existing per-element comment already insists on.
+- Bit-identity holds: the kernels accumulate in f32, an f32 round-trip through
+  the staging panel is exact, and the cap is a pure function of the stored
+  value.
+
+**It is also the experiment that would settle the open question.** Removing head
+traffic while leaving head arithmetic untouched is a direct test of the
+"remainder is arithmetic" reading — which, after the correction above, rests on
+the user-time argument alone. Deferred by decision, not because the question
+closed.
+
+**Measurement protocol for any of this.** Per the caveat at the top of this
+document, single unpinned runs vary by up to 40 percent. Arms must be run
+`taskset -c 0-7`, five runs each, **interleaved** rather than blocked so
+placement drift cannot alias onto the change, and reported as medians with the
+full spread printed. A single number is not admissible evidence for any rule
+above.
 
 ## Tier C: situational
 
