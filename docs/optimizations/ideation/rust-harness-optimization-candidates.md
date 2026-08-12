@@ -251,7 +251,9 @@ because four f32 lanes is one xmm register and needs no ISA extension.
 **Wider is worse.** rows16 loses to rows4 by 5%. Sixteen accumulators need four
 registers and sixteen concurrent read streams; four need one register and four
 streams. The sweep is the reason this is known rather than assumed, and it is
-why R is a named constant with a measurement beside it.
+why R is a named constant with a measurement beside it. **For decode**: this
+sweep ran at one position, where the activation-traffic term that scales as
+`1/R` is absent. Tier B re-opens the question for prefill.
 
 **AVX-512 goes unused, and cannot help — for decode.** At 118s the decode moves
 roughly 15 GB per token in about 0.2s — back within sight of the ~96 GB/s
@@ -380,6 +382,58 @@ is the scalar multiply-add chain itself and the next lever is vectorizing it,
 under the FMA cap recorded above. Deliberately not bundled with the packing:
 two bets in one commit make a disappointing result unattributable, which is the
 mistake the reordered-fold experiment already caught once.
+
+**The widen hoist. Landed, bit-identical, measured at 5.2% on L3.**
+`fill_panel_widened` widens the R rows once into a scratch and loops the N
+positions against it, reached as `--dot widen4`. Below `WIDEN_MIN_POSITIONS`
+(8) the variant routes back to the stored kernel, because at N=1 widening R
+rows to use each once is pure overhead. Both paths produce the same bits, so
+the threshold is a speed switch that no correctness test can defend — which is
+why it is applied automatically rather than exposed as a flag.
+
+E4B, `--size quick --threads 8 --batch 64`. The third arm repeats the first so
+the day's own noise is on the page:
+
+| dot | L3 | L4 | process wall | user |
+|---|---|---|---|---|
+| rows4 | 55.10s | 22.66s | 84.9s | 510.59s |
+| **widen4** | **52.09s** | 22.62s | **82.0s** | 488.74s |
+| rows4 (repeat) | 54.79s | 22.86s | 84.9s | 509.84s |
+
+Baseline mean 54.945s and the two baseline arms differ by 0.56%, so 5.2% is
+about nine times the noise. L4 is the control and did not move, confirming the
+threshold routes decode to the stored kernel. All three five-rung tables agree
+in every digit and peak RSS held at 14.27 GiB.
+
+**The pre-registered rule put 3-10% in the "land it, do not build the R x N
+micro-kernel" band**, and that is the verdict. A 5% conversion win does not buy
+an activation repack. It does not refute the repack either: kernel (b) attacks
+load *count* through `[k][N]` packing, a second lever this experiment did not
+touch, so the entry is declined rather than closed.
+
+**The prediction was 40-48s and the measurement was 52.09s, wrong in the same
+direction as the last one.** Both misses came from counting instructions: the
+bf16 fold emits three vector ops per step where the hoisted fold emits two, so
+a third of the inner loop disappeared and bought a twentieth of the time.
+
+That miss is the useful part. If removing one of three arithmetic operations
+barely registers, the loop is not waiting on the ALU — each step loads four
+weight values and a broadcast activation to do one multiply and one add, and
+the hoist also doubled the scratch it reads (f32 where bf16 was). The reading
+is that prefill is now **load-bound inside the cache hierarchy**, one level
+below the RAM bandwidth wall the batching package walked off. Recorded as an
+inference from a 5% result, not as a measurement: the counters that would
+settle it have not been run, and two predictions in a row argue against
+building anything on an unmeasured one.
+
+The lever that reading points at costs nothing to test. The panel kernel loops
+feature blocks outside and positions inside, so it walks the whole activation
+panel once per block of R features: activation traffic is `(out_dim / R) x n x
+in_dim`, falling as **1/R**. The "wider is worse" verdict above was measured on
+decode, where n=1 and that term does not exist. `rows8` and `rows16` already
+exist behind the flag, and R and `-C target-cpu` interact — R=4 f32 is one
+`xmm` the baseline ISA already has, so `target-cpu` has nothing wider to fill
+until R=16. They are therefore crossed rather than swept separately.
 
 **Scratch-buffer reuse.** If profiling (flight recorder plus `make flame`)
 shows per-token temporary allocations in the forward pass, a preallocated
