@@ -60,10 +60,25 @@ directions through the same control-vector format.
 `runtime/src/model/cpu.rs` defines the seam:
 
 ```rust
+#[non_exhaustive]
+pub enum Site {
+    LayerOutput,
+}
+
 pub trait Tap: Send {
-    fn on_residual(&mut self, layer: usize, position: usize, x: &[f32]);
+    fn on_residual(&mut self, layer: usize, site: Site, position: usize, x: &[f32]);
 }
 ```
+
+`Site` names which point of the layer a row came from. One variant today, and
+the seam fires only that one; the field exists because a tap keyed on the layer
+alone records "layer 7" for a row whose meaning is fixed by this paragraph
+rather than by the value, and a stored row carries that ambiguity into the
+artifact. It is `#[non_exhaustive]`, so a second point is additive for a tap in
+another crate. Implementations take the site they want by comparison
+(`if site != Site::LayerOutput { return; }`); within `runtime` a `match` with a
+wildcard arm is an unreachable pattern while the enum has one variant, and the
+gate runs `-D warnings`.
 
 The tap fires on the decoder layer's output, which under Gemma 4 is not the
 final residual add. A layer applies, in order: the attention residual, the
@@ -122,7 +137,13 @@ $ cargo run -p runtime --bin activation-capture -- \
   raises `KeyError: 'BF16'`). The schema pins the value at
   `/schemas/activation_capture.manifest.json`.
 - `examples.jsonl` and a schema-1 `manifest.json` complete the directory.
-  The manifest records `capture_backend: "rust-harness-cpu"`,
+  The manifest records `site: "layer_output"` — which point of each layer the
+  rows were taken at, written from `LastRowTap::SITE` so the stored text cannot
+  drift from the value a reader parses back. The shard keys stay `layer_<L>`:
+  with one site the key is unambiguous, and renaming it would break
+  `load_capture` for no information gain. A second site is what makes the key
+  ambiguous, and the schema note records the cost of that day. The manifest also
+  records `capture_backend: "rust-harness-cpu"`,
   `model_revision: "safetensors"`, and a `model_hash` over
   `model.safetensors`.
 - The `tokenizer_fingerprint` is a sha256 over the model path and vocabulary

@@ -2884,8 +2884,11 @@ impl CpuModel {
                 }
             }
 
-            // Interp tap seam: the layer's complete output, once per position
-            // in ascending order.
+            // Interp tap seam: once per position, in ascending order. The
+            // call names the site; that it lands after layer_output_scale
+            // rather than after the last residual add is the Python-parity
+            // constraint, pinned by
+            // the_tap_observes_the_layer_output_after_its_scale.
             if let Some(tap) = tap.as_mut() {
                 for (p, xp) in x_all.chunks_exact(c.embed_dim).enumerate() {
                     tap.on_residual(i, Site::LayerOutput, start + p, xp);

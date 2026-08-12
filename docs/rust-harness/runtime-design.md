@@ -374,7 +374,7 @@ converter agreed all along, writing `norm_shift` 0.0 for gemma3n and gemma4.
 | Sliding window | 512 tokens, 5:1 local-to-global over 42 layers | Yes, from `layer_types` | Medium |
 
 AltUp being dropped is the load-bearing finding. It runs several parallel hidden-state
-streams per layer, which would leave `Tap::on_residual(layer, position, &[f32])`
+streams per layer, which would leave `Tap::on_residual(layer, site, position, &[f32])`
 without a single residual vector to hand out, renegotiating the interpretability
 contract across the language boundary. With one residual stream retained, the tap
 seam, the capture shard format, and the Python-side correspondence all hold. See
@@ -458,8 +458,8 @@ labeled as such; measured results follow the repository benchmarking protocol.
   (interpretability capture and steering; see
   [rust-harness-interp.md](../interp/rust-harness-interp.md)).
   The CUDA backend must implement the same seam with identical semantics —
-  the layer output after the `layer_output_scale` multiply, steering applied
-  before the tap — which implies a
+  the layer output after the `layer_output_scale` multiply, delivered as
+  `Site::LayerOutput`, steering applied before the tap — which implies a
   device-to-host copy per tapped layer; taps stay optional so the untapped
   path pays nothing.
 - **Chat template and tool-call format.** The exact Gemma 4 function-calling
