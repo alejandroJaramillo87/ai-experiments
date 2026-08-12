@@ -617,8 +617,17 @@ Command (host):
 $ mkdir -p /tmp/rh5 && cd /tmp/rh5
 $ ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --record flight.jsonl \
+    --temperature 0.8 --top-k 40 --seed 1 \
     "Reply with the single word: ready"
 ```
+
+Sampling is set explicitly rather than left at the defaults, because the
+selection half of this entry is only exercised on the stochastic path: at
+temperature zero the sampler draws nothing, and a recording of a greedy
+run cannot distinguish a replay that reproduced the selection from one
+that recomputed it. What the prompt elicits does not matter here — E4B at
+the pinned revision is a base model and will not follow it (see the
+base-model note above) — only that tokens are generated at all.
 
 Command (sandbox, after copying `flight.jsonl` into the worktree; there
 is no committed CLI for arbitrary recordings, so a throwaway test invokes
@@ -631,17 +640,36 @@ $ cat > runtime/tests/rh5_replay.rs <<'EOF'
 use std::path::Path;
 
 #[test]
-fn rh5_recording_replays_as_a_mock_script() {
-    runtime::model::record::replay_file(Path::new("tests/data/rh5-flight.jsonl")).unwrap();
+fn rh5_recording_replays_as_a_mock_script_and_states_its_selections() {
+    let (_script, recorded) = runtime::model::record::replay_file_with_selections(Path::new(
+        "tests/data/rh5-flight.jsonl",
+    ))
+    .unwrap();
+    let sampling = recorded.sampling.expect("recording states its parameters");
+    assert_eq!(sampling.top_k, Some(40), "{sampling:?}");
+    assert_eq!(sampling.seed, 1, "{sampling:?}");
+    assert!(!recorded.selections.is_empty(), "no token was recorded");
+    // Draw counts rise by one per stochastic step, so the run's position in
+    // its own stream is recoverable rather than merely stated.
+    let draws: Vec<u64> = recorded.selections.iter().map(|s| s.draws).collect();
+    assert!(draws.windows(2).all(|w| w[1] > w[0]), "{draws:?}");
 }
 EOF
 $ cargo test -p runtime --test rh5_replay
 $ git checkout -- . && rm -rf runtime/tests/data runtime/tests/rh5_replay.rs
 ```
 
-Expected signal: the host run writes one JSONL record per forward call
-with token and logit payloads, and the throwaway test passes —
-`replay_file` rebuilds the recording as a MockModel script without error.
+Expected signal: the host run writes a header naming the sampling
+parameters, one JSONL record per forward call with token and logit
+payloads, and one selection line per sampled token. The throwaway test
+passes — the recording rebuilds as a MockModel script, states the
+parameters it was made under, and carries a strictly rising draw count.
+
+The draw count is the part worth watching. A recording that reproduces
+the logits and not the selection lets a replay redraw from the same
+distribution and reach a different transcript, with nothing in either
+file to say the two disagreed; the count is what makes the run's position
+in its own stream recoverable.
 
 Observed:
 

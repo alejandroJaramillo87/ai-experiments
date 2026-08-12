@@ -44,15 +44,32 @@ Sandbox work against the repository as it stands. No changes to `Session`.
 
 A wrapper implementing the `Model` trait (`runtime/src/model/mod.rs`) that
 delegates to any inner `Box<dyn Model>` and appends every `forward()` call —
-input positions and output logits — to a recording file. Selection is a
-constructor-site decision in `main.rs` (a `--record <path>` flag or
-environment variable); the session and harness layers are unchanged.
+input positions and output logits — to a recording file. Whether to wrap is a
+constructor-site decision in `main.rs` (the `--record <path>` flag); the
+session and harness layers are unchanged.
+
+The recording also carries the *selection*: the sampling parameters in its
+header, and one line per sampled token naming the token, its position, and the
+sampler's cumulative draw count. Sampling happens above the `Model` trait, so
+the recorder reaches it through `Model::record_selection` — a default no-op
+every backend inherits, called from `ActiveGeneration::step`.
 
 ### Replay
 
 A recording is loadable as a `MockModel` script. This makes real-backend runs
 recorded on the workstation reproducible in the sandbox: harness, sampler, and
 grammar behavior can be debugged against real logits with no GPU present.
+`replay` returns the script alone; `replay_with_selections` returns it
+alongside the header's parameters and the ordered selections.
+
+**Logits alone would reproduce the distribution and then re-roll the dice.**
+This is what the selection lines are for. A recording that stated only what the
+forward pass produced described the odds the run sampled under and never which
+token it drew, so a replay agreed on every logit and disagreed on the
+transcript, with nothing in either file to say so. The header's parameters let
+a reader rebuild the sampler that made the choices rather than a default one
+that would make others; the draw count lets a replay resume mid-stream instead
+of restarting.
 
 ### Divergence bisection
 
@@ -77,6 +94,12 @@ with phase 3.
 
 A record/replay round-trip test against `MockModel` passes in the sandbox: a
 recorded run, loaded back as a script, reproduces the original token sequence.
+The stochastic case is the stronger one and is asserted separately, over flat
+logits where every token is the sampler's choice: the replay rebuilds its
+sampler from the recording's own header, matches both the transcript and the
+final draw count, and a run at a different seed is asserted to diverge — the
+negative without which the positive would pass on a recorder that wrote no
+selections at all.
 
 ## Phase 2: tracing
 

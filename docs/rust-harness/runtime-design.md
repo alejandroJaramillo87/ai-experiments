@@ -111,7 +111,7 @@ rust-harness/
   runtime/              # lib crate: inference engine
     src/
       session.rs        # Session handle owning the KV cache
-      sampler.rs        # temperature, top-p, grammar constraints
+      sampler.rs        # temperature, top-k, top-p, grammar constraints
       grammar.rs        # tool-call JSON grammar compilation
       kv.rs             # per-layer cache allocation and delta prefill
       checkpoint.rs     # config.json and model.safetensors: the weight loader

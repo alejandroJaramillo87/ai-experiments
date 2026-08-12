@@ -190,7 +190,9 @@ Its logits match an independent numpy reference over the committed synthetic
 checkpoint.
 
 Around that sit the observability and context layers: a flight recorder
-(`--record`) that replays a run as a `MockModel`, `tracing` spans with a
+(`--record`) that replays a run as a `MockModel` — carrying the sampling
+parameters and the per-step selection, so a replay reproduces the transcript
+rather than only the distribution it was drawn from — `tracing` spans with a
 Perfetto-loadable `--trace-chrome`, an interp seam (activation capture, control
 vectors, in-band probe monitoring), conversation compaction, and a KV cache
 serialized on exit and restored at startup — continuation logits after a restore
