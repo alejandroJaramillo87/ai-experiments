@@ -16,12 +16,6 @@ live in `/docs/verification/`, not here.
 | [observation-frames.md](observation-frames.md) | What the agent loop and chat mode contribute to the training and interpretability programs, and the acceptance bar for new features |
 | [live-events.md](live-events.md) | Live run-state events as JSONL, with a serve mode and HTML view that also replays finished runs |
 
-## Model reference
-
-| Document | Description |
-|----------|-------------|
-| [gemma-4-ingestion.md](gemma-4-ingestion.md) | What the runtime requires to ingest a Gemma 4 checkpoint: the GGUF metadata contract, the Hugging Face to GGUF translation, and every architecture feature the backend checks by name |
-
 ## Forward looking
 
 | Document | Description |

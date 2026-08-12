@@ -279,6 +279,32 @@ the frequencies, not of a narrowed slice.
 Sliding-attention layers use `rope_type: default` with `head_dim` of 256 and no
 `partial_rotary_factor`, so all 256 dimensions rotate.
 
+#### How the converted files express it
+
+llama.cpp cannot express a zero-padded frequency vector through metadata, so the converter
+writes the padding as a tensor. `rope_freqs.weight [256] F32` appears once per file
+(`docs/models/gemma4-gguf.txt` lines 630 and 639), holding 64 entries of 1.0 followed by 192
+entries of 1e30. Those are divisors: dividing an inverse frequency by 1e30 drives the angle to
+approximately zero, reproducing the Hugging Face identity. The converter records the tensor as
+a workaround, because the Hugging Face split-half ordering is `cc000000ss000000` while ggml's
+neox rotation supports only `ccss000000000000`, and the head cannot be rearranged without
+breaking `use_alternative_attention`.
+
+Two consequences for anything reading a converted file:
+
+- `gemma4.rope.dimension_count = 512` is the **width of the rotation operation**, not a claim
+  that 512 dimensions receive a non-trivial rotation. A reader that treats it as the count of
+  rotating dimensions and skips `rope_freqs.weight` produces wrong logits without erroring.
+- `gemma4.rope.dimension_count_swa = 256` is `head_dim_swa * partial_rotary_factor_swa`. With
+  `head_dim` 256 and no sliding-layer partial factor the default of 1.0 applies, so the sliding
+  regime genuinely rotates its full width. `rope_freqs.weight` applies to the full-attention
+  layers only.
+
+There is no `rope_type` key in the converted form: the type is expressed structurally, through
+`rope_freqs.weight` plus the full-width `dimension_count`. The rust harness reads the published
+checkpoint rather than a converted file and derives the same divisors from
+`partial_rotary_factor` directly (`cpu.rs`, `rope_rotating_pairs`).
+
 ## E-series exclusive features
 
 This section is the practical core of the document. Each item below is present in E2B and E4B
@@ -345,6 +371,32 @@ model-level projection (`per_layer_model_projection`) and a 256-wide normalizati
 The per-layer table is large. On E2B it holds 262144 × 8960 = 2,348,810,240 parameters,
 exceeding the entire transformer body. Any memory plan for the E-series that omits it is wrong
 by more than a factor of two.
+
+### The `per_layer` substring does not survive conversion
+
+The six families are named consistently in the published checkpoint and inconsistently in the
+converted one. Half of them lose the `per_layer` substring:
+
+| Hugging Face name | llama.cpp name | Contains `per_layer` |
+|---|---|---|
+| `model.embed_tokens_per_layer` | `per_layer_token_embd` | yes |
+| `model.per_layer_model_projection` | `per_layer_model_proj` | yes |
+| `model.per_layer_projection_norm` | `per_layer_proj_norm` | yes |
+| `model.layers.{bid}.per_layer_input_gate` | `blk.{bid}.inp_gate` | no |
+| `model.layers.{bid}.per_layer_projection` | `blk.{bid}.proj` | no |
+| `model.layers.{bid}.post_per_layer_input_norm` | `blk.{bid}.post_norm` | no |
+
+`post_per_layer_input_norm` becomes `blk.{bid}.post_norm`, which additionally collides in
+appearance with the ordinary Gemma post-norm naming and is distinguishable from
+`blk.{bid}.post_attention_norm` and `blk.{bid}.post_ffw_norm` only by knowing the architecture.
+
+The substring was once how a backend detected the feature, and it worked only because the three
+file-level tensors retain it and are present in every per-layer-embedding checkpoint
+(`docs/models/gemma4-gguf.txt` lines 632-635 and 641). It was sound for refusal and would have
+been unsound for enumeration: a whitelist keyed on the same substring silently omits `inp_gate`,
+`proj`, and `post_norm` — three of the six families, and every per-block one. This is why the
+rust harness lists all six by name in `PLE_TOP_LEVEL_TENSORS` and `PLE_LAYER_TENSORS` and
+requires them together, rather than finding them by substring.
 
 ## Cross-layer KV cache sharing
 
@@ -691,9 +743,9 @@ like a hazard and each resolves differently:
   the freeze filters iterate, so no freeze pattern can expose it to an optimizer. See
   [docs/training/gemma-4-training.md](../training/gemma-4-training.md).
 
-What remains is the rust harness, which does not read the tensor under either name — a gap
-that matters only when Gemma 4 support is implemented there, and which is recorded in
-[docs/rust-harness/gemma-4-ingestion.md](../rust-harness/gemma-4-ingestion.md).
+**The rust harness is unaffected.** It was the outstanding gap while Gemma 4 support was being
+built; the backend now reads the tensor and applies it as the layer's last operation
+(`OPTIONAL_LAYER_TENSORS` in `cpu.rs`, and the `layer_output_scale` multiply).
 
 ### The per-layer embedding data path
 

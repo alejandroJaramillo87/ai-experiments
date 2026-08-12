@@ -26,7 +26,8 @@ root rather than being independent bugs:
 all six. They now appear in two further analysis documents besides the spec —
 `docs/training/gemma-4-training.md` (which states outright that `use_double_wide_mlp`
 "appears nowhere in `/training` or `/common`" and that `num_kv_shared_layers`/`layer_types`
-"have no consumer") and `docs/rust-harness/gemma-4-ingestion.md`. Those corroborate the
+"have no consumer") and the rust harness ingestion reference, since deleted with the GGUF
+loader it described, its surviving facts folded into `docs/models/gemma-4.md`. Those corroborate the
 structural claim rather than weakening it; do not read their existence as the gap being
 closed.
 

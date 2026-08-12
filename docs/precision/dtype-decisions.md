@@ -126,9 +126,9 @@ different model, and no error announces it.
 **The three float widths are kept, and the set is not a preference.** It is the set of widths a
 checkpoint we might be handed can declare. F32 and F16 cost one conversion function each and
 nothing in the hot path, and refusing them would remove the ability to *read* a file rather than
-the ability to *prefer* BF16 — a preference already expressed where it matters, in
-[`docs/rust-harness/gemma-4-ingestion.md`](../rust-harness/gemma-4-ingestion.md), which records
-BF16 as "the reference format rather than a tolerated one".
+the ability to *prefer* BF16. BF16 is the reference format rather than a tolerated one: it is
+what Gemma 4 is published in and what the training tier produces, so widening it to f32 is
+lossless and the checkpoint's own values reach the forward pass unrounded.
 
 **What GGUF is still for.** [`rust-harness/runtime/src/gguf.rs`](../../rust-harness/runtime/src/gguf.rs)
 and the `GGML_F32`, `GGML_F16`, and `GGML_BF16` constants in `tensor.rs` survive to read the

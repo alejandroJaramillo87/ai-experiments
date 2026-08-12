@@ -65,10 +65,6 @@ EXEMPT_PREFIXES: tuple[str, ...] = ()
 
 # Exempt by name, each for a stated reason.
 EXEMPT_FILES = {
-    # An analysis of upstream llama.cpp and transformers sources at a pinned
-    # revision. Its paths describe those checkouts, not this tree, and no
-    # resolution rule here can tell one from the other.
-    "docs/rust-harness/gemma-4-ingestion.md",
     # The published Gemma 4 architecture reference, citing the same upstream
     # transformers and llama.cpp sources for the same reason.
     "docs/models/gemma-4.md",

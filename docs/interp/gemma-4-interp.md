@@ -278,9 +278,10 @@ Neither writes an array-valued metadata key, and both write float32. The Rust re
 steering artifacts stay float32 regardless of the model's storage type — they are small, and
 exactness in the direction vectors is worth more than their size.
 
-The **model** GGUF path is a separate contract: those files are BF16, which the reader now
-decodes losslessly, and what still refuses them is architectural rather than format-level. See
-`/docs/rust-harness/gemma-4-ingestion.md`.
+There is no longer a **model** GGUF path to contrast them with. The runtime reads the published
+checkpoint — `config.json` and `model.safetensors` — and keeps each weight at its declared
+width, so the steering artifacts are now the only GGUF containers it opens. See
+[../rust-harness/runtime-design.md](../rust-harness/runtime-design.md).
 
 ## Ecosystem gaps
 

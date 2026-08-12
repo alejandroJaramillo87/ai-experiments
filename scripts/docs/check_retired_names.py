@@ -144,6 +144,14 @@ RETIRED: dict[str, tuple[str, str]] = {
         "config.json and tabulates safetensors dtypes and shapes rather than "
         "reconstructing both from metadata keys and ggml type ids",
     ),
+    "docs/rust-harness/gemma-4-ingestion.md": (
+        "docs/models/gemma-4.md",
+        "the document described the GGUF ingestion contract, and the contract "
+        "died with the loader; the family facts that outlived it -- the "
+        "rope_freqs divisor tensor and the per_layer naming that conversion "
+        "drops -- moved to the model reference, which documents the published "
+        "files llama.cpp still serves",
+    ),
     "gguf_info_check.rs": (
         "checkpoint_info_check.rs",
         "renamed with the binary it tests; the --check exit-code contract it "

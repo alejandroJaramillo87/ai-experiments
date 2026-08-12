@@ -48,7 +48,7 @@
  * rather than
  * loaded with the extra structure silently dropped: an ignored weight tensor
  * still produces fluent text, so a silent load would be an undetectable wrong
- * answer. See docs/rust-harness/gemma-4-ingestion.md.
+ * answer. See docs/models/gemma-4.md.
  *
  * RoPE is per layer, not per model. Gemma 4 runs two regimes whose bases
  * differ by two orders of magnitude (1e6 global against 1e4 sliding), and
@@ -59,7 +59,7 @@
  * recomputed from the base. They are, but not from the base alone, and a
  * reader that skips the divisors rotates 512 dimensions where the reference
  * rotates 128 -- finite, fluent, wrong. See the proportional-RoPE derivation
- * in docs/rust-harness/gemma-4-ingestion.md.
+ * in docs/models/gemma-4.md.
  *
  * The K/V cache caps sliding layers at `kv::window_capacity` and keeps the
  * full sequence only in global ones. `LayerKv` is a linear compacting buffer,
@@ -102,7 +102,7 @@ use crate::tensor::{load_tensor, widened_row_dot_block, Weight};
 /// deliberately absent: Gemma 4 varies all three by layer, and a scalar field
 /// here is exactly the representation that cannot say so. They live in
 /// `LayerSpec`, so a reader has to name the layer it means. See
-/// `docs/rust-harness/gemma-4-ingestion.md`.
+/// `docs/models/gemma-4.md`.
 #[derive(Debug, Clone, Copy)]
 pub struct Config {
     pub vocab_size: usize,
@@ -409,7 +409,7 @@ const PLE_TOP_LEVEL_TENSORS: [&str; 3] = [
 /// additionally distinguishable from the ordinary `post_attention_norm` and
 /// `post_ffw_norm` only by knowing the architecture. They are therefore
 /// listed rather than found by the substring that finds the file-level three
-/// (`docs/rust-harness/gemma-4-ingestion.md`).
+/// (`docs/models/gemma-4.md`).
 const PLE_LAYER_TENSORS: [&str; 3] = ["inp_gate.weight", "proj.weight", "post_norm.weight"];
 
 /// `per_layer_input_scale`, the factor applied to the sum of the two
@@ -4453,7 +4453,7 @@ mod tests {
         // E-series checkpoint carries them on the shared tail too, and nothing
         // in the converter drops them. This backend follows the modeling code
         // and leaves them unread; that is the recorded conflict in
-        // `docs/rust-harness/gemma-4-ingestion.md`, not a settled fact.
+        // `docs/models/gemma-4.md`, not a settled fact.
         //
         // Perturbing those tensors must therefore change nothing. If a
         // workstation run against real weights shows it should, this test is
