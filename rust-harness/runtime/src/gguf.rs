@@ -1,12 +1,16 @@
 /*
  * gguf — GGUF container parsing: header, metadata, tensor directory.
  *
- * Parses the GGUF v3 layout used by quantized Gemma checkpoints. Only the
- * metadata value types the loader actually consumes are supported; anything
+ * Parses the GGUF v3 layout. This is no longer a model path: the runtime
+ * loads models from Hugging Face checkpoints (`checkpoint.rs`), and the only
+ * GGUF containers it reads are the probe and control-vector artifacts the
+ * Python interp exporters write. The contract, including which side writes
+ * and which side reads, is `schemas/gguf_artifacts.json`, guarded by
+ * `runtime/tests/python_exporter_contract.rs`.
+ *
+ * Only the metadata value types those artifacts use are supported; anything
  * else is a hard error rather than a silent skip, so a format surprise shows
- * up at load time. The parser keeps every tensor entry; the loader filters
- * vision-tower tensors with `is_vision_tensor` — the design skips
- * multimodality at load time.
+ * up at load time rather than as silent garbage.
  */
 
 use std::collections::BTreeMap;
@@ -24,18 +28,14 @@ pub enum MetaValue {
     F32(f32),
     Bool(bool),
     Str(String),
-    // Array element types the loader consumes: the tokenizer vocab needs
-    // tokens (str), scores (f32), and token_type (i32); Gemma 4 converters
-    // publish the per-layer attention schedule as a bool array.
+    // Array types the model loader needed for the tokenizer vocabulary and the
+    // per-layer attention schedule. No current reader consumes them: the probe
+    // and control-vector artifacts carry only scalar metadata. They are kept
+    // because a GGUF written by llama.cpp tooling still contains them, and
+    // failing to parse a key is a hard error here rather than a skip.
     ArrStr(Vec<String>),
     ArrF32(Vec<f32>),
     ArrI32(Vec<i32>),
-    // Parsing a bool array is not consuming it. Gemma 4 writes
-    // `attention.sliding_window_pattern` as a per-layer bool array where
-    // Config::layer_kind expects a uint32 stride, so the key now parses but
-    // the CPU backend still ignores it — which would build a full-attention
-    // model for an interleaved checkpoint. check_supported must refuse such
-    // a file until the schedule is read; see docs/rust-harness/gemma-4-ingestion.md.
     ArrBool(Vec<bool>),
 }
 

@@ -1,5 +1,9 @@
 /*
- * tensor — GGUF tensor payload access and dequantization to f32.
+ * tensor — tensor payload access and dequantization to f32.
+ *
+ * Two consumers share this module: the GGUF artifact readers (probes and
+ * control vectors) reach the payload through `GgufFile`, and the safetensors
+ * checkpoint loader builds the `Weight` values below.
  *
  * The CPU backend computes in plain f32, so every supported storage type
  * dequantizes to a dense Vec<f32> at load time. Supported types are the ones

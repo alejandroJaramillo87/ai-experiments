@@ -44,7 +44,8 @@
  *
  * That is still a subset of the published Gemma 4 architecture, which adds
  * value normalization and, on the larger tiers, key-equals-value attention. A
- * checkpoint carrying either is refused by `check_supported` rather than
+ * checkpoint carrying either is refused by `check_supported_checkpoint`
+ * rather than
  * loaded with the extra structure silently dropped: an ignored weight tensor
  * still produces fluent text, so a silent load would be an undetectable wrong
  * answer. See docs/rust-harness/gemma-4-ingestion.md.
@@ -305,11 +306,11 @@ fn kv_donors(kinds: &[LayerKind], shared: usize) -> Result<Vec<usize>> {
 impl ModelSpec {
     /// Read the declared shape from a checkpoint's `config.json`.
     ///
-    /// Shorter than `from_gguf` because the checkpoint states what the GGUF
-    /// implies. There is no stride to infer and no periodicity to enforce,
-    /// no paired `_swa` keys to resolve against their unsuffixed partners,
-    /// and no scalar-or-array union to normalize: `TextConfig` has already
-    /// validated its own fields, so this is a mapping and not a parse.
+    /// A mapping, not a parse. The checkpoint states what a converted
+    /// container only implies: there is no stride to infer and no periodicity
+    /// to enforce, no paired `_swa` keys to resolve against their unsuffixed
+    /// partners, and no scalar-or-array union to normalize, because
+    /// `TextConfig` has already validated its own fields.
     pub fn from_checkpoint(c: &crate::checkpoint::TextConfig) -> Result<ModelSpec> {
         let config = Config {
             vocab_size: c.vocab_size,
@@ -417,12 +418,10 @@ const PLE_INPUT_SCALE: f32 = std::f32::consts::FRAC_1_SQRT_2;
 
 /// Refuse a checkpoint whose structure the forward pass does not implement.
 ///
-/// The architectural half of `check_supported`. Most of that function is
-/// concerned with metadata keys that only the GGUF spelling has -- the
-/// `rope.*` allowlist, the `dimension_count` width check, the softcapping
-/// keys -- and `TextConfig::validate` covers the equivalent ground by having
-/// named fields to check instead of a namespace to police. What is left is
-/// what the *tensors* have to satisfy, which no config field can state.
+/// The architectural half of the load-time refusal. `TextConfig::validate`
+/// covers what the config can state, having named fields to check instead of
+/// a metadata namespace to police. What is left here is what the *tensors*
+/// have to satisfy, which no config field can state.
 ///
 /// The unconsumed-tensor backstop is the important survivor. Loading is
 /// name-directed, so a feature published after this code presents as tensors
@@ -1997,40 +1996,12 @@ fn softmax_in_place(scores: &mut [f32]) {
 }
 
 impl CpuModel {
-    /// Load from a Hugging Face checkpoint: `config.json` and
-    /// `model.safetensors`.
+    /// Load a model from a checkpoint directory, holding no payload open.
     ///
-    /// Two things differ from `from_gguf` beyond the container.
-    ///
-    /// Tensors are checked by *shape*, not element count. A transposed matrix
-    /// has the same element count, so the GGUF path's check could not see one
-    /// -- and while the layout is in fact identical between the two formats
-    /// (GGUF `ne` order reversed is already row-major `[out, in]`, which is
-    /// what `matvec_into` walks), that is a fact worth a guard rather than a
-    /// comment. Nothing downstream would catch a transpose: the forward pass
-    /// slices by strides from the config and returns finite, wrong logits.
-    ///
-    /// RMSNorm weights load as the checkpoint stores them, with no shift.
-    ///
-    /// This applied `1 + w` until the Tier T fixture measured it. Gemma 1
-    /// through Gemma 3 store a parameter initialized to zero and add one at
-    /// every use, and that convention was carried forward here; Gemma 4's
-    /// `Gemma4RMSNorm` initializes `weight` to `torch.ones` and multiplies by
-    /// plain `w`. Adding one to a weight that is already about one scaled
-    /// every normalized activation by roughly two.
-    ///
-    /// The GGUF converter agreed, for what that was worth: it writes
-    /// `norm_shift` 0.0 for gemma3n and gemma4, so the shift was ours alone.
-    /// Nothing in this repository could say so, because `synth.rs` wrote
-    /// `v - 1.0` into the fixture and `reference_logits.py` added one back --
-    /// one belief, spelled at three ends, agreeing with itself.
-    /// Load a model from a checkpoint directory, leaving nothing mapped.
-    ///
-    /// The one entry point every binary should use. `from_checkpoint` copies
-    /// each tensor out of a mapping and faults in every page it touches, so a
-    /// caller that keeps `CheckpointFiles` alive afterwards holds the whole
-    /// file resident -- roughly 15 GiB for E4B, never read again, and counted
-    /// in peak RSS for the rest of the run. Nothing above the loader needs it.
+    /// The one entry point every binary should use. `from_checkpoint` reads
+    /// each tensor from the open file at its recorded offset, so a caller that
+    /// keeps `CheckpointFiles` alive afterwards holds a file handle it will
+    /// never read again. Nothing above the loader needs it.
     ///
     /// The snapshot fingerprint comes back alongside the model because it is
     /// the one thing a caller *would* have kept the checkpoint open for, and
@@ -2053,6 +2024,28 @@ impl CpuModel {
         Ok((model, crate::checkpoint::fingerprint(&files)))
     }
 
+    /// Load from a Hugging Face checkpoint: `config.json` and
+    /// `model.safetensors`.
+    ///
+    /// Tensors are checked by *shape*, not element count. A transposed matrix
+    /// has the same element count, so a count check cannot see one, and
+    /// nothing downstream would catch it: the forward pass slices by strides
+    /// from the config and returns finite, wrong logits.
+    ///
+    /// RMSNorm weights load as the checkpoint stores them, with no shift.
+    ///
+    /// This applied `1 + w` until the Tier T fixture measured it. Gemma 1
+    /// through Gemma 3 store a parameter initialized to zero and add one at
+    /// every use, and that convention was carried forward here; Gemma 4's
+    /// `Gemma4RMSNorm` initializes `weight` to `torch.ones` and multiplies by
+    /// plain `w`. Adding one to a weight that is already about one scaled
+    /// every normalized activation by roughly two.
+    ///
+    /// llama.cpp's converter agreed, for what that was worth: it writes
+    /// `norm_shift` 0.0 for gemma3n and gemma4, so the shift was ours alone.
+    /// Nothing in this repository could say so, because `synth.rs` wrote
+    /// `v - 1.0` into the fixture and `reference_logits.py` added one back --
+    /// one belief, spelled at three ends, agreeing with itself.
     pub fn from_checkpoint(ck: &crate::checkpoint::Checkpoint) -> Result<CpuModel> {
         use crate::checkpoint::hf_tensor_name;
 
@@ -2060,10 +2053,11 @@ impl CpuModel {
         let config = spec.config;
         check_supported_checkpoint(ck, &spec)?;
 
-        // Named by the GGUF spelling and translated through the one shared
-        // table, so the loader and the fixture writer cannot disagree about a
-        // name. The GGUF spelling stays the internal vocabulary while both
-        // loaders exist; it is the loader being removed that should change it.
+        // Named by the llama.cpp spelling and translated through the one
+        // shared table, so the loader and the fixture writer cannot disagree
+        // about a name. That spelling is now only an internal vocabulary --
+        // the short names are shorter and every call site already used them,
+        // so renaming to the published spelling was not worth the churn.
         let hf = |gguf: &str| -> Result<String> {
             hf_tensor_name(gguf).with_context(|| format!("no published name for tensor {gguf}"))
         };
@@ -2157,10 +2151,11 @@ impl CpuModel {
                 }),
                 None => None,
             };
-            // Left unloaded on a shared-KV layer for the reason `from_gguf`
-            // records: the modeling code never evaluates them, and an
-            // allocated-but-unread weight is the shape of a silent wrong
-            // answer.
+            // Left unloaded on a shared-KV layer: the modeling code never
+            // evaluates them, and an allocated-but-unread weight is the shape
+            // of a silent wrong answer. The test
+            // `a_shared_layers_own_key_and_value_weights_are_deliberately_unread`
+            // holds the decision.
             let (wk, wv, k_norm) = match spec.owns_cache(i) {
                 true => (
                     w("attn_k.weight", &[kv_dim, embed_dim])?,

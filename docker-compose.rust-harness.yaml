@@ -4,8 +4,10 @@
 # separate compose file so `make up` never starts it; the harness is an
 # interactive tool, not a daemon. Invoke via the Makefile:
 #   make harness-build
-#   make harness-run ARGS='--model /app/models/gguf/<model>.gguf <task>'
-#   make harness-chat ARGS='--model /app/models/gguf/<model>.gguf'
+#   make harness-run ARGS='--model /app/models/hf/<model> <task>'
+#   make harness-chat ARGS='--model /app/models/hf/<model>'
+# --model takes a checkpoint directory holding config.json and
+# model.safetensors; a path to a weights file resolves to its directory.
 # or directly: docker compose -f docker-compose.rust-harness.yaml run --rm harness ...
 #
 # The container is for reproducibility, not sandboxing: it has no network
