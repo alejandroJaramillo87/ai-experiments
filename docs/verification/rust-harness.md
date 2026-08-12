@@ -157,16 +157,56 @@ feed-forward width, RoPE base). Record the full dump verbatim, including the
 `=== config.json ===` echo and the `=== Tensors ===` table, because the
 summary is derived and those two sections are the evidence.
 
-Observed:
+Observed (2026-08-12, `/mnt/ai-data/models/hf/gemma-4-E4B`, 2624 lines; the
+summary tail, which is what answers the four questions — the full dump was
+redirected to a file rather than pasted):
 
 ```
+Dtypes (this backend loads F32, F16 and BF16):
+  BF16  x2130
+Feed-forward widths: uniform 10240 across 42 layers
+Shared KV cache: num_kv_shared_layers is 18 of 42, so layers 24-41 read a donor's
+Attention schedule: sssssGsssssGsssssGsssssGsssssGsssssGsssssG
+  (G = full attention, s = sliding window)
+
+Per-layer geometry (head width, feed-forward width, RoPE base):
+  layer 0: SlidingWindow(512), head 256, ffn 10240, rope base 10000
+  ...
+  layer 5: Global, head 512, ffn 10240, rope base 1000000
+  ...
+  layer 41: Global, head 512, ffn 10240, rope base 1000000
+
+[OK] CPU backend compatibility: supported
 ```
 
-Status: PENDING. A first attempt on 2026-08-12 ran without `--text-only` and
+Status: VERIFIED 2026-08-12. A first attempt ran without `--text-only` and
 ended in `[ERROR] CPU backend compatibility: checkpoint is multimodal`, which
-is the guard working rather than a finding; the flag is now in the command
-above and the run needs repeating. The dump is not recorded here because that
-attempt was truncated in transit, and a partial dump is not evidence.
+is the guard working rather than a finding.
+
+The four questions, answered against the artifact rather than the published
+description:
+
+2. **Shared KV: yes.** `num_kv_shared_layers` is 18 of 42, so layers 24-41
+   read a donor's cache and only 0-23 own one.
+3. **Feed-forward widths are uniform**, 10240 across all 42 layers — not
+   per-layer, as the MatFormer framing elsewhere in this file implies.
+4. **RoPE is dual and partial.** Sliding layers run head 256 at base 10000;
+   global layers run head 512 at base 1000000. The two differ in both head
+   width and frequency base, so a single-base implementation at full head
+   dimension would be wrong on every layer.
+
+Question 1 (per-layer embedding tensors) is answered in the tensor-family
+section of the full dump, not in this tail, and is not recorded here.
+
+Everything is BF16 — 2130 tensors, no exceptions — which is why the loader's
+storage-preserving path is the only one this checkpoint exercises.
+
+**This dump also confirms the KV arithmetic in RH.2 empirically.** The
+schedule puts a global layer at 5, 11, 17, 23, 29, 35 and 41: seven in the
+model, but only the first four sit below the shared-KV boundary at 24 and
+therefore own a cache. Four global owners at head 512 and twenty sliding
+owners at head 256 is exactly the split RH.2's 4.05 GiB reconciles to, and it
+is now read off the artifact rather than inferred from the total.
 
 ### RH.1a Shared-KV weight conflict
 
@@ -424,6 +464,25 @@ no chat template is applied and the prompt reaches the model as raw text. This
 campaign already records the supporting gap: the Gemma 3 turn markers were
 removed with no replacement, and no golden covers the rendered token stream
 against Gemma 4's convention, so nothing would have caught a missing template.
+
+**A template is rendered, so the fault is narrower than "no template".**
+`harness/src/template.rs:31-52` renders `<bos>` then
+`<|turn>{role}\n{content}<turn|>`, and `harness/tests/template_contract.rs`
+pins those literals against `schemas/chat_template.json`. What is unverified
+is whether the *published* E4B `tokenizer.json` carries `<|turn>` as a piece.
+`runtime/src/tokenizer.rs:304-321` decides that, and its own doc comment
+states the consequence plainly: "A literal that is not in the vocabulary
+matches nothing: the caller may name a delimiter this checkpoint does not
+carry, and encoding it as text is the same treatment any other unknown string
+gets." `tokenizer.rs:154` notes that a published Gemma tokenizer carries
+`<start_of_turn>`, and `template_contract.rs:8` records that this harness
+once emitted exactly that marker and was corrected away from it.
+
+So if the real vocabulary spells the delimiter `<start_of_turn>` and the
+renderer emits `<|turn>`, the markers encode as ordinary text, the model never
+sees a turn boundary, and it continues the document — which is precisely the
+observed reply. The silent degradation is itself the defect: a delimiter the
+checkpoint does not carry produces fluent garbage and no error.
 
 **Do not treat this as a numerics finding until RH.1a check 2 discriminates.**
 A greedy logit comparison against `transformers` on a bare factual completion
