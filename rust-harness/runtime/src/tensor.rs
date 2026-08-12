@@ -187,6 +187,29 @@ fn block_fold<T: Copy, const R: usize>(
     *out = acc;
 }
 
+/// `block_fold` over `R` rows that a caller has already widened to f32.
+///
+/// **Bit-identical to `Weight::row_dot_block` by shared implementation rather
+/// than by argument.** This is the same `block_fold` the `F32` arm of that
+/// method runs, over the same values in the same k-outer order, into the same
+/// `R` accumulators. There are not two kernels here to reason about, only two
+/// callers of one.
+///
+/// The values are the same because widening is exact: `bf16_to_f32` is a shift
+/// and `f16_to_f32` lands 10 mantissa bits in a 23-bit field, so converting a
+/// stored element before the fold and converting it inside the fold produce
+/// the same f32. That is the argument already made above for widening at use
+/// versus at load, applied one level down.
+///
+/// The reason a caller would want this is that the conversion is otherwise
+/// repeated: a batched matmul folding `R` weight rows against `n` positions
+/// widens each stored element `n` times to use it `n` times. See
+/// `model::cpu::fill_panel_widened`.
+pub fn widened_row_dot_block<const R: usize>(rows: &[f32], x: &[f32], out: &mut [f32; R]) {
+    debug_assert_eq!(rows.len(), R * x.len(), "widened block is R whole rows");
+    block_fold(rows, 0, x, |a| a, out);
+}
+
 /// A weight matrix held in the width its checkpoint published.
 ///
 /// **Widening at use is bit-identical to widening at load**, which is what
@@ -636,6 +659,46 @@ mod tests {
                     *g,
                     weight.row_dot(j, x),
                     "{name}: block of 8 differed at row {j}"
+                );
+            }
+        }
+    }
+
+    /// Widening before the fold and widening inside it are the same fold.
+    ///
+    /// Asserted directly, one level below the batched matmul that motivates
+    /// it, so a failure names the conversion rather than the panel machinery.
+    /// Exact equality for the same reason as the block test above: a tolerance
+    /// would be conceding the property does not hold.
+    #[test]
+    fn a_widened_block_is_bit_identical_to_folding_the_stored_rows() {
+        const IN: usize = 67;
+        const OUT: usize = 16;
+        let (w, x) = probe_row(IN * OUT, 23);
+        let x = &x[..IN];
+
+        let bf16: Vec<u16> = w.iter().map(|v| (v.to_bits() >> 16) as u16).collect();
+        let f16: Vec<u16> = w.iter().map(|v| (v.to_bits() >> 17) as u16).collect();
+        let cases = [
+            ("f32", Weight::F32(w.clone())),
+            ("bf16", Weight::Bf16(bf16)),
+            ("f16", Weight::F16(f16)),
+        ];
+
+        for (name, weight) in cases {
+            // Off zero, so a block origin dropped somewhere in the widening
+            // cannot pass by folding row 0 four times.
+            for o in [0usize, 1, 7] {
+                let mut wide = vec![0.0f32; 4 * IN];
+                for j in 0..4 {
+                    weight.widen_row_into(o + j, &mut wide[j * IN..(j + 1) * IN]);
+                }
+                let (mut stored, mut hoisted) = ([0.0f32; 4], [0.0f32; 4]);
+                weight.row_dot_block::<4>(o, x, &mut stored);
+                widened_row_dot_block::<4>(&wide, x, &mut hoisted);
+                assert_eq!(
+                    stored, hoisted,
+                    "{name}: hoisting the widen changed the fold at row {o}"
                 );
             }
         }

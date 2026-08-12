@@ -80,7 +80,7 @@ use anyhow::{bail, ensure, Context, Result};
 use super::{Logits, Model, Token};
 use crate::gguf::GgufFile;
 use crate::kv::LayerKind;
-use crate::tensor::{load_tensor, Weight};
+use crate::tensor::{load_tensor, widened_row_dot_block, Weight};
 
 /// Quantities that are one value for the whole model.
 ///
@@ -1202,17 +1202,20 @@ pub enum DotKind {
     Rows8,
     /// Sixteen output rows per block.
     Rows16,
+    /// Four output rows per block, widened once instead of once per position.
+    Widen4,
     /// Sixteen interleaved partial sums within one row. Changes the bits.
     Lanes16,
 }
 
 impl DotKind {
     /// Every kind, in the order a sweep should walk them.
-    pub const ALL: [DotKind; 5] = [
+    pub const ALL: [DotKind; 6] = [
         DotKind::Sequential,
         DotKind::Rows4,
         DotKind::Rows8,
         DotKind::Rows16,
+        DotKind::Widen4,
         DotKind::Lanes16,
     ];
 
@@ -1223,6 +1226,7 @@ impl DotKind {
             DotKind::Rows4 => "rows4",
             DotKind::Rows8 => "rows8",
             DotKind::Rows16 => "rows16",
+            DotKind::Widen4 => "widen4",
             DotKind::Lanes16 => "lanes16",
         }
     }
@@ -1378,7 +1382,10 @@ fn fill_dots(
     match dot {
         DotKind::Sequential => par_rows(out, threads, |o, dst| *dst = post(w.row_dot(o, x))),
         DotKind::Lanes16 => par_rows(out, threads, |o, dst| *dst = post(w.row_dot_lanes(o, x))),
-        DotKind::Rows4 => {
+        // One vector, so there is no second position to amortize a widened
+        // block across and `Widen4` has nothing to hoist. It folds from stored
+        // weights here, which is what `Rows4` already is.
+        DotKind::Rows4 | DotKind::Widen4 => {
             par_row_runs(out, threads, |b, run| {
                 fill_run_blocked::<4>(w, x, b, run, &post)
             });
@@ -1475,6 +1482,78 @@ fn fill_panel_blocked<const R: usize>(
     }
 }
 
+/// `fill_panel_blocked` with the widening hoisted out of the position loop.
+///
+/// **The experiment this exists to run.** `fill_panel_blocked` calls
+/// `row_dot_block` once per position, and each of those calls widens the same
+/// `R` stored weight rows to f32 again. At `n` positions every weight element
+/// is converted `n` times to be used `n` times. Batching removed the redundant
+/// *reads* of those rows and left the redundant *conversions* untouched. This
+/// converts the block once and folds the `n` positions against the result.
+///
+/// Bit-identical, and not marginally so: `widened_row_dot_block` is the same
+/// `block_fold` the stored path runs, over values that widening produces
+/// exactly either way. See its doc comment.
+///
+/// What could make it slower rather than faster, stated because the answer is
+/// not obvious: the widened block is twice the bytes of the stored one. At
+/// `in_dim` 2048 that is 32 KB against 16 KB and both are L1-resident, but at
+/// the FFN widths it is 256 KB against 128 KB and the traffic is real. A win
+/// at the attention projections and a loss at the FFN would net out to
+/// approximately nothing, which is a result rather than a bug.
+///
+/// The scratch is allocated per call rather than held in `Scratch` because
+/// this is an experiment and the allocation is one per thread per matmul,
+/// nowhere near the inner loop. A version that ships hoists it.
+fn fill_panel_widened<const R: usize>(
+    w: &Weight,
+    x: &[f32],
+    in_dim: usize,
+    n: usize,
+    base: usize,
+    run: &mut [f32],
+) {
+    let feats = run.len() / n;
+    let full = feats / R * R;
+    let (head, tail) = run.split_at_mut(full * n);
+    let mut wide = vec![0.0f32; R * in_dim];
+    for (b, block) in head.chunks_exact_mut(R * n).enumerate() {
+        let o = base + b * R;
+        for j in 0..R {
+            w.widen_row_into(o + j, &mut wide[j * in_dim..(j + 1) * in_dim]);
+        }
+        let mut got = [0.0f32; R];
+        for p in 0..n {
+            widened_row_dot_block::<R>(&wide, &x[p * in_dim..(p + 1) * in_dim], &mut got);
+            for (j, g) in got.iter().enumerate() {
+                block[j * n + p] = *g;
+            }
+        }
+    }
+    // The same remainder rule as the stored path, and the same reason: the
+    // single-row fold gives the bits a partial block would have.
+    for (i, acc) in tail.chunks_exact_mut(n).enumerate() {
+        let o = base + full + i;
+        for (p, dst) in acc.iter_mut().enumerate() {
+            *dst = w.row_dot(o, &x[p * in_dim..(p + 1) * in_dim]);
+        }
+    }
+}
+
+/// Positions below which `Widen4` folds from stored weights instead.
+///
+/// Hoisting the conversion only pays if the conversion is reused, and at one
+/// position it is not reused at all: decode would widen `R` rows to use each
+/// element exactly once, paying a copy and an allocation for nothing. So the
+/// decode path takes the stored kernel whatever the flag says.
+///
+/// **No test defends this number, and none can.** Both kernels produce the
+/// same bits, so the threshold is invisible to every correctness test in the
+/// tree -- which is exactly what makes it safe to apply automatically rather
+/// than expose as a flag, and exactly why it needs saying here. It is a
+/// performance switch, and only a measurement can be wrong about it.
+const WIDEN_MIN_POSITIONS: usize = 8;
+
 /// `fill_panel_blocked` for the kinds that fold one row at a time.
 fn fill_panel_single(
     w: &Weight,
@@ -1536,6 +1615,17 @@ fn matmul_panel(
         }),
         DotKind::Rows16 => par_feature_runs(fm, n, threads, |base, run| {
             fill_panel_blocked::<16>(w, x, in_dim, n, base, run);
+        }),
+        // Below the threshold this is `Rows4`, deliberately and silently. The
+        // two agree bit for bit, so nothing downstream can observe the switch;
+        // see `WIDEN_MIN_POSITIONS`.
+        DotKind::Widen4 if n < WIDEN_MIN_POSITIONS => {
+            par_feature_runs(fm, n, threads, |base, run| {
+                fill_panel_blocked::<4>(w, x, in_dim, n, base, run);
+            })
+        }
+        DotKind::Widen4 => par_feature_runs(fm, n, threads, |base, run| {
+            fill_panel_widened::<4>(w, x, in_dim, n, base, run);
         }),
     }
     for (o, feature) in fm.chunks_exact(n).enumerate() {
@@ -4792,6 +4882,37 @@ mod tests {
                 let mut fm = vec![0.0f32; n * out_dim];
                 matmul_panel(&w, &x, &mut got, &mut fm, n, threads, dot);
                 assert_eq!(got, expected, "dot {} threads {threads}", dot.label());
+            }
+        }
+    }
+
+    #[test]
+    fn widen4_matches_rows4_on_both_sides_of_its_threshold() {
+        // The panel sweep above runs at n = 5, below `WIDEN_MIN_POSITIONS`, so
+        // it exercises `Widen4`'s fallback and never its kernel. This walks
+        // the boundary itself: a threshold covered only incidentally is one
+        // that can move without any test noticing.
+        //
+        // bf16 rather than f32 because widening an f32 row is a copy, and a
+        // copy cannot expose a conversion hoisted to the wrong place.
+        let (in_dim, out_dim) = (37usize, 21usize);
+        let stored: Vec<u16> = (0..in_dim * out_dim)
+            .map(|i| ((((i % 19) as f32 - 9.0) / 7.0).to_bits() >> 16) as u16)
+            .collect();
+        let w = Weight::Bf16(stored);
+
+        // 4 and 21 are also the block width and the feature count: out_dim is
+        // not a multiple of 4, so every case runs the remainder path too.
+        for n in [WIDEN_MIN_POSITIONS - 1, WIDEN_MIN_POSITIONS, 64] {
+            let x: Vec<f32> = (0..n * in_dim)
+                .map(|i| ((i % 13) as f32 - 6.0) / 5.0)
+                .collect();
+            for threads in [1usize, 3, 8] {
+                let (mut a, mut b) = (vec![0.0f32; n * out_dim], vec![0.0f32; n * out_dim]);
+                let mut fm = vec![0.0f32; n * out_dim];
+                matmul_panel(&w, &x, &mut a, &mut fm, n, threads, DotKind::Rows4);
+                matmul_panel(&w, &x, &mut b, &mut fm, n, threads, DotKind::Widen4);
+                assert_eq!(a, b, "n {n} threads {threads}");
             }
         }
     }
