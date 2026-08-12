@@ -115,9 +115,28 @@ SHAPE = {
     },
 }
 
-# The prompt the capture runs. Short and fixed: the point is a forward pass
-# through every layer type, not coverage of the vocabulary.
-PROMPT_IDS = [2, 17, 43, 8, 99, 12]
+# The prompt the capture runs.
+#
+# Long enough to outrun the sliding window many times over, which is the only
+# reason the length is not six. SHAPE sets sliding_window to 3, so the six ids
+# this used to carry crossed the window once: enough to pin the convention at
+# a single position, and blind to everything that only appears once a sequence
+# has been running past the window for a while -- the shared-KV tail reading a
+# donor's older rows, and the interaction between the window and a batch group
+# boundary at DEFAULT_BATCH 64. At 150 the capture's final row depends on the
+# mask at every layer and every position, so an off-by-one anywhere in the
+# schedule moves it.
+#
+# Last position only, as before, so the payload does not grow with the length.
+#
+# Generated rather than written out: 150 literals would be unreadable and
+# invite the reader to look for meaning in them. The stride keeps neighbouring
+# positions from carrying neighbouring embeddings, where a mask error can
+# average away; the offset clears the three control specials at the base of
+# the synthetic vocabulary; and 280 stays inside SHAPE's 288-wide vocab.
+#
+# BOS first, matching what the harness emits and what the six-id prompt did.
+PROMPT_IDS = [2] + [(i * 37 + 11) % 280 + 4 for i in range(149)]
 
 
 def parse_args():
