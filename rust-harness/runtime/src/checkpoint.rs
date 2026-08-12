@@ -85,10 +85,16 @@ pub struct RopeParameters {
 /// Feed-forward width, which is a scalar on a uniform model and a per-layer
 /// list where the widths differ.
 ///
-/// Gemma 4's `use_double_wide_mlp` doubles the width over the shared-KV tail,
-/// so E2B needs the list form and E4B does not. Both are read into one
-/// per-layer vector by `intermediate_sizes`, and no caller learns which
-/// spelling the checkpoint used.
+/// Both are read into one per-layer vector by `intermediate_sizes`, and no
+/// caller learns which spelling the checkpoint used.
+///
+/// The list form is not how the published E-series expresses a non-uniform
+/// model, and an earlier version of this comment claimed it was. E2B declares
+/// the scalar 6144 with `use_double_wide_mlp`, and its real widths are 6144
+/// over layers 0-14 and 12288 over 15-34; a reader that took the scalar at
+/// face value refused the checkpoint at layer 15. `intermediate_sizes` now
+/// applies the flag. The list form is retained because it is what `synth.rs`
+/// writes and what a per-layer model could legitimately use.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Widths {
@@ -141,6 +147,14 @@ pub struct TextConfig {
     pub hidden_activation: String,
     pub tie_word_embeddings: bool,
     pub intermediate_size: Widths,
+    /// Doubles the feed-forward width over the shared-KV tail. E2B sets it,
+    /// E4B does not, and a file that omits it is uniform.
+    ///
+    /// Read rather than inferred, because the doubling is not spelled out in
+    /// the widths: E2B declares the scalar 6144 and this flag, and the loader
+    /// is expected to apply the rule. `intermediate_sizes` does.
+    #[serde(default)]
+    pub use_double_wide_mlp: bool,
     /// Trailing layers that read a donor's K/V rather than storing their own.
     #[serde(default)]
     pub num_kv_shared_layers: usize,
@@ -456,9 +470,35 @@ pub struct Checkpoint<'a> {
 
 impl TextConfig {
     /// Per-layer feed-forward widths, whichever spelling the checkpoint used.
+    ///
+    /// Two spellings reach the same vector. A list states every width. A
+    /// scalar states one, and `use_double_wide_mlp` doubles it over the final
+    /// `num_kv_shared_layers` layers -- the tail that shares a K/V cache
+    /// receives a wider feed-forward in compensation. On E2B that is 6144 for
+    /// layers 0-14 and 12288 for 15-34.
+    ///
+    /// The flag is applied only to the scalar form. A file that lists its
+    /// widths has already said what each layer is, and doubling those again
+    /// would mis-shape the tail in the other direction.
     pub fn intermediate_sizes(&self) -> Result<Vec<usize>> {
         match &self.intermediate_size {
-            Widths::Uniform(w) => Ok(vec![*w; self.num_hidden_layers]),
+            Widths::Uniform(w) => {
+                let mut ws = vec![*w; self.num_hidden_layers];
+                if self.use_double_wide_mlp {
+                    ensure!(
+                        self.num_kv_shared_layers <= self.num_hidden_layers,
+                        "num_kv_shared_layers {} exceeds {} layers, so the \
+                         double-wide tail has no start",
+                        self.num_kv_shared_layers,
+                        self.num_hidden_layers
+                    );
+                    let boundary = self.num_hidden_layers - self.num_kv_shared_layers;
+                    for width in &mut ws[boundary..] {
+                        *width *= 2;
+                    }
+                }
+                Ok(ws)
+            }
             Widths::PerLayer(ws) => {
                 ensure!(
                     ws.len() == self.num_hidden_layers,
@@ -1239,8 +1279,9 @@ mod tests {
         }
     }
 
-    /// A uniform scalar width is accepted alongside the per-layer list, since
-    /// E4B writes the scalar and E2B the list.
+    /// A uniform scalar width is accepted alongside the per-layer list. Both
+    /// published E-series models write the scalar; only E2B pairs it with
+    /// `use_double_wide_mlp`.
     #[test]
     fn a_scalar_intermediate_size_broadcasts_over_the_layers() {
         let mut c = config_of(&TinySpec::default());
@@ -1249,6 +1290,70 @@ mod tests {
             c.intermediate_sizes().unwrap(),
             vec![64; c.num_hidden_layers]
         );
+    }
+
+    /// The real E2B geometry, from `/mnt/ai-data/models/hf/gemma-4-E2B`'s
+    /// `config.json`: 35 layers, `intermediate_size` 6144,
+    /// `use_double_wide_mlp` true, `num_kv_shared_layers` 20.
+    ///
+    /// A regression test in the strict sense. Before the flag was read, this
+    /// config produced 6144 for all 35 layers and the loader refused the real
+    /// checkpoint at layer 15, whose `up_proj` is 12288 wide. The widths and
+    /// the boundary here are the artifact's, not a fixture's, which is the
+    /// point: the fixture and the reader were written from the same reading
+    /// of the documents and agreed with each other while both diverged from
+    /// the file.
+    #[test]
+    fn e2b_doubles_the_feed_forward_width_over_its_shared_kv_tail() {
+        let mut c = config_of(&TinySpec::default());
+        c.num_hidden_layers = 35;
+        c.intermediate_size = Widths::Uniform(6144);
+        c.use_double_wide_mlp = true;
+        c.num_kv_shared_layers = 20;
+
+        let ws = c.intermediate_sizes().unwrap();
+        assert_eq!(ws.len(), 35);
+        for (i, w) in ws.iter().enumerate() {
+            let want = if i >= 15 { 12288 } else { 6144 };
+            assert_eq!(*w, want, "layer {i} width");
+        }
+    }
+
+    /// E4B's spelling: the same scalar, the flag absent. Nothing doubles,
+    /// even though it also has a shared-KV tail.
+    #[test]
+    fn a_shared_kv_tail_alone_does_not_widen_the_feed_forward() {
+        let mut c = config_of(&TinySpec::default());
+        c.num_hidden_layers = 42;
+        c.intermediate_size = Widths::Uniform(10240);
+        c.use_double_wide_mlp = false;
+        c.num_kv_shared_layers = 18;
+        assert_eq!(c.intermediate_sizes().unwrap(), vec![10240; 42]);
+    }
+
+    /// A listed width is already per-layer, so the flag must not double it
+    /// again. `synth.rs` writes both the list and the flag.
+    #[test]
+    fn the_double_wide_flag_does_not_reapply_to_listed_widths() {
+        let mut c = config_of(&TinySpec::default());
+        c.num_hidden_layers = 4;
+        c.intermediate_size = Widths::PerLayer(vec![32, 32, 64, 64]);
+        c.use_double_wide_mlp = true;
+        c.num_kv_shared_layers = 2;
+        assert_eq!(c.intermediate_sizes().unwrap(), vec![32, 32, 64, 64]);
+    }
+
+    /// A tail longer than the stack has no start. Caught rather than
+    /// underflowing the boundary subtraction.
+    #[test]
+    fn a_shared_tail_longer_than_the_stack_is_an_error() {
+        let mut c = config_of(&TinySpec::default());
+        c.num_hidden_layers = 4;
+        c.intermediate_size = Widths::Uniform(32);
+        c.use_double_wide_mlp = true;
+        c.num_kv_shared_layers = 5;
+        let e = c.intermediate_sizes().unwrap_err().to_string();
+        assert!(e.contains("num_kv_shared_layers 5"), "{e}");
     }
 
     /// An aperiodic schedule loads. The GGUF path could not express one: it
