@@ -136,11 +136,26 @@ pub fn check_batch_composition_invariance(
 /// which rows are live in it -- reach the arithmetic. mistral.rs answers the
 /// same risk by isolating logit-returning requests from each other; we permit
 /// them to share a pass and owe this check in exchange.
-pub fn check_logit_rows_are_batch_isolated(build: Builder, tokens: &[Token]) -> Result<()> {
+///
+/// `firsts` is supplied rather than swept because each offset costs a fresh
+/// model and a full prefill: exhaustive at nine tokens is cheap and is what
+/// `cpu.rs` does, exhaustive at several hundred is seconds of gate time for
+/// offsets that differ in nothing. Choose the ones that straddle a group
+/// boundary, and the two ends.
+pub fn check_logit_rows_are_batch_isolated(
+    build: Builder,
+    tokens: &[Token],
+    firsts: &[usize],
+) -> Result<()> {
     let mut model = build()?;
     let reference = model.prefill_all(tokens)?;
 
-    for first in 0..=tokens.len() {
+    for &first in firsts {
+        ensure!(
+            first <= tokens.len(),
+            "offset {first} is past the {} tokens supplied",
+            tokens.len()
+        );
         let mut model = build()?;
         let rows = model.prefill_from(tokens, first)?;
         ensure!(
@@ -326,7 +341,8 @@ mod tests {
 
     #[test]
     fn a_row_that_changes_with_the_rows_beside_it_is_caught() {
-        check_logit_rows_are_batch_isolated(&|| Ok(sound()), &TOKENS).unwrap();
+        let firsts: Vec<usize> = (0..=TOKENS.len()).collect();
+        check_logit_rows_are_batch_isolated(&|| Ok(sound()), &TOKENS, &firsts).unwrap();
         let err = check_logit_rows_are_batch_isolated(
             &|| {
                 Ok(build(Break {
@@ -335,6 +351,7 @@ mod tests {
                 }))
             },
             &TOKENS,
+            &firsts,
         )
         .unwrap_err()
         .to_string();
