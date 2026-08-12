@@ -114,7 +114,8 @@ rust-harness/
       sampler.rs        # temperature, top-p, grammar constraints
       grammar.rs        # tool-call JSON grammar compilation
       kv.rs             # per-layer cache allocation and delta prefill
-      gguf.rs           # weight loading, vision tensors skipped
+      checkpoint.rs     # config.json and model.safetensors: the weight loader
+      gguf.rs           # probe and control-vector artifacts only, not weights
       tokenizer.rs      # wrapper over the `tokenizers` crate, reading tokenizer.json
       model/cpu.rs      # hand-rolled CPU backend, tap and steering seams
       model/mock.rs     # scripted backend the sandbox tests run against
@@ -141,33 +142,64 @@ Face checkpoint, chosen for rr-debuggable numerics and used by
 every sandbox test and by the binary, which loads it unconditionally behind
 `--model`. The planned GPU backend is
 [Candle](https://github.com/huggingface/candle) with the CUDA feature, targeting
-the RTX 5090; Candle provides quantized GGUF kernels and flash-attention bindings,
+the RTX 5090; Candle provides safetensors loading and flash-attention bindings,
 and Blackwell (sm_120) support under CUDA 13 must be verified before that work
 starts (see [Risks](#risks-and-open-questions)). The runtime crate's `cuda` feature
 is an empty placeholder until then. The two backends are separate implementations
 of the same `Model` trait rather than a fast path and a fallback: neither one
 degrades into the other at run time.
 
-**Weights.** Quantized GGUF as the primary format. The loader maps tensors by name
-into the backend's per-layer structs and skips vision-tower tensors.
+**Weights.** The published Hugging Face checkpoint, and only that: `config.json`
+and `model.safetensors` (`runtime/src/checkpoint.rs`). For a model format the
+reference implementation and the specification are the same artifact, and a
+converter's metadata can only imply what a checkpoint states — that is the whole
+argument for reading the published files rather than a converted container.
+
+Three consequences the rest of this document depends on:
+
+- **Nothing is quantized.** The accepted storage types are F32, F16 and BF16;
+  any other ggml type id is a hard error naming the tensor
+  (`runtime/src/tensor.rs`). Weights are held at their published width in a
+  `Weight` enum and widened to f32 at use, which is lossless for BF16, so the
+  checkpoint's own values reach the forward pass unrounded.
+- **Nothing is mapped.** Only the framed safetensors JSON header comes into
+  memory; each tensor is read at its offset when a caller asks for it. The crate
+  is `#![forbid(unsafe_code)]`, which it could not be while a memory map existed.
+- **GGUF survives for artifacts.** `runtime/src/gguf.rs` still parses the
+  container, but only for the probe and control-vector images the Python interp
+  exporters write (`schemas/gguf_artifacts.json`). It is not a weight loader.
 
 **Model graph.** No dynamic graph construction: the forward pass is written out
 once as straight-line Rust rather than assembled from a graph description, which
 is viable only because the runtime targets one family. The CPU backend reads its
-dimensions from GGUF metadata into a `Config` at load time instead of holding them
-as compile-time constants, so one build serves every Gemma 4 size variant and the
-loader can refuse a checkpoint whose metadata falls outside the implemented
-subset.
+dimensions from the checkpoint's nested `text_config` into a `ModelSpec` at load
+time instead of holding them as compile-time constants, so one build serves every
+Gemma 4 size variant and the loader can refuse a checkpoint whose declared shape
+falls outside the implemented subset. Because the fields are named rather than
+implied, that read is a mapping and not a parse: there is no stride to infer, no
+paired `_swa` keys to resolve, and no scalar-or-array union to normalize.
 
 **KV cache.** Gemma interleaves sliding-window and global attention layers, and
-the cost is computable exactly at startup either way. The design is that windowed
-layers cap their cache at the window regardless of context length, giving a fixed
-cost for those plus a per-token cost for global layers only — `kv::budget_bytes`.
-**The CPU backend does not do this yet:** it applies the window as an attention
-mask and stores the full sequence in every cache-owning layer, so what a run
-actually holds is `kv::resident_bytes`, which is what the harness reports at
-startup. Closing that gap is a roadmap item of its own; until it lands, the
-windowed figure is a target rather than a measurement.
+the cost is computable exactly at startup either way. Windowed layers cap their
+cache regardless of context length, giving a fixed cost for those plus a
+per-token cost for global layers only — `kv::budget_bytes`, which is what the
+harness reports at startup and what a run allocates.
+
+The cap is not the window itself but `kv::window_capacity`: a group of `n` query
+rows starting at absolute `start` needs the row at `start + 1 - window` while its
+own appends have already pushed the tail to `start + n - 1`, so residency is
+`window - 1 + group`, plus slack. Retaining from the group's last position
+instead of its first is the trap, and `runtime/tests/long_context.rs` exists to
+catch it. `LayerKv` is a linear compacting buffer rather than a ring, so stored
+rows stay contiguous and in natural token order — a ring would make attention's
+read order depend on the write cursor, which a bit-exact substrate cannot have.
+
+The cap has a consequence worth stating where a caller will meet it: **a windowed
+layer is not rewindable past its window.** `Model::rewindable_from` reports the
+floor, `truncate` enforces it, and `Session::sync` falls back to a full
+re-prefill below it — correct but slower, and the routine path after compaction.
+The run header prints the horizon at startup, so an experiment about to become
+un-rewindable says so before it runs.
 
 Layers that share a donor's K/V store nothing and are excluded from both figures.
 The cache is allocated once per session and persists across turns. The expected
@@ -307,7 +339,7 @@ ourselves.
 Nothing in this repository could detect it, because the fixture writer
 subtracted 1.0 and the numpy oracle added it back — one belief spelled at three
 ends, agreeing with itself. The transformers-authored Tier T fixture caught it
-on its first run; see `rust-harness/runtime/tests/ladder_tiny.rs`. The GGUF
+on its first run; see `rust-harness/runtime/tests/ladder_tiny.rs`. llama.cpp's
 converter agreed all along, writing `norm_shift` 0.0 for gemma3n and gemma4.
 
 | Feature | Status in Gemma 4 E4B | Implemented | Confidence |
@@ -319,7 +351,7 @@ converter agreed all along, writing `norm_shift` 0.0 for gemma3n and gemma4.
 | Dual RoPE | p-RoPE (p = 0.25, theta 1M) on global layers, plain RoPE (theta 10k) on local | No | Medium |
 | Value normalization | Magnitude-only, no learned scale | No | Medium |
 | LAuReL | Retained | Not applicable | Medium |
-| Sliding window | 512 tokens, 5:1 local-to-global over 42 layers | Yes, metadata-driven | Medium |
+| Sliding window | 512 tokens, 5:1 local-to-global over 42 layers | Yes, from `layer_types` | Medium |
 
 AltUp being dropped is the load-bearing finding. It runs several parallel hidden-state
 streams per layer, which would leave `Tap::on_residual(layer, position, &[f32])`
@@ -329,12 +361,17 @@ seam, the capture shard format, and the Python-side correspondence all hold. See
 [the interpretability contract](../interp/rust-harness-interp.md) for the
 one consequence PLE does carry.
 
-Two caveats bound these findings. They are secondhand: the primary sources refuse
+One caveat bounds these findings: they are secondhand. The primary sources refuse
 automated retrieval, so the details come from search summaries of varying
-reliability, and the confidence column reflects how many independent sources agreed.
-More importantly, what governs the code is not the published architecture but what
-the GGUF file on the workstation stores, after conversion and quantization. Runbook
-entry RH.1 remains the authority.
+reliability, and the confidence column reflects how many independent sources
+agreed. Runbook entry RH.1 remains the authority, and it now decides the question
+against the same artifact the loader reads.
+
+The second caveat is retired rather than answered. It used to say that what
+governs the code is not the published architecture but what the converted file
+stores after conversion and quantization — two derivations that could disagree,
+with the converted one winning. Reading the checkpoint directly collapses them:
+the file the backend loads is the file the architecture is published as.
 
 Where the backend does not implement something, it refuses rather than guesses. Per-layer
 embeddings, shared KV, per-layer feed-forward widths, per-layer head dimension,
@@ -377,7 +414,7 @@ validated against the CPU reference in addition to the Tier 3 fixtures.
 
 | Phase | Deliverable | Acceptance check |
 |-------|-------------|------------------|
-| A | Load quantized E4B, single forward pass | Logits for a fixed prompt match the Hugging Face reference within quantization tolerance |
+| A | Load E4B from its checkpoint, single forward pass | Logits for a fixed prompt match the Hugging Face reference; the tolerance is f32 accumulation order, not quantization, because nothing on the load path rounds a weight |
 | B | Decode loop with persistent KV cache and delta prefill | Multi-turn script shows turn latency scaling with delta size, not transcript size; both paths measured |
 | C | Grammar-constrained tool-call sampling | Zero malformed tool calls over 200 consecutive forced tool-call generations |
 | D | Full harness loop (tools, permissions, sessions, streaming) | Scripted coding task (read file, edit, run test) completes end to end |
@@ -408,12 +445,15 @@ labeled as such; measured results follow the repository benchmarking protocol.
 - **Chat template and tool-call format.** The exact Gemma 4 function-calling
   convention must be taken from the model card and tokenizer config, not assumed
   from Gemma 3.
-- **E-series architecture.** Possible MatFormer or per-layer-embedding inheritance
-  from Gemma 3n changes the loader; unresolved until checked against the reference
-  implementation.
-- **VRAM fit.** Estimated fit on the 32GB RTX 5090: E4B Q8 with full KV budget and
-  several concurrent subagent sessions is comfortable. Estimate only; no
-  measurements exist yet.
+- **E-series architecture.** Resolved for the CPU backend: per-layer embeddings,
+  shared KV, dual RoPE and per-layer geometry are implemented and refused when
+  absent. See [docs/models/gemma-4.md](../models/gemma-4.md).
+- **VRAM fit.** The estimate must be rebuilt, because it was made against a Q8
+  model that is no longer loadable. E4B is served at its published BF16 width;
+  peak RSS after load on the CPU backend is about 14 GiB rather than the 28 a
+  map-and-copy cost (`checkpoint.rs`, measured). The 32GB RTX 5090 figure for
+  the CUDA backend is unmeasured and must be budgeted against that width plus
+  `kv::budget_bytes`, not against a quantized one.
 - **Model quality ceiling.** A 4.5B-effective local model is not a frontier coding
   agent. The project's value is the harness-runtime seam — cache reuse, constrained
   decoding, prefill behavior — not parity with hosted agents.

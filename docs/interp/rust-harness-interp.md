@@ -27,13 +27,28 @@ different numerical world than the quantized serving path), and interventions
 limited to launch flags. The rust runtime is owned code behind narrow trait
 seams, so the same three capabilities become in-band:
 
-1. **Tap**: activations are recorded from the serving path itself, quantized
-   numerics included, closing the bf16-versus-quantized capture gap by
-   construction.
+1. **Tap**: activations are recorded from the serving path itself, so the
+   capture and the served forward pass are the same computation rather than two
+   that resemble each other.
 2. **Steer**: control vectors load from the same GGUF artifact
    `interp/steering` already exports, applied inside the forward pass.
 3. **Monitor**: a probe dot-product per position is one `Tap` implementation,
    with no proxy or log-replay machinery.
+
+**The capture gap dissolved rather than closed, and the difference matters.**
+The original argument for the tap was that it would record quantized numerics,
+so a probe would at last see the values the served model actually computes. That
+is no longer what happens. The rust runtime reads the published checkpoint and
+holds each weight at its published width, so there is no quantization on the
+serving path to capture — the bf16 workbench and the rust serving path now
+compute in the same numerical world, and the gap is absent instead of
+instrumented. The tap is still worth having for the other two reasons: it is
+in-band, and it is the same code path that serves. But a probe trained on rust
+captures is no longer studying a different model from one trained on a bf16
+workbench, and any claim resting on that distinction is void.
+
+The llama.cpp path above remains quantized, so the gap is real there. It is the
+reason not to treat the two backends' captures as interchangeable.
 
 No SAE artifacts are required: contrastive direction extraction and linear
 probes need only captures produced by the harness itself. Published SAEs
@@ -81,7 +96,7 @@ Steering carries across forks, so a steered agent's subagents serve the same
 steered model. Binary flags:
 
 ```bash
-$ harness --model model.gguf --control-vector vector.gguf \
+$ harness --model <checkpoint-dir> --control-vector vector.gguf \
     --control-vector-scale 1.0 <task>
 ```
 
@@ -93,7 +108,7 @@ registry, evaluate) consumes rust-served activations unchanged:
 
 ```bash
 $ cargo run -p runtime --bin activation-capture -- \
-    --model model.gguf --dataset examples.jsonl --layers 3,5 --out <dir>
+    --model <checkpoint-dir> --dataset examples.jsonl --layers 3,5 --out <dir>
 ```
 
 - Shards `shard_00000.npz` and onward hold `layer_<L>` float32 rows (last
@@ -107,13 +122,15 @@ $ cargo run -p runtime --bin activation-capture -- \
   raises `KeyError: 'BF16'`). The schema pins the value at
   `/schemas/activation_capture.manifest.json`.
 - `examples.jsonl` and a schema-1 `manifest.json` complete the directory.
-  The manifest records `capture_backend: "rust-harness-cpu"` and a
-  `model_hash` over the GGUF file.
-- The `tokenizer_fingerprint` derives from the GGUF vocabulary, not the
-  Hugging Face tokenizer object, so it is not comparable to fingerprints
-  from Python captures. It keeps rust-captured artifacts internally
-  consistent across capture, train, and score, which is the property the
-  fingerprint check protects.
+  The manifest records `capture_backend: "rust-harness-cpu"`,
+  `model_revision: "safetensors"`, and a `model_hash` over
+  `model.safetensors`.
+- The `tokenizer_fingerprint` is a sha256 over the model path and vocabulary
+  size with no chat template, so it is not comparable to fingerprints from
+  Python captures. Both sides now read the same tokenizer.json, so the
+  incomparability is a matter of formula rather than of vocabulary. It keeps
+  rust-captured artifacts internally consistent across capture, train, and
+  score, which is the property the fingerprint check protects.
 - `dataset_sha256` is likewise per-backend: Rust hashes the file's raw bytes,
   Python hashes text-mode `f.read()`, which normalizes CRLF. The two agree on
   an LF dataset and differ on a CRLF one, and a test asserts both halves so a
@@ -148,7 +165,7 @@ trained threshold — and the parity is golden-tested against the numpy
 reference.
 
 ```bash
-$ harness --model model.gguf --probe probe.gguf \
+$ harness --model <checkpoint-dir> --probe probe.gguf \
     [--probe-out flags.jsonl] <task>
 ```
 
