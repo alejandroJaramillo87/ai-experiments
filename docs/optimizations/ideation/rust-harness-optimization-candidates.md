@@ -3,6 +3,36 @@
 **Parked proposals — recorded 2026-07-30. Blocked on runbook entry RH.1 and a recorded
 baseline; this document is edited only as items graduate out.**
 
+> **Measurement caveat, 2026-08-12. Every wall-clock number below is a single
+> unpinned run, and unpinned runs on this workstation vary by up to 40%.**
+>
+> An eight-arm sweep produced four consecutive runs of one unmodified binary
+> whose L1 rung read 0.48s, 0.55s, 0.68s and 0.69s — a 44% spread with nothing
+> changing between them but the `--dot` flag, which L1 barely exercises. The
+> same session read `rows4` at 51.89s once and at 69.70s, 70.07s, 69.36s and
+> 69.61s four other times.
+>
+> Two explanations were checked and eliminated. A disassembly diff of the
+> release builds either side of `c3e147e` found the panel kernels
+> byte-identical and the whole binary different by seven trivial instructions,
+> none in a loop, so no code change is responsible. `CARGO_TARGET_DIR` and
+> `RUSTFLAGS` were both empty and cargo reported its executable at the path
+> being run, so the builds were not going astray.
+>
+> The remaining candidate is thread placement. The 9950X is two 8-core CCDs
+> with a separate L3 each, the ladder runs 8 threads, and nothing pins them, so
+> a run lands either inside one CCD or spread across both — bimodal, roughly
+> the observed ratio, and worse on L3 (cache-sensitive prefill) than on L4
+> (bandwidth-bound decode), which is the pattern in the data. Unverified.
+>
+> **Consequence: the ratios in this document are suggestive, not settled.** The
+> bit-identity claims are unaffected — those are enforced by tests and by the
+> five-rung table agreeing in every digit across every arm ever run. Before any
+> further optimization work, the protocol needs `taskset -c 0-7` (or the
+> equivalent cpuset the compose files already use for the services), several
+> runs per arm rather than one, and the median reported. That work is parked in
+> favour of the roadmap.
+
 A recorded menu of optimizations for the CPU backend
 (`runtime/src/model/cpu.rs`), for implementation after host verification.
 Nothing here is a commitment: every item is blocked on runbook entry RH.1
