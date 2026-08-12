@@ -118,14 +118,13 @@ Gemma 4 E4B, chosen for simplicity of implementation over speed.
 
 ### Backend choice
 
-Resolved at implementation time: the backend is hand-rolled — naive
-dequantize-then-matmul in owned code (`runtime/src/model/cpu.rs`),
-plain f32 loops, single-threaded at the time. Candle CPU was considered and
-rejected:
-upstream Candle has a `gemma4` module but no quantized-GGUF Gemma 4 path, so
-the loader work remains either way; its threaded CPU kernels complicate rr
-determinism; and the correctness-and-readability bar favors owned naive
-code. The bar is correctness and readability, not throughput.
+Resolved at implementation time: the backend is hand-rolled — widen-then-matmul
+in owned code (`runtime/src/model/cpu.rs`), plain f32 loops, single-threaded at
+the time. Candle CPU was considered and rejected: upstream Candle's `gemma4`
+module does not cover this family's per-layer geometry, so the loader work
+remains either way; its threaded CPU kernels complicate rr determinism; and the
+correctness-and-readability bar favors owned naive code. The bar is correctness
+and readability, not throughput.
 
 The backend has since acquired one form of threading, and it does not reopen
 that decision. `cpu.rs`'s `par_rows` splits matvec and the tied LM head across
@@ -195,7 +194,7 @@ reference at some position. The sequence from symptom to cause:
 2. Record the failing run under rr:
 
    ```bash
-   $ make debug-record ARGS='--model fixtures/tiny-gemma4.gguf <task>'
+   $ make debug-record ARGS='--model fixtures/tiny-gemma4 <task>'
    $ make debug-replay
    ```
 

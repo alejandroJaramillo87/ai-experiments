@@ -205,6 +205,13 @@ everything under `docs/verification/`.
 What was decided and why at implementation time. Bodies are never edited; a reference that has
 since moved is accurate history rather than drift.
 
+**A frozen record is not a source to check the tree against, and an audit should not read it as
+one.** These files describe the code as it stood on their date, so they accumulate names,
+formats and commands that no longer exist — `docs/verification/investigations/` alone still
+carries hundreds of references to the GGUF model loader deleted in P8b. That is correct and
+must stay. Anything sweeping the tree for stale facts should skip these paths, as both
+documentation gates already do, rather than rediscover the same expired history each time.
+
 | Location | Contents |
 |----------|----------|
 | [training/investigations/](training/investigations/) | D3-D10, F1-F8, and P2 deliverable investigations, plus [the unified-CLI investigation](training/investigations/unified_cli_investigation.md) (20 documents, 2026-07-14 to 2026-07-15). [README.md](training/investigations/README.md) carries the directory's conventions |

@@ -75,7 +75,7 @@ passed.
    external sinks, the browser harness, and the live dashboard against an
    in-flight run.
 7. [rust-harness.md](rust-harness.md) — the rust-harness CPU backend on
-   the real E4B GGUF: architecture reconciliation, generation, KV delta
+   the real E4B checkpoint: architecture reconciliation, generation, KV delta
    prefill, flight recorder, rr, and the in-band interp chain. Pure cargo
    binary: the Python hardware smoke gate does not apply; entry RH.0 is
    this phase's gate. Its sandbox-executable sibling is
