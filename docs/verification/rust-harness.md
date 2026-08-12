@@ -129,8 +129,17 @@ Command:
 ```bash
 $ ls -la /mnt/ai-data/models/hf/
 $ cd rust-harness
-$ cargo run -p runtime --bin checkpoint-info -- /mnt/ai-data/models/hf/<e4b>
+$ cargo run -p runtime --bin checkpoint-info -- --text-only /mnt/ai-data/models/hf/<e4b>
 ```
+
+`--text-only` is not optional against the published E4B checkpoint, and every
+later entry that loads it needs the flag for the same reason. The checkpoint
+is multimodal; the CPU backend serves text only, and without the flag
+`check_supported_checkpoint` refuses the load outright rather than silently
+ignoring the vision tower. This was learned the hard way on 2026-08-12: the
+commands here were written in the GGUF era, when conversion had already made
+the served file text-only by construction, so the flag never appeared in them
+and both RH.1 and RH.2 failed on their first real run.
 
 Expected signal: the run ends in a compatibility verdict, printed by the same
 `cpu::check_supported_checkpoint` function the loader calls, so the tool and the loader
@@ -153,7 +162,11 @@ Observed:
 ```
 ```
 
-Status: PENDING
+Status: PENDING. A first attempt on 2026-08-12 ran without `--text-only` and
+ended in `[ERROR] CPU backend compatibility: checkpoint is multimodal`, which
+is the guard working rather than a finding; the flag is now in the command
+above and the run needs repeating. The dump is not recorded here because that
+attempt was truncated in transit, and a partial dump is not evidence.
 
 ### RH.1a Shared-KV weight conflict
 
@@ -194,7 +207,7 @@ the other two isolates the effect to the gradient path, which no
 whole-layer comparison can do.
 
 ```bash
-$ cd /home/user/ai-experiments
+$ cd ~/workspace/ai-experiments
 $ .venv/bin/python - <<'EOF'
 import json, numpy as np, torch
 from safetensors import safe_open
@@ -253,7 +266,7 @@ the same directory, so there is no conversion step to account for.
 
 ```bash
 $ ls /mnt/ai-data/models/hf/
-$ cd /home/user/ai-experiments/rust-harness
+$ cd ~/workspace/ai-experiments/rust-harness
 $ cargo run --release -p harness -- \
     --model /mnt/ai-data/models/hf/gemma-4-E2B \
     --max-tokens 16 --temperature 0 'The capital of France is'
@@ -262,7 +275,7 @@ $ cargo run --release -p harness -- \
 Then the reference, on the same prompt and the same decoding rule:
 
 ```bash
-$ cd /home/user/ai-experiments
+$ cd ~/workspace/ai-experiments
 $ .venv/bin/python - <<'EOF'
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -351,8 +364,8 @@ Command:
 ```bash
 $ cd rust-harness
 $ mkdir -p /tmp/rh2 && cd /tmp/rh2
-$ time ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> \
+$ time ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only \
     "Reply with the single word: ready"
 ```
 
@@ -375,12 +388,60 @@ RSS after load, the KV cache line, and the rewind horizon. Record those four
 lines — the KV line is what the storage cap was for, and this is the only
 step that reports it against real weights.
 
-Observed:
+Observed (2026-08-12, with `--text-only`; the banner only, the reply is quoted
+below it):
 
 ```
+[OK] CPU backend compatibility: supported
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.03 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Session snapshot: 272 cached tokens at /tmp/rh2/session.kv
+~/workspace/ai-experiments/rust-harness/target/release/harness --text-only     295.39s user 15.77s system 581% cpu 53.502 total
 ```
 
-Status: PENDING
+The reply:
+
+```
+Reply with the single word: edit
+<h1>Can a neural network model generate a program in my target language?</h1>
+I can't tell if I'm asking a reasonable question, but I'm interested in exploring...
+```
+
+Status: FAILED 2026-08-12 on the coherence signal. The load half passed: the
+compatibility verdict is `supported`, the weights are resident at their
+published width, and the banner is the KV evidence RH.2 exists to produce.
+The generation half did not. The model echoed the prompt with `edit`
+substituted for `ready`, then continued into an invented web-forum thread —
+grammatical, fluent, and entirely non-responsive.
+
+That is not the failure mode the expected signal predicts. A numerically wrong
+forward pass degrades into garbage or repetition; this is neither. It is what
+base-model document continuation looks like, which is the shape you get when
+no chat template is applied and the prompt reaches the model as raw text. This
+campaign already records the supporting gap: the Gemma 3 turn markers were
+removed with no replacement, and no golden covers the rendered token stream
+against Gemma 4's convention, so nothing would have caught a missing template.
+
+**Do not treat this as a numerics finding until RH.1a check 2 discriminates.**
+A greedy logit comparison against `transformers` on a bare factual completion
+does not depend on turn markers: if the logits match, the forward pass is
+sound and this is purely a template defect; if they diverge, the fault is in
+the backend and is far more serious than a missing template. That check is
+this entry's blocker and has not been run.
+
+The four banner lines reconcile exactly with the implemented KV rule, which is
+worth stating because it is the R3 acceptance. Layers 0-23 own a cache (24-41
+read a donor): 4 global and 20 sliding, at `n_kv_heads` 2. A global layer
+costs `2 * 2 * 512 * 4` = 8 KiB per token, a sliding one 4 KiB, and
+`window_capacity(512, 64)` is 719 rows. Globals hold the full sequence at
+`4 * 131072 * 8192` = 4.00 GiB; the capped sliding layers hold
+`20 * 719 * 4096` = 0.055 GiB, against the 10.0 GiB they would cost uncapped.
+The total is 4.05 GiB, which is what printed. Peak RSS of 14.03 GiB against
+13.90 GiB of weights bounds load overhead at 0.13 GiB, which is the P10.7
+measurement. Both figures are read off this banner, not measured separately.
 
 ## RH.3 CPU generation speed
 
@@ -399,8 +460,8 @@ Command:
 
 ```bash
 $ mkdir -p /tmp/rh3 && cd /tmp/rh3 && rm -f session.jsonl
-$ time ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> \
+$ time ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only \
     --trace-chrome trace.json \
     "Count from one to twenty as words, one per line"
 ```
@@ -433,11 +494,11 @@ Command:
 
 ```bash
 $ mkdir -p /tmp/rh4 && cd /tmp/rh4
-$ time ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --trace-chrome turn1.json \
+$ time ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only --trace-chrome turn1.json \
     "Summarize the Unix philosophy in three sentences"
-$ time ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --trace-chrome turn2.json \
+$ time ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only --trace-chrome turn2.json \
     "Now compress that summary to one sentence"
 ```
 
@@ -466,8 +527,8 @@ Command (host):
 
 ```bash
 $ mkdir -p /tmp/rh5 && cd /tmp/rh5
-$ ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --record flight.jsonl \
+$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only --record flight.jsonl \
     "Reply with the single word: ready"
 ```
 
@@ -511,8 +572,8 @@ Command:
 
 ```bash
 $ mkdir -p /tmp/rh6 && cd /tmp/rh6
-$ ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --trace-chrome trace.json \
+$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only --trace-chrome trace.json \
     "Reply with the single word: ready"
 ```
 
@@ -580,8 +641,8 @@ Command:
 ```bash
 $ mkdir -p /tmp/rh8 && cd /tmp/rh8
 $ printf 'rules:\n  - tool: "*"\n    action: allow\n' > permissions.yaml
-$ ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> \
+$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only \
     "Create a file named hello.txt containing the word hello, then read it back"
 ```
 
@@ -630,7 +691,7 @@ Command:
 ```bash
 $ cd rust-harness
 $ cargo run --release -p runtime --bin activation-capture -- \
-    --model /mnt/ai-data/models/hf/<e4b> \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only \
     --dataset <labeled.jsonl> --layers <l0,l1> \
     --out /mnt/ai-data/interp/captures/rust-e4b-verify
 $ uv run python -c "from interp.probes.capture import load_capture; \
@@ -657,7 +718,7 @@ Status: PENDING
 Command:
 
 ```bash
-$ cd ~/ai-experiments
+$ cd ~/workspace/ai-experiments
 $ make probe-train ARGS="--capture /mnt/ai-data/interp/captures/rust-e4b-verify \
     --name rust-e4b-verify-probe"
 ```
@@ -681,10 +742,10 @@ Command:
 $ mkdir -p /tmp/rh9/mon /tmp/rh9/base
 $ uv run python -c "from interp.probes.export import write_probe_gguf; \
     write_probe_gguf('/mnt/ai-data/interp/probes/rust-e4b-verify-probe', '/tmp/rh9/probe.gguf')"
-$ cd /tmp/rh9/base && ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> "Reply with the single word: ready"
-$ cd /tmp/rh9/mon && ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --probe /tmp/rh9/probe.gguf \
+$ cd /tmp/rh9/base && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only "Reply with the single word: ready"
+$ cd /tmp/rh9/mon && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only --probe /tmp/rh9/probe.gguf \
     "Reply with the single word: ready"
 $ diff <(grep -v '"ts"' /tmp/rh9/base/session.jsonl) <(grep -v '"ts"' /tmp/rh9/mon/session.jsonl); echo "diff exit: $?"
 $ head /tmp/rh9/mon/probe-flags.jsonl
@@ -711,12 +772,12 @@ rust captures via `interp/steering`):
 
 ```bash
 $ mkdir -p /tmp/rh9/steer1 /tmp/rh9/steer2
-$ cd /tmp/rh9/steer1 && ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> \
+$ cd /tmp/rh9/steer1 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only \
     --control-vector <vector.gguf> --control-vector-scale 1.0 \
     "Describe your day in two sentences"
-$ cd /tmp/rh9/steer2 && ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> \
+$ cd /tmp/rh9/steer2 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only \
     --control-vector <vector.gguf> --control-vector-scale 1.0 \
     "Describe your day in two sentences"
 ```
@@ -748,7 +809,7 @@ command is invoked directly with the trailing binary arguments):
 ```bash
 $ cd rust-harness
 $ cargo flamegraph --profile release-with-debug --bin harness -- \
-    --model /mnt/ai-data/models/hf/<e4b> "Reply with the single word: ready"
+    --model /mnt/ai-data/models/hf/<e4b> --text-only "Reply with the single word: ready"
 ```
 
 Expected signal: `flamegraph.svg` is produced and the profile is dominated
@@ -782,8 +843,8 @@ Command (three or more turns, then EOF or `/quit`):
 
 ```bash
 $ mkdir -p /tmp/rh11 && cd /tmp/rh11
-$ ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --chat \
+$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only --chat \
     --trace-chrome trace.json --max-tokens 128
 ```
 
@@ -813,12 +874,12 @@ binary whose seeded generation matches the host build.
 Command:
 
 ```bash
-$ cd ~/ai-experiments
+$ cd ~/workspace/ai-experiments
 $ make harness-build
-$ make harness-run ARGS='--model /app/models/hf/<e4b> --seed 7 "Reply with the single word: ready"'
+$ make harness-run ARGS='--model /app/models/hf/<e4b> --text-only --seed 7 "Reply with the single word: ready"'
 $ mkdir -p /tmp/rh12 && cd /tmp/rh12
-$ ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --seed 7 \
+$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only --seed 7 \
     "Reply with the single word: ready"
 ```
 
@@ -852,13 +913,13 @@ Command (a normal run, then a forced failure, then inspection):
 
 ```bash
 $ mkdir -p /tmp/rh13 && cd /tmp/rh13
-$ ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> \
+$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only \
     "Reply with the single word: ready"
-$ ~/ai-experiments/rust-harness/target/release/harness \
+$ ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /nonexistent-checkpoint "task" ; echo "exit: $?"
 $ tail -2 /mnt/ai-data/logs/harness/runs.jsonl
-$ cd ~/ai-experiments && uv run python -c "
+$ cd ~/workspace/ai-experiments && uv run python -c "
 from common.obs import catalog
 rows = catalog.read_runs(catalog.catalog_path('harness'))
 for r in rows[-2:]:
