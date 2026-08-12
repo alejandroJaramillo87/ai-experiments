@@ -307,10 +307,30 @@ Gemma 4 (released 2026-04-02, Apache 2.0) ships in multiple sizes spanning dense
 edge models (E2B, E4B) and larger server-tier variants.
 
 - **Target: E4B** (~4.5B effective parameters). Simplest full pipeline and aligned
-  with the repository's Gemma 4 E-model policy. E4B is the sole supported model.
-- **Skipped: E2B** (same code path as E4B, weaker coder) **and the larger
-  server-tier variants** (large models are already served well by the existing
-  services; their architectures are out of scope for this runtime).
+  with the repository's Gemma 4 E-model policy. It is the model the harness is
+  tuned and benchmarked against.
+- **Also supported: E2B**, verified against `transformers` on 2026-08-12 — all
+  five ladder rungs pass on the real checkpoint, worst layer `rel_l2` 4e-6,
+  perplexity within 0.000015, peak RSS 9.51 GiB.
+- **Skipped: the larger server-tier variants** (large models are already served
+  well by the existing services; their architectures are out of scope for this
+  runtime).
+
+E2B was skipped for a long time on the grounds that it was "the same code path
+as E4B, weaker coder". The second half stands; the first was false, and
+believing it hid a bug. E2B is the only E-series model that sets
+`use_double_wide_mlp`, has a five-layer attention period rather than six, and
+runs true multi-query attention at one key-value head. The loader never read
+the double-wide flag, so the real checkpoint refused to load at layer 15 —
+found the first time anyone pointed `checkpoint-info` at it, months after the
+paths it exercises were declared covered. The synthetic fixture had modelled
+the feature from the same documents the reader was written from, so the two
+agreed with each other and both diverged from the artifact.
+
+The general lesson is about what a second model is worth. E2B is not a
+capability the harness needed; it is a second sample of the architecture, and
+it caught a defect that no amount of E4B testing could, because E4B does not
+have the feature. Treat "same code path" as a claim requiring evidence.
 
 Version coupling is accepted: the model module is the one component rewritten for a
 future Gemma 5. Whether the E-series inherits MatFormer or per-layer-embedding
