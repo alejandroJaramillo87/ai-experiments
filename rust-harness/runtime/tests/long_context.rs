@@ -11,8 +11,13 @@
  * so even `--size deep` never holds more than CHUNK = 256 positions at once
  * against E4B's window of 512. No rung has crossed a real sliding window.
  *
- * The next package caps KV storage at the window, and that is the change these
- * tests exist to catch. Two failure shapes, needing two kinds of assertion:
+ * This file was written before the KV storage cap, to catch it. The cap has
+ * since landed and every assertion below held through it unchanged, golden
+ * included; the arms under `Storage` were added with it, because everything
+ * written first compares logits and the cap must not move a logit. A suite
+ * that could not tell whether the cap exists is not a suite for the cap.
+ *
+ * Two failure shapes, needing two kinds of assertion:
  *
  * A *composition-dependent* truncation. In a batched group the early query
  * rows legitimately need cache rows that a naive ring buffer, sized to the
@@ -65,9 +70,48 @@
  *      workspace passes**: 330 unit tests and eight integration binaries, all
  *      green. Five tests in this file fail. That gap is the package.
  *
- * Cost, measured: about 1.5 s wall across the eleven tests, against a suite
- * that was 9.4 s. The composition sweeps are trimmed for this reason -- see
- * `check_compositions`.
+ * Mutation checks performed when the storage cap landed
+ * ------------------------------------------------------
+ *
+ * The cap is now implemented, and the arms below `Storage` were added with
+ * it. Four more mutations, of the eviction rather than of the mask. The
+ * result is more interesting than "the tests catch it", so it is recorded as
+ * what it is:
+ *
+ *   5. Retain from the group's *last* query position rather than its first
+ *      -- the trap this file was written for. **Nothing fails.** Not a gap:
+ *      eviction is driven by the capacity, and `capacity >= window_residency`
+ *      makes the capacity-driven point strictly older than the retention
+ *      point, so the retention bound is never what binds. It is a guard, not
+ *      a computation, which is why `LayerKv::append` takes it as an assertion
+ *      alongside the arithmetic instead of deriving the drop from it.
+ *
+ *   6. Size the capacity at `win`, ignoring the batch term. Sixteen of
+ *      eighteen fail in a debug build, all on the `want <= retain`
+ *      `debug_assert` in `LayerKv::append`.
+ *
+ *   7. The same mutation in `--release`, where that assertion is compiled
+ *      out. **Everything passes**, including the golden. The `.min(retain)`
+ *      clamp degrades an undersized capacity to the minimum safe residency:
+ *      the logits stay right and the cache stays bounded, so there is nothing
+ *      to see. Correctness has two independent guards and losing one is not
+ *      observable -- which is the intended arrangement and the reason the
+ *      clamp is not redundant with the assertion.
+ *
+ *   8. Both at once -- capacity at `win` and the clamp removed -- in
+ *      `--release`. Sixteen of eighteen fail, the golden among them. Only the
+ *      two arms that assert on a shared layer's empty cache survive, and they
+ *      are about a layer that stores nothing.
+ *
+ * The moral for a CUDA backend: an eviction bug has to defeat both the
+ * capacity and the clamp before it reaches a logit, and if it defeats only
+ * the capacity the symptom is memory, not numerics. That is what
+ * `a_sliding_layer_stops_growing_once_the_window_is_full` is for, and it is
+ * the only arm here that would notice.
+ *
+ * Cost, measured: about 1.2 s wall across the eighteen tests, against a suite
+ * that was 9.4 s before this file existed. The composition sweeps are trimmed
+ * for this reason -- see `check_compositions`.
  */
 
 use std::path::Path;
@@ -463,14 +507,29 @@ fn the_long_context_logits_match_the_committed_golden() {
 
 // Cache-lifecycle arms, at a length where the window has engaged.
 
+/// The rewind target is asked for, not chosen.
+///
+/// This test used to name a literal 100, which was correct only for as long
+/// as the cache retained everything. A windowed cache evicts, so how far back
+/// it can go is a property of the run -- of the window, the batch width and
+/// how much has been prefilled -- and a literal here would be a guess that
+/// happened to hold at one geometry. `rewindable_from` exists so callers stop
+/// guessing, and the first caller to use it should be the one demonstrating
+/// why.
 #[test]
 fn truncating_past_the_window_and_reprefilling_matches_a_fresh_long_prefill() {
     let spec = shared_spec();
     let tokens = tokens_of(150);
-    let keep = 100;
 
     let mut m = model_of(&spec);
     m.prefill(&tokens[..130]).unwrap();
+    let keep = m.rewindable_from();
+    assert!(
+        keep > 0,
+        "a 130-token prefill against a window of {} should have evicted something; \
+         this test is not exercising a capped cache",
+        spec.sliding_window
+    );
     m.truncate(keep).unwrap();
     let replayed = m.prefill(&tokens[keep..]).unwrap();
 
@@ -503,4 +562,253 @@ fn a_fork_taken_past_the_window_diverges_identically_to_a_fresh_session() {
         tokens.len()
     );
     assert_eq!(parent.cached_len(), split, "the fork disturbed its parent");
+}
+
+// Storage arms. Everything above this line compares logits, and the storage
+// cap must not change a logit -- so nothing above it can tell whether the cap
+// is implemented at all. These assert the memory, which is the only place the
+// package is visible.
+
+/// A window of 4 against 400 tokens, so a cache that ignored the cap would be
+/// a hundred times the size of one that honoured it.
+fn narrow_spec() -> TinySpec {
+    TinySpec {
+        n_layers: 3,
+        sliding_window_pattern: 4,
+        sliding_window: 4,
+        ..TinySpec::default()
+    }
+}
+
+/// Without this the whole package could be a no-op and every other test in
+/// the workspace would still pass.
+///
+/// The bound is `kv::window_capacity`, which is the same function the forward
+/// pass sizes its buffers from -- so this does not independently re-derive
+/// the arithmetic, and is not meant to. What it pins is that the cache obeys
+/// *a* bound that does not grow with the sequence, checked at two lengths a
+/// factor of four apart: a layer still accumulating would report different
+/// numbers at 128 and at 512.
+///
+/// Both lengths are exact multiples of the batch, which matters. Capacity is
+/// a function of the *group* being appended, so a run ending in a short
+/// trailing group settles at a different figure -- correctly, but the
+/// difference would then be the trailing group's width rather than anything
+/// about accumulation, and the equality below would be asserting the wrong
+/// thing.
+#[test]
+fn a_sliding_layer_stops_growing_once_the_window_is_full() {
+    let spec = narrow_spec();
+    let group = 64;
+    let bound = runtime::kv::window_capacity(spec.sliding_window, group);
+
+    let mut held = Vec::new();
+    for len in [128, 512] {
+        let mut m = model_of(&spec);
+        m.set_batch(BatchKind::Batched(group));
+        m.prefill(&tokens_of(len)).unwrap();
+        assert_eq!(m.cached_len(), len);
+
+        let rows = m.cache_extent(0).len();
+        assert!(
+            rows <= bound,
+            "layer 0 holds {rows} rows of a {len}-token sequence, above the \
+             capacity of {bound} for window {} at batch {group}",
+            spec.sliding_window
+        );
+        assert!(
+            rows < len,
+            "layer 0 holds all {len} rows: the window is not capping storage"
+        );
+        held.push(rows);
+    }
+    assert_eq!(
+        held[0], held[1],
+        "a capped layer holds the same rows at 128 tokens and at 512; these \
+         differ, so it is still growing with the sequence"
+    );
+}
+
+/// The cap is not applied to layers that cannot afford it.
+///
+/// A global layer's `first` is zero at every position, so it reads its own
+/// row 0 for as long as the run lasts. Evicting there would be a correctness
+/// bug that the logit tests would catch -- but stating it here means the
+/// memory arm and the correctness arm agree about which layers are which,
+/// rather than one of them being right by luck.
+#[test]
+fn a_global_layer_still_holds_the_whole_sequence() {
+    let spec = shared_spec();
+    let len = 200;
+    let mut m = model_of(&spec);
+    m.prefill(&tokens_of(len)).unwrap();
+
+    // Layer 1 is global and owns its cache; layer 0 is sliding and owns its
+    // cache. See `shared_spec`.
+    assert_eq!(m.cache_extent(1), 0..len, "the global layer evicted");
+    assert!(
+        m.cache_extent(0).start > 0,
+        "the sliding layer did not evict, so this test compares two layers \
+         that are behaving identically and proves nothing"
+    );
+}
+
+/// A shared-KV layer stores nothing, capped or not.
+#[test]
+fn a_shared_layer_holds_no_rows_of_its_own() {
+    let spec = shared_spec();
+    let mut m = model_of(&spec);
+    m.prefill(&tokens_of(200)).unwrap();
+    // Layers 2 and 3 read donors. See `shared_spec`.
+    for i in [2, 3] {
+        assert_eq!(m.cache_extent(i), 0..0, "shared layer {i} stored rows");
+    }
+}
+
+// Rewind arms. A windowed cache cannot return to a position it has evicted,
+// and the point of these is that it says so rather than answering wrongly.
+
+#[test]
+fn a_rewind_to_the_floor_is_allowed_and_one_position_below_it_is_not() {
+    let spec = narrow_spec();
+    let mut m = model_of(&spec);
+    m.prefill(&tokens_of(300)).unwrap();
+
+    let floor = m.rewindable_from();
+    assert!(
+        floor > 0,
+        "nothing was evicted, so there is no floor to test"
+    );
+
+    // At the floor, not merely above it. The margin here is zero by
+    // construction after a single-token decode -- `Session::ensure_tail_logits`
+    // rewinds exactly one position on every restore -- so an off-by-one in the
+    // comparison would brick ordinary generation rather than an overreach.
+    let mut at = model_of(&spec);
+    at.prefill(&tokens_of(300)).unwrap();
+    at.truncate(floor)
+        .expect("the floor itself must be reachable");
+
+    let err = m.truncate(floor - 1).unwrap_err();
+    let text = err.to_string();
+    assert!(
+        text.contains("sliding window") && text.contains("rewindable_from"),
+        "the refusal must name the cause and the query that avoids it: {text}"
+    );
+    assert_eq!(
+        m.cached_len(),
+        300,
+        "a refused truncate must leave the cache alone"
+    );
+}
+
+/// The reset is always available, and it is a reset rather than a rewind.
+///
+/// Several callers depend on this — the ladder between rungs, perplexity
+/// between windows, and `Session`'s restore-mismatch recovery, whose whole
+/// purpose is to hand back a model with nothing in it. An error there would
+/// leave exactly the skew the recovery exists to prevent.
+#[test]
+fn clearing_the_cache_is_allowed_from_below_the_floor() {
+    let spec = narrow_spec();
+    let tokens = tokens_of(300);
+
+    let mut m = model_of(&spec);
+    m.prefill(&tokens).unwrap();
+    assert!(m.rewindable_from() > 0);
+    m.truncate(0).expect("a full clear is always legal");
+
+    assert_eq!(m.cached_len(), 0);
+    assert_eq!(
+        m.rewindable_from(),
+        0,
+        "a cleared cache still claims a floor"
+    );
+    for i in 0..spec.n_layers {
+        assert_eq!(
+            m.cache_extent(i),
+            0..0,
+            "layer {i} kept rows across a clear"
+        );
+    }
+    // Not merely empty: computing like a model that never held anything.
+    assert_eq!(
+        m.prefill(&tokens).unwrap(),
+        model_of(&spec).prefill(&tokens).unwrap(),
+        "a cleared cache does not compute like a fresh one"
+    );
+}
+
+/// A snapshot taken past the window restores to the same state, floor and all.
+///
+/// The payload carries each layer's `base` for this reason. A restore that
+/// re-based to zero would look correct — the continuation logits would match,
+/// since those only need the window — while claiming a rewind it cannot
+/// perform, and the claim would only fail later, somewhere else.
+#[test]
+fn a_snapshot_taken_past_the_window_restores_its_rewind_floor() {
+    let spec = narrow_spec();
+    let tokens = tokens_of(300);
+
+    let mut source = model_of(&spec);
+    source.prefill(&tokens).unwrap();
+    let floor = source.rewindable_from();
+    assert!(
+        floor > 0,
+        "nothing was evicted, so the floor is trivially zero"
+    );
+    let extents: Vec<_> = (0..spec.n_layers).map(|i| source.cache_extent(i)).collect();
+
+    let mut image = Vec::new();
+    source.save_state(&mut image).unwrap();
+    let mut restored = model_of(&spec);
+    restored.load_state(&mut image.as_slice()).unwrap();
+
+    assert_eq!(restored.cached_len(), tokens.len());
+    assert_eq!(
+        restored.rewindable_from(),
+        floor,
+        "the floor moved on restore"
+    );
+    for (i, want) in extents.iter().enumerate() {
+        assert_eq!(
+            &restored.cache_extent(i),
+            want,
+            "layer {i} restored elsewhere"
+        );
+    }
+    assert_eq!(
+        restored.prefill(&[7]).unwrap(),
+        source.prefill(&[7]).unwrap(),
+        "the restored cache does not continue bit-identically"
+    );
+}
+
+/// A snapshot is untrusted input, and `base` reaches into the attention
+/// indexing: `t - base` underflows for a base past the position being read,
+/// which in release wraps to an enormous index and panics in a slice. Every
+/// malformed base must be a refusal instead.
+#[test]
+fn a_snapshot_declaring_an_impossible_base_is_refused() {
+    let spec = narrow_spec();
+    let mut source = model_of(&spec);
+    source.prefill(&tokens_of(300)).unwrap();
+    let mut image = Vec::new();
+    source.save_state(&mut image).unwrap();
+
+    // Layer 0's `base` is the first u64 after the two header fields.
+    let at = 16;
+    for bad in [u64::MAX, 10_000, 299] {
+        let mut corrupt = image.clone();
+        corrupt[at..at + 8].copy_from_slice(&bad.to_le_bytes());
+        let mut m = model_of(&spec);
+        let err = m
+            .load_state(&mut corrupt.as_slice())
+            .expect_err("base {bad} was accepted");
+        assert!(
+            err.to_string().contains("layer 0"),
+            "base {bad}: the refusal should name the layer: {err}"
+        );
+        assert_eq!(m.cached_len(), 0, "base {bad} left state behind");
+    }
 }

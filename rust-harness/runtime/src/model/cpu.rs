@@ -60,32 +60,29 @@
  * rotates 128 -- finite, fluent, wrong. See the proportional-RoPE derivation
  * in docs/rust-harness/gemma-4-ingestion.md.
  *
- * The K/V cache stores the full sequence for every layer that owns one; the
- * sliding window is applied as an attention mask only. Capping sliding-window
- * storage to the kv.rs budget (a ring buffer) is deferred to the real-model
- * work, where the memory matters -- and KV sharing constrains that future
- * change: a shared sliding layer reads its donor's rows, and the donor must
- * therefore retain the full sequence even though its own attention never looks
- * past the window. Upstream hits the same wall and answers it by consulting a
- * separate full-length `shared_kv_states` rather than the cache. A ring buffer
- * applied uniformly to every sliding layer would silently truncate what the
- * shared tail reads.
+ * The K/V cache caps sliding layers at `kv::window_capacity` and keeps the
+ * full sequence only in global ones. `LayerKv` is a linear compacting buffer,
+ * not a ring, for a reason recorded there. Two things about it are worth
+ * knowing before touching this file.
  *
- * That warning now has a test behind it rather than only a paragraph:
- * `runtime/tests/long_context.rs` runs the shared-KV configuration at lengths
- * where the window has engaged and a batch group boundary has been crossed,
- * and its mutation record shows that a relocation bug confined to the second
- * group onward is caught there and nowhere else in the workspace. Read that
- * file before capping storage.
+ * The cap is `window - 1 + group`, not `window`. A group's first query row
+ * attends over the rows before it while the group's own appends have already
+ * moved the tail forward, so the retention point is the group's *first*
+ * position. Evicting against its last is the trap mistral.rs documents, and
+ * `runtime/tests/long_context.rs` exists because it bites at a batch group
+ * boundary and nowhere a short prompt reaches.
  *
- * One thing the paragraph above asserts and nothing yet measures: *why* the
- * donor must keep the full sequence. A shared layer's span is bounded by its
- * own kind, and the donor rule keeps donor and reader in the same regime, so
- * a shared sliding layer never asks for a row outside its own window -- which
- * suggests a ring would suffice in the steady state and that the real hazard
- * is the batched relocation above rather than the donor as such. Left as
- * written rather than corrected, because the difference decides how the cap is
- * implemented and deserves a measurement instead of a second opinion.
+ * KV sharing turned out not to constrain it. This header used to warn that a
+ * donor must retain the full sequence for its shared readers, and that
+ * upstream answers the same problem with a separate full-length
+ * `shared_kv_states`. The warning was wrong for this backend, and settled by
+ * construction rather than by measurement: `kv_donors` pairs a reader with a
+ * donor of its own attention regime, and `config.sliding_window` is
+ * model-wide, so a sliding reader and its donor always carry the same window
+ * and the reader never asks for a row the donor has dropped. What survives of
+ * the warning is `ModelSpec::retention_window`, which sizes a donor for the
+ * widest of its readers -- because if that ever ceases to hold the symptom
+ * changes from a harmless over-read to an out-of-bounds one.
  */
 
 use std::collections::HashMap;
@@ -203,6 +200,40 @@ impl ModelSpec {
     /// shared tail: 18 of E4B's 42 layers, 20 of E2B's 35.
     pub fn owns_cache(&self, i: usize) -> bool {
         self.layers[i].kv_source == i
+    }
+
+    /// The window layer `i`'s cache must retain, or `None` if it retains
+    /// everything.
+    ///
+    /// The widest window among layer `i` and every shared layer reading it,
+    /// not layer `i`'s own. Today those are always equal -- `kv_donors` pairs
+    /// a reader with a donor of its own attention regime, and
+    /// `config.sliding_window` is model-wide, so a sliding reader's donor
+    /// always carries the same window. The max is here because the
+    /// consequence of that ceasing to hold changed with this package. Under
+    /// full storage a reader with a wider window than its donor simply read
+    /// rows that happened to be present; against a capped cache the donor has
+    /// evicted them and the read is out of bounds.
+    ///
+    /// `None` for a global layer and for any layer a global layer reads: a
+    /// global reader's `first` is zero, so its donor can never drop a row.
+    pub fn retention_window(&self, i: usize) -> Option<usize> {
+        if !self.owns_cache(i) {
+            return None;
+        }
+        let mut widest = None;
+        for layer in self.layers.iter() {
+            if layer.kv_source != i {
+                continue;
+            }
+            match layer.kind {
+                LayerKind::Global => return None,
+                LayerKind::SlidingWindow(w) => {
+                    widest = Some(widest.map_or(w, |seen: usize| seen.max(w)))
+                }
+            }
+        }
+        widest
     }
 
     /// Number of layers that store K/V. `n_layers` on a checkpoint without a
@@ -694,13 +725,87 @@ struct Weights {
     output_norm: Vec<f32>,
 }
 
-/// Per-layer KV cache. Correctness-first: every layer stores the full
-/// sequence; the sliding window is applied as an attention mask, and the
-/// storage cap from kv.rs stays a deferred optimization.
+/// Per-layer KV cache: a linear compacting buffer holding the rows
+/// `base .. base + rows` of the sequence.
+///
+/// Global layers keep `base` at zero and grow with the context. A sliding
+/// layer is capped at `kv::window_capacity`, and when it overflows the
+/// retained tail is relocated to index 0 and `base` advances -- a memmove, not
+/// a wrapped write. That choice is load-bearing rather than incidental: a
+/// modular ring would make attention's read order depend on the write cursor,
+/// and this backend's whole standing rests on producing the same bits whatever
+/// order a prefill was grouped in. Here the stored rows are always contiguous
+/// and in natural token order, so the mask arithmetic is unchanged and only
+/// the index translation is new.
+///
+/// The retention point is the *first* query position of the group being
+/// appended, never its last. A group's earliest row legitimately attends over
+/// rows its latest row has already pushed past, so evicting against the tail
+/// drops rows the same forward pass is about to read -- the trap
+/// `runtime/tests/long_context.rs` was written to catch, and the reason
+/// `kv::window_residency` carries a batch term.
 #[derive(Clone, Default)]
 struct LayerKv {
     k: Vec<f32>,
     v: Vec<f32>,
+    /// Absolute sequence position of the row stored at index 0.
+    base: usize,
+}
+
+impl LayerKv {
+    /// Append one group's K/V, first evicting whatever the group's earliest
+    /// query row can no longer reach.
+    ///
+    /// `retain` is the earliest absolute position this layer must still be
+    /// able to answer for, and `capacity` the rows it may hold. Compaction
+    /// keeps the newest `capacity` rows rather than the bare minimum: the
+    /// surplus is the slack that makes the relocation amortized, and it is
+    /// also the rewind margin, so cutting to the minimum here would leave a
+    /// cache that cannot step back a single position.
+    fn append(
+        &mut self,
+        k: &[f32],
+        v: &[f32],
+        row: usize,
+        end: usize,
+        retain: usize,
+        capacity: usize,
+    ) {
+        if capacity > 0 && end.saturating_sub(self.base) > capacity {
+            let want = end.saturating_sub(capacity);
+            // Never past what the group still needs. Guaranteed by
+            // `capacity >= window_residency`, and asserted because a capacity
+            // computed from the wrong window would otherwise show up as
+            // finite, plausible, wrong logits rather than as a panic.
+            debug_assert!(
+                want <= retain,
+                "capacity {capacity} would evict position {want}, still needed from {retain}"
+            );
+            let drop = want.min(retain).saturating_sub(self.base);
+            if drop > 0 {
+                self.k.drain(..drop * row);
+                self.v.drain(..drop * row);
+                self.base += drop;
+            }
+        }
+        self.k.extend_from_slice(k);
+        self.v.extend_from_slice(v);
+    }
+
+    /// Drop every row from absolute position `len` onward. `base` is
+    /// unchanged: truncation removes the tail, and the caller has already
+    /// checked `len` against the rewind floor.
+    fn truncate_to(&mut self, len: usize, row: usize) {
+        let keep = len.saturating_sub(self.base) * row;
+        self.k.truncate(keep);
+        self.v.truncate(keep);
+    }
+
+    fn clear(&mut self) {
+        self.k.clear();
+        self.v.clear();
+        self.base = 0;
+    }
 }
 
 /// Observer of the residual stream, the interp tap seam. Fires on the decoder
@@ -1358,7 +1463,12 @@ impl BatchKind {
     }
 
     /// Positions per pass for a prefill of `tokens` tokens.
-    fn chunk(self, tokens: usize) -> usize {
+    ///
+    /// Public because the KV budget depends on it: a windowed layer holds
+    /// `window - 1 + chunk` rows, so a run header reporting cache bytes has to
+    /// ask the same question the forward pass does rather than assume the
+    /// default.
+    pub fn chunk(self, tokens: usize) -> usize {
         match self {
             BatchKind::Stepped => 1,
             BatchKind::Batched(n) => n.min(tokens),
@@ -2164,6 +2274,39 @@ impl CpuModel {
         self.batch
     }
 
+    /// The absolute positions layer `i` currently holds, as `base..end`.
+    ///
+    /// `0..0` for a shared-KV layer, which stores nothing. Public because the
+    /// storage cap is otherwise unobservable from outside this module: every
+    /// other test in the suite compares logits, and logits are exactly what
+    /// the cap must not change, so a suite without this accessor would pass
+    /// unaltered against a backend that quietly kept the whole sequence. An
+    /// optimization nothing can see is an optimization nothing can confirm.
+    pub fn cache_extent(&self, i: usize) -> std::ops::Range<usize> {
+        let row = self.spec.cache_row(i);
+        if row == 0 {
+            return 0..0;
+        }
+        let base = self.kv[i].base;
+        base..base + self.kv[i].k.len() / row
+    }
+
+    /// How far behind the tip a rewind can still reach once the windows have
+    /// filled, or `None` for a model with no capped layer.
+    ///
+    /// A constant of the configuration rather than of the current cache, which
+    /// is what makes it reportable at startup — before any position exists to
+    /// ask `rewindable_from` about. The narrowest capped layer sets it, and
+    /// the surplus over its window is what the slack in `kv::window_capacity`
+    /// buys.
+    pub fn rewind_horizon(&self, max_context: usize) -> Option<usize> {
+        let group = self.batch.chunk(max_context);
+        (0..self.spec.layers.len())
+            .filter_map(|i| self.spec.retention_window(i))
+            .map(|win| crate::kv::window_capacity(win, group) - (win - 1))
+            .min()
+    }
+
     /// Heap bytes the weights occupy, and the width they are held at.
     ///
     /// Reported at startup so the claim that a bf16 checkpoint is not expanded
@@ -2325,6 +2468,9 @@ impl CpuModel {
         // mutably and would otherwise put these out of reach.
         let threads = self.threads;
         let dot = self.dot;
+        // One atomic increment, so the cache-eviction bounds stay reachable
+        // after the field split below hands `self` out piecewise.
+        let spec = Arc::clone(&self.spec);
         for &token in tokens {
             self.check_token(token)?;
         }
@@ -2499,9 +2645,20 @@ impl CpuModel {
                 // layer, so the rows an earlier member of the batch appended
                 // are visible to a later one -- which is what makes the
                 // triangular mask below both necessary and sufficient.
-                let cache = &mut kv[i];
-                cache.k.extend_from_slice(k);
-                cache.v.extend_from_slice(v);
+                //
+                // It is also why the eviction bound is `start`, the group's
+                // first query position, and not `start + n - 1`. Row `start`
+                // has not attended yet and still reaches back `win - 1` from
+                // where it sits; evicting against the tail would drop rows
+                // this very call is about to read.
+                let (retain, capacity) = match spec.retention_window(i) {
+                    Some(win) => (
+                        (start + 1).saturating_sub(win),
+                        crate::kv::window_capacity(win, n),
+                    ),
+                    None => (0, 0),
+                };
+                kv[i].append(k, v, kv_dim, start + n, retain, capacity);
             }
             // The donor shares this layer's type and therefore its head width,
             // so the reading layer's stride is the donor's stride. Asserted
@@ -2510,6 +2667,20 @@ impl CpuModel {
             debug_assert_eq!(
                 w.layers[src].spec.head_dim, hd,
                 "donor layer {src} and reader layer {i} disagree on head width"
+            );
+            // The same rule for the window, which used to be harmless and is
+            // not any more. A reader looking further back than its donor
+            // retains once read rows that happened to still be there; against
+            // a capped cache those rows are gone and the index below is out of
+            // bounds. `retention_window` is what keeps this true, by sizing a
+            // donor for the widest of its readers rather than for itself.
+            debug_assert!(
+                match (layer.spec.kind, w.layers[src].spec.kind) {
+                    (_, LayerKind::Global) => true,
+                    (LayerKind::Global, LayerKind::SlidingWindow(_)) => false,
+                    (LayerKind::SlidingWindow(r), LayerKind::SlidingWindow(d)) => r <= d,
+                },
+                "reader layer {i} looks further back than donor layer {src} retains"
             );
             let cache = &kv[src];
 
@@ -2549,15 +2720,23 @@ impl CpuModel {
                 for qh in 0..c.n_heads {
                     let kvh = qh / heads_per_kv;
                     let qv = &q[p * q_dim + qh * hd..p * q_dim + (qh + 1) * hd];
+                    // `first ..= position` stays absolute -- the mask is
+                    // easier to read against the sequence than against the
+                    // buffer -- and `- cache.base` is the one translation into
+                    // storage. A windowed cache has relocated its tail, so row
+                    // `t` sits at `t - base`; a global cache has `base == 0`
+                    // and the subtraction is a no-op.
                     scores.clear();
                     scores.extend((first..=position).map(|t| {
-                        let kt = &cache.k[t * kv_dim + kvh * hd..t * kv_dim + (kvh + 1) * hd];
+                        let r = (t - cache.base) * kv_dim;
+                        let kt = &cache.k[r + kvh * hd..r + (kvh + 1) * hd];
                         attn_logit(qv, kt)
                     }));
                     softmax_in_place(scores);
                     let out = &mut attn_out[p * q_dim + qh * hd..p * q_dim + (qh + 1) * hd];
                     for (s, t) in scores.iter().zip(first..=position) {
-                        let vt = &cache.v[t * kv_dim + kvh * hd..t * kv_dim + (kvh + 1) * hd];
+                        let r = (t - cache.base) * kv_dim;
+                        let vt = &cache.v[r + kvh * hd..r + (kvh + 1) * hd];
                         for (o, val) in out.iter_mut().zip(vt) {
                             *o += s * val;
                         }
@@ -2779,13 +2958,25 @@ impl CpuModel {
             };
             // Backstop for any error a future forward pass raises: roll the
             // cache back to the length prefill was called at, so a failed
-            // batch leaves the model exactly as it found it — including the
-            // groups that already succeeded.
+            // batch leaves the model where it found it — including the groups
+            // that already succeeded.
+            //
+            // A capped cache cannot always do that. Once a later group has
+            // evicted, the rows `entry` names are gone and no rollback
+            // restores them, so the fallback is a full clear. That is a
+            // weakening of the `Model::prefill` contract and it is stated
+            // there: all of the tokens land, or the cache is left at some
+            // prefix of what it held, possibly empty. `Session::sync`
+            // reconciles against `cached_len` rather than trusting its own
+            // mirror, which is what makes an empty cache recoverable instead
+            // of a desync — and is why that reconciliation is not redundant.
             let logits = match self.forward_batch(group, start, want) {
                 Ok(logits) => logits,
                 Err(e) => {
-                    self.truncate(entry)
-                        .expect("entry length is a prefix of the current cache");
+                    if self.truncate(entry).is_err() {
+                        self.truncate(0)
+                            .expect("a full clear is always within the rewind floor");
+                    }
                     return Err(e);
                 }
             };
@@ -2831,12 +3022,51 @@ impl Model for CpuModel {
         self.prefill_groups(tokens, false, first)
     }
 
+    fn rewindable_from(&self) -> usize {
+        self.kv
+            .iter()
+            .enumerate()
+            .filter_map(|(i, cache)| {
+                let win = self.spec.retention_window(i)?;
+                // A layer that has never evicted holds position 0 and bounds
+                // nothing. One that has holds `base` onward, and the earliest
+                // position it can still *answer* for is `win - 1` later --
+                // that position's own window is the first that fits entirely
+                // inside what survives.
+                (cache.base > 0).then(|| cache.base + win - 1)
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
     fn truncate(&mut self, len: usize) -> Result<()> {
         ensure!(len <= self.cached_len, "truncate beyond cached length");
+        // A full clear is always legal and bypasses the floor: it is a reset,
+        // not a rewind, and several callers depend on being able to hand back
+        // a genuinely fresh model -- `Session`'s restore-mismatch recovery
+        // most of all, where returning an error would leave exactly the skew
+        // the recovery exists to prevent.
+        if len == 0 {
+            for cache in self.kv.iter_mut() {
+                cache.clear();
+            }
+            self.cached_len = 0;
+            return Ok(());
+        }
+        // Strictly below, not at. After a single-token decode the floor is
+        // exactly `cached_len - 1`, which is what `Session::ensure_tail_logits`
+        // truncates to on every restore and every invalidated tail; a `<=`
+        // here would refuse the ordinary replay rather than an overreach.
+        let floor = self.rewindable_from();
+        ensure!(
+            len >= floor,
+            "truncate to {len} is past the sliding window: this cache can no longer \
+             return to any position before {floor}, because the rows are evicted \
+             rather than masked. Ask `rewindable_from` before rewinding, or clear \
+             the cache with `truncate(0)` and re-prefill"
+        );
         for (i, cache) in self.kv.iter_mut().enumerate() {
-            let kv_dim = self.spec.cache_row(i);
-            cache.k.truncate(len * kv_dim);
-            cache.v.truncate(len * kv_dim);
+            cache.truncate_to(len, self.spec.cache_row(i));
         }
         self.cached_len = len;
         Ok(())
@@ -2848,12 +3078,19 @@ impl Model for CpuModel {
         Ok(Box::new(self.fork_cpu()))
     }
 
-    // Cache layout on disk: n_layers u64, cached_len u64, then per layer the
-    // K vector followed by the V vector as little-endian f32. Lengths are
-    // implied (cached_len x n_kv_heads x that layer's head width; the CPU
-    // backend stores the full sequence in every layer it stores at all,
-    // windowed or not), so a length mismatch on load is a hard error rather
-    // than a guess.
+    // Cache layout on disk: n_layers u64, cached_len u64, then per layer a
+    // `base` u64 followed by the K vector and the V vector as little-endian
+    // f32.
+    //
+    // `base` is why the per-layer header exists. Lengths used to be implied by
+    // `cached_len`, on the reasoning that the backend stored the full sequence
+    // in every layer it stored at all; capping sliding layers at the window
+    // falsified that, and a layer's row count is now `cached_len - base`.
+    // Writing it per layer rather than deriving it from the spec keeps the
+    // reader honest about a payload it did not produce, and keeps a restored
+    // cache reporting the same `rewindable_from` the saved one did -- a
+    // snapshot that silently re-based to zero would claim a rewind it cannot
+    // perform.
     //
     // The per-layer head width is why the row length is recomputed per layer
     // rather than hoisted: a checkpoint interleaving two head widths writes
@@ -2866,11 +3103,14 @@ impl Model for CpuModel {
         w.write_all(&(self.cached_len as u64).to_le_bytes())?;
         for (i, cache) in self.kv.iter().enumerate() {
             let kv_dim = self.spec.cache_row(i);
+            let rows = self.cached_len - cache.base;
             ensure!(
-                cache.k.len() == self.cached_len * kv_dim
-                    && cache.v.len() == self.cached_len * kv_dim,
+                cache.base <= self.cached_len
+                    && cache.k.len() == rows * kv_dim
+                    && cache.v.len() == rows * kv_dim,
                 "layer {i} KV cache length inconsistent with cached_len"
             );
+            w.write_all(&(cache.base as u64).to_le_bytes())?;
             // Block at a time rather than four bytes at a time: a real
             // checkpoint's cache is hundreds of megabytes, and one write_all
             // per f32 through a trait object spends more time in dispatch
@@ -2921,7 +3161,41 @@ impl Model for CpuModel {
         let mut restored = vec![LayerKv::default(); self.kv.len()];
         let mut block = Vec::new();
         for (i, cache) in restored.iter_mut().enumerate() {
-            let elements = cached_len * self.spec.cache_row(i);
+            r.read_exact(&mut u64buf)?;
+            let base = u64::from_le_bytes(u64buf) as usize;
+            // A snapshot is untrusted input, and `base` reaches straight into
+            // the attention indexing: `t - base` underflows for any `base`
+            // past the position being read, which in release wraps to an
+            // enormous index and panics in the slice. Every constraint the
+            // writer satisfies is therefore checked here rather than assumed.
+            ensure!(
+                base <= cached_len,
+                "layer {i} declares base {base} beyond the cached length {cached_len}"
+            );
+            match self.spec.retention_window(i) {
+                // An uncapped layer never evicts, so a non-zero base is either
+                // corruption or a snapshot from a differently-configured
+                // model. Both are refusals.
+                None => ensure!(
+                    base == 0,
+                    "layer {i} declares base {base} but retains its whole sequence"
+                ),
+                // A capped layer must still hold a full window behind the tip,
+                // or it is restored already unable to answer for its own last
+                // position -- and the first thing `Session` does after a
+                // restore is replay that position.
+                Some(win) => ensure!(
+                    base == 0 || base + win <= cached_len,
+                    "layer {i} declares base {base} with window {win}, which leaves \
+                     fewer rows than position {} needs",
+                    cached_len.saturating_sub(1)
+                ),
+            }
+            let rows = cached_len - base;
+            let elements = rows
+                .checked_mul(self.spec.cache_row(i))
+                .context("layer row count overflows")?;
+            cache.base = base;
             for vec in [&mut cache.k, &mut cache.v] {
                 vec.reserve_exact(elements.min(RESERVE_ELEMENTS));
                 // Read in blocks for the same reason save_state writes in
@@ -4114,10 +4388,15 @@ mod tests {
                 "donor {src} and reader {i} must share a head width, or the \
                  reader walks the cache at the wrong stride"
             );
+            // Everything the reader can still see, which is not the same as
+            // everything: a windowed donor evicts, and after this package it
+            // is only a short prefill that keeps every row. What must hold at
+            // any length is that the donor covers `base ..= cached_len`, so
+            // the reader's own window bound never names a row that is gone.
             assert_eq!(
                 model.kv[src].k.len(),
-                tokens.len() * model.spec.kv_dim(src),
-                "donor {src} must retain every position for reader {i}"
+                (model.cached_len - model.kv[src].base) * model.spec.kv_dim(src),
+                "donor {src} must retain every position it claims for reader {i}"
             );
         }
     }
@@ -4242,12 +4521,15 @@ mod tests {
         let mut snapshot = Vec::new();
         model.save_state(&mut snapshot).unwrap();
         // The shared tail contributes no payload: two owning layers of K and V
-        // at four positions, plus the two u64 header fields.
+        // at four positions, plus the two u64 header fields and one `base`
+        // u64 per layer. A shared layer still costs its `base` -- the reader
+        // walks every index, and a header that skipped the tail would put the
+        // payload out of step with the layer it belongs to.
         let owned: usize = (0..4)
             .filter(|&i| model.spec.owns_cache(i))
             .map(|i| model.spec.kv_dim(i))
             .sum();
-        assert_eq!(snapshot.len(), 16 + 2 * owned * tokens.len() * 4);
+        assert_eq!(snapshot.len(), 16 + 4 * 8 + 2 * owned * tokens.len() * 4);
 
         // Taken before the parent advances, so the fork and the parent are
         // asked for the same next token from the same cached prefix.
@@ -5149,7 +5431,11 @@ mod tests {
         // the counter, which makes it an honest emptiness check.
         let mut after = Vec::new();
         m.save_state(&mut after).unwrap();
-        assert_eq!(after.len(), 16, "a failed restore left rows in the cache");
+        assert_eq!(
+            after.len(),
+            16 + m.kv.len() * 8,
+            "a failed restore left rows in the cache"
+        );
     }
 
     #[test]
@@ -5161,9 +5447,11 @@ mod tests {
         // `forward_one` appends with `extend_from_slice` while reading
         // position 0 from the front of the vector — so the first token
         // attended to the orphans and returned finite, wrong logits with no
-        // error. Cut 124 of this 400-byte snapshot is one such point: it
+        // error. Cut 132 of this 416-byte snapshot is one such point: it
         // leaves layer 0's K fully restored and gave a first logit of
-        // -0.11380069 where a fresh model gives 0.32625324.
+        // -0.11380069 where a fresh model gives 0.32625324. It was cut 124 of
+        // 400 until each layer gained an eight-byte `base`, which moved every
+        // payload offset without changing what the cut demonstrates.
         //
         // Every prefix of a valid snapshot is scanned, and the assertion is
         // not that a counter reads zero but that the model computes exactly
@@ -5176,7 +5464,7 @@ mod tests {
         source.prefill(&[1, 5, 9]).unwrap();
         let mut full = Vec::new();
         source.save_state(&mut full).unwrap();
-        assert_eq!(full.len(), 400, "snapshot geometry assumed by this test");
+        assert_eq!(full.len(), 416, "snapshot geometry assumed by this test");
 
         let mut fresh = model();
         let mut empty_cache = Vec::new();
@@ -5188,12 +5476,12 @@ mod tests {
         // wrong number instead of printing 288 floats twice; the whole row
         // is compared in the scan below.
         let mut wedged = model();
-        wedged.load_state(&mut &full[..124]).unwrap_err();
-        assert_eq!(wedged.cached_len(), 0, "cut 124 reports fresh");
+        wedged.load_state(&mut &full[..132]).unwrap_err();
+        assert_eq!(wedged.cached_len(), 0, "cut 132 reports fresh");
         assert_eq!(
             wedged.prefill(&[4]).unwrap().0[0],
             expected.0[0],
-            "cut 124: the first token attended to the orphaned rows"
+            "cut 132: the first token attended to the orphaned rows"
         );
 
         for cut in 0..full.len() {

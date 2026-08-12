@@ -37,11 +37,18 @@ pub trait Model: Send {
     /// final appended position. Cost is proportional to `tokens.len()`, never
     /// to `cached_len()`.
     ///
-    /// Atomic: on error the cache is unchanged — all tokens are appended or
-    /// none is. `Session` mirrors `cached_len()` in its own token list, so a
-    /// backend that commits part of a failed batch desynchronizes that mirror
-    /// with no error to see, and every later position is computed against
-    /// context the transcript does not contain.
+    /// On error the cache is left at *some* prefix of what it held, possibly
+    /// empty, and never in the middle of a batch. The strong form — the cache
+    /// is unchanged — holds wherever the backend can still rewind: a
+    /// sliding-window cache that evicted during the failed call cannot, since
+    /// the rows are gone, and clears instead.
+    ///
+    /// What must not happen is a *partial* commit. `Session` mirrors
+    /// `cached_len()` in its own token list, and a backend that kept half a
+    /// failed batch desynchronizes that mirror with no error to see, so every
+    /// later position is computed against context the transcript does not
+    /// contain. A shorter prefix is recoverable and `Session::sync` recovers
+    /// it by reconciling against `cached_len()`; a wrong one is not.
     fn prefill(&mut self, tokens: &[Token]) -> Result<Logits>;
 
     /// Append `tokens` and return logits at every appended position, one row
@@ -74,9 +81,28 @@ pub trait Model: Send {
         Ok(rows.split_off(first))
     }
 
+    /// The earliest position this cache can still be truncated to.
+    ///
+    /// Zero for a backend that retains everything, which is the default and
+    /// what the mock and the recorder report. A backend with sliding-window
+    /// layers evicts rather than masks, so once a window has filled the
+    /// positions before this one are gone and no rewind reaches them.
+    ///
+    /// A query rather than a discovery: the alternative to asking is finding
+    /// out mid-experiment, from a `truncate` that fails after the interesting
+    /// state has already been built. `truncate(0)` is always available
+    /// regardless — that is a reset, not a rewind.
+    fn rewindable_from(&self) -> usize {
+        0
+    }
+
     /// Drop cached state beyond `len` tokens. Used when a transcript diverges
     /// from the cached prefix: truncate to the common prefix, re-prefill the
     /// rest.
+    ///
+    /// Errors below `rewindable_from`. Callers that may need to go further
+    /// back — conversation compaction is the one that always does — ask first
+    /// and fall back to `truncate(0)` plus a re-prefill.
     fn truncate(&mut self, len: usize) -> Result<()>;
 
     /// Fork at the current cache boundary. The child starts with the parent's

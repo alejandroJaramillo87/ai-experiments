@@ -222,14 +222,11 @@ fn build_generator(
                 )
             })
             .collect();
-        // `resident_bytes`, not `budget_bytes`: the CPU backend applies the
-        // sliding window as an attention mask and stores the full sequence in
-        // every owning layer (`LayerKv` in runtime/src/model/cpu.rs). Charging
-        // windowed layers at their window size, as the design intends, reports
-        // less than the process goes on to take -- by (context - window) per
-        // windowed layer, which on a real checkpoint at its trained context is
-        // enough to keep the warning below from firing on a run that will not
-        // fit.
+        // The batch width is an input to the budget, not a detail: a windowed
+        // layer holds `window - 1 + group` rows, so the number below is only
+        // true for the batch this run will actually use. At `--batch whole`
+        // the group is the whole prefill and the cap saves nothing, which the
+        // figure then says out loud rather than under-reporting.
         // Weights first, because it is the larger number and the one a reader
         // is checking against the checkpoint on disk. A bf16 checkpoint held
         // at its published width reports about the file's size; twice that
@@ -249,12 +246,24 @@ fn build_generator(
                 peak as f64 / (1024.0 * 1024.0 * 1024.0)
             );
         }
-        let bytes = runtime::kv::resident_bytes(&layers, max_context);
+        let group = cpu.batch().chunk(max_context);
+        let bytes = runtime::kv::budget_bytes(&layers, max_context, group);
         let gib = bytes as f64 / (1024.0 * 1024.0 * 1024.0);
         eprintln!(
             "[INFO] KV cache: {max_context} tokens, {gib:.2} GiB f32 resident \
-             (full sequence per layer; the window is a mask, not a storage cap)"
+             (sliding layers capped at the window plus a batch of {group})"
         );
+        // The rewind horizon, stated before the run rather than discovered
+        // when a rewind fails. A windowed layer cannot return to a position it
+        // has evicted, so once the cache is full the reachable past is bounded
+        // -- and conversation compaction rewinds much further than this, which
+        // is why `Session::sync` rebuilds instead of erroring.
+        if let Some(horizon) = cpu.rewind_horizon(max_context) {
+            eprintln!(
+                "[INFO] Rewind horizon: {horizon} tokens behind the tip once the \
+                 window fills (compaction past it re-prefills)"
+            );
+        }
         if bytes > 2 << 30 {
             eprintln!(
                 "[WARN] KV cache above 2 GiB: consider --context to cap it \
@@ -283,10 +292,20 @@ fn build_generator(
                         session.cached_len(),
                         path.display()
                     ),
+                    // A snapshot is a cache, and the only thing lost by
+                    // discarding one is the prefill it would have saved. This
+                    // used to abort and ask for a rerun, which removed the
+                    // file and then made the user do by hand what the rerun
+                    // would do anyway. It matters more now that the payload
+                    // format is versioned against the KV layout: every
+                    // snapshot written before the sliding-window storage cap
+                    // is unreadable, and an upgrade should cost a line of
+                    // output rather than a failed startup.
                     Err(e) => {
                         let _ = std::fs::remove_file(path);
-                        anyhow::bail!(
-                            "restore session snapshot {}: {e:#} (stale file removed; rerun)",
+                        eprintln!(
+                            "[WARN] Session snapshot {} discarded: {e:#} \
+                             (starting with an empty cache)",
                             path.display()
                         );
                     }

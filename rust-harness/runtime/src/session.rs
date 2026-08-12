@@ -31,7 +31,13 @@ const SNAPSHOT_MAGIC: &[u8; 4] = b"HKV1";
 /// valid, so this bump buys a message rather than safety. Without it a snapshot
 /// written by the previous binary fails on a hash mismatch, which reads as a
 /// changed or corrupt checkpoint -- the one thing that did not happen.
-const SNAPSHOT_VERSION: u32 = 3;
+///
+/// Version 4: the backend payload gained a per-layer `base`, because capping
+/// sliding-window storage means a layer's row count is no longer implied by
+/// `cached_len`. Unlike the version 3 bump this one is safety and not just a
+/// message -- a version 3 payload read as version 4 would take the first
+/// layer's first eight bytes of K as a base and misalign everything after it.
+const SNAPSHOT_VERSION: u32 = 4;
 const SNAPSHOT_DTYPE_F32: u8 = 0;
 /// Tokens moved per `write_all`/`read_exact` when saving and restoring.
 ///
@@ -146,7 +152,22 @@ impl Session {
         // before failing, and behind when a tail replay dropped a position
         // and then failed. Both lengths already equal `common` on the normal
         // path, where the two truncates below are no-ops.
-        let keep = common.min(self.model.cached_len());
+        let mut keep = common.min(self.model.cached_len());
+        // A sliding-window cache evicts rather than masks, so it cannot rewind
+        // past its window. Compaction rewinds much further than that by
+        // construction — it rewrites the middle of the transcript and the
+        // summarizing turn opens a fresh sequence, so `common` lands near zero
+        // — which makes this the routine path after a compaction rather than
+        // an edge case. Rebuilding is correct and merely slower; erroring here
+        // would break the feature at exactly the point it is invoked.
+        if keep > 0 && keep < self.model.rewindable_from() {
+            tracing::debug!(
+                keep,
+                floor = self.model.rewindable_from(),
+                "rewind past the sliding window: clearing and re-prefilling"
+            );
+            keep = 0;
+        }
         if self.model.cached_len() > keep {
             self.model.truncate(keep)?;
         }
