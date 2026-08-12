@@ -572,8 +572,44 @@ second half of each window, so 127 of 256 rows are read and the head computed
 all of them. `RowsWanted::From` and `Model::prefill_from` let the caller ask for
 the suffix. This halves the head's arithmetic *and* its traffic, needs no kernel
 work, and takes about 134 MB off peak RSS by halving the live logits set.
-Predicted 43-49s, point 47s. **Measurement outstanding** — see the protocol note
-below; it must be run before this paragraph carries a number.
+Predicted 43-49s, point 47s.
+
+**Measured, and the prediction missed.** Five pinned runs of the change
+(`taskset -c 0-7`, `--threads 8 --size quick --dot widen4 --batch 64`, E4B) gave
+L3 at 54.19, 53.12, 53.06, 52.57, 52.64s — median **53.06s**, against a
+predicted band of 43-49s. Every rung passed with the goldens identical to the
+last digit (ppl 55.5420, delta 0.000032, worst-token nll 0.001248), so the
+change is bit-identical as designed; it is the speedup that did not appear.
+
+Two caveats bound how hard that reading can be pushed. Only the change arm was
+run, so there is no pinned baseline to subtract — the 52.09s it is being
+compared against was measured unpinned. And pinning is not neutral: `taskset -c
+0-7` places all eight threads on one CCD with a shared L3, which is the
+favourable placement, so it is unlikely to be hiding a win. Taking those
+together, the honest statement is that **halving the head's rows did not move
+L3 measurably**, and the interleaved baseline arm is what would turn that into a
+number.
+
+The implication for the model is the useful part. If the head were the 3-9s per
+window the roofline allows, halving its rows would have shown at this spread —
+the five pinned runs vary by 1.62s, far tighter than the 40 percent the unpinned
+runs showed, so the measurement was sensitive enough. **The head is a smaller
+share of L3 than the byte count suggests**, which revises the deferred panel
+head below *downward* from its 1.05-1.12x estimate, since that estimate was
+derived from the same phase split.
+
+The change is kept regardless. It is a strict deletion of computed-then-discarded
+work plus a smaller live logits set, neither of which is contingent on the
+timing, and the decision rule written before the run said so.
+
+**This is the fourth prediction in a row that was too optimistic, and the third
+in the same direction.** The phase split above was written specifically to avoid
+repeating the traffic-share error, and it still overshot — so the fault is not
+which quantity was counted but that L3's time is being predicted from a static
+model of the machine at all. Every correction so far has come from a
+measurement, none from a better estimate. The standing conclusion is to stop
+predicting CPU timings to a band and measure instead, which is also the
+argument the CUDA backend rests on.
 
 **Deferred: panelizing the head.** Routing the head through the panel kernels
 would take its table reads from one per position to one per group. But it leaves
