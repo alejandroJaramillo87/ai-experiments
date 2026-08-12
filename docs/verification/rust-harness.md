@@ -34,6 +34,21 @@ Scope is CPU only. Not covered, and why:
   startup banner prints it in passing, and its KV line is the figure to
   check. RH.1 has no banner — `checkpoint-info` loads no model.
 
+**E4B at the pinned revision is a base model, and several entries below were
+written as though it were instruction-tuned.** `fixtures/reference/prompts.txt`
+records the measurement and the trap: asked a question it does not answer, and
+"a reader who expects one will read a fluent non-answer as a defect." RH.2 hit
+exactly that on 2026-08-12 and cost two host round trips before the note was
+found. Instruction-shaped prompts still appear throughout this file, and in
+most entries they are inert — RH.5, RH.6, RH.10 and RH.12 care about the flight
+recorder, the trace, the profile or determinism, and any prompt of the right
+length would do. Three entries are different, because instruction following is
+their expected signal: **RH.9d** (steering, judged against a baseline reply),
+**RH.11** (`--chat`, "coherent and responsive to the conversation history"),
+and the agent loop. Those cannot pass against a base checkpoint no matter how
+correct the backend, and closing them needs the `-it` variant, which is not on
+this workstation. Each carries a note to that effect.
+
 Recording protocol: the [runbook README](README.md) rules apply. The human
 runs each command on the workstation and pastes command plus output
 verbatim into the Observed block; expected signals are never edited to
@@ -406,10 +421,17 @@ $ cd rust-harness
 $ mkdir -p /tmp/rh2 && cd /tmp/rh2
 $ time ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
-    "Reply with the single word: ready"
+    "The capital of France is"
 ```
 
 (Build once with `cargo build --release -p harness`.)
+
+**The prompt is a continuation, not an instruction, and that is deliberate.**
+E4B at the pinned revision is a base model. `fixtures/reference/prompts.txt`
+records the measurement: a 16-token greedy probe on this exact prompt returned
+" a city that is full of history and culture", which is a healthy base model.
+Asked a question, it does not answer. An instruction-shaped prompt here
+produces a fluent non-answer that reads as a defect and is not one.
 
 No `--tokenizer` is passed, and none should be needed: `resolve_tokenizer`
 looks for `tokenizer.json` inside the checkpoint directory first, which is
@@ -417,11 +439,18 @@ how a published checkpoint carries it. If this step fails with "no
 tokenizer.json for model", the directory is incomplete — record that rather
 than working around it with an explicit path.
 
-Expected signal: exit 0; the model loads without panic, the reply is
-coherent text responsive to the instruction, and `session.jsonl` appears
-in the working directory. Coherence is the signal: a numerically wrong
-forward pass on real weights produces fluent-looking garbage or
-repetition, so record the full reply.
+Expected signal: exit 0; the model loads without panic, the continuation is
+fluent English that follows plausibly from the prompt, and `session.jsonl`
+appears in the working directory. Fluency is the signal, and instruction
+following is explicitly not: a numerically wrong forward pass on real weights
+degrades into word salad or a repetition loop, and neither survives a few
+dozen tokens. Record the full reply.
+
+What this entry cannot decide is whether the continuation is the *right* one.
+A backend wrong in a small, systematic way produces fluent prose that diverges
+from the reference, and no amount of reading it will show that. RH.1a check 2
+and the ladder's L4 rung are what compare against `transformers`; this entry
+establishes only that the model runs and speaks.
 
 The startup banner is also the KV evidence: it prints the weight width, peak
 RSS after load, the KV cache line, and the rewind horizon. Record those four
@@ -450,70 +479,46 @@ Reply with the single word: edit
 I can't tell if I'm asking a reasonable question, but I'm interested in exploring...
 ```
 
-Status: FAILED 2026-08-12 on the coherence signal. The load half passed: the
-compatibility verdict is `supported`, the weights are resident at their
-published width, and the banner is the KV evidence RH.2 exists to produce.
-The generation half did not. The model echoed the prompt with `edit`
-substituted for `ready`, then continued into an invented web-forum thread —
-grammatical, fluent, and entirely non-responsive.
+Status: PARTIAL 2026-08-12, and the entry itself was the defect. The run was
+made with the old instruction-shaped prompt, `Reply with the single word:
+ready`. The load half passed and is recorded above. The reply was fluent,
+grammatical and entirely non-responsive: the model echoed the prompt with
+`edit` substituted for `ready`, then continued into an invented web-forum
+thread about whether neural networks can generate code.
 
-That is not the failure mode the expected signal predicts. A numerically wrong
-forward pass degrades into garbage or repetition; this is neither. It is what
-base-model document continuation looks like, which is the shape you get when
-no chat template is applied and the prompt reaches the model as raw text. This
-campaign already records the supporting gap: the Gemma 3 turn markers were
-removed with no replacement, and no golden covers the rendered token stream
-against Gemma 4's convention, so nothing would have caught a missing template.
+**That is correct behaviour, and the expected signal was wrong.** E4B at the
+pinned revision is a base model, which `fixtures/reference/prompts.txt` states
+and measures: "asked 'What is the capital of France?' it does not answer, and
+a reader who expects one will read a fluent non-answer as a defect." That is
+exactly what happened here. A base model given an instruction continues the
+document, because continuing documents is the only thing it was trained to do.
+The prompt in this entry has been changed to a continuation, and the entry
+needs one more run to close.
 
-**The template hypothesis was tested on 2026-08-12 and refuted.** The
-published E4B `tokenizer.json` carries `<|turn>` and `<turn|>` in its
-added-tokens table, and does *not* carry `<start_of_turn>` or
-`<end_of_turn>` — the opposite of what the drift theory needed. The rest of
-the path is sound with it: `template::MARKERS` names those literals,
-`generator::PROMPT_SPECIALS` admits them, and `generator.rs:74` encodes every
-prompt through `encode_prompt` with that allowlist. The delimiters reach the
-model as their own ids. The paragraph below records the refuted reasoning
-because the mechanism it describes is real and still unguarded, not because
-it explains this failure.
+Two hypotheses were raised and both are refuted; they are recorded because
+each cost a host round trip and neither should be re-derived.
 
-**The leading hypothesis is now that the checkpoint is a base model.** A
-pretrained checkpoint has the turn markers in its vocabulary — they are in the
-tokenizer either way — but was never trained to treat them as conversational
-boundaries, so it continues the document instead of answering, which is
-exactly the observed reply. The directory is named `gemma-4-E4B` with no `-it`
-suffix, and Gemma releases distinguish the instruction-tuned and pretrained
-variants by exactly that suffix. This is unverified and cheap to check.
-
-If it holds, RH.2's expected signal is wrong rather than the code: a base
-model cannot produce "coherent text responsive to the instruction" no matter
-how correct the forward pass, and the entry needs a completion-style prompt
-or an instruction-tuned checkpoint.
-
-
-`harness/src/template.rs:31-52` renders `<bos>` then
+*Not a missing chat template.* One is rendered and pinned:
+`harness/src/template.rs:31-52` emits `<bos>` then
 `<|turn>{role}\n{content}<turn|>`, and `harness/tests/template_contract.rs`
-pins those literals against `schemas/chat_template.json`. What is unverified
-is whether the *published* E4B `tokenizer.json` carries `<|turn>` as a piece.
-`runtime/src/tokenizer.rs:304-321` decides that, and its own doc comment
-states the consequence plainly: "A literal that is not in the vocabulary
-matches nothing: the caller may name a delimiter this checkpoint does not
-carry, and encoding it as text is the same treatment any other unknown string
-gets." `tokenizer.rs:154` notes that a published Gemma tokenizer carries
-`<start_of_turn>`, and `template_contract.rs:8` records that this harness
-once emitted exactly that marker and was corrected away from it.
+holds those literals against `schemas/chat_template.json`.
 
-So if the real vocabulary spells the delimiter `<start_of_turn>` and the
-renderer emits `<|turn>`, the markers encode as ordinary text, the model never
-sees a turn boundary, and it continues the document — which is precisely the
-observed reply. The silent degradation is itself the defect: a delimiter the
-checkpoint does not carry produces fluent garbage and no error.
+*Not a delimiter the vocabulary lacks.* The published E4B `tokenizer.json`
+carries `<|turn>` and `<turn|>` in its added-tokens table and does **not**
+carry `<start_of_turn>` or `<end_of_turn>` — the reverse of what that theory
+needed. `template::MARKERS` names the literals, `generator::PROMPT_SPECIALS`
+admits them, and `generator.rs:74` encodes every prompt through
+`encode_prompt` with that allowlist, so the delimiters reach the model as
+their own ids.
 
-**Do not treat this as a numerics finding until RH.1a check 2 discriminates.**
-A greedy logit comparison against `transformers` on a bare factual completion
-does not depend on turn markers: if the logits match, the forward pass is
-sound and this is purely a template defect; if they diverge, the fault is in
-the backend and is far more serious than a missing template. That check is
-this entry's blocker and has not been run.
+The mechanism behind the second hypothesis is real even though it is not the
+cause here, and it is unguarded. `runtime/src/tokenizer.rs:304-321` says so
+itself: "A literal that is not in the vocabulary matches nothing: the caller
+may name a delimiter this checkpoint does not carry, and encoding it as text
+is the same treatment any other unknown string gets." A renderer and a
+checkpoint that disagree on the spelling would therefore produce fluent
+garbage and no error — the same symptom, from a genuine bug, with nothing to
+distinguish it from this one. That is worth a guard.
 
 The four banner lines reconcile exactly with the implemented KV rule, which is
 worth stating because it is the R3 acceptance. Layers 0-23 own a cache (24-41
@@ -865,6 +870,12 @@ $ cd /tmp/rh9/steer2 && ~/workspace/ai-experiments/rust-harness/target/release/h
     "Describe your day in two sentences"
 ```
 
+**Partly blocked on an instruction-tuned checkpoint.** "In the direction of
+the vector's attribute" is a judgment about a reply to an instruction, and
+base E4B does not reply to instructions; see the base-model note at the top of
+this file. The determinism half stands on its own and is the part to close
+here.
+
 Expected signal: the steered output differs from the RH.2/RH.9c baseline
 in the direction of the vector's attribute, and the two steered runs are
 identical to each other (deterministic). Record which vector was used and
@@ -930,6 +941,12 @@ $ ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only --chat \
     --trace-chrome trace.json --max-tokens 128
 ```
+
+**Blocked on an instruction-tuned checkpoint.** The responsiveness half of
+this signal is unmeetable against base E4B; see the base-model note at the top
+of this file. The mechanical half — the session record and the sync spans — is
+still worth running and recording, and a base model produces turns of text
+that exercise both.
 
 Expected signal: replies are coherent and responsive to the conversation
 history across at least three turns; `session.jsonl` records alternating
