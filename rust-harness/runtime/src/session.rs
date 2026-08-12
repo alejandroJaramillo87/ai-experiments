@@ -11,7 +11,7 @@
 use anyhow::Result;
 
 use super::grammar::{Grammar, Vocab};
-use super::model::{Logits, Model, Token};
+use super::model::{record::Selection, Logits, Model, Token};
 use super::sampler::Sampler;
 
 const SNAPSHOT_MAGIC: &[u8; 4] = b"HKV1";
@@ -401,6 +401,21 @@ impl ActiveGeneration<'_> {
             .expect("begin_generation established tail logits");
         let tok = sampler.sample(logits, mask.as_deref())?;
         span.record("token", tok);
+        // Tell the model which token was chosen and where that left the
+        // sampler. Every backend ignores this; the flight recorder writes it,
+        // because logits alone let a replay reproduce the distribution and
+        // then draw from it again.
+        //
+        // Before the EOS check, so a recording states that the run chose to
+        // stop rather than leaving a reader to infer it from a missing line.
+        // `draws` is read after the sample, so it counts this step's draw.
+        // The position is the one the token occupies; the logits it came from
+        // are the recorded row one position earlier.
+        self.session.model.record_selection(Selection {
+            position: self.session.tokens.len(),
+            token: tok,
+            draws: sampler.draws(),
+        })?;
         if tok == self.vocab.eos() {
             self.done = true;
             return Ok(None);

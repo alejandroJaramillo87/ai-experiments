@@ -110,6 +110,23 @@ pub trait Model: Send {
     /// independent. Basis of subagent spawn.
     fn fork(&self) -> Result<Box<dyn Model>>;
 
+    /// Note which token a sampler chose at `selection.position`, and where
+    /// that left it in its draw stream.
+    ///
+    /// A no-op for every backend, which is the point: sampling happens above
+    /// this trait, in `Session`, and a forward pass has no opinion about it.
+    /// The flight recorder is the one implementor that overrides this, and it
+    /// needs the seam because the alternative — recording only the logits it
+    /// can see from here — produces a file that reproduces the distribution
+    /// and then re-rolls the dice.
+    ///
+    /// Errors propagate: a recorder that could not write the selection has
+    /// produced an incomplete recording, and a caller told nothing would go
+    /// on to trust it.
+    fn record_selection(&self, _selection: record::Selection) -> Result<()> {
+        Ok(())
+    }
+
     /// Serialize the KV cache so a later process can resume without
     /// re-prefilling. The format is backend-defined; `load_state` of the
     /// same backend over the same weights must restore it exactly. Backends

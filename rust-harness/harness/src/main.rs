@@ -272,7 +272,14 @@ fn build_generator(
         }
     }
     let model: Box<dyn Model> = match record {
-        Some(path) => Box::new(RecordingModel::to_file(Box::new(cpu), path)?),
+        // The sampling parameters go into the recording's header, so a replay
+        // rebuilds the sampler that chose the tokens rather than a default
+        // one that would choose others.
+        Some(path) => Box::new(RecordingModel::to_file(
+            Box::new(cpu),
+            path,
+            Some(sampling.into()),
+        )?),
         None => Box::new(cpu),
     };
     let mut session = runtime::session::Session::new(model, max_context)?;
