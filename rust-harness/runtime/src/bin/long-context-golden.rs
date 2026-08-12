@@ -10,9 +10,14 @@
  * byte-compares, so drift is impossible. That construction cannot serve this
  * purpose: regenerating from the current engine and comparing against the
  * current engine agrees by definition. A change detector has to hold bytes
- * recorded at a point in time, so that the next package -- which caps KV
- * storage at the sliding window -- has to either reproduce them or re-run
- * this binary deliberately and say why in the commit.
+ * recorded at a point in time, so that a package rewriting how the cache is
+ * stored has to either reproduce them or re-run this binary deliberately and
+ * say why in the commit.
+ *
+ * That has happened once. Capping sliding-layer KV storage at the window
+ * changed both the layout of the cache and how attention indexes it, and
+ * these bytes came back unchanged -- the outcome the fixture exists to be
+ * able to report, and one no other construct in the workspace could have.
  *
  * What it is not. It is not an oracle. We wrote the engine that produced it,
  * so it is evidence of nothing except that behaviour has not changed since it
@@ -21,7 +26,7 @@
  * encodes was checked against transformers at 150 tokens on the Tier T
  * fixture (`runtime/tests/ladder_tiny.rs`), and this file was blessed only
  * after that passed. Blessing it first would have frozen whatever convention
- * we happened to hold and handed the next package a wrong answer to preserve.
+ * we happened to hold and handed the storage cap a wrong answer to preserve.
  *
  * Usage, from the rust-harness directory:
  *

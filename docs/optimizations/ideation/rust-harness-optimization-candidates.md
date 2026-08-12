@@ -501,17 +501,22 @@ shows per-token temporary allocations in the forward pass, a preallocated
 scratch workspace removes allocator traffic and stabilizes latency. Profile
 first; do not assume.
 
-**f16 KV cache and windowed ring buffers.** Halving KV element size cuts the
-128k-token worst case from 14.00 GiB to 7.00 GiB. Shared KV removes 18 of
-E4B's 42 layers from the cache, leaving 24 owning layers: four global at head
-dim 512 and 20 sliding at 256, each holding K and V for two KV heads across
-131072 positions. Bounding windowed layers to their attention window (a ring
-buffer instead of full-sequence storage) shrinks it further, but not across
-all 20 sliding owners — a sliding layer that donates its states to a shared
-layer must retain them full-length (`cpu.rs:24-27`). The `HKV1` snapshot
-format already reserves a dtype byte for f16, so the on-disk format absorbs
-this without a version bump. Numerics effect on golden tests must be
-measured, not assumed.
+**f16 KV cache.** Halving KV element size cuts the 128k-token worst case
+roughly in half. Shared KV removes 18 of E4B's 42 layers from the cache,
+leaving 24 owning layers: four global at head dim 512 and 20 sliding at 256,
+each holding K and V for two KV heads. The `HKV1` snapshot format already
+reserves a dtype byte for f16, so the on-disk format absorbs this without a
+version bump. Numerics effect on golden tests must be measured, not assumed.
+
+The windowed-storage half of this entry has **landed**, and two of its
+premises were wrong. It is a linear compacting buffer rather than a ring,
+because a ring makes attention's read order depend on the write cursor and
+this backend is bit-exact by construction. And the exception claimed here —
+that a sliding layer donating to a shared layer must retain full length —
+does not hold: `kv_donors` pairs a reader with a donor of its own attention
+regime and the window is model-wide, so donor and reader always share a
+window. All 20 sliding owners are capped. The real constraint was the batch
+width, not the donor: the cap is `window - 1 + group`. See `runtime/src/kv.rs`.
 
 **Huge pages.** Now the most likely next lever, and the argument against it has
 expired. The TLB-pressure reasoning behind the parent repository's 26%

@@ -24,6 +24,14 @@
  * implementations of prefill and decode are different kernels that need not
  * agree in the last bits.
  *
+ * The claim is about the *output*, and that boundary is real rather than
+ * pedantic. A sliding-window cache is sized from the group width, so how far
+ * back it can still be rewound does depend on the division -- `cached_len` and
+ * `rewindable_from` differ between a stepped run and a batched one over the
+ * same tokens. That is a property of the storage and it is why
+ * `Model::rewindable_from` is a query rather than a constant. What may not
+ * differ is a logit.
+ *
  * What these do not claim
  * -----------------------
  *
@@ -196,7 +204,7 @@ pub mod golden {
     use crate::synth::TinySpec;
 
     /// Interleaved sliding and global layers over a two-layer shared-KV tail,
-    /// window 3 -- the configuration whose storage cap is the next package.
+    /// window 3 -- the configuration the storage cap had to survive, and did.
     pub fn spec() -> TinySpec {
         TinySpec::e4b_shaped()
     }

@@ -70,6 +70,14 @@ longest single cache is L3's 256-token window against E4B's window of 512, so
 no rung has crossed a real one. It is offline, since `synth::tiny_checkpoint`
 builds a model in memory, and it runs in `make quality`.
 
+Its last section is a different kind of assertion and is grouped apart for
+that reason. Everything above it compares logits, which is what the KV storage
+cap must *not* change; the storage arms read the cache extent directly, because
+a suite that only compares logits cannot tell whether a memory optimization was
+implemented at all. The file's mutation record is worth reading before changing
+the eviction: correctness there has two independent guards, and defeating
+either one alone shows up as memory rather than as numerics.
+
 ## Output correctness
 
 Machinery tests (Tiers 1 and 2) cannot detect a numerically wrong forward
@@ -143,6 +151,11 @@ gives. What keeps it from freezing a wrong answer is ordering: the window
 convention it encodes was checked against `transformers` first, at 150 tokens
 over fifty crossings of the Tier T fixture's window of 3, and it was blessed
 only after that passed.
+
+It has since done its job once. Capping sliding-layer KV storage at the window
+rewrote how the cache is stored and indexed, and these bytes reproduced
+unchanged — which is the outcome that says the rewrite preserved behaviour,
+and the only construct in the workspace that could have said so.
 
 Real-weight verification is `runtime/src/bin/layer-diff.rs` against
 `fixtures/reference_capture.py`, which compares the residual stream layer by

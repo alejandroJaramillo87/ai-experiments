@@ -26,9 +26,11 @@ Scope is CPU only. Not covered, and why:
   replacement was added; writing one needs both code work and a
   workstation-generated tokenizer fixture before a runbook entry can
   exercise it.
-- The KV cache holds the full sequence with the sliding window applied as
-  a mask; the budgeted ring buffer is deferred by design
-  (`docs/rust-harness/observability.md`).
+- The KV cache now caps sliding layers at their window rather than holding
+  the full sequence, so `kv::budget_bytes` describes what a run allocates.
+  The saving is visible only against real E4B at a real context, and this
+  runbook has no step that reports it; RH.1's startup banner does, and its
+  expected KV line is the figure to check.
 
 Recording protocol: the [runbook README](README.md) rules apply. The human
 runs each command on the workstation and pastes command plus output
