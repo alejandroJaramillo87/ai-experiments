@@ -1277,13 +1277,17 @@ pub enum BatchKind {
 
 /// Positions per pass by default.
 ///
-/// A cap rather than `Whole` because scratch scales with the batch: at E4B's
-/// widths a 256-position batch is tens of megabytes, and a prefill that filled
-/// a long context in one pass would scale that by the context length for no
-/// further benefit. The weight-reuse win is already saturated well below this
-/// — the weights are read once per pass either way, so 256 positions amortize
-/// them 256-fold and the next doubling buys 0.2 percent more.
-const DEFAULT_BATCH: usize = 256;
+/// A cap rather than `Whole` because scratch scales with the batch, and a
+/// prefill that filled a long context in one pass would scale it by the
+/// context length.
+///
+/// **64 because the reuse saturates there, measured rather than argued.** On
+/// E4B at `--size quick`, batch 64 and batch 256 are the same run — L3 54.88s
+/// against 55.02s, inside noise — so quadrupling the reuse buys nothing while
+/// costing four times the scratch. This shipped at 256 on the reasoning that
+/// amortizing further is free; the reasoning assumed a memory-traffic limit
+/// that the same measurement refutes above 64.
+const DEFAULT_BATCH: usize = 64;
 
 impl Default for BatchKind {
     fn default() -> BatchKind {
