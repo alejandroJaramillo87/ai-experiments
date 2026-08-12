@@ -219,6 +219,16 @@ without AVX-512.** `SIZE=quick` on E4B at width 8 went 220.38s to 118.08s, and
 user time 1501.93s to 713.15s — half the CPU-seconds, so this is work deleted
 rather than overlap improved.
 
+That 1.87x went unclaimed by everything but the ladder for longer than it
+should have: `DotKind` derived its default as `Sequential`, and `set_dot` has
+exactly one caller in the tree, so `harness` and every library consumer ran the
+reference fold. The default is now `Widen4`, which routes below
+`WIDEN_MIN_POSITIONS` back to `Rows4`'s kernel and so is the fastest measured
+choice for decode and prefill at once. A default may be a tuned kind here only
+because the tuned kinds are bit-identical; the distinction is what
+`DotKind::is_bit_identical` exists to state, and a test now pins the default to
+the safe side of it.
+
 `Weight::row_dot_block` folds R output rows against one input in a single pass.
 Each row keeps its own accumulator over `in_dim` in index order, so nothing is
 reordered and the goldens pin the optimized path directly. What makes it vector

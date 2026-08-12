@@ -1176,9 +1176,15 @@ fn par_row_runs(out: &mut [f32], threads: usize, f: impl Fn(usize, &mut [f32]) +
 
 /// Which dot product the forward pass uses for its matrix-vector products.
 ///
-/// An experiment switch, `Sequential` by default, and it is a *numerics*
-/// switch rather than a performance one -- which is why a run reports it
-/// beside the thread width instead of leaving it implicit. `--threads` may be
+/// An experiment switch, `Widen4` by default. For every kind but one it is a
+/// *performance* switch, and for that one it is a *numerics* switch -- which
+/// is why a run reports it beside the thread width instead of leaving it
+/// implicit, and why `is_bit_identical` exists to tell a caller which it is
+/// holding. The default is allowed to be a tuned kind precisely because the
+/// tuned kinds are bit-identical: choosing one is choosing a speed, not a
+/// number. `Sequential` remains the reference the others are compared to and
+/// the kind the goldens were produced under, which is a different job from
+/// being the default. `--threads` may be
 /// swept freely because every width produces the same bits; this may not.
 ///
 /// The two families differ in what they cost, not only in speed:
@@ -1193,8 +1199,9 @@ fn par_row_runs(out: &mut [f32], threads: usize, f: impl Fn(usize, &mut [f32]) +
 ///   replays were all produced under `Sequential`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DotKind {
-    /// One sequential fold per output row. The reference, and the default.
-    #[default]
+    /// One sequential fold per output row. The reference the other kinds are
+    /// measured and compared against, and the slowest of them -- 1.87x behind
+    /// `Rows4` on E4B. Not the default; see `Widen4`.
     Sequential,
     /// Four output rows per block.
     Rows4,
@@ -1203,6 +1210,13 @@ pub enum DotKind {
     /// Sixteen output rows per block.
     Rows16,
     /// Four output rows per block, widened once instead of once per position.
+    ///
+    /// The default, because it is the fastest measured kind on both paths at
+    /// once: above `WIDEN_MIN_POSITIONS` it takes the hoisted widen (5.2% over
+    /// `Rows4` on prefill), and below it routes back to `Rows4`'s kernel, so
+    /// decode keeps its 1.87x and pays nothing for the variant it is not
+    /// using. One default is therefore correct for prefill and decode both.
+    #[default]
     Widen4,
     /// Sixteen interleaved partial sums within one row. Changes the bits.
     Lanes16,
@@ -4845,6 +4859,26 @@ mod tests {
         assert_eq!(BatchKind::parse("-4"), None);
         assert_eq!(BatchKind::parse("all"), None);
         assert_eq!(BatchKind::default(), BatchKind::Batched(DEFAULT_BATCH));
+    }
+
+    #[test]
+    fn the_default_dot_kind_is_the_fast_bit_identical_one() {
+        // A derive nobody reads was how `Sequential` stayed the default for
+        // every caller but the ladder long after `Rows4` measured 1.87x
+        // faster at the same bits. Stating it here makes the next change to
+        // it deliberate.
+        assert_eq!(DotKind::default(), DotKind::Widen4);
+        // The half of the choice that is not about speed: a default that
+        // moved the numerics would silently invalidate every golden in the
+        // tree, so the default must be on the bit-identical side.
+        //
+        // Mutation check performed when this was written: moving `#[default]`
+        // to `Lanes16` fails this test and *nothing else in the suite* --
+        // every other test either sets the kind explicitly or runs a fixture
+        // small enough that the reordered fold lands on the same bits. So
+        // this assertion is not a restatement of coverage elsewhere; it is
+        // the only coverage there is.
+        assert!(DotKind::default().is_bit_identical());
     }
 
     #[test]
