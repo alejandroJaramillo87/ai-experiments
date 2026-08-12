@@ -29,13 +29,18 @@
  *
  * These are self-comparisons, so none of them is evidence that the window
  * convention itself is right. That is pinned against transformers by
- * `ladder_tiny.rs` on the committed Tier T fixture, whose window is 3.
+ * `ladder_tiny.rs` on the committed Tier T fixture, whose window is 3 and
+ * whose capture runs 150 tokens -- fifty crossings of it. The golden here was
+ * blessed only after that passed, so it freezes a convention a reference
+ * implementation has agreed with rather than one we merely hold.
  *
  * Mutation checks performed when this file was written
  * ----------------------------------------------------
  *
  * Four mutations of the mask bound at cpu.rs, and which tests noticed. The
- * fourth is the one that justifies the file.
+ * fourth is the one that justifies the file. All four also fail
+ * `the_long_context_logits_match_the_committed_golden`, which is what a
+ * change detector is for and is not repeated in each entry below.
  *
  *   1. `position.saturating_sub(win)` -- the window one wider. Fails
  *      `a_token_outside_the_composed_reach_..._changes_nothing` here, and the
@@ -60,10 +65,12 @@
  *      workspace passes**: 330 unit tests and eight integration binaries, all
  *      green. Five tests in this file fail. That gap is the package.
  *
- * Cost, measured: 1.5 s wall, about 3.5 s of CPU across the ten tests, against
- * a suite that was 9.4 s. The composition sweeps are trimmed for this reason --
- * see `check_compositions`.
+ * Cost, measured: about 1.5 s wall across the eleven tests, against a suite
+ * that was 9.4 s. The composition sweeps are trimmed for this reason -- see
+ * `check_compositions`.
  */
+
+use std::path::Path;
 
 use anyhow::Result;
 use runtime::conformance;
@@ -113,15 +120,18 @@ fn model_with_batch(spec: &TinySpec, batch: BatchKind) -> Box<dyn Model> {
     Box::new(m)
 }
 
-/// `n` deterministic in-vocabulary tokens.
-///
-/// Strided rather than sequential so neighbouring positions do not carry
-/// neighbouring embeddings, which would let a mask error average away instead
-/// of showing up. Offset clear of the control specials at the base of the
-/// synthetic vocabulary.
+/// `n` deterministic in-vocabulary tokens, from the one definition of the
+/// sequence, so this file and the committed golden cannot drift apart.
 fn tokens_of(n: usize) -> Vec<Token> {
-    (0..n).map(|i| ((i * 37 + 11) % 250 + 5) as Token).collect()
+    conformance::golden::tokens(n)
 }
+
+/// An owned builder and the composition it sets up.
+///
+/// `conformance::Builder` is a borrowed `&dyn Fn`, so the closures have to be
+/// kept alive somewhere while the slice of references into them is built. This
+/// is that somewhere.
+type OwnedComposition = (&'static str, Box<dyn Fn() -> Result<Box<dyn Model>>>);
 
 /// The compositions worth comparing, as labelled builders.
 ///
@@ -130,13 +140,6 @@ fn tokens_of(n: usize) -> Vec<Token> {
 /// divides the length, one that does not (a short trailing group), and one
 /// that exceeds it (a single group). Widths 2 and 63 re-run arithmetic that 1
 /// and 64 already cover.
-/// An owned builder and the composition it sets up.
-///
-/// `conformance::Builder` is a borrowed `&dyn Fn`, so the closures have to be
-/// kept alive somewhere while the slice of references into them is built. This
-/// is that somewhere.
-type OwnedComposition = (&'static str, Box<dyn Fn() -> Result<Box<dyn Model>>>);
-
 fn compositions(spec: &TinySpec) -> Vec<OwnedComposition> {
     let widths: [(&'static str, BatchKind); 6] = [
         ("stepped", BatchKind::Stepped),
@@ -381,6 +384,81 @@ fn a_token_just_inside_the_composed_reach_changes_the_logits() {
          it must change the logits",
         n - 1
     );
+}
+
+/// The committed golden, which is the only arm that fails on a change nobody
+/// predicted.
+///
+/// Every other test here states a property and checks it, so it catches the
+/// failures someone thought of. This one holds bytes recorded at a point in
+/// time and notices any difference at all, which is what a package that
+/// rewrites how the KV cache is stored actually needs pointed at it.
+///
+/// Not an oracle -- we wrote the engine that produced it. Its standing comes
+/// from `ladder_tiny.rs`, which checked this window convention against
+/// transformers at 150 tokens over 50 window crossings, and this file was
+/// blessed only after that passed. Regenerate with
+/// `cargo run -p runtime --bin long-context-golden -- fixtures/long-context-logits.json`,
+/// and say in the commit message why the bytes moved.
+#[test]
+fn the_long_context_logits_match_the_committed_golden() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/long-context-logits.json");
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let golden: serde_json::Value = serde_json::from_str(&text).expect("parse the golden");
+
+    // The golden records the model it describes. A fixture blessed against a
+    // different spec would compare two unrelated things and fail for a reason
+    // that is not the engine's.
+    let spec = conformance::golden::spec();
+    assert_eq!(
+        golden["sliding_window"].as_u64(),
+        Some(spec.sliding_window as u64),
+        "the golden was blessed against a different window"
+    );
+    assert_eq!(
+        golden["seed"].as_u64(),
+        Some(spec.seed),
+        "the golden was blessed against different weights"
+    );
+
+    let tokens = tokens_of(conformance::golden::TOKENS);
+    let rows = model_of(&spec).prefill_all(&tokens).unwrap();
+
+    let recorded = golden["rows"]
+        .as_array()
+        .expect("the golden records no rows");
+    assert_eq!(
+        recorded.len(),
+        conformance::golden::POSITIONS.len(),
+        "the golden records {} rows, not the {} positions sampled",
+        recorded.len(),
+        conformance::golden::POSITIONS.len()
+    );
+
+    for entry in recorded {
+        let p = entry["position"].as_u64().expect("row without a position") as usize;
+        let want: Vec<f32> = entry["logits"]
+            .as_array()
+            .expect("row without logits")
+            .iter()
+            .map(|v| v.as_f64().expect("non-numeric logit") as f32)
+            .collect();
+        assert_eq!(
+            want.len(),
+            rows[p].0.len(),
+            "position {p}: the golden is {} wide against the model's {}",
+            want.len(),
+            rows[p].0.len()
+        );
+        for (i, (got, expected)) in rows[p].0.iter().zip(want.iter()).enumerate() {
+            assert_eq!(
+                got.to_bits(),
+                expected.to_bits(),
+                "position {p} logit {i}: {got:e} against the recorded {expected:e}"
+            );
+        }
+    }
 }
 
 // Cache-lifecycle arms, at a length where the window has engaged.

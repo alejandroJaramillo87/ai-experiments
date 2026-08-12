@@ -129,6 +129,21 @@ of green gate, and were found by reading `docs/models/gemma4-upstream.txt`
 after a real checkpoint produced noise. The second contributes no tensor to a
 checkpoint, so no name-based audit of the weights could have found it.
 
+`fixtures/long-context-logits.json` is a third kind, and the distinction
+matters. It is not compared against any reference: it holds rows this engine
+produced at 200 tokens, recorded once, so that a later package changing how the
+KV cache is stored has to either reproduce them or re-bless them deliberately.
+A regenerate-and-compare fixture cannot do that job, because regenerating from
+the current engine and comparing against the current engine agrees by
+definition. Written by `runtime/src/bin/long-context-golden.rs`, read by
+`runtime/tests/long_context.rs`.
+
+It is a change detector and not an oracle, for the reason this section already
+gives. What keeps it from freezing a wrong answer is ordering: the window
+convention it encodes was checked against `transformers` first, at 150 tokens
+over fifty crossings of the Tier T fixture's window of 3, and it was blessed
+only after that passed.
+
 Real-weight verification is `runtime/src/bin/layer-diff.rs` against
 `fixtures/reference_capture.py`, which compares the residual stream layer by
 layer to transformers itself. Until that reports clean, the goldens are

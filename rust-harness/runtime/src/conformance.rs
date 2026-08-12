@@ -184,6 +184,50 @@ pub fn check_logit_rows_are_batch_isolated(
     Ok(())
 }
 
+/// What the committed long-context golden is a golden *of*.
+///
+/// The binary that writes `fixtures/long-context-logits.json` and the test
+/// that reads it must agree on the model, the tokens and the sampled
+/// positions, or the comparison is between two different things and its
+/// failure says nothing. They agree by both reading this, rather than by
+/// carrying two copies that drift.
+pub mod golden {
+    use crate::model::Token;
+    use crate::synth::TinySpec;
+
+    /// Interleaved sliding and global layers over a two-layer shared-KV tail,
+    /// window 3 -- the configuration whose storage cap is the next package.
+    pub fn spec() -> TinySpec {
+        TinySpec::e4b_shaped()
+    }
+
+    /// Long enough for three full groups at `DEFAULT_BATCH` and a short
+    /// trailing one, so the recorded rows depend on the window and the group
+    /// boundary interacting rather than on either alone.
+    pub const TOKENS: usize = 200;
+
+    /// Both ends, both sides of the first two group boundaries, and one
+    /// position interior to a group.
+    ///
+    /// Not every row: 200 rows of a 288-wide vocabulary is a 700 KB fixture to
+    /// detect what six rows detect, since a change past the window moves every
+    /// row after it rather than one.
+    pub const POSITIONS: [usize; 6] = [0, 1, 63, 64, 127, 199];
+
+    /// `n` deterministic in-vocabulary tokens, and the only definition of the
+    /// sequence -- `runtime/tests/long_context.rs` calls this rather than
+    /// repeating the stride, since a golden compared against a different
+    /// prompt fails for a reason that has nothing to do with the engine.
+    ///
+    /// Strided rather than sequential so neighbouring positions do not carry
+    /// neighbouring embeddings, where a mask error can average away instead of
+    /// showing up. The offset clears the control specials at the base of the
+    /// synthetic vocabulary.
+    pub fn tokens(n: usize) -> Vec<Token> {
+        (0..n).map(|i| ((i * 37 + 11) % 250 + 5) as Token).collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
