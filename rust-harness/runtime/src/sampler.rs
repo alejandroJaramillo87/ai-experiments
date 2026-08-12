@@ -41,6 +41,7 @@ impl Default for SamplingParams {
 pub struct Sampler {
     params: SamplingParams,
     state: u64,
+    draws: u64,
 }
 
 impl Sampler {
@@ -65,6 +66,38 @@ impl Sampler {
         Self {
             params,
             state: params.seed.wrapping_add(0x9e3779b97f4a7c15),
+            draws: 0,
+        }
+    }
+
+    /// The parameters this sampler was constructed with, so a caller
+    /// recording a run can state them without being handed a second copy to
+    /// keep in step with this one.
+    pub fn params(&self) -> SamplingParams {
+        self.params
+    }
+
+    /// How many values have been drawn from the LCG since construction.
+    ///
+    /// Together with the seed this is the sampler's whole position in its
+    /// stream, and it is not derivable from the token count: the greedy path
+    /// draws nothing, and `Session`'s over-budget step consumes a draw before
+    /// it fails. A recording that wants to resume, rather than restart, has
+    /// to observe it.
+    pub fn draws(&self) -> u64 {
+        self.draws
+    }
+
+    /// Advance the stream by `n` values without sampling, so a replay can
+    /// resume at a recorded draw count instead of from the seed.
+    ///
+    /// Iterative rather than the closed-form LCG jump: recorded counts are
+    /// generation-length, the loop is visibly the same state transition
+    /// `next_unit` performs, and a jump formula is a second implementation of
+    /// the generator that could disagree with the first.
+    pub fn skip_draws(&mut self, n: u64) {
+        for _ in 0..n {
+            self.next_unit();
         }
     }
 
@@ -73,6 +106,7 @@ impl Sampler {
             .state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
+        self.draws += 1;
         ((self.state >> 40) as f32) / ((1u64 << 24) as f32)
     }
 
@@ -325,6 +359,57 @@ mod tests {
         for _ in 0..50 {
             assert_eq!(s.sample(&l, None).unwrap(), 1);
         }
+    }
+
+    #[test]
+    fn skipping_draws_lands_where_drawing_them_would_have() {
+        // The property that makes a recorded draw count usable: a sampler
+        // fast-forwarded past n draws continues the same sequence as one that
+        // spent them sampling. Asserted on the tokens rather than the raw
+        // state, since the tokens are what a replay has to reproduce.
+        let l = logits(&[0.1, 0.5, 0.2, 0.9]);
+        let mut spent = sampler(0.8, 0.95, 42);
+        for _ in 0..7 {
+            spent.sample(&l, None).unwrap();
+        }
+        let mut skipped = sampler(0.8, 0.95, 42);
+        skipped.skip_draws(spent.draws());
+        for _ in 0..10 {
+            assert_eq!(
+                skipped.sample(&l, None).unwrap(),
+                spent.sample(&l, None).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn the_draw_count_tracks_the_stochastic_path_and_the_greedy_path_draws_nothing() {
+        // One draw per stochastic sample, and none at all at temperature
+        // zero -- so the count is not a restatement of the token count, and a
+        // recording cannot infer it from the transcript length.
+        let l = logits(&[0.1, 0.5, 0.2, 0.9]);
+        let mut stochastic = sampler(0.8, 0.95, 1);
+        assert_eq!(stochastic.draws(), 0);
+        for expected in 1..=5u64 {
+            stochastic.sample(&l, None).unwrap();
+            assert_eq!(stochastic.draws(), expected);
+        }
+        let mut greedy = sampler(0.0, 0.95, 1);
+        for _ in 0..5 {
+            greedy.sample(&l, None).unwrap();
+        }
+        assert_eq!(greedy.draws(), 0, "the argmax path consumed a draw");
+    }
+
+    #[test]
+    fn a_failed_sample_still_reports_the_draws_it_did_not_take() {
+        // An empty support fails before reaching the generator, so a caller
+        // recording the count after an error records a position the sampler
+        // is actually at.
+        let mut s = sampler(0.8, 0.95, 0);
+        s.sample(&logits(&[0.0, 1.0]), Some(&[false, false]))
+            .unwrap_err();
+        assert_eq!(s.draws(), 0);
     }
 
     #[test]
