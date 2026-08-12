@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use runtime::model::cpu::{CpuModel, Site, Tap};
+use runtime::model::cpu::{CpuModel, LastRowTap, Site, Tap};
 use runtime::model::Model;
 use runtime::tokenizer::Tokenizer;
 
@@ -219,6 +219,18 @@ fn capture_writes_a_manifest_and_shard_for_the_requested_layers() {
     assert_eq!(m["count"], DATASET.len());
     assert_eq!(m["shards"], 1);
     assert_eq!(m["layers"], serde_json::json!([0, 1]));
+
+    // The site the rows came from, parsed back rather than string-compared:
+    // what the manifest must carry is the tap's own site, and a reader
+    // recovering it is the reason to store it at all.
+    assert_eq!(
+        m["site"].as_str().expect("manifest states a site"),
+        LastRowTap::SITE.to_string(),
+    );
+    assert_eq!(
+        m["site"].as_str().unwrap().parse::<Site>().unwrap(),
+        LastRowTap::SITE,
+    );
 
     assert!(c.out.join("shard_00000.npz").is_file());
     assert!(!c.out.join("shard_00001.npz").exists());

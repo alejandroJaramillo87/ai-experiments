@@ -239,6 +239,12 @@ fn run(
         "model_hash": runtime::digest::sha256_file(&weights_path)
             .with_context(|| format!("hash {}", weights_path.display()))?,
         "layers": sorted_layers,
+        // Which point of each layer the rows came from. "layers" alone names
+        // half of where an activation was taken, and a shard is readable
+        // today only because there is exactly one site -- a property of this
+        // moment, not of the format. From Site's own Display, so the stored
+        // text cannot drift from the value a reader parses back.
+        "site": LastRowTap::SITE.to_string(),
         "position": "last",
         "dataset_path": dataset_path.display().to_string(),
         "dataset_sha256": sha256_hex(&dataset_bytes),

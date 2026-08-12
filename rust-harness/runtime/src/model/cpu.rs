@@ -955,6 +955,13 @@ pub struct LastRowTap {
 }
 
 impl LastRowTap {
+    /// The site whose rows this tap keeps.
+    ///
+    /// Public because the capture manifest records it: a shard that names
+    /// only its layers says half of where its rows came from, and the reader
+    /// cannot recover the other half from the file.
+    pub const SITE: Site = Site::LayerOutput;
+
     pub fn new(layers: Vec<usize>) -> Self {
         Self {
             layers,
@@ -1001,7 +1008,7 @@ impl Tap for LastRowTap {
     fn on_residual(&mut self, layer: usize, site: Site, position: usize, x: &[f32]) {
         // Keyed by layer alone, so a second site would collide with the first
         // in `rows`: take only the site the capture format names.
-        if site != Site::LayerOutput || !self.layers.contains(&layer) {
+        if site != LastRowTap::SITE || !self.layers.contains(&layer) {
             return;
         }
         let mut rows = self.rows.lock().expect("tap map not poisoned");
