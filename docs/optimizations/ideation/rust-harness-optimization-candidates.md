@@ -266,7 +266,10 @@ widening measured against it came back flat. Prefill over N positions reads the
 same row and uses it N times, about 2N FLOP per byte, which walks off the
 bandwidth wall onto the compute wall — and the compute wall is where wide
 vectors pay. Prefill batching below is what moves the engine there, so these
-rungs are retired for decode and live again for prefill.
+rungs are retired for decode and live again for prefill. The prefill batching
+measurement below now supports that in evidence rather than in argument: with
+reuse saturated at batch 64, prefill is compute-bound, which is the condition
+under which wide vectors pay at all.
 
 One constraint travels with them. `mul_add` is prohibited workspace-wide
 because fused multiply-add keeps a wider intermediate and breaks bit-identical
@@ -302,8 +305,8 @@ rather than counted.
 
 ## Tier B: measured moderate wins
 
-**Prefill batching.** Landed, bit-identical, and not yet measured on the
-workstation. `CpuModel::forward_batch` puts N consecutive positions through the
+**Prefill batching.** Landed, bit-identical, measured at **1.65x on L3 and
+1.47x on the ladder**. `CpuModel::forward_batch` puts N consecutive positions through the
 stack in one pass, so each layer's weights are read once for the whole batch
 instead of once per position: a 256-token window read roughly 14 GiB of weights
 256 times and now reads them once. This is the "prefill-heavy optimization"
@@ -326,16 +329,57 @@ asked for, where `prefill` previously folded the embedding table at every
 prefilled position and discarded all but the last.
 
 `--batch stepped|whole|<n>` selects the width and the ladder header reports it.
-The default is 256 positions: the weights are read once per pass either way, so
-256 amortizes them 256-fold and the next doubling buys 0.2 percent more, while
-scratch scales with the batch.
 
-**Measurement pending**, and the prediction is recorded before the run so the
-result can contradict it. `SIZE=quick` is roughly 60s of batchable prefill and
-30s of decode that cannot batch, so the expectation is 120s to 50-70s, not 120s
-to 10s. Quoting a prefill speedup as a ladder speedup is the error to avoid.
-The five-rung table must be identical in every digit; a moved digit means the
-intra-batch causal mask or the accumulation is wrong.
+E4B, `--size quick --dot rows4 --threads 8`, per-rung wall clock:
+
+| batch | L1 | L2 | L3 | L4 | rung sum | process wall | user |
+|---|---|---|---|---|---|---|---|
+| stepped | 0.91s | 1.04s | 90.36s | 23.64s | 116.45s | 125.08s | 727.53s |
+| 64 | 0.52s | 0.65s | 54.88s | 22.66s | 79.18s | 84.78s | 508.73s |
+| 256 | 0.51s | 0.65s | 55.02s | 22.65s | 79.31s | 84.97s | 510.04s |
+
+All three tables agree in every digit, including `ppl 55.5420 against 55.5438`
+and `worst token nll 0.001248`. Peak RSS 14.27 to 14.28 GiB — ten megabytes,
+against a predicted "tens of MB".
+
+**The recorded prediction was 120s to 50-70s with L3 collapsing several-fold,
+and it was wrong.** The shape held: L4 is 96 percent decode-bound work and did
+not move. The magnitude did not: L3 fell 1.65x, not several-fold. The 1.65x is
+itself a floor on the prefill speedup, because L3 prefills a window and then
+scores it, and the scoring does not batch.
+
+Two readings of this table matter more than the speedup, and both are about
+what is no longer true:
+
+**Batch 64 and batch 256 are the same run** — 54.88s against 55.02s, inside
+noise. Quadrupling the reuse bought nothing. Reuse only pays while memory
+traffic is the limiter, so this is the direct statement that after batching,
+**it is not**. The engine is off the bandwidth wall it sat against for every
+measurement in this document above, which is what the package was for.
+
+**User time fell nearly in proportion to wall clock**, 727.5s to 508.7s at a
+roughly constant 6x CPU. Had the stepped arm been stalled on memory, batching
+would have cut wall clock while leaving user time closer to flat. The CPU is
+doing measurably less work, not less waiting, so the remainder is arithmetic.
+
+The default is therefore **64, not the 256 it shipped at**. The original
+reasoning — amortize as far as scratch allows — assumed a bandwidth limit that
+this table refutes above 64. Reserving four times the scratch for a width
+measured to buy nothing is indefensible once measured.
+
+**Next experiment, stated before running it.** Kernel (a) calls
+`row_dot_block::<R>` once per position, so it widens the same R bf16 weight
+rows to f32 again for every position: at N=64 each weight element is converted
+64 times to be used 64 times. Batching removed the redundant reads and left the
+redundant conversions untouched. Widening the R x `in_dim` block into an f32
+scratch once and looping the N positions against it is 32 KB at R=4 — L1
+resident — needs no change to the activation layout, and is bit-identical for
+the same reason batching is. If L3 falls again, the R x N micro-kernel and its
+`[k][N]` packing earn their complexity. If L3 does not move, the remaining time
+is the scalar multiply-add chain itself and the next lever is vectorizing it,
+under the FMA cap recorded above. Deliberately not bundled with the packing:
+two bets in one commit make a disappointing result unattributable, which is the
+mistake the reordered-fold experiment already caught once.
 
 **Scratch-buffer reuse.** If profiling (flight recorder plus `make flame`)
 shows per-token temporary allocations in the forward pass, a preallocated
