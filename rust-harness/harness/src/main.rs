@@ -510,7 +510,7 @@ fn main() -> ExitCode {
          [--trace-chrome <path>] [--control-vector <path.gguf>] \
          [--control-vector-scale <f>] [--probe <path.gguf>] \
          [--probe-out <path>] [--temperature <f>] [--top-p <f>] \
-         [--seed <n>] [--max-tokens <n>] [--context <n>] \
+         [--top-k <n>] [--seed <n>] [--max-tokens <n>] [--context <n>] \
          [--compact-at <f>] [--text-only] [--single-thread] \
          (--chat | <task description>)";
     let mut args: Vec<String> = std::env::args().skip(1).collect();
@@ -532,6 +532,9 @@ fn main() -> ExitCode {
     // probe-flags.jsonl in the working directory).
     // --temperature <f> / --top-p <f> / --seed <n>: sampling parameters
     // (defaults 0.8 / 0.95 / 0; seed 0 replays a run exactly).
+    // --top-k <n>: rank cutoff applied before top-p, keeping at most the n
+    // most probable tokens of the masked support. Omitted by default, which
+    // is no rank cutoff at all; 0 is rejected rather than read as "disabled".
     // --max-tokens <n>: per-turn generation budget (default 256).
     // --context <n>: cap the context budget below the model's trained
     // window (never above it; max_position_embeddings is the default and
@@ -548,6 +551,7 @@ fn main() -> ExitCode {
     let mut probe_out: Option<std::path::PathBuf> = None;
     let mut temperature_arg: Option<std::path::PathBuf> = None;
     let mut top_p_arg: Option<std::path::PathBuf> = None;
+    let mut top_k_arg: Option<std::path::PathBuf> = None;
     let mut seed_arg: Option<std::path::PathBuf> = None;
     let mut max_tokens_arg: Option<std::path::PathBuf> = None;
     let mut context_arg: Option<std::path::PathBuf> = None;
@@ -563,6 +567,7 @@ fn main() -> ExitCode {
         ("--probe-out", &mut probe_out),
         ("--temperature", &mut temperature_arg),
         ("--top-p", &mut top_p_arg),
+        ("--top-k", &mut top_k_arg),
         ("--seed", &mut seed_arg),
         ("--max-tokens", &mut max_tokens_arg),
         ("--context", &mut context_arg),
@@ -608,6 +613,20 @@ fn main() -> ExitCode {
             Ok(p) if p > 0.0 && p <= 1.0 => sampling.top_p = p,
             _ => {
                 eprintln!("[ERROR] --top-p: expected a number in (0, 1]");
+                return ExitCode::from(2);
+            }
+        }
+    }
+    if let Some(v) = top_k_arg {
+        // Zero is a usage error rather than a synonym for absence: it would
+        // otherwise have to mean either "keep nothing", which is not a
+        // distribution, or "keep everything", which reads as its opposite.
+        match v.to_string_lossy().parse::<usize>() {
+            Ok(k) if k >= 1 => sampling.top_k = Some(k),
+            _ => {
+                eprintln!(
+                    "[ERROR] --top-k: expected an integer >= 1 (omit the flag for no cutoff)"
+                );
                 return ExitCode::from(2);
             }
         }

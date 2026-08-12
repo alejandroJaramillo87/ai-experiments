@@ -74,6 +74,7 @@ fn agent_loop_runs_through_tokenizer_and_session() {
         SamplingParams {
             temperature: 0.0,
             top_p: 1.0,
+            top_k: None,
             seed: 0,
         },
         64,
@@ -109,6 +110,7 @@ fn count_tokens_counts_what_complete_will_encode() {
         SamplingParams {
             temperature: 0.0,
             top_p: 1.0,
+            top_k: None,
             seed: 0,
         },
         64,

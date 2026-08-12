@@ -462,6 +462,7 @@ mod tests {
         Sampler::new(SamplingParams {
             temperature: 0.0,
             top_p: 1.0,
+            top_k: None,
             seed: 0,
         })
     }
@@ -936,6 +937,7 @@ mod tests {
         let mut sampler = Sampler::new(SamplingParams {
             temperature: 1.0,
             top_p: 1.0,
+            top_k: None,
             seed: 5,
         });
         let gen = s

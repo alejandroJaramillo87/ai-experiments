@@ -125,6 +125,7 @@ fn traced_generation(capture: &Capture) {
         let mut sampler = Sampler::new(SamplingParams {
             temperature: 1.0,
             top_p: 1.0,
+            top_k: None,
             seed: 5,
         });
         session
@@ -179,6 +180,7 @@ fn no_subscriber_means_no_capture_and_no_failure() {
     let mut sampler = Sampler::new(SamplingParams {
         temperature: 0.0,
         top_p: 1.0,
+        top_k: None,
         seed: 0,
     });
     let generation = session

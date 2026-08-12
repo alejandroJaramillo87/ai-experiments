@@ -33,6 +33,7 @@ fn greedy() -> Sampler {
     Sampler::new(SamplingParams {
         temperature: 0.0,
         top_p: 1.0,
+        top_k: None,
         seed: 0,
     })
 }
