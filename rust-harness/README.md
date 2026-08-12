@@ -54,6 +54,22 @@ Testing is test-first and tiered:
   checkpoint against `transformers`, on the workstation, under its own make
   target. It is not part of `make quality`.
 
+Cutting across those: **the conformance invariants** (`runtime/src/conformance.rs`),
+which are obligations on every backend rather than tests of one. They say that
+how a request is internally divided — one batched pass, groups of 64, a token
+at a time, logits for every position or only some — may not move a bit of any
+row returned. `model::cpu` satisfies them today and the CUDA backend will have
+to; they live in a normal module, not a `#[cfg(test)]` one, because a backend
+in another crate cannot call into `cpu.rs`'s test module. They compare a
+backend against itself, so they are silent about whether its numbers are right.
+
+`runtime/tests/long_context.rs` drives them, and everything else that only
+engages past the sliding window: the interleaved sliding/global split and the
+shared-KV tail. Nothing else in the workspace reaches that far — the ladder's
+longest single cache is L3's 256-token window against E4B's window of 512, so
+no rung has crossed a real one. It is offline, since `synth::tiny_checkpoint`
+builds a model in memory, and it runs in `make quality`.
+
 ## Output correctness
 
 Machinery tests (Tiers 1 and 2) cannot detect a numerically wrong forward

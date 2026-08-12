@@ -70,6 +70,22 @@
  * separate full-length `shared_kv_states` rather than the cache. A ring buffer
  * applied uniformly to every sliding layer would silently truncate what the
  * shared tail reads.
+ *
+ * That warning now has a test behind it rather than only a paragraph:
+ * `runtime/tests/long_context.rs` runs the shared-KV configuration at lengths
+ * where the window has engaged and a batch group boundary has been crossed,
+ * and its mutation record shows that a relocation bug confined to the second
+ * group onward is caught there and nowhere else in the workspace. Read that
+ * file before capping storage.
+ *
+ * One thing the paragraph above asserts and nothing yet measures: *why* the
+ * donor must keep the full sequence. A shared layer's span is bounded by its
+ * own kind, and the donor rule keeps donor and reader in the same regime, so
+ * a shared sliding layer never asks for a row outside its own window -- which
+ * suggests a ring would suffice in the steady state and that the real hazard
+ * is the batched relocation above rather than the donor as such. Left as
+ * written rather than corrected, because the difference decides how the cap is
+ * implemented and deserves a measurement instead of a second opinion.
  */
 
 use std::collections::HashMap;
@@ -2507,6 +2523,12 @@ impl CpuModel {
             // batch rather than square: position `start + p` attends over
             // `first ..= start + p` and never over a later member, even though
             // that member's row is already in the cache.
+            //
+            // So the grouping `prefill_groups` chose is not observable here,
+            // and must not become observable anywhere else. That obligation is
+            // stated once, for every backend rather than for this one, in
+            // `crate::conformance` -- restating it as a comment on each site
+            // that has to honour it is how the copies start to disagree.
             //
             // No 1/sqrt(head_dim) here. Gemma 4 sets `self.scaling = 1.0`
             // (upstream:1181) and passes it explicitly, so upstream's
