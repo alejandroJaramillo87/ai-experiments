@@ -465,7 +465,31 @@ campaign already records the supporting gap: the Gemma 3 turn markers were
 removed with no replacement, and no golden covers the rendered token stream
 against Gemma 4's convention, so nothing would have caught a missing template.
 
-**A template is rendered, so the fault is narrower than "no template".**
+**The template hypothesis was tested on 2026-08-12 and refuted.** The
+published E4B `tokenizer.json` carries `<|turn>` and `<turn|>` in its
+added-tokens table, and does *not* carry `<start_of_turn>` or
+`<end_of_turn>` — the opposite of what the drift theory needed. The rest of
+the path is sound with it: `template::MARKERS` names those literals,
+`generator::PROMPT_SPECIALS` admits them, and `generator.rs:74` encodes every
+prompt through `encode_prompt` with that allowlist. The delimiters reach the
+model as their own ids. The paragraph below records the refuted reasoning
+because the mechanism it describes is real and still unguarded, not because
+it explains this failure.
+
+**The leading hypothesis is now that the checkpoint is a base model.** A
+pretrained checkpoint has the turn markers in its vocabulary — they are in the
+tokenizer either way — but was never trained to treat them as conversational
+boundaries, so it continues the document instead of answering, which is
+exactly the observed reply. The directory is named `gemma-4-E4B` with no `-it`
+suffix, and Gemma releases distinguish the instruction-tuned and pretrained
+variants by exactly that suffix. This is unverified and cheap to check.
+
+If it holds, RH.2's expected signal is wrong rather than the code: a base
+model cannot produce "coherent text responsive to the instruction" no matter
+how correct the forward pass, and the entry needs a completion-style prompt
+or an instruction-tuned checkpoint.
+
+
 `harness/src/template.rs:31-52` renders `<bos>` then
 `<|turn>{role}\n{content}<turn|>`, and `harness/tests/template_contract.rs`
 pins those literals against `schemas/chat_template.json`. What is unverified
