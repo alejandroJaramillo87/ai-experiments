@@ -914,6 +914,26 @@ pub fn build_tiny_safetensors(spec: &TinySpec) -> anyhow::Result<Vec<u8>> {
     Ok(safetensors::serialize(views, None)?)
 }
 
+/// The synthetic checkpoint for `spec`, held in memory.
+///
+/// The two builders above plus the in-memory loader, which is the sequence
+/// every caller wanting a runnable tiny model writes. Returned as
+/// `CheckpointFiles` rather than as a loaded model because this module writes
+/// checkpoints and does not know about backends: a CUDA test wants the same
+/// bytes through a different loader, and a helper returning `CpuModel` would
+/// serve neither it nor `checkpoint-info`.
+///
+/// Owned separately from the `Checkpoint` that borrows it, so a caller loading
+/// two models from one spec holds the bytes once -- which is what the
+/// window-differential tests in `runtime/tests/long_context.rs` do.
+pub fn tiny_checkpoint(spec: &TinySpec) -> anyhow::Result<crate::checkpoint::CheckpointFiles> {
+    crate::checkpoint::CheckpointFiles::in_memory(
+        build_tiny_config_json(spec)?,
+        build_tiny_safetensors(spec)?,
+        std::path::PathBuf::from("<memory>"),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

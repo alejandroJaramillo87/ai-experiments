@@ -26,6 +26,7 @@
 #![forbid(unsafe_code)]
 
 pub mod checkpoint;
+pub mod conformance;
 pub mod digest;
 pub mod eval;
 pub mod gguf;

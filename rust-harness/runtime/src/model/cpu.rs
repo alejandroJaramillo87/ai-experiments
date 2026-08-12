@@ -2934,15 +2934,12 @@ mod tests {
 
     /// The synthetic checkpoint for `spec`, in memory.
     ///
-    /// Owned separately from the `Checkpoint` that borrows it, so a test that
-    /// loads two models from one spec holds the bytes once.
+    /// Delegates to `synth::tiny_checkpoint`, which the integration suite in
+    /// `runtime/tests/long_context.rs` also calls: an inline copy here would
+    /// be a second construction path for the same fixture, and the two would
+    /// drift.
     fn checkpoint_of(spec: &TinySpec) -> crate::checkpoint::CheckpointFiles {
-        crate::checkpoint::CheckpointFiles::in_memory(
-            crate::synth::build_tiny_config_json(spec).unwrap(),
-            crate::synth::build_tiny_safetensors(spec).unwrap(),
-            std::path::PathBuf::from("<memory>"),
-        )
-        .unwrap()
+        crate::synth::tiny_checkpoint(spec).unwrap()
     }
 
     /// A checkpoint whose tensor set has been perturbed: `extra` Hugging Face
