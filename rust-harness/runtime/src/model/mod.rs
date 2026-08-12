@@ -55,6 +55,25 @@ pub trait Model: Send {
             .collect::<Result<Vec<_>>>()
     }
 
+    /// Append `tokens` and return logits from appended position `first`
+    /// onward, one row per token from there.
+    ///
+    /// Perplexity scores only the second half of each window, and the tied LM
+    /// head is the largest tensor in the checkpoint, so the rows a caller will
+    /// not read are worth not computing. The default computes them and drops
+    /// them: correct for any impl, and all the mock needs. A backend with a
+    /// head worth skipping overrides *this* and defines `prefill_all` as
+    /// `prefill_from(tokens, 0)`, rather than the other way round.
+    fn prefill_from(&mut self, tokens: &[Token], first: usize) -> Result<Vec<Logits>> {
+        anyhow::ensure!(
+            first <= tokens.len(),
+            "prefill from position {first} of only {} tokens",
+            tokens.len()
+        );
+        let mut rows = self.prefill_all(tokens)?;
+        Ok(rows.split_off(first))
+    }
+
     /// Drop cached state beyond `len` tokens. Used when a transcript diverges
     /// from the cached prefix: truncate to the common prefix, re-prefill the
     /// rest.

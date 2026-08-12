@@ -98,17 +98,25 @@ pub fn per_token_nll(
     let mut scored = Vec::new();
     for (w, window) in corpus.chunks_exact(chunk).enumerate() {
         model.truncate(0)?;
-        let rows = model.prefill_all(window)?;
+        // From `warmup`, not from zero: the rows before it are never read, and
+        // on the CPU backend each unread row is a fold of the whole tied
+        // embedding table -- the largest tensor in the checkpoint. Asking for
+        // the suffix halves the head's work and the live logits set both.
+        let rows = model.prefill_from(window, warmup)?;
         ensure!(
-            rows.len() == window.len(),
-            "prefill_all returned short rows"
+            rows.len() == chunk - warmup,
+            "prefill_from returned {} rows for the {} scored positions of a \
+             {chunk}-token window",
+            rows.len(),
+            chunk - warmup
         );
-        // Row p holds logits after token p, predicting token p + 1.
+        // Row p of the window holds logits after token p, predicting token
+        // p + 1, and `rows` starts at `warmup` rather than at 0.
         for p in warmup..chunk - 1 {
             scored.push(ScoredToken {
                 position: w * chunk + p + 1,
                 target: window[p + 1],
-                nll: nll(&rows[p], window[p + 1])?,
+                nll: nll(&rows[p - warmup], window[p + 1])?,
             });
         }
     }

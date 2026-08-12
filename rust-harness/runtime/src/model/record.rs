@@ -42,8 +42,10 @@ struct Row<L> {
 }
 
 /// One forward call: where it started, what it consumed, what it produced.
-/// `prefill` yields one row (the final position); `prefill_all` yields one
-/// row per appended token. Generic for the reason `Row` is.
+/// `prefill` yields one row (the final position); `prefill_all` yields one row
+/// per appended token, and `prefill_from` one per token from its offset on, so
+/// `rows` is not in general as long as `tokens`. Generic for the reason `Row`
+/// is.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct Record<T, R> {
     start: usize,
@@ -147,13 +149,25 @@ impl Model for RecordingModel {
     }
 
     fn prefill_all(&mut self, tokens: &[Token]) -> Result<Vec<Logits>> {
+        self.prefill_from(tokens, 0)
+    }
+
+    // Overridden rather than inherited, for two reasons that both matter. The
+    // default would call this type's `prefill_all` and discard the head of the
+    // result, which throws away the saving the method exists for -- the inner
+    // backend would still fold the embedding table for every dropped row.
+    // And it would record those rows: a recording is a claim about what the
+    // run produced, and a row the caller never saw is not one. Replay is keyed
+    // by absolute position with unrecorded positions falling back, so a
+    // recording that starts partway into a prefill is well formed.
+    fn prefill_from(&mut self, tokens: &[Token], first: usize) -> Result<Vec<Logits>> {
         let start = self.inner.cached_len();
-        let produced = self.inner.prefill_all(tokens)?;
+        let produced = self.inner.prefill_from(tokens, first)?;
         let rows: Vec<RecordedRow<'_>> = produced
             .iter()
             .enumerate()
             .map(|(i, l)| Row {
-                position: start + i,
+                position: start + first + i,
                 logits: &l.0[..],
             })
             .collect();

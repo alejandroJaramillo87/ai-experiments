@@ -1264,14 +1264,19 @@ impl DotKind {
 /// The tied LM head is the largest tensor in the checkpoint, so this is not a
 /// micro-optimization: `prefill` wants one row and would otherwise fold the
 /// embedding table once per prefilled position and discard all but the last.
+///
+/// Two callers discard rows, and they discard different shapes of them.
+/// `prefill` wants the tail alone, which is `Last` and `None`. Perplexity
+/// wants a *suffix* — `eval::per_token_nll` scores the second half of each
+/// window and reads nothing before it — which is `From`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RowsWanted {
-    /// Every position, which is what `prefill_all` returns.
-    All,
+    /// Every position from this one on. `From(0)` is every position, which is
+    /// what `prefill_all` returns.
+    From(usize),
     /// The final position alone.
     Last,
-    /// No position: a prefill group that is not the last, under a caller that
-    /// asked only for the final logits.
+    /// No position: a prefill group before the first row any caller wants.
     None,
 }
 
@@ -2270,7 +2275,7 @@ impl CpuModel {
     #[cfg(test)]
     fn forward_one(&mut self, token: Token, position: usize) -> Result<Logits> {
         Ok(self
-            .forward_batch(&[token], position, RowsWanted::All)?
+            .forward_batch(&[token], position, RowsWanted::From(0))?
             .pop()
             .expect("a batch of one returns one row"))
     }
@@ -2637,15 +2642,25 @@ impl CpuModel {
 
         // Final norm and tied LM head: logits[t] = embed_row(t) . x.
         //
-        // Per position rather than as a panel, and only for the positions
-        // `want` asks for. The head is the tied embedding table -- 1.07 GB at
-        // E4B, about 7 percent of the weights -- and `prefill` discards every
-        // row but the last, so computing all of them would be reading the
-        // largest tensor in the checkpoint to throw the answer away.
+        // Only for the positions `want` asks for, because the head is the tied
+        // embedding table -- 1.07 GB at E4B, about 7 percent of the weights but
+        // 84 percent of a scored window's weight traffic, since this form reads
+        // the whole table once per row it produces. Not computing a row is
+        // therefore the cheapest thing that can be done about it, and `want` is
+        // how a caller says which rows it will actually read.
+        //
+        // Still per position rather than as a panel, and that is now a measured
+        // choice rather than an absent caller. Panelizing would take the table
+        // reads from one per position to one per group, but it leaves the
+        // arithmetic untouched, and the head is only 7.6 percent of a scored
+        // window's flops against a body that is already batched. The estimate
+        // is 1.05-1.12x for a chunked staging panel on the bit-identity
+        // critical path; see the rust-harness optimization candidates document,
+        // which carries the roofline and the design.
         let mut rest: &mut [f32] = work;
         let normed = carve(&mut rest, n * c.embed_dim);
         let rows: Vec<usize> = match want {
-            RowsWanted::All => (0..n).collect(),
+            RowsWanted::From(first) => (first.min(n)..n).collect(),
             RowsWanted::Last => vec![n - 1],
             RowsWanted::None => Vec::new(),
         };
@@ -2691,8 +2706,21 @@ impl CpuModel {
         Ok(out)
     }
 
-    fn prefill_groups(&mut self, tokens: &[Token], last_only: bool) -> Result<Vec<Logits>> {
+    /// `first` is the first appended position whose logits the caller will
+    /// read, and is ignored when `last_only` is set — `prefill` wants the tail
+    /// alone, which is not a suffix of length greater than one.
+    fn prefill_groups(
+        &mut self,
+        tokens: &[Token],
+        last_only: bool,
+        first: usize,
+    ) -> Result<Vec<Logits>> {
         ensure!(!tokens.is_empty(), "prefill of zero tokens");
+        ensure!(
+            first <= tokens.len(),
+            "prefill from position {first} of only {} tokens",
+            tokens.len()
+        );
         ensure!(
             self.cached_len + tokens.len() <= self.config.context_length,
             "prefill of {} tokens past cached {} exceeds context length {}",
@@ -2712,14 +2740,20 @@ impl CpuModel {
         let _enter = span.enter();
         let entry = self.cached_len;
         let chunk = self.batch.chunk(tokens.len());
-        let mut rows = Vec::with_capacity(tokens.len());
+        let mut rows = Vec::with_capacity(tokens.len() - first);
         let groups = tokens.len().div_ceil(chunk);
         for (g, group) in tokens.chunks(chunk).enumerate() {
             let start = self.cached_len;
+            // `first` is an index into the whole call; each group needs it
+            // relative to its own span. A group entirely before it wants
+            // nothing, one entirely after it wants everything, and the group
+            // straddling it wants a suffix.
+            let off = g * chunk;
             let want = match (last_only, g + 1 == groups) {
-                (false, _) => RowsWanted::All,
                 (true, true) => RowsWanted::Last,
                 (true, false) => RowsWanted::None,
+                (false, _) if off + group.len() <= first => RowsWanted::None,
+                (false, _) => RowsWanted::From(first.saturating_sub(off)),
             };
             // Backstop for any error a future forward pass raises: roll the
             // cache back to the length prefill was called at, so a failed
@@ -2762,13 +2796,17 @@ impl Model for CpuModel {
         // head entirely rather than folding the embedding table for logits
         // this caller is about to drop.
         Ok(self
-            .prefill_groups(tokens, true)?
+            .prefill_groups(tokens, true, 0)?
             .pop()
             .expect("non-empty prefill"))
     }
 
     fn prefill_all(&mut self, tokens: &[Token]) -> Result<Vec<Logits>> {
-        self.prefill_groups(tokens, false)
+        self.prefill_from(tokens, 0)
+    }
+
+    fn prefill_from(&mut self, tokens: &[Token], first: usize) -> Result<Vec<Logits>> {
+        self.prefill_groups(tokens, false, first)
     }
 
     fn truncate(&mut self, len: usize) -> Result<()> {
@@ -4815,6 +4853,79 @@ mod tests {
                 batch.label()
             );
         }
+    }
+
+    #[test]
+    fn prefill_from_returns_exactly_the_tail_of_prefill_all() {
+        // Skipping the tied LM head for rows nobody reads is only sound if the
+        // rows that remain are the same bits at the same positions. Exact
+        // equality, not a tolerance: `first` selects which rows are computed
+        // and changes nothing about how any of them is folded.
+        //
+        // Every `first` against every batch width, because the group mapping
+        // is the whole of the new logic and it has three cases -- a group
+        // entirely before `first` (wants nothing), one entirely after (wants
+        // everything), and the group straddling it (wants a suffix). At
+        // production widths the straddling case does not arise: `CHUNK` 256
+        // with `warmup` 128 and `DEFAULT_BATCH` 64 puts `first` exactly on a
+        // group boundary. It is reachable only from a test, which is the
+        // reason this one enumerates rather than samples.
+        //
+        // Mutation check performed when this was written: replacing the
+        // group-relative offset with `first.min(group.len())` -- a plausible
+        // way to write the same clamp wrongly -- fails this test and *nothing
+        // else in the suite* (324 passed, 1 failed). So this is not a
+        // restatement of coverage elsewhere; it is the only coverage there is.
+        let tokens = [1u32, 5, 9, 13, 3, 8, 21, 2, 17];
+        let mut whole = tiny();
+        let reference = whole.prefill_all(&tokens).unwrap();
+
+        for batch in [
+            BatchKind::Stepped,
+            BatchKind::Batched(1),
+            BatchKind::Batched(2),
+            BatchKind::Batched(4),
+            BatchKind::Batched(9),
+            BatchKind::Batched(64),
+            BatchKind::Whole,
+        ] {
+            for first in 0..=tokens.len() {
+                let mut m = tiny();
+                m.set_batch(batch);
+                let rows = m.prefill_from(&tokens, first).unwrap();
+                assert_eq!(
+                    rows.len(),
+                    tokens.len() - first,
+                    "batch {} first {first}",
+                    batch.label()
+                );
+                for (i, row) in rows.iter().enumerate() {
+                    assert_eq!(
+                        row,
+                        &reference[first + i],
+                        "batch {} first {first} row {i} (position {})",
+                        batch.label(),
+                        first + i
+                    );
+                }
+                // The cache advanced over every token, not only the ones whose
+                // logits were asked for: skipping the head must not skip the
+                // forward pass, or the next call attends to a short prefix.
+                assert_eq!(
+                    m.cached_len(),
+                    tokens.len(),
+                    "batch {} first {first}",
+                    batch.label()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn prefill_from_past_the_end_is_an_error_naming_both_numbers() {
+        let mut m = tiny();
+        let err = m.prefill_from(&[1, 5, 9], 4).unwrap_err().to_string();
+        assert!(err.contains('4') && err.contains('3'), "{err}");
     }
 
     #[test]
