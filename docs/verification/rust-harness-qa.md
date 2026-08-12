@@ -75,9 +75,11 @@ no-subscriber test, and fixed by serializing them; see the campaign log.
 
 ## Phase Q1: numerics core
 
-Scope: `runtime/src/gguf.rs`, `runtime/src/tensor.rs`,
+Scope: `runtime/src/checkpoint.rs`, `runtime/src/tensor.rs`,
 `runtime/src/tokenizer.rs`, `runtime/src/model/cpu.rs`,
-`runtime/src/synth.rs`, `fixtures/reference_logits.py`.
+`runtime/src/synth.rs`, `fixtures/reference_logits.py`, and
+`runtime/src/gguf.rs` — which is no longer the model reader, only the parser
+for the probe and control-vector artifacts.
 
 Implementation: `rust-harness/runtime/src/tensor.rs`,
 `rust-harness/runtime/src/sampler.rs`,
@@ -85,9 +87,10 @@ Implementation: `rust-harness/runtime/src/tensor.rs`,
 
 Lenses:
 
-- Adversarial inputs: truncated, oversized, or hostile GGUF metadata;
-  quantized blocks at boundary sizes; tokenizer byte-fallback over invalid
-  UTF-8 and multi-byte boundaries.
+- Adversarial inputs: truncated, oversized, or hostile safetensors headers
+  and `config.json` fields, which are the model-load attack surface;
+  malformed GGUF metadata in a probe or control-vector image; tokenizer
+  byte-fallback over invalid UTF-8 and multi-byte boundaries.
 - Numerical edge cases: subnormals, NaN and infinity propagation, f16
   rounding, accumulation order assumptions.
 - Reference fidelity: the numpy reference implements the same architecture
@@ -510,6 +513,11 @@ sixteen, including one critical and five high.
   with exit 101 rather than reporting a positioned load error. The loader
   and the budget calculator disagree about the same configuration, and
   `gguf-info` reports such a file as supported.
+  [Since recorded: the GGUF model path is gone, so `Config::from_gguf` and
+  the inspector named here no longer exist — `checkpoint-info` replaced the
+  latter. The disagreement between the loader and `kv::interleaved_layers`
+  needs re-checking against `ModelSpec::from_checkpoint`, which reaches the
+  same assert by a different route.]
 
 ### Confirmed: engine state and atomicity
 
@@ -620,6 +628,10 @@ measurements are from the sandbox at the stated geometry.
 - **G-30.** `main.rs:67` — the GGUF byte vector stays alive across snapshot
   restore, so peak resident size holds the file bytes, the dense weights,
   and the snapshot payload simultaneously.
+  [Closed by P10.6/P10.7, not by perf work: there is no byte vector to
+  retain. `CpuModel::load` reads each tensor from the file at its offset and
+  drops the handle at the closing brace, so nothing above the loader can
+  hold the payload. Peak RSS after load is now printed in the run header.]
 - **G-34.** `compact.rs:54` — every agent turn tokenizes the full rendered
   prompt twice.
 - **A2-18.** `activation-capture.rs:96` — `sha256_hex` copies its entire
@@ -633,6 +645,8 @@ measurements are from the sandbox at the stated geometry.
 - **I-39 (medium).** `docs/verification/rust-harness.md:375` — the RH.9a
   snippet calls `.activations` on the return of `load_capture`, which is a
   plain three-tuple, so the documented command fails on a valid capture.
+  [Fixed; the snippet now unpacks the tuple. The line number is as-of-campaign
+  and has since drifted — find it under the RH.9a heading.]
 - **I-40 (medium).** `runtime/src/npz.rs:187` — the rust gate requires a
   `python3` that can import numpy, because an `npz.rs` test shells out to
   it. RH.0, the AGENTS.md caveat list, and the README omit this
@@ -645,6 +659,8 @@ measurements are from the sandbox at the stated geometry.
 - **I-42 (low).** `docs/verification/rust-harness.md:418` — three runbook
   command blocks fail as written because they write into or change to
   directories that are never created.
+  [Fixed; every `/tmp/rhN` block now carries its own `mkdir -p`. The line
+  number is as-of-campaign and has since drifted.]
 
 ### Confirmed: input validation and decoding
 
@@ -753,7 +769,9 @@ fails loudly, with no wrong numbers), **A1-R07** confirmed as stated for
 `sliding_window_pattern` (the converter always writes it as a boolean
 array, which `gguf.rs` cannot parse, so `gguf-info` exits 1 on a real
 checkpoint instead of printing its verdict; the claim was over-broad about
-the other two keys), **A1-R05** reduced to a documentation and labelling
+the other two keys) — [since recorded: this mechanism no longer reaches the
+load path at all, because the model is read from `config.json` rather than
+from converter metadata, and `checkpoint-info` replaced `gguf-info`] — **A1-R05** reduced to a documentation and labelling
 matter (the position semantics are already documented as cache-relative,
 and no consumer reads the file; the residual is that the counter reports
 scoring events while calling them positions), and **A1-R06** and **C-R12**
@@ -821,17 +839,19 @@ in a clean worktree rather than trusting the claim.
 | A1-15 fixture blind to QK scale and GQA mapping | Fixed | 7c53120 |
 | G-31 full-vocabulary sampler allocation | Deferred | — |
 | G-35 grammar mask simulates every piece | Deferred | — |
-| G-30 GGUF bytes retained across restore | Deferred | — |
+| G-30 GGUF bytes retained across restore | Closed by the loader change, not fixed as reported | `P10.6`/`P10.7` |
 | G-34 prompt tokenized twice per turn | Deferred | — |
 | A2-18 `sha256_hex` copies its input | Deferred | — |
 
-**Five findings are deferred**, carrying neither a fix nor a waiver. All
-five are performance work the perf batch did not reach: G-31 and G-35 both
-need a sampler and grammar redesign rather than a local change, G-30 needs
-the GGUF byte vector dropped once the dense weights are built, G-34 needs
+**Four findings are deferred**, carrying neither a fix nor a waiver. All
+four are performance work the perf batch did not reach: G-31 and G-35 both
+need a sampler and grammar redesign rather than a local change, G-34 needs
 the rendered prompt cached across a turn, and A2-18 needs a streaming
 SHA-256 in place of the copy in both duplicated implementations
 (`harness/src/main.rs` and `runtime/src/bin/activation-capture.rs`).
+
+G-30 was the fifth. It is closed rather than fixed: the loader no longer
+holds the file bytes it described.
 
 A sixth, A1-15, was deferred here and has since been fixed. It was not
 performance work and mattered more: the committed fixture set `head_dim`
@@ -859,6 +879,10 @@ rather than to the hash.
 
 ### Verification
 
+Every test count below is the campaign's own measurement at the commit
+named, and none of them are maintained. Read them as evidence that the gate
+ran, not as the current size of the suite.
+
 The rust gate exits 0 at every commit and twice at HEAD, the second run
 watching for the tracing flake Campaign 1 recorded. 306 tests pass and 6
 remain ignored: five Tier 3 entries in `cuda_acceptance.rs` and
@@ -866,7 +890,7 @@ remain ignored: five Tier 3 entries in `cuda_acceptance.rs` and
 GPU, and a chat-template token-stream golden needing a
 workstation-generated tokenizer fixture rather than a GPU.
 
-Both counts are the campaign's own measurement and are not maintained. At
+At
 `7c53120` the workspace runs 383 passing tests with five ignored: the Tier
 3 stubs are all that remain, because the chat-template golden was removed
 rather than filled in when the Gemma 3 markers it tested were replaced.

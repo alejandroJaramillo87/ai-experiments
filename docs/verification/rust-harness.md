@@ -3,7 +3,7 @@
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
 Workstation verification for the `rust-harness/` workspace: the CPU
-inference backend on the real Gemma 4 E4B GGUF, the observability stack
+inference backend on the real Gemma 4 E4B checkpoint, the observability stack
 (flight recorder, tracing, rr), the in-band interpretability chain
 (capture, probe monitor, steering), the chat mode, the containerized
 build, and the run-level observability records. Every rust-harness claim to date is
@@ -19,18 +19,20 @@ Scope is CPU only. Not covered, and why:
   runbook when they exist; the commands that generate them are in
   `rust-harness/fixtures/reference/README.md`. It replaces two feature-gated
   `unimplemented!()` stubs that were never filled in and whose fixture
-  designs compared the harness against a quantized GGUF and against its own
+  designs compared the harness against a quantized model and against its own
   first run.
 - There is no chat-template token-stream golden test. An earlier `#[ignore]`d
   stub was removed with the Gemma 3 markers it was written against, and no
   replacement was added; writing one needs both code work and a
   workstation-generated tokenizer fixture before a runbook entry can
   exercise it.
-- The KV cache now caps sliding layers at their window rather than holding
-  the full sequence, so `kv::budget_bytes` describes what a run allocates.
-  The saving is visible only against real E4B at a real context, and this
-  runbook has no step that reports it; RH.1's startup banner does, and its
-  expected KV line is the figure to check.
+- The KV cache now caps sliding layers at their window plus a batch width
+  (`kv::window_capacity`, which is `window - 1 + group` and a little slack)
+  rather than holding the full sequence, so `kv::budget_bytes` describes what
+  a run allocates. The saving is visible only against real E4B at a real
+  context, and this runbook has no step whose purpose is to report it; RH.2's
+  startup banner prints it in passing, and its KV line is the figure to
+  check. RH.1 has no banner — `checkpoint-info` loads no model.
 
 Recording protocol: the [runbook README](README.md) rules apply. The human
 runs each command on the workstation and pastes command plus output
@@ -104,14 +106,13 @@ Implementation: `rust-harness/runtime/src/bin/checkpoint-info.rs`,
 campaign: the CPU backend was written against a Gemma-4-style architecture
 spec, never against the real artifact. Published sources say the real E4B
 architecture is a superset of what the backend implements, retaining
-per-layer embeddings and MatFormer nesting and adding a shared KV cache and
-dual RoPE; the
+per-layer embeddings and adding a shared KV cache and dual RoPE; the
 [architecture reconciliation](../rust-harness/runtime-design.md#architecture-reconciliation)
 records those findings and their confidence. Those sources are secondhand,
 so this entry decides the question for the checkpoint that actually exists.
 
 The backend now implements those features rather than refusing them, and
-`check_supported` retains each refusal as a coherence check: a file whose
+`check_supported_checkpoint` retains each refusal as a coherence check: a file whose
 metadata and tensors describe different models still fails the load rather
 than loading with the extra weights ignored. So this entry produces a
 verdict rather than a judgment call. Four questions decide the follow-up
@@ -119,17 +120,16 @@ work:
 
 1. Are there per-layer embedding tensors?
 2. Do any layers lack `attn_k`/`attn_v` (the shared-KV signature)?
-3. Are the feed-forward widths uniform across layers, or per-layer
-   (MatFormer slicing)?
+3. Are the feed-forward widths uniform across layers, or per-layer?
 4. Is RoPE a single frequency base at full head dimension, or dual and
    partial?
 
 Command:
 
 ```bash
-$ ls -la /mnt/ai-data/models/gguf/
+$ ls -la /mnt/ai-data/models/hf/
 $ cd rust-harness
-$ cargo run -p runtime --bin checkpoint-info -- /mnt/ai-data/models/gguf/<e4b>.gguf
+$ cargo run -p runtime --bin checkpoint-info -- /mnt/ai-data/models/hf/<e4b>
 ```
 
 Expected signal: the run ends in a compatibility verdict, printed by the same
@@ -141,12 +141,12 @@ is the expected outcome if the published architecture holds; that message
 defines the follow-up code work and does not invalidate this entry.
 
 The architecture summary section answers the four questions directly: tensor
-families with counts, the quantization-type histogram against the implemented
-set {F32, F16, Q8_0}, feed-forward widths (uniform or per-layer), the list of
-layers lacking `attn_k`/`attn_v`, and every RoPE, window, and per-layer
-metadata key. Record the full dump verbatim, including the raw metadata and
-tensor sections, because the summary is derived and the raw dump is the
-evidence.
+families with counts, the dtype histogram against the implemented set
+{F32, F16, BF16}, feed-forward widths (uniform or per-layer), the shared-KV
+boundary, the attention schedule, and the per-layer geometry (head width,
+feed-forward width, RoPE base). Record the full dump verbatim, including the
+`=== config.json ===` echo and the `=== Tensors ===` table, because the
+summary is derived and those two sections are the evidence.
 
 Observed:
 
@@ -164,8 +164,10 @@ Decides the one open question the CPU backend already had to answer in order
 to run. `modeling_gemma4.py` builds `k_proj`, `v_proj`, and `k_norm` only for
 non-shared layers; every released E-series checkpoint carries all three on
 every layer. The backend follows the modeling code and leaves the shared
-tail's copies unread. If that reading is wrong, 18 of E4B's 42 layers attend
-over the wrong keys and the output is fluent and wrong rather than an error.
+tail's copies unread. If that reading is wrong, the shared tail attends over
+the wrong keys and the output is fluent and wrong rather than an error — 18
+of E4B's 42 layers, and 20 of E2B's 35, which is the variant check 1 below
+was run against.
 The evidence on both sides is in
 [The shared-KV weight conflict](../models/gemma-4.md#the-shared-kv-weight-conflict).
 
@@ -245,16 +247,16 @@ the weights are meaningful and check 2 becomes mandatory rather than
 confirmatory.
 
 **Check 2 — do the logits agree?** Generate greedily from the same prompt
-through `transformers` and through the harness, and compare. Confirm the GGUF
-filename against the directory before running; the conversion output name
-depends on the quantization chosen at conversion time.
+through `transformers` and through the harness, and compare. Confirm the
+checkpoint directory name against the listing before running; both sides read
+the same directory, so there is no conversion step to account for.
 
 ```bash
-$ ls /mnt/ai-data/models/gguf/
+$ ls /mnt/ai-data/models/hf/
 $ cd /home/user/ai-experiments/rust-harness
 $ cargo run --release -p harness -- \
-    --model /mnt/ai-data/models/gguf/gemma-4-E2B/gemma-4-E2B-BF16.gguf \
-    --prompt 'The capital of France is' --max-tokens 16 --temperature 0
+    --model /mnt/ai-data/models/hf/gemma-4-E2B \
+    --max-tokens 16 --temperature 0 'The capital of France is'
 ```
 
 Then the reference, on the same prompt and the same decoding rule:
@@ -324,8 +326,10 @@ the same statistic noisy, and the inference from `k_proj` and `v_proj`
 covers it.
 
 Check 2 remains listed because check 1 is statistical inference over weight
-distributions rather than a logit comparison. Run it opportunistically when
-the GGUF conversion is available. It is confirmatory, not blocking.
+distributions rather than a logit comparison. It was gated on a GGUF
+conversion being available; now that both sides read the same checkpoint
+directory, nothing blocks it and it can simply be run. It is confirmatory,
+not blocking.
 
 Status: RESOLVED 2026-08-09 in favor of the modeling code, on check 1.
 Check 2 outstanding as confirmation.
@@ -337,8 +341,10 @@ Implementation: `rust-harness/harness/src/main.rs`,
 `rust-harness/runtime/src/model/cpu.rs`,
 `rust-harness/runtime/src/tokenizer.rs`.
 
-First run of the tokenizer against the real vocabulary and of the dequant
-paths against real tensors.
+First run of the tokenizer against the real vocabulary, and of the widening
+paths against real tensors: the loader keeps each weight at its published
+storage width and widens BF16 to f32 at use, so this is where that path meets
+something other than a fixture.
 
 Command:
 
@@ -346,17 +352,28 @@ Command:
 $ cd rust-harness
 $ mkdir -p /tmp/rh2 && cd /tmp/rh2
 $ time ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf \
+    --model /mnt/ai-data/models/hf/<e4b> \
     "Reply with the single word: ready"
 ```
 
 (Build once with `cargo build --release -p harness`.)
+
+No `--tokenizer` is passed, and none should be needed: `resolve_tokenizer`
+looks for `tokenizer.json` inside the checkpoint directory first, which is
+how a published checkpoint carries it. If this step fails with "no
+tokenizer.json for model", the directory is incomplete — record that rather
+than working around it with an explicit path.
 
 Expected signal: exit 0; the model loads without panic, the reply is
 coherent text responsive to the instruction, and `session.jsonl` appears
 in the working directory. Coherence is the signal: a numerically wrong
 forward pass on real weights produces fluent-looking garbage or
 repetition, so record the full reply.
+
+The startup banner is also the KV evidence: it prints the weight width, peak
+RSS after load, the KV cache line, and the rewind horizon. Record those four
+lines — the KV line is what the storage cap was for, and this is the only
+step that reports it against real weights.
 
 Observed:
 
@@ -383,7 +400,7 @@ Command:
 ```bash
 $ mkdir -p /tmp/rh3 && cd /tmp/rh3 && rm -f session.jsonl
 $ time ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf \
+    --model /mnt/ai-data/models/hf/<e4b> \
     --trace-chrome trace.json \
     "Count from one to twenty as words, one per line"
 ```
@@ -417,10 +434,10 @@ Command:
 ```bash
 $ mkdir -p /tmp/rh4 && cd /tmp/rh4
 $ time ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf --trace-chrome turn1.json \
+    --model /mnt/ai-data/models/hf/<e4b> --trace-chrome turn1.json \
     "Summarize the Unix philosophy in three sentences"
 $ time ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf --trace-chrome turn2.json \
+    --model /mnt/ai-data/models/hf/<e4b> --trace-chrome turn2.json \
     "Now compress that summary to one sentence"
 ```
 
@@ -450,7 +467,7 @@ Command (host):
 ```bash
 $ mkdir -p /tmp/rh5 && cd /tmp/rh5
 $ ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf --record flight.jsonl \
+    --model /mnt/ai-data/models/hf/<e4b> --record flight.jsonl \
     "Reply with the single word: ready"
 ```
 
@@ -495,7 +512,7 @@ Command:
 ```bash
 $ mkdir -p /tmp/rh6 && cd /tmp/rh6
 $ ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf --trace-chrome trace.json \
+    --model /mnt/ai-data/models/hf/<e4b> --trace-chrome trace.json \
     "Reply with the single word: ready"
 ```
 
@@ -527,7 +544,7 @@ Command:
 
 ```bash
 $ cd rust-harness
-$ make debug-record ARGS='--model fixtures/tiny-gemma4.gguf "Reply with the single word: ready"'
+$ make debug-record ARGS='--model fixtures/tiny-gemma4 "Reply with the single word: ready"'
 $ make debug-replay
 ```
 
@@ -564,7 +581,7 @@ Command:
 $ mkdir -p /tmp/rh8 && cd /tmp/rh8
 $ printf 'rules:\n  - tool: "*"\n    action: allow\n' > permissions.yaml
 $ ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf \
+    --model /mnt/ai-data/models/hf/<e4b> \
     "Create a file named hello.txt containing the word hello, then read it back"
 ```
 
@@ -598,9 +615,13 @@ with a separable attribute; record which dataset was used.
 - RH.3 may show capture over even a few hundred examples is impractically
   slow on CPU; if so, record the projected time and stop — the finding
   bounds the CPU path and motivates the cuda tap.
-- The rust `tokenizer_fingerprint` is GGUF-derived and intentionally not
-  comparable to Python-capture fingerprints; probe training on rust
-  captures must go through artifacts produced by this chain only.
+- The rust `tokenizer_fingerprint` is still intentionally not comparable to
+  Python-capture fingerprints, but no longer because the vocabulary came from
+  a different container. Both sides now read the same checkpoint. It is a
+  sha256 over the model path and vocabulary size with no chat template
+  (`activation-capture.rs:219-225`), so it identifies a rust capture rather
+  than describing a tokenizer, and probe training on rust captures must still
+  go through artifacts produced by this chain only.
 
 ### RH.9a Activation capture
 
@@ -609,7 +630,7 @@ Command:
 ```bash
 $ cd rust-harness
 $ cargo run --release -p runtime --bin activation-capture -- \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf \
+    --model /mnt/ai-data/models/hf/<e4b> \
     --dataset <labeled.jsonl> --layers <l0,l1> \
     --out /mnt/ai-data/interp/captures/rust-e4b-verify
 $ uv run python -c "from interp.probes.capture import load_capture; \
@@ -619,7 +640,8 @@ $ uv run python -c "from interp.probes.capture import load_capture; \
 
 Expected signal: the capture directory holds `shard_00000.npz` onward,
 `examples.jsonl`, and a `manifest.json` with
-`capture_backend: "rust-harness-cpu"` and the GGUF `model_hash`;
+`capture_backend: "rust-harness-cpu"`, `model_revision: "safetensors"`, and a
+`model_hash` that is the sha256 of `model.safetensors`;
 `load_capture` reports the requested layers with row counts matching the
 dataset. Record the capture wall-clock time.
 
@@ -660,9 +682,9 @@ $ mkdir -p /tmp/rh9/mon /tmp/rh9/base
 $ uv run python -c "from interp.probes.export import write_probe_gguf; \
     write_probe_gguf('/mnt/ai-data/interp/probes/rust-e4b-verify-probe', '/tmp/rh9/probe.gguf')"
 $ cd /tmp/rh9/base && ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf "Reply with the single word: ready"
+    --model /mnt/ai-data/models/hf/<e4b> "Reply with the single word: ready"
 $ cd /tmp/rh9/mon && ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf --probe /tmp/rh9/probe.gguf \
+    --model /mnt/ai-data/models/hf/<e4b> --probe /tmp/rh9/probe.gguf \
     "Reply with the single word: ready"
 $ diff <(grep -v '"ts"' /tmp/rh9/base/session.jsonl) <(grep -v '"ts"' /tmp/rh9/mon/session.jsonl); echo "diff exit: $?"
 $ head /tmp/rh9/mon/probe-flags.jsonl
@@ -690,11 +712,11 @@ rust captures via `interp/steering`):
 ```bash
 $ mkdir -p /tmp/rh9/steer1 /tmp/rh9/steer2
 $ cd /tmp/rh9/steer1 && ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf \
+    --model /mnt/ai-data/models/hf/<e4b> \
     --control-vector <vector.gguf> --control-vector-scale 1.0 \
     "Describe your day in two sentences"
 $ cd /tmp/rh9/steer2 && ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf \
+    --model /mnt/ai-data/models/hf/<e4b> \
     --control-vector <vector.gguf> --control-vector-scale 1.0 \
     "Describe your day in two sentences"
 ```
@@ -726,7 +748,7 @@ command is invoked directly with the trailing binary arguments):
 ```bash
 $ cd rust-harness
 $ cargo flamegraph --profile release-with-debug --bin harness -- \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf "Reply with the single word: ready"
+    --model /mnt/ai-data/models/hf/<e4b> "Reply with the single word: ready"
 ```
 
 Expected signal: `flamegraph.svg` is produced and the profile is dominated
@@ -761,7 +783,7 @@ Command (three or more turns, then EOF or `/quit`):
 ```bash
 $ mkdir -p /tmp/rh11 && cd /tmp/rh11
 $ ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf --chat \
+    --model /mnt/ai-data/models/hf/<e4b> --chat \
     --trace-chrome trace.json --max-tokens 128
 ```
 
@@ -793,10 +815,10 @@ Command:
 ```bash
 $ cd ~/ai-experiments
 $ make harness-build
-$ make harness-run ARGS='--model /app/models/gguf/<e4b>.gguf --seed 7 "Reply with the single word: ready"'
+$ make harness-run ARGS='--model /app/models/hf/<e4b> --seed 7 "Reply with the single word: ready"'
 $ mkdir -p /tmp/rh12 && cd /tmp/rh12
 $ ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf --seed 7 \
+    --model /mnt/ai-data/models/hf/<e4b> --seed 7 \
     "Reply with the single word: ready"
 ```
 
@@ -831,10 +853,10 @@ Command (a normal run, then a forced failure, then inspection):
 ```bash
 $ mkdir -p /tmp/rh13 && cd /tmp/rh13
 $ ~/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/gguf/<e4b>.gguf \
+    --model /mnt/ai-data/models/hf/<e4b> \
     "Reply with the single word: ready"
 $ ~/ai-experiments/rust-harness/target/release/harness \
-    --model /nonexistent.gguf "task" ; echo "exit: $?"
+    --model /nonexistent-checkpoint "task" ; echo "exit: $?"
 $ tail -2 /mnt/ai-data/logs/harness/runs.jsonl
 $ cd ~/ai-experiments && uv run python -c "
 from common.obs import catalog
