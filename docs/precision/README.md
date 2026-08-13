@@ -268,30 +268,30 @@ fp8, and cached-mode distillation rejects a quantized teacher.
 This is the sharpest precision coupling in the repository, and it crosses tier boundaries
 silently.
 
-Linear probes are fitted on bf16 activations. When monitored traffic is answered by a
-quantized model, the model that answered the request and the model whose activations the
-probe was fitted on are not the same model, and the monitor's scores describe the replay
-model rather than the served one. Nothing errors; the numbers simply stop meaning what
-they appear to mean.
+Linear probes are fitted on bf16 activations. Scoring one against a quantized model means
+the model that answered the request and the model whose activations the probe was fitted on
+are not the same model. Nothing errors; the numbers simply stop meaning what they appear to
+mean.
 
-The mitigation is the `llama-gpu-bf16` service in
-[`docker-compose.inference.yaml`](../../docker-compose.inference.yaml), started by `make
-fullprec-up`, which answers monitored traffic at the precision the probes were fitted at.
-The compose file carries the reason inline; the operating instructions, the port, the
-subject-model choice, and the GGUF conversion caveat are owned by
-[`docs/interp/writeback.md`](../interp/writeback.md). Read that section before running the
-probe monitor against any endpoint.
+**R10.5 removed the hazard from this path rather than mitigating it.** Probes are now scored
+in the process that answers the request, by the tap seam in the rust harness, which loads
+bf16 safetensors and refuses a quantized checkpoint. The score comes from the weights that
+produced the text, so there is no second model to compare against and no fidelity claim to
+qualify.
 
-**The rust-harness capture is no longer a second resolution of this hazard.** It once was:
-`activation-capture.rs` captured from a quantized GGUF serving path, so probes fitted on
-those rows described the model that would answer, and mixing the two approaches reintroduced
-the mismatch. That path no longer exists. The harness loads bf16 safetensors and refuses a
-quantized checkpoint, so its captures and the `llama-gpu-bf16` mitigation now describe
-weights at the same precision, and a probe fitted on one is valid against the other.
+Two mitigations existed before that and are gone with it. `activation-capture.rs` once
+captured from a quantized serving path, so probes fitted on those rows described the model
+that would answer -- retired when the harness stopped reading quantized checkpoints. And the
+`llama-gpu-bf16` service answered monitored traffic at the probes' precision so that an
+offline replay would at least match it; the replay is gone, so the service is now a plain
+full-precision endpoint with no interp role. See
+[`docs/interp/writeback.md`](../interp/writeback.md).
 
 The hazard itself is undiminished — it is a property of the quantized llama.cpp and vLLM
-services, which are still what unmonitored traffic is answered by. What changed is that the
-harness is no longer on the quantized side of it.
+services, which are still what most traffic is answered by. What changed is that interp no
+longer observes those services at all: probe scoring happens only where the weights are
+bf16. That is a narrowing of what is monitored, not a resolution of the quantization
+question for the services themselves.
 
 The banner comment at the top of `activation-capture.rs` still describes the rows as
 "captured from the quantized serving path itself". That sentence is stale and this section

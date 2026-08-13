@@ -151,75 +151,50 @@ Observed:
 
 Status: PENDING
 
-## I.6 Request-log proxy (W3)
+## I.6 Served-request log (W3)
 
-Implementation: `docker/interp-logproxy/logproxy.py`,
-`docker/interp-logproxy/Dockerfile`, `docker-compose.inference.yaml` (the
-`interp-logproxy` service under profile `interp`).
+Implementation: `rust-harness/harness/src/interplog.rs`,
+`rust-harness/harness/src/server.rs`, the `harness-serve` service in
+`docker-compose.rust-harness.yaml`.
 
-Note: the rust harness provides an in-band successor to the W3/W4 serving-side
-machinery (I.6, I.6b, I.7). Its runtime scores probes inside the forward pass
-(`docs/interp/rust-harness-interp.md`, "In-band monitoring"), which
-removes the proxy, the full-precision endpoint, and the log-replay monitor on
-that path by construction. These entries remain valid and required for the
-llama.cpp GPU serving stack, which the rust CPU runtime does not replace; the
-two verification campaigns are independent.
+Replaces the retired request-log proxy and the retired full-precision
+monitored endpoint (the former I.6 and I.6b), which existed only because
+llama-server has neither structured request logging nor an activation read
+path. The harness has both, so the record is written by the process that
+answered the request and carries the probe scores taken while answering it.
+Nothing on the llama.cpp stack replaces them: those services now serve without
+interp observation, which is an accepted consequence rather than an oversight.
 
-Command:
-
-```bash
-$ make logproxy-up
-$ curl -s -X POST localhost:8012/v1/chat/completions -H 'Content-Type: application/json' \
-    -d '{"messages": [{"role": "user", "content": "2+2?"}], "max_tokens": 8}'
-$ make logproxy-down
-```
-
-Expected signal: the proxy forwards to llama-gpu and appends a JSONL
-record (timestamp, prompt, response) to the serving log directory; the
-response body matches the upstream service's.
-
-Observed:
-
-```
-```
-
-Status: PENDING
-
-## I.6b Full-precision monitored endpoint
-
-Implementation: `docker-compose.inference.yaml` (the `llama-gpu-bf16` service under
-profile `interp`), `docker/interp-logproxy/logproxy.py`.
-
-Precondition for the fidelity claim in I.7. The point of `llama-gpu-bf16` is
-that monitored traffic is answered at the precision the probes were fitted at,
-so the served tensor type must be confirmed rather than assumed.
-
-ggml defines a `BF16` tensor type, but CUDA backend coverage for it is narrower
-than for f16, and some paths upconvert. A service that loads f16 while being
-described as bf16 reintroduces exactly the replay mismatch this endpoint exists
-to remove, and it does so silently: nothing downstream would report a problem.
+The sandbox proves the format and the wiring against a synthetic model
+(`harness/tests/serve_interp_log.rs`). What it cannot prove is that a real
+probe over real E4B produces scores worth reading, which is what this entry is
+for.
 
 Command:
 
 ```bash
-$ make fullprec-up
-$ docker logs llama-gpu-bf16 | grep -iE "general.file_type|type +f(16|32)|bf16"
-$ curl -s -X POST localhost:8012/v1/chat/completions -H 'Content-Type: application/json' \
+$ make harness-serve HARNESS_PROBE=/app/probes/<name>/probe.safetensors
+# loading the checkpoint takes minutes; poll before sending anything
+$ curl -sf --max-time 900 http://127.0.0.1:8005/v1/health
+$ curl -s --max-time 900 -X POST localhost:8005/v1/chat/completions \
+    -H 'Content-Type: application/json' \
     -d '{"messages": [{"role": "user", "content": "2+2?"}], "max_tokens": 8}'
-$ tail -1 /mnt/ai-data/interp/logs/llama-gpu-bf16/"$(date -u +%F)".jsonl
-$ make fullprec-down
-$ curl -sf localhost:8002/v1/health
+$ tail -1 /mnt/ai-data/interp/logs/harness/"$(date -u +%F)".jsonl | python3 -m json.tool
+$ docker kill rust-harness-serve
+$ wc -l /mnt/ai-data/interp/logs/harness/"$(date -u +%F)".jsonl
 ```
 
-Expected signal: the startup log reports the tensor type the GGUF was built
-with, and it matches the `--outtype` used by `convert_hf_to_gguf.py`. The proxy
-forwards to the bf16 endpoint and the record's `target_service` reads
-`llama-gpu-bf16`. Port 8002 answers its healthcheck unchanged throughout.
+Expected signal: one JSONL record per completed request, carrying `messages`,
+`response_text`, `usage`, `latency_s`, and a `probe` block whose `scored`
+counts the positions of that request alone and whose `max_score` is finite. The
+record is already on disk before `docker kill`, since the process is ended by a
+signal and never closes the file.
 
-Record the observed tensor type verbatim below. If the served type is f16
-rather than bf16, that is an acceptable outcome, but it must be written down
-here and in `docs/interp/writeback.md`, and the endpoint described as
-f16 from then on. Do not record a bf16 result that was not observed.
+Two things that would be silent failures. `scored` growing across requests
+means the monitor state is not being drained per request, which is both a wrong
+record and an unbounded buffer. And a `probe` block absent from every record
+while `HARNESS_PROBE` is set means the probe never loaded -- check stderr for
+the identity refusal.
 
 Observed:
 
@@ -230,50 +205,35 @@ Status: PENDING
 
 ## I.7 Probe monitor (W4)
 
-Implementation: `interp/commands/probe_monitor.py`,
-`interp/probes/monitor.py`, `interp/probes/score.py`,
-`scripts/interp/preflight.sh`.
+Implementation: `interp/probes/monitor.py`,
+`interp/commands/probe_monitor.py`.
 
-Note: the rust harness in-band probe monitor (`--probe`) supersedes this
-replay design on the rust path — per-position scoring in the serving process,
-no replay-model disclaimer (see the I.6 note). This entry still verifies the
-monitor for llama.cpp-served traffic.
+Reads the scores in the log written by I.6. It loads no model, so unlike every
+earlier version of this entry there is no GPU precondition and no requirement
+that inference be down.
 
-Command (batch job; refuses while inference is up):
+Command:
 
 ```bash
-$ make down
-$ make probe-monitor ARGS="--window 7d --probes /mnt/ai-data/interp/probes/verify-probe \
-    --model google/gemma-4-E2B --model-hash <hash>"
+$ make probe-monitor ARGS="--window 7d --log-dir /mnt/ai-data/interp/logs/harness"
+# run it again, unchanged, to exercise the drift delta
+$ make probe-monitor ARGS="--window 7d --log-dir /mnt/ai-data/interp/logs/harness"
 ```
 
-Expected signal: the monitor replays the log window, scores every probe,
-writes `report.json` (`kind: probe_monitor`, shared envelope) plus
-`flagged.jsonl`, enforces log retention, and refuses with the
-services-are-up message when run against a live stack. The report lists the
-`target_services` observed in the window, and its `note` states whether the
-replay describes the serving model or only the replay model.
+Expected signal: `report.json` (`kind: probe_monitor`, shared envelope) plus
+`flagged.jsonl`, with `scored: "in_band"`, per-probe distributions, the
+`target_services` observed, and log retention enforced. The second run carries
+`delta_vs_previous` naming the first run, with a mean delta of 0 over an
+unchanged window.
 
-The refusal covers the full-precision endpoint as well as the two production
-services, so `make fullprec-up` followed by `make probe-monitor` must also
-refuse:
-
-```bash
-$ make fullprec-up
-$ make probe-monitor ARGS="--window 7d --probes /mnt/ai-data/interp/probes/verify-probe \
-    --model google/gemma-4-E2B --model-hash <hash>"
-# expected: MonitorError naming http://127.0.0.1:8004/v1/health
-$ make fullprec-down
-```
-
-To verify the full-precision claim end to end, replay a window served by the
-bf16 endpoint and confirm the report does not disclaim fidelity:
+Run it with a service up. It must succeed: the refusal this entry used to
+verify was a consequence of the replay owning the GPU, and it has been removed
+deliberately.
 
 ```bash
-$ make probe-monitor ARGS="--log-dir /mnt/ai-data/interp/logs/llama-gpu-bf16 --window 7d \
-    --probes /mnt/ai-data/interp/probes/verify-probe \
-    --model google/gemma-2-2b --model-hash <hash>"
-# expected: "target_services": ["llama-gpu-bf16"] and a note reading "same precision"
+$ make harness-serve
+$ make probe-monitor ARGS="--window 7d --log-dir /mnt/ai-data/interp/logs/harness"
+# expected: exit 0, not a services-are-up refusal
 ```
 
 Observed:

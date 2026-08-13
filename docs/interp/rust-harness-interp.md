@@ -73,12 +73,16 @@ Verified against real E4B in [RH.14](../verification/rust-harness.md): the
 Python client completes a chat with no change but the registry entry, and two
 greedy requests return byte-identical text.
 
-Two things this does not yet do. The log proxy, the replay stage and the
-`replay_fidelity` caveat all remain in place: RH.14 shows the endpoint answers,
-but retiring them is R10's work and needs the interp commands actually pointed
-at it first. Serving blocks until the process is
-signalled, so the end-of-run probe-flag report is not written under `--serve`;
-flushing interp artifacts from a long-lived server is unsolved. And the CPU
+R11 retired the log proxy, the replay stage and the fidelity caveat together:
+the harness writes one record per served request carrying the scores its own
+tap took, so there is nothing left to capture from outside or to recompute
+offline. Serving still blocks until the process is signalled, so the end-of-run
+`probe-flags.jsonl` report is still not written under `--serve` -- but nothing
+is lost with it, because the per-request drain writes the same flags into the
+log as it goes, and does so while the process is alive rather than after. The
+one artifact with no per-request equivalent is the session KV snapshot, which a
+served session has no use for: its cache is the accumulation of unrelated
+callers' traffic and is not a thing to resume. And the CPU
 backend decodes at **5.5-5.8 tokens/second** (measured against real E4B in
 [RH.14](../verification/rust-harness.md)), so `chat_completion`'s 120-second
 default covers only about 660 tokens and a 256-token scorecard call takes

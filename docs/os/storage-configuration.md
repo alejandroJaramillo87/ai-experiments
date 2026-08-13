@@ -179,10 +179,10 @@ the code that writes them and are absent on a fresh machine.
 │   ├── saes/         # Sparse autoencoders
 │   ├── probes/       # Trained probes
 │   ├── monitor/      # Probe monitoring output
-│   ├── vectors/      # Steering vectors; read-only in llama-cpu and llama-gpu
+│   ├── vectors/      # Steering vectors; read-only in harness-serve
 │   ├── organisms/    # Model organisms
 │   ├── hf-cache/     # Interp HF_HOME (persistent, unlike the training tier)
-│   ├── logs/         # Per-request JSONL from interp-logproxy
+│   ├── logs/         # Per-request JSONL written by harness-serve
 │   └── neuronpedia/  # Created by `make interp-dirs` (on demand)
 │       └── postgres/ # Created by `make interp-dirs` (on demand)
 ├── benchmarks/       # Benchmark output; no service reads it back
@@ -212,8 +212,8 @@ the code that writes them and are absent on a fresh machine.
 | `models/trained/` | training, export | read-write |
 | `training/` | training, export, interp | read-write |
 | `interp/` | interp | read-write |
-| `interp/vectors/` | llama-cpu, llama-gpu | read-only |
-| `interp/logs/` | interp-logproxy | read-write |
+| `interp/vectors/` | harness-serve | read-only |
+| `interp/logs/` | harness-serve | read-write |
 | `logs/` | training, export, interp, prepare | read-write |
 | `benchmarks/nsys/` | llama-gpu, vllm-gpu | read-write |
 | `comfyui/output/` | comfyui | read-write |

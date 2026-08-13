@@ -13,7 +13,6 @@ import numpy as np
 import pytest
 
 from common.reports import validate_report
-from tests.interp.conftest import fake_capture
 
 
 class TestOrganismVerification:

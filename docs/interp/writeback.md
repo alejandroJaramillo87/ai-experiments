@@ -2,26 +2,27 @@
 
 Operating guide for the interpretability write-back path (interp Phase 3, deliverables
 W1-W4): control-vector steering deployed into the rust harness serving endpoint, a probe toolkit with
-mandatory black-box baselines, a serving request log, and the async probe monitor. Weights
+mandatory black-box baselines, a served-request log, and the probe monitor. Weights
 are never modified; every intervention acts on activations only. Code lives in `interp/`
 (packages, invoked as `python -m interp <subcommand>` via `interp/commands/`);
 `scripts/interp/` holds only shell helpers (the isolated Neuronpedia and SAEBench
 environments); tests in `tests/interp/`.
 
-Steering ran against the llama.cpp services until R10, which retired that
-path: the two entrypoints no longer read `CONTROL_VECTOR`, and the artifact is
-safetensors, which llama.cpp cannot load. `make steer-up` now recreates
-`harness-serve`, so the taps and the steering live in the process that answers
-the request. See [rust-harness-interp.md](rust-harness-interp.md).
+This path ran against the llama.cpp services until R10 and R11 moved it onto
+the harness, which serves the request and runs the taps in one process.
+Steering went first: the llama entrypoints no longer read `CONTROL_VECTOR`, the
+artifact is safetensors, and `make steer-up` recreates `harness-serve`.
+Observation followed. Both changes replaced a workaround with the thing it had
+been standing in for, so what was removed exceeds what was added. See
+[rust-harness-interp.md](rust-harness-interp.md).
 
 ## Table of contents
 
 - [Layout](#layout)
 - [W1: steering deployment](#w1-steering-deployment)
 - [W2: probe toolkit](#w2-probe-toolkit)
-- [W3: serving request log](#w3-serving-request-log)
-- [Full-precision monitored path](#full-precision-monitored-path)
-- [W4: async probe monitor](#w4-async-probe-monitor)
+- [W3: served-request log](#w3-served-request-log)
+- [W4: probe monitor](#w4-probe-monitor)
 - [Concurrency](#concurrency)
 - [Host-side acceptance checks](#host-side-acceptance-checks)
 
@@ -32,17 +33,19 @@ the request. See [rust-harness-interp.md](rust-harness-interp.md).
 | `interp/steering/` | extraction, safetensors export, service wiring, scorecard |
 | `interp/steering/prompts/` | fixed prompt sets in git (pairs, behavior, neutral, tuned system prompt) |
 | `interp/probes/` | capture, training, registry, scoring, evaluation, monitor |
-| `docker/interp-logproxy/` | single-file logging reverse proxy and its Dockerfile |
 | `/mnt/ai-data/interp/vectors/<name>/` | `vector.safetensors` + `manifest.json` + scorecard runs |
 | `/mnt/ai-data/interp/activations/<name>/` | capture shards (regenerable cache) |
 | `/mnt/ai-data/interp/probes/<name>/` | `probe.npz` + `manifest.json` + `evaluation.json` |
+| `rust-harness/harness/src/interplog.rs` | the served-request log writer |
 | `/mnt/ai-data/interp/logs/<service>/` | `YYYY-MM-DD.jsonl` request records (30-day retention) |
 | `/mnt/ai-data/interp/monitor/<run>/` | `report.json` + `flagged.jsonl` |
 
 Every artifact directory carries a `manifest.json` (model hash, dataset hashes, git SHA,
 artifact xxhash). Downstream tools refuse artifacts whose hashes do not match: the serving
 entrypoint refuses a missing vector file, `make steer-scorecard` refuses a tampered vector, and the
-monitor refuses a probe whose model hash does not match the replay model.
+harness refuses a probe or a vector fitted on weights other than the ones it serves. The
+monitor performs no such check of its own: it reports scores the serving process took, and
+that process refused the mismatch before any score existed.
 
 ## W1: steering deployment
 
@@ -86,93 +89,104 @@ serving-dependent and always includes the black-box baselines (LLM-as-judge plus
 bag-of-words on the model output); a probe that cannot beat them is marked not deployable
 and the monitor should not run it.
 
-## W3: serving request log
+## W3: served-request log
 
 ```bash
-$ make logproxy-up      # 127.0.0.1:8012 in front of llama-gpu
-$ make logproxy-down
+$ make harness-serve HARNESS_PROBE=/app/probes/<name>/probe.safetensors
+$ make harness-serve-down
 ```
 
-Opt-in sidecar under the compose `interp` profile; production ports and default behavior are
-untouched. Clients that want their traffic logged point at 8012. One JSONL record per
-completed request (messages, response text, token counts, latency); malformed or interrupted
-requests log a partial record with the `error` field set. Retention is 30 days, enforced by
-the monitor preamble.
+The harness writes it. One JSONL record per completed `/v1/chat/completions`
+under `/mnt/ai-data/interp/logs/<service>/YYYY-MM-DD.jsonl`, carrying the
+messages, the response text, token counts, latency, status, and -- this is the
+part a proxy could not supply -- the probe scores taken while answering. A
+failed generation records a partial record with `error` set. Retention is 30
+days, enforced by the monitor preamble.
 
-The proxy forwards to `llama-gpu:8002` by default and records the service that answered in
-each record's `target_service` field. Records are written under
-`/mnt/ai-data/interp/logs/<target_service>/`, so traffic from different serving endpoints
-never shares a directory. Both the target and the service name are environment overrides
-(`LOGPROXY_TARGET_URL`, `LOGPROXY_TARGET_SERVICE`), which is how the full-precision path
-below redirects monitored traffic without a code change.
+Two environment variables control it, both empty by default so a served run
+observes nothing unless interp asks:
 
-## Full-precision monitored path
+| Variable | Effect |
+|----------|--------|
+| `HARNESS_INTERP_LOG` | container path of the log root; absent means no log |
+| `HARNESS_PROBE` | probe scored in-band at every position of its layer |
+
+`HARNESS_INTERP_LOG` without `HARNESS_PROBE` records the requests and no
+scores, which is what the retired proxy did on its own. `HARNESS_PROBE`
+without `HARNESS_INTERP_LOG` computes scores and discards them, and the
+entrypoint warns about it: serving has no end of run at which to report.
+
+Records are written under the answering service's own directory, so traffic
+from different endpoints never shares one.
+
+### What this replaced, and why the replacement is smaller
+
+Until R11 the log came from a reverse proxy in front of `llama-gpu`, and the
+scores came from replaying the window through a second copy of the model in the
+workbench. Neither was a design preference. llama-server has no activation read
+path, so a probe could not be scored where the request was answered, and it has
+no structured request logging, so the request could not be recorded there
+either.
+
+That workaround cost three things beyond the container. The replay owned the
+GPU, so monitoring and serving could not both run. The replay ran bf16 while
+serving ran quantized, so the scores described the replay model rather than the
+one that answered -- a gap the report had to state rather than close. And
+closing it needed a fourth thing, a full-precision `llama-gpu-bf16` endpoint
+with the proxy pointed at it, so that the two models at least matched.
+
+The harness runs the tap in the process that answers, so all four went at once.
+`llama-gpu-bf16` remains in the compose file as a plain full-precision serving
+endpoint; it is no longer part of this path.
+
+## W4: probe monitor
 
 ```bash
-$ make fullprec-up      # bf16 endpoint on 127.0.0.1:8004 plus the proxy pointed at it
-$ make fullprec-down
-```
-
-Probes are fitted on bf16 activations. When monitored traffic is answered by the quantized
-model on 8002, the model that answered and the model W4 replays are different models, and the
-monitor's scores describe the replay model rather than the served one. The `llama-gpu-bf16`
-service removes that difference by answering monitored traffic at the precision the probes
-were fitted at.
-
-The service reuses the `llama-gpu` image unchanged; `docker/llama-gpu/entrypoint.sh` already
-parameterizes `SERVER_PORT` and `MODEL_PATH`. It serves the interpretability subject model
-rather than the production model: gpt-oss-20b at full precision is roughly 40GB and exceeds
-the 32GB VRAM budget, while Gemma-2-2B is about 5.2GB and is what the W2 probes are trained
-on. Port 8002, its image, and its model are untouched.
-
-Build the GGUF with `convert_hf_to_gguf.py --outtype bf16`. Confirm from the server's startup
-log that the tensor type loaded is the one intended: ggml defines a `BF16` type, but CUDA
-backend coverage for it is narrower than for f16 and some paths upconvert. If the served graph
-does not run bf16 natively, use `--outtype f16` and record which was used. A service that
-reports f16 while being described as bf16 reintroduces the mismatch this path exists to
-remove.
-
-Full precision costs roughly twice the bytes per weight, so expect approximately twice the
-milliseconds per token and twice the VRAM of the quantized endpoint. This is the price of
-measuring the model that answered.
-
-## W4: async probe monitor
-
-```bash
-$ make down             # the monitor refuses to run while inference is up
+$ make probe-monitor ARGS="--window 7d"
 $ make probe-monitor ARGS="--window 7d --probes refusal-v1 \
-    --model google/gemma-2-2b --model-hash <hash>"
+    --log-dir /mnt/ai-data/interp/logs/harness"
 ```
 
-Batch replay, not a daemon: llama-server has no activation read path and the GPU belongs to
-serving during serving, so the monitor replays the log window through the workbench model at
-bf16 in one batched pass and scores every named probe. The report records per-probe
-distributions, deltas versus the previous run over the same probe set, and skip counts;
-over-threshold records land in `flagged.jsonl` beside it.
+An aggregator over the log, not a replay and not a daemon. It reads the score
+each record carries, groups by probe, and writes per-probe distributions,
+deltas versus the previous run over the same probe set, and skip counts;
+over-threshold records land in `flagged.jsonl` beside the report.
 
-The monitor never sends inference to a serving endpoint. It performs its own bf16 capture in
-process, and contacts 8002, 8003, and 8004 only to confirm they are down before starting,
-because the replay needs the GPU.
+It loads no model and takes no `--model`. It therefore needs no GPU and runs
+while inference is up -- the refusal it used to enforce existed because the
+replay competed with serving for the GPU, and traffic you cannot examine while
+it is being served is not being monitored. `--probes` is now a filter with a
+default of every probe in the window, not a required list.
 
-Replay fidelity is derived from the window rather than asserted. Each record carries the
-service that answered it, and the report lists the observed `target_services` alongside a note
-stating what their precision means for the scores. A window served entirely at full precision
-yields scores that describe the serving model; a quantized or mixed window yields scores that
-describe the replay model only. Select one service per run with `--log-dir`:
+The per-request statistic is the maximum score over the request's scored
+positions. One number per request, which is the granularity the report has
+always used; the records also carry each over-threshold position, so a reader
+who wants to see where in a reply the probe fired has that without a second
+pass.
 
-```bash
-$ make probe-monitor ARGS="--log-dir /mnt/ai-data/interp/logs/llama-gpu-bf16 --window 7d \
-    --probes refusal-v1 --model google/gemma-2-2b --model-hash <hash>"
-```
+Two things the report does that follow from scores being taken in-band:
+
+- It records **how** the scores were obtained, in a `scored` field, and will
+  not compute a drift delta against a report obtained another way. Subtracting
+  a replayed mean from an in-band one would present a change of method as
+  drift in the model.
+- It reports a **mid-window threshold disagreement** rather than averaging it
+  away. Re-exporting a probe while the service runs changes the threshold later
+  records were scored against; the report takes the maximum and lists what it
+  saw.
+
+There is no fidelity note to compute. The scores come from the weights that
+produced the text, so the question the note used to answer -- how far the
+replayed model was from the serving one -- has no subject.
 
 ## Concurrency
 
 | Work | Shape | Requires |
 |------|-------|----------|
-| steer-extract, probe-capture, probe-monitor | batch GPU | inference down (preflight enforced) |
+| steer-extract, probe-capture | batch GPU | inference down (preflight enforced) |
 | steer-scorecard, probe-eval | serving-dependent | subject and judge services up; GPU lock free |
-| logproxy | sidecar | target service up |
-| llama-gpu-bf16 | serving | GPU free; batch work down |
+| probe-monitor | file aggregation | nothing; it reads a log and loads no model |
+| harness-serve | serving | CPU and ~14 GiB RAM; one generation at a time |
 
 ## Host-side acceptance checks
 
@@ -190,18 +204,19 @@ $ curl -s --max-time 600 http://127.0.0.1:8005/v1/chat/completions \
     -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":32}'
 $ make steer-down
 
-# Logproxy byte-equivalence (streaming and non-streaming)
-$ make logproxy-up
-$ diff <(curl -s 127.0.0.1:8012/v1/chat/completions -d @req.json) \
-       <(curl -s 127.0.0.1:8002/v1/chat/completions -d @req.json)
+# Served-request log: a request lands as one record carrying its probe scores
+$ make harness-serve HARNESS_PROBE=/app/probes/<name>/probe.safetensors
+$ curl -s --max-time 600 http://127.0.0.1:8005/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":32}'
+$ tail -1 /mnt/ai-data/interp/logs/harness/$(date -u +%F).jsonl | python3 -m json.tool
 
-# Full-precision path: confirm the served tensor type is the one intended
-$ make fullprec-up
-$ docker logs llama-gpu-bf16 | grep -iE "type +f(16|32)|bf16|general.file_type"
+# The record must be on disk before the process ends, not flushed at shutdown
+$ docker kill rust-harness-serve
+$ wc -l /mnt/ai-data/interp/logs/harness/$(date -u +%F).jsonl
 
-# Full-precision path: the proxy reaches the bf16 endpoint and records name it
-$ curl -s 127.0.0.1:8012/v1/chat/completions -d @req.json
-$ tail -1 /mnt/ai-data/interp/logs/llama-gpu-bf16/$(date -u +%F).jsonl | grep target_service
+# The monitor aggregates without a model, and without stopping inference
+$ make probe-monitor ARGS="--window 1d --log-dir /mnt/ai-data/interp/logs/harness"
 
 # Production path unchanged by any of the above
 $ docker compose up -d llama-gpu && curl -sf 127.0.0.1:8002/v1/health

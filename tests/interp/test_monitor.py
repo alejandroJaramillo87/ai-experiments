@@ -206,7 +206,9 @@ class TestMonitor:
                 {
                     "run": "2026-07-14T110000Z",
                     "scored": "replay",
-                    "probes": {"test-probe": {"mean": 0.0, "fraction_over_threshold": 0.0}},
+                    "probes": {
+                        "test-probe": {"mean": 0.0, "fraction_over_threshold": 0.0}
+                    },
                 }
             )
         )

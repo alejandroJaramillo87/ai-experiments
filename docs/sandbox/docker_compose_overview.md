@@ -63,11 +63,10 @@ The docker-compose.inference.yaml implements a multi-service AI inference platfo
 - **4 GPU containers**: llama-gpu, llama-gpu-bf16, vllm-gpu, and comfyui (RTX 5090, one
   consumer at a time)
 - **1 Web interface**: open-webui for secure user interaction
-- **1 Proxy sidecar**: interp-logproxy, in front of llama-gpu for the interp write-back path
 
-**Two of the seven do not start by default.** `llama-gpu-bf16` and `interp-logproxy` sit
-behind `profiles: ["interp"]`, so a bare `make up` brings up five services; the other two need
-the `interp` profile selected.
+**One does not start by default.** `llama-gpu-bf16` sits behind `profiles: ["interp"]`, so a
+bare `make up` brings up five services and the bf16 endpoint needs the `interp` profile
+selected.
 
 ## Service Architecture
 
@@ -314,7 +313,6 @@ ports:
   - "127.0.0.1:8003:8003"  # vllm-gpu
   - "127.0.0.1:3000:8080"  # open-webui
   - "127.0.0.1:8188:8188"  # comfyui
-  - "127.0.0.1:8012:8012"  # interp-logproxy  (profile: interp)
 ```
 
 **Access Control:**

@@ -13,8 +13,6 @@ import datetime
 import json
 import os
 
-import requests
-
 from interp import cli
 from tests.interp.conftest import fake_capture
 
@@ -397,4 +395,3 @@ class TestProbeMonitor:
             == 1
         )
         assert "[ERROR] Monitor failed: no scored records" in capsys.readouterr().err
-

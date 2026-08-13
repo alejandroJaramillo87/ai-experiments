@@ -23,13 +23,13 @@ published port equals the in-container port for every service.
 | llama-gpu | 8002 | `curl -f http://localhost:8002/v1/health` |
 | vllm-gpu | 8003 | `curl -f http://localhost:8003/health` |
 | llama-gpu-bf16 | 8004 | `curl -f http://localhost:8004/v1/health` — `interp` profile |
-| interp-logproxy | 8012 | none defined — `interp` profile |
 | open-webui | 3000 | container `:main`, no explicit healthcheck |
 | comfyui | 8188 | `curl -f http://localhost:8188/system_stats` |
 
-The two `interp`-profile services do not start with a plain `make up`; `llama-gpu-bf16` is the
-unquantized sibling of `llama-gpu` and `interp-logproxy` is an opt-in sidecar
-(`make logproxy-up`) that fronts llama-gpu on 8012.
+`llama-gpu-bf16` does not start with a plain `make up`: it is the unquantized sibling of
+`llama-gpu`, behind the `interp` profile. The interp write-back path is served by
+`harness-serve` on 8005, which lives in `docker-compose.rust-harness.yaml` and is started
+by `make harness-serve`.
 
 Start with `make status` for the compose-level health summary and `make health` for the
 detailed per-service check.

@@ -40,6 +40,7 @@ this file owns only the ordering and the reasoning behind it.
 | R8 | IF-3 attention weights | done, cheaper than budgeted |
 | R9 | P13 harness serves interp | done, verified against real E4B (RH.14) |
 | R10 | P14 control vector to safetensors | done; RH.15 acceptance not yet run |
+| R10.5 | The proxy and the replay stage retire | done; I.6 and I.7 acceptance not yet run |
 | R11 | IF-4 plus IF-5 together | not started |
 | R12 | IF-3 remaining sites | not started |
 | R13 | IF-6 activation patching | blocked on G2 |
@@ -244,16 +245,12 @@ milestone the whole plan aims at.
 with a `harness` entry on port 8005 in `common/serving.py`. Placed after the observation stack
 because experiments run fine through the harness binary; the endpoint is the precondition for
 killing the interp log proxy, the replay stage, the replay fidelity caveat and the GPU
-contention.
+contention. R10 took the steering half and R10.5 took the rest.
 
-**Nothing was killed here, deliberately.** The proxy, the replay stage and the caveat all remain
-until a workstation run shows the endpoint answering interp's own clients against real E4B.
-Deleting the working path on the strength of a sandbox test would remove the fallback before the
-replacement is evidenced. Those deletions ride with R10, which took the steering half: the
-llama.cpp entrypoint blocks and compose variables are gone and `steer-up` recreates the
-harness. The proxy, the replay stage and the caveat are still standing, because the
-artifact-flushing limitation recorded below is what would make the replay stage genuinely
-redundant rather than merely unused.
+**Nothing was killed here, deliberately.** Deleting the working path on the strength of a
+sandbox test would have removed the fallback before the replacement was evidenced. R10 took
+the steering half and R10.5 the observation half, once the artifact-flushing limitation
+recorded below turned out to be the only thing actually holding the replay stage up.
 
 Three of the original assumptions did not survive contact with the repository, recorded here so
 R10 does not rediscover them.
@@ -295,7 +292,8 @@ never takes.
 Two limitations to carry forward. Serving blocks until signalled, so the end-of-run probe-flag
 report and KV snapshot are unreachable under `--serve`; flushing interp artifacts from a
 long-lived server is unsolved and is the thing that would make the replay stage genuinely
-redundant rather than merely unused. And `swap_model` cannot drive the harness, which takes its
+redundant rather than merely unused. (R10.5 solved it, and the solution was smaller than this
+sentence implies -- see below.) And `swap_model` cannot drive the harness, which takes its
 checkpoint from `--model` rather than a compose env var, so it refuses the entry by name.
 
 ### R10 — P14 control vector to safetensors (done, acceptance pending)
@@ -334,6 +332,52 @@ which proves the format and the wiring and nothing about steering real weights. 
 workstation check, and it also measures what a three-arm sweep costs now that the subject
 decodes at 5.5-5.8 tokens per second instead of on the GPU. If that proves impractical it is a
 finding against a future GPU backend, not a reason to revert.
+
+### R10.5 — the proxy and the replay stage retire (done, acceptance pending)
+
+The last of the three llama.cpp workarounds. R9 called this the precondition and left it
+standing; R10 took steering; this took observation.
+
+**The blocker was smaller than it was written up as.** R9 recorded "flushing interp artifacts
+from a long-lived server is unsolved" as the thing keeping the replay stage alive. Reading the
+code, the probe monitor was already installed under `--serve` and already scoring every served
+position -- `build_generator` installs the tap before the mode branch, so a served request runs
+the same taps a task does. What was missing was not a mechanism but a call: the only drain ran
+after the task, and `serve` returns before reaching it. The scores were being computed and
+thrown away, and `MonitorState` grew unboundedly for the life of the process while they were.
+So the fix is a per-request drain under the generation lock, not a signal handler, not a
+background flusher, and not a shutdown path.
+
+**What the implementation corrected about the plan.**
+
+*The position base cannot be read off the session.* The first version took `cached_len()`
+before generating as the request's base. It is not: a served request whose prompt diverges from
+the cached one re-prefills from where it diverged, which is position 0, while the cached length
+still holds the previous request's total. The test caught a request that scored positions 0..56
+labelled as based at 56. The base is derived from what the tap reported.
+
+*Keeping scores and recording passes had to come apart.* One flag drove both. Serve mode needs
+every score, because a per-request maximum over the flagged positions alone is a maximum over
+"already above threshold" and describes nothing -- but the pass list has no per-request drain,
+so enabling it under a long-lived server would have reintroduced exactly the unbounded growth
+being removed.
+
+**What went beyond the artifact flush.** Once the scores reach disk in the record, the replay
+stage has nothing left to compute, and the two things that existed only to support it go too:
+the GPU contention that made monitoring batch work, and the full-precision `llama-gpu-bf16`
+path that existed so the replayed model would at least match the served one's precision.
+`probe-monitor` became an aggregator with no `--model` and no health check.
+
+**The cost, stated rather than discovered later.** `llama-gpu`, `llama-gpu-bf16` and `vllm-gpu`
+now have no request logging at all. Interp observability is harness-only, which means it is
+also CPU-only until a GPU backend lands. That was the explicit choice: the alternative was
+keeping a container, a compose profile, a replay stage and a fidelity caveat alive for a path
+no interp command points at.
+
+**Not yet evidenced.** The sandbox proves the format and the wiring against a synthetic model,
+including that records survive `kill` rather than depending on a clean shutdown. I.6 and I.7 in
+[../verification/interp.md](../verification/interp.md) are the workstation checks, and what
+they add is whether a real probe over real E4B produces scores worth reading.
 
 ## Phase 4 — Intervention
 

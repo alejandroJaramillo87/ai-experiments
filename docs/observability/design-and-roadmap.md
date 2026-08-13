@@ -744,7 +744,7 @@ later item ids stay stable. There is no work to execute under this id.
     of recent runs (id, command, when, duration, exit code), and links each
     to its live view. It mounts `${OBS_LOG_DIR}` and the run output roots
     read-only, keeping the no-write-path guarantee structural.
-  - Deployment follows the `interp-logproxy` precedent: a small compose
+  - Deployment follows the `harness-serve` precedent: a small compose
     service with a healthcheck, port 8010, localhost-bound unless the
     compose file is deliberately edited, started and stopped through a
     `make` target.
