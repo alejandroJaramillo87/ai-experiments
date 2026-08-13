@@ -126,6 +126,62 @@ def load_labeled_dataset(path: str) -> list[dict]:
     return examples
 
 
+def is_composite_checkpoint(model_id: str, revision: str = "main") -> bool:
+    """Whether the checkpoint nests its language model under a modality tower.
+
+    Read from config.json alone, so this costs no weights. Gemma 4 registers
+    as AutoModelForImageTextToText and nnsight refuses to build such a
+    checkpoint as a LanguageModel, naming VisionLanguageModel instead -- and
+    the two are not interchangeable in the other direction either, so the
+    choice has to be made from the config rather than by catching the refusal.
+
+    Uses the same signal families.unwrap_text_config keys on, which is what
+    keeps the loader and the hook path agreeing about which layout this is.
+    """
+    from transformers import AutoConfig
+
+    from interp import families
+
+    config = AutoConfig.from_pretrained(model_id, revision=revision)
+    return families.unwrap_text_config(config) is not config
+
+
+def _traceable_model(model_id: str, revision: str, dtype):
+    """The nnsight wrapper this checkpoint's layout requires."""
+    if is_composite_checkpoint(model_id, revision):
+        from nnsight import VisionLanguageModel
+
+        return VisionLanguageModel(
+            model_id, revision=revision, torch_dtype=dtype, device_map="auto"
+        )
+    from nnsight import LanguageModel
+
+    return LanguageModel(
+        model_id, revision=revision, torch_dtype=dtype, device_map="auto"
+    )
+
+
+def _tokenizer_of(model):
+    """The text tokenizer, whichever wrapper is holding it.
+
+    A vision-language wrapper fronts a processor bundling an image processor
+    with the tokenizer; only the tokenizer half defines the fingerprint the
+    manifest records, and only text is captured here.
+    """
+    tokenizer = getattr(model, "tokenizer", None)
+    if tokenizer is not None:
+        return tokenizer
+    processor = getattr(model, "processor", None)
+    tokenizer = getattr(processor, "tokenizer", None)
+    if tokenizer is None:
+        raise CaptureError(
+            f"{type(model).__name__} exposes neither .tokenizer nor "
+            f".processor.tokenizer; the capture cannot record a tokenizer "
+            f"fingerprint or find the last non-padded position"
+        )
+    return tokenizer
+
+
 def capture_activations(
     model_id: str,
     texts: list[str],
@@ -141,20 +197,18 @@ def capture_activations(
     call it (or an injected stand-in) for their own single-pass captures.
     """
     import torch
-    from nnsight import LanguageModel
 
     from interp import families
 
     if position != "last":
         raise CaptureError(f"unsupported position: {position!r} (only 'last')")
 
-    model = LanguageModel(
-        model_id, revision=revision, torch_dtype=torch.bfloat16, device_map="auto"
-    )
+    model = _traceable_model(model_id, revision, torch.bfloat16)
     # Resolve decoder blocks through the family registry instead of assuming
     # the model.model.layers[i] chain; nnsight proxies traverse identically.
     spec = families.family_from_config(model.config)
-    fingerprint = tokenizer_fingerprint(model.tokenizer)
+    tokenizer = _tokenizer_of(model)
+    fingerprint = tokenizer_fingerprint(tokenizer)
     collected: dict[int, list[np.ndarray]] = {layer: [] for layer in layers}
 
     for start in range(0, len(texts), batch_size):
@@ -169,7 +223,7 @@ def capture_activations(
         # left-pads by default (pinned 0.7.0), where mask.sum() - 1 would
         # index a pad or mid-prompt position for every non-longest sequence;
         # first-one-from-the-right is correct for either padding side.
-        mask = model.tokenizer(batch, return_tensors="pt", padding=True).attention_mask
+        mask = tokenizer(batch, return_tensors="pt", padding=True).attention_mask
         last = mask.shape[1] - 1 - mask.flip(-1).argmax(dim=1)
         for layer in layers:
             acts = saved[layer]
