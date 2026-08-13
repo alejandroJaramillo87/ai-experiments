@@ -915,6 +915,44 @@ pub trait Tap: Send {
     /// components, and finding out which needs stages the trait did not have
     /// yesterday. It will need more.
     fn on_stage(&mut self, _stage: &str, _position: usize, _x: &[f32]) {}
+
+    /// Whether this tap wants post-softmax attention weights.
+    ///
+    /// Asked once per forward pass rather than per head, and defaulting to
+    /// false, because this is the first site whose volume is quadratic in the
+    /// context: a residual tap records `embed_dim` floats per layer per
+    /// position, and an attention tap records up to `n_heads * position`. Opt-in
+    /// is therefore per site and not per tap -- a probe monitor pays nothing
+    /// for a diagnostic it never reads.
+    fn wants_attention(&self) -> bool {
+        false
+    }
+
+    /// One query head's attention distribution over `first ..= position`.
+    ///
+    /// The weights are post-softmax, so they are non-negative and sum to one;
+    /// the pre-softmax logits are a different site and are not offered here.
+    ///
+    /// `w` is indexed by *absolute* key position offset from `first`, and
+    /// `first` is not recoverable from the vector: a global layer sees
+    /// `0 ..= position` while a sliding layer sees only the trailing window, so
+    /// two vectors of equal length can name different spans. A consumer that
+    /// drops `first` has recorded a histogram it cannot place against the text.
+    ///
+    /// `head` is a *query* head. Its key-value head is
+    /// `head / (n_heads / n_kv_heads)`, the blocked GQA mapping the forward
+    /// pass uses; the weights themselves are per query head, so the per-layer
+    /// head width -- 256 on a sliding Gemma 4 layer against 512 on a global one
+    /// -- does not enter. It is a key count that varies here, not a head width.
+    fn on_attention(
+        &mut self,
+        _layer: usize,
+        _position: usize,
+        _head: usize,
+        _first: usize,
+        _w: &[f32],
+    ) {
+    }
 }
 
 /// Tap keeping only the most recent row per requested layer, so after a
@@ -2594,6 +2632,16 @@ impl CpuModel {
         } = scratch;
         let (x_all, work) = buf.split_at_mut(n * c.embed_dim);
 
+        // Asked once for the whole pass, not once per head. A tap cannot be
+        // installed or removed while `forward_batch` holds `&mut self`, so the
+        // answer cannot change underneath the layer loop, and what is left at
+        // the fire site is a compare against a local. That is one predictable
+        // test per (position, head) rather than zero -- the alternative is a
+        // duplicated head loop, which would buy nothing measurable beside the
+        // `hd`-wide dot product already running per key and would put the
+        // attention arithmetic in two places.
+        let want_attention = tap.as_ref().is_some_and(|t| t.wants_attention());
+
         // Embedding, scaled by sqrt(embed_dim) per Gemma convention. Widened
         // into the residual buffer and scaled there: one multiply per element,
         // exactly as when the table was already f32.
@@ -2826,6 +2874,17 @@ impl CpuModel {
                         attn_logit(qv, kt)
                     }));
                     softmax_in_place(scores);
+                    // Between the softmax and the weighted-V fold, which is
+                    // the only point where the distribution exists as a value.
+                    // The slice is borrowed straight out of `Scratch::scores`,
+                    // so an installed tap costs a dynamic dispatch and no copy,
+                    // and the arithmetic below reads the same buffer it would
+                    // have read with no tap present.
+                    if want_attention {
+                        if let Some(t) = tap.as_mut() {
+                            t.on_attention(i, position, qh, first, scores);
+                        }
+                    }
                     let out = &mut attn_out[p * q_dim + qh * hd..p * q_dim + (qh + 1) * hd];
                     for (s, t) in scores.iter().zip(first..=position) {
                         let r = (t - cache.base) * kv_dim;
@@ -6013,6 +6072,223 @@ mod tests {
             tapped.prefill_all(&[1, 4, 7, 2]).unwrap(),
             plain.prefill_all(&[1, 4, 7, 2]).unwrap()
         );
+    }
+
+    /// One `on_attention` call: layer, position, query head, first key
+    /// position, and the distribution itself.
+    type AttnCall = (usize, usize, usize, usize, Vec<f32>);
+
+    /// Shared collector, on `CollectingTap`'s reasoning: the model owns the tap
+    /// once `set_tap` takes it, and `Tap: Send` rules out `Rc`.
+    type AttnCalls = std::sync::Arc<std::sync::Mutex<Vec<AttnCall>>>;
+
+    /// A tap that opts into attention weights and records every fire.
+    ///
+    /// Separate from `CollectingTap`, which must keep answering `false` to
+    /// `wants_attention` -- that default is what
+    /// `a_tap_that_does_not_want_attention_is_never_offered_it` asserts, and a
+    /// single helper opting in would make that test vacuous.
+    #[derive(Clone, Default)]
+    struct AttnTap(AttnCalls);
+
+    impl Tap for AttnTap {
+        fn on_residual(&mut self, _layer: usize, _site: Site, _position: usize, _x: &[f32]) {}
+
+        fn wants_attention(&self) -> bool {
+            true
+        }
+
+        fn on_attention(
+            &mut self,
+            layer: usize,
+            position: usize,
+            head: usize,
+            first: usize,
+            w: &[f32],
+        ) {
+            self.0
+                .lock()
+                .unwrap()
+                .push((layer, position, head, first, w.to_vec()));
+        }
+    }
+
+    /// Every attention fire from one prefill of `tokens` over the mixed
+    /// sliding/global fixture, with the model returned so a test can read the
+    /// declared geometry back out of it rather than restate the schedule.
+    fn attention_calls(tokens: &[Token]) -> (CpuModel, Vec<AttnCall>) {
+        let mut m = model_of(&TinySpec::e4b_shaped());
+        let tap = AttnTap::default();
+        m.set_tap(Box::new(tap.clone()));
+        m.prefill_all(tokens).unwrap();
+        let calls = tap.0.lock().unwrap().clone();
+        (m, calls)
+    }
+
+    #[test]
+    fn attention_weights_are_a_distribution_over_the_visible_span() {
+        // Covers the accumulated error of a softmax over a span this short.
+        const TOLERANCE: f32 = 1e-5;
+        let (_m, calls) = attention_calls(&[1, 5, 9, 2, 7]);
+        assert!(!calls.is_empty(), "the attention seam never fired");
+        for (l, p, h, first, w) in &calls {
+            assert!(
+                !w.is_empty(),
+                "layer {l} position {p} head {h}: empty distribution"
+            );
+            let sum: f32 = w.iter().sum();
+            assert!(
+                (sum - 1.0).abs() < TOLERANCE,
+                "layer {l} position {p} head {h} first {first}: weights sum to {sum}, not 1"
+            );
+            for (i, x) in w.iter().enumerate() {
+                assert!(
+                    x.is_finite() && *x >= 0.0,
+                    "layer {l} position {p} head {h}: weight {i} is {x}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_attention_span_matches_the_layer_kind() {
+        // Five positions against `e4b_shaped`'s window of 3, so the sliding
+        // layers reach their cap and the two regimes disagree about the span
+        // rather than both seeing everything.
+        let (m, calls) = attention_calls(&[1, 5, 9, 2, 7]);
+        assert!(!calls.is_empty(), "the attention seam never fired");
+
+        // Read the schedule off the loaded model. Recomputing it here from
+        // `sliding_window_pattern` would assert the fixture against itself:
+        // `docs/models/gemma-4.md` is explicit that the schedule is an array to
+        // be read, not a stride to be derived.
+        let mut saw_global = false;
+        let mut saw_sliding = false;
+        for (l, p, h, first, w) in &calls {
+            let (want_first, kind) = match m.spec.layers[*l].kind {
+                LayerKind::Global => {
+                    saw_global = true;
+                    (0, "global")
+                }
+                LayerKind::SlidingWindow(win) => {
+                    saw_sliding = true;
+                    ((p + 1).saturating_sub(win), "sliding")
+                }
+            };
+            assert_eq!(
+                *first, want_first,
+                "{kind} layer {l} position {p} head {h}: first key {first}, expected {want_first}"
+            );
+            assert_eq!(
+                w.len(),
+                p - want_first + 1,
+                "{kind} layer {l} position {p} head {h}: {} weights over span {want_first}..={p}",
+                w.len()
+            );
+        }
+        assert!(
+            saw_global && saw_sliding,
+            "the fixture must exercise both regimes, saw global {saw_global} sliding {saw_sliding}"
+        );
+
+        // The window actually bit somewhere, so the assertions above are not
+        // all trivially the global case.
+        let clipped = calls.iter().any(|(_, _, _, first, _)| *first > 0);
+        assert!(clipped, "no sliding layer dropped a position at window 3");
+    }
+
+    #[test]
+    fn installing_the_attention_tap_does_not_perturb_logits() {
+        let spec = TinySpec::e4b_shaped();
+        let mut tapped = model_of(&spec);
+        tapped.set_tap(Box::new(AttnTap::default()));
+        let mut plain = model_of(&spec);
+        assert_eq!(
+            tapped.prefill_all(&[1, 4, 7, 2, 9]).unwrap(),
+            plain.prefill_all(&[1, 4, 7, 2, 9]).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_tap_that_does_not_want_attention_is_never_offered_it() {
+        // `CollectingTap` takes the trait's default `wants_attention`, so this
+        // pins the gate rather than the tap: a site whose cost is quadratic in
+        // the context must not be delivered to a tap that never asked.
+        let mut m = model_of(&TinySpec::e4b_shaped());
+        let tap = CollectingTap::default();
+        m.set_tap(Box::new(tap.clone()));
+        m.prefill_all(&[1, 5, 9, 2]).unwrap();
+        assert!(
+            !CollectingTap::default().wants_attention(),
+            "the default must stay false or this test asserts nothing"
+        );
+        assert!(
+            !tap.0.lock().unwrap().is_empty(),
+            "the residual seam must still fire, or the model never ran"
+        );
+    }
+
+    #[test]
+    fn every_query_head_fires_once_per_position() {
+        let tokens = [1, 5, 9, 2];
+        let (m, calls) = attention_calls(&tokens);
+        let c = *m.config();
+        let mut seen: Vec<(usize, usize, usize)> =
+            calls.iter().map(|(l, p, h, _, _)| (*l, *p, *h)).collect();
+        seen.sort_unstable();
+        let expected: Vec<(usize, usize, usize)> = (0..c.n_layers)
+            .flat_map(|l| {
+                (0..tokens.len()).flat_map(move |p| (0..c.n_heads).map(move |h| (l, p, h)))
+            })
+            .collect();
+        assert_eq!(
+            seen, expected,
+            "every (layer, position, query head) exactly once"
+        );
+    }
+
+    #[test]
+    fn a_stepped_prefill_reports_the_same_attention_as_one_batch() {
+        // The `crate::conformance` obligation reaching the new site: how a
+        // request was internally divided may not be observable. A per-position
+        // fire site is where that could leak, because the batch member index
+        // and the absolute position are different numbers and only the second
+        // is meaningful.
+        let tokens = [1, 5, 9, 2, 7];
+        let (_m, batched) = attention_calls(&tokens);
+
+        let mut m = model_of(&TinySpec::e4b_shaped());
+        let tap = AttnTap::default();
+        m.set_tap(Box::new(tap.clone()));
+        for t in tokens {
+            m.prefill_all(&[t]).unwrap();
+        }
+        let mut stepped = tap.0.lock().unwrap().clone();
+
+        // Sorting is the comparison, not a weakening of it: the traversal order
+        // differs by construction -- batched prefill is layer-major over the
+        // whole span, a stepped one is position-major -- while the *set* of
+        // (layer, position, head, first, weights) must be identical.
+        let key = |c: &AttnCall| (c.0, c.1, c.2);
+        let mut batched = batched;
+        batched.sort_by_key(key);
+        stepped.sort_by_key(key);
+        assert_eq!(
+            batched.len(),
+            stepped.len(),
+            "{} batched fires against {} stepped",
+            batched.len(),
+            stepped.len()
+        );
+        for (b, s) in batched.iter().zip(&stepped) {
+            assert_eq!(
+                b,
+                s,
+                "batched {:?} against stepped {:?}",
+                (b.0, b.1, b.2, b.3),
+                (s.0, s.1, s.2, s.3)
+            );
+        }
     }
 
     /// Control-vector GGUF image with `direction.<layer>` (1-based) tensors.
