@@ -142,9 +142,15 @@ interp = [
     "plotly==6.9.0",
     "ipywidgets==8.1.8",
     "pynvml==12.0.0",
-    # Write-back path (interp Phase 3 W1/W2): control-vector extraction and GGUF export,
+    # Write-back path (interp Phase 3 W1/W2): control-vector extraction and export,
     # artifact manifests. scikit-learn (probes) lives in core. xxhash repeats the training
     # group's pin (groups may overlap).
+    #
+    # gguf is NOT pinned here, and was until R10. interp/steering/export.py wrote the
+    # control vector in the llama.cpp control-vector GGUF layout because llama.cpp read
+    # it; that path is retired and the exporter writes safetensors, which the group
+    # already carries transitively through transformers. The sandbox group keeps its own
+    # gguf pin, for tests/models reading the GGUF headers training/export still produces.
     #
     # repeng is NOT pinned here: 0.4.0 (the latest release) requires numpy<2.0 and
     # references the removed np.float_ alias, so it neither resolves nor imports against

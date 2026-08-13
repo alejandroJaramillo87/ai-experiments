@@ -80,15 +80,45 @@ fn check_model_identity(
 }
 
 /// The model hash recorded beside a control vector, when its artifact
-/// directory is intact. The vector GGUF itself carries only
-/// `controlvector.model_hint` — a model type, not an identity — so the
-/// sibling `manifest.json` the exporter writes (`interp/steering/export.py`)
-/// is the only hash available. A vector copied away from its manifest, or
-/// one whose manifest is unreadable, stays loadable and unchecked.
+/// directory is intact. The image itself carries tensors and nothing else,
+/// so the sibling `manifest.json` the exporter writes
+/// (`interp/steering/export.py`) is the only hash available. A vector copied
+/// away from its manifest, or one whose manifest is unreadable, stays
+/// loadable and unchecked — the deliberate asymmetry with the probe's
+/// mandatory sidecar, which `schemas/control_vector_artifact.json` records.
 fn control_vector_model_hash(path: &Path) -> Option<String> {
     let text = std::fs::read_to_string(path.parent()?.join("manifest.json")).ok()?;
     let manifest: serde_json::Value = serde_json::from_str(&text).ok()?;
     manifest.get("model_hash")?.as_str().map(str::to_string)
+}
+
+/// Parse `--control-vector-layer-range` as an inclusive pair of 0-based
+/// block indices.
+///
+/// The value is one argument holding two numbers, `"START END"`, rather than
+/// two arguments. That is the spelling `interp/steering/wiring.py`'s
+/// `steering_env` already emits into `CONTROL_VECTOR_LAYER_RANGE`, so the
+/// environment variable can be forwarded to this flag unmodified; llama.cpp
+/// took the same string as two shell words instead. Either separator run of
+/// whitespace is accepted because the variable is assembled by shell.
+fn parse_layer_range(value: &str) -> Result<(usize, usize), String> {
+    let parts: Vec<&str> = value.split_whitespace().collect();
+    let [start, end] = parts[..] else {
+        return Err(format!(
+            "--control-vector-layer-range: expected two numbers \"START END\", got {value:?}"
+        ));
+    };
+    let parsed = |s: &str| {
+        s.parse::<usize>()
+            .map_err(|_| format!("--control-vector-layer-range: {s:?} is not a block index"))
+    };
+    let (start, end) = (parsed(start)?, parsed(end)?);
+    if start > end {
+        return Err(format!(
+            "--control-vector-layer-range: start {start} is above end {end}"
+        ));
+    }
+    Ok((start, end))
 }
 
 /// Construct the generator over the CPU backend for the checkpoint at
@@ -101,6 +131,7 @@ fn build_generator(
     record: Option<&Path>,
     control_vector: Option<&Path>,
     control_scale: f32,
+    control_layer_range: Option<(usize, usize)>,
     probe: Option<&Path>,
     sampling: runtime::sampler::SamplingParams,
     max_tokens: usize,
@@ -138,7 +169,8 @@ fn build_generator(
     if let Some(path) = control_vector {
         let cv_data = std::fs::read(path)
             .with_context(|| format!("read control vector {}", path.display()))?;
-        let cv_file = runtime::gguf::parse(&cv_data).context("parse control-vector GGUF")?;
+        let cv_image = runtime::checkpoint::Image::parse(cv_data, "control vector")
+            .context("parse control-vector image")?;
         match control_vector_model_hash(path) {
             Some(hash) => {
                 check_model_identity("control vector", &hash, || {
@@ -152,7 +184,7 @@ fn build_generator(
                 path.display()
             ),
         }
-        let cv = ControlVector::from_gguf(&cv_file, &cv_data, control_scale)
+        let cv = ControlVector::from_image(&cv_image, control_scale, control_layer_range)
             .context("load control vector")?;
         cpu.set_control_vector(cv).context("apply control vector")?;
     }
@@ -400,6 +432,7 @@ fn run(
     record: Option<&Path>,
     control_vector: Option<&Path>,
     control_scale: f32,
+    control_layer_range: Option<(usize, usize)>,
     probe: Option<&Path>,
     probe_out: Option<&Path>,
     alignment_out: Option<&Path>,
@@ -426,6 +459,7 @@ fn run(
         record,
         control_vector,
         control_scale,
+        control_layer_range,
         probe,
         sampling,
         max_tokens,
@@ -583,8 +617,9 @@ fn flag_value_error(flag: &str, value: &str) -> Option<String> {
 fn main() -> ExitCode {
     const USAGE: &str = "usage: harness --model <checkpoint-dir> [--tokenizer <path.json>] \
          [--record <path>] \
-         [--trace-chrome <path>] [--control-vector <path.gguf>] \
-         [--control-vector-scale <f>] [--probe <path.safetensors>] \
+         [--trace-chrome <path>] [--control-vector <path.safetensors>] \
+         [--control-vector-scale <f>] [--control-vector-layer-range \"<start> <end>\"] \
+         [--probe <path.safetensors>] \
          [--probe-out <path>] [--alignment-out <path>] [--temperature <f>] [--top-p <f>] \
          [--top-k <n>] [--seed <n>] [--max-tokens <n>] [--context <n>] \
          [--compact-at <f>] [--text-only] [--single-thread] \
@@ -599,9 +634,12 @@ fn main() -> ExitCode {
     // forward call to a JSONL file replayable as a MockModel script.
     // --trace-chrome <path>: write a Perfetto-loadable trace of the span
     // timeline. No subscriber is installed otherwise, so spans cost nothing.
-    // --control-vector <path.gguf>: steering directions in the llama.cpp
-    // control-vector layout, added to the residual stream per layer.
+    // --control-vector <path.safetensors>: steering directions from
+    // interp/steering/export.py, one `block.<index>` tensor per steered
+    // decoder block, added to that block's output residual.
     // --control-vector-scale <f>: multiplier on the directions (default 1.0).
+    // --control-vector-layer-range "<start> <end>": inclusive 0-based block
+    // range; directions outside it are dropped at load.
     // --probe <path.safetensors>: linear probe (interp/probes/export.py
     // layout) scored in-band at every position of its layer through the tap
     // seam. The JSON sidecar beside it -- the same path with a .json
@@ -635,6 +673,7 @@ fn main() -> ExitCode {
     let mut trace_chrome: Option<std::path::PathBuf> = None;
     let mut control_vector: Option<std::path::PathBuf> = None;
     let mut control_scale_arg: Option<std::path::PathBuf> = None;
+    let mut control_range_arg: Option<std::path::PathBuf> = None;
     let mut probe: Option<std::path::PathBuf> = None;
     let mut probe_out: Option<std::path::PathBuf> = None;
     let mut alignment_out: Option<std::path::PathBuf> = None;
@@ -652,6 +691,7 @@ fn main() -> ExitCode {
         ("--trace-chrome", &mut trace_chrome),
         ("--control-vector", &mut control_vector),
         ("--control-vector-scale", &mut control_scale_arg),
+        ("--control-vector-layer-range", &mut control_range_arg),
         ("--probe", &mut probe),
         ("--tokenizer", &mut tokenizer),
         ("--probe-out", &mut probe_out),
@@ -687,6 +727,16 @@ fn main() -> ExitCode {
             }
         },
         None => 1.0,
+    };
+    let control_layer_range = match control_range_arg {
+        Some(v) => match parse_layer_range(&v.to_string_lossy()) {
+            Ok(range) => Some(range),
+            Err(error) => {
+                eprintln!("[ERROR] {error}");
+                return ExitCode::from(2);
+            }
+        },
+        None => None,
     };
     // Sampler::new treats out-of-range values as config bugs and panics, so
     // user input is range-checked here and rejected as a usage error instead.
@@ -852,6 +902,7 @@ fn main() -> ExitCode {
         record.as_deref(),
         control_vector.as_deref(),
         control_scale,
+        control_layer_range,
         probe.as_deref(),
         probe_out.as_deref(),
         alignment_out.as_deref(),

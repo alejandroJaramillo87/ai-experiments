@@ -3,23 +3,24 @@
  * Rust loaders.
  *
  * Two artifacts are written only by Python and read only by Rust: the probe
- * (interp/probes/export.py, safetensors plus a JSON sidecar) and the
- * control-vector GGUF (interp/steering/export.py). Every other golden
- * synthesizes those bytes in Rust, which checks the parser against a second
- * Rust implementation rather than against the writer it exists to read. The
- * layer numbering makes that gap concrete: a probe's layer is 0-based and
- * direction.<N> is 1-based, each side enforces its own rule, and nothing
- * checked that the two rules compose.
+ * (interp/probes/export.py) and the control vector
+ * (interp/steering/export.py), both safetensors, the probe with a JSON
+ * sidecar beside it. Every other golden synthesizes those bytes in Rust,
+ * which checks the parser against a second Rust implementation rather than
+ * against the writer it exists to read. The block numbering makes that gap
+ * concrete: both artifacts now number from 0, each side enforces its own
+ * rule, and nothing but this test checks that the two rules compose.
  *
  * Coverage is in two layers. The committed fixtures under fixtures/ are
  * exporter output, so the parse assertions run everywhere the workspace
  * builds. The regeneration test then re-runs the exporters and compares,
  * which is what notices an exporter that has drifted away from the committed
- * bytes; it needs python3 with numpy and gguf plus the parent tree, and
+ * bytes; it needs python3 with numpy and safetensors plus the parent tree, and
  * reports [SKIP] without them — as in the container build, whose context is
  * rust-harness/ alone.
  *
- * Contracts: schemas/probe_artifact.json and schemas/gguf_artifacts.json.
+ * Contracts: schemas/probe_artifact.json and
+ * schemas/control_vector_artifact.json.
  * Regenerate the fixtures with
  * `python3 rust-harness/fixtures/export_interp_fixtures.py rust-harness/fixtures`.
  */
@@ -27,7 +28,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use runtime::gguf::{parse, GgufFile, MetaValue};
+use runtime::checkpoint::Image;
 use runtime::model::cpu::ControlVector;
 use runtime::model::probe::Probe;
 
@@ -53,8 +54,17 @@ const PROBE_ROW: [f32; 4] = [1.0, 2.0, 0.0, 5.0];
 const PROBE_SCORE: f32 = 0.437_823_5;
 
 const CV_WIDTH: usize = 4;
-const CV_DIRECTION_1: [f32; 4] = [0.25, -0.5, 1.0, -2.0];
+const CV_DIRECTION_0: [f32; 4] = [0.25, -0.5, 1.0, -2.0];
+const CV_DIRECTION_1: [f32; 4] = [1.5, 0.25, -0.75, 2.0];
 const CV_DIRECTION_3: [f32; 4] = [-0.125, 0.75, -1.25, 3.5];
+
+/// The control vector is a directory, not a file: the image plus the sibling
+/// manifest that harness/src/main.rs reads the model hash from.
+const CV_DIR_NAME: &str = "python-control-vector";
+
+fn cv_fixture_dir() -> PathBuf {
+    fixtures_dir().join(CV_DIR_NAME)
+}
 
 fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures")
@@ -64,23 +74,33 @@ fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// Parsed image plus its bytes; tensor loading needs both.
-struct Image {
-    file: GgufFile,
-    data: Vec<u8>,
-}
-
 fn read_image(path: &Path) -> Image {
     let data = std::fs::read(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    let file = parse(&data).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    Image { file, data }
+    Image::parse(data, &path.display().to_string())
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }
 
-fn architecture(file: &GgufFile) -> &str {
-    match file.metadata.get("general.architecture") {
-        Some(MetaValue::Str(a)) => a.as_str(),
-        other => panic!("general.architecture: {other:?}"),
-    }
+/// Assert one loaded control vector against the fixture constants.
+///
+/// The exporter writes block.0, block.1 and block.3. Block 0 carrying a
+/// direction is the assertion that the retired layout's refusal of index 0
+/// is gone; the gap at block 2 must stay a gap, because a loader that packed
+/// the tensors in order would steer blocks 0, 1 and 2 instead.
+fn assert_fixture_control_vector(cv: &ControlVector, what: &str) {
+    assert_eq!(cv.width(), CV_WIDTH, "{what}");
+    assert_eq!(cv.direction(0), Some(&CV_DIRECTION_0[..]), "{what}");
+    assert_eq!(cv.direction(1), Some(&CV_DIRECTION_1[..]), "{what}");
+    assert_eq!(
+        cv.direction(2),
+        None,
+        "{what}: the unnamed block stays unsteered"
+    );
+    assert_eq!(cv.direction(3), Some(&CV_DIRECTION_3[..]), "{what}");
+    assert_eq!(
+        cv.direction(4),
+        None,
+        "{what}: no direction past the last tensor"
+    );
 }
 
 /// The exporters and their dependencies, or a reason they are unavailable.
@@ -96,8 +116,8 @@ fn exporter_python() -> Result<PathBuf, String> {
     if !repo_root().join("interp/probes/export.py").is_file() {
         return Err("the parent tree is not present".to_string());
     }
-    runtime::pyenv::interpreter(&repo_root(), &["numpy", "gguf", "safetensors"])
-        .ok_or_else(|| "no interpreter can import numpy, gguf and safetensors".to_string())
+    runtime::pyenv::interpreter(&repo_root(), &["numpy", "safetensors"])
+        .ok_or_else(|| "no interpreter can import numpy and safetensors".to_string())
 }
 
 /// Assert one loaded probe against the fixture constants, including the
@@ -126,21 +146,22 @@ fn the_python_probe_loads_through_the_rust_probe_reader() {
 }
 
 #[test]
-fn python_control_vector_gguf_keeps_its_one_based_layer_numbering() {
-    let image = read_image(&fixtures_dir().join("python-control-vector.gguf"));
-    assert_eq!(architecture(&image.file), "controlvector");
+fn the_python_control_vector_keeps_its_zero_based_block_numbering() {
+    let image = read_image(&cv_fixture_dir().join("vector.safetensors"));
+    let cv = ControlVector::from_image(&image, 1.0, None).expect("vector parses");
+    assert_fixture_control_vector(&cv, "committed fixture");
+}
 
-    let cv = ControlVector::from_gguf(&image.file, &image.data, 1.0).expect("vector parses");
-    assert_eq!(cv.width(), CV_WIDTH);
-
-    // The exporter writes direction.1 and direction.3. Block 0 is unsteerable
-    // by the format, and the gap at block 2 must stay a gap: a loader that
-    // packed the tensors in order would steer blocks 0 and 1 instead.
-    assert_eq!(cv.direction(0), None, "block 0 is unsteerable");
+#[test]
+fn a_layer_range_selects_from_the_python_written_blocks() {
+    // The range is the harness-side replacement for llama.cpp's
+    // --control-vector-layer-range, so it has to hold against a file the
+    // exporter actually wrote and not only against a synthetic image.
+    let image = read_image(&cv_fixture_dir().join("vector.safetensors"));
+    let cv = ControlVector::from_image(&image, 1.0, Some((1, 3))).expect("vector parses");
+    assert_eq!(cv.direction(0), None, "block 0 is outside the range");
     assert_eq!(cv.direction(1), Some(&CV_DIRECTION_1[..]));
-    assert_eq!(cv.direction(2), None, "the unnamed block stays unsteered");
     assert_eq!(cv.direction(3), Some(&CV_DIRECTION_3[..]));
-    assert_eq!(cv.direction(4), None, "no direction past the last tensor");
 }
 
 /// One contract document, or a skip when the schemas directory is absent —
@@ -219,40 +240,53 @@ fn the_probe_contract_names_the_keys_the_fixture_actually_carries() {
 
 #[test]
 fn the_control_vector_contract_names_the_keys_the_fixture_actually_carries() {
-    let Some(contract) = contract("gguf_artifacts.json") else {
+    let Some(contract) = contract("control_vector_artifact.json") else {
         return;
     };
-    let artifact = "controlvector";
-    let image = read_image(&fixtures_dir().join("python-control-vector.gguf"));
-    let spec = &contract[artifact];
-    assert_eq!(
-        spec["architecture"].as_str(),
-        Some(architecture(&image.file)),
-        "{artifact}: declared architecture does not match the fixture"
-    );
-    for key in spec["metadata"]
+    let image = read_image(&cv_fixture_dir().join("vector.safetensors"));
+    let present: BTreeSet<String> = image.names().into_iter().collect();
+    assert!(!present.is_empty(), "the fixture holds no tensors");
+
+    // block.<index> is a pattern, not a name: the contract declares the
+    // prefix and the numbering, and the test above asserts which blocks the
+    // fixture actually carries.
+    let declared = names(&contract["required"]["tensors"]);
+    assert_eq!(declared.len(), 1, "one tensor pattern is declared");
+    let pattern = declared.iter().next().expect("a pattern");
+    let prefix = pattern.split('<').next().expect("a prefix");
+    for name in &present {
+        assert!(
+            name.starts_with(prefix),
+            "tensor {name} does not match the declared pattern {pattern}"
+        );
+    }
+
+    // The sibling manifest the exporter writes. Advisory rather than
+    // mandatory -- see the contract's manifest_is_advisory note -- so the
+    // check is that the contract names what the manifest carries, not that
+    // the reader needs it.
+    let manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(cv_fixture_dir().join("manifest.json"))
+            .expect("the manifest is committed"),
+    )
+    .expect("the manifest is valid JSON");
+    let got: BTreeSet<String> = manifest
         .as_object()
-        .expect("metadata object")
+        .expect("the manifest is an object")
         .keys()
-    {
-        assert!(
-            image.file.metadata.contains_key(key),
-            "{artifact}: contract declares {key}, the fixture has no such key"
-        );
-    }
-    // direction.<N> is a pattern, not a name; the numbering itself is
-    // asserted by the control-vector test above.
-    for name in spec["tensors"].as_object().expect("tensors object").keys() {
-        let prefix = name.split('<').next().unwrap();
-        assert!(
-            image
-                .file
-                .tensors
-                .iter()
-                .any(|t| t.name.starts_with(prefix)),
-            "{artifact}: no tensor matching {name}"
-        );
-    }
+        .cloned()
+        .collect();
+    let required = names(&contract["required"]["manifest"]);
+    assert!(
+        required.is_subset(&got),
+        "the manifest is missing required keys {:?}",
+        required.difference(&got).collect::<Vec<_>>()
+    );
+    let artifact = manifest["artifact"].as_str().expect("an enumerated string");
+    assert!(
+        names(&contract["values"]["artifact"]).contains(artifact),
+        "artifact {artifact:?} is not a value the contract lists"
+    );
 }
 
 #[test]
@@ -276,18 +310,16 @@ fn the_committed_fixtures_are_still_what_the_exporters_produce() {
         String::from_utf8_lossy(&out.stderr)
     );
 
-    // Compared by parsed content rather than byte for byte. gguf is pinned,
-    // but a version bump may legitimately change padding or alignment; and the
-    // probe sidecar carries a timestamp and a git_sha, which differ on every
-    // regeneration. A byte comparison would report either as exporter drift.
+    // Compared by parsed content rather than byte for byte. safetensors is
+    // pinned, but a version bump may legitimately change header key order or
+    // padding; and the probe sidecar carries a timestamp and a git_sha, which
+    // differ on every regeneration. A byte comparison would report either as
+    // exporter drift.
     let probe = Probe::load(&dir.path().join("python-probe.safetensors"))
         .expect("the regenerated probe loads");
     assert_fixture_probe(&probe, "regenerated");
 
-    let fresh_cv = read_image(&dir.path().join("python-control-vector.gguf"));
-    let cv = ControlVector::from_gguf(&fresh_cv.file, &fresh_cv.data, 1.0).expect("vector parses");
-    assert_eq!(cv.width(), CV_WIDTH);
-    assert_eq!(cv.direction(1), Some(&CV_DIRECTION_1[..]));
-    assert_eq!(cv.direction(2), None);
-    assert_eq!(cv.direction(3), Some(&CV_DIRECTION_3[..]));
+    let fresh_cv = read_image(&dir.path().join(CV_DIR_NAME).join("vector.safetensors"));
+    let cv = ControlVector::from_image(&fresh_cv, 1.0, None).expect("vector parses");
+    assert_fixture_control_vector(&cv, "regenerated");
 }

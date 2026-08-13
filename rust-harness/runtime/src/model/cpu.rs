@@ -94,9 +94,9 @@ use anyhow::{bail, ensure, Context, Result};
 
 use super::{Logits, Model, Token};
 use crate::align;
-use crate::gguf::GgufFile;
+use crate::checkpoint::Image;
 use crate::kv::LayerKind;
-use crate::tensor::{load_tensor, widened_row_dot_block, Weight};
+use crate::tensor::{widened_row_dot_block, Weight};
 
 /// Quantities that are one value for the whole model.
 ///
@@ -1183,44 +1183,86 @@ impl Tap for AttentionTap {
     }
 }
 
-/// Additive steering directions in the llama.cpp control-vector GGUF
-/// layout: one f32 tensor per layer named `direction.<layer>`.
+/// The tensor-name prefix a control-vector image uses, one f32 tensor per
+/// steered block.
+const BLOCK_PREFIX: &str = "block.";
+
+/// Additive steering directions: a safetensors image holding one 1-D f32
+/// tensor per steered block, named `block.<index>`.
 ///
-/// `direction.N` steers decoder block `N`, matching llama.cpp and the
-/// repeng training semantics that produce these files: repeng trains key
-/// `k` on the output of block `k`, and llama.cpp adds `direction.N` to
-/// block `N`'s output. Block 0 is therefore unsteerable, as upstream —
-/// numbering starts at 1 and there is never a tensor for block 0.
-/// `scale * direction` is added to the residual after that block, before
-/// the tap fires, so captures observe the steered stream that downstream
-/// blocks actually consume.
+/// `block.N` steers decoder block `N`, **0-based**, so `block.0` is a legal
+/// tensor that steers the first block. `scale * direction` is added to the
+/// residual after that block, before the tap fires, so captures observe the
+/// steered stream that downstream blocks actually consume.
+///
+/// What changed at R10 is which indices are legal, not where a direction
+/// lands. The retired `direction.<layer>` images llama.cpp read also named
+/// the 0-based block a direction was added to, but refused index 0: repeng
+/// trains key `k` on the output of block `k` and upstream numbers from 1, so
+/// the first block was unsteerable for no reason this backend shares. With
+/// that consumer gone the floor is dropped, and the naming matches
+/// `schemas/probe_artifact.json`'s 0-based `layer` — one convention across
+/// the interp artifacts rather than two spellings of the same index.
+///
+/// The prefix was renamed in the same step, so an image written before R10
+/// is refused for holding no blocks rather than loading. Nothing about the
+/// mapping moved, so a stale file would otherwise have loaded and steered
+/// correctly right up until someone changed the base, and the rename is what
+/// makes the format's generation legible at the reader.
 pub struct ControlVector {
     scale: f32,
     /// Indexed by 0-based block; None for blocks without a direction.
-    /// Slot 0 is always None because numbering starts at 1.
     directions: Vec<Option<Vec<f32>>>,
 }
 
 impl ControlVector {
-    pub fn from_gguf(file: &GgufFile, data: &[u8], scale: f32) -> Result<ControlVector> {
+    /// Parse a control-vector image, keeping only blocks inside `range`.
+    ///
+    /// `range` is an inclusive `(start, end)` pair of 0-based block indices,
+    /// the harness-side spelling of llama.cpp's
+    /// `--control-vector-layer-range`. It is applied here, at load, rather
+    /// than tested per token in the forward loop: a direction outside the
+    /// range is dropped, so the hot path sees only what it must add.
+    pub fn from_image(
+        image: &Image,
+        scale: f32,
+        range: Option<(usize, usize)>,
+    ) -> Result<ControlVector> {
+        if let Some((start, end)) = range {
+            ensure!(
+                start <= end,
+                "control-vector layer range {start}..={end} is empty"
+            );
+        }
         let mut directions: Vec<Option<Vec<f32>>> = Vec::new();
-        for info in &file.tensors {
-            let Some(suffix) = info.name.strip_prefix("direction.") else {
+        for name in image.names() {
+            let Some(suffix) = name.strip_prefix(BLOCK_PREFIX) else {
                 continue;
             };
-            let layer: usize = suffix
+            let block: usize = suffix
                 .parse()
-                .with_context(|| format!("tensor name {}: non-numeric layer", info.name))?;
-            ensure!(layer >= 1, "tensor {}: layers are 1-based", info.name);
-            let v = load_tensor(file, data, info)?;
-            if layer >= directions.len() {
-                directions.resize(layer + 1, None);
+                .with_context(|| format!("tensor name {name}: non-numeric block index"))?;
+            if let Some((start, end)) = range {
+                if block < start || block > end {
+                    continue;
+                }
             }
-            directions[layer] = Some(v);
+            // Image::vector refuses a rank other than 1 and widens to f32, so
+            // the shape and dtype checks the GGUF reader spelled out by hand
+            // are inherited from the one envelope reader.
+            let v = image.vector(&name)?;
+            if block >= directions.len() {
+                directions.resize(block + 1, None);
+            }
+            directions[block] = Some(v);
         }
         ensure!(
             directions.iter().any(Option::is_some),
-            "control vector holds no direction.<layer> tensors"
+            "control vector holds no {BLOCK_PREFIX}<index> tensors{}",
+            match range {
+                Some((start, end)) => format!(" within layer range {start}..={end}"),
+                None => String::new(),
+            }
         );
         let widths: std::collections::BTreeSet<usize> = directions
             .iter()
@@ -1236,10 +1278,9 @@ impl ControlVector {
 
     /// The direction for a 0-based block, or None where the image names none.
     ///
-    /// Public so the cross-language contract test can assert the layer
-    /// mapping directly (`schemas/gguf_artifacts.json`). A control vector
-    /// written by `interp/steering/export.py` numbers its tensors from 1, and
-    /// an off-by-one here steers the wrong block with no error anywhere —
+    /// Public so the cross-language contract test can assert the block
+    /// mapping directly (`schemas/control_vector_artifact.json`). An
+    /// off-by-one here steers the wrong block with no error anywhere —
     /// reading the parsed placement is the only way to see it.
     pub fn direction(&self, layer: usize) -> Option<&[f32]> {
         self.directions.get(layer)?.as_deref()
@@ -6387,26 +6428,38 @@ mod tests {
         }
     }
 
-    /// Control-vector GGUF image with `direction.<layer>` (1-based) tensors.
-    fn control_image(directions: &[(usize, Vec<f32>)]) -> Vec<u8> {
-        let mut w = crate::synth::GgufWriter::new();
-        w.kv_str("general.architecture", "controlvector");
-        for (layer, v) in directions {
-            w.tensor_f32(&format!("direction.{layer}"), &[v.len() as u64], v);
-        }
-        w.finish()
+    /// Control-vector safetensors image with `block.<index>` (0-based)
+    /// tensors, through the same writer the probe fixtures use.
+    fn control_image(directions: &[(usize, Vec<f32>)]) -> Image {
+        let named: Vec<(String, &[f32])> = directions
+            .iter()
+            .map(|(block, v)| (format!("{BLOCK_PREFIX}{block}"), v.as_slice()))
+            .collect();
+        let borrowed: Vec<(&str, &[f32])> = named.iter().map(|(n, v)| (n.as_str(), *v)).collect();
+        let bytes = crate::synth::build_f32_safetensors(&borrowed).unwrap();
+        Image::parse(bytes, "control vector").unwrap()
     }
 
     fn control(directions: &[(usize, Vec<f32>)], scale: f32) -> ControlVector {
-        let image = control_image(directions);
-        let file = crate::gguf::parse(&image).unwrap();
-        ControlVector::from_gguf(&file, &image, scale).unwrap()
+        ControlVector::from_image(&control_image(directions), scale, None).unwrap()
+    }
+
+    /// The message from a control-vector image the reader must refuse.
+    ///
+    /// `unwrap_err` would need `Debug` on `ControlVector`, which holds the
+    /// direction vectors and has no reason to be printable.
+    fn control_error(image: &Image, range: Option<(usize, usize)>) -> String {
+        match ControlVector::from_image(image, 1.0, range) {
+            Ok(cv) => panic!("image accepted, width {}", cv.width()),
+            Err(e) => e.to_string(),
+        }
     }
 
     #[test]
     fn zero_control_vector_is_bit_identical_to_unsteered() {
-        // The tiny model has blocks 0 and 1, and block 0 is unsteerable by
-        // the format's numbering, so direction.1 is the only legal slot.
+        // The tiny model has blocks 0 and 1. Both are steerable under the
+        // 0-based numbering; block 1 is used here so the assertion is about
+        // the zero direction and not about which block it landed on.
         let mut steered = tiny();
         steered
             .set_control_vector(control(&[(1, vec![0.0; 16])], 1.0))
@@ -6452,12 +6505,12 @@ mod tests {
     }
 
     #[test]
-    fn direction_n_steers_block_n_and_leaves_earlier_blocks_untouched() {
-        // llama.cpp adds direction.N to block N's output, and repeng trains
-        // key k on block k's output. Steering block N-1 instead would make
-        // the same vector.gguf behave differently here than in the llama.cpp
-        // services, silently. Observing the residual through the tap is the
-        // only way to tell the two mappings apart.
+    fn block_n_steers_block_n_and_leaves_earlier_blocks_untouched() {
+        // The exporter names a tensor for the block whose output it was
+        // fitted on, and this reader must place it there. An off-by-one
+        // steers a neighbouring block and returns a plausible answer with no
+        // error anywhere; observing the residual through the tap is the only
+        // way to tell the two mappings apart.
         let rows_at_position_zero = |tap: &CollectingTap| -> Vec<(usize, Vec<f32>)> {
             tap.0
                 .lock()
@@ -6499,19 +6552,67 @@ mod tests {
             .set_control_vector(control(&[(1, vec![0.0; 8])], 1.0))
             .unwrap_err();
         assert!(err.to_string().contains("width"), "{err}");
-        // Block beyond the model. direction.2 names block 2, which a
-        // two-block model does not have.
+        // Block beyond the model. block.2 names block 2, which a two-block
+        // model does not have.
         let err = m
             .set_control_vector(control(&[(2, vec![0.0; 16])], 1.0))
             .unwrap_err();
         assert!(err.to_string().contains("blocks"), "{err}");
-        // Empty and zero-layer images are load errors.
-        let image = control_image(&[]);
-        let file = crate::gguf::parse(&image).unwrap();
-        assert!(ControlVector::from_gguf(&file, &image, 1.0).is_err());
-        let image = control_image(&[(0, vec![0.0; 16])]);
-        let file = crate::gguf::parse(&image).unwrap();
-        assert!(ControlVector::from_gguf(&file, &image, 1.0).is_err());
+        // Disagreeing widths are refused at load, before the model sees them.
+        let image = control_image(&[(0, vec![0.0; 16]), (1, vec![0.0; 8])]);
+        let err = control_error(&image, None);
+        assert!(err.contains("width"), "{err}");
+        // An image naming no blocks at all is a load error.
+        let err = control_error(&control_image(&[]), None);
+        assert!(err.contains("no block."), "{err}");
+    }
+
+    #[test]
+    fn block_zero_is_steerable() {
+        // The retired `direction.<layer>` naming refused index 0, so block 0
+        // could not be steered even though the backend can steer it. This is
+        // the assertion that the floor is gone rather than merely unused.
+        let cv =
+            ControlVector::from_image(&control_image(&[(0, vec![1.0; 16])]), 1.0, None).unwrap();
+        assert_eq!(cv.direction(0).map(<[f32]>::len), Some(16));
+    }
+
+    #[test]
+    fn an_image_carrying_the_retired_direction_prefix_is_refused() {
+        // Refusing the old prefix is what keeps the format's generation
+        // legible. A pre-R10 image names the same blocks this reader would
+        // place correctly, so accepting it would work -- until the base or
+        // the layout moves and a stale file steers the wrong block with no
+        // error anywhere. The reader is the only place that can see it.
+        let bytes =
+            crate::synth::build_f32_safetensors(&[("direction.1", &[0.0f32; 16][..])]).unwrap();
+        let image = Image::parse(bytes, "control vector").unwrap();
+        let err = control_error(&image, None);
+        assert!(err.contains("no block."), "{err}");
+    }
+
+    #[test]
+    fn a_layer_range_drops_the_blocks_outside_it() {
+        let image = control_image(&[(0, vec![1.0; 16]), (1, vec![2.0; 16])]);
+        let cv = ControlVector::from_image(&image, 1.0, Some((1, 1))).unwrap();
+        assert!(cv.direction(0).is_none(), "block 0 survived the range");
+        assert_eq!(cv.direction(1), Some(&[2.0f32; 16][..]));
+        // A range that admits nothing is an error rather than an unsteered
+        // model: the caller asked for steering and got none, silently.
+        let err = control_error(&image, Some((5, 6)));
+        assert!(err.contains("within layer range"), "{err}");
+        // An inverted range is refused for what it is, not for being empty.
+        let err = control_error(&image, Some((2, 1)));
+        assert!(err.contains("is empty"), "{err}");
+    }
+
+    #[test]
+    fn a_non_numeric_block_suffix_is_refused_naming_the_tensor() {
+        let bytes =
+            crate::synth::build_f32_safetensors(&[("block.last", &[0.0f32; 16][..])]).unwrap();
+        let image = Image::parse(bytes, "control vector").unwrap();
+        let err = control_error(&image, None);
+        assert!(err.contains("block.last"), "{err}");
     }
 
     #[test]

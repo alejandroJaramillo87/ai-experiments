@@ -210,18 +210,15 @@ fn check_steered(stem: &str) {
     let steer_layer = golden["steer_layer"].as_u64().unwrap() as usize;
     let steer_scale = golden["steer_scale"].as_f64().unwrap() as f32;
     let direction: Vec<f32> = (0..embed_dim).map(|j| 0.05 * (j as f32 - 8.0)).collect();
-    let mut w = runtime::synth::GgufWriter::new();
-    w.kv_str("general.architecture", "controlvector");
-    // direction.N steers block N, as in llama.cpp: the tensor name is the
-    // 0-based block index the reference steers, not that index plus one.
-    w.tensor_f32(
-        &format!("direction.{steer_layer}"),
-        &[embed_dim as u64],
-        &direction,
-    );
-    let cv_image = w.finish();
-    let cv_file = runtime::gguf::parse(&cv_image).unwrap();
-    let cv = ControlVector::from_gguf(&cv_file, &cv_image, steer_scale).unwrap();
+    // block.N steers block N: the tensor name is the 0-based block index the
+    // reference steers, not that index plus one.
+    let bytes = runtime::synth::build_f32_safetensors(&[(
+        &format!("block.{steer_layer}"),
+        direction.as_slice(),
+    )])
+    .unwrap();
+    let cv_image = runtime::checkpoint::Image::parse(bytes, "control vector").unwrap();
+    let cv = ControlVector::from_image(&cv_image, steer_scale, None).unwrap();
     model.set_control_vector(cv).unwrap();
 
     let rows = model.prefill_all(&prompt).unwrap();

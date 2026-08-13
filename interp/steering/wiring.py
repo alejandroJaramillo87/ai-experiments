@@ -26,7 +26,7 @@ class WiringError(Exception):
 def validate_vector_dir(vector_dir: str, served_model_hash: str | None = None) -> dict:
     """Validate a vector directory for deployment; return its manifest.
 
-    Checks: vector.gguf exists, the manifest loads, the recorded xxhash matches
+    Checks: vector.safetensors exists, the manifest loads, the recorded xxhash matches
     the file on disk, and — when the served model's base-checkpoint hash is
     known — that the manifest model hash matches it (the identity requirement
     of the phase's model policy).

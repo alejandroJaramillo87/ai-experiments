@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "timestamp": "2026-08-13T01:12:50+0000",
-  "git_sha": "5632446e8b407f612a4f59db08cd6e73ac58ddf8",
+  "timestamp": "2026-08-13T03:30:08+0000",
+  "git_sha": "b5ec553dcec64ad5f032b4d449ce2af08b001b1d",
   "artifact": "probe",
   "name": "contract-fixture-probe",
   "model_hash": "0123456789abcdef",

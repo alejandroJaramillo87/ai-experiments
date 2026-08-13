@@ -67,16 +67,18 @@ conversation to two different prompts.
 The interp exporters had no coverage in the direction that matters at all:
 the probe and control-vector readers had only ever parsed bytes written by
 `runtime::synth`, never bytes written by the Python exporters whose output
-they exist to read. Both artifacts were GGUF then; the probe has since moved
-to safetensors plus a sidecar, and the contract moved with it rather than the
-seam being re-specified in prose.
+they exist to read. Both artifacts were GGUF then, and neither is now: the
+probe moved to safetensors plus a sidecar at R7, the control vector followed
+at R10 once retiring llama.cpp steering left this repository the only reader,
+and each contract moved with its artifact rather than the seam being
+re-specified in prose.
 
 ## The contracts
 
 | File | Seam | Direction |
 |------|------|-----------|
 | `activation_capture.manifest.json` | Capture directory: `manifest.json`, `examples.jsonl`, `shard_NNNNN.npz` | Both write, Python reads |
-| `gguf_artifacts.json` | The control-vector GGUF image | Python writes, Rust reads |
+| `control_vector_artifact.json` | A control vector: a safetensors image of per-block directions plus a sibling manifest | Python writes, Rust reads |
 | `probe_artifact.json` | A probe: safetensors parameter vectors plus a JSON sidecar of scalars | Python writes, Rust reads |
 | `obs_record.json` | Run-level JSONL: event file and run catalog | Both write, Python reads |
 | `chat_template.json` | The Gemma 4 chat template: the prompt string a conversation renders to | Both write, both read |

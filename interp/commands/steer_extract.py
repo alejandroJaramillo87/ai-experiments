@@ -69,7 +69,7 @@ def cmd(args: argparse.Namespace) -> int:
         out.error(f"Extraction failed: {exc}")
         return 1
 
-    out.ok(f"Vector exported: {args.out}/vector.gguf")
+    out.ok(f"Vector exported: {args.out}/{export.VECTOR_NAME}")
     out.ok(f"Layers: {len(manifest['layers'])}, width: {manifest['width']}")
     out.ok(f"Vector xxhash: {manifest['vector_xxhash']}")
     return 0

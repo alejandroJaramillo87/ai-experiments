@@ -31,8 +31,15 @@ class ExtractionError(Exception):
 class DirectionSet:
     """Per-layer steering directions plus the provenance export.py records.
 
-    directions maps layer index (1-based, llama.cpp control-vector convention)
-    to a float32 vector of the residual-stream width.
+    directions maps a 0-based decoder block index to a float32 vector of the
+    residual-stream width: the direction is added to the output residual of
+    that block.
+
+    The index has always been the block itself, never the block plus one.
+    Until R10 the exporter additionally refused index 0, because llama.cpp
+    and repeng describe this numbering as 1-based and leave the first block
+    unsteerable; that floor went with the llama.cpp steering path, and the
+    indices it admitted did not move.
     """
 
     directions: dict[int, np.ndarray]
