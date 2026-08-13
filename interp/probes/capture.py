@@ -44,9 +44,42 @@ UNKNOWN_MODEL_HASH = "unknown"
 # byte, or the guard fires on a probe that is in fact correct.
 WEIGHTS_FILE = "model.safetensors"
 
+# The same read-only models tree under its two names. probe-capture runs in
+# the interp container (docker-compose.interp.yaml), which mounts the host
+# tree on the left at the path on the right; harness-serve mounts it the same
+# way. Quoting the pair is what lets the refusal below name the fix.
+HOST_MODELS = "/mnt/ai-data/models"
+CONTAINER_MODELS = "/app/models"
+
 
 class CaptureError(Exception):
     """Dataset or model input is malformed."""
+
+
+def check_model_id(model_id: str) -> None:
+    """Refuse an absolute path that is not there, before nnsight sees it.
+
+    A repo id and a checkpoint directory are both strings, and transformers
+    resolves anything it cannot find on disk against the Hub -- so a wrong
+    path fails several layers down as "Repo id must be in the form
+    'repo_name' or 'namespace/repo_name'", which names neither the real
+    mistake nor the mount it should have used. This runs inside the interp
+    container, where /mnt/ai-data/models is mounted at /app/models, and the
+    host spelling is the mistake that gets made.
+
+    Narrow on purpose: only a leading slash marks an intended path.
+    "google/gemma-2-2b" also holds a slash and is a perfectly good repo id.
+    """
+    if not model_id.startswith("/"):
+        return
+    if os.path.isdir(model_id):
+        return
+    raise CaptureError(
+        f"--model {model_id} is not a directory. Inside the interp container "
+        f"the models tree is mounted at {CONTAINER_MODELS}, not at "
+        f"{HOST_MODELS}; a host path resolves to nothing here and would be "
+        f"looked up as a Hugging Face repo id"
+    )
 
 
 def derive_model_hash(model_id: str) -> str:
@@ -170,6 +203,7 @@ def run_capture(
     sentinel: a caller that has decided the weights cannot be identified is
     not overruled by a directory that happens to exist at that path.
     """
+    check_model_id(model_id)
     if model_hash is None:
         model_hash = derive_model_hash(model_id)
     examples = load_labeled_dataset(dataset_path)

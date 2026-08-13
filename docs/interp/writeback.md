@@ -77,7 +77,7 @@ conventions and is published to `docs/interp/experiments/` whichever arm wins.
 ## W2: probe toolkit
 
 ```bash
-$ make probe-capture ARGS="--model /mnt/ai-data/models/hf/gemma-4-E4B \
+$ make probe-capture ARGS="--model /app/models/hf/gemma-4-E4B \
     --dataset interp/probes/prompts/refusal.jsonl \
     --layers 8,16,24 --out /mnt/ai-data/interp/activations/refusal-v1"
 $ make probe-train ARGS="--capture /mnt/ai-data/interp/activations/refusal-v1 --name refusal-v1"
@@ -90,7 +90,11 @@ deterministic text-hash split (re-captures cannot leak test data). The dataset s
 git ([`interp/probes/prompts/`](../../interp/probes/prompts/README.md)) so a probe is
 reproducible from a commit, and the capture manifest records its content hash.
 
-**Pass `--model` a local checkpoint directory, not a Hugging Face repo id.** The probe
+**Pass `--model` a local checkpoint directory, not a Hugging Face repo id, and spell it
+the way the container sees it** -- `/app/models/...`, where
+`docker-compose.interp.yaml` mounts the read-only models tree. A host
+`/mnt/ai-data/models` path is refused with that correction rather than being resolved
+against the Hub. The probe
 carries its capture's `model_hash` into the serving harness, which compares it against the
 sha256 of the checkpoint it loaded. A local directory lets `probe-capture` derive that
 value; a repo id leaves the `unknown` sentinel, and the harness answers the sentinel by

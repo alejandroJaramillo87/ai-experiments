@@ -15,8 +15,16 @@ import hashlib
 import json
 import os
 
+import pytest
+
 from interp import cli
-from interp.probes.capture import UNKNOWN_MODEL_HASH, derive_model_hash, run_capture
+from interp.probes.capture import (
+    UNKNOWN_MODEL_HASH,
+    CaptureError,
+    check_model_id,
+    derive_model_hash,
+    run_capture,
+)
 from tests.interp.conftest import fake_capture
 
 
@@ -57,6 +65,38 @@ class TestDeriveModelHash:
         empty = tmp_path / "not-a-checkpoint"
         empty.mkdir()
         assert derive_model_hash(str(empty)) == UNKNOWN_MODEL_HASH
+
+
+class TestModelIdGuard:
+    """The host spelling of the models tree is the mistake that gets made:
+    the interp container mounts it at /app/models, so a /mnt/ai-data/models
+    path resolves to nothing and transformers looks it up on the Hub."""
+
+    def test_a_missing_absolute_path_is_refused_naming_the_mount(self, tmp_path):
+        with pytest.raises(CaptureError) as exc:
+            check_model_id("/mnt/ai-data/models/hf/gemma-4-E4B")
+        assert "/app/models" in str(exc.value)
+
+    def test_a_repo_id_is_left_alone(self):
+        # No leading slash, so it is a repo id and not a typo'd path.
+        check_model_id("google/gemma-2-2b")
+
+    def test_a_real_directory_passes(self, tmp_path):
+        check_model_id(checkpoint(tmp_path))
+
+    def test_run_capture_refuses_before_loading_anything(
+        self, tmp_path, labeled_dataset
+    ):
+        # The guard has to run ahead of the capture, or the error arrives
+        # after the model load it was supposed to prevent.
+        with pytest.raises(CaptureError, match="not a directory"):
+            run_capture(
+                "/mnt/ai-data/models/hf/gemma-4-E4B",
+                labeled_dataset,
+                [3],
+                str(tmp_path / "cap"),
+                capture_fn=fake_capture,
+            )
 
 
 class TestRunCaptureRecordsIt:

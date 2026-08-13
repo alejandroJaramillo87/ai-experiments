@@ -179,7 +179,10 @@ starts at capture rather than at the registry.
 Preamble, in the workbench and on the GPU (serializes against other GPU work):
 
 ```bash
-$ E4B=/mnt/ai-data/models/hf/gemma-4-E4B
+# Container paths: probe-capture runs in the interp container, which mounts
+# the models tree at /app/models (docker-compose.interp.yaml). A host path
+# resolves to nothing there and is refused.
+$ E4B=/app/models/hf/gemma-4-E4B
 $ make probe-capture ARGS="--model $E4B \
     --dataset interp/probes/prompts/refusal.jsonl \
     --layers 8,16,24 --out /mnt/ai-data/interp/activations/refusal-v1"
@@ -192,7 +195,8 @@ directory to `--model` makes `probe-capture` derive the identity; the sentinel
 means it could not, and `main.rs` responds to it by *skipping* the identity
 check rather than failing it. A probe carrying it will load into a serving
 harness unverified, and this entry would pass while proving less than it claims.
-Cross-check with `sha256sum $E4B/model.safetensors`.
+Cross-check on the host with
+`sha256sum /mnt/ai-data/models/hf/gemma-4-E4B/model.safetensors`.
 
 Command:
 
