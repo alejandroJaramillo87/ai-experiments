@@ -856,12 +856,12 @@ Command:
 
 ```bash
 $ mkdir -p /tmp/rh9/mon /tmp/rh9/base
-$ uv run python -c "from interp.probes.export import write_probe_gguf; \
-    write_probe_gguf('/mnt/ai-data/interp/probes/rust-e4b-verify-probe', '/tmp/rh9/probe.gguf')"
+$ uv run python -c "from interp.probes.export import write_probe; \
+    write_probe('/mnt/ai-data/interp/probes/rust-e4b-verify-probe', '/tmp/rh9/probe.safetensors')"
 $ cd /tmp/rh9/base && ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only "Reply with the single word: ready"
 $ cd /tmp/rh9/mon && ~/workspace/ai-experiments/rust-harness/target/release/harness \
-    --model /mnt/ai-data/models/hf/<e4b> --text-only --probe /tmp/rh9/probe.gguf \
+    --model /mnt/ai-data/models/hf/<e4b> --text-only --probe /tmp/rh9/probe.safetensors \
     "Reply with the single word: ready"
 $ diff <(grep -v '"ts"' /tmp/rh9/base/session.jsonl) <(grep -v '"ts"' /tmp/rh9/mon/session.jsonl); echo "diff exit: $?"
 $ head /tmp/rh9/mon/probe-flags.jsonl

@@ -132,10 +132,12 @@ lossless and the checkpoint's own values reach the forward pass unrounded.
 
 **What GGUF is still for.** [`rust-harness/runtime/src/gguf.rs`](../../rust-harness/runtime/src/gguf.rs)
 and the `GGML_F32`, `GGML_F16`, and `GGML_BF16` constants in `tensor.rs` survive to read the
-probe and control-vector images the Python interp exporters write
-([`schemas/gguf_artifacts.json`](../../schemas/gguf_artifacts.json)). `GGML_Q8_0` is gone with
-the model path that needed it. Those two readers go when the harness serves the interp pipeline
-itself.
+control-vector image `interp/steering/export.py` writes
+([`schemas/gguf_artifacts.json`](../../schemas/gguf_artifacts.json)) — one artifact, kept in
+that container because llama.cpp reads it too. `GGML_Q8_0` is gone with the model path that
+needed it, and the probe followed the weights to safetensors
+([`schemas/probe_artifact.json`](../../schemas/probe_artifact.json)). That reader goes when the
+harness serves the interp pipeline itself.
 
 **What would change this decision:** a checkpoint we need to read that is published only in a
 quantized format, which would be a decision about which model to study rather than about the
@@ -176,7 +178,7 @@ The constants exist and are already the single source per tier:
 | Constant | Governs | File |
 |----------|---------|------|
 | `widen` | Safetensors dtypes the model loader accepts: F32, F16, BF16 | `rust-harness/runtime/src/checkpoint.rs` |
-| `GGML_F32`, `GGML_F16`, `GGML_BF16` | GGUF storage types accepted in interp probe and control-vector artifacts, not in models | `rust-harness/runtime/src/tensor.rs` |
+| `GGML_F32`, `GGML_F16`, `GGML_BF16` | GGUF storage types accepted in the interp control-vector artifact, not in models or probes | `rust-harness/runtime/src/tensor.rs` |
 | `DTYPE_BYTES` | Bytes per element for the disk and budget arithmetic | `interp/harvest.py` |
 | `ARROW_STORAGE_DTYPES` | The subset Arrow can store, so the subset a capture can be taken at | `interp/harvest.py` |
 | `DTYPE_NAMES` | Recipe spelling to the SAELens/torch name; shared with `interp/sae/train.py` | `interp/harvest.py` |

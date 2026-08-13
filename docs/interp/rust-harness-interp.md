@@ -176,17 +176,21 @@ artifact-shape half always runs.
 A trained linear probe runs inside the forward pass as one `Tap`
 implementation (`runtime/src/model/probe.rs`). The exporter
 `interp/probes/export.py` converts a registered probe artifact
-(`probe.npz` plus manifest, hash-validated on load) into a single GGUF
-file: architecture `probe`, f32 tensors `probe.weights`, `probe.mu`, and
-`probe.sigma`, and KV metadata `probe.bias`, `probe.layer` (0-based),
-`probe.threshold`, `probe.name`, and `probe.model_hash`. The rust side
+(`probe.npz` plus manifest, hash-validated on load) into a safetensors
+image of the f32 vectors `weights`, `mu` and `sigma`, plus a JSON sidecar
+beside it at the same path with a `.json` extension carrying `name`,
+`model_hash`, `layer` (0-based), `bias`, `threshold`, `width`, and an
+optional `site`. The sidecar is required: it holds the layer and the
+decision threshold, so an image without it is unusable rather than merely
+unchecked, and `Probe::load` refuses it naming the path it looked for.
+Contract: `schemas/probe_artifact.json`. The rust side
 scores with the same math as `interp/probes/score.py` —
 `sigmoid(((x - mu) / sigma) . w + bias)`, flagged when strictly above the
 trained threshold — and the parity is golden-tested against the numpy
 reference.
 
 ```bash
-$ harness --model <checkpoint-dir> --probe probe.gguf \
+$ harness --model <checkpoint-dir> --probe probe.safetensors \
     [--probe-out flags.jsonl] [--alignment-out alignment.jsonl] <task>
 ```
 
@@ -292,16 +296,18 @@ reader the probe toolkit actually calls, rather than through a bespoke
 texts by position, are exercised against a Rust-written directory
 (`runtime/tests/activation_capture.rs`).
 
-In the other direction, `runtime/tests/python_exporter_contract.rs` loads
-probe and control-vector GGUFs written by `interp/probes/export.py` and
-`interp/steering/export.py` through `Probe::from_gguf` and
-`ControlVector::from_gguf`. Two committed fixtures
-(`fixtures/python-probe.gguf`, `fixtures/python-control-vector.gguf`) are
-exporter output, so the parse assertions run wherever the workspace builds; a
-further test re-runs the exporters and compares parsed content, which is what
-notices an exporter that has drifted from the committed bytes. The comparison
-is semantic rather than byte for byte, because a `gguf` version bump may
-legitimately change padding.
+In the other direction, `runtime/tests/python_exporter_contract.rs` loads the
+probe and the control vector written by `interp/probes/export.py` and
+`interp/steering/export.py` through `Probe::load` and
+`ControlVector::from_gguf`. Three committed fixtures
+(`fixtures/python-probe.safetensors` with its `python-probe.json`, and
+`fixtures/python-control-vector.gguf`) are exporter output, so the parse
+assertions run wherever the workspace builds; a further test re-runs the
+exporters and compares parsed content, which is what notices an exporter that
+has drifted from the committed bytes. The comparison is semantic rather than
+byte for byte: a `gguf` version bump may legitimately change padding, and the
+probe sidecar carries a timestamp and a git sha that differ on every
+regeneration.
 
 The layer numbering is what made this worth closing. `probe.layer` is 0-based
 and `direction.<N>` is 1-based; each side enforced its own rule and nothing
