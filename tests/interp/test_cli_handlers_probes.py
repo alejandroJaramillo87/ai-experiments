@@ -289,7 +289,7 @@ class TestProbeEval:
 
 
 def write_log_window(tmp_path) -> str:
-    """A W3 log file of 12 replayable records inside the default 7d window
+    """A served-request log of 12 scored records inside the default 7d window
     (the handler passes now=None, so timestamps must be near real time)."""
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
@@ -303,8 +303,19 @@ def write_log_window(tmp_path) -> str:
             json.dumps(
                 {
                     "timestamp": stamp,
+                    "target_service": "harness",
                     "messages": [{"role": "user", "content": f"request {i}"}],
                     "response_text": "a neg response" if i % 2 else "a pos response",
+                    "probe": {
+                        "name": "test-probe",
+                        "layer": 4,
+                        "site": "layer_output",
+                        "threshold": 0.5,
+                        "scored": 8,
+                        "position_first": 0,
+                        "max_score": round(0.08 * i, 4),
+                        "flags": [],
+                    },
                 }
             )
         )
@@ -313,31 +324,13 @@ def write_log_window(tmp_path) -> str:
 
 
 class TestProbeMonitor:
-    def test_replay_scores_and_writes_report(
-        self, tmp_path, probe_dir, monkeypatch, capsys
-    ):
-        monkeypatch.setattr(
-            "interp.probes.capture.capture_activations", fake_capture_activations
-        )
-
-        def down(url, timeout=None, **kwargs):
-            raise requests.RequestException("connection refused")
-
-        monkeypatch.setattr("requests.get", down)  # healthchecks: all down
+    def test_aggregates_scores_and_writes_report(self, tmp_path, capsys):
         log_dir = write_log_window(tmp_path)
         monitor_root = str(tmp_path / "monitor")
         assert (
             run_cli(
                 [
                     "probe-monitor",
-                    "--probes",
-                    "test-probe",
-                    "--probes-root",
-                    os.path.dirname(probe_dir),
-                    "--model",
-                    "test-model",
-                    "--model-hash",
-                    "modelhash-1",
                     "--log-dir",
                     log_dir,
                     "--monitor-root",
@@ -347,8 +340,8 @@ class TestProbeMonitor:
             == 0
         )
         printed = capsys.readouterr().err
-        assert "[RUN] Monitor replay: window 7d, 1 probes" in printed
-        assert "[OK] Replayed 12/12 records" in printed
+        assert "[RUN] Monitor: window 7d" in printed
+        assert "[OK] Reported 12/12 records" in printed
         assert "[OK] test-probe: mean " in printed
         assert "over-threshold" in printed
         run_dirs = os.listdir(monitor_root)
@@ -357,40 +350,51 @@ class TestProbeMonitor:
         assert f"[OK] Report written: {run_dir}/report.json" in printed
         with open(os.path.join(run_dir, "report.json")) as f:
             report = json.load(f)
-        assert report["counts"]["replayed"] == 12
-        assert report["replay_model_hash"] == "modelhash-1"
+        assert report["counts"]["reported"] == 12
+        assert report["scored"] == "in_band"
         assert "test-probe" in report["probes"]
         assert os.path.isfile(os.path.join(run_dir, "flagged.jsonl"))
 
-    def test_refuses_while_services_answer_healthchecks(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_runs_while_inference_is_up(self, tmp_path, monkeypatch, capsys):
+        # The refusal this replaces existed because scoring meant replaying a
+        # model on the GPU that serving owned. Nothing here loads a model, so
+        # a healthy service is no longer a reason to refuse -- and monitoring
+        # traffic you cannot monitor while it is being served is not
+        # monitoring.
         class UpResponse:
             status_code = 200
 
         monkeypatch.setattr(
             "requests.get", lambda url, timeout=None, **kwargs: UpResponse()
         )
+        log_dir = write_log_window(tmp_path)
         assert (
             run_cli(
                 [
                     "probe-monitor",
-                    "--probes",
-                    "test-probe",
-                    "--probes-root",
-                    str(tmp_path / "probes"),
-                    "--model",
-                    "test-model",
-                    "--model-hash",
-                    "h",
                     "--log-dir",
-                    str(tmp_path / "logs"),
+                    log_dir,
+                    "--monitor-root",
+                    str(tmp_path / "monitor"),
+                ]
+            )
+            == 0
+        )
+
+    def test_an_empty_window_is_a_failure_naming_the_directory(self, tmp_path, capsys):
+        empty = tmp_path / "logs"
+        empty.mkdir()
+        assert (
+            run_cli(
+                [
+                    "probe-monitor",
+                    "--log-dir",
+                    str(empty),
                     "--monitor-root",
                     str(tmp_path / "monitor"),
                 ]
             )
             == 1
         )
-        printed = capsys.readouterr().err
-        assert "[ERROR] Monitor failed: inference services are up" in printed
-        assert "stop serving first" in printed
+        assert "[ERROR] Monitor failed: no scored records" in capsys.readouterr().err
+

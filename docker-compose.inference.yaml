@@ -281,36 +281,6 @@ services:
       retries: 5
       start_period: 180s
 
-  # Serving request log proxy (interp Phase 3 W3). Opt-in via the "interp" profile:
-  # `make logproxy-up` starts it in front of llama-gpu on 127.0.0.1:8012 and clients that
-  # want their traffic logged point at it. Production ports and default behavior are
-  # untouched; this is a UX guardrail for the single-user threat model, not an auth
-  # boundary. One JSONL record per completed request lands under /mnt/ai-data/interp/logs.
-  interp-logproxy:
-    profiles: ["interp"]
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    build:
-      context: .
-      dockerfile: docker/interp-logproxy/Dockerfile
-    container_name: interp-logproxy
-    restart: "no" # opt-in sidecar, never on boot
-    user: "${UID:-1000}:${GID:-1000}" # match host user for log-dir writes
-    read_only: true
-    environment:
-      - TARGET_URL=${LOGPROXY_TARGET_URL:-http://llama-gpu:8002}
-      - TARGET_SERVICE=${LOGPROXY_TARGET_SERVICE:-llama-gpu}
-      - LISTEN_PORT=8012
-      - LOG_DIR=/logs
-    ports:
-      - "127.0.0.1:8012:8012"
-    volumes:
-      - /mnt/ai-data/interp/logs:/logs:rw
-    networks:
-      - ai-network
-
 # Persistent storage
 volumes:
   open-webui-data:

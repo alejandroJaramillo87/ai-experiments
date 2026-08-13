@@ -89,6 +89,12 @@ services:
       # model.safetensors.
       - HARNESS_MODEL=${HARNESS_MODEL:-/app/models/hf/gemma-4-E4B-it}
       - HARNESS_PORT=8005
+      # Probe scored in-band at every position, and the log the scores land
+      # in. Both empty by default: a served run observes nothing unless interp
+      # asks it to. HARNESS_INTERP_LOG without HARNESS_PROBE still records the
+      # requests, which is what the retired proxy did on its own.
+      - HARNESS_PROBE=${HARNESS_PROBE:-}
+      - HARNESS_INTERP_LOG=${HARNESS_INTERP_LOG:-/app/interp-logs}
       # Steering, set by `make steer-up` and empty otherwise. The same three
       # names interp/steering/wiring.py emits, so a vector wired for the
       # retired llama.cpp path needs no translation beyond its format.
@@ -98,6 +104,11 @@ services:
     volumes:
       - /mnt/ai-data/models/:/app/models:ro
       - /mnt/ai-data/interp/vectors:/app/vectors:ro
+      - /mnt/ai-data/interp/probes:/app/probes:ro
+      # Written, not read: one JSONL record per completed request, which is
+      # what `make probe-monitor` aggregates. The retired request-logging
+      # proxy mounted the same tree for the same reason.
+      - /mnt/ai-data/interp/logs:/app/interp-logs:rw
       - ./sessions/rust-harness:/work
     # start_period covers loading the checkpoint from disk, which dominates
     # startup; the harness answers /v1/health as soon as it is listening, and

@@ -1,7 +1,7 @@
 ##@ Interpretability (interp Phase 0 I1 - separate compose file; GPU inference must be down)
 
-.PHONY: fullprec-down fullprec-up harvest harvest-check-hooks interp-build interp-dirs
-.PHONY: interp-down interp-gc interp-shell interp-smoke interp-up logproxy-down logproxy-up
+.PHONY: harvest harvest-check-hooks interp-build interp-dirs
+.PHONY: interp-down interp-gc interp-shell interp-smoke interp-up
 .PHONY: organism organism-check-seal organism-generate organism-seal organism-verify
 .PHONY: probe-capture probe-eval probe-monitor probe-train sae-eval sae-train steer-down
 .PHONY: steer-extract steer-scorecard steer-up
@@ -84,28 +84,11 @@ probe-train: ## Train and register probes from a capture (ARGS="--capture ... --
 probe-eval: ## Regenerate a probe evaluation report with black-box baselines (serving-dependent; ARGS="--probe ... --label-name ...")
 	uv run python -m interp probe-eval $(ARGS)
 
-probe-monitor: ## Replay a serving-log window and score probes (batch; refuses while inference is up; ARGS="--window 7d --probes ... --model ... --model-hash ...")
-	@./scripts/interp/preflight.sh
+# No preflight, and no --model: the scores are already in the log, taken by
+# the process that served each request. Nothing here loads a model, so this
+# runs while inference is up.
+probe-monitor: ## Aggregate a served-request log window into a probe report (ARGS="--window 7d [--probes ...] [--log-dir ...]")
 	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp probe-monitor $(ARGS)
-
-logproxy-up: ## Start the request-logging proxy on 127.0.0.1:8012 (opt-in; compose profile interp)
-	docker compose -f $(INFER_COMPOSE) --profile interp up -d interp-logproxy
-	@echo "$(GREEN)logproxy up: point clients at http://127.0.0.1:8012 (logs under /mnt/ai-data/interp/logs)$(RESET)"
-
-logproxy-down: ## Stop the request-logging proxy
-	docker compose -f $(INFER_COMPOSE) --profile interp rm -sf interp-logproxy
-
-fullprec-up: ## Start the full-precision monitored path: bf16 endpoint on 8004 plus the proxy pointed at it
-	docker compose -f $(INFER_COMPOSE) --profile interp up -d llama-gpu-bf16
-	LOGPROXY_TARGET_URL=http://llama-gpu-bf16:8004 \
-	LOGPROXY_TARGET_SERVICE=llama-gpu-bf16 \
-	docker compose -f $(INFER_COMPOSE) --profile interp up -d --force-recreate interp-logproxy
-	@echo "$(GREEN)full-precision path up: clients point at http://127.0.0.1:8012$(RESET)"
-	@echo "logs land under /mnt/ai-data/interp/logs/llama-gpu-bf16"
-	@echo "replay with: make probe-monitor ARGS=\"--log-dir /mnt/ai-data/interp/logs/llama-gpu-bf16 ...\""
-
-fullprec-down: ## Stop the full-precision monitored path (leaves port 8002 untouched)
-	docker compose -f $(INFER_COMPOSE) --profile interp rm -sf interp-logproxy llama-gpu-bf16
 
 ##@ Interpretability harvesting (interp Phase 4 P4-D2 - workbench batch job; GPU inference must be down)
 

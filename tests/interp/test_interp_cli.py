@@ -61,7 +61,7 @@ CASES = [
     (["probe-train", "--capture", "c", "--name", "n"], probe_train.cmd),
     (["probe-eval", "--probe", "p", "--label-name", "l"], probe_eval.cmd),
     (
-        ["probe-monitor", "--probes", "a,b", "--model", "m", "--model-hash", "h"],
+        ["probe-monitor", "--probes", "a,b"],
         probe_monitor.cmd,
     ),
     (["sae-train", "--recipe", "r.yaml"], sae_train.cmd),

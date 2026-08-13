@@ -183,6 +183,49 @@ RETIRED: dict[str, tuple[str, str]] = {
         "the reader takes a checkpoint::Image rather than a parsed GGUF, the "
         "same envelope the weights and the probe arrive through",
     ),
+    # R11 retired the request-logging proxy. The harness serves the requests
+    # and scores the probe in the same process, so the record it writes
+    # carries the score; there is nothing left for a sidecar to capture or an
+    # offline replay to recompute. Keys are qualified where the bare word
+    # would fire on live code -- "monitor" and "replay" both still name things
+    # that exist.
+    "interp-logproxy": (
+        "harness-serve",
+        "the harness records each served request itself, so the proxy in "
+        "front of llama-server has nothing left to capture",
+    ),
+    "docker/interp-logproxy/logproxy.py": (
+        "rust-harness/harness/src/interplog.rs",
+        "the record is written by the process that answered the request, "
+        "which is also the process that scored the probe",
+    ),
+    "make logproxy-up": (
+        "make harness-serve",
+        "the serving harness writes the log itself; there is no sidecar to "
+        "start beside it",
+    ),
+    "make fullprec-up": (
+        "make harness-serve",
+        "the bf16 endpoint existed so a replay would match the serving "
+        "precision; in-band scores come from the serving weights, so there is "
+        "no precision gap to close",
+    ),
+    "LOGPROXY_TARGET_URL": (
+        "HARNESS_INTERP_LOG",
+        "the log is written by the service being observed rather than by a "
+        "proxy pointed at it, so there is no target to name",
+    ),
+    "LOGPROXY_TARGET_SERVICE": (
+        "HARNESS_INTERP_LOG",
+        "the log is written by the service being observed rather than by a "
+        "proxy pointed at it, so there is no target to name",
+    ),
+    "replay_fidelity": (
+        "the report's scored field",
+        "the function stated how far a replay's scores were from the serving "
+        "model's; scores are now taken in the serving process, so the gap it "
+        "described does not exist",
+    ),
     "GgufWriter": (
         "synth::build_f32_safetensors",
         "the writer existed so tests could produce the interp artifacts the "

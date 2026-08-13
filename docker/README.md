@@ -15,7 +15,6 @@ wrong.
 | `comfyui/` | image and video generation |
 | `training/` | the training tier, plus a separate export image |
 | `interp/` | the interpretability workbench, and the pinned Neuronpedia overrides |
-| `interp-logproxy/` | logprob-capturing proxy in front of a serving container |
 | `rust-harness/` | the Rust harness image |
 | `agents/` | the agent sandbox and its egress proxy |
 

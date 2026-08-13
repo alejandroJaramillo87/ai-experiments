@@ -1,7 +1,8 @@
-"""W4 monitor tests: malformed records are skipped not fatal, two runs over
-the same window are deterministic with a correct delta, the monitor refuses to
-run while inference is up or a probe's model hash mismatches, and the
-max-records cap and retention policy behave as documented."""
+"""W4 monitor tests: the report is built from the scores the serving process
+recorded, malformed records are skipped rather than fatal, two runs over the
+same window are deterministic with a correct delta, a report is never deltaed
+against one produced a different way, and the max-records cap and retention
+policy behave as documented."""
 
 from __future__ import annotations
 
@@ -12,25 +13,30 @@ import os
 import pytest
 
 from interp.probes.monitor import (
-    HEALTH_URLS,
     MonitorError,
     enforce_retention,
     parse_window,
+    probe_score,
     read_log_window,
     reconstruct_text,
-    replay_fidelity,
     run_monitor,
 )
-from interp.probes.registry import RegistryError
-from tests.interp.conftest import fake_capture
 
 NOW = datetime.datetime(2026, 7, 14, 12, 0, tzinfo=datetime.UTC)
 
 
 def log_record(
-    i: int, text: str | None = "hello world", target_service: str = "llama-gpu"
+    i: int,
+    text: str | None = "hello world",
+    target_service: str = "harness",
+    probe: str | None = "test-probe",
+    score: float | None = None,
 ) -> str:
-    """One synthetic W3 record; text=None yields a record with nothing to replay."""
+    """One synthetic served-request record.
+
+    `text=None` yields a record with nothing to identify; `probe=None` yields
+    one served without a probe loaded. Both are ordinary and both are skipped.
+    """
     stamp = (NOW - datetime.timedelta(hours=1, seconds=i)).strftime(
         "%Y-%m-%dT%H:%M:%S.%fZ"
     )
@@ -44,7 +50,22 @@ def log_record(
         else None,
         "usage": {"completion_tokens": 3},
         "latency_s": 0.1,
+        "status_code": 200,
+        "error": None,
     }
+    if probe:
+        record["probe"] = {
+            "name": probe,
+            "layer": 4,
+            "site": "layer_output",
+            "threshold": 0.5,
+            "scored": 10,
+            "position_first": 0,
+            # Deterministic and spread across the threshold, so the
+            # distribution and the flagged count are both non-trivial.
+            "max_score": score if score is not None else round(0.05 * (i % 20), 4),
+            "flags": [],
+        }
     return json.dumps(record)
 
 
@@ -56,47 +77,34 @@ def log_dir(tmp_path):
     lines = [log_record(i) for i in range(20)]
     lines.insert(5, "{not valid json")
     lines.insert(10, json.dumps({"timestamp": "garbage"}))
-    lines.insert(15, log_record(99, text=None))  # no reconstructable text
+    lines.insert(15, log_record(99, text=None))  # nothing to identify it by
+    lines.insert(18, log_record(98, probe=None))  # served without a probe
     (directory / f"{day}.jsonl").write_text("\n".join(lines) + "\n")
     return str(directory)
 
 
-@pytest.fixture
-def bf16_log_dir(tmp_path):
-    """A window served entirely by the full-precision endpoint."""
-    directory = tmp_path / "logs-bf16"
-    directory.mkdir()
-    day = NOW.strftime("%Y-%m-%d")
-    lines = [log_record(i, target_service="llama-gpu-bf16") for i in range(20)]
-    (directory / f"{day}.jsonl").write_text("\n".join(lines) + "\n")
-    return str(directory)
+class TestProbeScore:
+    """The record is the only source of a score, so what counts as one matters."""
 
+    def test_reads_name_score_and_threshold(self):
+        record = json.loads(log_record(3))
+        assert probe_score(record) == ("test-probe", 0.15, 0.5)
 
-class TestReplayFidelity:
-    """The report must not claim a fidelity the window does not support."""
+    def test_a_record_served_without_a_probe_has_no_score(self):
+        assert probe_score(json.loads(log_record(3, probe=None))) is None
 
-    def test_bf16_endpoint_is_guarded(self):
-        assert "http://127.0.0.1:8004/v1/health" in HEALTH_URLS
-        # appended, not substituted: both production services still block a run
-        assert "http://127.0.0.1:8002/v1/health" in HEALTH_URLS
-        assert "http://127.0.0.1:8003/health" in HEALTH_URLS
+    def test_a_request_that_scored_nothing_has_no_score(self):
+        # max_score is null when the request scored no positions at the
+        # probe's layer. Reading that as 0.0 would drag the distribution down
+        # with a request the probe never saw.
+        record = json.loads(log_record(3))
+        record["probe"]["max_score"] = None
+        assert probe_score(record) is None
 
-    def test_full_precision_window_claims_serving_model(self):
-        note = replay_fidelity(["llama-gpu-bf16"])
-        assert "same precision" in note
-
-    def test_quantized_window_disclaims(self):
-        note = replay_fidelity(["llama-gpu"])
-        assert "quantized" in note
-        assert "not the serving model" in note
-
-    def test_mixed_window_disclaims(self):
-        note = replay_fidelity(["llama-gpu", "llama-gpu-bf16"])
-        assert "mixed-precision" in note
-
-    def test_empty_window_disclaims(self):
-        # no target_service on any record is not evidence of full precision
-        assert "quantized" in replay_fidelity([])
+    def test_a_malformed_probe_block_has_no_score(self):
+        record = json.loads(log_record(3))
+        record["probe"] = "not a dict"
+        assert probe_score(record) is None
 
 
 class TestLogReading:
@@ -107,6 +115,7 @@ class TestLogReading:
         assert skipped["malformed_json"] == 1
         assert skipped["no_timestamp"] == 1
         assert skipped["no_text"] == 1
+        assert skipped["no_scores"] == 1
 
     def test_reconstruct_prompt_and_response(self):
         record = {
@@ -136,111 +145,141 @@ class TestRetention:
 
 
 class TestMonitor:
-    def run(self, probe_dir, log_dir, tmp_path, **kwargs):
+    def run(self, log_dir, tmp_path, **kwargs):
         return run_monitor(
-            [probe_dir],
-            "test-model",
-            "modelhash-1",
             log_dir,
             monitor_root=str(tmp_path / "monitor"),
             window="7d",
-            capture_fn=fake_capture,
-            health_check=lambda: [],
             now=kwargs.pop("now", NOW),
             **kwargs,
         )
 
-    def test_report_and_flagged(self, probe_dir, log_dir, tmp_path):
-        report = self.run(probe_dir, log_dir, tmp_path)
-        assert report["counts"]["replayed"] == 20
+    def test_report_and_flagged(self, log_dir, tmp_path):
+        report = self.run(log_dir, tmp_path)
+        assert report["counts"]["reported"] == 20
         assert report["counts"]["skipped"]["malformed_json"] == 1
         dist = report["probes"]["test-probe"]
         assert {"mean", "p50", "p95", "fraction_over_threshold"} <= set(dist)
+        assert dist["threshold"] == 0.5
         assert os.path.isfile(os.path.join(report["out_dir"], "flagged.jsonl"))
 
-    def test_report_records_target_services(self, probe_dir, log_dir, tmp_path):
-        report = self.run(probe_dir, log_dir, tmp_path)
-        assert report["target_services"] == ["llama-gpu"]
-        assert "quantized" in report["note"]
+    def test_no_model_is_loaded(self, log_dir, tmp_path):
+        # The signature is the contract: there is no replay model and no
+        # health check, because nothing here runs a model. A regression that
+        # reintroduced either would not typecheck against this call.
+        report = self.run(log_dir, tmp_path)
+        assert report["scored"] == "in_band"
+        assert "no replay" in report["note"]
+        assert "replay_model" not in report
 
-    def test_full_precision_window_note(self, probe_dir, bf16_log_dir, tmp_path):
-        report = self.run(probe_dir, bf16_log_dir, tmp_path)
-        assert report["target_services"] == ["llama-gpu-bf16"]
-        assert "same precision" in report["note"]
+    def test_report_records_target_services(self, log_dir, tmp_path):
+        report = self.run(log_dir, tmp_path)
+        assert report["target_services"] == ["harness"]
 
-    def test_deterministic_and_delta(self, probe_dir, log_dir, tmp_path):
-        first = self.run(probe_dir, log_dir, tmp_path)
-        second = self.run(
-            probe_dir, log_dir, tmp_path, now=NOW + datetime.timedelta(minutes=1)
-        )
+    def test_scores_come_from_the_records(self, log_dir, tmp_path):
+        # 20 records with max_score 0.00..0.95 in 0.05 steps, threshold 0.5:
+        # nine are strictly above it. Pinned because this is the whole claim
+        # of the change -- the number is read, not recomputed.
+        report = self.run(log_dir, tmp_path)
+        dist = report["probes"]["test-probe"]
+        assert dist["count"] == 20
+        assert dist["fraction_over_threshold"] == 0.45
+        assert report["counts"]["flagged"] == 9
+
+    def test_deterministic_and_delta(self, log_dir, tmp_path):
+        first = self.run(log_dir, tmp_path)
+        second = self.run(log_dir, tmp_path, now=NOW + datetime.timedelta(minutes=1))
         d1, d2 = first["probes"]["test-probe"], second["probes"]["test-probe"]
         assert d1["mean"] == d2["mean"]  # same window, same scores
         assert d2["delta_vs_previous"]["mean"] == 0.0
         assert d2["delta_vs_previous"]["previous_run"] == first["run"]
 
-    def test_refuses_while_serving(self, probe_dir, log_dir, tmp_path):
-        with pytest.raises(MonitorError, match="services are up"):
-            run_monitor(
-                [probe_dir],
-                "test-model",
-                "modelhash-1",
-                log_dir,
-                monitor_root=str(tmp_path / "monitor"),
-                capture_fn=fake_capture,
-                health_check=lambda: ["http://127.0.0.1:8002/v1/health"],
+    def test_no_delta_against_a_report_scored_another_way(self, log_dir, tmp_path):
+        # A report built by replaying a second model and one built from the
+        # serving process's own scores measure different things. Subtracting
+        # them would present a change of method as drift in the model.
+        monitor_root = tmp_path / "monitor"
+        stale = monitor_root / "2026-07-14T110000Z"
+        stale.mkdir(parents=True)
+        (stale / "report.json").write_text(
+            json.dumps(
+                {
+                    "run": "2026-07-14T110000Z",
+                    "scored": "replay",
+                    "probes": {"test-probe": {"mean": 0.0, "fraction_over_threshold": 0.0}},
+                }
             )
+        )
+        report = self.run(log_dir, tmp_path)
+        assert "delta_vs_previous" not in report["probes"]["test-probe"]
 
-    def test_refuses_model_hash_mismatch(self, probe_dir, log_dir, tmp_path):
-        with pytest.raises(RegistryError, match="model_hash"):
-            run_monitor(
-                [probe_dir],
-                "other-model",
-                "other-hash",
-                log_dir,
-                monitor_root=str(tmp_path / "monitor"),
-                capture_fn=fake_capture,
-                health_check=lambda: [],
-                now=NOW,
-            )
+    def test_probe_filter_reports_what_it_dropped(self, tmp_path):
+        directory = tmp_path / "logs"
+        directory.mkdir()
+        day = NOW.strftime("%Y-%m-%d")
+        lines = [log_record(i, probe="wanted") for i in range(4)]
+        lines += [log_record(i, probe="other") for i in range(4, 7)]
+        (directory / f"{day}.jsonl").write_text("\n".join(lines) + "\n")
+        report = self.run(str(directory), tmp_path, probes=["wanted"])
+        assert set(report["probes"]) == {"wanted"}
+        assert report["counts"]["skipped"]["other_probe"] == 3
 
-    def test_max_records_cap_reports_drops(self, probe_dir, log_dir, tmp_path):
-        report = self.run(probe_dir, log_dir, tmp_path, max_records=5)
-        assert report["counts"]["replayed"] == 5
+    def test_every_probe_in_the_window_is_reported_by_default(self, tmp_path):
+        directory = tmp_path / "logs"
+        directory.mkdir()
+        day = NOW.strftime("%Y-%m-%d")
+        lines = [log_record(i, probe="one") for i in range(3)]
+        lines += [log_record(i, probe="two") for i in range(3, 6)]
+        (directory / f"{day}.jsonl").write_text("\n".join(lines) + "\n")
+        report = self.run(str(directory), tmp_path)
+        assert set(report["probes"]) == {"one", "two"}
+
+    def test_disagreeing_thresholds_are_reported_not_averaged(self, tmp_path):
+        # A probe re-exported mid-window changes the threshold its records
+        # were scored against. The maximum is the conservative reading, and
+        # the disagreement is stated rather than hidden.
+        directory = tmp_path / "logs"
+        directory.mkdir()
+        day = NOW.strftime("%Y-%m-%d")
+        lines = []
+        for i in range(4):
+            record = json.loads(log_record(i))
+            record["probe"]["threshold"] = 0.5 if i < 2 else 0.8
+            lines.append(json.dumps(record))
+        (directory / f"{day}.jsonl").write_text("\n".join(lines) + "\n")
+        report = self.run(str(directory), tmp_path)
+        dist = report["probes"]["test-probe"]
+        assert dist["threshold"] == 0.8
+        assert dist["thresholds_observed"] == [0.5, 0.8]
+
+    def test_max_records_cap_reports_drops(self, log_dir, tmp_path):
+        report = self.run(log_dir, tmp_path, max_records=5)
+        assert report["counts"]["reported"] == 5
         assert report["counts"]["dropped_over_cap"] == 15
 
-    def test_empty_window_refuses(self, probe_dir, tmp_path):
+    def test_empty_window_refuses(self, tmp_path):
         empty = tmp_path / "empty-logs"
         empty.mkdir()
-        with pytest.raises(MonitorError, match="no replayable"):
-            self.run(probe_dir, str(empty), tmp_path)
+        with pytest.raises(MonitorError, match="no scored records"):
+            self.run(str(empty), tmp_path)
 
-    def test_window_longer_than_retention_replays_before_pruning(
-        self, probe_dir, tmp_path
-    ):
-        # A --window longer than the retention period must replay what is
+    def test_window_longer_than_retention_reads_before_pruning(self, tmp_path):
+        # A --window longer than the retention period must read what is
         # still on disk and prune afterwards; retention-first deleted the
-        # window's tail before scoring and then refused an "empty" window
+        # window's tail before reporting and then refused an "empty" window
         log_dir = tmp_path / "logs"
         log_dir.mkdir()
         old_day = NOW - datetime.timedelta(days=40)
         old_name = f"{old_day.strftime('%Y-%m-%d')}.jsonl"
-        record = {
-            "timestamp": old_day.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-            "messages": [{"role": "user", "content": "an old neg request"}],
-            "response_text": "a neg response",
-        }
+        record = json.loads(log_record(1))
+        record["timestamp"] = old_day.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
         (log_dir / old_name).write_text(json.dumps(record) + "\n")
         report = run_monitor(
-            [probe_dir],
-            "test-model",
-            "modelhash-1",
             str(log_dir),
             monitor_root=str(tmp_path / "monitor"),
             window="60d",
-            capture_fn=fake_capture,
-            health_check=lambda: [],
             now=NOW,
         )
-        assert report["counts"]["replayed"] == 1
+        assert report["counts"]["reported"] == 1
         assert report["counts"]["retention_removed_files"] == [old_name]
         assert not (log_dir / old_name).exists()

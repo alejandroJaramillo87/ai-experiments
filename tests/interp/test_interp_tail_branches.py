@@ -359,32 +359,6 @@ class TestScorecardDefaultController:
         assert body["arms"][0]["summary"]["behavior_score_mean"] == 7.0
 
 
-class TestServicesUp:
-    def test_mixed_health_responses(self, monkeypatch):
-        import requests
-
-        class Resp:
-            def __init__(self, code):
-                self.status_code = code
-
-        def fake_get(url, timeout):
-            assert timeout == 3
-            if url.endswith(":8002/v1/health"):
-                return Resp(200)
-            if url.endswith(":8003/health"):
-                raise requests.RequestException("connection refused")
-            return Resp(503)
-
-        monkeypatch.setattr(requests, "get", fake_get)
-        urls = (
-            "http://t:8002/v1/health",
-            "http://t:8003/health",
-            "http://t:9999/health",
-        )
-        # only the 200 counts: refused connections and non-200 codes are down
-        assert mon.services_up(urls) == ["http://t:8002/v1/health"]
-
-
 class TestMonitorWindowEdges:
     SINCE = datetime.datetime(2026, 7, 7, tzinfo=UTC)
     UNTIL = datetime.datetime(2026, 7, 14, tzinfo=UTC)
@@ -404,12 +378,27 @@ class TestMonitorWindowEdges:
     def test_read_window_skips_non_jsonl_blank_and_out_of_window(self, tmp_path):
         log_dir = tmp_path / "logs"
         log_dir.mkdir()
+        scored = {
+            "name": "p",
+            "layer": 0,
+            "site": "layer_output",
+            "threshold": 0.5,
+            "scored": 1,
+            "position_first": 0,
+            "max_score": 0.9,
+            "flags": [],
+        }
         in_window = {
             "timestamp": "2026-07-13T10:00:00.000000Z",
             "prompt": "p",
             "response_text": "r",
+            "probe": scored,
         }
-        out_of_window = {"timestamp": "2026-06-01T10:00:00.000000Z", "prompt": "old"}
+        out_of_window = {
+            "timestamp": "2026-06-01T10:00:00.000000Z",
+            "prompt": "old",
+            "probe": scored,
+        }
         # a valid record in a non-.jsonl file must be ignored entirely
         (log_dir / "README.txt").write_text(json.dumps(in_window) + "\n")
         (log_dir / "2026-07-13.jsonl").write_text(
@@ -424,6 +413,7 @@ class TestMonitorWindowEdges:
             "no_timestamp": 0,
             "out_of_window": 1,
             "no_text": 0,
+            "no_scores": 0,
         }
 
 
@@ -439,20 +429,22 @@ class TestPreviousReport:
         older.mkdir(parents=True)
         (newest / "report.json").write_text("{corrupt")
         (older / "report.json").write_text(
-            json.dumps({"run": "2026-07-01T120000Z", "probes": {"p": {"mean": 0.5}}})
+            json.dumps(
+                {
+                    "run": "2026-07-01T120000Z",
+                    "scored": "in_band",
+                    "probes": {"p": {"mean": 0.5}},
+                }
+            )
         )
         report = mon.previous_report(str(monitor_dir), ["p"])
         assert report["run"] == "2026-07-01T120000Z"
 
 
 class TestRunMonitorEdges:
-    def test_no_probes_refused(self, tmp_path):
-        with pytest.raises(mon.MonitorError, match="no probes given"):
+    def test_a_window_with_no_scored_records_is_refused(self, tmp_path):
+        with pytest.raises(mon.MonitorError, match="no scored records"):
             mon.run_monitor(
-                [],
-                "test-model",
-                "modelhash-1",
                 str(tmp_path / "logs"),
                 monitor_root=str(tmp_path / "monitor"),
-                health_check=lambda: [],
             )
