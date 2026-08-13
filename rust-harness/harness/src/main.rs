@@ -409,6 +409,7 @@ fn run(
     context: Option<usize>,
     compact_at: f32,
     chat: bool,
+    serve: Option<u16>,
     text_only: bool,
     single_thread: bool,
 ) -> Result<()> {
@@ -439,7 +440,27 @@ fn run(
     let alignment = alignment_out.map(|_| generator.record_alignment());
     // The task's outcome is held rather than propagated: the bookkeeping
     // below runs either way, so flags collected before a failure survive it.
-    let result = if chat {
+    let result = if let Some(port) = serve {
+        // Serve mode: the OpenAI-shaped endpoint the interp pipeline calls.
+        // The control vector and probe monitor are already installed on the
+        // model, so a served request runs through the same taps a task does.
+        //
+        // This blocks until the process is signalled, so the snapshot and
+        // probe-flag bookkeeping below is unreachable in this mode. Flushing
+        // interp artifacts from a long-lived server is its own problem and is
+        // not solved here; a served run's observation is the tap seam, not
+        // the end-of-run report.
+        let listener = std::net::TcpListener::bind(("127.0.0.1", port))
+            .with_context(|| format!("binding 127.0.0.1:{port}"))?;
+        let model_name = model
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "synthetic".to_string());
+        eprintln!("[INFO] Serving on http://127.0.0.1:{port} (model {model_name})");
+        let state = std::sync::Arc::new(harness::server::ServerState::new(
+            generator, model_name, sampling, max_tokens,
+        ));
+        return harness::server::serve(listener, state);
+    } else if chat {
         // Chat mode: REPL over the generator, no tools or permissions. The
         // probe monitor and control vector are already installed on the
         // model, so interp flags apply to chat turns unchanged.
@@ -567,7 +588,7 @@ fn main() -> ExitCode {
          [--probe-out <path>] [--alignment-out <path>] [--temperature <f>] [--top-p <f>] \
          [--top-k <n>] [--seed <n>] [--max-tokens <n>] [--context <n>] \
          [--compact-at <f>] [--text-only] [--single-thread] \
-         (--chat | <task description>)";
+         (--chat | --serve <port> | <task description>)";
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     // Snapshot before flag extraction mutates args: cmd.start records the
     // invocation as given, program name excluded (the shape common/obs logs).
@@ -603,6 +624,11 @@ fn main() -> ExitCode {
     // the maximum).
     // --compact-at <f>: automatic-compaction threshold as a fraction of the
     // context budget (default 0.8, must be in (0, 1]).
+    // --serve <port>: serve /v1/chat/completions and /v1/health on loopback
+    // instead of running a task, for the interp pipeline's HTTP clients. The
+    // sampling flags above become the per-request defaults; a request may
+    // override any of them, including the seed. Mutually exclusive with
+    // --chat, and takes no task text.
     let mut model: Option<std::path::PathBuf> = None;
     let mut tokenizer: Option<std::path::PathBuf> = None;
     let mut record: Option<std::path::PathBuf> = None;
@@ -619,6 +645,7 @@ fn main() -> ExitCode {
     let mut max_tokens_arg: Option<std::path::PathBuf> = None;
     let mut context_arg: Option<std::path::PathBuf> = None;
     let mut compact_at_arg: Option<std::path::PathBuf> = None;
+    let mut serve_arg: Option<std::path::PathBuf> = None;
     for (flag, slot) in [
         ("--model", &mut model),
         ("--record", &mut record),
@@ -636,6 +663,7 @@ fn main() -> ExitCode {
         ("--max-tokens", &mut max_tokens_arg),
         ("--context", &mut context_arg),
         ("--compact-at", &mut compact_at_arg),
+        ("--serve", &mut serve_arg),
     ] {
         if let Some(i) = args.iter().position(|a| a == flag) {
             if i + 1 >= args.len() {
@@ -760,7 +788,26 @@ fn main() -> ExitCode {
     } else {
         false
     };
-    if args.is_empty() != chat {
+    // --serve <port>: the OpenAI-shaped endpoint on loopback instead of a
+    // task or a REPL. Mutually exclusive with both, and like --chat it takes
+    // no positional task text.
+    let serve = match serve_arg {
+        Some(v) => match v.to_string_lossy().parse::<u16>() {
+            Ok(p) if p >= 1 => Some(p),
+            _ => {
+                eprintln!("[ERROR] --serve: expected a port in 1..=65535");
+                return ExitCode::from(2);
+            }
+        },
+        None => None,
+    };
+    if chat && serve.is_some() {
+        eprintln!("[ERROR] --chat and --serve are mutually exclusive");
+        return ExitCode::from(2);
+    }
+    // A task is positional text; the two flag modes take none. Exactly one of
+    // the three must be selected.
+    if args.is_empty() != (chat || serve.is_some()) {
         eprintln!("{USAGE}");
         return ExitCode::from(2);
     }
@@ -791,7 +838,12 @@ fn main() -> ExitCode {
     // Run-level obs records in the shared common/obs contract. Usage errors
     // above return before a run id exists, matching the Python dispatch;
     // without a writable OBS_LOG_DIR the log degrades to a silent no-op.
-    let mut run_log = harness::obs::RunLog::begin(if chat { "chat" } else { "task" }, &argv_full);
+    let kind = match (chat, serve.is_some()) {
+        (_, true) => "serve",
+        (true, _) => "chat",
+        _ => "task",
+    };
+    let mut run_log = harness::obs::RunLog::begin(kind, &argv_full);
     match run(
         &root,
         &task,
@@ -809,6 +861,7 @@ fn main() -> ExitCode {
         context,
         compact_at,
         chat,
+        serve,
         text_only,
         single_thread,
     ) {
