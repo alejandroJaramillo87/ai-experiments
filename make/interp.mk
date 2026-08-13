@@ -42,25 +42,31 @@ interp-dirs: ## Create the /mnt/ai-data/interp storage tree on the host
 # Steered service and the host->container mapping of the vectors mount.
 # Mirrors interp/steering/wiring.py steering_env/container_vector_path:
 # a change to the env vars or path map must land on both sides.
-STEER_SERVICE ?= llama-gpu
-VECTOR_CONTAINER = $(patsubst /mnt/ai-data/interp/vectors%,/app/vectors%,$(VECTOR))/vector.gguf
+#
+# The subject is the rust harness, not llama-gpu. R10 retired llama.cpp
+# steering: the two entrypoints no longer read CONTROL_VECTOR, and the vector
+# is safetensors, which llama.cpp cannot load. The three variable names are
+# unchanged because steering_env emits them and the harness serve entrypoint
+# reads them.
+STEER_SERVICE ?= harness-serve
+VECTOR_CONTAINER = $(patsubst /mnt/ai-data/interp/vectors%,/app/vectors%,$(VECTOR))/vector.safetensors
 
 steer-extract: ## Extract and export a control vector in the workbench (ARGS="--method repeng --model ... --pairs ... --out ...")
 	@./scripts/interp/preflight.sh
 	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp steer-extract $(ARGS)
 
-steer-up: ## Recreate the service steered (VECTOR=/mnt/ai-data/interp/vectors/<name> [SCALE=1.0] [LAYER_RANGE="start end"] [STEER_SERVICE=llama-gpu])
+steer-up: ## Recreate the service steered (VECTOR=/mnt/ai-data/interp/vectors/<name> [SCALE=1.0] [LAYER_RANGE="start end"] [STEER_SERVICE=harness-serve])
 	@test -n "$(VECTOR)" || { echo "VECTOR=/mnt/ai-data/interp/vectors/<name> is required"; exit 2; }
-	@test -f "$(VECTOR)/vector.gguf" || { echo "vector not found: $(VECTOR)/vector.gguf"; exit 1; }
+	@test -f "$(VECTOR)/vector.safetensors" || { echo "vector not found: $(VECTOR)/vector.safetensors"; exit 1; }
 	@case "$(VECTOR)" in /mnt/ai-data/interp/vectors/*) ;; *) echo "VECTOR must live under /mnt/ai-data/interp/vectors (the mounted tree)"; exit 1;; esac
 	CONTROL_VECTOR="$(VECTOR_CONTAINER)" CONTROL_VECTOR_SCALE="$(SCALE)" \
 	CONTROL_VECTOR_LAYER_RANGE="$(LAYER_RANGE)" \
-	docker compose -f $(INFER_COMPOSE) up -d --force-recreate $(STEER_SERVICE)
+	docker compose -f $(HARNESS_COMPOSE) up -d --force-recreate $(STEER_SERVICE)
 	@echo "$(GREEN)$(STEER_SERVICE) recreated steered: $(VECTOR_CONTAINER)$(if $(SCALE), scale $(SCALE),)$(RESET)"
 
 steer-down: ## Recreate the service unsteered (restores production state)
 	CONTROL_VECTOR= CONTROL_VECTOR_SCALE= CONTROL_VECTOR_LAYER_RANGE= \
-	docker compose -f $(INFER_COMPOSE) up -d --force-recreate $(STEER_SERVICE)
+	docker compose -f $(HARNESS_COMPOSE) up -d --force-recreate $(STEER_SERVICE)
 	@echo "$(GREEN)$(STEER_SERVICE) recreated unsteered$(RESET)"
 
 steer-scorecard: ## Run the three-arm scorecard against live services (VECTOR=... ATTRIBUTE="..." [ARGS=...])

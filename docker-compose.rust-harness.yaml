@@ -1,19 +1,26 @@
 # docker-compose.rust-harness.yaml
 #
 # Reproducible containerized build/run of the rust-harness binary. Kept in a
-# separate compose file so `make up` never starts it; the harness is an
-# interactive tool, not a daemon. Invoke via the Makefile:
+# separate compose file so `make up` never starts it. Two services:
+# `harness` is an interactive one-shot tool, and `harness-serve` is a daemon
+# exposing the OpenAI-shaped endpoint interp calls. Invoke via the Makefile:
 #   make harness-build
 #   make harness-run ARGS='--model /app/models/hf/<model> <task>'
 #   make harness-chat ARGS='--model /app/models/hf/<model>'
+#   make harness-serve HARNESS_MODEL=/app/models/hf/<model>
+#   make harness-serve-down
 # --model takes a checkpoint directory holding config.json and
 # model.safetensors; a path to a weights file resolves to its directory.
 # or directly: docker compose -f docker-compose.rust-harness.yaml run --rm harness ...
 #
-# The container is for reproducibility, not sandboxing: it has no network
-# needs at runtime (the binary is fully local) and reads models from the
-# same read-only mount the inference services use. Session state
-# (session.jsonl, probe-flags.jsonl) lands in ./sessions/rust-harness.
+# The container is for reproducibility, not sandboxing: the binary is fully
+# local, and reads models from the same read-only mount the inference
+# services use. `harness` therefore takes `network_mode: none`;
+# `harness-serve` cannot, because a published port needs a network, and it
+# binds loopback only.
+#
+# Session state (session.jsonl, probe-flags.jsonl) lands in
+# ./sessions/rust-harness.
 #
 # Run-level obs records are not collected here: the harness writes them under
 # ${OBS_LOG_DIR} (default /mnt/ai-data/logs), which this service does not
@@ -44,3 +51,72 @@ services:
       - ./sessions/rust-harness:/work
     stdin_open: true            # chat mode reads stdin
     tty: false                  # keep stdout clean for piped use; compose run adds a TTY when interactive
+
+  # The same image serving /v1/chat/completions and /v1/health on 8005, for
+  # interp work that wants the taps in the process that answers the request
+  # (R9) and the steering applied there too (R10). A daemon, unlike the
+  # service above: started with `make harness-serve`, and by `make steer-up`,
+  # which recreates it with the control-vector variables set.
+  #
+  # Started explicitly, never by `make up`: it is a GPU-free but
+  # memory-hungry CPU consumer that loads a ~14 GiB checkpoint, and it serves
+  # one generation at a time, so it is not part of the production stack.
+  harness-serve:
+    build:
+      context: .
+      dockerfile: docker/rust-harness/Dockerfile.rust-harness
+    image: rust-harness:latest
+    container_name: rust-harness-serve
+    # Builds the argument list from the environment below; see the script for
+    # why the interactive service does not need it.
+    entrypoint: ["/app/entrypoint.serve.sh"]
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    working_dir: /work
+    # Loopback only, as every other inference service binds. `network_mode:
+    # none` on the interactive service above is not an option here: a
+    # published port needs a network.
+    ports:
+      - "127.0.0.1:8005:8005"
+    environment:
+      # Container-side checkpoint directory. Unlike the llama services this is
+      # not a file: --model takes a directory holding config.json and
+      # model.safetensors.
+      - HARNESS_MODEL=${HARNESS_MODEL:-/app/models/hf/gemma-4-E4B-it}
+      - HARNESS_PORT=8005
+      # Steering, set by `make steer-up` and empty otherwise. The same three
+      # names interp/steering/wiring.py emits, so a vector wired for the
+      # retired llama.cpp path needs no translation beyond its format.
+      - CONTROL_VECTOR=${CONTROL_VECTOR:-}
+      - CONTROL_VECTOR_SCALE=${CONTROL_VECTOR_SCALE:-}
+      - CONTROL_VECTOR_LAYER_RANGE=${CONTROL_VECTOR_LAYER_RANGE:-}
+    volumes:
+      - /mnt/ai-data/models/:/app/models:ro
+      - /mnt/ai-data/interp/vectors:/app/vectors:ro
+      - ./sessions/rust-harness:/work
+    # start_period covers loading the checkpoint from disk, which dominates
+    # startup; the harness answers /v1/health as soon as it is listening, and
+    # the handler never takes the generation lock, so a probe stays fast while
+    # a minutes-long reply is in flight.
+    #
+    # The probe is bash rather than curl because the runtime image is
+    # debian-slim and carries neither curl nor wget; installing one for a
+    # healthcheck would be a package to pin and patch. /dev/tcp issues a real
+    # GET and reads the status line, so this checks the endpoint answers 200
+    # and not merely that the port accepts a connection. CMD rather than
+    # CMD-SHELL: /bin/sh is dash here, which has no /dev/tcp.
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/8005 && printf "GET /v1/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && head -1 <&3 | grep -q " 200 "'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 600s

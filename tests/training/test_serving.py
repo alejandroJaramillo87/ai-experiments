@@ -49,43 +49,60 @@ class _StepClock:
 
 
 def test_registry_matches_compose_definitions():
-    # Parse the compose file rather than re-declaring the constants by hand:
-    # the drift this test exists to catch must fail it.
+    # Parse the compose files rather than re-declaring the constants by hand:
+    # the drift this test exists to catch must fail it. Every entry is checked,
+    # including the harness, which lives in its own compose file under a
+    # different service name -- the two spellings the spec carries.
     import yaml
 
-    with open(serving.INFER_COMPOSE) as f:
-        compose = yaml.safe_load(f)
+    loaded: dict[str, dict] = {}
     for name, spec in SERVICES.items():
-        # Some registry entries are binaries the human starts, not compose
-        # services; they are checked by the block below instead.
-        if name in serving.NON_COMPOSE_SERVICES:
-            continue
-        service = compose["services"][name]
+        if spec.compose_file not in loaded:
+            with open(spec.compose_file) as f:
+                loaded[spec.compose_file] = yaml.safe_load(f)
+        compose = loaded[spec.compose_file]
+        service = compose["services"][spec.service]
         published = [p.split(":")[1] for p in service["ports"]]
         assert str(spec.port) in published, name
         env = "\n".join(service.get("environment", []))
         assert f"${{{spec.model_env}" in env, name
+        # The port spelling differs by probe: llama and vLLM curl a URL with
+        # `:8001`, the harness opens /dev/tcp/127.0.0.1/8005. Both name the
+        # port and the path, which is what must not drift from the registry.
         health_cmd = " ".join(service["healthcheck"]["test"])
-        assert f":{spec.port}{spec.health_path}" in health_cmd, name
+        assert str(spec.port) in health_cmd, name
+        assert spec.health_path in health_cmd, name
     assert SERVICES["vllm-gpu"].chat_url == "http://127.0.0.1:8003/v1/chat/completions"
-    # Every non-compose entry must still be a real registry entry, or the
-    # exclusion above would silently cover a typo.
-    assert serving.NON_COMPOSE_SERVICES <= set(SERVICES)
-    # And its port must not collide with a compose service's.
-    compose_ports = {
-        int(p.split(":")[1])
-        for s in compose["services"].values()
-        for p in s.get("ports", [])
-    }
-    for name in serving.NON_COMPOSE_SERVICES:
-        assert SERVICES[name].port not in compose_ports, name
 
 
-def test_swap_model_refuses_a_service_compose_does_not_define():
-    # The harness takes its checkpoint from --model, so a compose recreate
-    # would report "no such service" and read as a broken compose file.
-    with pytest.raises(ServingError, match="not a compose service"):
-        serving.swap_model(SERVICES["harness"], "/app/models/t.gguf")
+def test_no_two_services_publish_the_same_port():
+    # The registry spans two compose files now, so a collision is no longer
+    # something one file's own validation would catch.
+    ports = [spec.port for spec in SERVICES.values()]
+    assert len(ports) == len(set(ports)), sorted(ports)
+
+
+def test_swap_model_drives_the_compose_file_that_defines_the_service():
+    # The harness is a compose service, but not in the inference file and not
+    # under its registry name. A recreate aimed at the wrong file reports
+    # "no such service", which reads as a broken compose file.
+    seen = {}
+
+    def fake_compose(env, *args, compose_file):
+        seen["args"] = args
+        seen["compose_file"] = compose_file
+        seen["model"] = env.get("HARNESS_MODEL")
+
+    original = common_serving.compose
+    common_serving.compose = fake_compose
+    try:
+        serving.swap_model(SERVICES["harness"], "/app/models/hf/m", env={})
+    finally:
+        common_serving.compose = original
+
+    assert seen["compose_file"] == serving.HARNESS_COMPOSE
+    assert seen["args"][-1] == "harness-serve"
+    assert seen["model"] == "/app/models/hf/m"
 
 
 def test_model_paths_maps_both_forms():

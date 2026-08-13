@@ -13,9 +13,9 @@ import os
 from common.hashing import sha256_file  # noqa: F401  (re-exported)
 from common.serving import (  # noqa: F401  (re-exported)
     CONTAINER_MODELS,
+    HARNESS_COMPOSE,
     HOST_MODELS,
     INFER_COMPOSE,
-    NON_COMPOSE_SERVICES,
     REPO_ROOT,
     SERVICES,
     TRAIN_COMPOSE,

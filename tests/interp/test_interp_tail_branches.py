@@ -333,11 +333,17 @@ class TestScorecardDefaultController:
         assert "Arm: steered scale=2" in printer.messages
 
         # default controller shells out through the configured make entry
-        # point: unsteer first, steer for the scale arm, unsteer to restore
+        # point: unsteer first, steer for the scale arm, unsteer to restore.
+        # STEER_SERVICE is passed explicitly on every call, so the service the
+        # scorecard polls for health cannot drift from the one it steers --
+        # they are spelled differently, `harness` and `harness-serve`.
         invocations = make_log.read_text().splitlines()
-        assert invocations[0] == "steer-down"
-        assert invocations[-1] == "steer-down"
-        assert f"steer-up VECTOR={cfg.vector_dir} SCALE=2" in invocations
+        assert invocations[0] == "steer-down STEER_SERVICE=harness-serve"
+        assert invocations[-1] == "steer-down STEER_SERVICE=harness-serve"
+        assert (
+            f"steer-up VECTOR={cfg.vector_dir} SCALE=2 STEER_SERVICE=harness-serve"
+            in invocations
+        )
 
         # the tuned arm must actually send the tuned system prompt
         assert any(

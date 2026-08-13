@@ -70,7 +70,9 @@ class ScorecardConfig:
     temperature: float = 0.0
     perplexity_cmd: str | None = None  # recorded verbatim when set
     out_dir: str = "/mnt/ai-data/interp/vectors"
-    service: str = "llama-gpu"
+    # Registry key in common/serving.py, not the compose service name;
+    # the two differ for the harness and the controller maps between them.
+    service: str = "harness"
     make: str = "make"  # entry point for the default service controller
     extra: dict = field(default_factory=dict)
 
@@ -135,7 +137,7 @@ class MakeServiceController:
         self,
         make: str,
         vector_dir: str,
-        service: str = "llama-gpu",
+        service: str = "harness",
         health_wait=None,
     ) -> None:
         self.make = make
@@ -159,12 +161,29 @@ class MakeServiceController:
 
         wait_healthy(SERVICES[self.service])
 
+    def _steer_service(self) -> str:
+        """The compose service name the make targets recreate.
+
+        Passed explicitly rather than left to the STEER_SERVICE default, so
+        the service the scorecard polls for health and the service it steers
+        cannot drift apart. They are spelled differently: the registry key is
+        `harness`, and compose calls it `harness-serve`.
+        """
+        from common.serving import SERVICES
+
+        return SERVICES[self.service].service
+
     def steer(self, scale: float) -> None:
-        self._run("steer-up", f"VECTOR={self.vector_dir}", f"SCALE={scale:g}")
+        self._run(
+            "steer-up",
+            f"VECTOR={self.vector_dir}",
+            f"SCALE={scale:g}",
+            f"STEER_SERVICE={self._steer_service()}",
+        )
         self._health_wait()
 
     def unsteer(self) -> None:
-        self._run("steer-down")
+        self._run("steer-down", f"STEER_SERVICE={self._steer_service()}")
         self._health_wait()
 
 
