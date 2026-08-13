@@ -39,7 +39,7 @@ this file owns only the ordering and the reasoning behind it.
 | R7 | P12 probes to safetensors plus JSON sidecar | done |
 | R8 | IF-3 attention weights | done, cheaper than budgeted |
 | R9 | P13 harness serves interp | done, verified against real E4B (RH.14) |
-| R10 | P14 control vector to safetensors | blocked on R9 |
+| R10 | P14 control vector to safetensors | done; RH.15 acceptance not yet run |
 | R11 | IF-4 plus IF-5 together | not started |
 | R12 | IF-3 remaining sites | not started |
 | R13 | IF-6 activation patching | blocked on G2 |
@@ -193,10 +193,11 @@ design.
 ### R7 — P12 probes to safetensors plus JSON sidecar (done)
 
 Independent of everything, and it retires the probe half of the GGUF artifact schema. The
-control vector stays GGUF because llama.cpp reads it as `--control-vector-scaled` and the
-format is not ours to choose; the probe had exactly one reader, so nothing outside this
-repository was served by keeping it. The contract moved to
-[../../schemas/probe_artifact.json](../../schemas/probe_artifact.json).
+control vector stayed GGUF at the time because llama.cpp read it and the format was not ours
+to choose; the probe had exactly one reader, so nothing outside this repository was served by
+keeping it. The contract moved to
+[../../schemas/probe_artifact.json](../../schemas/probe_artifact.json). R10 retired the
+llama.cpp steering path and the control vector followed.
 
 ### R8 — IF-3 attention weights (done, cheaper than budgeted)
 
@@ -248,8 +249,11 @@ contention.
 **Nothing was killed here, deliberately.** The proxy, the replay stage and the caveat all remain
 until a workstation run shows the endpoint answering interp's own clients against real E4B.
 Deleting the working path on the strength of a sandbox test would remove the fallback before the
-replacement is evidenced. Those deletions ride with R10, which the table already marks blocked on
-this item.
+replacement is evidenced. Those deletions ride with R10, which took the steering half: the
+llama.cpp entrypoint blocks and compose variables are gone and `steer-up` recreates the
+harness. The proxy, the replay stage and the caveat are still standing, because the
+artifact-flushing limitation recorded below is what would make the replay stage genuinely
+redundant rather than merely unused.
 
 Three of the original assumptions did not survive contact with the repository, recorded here so
 R10 does not rediscover them.
@@ -294,11 +298,42 @@ long-lived server is unsolved and is the thing that would make the replay stage 
 redundant rather than merely unused. And `swap_model` cannot drive the harness, which takes its
 checkpoint from `--model` rather than a compose env var, so it refuses the entry by name.
 
-### R10 — P14 control vector to safetensors
+### R10 — P14 control vector to safetensors (done, acceptance pending)
 
-Only possible after R9. GGUF then leaves `interp/` and `rust-harness/` entirely, though it
-stays in `training/export/` and `common/serving.py`, which produce and name what llama.cpp
-serves.
+The control vector was the last GGUF artifact this repository wrote for its own consumption,
+and it stayed GGUF for one reason: llama.cpp read it as a scaled control vector, so the format
+belonged to the consumer. R9 gave the harness an endpoint, this item retired the llama.cpp
+steering path, and the choice came back here. GGUF has now left `interp/` and `rust-harness/`
+entirely -- including `gguf.rs` and the fixture writer in `synth.rs` -- and stays in
+`training/export/` and `common/serving.py`, which produce and name what llama.cpp serves.
+
+**What the plan got wrong, recorded so R11 does not repeat it.**
+
+*The harness was already a compose service.* The plan assumed otherwise and budgeted a new
+scorecard controller. `docker-compose.rust-harness.yaml` existed; what it lacked was a daemon,
+because before R9 there was no endpoint to serve. So `harness-serve` joined that file and
+`steer-up`/`steer-down` were repointed rather than replaced: `STEER_SERVICE` already
+parameterized them and `MakeServiceController` already took a service argument.
+
+*The numbering was never off by one.* The retired `direction.` naming was described as
+1-based, and both
+the exporter and the reader in fact named the 0-based block a direction was added to. What was
+1-based was the *floor*: index 0 was refused because repeng numbers from 1 and leaves the
+first block unsteerable. Dropping the floor moved no data, and the prefix was renamed in the
+same step so a pre-R10 image fails at the reader rather than loading correctly right up until
+someone does change the base.
+
+*Deleting the reader cost a test that was not about the reader.*
+`scripts/models/gguf_header_transcript.sh` derived its loadability verdicts by parsing
+`tensor.rs` and `gguf.rs` at run time, a derivation added to fix a real drift defect. With no
+GGUF reader left the verdicts had no referent, so they went and eleven tests went with them.
+The transcription the llama.cpp services still depend on is untouched.
+
+**Not yet evidenced.** Everything above is verified in the sandbox against a synthetic model,
+which proves the format and the wiring and nothing about steering real weights. RH.15 is the
+workstation check, and it also measures what a three-arm sweep costs now that the subject
+decodes at 5.5-5.8 tokens per second instead of on the GPU. If that proves impractical it is a
+finding against a future GPU backend, not a reason to revert.
 
 ## Phase 4 — Intervention
 

@@ -36,12 +36,6 @@ KV_UNIFIED=${KV_UNIFIED:-false}
 CTX_CHECKPOINTS=${CTX_CHECKPOINTS:-""}
 JINJA_ENABLED=${JINJA_ENABLED:-false}
 
-# Steering control vector (interp Phase 3 W1): empty default omits the flag entirely,
-# so production behavior is unchanged unless a vector is explicitly wired in
-CONTROL_VECTOR=${CONTROL_VECTOR:-""}
-CONTROL_VECTOR_SCALE=${CONTROL_VECTOR_SCALE:-""}
-CONTROL_VECTOR_LAYER_RANGE=${CONTROL_VECTOR_LAYER_RANGE:-""}
-
 echo "[HUGEPAGES] Starting llama-server (AVX-512 + hugepage optimization)"
 echo "[HUGEPAGES] Configuration:"
 echo "  - Architecture: znver5 (Zen 5 native)"
@@ -68,103 +62,6 @@ fi
 if [[ "$JINJA_ENABLED" == "true" ]]; then
     echo "  - Jinja templates: enabled"
 fi
-if [[ -n "$CONTROL_VECTOR" ]]; then
-    echo "  - Control vector: ${CONTROL_VECTOR}${CONTROL_VECTOR_SCALE:+ (scale ${CONTROL_VECTOR_SCALE})}"
-fi
-
-# Validate model file exists
-if [ ! -f "${MODEL_PATH}" ]; then
-    echo "[HUGEPAGES] ERROR: Model file not found at ${MODEL_PATH}"
-    exit 1
-fi
-
-# Enable zen5_optimizer via LD_PRELOAD for hugepage mmap()
-export LD_PRELOAD="/app/libzen5_optimizer.so"
-echo "[HUGEPAGES] Memory allocator loaded"
-echo "  LD_PRELOAD: $LD_PRELOAD"
-echo "  zen5_optimizer: intercepts mmap() for allocations >= 1GB (MAP_HUGETLB)"
-
-# Set OpenMP threads to match server threads
-export OMP_NUM_THREADS=$THREADS
-
-# Memory status before loading
-echo "[HUGEPAGES] Memory status before model load:"
-grep -E "MemTotal|MemFree|AnonHugePages|HugePages_Total|HugePages_Free|HugePages_Rsvd" /proc/meminfo | sed 's/^/  /'
-
-# Build command arguments
-CMD_ARGS=(
-    "./server"
-    "--model" "$MODEL_PATH"
-    "--host" "$SERVER_HOST"
-    "--port" "$SERVER_PORT"
-    "--n-gpu-layers" "$N_GPU_LAYERS"
-    "--ctx-size" "$CTX_SIZE"
-    "--batch-size" "$BATCH_SIZE"
-    "--ubatch-size" "$UBATCH_SIZE"
-    "--threads" "$THREADS"
-    "--threads-batch" "$THREADS_BATCH"
-    "--threads-http" "$THREADS_HTTP"
-    "--flash-attn" "$FLASH_ATTN"
-    "--metrics"
-)
-
-# Add optional parameters based on environment variables
-if [[ "$CACHE_REUSE" -gt 0 ]]; then
-    CMD_ARGS+=("--cache-reuse" "$CACHE_REUSE")
-fi
-
-if [[ "$CONT_BATCHING" == "true" ]]; then
-    CMD_ARGS+=("--cont-batching")
-fi
-
-if [[ "$MLOCK" == "true" ]]; then
-    CMD_ARGS+=("--mlock")
-fi
-
-if [[ "$NO_REPACK" == "true" ]]; then
-    CMD_ARGS+=("--no-repack")
-fi
-
-# Advanced server features
-if [[ -n "$CACHE_TYPE_K" ]]; then
-    CMD_ARGS+=("--cache-type-k" "$CACHE_TYPE_K")
-fi
-
-if [[ -n "$CACHE_TYPE_V" ]]; then
-    CMD_ARGS+=("--cache-type-v" "$CACHE_TYPE_V")
-fi
-
-if [[ "$KV_UNIFIED" == "true" ]]; then
-    CMD_ARGS+=("--kv-unified")
-fi
-
-if [[ -n "$CTX_CHECKPOINTS" ]]; then
-    CMD_ARGS+=("--ctx-checkpoints" "$CTX_CHECKPOINTS")
-fi
-
-if [[ "$JINJA_ENABLED" == "true" ]]; then
-    CMD_ARGS+=("--jinja")
-fi
-
-# Steering control vector (interp Phase 3 W1). Vector file must exist: refusing beats
-# llama-server silently starting unsteered while a scorecard believes it is steered
-if [[ -n "$CONTROL_VECTOR" ]]; then
-    if [[ ! -f "$CONTROL_VECTOR" ]]; then
-        echo "[HUGEPAGES] ERROR: Control vector file not found: $CONTROL_VECTOR"
-        exit 1
-    fi
-    if [[ -n "$CONTROL_VECTOR_SCALE" ]]; then
-        CMD_ARGS+=("--control-vector-scaled" "$CONTROL_VECTOR" "$CONTROL_VECTOR_SCALE")
-    else
-        CMD_ARGS+=("--control-vector" "$CONTROL_VECTOR")
-    fi
-    if [[ -n "$CONTROL_VECTOR_LAYER_RANGE" ]]; then
-        # Intentionally unquoted: the value is "START END", two arguments
-        # shellcheck disable=SC2206
-        CMD_ARGS+=("--control-vector-layer-range" $CONTROL_VECTOR_LAYER_RANGE)
-    fi
-fi
-
 echo "[HUGEPAGES] Launch command:"
 echo "  ${CMD_ARGS[*]}"
 

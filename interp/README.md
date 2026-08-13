@@ -32,7 +32,7 @@ The artifact formats crossing into Rust are the reason this tier has cross-langu
 `interp/probes/capture.py` defines the npz capture shard that
 `rust-harness/runtime/src/npz.rs` writes; `interp/probes/export.py` writes the probe the
 harness reads (safetensors plus a JSON sidecar) and `interp/steering/export.py` the
-control-vector GGUF.
+control-vector image (safetensors plus a sibling manifest).
 Those contracts are in `schemas/`.
 
 ## Entry points

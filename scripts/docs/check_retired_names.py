@@ -166,6 +166,13 @@ RETIRED: dict[str, tuple[str, str]] = {
         "tests/models/fixtures/tiny-exporter-written.gguf, where it is still "
         "the one GGUF in the tree no code under test wrote",
     ),
+    "vector.gguf": (
+        "vector.safetensors",
+        "the file inside an artifact directory under "
+        "/mnt/ai-data/interp/vectors/<name>/; llama.cpp read the GGUF and "
+        "R10 retired that path, so a runbook still naming the old file sends "
+        "an operator to a vector `make steer-up` will not find",
+    ),
     "write_control_vector_gguf": (
         "write_control_vector",
         "the exporter writes safetensors, so the container is gone from the "

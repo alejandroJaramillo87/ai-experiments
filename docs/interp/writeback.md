@@ -1,17 +1,18 @@
 # Write-back path runbook
 
 Operating guide for the interpretability write-back path (interp Phase 3, deliverables
-W1-W4): control-vector steering deployed into the llama.cpp services, a probe toolkit with
+W1-W4): control-vector steering deployed into the rust harness serving endpoint, a probe toolkit with
 mandatory black-box baselines, a serving request log, and the async probe monitor. Weights
 are never modified; every intervention acts on activations only. Code lives in `interp/`
 (packages, invoked as `python -m interp <subcommand>` via `interp/commands/`);
 `scripts/interp/` holds only shell helpers (the isolated Neuronpedia and SAEBench
 environments); tests in `tests/interp/`.
 
-A parallel substrate exists for the rust harness runtime: in-band taps,
-steering, and capture in owned code instead of the llama.cpp workarounds,
-producing the same capture shard and control-vector artifacts. See
-[rust-harness-interp.md](rust-harness-interp.md).
+Steering ran against the llama.cpp services until R10, which retired that
+path: the two entrypoints no longer read `CONTROL_VECTOR`, and the artifact is
+safetensors, which llama.cpp cannot load. `make steer-up` now recreates
+`harness-serve`, so the taps and the steering live in the process that answers
+the request. See [rust-harness-interp.md](rust-harness-interp.md).
 
 ## Table of contents
 
@@ -28,25 +29,25 @@ producing the same capture shard and control-vector artifacts. See
 
 | Path | Contents |
 |------|----------|
-| `interp/steering/` | extraction, GGUF export, service wiring, scorecard |
+| `interp/steering/` | extraction, safetensors export, service wiring, scorecard |
 | `interp/steering/prompts/` | fixed prompt sets in git (pairs, behavior, neutral, tuned system prompt) |
 | `interp/probes/` | capture, training, registry, scoring, evaluation, monitor |
 | `docker/interp-logproxy/` | single-file logging reverse proxy and its Dockerfile |
-| `/mnt/ai-data/interp/vectors/<name>/` | `vector.gguf` + `manifest.json` + scorecard runs |
+| `/mnt/ai-data/interp/vectors/<name>/` | `vector.safetensors` + `manifest.json` + scorecard runs |
 | `/mnt/ai-data/interp/activations/<name>/` | capture shards (regenerable cache) |
 | `/mnt/ai-data/interp/probes/<name>/` | `probe.npz` + `manifest.json` + `evaluation.json` |
 | `/mnt/ai-data/interp/logs/<service>/` | `YYYY-MM-DD.jsonl` request records (30-day retention) |
 | `/mnt/ai-data/interp/monitor/<run>/` | `report.json` + `flagged.jsonl` |
 
 Every artifact directory carries a `manifest.json` (model hash, dataset hashes, git SHA,
-artifact xxhash). Downstream tools refuse artifacts whose hashes do not match: the entrypoint
-refuses a missing vector file, `make steer-scorecard` refuses a tampered vector, and the
+artifact xxhash). Downstream tools refuse artifacts whose hashes do not match: the serving
+entrypoint refuses a missing vector file, `make steer-scorecard` refuses a tampered vector, and the
 monitor refuses a probe whose model hash does not match the replay model.
 
 ## W1: steering deployment
 
-Extraction runs at bf16 in the workbench (batch GPU work); serving loads the exported GGUF
-as configuration.
+Extraction runs at bf16 in the workbench (batch GPU work); serving loads the exported
+safetensors image as configuration.
 
 ```bash
 $ make steer-extract ARGS="--method repeng --model google/gemma-2-2b \
@@ -58,10 +59,14 @@ $ make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/honesty-v1 ATTRIBUTE="
 ```
 
 `--method sae_row` exports a single Gemma Scope decoder row instead
-(`--sae-release ... --sae-id ... --feature N --layer L`). The entrypoints add
-`--control-vector` / `--control-vector-scaled` / `--control-vector-layer-range` only when
-`CONTROL_VECTOR` is set; with it unset the launch command is byte-identical to the pre-W1
-form. The scorecard drives three arms (unsteered, tuned system prompt, steered at scales
+(`--sae-release ... --sae-id ... --feature N --layer L`). The serving entrypoint adds
+`--control-vector` / `--control-vector-scale` / `--control-vector-layer-range` only when
+`CONTROL_VECTOR` is set; with it unset the harness serves unsteered.
+
+The subject is the CPU harness, so a sweep is slow: it decodes at 5.5-5.8
+tokens per second, which is roughly 45 seconds for a 256-token arm. Scale
+changes are cheap by comparison, being a recreate rather than a per-call cost.
+The scorecard drives three arms (unsteered, tuned system prompt, steered at scales
 0.5/1/2), scores behavior and fluency with an LLM judge on a different service, and always
 restores the unsteered state, including on failure. Output follows the benchmark JSON
 conventions and is published to `docs/interp/experiments/` whichever arm wins.
@@ -174,12 +179,15 @@ $ make probe-monitor ARGS="--log-dir /mnt/ai-data/interp/logs/llama-gpu-bf16 --w
 Sandboxed agents cannot run these; the human executes and reports back (AGENTS.md).
 
 ```bash
-# Entrypoint regression: byte-identical command with CONTROL_VECTOR unset
-$ docker compose up -d llama-gpu && docker logs llama-gpu | head -40
+# Serving entrypoint: the harness starts unsteered with CONTROL_VECTOR unset
+$ make harness-serve && docker logs rust-harness-serve | head -40
 
-# Steer round trip
+# Steer round trip. Loading the checkpoint takes minutes and the reply is
+# slow, so give curl a timeout matched to max_tokens rather than its default.
 $ make steer-up VECTOR=/mnt/ai-data/interp/vectors/<name> SCALE=1.0
-$ curl -s http://127.0.0.1:8002/v1/chat/completions -d '{"messages":[{"role":"user","content":"hi"}]}'
+$ curl -s --max-time 600 http://127.0.0.1:8005/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":32}'
 $ make steer-down
 
 # Logproxy byte-equivalence (streaming and non-streaming)

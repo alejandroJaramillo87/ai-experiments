@@ -890,11 +890,11 @@ rust captures via `interp/steering`):
 $ mkdir -p /tmp/rh9/steer1 /tmp/rh9/steer2
 $ cd /tmp/rh9/steer1 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
-    --control-vector <vector.gguf> --control-vector-scale 1.0 \
+    --control-vector <vector-dir>/vector.safetensors --control-vector-scale 1.0 \
     "Describe your day in two sentences"
 $ cd /tmp/rh9/steer2 && ~/workspace/ai-experiments/rust-harness/target/release/harness \
     --model /mnt/ai-data/models/hf/<e4b> --text-only \
-    --control-vector <vector.gguf> --control-vector-scale 1.0 \
+    --control-vector <vector-dir>/vector.safetensors --control-vector-scale 1.0 \
     "Describe your day in two sentences"
 ```
 
@@ -1169,3 +1169,39 @@ Two findings for follow-up, neither a defect in the endpoint itself:
 - KV at 4.05 GiB, with its own `[WARN]`: serve mode takes the full trained
   context by default and holds it for the process lifetime. `--context` is
   the lever, and a serving deployment likely wants it set.
+
+### RH.15 Steered scorecard through the harness endpoint
+
+**Status: not yet run.** R10 moved the control vector to safetensors and
+retired llama.cpp steering, so the scorecard's subject is now `harness-serve`
+rather than `llama-gpu`. Everything below is verified in the sandbox against a
+synthetic model, which proves the format and the wiring and nothing about
+steering a real checkpoint.
+
+Requires a control vector extracted against the E4B weights being served; a
+vector whose `manifest.json` records a different `model_hash` is refused, and
+one exported before R10 is a GGUF that no longer loads. Re-export it with
+`make steer-extract`.
+
+```bash
+$ make harness-build
+$ make steer-up VECTOR=/mnt/ai-data/interp/vectors/<name> SCALE=1.0
+$ make steer-scorecard VECTOR=/mnt/ai-data/interp/vectors/<name> \
+    ATTRIBUTE="<behavior the judge scores>"
+$ make steer-down
+```
+
+Expected signal: the three arms complete and the scorecard writes its report,
+with the steered arm differing from the unsteered baseline. The scorecard
+restores the unsteered state on failure as well as on success, so a partial
+run should leave `harness-serve` unsteered.
+
+Record: the wall-clock for the full three-arm sweep, and the per-call latency.
+This is the number that decides whether a GPU backend becomes urgent. RH.14
+measured 5.5-5.8 tokens per second at the default thread width, which puts a
+256-token arm at roughly 45 seconds; a sweep is many such calls. If it proves
+impractical, that is a finding to record against a future GPU backend, not a
+reason to revert R10.
+
+Also record whether the judge service and the subject contend: the judge runs
+on `llama-cpu`, and both are now CPU consumers on the same machine.

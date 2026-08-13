@@ -31,7 +31,7 @@ harness/          bin crate: agent loop, tools, permissions, chat, streaming, ob
 runtime/          lib crate: sessions, sampler, grammar, KV cache, checkpoint, tokenizer, model
 fixtures/         committed fixtures: synthetic tiny-model checkpoints, numpy
                   reference logits and generator script, the probe
-                  (safetensors plus sidecar) and control-vector GGUF written
+                  (safetensors plus sidecar) and control-vector image written
                   by the Python exporters plus their generator;
                   real-model Tier 3 fixtures pending
 ```
@@ -218,6 +218,16 @@ never takes, because `Model` is `Send` but not `Sync` and a health probe queued
 behind a minutes-long CPU reply would read as a dead service. `harness/src/stream.rs`
 is the streamer an SSE body would consume if a streaming client ever appears;
 nothing in interp streams today, so nothing does.
+
+Steering rides on the same service. `--control-vector` takes the safetensors
+image `interp/steering/export.py` writes, one 1-D f32 tensor per steered block
+named `block.<index>`, 0-based; `--control-vector-scale` multiplies it and
+`--control-vector-layer-range "start end"` drops the blocks outside an
+inclusive band as the image is read, so the forward pass sees only the
+directions it must add. The image was GGUF until R10, when retiring llama.cpp
+steering left this the only reader and the format became ours to pick. The
+container equivalent is `harness-serve` in the parent repository's
+`docker-compose.rust-harness.yaml`, which `make steer-up` recreates.
 
 Remaining workstation work: architecture reconciliation against the real E4B
 checkpoint, the rr acceptance run, the Tier 3 fixtures, and the first `--serve`

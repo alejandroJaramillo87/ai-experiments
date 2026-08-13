@@ -1061,7 +1061,7 @@ mod tests {
     #[test]
     fn control_vector_model_hash_reads_the_manifest_beside_the_vector() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let vector = dir.path().join("vector.gguf");
+        let vector = dir.path().join("vector.safetensors");
         assert_eq!(control_vector_model_hash(&vector), None);
         std::fs::write(
             dir.path().join("manifest.json"),

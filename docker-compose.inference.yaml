@@ -19,17 +19,11 @@ services:
       - MODEL_PATH=${LLAMA_CPU_MODEL:-${LLAMA_ZEN5_MODEL}}
       - THREADS=16
       - THREADS_BATCH=16
-      # Steering control vector (interp Phase 3 W1); empty defaults keep behavior unchanged
-      - CONTROL_VECTOR=${CONTROL_VECTOR:-}
-      - CONTROL_VECTOR_SCALE=${CONTROL_VECTOR_SCALE:-}
-      - CONTROL_VECTOR_LAYER_RANGE=${CONTROL_VECTOR_LAYER_RANGE:-}
     ports:
       - "127.0.0.1:8001:8001"
     read_only: true
     volumes:
       - /mnt/ai-data/models/:/app/models:ro
-      # Control-vector GGUFs (interp Phase 3 W1); read-only like the models mount
-      - /mnt/ai-data/interp/vectors:/app/vectors:ro
       # Wikitext-2 corpus for scripts/benchmark/test_perplexity.sh, mounted from the
       # committed copy; the script reads the same directory on the host
       - ./scripts/benchmark/datasets:/app/datasets:ro
@@ -64,10 +58,6 @@ services:
       # Nsight Systems profiling (set NSYS_PROFILE=true to enable)
       - NSYS_PROFILE=${NSYS_PROFILE:-false}
       - NSYS_OUTPUT=${NSYS_OUTPUT:-/app/nsys_output/profile}
-      # Steering control vector (interp Phase 3 W1); empty defaults keep behavior unchanged
-      - CONTROL_VECTOR=${CONTROL_VECTOR:-}
-      - CONTROL_VECTOR_SCALE=${CONTROL_VECTOR_SCALE:-}
-      - CONTROL_VECTOR_LAYER_RANGE=${CONTROL_VECTOR_LAYER_RANGE:-}
     deploy:
       resources:
         reservations:
@@ -84,8 +74,6 @@ services:
     volumes:
       # Model storage mount
       - /mnt/ai-data/models/:/app/models:ro
-      # Control-vector GGUFs (interp Phase 3 W1); read-only like the models mount
-      - /mnt/ai-data/interp/vectors:/app/vectors:ro
       # Nsys profiling output (only used when NSYS_PROFILE=true)
       - /mnt/ai-data/benchmarks/nsys:/app/nsys_output
     networks:
@@ -128,8 +116,6 @@ services:
       - CUDA_VISIBLE_DEVICES=0
       - SERVER_PORT=8004
       - MODEL_PATH=${LLAMA_GPU_BF16_MODEL:-/app/models/gguf/gemma-2-2b-GGUF/gemma-2-2b-bf16.gguf}
-      # No CONTROL_VECTOR here: steering is a production-path concern (W1). A steered monitored
-      # endpoint would score probes against activations the probes were not fitted against.
     deploy:
       resources:
         reservations:
