@@ -38,7 +38,7 @@ this file owns only the ordering and the reasoning behind it.
 | R6 | IF-2 token-to-text alignment | done |
 | R7 | P12 probes to safetensors plus JSON sidecar | done |
 | R8 | IF-3 attention weights | done, cheaper than budgeted |
-| R9 | P13 harness serves interp | endpoint done, workstation run pending |
+| R9 | P13 harness serves interp | done, verified against real E4B (RH.14) |
 | R10 | P14 control vector to safetensors | blocked on R9 |
 | R11 | IF-4 plus IF-5 together | not started |
 | R12 | IF-3 remaining sites | not started |
@@ -237,7 +237,7 @@ milestone the whole plan aims at.
 
 ## Phase 3 — Serving and retiring llama.cpp
 
-### R9 — P13 harness serves interp (endpoint done, workstation run pending)
+### R9 — P13 harness serves interp (done)
 
 `--serve <port>` carries the two paths interp calls, `/v1/chat/completions` and `/v1/health`,
 with a `harness` entry on port 8005 in `common/serving.py`. Placed after the observation stack

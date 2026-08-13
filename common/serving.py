@@ -106,10 +106,13 @@ SERVICES = {
     # generation path takes &mut self, so the endpoint serializes generation
     # behind a mutex. Health stays responsive regardless; only chat queues.
     #
-    # start_budget_s covers loading a ~15 GB checkpoint from disk. It is a
-    # placeholder until the workstation run measures the real figure, and the
-    # CPU backend answers slowly enough that callers should pass an explicit
-    # timeout to chat_completion rather than take the 120s default.
+    # start_budget_s covers loading a ~14 GiB checkpoint from disk. Still a
+    # placeholder: RH.14 measured the endpoint against real E4B but polled an
+    # already-running server, so it timed the poll and not the load.
+    #
+    # The decode rate it did measure is 5.5-5.8 tokens/s at the default thread
+    # width, so callers must pass an explicit timeout: chat_completion's 120s
+    # default covers about 660 tokens, and a 256-token call takes roughly 45s.
     "harness": ServiceSpec(
         "harness",
         8005,

@@ -69,16 +69,20 @@ unchanged, so `--probe` and `--control-vector` are installed on the model that
 answers the request rather than on a replay of it. The wire contract is
 `schemas/harness_chat_endpoint.json`.
 
-Three things this does not yet do, stated because the endpoint is the
-precondition for all three rather than the delivery of them. The log proxy,
-the replay stage and the `replay_fidelity` caveat all remain in place: they are
-retired only once a workstation run shows the endpoint answering interp's own
-clients against real E4B, and deleting the working path before that would
-remove the fallback ahead of the evidence. Serving blocks until the process is
+Verified against real E4B in [RH.14](../verification/rust-harness.md): the
+Python client completes a chat with no change but the registry entry, and two
+greedy requests return byte-identical text.
+
+Two things this does not yet do. The log proxy, the replay stage and the
+`replay_fidelity` caveat all remain in place: RH.14 shows the endpoint answers,
+but retiring them is R10's work and needs the interp commands actually pointed
+at it first. Serving blocks until the process is
 signalled, so the end-of-run probe-flag report is not written under `--serve`;
 flushing interp artifacts from a long-lived server is unsolved. And the CPU
-backend answers slowly enough that callers should pass an explicit `timeout`
-rather than take `chat_completion`'s 120-second default.
+backend decodes at **5.5-5.8 tokens/second** (measured against real E4B in
+[RH.14](../verification/rust-harness.md)), so `chat_completion`'s 120-second
+default covers only about 660 tokens and a 256-token scorecard call takes
+roughly 45 s. Pass an explicit `timeout`, and size a sweep accordingly.
 
 No SAE artifacts are required: contrastive direction extraction and linear
 probes need only captures produced by the harness itself. Published SAEs
@@ -457,7 +461,7 @@ revised live ladder) is recorded in
 | Sliding-versus-global contrast read off a real E4B long-context run | pending | E4B architecture reconciliation |
 | Per-head attention output as a third site | pending | — |
 | `--serve` endpoint answering `common/serving.py` (sandbox) | done | — |
-| The endpoint answering interp's clients against real E4B | pending | workstation run, and CPU-backend latency measured |
+| The endpoint answering interp's clients against real E4B | done | RH.14, 5.5-5.8 tokens/s |
 | The log proxy and the replay stage retired | pending | the workstation run above |
 | Monitor with a probe trained on real-model rust captures | pending | real-model capture on the workstation |
 | Probe quality evaluated separately on prefill and decode positions | pending | real-model capture on the workstation |

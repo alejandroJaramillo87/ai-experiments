@@ -1066,3 +1066,106 @@ Observed:
 ```
 
 Status: PENDING
+
+## RH.14 The endpoint answers the interp client
+
+Implementation: `rust-harness/harness/src/server.rs`,
+`rust-harness/harness/src/main.rs` (`--serve`), `common/serving.py`.
+
+The endpoint is verified in the sandbox against a scripted model, which
+proves the wire contract and nothing about the weights. This entry is the
+real-model half: the harness serving E4B, driven by the same
+`common/serving.py` functions the interp tooling already calls, with no
+client change. It also measures the decode rate those callers need in order
+to size their `timeout`, because `chat_completion` defaults to 120 s and a
+CPU reply can exceed it.
+
+Command (server in one shell, client in another):
+
+```bash
+$ cd rust-harness && cargo build --release --bin harness
+$ ./target/release/harness --model <e4b-checkpoint-dir> --text-only --serve 8005
+```
+
+```bash
+$ .venv/bin/python -c "
+from common import serving
+s = serving.SERVICES['harness']
+print('healthy in', serving.wait_healthy(s), 's')
+r = serving.chat_completion(s, [{'role':'user','content':'Name three primes.'}],
+                            {'temperature': 0.0, 'max_tokens': 64}, timeout=1800)
+print(r)"
+```
+
+Expected signal: `wait_healthy` returns; `chat_completion` returns a dict
+whose `content` is coherent text and whose `usage` counts are internally
+consistent; two identical greedy requests return identical text.
+
+Observed:
+
+```
+[INFO] Weights: 13.90 GiB resident at bf16
+[INFO] Peak RSS after load: 14.04 GiB
+[INFO] KV cache: 131072 tokens, 4.05 GiB f32 resident (sliding layers capped at the window plus a batch of 64)
+[INFO] Rewind horizon: 208 tokens behind the tip once the window fills (compaction past it re-prefills)
+[WARN] KV cache above 2 GiB: consider --context to cap it (compaction keeps long sessions inside the cap)
+[INFO] Session restored: 111 cached tokens from <worktree>/rust-harness/session.kv
+[INFO] Serving on http://127.0.0.1:8005 (model <e4b-checkpoint-dir>)
+
+healthy in 0.01009527400310617 s
+{'content': 'Sure! Here are three prime numbers:\n\n1. 2\n2. 3\n3. 5\n\nA prime
+number is a natural number greater than 1 that has no positive divisors other
+than 1 and itself. In other words, it can only be divided evenly by 1 and the
+number itself', 'usage': {'prompt_tokens': 13, 'completion_tokens': 64,
+'total_tokens': 77}, 'latency_ms': 11659.8}
+
+healthy in 0.010442779006552882 s
+{'content': 'Sure! Here are three prime numbers:\n\n1. 2\n2. 3\n3. 5\n\nA prime
+number is a natural number greater than 1 that has no positive divisors other
+than 1 and itself. In other words, it can only be divided evenly by 1 and the
+number itself', 'usage': {'prompt_tokens': 13, 'completion_tokens': 64,
+'total_tokens': 77}, 'latency_ms': 10969.0}
+```
+
+Status: PASS
+
+The interp client works unmodified: `wait_healthy` and `chat_completion` both
+succeed against the harness with nothing added but a registry entry. `usage`
+is internally consistent (13 + 64 = 77), and `completion_tokens` equals the
+requested budget, so the reply was cut by the budget rather than by an EOS.
+The two greedy requests returned byte-identical text, which is both the
+determinism the endpoint promises and evidence the second request was not
+contaminated by the first: each renders its whole message list, and `sync`
+truncates to the common prefix.
+
+The output is coherent, on topic and correct. That carries more weight here
+than the repository's usual caution about fluent text, because the defect
+this codebase actually hit — an attention scaling that should not have been
+applied, and a missing value-state norm — produced noise rather than prose.
+It is evidence the real-weight forward pass is sound. It is still not a
+correctness claim: the ladder against `transformers` is what would make one,
+and no rung has run at Tier E.
+
+**Decode rate: 64 tokens in 10.97-11.66 s, so 5.5-5.8 tokens/second** at the
+default thread width, against a 13-token prompt — essentially pure decode,
+with prefill too small to separate out. Consequences for callers: a 256-token
+scorecard call costs roughly 45 s, and `chat_completion`'s 120 s default
+covers about 660 tokens. Interp callers should pass an explicit `timeout`.
+
+**`start_budget_s` remains unmeasured.** Both health polls returned in 10 ms
+against an already-running server, so they timed the poll and not the load.
+The 600 s in the registry is still a placeholder; timing a cold start until
+the serving line appears is what would replace it.
+
+Two findings for follow-up, neither a defect in the endpoint itself:
+
+- `Session restored: 111 cached tokens` — the server inherited an earlier
+  interactive run's KV cache, because it was started from the worktree where
+  that run left `session.kv`. Harmless, and the identical replies above show
+  it: `sync` reconciles against the common prefix. But a server restoring a
+  conversation it will never continue is confusing, and `--serve` returns
+  before the save path, so it restores and never writes. Serve mode should
+  probably not participate in session persistence at all.
+- KV at 4.05 GiB, with its own `[WARN]`: serve mode takes the full trained
+  context by default and holds it for the process lifetime. `--context` is
+  the lever, and a serving deployment likely wants it set.
