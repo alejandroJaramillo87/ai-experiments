@@ -84,12 +84,12 @@ what the interpretability pipelines record. Because BF16 is the published storag
 Gemma 4 and the format the training tier emits, the widening to f32 is exact and the
 checkpoint's own values reach the forward pass unrounded.
 
-The GGUF reader that remains in the runtime
-([`rust-harness/runtime/src/gguf.rs`](../../rust-harness/runtime/src/gguf.rs), with the
-`GGML_F32`, `GGML_F16`, and `GGML_BF16` constants beside it) no longer serves a model path.
-It reads the probe and control-vector artifacts the Python interp exporters write, per
-[`schemas/gguf_artifacts.json`](../../schemas/gguf_artifacts.json). Model weights arrive as
-`config.json` plus `model.safetensors` and nothing else.
+No GGUF reader remains in the runtime. `gguf.rs` and the `GGML_*` storage-type
+constants beside it were deleted at R10, along with the last artifact that needed them: the
+control vector, which is now a safetensors image
+([`schemas/control_vector_artifact.json`](../../schemas/control_vector_artifact.json)) as the
+probe already was. Every tensor the runtime reads — weights, probes, control vectors — arrives
+as safetensors, widened through one decoder.
 
 **training.** `precision.dtype` in
 [`training/recipes/schema.py`](../../training/recipes/schema.py) (`PrecisionConfig`) selects

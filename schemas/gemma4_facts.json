@@ -9,9 +9,7 @@
     "docs/models/gemma-4.md (the prose restatement)"
   ],
   "readers": [
-    "rust-harness/runtime/src/model/cpu.rs (Config, GGUF key reads, layer schedule, rope)",
-    "rust-harness/runtime/src/gguf.rs (gemma4.* metadata keys)",
-    "rust-harness/runtime/src/synth.rs (gemma4.* keys written by the fixture writer)",
+    "rust-harness/runtime/src/model/cpu.rs (Config, config.json key reads, layer schedule, rope)",
     "rust-harness/fixtures/reference_logits.py (independent Python reader of the same keys)",
     "training/calculator/components.py (explicit_head_dim, parameter accounting, use_double_wide_mlp)",
     "training/models/families.py (model_type gemma4 / gemma4_text registry)",

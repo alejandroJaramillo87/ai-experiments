@@ -124,8 +124,7 @@ rust-harness/
       sampler.rs        # temperature, top-k, top-p, grammar constraints
       grammar.rs        # tool-call JSON grammar compilation
       kv.rs             # per-layer cache allocation and delta prefill
-      checkpoint.rs     # config.json and model.safetensors: the weight loader
-      gguf.rs           # the control-vector artifact only, not weights
+      checkpoint.rs     # config.json and model.safetensors: weights and the interp artifacts
       tokenizer.rs      # wrapper over the `tokenizers` crate, reading tokenizer.json
       model/cpu.rs      # hand-rolled CPU backend, tap and steering seams
       model/mock.rs     # scripted backend the sandbox tests run against
@@ -175,14 +174,15 @@ Three consequences the rest of this document depends on:
 - **Nothing is mapped.** Only the framed safetensors JSON header comes into
   memory; each tensor is read at its offset when a caller asks for it. The crate
   is `#![forbid(unsafe_code)]`, which it could not be while a memory map existed.
-- **GGUF survives for one artifact.** `runtime/src/gguf.rs` still parses the
-  container, but only for the control-vector image `interp/steering/export.py`
-  writes (`schemas/gguf_artifacts.json`). That one stays GGUF because llama.cpp
-  reads it as `--control-vector-scaled`, so the format is not this repository's
-  to choose. The probe followed the weights out: it is a safetensors image plus
-  a JSON sidecar (`schemas/probe_artifact.json`), read through the same
-  `checkpoint.rs` envelope the weights use. `gguf.rs` is not a weight loader and
-  is now one artifact away from being nothing at all.
+- **GGUF is gone.** `gguf.rs` parsed the container for the interp
+  artifacts after P8b took away the weight path, and R10 deleted it with the
+  last of them. The control vector had stayed GGUF only because llama.cpp read
+  it as `--control-vector-scaled`, which made the format the consumer's choice
+  rather than this repository's; retiring that steering path returned the
+  choice here, and the answer was the one the probe had already reached at R7.
+  Both artifacts are now a safetensors image plus a JSON file beside it
+  (`schemas/probe_artifact.json`, `schemas/control_vector_artifact.json`), read
+  through the same `checkpoint.rs` envelope the weights use.
 
 **Model graph.** No dynamic graph construction: the forward pass is written out
 once as straight-line Rust rather than assembled from a graph description, which

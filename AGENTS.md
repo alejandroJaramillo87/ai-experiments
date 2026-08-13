@@ -80,12 +80,12 @@ These are standing instructions for anyone (human or agent) making changes in th
   metadata can only imply what a checkpoint states. Everything still producing or naming GGUF
   does so for llama.cpp to serve, and stays: `training/export/` (`convert_hf_to_gguf` →
   `llama-quantize` → the served model, plus the manifest sha256 `serve_eval.py` verifies),
-  `common/serving.py`'s `quant_from_name`, and `interp/steering/export.py`, whose `vector.gguf`
-  the llama-cpu and llama-gpu entrypoints pass as `--control-vector-scaled`. The one GGUF
-  reader left in `rust-harness` exists for that control-vector image
-  (`schemas/gguf_artifacts.json`); it goes when the harness serves the interp pipeline itself.
-  The probe used to be the second, and is not: it had no llama.cpp reader, so it followed the
-  weights to safetensors plus a JSON sidecar (`schemas/probe_artifact.json`).
+  and `common/serving.py`'s `quant_from_name`. **Nothing under `rust-harness/` or `interp/`
+  reads or writes GGUF.** Both interp artifacts left it once each had no consumer outside
+  this tree: the probe at R7, and the control vector at R10, when retiring llama.cpp steering
+  removed the reader whose format it had been. Each is now a safetensors image plus a JSON
+  file beside it (`schemas/probe_artifact.json`,
+  `schemas/control_vector_artifact.json`).
 
 ## Where things are
 

@@ -9,12 +9,11 @@
  * load path. Weights are deterministic in the seed, and the committed Python
  * reference recomputes logits from the same files.
  *
- * GgufWriter stays here for a different job: the probe and control-vector
- * images the Python interp exporters write are GGUF, and the tests that read
- * them need a writer.
+ * The GGUF writer that used to live here went with R10. It existed so tests
+ * could produce the probe and control-vector images the Python interp
+ * exporters wrote; both artifacts are safetensors now, and the workspace
+ * neither reads nor writes GGUF.
  */
-
-use super::tensor::{GGML_BF16, GGML_F32};
 
 /// SentencePiece space marker, U+2581. The normalizer substitutes it for a
 /// space and the decoder substitutes it back, so it appears in both halves of
@@ -343,143 +342,6 @@ impl WeightStream {
     /// weights that follow are unaffected.
     fn norm_tensor(&mut self, n: usize) -> Vec<f32> {
         (0..n).map(|_| 1.0 + self.next()).collect()
-    }
-}
-
-/// GGUF image writer (v3, little-endian). Public so tests and fixture
-/// generation share one encoder; the gguf.rs parser is its inverse.
-#[derive(Default)]
-pub struct GgufWriter {
-    kv: Vec<u8>,
-    kv_count: u64,
-    directory: Vec<u8>,
-    tensor_count: u64,
-    data: Vec<u8>,
-    alignment: usize,
-}
-
-impl GgufWriter {
-    pub fn new() -> Self {
-        Self {
-            alignment: 32,
-            ..Self::default()
-        }
-    }
-
-    fn string_into(buf: &mut Vec<u8>, s: &str) {
-        buf.extend((s.len() as u64).to_le_bytes());
-        buf.extend(s.as_bytes());
-    }
-
-    fn kv_header(&mut self, key: &str, value_type: u32) {
-        Self::string_into(&mut self.kv, key);
-        self.kv.extend(value_type.to_le_bytes());
-        self.kv_count += 1;
-    }
-
-    pub fn kv_u32(&mut self, key: &str, v: u32) {
-        self.kv_header(key, 4);
-        self.kv.extend(v.to_le_bytes());
-    }
-
-    pub fn kv_f32(&mut self, key: &str, v: f32) {
-        self.kv_header(key, 6);
-        self.kv.extend(v.to_le_bytes());
-    }
-
-    pub fn kv_str(&mut self, key: &str, v: &str) {
-        self.kv_header(key, 8);
-        Self::string_into(&mut self.kv, v);
-    }
-
-    pub fn kv_arr_str(&mut self, key: &str, vs: &[String]) {
-        self.kv_header(key, 9);
-        self.kv.extend(8u32.to_le_bytes());
-        self.kv.extend((vs.len() as u64).to_le_bytes());
-        for v in vs {
-            Self::string_into(&mut self.kv, v);
-        }
-    }
-
-    pub fn kv_arr_f32(&mut self, key: &str, vs: &[f32]) {
-        self.kv_header(key, 9);
-        self.kv.extend(6u32.to_le_bytes());
-        self.kv.extend((vs.len() as u64).to_le_bytes());
-        for v in vs {
-            self.kv.extend(v.to_le_bytes());
-        }
-    }
-
-    pub fn kv_arr_i32(&mut self, key: &str, vs: &[i32]) {
-        self.kv_header(key, 9);
-        self.kv.extend(5u32.to_le_bytes());
-        self.kv.extend((vs.len() as u64).to_le_bytes());
-        for v in vs {
-            self.kv.extend(v.to_le_bytes());
-        }
-    }
-
-    /// Append an f32 tensor: directory entry plus aligned payload.
-    pub fn tensor_f32(&mut self, name: &str, dims: &[u64], values: &[f32]) {
-        self.tensor(name, dims, values, TensorStorage::F32);
-    }
-
-    /// Append a tensor in the given storage type.
-    ///
-    /// Bfloat16 values are written by truncating the low 16 mantissa bits
-    /// rather than rounding. Truncation makes `bf16_to_f32` of the result
-    /// exactly `f32::from_bits(v.to_bits() & 0xffff_0000)`, so a caller can
-    /// state the expected f32 model without reimplementing a rounding rule.
-    pub fn tensor(&mut self, name: &str, dims: &[u64], values: &[f32], storage: TensorStorage) {
-        assert_eq!(
-            dims.iter().product::<u64>() as usize,
-            values.len(),
-            "tensor {name}: dims do not match value count"
-        );
-        while !self.data.len().is_multiple_of(self.alignment) {
-            self.data.push(0);
-        }
-        Self::string_into(&mut self.directory, name);
-        self.directory.extend((dims.len() as u32).to_le_bytes());
-        for d in dims {
-            self.directory.extend(d.to_le_bytes());
-        }
-        let ggml_type = match storage {
-            TensorStorage::F32 => GGML_F32,
-            TensorStorage::Bf16 => GGML_BF16,
-        };
-        self.directory.extend(ggml_type.to_le_bytes());
-        self.directory
-            .extend((self.data.len() as u64).to_le_bytes());
-        self.tensor_count += 1;
-        match storage {
-            TensorStorage::F32 => {
-                for v in values {
-                    self.data.extend(v.to_le_bytes());
-                }
-            }
-            TensorStorage::Bf16 => {
-                for v in values {
-                    self.data.extend(((v.to_bits() >> 16) as u16).to_le_bytes());
-                }
-            }
-        }
-    }
-
-    /// Assemble the final image: header, metadata, directory, aligned data.
-    pub fn finish(self) -> Vec<u8> {
-        let mut out = Vec::new();
-        out.extend(super::gguf::GGUF_MAGIC.to_le_bytes());
-        out.extend(super::gguf::GGUF_VERSION.to_le_bytes());
-        out.extend(self.tensor_count.to_le_bytes());
-        out.extend(self.kv_count.to_le_bytes());
-        out.extend(&self.kv);
-        out.extend(&self.directory);
-        while out.len() % self.alignment != 0 {
-            out.push(0);
-        }
-        out.extend(&self.data);
-        out
     }
 }
 
@@ -890,7 +752,7 @@ pub fn build_tiny_safetensors(spec: &TinySpec) -> anyhow::Result<Vec<u8>> {
                     Dtype::F32,
                     values.flat_map(|v| v.to_le_bytes()).collect::<Vec<u8>>(),
                 ),
-                // Truncating, matching `GgufWriter::tensor`.
+                // Truncating: bf16 is the top 16 bits of the f32.
                 TensorStorage::Bf16 => (
                     Dtype::BF16,
                     values
@@ -1025,14 +887,25 @@ mod tests {
                     t.hf_shape(),
                     t.dims
                 );
-                // The payload is compared through the decoder the loader will
-                // use, so a byte-order or dtype error shows as a value error.
-                let ggml_type = match t.storage {
-                    TensorStorage::F32 => GGML_F32,
-                    TensorStorage::Bf16 => GGML_BF16,
+                // The payload is compared through the decoders the loader
+                // uses, so a byte-order or dtype error shows as a value error.
+                let stored: Vec<f32> = match t.storage {
+                    TensorStorage::F32 => view
+                        .data()
+                        .chunks_exact(4)
+                        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                        .collect(),
+                    TensorStorage::Bf16 => view
+                        .data()
+                        .chunks_exact(2)
+                        .map(|c| crate::tensor::bf16_to_f32(u16::from_le_bytes([c[0], c[1]])))
+                        .collect(),
                 };
-                let stored =
-                    crate::tensor::dequantize(ggml_type, view.data(), t.values.len()).unwrap();
+                assert_eq!(
+                    stored.len(),
+                    t.values.len(),
+                    "{label}: {name} element count"
+                );
                 // What the loader will compute from what it read. No shift
                 // in either direction now: the stored value is the multiplier.
                 let got: Vec<f32> = stored.clone();

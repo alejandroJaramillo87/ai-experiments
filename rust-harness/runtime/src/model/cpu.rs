@@ -1196,7 +1196,7 @@ const BLOCK_PREFIX: &str = "block.";
 /// steered stream that downstream blocks actually consume.
 ///
 /// What changed at R10 is which indices are legal, not where a direction
-/// lands. The retired `direction.<layer>` images llama.cpp read also named
+/// lands. The retired `direction.` images llama.cpp read also named
 /// the 0-based block a direction was added to, but refused index 0: repeng
 /// trains key `k` on the output of block `k` and upstream numbers from 1, so
 /// the first block was unsteerable for no reason this backend shares. With
@@ -6569,7 +6569,7 @@ mod tests {
 
     #[test]
     fn block_zero_is_steerable() {
-        // The retired `direction.<layer>` naming refused index 0, so block 0
+        // The retired `direction.` naming refused index 0, so block 0
         // could not be steered even though the backend can steer it. This is
         // the assertion that the floor is gone rather than merely unused.
         let cv =

@@ -130,14 +130,15 @@ the ability to *prefer* BF16. BF16 is the reference format rather than a tolerat
 what Gemma 4 is published in and what the training tier produces, so widening it to f32 is
 lossless and the checkpoint's own values reach the forward pass unrounded.
 
-**What GGUF is still for.** [`rust-harness/runtime/src/gguf.rs`](../../rust-harness/runtime/src/gguf.rs)
-and the `GGML_F32`, `GGML_F16`, and `GGML_BF16` constants in `tensor.rs` survive to read the
-control-vector image `interp/steering/export.py` writes
-([`schemas/gguf_artifacts.json`](../../schemas/gguf_artifacts.json)) — one artifact, kept in
-that container because llama.cpp reads it too. `GGML_Q8_0` is gone with the model path that
-needed it, and the probe followed the weights to safetensors
-([`schemas/probe_artifact.json`](../../schemas/probe_artifact.json)). That reader goes when the
-harness serves the interp pipeline itself.
+**GGUF is no longer read here.** `gguf.rs` and the `GGML_*` storage-type constants
+in `tensor.rs` were deleted at R10. They had survived P8b to read one artifact, the
+control-vector image `interp/steering/export.py` writes, kept in that container only because
+llama.cpp read it too; retiring the llama.cpp steering path removed that reason, and the
+artifact followed the probe to safetensors
+([`schemas/control_vector_artifact.json`](../../schemas/control_vector_artifact.json),
+[`schemas/probe_artifact.json`](../../schemas/probe_artifact.json)). `GGML_Q8_0` had already
+gone with the model path that needed it. What remains in `tensor.rs` is the F16 and BF16
+widening the safetensors loader uses, which is a dtype question and not a container one.
 
 **What would change this decision:** a checkpoint we need to read that is published only in a
 quantized format, which would be a decision about which model to study rather than about the

@@ -31,7 +31,6 @@ pub mod conformance;
 pub mod digest;
 pub mod envelope;
 pub mod eval;
-pub mod gguf;
 pub mod grammar;
 pub mod kv;
 pub mod ladder;

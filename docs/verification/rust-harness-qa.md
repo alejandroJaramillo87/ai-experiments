@@ -78,7 +78,7 @@ no-subscriber test, and fixed by serializing them; see the campaign log.
 Scope: `runtime/src/checkpoint.rs`, `runtime/src/tensor.rs`,
 `runtime/src/tokenizer.rs`, `runtime/src/model/cpu.rs`,
 `runtime/src/synth.rs`, `fixtures/reference_logits.py`, and
-`runtime/src/gguf.rs` — which is no longer the model reader, only the parser
+`gguf.rs` — which is no longer the model reader, only the parser
 for the probe and control-vector artifacts.
 
 Implementation: `rust-harness/runtime/src/tensor.rs`,
@@ -594,7 +594,7 @@ sixteen, including one critical and five high.
   mid-generation error.
 - **F-24 (low).** `runtime/src/model/mod.rs:45` — the `Model` trait default
   bodies have no coverage; every shipped implementation overrides them.
-- **F-26 (low).** `runtime/src/gguf.rs:125` — parsing has hand-written
+- **F-26 (low).** `gguf.rs:125` — parsing has hand-written
   adversarial tests for specific fields but no seeded mutation corpus
   asserting that byte flips and truncations always return an error rather
   than panicking or over-allocating.

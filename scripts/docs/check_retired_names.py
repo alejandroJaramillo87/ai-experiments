@@ -154,8 +154,46 @@ RETIRED: dict[str, tuple[str, str]] = {
     "python-probe.gguf": (
         "python-probe.safetensors",
         "the committed probe fixture follows its format; note that this file "
-        "also served tests/models/conftest.py as a generic small GGUF, which "
-        "now uses python-control-vector.gguf",
+        "also served tests/models/conftest.py as a generic small GGUF, a job "
+        "that passed to python-control-vector.gguf and then, at R10, to the "
+        "frozen tests/models/fixtures/tiny-exporter-written.gguf",
+    ),
+    "python-control-vector.gguf": (
+        "python-control-vector/vector.safetensors",
+        "the control vector left GGUF at R10 and the fixture became the "
+        "artifact directory the harness actually consumes, image plus sibling "
+        "manifest; the old file was not deleted but frozen and moved to "
+        "tests/models/fixtures/tiny-exporter-written.gguf, where it is still "
+        "the one GGUF in the tree no code under test wrote",
+    ),
+    "write_control_vector_gguf": (
+        "write_control_vector",
+        "the exporter writes safetensors, so the container is gone from the "
+        "name; the function otherwise does the same job",
+    ),
+    "ControlVector::from_gguf": (
+        "ControlVector::from_image",
+        "the reader takes a checkpoint::Image rather than a parsed GGUF, the "
+        "same envelope the weights and the probe arrive through",
+    ),
+    "GgufWriter": (
+        "synth::build_f32_safetensors",
+        "the writer existed so tests could produce the interp artifacts the "
+        "Python exporters wrote as GGUF; both are safetensors now, and "
+        "nothing in the workspace emits GGUF",
+    ),
+    "schemas/gguf_artifacts.json": (
+        "schemas/control_vector_artifact.json",
+        "the contract covered both interp artifacts while both were GGUF; the "
+        "probe left at R7 and the control vector at R10, so what remained was "
+        "one artifact named after a container it no longer uses",
+    ),
+    "direction.<layer>": (
+        "block.<index>",
+        "control-vector tensors are named for the 0-based block they steer, "
+        "and index 0 is legal; the retired spelling refused it because "
+        "llama.cpp and repeng number from 1. The prefix changed with the "
+        "floor so a pre-R10 image fails to load rather than loading",
     ),
     "gguf-info": (
         "checkpoint-info",

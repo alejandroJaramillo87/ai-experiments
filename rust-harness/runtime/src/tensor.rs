@@ -1,59 +1,22 @@
 /*
  * tensor — tensor payload access and dequantization to f32.
  *
- * Two consumers share this module: the GGUF artifact readers (probes and
- * control vectors) reach the payload through `GgufFile`, and the safetensors
- * checkpoint loader builds the `Weight` values below.
+ * One consumer now: the safetensors checkpoint loader, which widens through
+ * the two decoders below and builds the `Weight` values beside them. The
+ * GGUF-side helpers -- `element_count`, `byte_size`, `dequantize`,
+ * `tensor_bytes`, `load_tensor` and the GGML storage-type ids -- went with
+ * R10, which retired the last GGUF artifact this workspace read.
  *
- * The CPU backend computes in plain f32, so every supported storage type
- * dequantizes to a dense Vec<f32> at load time. Supported types are the ones
- * the artifacts actually use: F32, F16 and BF16; anything
- * else is a hard error naming the tensor, so a new quantization shows up at
- * load time rather than as silent garbage.
+ * The CPU backend computes in plain f32, so a narrower storage type widens at
+ * load time. Supported types are F32, F16 and BF16, the ones Gemma 4
+ * checkpoints actually use; anything else is a hard error naming the tensor,
+ * raised by the loader, so a new dtype shows up at load time rather than as
+ * silent garbage.
  *
  * BF16 is the published storage type for Gemma 4 and the format the training
  * tier produces, so widening it to f32 is lossless: the checkpoint's own
  * values reach the forward pass unrounded.
  */
-
-use anyhow::{bail, ensure, Result};
-
-use super::gguf::{GgufFile, TensorInfo};
-
-// GGML storage type ids, from the GGUF specification.
-pub const GGML_F32: u32 = 0;
-pub const GGML_F16: u32 = 1;
-pub const GGML_BF16: u32 = 30;
-
-/// Number of elements a tensor holds; empty dims is a scalar.
-///
-/// Dimensions come straight from the file, and GGUF bounds only their count
-/// (at most four), not their magnitude. The product is therefore computed
-/// with checked arithmetic: a hostile or corrupt header must be a positioned
-/// error, never an overflow panic (debug) or a wrapped small size (release).
-pub fn element_count(dims: &[u64]) -> Result<usize> {
-    let mut n: u64 = 1;
-    for &d in dims {
-        n = n
-            .checked_mul(d)
-            .ok_or_else(|| anyhow::anyhow!("tensor dimensions overflow: {dims:?}"))?;
-    }
-    usize::try_from(n).map_err(|_| anyhow::anyhow!("tensor element count {n} exceeds usize"))
-}
-
-/// Stored byte size for `n` elements of the given GGML type.
-pub fn byte_size(ggml_type: u32, n: usize) -> Result<usize> {
-    let scaled = |factor: usize| {
-        n.checked_mul(factor)
-            .ok_or_else(|| anyhow::anyhow!("tensor byte size overflows for {n} elements"))
-    };
-    Ok(match ggml_type {
-        GGML_F32 => scaled(4)?,
-        GGML_F16 => scaled(2)?,
-        GGML_BF16 => scaled(2)?,
-        t => bail!("unsupported GGML tensor type {t}"),
-    })
-}
 
 /// bfloat16 to f32. Exact and total, for every input.
 ///
@@ -89,31 +52,6 @@ pub fn f16_to_f32(bits: u16) -> f32 {
     f32::from_bits(word)
 }
 
-/// Dequantize `bytes` holding `n` elements of `ggml_type` into f32.
-pub fn dequantize(ggml_type: u32, bytes: &[u8], n: usize) -> Result<Vec<f32>> {
-    let expected = byte_size(ggml_type, n)?;
-    ensure!(
-        bytes.len() == expected,
-        "tensor payload is {} bytes, type {ggml_type} with {n} elements needs {expected}",
-        bytes.len()
-    );
-    Ok(match ggml_type {
-        GGML_F32 => bytes
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
-            .collect(),
-        GGML_F16 => bytes
-            .chunks_exact(2)
-            .map(|c| f16_to_f32(u16::from_le_bytes(c.try_into().unwrap())))
-            .collect(),
-        GGML_BF16 => bytes
-            .chunks_exact(2)
-            .map(|c| bf16_to_f32(u16::from_le_bytes(c.try_into().unwrap())))
-            .collect(),
-        t => bail!("unsupported GGML tensor type {t}"),
-    })
-}
-
 /// Independent partial sums in `Weight::row_dot_lanes`.
 ///
 /// Sixteen and not eight because sixteen f32 is one zmm, two ymm, or four xmm:
@@ -128,12 +66,6 @@ pub fn dequantize(ggml_type: u32, bytes: &[u8], n: usize) -> Result<Vec<f32>> {
 pub const DOT_LANES: usize = 16;
 
 /// The lane-partitioned fold behind `Weight::row_dot_lanes`.
-///
-/// Generic over the stored element so the three dtype arms share one
-/// accumulation structure rather than three transcriptions of it -- the
-/// ordering rules this function fixes are the load-bearing part, and three
-/// copies is three chances for them to drift apart.
-#[inline]
 fn lane_fold<T: Copy>(w: &[T], x: &[f32], widen: impl Fn(T) -> f32) -> f32 {
     let mut acc = [0.0f32; DOT_LANES];
     let mut wc = w.chunks_exact(DOT_LANES);
@@ -416,54 +348,9 @@ impl Weight {
     }
 }
 
-/// The stored payload of one tensor, bounds-checked against the file.
-///
-/// Split out from `load_tensor` so a storage format that keeps its own bits
-/// rather than widening to f32 reuses these offset and overflow checks
-/// instead of restating them. Returns the element count alongside the bytes,
-/// since every caller needs both and recomputing invites disagreement.
-pub fn tensor_bytes<'a>(
-    file: &GgufFile,
-    data: &'a [u8],
-    info: &TensorInfo,
-) -> Result<(&'a [u8], usize)> {
-    let n = element_count(&info.dims).map_err(|e| anyhow::anyhow!("tensor {}: {e}", info.name))?;
-    let size =
-        byte_size(info.ggml_type, n).map_err(|e| anyhow::anyhow!("tensor {}: {e}", info.name))?;
-    let start = file
-        .data_offset
-        .checked_add(usize::try_from(info.offset).ok().unwrap_or(usize::MAX));
-    let end = start.and_then(|s| s.checked_add(size));
-    let (start, end) = match (start, end) {
-        (Some(s), Some(e)) if e <= data.len() => (s, e),
-        _ => bail!(
-            "tensor {}: payload at offset {} ({} bytes) exceeds file of {} bytes",
-            info.name,
-            info.offset,
-            size,
-            data.len()
-        ),
-    };
-    Ok((&data[start..end], n))
-}
-
-/// Load one tensor from a full GGUF image as dense f32, bounds-checked
-/// against the file.
-pub fn load_tensor(file: &GgufFile, data: &[u8], info: &TensorInfo) -> Result<Vec<f32>> {
-    let (bytes, n) = tensor_bytes(file, data, info)?;
-    dequantize(info.ggml_type, bytes, n).map_err(|e| anyhow::anyhow!("tensor {}: {e}", info.name))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn f32_payload_round_trips() {
-        let values = [0.0f32, 1.5, -2.25, 1e-8, 3.4e38];
-        let bytes: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
-        assert_eq!(dequantize(GGML_F32, &bytes, 5).unwrap(), values);
-    }
 
     #[test]
     fn f16_decodes_normals_specials_and_subnormals() {
@@ -482,55 +369,6 @@ mod tests {
         assert_eq!(f16_to_f32(0x0001), 2.0f32.powi(-24));
         // Largest subnormal: (1023/1024) * 2^-14.
         assert_eq!(f16_to_f32(0x03ff), (1023.0 / 1024.0) * 2.0f32.powi(-14));
-    }
-
-    #[test]
-    fn hostile_dimensions_are_errors_rather_than_overflow_panics() {
-        // Hostile header: dims bound only by count, so the product and the
-        // byte size must be errors rather than overflow panics.
-        assert!(element_count(&[u64::MAX, 2]).is_err());
-        // Fits u64 but no payload can be that large: the byte size overflows.
-        let huge = element_count(&[u64::from(u32::MAX), u64::from(u32::MAX)]).unwrap();
-        assert!(byte_size(GGML_F32, huge).is_err());
-        assert_eq!(element_count(&[]).unwrap(), 1);
-        assert_eq!(element_count(&[2, 3, 4]).unwrap(), 24);
-        assert!(byte_size(GGML_F32, usize::MAX / 2).is_err());
-    }
-
-    #[test]
-    fn wrong_payload_size_is_an_error() {
-        let err = dequantize(GGML_F32, &[0u8; 7], 2).unwrap_err();
-        assert!(err.to_string().contains("needs 8"), "{err}");
-    }
-
-    #[test]
-    fn load_tensor_reads_relative_to_the_data_section() {
-        use crate::gguf::{GgufFile, TensorInfo};
-        // Data section at byte 64; one f32 tensor of 2 elements at offset 8.
-        let mut data = vec![0u8; 64 + 8];
-        data.extend(1.5f32.to_le_bytes());
-        data.extend((-2.0f32).to_le_bytes());
-        let file = GgufFile {
-            metadata: Default::default(),
-            tensors: vec![],
-            data_offset: 64,
-        };
-        let info = TensorInfo {
-            name: "blk.0.attn_q.weight".into(),
-            dims: vec![2],
-            ggml_type: GGML_F32,
-            offset: 8,
-        };
-        assert_eq!(load_tensor(&file, &data, &info).unwrap(), vec![1.5, -2.0]);
-        // Truncated file: positioned error naming the tensor.
-        let err = load_tensor(&file, &data[..70], &info).unwrap_err();
-        assert!(err.to_string().contains("blk.0.attn_q.weight"), "{err}");
-    }
-
-    #[test]
-    fn unsupported_type_is_an_error() {
-        assert!(byte_size(12, 32).is_err()); // Q4_K, deliberately unsupported
-        assert!(dequantize(12, &[], 0).is_err());
     }
 
     #[test]
@@ -750,12 +588,17 @@ mod tests {
         assert_eq!(Weight::F32(w).row_dot(0, &x), want);
     }
 
+    /// The little-endian byte pairs a bf16 payload is made of, decoded the
+    /// way the checkpoint loader decodes them. Retained from the deleted
+    /// dequantize tests: the widening is the part with a wrong answer
+    /// available, and it outlived the container it used to arrive in.
     #[test]
-    fn bf16_tensors_size_and_dequantize() {
-        assert_eq!(byte_size(GGML_BF16, 5).unwrap(), 10);
+    fn bf16_payload_pairs_decode_little_endian() {
         let bytes = [0x80, 0x3f, 0xc0, 0xbf];
-        assert_eq!(dequantize(GGML_BF16, &bytes, 2).unwrap(), vec![1.0, -1.5]);
-        // Payload length is checked against the type, as for every type.
-        assert!(dequantize(GGML_BF16, &bytes, 3).is_err());
+        let got: Vec<f32> = bytes
+            .chunks_exact(2)
+            .map(|c| bf16_to_f32(u16::from_le_bytes([c[0], c[1]])))
+            .collect();
+        assert_eq!(got, vec![1.0, -1.5], "{got:?}");
     }
 }

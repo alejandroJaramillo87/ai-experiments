@@ -178,21 +178,27 @@ Both `--layers` and `--heads` are required, for the same quadratic reason.
 
 ## Steering
 
-`ControlVector::from_gguf` reads the llama.cpp control-vector layout that
-`interp/steering/export.py` writes: one f32 tensor per layer named
-`direction.<layer>`, width equal to the embedding dimension. `direction.N`
-steers decoder block `N`, matching llama.cpp and the repeng training
-semantics that produce these files, so the same `vector.gguf` steers the
-same block here as under `llama-cpu` and `llama-gpu`. Numbering starts at
-1 and block 0 is unsteerable, as upstream. `scale * direction` is added to
-the named block's output, after that block's `layer_output_scale` multiply
-and before the tap fires.
-Steering carries across forks, so a steered agent's subagents serve the same
-steered model. Binary flags:
+`ControlVector::from_image` reads the safetensors image that
+`interp/steering/export.py` writes: one 1-D f32 tensor per steered decoder
+block named `block.<index>`, width equal to the embedding dimension.
+`block.N` steers block `N`, 0-based, and `block.0` is legal. Until R10 this
+was a GGUF whose tensors carried a `direction.` prefix and whose index 0 was
+refused, because llama.cpp read the file and repeng numbers from 1; retiring
+the llama.cpp steering path removed both constraints.
+
+`scale * direction` is added to the named block's output, after that block's
+`layer_output_scale` multiply and before the tap fires, so a capture observes
+the steered stream that downstream blocks actually consume. Steering carries
+across forks, so a steered agent's subagents serve the same steered model.
+
+`--control-vector-layer-range` selects a band, inclusive and 0-based,
+replacing llama.cpp's flag of the same name. It drops the blocks outside the
+range as the image is read rather than testing them per token. Binary flags:
 
 ```bash
-$ harness --model <checkpoint-dir> --control-vector vector.gguf \
-    --control-vector-scale 1.0 <task>
+$ harness --model <checkpoint-dir> \
+    --control-vector <vector-dir>/vector.safetensors \
+    --control-vector-scale 1.0 [--control-vector-layer-range "4 20"] <task>
 ```
 
 ## Activation capture
@@ -382,14 +388,15 @@ texts by position, are exercised against a Rust-written directory
 In the other direction, `runtime/tests/python_exporter_contract.rs` loads the
 probe and the control vector written by `interp/probes/export.py` and
 `interp/steering/export.py` through `Probe::load` and
-`ControlVector::from_gguf`. Three committed fixtures
-(`fixtures/python-probe.safetensors` with its `python-probe.json`, and
-`fixtures/python-control-vector.gguf`) are exporter output, so the parse
-assertions run wherever the workspace builds; a further test re-runs the
-exporters and compares parsed content, which is what notices an exporter that
-has drifted from the committed bytes. The comparison is semantic rather than
-byte for byte: a `gguf` version bump may legitimately change padding, and the
-probe sidecar carries a timestamp and a git sha that differ on every
+`ControlVector::from_image`. The committed fixtures
+(`fixtures/python-probe.safetensors` with its `python-probe.json`, and the
+`fixtures/python-control-vector/` directory holding `vector.safetensors` and
+its `manifest.json`) are exporter output, so the parse assertions run wherever
+the workspace builds; a further test re-runs the exporters and compares parsed
+content, which is what notices an exporter that has drifted from the committed
+bytes. The comparison is semantic rather than byte for byte: a `safetensors`
+version bump may legitimately change header key order, and the probe sidecar
+and the vector manifest carry a timestamp and a git sha that differ on every
 regeneration.
 
 The layer numbering is what made this worth closing. `probe.layer` is 0-based

@@ -9,15 +9,20 @@ from tests.models import specbuild
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
-# The committed fixture written by runtime/src/synth.rs::GgufWriter, and the
-# independent pure-Python reader of it. Together they are the one cross-check
-# in this suite that shares no author with the code under test.
-RUST_FIXTURE_DIR = REPO_ROOT / "rust-harness" / "fixtures"
-# Written by the upstream `gguf` package through interp/steering/export.py,
-# so neither the bash reader under test nor the Python reader it is
-# checked against had a hand in producing it. Any small exporter-written GGUF
-# serves: this suite is about the container, not about control vectors.
-TINY_GGUF = RUST_FIXTURE_DIR / "python-control-vector.gguf"
+# Was written by the upstream `gguf` package through interp/steering/export.py,
+# back when the control vector was a GGUF; R10 moved that artifact to
+# safetensors and this file stopped being regenerable. It is kept frozen and
+# moved here, out of rust-harness/fixtures, because rust-harness no longer
+# reads or writes GGUF at all.
+#
+# Freezing costs nothing that matters. The property this fixture is here for
+# is that neither the bash reader under test nor the Python reader it is
+# checked against had a hand in producing it, and a file no in-tree code can
+# rewrite has that property more strongly than one regenerated on demand. Any
+# small exporter-written GGUF serves: this suite is about the container, and
+# the container is unchanged -- training/export still produces GGUF for
+# llama.cpp, which is why scripts/models/gguf_header_transcript.sh survives.
+TINY_GGUF = REPO_ROOT / "tests" / "models" / "fixtures" / "tiny-exporter-written.gguf"
 
 
 @pytest.fixture
