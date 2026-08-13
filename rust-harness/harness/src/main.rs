@@ -15,6 +15,7 @@ use anyhow::{Context, Result};
 
 use harness::agent::Agent;
 use harness::generator::SessionGenerator;
+use harness::interplog::{InterpLog, MonitorHandle};
 use harness::permissions::Permissions;
 use harness::tools::ToolCall;
 use harness::transcript::Transcript;
@@ -28,13 +29,6 @@ fn ask_stdin(call: &ToolCall) -> bool {
         return false;
     }
     matches!(line.trim(), "y" | "yes")
-}
-
-/// A live probe monitor: the loaded probe plus the shared state its tap
-/// fills during the run. Drained by `report_probe` after the task.
-struct MonitorHandle {
-    probe: std::sync::Arc<runtime::model::probe::Probe>,
-    state: std::sync::Arc<std::sync::Mutex<runtime::model::probe::MonitorState>>,
 }
 
 /// The forward-pass record a run accumulates, when one was asked for.
@@ -140,6 +134,7 @@ fn build_generator(
     text_only: bool,
     single_thread: bool,
     align: bool,
+    keep_scores: bool,
 ) -> Result<(SessionGenerator, Option<MonitorHandle>, u64, PassHandle)> {
     use runtime::model::{
         cpu::{ControlVector, CpuModel},
@@ -211,7 +206,11 @@ fn build_generator(
             );
             // Keeping every clean score is what the alignment artifact's
             // second channel is; `probe-flags.jsonl` needs only the flags.
-            let (tap, state) = ProbeMonitor::with_scores(std::sync::Arc::clone(&p), align);
+            // Serve mode asks for it too: the interp log's per-request
+            // maximum is a maximum over every position, and taken over the
+            // flagged ones alone it would be a maximum over "already above
+            // threshold" and describe nothing.
+            let (tap, state) = ProbeMonitor::with_scores(std::sync::Arc::clone(&p), keep_scores);
             cpu.set_tap(Box::new(tap));
             Some(MonitorHandle { probe: p, state })
         }
@@ -436,6 +435,7 @@ fn run(
     probe: Option<&Path>,
     probe_out: Option<&Path>,
     alignment_out: Option<&Path>,
+    interp_log: Option<&Path>,
     run_id: Option<&str>,
     sampling: runtime::sampler::SamplingParams,
     max_tokens: usize,
@@ -468,6 +468,11 @@ fn run(
         text_only,
         single_thread,
         alignment_out.is_some(),
+        // Serve mode keeps every clean score for the per-request maximum,
+        // but must not record passes: the pass list is the one artifact with
+        // no per-request drain, so under a long-lived server it would grow
+        // for the life of the process.
+        alignment_out.is_some() || serve.is_some(),
     )?;
     // Started here rather than in `build_generator`, which does not own the
     // handle the artifact is written from.
@@ -479,20 +484,43 @@ fn run(
         // The control vector and probe monitor are already installed on the
         // model, so a served request runs through the same taps a task does.
         //
-        // This blocks until the process is signalled, so the snapshot and
-        // probe-flag bookkeeping below is unreachable in this mode. Flushing
-        // interp artifacts from a long-lived server is its own problem and is
-        // not solved here; a served run's observation is the tap seam, not
-        // the end-of-run report.
+        // This blocks until the process is signalled, so the end-of-run
+        // bookkeeping below is unreachable in this mode. That is why
+        // observation here is per request rather than per run: --interp-log
+        // opens an append-only log and every completed request drains the
+        // monitor into it. The session snapshot has no such treatment and is
+        // simply not taken -- a served session's KV is the accumulation of
+        // unrelated callers' traffic, which is not a thing to resume.
         let listener = std::net::TcpListener::bind(("127.0.0.1", port))
             .with_context(|| format!("binding 127.0.0.1:{port}"))?;
         let model_name = model
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "synthetic".to_string());
         eprintln!("[INFO] Serving on http://127.0.0.1:{port} (model {model_name})");
-        let state = std::sync::Arc::new(harness::server::ServerState::new(
-            generator, model_name, sampling, max_tokens,
-        ));
+        let log = match interp_log {
+            Some(dir) => {
+                let log = InterpLog::open(dir, harness::server::SERVICE_NAME);
+                if log.is_enabled() {
+                    eprintln!("[INFO] Interp log: {}", dir.display());
+                } else {
+                    // A warning, not a failure: the endpoint's contract is to
+                    // answer requests, and it can still do that.
+                    eprintln!("[WARN] Interp log not opened under {}", dir.display());
+                }
+                log
+            }
+            None => InterpLog::disabled(),
+        };
+        if monitor.is_some() && !log.is_enabled() {
+            eprintln!(
+                "[WARN] --probe without --interp-log: scores are computed and discarded, \
+                 because a served run has no end at which to report them"
+            );
+        }
+        let state = std::sync::Arc::new(
+            harness::server::ServerState::new(generator, model_name, sampling, max_tokens)
+                .observing(log, monitor),
+        );
         return harness::server::serve(listener, state);
     } else if chat {
         // Chat mode: REPL over the generator, no tools or permissions. The
@@ -619,7 +647,7 @@ fn main() -> ExitCode {
          [--record <path>] \
          [--trace-chrome <path>] [--control-vector <path.safetensors>] \
          [--control-vector-scale <f>] [--control-vector-layer-range \"<start> <end>\"] \
-         [--probe <path.safetensors>] \
+         [--probe <path.safetensors>] [--interp-log <dir>] \
          [--probe-out <path>] [--alignment-out <path>] [--temperature <f>] [--top-p <f>] \
          [--top-k <n>] [--seed <n>] [--max-tokens <n>] [--context <n>] \
          [--compact-at <f>] [--text-only] [--single-thread] \
@@ -646,6 +674,13 @@ fn main() -> ExitCode {
     // extension -- carries the layer, site and threshold, and is required.
     // --probe-out <path>: JSONL file for flagged positions (default
     // probe-flags.jsonl in the working directory).
+    // --interp-log <dir>: under --serve, append one JSONL record per
+    // completed request to <dir>/harness/YYYY-MM-DD.jsonl, carrying the
+    // request, the reply, and the probe scores taken while answering it.
+    // This is what interp's probe monitor reads; without it a served run
+    // computes scores and discards them, because serving has no end of run
+    // at which to report. Ignored outside --serve, where the end-of-run
+    // artifacts above are reachable.
     // --alignment-out <path>: JSONL file mapping every position to the byte
     // span of output text it produced, the forward pass that computed it, and
     // the probe score taken there. Off by default: it makes the model record
@@ -677,6 +712,7 @@ fn main() -> ExitCode {
     let mut probe: Option<std::path::PathBuf> = None;
     let mut probe_out: Option<std::path::PathBuf> = None;
     let mut alignment_out: Option<std::path::PathBuf> = None;
+    let mut interp_log: Option<std::path::PathBuf> = None;
     let mut temperature_arg: Option<std::path::PathBuf> = None;
     let mut top_p_arg: Option<std::path::PathBuf> = None;
     let mut top_k_arg: Option<std::path::PathBuf> = None;
@@ -696,6 +732,7 @@ fn main() -> ExitCode {
         ("--tokenizer", &mut tokenizer),
         ("--probe-out", &mut probe_out),
         ("--alignment-out", &mut alignment_out),
+        ("--interp-log", &mut interp_log),
         ("--temperature", &mut temperature_arg),
         ("--top-p", &mut top_p_arg),
         ("--top-k", &mut top_k_arg),
@@ -906,6 +943,7 @@ fn main() -> ExitCode {
         probe.as_deref(),
         probe_out.as_deref(),
         alignment_out.as_deref(),
+        interp_log.as_deref(),
         run_log.run_id(),
         sampling,
         max_tokens,

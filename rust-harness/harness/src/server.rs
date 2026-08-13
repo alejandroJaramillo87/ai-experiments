@@ -30,6 +30,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Instant, SystemTime};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -37,8 +38,14 @@ use serde::{Deserialize, Serialize};
 use runtime::sampler::SamplingParams;
 
 use crate::generator::SessionGenerator;
+use crate::interplog::{monitor_ts, InterpLog, MonitorHandle, ProbeRecord, RequestRecord};
 use crate::template;
 use crate::transcript::{Entry, Role};
+
+/// The name this endpoint records itself under, which is both the log
+/// subdirectory and the `target_service` field interp reads. It is the
+/// compose service name so a record says which container answered.
+pub const SERVICE_NAME: &str = "harness";
 
 /// Connections served at once. Generation serializes on the mutex regardless;
 /// this bounds the threads waiting for it, so a client that opens sockets
@@ -65,6 +72,21 @@ pub struct ServerState {
     /// Completion ids. A counter rather than random bytes: an RNG crate is
     /// prohibited, and for a research endpoint a reproducible id is a feature.
     next_id: AtomicU64,
+    /// Where a completed request is recorded, and the probe monitor drained
+    /// into it. Behind its own mutex, never the generator's: a served request
+    /// holds the generator for minutes, and the log write must not extend
+    /// that, nor must a slow disk serialize behind generation.
+    ///
+    /// Absent by default. `--serve` without `--interp-log` serves without
+    /// recording, which is what every non-interp caller wants.
+    observation: Mutex<Observation>,
+}
+
+/// The interp side of a served request: the sink, and the monitor drained
+/// into it.
+struct Observation {
+    log: InterpLog,
+    monitor: Option<MonitorHandle>,
 }
 
 impl ServerState {
@@ -80,6 +102,21 @@ impl ServerState {
             defaults,
             max_tokens,
             next_id: AtomicU64::new(0),
+            observation: Mutex::new(Observation {
+                log: InterpLog::disabled(),
+                monitor: None,
+            }),
+        }
+    }
+
+    /// Record every completed request to `log`, draining `monitor` into each
+    /// record. Separate from `new` because only the interp path asks for it:
+    /// an agent-facing endpoint should not write a transcript of its traffic
+    /// to disk as a side effect of being served.
+    pub fn observing(self, log: InterpLog, monitor: Option<MonitorHandle>) -> ServerState {
+        ServerState {
+            observation: Mutex::new(Observation { log, monitor }),
+            ..self
         }
     }
 }
@@ -170,7 +207,9 @@ struct ChatRequest {
     stream: Option<bool>,
 }
 
-#[derive(Deserialize)]
+/// `Serialize` as well as `Deserialize` because the interp log records the
+/// messages verbatim: the monitor rebuilds the scored text from them.
+#[derive(Deserialize, Serialize)]
 struct ChatMessage {
     role: String,
     content: String,
@@ -354,7 +393,8 @@ fn chat_completion(body: &[u8], state: &ServerState) -> Response {
     // render sanitizes every message through render_entry, so content
     // carrying a turn marker stays text instead of forging a boundary.
     let prompt = template::render(&entries);
-    let completion = {
+    let started = Instant::now();
+    let (completion, probe) = {
         let mut generator = match state.generator.lock() {
             Ok(g) => g,
             // A panic in an earlier generation left the session in an unknown
@@ -366,13 +406,38 @@ fn chat_completion(body: &[u8], state: &ServerState) -> Response {
                 )
             }
         };
-        generator.complete_sampled(&prompt, params, max_tokens)
+        let completion = generator.complete_sampled(&prompt, params, max_tokens);
+        // Drained while the generation lock is still held. Generation is
+        // serialized on it, so everything the tap recorded belongs to this
+        // request; draining after releasing would race the next one.
+        let probe = state
+            .observation
+            .lock()
+            .ok()
+            .and_then(|o| o.monitor.as_ref().map(|m| m.drain()));
+        (completion, probe)
     };
+    let latency_s = started.elapsed().as_secs_f64();
     let completion = match completion {
         Ok(c) => c,
         // 5xx: post_chat classifies it as transient, which is right -- the
         // request was well formed and a retry may land.
-        Err(e) => return Response::json(500, error_body(&format!("generation failed: {e:#}"))),
+        Err(e) => {
+            let message = format!("generation failed: {e:#}");
+            // Recorded too. A window in which the failures are invisible
+            // would show a drop in flagged traffic that never happened.
+            record_request(
+                state,
+                &request.messages,
+                None,
+                None,
+                latency_s,
+                500,
+                Some(message.clone()),
+                probe,
+            );
+            return Response::json(500, error_body(&message));
+        }
     };
 
     let response = ChatResponse {
@@ -401,10 +466,57 @@ fn chat_completion(body: &[u8], state: &ServerState) -> Response {
             total_tokens: completion.prompt_tokens + completion.completion_tokens,
         },
     };
+    record_request(
+        state,
+        &request.messages,
+        Some(response.choices[0].message.content.clone()),
+        Some(&response.usage),
+        latency_s,
+        200,
+        None,
+        probe,
+    );
     match serde_json::to_string(&response) {
         Ok(body) => Response::json(200, body),
         Err(e) => Response::json(500, error_body(&format!("encoding the response: {e}"))),
     }
+}
+
+/// Append one completed request to the interp log, if one is open.
+///
+/// Everything here is best-effort by construction: a serialization failure
+/// drops the record and an absent log does nothing. Observation must not
+/// change what the caller receives, so this returns nothing to act on.
+#[allow(clippy::too_many_arguments)]
+fn record_request(
+    state: &ServerState,
+    messages: &[ChatMessage],
+    response_text: Option<String>,
+    usage: Option<&Usage>,
+    latency_s: f64,
+    status_code: u16,
+    error: Option<String>,
+    probe: Option<ProbeRecord>,
+) {
+    let Ok(mut observation) = state.observation.lock() else {
+        return;
+    };
+    if !observation.log.is_enabled() {
+        return;
+    }
+    let record = RequestRecord {
+        timestamp: monitor_ts(SystemTime::now()),
+        target_service: SERVICE_NAME.to_string(),
+        model: state.model.clone(),
+        messages: serde_json::to_value(messages).unwrap_or(serde_json::Value::Null),
+        response_text,
+        usage: usage.and_then(|u| serde_json::to_value(u).ok()),
+        latency_s,
+        status_code,
+        error,
+        probe,
+    };
+    observation.log.append(&record);
 }
 
 /// Map OpenAI roles onto transcript entries.

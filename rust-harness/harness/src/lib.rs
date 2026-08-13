@@ -8,6 +8,7 @@ pub mod alignment;
 pub mod chat;
 pub mod compact;
 pub mod generator;
+pub mod interplog;
 pub mod obs;
 pub mod permissions;
 pub mod server;
