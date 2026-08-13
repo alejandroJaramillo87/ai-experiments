@@ -30,9 +30,9 @@ Cargo.toml        workspace: harness, runtime
 harness/          bin crate: agent loop, tools, permissions, chat, streaming, obs records
 runtime/          lib crate: sessions, sampler, grammar, KV cache, checkpoint, tokenizer, model
 fixtures/         committed fixtures: synthetic tiny-model checkpoints, numpy
-                  reference logits and generator script, probe and
-                  control-vector GGUFs
-                  written by the Python exporters plus their generator;
+                  reference logits and generator script, the probe
+                  (safetensors plus sidecar) and control-vector GGUF written
+                  by the Python exporters plus their generator;
                   real-model Tier 3 fixtures pending
 ```
 
@@ -219,8 +219,8 @@ The cross-language tests hand artifacts to the real Python readers rather than t
 a second Rust implementation, because a Rust misunderstanding of a format would
 otherwise reproduce itself on both sides. `runtime/src/npz.rs` re-reads a written
 shard through `np.load`; `harness/tests/probe_identity.rs` takes its SHA-256 from
-`hashlib`; `python_exporter_contract.rs` parses GGUFs written by the interp
-exporters; `obs_contract.rs` parses a run catalog through
+`hashlib`; `python_exporter_contract.rs` reads the probe and control-vector artifacts
+written by the interp exporters; `obs_contract.rs` parses a run catalog through
 `common.obs.catalog.read_runs`.
 
 **Which interpreter runs them is resolved, not assumed** (`runtime/src/pyenv.rs`).

@@ -138,6 +138,25 @@ RETIRED: dict[str, tuple[str, str]] = {
         "TextConfig::validate -- and the architectural refusals it kept are "
         "now expressed over Hugging Face tensor names",
     ),
+    "write_probe_gguf": (
+        "write_probe",
+        "the probe left GGUF for a safetensors image plus a JSON sidecar, so "
+        "the container is no longer part of the function's identity; the "
+        "control-vector exporter keeps its _gguf name because llama.cpp reads "
+        "that artifact and the format is not this repository's to choose",
+    ),
+    "export_gguf_fixtures.py": (
+        "export_interp_fixtures.py",
+        "the generator writes one GGUF and one safetensors pair, so naming it "
+        "after the container it no longer exclusively produces would send a "
+        "reader looking for a probe image that is not there",
+    ),
+    "python-probe.gguf": (
+        "python-probe.safetensors",
+        "the committed probe fixture follows its format; note that this file "
+        "also served tests/models/conftest.py as a generic small GGUF, which "
+        "now uses python-control-vector.gguf",
+    ),
     "gguf-info": (
         "checkpoint-info",
         "the inspection tool follows the format the backend loads; it echoes "

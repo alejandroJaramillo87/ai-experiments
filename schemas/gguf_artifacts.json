@@ -1,38 +1,15 @@
 {
   "contract": "gguf_artifacts",
-  "description": "GGUF images written by the Python interp exporters and loaded by the Rust runtime",
+  "description": "The control-vector GGUF image written by the Python interp exporter and loaded by the Rust runtime",
   "writers": [
-    "interp/probes/export.py (write_probe_gguf_from_probe)",
     "interp/steering/export.py (write_control_vector_gguf)"
   ],
   "readers": [
-    "rust-harness/runtime/src/model/probe.rs (Probe::from_gguf)",
     "rust-harness/runtime/src/model/cpu.rs (ControlVector::from_gguf)"
   ],
   "guarded_by": [
     "rust-harness/runtime/tests/python_exporter_contract.rs"
   ],
-  "probe": {
-    "architecture": "probe",
-    "metadata": {
-      "probe.name": "str",
-      "probe.model_hash": "str",
-      "probe.layer": "u32",
-      "probe.bias": "f32",
-      "probe.threshold": "f32"
-    },
-    "tensors": {
-      "probe.weights": "f32[width]",
-      "probe.mu": "f32[width]",
-      "probe.sigma": "f32[width]"
-    },
-    "constraints": [
-      "weights, mu, and sigma share one 1-D width",
-      "sigma is strictly positive",
-      "bias and threshold are finite",
-      "layer is a 0-based decoder block index"
-    ]
-  },
   "controlvector": {
     "architecture": "controlvector",
     "metadata": {
@@ -49,9 +26,10 @@
     ]
   },
   "notes": {
-    "layer_numbering": "The two artifacts number layers differently, and the difference is deliberate. probe.layer is 0-based because it names the block whose post-block residual the probe scores. direction.N is 1-based because llama.cpp and repeng number control vectors that way. Both sides already enforce their own rule independently - export.py refuses min(directions) < 1, and cpu.rs refuses layer < 1 - which is exactly why the end-to-end check matters more than either guard alone.",
-    "reader_ignores": "ControlVector::from_gguf reads no metadata at all: it neither checks general.architecture nor uses model_hint or layer_count, and selects tensors purely by the direction. prefix. The two metadata keys are therefore writer-only in practice. A probe image passed as a control vector still fails, but on 'holds no direction.<layer> tensors' rather than on an architecture mismatch.",
+    "layer_numbering": "direction.N is 1-based because llama.cpp and repeng number control vectors that way, and block 0 is unsteerable. Both sides enforce it independently - export.py refuses min(directions) < 1, and cpu.rs refuses layer < 1 - which is exactly why the end-to-end check matters more than either guard alone. The 0-based counterpart is schemas/probe_artifact.json's 'layer', which names the block whose post-block residual a probe scores; the two artifacts number layers differently on purpose.",
+    "reader_ignores": "ControlVector::from_gguf reads no metadata at all: it neither checks general.architecture nor uses model_hint or layer_count, and selects tensors purely by the direction. prefix. The two metadata keys are therefore writer-only in practice. Any other GGUF passed as a control vector fails on 'holds no direction.<layer> tensors' rather than on an architecture mismatch.",
     "comparison_is_semantic": "The committed fixtures are compared by parsed content - architecture, metadata keys and values, tensor names, widths, and values - never byte for byte. gguf is pinned, but a version bump may legitimately change padding or alignment, and a byte comparison would report that as exporter drift.",
-    "float_exactness": "Fixture values are chosen to be exact in f32, so a round trip through the writer and the Rust parser is an equality comparison and needs no tolerance."
+    "float_exactness": "Fixture values are chosen to be exact in f32, so a round trip through the writer and the Rust parser is an equality comparison and needs no tolerance.",
+    "probe_moved": "This contract covered the probe image too until the probe left GGUF for safetensors plus a JSON sidecar. schemas/probe_artifact.json is now its contract. The control vector stays GGUF because llama.cpp reads it as --control-vector-scaled, so the format is not this repository's to choose; the probe had exactly one reader and nothing outside this tree was served by keeping it. runtime/src/gguf.rs exists for this artifact alone now."
   }
 }

@@ -75,26 +75,37 @@ fn model_width() -> usize {
         .hidden_size
 }
 
-/// A loadable probe over layer 0 recording `model_hash`. The threshold is
-/// above every attainable sigmoid score, so an accepted run flags nothing
-/// and its report stays a fixed shape whatever the random weights produce.
-fn probe_gguf(model_hash: &str) -> Vec<u8> {
+/// A loadable probe over layer 0 recording `model_hash`, written into `dir`
+/// as the safetensors image plus its JSON sidecar. The threshold is above
+/// every attainable sigmoid score, so an accepted run flags nothing and its
+/// report stays a fixed shape whatever the random weights produce.
+fn write_probe(dir: &std::path::Path, model_hash: &str) -> PathBuf {
     let width = model_width();
-    let mut w = runtime::synth::GgufWriter::new();
-    w.kv_str("general.architecture", "probe");
-    w.kv_str("probe.name", "identity-probe");
-    w.kv_str("probe.model_hash", model_hash);
-    w.kv_u32("probe.layer", 0);
-    w.kv_f32("probe.bias", 0.1);
-    w.kv_f32("probe.threshold", 1.0);
-    let dims = [width as u64];
     let weights: Vec<f32> = (0..width).map(|j| 0.1 * (j as f32 - 4.0)).collect();
     let mu: Vec<f32> = (0..width).map(|j| 0.01 * j as f32).collect();
     let sigma: Vec<f32> = (0..width).map(|j| 1.0 + 0.1 * j as f32).collect();
-    w.tensor_f32("probe.weights", &dims, &weights);
-    w.tensor_f32("probe.mu", &dims, &mu);
-    w.tensor_f32("probe.sigma", &dims, &sigma);
-    w.finish()
+    let path = dir.join("probe.safetensors");
+    std::fs::write(
+        &path,
+        runtime::synth::build_f32_safetensors(&[
+            ("weights", &weights),
+            ("mu", &mu),
+            ("sigma", &sigma),
+        ])
+        .unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        path.with_extension("json"),
+        format!(
+            r#"{{"schema_version": 1, "artifact": "probe",
+               "timestamp": "2026-01-01T00:00:00+0000", "git_sha": "abcdef0",
+               "name": "identity-probe", "model_hash": "{model_hash}",
+               "layer": 0, "bias": 0.1, "threshold": 1.0, "width": {width}}}"#
+        ),
+    )
+    .unwrap();
+    path
 }
 
 /// A finished harness run. The TempDir is held so the working directory
@@ -111,14 +122,14 @@ impl Run {
     }
 }
 
-/// Run the harness over the fixture model with `probe_image` as --probe, in
-/// a fresh working directory. One token of a trivial task keeps an accepted
-/// run short; stdin is closed because a missing permissions.yaml routes any
-/// tool call to the interactive prompt, which must not block the test.
-fn run_with_probe(probe_image: &[u8]) -> Run {
+/// Run the harness over the fixture model with a probe recording
+/// `model_hash` as --probe, in a fresh working directory. One token of a
+/// trivial task keeps an accepted run short; stdin is closed because a
+/// missing permissions.yaml routes any tool call to the interactive prompt,
+/// which must not block the test.
+fn run_with_probe(model_hash: &str) -> Run {
     let dir = tempfile::tempdir().unwrap();
-    let probe = dir.path().join("probe.gguf");
-    std::fs::write(&probe, probe_image).unwrap();
+    let probe = write_probe(dir.path(), model_hash);
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_harness"))
         .current_dir(dir.path())
         .arg("--model")
@@ -141,7 +152,7 @@ fn run_with_probe(probe_image: &[u8]) -> Run {
 #[test]
 fn a_probe_recording_the_served_models_sha256_loads_and_the_run_completes() {
     let served = sha256_hex(&std::fs::read(fixture_weights()).unwrap());
-    let run = run_with_probe(&probe_gguf(&served));
+    let run = run_with_probe(&served);
     let err = run.stderr();
     assert!(run.output.status.success(), "{err}");
     // The matching case is silent: neither refused nor downgraded to the
@@ -162,7 +173,7 @@ fn a_probe_recording_a_different_model_hash_is_refused_naming_both_hashes() {
     // hash that looks exactly like a real one, not just for a malformed
     // string any comparison would reject.
     let wrong = sha256_hex(b"weights the probe was fitted on");
-    let run = run_with_probe(&probe_gguf(&wrong));
+    let run = run_with_probe(&wrong);
     let err = run.stderr();
     assert!(!run.output.status.success(), "{err}");
     let served = sha256_hex(&std::fs::read(fixture_weights()).unwrap());
@@ -183,7 +194,7 @@ fn a_probe_recording_a_different_model_hash_is_refused_naming_both_hashes() {
 fn a_probe_recording_the_unknown_sentinel_loads_with_the_check_skipped() {
     // capture.py defaults model_hash to "unknown", so refusing it would
     // reject every probe the Python path exports.
-    let run = run_with_probe(&probe_gguf("unknown"));
+    let run = run_with_probe("unknown");
     let err = run.stderr();
     assert!(run.output.status.success(), "{err}");
     assert!(!err.contains("trained on a different model"), "{err}");

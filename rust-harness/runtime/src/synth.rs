@@ -914,6 +914,33 @@ pub fn build_tiny_safetensors(spec: &TinySpec) -> anyhow::Result<Vec<u8>> {
     Ok(safetensors::serialize(views, None)?)
 }
 
+/// A safetensors image of named 1-D f32 vectors.
+///
+/// For the small interp artifacts rather than for checkpoints: a probe is
+/// three parameter vectors, and a test that wants a malformed one wants to
+/// write it directly rather than to derive it from a model spec.
+pub fn build_f32_safetensors(tensors: &[(&str, &[f32])]) -> anyhow::Result<Vec<u8>> {
+    use safetensors::tensor::{Dtype, TensorView};
+
+    // Payloads must outlive the views that borrow them.
+    let payloads: Vec<(&str, usize, Vec<u8>)> = tensors
+        .iter()
+        .map(|(name, values)| {
+            let bytes = values.iter().flat_map(|v| v.to_le_bytes()).collect();
+            (*name, values.len(), bytes)
+        })
+        .collect();
+    let views: Vec<(&str, TensorView)> = payloads
+        .iter()
+        .map(|(name, len, bytes)| {
+            let view = TensorView::new(Dtype::F32, vec![*len], bytes)
+                .map_err(|e| anyhow::anyhow!("tensor {name}: {e}"))?;
+            Ok((*name, view))
+        })
+        .collect::<anyhow::Result<_>>()?;
+    Ok(safetensors::serialize(views, None)?)
+}
+
 /// The synthetic checkpoint for `spec`, held in memory.
 ///
 /// The two builders above plus the in-memory loader, which is the sequence

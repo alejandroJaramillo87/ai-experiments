@@ -4,8 +4,8 @@ The GGUF reader in that script is hand-rolled, so the load-bearing test here
 is not a round-trip against a fixture this suite also wrote — that would only
 prove the writer and reader share a misunderstanding. It is
 ``test_reader_agrees_with_reference_parse_gguf``, which parses
-``rust-harness/fixtures/python-probe.gguf`` (written by the upstream ``gguf``
-package through ``interp/probes/export.py``) and compares against
+``rust-harness/fixtures/python-control-vector.gguf`` (written by the upstream
+``gguf`` package through ``interp/steering/export.py``) and compares against
 ``tests/models/gguf_reference_reader.py::parse_gguf`` (an independent
 pure-Python reader). Three implementations, no shared author.
 
@@ -64,10 +64,10 @@ def build(tmp_path, spec: GgufSpec, name: str = "m.gguf", **kwargs):
 def test_committed_rust_fixture_exists(repo_root):
     """Guards the keystone: if the fixture is gone, this suite has no
     independent cross-check and must say so rather than silently skip."""
-    fixture = repo_root / "rust-harness" / "fixtures" / "python-probe.gguf"
+    fixture = repo_root / "rust-harness" / "fixtures" / "python-control-vector.gguf"
     assert fixture.exists(), (
         f"{fixture} is missing; regenerate with "
-        "`python3 rust-harness/fixtures/export_gguf_fixtures.py rust-harness/fixtures`"
+        "`python3 rust-harness/fixtures/export_interp_fixtures.py rust-harness/fixtures`"
     )
 
 
@@ -80,7 +80,7 @@ def test_reader_agrees_with_reference_parse_gguf(
     author of the other: the file comes from Rust, the reference reader from
     fixtures/reference_logits.py.
     """
-    fixture = repo_root / "rust-harness" / "fixtures" / "python-probe.gguf"
+    fixture = repo_root / "rust-harness" / "fixtures" / "python-control-vector.gguf"
     ref_meta, ref_tensors = reference_parse_gguf(fixture.read_bytes())
 
     _, _, out = transcribe(SCRIPT, str(fixture))
@@ -111,7 +111,7 @@ def test_rust_fixture_reports_no_false_refusals(transcribe, repo_root):
     """Negative control: GgufWriter emits F32 and accepted array types only,
     so no REFUSED line may appear. A script that flags refusals
     unconditionally would pass every positive refusal test."""
-    fixture = repo_root / "rust-harness" / "fixtures" / "python-probe.gguf"
+    fixture = repo_root / "rust-harness" / "fixtures" / "python-control-vector.gguf"
     result, _, out = transcribe(SCRIPT, str(fixture))
     assert result.returncode == 0, result.stdout
     assert "REFUSED" not in out.read_text()
@@ -446,7 +446,7 @@ def test_output_contract(transcribe, tmp_path):
 def test_matches_reference_gguf_reader(transcribe, repo_root):
     from gguf import GGUFReader
 
-    fixture = repo_root / "rust-harness" / "fixtures" / "python-probe.gguf"
+    fixture = repo_root / "rust-harness" / "fixtures" / "python-control-vector.gguf"
     reader = GGUFReader(str(fixture))
     _, _, out = transcribe(SCRIPT, str(fixture))
     got = parse_tensor_list(out.read_text())

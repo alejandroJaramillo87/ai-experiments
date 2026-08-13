@@ -13,10 +13,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 # independent pure-Python reader of it. Together they are the one cross-check
 # in this suite that shares no author with the code under test.
 RUST_FIXTURE_DIR = REPO_ROOT / "rust-harness" / "fixtures"
-# Written by the upstream `gguf` package through interp/probes/export.py,
+# Written by the upstream `gguf` package through interp/steering/export.py,
 # so neither the bash reader under test nor the Python reader it is
-# checked against had a hand in producing it.
-TINY_GGUF = RUST_FIXTURE_DIR / "python-probe.gguf"
+# checked against had a hand in producing it. Any small exporter-written GGUF
+# serves: this suite is about the container, not about control vectors.
+TINY_GGUF = RUST_FIXTURE_DIR / "python-control-vector.gguf"
 
 
 @pytest.fixture

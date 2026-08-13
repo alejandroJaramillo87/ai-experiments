@@ -81,10 +81,11 @@ These are standing instructions for anyone (human or agent) making changes in th
   does so for llama.cpp to serve, and stays: `training/export/` (`convert_hf_to_gguf` →
   `llama-quantize` → the served model, plus the manifest sha256 `serve_eval.py` verifies),
   `common/serving.py`'s `quant_from_name`, and `interp/steering/export.py`, whose `vector.gguf`
-  the llama-cpu and llama-gpu entrypoints pass as `--control-vector-scaled`. The two GGUF
-  readers left in `rust-harness` exist for the probe and control-vector images the Python interp
-  exporters write (`schemas/gguf_artifacts.json`); they go when the harness serves the interp
-  pipeline itself.
+  the llama-cpu and llama-gpu entrypoints pass as `--control-vector-scaled`. The one GGUF
+  reader left in `rust-harness` exists for that control-vector image
+  (`schemas/gguf_artifacts.json`); it goes when the harness serves the interp pipeline itself.
+  The probe used to be the second, and is not: it had no llama.cpp reader, so it followed the
+  weights to safetensors plus a JSON sidecar (`schemas/probe_artifact.json`).
 
 ## Where things are
 

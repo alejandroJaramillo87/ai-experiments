@@ -1,16 +1,16 @@
 # Cross-language artifact contracts
 
-Six contracts. Five cross the boundary between the Rust harness
+Seven contracts. Six cross the boundary between the Rust harness
 (`/rust-harness/`) and the Python training and interpretability pipelines
-(`/interp/`, `/common/`, `/training/`). Four of those are artifact formats:
+(`/interp/`, `/common/`, `/training/`). Five of those are artifact formats:
 each has a writer and a reader in different languages, so no compiler and no
-type system connects the two sides. The fifth, `gemma4_facts.json`, is not a
+type system connects the two sides. The sixth, `gemma4_facts.json`, is not a
 format but a set of architecture values that all three tiers held private
 copies of, which is the same problem one level up. This directory holds the
 contract each pair agrees on, and every contract names the tests that enforce
 it.
 
-The sixth, `alignment.json`, has a Rust writer and no reader in either
+The seventh, `alignment.json`, has a Rust writer and no reader in either
 language yet. It is here rather than in prose beside the writer because the
 longitudinal analysis it exists for will be Python, and a contract written
 before the second side arrives is what keeps the format from being settled
@@ -58,17 +58,20 @@ nothing failed: output stayed fluent, and the only golden test was ignored
 with an unimplemented body. Training and inference were rendering one
 conversation to two different prompts.
 
-The GGUF exporters had no coverage in the direction that matters at all:
-`Probe::from_gguf` and `ControlVector::from_gguf` had only ever parsed bytes
-written by `runtime::synth::GgufWriter`, never bytes written by the Python
-exporters whose output they exist to read.
+The interp exporters had no coverage in the direction that matters at all:
+the probe and control-vector readers had only ever parsed bytes written by
+`runtime::synth`, never bytes written by the Python exporters whose output
+they exist to read. Both artifacts were GGUF then; the probe has since moved
+to safetensors plus a sidecar, and the contract moved with it rather than the
+seam being re-specified in prose.
 
 ## The contracts
 
 | File | Seam | Direction |
 |------|------|-----------|
 | `activation_capture.manifest.json` | Capture directory: `manifest.json`, `examples.jsonl`, `shard_NNNNN.npz` | Both write, Python reads |
-| `gguf_artifacts.json` | Probe and control-vector GGUF images | Python writes, Rust reads |
+| `gguf_artifacts.json` | The control-vector GGUF image | Python writes, Rust reads |
+| `probe_artifact.json` | A probe: safetensors parameter vectors plus a JSON sidecar of scalars | Python writes, Rust reads |
 | `obs_record.json` | Run-level JSONL: event file and run catalog | Both write, Python reads |
 | `chat_template.json` | The Gemma 4 chat template: the prompt string a conversation renders to | Both write, both read |
 | `gemma4_facts.json` | Gemma 4 architecture values: layer counts, head dimensions, the attention schedule, RoPE regimes | Google writes, all three tiers read |

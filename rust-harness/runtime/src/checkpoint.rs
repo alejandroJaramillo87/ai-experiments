@@ -338,6 +338,64 @@ impl Envelope {
     }
 }
 
+/// A whole safetensors image held in memory, for the small artifacts.
+///
+/// `Checkpoint` reads tensors out of an open file at their offsets, because a
+/// checkpoint is gigabytes and a loader wants only some of it. An interp
+/// artifact is kilobytes and every tensor in it is wanted, so it arrives as
+/// bytes already read and this type indexes them. Both reach the container
+/// through `Envelope`, which is the point: the length prefix, the offset
+/// arithmetic and the bounds checks have one implementation, and a second
+/// artifact format does not get a second hand-rolled header reader.
+pub struct Image {
+    envelope: Envelope,
+    bytes: Vec<u8>,
+}
+
+impl Image {
+    /// Parse the header of an in-memory image. `name` appears in errors.
+    pub fn parse(bytes: Vec<u8>, name: &str) -> Result<Image> {
+        let framed = Envelope::framed_from(&bytes, name)?;
+        let envelope = Envelope::parse(framed, name)?;
+        Ok(Image { envelope, bytes })
+    }
+
+    /// Every tensor name the image declares, sorted.
+    pub fn names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.envelope.tensors.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
+    /// One 1-D tensor, widened to f32.
+    ///
+    /// The rank is checked rather than the element count. `[4]` and `[1, 4]`
+    /// hold the same four numbers, and only the first is what a parameter
+    /// vector is; a caller comparing lengths alone would accept either and
+    /// then be wrong about a tensor it thought it understood.
+    pub fn vector(&self, name: &str) -> Result<Vec<f32>> {
+        let info = self
+            .envelope
+            .tensors
+            .get(name)
+            .with_context(|| format!("missing tensor {name}"))?;
+        ensure!(
+            info.shape.len() == 1,
+            "tensor {name} has shape {:?}, expected one dimension",
+            info.shape
+        );
+        let dtype = info.dtype;
+        let (at, len) = self.envelope.payload_range(name, self.bytes.len() as u64)?;
+        let at = usize::try_from(at)
+            .map_err(|_| anyhow::anyhow!("tensor {name}: payload offset {at} overflows usize"))?;
+        let bytes = self
+            .bytes
+            .get(at..at + len)
+            .with_context(|| format!("tensor {name}: payload is outside the image"))?;
+        widen(name, dtype, bytes)
+    }
+}
+
 /// The header length a safetensors image declares in its first eight bytes.
 fn declared_len(prefix: &[u8], name: &str) -> Result<usize> {
     let arr: [u8; LEN_PREFIX] = prefix

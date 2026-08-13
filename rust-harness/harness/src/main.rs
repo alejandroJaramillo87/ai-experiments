@@ -160,10 +160,7 @@ fn build_generator(
     // then the tap, matching the documented tap semantics.
     let monitor = match probe {
         Some(path) => {
-            let p_data =
-                std::fs::read(path).with_context(|| format!("read probe {}", path.display()))?;
-            let p_file = runtime::gguf::parse(&p_data).context("parse probe GGUF")?;
-            let p = std::sync::Arc::new(Probe::from_gguf(&p_file, &p_data).context("load probe")?);
+            let p = std::sync::Arc::new(Probe::load(path).context("load probe")?);
             check_model_identity("probe", &p.model_hash, || {
                 runtime::digest::sha256_file(&weights_path)
                     .with_context(|| format!("hash {}", weights_path.display()))
@@ -566,7 +563,7 @@ fn main() -> ExitCode {
     const USAGE: &str = "usage: harness --model <checkpoint-dir> [--tokenizer <path.json>] \
          [--record <path>] \
          [--trace-chrome <path>] [--control-vector <path.gguf>] \
-         [--control-vector-scale <f>] [--probe <path.gguf>] \
+         [--control-vector-scale <f>] [--probe <path.safetensors>] \
          [--probe-out <path>] [--alignment-out <path>] [--temperature <f>] [--top-p <f>] \
          [--top-k <n>] [--seed <n>] [--max-tokens <n>] [--context <n>] \
          [--compact-at <f>] [--text-only] [--single-thread] \
@@ -584,8 +581,10 @@ fn main() -> ExitCode {
     // --control-vector <path.gguf>: steering directions in the llama.cpp
     // control-vector layout, added to the residual stream per layer.
     // --control-vector-scale <f>: multiplier on the directions (default 1.0).
-    // --probe <path.gguf>: linear probe (interp/probes/export.py layout)
-    // scored in-band at every position of its layer through the tap seam.
+    // --probe <path.safetensors>: linear probe (interp/probes/export.py
+    // layout) scored in-band at every position of its layer through the tap
+    // seam. The JSON sidecar beside it -- the same path with a .json
+    // extension -- carries the layer, site and threshold, and is required.
     // --probe-out <path>: JSONL file for flagged positions (default
     // probe-flags.jsonl in the working directory).
     // --alignment-out <path>: JSONL file mapping every position to the byte
@@ -892,33 +891,43 @@ mod tests {
         );
     }
 
-    /// Minimal probe GGUF in the `interp/probes/export.py` layout, enough
-    /// for `Probe::from_gguf`; the scoring math is covered by the runtime's
+    /// A minimal probe artifact in `dir`, in the layout
+    /// `interp/probes/export.py` writes: the safetensors image and the JSON
+    /// sidecar beside it. The scoring math is covered by the runtime's
     /// reference test, so the values here are arbitrary.
-    fn probe_gguf() -> Vec<u8> {
-        let mut w = runtime::synth::GgufWriter::new();
-        w.kv_str("general.architecture", "probe");
-        w.kv_str("probe.name", "report-probe");
-        w.kv_str("probe.model_hash", UNKNOWN_MODEL_HASH);
-        w.kv_u32("probe.layer", 0);
-        w.kv_f32("probe.bias", 0.0);
-        w.kv_f32("probe.threshold", 0.5);
-        w.tensor_f32("probe.weights", &[2], &[1.0, 1.0]);
-        w.tensor_f32("probe.mu", &[2], &[0.0, 0.0]);
-        w.tensor_f32("probe.sigma", &[2], &[1.0, 1.0]);
-        w.finish()
+    fn write_probe(dir: &std::path::Path) -> std::path::PathBuf {
+        let path = dir.join("probe.safetensors");
+        std::fs::write(
+            &path,
+            runtime::synth::build_f32_safetensors(&[
+                ("weights", &[1.0, 1.0][..]),
+                ("mu", &[0.0, 0.0][..]),
+                ("sigma", &[1.0, 1.0][..]),
+            ])
+            .expect("write the probe image"),
+        )
+        .expect("write the probe image");
+        std::fs::write(
+            path.with_extension("json"),
+            format!(
+                r#"{{"schema_version": 1, "artifact": "probe",
+                   "timestamp": "2026-01-01T00:00:00+0000", "git_sha": "abcdef0",
+                   "name": "report-probe", "model_hash": "{UNKNOWN_MODEL_HASH}",
+                   "layer": 0, "bias": 0.0, "threshold": 0.5, "width": 2}}"#
+            ),
+        )
+        .expect("write the probe sidecar");
+        path
     }
 
     #[test]
     fn probe_flags_are_written_under_a_parent_directory_that_does_not_exist_yet() {
-        let image = probe_gguf();
-        let file = runtime::gguf::parse(&image).expect("parse probe GGUF");
+        let dir = tempfile::tempdir().expect("tempdir");
         let probe = std::sync::Arc::new(
-            runtime::model::probe::Probe::from_gguf(&file, &image).expect("load probe"),
+            runtime::model::probe::Probe::load(&write_probe(dir.path())).expect("load probe"),
         );
         let (_tap, state) = runtime::model::probe::ProbeMonitor::new(std::sync::Arc::clone(&probe));
         let monitor = MonitorHandle { probe, state };
-        let dir = tempfile::tempdir().expect("tempdir");
         let out = dir.path().join("absent").join("flags.jsonl");
         report_probe(&monitor, &out).expect("a missing parent directory is created, not a failure");
         assert!(out.is_file(), "{}", out.display());

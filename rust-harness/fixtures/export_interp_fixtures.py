@@ -1,20 +1,20 @@
-"""Write the probe and control-vector GGUF fixtures with the real exporters.
+"""Write the probe and control-vector fixtures with the real exporters.
 
-The Rust runtime parses two GGUF layouts that only Python writes: the probe
-image (interp/probes/export.py) and the control-vector image
-(interp/steering/export.py). Every other golden synthesizes those bytes in
-Rust with runtime::synth::GgufWriter, which checks the parser against a second
+The Rust runtime reads two interp artifacts that only Python writes: the
+probe (interp/probes/export.py, safetensors plus a JSON sidecar) and the
+control-vector GGUF (interp/steering/export.py). Every other golden
+synthesizes those bytes in Rust, which checks the parser against a second
 Rust implementation rather than against the writer it exists to read.
 
 This script calls the actual exporters, so the fixtures it produces are
-exporter output and not a Rust approximation of it. Contract:
-schemas/gguf_artifacts.json. Regenerate with:
+exporter output and not a Rust approximation of it. Contracts:
+schemas/probe_artifact.json and schemas/gguf_artifacts.json. Regenerate with:
 
-    python3 rust-harness/fixtures/export_gguf_fixtures.py rust-harness/fixtures
+    python3 rust-harness/fixtures/export_interp_fixtures.py rust-harness/fixtures
 
-Requires numpy and gguf; needs no GPU, no checkpoint, and no network. The
-values below are dyadic rationals, exact in float32, so the Rust test compares
-them for equality rather than within a tolerance.
+Requires numpy, safetensors and gguf; needs no GPU, no checkpoint, and no
+network. The values below are dyadic rationals, exact in float32, so the Rust
+test compares them for equality rather than within a tolerance.
 """
 
 import sys
@@ -34,6 +34,9 @@ PROBE_THRESHOLD = 0.25
 PROBE_WEIGHTS = [0.5, -1.5, 2.25, -0.125]
 PROBE_MU = [0.0, 1.0, -2.0, 4.0]
 PROBE_SIGMA = [1.0, 0.5, 2.0, 0.25]
+# Named explicitly, so the fixture exercises the sidecar key rather than
+# only the reader's default for an artifact that omits it.
+PROBE_SITE = "layer_output"
 
 CV_MODEL_HINT = "contract-fixture-model"
 # 1-based layer numbering, per the llama.cpp control-vector convention. The
@@ -62,25 +65,25 @@ def build_probe():
         mu=np.array(PROBE_MU, dtype=np.float32),
         sigma=np.array(PROBE_SIGMA, dtype=np.float32),
         threshold=PROBE_THRESHOLD,
-        manifest={"model_hash": PROBE_MODEL_HASH},
+        manifest={"model_hash": PROBE_MODEL_HASH, "site": PROBE_SITE},
     )
 
 
 def main():
     if len(sys.argv) != 2:
         print(
-            "usage: export_gguf_fixtures.py <out-dir>",
+            "usage: export_interp_fixtures.py <out-dir>",
             file=sys.stderr,
         )
         return 2
     out_dir = Path(sys.argv[1])
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    from interp.probes.export import write_probe_gguf_from_probe
+    from interp.probes.export import write_probe_from_probe
     from interp.steering.export import write_control_vector_gguf
 
-    probe_path = out_dir / "python-probe.gguf"
-    write_probe_gguf_from_probe(build_probe(), str(probe_path))
+    probe_path = out_dir / "python-probe.safetensors"
+    write_probe_from_probe(build_probe(), str(probe_path))
 
     cv_path = out_dir / "python-control-vector.gguf"
     write_control_vector_gguf(
@@ -89,7 +92,7 @@ def main():
         model_hint=CV_MODEL_HINT,
     )
 
-    for path in (probe_path, cv_path):
+    for path in (probe_path, probe_path.with_suffix(".json"), cv_path):
         print(f"[OK] {path.name}: {path.stat().st_size} bytes", file=sys.stderr)
     return 0
 
