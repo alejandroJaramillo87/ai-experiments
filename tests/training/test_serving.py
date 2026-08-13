@@ -56,6 +56,10 @@ def test_registry_matches_compose_definitions():
     with open(serving.INFER_COMPOSE) as f:
         compose = yaml.safe_load(f)
     for name, spec in SERVICES.items():
+        # Some registry entries are binaries the human starts, not compose
+        # services; they are checked by the block below instead.
+        if name in serving.NON_COMPOSE_SERVICES:
+            continue
         service = compose["services"][name]
         published = [p.split(":")[1] for p in service["ports"]]
         assert str(spec.port) in published, name
@@ -64,6 +68,24 @@ def test_registry_matches_compose_definitions():
         health_cmd = " ".join(service["healthcheck"]["test"])
         assert f":{spec.port}{spec.health_path}" in health_cmd, name
     assert SERVICES["vllm-gpu"].chat_url == "http://127.0.0.1:8003/v1/chat/completions"
+    # Every non-compose entry must still be a real registry entry, or the
+    # exclusion above would silently cover a typo.
+    assert serving.NON_COMPOSE_SERVICES <= set(SERVICES)
+    # And its port must not collide with a compose service's.
+    compose_ports = {
+        int(p.split(":")[1])
+        for s in compose["services"].values()
+        for p in s.get("ports", [])
+    }
+    for name in serving.NON_COMPOSE_SERVICES:
+        assert SERVICES[name].port not in compose_ports, name
+
+
+def test_swap_model_refuses_a_service_compose_does_not_define():
+    # The harness takes its checkpoint from --model, so a compose recreate
+    # would report "no such service" and read as a broken compose file.
+    with pytest.raises(ServingError, match="not a compose service"):
+        serving.swap_model(SERVICES["harness"], "/app/models/t.gguf")
 
 
 def test_model_paths_maps_both_forms():

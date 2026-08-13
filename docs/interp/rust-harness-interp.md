@@ -50,6 +50,36 @@ workbench, and any claim resting on that distinction is void.
 The llama.cpp path above remains quantized, so the gap is real there. It is the
 reason not to treat the two backends' captures as interchangeable.
 
+### Reaching the harness over HTTP
+
+The first of the three workarounds now has a replacement. `--serve <port>`
+exposes the two paths the interp pipeline calls, `/v1/chat/completions` and
+`/v1/health`, and `common/serving.py` carries a `harness` entry pointing at
+port 8005:
+
+```bash
+cd rust-harness && cargo build --release --bin harness
+./target/release/harness --model <checkpoint-dir> --text-only --serve 8005
+```
+
+Every sampling flag becomes a per-request default, and a request may override
+any of them including `seed` — which is the point of a research endpoint, and
+is what the OpenAI-compatible servers accept and ignore. The interp flags apply
+unchanged, so `--probe` and `--control-vector` are installed on the model that
+answers the request rather than on a replay of it. The wire contract is
+`schemas/harness_chat_endpoint.json`.
+
+Three things this does not yet do, stated because the endpoint is the
+precondition for all three rather than the delivery of them. The log proxy,
+the replay stage and the `replay_fidelity` caveat all remain in place: they are
+retired only once a workstation run shows the endpoint answering interp's own
+clients against real E4B, and deleting the working path before that would
+remove the fallback ahead of the evidence. Serving blocks until the process is
+signalled, so the end-of-run probe-flag report is not written under `--serve`;
+flushing interp artifacts from a long-lived server is unsolved. And the CPU
+backend answers slowly enough that callers should pass an explicit `timeout`
+rather than take `chat_completion`'s 120-second default.
+
 No SAE artifacts are required: contrastive direction extraction and linear
 probes need only captures produced by the harness itself. Published SAEs
 (when they exist for the served model) would slot in as another source of
@@ -426,6 +456,9 @@ revised live ladder) is recorded in
 | Attention-weight tap site and `attention-capture` (sandbox) | done | — |
 | Sliding-versus-global contrast read off a real E4B long-context run | pending | E4B architecture reconciliation |
 | Per-head attention output as a third site | pending | — |
+| `--serve` endpoint answering `common/serving.py` (sandbox) | done | — |
+| The endpoint answering interp's clients against real E4B | pending | workstation run, and CPU-backend latency measured |
+| The log proxy and the replay stage retired | pending | the workstation run above |
 | Monitor with a probe trained on real-model rust captures | pending | real-model capture on the workstation |
 | Probe quality evaluated separately on prefill and decode positions | pending | real-model capture on the workstation |
 | CUDA tap parity | pending | roadmap phase A |

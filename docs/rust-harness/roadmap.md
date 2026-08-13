@@ -38,7 +38,7 @@ this file owns only the ordering and the reasoning behind it.
 | R6 | IF-2 token-to-text alignment | done |
 | R7 | P12 probes to safetensors plus JSON sidecar | done |
 | R8 | IF-3 attention weights | done, cheaper than budgeted |
-| R9 | P13 harness serves interp | not started, needs its own plan |
+| R9 | P13 harness serves interp | endpoint done, workstation run pending |
 | R10 | P14 control vector to safetensors | blocked on R9 |
 | R11 | IF-4 plus IF-5 together | not started |
 | R12 | IF-3 remaining sites | not started |
@@ -237,24 +237,62 @@ milestone the whole plan aims at.
 
 ## Phase 3 — Serving and retiring llama.cpp
 
-### R9 — P13 harness serves interp
+### R9 — P13 harness serves interp (endpoint done, workstation run pending)
 
-Needs its own plan. Placed after the observation stack because experiments run fine through the
-harness binary; the endpoint is what kills the interp log proxy, the replay stage, the replay
-fidelity caveat and the GPU contention. Move it earlier if interp tooling needs HTTP sooner.
+`--serve <port>` carries the two paths interp calls, `/v1/chat/completions` and `/v1/health`,
+with a `harness` entry on port 8005 in `common/serving.py`. Placed after the observation stack
+because experiments run fine through the harness binary; the endpoint is the precondition for
+killing the interp log proxy, the replay stage, the replay fidelity caveat and the GPU
+contention.
 
-Worth taking from mistral.rs: their server core's streaming module, roughly 120 lines, being a
-streamer generic over chunk type, a three-state done-tracker guaranteeing a single terminating
-sentinel, and a keep-alive interval. It drops in with the response type swapped. And the
-router-as-library shape: build a mountable router, not a binary.
+**Nothing was killed here, deliberately.** The proxy, the replay stage and the caveat all remain
+until a workstation run shows the endpoint answering interp's own clients against real E4B.
+Deleting the working path on the strength of a sandbox test would remove the fallback before the
+replacement is evidenced. Those deletions ride with R10, which the table already marks blocked on
+this item.
 
-Skip their chat-completion module wholesale. It is entangled with tool calls, the Model Context
-Protocol, and a 2000-line Responses API.
+Three of the original assumptions did not survive contact with the repository, recorded here so
+R10 does not rediscover them.
 
-Their anti-pattern, worth naming: one engine-global random number generator seeded from a
-compile-time constant, shared across all sequences, consumed in scheduling order, with no
-per-request seed anywhere. The OpenAI seed field is accepted and ignored. Honouring a
-per-request seed is the point of a research endpoint and is exactly what they did not build.
+**Streaming was not taken, and would have bought nothing.** The plan was to port mistral.rs's
+~120-line streamer with its three-state terminating-sentinel tracker. No interp client streams:
+`common/serving.py`'s `post_chat` is a blocking urllib POST, and nothing under `interp/` sends
+`stream`, `logprobs`, `n`, `stop`, or tools. The only SSE code in the tree is the proxy's
+passthrough reassembler, which exists to forward llama.cpp's stream and dies with the proxy.
+Separately, `harness/src/stream.rs` already *is* that streamer — generic over chunk type, with
+drop-the-receiver cancellation that is exactly a client disconnect — and it was dead code with no
+call sites. The module the plan wanted to port was already in the tree, waiting for a client that
+does not exist. Deferred, not rejected.
+
+**No web framework.** The router-as-library shape was taken; the router was not. `RUST_STYLE.md`
+bounds the adopt-over-build exception to checkpoint formats and states that nothing may pull a
+network client into a gate that is offline by contract. HTTP is not a checkpoint format, and
+axum with hyper would have added tokio `net` and `rt-multi-thread`, a large lockfile delta, and
+an agent-image rebuild for the prefetched registry. Against that: two paths, one verb, a
+length-delimited JSON body, no streaming. Hand-rolled over `std::net`, no new dependency, no
+lockfile movement. The costs are keep-alive and chunked request bodies, both refused rather than
+faked, and neither is sent by any caller.
+
+**The per-request-seed anti-pattern was already avoided.** mistral.rs shares one engine-global
+`Isaac64Rng` seeded from a compile-time constant across all sequences, consumed in scheduling
+order, and accepts the OpenAI seed field while ignoring it. `runtime/src/sampler.rs` has no
+global RNG: the seed lives in `SamplingParams`, each `Sampler` holds its own state, and the
+sampler is passed by reference into `Session::generate` rather than owned by the session. So
+honouring a per-request seed cost one `Sampler` per request. `SessionGenerator` bakes one in at
+construction, so serving uses `complete_sampled` beside it rather than through it.
+
+**What was forced rather than chosen** is the concurrency shape. `Model` is `Send` but not `Sync`
+and every generation path takes `&mut self`, so one generation runs at a time. A sequential
+accept loop would also queue health probes behind it, and a CPU-backend reply takes minutes
+against a three-second poll and a ten-second compose healthcheck — a busy service would read as a
+dead one. Hence a thread per connection with the generator behind a mutex the health handler
+never takes.
+
+Two limitations to carry forward. Serving blocks until signalled, so the end-of-run probe-flag
+report and KV snapshot are unreachable under `--serve`; flushing interp artifacts from a
+long-lived server is unsolved and is the thing that would make the replay stage genuinely
+redundant rather than merely unused. And `swap_model` cannot drive the harness, which takes its
+checkpoint from `--model` rather than a compose env var, so it refuses the entry by name.
 
 ### R10 — P14 control vector to safetensors
 

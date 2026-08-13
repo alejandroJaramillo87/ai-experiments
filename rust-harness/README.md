@@ -204,8 +204,24 @@ the byte span of text each position produced, conversation compaction, and a KV 
 serialized on exit and restored at startup — continuation logits after a restore
 are bit-identical to an unbroken run.
 
+`--serve <port>` puts that whole stack behind the two HTTP paths the parent
+repository's interp pipeline calls, `/v1/chat/completions` and `/v1/health`, so
+an experiment can reach the model the way it already reaches llama.cpp while
+the taps stay in the process that answers. The sampling flags become
+per-request defaults and a request may override any of them including the seed,
+which is what an OpenAI-compatible server usually accepts and ignores. HTTP is
+hand-rolled over `std::net` — two paths with a length-delimited body do not
+earn a framework, and the gate is offline by contract — so there is no
+keep-alive and a chunked request body is refused rather than mis-parsed; no
+caller sends either. Generation serializes behind a mutex the health handler
+never takes, because `Model` is `Send` but not `Sync` and a health probe queued
+behind a minutes-long CPU reply would read as a dead service. `harness/src/stream.rs`
+is the streamer an SSE body would consume if a streaming client ever appears;
+nothing in interp streams today, so nothing does.
+
 Remaining workstation work: architecture reconciliation against the real E4B
-checkpoint, the rr acceptance run, and the Tier 3 fixtures. The cuda backend
+checkpoint, the rr acceptance run, the Tier 3 fixtures, and the first `--serve`
+run against real E4B. The cuda backend
 slots in at the same `Model` seam.
 
 ## Quality gate

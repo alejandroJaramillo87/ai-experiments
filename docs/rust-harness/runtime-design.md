@@ -39,8 +39,10 @@ probe monitoring inside the forward pass, a flight recorder and deterministic
 KV restore that make runs replayable, and observability records in the shared
 obs contract. The agent loop is the workload generator for those experiments,
 not a competitor to the llama.cpp and vLLM services on model coverage or
-serving speed. The design serves one user with one generation in flight at any instant;
-multi-tenant serving remains the job of the existing services. Parallel subagents
+serving speed. The design serves one generation in flight at any instant, which is a property
+of the runtime rather than a policy: `Model` is `Send` but not `Sync` and every
+generation path takes `&mut self`. Multi-tenant serving remains the job of the
+existing services. Parallel subagents
 are in scope through cooperative interleaving (see
 [Subagents](#subagents-fork-and-interleave)) rather than batched decode. Three
 results are expected to outlive the learning exercise: measured delta-prefill turn
@@ -59,7 +61,15 @@ API exposes. The runtime is shaped by how an agent loop actually calls a model:
 Non-goals, stated explicitly because each was considered and rejected:
 
 - **Not a serving-stack replacement.** llama.cpp and vLLM remain the inference
-  services on ports 8001-8003. This binary serves one local user, in-process.
+  services on ports 8001-8003 for the general workload, on model coverage and
+  on speed. This non-goal was narrowed rather than dropped during
+  implementation: `--serve` exposes a loopback endpoint on port 8005 carrying
+  the two paths the interp pipeline calls, `/v1/chat/completions` and
+  `/v1/health`, because the point of the harness is owning the seams, and an
+  experiment that reaches the model over someone else's HTTP server observes
+  nothing the tap seam could have shown it. What stays true is the shape: one
+  generation at a time, one local user, loopback only, no batching and no
+  tenancy. The contract is `schemas/harness_chat_endpoint.json`.
 - **No training.** The training tier stays on the Python/PyTorch stack. The
   original design also excluded an interpretability seam; that non-goal was
   reversed during implementation — the CPU backend carries a residual-stream

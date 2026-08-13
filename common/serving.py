@@ -95,7 +95,33 @@ SERVICES = {
         concurrency=16,
         start_budget_s=600,
     ),
+    # The rust harness serving its own runtime (rust-harness `--serve`), for
+    # interp work that wants the taps in the process that answers the
+    # request. Not a compose service: it is a binary the human starts, and it
+    # takes its checkpoint from --model rather than from an env var, so
+    # swap_model refuses it (see below). The name is kept for ServiceSpec's
+    # sake and read by nothing.
+    #
+    # concurrency=1 because runtime `Model` is Send but not Sync and every
+    # generation path takes &mut self, so the endpoint serializes generation
+    # behind a mutex. Health stays responsive regardless; only chat queues.
+    #
+    # start_budget_s covers loading a ~15 GB checkpoint from disk. It is a
+    # placeholder until the workstation run measures the real figure, and the
+    # CPU backend answers slowly enough that callers should pass an explicit
+    # timeout to chat_completion rather than take the 120s default.
+    "harness": ServiceSpec(
+        "harness",
+        8005,
+        "HARNESS_MODEL",
+        "/v1/health",
+        concurrency=1,
+        start_budget_s=600,
+    ),
 }
+
+# Services compose does not define, so `swap_model` cannot recreate them.
+NON_COMPOSE_SERVICES = frozenset({"harness"})
 
 
 # Storage types that are not quantizations. An export now ships BF16, and a
@@ -149,6 +175,15 @@ def swap_model(
     container_path=None restores the previous serving state: with the var
     absent, compose falls back to .env / the entrypoint default.
     """
+    # Refused by name rather than attempted: compose would report "no such
+    # service" for a binary the human started, which reads as a broken
+    # compose file instead of a model that has to be selected another way.
+    if service.name in NON_COMPOSE_SERVICES:
+        raise ServingError(
+            f"{service.name} is not a compose service, so its model cannot be swapped\n"
+            f"  Solution: restart it with the checkpoint you want "
+            f"(rust-harness: --model <checkpoint-dir> --serve {service.port})"
+        )
     env = dict(env if env is not None else os.environ)
     if container_path is None:
         env.pop(service.model_env, None)

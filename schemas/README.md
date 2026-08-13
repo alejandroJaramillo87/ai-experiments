@@ -1,14 +1,17 @@
 # Cross-language artifact contracts
 
-Eight contracts. Six cross the boundary between the Rust harness
+Nine contracts. Seven cross the boundary between the Rust harness
 (`/rust-harness/`) and the Python training and interpretability pipelines
 (`/interp/`, `/common/`, `/training/`). Five of those are artifact formats:
 each has a writer and a reader in different languages, so no compiler and no
 type system connects the two sides. The sixth, `gemma4_facts.json`, is not a
 format but a set of architecture values that all three tiers held private
-copies of, which is the same problem one level up. This directory holds the
-contract each pair agrees on, and every contract names the tests that enforce
-it.
+copies of, which is the same problem one level up. The seventh,
+`harness_chat_endpoint.json`, is not a file at all: it is the HTTP request and
+response shape the harness serves under `--serve` and `common/serving.py`
+calls, which is the same problem again with the bytes in flight rather than at
+rest. This directory holds the contract each pair agrees on, and every contract
+names the tests that enforce it.
 
 The remaining two, `alignment.json` and `attention_capture.manifest.json`,
 have a Rust writer and no reader in either language yet. They are here rather
@@ -78,6 +81,7 @@ seam being re-specified in prose.
 | `obs_record.json` | Run-level JSONL: event file and run catalog | Both write, Python reads |
 | `chat_template.json` | The Gemma 4 chat template: the prompt string a conversation renders to | Both write, both read |
 | `gemma4_facts.json` | Gemma 4 architecture values: layer counts, head dimensions, the attention schedule, RoPE regimes | Google writes, all three tiers read |
+| `harness_chat_endpoint.json` | The harness `--serve` HTTP surface: `/v1/chat/completions` and `/v1/health` | Rust serves, Python calls |
 | `alignment.json` | Per-position byte spans and probe scores for one run | Rust writes, no reader yet |
 | `attention_capture.manifest.json` | Attention-capture directory: `manifest.json` and `attention.npz` | Rust writes, no reader yet |
 
