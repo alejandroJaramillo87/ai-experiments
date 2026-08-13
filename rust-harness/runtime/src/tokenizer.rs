@@ -24,6 +24,7 @@
  */
 
 use std::collections::HashMap;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use anyhow::{ensure, Context, Result};
@@ -272,12 +273,47 @@ impl Tokenizer {
         self.encode_inner(text, allowed)
     }
 
+    /// `encode_prompt`, with each token's byte range in `text` alongside it.
+    ///
+    /// The ranges are what lets a caller say which positions came from
+    /// structure it emitted and which from content, without inspecting ids:
+    /// the scaffolding is known as literals in the rendered string, so the
+    /// question "is this position scaffolding" becomes a range intersection
+    /// over bytes the renderer already knows about. An id-based rule gets
+    /// `<|turn>model\n` wrong, since only the `<|turn>` prefix is allowlisted
+    /// and `model\n` tokenizes as ordinary content.
+    ///
+    /// This is a second view of one encoding, not a second encoding —
+    /// `encode_prompt` is defined in terms of it, and a test pins the ids
+    /// equal. Widening the return type rather than adding a parallel path is
+    /// the point: two encoders would eventually disagree.
+    pub fn encode_prompt_offsets(
+        &self,
+        text: &str,
+        allowed: &[&str],
+    ) -> Result<Vec<(Token, Range<usize>)>> {
+        self.encode_offsets(text, allowed)
+    }
+
     /// Split the input on the allowed literals, hand each span between them to
     /// the library, and splice the literals' own ids back in.
     ///
     /// The library sees only spans that the caller has already vouched are
     /// content, so its added-tokens behaviour cannot widen what resolves.
     fn encode_inner(&self, text: &str, allowed: &[&str]) -> Result<Vec<Token>> {
+        Ok(self
+            .encode_offsets(text, allowed)?
+            .into_iter()
+            .map(|(tok, _)| tok)
+            .collect())
+    }
+
+    /// The splice loop, keeping each token's byte range in `text`.
+    ///
+    /// Every caller goes through here so the id sequence has exactly one
+    /// definition. A spliced literal reports its own range; a content token
+    /// reports the library's offsets shifted into the whole string.
+    fn encode_offsets(&self, text: &str, allowed: &[&str]) -> Result<Vec<(Token, Range<usize>)>> {
         // Longest first, so a literal that is a prefix of another does not win
         // over it: the model-turn opener is `<|turn>model\n` and the plain
         // turn marker `<|turn>` is a prefix of it.
@@ -292,12 +328,12 @@ impl Tokenizer {
                 pos += 1;
                 continue;
             };
-            self.encode_span(&text[span_start..pos], &mut out)?;
-            out.push(tok);
+            self.encode_span(&text[span_start..pos], span_start, &mut out)?;
+            out.push((tok, pos..pos + len));
             pos += len;
             span_start = pos;
         }
-        self.encode_span(&text[span_start..], &mut out)?;
+        self.encode_span(&text[span_start..], span_start, &mut out)?;
         Ok(out)
     }
 
@@ -320,8 +356,19 @@ impl Tokenizer {
         None
     }
 
-    /// Encode one span of content text. Tokens are appended to `out`.
-    fn encode_span(&self, text: &str, out: &mut Vec<Token>) -> Result<()> {
+    /// Encode one span of content text. Tokens are appended to `out`, each
+    /// with its byte range shifted by `base` into the string the span came
+    /// from.
+    ///
+    /// The library reports offsets against the input it was handed, and the
+    /// normalizer that marks spaces is alignment-tracked, so these are ranges
+    /// in the original text rather than in the normalized form.
+    fn encode_span(
+        &self,
+        text: &str,
+        base: usize,
+        out: &mut Vec<(Token, Range<usize>)>,
+    ) -> Result<()> {
         if text.is_empty() {
             return Ok(());
         }
@@ -329,7 +376,9 @@ impl Tokenizer {
             .inner
             .encode(text, false)
             .map_err(|e| anyhow::anyhow!("encode {} bytes: {e}", text.len()))?;
-        out.extend_from_slice(encoding.get_ids());
+        for (&tok, &(start, end)) in encoding.get_ids().iter().zip(encoding.get_offsets()) {
+            out.push((tok, base + start..base + end));
+        }
         Ok(())
     }
 }
@@ -488,6 +537,43 @@ mod tests {
             !unlisted.contains(&listed[0]),
             "an unlisted delimiter still produced its special id: {unlisted:?}"
         );
+    }
+
+    /// The offsets view must be a view, not a second encoding. If these ever
+    /// disagree, one of the two callers is prompting a different model.
+    #[test]
+    fn the_offsets_view_yields_the_same_ids_as_encode_prompt() {
+        let t = tokenizer_with_delimiters();
+        let text = format!("{TURN_OPEN}abc{TURN_CLOSE}\nab caf\u{00e9}");
+        let allowed = [TURN_OPEN, TURN_CLOSE, MODEL_TURN_OPEN];
+        let plain = t.encode_prompt(&text, &allowed).unwrap();
+        let with_offsets = t.encode_prompt_offsets(&text, &allowed).unwrap();
+        let ids: Vec<Token> = with_offsets.iter().map(|(tok, _)| *tok).collect();
+        assert_eq!(ids, plain, "offsets view re-segmented the input");
+    }
+
+    #[test]
+    fn every_token_offset_is_a_range_inside_the_input() {
+        let t = tokenizer_with_delimiters();
+        let text = format!("{TURN_OPEN}abc{TURN_CLOSE} ab");
+        let got = t
+            .encode_prompt_offsets(&text, &[TURN_OPEN, TURN_CLOSE])
+            .unwrap();
+        for (tok, range) in &got {
+            assert!(
+                range.start <= range.end && range.end <= text.len(),
+                "token {tok} reports {range:?} outside {} bytes",
+                text.len()
+            );
+            assert!(
+                text.get(range.clone()).is_some(),
+                "token {tok} reports {range:?}, which is not on char boundaries"
+            );
+        }
+        // The spliced literals report their own byte ranges, which is what the
+        // scaffolding classification reads.
+        let opener = got.first().unwrap();
+        assert_eq!(&text[opener.1.clone()], TURN_OPEN, "{:?}", opener.1);
     }
 
     #[test]

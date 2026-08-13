@@ -7,6 +7,8 @@
  * probe trace over tens of thousands of positions interpretable at all.
  */
 
+use std::ops::Range;
+
 use anyhow::Result;
 
 use crate::model::Token;
@@ -143,6 +145,94 @@ impl<'t> Detok<'t> {
     }
 }
 
+/// What a prompt position is: structure the harness emitted, or content.
+///
+/// The distinction is the one IF-2 turns on. Scored decode positions are the
+/// model producing its own text; prefill positions over content are the model
+/// reading someone else's; and scaffolding is neither, producing no
+/// user-visible text at all. Marked rather than omitted, always -- dropping a
+/// position renumbers every position after it and the artifact's indices stop
+/// being the run's indices.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    Scaffold,
+    Content,
+}
+
+impl Role {
+    /// The name this role is stored under, and the parse that recovers it.
+    /// One decision, so a stored role and its reader cannot drift apart.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Role::Scaffold => "scaffold",
+            Role::Content => "content",
+        }
+    }
+}
+
+impl std::str::FromStr for Role {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Role> {
+        match s {
+            "scaffold" => Ok(Role::Scaffold),
+            "content" => Ok(Role::Content),
+            other => anyhow::bail!("unknown position role {other:?}"),
+        }
+    }
+}
+
+/// Byte ranges in `text` covered by any of `markers`.
+///
+/// The renderer emits its structure as known literals, so scanning for them
+/// recovers exactly the bytes it owns. This is why roles are computed over
+/// ranges rather than over ids: `<|turn>model\n` is one marker but two tokens,
+/// only the first of which is allowlisted, and an id-based rule would call the
+/// `model\n` half content.
+///
+/// Markers are matched longest first, so a marker that is a prefix of another
+/// does not claim the shorter range and leave the tail looking like content.
+pub fn scaffold_ranges(text: &str, markers: &[&str]) -> Vec<Range<usize>> {
+    let mut sorted: Vec<&str> = markers.iter().copied().filter(|m| !m.is_empty()).collect();
+    sorted.sort_unstable_by_key(|m| std::cmp::Reverse(m.len()));
+
+    let mut out = Vec::new();
+    let mut pos = 0;
+    while pos < text.len() {
+        let hit = sorted
+            .iter()
+            .find(|m| text.get(pos..pos + m.len()) == Some(**m));
+        match hit {
+            Some(m) => {
+                out.push(pos..pos + m.len());
+                pos += m.len();
+            }
+            None => pos += 1,
+        }
+    }
+    out
+}
+
+/// The role of a token occupying `at`, given the scaffolding ranges.
+///
+/// A token overlapping any scaffold byte is scaffolding. Overlap rather than
+/// containment because a tokenizer is free to merge across the boundary: a
+/// token that is half structure is not content, and calling it content would
+/// attribute the model's own bytes to text the harness wrote.
+///
+/// A zero-width range -- which the library can report for a piece the
+/// normalizer consumed -- is classified by the byte it sits at.
+pub fn role_at(at: &Range<usize>, scaffold: &[Range<usize>]) -> Role {
+    let overlaps = scaffold
+        .iter()
+        .any(|s| at.start < s.end && s.start < at.end.max(at.start + 1));
+    if overlaps {
+        Role::Scaffold
+    } else {
+        Role::Content
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,6 +318,38 @@ mod tests {
         let span = d.advance(tok.bos()).unwrap();
         assert!(span.is_empty(), "the boundary produced bytes: {span:?}");
         assert_eq!(d.text(), "");
+    }
+
+    #[test]
+    fn a_marker_that_is_a_prefix_of_another_does_not_claim_the_shorter_range() {
+        // `<|turn>model\n` contains `<|turn>`. Matching the short one first
+        // would leave `model\n` outside the scaffolding and looking like the
+        // model's own text.
+        let text = "<|turn>model\nhi<turn|>";
+        let got = scaffold_ranges(text, &["<|turn>", "<turn|>", "<|turn>model\n"]);
+        let covered: Vec<&str> = got.iter().map(|r| &text[r.clone()]).collect();
+        assert_eq!(covered, vec!["<|turn>model\n", "<turn|>"], "{got:?}");
+    }
+
+    #[test]
+    fn a_token_overlapping_scaffolding_is_scaffolding() {
+        // Two ranges, as a real render has: an opener and a closer.
+        let scaffold = [10..20, 30..35];
+        assert_eq!(role_at(&(0..5), &scaffold), Role::Content);
+        assert_eq!(role_at(&(5..12), &scaffold), Role::Scaffold);
+        assert_eq!(role_at(&(12..15), &scaffold), Role::Scaffold);
+        assert_eq!(role_at(&(20..25), &scaffold), Role::Content);
+        assert_eq!(role_at(&(28..32), &scaffold), Role::Scaffold);
+        // Zero-width, which the library can report: classified by where it sits.
+        assert_eq!(role_at(&(15..15), &scaffold), Role::Scaffold);
+        assert_eq!(role_at(&(25..25), &scaffold), Role::Content);
+    }
+
+    #[test]
+    fn a_role_round_trips_through_its_stored_name() {
+        for role in [Role::Scaffold, Role::Content] {
+            assert_eq!(role.as_str().parse::<Role>().unwrap(), role);
+        }
     }
 
     #[test]
