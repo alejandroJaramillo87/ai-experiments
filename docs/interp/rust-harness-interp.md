@@ -187,7 +187,7 @@ reference.
 
 ```bash
 $ harness --model <checkpoint-dir> --probe probe.gguf \
-    [--probe-out flags.jsonl] <task>
+    [--probe-out flags.jsonl] [--alignment-out alignment.jsonl] <task>
 ```
 
 Every position of the probe's layer is scored, a granularity the Python
@@ -199,6 +199,45 @@ only: monitored and unmonitored runs produce bit-identical logits, which
 the golden test asserts. Because taps do not transfer across forks, a
 monitored agent's subagents run unmonitored; extending monitoring across
 forks is future work.
+
+### Token-to-text alignment
+
+`probe-flags.jsonl` answers "did anything cross the threshold". It cannot
+answer "what was the model writing when it did", and over tens of thousands
+of positions that is the only question worth asking. `--alignment-out`
+writes the artifact that closes the gap
+(`harness/src/alignment.rs`, contract in `schemas/alignment.json`): a header
+line carrying the run id, then one row per position with
+
+| Field | Meaning |
+|-------|---------|
+| `position` | absolute cache position, the same numbering the tap reports |
+| `role` | `content`, or `scaffold` for a position the chat template wrote |
+| `byte_start`, `byte_end` | half-open byte range in the header's decoded `text` |
+| `pass`, `phase` | the forward call that computed the position, and `prefill` or `decode` |
+| `score` | the probe score taken there, when a probe was loaded |
+
+Concatenating every row's span in position order reproduces the text exactly,
+which is the property the artifact is tested against. Byte offsets rather than
+character offsets, because the tokenizer is byte-oriented and byte-fallback
+pieces exist; a codepoint split across several of them is attributed whole to
+the position that completes it.
+
+Every position gets a row, scaffolding included. Omitting one would renumber
+every position after it and the artifact's indices would stop being the run's.
+The run id is the one `harness::obs` mints, so this artifact and the run's
+event log join without a second identifier.
+
+`pass` is there because the prefill/decode bit alone stopped being sufficient
+once batching landed: it cannot distinguish a position computed alongside its
+neighbours from one computed alone, and those are different conditions. It is
+minted in `CpuModel::prefill_groups`, the one place a batch boundary is
+decided.
+
+Turning this on makes the model record its passes and the monitor keep every
+clean score, both of which grow with the run, so it is off by default. Nothing
+in the Python interp toolkit reads the artifact yet; the contract's own notes
+record that as a gap.
 
 The workload shape matters for what monitored positions mean. Agent tasks
 are prefill-heavy: most scored positions are the model reading

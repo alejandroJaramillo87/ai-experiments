@@ -195,7 +195,8 @@ parameters and the per-step selection, so a replay reproduces the transcript
 rather than only the distribution it was drawn from — `tracing` spans with a
 Perfetto-loadable `--trace-chrome`, an interp seam (activation capture, control
 vectors, in-band probe monitoring) whose taps are keyed on the site a row came
-from rather than on the layer alone, conversation compaction, and a KV cache
+from rather than on the layer alone and whose scores can be written out beside
+the byte span of text each position produced, conversation compaction, and a KV cache
 serialized on exit and restored at startup — continuation logits after a restore
 are bit-identical to an unbroken run.
 

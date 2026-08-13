@@ -1,13 +1,21 @@
 # Cross-language artifact contracts
 
-Five contracts cross the boundary between the Rust harness (`/rust-harness/`)
-and the Python training and interpretability pipelines (`/interp/`, `/common/`,
-`/training/`). Four are artifact formats: each has a writer and a reader in
-different languages, so no compiler and no type system connects the two sides.
-The fifth, `gemma4_facts.json`, is not a format but a set of architecture
-values that all three tiers held private copies of, which is the same problem
-one level up. This directory holds the contract each pair agrees on, and every
-contract names the tests that enforce it.
+Six contracts. Five cross the boundary between the Rust harness
+(`/rust-harness/`) and the Python training and interpretability pipelines
+(`/interp/`, `/common/`, `/training/`). Four of those are artifact formats:
+each has a writer and a reader in different languages, so no compiler and no
+type system connects the two sides. The fifth, `gemma4_facts.json`, is not a
+format but a set of architecture values that all three tiers held private
+copies of, which is the same problem one level up. This directory holds the
+contract each pair agrees on, and every contract names the tests that enforce
+it.
+
+The sixth, `alignment.json`, has a Rust writer and no reader in either
+language yet. It is here rather than in prose beside the writer because the
+longitudinal analysis it exists for will be Python, and a contract written
+before the second side arrives is what keeps the format from being settled
+unilaterally by whichever reader is written first. Its `readers` list is empty
+and its notes say so; that is a stated gap, not the pattern to copy.
 
 The files are plain JSON key documents, not JSON Schema. They record which keys
 are required, which are emitted by one writer only, and which fields are
@@ -64,6 +72,7 @@ exporters whose output they exist to read.
 | `obs_record.json` | Run-level JSONL: event file and run catalog | Both write, Python reads |
 | `chat_template.json` | The Gemma 4 chat template: the prompt string a conversation renders to | Both write, both read |
 | `gemma4_facts.json` | Gemma 4 architecture values: layer counts, head dimensions, the attention schedule, RoPE regimes | Google writes, all three tiers read |
+| `alignment.json` | Per-position byte spans and probe scores for one run | Rust writes, no reader yet |
 
 Each file carries a `guarded_by` list naming the tests that assert it, and a
 `notes` object recording the divergences that are intentional. A field listed
