@@ -7,6 +7,8 @@
  * decode the sampled tokens back to text.
  */
 
+use std::sync::{Arc, Mutex};
+
 use anyhow::Result;
 
 use runtime::grammar::Vocab;
@@ -15,6 +17,7 @@ use runtime::session::Session;
 use runtime::tokenizer::Tokenizer;
 
 use crate::agent::Generator;
+use crate::alignment::Alignment;
 
 pub struct SessionGenerator {
     session: Session,
@@ -23,6 +26,10 @@ pub struct SessionGenerator {
     vocab: Vocab,
     sampler: Sampler,
     max_tokens: usize,
+    /// Token-to-text alignment for the latest turn, when a caller asked for
+    /// it. This is the one place the rendered prompt and the ids the model
+    /// produced are both in hand, which is what building the table needs.
+    alignment: Option<Arc<Mutex<Alignment>>>,
 }
 
 impl SessionGenerator {
@@ -42,7 +49,21 @@ impl SessionGenerator {
             vocab,
             sampler: Sampler::new(params),
             max_tokens,
+            alignment: None,
         })
+    }
+
+    /// Begin recording token-to-text alignment, returning the handle it is
+    /// rebuilt into after every turn.
+    ///
+    /// Rebuilt rather than appended to: the rendered prompt is append-only
+    /// across turns, so the current prompt already contains every earlier turn
+    /// including the model's own replies, and rebuilding cannot drift from the
+    /// run the way an accumulating record could.
+    pub fn record_alignment(&mut self) -> Arc<Mutex<Alignment>> {
+        let handle = Arc::new(Mutex::new(Alignment::default()));
+        self.alignment = Some(Arc::clone(&handle));
+        handle
     }
 
     pub fn session(&self) -> &Session {
@@ -80,6 +101,11 @@ impl Generator for SessionGenerator {
             self.max_tokens,
             |_| {},
         )?;
+        if let Some(handle) = self.alignment.as_ref() {
+            let built =
+                Alignment::build(&self.tokenizer, prompt, PROMPT_SPECIALS, &generation.tokens)?;
+            *handle.lock().expect("alignment lock") = built;
+        }
         self.tokenizer.decode(&generation.tokens)
     }
 

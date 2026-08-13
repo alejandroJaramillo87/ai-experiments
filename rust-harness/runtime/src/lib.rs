@@ -29,6 +29,7 @@ pub mod align;
 pub mod checkpoint;
 pub mod conformance;
 pub mod digest;
+pub mod envelope;
 pub mod eval;
 pub mod gguf;
 pub mod grammar;

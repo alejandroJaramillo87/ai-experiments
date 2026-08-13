@@ -4,6 +4,7 @@
  */
 
 pub mod agent;
+pub mod alignment;
 pub mod chat;
 pub mod compact;
 pub mod generator;

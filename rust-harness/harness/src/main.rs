@@ -37,6 +37,12 @@ struct MonitorHandle {
     state: std::sync::Arc<std::sync::Mutex<runtime::model::probe::MonitorState>>,
 }
 
+/// The forward-pass record a run accumulates, when one was asked for.
+///
+/// `None` rather than an empty vector, so "alignment was not requested" and
+/// "the model made no passes" stay distinguishable in the writer.
+type PassHandle = Option<std::sync::Arc<std::sync::Mutex<Vec<runtime::align::Pass>>>>;
+
 /// Sentinel an interp artifact carries when the weights it was fitted on
 /// have no recorded identity (`interp/probes/capture.py` defaults
 /// `model_hash` to it, and the exporters pass it through).
@@ -102,7 +108,8 @@ fn build_generator(
     snapshot: Option<&Path>,
     text_only: bool,
     single_thread: bool,
-) -> Result<(SessionGenerator, Option<MonitorHandle>, u64)> {
+    align: bool,
+) -> Result<(SessionGenerator, Option<MonitorHandle>, u64, PassHandle)> {
     use runtime::model::{
         cpu::{ControlVector, CpuModel},
         probe::{Probe, ProbeMonitor},
@@ -173,7 +180,9 @@ fn build_generator(
                 p.layer,
                 cpu.config().n_layers
             );
-            let (tap, state) = ProbeMonitor::new(std::sync::Arc::clone(&p));
+            // Keeping every clean score is what the alignment artifact's
+            // second channel is; `probe-flags.jsonl` needs only the flags.
+            let (tap, state) = ProbeMonitor::with_scores(std::sync::Arc::clone(&p), align);
             cpu.set_tap(Box::new(tap));
             Some(MonitorHandle { probe: p, state })
         }
@@ -271,6 +280,9 @@ fn build_generator(
             );
         }
     }
+    // Taken here because this is the last point the concrete backend is in
+    // hand: below, `cpu` is wrapped and moved into the session.
+    let passes: PassHandle = align.then(|| cpu.record_passes());
     let model: Box<dyn Model> = match record {
         // The sampling parameters go into the recording's header, so a replay
         // rebuilds the sampler that chose the tokens rather than a default
@@ -325,8 +337,10 @@ fn build_generator(
     let tokenizer_path = runtime::tokenizer::resolve_tokenizer(model_path, tokenizer_path)?;
     let tokenizer =
         runtime::tokenizer::Tokenizer::from_file(&tokenizer_path).context("load tokenizer")?;
+    // The alignment table itself is started by the caller, which owns the
+    // handle it is written from; only the pass record has to be taken here.
     let generator = SessionGenerator::new(session, tokenizer, sampling, max_tokens)?;
-    Ok((generator, monitor, model_hash))
+    Ok((generator, monitor, model_hash, passes))
 }
 
 /// Drain the monitor state: write one JSONL record per flagged position to
@@ -391,6 +405,8 @@ fn run(
     control_scale: f32,
     probe: Option<&Path>,
     probe_out: Option<&Path>,
+    alignment_out: Option<&Path>,
+    run_id: Option<&str>,
     sampling: runtime::sampler::SamplingParams,
     max_tokens: usize,
     context: Option<usize>,
@@ -406,7 +422,7 @@ fn run(
     // delta prefill keeps working).
     let memory = std::fs::read_to_string(root.join("HARNESS.md")).ok();
     let snapshot_path = root.join("session.kv");
-    let (mut generator, monitor, model_hash) = build_generator(
+    let (mut generator, monitor, model_hash, passes) = build_generator(
         model,
         tokenizer,
         record,
@@ -419,7 +435,11 @@ fn run(
         Some(&snapshot_path),
         text_only,
         single_thread,
+        alignment_out.is_some(),
     )?;
+    // Started here rather than in `build_generator`, which does not own the
+    // handle the artifact is written from.
+    let alignment = alignment_out.map(|_| generator.record_alignment());
     // The task's outcome is held rather than propagated: the bookkeeping
     // below runs either way, so flags collected before a failure survive it.
     let result = if chat {
@@ -495,6 +515,37 @@ fn run(
         }
         None => result,
     };
+    // Observation, like the probe flags: a failure here is a warning, never
+    // the task's exit code. The same reasoning as `fold_probe_report` --
+    // turning a completed, transcript-recorded task into exit 1 because an
+    // artifact could not be written loses the answer as well as the artifact.
+    if let (Some(out), Some(alignment)) = (alignment_out, alignment.as_ref()) {
+        let a = alignment.lock().expect("alignment lock");
+        let passes = passes
+            .as_ref()
+            .map(|p| p.lock().expect("pass record lock").clone())
+            .unwrap_or_default();
+        let scores = monitor
+            .as_ref()
+            .map(|m| m.state.lock().expect("monitor state lock").scores.clone())
+            .unwrap_or_default();
+        let probe_name = monitor.as_ref().map(|m| m.probe.name.clone());
+        let header = harness::alignment::Header {
+            run_id: run_id.unwrap_or("unknown"),
+            model_hash: &format!("{model_hash:016x}"),
+            probe: probe_name.as_deref(),
+            probe_layer: monitor.as_ref().map(|m| m.probe.layer),
+        };
+        match harness::alignment::write(out, &header, &a, &passes, &scores) {
+            Ok(()) => eprintln!(
+                "[INFO] Alignment: {} positions, {} passes -> {}",
+                a.rows.len(),
+                passes.len(),
+                out.display()
+            ),
+            Err(e) => eprintln!("[WARN] Alignment not written: {e:#}"),
+        }
+    }
     result?;
     Ok(())
 }
@@ -516,7 +567,7 @@ fn main() -> ExitCode {
          [--record <path>] \
          [--trace-chrome <path>] [--control-vector <path.gguf>] \
          [--control-vector-scale <f>] [--probe <path.gguf>] \
-         [--probe-out <path>] [--temperature <f>] [--top-p <f>] \
+         [--probe-out <path>] [--alignment-out <path>] [--temperature <f>] [--top-p <f>] \
          [--top-k <n>] [--seed <n>] [--max-tokens <n>] [--context <n>] \
          [--compact-at <f>] [--text-only] [--single-thread] \
          (--chat | <task description>)";
@@ -537,6 +588,11 @@ fn main() -> ExitCode {
     // scored in-band at every position of its layer through the tap seam.
     // --probe-out <path>: JSONL file for flagged positions (default
     // probe-flags.jsonl in the working directory).
+    // --alignment-out <path>: JSONL file mapping every position to the byte
+    // span of output text it produced, the forward pass that computed it, and
+    // the probe score taken there. Off by default: it makes the model record
+    // its passes and the monitor keep every clean score, both of which grow
+    // with the run.
     // --temperature <f> / --top-p <f> / --seed <n>: sampling parameters
     // (defaults 0.8 / 0.95 / 0; seed 0 replays a run exactly).
     // --top-k <n>: rank cutoff applied before top-p, keeping at most the n
@@ -556,6 +612,7 @@ fn main() -> ExitCode {
     let mut control_scale_arg: Option<std::path::PathBuf> = None;
     let mut probe: Option<std::path::PathBuf> = None;
     let mut probe_out: Option<std::path::PathBuf> = None;
+    let mut alignment_out: Option<std::path::PathBuf> = None;
     let mut temperature_arg: Option<std::path::PathBuf> = None;
     let mut top_p_arg: Option<std::path::PathBuf> = None;
     let mut top_k_arg: Option<std::path::PathBuf> = None;
@@ -572,6 +629,7 @@ fn main() -> ExitCode {
         ("--probe", &mut probe),
         ("--tokenizer", &mut tokenizer),
         ("--probe-out", &mut probe_out),
+        ("--alignment-out", &mut alignment_out),
         ("--temperature", &mut temperature_arg),
         ("--top-p", &mut top_p_arg),
         ("--top-k", &mut top_k_arg),
@@ -745,6 +803,8 @@ fn main() -> ExitCode {
         control_scale,
         probe.as_deref(),
         probe_out.as_deref(),
+        alignment_out.as_deref(),
+        run_log.run_id(),
         sampling,
         max_tokens,
         context,

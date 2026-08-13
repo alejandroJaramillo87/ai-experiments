@@ -1290,11 +1290,16 @@ pub struct CpuModel {
     /// Forward passes made, once a caller has asked for them.
     ///
     /// `None` until `record_passes` is called, so a run wanting no alignment
-    /// pays neither the allocation nor the growth. Not carried across forks: a
-    /// fork is a separate branch of the conversation and merging two branches'
-    /// pass indices into one sequence would name passes that never happened in
-    /// that order.
-    passes: Option<Vec<align::Pass>>,
+    /// pays neither the allocation nor the growth. Shared out through an `Arc`
+    /// for the same reason `MonitorState` is: by the time a run ends the model
+    /// has been moved into a `Session` and possibly wrapped in a
+    /// `RecordingModel`, and the writer that needs the record cannot reach
+    /// back through either.
+    ///
+    /// Not carried across forks: a fork is a separate branch of the
+    /// conversation, and merging two branches' pass indices into one sequence
+    /// would name passes that never happened in that order.
+    passes: Option<Arc<Mutex<Vec<align::Pass>>>>,
 }
 
 /// Output rows below which `par_rows` stays serial.
@@ -2336,20 +2341,26 @@ impl CpuModel {
         self.batch
     }
 
-    /// Begin recording forward passes, discarding any already recorded.
+    /// Begin recording forward passes, returning the handle they accumulate
+    /// into. Discards any already recorded.
     ///
     /// Opt-in because the record grows with the run and only an alignment
     /// artifact reads it. `prefill_groups` is the one place a pass boundary is
     /// decided, so this is the only honest place to observe one: a caller
     /// above the `Model` seam sees a prefill of 150 tokens and cannot tell how
     /// many passes served it.
-    pub fn record_passes(&mut self) {
-        self.passes = Some(Vec::new());
+    pub fn record_passes(&mut self) -> Arc<Mutex<Vec<align::Pass>>> {
+        let handle = Arc::new(Mutex::new(Vec::new()));
+        self.passes = Some(Arc::clone(&handle));
+        handle
     }
 
     /// The passes recorded so far, empty when recording was never enabled.
-    pub fn passes(&self) -> &[align::Pass] {
-        self.passes.as_deref().unwrap_or(&[])
+    pub fn passes(&self) -> Vec<align::Pass> {
+        match self.passes.as_ref() {
+            Some(p) => p.lock().expect("pass record lock").clone(),
+            None => Vec::new(),
+        }
     }
 
     /// The absolute positions layer `i` currently holds, as `base..end`.
@@ -3067,9 +3078,11 @@ impl CpuModel {
             };
             // Recorded after the pass succeeded, so a rolled-back group leaves
             // no trace of positions the cache no longer holds.
-            if let Some(passes) = self.passes.as_mut() {
+            if let Some(handle) = self.passes.as_ref() {
+                let mut passes = handle.lock().expect("pass record lock");
+                let index = passes.len();
                 passes.push(align::Pass {
-                    index: passes.len(),
+                    index,
                     start,
                     len: group.len(),
                 });

@@ -162,6 +162,16 @@ pub struct MonitorState {
     /// Positions of the probe's layer that were scored.
     pub scored: usize,
     pub flags: Vec<Flag>,
+    /// Every score, in the order the positions were computed, when the
+    /// monitor was asked to keep them.
+    ///
+    /// Empty otherwise, which is what it has always been: a flag-only record
+    /// answers "did anything cross the threshold" and cannot answer "what was
+    /// the probe doing while the model wrote this", because the second
+    /// question is about the clean positions too. Kept behind a flag because
+    /// the cost is proportional to the run and only an alignment artifact
+    /// reads it.
+    pub scores: Vec<Flag>,
 }
 
 /// Tap implementation scoring the probe's layer at every position. Other
@@ -169,15 +179,27 @@ pub struct MonitorState {
 pub struct ProbeMonitor {
     probe: Arc<Probe>,
     state: Arc<Mutex<MonitorState>>,
+    keep_scores: bool,
 }
 
 impl ProbeMonitor {
     pub fn new(probe: Arc<Probe>) -> (ProbeMonitor, Arc<Mutex<MonitorState>>) {
+        ProbeMonitor::with_scores(probe, false)
+    }
+
+    /// A monitor that also keeps every clean score, for a caller writing an
+    /// alignment artifact. `new` is the flag-only behaviour and stays the
+    /// default, so a run that only wants `probe-flags.jsonl` is unchanged.
+    pub fn with_scores(
+        probe: Arc<Probe>,
+        keep_scores: bool,
+    ) -> (ProbeMonitor, Arc<Mutex<MonitorState>>) {
         let state = Arc::new(Mutex::new(MonitorState::default()));
         (
             ProbeMonitor {
                 probe,
                 state: Arc::clone(&state),
+                keep_scores,
             },
             state,
         )
@@ -196,6 +218,9 @@ impl Tap for ProbeMonitor {
         };
         let mut state = self.state.lock().expect("monitor state lock");
         state.scored += 1;
+        if self.keep_scores {
+            state.scores.push(Flag { position, score });
+        }
         // Parameters are finite by load-time check, so a non-finite score
         // means a non-finite residual. `score > threshold` is false for NaN,
         // so leaving it unflagged would report the position clean: a monitor

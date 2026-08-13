@@ -57,38 +57,6 @@ fn load_dataset(path: &Path) -> Result<Vec<Example>> {
     Ok(examples)
 }
 
-fn git_sha() -> String {
-    std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_else(|| "unknown".to_string())
-}
-
-fn utc_now() -> String {
-    // Seconds since the epoch rendered as UTC without a time library.
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let days = secs / 86_400;
-    let (h, m, s) = (secs % 86_400 / 3600, secs % 3600 / 60, secs % 60);
-    // Civil-date conversion (Howard Hinnant's algorithm).
-    let z = days as i64 + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let year = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = if month <= 2 { year + 1 } else { year };
-    format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
-}
-
 /// The shard slicing assumes exactly one captured row per example per layer.
 /// Checking that before anything is written keeps a future divergence between
 /// the per-layer keying of `collected` and the capture loop's iteration from
@@ -253,8 +221,8 @@ fn run(
         "count": examples.len(),
         "shards": shards,
         "capture_backend": "rust-harness-cpu",
-        "git_sha": git_sha(),
-        "created": utc_now(),
+        "git_sha": runtime::envelope::git_sha(),
+        "created": runtime::envelope::utc_now(),
     });
     let tmp = out_dir.join("manifest.json.tmp");
     std::fs::write(&tmp, serde_json::to_string_pretty(&manifest)?)?;
@@ -356,13 +324,5 @@ mod tests {
             err.contains("layer 1: captured 6 rows for 3 examples"),
             "{err}"
         );
-    }
-
-    #[test]
-    fn utc_now_renders_a_plausible_iso_timestamp() {
-        let t = utc_now();
-        assert_eq!(t.len(), 20);
-        assert!(t.ends_with('Z') && t.contains('T'), "{t}");
-        assert!(t.starts_with("20"), "{t}");
     }
 }
