@@ -1087,6 +1087,102 @@ impl Tap for LastRowTap {
     }
 }
 
+/// One captured attention row: the first visible key position, and the
+/// distribution over `first ..= position`.
+///
+/// `first` travels with the weights because it is not recoverable from them.
+/// Two rows of equal length can name different spans -- a global layer early
+/// in the sequence and a sliding layer past its window -- so a collector that
+/// kept only the vector would hold a histogram it could not place.
+pub type AttentionRow = (usize, Vec<f32>);
+
+/// Which attention row: layer, query head, query position.
+///
+/// Head before position so the natural sort of a collected batch groups one
+/// head's whole sequence together, which is the order a reader plots.
+pub type AttentionKey = (usize, usize, usize);
+
+/// Post-softmax attention weights for chosen layers and query heads.
+///
+/// The counterpart of `LastRowTap` at the attention site, and deliberately
+/// unlike it in what it keeps: `LastRowTap` holds one row per layer because a
+/// probe reads the last prompt token, while watching a sliding window against
+/// a global layer means watching how the span changes *along* the sequence.
+/// So this keeps every position, and the filters are how the cost is bounded
+/// instead.
+///
+/// That cost is quadratic and worth stating in the type's own documentation:
+/// a full capture is `4 * n^2 / 2` bytes per (layer, head) pair, so one head
+/// of one layer over an 8k context is about 134 MB. Neither filter is
+/// optional at the command line for that reason.
+#[derive(Clone)]
+pub struct AttentionTap {
+    layers: Vec<usize>,
+    heads: Vec<usize>,
+    rows: Arc<Mutex<HashMap<AttentionKey, AttentionRow>>>,
+}
+
+impl AttentionTap {
+    /// Capture `heads` of `layers`. Both lists are required: see the type's
+    /// note on the quadratic volume.
+    pub fn new(layers: Vec<usize>, heads: Vec<usize>) -> Self {
+        Self {
+            layers,
+            heads,
+            rows: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Every captured row, sorted by (layer, head, position).
+    ///
+    /// Sorted rather than handed out as a map because the caller writes them
+    /// into an array whose row index is the position: an iteration order that
+    /// depended on the hasher would write a different file each run from the
+    /// same activations.
+    pub fn rows(&self) -> Vec<(AttentionKey, AttentionRow)> {
+        let held = self.rows.lock().expect("tap map not poisoned");
+        let mut out: Vec<_> = held
+            .iter()
+            .map(|(&(l, h, p), row)| ((l, h, p), row.clone()))
+            .collect();
+        out.sort_by_key(|&((l, h, p), _)| (l, h, p));
+        out
+    }
+
+    /// Drop every captured row, between prompts.
+    pub fn clear(&self) {
+        self.rows.lock().expect("tap map not poisoned").clear();
+    }
+}
+
+impl Tap for AttentionTap {
+    fn on_residual(&mut self, _layer: usize, _site: Site, _position: usize, _x: &[f32]) {}
+
+    fn wants_attention(&self) -> bool {
+        true
+    }
+
+    fn on_attention(
+        &mut self,
+        layer: usize,
+        position: usize,
+        head: usize,
+        first: usize,
+        w: &[f32],
+    ) {
+        if !self.layers.contains(&layer) || !self.heads.contains(&head) {
+            return;
+        }
+        // Keyed by all three, so a re-prefill of the same span overwrites
+        // rather than accumulating: `truncate(0)` resets the model but not
+        // this map, and `clear` is the caller's explicit reset.
+        self.rows
+            .lock()
+            .expect("tap map not poisoned")
+            .insert((layer, head, position), (first, w.to_vec()));
+    }
+}
+
 /// Additive steering directions in the llama.cpp control-vector GGUF
 /// layout: one f32 tensor per layer named `direction.<layer>`.
 ///

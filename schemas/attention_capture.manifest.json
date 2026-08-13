@@ -1,0 +1,48 @@
+{
+  "contract": "attention_capture.manifest",
+  "description": "manifest.json at the root of an attention-capture directory, beside attention.npz",
+  "writers": [
+    "rust-harness/runtime/src/bin/attention-capture.rs"
+  ],
+  "readers": [],
+  "guarded_by": [
+    "rust-harness/runtime/tests/attention_capture.rs"
+  ],
+  "required": [
+    "artifact",
+    "capture_backend",
+    "created",
+    "dtype",
+    "git_sha",
+    "heads",
+    "layers",
+    "model_hash",
+    "model_id",
+    "schema_version",
+    "shard",
+    "site",
+    "softmax",
+    "tokens"
+  ],
+  "values": {
+    "artifact": "attention_capture",
+    "dtype": "float32",
+    "site": "attention_weights",
+    "softmax": "post",
+    "shard": "attention.npz"
+  },
+  "shard_keys": {
+    "layer_<L>_head_<H>": "float32 [tokens, tokens], row-major by query position: the post-softmax attention distribution of query head H in layer L",
+    "span_first_layer_<L>": "int64 [tokens]: the first key position visible to each query position in layer L",
+    "tokens": "int64 [tokens]: the prompt token ids the capture ran over, including the leading BOS"
+  },
+  "notes": {
+    "no_python_reader": "The readers list is empty. Nothing in the Python interp toolkit consumes an attention capture yet; the artifact is written so the sliding-versus-global contrast can be looked at at all, and the first reader will be whatever asks that question. This is a stated gap, not the pattern to copy - a contract with one side is weaker than one with two, because only a second implementation can catch a shared misunderstanding of the format. Until then the guard is np.load in the Rust test, which is at least not a second Rust reader.",
+    "structural_zeros": "A weight matrix is dense [tokens, tokens] while the spans are ragged: row p holds weights only over span_first[p] ..= p and is exactly 0.0 elsewhere. Zero is the correct value rather than a filler - a masked key contributes nothing to the weighted sum - so no sentinel is needed and the row still sums to one. It is exactly zero and not merely small, because nothing is ever written there, which is what lets a reader separate a structural zero from a weight that rounded away.",
+    "span_first_is_not_derivable": "Recomputing the span from the layer index would mean deriving Gemma 4's attention schedule from a stride constant, which docs/models/gemma-4.md forbids by name: the schedule is an array in the config to be read, and E2B and E4B differ in period. So the first visible key travels with the artifact. It is stored per layer and not per head because heads of one layer share a mask; the writer cross-checks the requested heads against each other and refuses a disagreement rather than storing one head's view as though it were the layer's.",
+    "site": "attention_weights is this artifact's own name for the tap point, and deliberately not a value of the Rust Site enum. Site keys Tap::on_residual, whose argument is a residual row of width embed_dim; an attention distribution is over key timesteps and carries a head index, so it arrives through Tap::on_attention instead. There is therefore no Display to take this string from, and this contract is what pins it.",
+    "softmax": "post, always. The pre-softmax logits are a different quantity at the same point in the loop and are not offered by the seam; the field exists so an artifact says which one it holds rather than leaving a reader to infer it from whether the rows sum to one.",
+    "quadratic_volume": "Both --layers and --heads are required flags, and the writer prints the total size before allocating. A capture is 4 * tokens^2 bytes per (layer, head) pair - about 134 MB for one pair at an 8k context - so an unfiltered default would be a denial of service against the machine running it rather than a convenience.",
+    "envelope": "The required set is a superset of the shared report envelope in common/reports.py: schema_version, exactly one discriminator (artifact), a stamp (created), and git_sha. This matches activation_capture.manifest rather than the probe sidecar, which spells its stamp timestamp."
+  }
+}
