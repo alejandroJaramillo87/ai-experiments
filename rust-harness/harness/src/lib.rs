@@ -10,6 +10,7 @@ pub mod compact;
 pub mod generator;
 pub mod obs;
 pub mod permissions;
+pub mod server;
 pub mod stream;
 pub mod subagents;
 pub mod template;

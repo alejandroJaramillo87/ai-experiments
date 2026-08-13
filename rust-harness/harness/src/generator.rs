@@ -73,6 +73,48 @@ impl SessionGenerator {
     pub fn session_mut(&mut self) -> &mut Session {
         &mut self.session
     }
+
+    /// Complete one prompt under sampling parameters supplied per call,
+    /// reporting the token counts an OpenAI-shaped `usage` block needs.
+    ///
+    /// `complete` draws from the sampler this generator was built with, which
+    /// is what a conversation wants: one seeded stream advancing across turns.
+    /// A server serves independent requests instead, so this builds a fresh
+    /// `Sampler` per call and the request's own seed decides its draws. Two
+    /// requests carrying the same seed therefore sample identically however
+    /// many requests ran between them.
+    ///
+    /// `params` must already be range-checked: `Sampler::new` treats an
+    /// out-of-range value as a configuration bug and panics.
+    pub fn complete_sampled(
+        &mut self,
+        prompt: &str,
+        params: SamplingParams,
+        max_tokens: usize,
+    ) -> Result<Completion> {
+        let ids = self.tokenizer.encode_prompt(prompt, PROMPT_SPECIALS)?;
+        let mut sampler = Sampler::new(params);
+        let generation =
+            self.session
+                .generate(&ids, &self.vocab, None, &mut sampler, max_tokens, |_| {})?;
+        Ok(Completion {
+            text: self.tokenizer.decode(&generation.tokens)?,
+            prompt_tokens: ids.len(),
+            completion_tokens: generation.tokens.len(),
+            stopped_at_eos: generation.stopped_at_eos,
+        })
+    }
+}
+
+/// One completion and what it cost, for a caller that reports usage.
+///
+/// `completion_tokens` counts the tokens returned, which excludes the EOS that
+/// ended the turn -- `Generation` drops it -- so the count matches the text.
+pub struct Completion {
+    pub text: String,
+    pub prompt_tokens: usize,
+    pub completion_tokens: usize,
+    pub stopped_at_eos: bool,
 }
 
 /// The special literals the chat template emits, and the only ones a
