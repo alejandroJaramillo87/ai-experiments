@@ -25,6 +25,7 @@
 // The GPU backend will reach hardware through Candle, which owns that FFI.
 #![forbid(unsafe_code)]
 
+pub mod align;
 pub mod checkpoint;
 pub mod conformance;
 pub mod digest;
