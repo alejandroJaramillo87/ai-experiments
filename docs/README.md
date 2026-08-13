@@ -79,6 +79,7 @@ Design and reference documentation for the `rust-harness` workspace.
 | Document | Description |
 |----------|-------------|
 | [rust-harness/README.md](rust-harness/README.md) | Directory index |
+| [rust-harness/roadmap.md](rust-harness/roadmap.md) | The scheduled work in five phases, the interp feature specifications, and what each estimate turned out to be worth |
 | [rust-harness/runtime-design.md](rust-harness/runtime-design.md) | Harness and runtime architecture, and the implementation roadmap |
 | [rust-harness/observability.md](rust-harness/observability.md) | Observability and debuggability as first-class code |
 | [rust-harness/observation-frames.md](rust-harness/observation-frames.md) | What the agent loop and chat mode contribute to the training and interp programs, and the acceptance bar for new features |

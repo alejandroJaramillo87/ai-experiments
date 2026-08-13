@@ -11,6 +11,7 @@ live in `/docs/verification/`, not here.
 
 | Document | Description |
 |----------|-------------|
+| [roadmap.md](roadmap.md) | The R-numbered work items in five phases, the `IF-` interp feature specifications, and what each estimate turned out to be worth |
 | [runtime-design.md](runtime-design.md) | Harness and runtime architecture: agent loop, the library-crate runtime, and the implementation roadmap |
 | [observability.md](observability.md) | Observability and debuggability as first-class code, in three phases preceding the CUDA backend |
 | [observation-frames.md](observation-frames.md) | What the agent loop and chat mode contribute to the training and interpretability programs, and the acceptance bar for new features |
@@ -22,12 +23,16 @@ live in `/docs/verification/`, not here.
 |----------|-------------|
 | [rust-harness-optimization-candidates.md](../optimizations/ideation/rust-harness-optimization-candidates.md) | Recorded menu of x86 CPU backend optimizations, each blocked on host verification and a measured baseline |
 
-## Roadmap
+## Backend phases
 
-Phases and their acceptance checks. This lives here rather than in the workspace
-`README.md` because a roadmap describes a moment: nothing forces an update when the moment
-passes, so it belongs beside the design documents that share that property rather than in the
-file a newcomer reads to learn what the harness is.
+Backend bring-up phases and their acceptance checks. This lives here rather than in the
+workspace `README.md` because a roadmap describes a moment: nothing forces an update when the
+moment passes, so it belongs beside the design documents that share that property rather than
+in the file a newcomer reads to learn what the harness is.
+
+These lettered phases are the backend ladder and are not the same list as the R-numbered work
+items in [roadmap.md](roadmap.md); the two intersect only where a work item names a phase as a
+dependency.
 
 | Phase | Deliverable | Acceptance check |
 |-------|-------------|------------------|
