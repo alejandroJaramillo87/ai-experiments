@@ -132,12 +132,13 @@ That workaround cost three things beyond the container. The replay owned the
 GPU, so monitoring and serving could not both run. The replay ran bf16 while
 serving ran quantized, so the scores described the replay model rather than the
 one that answered -- a gap the report had to state rather than close. And
-closing it needed a fourth thing, a full-precision `llama-gpu-bf16` endpoint
+closing it needed a fourth thing, a full-precision bf16 sibling of `llama-gpu`
 with the proxy pointed at it, so that the two models at least matched.
 
-The harness runs the tap in the process that answers, so all four went at once.
-`llama-gpu-bf16` remains in the compose file as a plain full-precision serving
-endpoint; it is no longer part of this path.
+The harness runs the tap in the process that answers, so all four went at once,
+the bf16 endpoint included: a service whose only job was matching a replay's
+precision has nothing left to match once there is no replay. Deleting it emptied
+the `interp` compose profile, which went with it.
 
 ## W4: probe monitor
 

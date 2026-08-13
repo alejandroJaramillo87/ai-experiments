@@ -208,7 +208,7 @@ the code that writes them and are absent on a fresh machine.
 
 | Directory | Services | Mode |
 |-----------|----------|------|
-| `models/` | training, export, interp, harness, llama-cpu, llama-gpu, llama-gpu-bf16, vllm-gpu, comfyui | read-only |
+| `models/` | training, export, interp, harness, llama-cpu, llama-gpu, vllm-gpu, comfyui | read-only |
 | `models/trained/` | training, export | read-write |
 | `training/` | training, export, interp | read-write |
 | `interp/` | interp | read-write |

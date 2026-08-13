@@ -74,7 +74,6 @@ The implementation consists of:
 - **CPU inference container** (`llama-cpu`) utilizing AMD Zen 5 optimization with zen5_optimizer hugepage support (16 cores, 96GB RAM)
 - **GPU inference container** (`llama-gpu`) optimized for RTX 5090 with CUDA 13.0.2 and Blackwell architecture support
 - **vLLM GPU container** (`vllm-gpu`) for high-performance transformer model serving with vLLM 0.25.0
-- **Full-precision GPU container** (`llama-gpu-bf16`) serving bf16 weights for the interp tier, behind the `interp` profile
 - **ComfyUI container** (`comfyui`) for image and video generation
 - **Open WebUI container** providing a secure web interface for model interaction
 - **Isolated Docker network** (`ai-network`) with controlled inter-service communication
@@ -218,7 +217,6 @@ Localhost-only port binding prevents external access:
 - **llama-cpu**: `127.0.0.1:8001:8001`
 - **llama-gpu**: `127.0.0.1:8002:8002`
 - **vllm-gpu**: `127.0.0.1:8003:8003`
-- **llama-gpu-bf16**: `127.0.0.1:8004:8004` (profile `interp`)
 - **comfyui**: `127.0.0.1:8188:8188`
 - **open-webui**: `127.0.0.1:3000:8080`
 
@@ -267,7 +265,7 @@ Open WebUI container provides secure web interface:
 **Request Routing**
 Model-specific endpoint distribution:
 - **CPU model**: Port 8001 (llama-cpu)
-- **GPU models**: Port 8002 (llama-gpu), Port 8003 (vLLM), Port 8004 (llama-gpu-bf16, profile `interp`)
+- **GPU models**: Port 8002 (llama-gpu), Port 8003 (vLLM)
 - **Single-model focus**: High-performance inference with dedicated resources
 
 **Protocol Translation**

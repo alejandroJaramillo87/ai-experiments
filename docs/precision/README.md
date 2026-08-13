@@ -281,10 +281,10 @@ qualify.
 
 Two mitigations existed before that and are gone with it. `activation-capture.rs` once
 captured from a quantized serving path, so probes fitted on those rows described the model
-that would answer -- retired when the harness stopped reading quantized checkpoints. And the
-`llama-gpu-bf16` service answered monitored traffic at the probes' precision so that an
-offline replay would at least match it; the replay is gone, so the service is now a plain
-full-precision endpoint with no interp role. See
+that would answer -- retired when the harness stopped reading quantized checkpoints. And an
+opt-in bf16 sibling of `llama-gpu` answered monitored traffic at the probes' precision so
+that an offline replay would at least match it -- deleted with the replay, since a
+precision-matched endpoint has nothing left to match. See
 [`docs/interp/writeback.md`](../interp/writeback.md).
 
 The hazard itself is undiminished — it is a property of the quantized llama.cpp and vLLM

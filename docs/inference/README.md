@@ -37,7 +37,6 @@ repository and the results that justify them. Container and compose details live
 | llama-cpu | llama.cpp | 8001 | Active | Latency-optimized CPU inference |
 | llama-gpu | llama.cpp | 8002 | Active | GPU-accelerated low-latency inference |
 | vllm-gpu | vLLM | 8003 | Active | High-throughput batch serving |
-| llama-gpu-bf16 | llama.cpp | 8004 | Opt-in | Full-precision endpoint for monitored interpretability traffic (compose profile `interp`) |
 | comfyui | ComfyUI | 8188 | Active | Image and video generation; see [art-generation.md](art-generation.md) |
 | open-webui | — | 3000 | Active | Web interface, published as `127.0.0.1:3000:8080` |
 

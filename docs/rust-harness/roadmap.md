@@ -364,12 +364,14 @@ being removed.
 
 **What went beyond the artifact flush.** Once the scores reach disk in the record, the replay
 stage has nothing left to compute, and the two things that existed only to support it go too:
-the GPU contention that made monitoring batch work, and the full-precision `llama-gpu-bf16`
-path that existed so the replayed model would at least match the served one's precision.
+the GPU contention that made monitoring batch work, and the opt-in full-precision sibling of
+`llama-gpu` that existed so the replayed model would at least match the served one's
+precision -- deleted outright, taking the `interp` compose profile with it, since that
+service was the profile's only member.
 `probe-monitor` became an aggregator with no `--model` and no health check.
 
-**The cost, stated rather than discovered later.** `llama-gpu`, `llama-gpu-bf16` and `vllm-gpu`
-now have no request logging at all. Interp observability is harness-only, which means it is
+**The cost, stated rather than discovered later.** `llama-gpu` and `vllm-gpu` now have no
+request logging at all, and the bf16 reference endpoint is gone rather than idle. Interp observability is harness-only, which means it is
 also CPU-only until a GPU backend lands. That was the explicit choice: the alternative was
 keeping a container, a compose profile, a replay stage and a fidelity caveat alive for a path
 no interp command points at.

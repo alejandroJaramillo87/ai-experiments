@@ -210,6 +210,20 @@ RETIRED: dict[str, tuple[str, str]] = {
         "precision; in-band scores come from the serving weights, so there is "
         "no precision gap to close",
     ),
+    "llama-gpu-bf16": (
+        "harness-serve",
+        "the bf16 endpoint served monitored traffic at the precision the "
+        "probes were fitted at, so that an offline replay would match it; "
+        "in-band scoring removed the replay, and a precision-matched endpoint "
+        "with nothing to match is a GPU service no command points at. Its "
+        "deletion emptied the `interp` compose profile, which went too",
+    ),
+    "LLAMA_GPU_BF16_MODEL": (
+        "HARNESS_MODEL",
+        "the variable chose the checkpoint for the deleted bf16 endpoint; the "
+        "only full-precision service left is the serving harness, which takes "
+        "its checkpoint from HARNESS_MODEL",
+    ),
     "LOGPROXY_TARGET_URL": (
         "HARNESS_INTERP_LOG",
         "the log is written by the service being observed rather than by a "

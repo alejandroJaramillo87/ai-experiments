@@ -60,13 +60,10 @@ The docker-compose.inference.yaml implements a multi-service AI inference platfo
 
 **Service Distribution:**
 - **1 CPU inference container**: llama-cpu (16 threads on cores 0-15, 96GB RAM)
-- **4 GPU containers**: llama-gpu, llama-gpu-bf16, vllm-gpu, and comfyui (RTX 5090, one
-  consumer at a time)
+- **3 GPU containers**: llama-gpu, vllm-gpu, and comfyui (RTX 5090, one consumer at a time)
 - **1 Web interface**: open-webui for secure user interaction
 
-**One does not start by default.** `llama-gpu-bf16` sits behind `profiles: ["interp"]`, so a
-bare `make up` brings up five services and the bf16 endpoint needs the `interp` profile
-selected.
+The file declares no compose profiles, so `make up` brings up every service in it.
 
 ## Service Architecture
 
@@ -309,7 +306,6 @@ networks:
 ports:
   - "127.0.0.1:8001:8001"  # llama-cpu
   - "127.0.0.1:8002:8002"  # llama-gpu
-  - "127.0.0.1:8004:8004"  # llama-gpu-bf16   (profile: interp)
   - "127.0.0.1:8003:8003"  # vllm-gpu
   - "127.0.0.1:3000:8080"  # open-webui
   - "127.0.0.1:8188:8188"  # comfyui
