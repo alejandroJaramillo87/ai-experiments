@@ -170,10 +170,37 @@ The sandbox proves the format and the wiring against a synthetic model
 probe over real E4B produces scores worth reading, which is what this entry is
 for.
 
+**A probe from before R10.5 cannot be substituted.** `main.rs` applies two
+refusals when loading one: the sidecar's `model_hash` against the sha256 of the
+served `model.safetensors`, and the probe's width against the model's embedding
+dimension. A probe fitted on any other checkpoint fails both, so the chain below
+starts at capture rather than at the registry.
+
+Preamble, in the workbench and on the GPU (serializes against other GPU work):
+
+```bash
+$ E4B=/mnt/ai-data/models/hf/gemma-4-E4B
+$ make probe-capture ARGS="--model $E4B \
+    --dataset interp/probes/prompts/refusal.jsonl \
+    --layers 8,16,24 --out /mnt/ai-data/interp/activations/refusal-v1"
+$ make probe-train ARGS="--capture /mnt/ai-data/interp/activations/refusal-v1 \
+    --name refusal-v1"
+```
+
+**Stop if the capture reports `model_hash unknown`.** Passing a local checkpoint
+directory to `--model` makes `probe-capture` derive the identity; the sentinel
+means it could not, and `main.rs` responds to it by *skipping* the identity
+check rather than failing it. A probe carrying it will load into a serving
+harness unverified, and this entry would pass while proving less than it claims.
+Cross-check with `sha256sum $E4B/model.safetensors`.
+
 Command:
 
 ```bash
-$ make harness-serve HARNESS_PROBE=/app/probes/<name>/probe.safetensors
+# probe-train leaves probe.npz, which the harness cannot read; this writes the
+# safetensors image and its sidecar beside it, and prints the container path
+$ make probe-export ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1"
+$ make harness-serve HARNESS_PROBE=/app/probes/refusal-v1/probe.safetensors
 # loading the checkpoint takes minutes; poll before sending anything
 $ curl -sf --max-time 900 http://127.0.0.1:8005/v1/health
 $ curl -s --max-time 900 -X POST localhost:8005/v1/chat/completions \

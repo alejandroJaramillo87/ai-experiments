@@ -1,5 +1,5 @@
 """interp probe CLI handlers (interp/commands/probe_{capture,train,eval,
-monitor}.py) driven through build_parser() with real tmp-dir pipeline
+export,monitor}.py) driven through build_parser() with real tmp-dir pipeline
 execution. The only fakes sit at the torch/service seams: the bf16 nnsight
 capture (capture_activations), the subject/judge chat services
 (interp.steering.scorecard.chat), and the healthcheck HTTP client
@@ -283,6 +283,53 @@ class TestProbeEval:
         )
         printed = capsys.readouterr().err
         assert "[ERROR] Evaluation failed:" in printed
+        assert "manifest not found" in printed
+
+
+class TestProbeExport:
+    """The step between probe-train's probe.npz and the image harness-serve
+    loads. Without it a registered probe cannot reach the serving process at
+    all, which is why the handler exists rather than only the library call."""
+
+    def test_export_writes_the_pair_beside_the_probe(self, probe_dir, capsys):
+        assert run_cli(["probe-export", "--probe", probe_dir]) == 0
+        image = os.path.join(probe_dir, "probe.safetensors")
+        assert os.path.isfile(image)
+        assert os.path.isfile(os.path.join(probe_dir, "probe.json"))
+        printed = capsys.readouterr().err
+        assert f"[OK] Image written: {image}" in printed
+
+    def test_out_overrides_the_default_path(self, probe_dir, tmp_path, capsys):
+        out = tmp_path / "elsewhere" / "p.safetensors"
+        out.parent.mkdir()
+        assert run_cli(["probe-export", "--probe", probe_dir, "--out", str(out)]) == 0
+        assert out.is_file()
+        assert out.with_suffix(".json").is_file()
+
+    def test_an_image_the_harness_cannot_see_is_a_warning(self, probe_dir, capsys):
+        # harness-serve mounts only /mnt/ai-data/interp/probes, so an image
+        # written anywhere else is unreachable from the container. Printing a
+        # HARNESS_PROBE command for it would hand over one that fails at
+        # startup with "Probe not found".
+        assert run_cli(["probe-export", "--probe", probe_dir]) == 0
+        printed = capsys.readouterr().err
+        assert "HARNESS_PROBE" not in printed
+        assert "harness-serve mounts only that tree" in printed
+
+    def test_a_tampered_probe_is_a_styled_failure(self, probe_dir, capsys):
+        # The registry validates the hash on load, and the handler must style
+        # that refusal rather than let RegistryError escape as a traceback.
+        with open(os.path.join(probe_dir, "probe.npz"), "ab") as f:
+            f.write(b"tamper")
+        assert run_cli(["probe-export", "--probe", probe_dir]) == 1
+        printed = capsys.readouterr().err
+        assert "[ERROR] Export failed:" in printed
+        assert "hash" in printed
+
+    def test_missing_probe_dir_is_a_styled_failure(self, tmp_path, capsys):
+        assert run_cli(["probe-export", "--probe", str(tmp_path / "nope")]) == 1
+        printed = capsys.readouterr().err
+        assert "[ERROR] Export failed:" in printed
         assert "manifest not found" in printed
 
 

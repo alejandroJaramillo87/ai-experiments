@@ -3,7 +3,8 @@
 .PHONY: harvest harvest-check-hooks interp-build interp-dirs
 .PHONY: interp-down interp-gc interp-shell interp-smoke interp-up
 .PHONY: organism organism-check-seal organism-generate organism-seal organism-verify
-.PHONY: probe-capture probe-eval probe-monitor probe-train sae-eval sae-train steer-down
+.PHONY: probe-capture probe-eval probe-export probe-monitor probe-train sae-eval
+.PHONY: sae-train steer-down
 .PHONY: steer-extract steer-scorecard steer-up
 
 INTERP_COMPOSE := docker-compose.interp.yaml
@@ -80,6 +81,12 @@ probe-capture: ## Capture labeled activations in the workbench (ARGS="--model ..
 
 probe-train: ## Train and register probes from a capture (ARGS="--capture ... --name ...")
 	docker compose -f $(INTERP_COMPOSE) run --rm interp python -m interp probe-train $(ARGS)
+
+# No preflight and no GPU: this reads a registered probe and rewrites it in
+# the format the harness reader takes. probe-train leaves probe.npz, which is
+# Python-only; harness-serve's HARNESS_PROBE needs the safetensors image.
+probe-export: ## Export a registered probe as the safetensors image harness-serve loads (ARGS="--probe /mnt/ai-data/interp/probes/<name>")
+	uv run python -m interp probe-export $(ARGS)
 
 probe-eval: ## Regenerate a probe evaluation report with black-box baselines (serving-dependent; ARGS="--probe ... --label-name ...")
 	uv run python -m interp probe-eval $(ARGS)

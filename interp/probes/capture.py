@@ -30,9 +30,39 @@ from interp.manifest import (
 
 SHARD_SIZE = 2048  # examples per shard file
 
+# The sentinel the manifest carries when nothing identifies the weights. The
+# rust harness treats it as "check skipped" rather than as a hash to compare
+# (harness/src/main.rs), so a probe recording it loads into any model at the
+# right width. Spelled once here because derive_model_hash's whole job is to
+# return something else whenever it honestly can.
+UNKNOWN_MODEL_HASH = "unknown"
+
+# What the harness hashes to decide whether a probe belongs to the served
+# model: the single weights file of a Hugging Face checkpoint directory. The
+# name matches runtime/src/checkpoint.rs's WEIGHTS_FILE, and the digest is
+# plain sha256 in lowercase hex on both sides -- they must agree byte for
+# byte, or the guard fires on a probe that is in fact correct.
+WEIGHTS_FILE = "model.safetensors"
+
 
 class CaptureError(Exception):
     """Dataset or model input is malformed."""
+
+
+def derive_model_hash(model_id: str) -> str:
+    """The served checkpoint's sha256, when `model_id` names one locally.
+
+    A Hugging Face repo id has no local artifact to hash, so it yields the
+    unknown sentinel rather than a fabricated identity. That is the honest
+    answer, and it is also the weaker one: a probe carrying it is loaded
+    without an identity check.
+    """
+    from common.hashing import sha256_file
+
+    weights = os.path.join(model_id, WEIGHTS_FILE)
+    if not os.path.isfile(weights):
+        return UNKNOWN_MODEL_HASH
+    return sha256_file(weights)
 
 
 def load_labeled_dataset(path: str) -> list[dict]:
@@ -129,11 +159,19 @@ def run_capture(
     layers: list[int],
     out_dir: str,
     revision: str = "main",
-    model_hash: str = "unknown",
+    model_hash: str | None = None,
     batch_size: int = 16,
     capture_fn=None,
 ) -> dict:
-    """Capture a labeled dataset to shards + manifest; return the manifest."""
+    """Capture a labeled dataset to shards + manifest; return the manifest.
+
+    `model_hash=None` derives the identity from `model_id` when it names a
+    local checkpoint. Passing a value keeps it verbatim, including the unknown
+    sentinel: a caller that has decided the weights cannot be identified is
+    not overruled by a directory that happens to exist at that path.
+    """
+    if model_hash is None:
+        model_hash = derive_model_hash(model_id)
     examples = load_labeled_dataset(dataset_path)
     texts = [e["text"] for e in examples]
     if capture_fn is None:

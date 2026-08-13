@@ -77,24 +77,47 @@ conventions and is published to `docs/interp/experiments/` whichever arm wins.
 ## W2: probe toolkit
 
 ```bash
-$ make probe-capture ARGS="--model google/gemma-2-2b --dataset data.jsonl \
-    --layers 6,13,19 --out /mnt/ai-data/interp/activations/refusal-v1"
+$ make probe-capture ARGS="--model /mnt/ai-data/models/hf/gemma-4-E4B \
+    --dataset interp/probes/prompts/refusal.jsonl \
+    --layers 8,16,24 --out /mnt/ai-data/interp/activations/refusal-v1"
 $ make probe-train ARGS="--capture /mnt/ai-data/interp/activations/refusal-v1 --name refusal-v1"
 $ make probe-eval ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1 --label-name refusal"
+$ make probe-export ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1"
 ```
 
 Capture is a workbench batch job (bf16, nnsight); training is CPU scikit-learn with a
-deterministic text-hash split (re-captures cannot leak test data). `probe-eval` is
+deterministic text-hash split (re-captures cannot leak test data). The dataset ships in
+git ([`interp/probes/prompts/`](../../interp/probes/prompts/README.md)) so a probe is
+reproducible from a commit, and the capture manifest records its content hash.
+
+**Pass `--model` a local checkpoint directory, not a Hugging Face repo id.** The probe
+carries its capture's `model_hash` into the serving harness, which compares it against the
+sha256 of the checkpoint it loaded. A local directory lets `probe-capture` derive that
+value; a repo id leaves the `unknown` sentinel, and the harness answers the sentinel by
+skipping the identity check rather than failing it -- so the probe loads into any model of
+the right width, unchecked. The command prints which of the two it recorded. `probe-eval` is
 serving-dependent and always includes the black-box baselines (LLM-as-judge plus
 bag-of-words on the model output); a probe that cannot beat them is marked not deployable
 and the monitor should not run it.
 
+`probe-export` is the step between the registry and the serving process. Training leaves
+`probe.npz`, which only Python reads; the harness reader takes a safetensors image plus a
+JSON sidecar, and W3 below names that image in `HARNESS_PROBE`. Run it after the probe is
+judged deployable, not before -- exporting is what makes a probe reachable by the thing
+that scores production traffic.
+
 ## W3: served-request log
 
 ```bash
+$ make probe-export ARGS="--probe /mnt/ai-data/interp/probes/<name>"
 $ make harness-serve HARNESS_PROBE=/app/probes/<name>/probe.safetensors
 $ make harness-serve-down
 ```
+
+The two paths name one file: `probe-export` writes it under the host tree at
+`/mnt/ai-data/interp/probes`, and `harness-serve` mounts that tree read-only at
+`/app/probes`, so `HARNESS_PROBE` is the container spelling of the path the
+exporter just printed.
 
 The harness writes it. One JSONL record per completed `/v1/chat/completions`
 under `/mnt/ai-data/interp/logs/<service>/YYYY-MM-DD.jsonl`, carrying the
