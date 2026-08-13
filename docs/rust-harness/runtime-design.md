@@ -467,6 +467,21 @@ labeled as such; measured results follow the repository benchmarking protocol.
   `Site::LayerOutput`, steering applied before the tap — which implies a
   device-to-host copy per tapped layer; taps stay optional so the untapped
   path pays nothing.
+
+  The seam now has a second fire site, post-softmax attention weights through
+  `Tap::on_attention`, and that one is materially harder on a GPU. The CPU
+  backend hands out a borrowed slice for free because it materializes a score
+  vector per query head; a tiled online-softmax kernel — which is what a
+  competitive CUDA attention is — never forms the distribution at all, so
+  there is nothing to borrow. Serving this site on CUDA therefore costs a
+  second, non-tiled attention path held bit-identical against the fast one,
+  in the sense `.styles/RUST_STYLE.md` means it: identical bits or a
+  different function with a different name. That is a real cost and it is
+  named here so it is priced when the backend is scheduled rather than
+  discovered during it. Refusing the site on CUDA is an acceptable outcome;
+  serving it from a path whose numerics differ from the serving path is not,
+  because the whole value of an in-band tap is that it observes the
+  arithmetic that actually ran.
 - **Chat template and tool-call format.** The exact Gemma 4 function-calling
   convention must be taken from the model card and tokenizer config, not assumed
   from Gemma 3.

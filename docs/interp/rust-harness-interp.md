@@ -67,6 +67,10 @@ pub enum Site {
 
 pub trait Tap: Send {
     fn on_residual(&mut self, layer: usize, site: Site, position: usize, x: &[f32]);
+
+    fn wants_attention(&self) -> bool { false }
+    fn on_attention(&mut self, layer: usize, position: usize,
+                    head: usize, first: usize, w: &[f32]) {}
 }
 ```
 
@@ -95,6 +99,48 @@ none is applied. Probes trained on Python captures and rust captures observe
 the same tensor. Taps are optional (`None` costs one branch per layer), do
 not transfer across forks, and fire after steering is applied, so captures
 observe the stream downstream layers actually consume.
+
+### Attention weights
+
+The second fire site, and the first one inside the layer. It is a pair of
+trait methods rather than a `Site` variant, which is the part worth
+understanding before adding a third.
+
+`Site` keys `on_residual`, whose argument is a residual row of width
+`embed_dim`. An attention distribution is not that: it is over key timesteps,
+its length varies with the position and the layer's window, and it is
+meaningless without the query head it belongs to. Threading it through
+`on_residual` would break the width invariant every existing tap relies on and
+would make the activation-capture shard key `layer_<L>` ambiguous, which
+`schemas/activation_capture.manifest.json` reserves for a second *residual*
+site. So the rule is: a point that yields a residual row is a `Site`; a point
+that yields something else is a method, as the pre-stack stages already are.
+
+The fire is between the softmax and the weighted-V fold, the one place the
+distribution exists as a value. The slice is borrowed out of the scratch
+buffer, so nothing is copied and no arithmetic moves — this backend
+materializes a score vector per query head rather than fusing the softmax into
+a tiled kernel, which is why no second code path is needed here and why a
+tiled backend will owe one.
+
+Three things the seam states that a consumer cannot recover on its own. The
+weights are post-softmax, so they sum to one; pre-softmax logits are a
+different quantity and are not offered. The vector spans `first ..= position`
+in absolute key positions, and `first` is not derivable from the vector's
+length, because a global layer early in the sequence and a sliding layer past
+its window can hand over vectors of the same length naming different spans.
+And `head` is a *query* head, whose KV head is `head / (n_heads / n_kv_heads)`;
+the per-layer head width — 256 on a sliding Gemma 4 layer against 512 on a
+global one — does not enter, because what varies here is a key count.
+
+`wants_attention` defaults to false and is asked once per forward pass. This
+is the first site whose volume is quadratic in the context, so opt-in is per
+site rather than per tap: a probe monitor pays a compare, not a capture.
+
+`runtime/src/bin/attention-capture.rs` is the consumer, writing
+`attention.npz` and a manifest under
+[schemas/attention_capture.manifest.json](../../schemas/attention_capture.manifest.json).
+Both `--layers` and `--heads` are required, for the same quadratic reason.
 
 ## Steering
 
@@ -141,8 +187,11 @@ $ cargo run -p runtime --bin activation-capture -- \
   rows were taken at, written from `LastRowTap::SITE` so the stored text cannot
   drift from the value a reader parses back. The shard keys stay `layer_<L>`:
   with one site the key is unambiguous, and renaming it would break
-  `load_capture` for no information gain. A second site is what makes the key
-  ambiguous, and the schema note records the cost of that day. The manifest also
+  `load_capture` for no information gain. A second *residual* site is what
+  makes the key ambiguous, and the schema note records the cost of that day.
+  The attention-weight site does not: it is a separate trait method writing a
+  separate artifact, and no row of it ever reaches a capture shard, which is
+  part of why it was added that way. The manifest also
   records `capture_backend: "rust-harness-cpu"`,
   `model_revision: "safetensors"`, and a `model_hash` over
   `model.safetensors`.
@@ -374,6 +423,9 @@ revised live ladder) is recorded in
 | Tap seam, steering, capture, goldens (sandbox) | done | — |
 | Real-model capture and contrastive extraction on the workstation | pending | E4B architecture reconciliation, CPU backend speed measurement |
 | In-band probe monitor as a `Tap` implementation (sandbox) | done | — |
+| Attention-weight tap site and `attention-capture` (sandbox) | done | — |
+| Sliding-versus-global contrast read off a real E4B long-context run | pending | E4B architecture reconciliation |
+| Per-head attention output as a third site | pending | — |
 | Monitor with a probe trained on real-model rust captures | pending | real-model capture on the workstation |
 | Probe quality evaluated separately on prefill and decode positions | pending | real-model capture on the workstation |
 | CUDA tap parity | pending | roadmap phase A |

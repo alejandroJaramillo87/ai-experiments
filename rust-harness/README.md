@@ -41,7 +41,10 @@ then derives an architecture summary and the backend's compatibility verdict
 (architecture reconciliation against the real checkpoint); `tiny-model`
 writes the synthetic fixture checkpoint; `activation-capture` writes last-token
 residual activations in the interp capture shard format (consumed unchanged
-by the parent repository's `interp/probes` toolkit).
+by the parent repository's `interp/probes` toolkit); `attention-capture` writes
+post-softmax attention weights for chosen layers and query heads over one
+prompt, which is how Gemma 4's interleaved sliding and global attention can be
+looked at directly.
 
 ## Testing
 
@@ -195,7 +198,8 @@ parameters and the per-step selection, so a replay reproduces the transcript
 rather than only the distribution it was drawn from — `tracing` spans with a
 Perfetto-loadable `--trace-chrome`, an interp seam (activation capture, control
 vectors, in-band probe monitoring) whose taps are keyed on the site a row came
-from rather than on the layer alone and whose scores can be written out beside
+from rather than on the layer alone, reach inside the layer as far as
+post-softmax attention weights, and whose scores can be written out beside
 the byte span of text each position produced, conversation compaction, and a KV cache
 serialized on exit and restored at startup — continuation logits after a restore
 are bit-identical to an unbroken run.
