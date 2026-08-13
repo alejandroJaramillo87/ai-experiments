@@ -93,6 +93,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{bail, ensure, Context, Result};
 
 use super::{Logits, Model, Token};
+use crate::align;
 use crate::gguf::GgufFile;
 use crate::kv::LayerKind;
 use crate::tensor::{load_tensor, widened_row_dot_block, Weight};
@@ -1286,6 +1287,14 @@ pub struct CpuModel {
     /// Positions per prefill forward pass. Carried across forks, and like
     /// `threads` it cannot change the logits.
     batch: BatchKind,
+    /// Forward passes made, once a caller has asked for them.
+    ///
+    /// `None` until `record_passes` is called, so a run wanting no alignment
+    /// pays neither the allocation nor the growth. Not carried across forks: a
+    /// fork is a separate branch of the conversation and merging two branches'
+    /// pass indices into one sequence would name passes that never happened in
+    /// that order.
+    passes: Option<Vec<align::Pass>>,
 }
 
 /// Output rows below which `par_rows` stays serial.
@@ -2262,6 +2271,7 @@ impl CpuModel {
             threads: default_threads(),
             dot: DotKind::default(),
             batch: BatchKind::default(),
+            passes: None,
         })
     }
 
@@ -2324,6 +2334,22 @@ impl CpuModel {
     /// The batch in force, for a runner that reports what it ran.
     pub fn batch(&self) -> BatchKind {
         self.batch
+    }
+
+    /// Begin recording forward passes, discarding any already recorded.
+    ///
+    /// Opt-in because the record grows with the run and only an alignment
+    /// artifact reads it. `prefill_groups` is the one place a pass boundary is
+    /// decided, so this is the only honest place to observe one: a caller
+    /// above the `Model` seam sees a prefill of 150 tokens and cannot tell how
+    /// many passes served it.
+    pub fn record_passes(&mut self) {
+        self.passes = Some(Vec::new());
+    }
+
+    /// The passes recorded so far, empty when recording was never enabled.
+    pub fn passes(&self) -> &[align::Pass] {
+        self.passes.as_deref().unwrap_or(&[])
     }
 
     /// The absolute positions layer `i` currently holds, as `base..end`.
@@ -2431,6 +2457,10 @@ impl CpuModel {
             threads: self.threads,
             dot: self.dot,
             batch: self.batch,
+            // Deliberately not inherited. Pass indices are ordinals within one
+            // branch, and a fork's passes interleaved with its parent's would
+            // describe an order neither branch ran in.
+            passes: None,
         }
     }
 
@@ -3035,6 +3065,15 @@ impl CpuModel {
                     return Err(e);
                 }
             };
+            // Recorded after the pass succeeded, so a rolled-back group leaves
+            // no trace of positions the cache no longer holds.
+            if let Some(passes) = self.passes.as_mut() {
+                passes.push(align::Pass {
+                    index: passes.len(),
+                    start,
+                    len: group.len(),
+                });
+            }
             self.cached_len += group.len();
             rows.extend(logits);
         }
@@ -5326,6 +5365,102 @@ mod tests {
         assert_eq!(BatchKind::parse("-4"), None);
         assert_eq!(BatchKind::parse("all"), None);
         assert_eq!(BatchKind::default(), BatchKind::Batched(DEFAULT_BATCH));
+    }
+
+    #[test]
+    fn recorded_passes_tile_the_positions_with_no_gap_or_overlap() {
+        // The property an alignment artifact rests on: every position belongs
+        // to exactly one pass, at every batch width. A gap would leave a
+        // position with no pass to name; an overlap would let two passes claim
+        // it and make "computed alongside" unanswerable.
+        let tokens: Vec<u32> = (0..17u32).map(|i| i % 15 + 1).collect();
+        for batch in [
+            BatchKind::Stepped,
+            BatchKind::Batched(1),
+            BatchKind::Batched(4),
+            BatchKind::Batched(64),
+            BatchKind::Whole,
+        ] {
+            let mut m = tiny();
+            m.set_batch(batch);
+            m.record_passes();
+            m.prefill_all(&tokens).unwrap();
+
+            let passes = m.passes();
+            let label = batch.label();
+            let mut next = 0;
+            for (i, p) in passes.iter().enumerate() {
+                assert_eq!(p.index, i, "batch {label}: pass index {p:?}");
+                assert_eq!(p.start, next, "batch {label}: gap or overlap at {p:?}");
+                assert!(p.len > 0, "batch {label}: empty pass {p:?}");
+                next = p.start + p.len;
+            }
+            assert_eq!(next, tokens.len(), "batch {label}: passes {passes:?}");
+
+            // Every position is covered by exactly one.
+            for pos in 0..tokens.len() {
+                let n = passes.iter().filter(|p| p.covers(pos)).count();
+                assert_eq!(n, 1, "batch {label}: position {pos} in {n} passes");
+            }
+        }
+    }
+
+    #[test]
+    fn a_stepped_run_records_one_single_position_pass_per_token() {
+        // Decode reaches the backend as a prefill of one token, so this is
+        // also the shape a generation loop produces -- and the reason `phase`
+        // can be derived from the pass width rather than tracked separately.
+        let tokens = [1u32, 5, 9];
+        let mut m = tiny();
+        m.set_batch(BatchKind::Stepped);
+        m.record_passes();
+        m.prefill_all(&tokens).unwrap();
+        assert_eq!(m.passes().len(), tokens.len(), "{:?}", m.passes());
+        for p in m.passes() {
+            assert_eq!(p.len, 1, "{p:?}");
+            assert_eq!(p.phase(), "decode", "{p:?}");
+        }
+    }
+
+    #[test]
+    fn which_rows_were_wanted_does_not_change_the_recorded_passes() {
+        // `RowsWanted` selects which positions get an LM-head row. It must not
+        // reach the pass record, or an artifact would describe a different
+        // batching for a run that asked for fewer logits.
+        let tokens: Vec<u32> = (0..10u32).map(|i| i + 1).collect();
+        let passes_of = |f: &dyn Fn(&mut CpuModel)| {
+            let mut m = tiny();
+            m.set_batch(BatchKind::Batched(4));
+            m.record_passes();
+            f(&mut m);
+            m.passes().to_vec()
+        };
+        let all = passes_of(&|m| {
+            m.prefill_all(&tokens).unwrap();
+        });
+        let last = passes_of(&|m| {
+            m.prefill(&tokens).unwrap();
+        });
+        let from = passes_of(&|m| {
+            m.prefill_from(&tokens, 7).unwrap();
+        });
+        assert_eq!(all, last, "last-row-only changed the passes");
+        assert_eq!(all, from, "a row offset changed the passes");
+    }
+
+    #[test]
+    fn passes_are_not_recorded_until_asked_for_and_a_fork_starts_its_own() {
+        let mut m = tiny();
+        m.prefill_all(&[1u32, 2, 3]).unwrap();
+        assert!(m.passes().is_empty(), "recorded without being asked");
+
+        m.record_passes();
+        m.prefill_all(&[4u32]).unwrap();
+        assert_eq!(m.passes().len(), 1, "{:?}", m.passes());
+
+        // A fork is a separate branch; its pass ordinals are its own.
+        let fork = m.fork_cpu();
+        assert!(fork.passes().is_empty(), "{:?}", fork.passes());
     }
 
     #[test]

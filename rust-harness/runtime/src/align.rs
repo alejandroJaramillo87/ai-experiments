@@ -145,6 +145,43 @@ impl<'t> Detok<'t> {
     }
 }
 
+/// One forward pass over a contiguous run of positions.
+///
+/// The prefill/decode split alone stopped being enough when batching landed.
+/// A reader given only that bit cannot tell whether position 4012 was computed
+/// alongside 4011 or alone, and the two are different experimental conditions:
+/// a batched position's row is produced in the same call as its neighbours'.
+/// Recording the pass restores the distinction the batch width took away.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Pass {
+    /// Ordinal within the run, counting every pass the model made.
+    pub index: usize,
+    /// First absolute cache position this pass computed.
+    pub start: usize,
+    pub len: usize,
+}
+
+impl Pass {
+    /// Whether this pass covers `position`.
+    pub fn covers(&self, position: usize) -> bool {
+        position >= self.start && position < self.start + self.len
+    }
+
+    /// The phase name a pass is stored under.
+    ///
+    /// Derived rather than tracked, because decode reaches the backend as a
+    /// prefill of one token and there is no second entry point to distinguish.
+    /// A single-position pass is the model producing its own text; a wider one
+    /// is the model reading text it was given.
+    pub fn phase(&self) -> &'static str {
+        if self.len == 1 {
+            "decode"
+        } else {
+            "prefill"
+        }
+    }
+}
+
 /// What a prompt position is: structure the harness emitted, or content.
 ///
 /// The distinction is the one IF-2 turns on. Scored decode positions are the
