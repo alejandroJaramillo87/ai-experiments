@@ -250,3 +250,55 @@ fn serving_without_the_flag_writes_no_log() {
         "no log without --interp-log"
     );
 }
+
+/// The bind address the container depends on.
+///
+/// Loopback is the default and is right for a harness run on a workstation,
+/// but a container published port forwards to the container's external
+/// interface: a server on the container's own 127.0.0.1 accepts nothing from
+/// the host, refusing the connection with no log line to say why. The
+/// entrypoint therefore passes --serve-addr 0.0.0.0, and this holds that flag
+/// to binding what it is given. Connecting over 127.0.0.1 is the assertion
+/// that matters -- 0.0.0.0 must include loopback, or the compose healthcheck,
+/// which probes 127.0.0.1 from inside the container, would fail instead.
+#[test]
+fn serve_addr_binds_the_address_it_is_given() {
+    let dir = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_harness"))
+        .current_dir(dir.path())
+        .arg("--model")
+        .arg(fixture_model())
+        .arg("--serve")
+        .arg(port.to_string())
+        .arg("--serve-addr")
+        .arg("0.0.0.0")
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn harness");
+    wait_healthy(port, &mut child);
+    assert!(chat(port, "hello").contains(" 200 "));
+    child.kill().expect("kill harness");
+    let _ = child.wait();
+}
+
+/// A bind address without a server to bind is a mistake worth naming: the
+/// flag is silently inert everywhere else, so a run that meant to serve and
+/// forgot --serve would otherwise look like it worked.
+#[test]
+fn serve_addr_without_serve_is_refused() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_harness"))
+        .arg("--model")
+        .arg(fixture_model())
+        .arg("--serve-addr")
+        .arg("0.0.0.0")
+        .arg("say hello")
+        .output()
+        .expect("run harness");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("--serve-addr"),
+        "the error names the flag"
+    );
+}

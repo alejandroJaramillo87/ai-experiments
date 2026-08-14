@@ -205,14 +205,17 @@ Command:
 # safetensors image and its sidecar beside it, and prints the container path
 $ make probe-export ARGS="--probe /mnt/ai-data/interp/probes/refusal-v1"
 $ make harness-serve HARNESS_PROBE=/app/probes/refusal-v1/probe.safetensors
-# loading the checkpoint takes minutes; poll before sending anything
-$ curl -sf --max-time 900 http://127.0.0.1:8005/v1/health
+# Loading the checkpoint takes minutes. This blocks until the endpoint
+# answers; `curl -sf` does not -- it returns at once against a port with
+# nothing yet listening, and the rest of the block then runs against a
+# server still reading weights.
+$ python -c 'from common import serving; print(serving.wait_healthy(serving.SERVICES["harness"]))'
 $ curl -s --max-time 900 -X POST localhost:8005/v1/chat/completions \
     -H 'Content-Type: application/json' \
     -d '{"messages": [{"role": "user", "content": "2+2?"}], "max_tokens": 8}'
 $ tail -1 /mnt/ai-data/interp/logs/harness/"$(date -u +%F)".jsonl | python3 -m json.tool
-$ docker kill rust-harness-serve
 $ wc -l /mnt/ai-data/interp/logs/harness/"$(date -u +%F)".jsonl
+$ make harness-serve-down    # after I.7, which wants the service up
 ```
 
 Expected signal: one JSONL record per completed request, carrying `messages`,

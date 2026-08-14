@@ -29,6 +29,13 @@ print_info()  { printf "${CYAN}[INFO]${NC} %s\n" "$*"; }
 
 HARNESS_MODEL=${HARNESS_MODEL:-""}
 HARNESS_PORT=${HARNESS_PORT:-8005}
+# The harness binds loopback by default, which is right on a workstation and
+# wrong in a container: a published port forwards to the container's external
+# interface, so a server on the container's own 127.0.0.1 accepts nothing from
+# the host and the connection is refused with no log line. Compose publishes
+# to 127.0.0.1:8005 on the host, so binding all interfaces here does not widen
+# what can reach the endpoint.
+HARNESS_BIND=${HARNESS_BIND:-0.0.0.0}
 CONTROL_VECTOR=${CONTROL_VECTOR:-""}
 CONTROL_VECTOR_SCALE=${CONTROL_VECTOR_SCALE:-""}
 CONTROL_VECTOR_LAYER_RANGE=${CONTROL_VECTOR_LAYER_RANGE:-""}
@@ -48,7 +55,7 @@ if [[ -z "$HARNESS_MODEL" ]]; then
     exit 1
 fi
 
-CMD_ARGS=("--model" "$HARNESS_MODEL" "--serve" "$HARNESS_PORT")
+CMD_ARGS=("--model" "$HARNESS_MODEL" "--serve" "$HARNESS_PORT" "--serve-addr" "$HARNESS_BIND")
 
 if [[ "$HARNESS_TEXT_ONLY" == "true" ]]; then
     CMD_ARGS+=("--text-only")
@@ -85,7 +92,7 @@ if [[ -n "$HARNESS_INTERP_LOG" ]]; then
 fi
 
 print_info "Model: $HARNESS_MODEL"
-print_info "Endpoint: 0.0.0.0:$HARNESS_PORT"
+print_info "Endpoint: ${HARNESS_BIND}:${HARNESS_PORT} (published to the host as 127.0.0.1:${HARNESS_PORT})"
 if [[ -n "$CONTROL_VECTOR" ]]; then
     print_info "Control vector: ${CONTROL_VECTOR}${CONTROL_VECTOR_SCALE:+ (scale ${CONTROL_VECTOR_SCALE})}${CONTROL_VECTOR_LAYER_RANGE:+ (blocks ${CONTROL_VECTOR_LAYER_RANGE})}"
 else

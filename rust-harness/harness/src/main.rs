@@ -443,6 +443,7 @@ fn run(
     compact_at: f32,
     chat: bool,
     serve: Option<u16>,
+    serve_addr: std::net::IpAddr,
     text_only: bool,
     single_thread: bool,
 ) -> Result<()> {
@@ -491,12 +492,12 @@ fn run(
         // monitor into it. The session snapshot has no such treatment and is
         // simply not taken -- a served session's KV is the accumulation of
         // unrelated callers' traffic, which is not a thing to resume.
-        let listener = std::net::TcpListener::bind(("127.0.0.1", port))
-            .with_context(|| format!("binding 127.0.0.1:{port}"))?;
+        let listener = std::net::TcpListener::bind((serve_addr, port))
+            .with_context(|| format!("binding {serve_addr}:{port}"))?;
         let model_name = model
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "synthetic".to_string());
-        eprintln!("[INFO] Serving on http://127.0.0.1:{port} (model {model_name})");
+        eprintln!("[INFO] Serving on http://{serve_addr}:{port} (model {model_name})");
         let log = match interp_log {
             Some(dir) => {
                 let log = InterpLog::open(dir, harness::server::SERVICE_NAME);
@@ -651,6 +652,7 @@ fn main() -> ExitCode {
          [--probe-out <path>] [--alignment-out <path>] [--temperature <f>] [--top-p <f>] \
          [--top-k <n>] [--seed <n>] [--max-tokens <n>] [--context <n>] \
          [--compact-at <f>] [--text-only] [--single-thread] \
+         [--serve-addr <ip>] \
          (--chat | --serve <port> | <task description>)";
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     // Snapshot before flag extraction mutates args: cmd.start records the
@@ -702,6 +704,9 @@ fn main() -> ExitCode {
     // sampling flags above become the per-request defaults; a request may
     // override any of them, including the seed. Mutually exclusive with
     // --chat, and takes no task text.
+    // --serve-addr <ip>: the bind address, 127.0.0.1 by default. Only a
+    // container needs to set it, and must: see the parse site for why the
+    // container's own loopback is unreachable through a published port.
     let mut model: Option<std::path::PathBuf> = None;
     let mut tokenizer: Option<std::path::PathBuf> = None;
     let mut record: Option<std::path::PathBuf> = None;
@@ -721,6 +726,7 @@ fn main() -> ExitCode {
     let mut context_arg: Option<std::path::PathBuf> = None;
     let mut compact_at_arg: Option<std::path::PathBuf> = None;
     let mut serve_arg: Option<std::path::PathBuf> = None;
+    let mut serve_addr_arg: Option<std::path::PathBuf> = None;
     for (flag, slot) in [
         ("--model", &mut model),
         ("--record", &mut record),
@@ -741,6 +747,7 @@ fn main() -> ExitCode {
         ("--context", &mut context_arg),
         ("--compact-at", &mut compact_at_arg),
         ("--serve", &mut serve_arg),
+        ("--serve-addr", &mut serve_addr_arg),
     ] {
         if let Some(i) = args.iter().position(|a| a == flag) {
             if i + 1 >= args.len() {
@@ -892,6 +899,31 @@ fn main() -> ExitCode {
         eprintln!("[ERROR] --chat and --serve are mutually exclusive");
         return ExitCode::from(2);
     }
+    // --serve-addr <ip>: loopback by default, so a harness run directly on a
+    // workstation is reachable only from that machine. A container has to
+    // override it: binding the container's own 127.0.0.1 makes the published
+    // port unreachable from the host, because the mapping forwards to the
+    // container's external interface and nothing is listening there. That is
+    // not a weaker posture -- compose publishes to 127.0.0.1:8005 on the
+    // host, so what may reach the endpoint is unchanged either way.
+    let serve_addr_given = serve_addr_arg.is_some();
+    let serve_addr = match serve_addr_arg {
+        Some(v) => match v.to_string_lossy().parse::<std::net::IpAddr>() {
+            Ok(addr) => addr,
+            Err(_) => {
+                eprintln!(
+                    "[ERROR] --serve-addr: expected an IP address, got {}",
+                    v.display()
+                );
+                return ExitCode::from(2);
+            }
+        },
+        None => std::net::IpAddr::from([127, 0, 0, 1]),
+    };
+    if serve_addr_given && serve.is_none() {
+        eprintln!("[ERROR] --serve-addr has no meaning without --serve");
+        return ExitCode::from(2);
+    }
     // A task is positional text; the two flag modes take none. Exactly one of
     // the three must be selected.
     if args.is_empty() != (chat || serve.is_some()) {
@@ -951,6 +983,7 @@ fn main() -> ExitCode {
         compact_at,
         chat,
         serve,
+        serve_addr,
         text_only,
         single_thread,
     ) {
