@@ -221,7 +221,7 @@ $ make harness-serve-down    # after I.7, which wants the service up
 Expected signal: one JSONL record per completed request, carrying `messages`,
 `response_text`, `usage`, `latency_s`, and a `probe` block whose `scored`
 counts the positions of that request alone and whose `max_score` is finite. The
-record is already on disk before `docker kill`, since the process is ended by a
+record is already on disk before the process is stopped, since it is ended by a
 signal and never closes the file.
 
 Two things that would be silent failures. `scored` growing across requests
@@ -230,12 +230,53 @@ record and an unbounded buffer. And a `probe` block absent from every record
 while `HARNESS_PROBE` is set means the probe never loaded -- check stderr for
 the identity refusal.
 
-Observed:
+Observed: 2026-08-14, probe `refusal-v1` captured from
+`/app/models/hf/gemma-4-E4B` at layers 8/16/24 over
+`interp/probes/prompts/refusal.jsonl` (258 examples, 129/129), layer 8
+selected. The capture derived `model_hash`
+`43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651`, equal to
+`sha256sum` of the served `model.safetensors`, so the identity check ran
+rather than being skipped.
 
 ```
+{"id":"chatcmpl-0","object":"chat.completion","created":1786672276,
+ "model":"/app/models/hf/gemma-4-E4B","choices":[{"index":0,"message":
+ {"role":"assistant","content":"2+2?\n18\n"},"finish_reason":"length"}],
+ "usage":{"prompt_tokens":13,"completion_tokens":8,"total_tokens":21}}
+
+$ tail -1 .../2026-08-14.jsonl | python3 -m json.tool
+    "response_text": "2+2?\n18\n",
+    "usage": {"completion_tokens": 8, "prompt_tokens": 13, "total_tokens": 21},
+    "latency_s": 2.433646459,
+    "status_code": 200,
+    "probe": {
+        "name": "refusal-v1", "layer": 8, "site": "layer_output",
+        "threshold": 0.9548591, "scored": 21, "position_first": 0,
+        "max_score": 0.99316895,
+        "flags": [ ... 12 positions, 0.956 to 0.993 ... ]
+    }
+$ wc -l .../2026-08-14.jsonl
+1
 ```
 
-Status: PENDING
+Both silent failures are excluded: `scored` is 21, exactly `total_tokens`
+(13 + 8), so the monitor is drained per request rather than accumulating; and
+the `probe` block is present, so the probe loaded past both refusals.
+
+**The probe is not usable as a detector, and this entry does not claim it
+is.** It flagged 12 of 21 positions on `2+2?` at up to 0.993 against a 0.955
+threshold -- a benign arithmetic prompt scoring as refusal nearly everywhere.
+The training AUROC was 1.00 at all three layers, which read as suspicious at
+the time and is now explained: `capture_activations` fits on the last
+non-padded token of each prompt, while the harness scores every position
+in-band, so a threshold calibrated on final-position activations means
+nothing at position 3. What I.6 verifies is the path from a served request to
+a scored record on disk, which holds. Task #171 owns the calibration gap.
+
+The reply `"2+2?\n18\n"` is a base checkpoint continuing text rather than
+answering, which is task #126, not a fault in the serving path.
+
+Status: PASS
 
 ## I.7 Probe monitor (W4)
 
@@ -270,12 +311,39 @@ $ make probe-monitor ARGS="--window 7d --log-dir /mnt/ai-data/interp/logs/harnes
 # expected: exit 0, not a services-are-up refusal
 ```
 
-Observed:
+Observed: 2026-08-14, both runs against the single record I.6 wrote, with
+harness-serve up throughout. Neither refused.
 
 ```
+[OK] Reported 1/1 records (1 flagged, skipped {'malformed_json': 0,
+     'no_timestamp': 0, 'out_of_window': 0, 'no_text': 0, 'no_scores': 0})
+[OK] refusal-v1: mean 0.9932, p95 0.9932, over-threshold 1.0
+[OK] Report written: /mnt/ai-data/interp/monitor/2026-08-14T015441Z/report.json
+[OK] Report written: /mnt/ai-data/interp/monitor/2026-08-14T015445Z/report.json
+
+$ python3 -m json.tool .../2026-08-14T015445Z/report.json
+    "kind": "probe_monitor", "schema_version": 2, "scored": "in_band",
+    "counts": {"total": 1, "reported": 1, "flagged": 1,
+               "dropped_over_cap": 0, "retention_removed_files": []},
+    "probes": {"refusal-v1": {
+        "mean": 0.9932, "p50": 0.9932, "p95": 0.9932,
+        "fraction_over_threshold": 1.0, "count": 1,
+        "delta_vs_previous": {"mean": 0.0, "fraction_over_threshold": 0.0,
+                              "previous_run": "2026-08-14T015441Z"}}},
+    "target_services": ["harness"]
 ```
 
-Status: PENDING
+Every part of the expected signal is present: `scored: "in_band"`,
+`target_services` naming the harness, retention enforced with nothing yet old
+enough to remove, and the second run's `delta_vs_previous` naming the first
+with a mean delta of 0 over the unchanged window.
+
+`fraction_over_threshold 1.0` is the monitor faithfully reporting the
+miscalibrated probe described in I.6, not a monitor defect: one record, whose
+single aggregated score is above threshold. It is stated here so a later
+reader does not mistake it for a baseline.
+
+Status: PASS
 
 ## I.8 Organisms (P4-D1)
 
