@@ -1,0 +1,54 @@
+# .dockerignore
+#
+# All twelve build definitions across docker-compose.*.yaml use `context: .`,
+# so this one file governs every image. Without it the daemon tars and ships
+# the whole repository — 8.32 GB measured on a rust-harness build whose only
+# COPY takes rust-harness/ — and then discards nearly all of it.
+#
+# Exclude build outputs and local state, never sources: the Dockerfiles copy
+# common/, interp/, training/, scripts/{interp,training}/, hugepages/,
+# rust-harness/, docker/, pyproject.toml and uv.lock, and each must keep
+# arriving intact.
+
+# Build outputs. rust-harness/target/ alone is 22 GB and is rebuilt inside the
+# image anyway; a host target/ in the context would be copied and ignored.
+rust-harness/target/
+**/__pycache__/
+*.py[cod]
+
+# Version control history. 2.4 GB, and no build reads it — the git clones in
+# the llama.cpp, ComfyUI and export images are remote, not this repository.
+.git/
+.gitignore
+.github/
+
+# Host virtualenv. The Python images build their own with uv from pyproject.toml
+# and uv.lock; copying a host venv in would shadow nothing and cost 346 MB.
+.venv/
+
+# Runtime state written by the services, meaningless to a build.
+sessions/
+logs/
+models/
+
+# Test and lint caches.
+.pytest_cache/
+.pytest-tmp/
+.ruff_cache/
+.mypy_cache/
+
+# Tier E reference artifacts: tens of MB, git-ignored, regenerated on the
+# workstation. The committed tiny fixtures under rust-harness/fixtures/ stay,
+# because they are inputs to `cargo test` inside the image.
+rust-harness/fixtures/reference/e4b/
+
+# Editor and OS droppings.
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Agent and local configuration, none of it a build input.
+.claude/
+.env
+.env.*
