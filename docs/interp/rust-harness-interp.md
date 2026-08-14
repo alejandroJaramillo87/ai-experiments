@@ -69,7 +69,7 @@ unchanged, so `--probe` and `--control-vector` are installed on the model that
 answers the request rather than on a replay of it. The wire contract is
 `schemas/harness_chat_endpoint.json`.
 
-Verified against real E4B in [RH.14](../verification/rust-harness.md): the
+Verified against real E4B in [RH.14](../verification/rust-harness/rust-harness.md): the
 Python client completes a chat with no change but the registry entry, and two
 greedy requests return byte-identical text.
 
@@ -84,7 +84,7 @@ one artifact with no per-request equivalent is the session KV snapshot, which a
 served session has no use for: its cache is the accumulation of unrelated
 callers' traffic and is not a thing to resume. And the CPU
 backend decodes at **5.5-5.8 tokens/second** (measured against real E4B in
-[RH.14](../verification/rust-harness.md)), so `chat_completion`'s 120-second
+[RH.14](../verification/rust-harness/rust-harness.md)), so `chat_completion`'s 120-second
 default covers only about 660 tokens and a 256-token scorecard call takes
 roughly 45 s. Pass an explicit `timeout`, and size a sweep accordingly.
 

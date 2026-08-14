@@ -4,7 +4,7 @@
 
 Sandbox-executable quality review of the `rust-harness/` workspace,
 structured as phases a Claude Code session runs in order. Complementary to
-the [workstation runbook](rust-harness.md): the runbook (RH.0 through
+the [workstation runbook](../rust-harness/rust-harness.md): the runbook (RH.0 through
 RH.13) verifies behavior on real weights and hardware; this campaign
 verifies code quality, and every step runs in an agent sandbox with no GPU
 and no model data.
@@ -207,10 +207,10 @@ Scope: `rust-harness/README.md`,
 `docs/rust-harness/runtime-design.md`,
 `docs/rust-harness/observability.md`,
 `docs/interp/rust-harness-interp.md`,
-`docs/verification/rust-harness.md`, this document.
+`docs/verification/rust-harness/rust-harness.md`, this document.
 
 Implementation: `rust-harness/README.md`, `docs/rust-harness/`,
-`docs/verification/rust-harness.md`.
+`docs/verification/rust-harness/rust-harness.md`.
 
 Lenses:
 
@@ -239,7 +239,7 @@ The campaign is complete when:
 Two runs are complete: 2026-07-30 (commits `71cc92b`, `316adab`) and
 2026-07-31 to 2026-08-01 (35 commits, `66ec39b` to `7ccac37`). Their findings,
 dispositions and results are in
-[archive/rust-harness-qa-campaigns.md](archive/rust-harness-qa-campaigns.md), a
+[archive/rust-harness-qa-campaigns.md](../archive/rust-harness-qa-campaigns.md), a
 frozen record.
 
 Read them before starting a third run. The refuted findings in particular are

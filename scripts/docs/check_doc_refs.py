@@ -64,7 +64,17 @@ EXEMPT_SUFFIXES = ("_investigation.md",)
 # nothing and cost coverage of the runbook, which is the most path-dense
 # documentation in the tree and the documentation a human trusts most. Removing
 # it surfaced four references, all recorded in KNOWN_ABSENT below.
-EXEMPT_PREFIXES: tuple[str, ...] = ()
+#
+# Non-empty again as of 2026-08-14, for agent memory rather than for the
+# runbook. A triage agent's project note records what it concluded on a given
+# day, including the paths it read; it is an agent's own record and not
+# documentation of this tree, so a later move makes it inaccurate history
+# rather than drift to repair. check_retired_names.py has carried exactly this
+# prefix since it was written, and the two gates disagreeing about whether
+# agent memory is in scope was itself the defect -- surfaced when the
+# verification directory grew tier subdirectories and two notes citing the old
+# flat paths failed one gate but not the other.
+EXEMPT_PREFIXES: tuple[str, ...] = (".claude/agent-memory/",)
 
 # Exempt by name, each for a stated reason.
 EXEMPT_FILES = {
@@ -138,7 +148,7 @@ KNOWN_ABSENT = {
     # Scoped by a dated QA campaign against the file as it stood; the Tier 3
     # stubs were deleted in P9.7 and replaced by runtime/src/ladder.rs.
     (
-        "docs/verification/rust-harness-qa.md",
+        "docs/verification/rust-harness/rust-harness-qa.md",
         "rust-harness/runtime/tests/eval_acceptance.rs",
     ),
     # The postmortem command creates this log if it is absent.
@@ -158,13 +168,16 @@ KNOWN_ABSENT = {
     # Installed-package paths inside the KB-59 row, naming the two site-packages
     # files whose interaction produced the defect. They describe the container's
     # environment, not this tree.
-    ("docs/verification/known-bugs.md", "torch/_native/registry.py"),
-    ("docs/verification/known-bugs.md", "triton/runtime/build.py"),
+    ("docs/verification/bugs/known-bugs.md", "torch/_native/registry.py"),
+    ("docs/verification/bugs/known-bugs.md", "triton/runtime/build.py"),
     # The same unwritten OBS-13 deliverable already exempted for the roadmap
     # above. The runbook step names it because the step is what would confirm it.
-    ("docs/verification/observability.md", "docs/observability/debugging-runs.md"),
+    (
+        "docs/verification/observability/observability.md",
+        "docs/observability/debugging-runs.md",
+    ),
     # Created on the host by the flight recorder at run time; nothing commits it.
-    ("docs/verification/rust-harness.md", "sessions/rust-harness/"),
+    ("docs/verification/rust-harness/rust-harness.md", "sessions/rust-harness/"),
 }
 
 BACKTICKED = re.compile(r"`([^`\n]+)`")

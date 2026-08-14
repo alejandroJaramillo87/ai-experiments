@@ -378,7 +378,7 @@ no interp command points at.
 
 **Not yet evidenced.** The sandbox proves the format and the wiring against a synthetic model,
 including that records survive `kill` rather than depending on a clean shutdown. I.6 and I.7 in
-[../verification/interp.md](../verification/interp.md) are the workstation checks, and what
+[../verification/interp/interp.md](../verification/interp/interp.md) are the workstation checks, and what
 they add is whether a real probe over real E4B produces scores worth reading.
 
 ## Phase 4 — Intervention

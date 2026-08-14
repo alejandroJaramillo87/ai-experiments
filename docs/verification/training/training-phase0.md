@@ -156,7 +156,7 @@ Status: VERIFIED
 Implementation: `training/calculator/solve.py` (memfit),
 `training/calculator/calibrate.py` (calibrate).
 
-**Fix to confirm here** (details in [known-bugs.md](known-bugs.md)):
+**Fix to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
 
 - KB-03 — `training/calculator/calibrate.py:89` — calibrate() always built a scratch LlamaConfig model, so calibrating any model.hf (or PEFT) recipe measured a … Cannot surface in this entry (both commands
   are scratch recipes); fix landed 2026-08-01, pending confirmation by the

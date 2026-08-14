@@ -383,8 +383,10 @@ def gemma_gguf_spec(**overrides) -> GgufSpec:
             ("gemma4.block_count", GGUF_UINT32, 7, None),
             ("gemma4.embedding_length", GGUF_UINT32, 8, None),
             ("gemma4.rope.freq_base", GGUF_FLOAT32, 1000000.0, None),
-            # docs/verification/rust-harness-qa.md:736-740 predicts the
-            # converter writes this as a bool array, which gguf.rs refuses.
+            # The 2026-07-30 QA campaign predicted the converter writes this
+            # as a bool array, which the since-deleted gguf.rs refused. See
+            # docs/verification/archive/rust-harness-qa-campaigns.md; the
+            # campaign log is frozen, so it carries no current line numbers.
             (
                 "gemma4.attention.sliding_window_pattern",
                 GGUF_ARRAY,

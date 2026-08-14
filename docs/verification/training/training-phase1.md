@@ -73,7 +73,7 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 ```
 
 Campaign paused 2026-08-01 at this entry. Hand-off state: P0.1 through
-P0.3 recorded in `training-phase0.md` (P0.3 VERIFIED after the KB-53
+P0.3 recorded in `docs/verification/training/training-phase0.md` (P0.3 VERIFIED after the KB-53
 through KB-56 fixes); the KB-03 fix is on this branch pending the runs
 below; P0.4 onward not yet executed. To resume:
 

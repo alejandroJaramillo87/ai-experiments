@@ -8,12 +8,12 @@ both documentation gates check this directory, so a stale reference here fails t
 
 The two multi-hour activation captures that feed P4-D3 SAE training: the false-fact organism
 capture and the Gemma-2-2B calibration capture. They are separated from
-[interp.md](interp.md) because each occupies the GPU for most of a day and holds most of the
+[interp/interp.md](../interp/interp.md) because each occupies the GPU for most of a day and holds most of the
 `/mnt/ai-data` volume, so they are scheduled rather than run in sequence with the other interp
 entries.
 
 Neither has been run. Everything they depend on has been verified at smoke scale: I.9 and I.9b
-in [interp.md](interp.md) confirmed chunked capture and its crash recovery on 2026-08-08. That
+in [interp/interp.md](../interp/interp.md) confirmed chunked capture and its crash recovery on 2026-08-08. That
 chain was re-checked on 2026-08-14 — both entries still read `VERIFIED`, and every target,
 script and recipe named below still resolves — so the two captures are unscheduled rather than
 blocked. What they wait on is a GPU-day each and the free volume in the table below, not a
@@ -57,7 +57,7 @@ predicted number down before starting and check the manifest against it; a manif
 more tokens than were asked for looks like a defect if the prediction is made afterwards.
 `manifest.json` carries `requested_tokens` beside `total_tokens` for exactly this reason, and
 the disk preflight prices the written figure rather than the request. The reasoning is in
-[../interp/harvest-precision-and-resume.md](../interp/harvest-precision-and-resume.md).
+[docs/interp/harvest-precision-and-resume.md](../../interp/harvest-precision-and-resume.md).
 
 ## Running a capture
 
@@ -106,7 +106,7 @@ recapture.
 
 ## Recording protocol
 
-Per [README.md](README.md): paste the command and its output verbatim into an Observed block
+Per [README.md](../../README.md): paste the command and its output verbatim into an Observed block
 below, and close the entry by changing its status. Record the manifest's `total_tokens` against
 the prediction in the table above — a mismatch is a finding, not a number to explain away.
 
@@ -130,8 +130,8 @@ Status: PENDING
 
 ## Background
 
-- [../interp/harvest-precision-and-resume.md](../interp/harvest-precision-and-resume.md) — why
+- [docs/interp/harvest-precision-and-resume.md](../../interp/harvest-precision-and-resume.md) — why
   the captures are fp16, why capture is chunked, and the buffer-rounding arithmetic
-- [known-bugs.md](known-bugs.md) — KB-57 (dtype), KB-58 (resume), KB-59 (image dependencies),
+- [bugs/known-bugs.md](../bugs/known-bugs.md) — KB-57 (dtype), KB-58 (resume), KB-59 (image dependencies),
   KB-60 (the unfixed epoch wrap, latent because every shipped corpus exceeds its budget)
-- [interp.md](interp.md) — I.9 and I.9b, the smoke-scale verification these captures rest on
+- [interp/interp.md](../interp/interp.md) — I.9 and I.9b, the smoke-scale verification these captures rest on

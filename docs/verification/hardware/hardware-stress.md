@@ -6,7 +6,7 @@
 
 One-time firmware stability gate for the BIOS undervolt and overclock stack
 documented in
-[bios-optimizations.md](../optimizations/bios/bios-optimizations.md):
+[bios-optimizations.md](../../optimizations/bios/bios-optimizations.md):
 Curve Optimizer -15, Curve Shaper offsets, CPU boost clock override
 +200 MHz, and FCLK 2100 MHz. That configuration was validated in 2025
 against bursty chatbot inference — one subsystem loaded at a time, minutes
@@ -25,7 +25,7 @@ Shaper, boost, FCLK, or memory timing adjustment). It is distinct from
 the `hw_smoke` pytest tier, which checks the software environment, not
 electrical stability. All entries are host-side: the human runs each
 command on the workstation and records output per the
-[recording protocol](README.md#recording-protocol). This phase is
+[recording protocol](../README.md#recording-protocol). This phase is
 independent of the software verification phases and may run any time
 after its own preconditions are met, but it must be VERIFIED before the
 first long training run (phase 2 of the training tier onward).
@@ -230,7 +230,7 @@ during the phase:
 2. Re-run HS.3 (the combined soak). Repeat until it passes clean.
 3. Re-run the CPU benchmark suite and record the performance cost of the
    reduced offset against the validated 26.2 percent figure in
-   [bios-optimizations.md](../optimizations/bios/bios-optimizations.md).
+   [bios-optimizations.md](../../optimizations/bios/bios-optimizations.md).
 4. If errors persist at Curve Optimizer 0, remove the boost clock
    override next, then re-validate FCLK 2100 MHz; update the BIOS guide
    to match whatever configuration finally passes.

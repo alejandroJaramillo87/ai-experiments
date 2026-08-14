@@ -879,7 +879,7 @@ Two readings were possible, and they were not equally cheap to be wrong about:
 | The weights are authoritative; the code is ahead of them | Every layer computes its own K/V, and `num_kv_shared_layers` describes cache reuse only | Wasted memory, correct output |
 
 **Resolved 2026-08-09 in favor of the modeling code.** RH.1a check 1 in
-[docs/verification/rust-harness.md](../verification/rust-harness.md) measured the distribution
+[docs/verification/rust-harness/rust-harness.md](../verification/rust-harness/rust-harness.md) measured the distribution
 *shape* of all four attention projections in every E2B layer, rather than their scale. Scale
 does not separate the two readings: `initializer_range` places an untrained tensor at
 approximately the same standard deviation as a trained one. Shape does.

@@ -150,7 +150,7 @@ Status: PENDING
 Implementation: `training/runtime/offload.py`, `training/runtime/loop.py`,
 `training/runtime/watchdog.py`.
 
-**Fix to confirm here** (details in [known-bugs.md](known-bugs.md)):
+**Fix to confirm here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
 
 - KB-30 — `training/runtime/offload.py:119` — build_ds_config's steps_per_print: 0 made DeepSpeed 0.19.2 raise ZeroDivisionError on the first optimizer … `offload.py:124` now sets `steps_per_print: None`. This is the only run that can confirm it.
 

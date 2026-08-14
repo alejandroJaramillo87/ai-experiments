@@ -264,5 +264,5 @@ $ python -m training runs --json | jq -r '.[] | select(.exit_code != 0) | .run_d
 - [../../schemas/README.md](../../schemas/README.md) — the cross-language record contracts,
   including `obs_record.json`
 - [../../common/README.md](../../common/README.md) — the `common/obs/` package itself
-- [../verification/observability.md](../verification/observability.md) — the verification record
+- [../verification/observability/observability.md](../verification/observability/observability.md) — the verification record
   for this stack

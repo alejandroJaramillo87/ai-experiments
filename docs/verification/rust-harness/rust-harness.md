@@ -45,7 +45,7 @@ and the agent loop. Those cannot pass against a base checkpoint no matter how
 correct the backend, and closing them needs the `-it` variant, which is not on
 this workstation. Each carries a note to that effect.
 
-Recording protocol: the [runbook README](README.md) rules apply. The human
+Recording protocol: the [runbook README](../../README.md) rules apply. The human
 runs each command on the workstation and pastes command plus output
 verbatim into the Observed block; expected signals are never edited to
 match observations; one GPU consumer at a time (the CPU backend uses no
@@ -56,7 +56,7 @@ not apply here; RH.0 is this phase's gate. The model directory
 read from it.
 
 The sandbox-executable code-quality counterpart to this runbook is the
-[QA campaign](rust-harness-qa.md) (phases Q0-Q6); it verifies code
+[QA campaign](../rust-harness/rust-harness-qa.md) (phases Q0-Q6); it verifies code
 quality, while this runbook verifies behavior on real weights and
 hardware.
 
@@ -149,7 +149,7 @@ campaign: the CPU backend was written against a Gemma-4-style architecture
 spec, never against the real artifact. Published sources say the real E4B
 architecture is a superset of what the backend implements, retaining
 per-layer embeddings and adding a shared KV cache and dual RoPE; the
-[architecture reconciliation](../rust-harness/runtime-design.md#architecture-reconciliation)
+[architecture reconciliation](../../rust-harness/runtime-design.md#architecture-reconciliation)
 records those findings and their confidence. Those sources are secondhand,
 so this entry decides the question for the checkpoint that actually exists.
 
@@ -264,7 +264,7 @@ the wrong keys and the output is fluent and wrong rather than an error — 18
 of E4B's 42 layers, and 20 of E2B's 35, which is the variant check 1 below
 was run against.
 The evidence on both sides is in
-[The shared-KV weight conflict](../models/gemma-4.md#the-shared-kv-weight-conflict).
+[The shared-KV weight conflict](../../models/gemma-4.md#the-shared-kv-weight-conflict).
 
 Run the two checks in order. The first is cheap and settles the question on
 its own; the second is a logit-level confirmation and costs a model load.

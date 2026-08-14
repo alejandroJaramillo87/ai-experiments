@@ -46,6 +46,6 @@ dependency.
 ## Related documentation
 
 - [../inference/README.md](../inference/README.md) — the llama.cpp and vLLM serving stack, which the harness does not replace
-- [../verification/rust-harness.md](../verification/rust-harness.md) — host verification runbook
-- [../verification/rust-harness-qa.md](../verification/rust-harness-qa.md) — sandbox quality audit
+- [../verification/rust-harness/rust-harness.md](../verification/rust-harness/rust-harness.md) — host verification runbook
+- [../verification/rust-harness/rust-harness-qa.md](../verification/rust-harness/rust-harness-qa.md) — sandbox quality audit
 - [../interp/rust-harness-interp.md](../interp/rust-harness-interp.md) — running the write-back interpretability path on this runtime

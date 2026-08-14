@@ -2,7 +2,7 @@
 
 **Operational. A live ledger read alongside the runbook steps and updated as defects are fixed: move a row between sections rather than deleting it, so the KB ids stay stable. Keep the locations current — both documentation gates check this directory, so a path that no longer exists fails the gate. Line numbers are not checked and rot silently; treat them as a hint, and the surrounding prose as the identification.**
 
-Defects the hardware verification campaign expects to hit, indexed so the operator running the [hardware verification runbook](README.md) knows what to expect at each step. Treat a listed bug as the predicted failure: if a step fails in the way its row describes, record it and fix against the real traceback rather than re-diagnosing from scratch.
+Defects the hardware verification campaign expects to hit, indexed so the operator running the [hardware verification runbook](../../README.md) knows what to expect at each step. Treat a listed bug as the predicted failure: if a step fails in the way its row describes, record it and fix against the real traceback rather than re-diagnosing from scratch.
 
 ## Reset on 2026-08-08
 
@@ -12,7 +12,7 @@ What changed:
 
 - **Twelve unverified WI-14 rows were deleted**, listed below so the ids are never reused. The test applied was evidence, not age: a row was deleted only if nothing in the repository recorded it being observed. KB-52 was a candidate until the reference check found the P0.1 Observed block that closes "Verified with the KB-52 caveat", and it stayed.
 - **Three rows moved to a new pending-confirmation section.** Their fixes are committed; only a hardware run can close them. A fourth candidate, KB-32, was checked and stayed open: the refactor its row depends on has not landed.
-- **The closed history moved to [ledger-archive.md](ledger-archive.md)** — 36 sandbox pre-fix rows, five PR #54 rows, and seven refused candidates.
+- **The closed history moved to [bugs/ledger-archive.md](../bugs/ledger-archive.md)** — 36 sandbox pre-fix rows, five PR #54 rows, and seven refused candidates.
 
 **Identifiers did not change, and will not.** KB ids are cited in 31 source-code comments and asserted by `tests/interp/test_harvest.py`, so renumbering would be a code change wearing a documentation change's clothes. The next bug filed is KB-68.
 
@@ -26,7 +26,7 @@ What changed:
 
 | ID | Step(s) | Location | Category | Confidence | Defect |
 |----|---------|----------|----------|------------|--------|
-| KB-52 | P0.1 | `training/data/prepare.py:210` | teardown | 3/3 | Streaming prepare-data crashes at interpreter finalization (PyGILState_Release fatal error) after all shards and the manifest are flushed: a datasets/aiohttp background download thread is still alive at exit, so the process returns nonzero on an otherwise successful run (observed on the workstation 2026-08-01, P0.1). The observation is recorded in `training-phase0.md` P0.1, whose Observed block closes "Verified with the KB-52 caveat" — this is a confirmed defect with hardware evidence, not a review claim |
+| KB-52 | P0.1 | `training/data/prepare.py:210` | teardown | 3/3 | Streaming prepare-data crashes at interpreter finalization (PyGILState_Release fatal error) after all shards and the manifest are flushed: a datasets/aiohttp background download thread is still alive at exit, so the process returns nonzero on an otherwise successful run (observed on the workstation 2026-08-01, P0.1). The observation is recorded in `docs/verification/training/training-phase0.md` P0.1, whose Observed block closes "Verified with the KB-52 caveat" — this is a confirmed defect with hardware evidence, not a review claim |
 | KB-32 | I.3 | `interp/steering/extract.py:78` | pinned-api | 3/3 | Pinned repeng 0.4.0 cannot be imported under pinned numpy 2.4.6: `np.float_` in eagerly evaluated annotations raises AttributeError, killing every repeng extraction. Verified still open on 2026-08-08: repeng is deliberately absent from the interp image, and `pyproject.toml:149-154` records that the version conflict and the `extract_repeng` refactor are meant to land together at this step. That refactor has not landed — `extract.py:78` still does an in-process `from repeng import ControlModel, ControlVector, DatasetEntry`, so there is no out-of-process path and the import fails on absence before it can fail on numpy. Note that `tests/interp/test_image_dependencies.py:69` describes repeng as running "in its own venv, invoked out-of-process", which is the intended design rather than the current one |
 | KB-60 | I.9 | `interp/harvest.py:412` | correctness | n/a | SAELens silently starts a new epoch instead of stopping when the corpus runs dry, so a corpus smaller than the token budget is re-read and duplicated into a capture. `CacheActivationsRunner.run()` calls `get_raw_llm_batch()` with the default `raise_on_epoch_end=False`, and `get_batch_tokens` (`activations_store.py:630-637` in the pinned 6.46.0 wheel) then resets its iterator and continues rather than raising; the `except StopIteration` break in `run()` is therefore unreachable in our configuration. The only signal is a construction-time warning that compares a sample count against a token count, which does not reliably fire. Consequence: an SAE trained on such a capture sees duplicated activations and an effective dataset smaller than its manifest claims, with nothing in the manifest recording it. Latent for every shipped recipe — `monology/pile-uncopyrighted` is far larger than any budget here — which is why it is filed rather than fixed. Found while scoping KB-58 by reading the pinned source, not by a run. Partial mitigation landed with KB-58: the manifest now records measured `total_tokens` beside `requested_tokens`, so a wrapped capture is at least visible in the artifact, but the duplication itself is untouched. A fix belongs with whoever next changes the activations store, and would pass `raise_on_epoch_end=True` and treat exhaustion as a refusal naming the shortfall |
 
@@ -83,5 +83,5 @@ Recovering one means re-deriving it from the code, not restoring this row. Full 
 
 ## Related
 
-- [ledger-archive.md](ledger-archive.md) — the closed history: 36 sandbox pre-fix rows, five PR #54 rows, seven refused candidates
-- [README.md](README.md) — the hardware verification runbook these rows are indexed against
+- [bugs/ledger-archive.md](../bugs/ledger-archive.md) — the closed history: 36 sandbox pre-fix rows, five PR #54 rows, seven refused candidates
+- [README.md](../../README.md) — the hardware verification runbook these rows are indexed against

@@ -3,7 +3,7 @@
 **Frozen record — 2026-08-08. Drift against the current repository is expected and correct;
 this document is never updated.**
 
-Defect rows moved out of [known-bugs.md](known-bugs.md) when the ledger was reset on
+Defect rows moved out of [bugs/known-bugs.md](../bugs/known-bugs.md) when the ledger was reset on
 2026-08-08. They are kept because the KB identifiers are permanent and because the reasoning
 behind a disposition is not recoverable from the code once the row is gone.
 

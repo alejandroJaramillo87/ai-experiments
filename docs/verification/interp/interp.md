@@ -77,7 +77,7 @@ Implementation: `interp/commands/steer_extract.py`,
 `interp/steering/extract.py`, `interp/steering/export.py`,
 `interp/families.py`.
 
-**Known bugs likely to surface here** (details in [known-bugs.md](known-bugs.md)):
+**Known bugs likely to surface here** (details in [bugs/known-bugs.md](../bugs/known-bugs.md)):
 
 - KB-32 — `interp/steering/extract.py:78` — Pinned repeng 0.4.0 cannot be imported under pinned numpy 2.4.6: np.float_ in eagerly evaluated annotations … repeng is also absent from the interp image, so the import fails on absence first. Expect this step to fail at import until the `extract_repeng` refactor lands.
 

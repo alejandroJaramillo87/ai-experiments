@@ -7,6 +7,27 @@ check this directory, so a stale reference here fails the gate. The exceptions a
 [investigations/](investigations/) and [archive/](archive/), which hold frozen records — read,
 never executed, and never updated, and exempt from both gates for that reason.**
 
+## How this directory is laid out
+
+One folder per tier, and the folder name is the tier: [training/](training/),
+[interp/](interp/), [rust-harness/](rust-harness/),
+[observability/](observability/), [hardware/](hardware/), [bugs/](bugs/).
+
+Every tier gets a folder, including the ones holding a single document today.
+A root mixing folders with loose files is the thing that is actually hard to
+scan — the loose files read as leftovers — and a tier with one runbook is the
+one most likely to gain a second.
+
+Two files stay at the root, and their being there is the point:
+
+- **[README.md](README.md)**, this index.
+- **[step-zero-environment.md](step-zero-environment.md)**, which blocks every
+  other phase. It is not a peer of the tiers, so it is not filed among them.
+
+[archive/](archive/) and [investigations/](investigations/) also sit at the
+root, because a frozen record belongs with the other frozen records rather
+than with the tier it came from.
+
 ## What is live and what is frozen
 
 Two different questions, and only one of them a directory can answer.
@@ -34,11 +55,11 @@ runbook covers only features that exist in the repository.
 
 ## Known bugs
 
-[known-bugs.md](known-bugs.md) is the ledger. It carries what this campaign
+[bugs/known-bugs.md](bugs/known-bugs.md) is the ledger. It carries what this campaign
 still expects to hit, sorted by how well the expectation is warranted: bugs
 confirmed and unfixed, fixes committed but awaiting the one hardware run that
 can close them, and the defects the campaign itself found and repaired. The
-closed history lives in [ledger-archive.md](ledger-archive.md).
+closed history lives in [bugs/ledger-archive.md](bugs/ledger-archive.md).
 
 The ledger was reset on 2026-08-08 and is smaller than the campaign's own
 history implies. Thirteen rows carried from the WI-14 capstone review had
@@ -85,14 +106,14 @@ Each runbook's own progress line is authoritative; this table is the index.
 | Runbook | Verified | Blocked | Pending | Of |
 |---------|---------:|--------:|--------:|---:|
 | [step-zero-environment.md](step-zero-environment.md) | 8 | 0 | 0 | 8 |
-| [training-phase0.md](training-phase0.md) | 4 | 0 | 7 | 11 |
-| [training-phase1.md](training-phase1.md) | 0 | 0 | 13 | 13 |
-| [training-phase2.md](training-phase2.md) | 0 | 0 | 7 | 7 |
-| [interp.md](interp.md) | 5 | 2 | 6 | 13 |
-| [observability.md](observability.md) | 0 | 0 | 8 | 8 |
-| [rust-harness.md](rust-harness.md) | 16 | 5 | 0 | 21 |
-| [hardware-stress.md](hardware-stress.md) | 0 | 0 | 6 | 6 |
-| [reference-captures.md](reference-captures.md) | 0 | 0 | 2 | 2 |
+| [training/training-phase0.md](training/training-phase0.md) | 4 | 0 | 7 | 11 |
+| [training/training-phase1.md](training/training-phase1.md) | 0 | 0 | 13 | 13 |
+| [training/training-phase2.md](training/training-phase2.md) | 0 | 0 | 7 | 7 |
+| [interp/interp.md](interp/interp.md) | 5 | 2 | 6 | 13 |
+| [observability/observability.md](observability/observability.md) | 0 | 0 | 8 | 8 |
+| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 16 | 5 | 0 | 21 |
+| [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
+| [interp/reference-captures.md](interp/reference-captures.md) | 0 | 0 | 2 | 2 |
 
 A pending entry is not the same as a blocked one, and the difference is whether
 a command exists that changes the situation. An entry waiting on a GPU slot, on
@@ -100,7 +121,7 @@ free disk, or on an artifact something else in this directory regenerates is
 `PENDING` — someone can run it. `BLOCKED` is for what no command here can fix:
 absent hardware support, or a checkpoint nobody has. The four observability
 entries needing `verify-small` shards are the worked example — the shards do not
-exist, and [training-phase0.md](training-phase0.md) P0.1 creates them, so those
+exist, and [training/training-phase0.md](training/training-phase0.md) P0.1 creates them, so those
 entries stay pending.
 
 `rust-harness.md` has no pending entries: its five blocked ones need an rr that
@@ -115,28 +136,28 @@ passed.
 1. [step-zero-environment.md](step-zero-environment.md) — lockfile
    regeneration, image builds, smoke tests, the quality gate, and the
    hardware smoke suite. Blocks all other phases.
-2. [training-phase0.md](training-phase0.md) — Phase 0 deliverables: data
+2. [training/training-phase0.md](training/training-phase0.md) — Phase 0 deliverables: data
    preparation, tokenizer, memory fit, recipes, the reference loop with
    tolerance-based resume, export and serve round trip, staging, watchdogs.
-3. [training-phase1.md](training-phase1.md) — F1 through F8: SFT, teacher
+3. [training/training-phase1.md](training/training-phase1.md) — F1 through F8: SFT, teacher
    generation, distillation, merge and export, the evaluation wrappers, and
    scorecard promotion.
-4. [training-phase2.md](training-phase2.md) — P2-D1 through P2-D5: the
+4. [training/training-phase2.md](training/training-phase2.md) — P2-D1 through P2-D5: the
    full-scale data pipeline, mixtures, WSD schedules, the replay buffer, and
    optimizer offload.
-5. [interp.md](interp.md) — the interpretability tier: workbench,
+5. [interp/interp.md](interp/interp.md) — the interpretability tier: workbench,
    Neuronpedia harness, write-back path (W1-W4), organisms, harvesting, and
    SAE training.
-6. [observability.md](observability.md) — the observability stack (phases
+6. [observability/observability.md](observability/observability.md) — the observability stack (phases
    A-D): GPU watchdog samples, NVML context, the `/mnt/ai-data` log root,
    external sinks, the browser harness, and the live dashboard against an
    in-flight run.
-7. [rust-harness.md](rust-harness.md) — the rust-harness CPU backend on
+7. [rust-harness/rust-harness.md](rust-harness/rust-harness.md) — the rust-harness CPU backend on
    the real E4B checkpoint: architecture reconciliation, generation, KV delta
    prefill, flight recorder, rr, and the in-band interp chain. Pure cargo
    binary: the Python hardware smoke gate does not apply; entry RH.0 is
    this phase's gate. Its sandbox-executable sibling is
-   [rust-harness-qa.md](rust-harness-qa.md), the code-quality campaign
+   [rust-harness/rust-harness-qa.md](rust-harness/rust-harness-qa.md), the code-quality campaign
    (phases Q0-Q6) a Claude Code session runs with no GPU or model data.
 
 Outside the numbered order, and outside this directory's operational contract:
@@ -156,13 +177,13 @@ outside a document that is closed to edits: when a checkpoint is acquired,
 those 50 entries are the Gemma 4 conformance backlog, and executing them
 means opening a new record rather than editing the frozen one.
 
-Also outside the numbered order: [reference-captures.md](reference-captures.md), the two
+Also outside the numbered order: [interp/reference-captures.md](interp/reference-captures.md), the two
 multi-hour activation captures that feed P4-D3 SAE training. They are separated from
-[interp.md](interp.md) because each holds the GPU for most of a day and most of the
+[interp/interp.md](interp/interp.md) because each holds the GPU for most of a day and most of the
 `/mnt/ai-data` volume, so they are scheduled rather than run in sequence. Their preconditions
 are the interp tier through I.9b, verified at smoke scale on 2026-08-08.
 
-Also outside the numbered order: [hardware-stress.md](hardware-stress.md), the
+Also outside the numbered order: [hardware/hardware-stress.md](hardware/hardware-stress.md), the
 one-time firmware stability soak for the BIOS undervolt profile. It is
 independent of the software phases and may run any time its own
 preconditions are met (no other GPU consumer active), but it must be

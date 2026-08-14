@@ -121,7 +121,7 @@ one passed, with nothing skipped** — L0 token ids, L1 residual stream (worst
 cosine 1.000000 over 42 layers), L2 final distribution, L3 perplexity (delta
 0.000032 over 254 tokens), L4 greedy continuation. The rung bodies remain
 unit-tested against a scripted `MockModel` as well. The transcript is entry
-RH.1b of [the workstation runbook](../docs/verification/rust-harness.md).
+RH.1b of [the workstation runbook](../docs/verification/rust-harness/rust-harness.md).
 
 That is a numerics claim, not an output-quality claim: the ladder measures
 agreement with `transformers`, and says nothing about whether the model's

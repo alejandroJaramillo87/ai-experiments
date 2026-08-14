@@ -144,7 +144,7 @@ bfloat16 type in any version. This is not a tunable: a `bf16` capture cannot run
 `tests/interp/test_harvest.py` enforces the split against the committed recipes.
 [`docs/interp/harvest-precision-and-resume.md`](../interp/harvest-precision-and-resume.md)
 owns the defect (KB-57), the SAELens reading behind it, and what the options cost; the
-ledger row is in [`docs/verification/known-bugs.md`](../verification/known-bugs.md).
+ledger row is in [`docs/verification/bugs/known-bugs.md`](../verification/bugs/known-bugs.md).
 
 **One field, two type systems.** `harvest.dtype` is a single recipe field that sets both
 the Arrow on-disk storage type *and* the precision the SAE is later trained at. The SAE

@@ -2,7 +2,7 @@
 # with the integrated CPU inference runtime). The container exists for build
 # reproducibility, not sandboxing: the same pinned toolchain and locked
 # dependency graph produce the same binary on any machine. Verified by
-# runbook entry RH.12 (docs/verification/rust-harness.md).
+# runbook entry RH.12 (docs/verification/rust-harness/rust-harness.md).
 
 # Builder image: pinned rust toolchain. Re-resolve with:
 #   docker buildx imagetools inspect rust:1.94-slim-trixie

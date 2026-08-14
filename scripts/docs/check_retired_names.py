@@ -40,6 +40,50 @@ from common.output import Printer  # noqa: E402
 # Retired name -> (replacement, why it was retired). Both halves are shown in the
 # failure, so the reason should read as an explanation to whoever hits it.
 RETIRED: dict[str, tuple[str, str]] = {
+    "docs/verification/training-phase0.md": (
+        "docs/verification/training/training-phase0.md",
+        "the verification directory grew a folder per tier (training, interp, rust-harness, observability, hardware, bugs), so that a human scanning it sees six categories rather than a dozen loose files. Every tier got a folder, including those holding one document today: a mixed root of folders and stray files is what makes a directory hard to read, and the single-file tiers are the ones most likely to gain a sibling. README.md and step-zero-environment.md stay at the root because step zero blocks every phase and is not a peer of the tiers",
+    ),
+    "docs/verification/training-phase1.md": (
+        "docs/verification/training/training-phase1.md",
+        "the same tier-folder move; see docs/verification/training-phase0.md above",
+    ),
+    "docs/verification/training-phase2.md": (
+        "docs/verification/training/training-phase2.md",
+        "the same tier-folder move; see docs/verification/training-phase0.md above",
+    ),
+    "docs/verification/interp.md": (
+        "docs/verification/interp/interp.md",
+        "the same tier-folder move; see docs/verification/training-phase0.md above",
+    ),
+    "docs/verification/reference-captures.md": (
+        "docs/verification/interp/reference-captures.md",
+        "the same tier-folder move; see docs/verification/training-phase0.md above",
+    ),
+    "docs/verification/rust-harness.md": (
+        "docs/verification/rust-harness/rust-harness.md",
+        "the same tier-folder move; see docs/verification/training-phase0.md above",
+    ),
+    "docs/verification/rust-harness-qa.md": (
+        "docs/verification/rust-harness/rust-harness-qa.md",
+        "the same tier-folder move; see docs/verification/training-phase0.md above",
+    ),
+    "docs/verification/observability.md": (
+        "docs/verification/observability/observability.md",
+        "the same tier-folder move; see docs/verification/training-phase0.md above",
+    ),
+    "docs/verification/hardware-stress.md": (
+        "docs/verification/hardware/hardware-stress.md",
+        "the same tier-folder move; see docs/verification/training-phase0.md above",
+    ),
+    "docs/verification/known-bugs.md": (
+        "docs/verification/bugs/known-bugs.md",
+        "the same tier-folder move; see docs/verification/training-phase0.md above",
+    ),
+    "docs/verification/ledger-archive.md": (
+        "docs/verification/bugs/ledger-archive.md",
+        "the same tier-folder move; see docs/verification/training-phase0.md above",
+    ),
     "docker-compose.yaml": (
         "docker-compose.inference.yaml",
         "the inference compose file gained a domain suffix, matching its four "

@@ -15,7 +15,7 @@ default log root, external sink artifacts, and the live server against an
 in-flight run.
 
 Recording protocol and session-start gate are defined in
-[README.md](README.md). One GPU consumer at a time applies to the entries
+[README.md](../../README.md). One GPU consumer at a time applies to the entries
 that train; the report and serve viewers are not GPU consumers.
 
 ## Preconditions
@@ -28,7 +28,7 @@ OBS-V3 all train against
 `/mnt/ai-data/training/shards/verify-small`. That directory is not part of
 the repository and may not exist on a freshly provisioned volume. Produce it
 with the `make prepare-data` invocation in
-[training-phase0.md](training-phase0.md) (entry P0.1, the fineweb-edu
+[training/training-phase0.md](../training/training-phase0.md) (entry P0.1, the fineweb-edu
 20M-token command) before starting any of the four. Its absence is a
 precondition, not a blocker: one command creates it, so these entries stay
 `PENDING` rather than `BLOCKED`.
