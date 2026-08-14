@@ -182,6 +182,22 @@ def _tokenizer_of(model):
     return tokenizer
 
 
+def hidden_states(output):
+    """The residual stream out of a decoder block, tuple-wrapped or not.
+
+    A decoder layer used to return `(hidden_states, ...)` and now returns the
+    tensor directly, so the shape of the traced output depends on the
+    transformers version rather than on anything this repo pins. Indexing [0]
+    unconditionally does not fail on the newer form -- it silently selects
+    sequence 0 of the batch, which only surfaces downstream as a broadcast
+    error against the batch's own length. The same unwrap is in harvest.py
+    and sae/evaluate.py.
+    """
+    if isinstance(output, (tuple, list)):
+        return output[0]
+    return output
+
+
 def capture_activations(
     model_id: str,
     texts: list[str],
@@ -217,7 +233,9 @@ def capture_activations(
         with model.trace(batch):
             for layer in layers:
                 block = families.resolve_submodule(model, spec, layer)
-                saved[layer] = block.output[0].save()
+                # Saved whole and unwrapped after the trace: inside it the
+                # output is an nnsight proxy, where isinstance says nothing.
+                saved[layer] = block.output.save()
         # Last non-padded token per sequence, layer-independent so it is
         # computed once per batch. nnsight's LanguageModel tokenizer
         # left-pads by default (pinned 0.7.0), where mask.sum() - 1 would
@@ -226,7 +244,14 @@ def capture_activations(
         mask = tokenizer(batch, return_tensors="pt", padding=True).attention_mask
         last = mask.shape[1] - 1 - mask.flip(-1).argmax(dim=1)
         for layer in layers:
-            acts = saved[layer]
+            acts = hidden_states(saved[layer])
+            if acts.shape[0] != len(batch):
+                raise CaptureError(
+                    f"layer {layer} produced a leading dimension of "
+                    f"{acts.shape[0]} for a batch of {len(batch)}; the hook "
+                    f"path {families.hook_name(spec, layer)!r} is not a "
+                    f"decoder block whose output is [batch, seq, d_model]"
+                )
             rows = acts[torch.arange(acts.shape[0]), last]
             # float32, not float16: widening bf16 is exact, so the shard
             # holds the model's own values. float16 has 5 exponent bits to
