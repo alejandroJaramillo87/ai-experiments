@@ -11,7 +11,8 @@ never executed, and never updated, and exempt from both gates for that reason.**
 
 One folder per tier, and the folder name is the tier: [training/](training/),
 [interp/](interp/), [rust-harness/](rust-harness/),
-[observability/](observability/), [hardware/](hardware/), [bugs/](bugs/).
+[observability/](observability/), [hardware/](hardware/),
+[sandbox/](sandbox/), [bugs/](bugs/).
 
 Every tier gets a folder, including the ones holding a single document today.
 A root mixing folders with loose files is the thing that is actually hard to
@@ -110,7 +111,8 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [training/training-phase1.md](training/training-phase1.md) | 0 | 0 | 13 | 13 |
 | [training/training-phase2.md](training/training-phase2.md) | 0 | 0 | 7 | 7 |
 | [interp/interp.md](interp/interp.md) | 5 | 2 | 6 | 13 |
-| [observability/observability.md](observability/observability.md) | 0 | 0 | 8 | 8 |
+| [observability/observability.md](observability/observability.md) | 0 | 0 | 7 | 7 |
+| [sandbox/sandbox-executable.md](sandbox/sandbox-executable.md) | 2 | 0 | 0 | 2 |
 | [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 16 | 5 | 0 | 21 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
 | [interp/reference-captures.md](interp/reference-captures.md) | 0 | 0 | 2 | 2 |
@@ -119,10 +121,12 @@ A pending entry is not the same as a blocked one, and the difference is whether
 a command exists that changes the situation. An entry waiting on a GPU slot, on
 free disk, or on an artifact something else in this directory regenerates is
 `PENDING` — someone can run it. `BLOCKED` is for what no command here can fix:
-absent hardware support, or a checkpoint nobody has. The four observability
-entries needing `verify-small` shards are the worked example — the shards do not
-exist, and [training/training-phase0.md](training/training-phase0.md) P0.1 creates them, so those
-entries stay pending.
+absent hardware support, or a checkpoint nobody has. The observability entries
+needing `verify-small` shards are the worked example: they were pending on an
+artifact rather than on hardware, and
+[training/training-phase0.md](training/training-phase0.md) P0.1 is the command that produces
+it. The shards were confirmed present on the workstation 2026-08-14, so those
+entries are now waiting only on a GPU slot.
 
 `rust-harness.md` has no pending entries: its five blocked ones need an rr that
 supports Zen 5, an instruction-tuned checkpoint, or a control vector extracted
