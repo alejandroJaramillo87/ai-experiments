@@ -111,7 +111,7 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [training/training-phase1.md](training/training-phase1.md) | 0 | 0 | 13 | 13 |
 | [training/training-phase2.md](training/training-phase2.md) | 0 | 0 | 7 | 7 |
 | [interp/interp.md](interp/interp.md) | 5 | 2 | 6 | 13 |
-| [observability/observability.md](observability/observability.md) | 0 | 0 | 7 | 7 |
+| [observability/observability.md](observability/observability.md) | 3 | 0 | 4 | 7 |
 | [sandbox/sandbox-executable.md](sandbox/sandbox-executable.md) | 2 | 0 | 0 | 2 |
 | [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 16 | 5 | 0 | 21 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |

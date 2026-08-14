@@ -2,15 +2,16 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 0 verified, 0 blocked, 7 pending, of 7.**
+**Entries: 3 verified, 0 blocked, 4 pending, of 7.**
 
 Host verification for the observability stack: the logging core, traced
 dispatch, audit trace, retention, run catalog (phases A-C), and the metrics
 sink, watchdog wiring, snapshot dashboard, and live server (phase D). All of
 it passed the sandbox campaign — unit suites, cross-module integration
-through the real dispatch, and SIGKILL durability — but none of it has run on
-the workstation. The real-Chromium harness is no longer merely sandbox
-context: it is OBS-V5 in
+through the real dispatch, and SIGKILL durability. The three entries needing
+neither the GPU nor the shards closed on the workstation 2026-08-14; what
+remains is the GPU half. The real-Chromium harness is no longer merely
+sandbox context: it is OBS-V5 in
 [sandbox/sandbox-executable.md](../sandbox/sandbox-executable.md), verified
 2026-08-14. The entries below are the
 host-only gaps: GPU sample values, NVML context capture, the `/mnt/ai-data`
@@ -50,10 +51,12 @@ can still close three of them.
 - **No GPU, no shards:** OBS-V1, OBS-V4, OBS-V7. The first two are pytest
   runs whose assertion is that they execute rather than skip — torch must be
   importable, which is the host-only part. OBS-V7 drives a SIGKILL against a
-  writer and needs only a writable `/mnt/ai-data`.
+  writer and needs only a writable `/mnt/ai-data`. All three are VERIFIED as
+  of 2026-08-14.
 - **Partly runnable ahead of a run:** OBS-V3. Its `training runs` listing and
-  its `ls` of the log root work immediately; the `report --run` step consumes
-  the run OBS-V2 produces.
+  its `ls` of the log root work immediately and are recorded below; the
+  `report --run` step consumes the run OBS-V2 produces, so the entry stays
+  `PENDING` until then.
 - **GPU and shards:** OBS-V2, OBS-V6, OBS-V8. These train, so the one-GPU-
   consumer rule applies. OBS-V6 additionally needs a human at a browser.
 
@@ -95,9 +98,23 @@ the output.
 Observed:
 
 ```
+$ uv run --no-sync pytest tests/training/test_loop.py -k "metrics_jsonl or cli_run" -v
+platform linux -- Python 3.12.11, pytest-9.1.1, pluggy-1.6.0
+collected 7 items / 5 deselected / 2 selected
+
+tests/training/test_loop.py::test_metrics_jsonl_written_with_checkpoint_markers PASSED [ 50%]
+tests/training/test_loop.py::test_cli_run_joins_artifacts_under_real_watchdog_timing PASSED [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+2 passed, 5 deselected, 14 warnings in 12.02s
 ```
 
-Status: PENDING
+Both passed rather than skipped, and the `[TIER] full` line is the suite
+confirming torch was importable — the host-only part of the entry. No
+`[tracking] WARN` lines. The 14 warnings are a `torch.jit.script_method`
+deprecation from torch 2.13.0+cu130, unrelated to tracking.
+
+Status: VERIFIED 2026-08-14
 
 ## OBS-V2 GPU watchdog samples and NVML context in a real run
 
@@ -164,10 +181,28 @@ plausible duration; the log directory contains one `R-*.jsonl` per recent
 invocation plus `runs.jsonl`; report writes `run.html` next to the chosen
 run's `metrics.jsonl` and prints `[OK] Wrote ...`.
 
-Observed:
+Observed (first half only; the `report --run` step waits on OBS-V2):
 
 ```
+$ uv run --no-sync python -m training runs --limit 10
+FINISHED             RUN ID                    COMMAND    EXIT    DURATION
+2026-08-02T15:40:49  R-20260802-154048-8f90e9  preflight     1      0.015s
+2026-08-02T15:58:54  R-20260802-155854-285848  preflight     1      0.015s
+$ ls -la /mnt/ai-data/logs/training/ | tail -5
+-rw-r--r-- 1 alejandro alejandro 2794 Aug  2 08:40 R-20260802-154048-8f90e9.jsonl
+-rw-r--r-- 1 alejandro alejandro 2819 Aug  2 08:58 R-20260802-155854-285848.jsonl
+-rw-rw-r-- 1 alejandro alejandro 1756 Aug 14 12:18 R-20260814-191804-a1c73c.jsonl
+-rw-r--r-- 1 alejandro alejandro  482 Aug 14 12:18 runs.jsonl
 ```
+
+The default root resolves and is written: the listing invocation created
+its own `R-20260814-191804-a1c73c.jsonl` and appended to `runs.jsonl`,
+while hiding itself from its own table, which is the `runs` filter
+behaving as documented. One `R-*.jsonl` exists per catalog row.
+
+Two aged files from 2026-08-02 survived, which is retention behaving
+correctly rather than failing: `runs` is a viewer command and opts out of
+the startup prune.
 
 Status: PENDING
 
@@ -190,9 +225,19 @@ with the jsonl sink unaffected.
 Observed:
 
 ```
+$ uv run --no-sync pytest tests/training/test_loop.py -k tensorboard -v
+collected 7 items / 6 deselected / 1 selected
+
+tests/training/test_loop.py::test_tracking_writes_tensorboard_and_offline_wandb PASSED [100%]
+
+[TIER] full: torch present, the whole suite was in scope.
+1 passed, 6 deselected, 20 warnings in 5.38s
 ```
 
-Status: PENDING
+Passed rather than skipped. Both optional sinks are installed on the
+workstation and wrote their artifacts; a missing wandb would have skipped.
+
+Status: VERIFIED 2026-08-14
 
 ## OBS-V6 Live dashboard against an in-flight run
 
@@ -245,34 +290,76 @@ Reuses the committed sandbox driver against the real filesystem
 Command:
 
 `%1` needs interactive job control and fails under `sh -c` or a script, so
-the driver is addressed by pid. The kill targets `uv`, which is not the
-process writing the file, so the line count is compared either side to
-confirm the writer actually stopped: a driver that survived would keep
-appending and the entry would prove nothing.
+the driver is addressed by pid.
+
+**The interpreter is invoked directly, not through `uv run`.** This is the
+one place in this runbook that departs from the repository convention, and
+it is load-bearing rather than stylistic: `uv run` forks the interpreter as
+a grandchild, so `$!` names `uv` and `kill -9 $PID` leaves the writer
+running. The entry then measures a process that was never killed.
 
 ```bash
 $ mkdir -p /mnt/ai-data/training/verify/obs-crash
 $ OUT=/mnt/ai-data/training/verify/obs-crash/metrics.jsonl
-$ uv run --no-sync python tests/training/obs_crash_driver.py \
+$ .venv/bin/python tests/training/obs_crash_driver.py \
     /mnt/ai-data/training/verify/obs-crash & PID=$!
 $ sleep 2; kill -9 $PID; wait $PID; echo "driver exit: $?"
+$ kill -0 $PID 2>/dev/null && echo "STILL ALIVE - void" || echo "writer confirmed dead"
 $ wc -l < $OUT; sleep 1; wc -l < $OUT
-$ python3 -c "import json; [json.loads(l) for l in open(
+$ .venv/bin/python -c "import json; [json.loads(l) for l in open(
     '/mnt/ai-data/training/verify/obs-crash/metrics.jsonl',
-    'rb').read().split(b'\n')[:-1]]; print('all lines parse')"
+    'rb').read().split(b'\n')[:-1]]; print('all completed lines parse')"
 ```
 
-Expected signal: `all lines parse` — every completed line before the torn
-tail is valid JSON after SIGKILL on the real mount. The two `wc -l` values
-must be equal; if the second is larger the writer outlived the kill and the
-result is void, not a pass.
+Expected signal: `all completed lines parse` — every completed line before
+the torn tail is valid JSON after SIGKILL on the real mount. The two
+`wc -l` values must be equal; if the second is larger the writer outlived
+the kill and the result is void, not a pass. The `[:-1]` slice drops the
+final element deliberately: a torn last line is permitted by the driver's
+own contract, and the property under test is that every *completed* line
+survives.
+
+**Remove the run directory afterwards.** The driver logs in an unbounded
+loop with no throttle, and on NVMe it writes roughly 10 GB per minute. An
+orphaned writer is therefore a disk-exhaustion hazard, not merely untidy —
+see the note in the observation below.
+
+```bash
+$ pkill -f obs_crash_driver; rm -rf /mnt/ai-data/training/verify/obs-crash
+```
 
 Observed:
 
 ```
+$ .venv/bin/python tests/training/obs_crash_driver.py /mnt/ai-data/training/verify/obs-crash & PID=$!
+[1] 197276
+READY
+$ sleep 2; kill -9 $PID; wait $PID; echo "driver exit: $?"
+[1]  + 197276 killed     .venv/bin/python tests/training/obs_crash_driver.py
+driver exit: 137
+$ kill -0 $PID 2>/dev/null && echo "STILL ALIVE - void" || echo "writer confirmed dead"
+writer confirmed dead
+$ wc -l < $OUT; sleep 1; wc -l < $OUT
+358247
+358247
+$ .venv/bin/python -c "..."
+all completed lines parse
 ```
 
-Status: PENDING
+358,247 completed lines survived SIGKILL on ext4/NVMe, and the count was
+unchanged across the sleep, so the writer was genuinely dead when the file
+was read.
+
+This entry was first run through `uv run --no-sync` and produced a void
+result: the counts came back 361,516 then 549,816, because `kill -9` had
+killed `uv` while the Python grandchild kept appending. A second attempt
+compounded it — two orphaned writers took the file to 17.7M lines and the
+directory to **36 GB** before they were found. Both the direct-interpreter
+invocation and the disk warning above are corrections earned from that
+failure. The equal-counts check is what caught it, which is the argument
+for keeping it in the procedure rather than trusting the exit code.
+
+Status: VERIFIED 2026-08-14
 
 ## OBS-V8 Sink overhead at real step rates
 

@@ -90,6 +90,19 @@ Run in the Claude Code cloud container against
 unset. The snapshot was built by a real `python -m training report` invocation, which
 needs no torch.
 
+Re-run on the workstation the same day, after `npx playwright@1.54.1 install chromium`
+placed a version-matched build at `~/.cache/ms-playwright/chromium-1181`, with
+`PW_CHROMIUM` set explicitly because the autodetect scans only `/opt/pw-browsers`. All
+thirteen checks printed `[OK]` and the run ended `ALL CHECKS PASSED`, identical to the
+container output above.
+
+That second run is the stronger of the two. Build 1181 is the revision
+`playwright-core@1.54.1` expects; the container's 1194 is a pairing nothing had
+exercised, and because `check.mjs` passes `executablePath` explicitly, playwright never
+validates the revision — a CDP mismatch would surface as a launch timeout rather than a
+version error. Two Chromium builds agreeing also separates `viewer.js` behaving
+correctly from one browser happening to tolerate it.
+
 Status: VERIFIED 2026-08-14
 
 ## OBS-V9 Retention prunes an aged file and spares a live one
