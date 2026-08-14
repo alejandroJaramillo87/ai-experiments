@@ -149,6 +149,39 @@ def write_catalog_rows(tmp_path, rows):
     path.write_text("".join(json.dumps(r) + "\n" for r in rows))
 
 
+def test_columns_align_when_commands_differ_in_width(tmp_path, capsys):
+    """One command wide enough to push command_width past its floor of seven.
+
+    The width is computed once for the table, so every row pads to the widest
+    command rather than to its own. Computing it per row instead leaves short
+    rows narrow, which no single-row test and no real harness corpus can show:
+    every command the harness writes is under the floor.
+    """
+    write_catalog_rows(
+        tmp_path,
+        [
+            {
+                "run_id": "R-1",
+                "command": "x",
+                "timestamp": "2026-07-18T00:00:00+00:00",
+                "duration_s": 1.0,
+                "exit_code": 0,
+            },
+            {
+                "run_id": "R-2",
+                "command": "a-considerably-longer-command",
+                "timestamp": "2026-07-18T00:00:01+00:00",
+                "duration_s": 2.0,
+                "exit_code": 0,
+            },
+        ],
+    )
+    assert training_main(["runs"]) == 0
+    lines = capsys.readouterr().err.strip().splitlines()
+    assert len(lines) == 3, lines
+    assert len({len(line) for line in lines}) == 1, [len(line) for line in lines]
+
+
 def test_table_survives_non_numeric_duration(tmp_path, capsys):
     write_catalog_rows(
         tmp_path,
