@@ -151,3 +151,61 @@ def test_viewer_commands_do_not_prune(tmp_path, monkeypatch, capsys):
     # a non-viewer command still prunes
     core.configure("training", log_dir=str(tmp_path / "obs-logs"))
     assert not old.exists()
+
+
+# The tests above hold the lock in the process that prunes. flock conflicts
+# between two open file descriptions even within one process, so those are
+# genuine conflicts rather than accidents -- but no test in this suite runs two
+# processes, and two processes is the case retention exists for: one command
+# pruning at startup while another run is still writing. The test below is the
+# only one that crosses a process boundary.
+
+LIVE_RUN = """
+import fcntl, os, sys, time
+from common.obs import core
+core.configure("training", run_id=sys.argv[2], log_dir=sys.argv[1],
+               run_retention=False)
+path = os.path.join(sys.argv[1], "training", sys.argv[2] + ".jsonl")
+# age the file past any window while still holding it open, which is exactly
+# the shape of a long-idle run: old mtime, live writer.
+old = time.time() - 90 * 86400
+os.utime(path, (old, old))
+print("ready", flush=True)
+sys.stdin.readline()
+"""
+
+
+def test_a_live_run_in_another_process_survives_a_startup_prune(tmp_path):
+    """The scenario retention is written for, across a real process boundary.
+
+    A long-idle run's mtime ages past the window while its writer still holds
+    the file. If a concurrently starting command pruned it, the rest of that
+    run would be written to a deleted inode.
+    """
+    import subprocess
+    import sys
+
+    log_dir = tmp_path / "obs-logs"
+    run_id = "R-20250101-000000-abcdef"
+    live = subprocess.Popen(
+        [sys.executable, "-c", LIVE_RUN, str(log_dir), run_id],
+        cwd=Path(__file__).parents[2],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert live.stdout.readline().strip() == "ready"
+        path = log_dir / "training" / f"{run_id}.jsonl"
+        assert path.exists()
+        assert path.stat().st_mtime < time.time() - 30 * 86400
+
+        prune(log_dir / "training", 30)
+        assert path.exists(), "a live run's file must survive another process's prune"
+    finally:
+        live.stdin.close()
+        live.wait(timeout=10)
+
+    # the writer is gone, so the same file is now an ordinary aged candidate
+    prune(log_dir / "training", 30)
+    assert not path.exists()
