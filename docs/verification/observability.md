@@ -18,6 +18,46 @@ Recording protocol and session-start gate are defined in
 [README.md](README.md). One GPU consumer at a time applies to the entries
 that train; the report and serve viewers are not GPU consumers.
 
+## Preconditions
+
+Two requirements are shared across entries rather than stated in each, and
+both are cheap to satisfy and expensive to discover halfway through a run.
+
+**The `verify-small` shards.** OBS-V2, OBS-V6, OBS-V8, and the second half of
+OBS-V3 all train against
+`/mnt/ai-data/training/shards/verify-small`. That directory is not part of
+the repository and may not exist on a freshly provisioned volume. Produce it
+with the `make prepare-data` invocation in
+[training-phase0.md](training-phase0.md) (entry P0.1, the fineweb-edu
+20M-token command) before starting any of the four. Its absence is a
+precondition, not a blocker: one command creates it, so these entries stay
+`PENDING` rather than `BLOCKED`.
+
+**A real Chromium for OBS-V5.** That entry expands
+`PW_CHROMIUM=$(command -v chromium)`. If no such binary is on `PATH` the
+expansion is empty and the harness receives no browser path — a silent
+misconfiguration rather than an error. Confirm `command -v chromium` prints a
+path before running it.
+
+Everything else the eight entries name resolves against the tree as of
+2026-08-14: every make target, script, recipe, CLI subcommand, config key,
+and pytest selector.
+
+## What runs without the GPU
+
+The entries are not uniform in what they cost, and a session with no GPU slot
+can still close three of them.
+
+- **No GPU, no shards:** OBS-V1, OBS-V4, OBS-V7. The first two are pytest
+  runs whose assertion is that they execute rather than skip — torch must be
+  importable, which is the host-only part. OBS-V7 drives a SIGKILL against a
+  writer and needs only a writable `/mnt/ai-data`.
+- **Partly runnable ahead of a run:** OBS-V3. Its `training runs` listing and
+  its `ls` of the log root work immediately; the `report --run` step consumes
+  the run OBS-V2 produces.
+- **GPU and shards:** OBS-V2, OBS-V6, OBS-V8. These train, so the one-GPU-
+  consumer rule applies. OBS-V6 additionally needs a human at a browser.
+
 ## Verified in the sandbox (context, not entries)
 
 - Unit suites for core, dispatch, audit, retention, catalog, sink, watchdog

@@ -60,6 +60,10 @@ np-smoke passes its checks — loopback-only bindings, webapp on 3001,
 postgres up, and sm_120 visible to the GPU services. `make np-down`
 afterwards stops the stack cleanly.
 
+This entry needs outbound network as well as the GPU host: `np-clone` clones
+an upstream repository, and `np-build` builds CUDA images. Neither works from
+an agent sandbox, whose egress allowlist does not cover either.
+
 Observed:
 
 ```

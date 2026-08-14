@@ -13,7 +13,11 @@ capture and the Gemma-2-2B calibration capture. They are separated from
 entries.
 
 Neither has been run. Everything they depend on has been verified at smoke scale: I.9 and I.9b
-in [interp.md](interp.md) confirmed chunked capture and its crash recovery on 2026-08-08.
+in [interp.md](interp.md) confirmed chunked capture and its crash recovery on 2026-08-08. That
+chain was re-checked on 2026-08-14 — both entries still read `VERIFIED`, and every target,
+script and recipe named below still resolves — so the two captures are unscheduled rather than
+blocked. What they wait on is a GPU-day each and the free volume in the table below, not a
+missing prerequisite.
 
 ## Preconditions
 

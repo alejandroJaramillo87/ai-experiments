@@ -94,6 +94,15 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [hardware-stress.md](hardware-stress.md) | 0 | 0 | 6 | 6 |
 | [reference-captures.md](reference-captures.md) | 0 | 0 | 2 | 2 |
 
+A pending entry is not the same as a blocked one, and the difference is whether
+a command exists that changes the situation. An entry waiting on a GPU slot, on
+free disk, or on an artifact something else in this directory regenerates is
+`PENDING` — someone can run it. `BLOCKED` is for what no command here can fix:
+absent hardware support, or a checkpoint nobody has. The four observability
+entries needing `verify-small` shards are the worked example — the shards do not
+exist, and [training-phase0.md](training-phase0.md) P0.1 creates them, so those
+entries stay pending.
+
 `rust-harness.md` has no pending entries: its five blocked ones need an rr that
 supports Zen 5, an instruction-tuned checkpoint, or a control vector extracted
 against E4B. None is waiting on someone to sit down and run it.
