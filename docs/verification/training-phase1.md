@@ -2,6 +2,8 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
+**Entries: 0 verified, 0 blocked, 13 pending, of 13.**
+
 F1 through F8 as implemented: SFT data preparation, the PEFT recipes, the
 TRL SFT entry point, teacher generation, distillation (online and cached),
 adapter merge and export, the evaluation wrappers, and scorecard promotion.

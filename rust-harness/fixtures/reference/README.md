@@ -44,13 +44,13 @@ Workstation only: every command below needs the real checkpoint and a torch envi
 ```bash
 # L0: token ids for a plain string, for text carrying specials that must stay
 # bytes, and for a real rendered chat turn.
-python rust-harness/fixtures/reference_tokenizer.py \
+uv run python rust-harness/fixtures/reference_tokenizer.py \
     --model <checkpoint-dir> \
     --out rust-harness/fixtures/reference/e4b/quick/tokenizer_parity.json
 
 # L1 and L2: per-layer residual stream, the pre-stack stages, and the
 # final-position distribution. --generate also writes L4's continuation.
-python rust-harness/fixtures/reference_capture.py \
+uv run python rust-harness/fixtures/reference_capture.py \
     --model <checkpoint-dir> \
     --prompt "The capital of France is" \
     --generate 16 \
@@ -58,14 +58,14 @@ python rust-harness/fixtures/reference_capture.py \
 
 # L3: per-token NLL over a prefix of the committed corpus, in 256-token
 # windows. The slowest of the four.
-python rust-harness/fixtures/reference_perplexity.py \
+uv run python rust-harness/fixtures/reference_perplexity.py \
     --model <checkpoint-dir> \
     --size quick \
     --out rust-harness/fixtures/reference/e4b/quick/ppl.json
 
 # L4: a 64-token greedy continuation per prompt, for as many prompts as the
 # size decodes.
-python rust-harness/fixtures/reference_greedy.py \
+uv run python rust-harness/fixtures/reference_greedy.py \
     --model <checkpoint-dir> \
     --size quick \
     --out rust-harness/fixtures/reference/e4b/quick/greedy.json

@@ -64,9 +64,16 @@ def provenance(model_path):
         "model": str(Path(model_path)),
         "transformers": transformers.__version__,
     }
-    # Recorded when the caller uses it. The tokenizer generator does not load a
-    # model, so torch is genuinely absent from what produced its artifact, and
-    # a version stamped there anyway would describe something that never ran.
+    # Recorded when torch is importable, which is not the same as recorded when
+    # torch was used -- and the difference is measurable. The tokenizer
+    # generator loads no model, yet its 2026-08-14 artifact carries
+    # torch 2.13.0+cu130, because the workstation environment has torch
+    # installed and this import succeeds regardless of what ran.
+    #
+    # Read the field as "torch available to the process that wrote this", not
+    # as "torch participated". Narrowing it to actual use would mean the
+    # generators declaring their own dependencies rather than probing the
+    # environment.
     try:
         import torch
 

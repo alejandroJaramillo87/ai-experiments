@@ -2,6 +2,8 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
+**Entries: 4 verified, 0 blocked, 7 pending, of 11.**
+
 Phase 0 deliverables as implemented: the container (D1, verified in step
 zero), data preparation (D2), tokenizer training (D3), memory fit (D4),
 recipe validation (D5), the reference loop with tolerance-based resume

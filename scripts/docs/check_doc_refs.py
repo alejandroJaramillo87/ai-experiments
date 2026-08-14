@@ -47,8 +47,11 @@ PRUNE_DIRS = {
 # Exempt by path component. Investigation and verification write-ups are dated
 # records: their value is that they capture the tree as it was on the day they
 # were written, so a reference that has since moved is accurate history rather
-# than drift. vendor/ is third-party and not ours to correct.
-EXEMPT_PARTS = ("investigations", "vendor")
+# than drift. vendor/ is third-party and not ours to correct. archive/ holds
+# closed campaign logs moved out of a live runbook -- same argument as
+# investigations/, and the reason a directory rather than a suffix: a log is
+# named after the campaign it records, not after being frozen.
+EXEMPT_PARTS = ("investigations", "vendor", "archive")
 EXEMPT_SUFFIXES = ("_investigation.md",)
 
 # Empty on purpose, and kept as a mechanism rather than deleted. docs/verification/

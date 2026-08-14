@@ -2,6 +2,8 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
+**Entries: 8 verified, 0 blocked, 0 pending, of 8.**
+
 Blocks all other phases. The `interp` and `training` dependency groups carry
 provisional pins resolved offline, and the committed `uv.lock` predates the
 current `pyproject.toml` groups; nothing downstream is trustworthy until the
@@ -76,8 +78,13 @@ Command:
 $ make quality
 ```
 
-Expected signal: all five steps pass — format check, ruff, mypy,
-`uv lock --check`, shellcheck — and the target exits 0.
+Expected signal: `make quality` exits 0 and every step it prints reports
+`[OK]`. **Read the output rather than the exit code** — a `[SKIP]` line is a
+step that did not run, and the target can exit 0 carrying one.
+
+The step list is deliberately not restated here. `make quality` is the single
+description of what the gate does; a second copy in this entry would be one
+more thing to keep in sync, and the gate changes more often than this runbook.
 
 Observed:
 
@@ -130,9 +137,20 @@ $ docker compose -f docker-compose.training.yaml build training --progress=plain
 
 Expected signal: the `uv sync` line with `CFLAGS="-march=znver5"` appears
 in the build log (cache hits also print the step). If only the native
-fallback ran, record it here — the hw_full CPUAdam step-time bound
-(tests/hardware/test_cpu.py) is the behavioral check that the op is not
-miscompiled either way.
+fallback ran, record it here.
+
+**The behavioural check is automated and runs in the smoke tier**, so this
+entry only has to establish which compiler branch ran.
+`TestCpuSmoke::test_cpu_adam_single_step` (`tests/hardware/test_cpu.py:44`)
+takes one `DeepSpeedCPUAdam` step on the pre-built extension and asserts the
+parameter moved and stayed finite; a miscompiled op crashes or hangs there
+rather than mid-run. `TestCpuSmoke::test_zen5_avx512_flags_visible` checks the
+CPU exposes the flags in the first place. Both are `hw_smoke`, so
+`make quality-full HW=smoke` covers them before every verification session.
+
+This entry previously described that check as an `hw_full` "step-time bound".
+It is neither: the marker is `hw_smoke` and the assertion is completion and
+finiteness, not a duration.
 
 Observed:
 
@@ -202,13 +220,21 @@ Implementation: `tests/hardware/test_gpu.py`, `tests/hardware/test_cpu.py`,
 Command:
 
 ```bash
-$ uv run pytest -m hw_smoke tests/hardware/
+$ make quality-full HW=smoke
 ```
 
-Expected signal: all selected tests pass — CUDA sm_120, bf16 matmul,
-flash-attn or the logged sdpa fallback with a matching metadata stamp,
-DeepSpeedCPUAdam import, AVX-512 flags, one CPUAdam step, huge pages,
-pinned buffer, /mnt/ai-data layout, staging writability. Zero failures.
+Expected signal: zero failures, and zero tests deselected for a reason other
+than the tier. The suite covers CUDA sm_120, bf16 matmul, flash-attn or the
+logged sdpa fallback with a matching metadata stamp, DeepSpeedCPUAdam import,
+AVX-512 flags, one CPUAdam step, huge pages, pinned buffer, the
+`/mnt/ai-data` layout, and staging writability.
+
+`make quality-full HW=smoke` runs `make quality`, the test suite, and
+`pytest -m hw_smoke` in one invocation, and refuses outright if torch is not
+importable — which is what stops the suite skipping its way to green. Running
+`pytest -m hw_smoke tests/hardware/` directly still works and is the faster
+loop when iterating on one test; the target is what this entry is closed
+against.
 
 Observed:
 

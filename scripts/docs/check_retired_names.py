@@ -367,7 +367,7 @@ SCAN_NAME_PREFIXES = ("Dockerfile.",)
 # empty EXEMPT_PREFIXES, where that script records why docs/verification/ stopped
 # being exempt on 2026-08-08. This gate has no false positives by construction,
 # so narrowing it was the lower-risk half of that change.
-EXEMPT_PARTS = ("investigations", "vendor")
+EXEMPT_PARTS = ("investigations", "vendor", "archive")
 # Agent memory records carry a `verified:` date and a `stale_when:` condition:
 # they state what was true when written, and a record whose condition has fired
 # is closed rather than rewritten. Renaming the symbols inside one would make it
@@ -387,11 +387,6 @@ EXEMPT_FILES = {
     # for itself one line above. Narrow in practice: the table is a few dozen
     # audited pairs, each carrying its own reason.
     "scripts/docs/check_doc_refs.py",
-    # A dated QA campaign ledger. Its findings record what was run against
-    # which function at the time, so rewriting the names in them would
-    # falsify the record rather than update it -- the same reason
-    # investigations/ and *_investigation.md are exempt.
-    "docs/verification/rust-harness-qa.md",
 }
 
 

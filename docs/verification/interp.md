@@ -2,6 +2,8 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
+**Entries: 5 verified, 2 blocked, 6 pending, of 13.**
+
 I1 workbench, the PS1 Neuronpedia harness, the write-back path (W1 through
 W4), P4-D1 organisms, P4-D2 activation harvesting with garbage collection,
 and P4-D3 SAE training and evaluation. The interp anchor for pretrained
@@ -83,23 +85,44 @@ $ make steer-extract ARGS="--method repeng --model google/gemma-4-E2B \
     --out /mnt/ai-data/interp/vectors/honesty-e2b"
 ```
 
-Expected signal: exit 0; the vector directory contains the GGUF control
-vector plus a manifest recording the model identity, pairs hash, and
-per-layer directions. The repeng band derives from the unwrapped text
-config (registry path).
+Expected signal: exit 0; the vector directory contains the control vector as
+a **safetensors image plus a JSON sidecar** (`schemas/control_vector_artifact.json`),
+with a manifest recording the model identity, pairs hash, and per-layer
+directions. The repeng band derives from the unwrapped text config (registry
+path).
+
+This entry said GGUF until 2026-08-14. R10 moved control vectors to
+safetensors and retired the GGUF reader, so a vector in the old format no
+longer loads anywhere — see `AGENTS.md` on why GGUF is now llama.cpp's format
+alone.
 
 Observed:
 
 ```
 ```
 
-Status: PENDING
+Status: BLOCKED 2026-08-14 on KB-32, which is an open ledger row rather than
+an unrun step: repeng 0.4.0 cannot import under the pinned numpy, and repeng
+is deliberately absent from the interp image, so `--method repeng` fails at
+import before it reaches any model. **`--method sae_row` has not been tried
+and may sidestep it entirely** — `make/interp.mk` offers both methods, and
+only the repeng path depends on the unimportable package. That is the cheapest
+next move here, and it also unblocks I.4 and the harness runbook's RH.15,
+which both wait on a vector this step has never produced.
 
 ## I.4 Steered serving and scorecard (W1)
 
 Implementation: `interp/steering/wiring.py`,
 `interp/commands/steer_scorecard.py`, `interp/steering/scorecard.py`,
-`docker-compose.inference.yaml` (the llama-gpu control-vector environment).
+`docker-compose.rust-harness.yaml` (the `harness-serve` control-vector
+environment).
+
+**The steered service is `harness-serve`, not llama-gpu.** R10 deleted
+llama.cpp steering; `make steer-up` now recreates `$(STEER_SERVICE)`, which
+defaults to `harness-serve`, against `docker-compose.rust-harness.yaml`, and
+requires `$(VECTOR)/vector.safetensors` to exist under
+`/mnt/ai-data/interp/vectors`. This entry named the old service until
+2026-08-14.
 
 Command:
 
@@ -120,7 +143,17 @@ Observed:
 ```
 ```
 
-Status: PENDING
+Status: BLOCKED 2026-08-14 on I.3. `make steer-up` refuses without
+`$(VECTOR)/vector.safetensors`, and no such vector exists — I.3 has never
+produced one. Unblocks the moment I.3 does. The harness runbook's RH.15 is the
+same step against the same missing artifact; running one closes both.
+
+Two things to expect when it does run. The subject is now a CPU backend at
+single-digit tokens per second, so a 256-token arm costs roughly 45 seconds and
+a three-arm sweep is many such calls — record the wall-clock, because it is the
+number that decides whether a GPU backend becomes urgent. And the judge runs on
+`llama-cpu` while the subject runs on `harness-serve`: both are CPU consumers on
+the same machine, so record whether they contend.
 
 ## I.5 Probe capture, train, eval (W2)
 
@@ -132,11 +165,29 @@ Implementation: `interp/commands/probe_capture.py` with
 Command:
 
 ```bash
-$ make probe-capture ARGS="--model google/gemma-4-E2B --dataset <labeled.jsonl> \
-    --layers 10,15,20 --out /mnt/ai-data/interp/captures/verify"
+$ make probe-capture ARGS="--model /mnt/ai-data/models/hf/gemma-4-E4B \
+    --dataset interp/probes/prompts/refusal.jsonl \
+    --layers 8,16,24 --out /mnt/ai-data/interp/captures/verify"
 $ make probe-train ARGS="--capture /mnt/ai-data/interp/captures/verify --name verify-probe"
-$ make probe-eval ARGS="--probe /mnt/ai-data/interp/probes/verify-probe --label-name <attribute>"
+$ make probe-eval ARGS="--probe /mnt/ai-data/interp/probes/verify-probe --label-name refusal"
 ```
+
+**Runnable now, and most of it is already evidenced.** The `<labeled.jsonl>`
+placeholder this entry carried has a committed answer —
+`interp/probes/prompts/refusal.jsonl`, 258 balanced examples — and the harness
+runbook's RH.9a and RH.9b already ran capture and training against E4B through
+the rust backend, reaching AUROC 1.0 at every candidate layer.
+
+That leaves `probe-eval` as the part with no evidence, and it is the part that
+matters most: AUROC 1.0 at layer 8, 16 and 24 alike is the signature of a
+dataset separable by something cheaper than the attribute, and the black-box
+baselines are what would distinguish a real probe from a shortcut. `probe-eval`
+needs `llama-gpu` and `vllm-gpu` up, so this entry is a GPU consumer even
+though capture and training are not.
+
+Check before trusting the result: the capture's `[OK]` line must report a real
+sha256 and not `unknown`. A `"unknown"` model hash loads into a serving harness
+with the identity guard silently skipped.
 
 Expected signal: capture writes per-layer shards plus a manifest under
 nnsight (decoder blocks resolved through the family registry); training
@@ -276,7 +327,7 @@ a scored record on disk, which holds. Task #171 owns the calibration gap.
 The reply `"2+2?\n18\n"` is a base checkpoint continuing text rather than
 answering, which is task #126, not a fault in the serving path.
 
-Status: PASS
+Status: VERIFIED 2026-08-13
 
 ## I.7 Probe monitor (W4)
 
@@ -343,7 +394,7 @@ miscalibrated probe described in I.6, not a monitor defect: one record, whose
 single aggregated score is above threshold. It is stated here so a later
 reader does not mistake it for a baseline.
 
-Status: PASS
+Status: VERIFIED 2026-08-13
 
 ## I.8 Organisms (P4-D1)
 

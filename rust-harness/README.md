@@ -116,10 +116,16 @@ the real checkpoint on the workstation. See
 [fixtures/reference/README.md](fixtures/reference/README.md) for the
 artifacts and how they are generated.
 
-Current status: the rung bodies and the machinery are implemented and
-unit-tested against a scripted `MockModel`; the reference artifacts are
-outstanding, so no rung has yet run against a real oracle and no
-output-quality claim is made.
+Current status: **all five rungs ran against real E4B on 2026-08-14 and every
+one passed, with nothing skipped** — L0 token ids, L1 residual stream (worst
+cosine 1.000000 over 42 layers), L2 final distribution, L3 perplexity (delta
+0.000032 over 254 tokens), L4 greedy continuation. The rung bodies remain
+unit-tested against a scripted `MockModel` as well. The transcript is entry
+RH.1b of [the workstation runbook](../docs/verification/rust-harness.md).
+
+That is a numerics claim, not an output-quality claim: the ladder measures
+agreement with `transformers`, and says nothing about whether the model's
+answers are good.
 
 ### What the committed goldens are worth
 

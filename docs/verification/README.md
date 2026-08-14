@@ -3,9 +3,27 @@
 **Operational runbook. Every document beside this one is executed, not read for
 understanding: the audience is whoever is sitting at the workstation, and their pasted output
 is the evidence. Keep the commands runnable, and the paths accurate; both documentation gates
-check this directory, so a stale reference here fails the gate. The exception is
-[investigations/](investigations/), which holds frozen records — read, never executed, and
-never updated, and exempt from both gates for that reason.**
+check this directory, so a stale reference here fails the gate. The exceptions are
+[investigations/](investigations/) and [archive/](archive/), which hold frozen records — read,
+never executed, and never updated, and exempt from both gates for that reason.**
+
+## What is live and what is frozen
+
+Two different questions, and only one of them a directory can answer.
+
+**`archive/` means never executed again.** A campaign's findings go there when the campaign
+is closed and its record is history rather than instruction. Nothing in `archive/` is
+maintained; its paths and line numbers are accurate to the day they were written, which is
+why both gates skip it.
+
+**A runbook's own progress line says how far along it is.** Every live runbook states
+`Entries: N verified, M blocked, K pending, of T` in bold under its front matter.
+
+Finished is not the same as archivable, and conflating the two is the mistake this section
+exists to prevent. [step-zero-environment.md](step-zero-environment.md) has every entry
+verified and stays live, because it re-runs on every lockfile change and image rebuild — it
+is a recurring gate that happens to be passing, not a campaign that ended. Archiving it
+would freeze a document someone will execute.
 
 Manual verification campaign for the training and interpretability tiers on
 the workstation (RTX 5090, AMD Ryzen 9950X). Both tiers passed unit tests in
@@ -44,11 +62,41 @@ a guarantee that it works.
 - A feature is verified only when its stated expected signal is observed.
   Close the entry by changing `Status: PENDING` to `Status: VERIFIED` (or
   `Status: FAILED` with the failure output kept in place).
+- Four status values, and no others: `PENDING`, `VERIFIED`, `FAILED`,
+  `BLOCKED`. **`BLOCKED` means the entry cannot run on this hardware or with
+  the artifacts that exist** — a missing checkpoint, a tool that does not
+  support this CPU — and it is not a failure of the thing under test. A
+  blocked entry states what would unblock it. Do not invent a fifth value:
+  the vocabulary is what makes the progress line at the top of each runbook
+  countable.
+- Each runbook states its own tally in bold under the front matter, in the
+  form `Entries: N verified, M blocked, K pending, of T`. Update it in the
+  same edit that closes an entry.
 - Do not edit expected signals to match observations. A mismatch is a
   finding: either the code has a bug or the runbook entry was wrong, and
   either way the discrepancy is recorded before it is resolved.
 - One GPU consumer at a time: no entry runs while another GPU job,
   benchmark, or inference service the entry does not name is active.
+
+## State of the campaign
+
+Each runbook's own progress line is authoritative; this table is the index.
+
+| Runbook | Verified | Blocked | Pending | Of |
+|---------|---------:|--------:|--------:|---:|
+| [step-zero-environment.md](step-zero-environment.md) | 8 | 0 | 0 | 8 |
+| [training-phase0.md](training-phase0.md) | 4 | 0 | 7 | 11 |
+| [training-phase1.md](training-phase1.md) | 0 | 0 | 13 | 13 |
+| [training-phase2.md](training-phase2.md) | 0 | 0 | 7 | 7 |
+| [interp.md](interp.md) | 5 | 2 | 6 | 13 |
+| [observability.md](observability.md) | 0 | 0 | 8 | 8 |
+| [rust-harness.md](rust-harness.md) | 16 | 5 | 0 | 21 |
+| [hardware-stress.md](hardware-stress.md) | 0 | 0 | 6 | 6 |
+| [reference-captures.md](reference-captures.md) | 0 | 0 | 2 | 2 |
+
+`rust-harness.md` has no pending entries: its five blocked ones need an rr that
+supports Zen 5, an instruction-tuned checkpoint, or a control vector extracted
+against E4B. None is waiting on someone to sit down and run it.
 
 ## Phase order
 

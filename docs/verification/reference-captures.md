@@ -4,6 +4,8 @@
 operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate —
 both documentation gates check this directory, so a stale reference here fails the gate.**
 
+**Entries: 0 verified, 0 blocked, 2 pending, of 2.**
+
 The two multi-hour activation captures that feed P4-D3 SAE training: the false-fact organism
 capture and the Gemma-2-2B calibration capture. They are separated from
 [interp.md](interp.md) because each occupies the GPU for most of a day and holds most of the

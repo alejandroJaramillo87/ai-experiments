@@ -2,6 +2,8 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
+**Entries: 0 verified, 0 blocked, 7 pending, of 7.**
+
 P2-D1 through P2-D5 as implemented: the full-scale data pipeline with
 decontamination, data mixing, WSD schedules, the replay buffer, and
 ZeRO-Offload optimizer offload.

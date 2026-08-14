@@ -2,6 +2,8 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
+**Entries: 0 verified, 0 blocked, 8 pending, of 8.**
+
 Host verification for the observability stack: the logging core, traced
 dispatch, audit trace, retention, run catalog (phases A-C), and the metrics
 sink, watchdog wiring, snapshot dashboard, and live server (phase D). All of

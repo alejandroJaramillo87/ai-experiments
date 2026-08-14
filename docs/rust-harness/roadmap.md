@@ -448,9 +448,11 @@ Last. Plus three specific corrections:
 
 - The first-class statement that the harness reads Hugging Face checkpoints at bfloat16 because
   that is the precision interpretability runs at.
-- Update the interp specification's G1 to satisfied. L1 and L2 pass against a transformers
-  reference on real E4B, so Rust and Python tensor equivalence is measured rather than
-  intended. That is the fact probe portability rests on.
+- Update the interp specification's G1 to satisfied. **All five rungs** pass against a
+  transformers reference on real E4B — L0 through L4, nothing skipped, 2026-08-14 — so Rust
+  and Python tensor equivalence is measured rather than intended. That is the fact probe
+  portability rests on, and the evidence is broader than the L1/L2 pair this line originally
+  claimed.
 - Correct the capability table's sampling row, per R4.
 
 ## Feature specifications
