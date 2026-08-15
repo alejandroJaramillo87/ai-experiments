@@ -2,10 +2,13 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 17 verified, 5 blocked, 0 pending, of 22.** The five blocked are
+**Entries: 16 verified, 5 blocked, 1 pending, of 22.** The five blocked are
 RH.7 (rr does not recognize Zen 5) and RH.8, RH.9d, RH.11 and RH.15, which
 need an instruction-tuned checkpoint or a control vector this repository does
-not yet have. Each says so in its own Status line; none is merely unrun.
+not yet have. Each says so in its own Status line; none is merely unrun. The
+one pending is RH.13, reopened by U7: the code under it changed the terminal
+output the entry records, so its Observed block needs re-collecting rather
+than editing.
 
 Workstation verification for the `rust-harness/` workspace: the CPU
 inference backend on the real Gemma 4 E4B checkpoint, the observability stack
@@ -1703,7 +1706,21 @@ failed run with `exit_code` 1 plus a `fail` event in its event file; run
 ids match `R-YYYYMMDD-HHMMSS-xxxxxx`; the Python catalog reader returns
 both rows without errors.
 
-Observed:
+The failing run also prints two indented lines under its `[ERROR] Task
+failed:` line, added by U7:
+
+```
+  Solution: point --model at a directory holding config.json and model.safetensors, or at the weights file itself
+  Command: ls /nonexistent-checkpoint
+```
+
+and `exc_msg` must still equal the `Task failed:` line's message exactly,
+carrying neither of them. That equality is what makes this entry's second
+half worth having, and U7 is what first put it at risk, so it is now also
+asserted in the sandbox by
+`rust-harness/harness/tests/actionable_surface.rs`.
+
+Observed (2026-08-14, before U7):
 
 ```
 [ERROR] Task failed: read model /nonexistent-checkpoint: no checkpoint at /nonexistent-checkpoint: expected a directory holding config.json and model.safetensors, or a path to the weights file itself
@@ -1740,7 +1757,19 @@ to the millisecond, because the checkpoint path is validated before any
 loading work. That is the desired behaviour — a bad path fails immediately
 rather than after a 38-second load — and it is visible in the record.
 
-Status: VERIFIED 2026-08-14
+**Reopened by U7, 2026-08-15.** The transcript above is a real run and is kept
+as recorded; what it is no longer is *complete*. U7 added the two remedy lines
+to the terminal output of the exact command this entry runs, so the pasted
+terminal half now stops one line into what the harness prints. Everything
+that changed is additive and everything the entry argues from is intact: the
+`[ERROR] Task failed:` line, the `fail` record, and `exc_msg` are byte for
+byte what is shown, which `actionable_surface.rs` pins against this
+transcript's own string. But the block is evidence, not a prediction, and
+writing the two lines into it from the source rather than from a run would
+make it the second kind of thing. Re-run the command block on the workstation
+and paste what it prints.
+
+Status: PENDING (verified 2026-08-14; reopened by U7 for a terminal re-run)
 
 ## RH.14 The endpoint answers the interp client
 

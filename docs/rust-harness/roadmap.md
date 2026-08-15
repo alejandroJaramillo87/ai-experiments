@@ -600,12 +600,47 @@ missing `model.forward`, the span that dominates every trace RH.6 recorded, and 
 acceptance line promised a "prefill/decode timeline" no span provides. RH.6 itself named the
 obs crate as its implementation, which it never was.
 
-### U7 / U8 — errors that state the fix, and progress on long operations
+### U7 — errors that state the fix (done)
 
 `[ERROR] <what>` then indented `Solution:` and `Command:`, attached by context rather than
-matched from error text. Progress reuses `status::stderr_is_terminal()` so there is one
-terminal probe in the workspace, and emits nothing during a non-TTY run so an `Observed`
-block never carries a carriage-return smear.
+matched from error text. `harness/src/actionable.rs` holds an `Actionable` struct carried as
+an `anyhow` context and recovered at `main.rs`'s error arm by a downcast. Three sites: a
+probe whose width disagrees with the model, an interp artifact fitted on other weights, and
+a `--model` path with no checkpoint at it.
+
+**`Display` renders `what` and nothing else, which is the whole design rather than a detail
+of it.** `obs::RunLog::fail` records `exc_msg` as exactly `format!("{err:#}")` and `main.rs`
+prints the same string, so a payload that displayed its remedy would put two lines of advice
+into every fail record. `solution` and `command` are reachable only through `render`, and
+`Debug` is hand-written to delegate to `Display` — nothing formats a run error with `{:?}`
+today, which is exactly why deriving it would be wrong, since that would make the property
+depend on nobody ever writing `{:?}` at a future call site.
+
+**The third site is `checkpoint::resolve` failing, not an absent `--model`.** The brief
+paired "missing model" with the rule that no command carries a placeholder, and the two are
+incompatible when no path was given: with nothing to name, the command could only say
+`<checkpoint-dir>`. An absent required flag is already a usage mistake at exit 2. The
+`resolve` call moved above `CpuModel::load` so the failure lands under a frame `harness`
+owns, which is the only place a remedy attaches without duplicating the message — `load`'s
+own context is the identical `read model {path}` string, so the chain a failing run records
+is unchanged.
+
+The remedy is emitted separately from the diagnosis, indented two spaces through
+`status::plain`: `status::error_at` would tag each line and turn one finding into what reads
+like three, the decision already recorded at
+`rust-harness/runtime/src/bin/long-context-golden.rs:46-50`.
+
+**Acceptance:** RH.13, `docs/verification/rust-harness/rust-harness.md`. The entry's Observed
+block is the terminal output of this stage's third site, so it returns to `PENDING` for a
+re-run; its `exc_msg` evidence is unaffected and is now pinned by
+`harness/tests/actionable_surface.rs`, which asserts what RH.13 relied on and nothing
+guarded — that the printed line and the recorded message are one string.
+
+### U8 — progress on long operations
+
+Progress reuses `status::stderr_is_terminal()` so there is one terminal probe in the
+workspace, and emits nothing during a non-TTY run so an `Observed` block never carries a
+carriage-return smear.
 
 ### U9 — bring the other binaries under obs
 

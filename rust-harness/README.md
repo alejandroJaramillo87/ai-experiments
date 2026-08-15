@@ -78,6 +78,14 @@ wrong to ask. The report goes to stderr and stdout stays empty. No run record
 is written — a query is not a run, the same rule that keeps `--help` out of the
 catalog.
 
+A run that fails anyway states its fix. Three failures — a probe whose width
+disagrees with the model, an interp artifact fitted on other weights, and a
+`--model` path with no checkpoint at it — print two indented lines under the
+error, a `Solution:` and a `Command:` naming this run's real paths rather than
+a placeholder. The advice reaches the terminal only: the run record's `exc_msg`
+stays the diagnosis alone, so a `fail` event is still one line of cause and not
+a page of counsel.
+
 ## Testing
 
 Testing is test-first and tiered:
