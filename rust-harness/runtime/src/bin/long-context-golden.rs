@@ -38,22 +38,64 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use anyhow::{Context, Result};
+use runtime::cli::{Flag, Kind, Spec};
 use runtime::model::Model;
 
+const SPEC: Spec = Spec {
+    program: "long-context-golden",
+    summary: "Write the committed long-prefill logits fixture to the named file.",
+    positionals: "<out.json>",
+    required: &[],
+    flags: &[
+        Flag {
+            name: "--help",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "-h",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+    ],
+};
+
 fn main() -> ExitCode {
-    let Some(out) = std::env::args_os().nth(1).map(PathBuf::from) else {
-        runtime::status::error("Destination: no path given");
-        // The two continuation lines are untagged by the repo's error shape
-        // (rust-harness/Makefile:70-86): one tagged statement of what failed,
-        // then indented remedy lines. `status::error_at` would tag each of
-        // them -- `  [ERROR] Solution: ...` -- which is a different message,
-        // so these stay `plain` with the indent in the literal.
-        runtime::status::plain("  Solution: name the file to write");
-        runtime::status::plain(
-            "  Command: cargo run -p runtime --bin long-context-golden -- \
-             fixtures/long-context-logits.json",
-        );
-        return ExitCode::from(2);
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if runtime::cli::handled_help(&SPEC, &args) {
+        return ExitCode::SUCCESS;
+    }
+    // The destination goes through `extract` rather than being read off
+    // `nth(1)`, which is what stops `-h` from becoming an output path. Until
+    // U3b this program wrote the golden fixture to a file literally named `-h`
+    // when asked for help, and silently discarded every argument past the
+    // first.
+    let parsed = match runtime::cli::extract(&SPEC, args, &mut []) {
+        Ok(p) => p,
+        Err(e) => return runtime::cli::usage_error(&SPEC, &e),
+    };
+    let out = match parsed.rest.as_slice() {
+        [one] => PathBuf::from(one),
+        [] => {
+            runtime::status::error("Destination: no path given");
+            // The two continuation lines are untagged by the repo's error shape
+            // (rust-harness/Makefile:70-86): one tagged statement of what
+            // failed, then indented remedy lines. `status::error_at` would tag
+            // each of them -- `  [ERROR] Solution: ...` -- which is a different
+            // message, so these stay `plain` with the indent in the literal.
+            runtime::status::plain("  Solution: name the file to write");
+            runtime::status::plain(
+                "  Command: cargo run -p runtime --bin long-context-golden -- \
+                 fixtures/long-context-logits.json",
+            );
+            return ExitCode::from(2);
+        }
+        many => {
+            return runtime::cli::usage_error(
+                &SPEC,
+                &format!("one destination, {} given", many.len()),
+            )
+        }
     };
     match write(&out) {
         Ok(()) => ExitCode::SUCCESS,

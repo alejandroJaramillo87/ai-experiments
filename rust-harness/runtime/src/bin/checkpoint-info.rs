@@ -25,21 +25,62 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use runtime::checkpoint::{self, Checkpoint};
+use runtime::cli::{Flag, Kind, Spec};
 use runtime::model::cpu;
+
+const SPEC: Spec = Spec {
+    program: "checkpoint-info",
+    summary: "Dump a checkpoint's config and tensor table, then the architecture summary\n\
+              and the CPU backend's compatibility verdict.",
+    positionals: "<checkpoint-dir>",
+    required: &[],
+    flags: &[
+        Flag {
+            name: "--help",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "-h",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "--check",
+            kind: Kind::Bare,
+            help: "exit 1 when the checkpoint is unsupported, rather than reporting and exiting 0",
+        },
+        Flag {
+            name: "--text-only",
+            kind: Kind::Bare,
+            help: "treat a multimodal checkpoint as its text tower",
+        },
+    ],
+};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let (flags, rest): (Vec<&String>, Vec<&String>) = args
-        .iter()
-        .partition(|a| a.as_str() == "--check" || a.as_str() == "--text-only");
-    let [path] = rest.as_slice() else {
-        runtime::status::plain("usage: checkpoint-info [--check] [--text-only] <checkpoint-dir>");
-        return ExitCode::from(2);
+    if runtime::cli::handled_help(&SPEC, &args) {
+        return ExitCode::SUCCESS;
+    }
+    // The `partition` this replaces sorted every unrecognized token into the
+    // positional pile, so a misspelled flag surfaced as the wrong argument
+    // count and the message named neither it nor the count -- and a lone `-h`
+    // was read as the checkpoint path.
+    let parsed = match runtime::cli::extract(&SPEC, args, &mut []) {
+        Ok(p) => p,
+        Err(e) => return runtime::cli::usage_error(&SPEC, &e),
     };
-    let check = flags.iter().any(|a| a.as_str() == "--check");
+    let [path] = parsed.rest.as_slice() else {
+        return runtime::cli::usage_error(
+            &SPEC,
+            &format!("one checkpoint directory, {} given", parsed.rest.len()),
+        );
+    };
+    let check = parsed.has("--check");
     // Reported either way (see `describe`); this decides only whether the
     // backend's verdict treats a multimodal checkpoint as supported.
-    let text_only = flags.iter().any(|a| a.as_str() == "--text-only");
+    let text_only = parsed.has("--text-only");
 
     let files = match checkpoint::CheckpointFiles::read(Path::new(path)) {
         Ok(f) => f,

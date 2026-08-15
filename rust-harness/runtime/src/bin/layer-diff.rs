@@ -26,6 +26,7 @@ use std::process::ExitCode;
 
 use anyhow::{ensure, Context, Result};
 
+use runtime::cli::{Flag, Kind, Spec};
 use runtime::metrics::vec_diff;
 use runtime::model::cpu::{CpuModel, LastRowTap, PRELUDE_STAGES};
 use runtime::model::Model;
@@ -207,76 +208,109 @@ fn run(
     }
 }
 
-const USAGE: &str = "usage: layer-diff [--text-only] [--single-thread] \
-                     [--cosine-floor <f>] \
-                     [--rel-l2-ceiling <f>] --model <checkpoint-dir> \
-                     --reference <capture.json>";
+const SPEC: Spec = Spec {
+    program: "layer-diff",
+    summary: "Report per-layer divergence of the residual stream against a reference\n\
+              capture, and pass or fail it against the tolerances.",
+    positionals: "",
+    required: &["--model", "--reference"],
+    flags: &[
+        Flag {
+            name: "--help",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "-h",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "--model",
+            kind: Kind::Value("<checkpoint-dir>"),
+            help: "the checkpoint to run; required",
+        },
+        Flag {
+            name: "--reference",
+            kind: Kind::Value("<capture.json>"),
+            help: "the reference capture to compare against; required",
+        },
+        Flag {
+            name: "--cosine-floor",
+            kind: Kind::Value("<f>"),
+            help: "lowest per-layer cosine similarity that still passes",
+        },
+        Flag {
+            name: "--rel-l2-ceiling",
+            kind: Kind::Value("<f>"),
+            help: "highest per-layer relative L2 error that still passes",
+        },
+        Flag {
+            name: "--text-only",
+            kind: Kind::Bare,
+            help: "treat a multimodal checkpoint as its text tower",
+        },
+        // Serial rather than the machine's width. Not a numerics switch: the
+        // row split is bit-identical at every width, so the cosine and rel-L2
+        // figures are the same either way. Present for rr, which serializes
+        // threads regardless, and for timing one path against the other.
+        Flag {
+            name: "--single-thread",
+            kind: Kind::Bare,
+            help: "run the row split on one thread; the figures are unchanged",
+        },
+    ],
+};
+
+/// Parse a tolerance, naming the flag and the value that could not be read.
+fn tolerance(name: &str, given: Option<String>, fallback: f64) -> Result<f64, String> {
+    match given {
+        None => Ok(fallback),
+        Some(v) => v.parse().map_err(|e| format!("{name} {v}: {e}")),
+    }
+}
 
 fn main() -> ExitCode {
-    let mut args: Vec<String> = std::env::args().skip(1).collect();
-
-    let text_only = match args.iter().position(|a| a == "--text-only") {
-        Some(i) => {
-            args.remove(i);
-            true
-        }
-        None => false,
-    };
-
-    // Serial rather than the machine's width. Not a numerics switch: the row
-    // split is bit-identical at every width, so the cosine and rel-L2 figures
-    // are the same either way. Present for rr, which serializes threads
-    // regardless, and for timing one path against the other.
-    let single_thread = match args.iter().position(|a| a == "--single-thread") {
-        Some(i) => {
-            args.remove(i);
-            true
-        }
-        None => false,
-    };
-
-    let mut floor = COSINE_FLOOR;
-    let mut ceiling = REL_L2_CEILING;
-    let mut model: Option<PathBuf> = None;
-    let mut reference: Option<PathBuf> = None;
-    let mut it = args.into_iter();
-    while let Some(arg) = it.next() {
-        let Some(value) = it.next() else {
-            runtime::status::error(&format!("{arg}: missing value"));
-            runtime::status::plain(USAGE);
-            return ExitCode::from(2);
-        };
-        match arg.as_str() {
-            "--model" => model = Some(PathBuf::from(value)),
-            "--reference" => reference = Some(PathBuf::from(value)),
-            "--cosine-floor" => match value.parse::<f64>() {
-                Ok(v) => floor = v,
-                Err(e) => {
-                    runtime::status::error(&format!("--cosine-floor {value}: {e}"));
-                    return ExitCode::from(2);
-                }
-            },
-            "--rel-l2-ceiling" => match value.parse::<f64>() {
-                Ok(v) => ceiling = v,
-                Err(e) => {
-                    runtime::status::error(&format!("--rel-l2-ceiling {value}: {e}"));
-                    return ExitCode::from(2);
-                }
-            },
-            other => {
-                runtime::status::error(&format!("Unknown argument: {other}"));
-                runtime::status::plain(USAGE);
-                return ExitCode::from(2);
-            }
-        }
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if runtime::cli::handled_help(&SPEC, &args) {
+        return ExitCode::SUCCESS;
     }
-
-    let (Some(model), Some(reference)) = (model, reference) else {
-        runtime::status::plain(USAGE);
-        return ExitCode::from(2);
+    let (mut model, mut reference, mut floor_arg, mut ceiling_arg) = (None, None, None, None);
+    let parsed = {
+        let mut slots: [(&'static str, &mut Option<String>); 4] = [
+            ("--model", &mut model),
+            ("--reference", &mut reference),
+            ("--cosine-floor", &mut floor_arg),
+            ("--rel-l2-ceiling", &mut ceiling_arg),
+        ];
+        match runtime::cli::extract(&SPEC, args, &mut slots) {
+            Ok(p) => p,
+            Err(e) => return runtime::cli::usage_error(&SPEC, &e),
+        }
     };
+    if let Some(extra) = parsed.rest.first() {
+        return runtime::cli::usage_error(&SPEC, &format!("Unexpected argument: {extra}"));
+    }
+    if let Some(absent) = runtime::cli::missing_required(&SPEC, &parsed) {
+        return runtime::cli::usage_error(&SPEC, &absent);
+    }
+    let (floor, ceiling) = match tolerance("--cosine-floor", floor_arg, COSINE_FLOOR)
+        .and_then(|f| tolerance("--rel-l2-ceiling", ceiling_arg, REL_L2_CEILING).map(|c| (f, c)))
+    {
+        Ok(pair) => pair,
+        Err(e) => return runtime::cli::usage_error(&SPEC, &e),
+    };
+    let expect = |v: Option<String>| PathBuf::from(v.expect("checked by missing_required above"));
+    let (model, reference) = (expect(model), expect(reference));
 
-    match run(&model, &reference, text_only, single_thread, floor, ceiling) {
+    match run(
+        &model,
+        &reference,
+        parsed.has("--text-only"),
+        parsed.has("--single-thread"),
+        floor,
+        ceiling,
+    ) {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::from(1),
         Err(e) => {

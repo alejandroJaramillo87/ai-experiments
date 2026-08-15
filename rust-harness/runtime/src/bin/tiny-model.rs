@@ -18,6 +18,7 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use runtime::cli::{Flag, Kind, Spec};
 use runtime::synth::{
     build_tiny_config_json, build_tiny_safetensors, build_tiny_tokenizer_json,
     merge_fixture_tokenizer_json, TinySpec,
@@ -60,8 +61,40 @@ fn write(path: &Path, bytes: &[u8]) -> bool {
     }
 }
 
+const SPEC: Spec = Spec {
+    program: "tiny-model",
+    summary: "Write a synthetic fixture checkpoint, or the merge-list tokenizer that no\n\
+              model fixture can carry.",
+    positionals: "<output-stem> [e4b] | <output.json> bpe",
+    required: &[],
+    flags: &[
+        Flag {
+            name: "--help",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "-h",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+    ],
+};
+
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let raw: Vec<String> = std::env::args().skip(1).collect();
+    if runtime::cli::handled_help(&SPEC, &raw) {
+        return ExitCode::SUCCESS;
+    }
+    // The stem goes through `extract` rather than straight into the slice match
+    // below, so a dash-leading word is refused instead of becoming an output
+    // path. Until U3b `tiny-model -h` wrote `-h.tokenizer.json` and a directory
+    // named `-h` holding config.json and model.safetensors: asking this program
+    // for help produced a fixture set named after the question.
+    let args = match runtime::cli::extract(&SPEC, raw, &mut []) {
+        Ok(p) => p.rest,
+        Err(e) => return runtime::cli::usage_error(&SPEC, &e),
+    };
     let (path, spec) = match args.as_slice() {
         [path] => (path, TinySpec::default()),
         [path, variant] if variant == "e4b" => (path, TinySpec::e4b_shaped()),
@@ -81,9 +114,18 @@ fn main() -> ExitCode {
                 }
             };
         }
-        _ => {
-            runtime::status::plain("usage: tiny-model <output-stem> [e4b] | <output.json> bpe");
-            return ExitCode::from(2);
+        [] => return runtime::cli::usage_error(&SPEC, "no output stem given"),
+        [_, variant] => {
+            return runtime::cli::usage_error(
+                &SPEC,
+                &format!("{variant}: expected the variant e4b or bpe"),
+            )
+        }
+        many => {
+            return runtime::cli::usage_error(
+                &SPEC,
+                &format!("a stem and at most one variant, {} given", many.len()),
+            )
         }
     };
     let stem = stem_of(path);

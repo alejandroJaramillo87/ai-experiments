@@ -18,6 +18,7 @@ use std::process::ExitCode;
 
 use anyhow::Result;
 
+use runtime::cli::{Flag, Kind, Spec};
 use runtime::ladder::{self, Rung, RungResult, Size, Tolerance};
 use runtime::model::cpu::{BatchKind, CpuModel, DotKind, PRELUDE_STAGES};
 
@@ -367,11 +368,69 @@ fn run(
     Ok(l.ok())
 }
 
-const USAGE: &str = "usage: ladder [--text-only] [--single-thread] \
-                     [--threads <n>] [--dot <kind>] [--batch stepped|whole|<n>] \
-                     [--size quick|standard|deep] \
-                     [--rung L0|L1|L2|L3|L4] --model <checkpoint-dir> \
-                     --reference <reference-dir>";
+const SPEC: Spec = Spec {
+    program: "ladder",
+    summary: "Run the five-rung correctness gate against a transformers reference.",
+    positionals: "",
+    required: &["--model", "--reference"],
+    flags: &[
+        Flag {
+            name: "--help",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "-h",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "--model",
+            kind: Kind::Value("<checkpoint-dir>"),
+            help: "the checkpoint to climb; required",
+        },
+        Flag {
+            name: "--reference",
+            kind: Kind::Value("<reference-dir>"),
+            help: "directory of transformers reference artifacts to compare against; required",
+        },
+        Flag {
+            name: "--size",
+            kind: Kind::Value("quick|standard|deep"),
+            help: "how much corpus the perplexity and greedy rungs read",
+        },
+        Flag {
+            name: "--rung",
+            kind: Kind::Value("L0|L1|L2|L3|L4"),
+            help: "climb one rung rather than all five",
+        },
+        Flag {
+            name: "--dot",
+            kind: Kind::Value("<kind>"),
+            help: "the dot-product kernel; every kind is bit-identical",
+        },
+        Flag {
+            name: "--batch",
+            kind: Kind::Value("stepped|whole|<n>"),
+            help: "how many positions one forward pass covers",
+        },
+        Flag {
+            name: "--threads",
+            kind: Kind::Value("<n>"),
+            help: "row-split width; the tables are bit-identical at every width",
+        },
+        Flag {
+            name: "--text-only",
+            kind: Kind::Bare,
+            help: "treat a multimodal checkpoint as its text tower",
+        },
+        Flag {
+            name: "--single-thread",
+            kind: Kind::Bare,
+            help: "shorthand for --threads 1, for rr, which serializes threads anyway",
+        },
+    ],
+};
 
 /// Report the run's peak resident set size.
 ///
@@ -389,111 +448,115 @@ fn report_peak_rss() {
 }
 
 fn main() -> ExitCode {
-    let mut args: Vec<String> = std::env::args().skip(1).collect();
-    // Snapshotted before the pre-pass below starts removing bare flags by
-    // position, so the record carries what was typed rather than what
-    // survived parsing.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    // Answered before anything else, and in particular before `RunLog::begin`
+    // below: a query is not a run, so asking how to use the ladder must leave
+    // no row in the catalog. The old pair loop consumed a value for every
+    // token it saw, so `--help` alone reported "missing value".
+    if runtime::cli::handled_help(&SPEC, &args) {
+        return ExitCode::SUCCESS;
+    }
+    // The record carries what was typed rather than what survived parsing.
     let argv_full = args.clone();
 
-    let text_only = match args.iter().position(|a| a == "--text-only") {
-        Some(i) => {
-            args.remove(i);
-            true
+    let (mut model, mut reference, mut size_arg, mut rung_arg) = (None, None, None, None);
+    let (mut dot_arg, mut batch_arg, mut threads_arg) = (None, None, None);
+    let parsed = {
+        let mut slots: [(&'static str, &mut Option<String>); 7] = [
+            ("--model", &mut model),
+            ("--reference", &mut reference),
+            ("--size", &mut size_arg),
+            ("--rung", &mut rung_arg),
+            ("--dot", &mut dot_arg),
+            ("--batch", &mut batch_arg),
+            ("--threads", &mut threads_arg),
+        ];
+        match runtime::cli::extract(&SPEC, args, &mut slots) {
+            Ok(p) => p,
+            Err(e) => return runtime::cli::usage_error(&SPEC, &e),
         }
-        None => false,
     };
-    // Neither this nor --threads is a numerics switch: the row split is
-    // bit-identical at every width, so every table this run prints matches
+    if let Some(extra) = parsed.rest.first() {
+        return runtime::cli::usage_error(&SPEC, &format!("Unexpected argument: {extra}"));
+    }
+    if let Some(absent) = runtime::cli::missing_required(&SPEC, &parsed) {
+        return runtime::cli::usage_error(&SPEC, &absent);
+    }
+
+    // Neither --single-thread nor --threads is a numerics switch: the row split
+    // is bit-identical at every width, so every table this run prints matches
     // every other width's digit for digit. --single-thread exists because rr
     // serializes threads anyway; --threads exists because the width that is
     // actually fastest on a given machine has to be swept for, and rebuilding
     // between widths would put a recompile inside the measurement.
-    let mut threads = match args.iter().position(|a| a == "--single-thread") {
-        Some(i) => {
-            args.remove(i);
-            Some(1)
-        }
-        None => None,
-    };
-
+    let mut threads = parsed.has("--single-thread").then_some(1);
     let mut dot = DotKind::default();
     let mut batch = BatchKind::default();
     let mut size = Size::Quick;
     let mut only: Option<Rung> = None;
-    let mut model: Option<PathBuf> = None;
-    let mut reference: Option<PathBuf> = None;
-    let mut it = args.into_iter();
-    while let Some(arg) = it.next() {
-        let Some(value) = it.next() else {
-            runtime::status::error(&format!("{arg}: missing value"));
-            runtime::status::plain(USAGE);
-            return ExitCode::from(2);
-        };
-        match arg.as_str() {
-            "--model" => model = Some(PathBuf::from(value)),
-            "--reference" => reference = Some(PathBuf::from(value)),
-            "--size" => match Size::parse(&value) {
-                Some(s) => size = s,
-                None => {
-                    runtime::status::error(&format!(
-                        "--size {value}: expected quick, standard, or deep"
-                    ));
-                    return ExitCode::from(2);
-                }
-            },
-            "--dot" => match DotKind::parse(&value) {
-                Some(k) => dot = k,
-                None => {
-                    runtime::status::error(&format!(
-                        "--dot {value}: expected one of {}",
-                        DotKind::ALL.map(|k| k.label()).join(", ")
-                    ));
-                    return ExitCode::from(2);
-                }
-            },
-            // Takes a value, so it belongs in this loop rather than in the
-            // pre-pass above: only the bare flags (--text-only,
-            // --single-thread) have to be removed by position, because this
-            // loop consumes a value for every argument it sees.
-            "--batch" => match BatchKind::parse(&value) {
-                Some(b) => batch = b,
-                None => {
-                    runtime::status::error(&format!(
-                        "--batch {value}: expected stepped, whole, or a positive integer"
-                    ));
-                    return ExitCode::from(2);
-                }
-            },
-            "--threads" => match value.parse::<usize>() {
-                Ok(n) if n >= 1 => threads = Some(n),
-                _ => {
-                    runtime::status::error(&format!(
-                        "--threads {value}: expected a positive integer"
-                    ));
-                    return ExitCode::from(2);
-                }
-            },
-            "--rung" => match Rung::ALL.into_iter().find(|r| r.label() == value) {
-                Some(r) => only = Some(r),
-                None => {
-                    runtime::status::error(&format!(
-                        "--rung {value}: expected one of L0 L1 L2 L3 L4"
-                    ));
-                    return ExitCode::from(2);
-                }
-            },
-            other => {
-                runtime::status::error(&format!("Unknown argument: {other}"));
-                runtime::status::plain(USAGE);
-                return ExitCode::from(2);
+    // Each value keeps the error message naming its own accepted set, which is
+    // the reason `cli::extract` hands back strings rather than parsing them.
+    if let Some(value) = size_arg {
+        match Size::parse(&value) {
+            Some(s) => size = s,
+            None => {
+                return runtime::cli::usage_error(
+                    &SPEC,
+                    &format!("--size {value}: expected quick, standard, or deep"),
+                )
             }
         }
     }
-
-    let (Some(model), Some(reference)) = (model, reference) else {
-        runtime::status::plain(USAGE);
-        return ExitCode::from(2);
-    };
+    if let Some(value) = dot_arg {
+        match DotKind::parse(&value) {
+            Some(k) => dot = k,
+            None => {
+                return runtime::cli::usage_error(
+                    &SPEC,
+                    &format!(
+                        "--dot {value}: expected one of {}",
+                        DotKind::ALL.map(|k| k.label()).join(", ")
+                    ),
+                )
+            }
+        }
+    }
+    if let Some(value) = batch_arg {
+        match BatchKind::parse(&value) {
+            Some(b) => batch = b,
+            None => {
+                return runtime::cli::usage_error(
+                    &SPEC,
+                    &format!("--batch {value}: expected stepped, whole, or a positive integer"),
+                )
+            }
+        }
+    }
+    if let Some(value) = threads_arg {
+        match value.parse::<usize>() {
+            Ok(n) if n >= 1 => threads = Some(n),
+            _ => {
+                return runtime::cli::usage_error(
+                    &SPEC,
+                    &format!("--threads {value}: expected a positive integer"),
+                )
+            }
+        }
+    }
+    if let Some(value) = rung_arg {
+        match Rung::ALL.into_iter().find(|r| r.label() == value) {
+            Some(r) => only = Some(r),
+            None => {
+                return runtime::cli::usage_error(
+                    &SPEC,
+                    &format!("--rung {value}: expected one of L0 L1 L2 L3 L4"),
+                )
+            }
+        }
+    }
+    let text_only = parsed.has("--text-only");
+    let expect = |v: Option<String>| PathBuf::from(v.expect("checked by missing_required above"));
+    let (model, reference) = (expect(model), expect(reference));
 
     let tuning = Tuning {
         threads,
