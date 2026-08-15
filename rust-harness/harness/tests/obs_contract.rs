@@ -45,6 +45,26 @@ fn contract_keys(section: &str) -> Option<BTreeSet<String>> {
     )
 }
 
+/// The declared field set for one event type: `fields` plus `optional`.
+///
+/// Degrades the same way `contract_keys` does, and for the same reason -- the
+/// container build's context is `rust-harness/` alone, so the contract file is
+/// simply absent there.
+fn contract_event_keys(event: &str) -> Option<BTreeSet<String>> {
+    let path = repo_root().join("schemas/obs_record.json");
+    let text = std::fs::read_to_string(&path).ok()?;
+    let contract: serde_json::Value = serde_json::from_str(&text).expect("contract is valid JSON");
+    let read = |k: &str| -> Vec<String> {
+        contract["events"][event][k]
+            .as_array()
+            .unwrap_or_else(|| panic!("events.{event}.{k} is an array"))
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect()
+    };
+    Some(read("fields").into_iter().chain(read("optional")).collect())
+}
+
 fn read_lines(path: &Path) -> Vec<serde_json::Value> {
     std::fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
@@ -194,4 +214,138 @@ fn a_harness_written_catalog_parses_through_the_python_reader() {
         .expect("timestamp is a string");
     assert!(ts.len() >= 19, "timestamp {ts} is too short to render");
     assert_eq!(ts.as_bytes()[10], b'T');
+}
+
+/// The run header's declared field set, both directions.
+///
+/// Equality rather than containment. Containment one way would let a field be
+/// declared and never written -- the likelier drift for a header assembled in
+/// one place, where adding a struct field and forgetting the schema and
+/// forgetting to remove the schema entry are all one edit away from each
+/// other.
+///
+/// Measured against a header with every optional field present, which is what
+/// makes `optional` assertable at all: against a minimal one, an undeclared
+/// optional field would simply be absent and prove nothing.
+#[test]
+fn the_run_header_writes_exactly_the_fields_the_contract_declares() {
+    let Some(declared) = contract_event_keys("run.header") else {
+        runtime::testlog::skip(
+            "run.header contract",
+            "schemas/ absent from this build context",
+        );
+        return;
+    };
+    let header = harness::runheader::RunHeader {
+        model: "/models/e4b".to_string(),
+        model_hash: "0123456789abcdef".to_string(),
+        n_layers: 42,
+        dtype: "bf16".to_string(),
+        weight_bytes: 15_000_000_000,
+        peak_rss_bytes: Some(15_300_000_000),
+        max_context: 4096,
+        kv_bytes: 1_073_741_824,
+        kv_batch_group: 64,
+        rewind_horizon: Some(1024),
+        threads: 16,
+        dot: "widen4".to_string(),
+        batch: "64".to_string(),
+        seed: 7,
+        temperature: 0.0,
+        max_tokens: 256,
+        binary_version: "0.1.0".to_string(),
+        git_sha: "abc1234".to_string(),
+        probe: Some("refusal".to_string()),
+        probe_layer: Some(20),
+    };
+    let written: BTreeSet<String> = header
+        .fields()
+        .into_iter()
+        .map(|(k, _)| k.to_string())
+        .collect();
+    assert_eq!(written, declared);
+}
+
+/// A caller field may not displace a base key.
+///
+/// `common/obs/core.py:121-124` has refused this since the Python stack was
+/// built, and `test_a_caller_field_cannot_displace_a_base_key` asserts it
+/// there. Rust had no equivalent because `write_event` was private and every
+/// caller lived in `obs.rs`; `RunLog::event` is public, so privacy stops doing
+/// the work. A duplicate key is legal JSON whose meaning depends on which one
+/// the reader keeps -- the record would parse and quietly mean something else,
+/// which is worse than the malformed line the contract already guards against.
+#[test]
+fn a_caller_field_cannot_displace_a_base_key() {
+    use harness::obs::Value;
+    let dir = tempfile::tempdir().unwrap();
+    let mut log = RunLog::begin_at(dir.path(), "task", &[], None);
+    let run_id = log
+        .run_id()
+        .expect("a writable root mints a run id")
+        .to_string();
+    log.event(
+        "info",
+        "run.header",
+        "",
+        &[
+            ("run_id", Value::Str("forged".to_string())),
+            ("cli", Value::Str("not-harness".to_string())),
+            ("model", Value::Str("/models/e4b".to_string())),
+        ],
+    );
+    log.end(0, Path::new("/tmp"));
+
+    let events = read_lines(&dir.path().join("harness").join(format!("{run_id}.jsonl")));
+    let header = events
+        .iter()
+        .find(|e| e["event"] == "run.header")
+        .expect("the header event was written");
+    assert_eq!(header["run_id"], run_id.as_str());
+    assert_eq!(header["cli"], "harness");
+    // The non-colliding field is untouched: the guard drops the offenders,
+    // not the event.
+    assert_eq!(header["model"], "/models/e4b");
+
+    // And the raw line carries each base key once, which is the property
+    // `serde_json` above would hide -- it keeps the last of a duplicate pair
+    // and reports no error.
+    let raw = std::fs::read_to_string(dir.path().join("harness").join(format!("{run_id}.jsonl")))
+        .unwrap();
+    let line = raw
+        .lines()
+        .find(|l| l.contains("run.header"))
+        .expect("the header line");
+    assert_eq!(line.matches("\"run_id\":").count(), 1, "{line}");
+    assert_eq!(line.matches("\"cli\":").count(), 1, "{line}");
+}
+
+/// Numbers survive the round trip as numbers.
+///
+/// `weight_bytes` rendered as "14.23 GiB" cannot be turned back into bytes,
+/// and a header whose purpose is cross-run comparison is exactly the record
+/// someone will `jq` over. The Python writer already emits real numbers for
+/// duration_s and exit_code; this keeps the Rust side under the same contract.
+#[test]
+fn header_numbers_are_json_numbers_and_not_strings() {
+    use harness::obs::Value;
+    let dir = tempfile::tempdir().unwrap();
+    let mut log = RunLog::begin_at(dir.path(), "task", &[], None);
+    let run_id = log.run_id().unwrap().to_string();
+    log.event(
+        "info",
+        "run.header",
+        "",
+        &[
+            ("weight_bytes", Value::Int(15_000_000_000)),
+            ("temperature", Value::Num(0.0)),
+            ("text_only", Value::Bool(true)),
+        ],
+    );
+    log.end(0, Path::new("/tmp"));
+    let events = read_lines(&dir.path().join("harness").join(format!("{run_id}.jsonl")));
+    let h = events.iter().find(|e| e["event"] == "run.header").unwrap();
+    assert_eq!(h["weight_bytes"].as_u64(), Some(15_000_000_000));
+    assert_eq!(h["temperature"].as_f64(), Some(0.0));
+    assert_eq!(h["text_only"].as_bool(), Some(true));
 }

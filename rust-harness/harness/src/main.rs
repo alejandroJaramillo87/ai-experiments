@@ -140,7 +140,13 @@ fn build_generator(
     single_thread: bool,
     align: bool,
     keep_scores: bool,
-) -> Result<(SessionGenerator, Option<MonitorHandle>, u64, PassHandle)> {
+) -> Result<(
+    SessionGenerator,
+    Option<MonitorHandle>,
+    u64,
+    PassHandle,
+    harness::runheader::RunHeader,
+)> {
     use runtime::model::{
         cpu::{ControlVector, CpuModel},
         probe::{Probe, ProbeMonitor},
@@ -236,9 +242,14 @@ fn build_generator(
         }
         None => trained,
     };
-    {
+    // An expression block, not a bare one: it yields the header. Every borrow
+    // of `cpu` still ends at its close, which matters because `cpu` is wrapped
+    // and moved into the session a few lines below -- lifting these locals out
+    // instead would extend `c: &Config` past that move.
+    let header = {
         let c = cpu.config();
         let n_kv_heads = c.n_kv_heads;
+        let n_layers = c.n_layers;
         // Geometry per layer, taken from the loaded spec rather than from one
         // model-wide head width. Gemma 4's global layers are twice as wide as
         // its sliding layers, so a single width silently under-reports the
@@ -274,45 +285,51 @@ fn build_generator(
         // at its published width reports about the file's size; twice that
         // would mean the loader had expanded it.
         let (weight_bytes, width) = cpu.weight_bytes();
-        runtime::status::info(&format!(
-            "Weights: {:.2} GiB resident at {}",
-            weight_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
-            width.unwrap_or("mixed widths")
-        ));
-        // Peak against the line above is the diagnostic, not the peak alone: a
-        // load that left the checkpoint mapped reports roughly twice the
-        // weights, because the map is still resident behind the copy.
-        if let Some(peak) = runtime::peak_rss_bytes() {
-            runtime::status::info(&format!(
-                "Peak RSS after load: {:.2} GiB",
-                peak as f64 / (1024.0 * 1024.0 * 1024.0)
-            ));
-        }
+        // Peak sampled here rather than at construction below. A later sample
+        // is a different number reported under the same name: this one is the
+        // high-water mark of the load, which is the diagnostic -- against the
+        // weight figure above it says whether the checkpoint mapping was
+        // dropped, since a load that kept it reports roughly twice the weights.
+        let peak_rss_bytes = runtime::peak_rss_bytes();
         let group = cpu.batch().chunk(max_context);
         let bytes = runtime::kv::budget_bytes(&layers, max_context, group);
-        let gib = bytes as f64 / (1024.0 * 1024.0 * 1024.0);
-        runtime::status::info(&format!(
-            "KV cache: {max_context} tokens, {gib:.2} GiB f32 resident \
-             (sliding layers capped at the window plus a batch of {group})"
-        ));
-        // The rewind horizon, stated before the run rather than discovered
-        // when a rewind fails. A windowed layer cannot return to a position it
-        // has evicted, so once the cache is full the reachable past is bounded
-        // -- and conversation compaction rewinds much further than this, which
-        // is why `Session::sync` rebuilds instead of erroring.
-        if let Some(horizon) = cpu.rewind_horizon(max_context) {
-            runtime::status::info(&format!(
-                "Rewind horizon: {horizon} tokens behind the tip once the \
-                 window fills (compaction past it re-prefills)"
-            ));
+        let header = harness::runheader::RunHeader {
+            model: model_path.display().to_string(),
+            model_hash: format!("{model_hash:016x}"),
+            n_layers: n_layers as u64,
+            dtype: width.unwrap_or("mixed widths").to_string(),
+            weight_bytes: weight_bytes as u64,
+            peak_rss_bytes,
+            max_context: max_context as u64,
+            kv_bytes: bytes as u64,
+            kv_batch_group: group as u64,
+            rewind_horizon: cpu.rewind_horizon(max_context).map(|n| n as u64),
+            threads: cpu.threads() as u64,
+            dot: cpu.dot().label().to_string(),
+            batch: cpu.batch().label(),
+            seed: sampling.seed,
+            temperature: sampling.temperature as f64,
+            max_tokens: max_tokens as u64,
+            binary_version: env!("CARGO_PKG_VERSION").to_string(),
+            git_sha: runtime::envelope::git_sha(),
+            probe: monitor.as_ref().map(|m| m.probe.name.clone()),
+            probe_layer: monitor.as_ref().map(|m| m.probe.layer as u64),
+        };
+        for line in header.lines() {
+            runtime::status::info(&line);
         }
+        // Outside `lines()`, and the boundary is worth stating: the header
+        // renders facts about the configuration, and this is a judgement about
+        // one of them. A warning that fired from a field getter would fire in
+        // the record too, where it is not a fact anyone can compare across runs.
         if bytes > 2 << 30 {
             runtime::status::warn(
                 "KV cache above 2 GiB: consider --context to cap it \
                  (compaction keeps long sessions inside the cap)",
             );
         }
-    }
+        header
+    };
     // Taken here because this is the last point the concrete backend is in
     // hand: below, `cpu` is wrapped and moved into the session.
     let passes: PassHandle = align.then(|| cpu.record_passes());
@@ -373,7 +390,7 @@ fn build_generator(
     // The alignment table itself is started by the caller, which owns the
     // handle it is written from; only the pass record has to be taken here.
     let generator = SessionGenerator::new(session, tokenizer, sampling, max_tokens)?;
-    Ok((generator, monitor, model_hash, passes))
+    Ok((generator, monitor, model_hash, passes, header))
 }
 
 /// Drain the monitor state: write one JSONL record per flagged position to
@@ -443,7 +460,15 @@ fn run(
     probe_out: Option<&Path>,
     alignment_out: Option<&Path>,
     interp_log: Option<&Path>,
-    run_id: Option<&str>,
+    // The log rather than its id. `run` is where the header becomes available
+    // -- `main` does not call `build_generator`, and `run` returns
+    // `Result<()>`, so there is nowhere to hand a header back up. Passing the
+    // log makes the dependency what it already was: `run` needed a shard of a
+    // RunLog that `main` still owns.
+    //
+    // This hands `run` the general ability to write events. U2 writes exactly
+    // one, `run.header`, immediately below.
+    run_log: &mut harness::obs::RunLog,
     sampling: runtime::sampler::SamplingParams,
     max_tokens: usize,
     context: Option<usize>,
@@ -461,7 +486,7 @@ fn run(
     // delta prefill keeps working).
     let memory = std::fs::read_to_string(root.join("HARNESS.md")).ok();
     let snapshot_path = root.join("session.kv");
-    let (mut generator, monitor, model_hash, passes) = build_generator(
+    let (mut generator, monitor, model_hash, passes, header) = build_generator(
         model,
         tokenizer,
         record,
@@ -482,6 +507,15 @@ fn run(
         // for the life of the process.
         alignment_out.is_some() || serve.is_some(),
     )?;
+    // The resolved configuration, recorded once. The terminal already saw it
+    // as `header.lines()` inside `build_generator`; this is the same facts
+    // through the same struct, which is the property the stage is for.
+    run_log.event(
+        "info",
+        "run.header",
+        "resolved run configuration",
+        &header.fields(),
+    );
     // Started here rather than in `build_generator`, which does not own the
     // handle the artifact is written from.
     let alignment = alignment_out.map(|_| generator.record_alignment());
@@ -623,13 +657,20 @@ fn run(
             .map(|m| m.state.lock().expect("monitor state lock").scores.clone())
             .unwrap_or_default();
         let probe_name = monitor.as_ref().map(|m| m.probe.name.clone());
-        let header = harness::alignment::Header {
-            run_id: run_id.unwrap_or("unknown"),
-            model_hash: &format!("{model_hash:016x}"),
+        // A projection of the run header, not a second build of the same
+        // facts. `alignment.rs` gains no dependency on `runheader.rs` -- it
+        // stays the narrower artifact view -- but the values come from one
+        // place. This also removes a sharp edge: `model_hash` used to be
+        // `&format!(..)`, a borrow of a temporary living on lifetime
+        // extension; it is now a plain field borrow.
+        let run_id = run_log.run_id().unwrap_or("unknown").to_string();
+        let stamp = harness::alignment::Header {
+            run_id: &run_id,
+            model_hash: &header.model_hash,
             probe: probe_name.as_deref(),
             probe_layer: monitor.as_ref().map(|m| m.probe.layer),
         };
-        match harness::alignment::write(out, &header, &a, &passes, &scores) {
+        match harness::alignment::write(out, &stamp, &a, &passes, &scores) {
             Ok(()) => runtime::status::info(&format!(
                 "Alignment: {} positions, {} passes -> {}",
                 a.rows.len(),
@@ -932,7 +973,7 @@ fn main() -> ExitCode {
         probe_out.as_deref(),
         alignment_out.as_deref(),
         interp_log.as_deref(),
-        run_log.run_id(),
+        &mut run_log,
         sampling,
         max_tokens,
         context,

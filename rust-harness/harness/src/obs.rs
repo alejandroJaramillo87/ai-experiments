@@ -100,6 +100,55 @@ fn json_str(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
 }
 
+/// The base keys every event line carries, in the order `write_event` emits
+/// them. A caller-supplied field may not displace one of these.
+///
+/// `common/obs/core.py:121-124` enforces the same rule on the Python side, and
+/// `test_a_caller_field_cannot_displace_a_base_key` asserts it there. Rust has
+/// had no such guard because `write_event` was private and all three callers
+/// were in this file -- privacy was doing the work. `event` below is public, so
+/// the rule has to be stated rather than assumed.
+const BASE_KEYS: [&str; 8] = [
+    "ts", "level", "run_id", "cli", "command", "pid", "event", "msg",
+];
+
+/// A field value for `RunLog::event`, serialized by this module.
+///
+/// Deliberately not a pre-serialized `String`, which is what `write_event`
+/// takes internally. A caller passing a bare `"gemma".to_string()` there emits
+/// `"model":gemma`, and both `read_events` and `read_runs` *skip* a line they
+/// cannot parse -- so the event would vanish with no error anywhere, which is
+/// the exact failure `schemas/obs_record.json`'s `notes.silent_skip` says the
+/// contract exists to prevent. Escaping lives in one place in this crate.
+pub enum Value {
+    Str(String),
+    Int(u64),
+    Num(f64),
+    Bool(bool),
+}
+
+impl Value {
+    /// Render as a JSON fragment.
+    ///
+    /// A non-finite float has no JSON spelling; `null` is the honest one,
+    /// since the alternative (`NaN`) is what makes a reader skip the line.
+    fn to_json(&self) -> String {
+        match self {
+            Value::Str(s) => json_str(s),
+            Value::Int(n) => n.to_string(),
+            Value::Num(f) if f.is_finite() => {
+                let s = format!("{f}");
+                match s.contains(['.', 'e', 'E']) {
+                    true => s,
+                    false => format!("{s}.0"),
+                }
+            }
+            Value::Num(_) => "null".to_string(),
+            Value::Bool(b) => b.to_string(),
+        }
+    }
+}
+
 struct Inner {
     // Held open (and flocked LOCK_SH) for the run's duration so the Python
     // retention pruner treats the file as live and skips it
@@ -188,15 +237,49 @@ impl RunLog {
         log
     }
 
+    /// Append one event with caller-supplied fields.
+    ///
+    /// The public door onto the event file. Fields are serialized here rather
+    /// than by the caller (see `Value`), and any field whose key is in
+    /// `BASE_KEYS` is skipped rather than emitted -- a duplicate key is legal
+    /// JSON whose meaning depends on which one the reader keeps, so the event
+    /// would still parse and quietly mean something else.
+    ///
+    /// Skipping rather than erroring matches this module's degradation
+    /// contract: every obs failure here is a no-op, never a run failure.
+    pub fn event(&mut self, level: &str, event: &str, msg: &str, fields: &[(&str, Value)]) {
+        let extras: Vec<(&str, String)> = fields
+            .iter()
+            .filter(|(k, _)| !BASE_KEYS.contains(k))
+            .map(|(k, v)| (*k, v.to_json()))
+            .collect();
+        self.write_event_with_msg(level, event, msg, &extras);
+    }
+
     /// Assemble and append one event line. Base keys in the shared order:
     /// ts, level, run_id, cli, command, pid, event, msg, then extras.
     /// Built by hand (not serde maps) so key order survives serialization.
     fn write_event(&mut self, level: &str, event: &str, extras: &[(&str, String)]) {
+        self.write_event_with_msg(level, event, "", extras);
+    }
+
+    /// `write_event` with the `msg` base key filled in.
+    ///
+    /// `msg` was hardcoded empty while every caller was in this file. Widening
+    /// a public emitter's surface later is the awkward direction, so `event`
+    /// takes it from the start and the existing callers keep passing "".
+    fn write_event_with_msg(
+        &mut self,
+        level: &str,
+        event: &str,
+        msg: &str,
+        extras: &[(&str, String)],
+    ) {
         let Some(inner) = self.inner.as_mut() else {
             return;
         };
         let mut line = format!(
-            "{{\"ts\":{},\"level\":{},\"run_id\":{},\"cli\":{},\"command\":{},\"pid\":{},\"event\":{},\"msg\":\"\"",
+            "{{\"ts\":{},\"level\":{},\"run_id\":{},\"cli\":{},\"command\":{},\"pid\":{},\"event\":{},\"msg\":{}",
             json_str(&format_ts(SystemTime::now())),
             json_str(level),
             json_str(&inner.run_id),
@@ -204,6 +287,7 @@ impl RunLog {
             json_str(&inner.command),
             std::process::id(),
             json_str(event),
+            json_str(msg),
         );
         for (k, v) in extras {
             line.push_str(&format!(",{}:{v}", json_str(k)));
