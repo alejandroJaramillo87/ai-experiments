@@ -1,4 +1,4 @@
-"""Extract a steering direction and export it as control-vector GGUF (W1).
+"""Extract a steering direction and export it as control-vector safetensors (W1).
 
 Thin CLI over interp.steering.{extract,export}. Runs inside the workbench
 container (bf16 substrate; GPU batch work). Exit codes: 0 success, 1 failure,
@@ -15,7 +15,10 @@ from common.output import Printer
 def configure(sub) -> None:
     p = sub.add_parser(
         "steer-extract",
-        help="extract a steering direction and export it as control-vector GGUF (W1)",
+        help=(
+            "extract a steering direction and export it as "
+            "control-vector safetensors (W1)"
+        ),
         description=__doc__,
     )
     p.add_argument("--method", choices=["repeng", "sae_row"], default="repeng")

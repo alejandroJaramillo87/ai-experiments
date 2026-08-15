@@ -4,7 +4,8 @@ method "repeng": contrastive prompt pairs through repeng's ControlVector.train
 on the bf16 HF checkpoint (the default). method "sae_row": a single feature's
 decoder row from a pretrained SAE (Gemma Scope via SAELens) placed at its
 layer, zero elsewhere. Both return the same in-memory DirectionSet; export.py
-turns it into control-vector GGUF. There is no third method: hand-rolled
+writes it as a safetensors image plus a JSON manifest beside it
+(schemas/control_vector_artifact.json). There is no third method: hand-rolled
 activation-difference extraction is what repeng already does.
 
 Extraction is batch GPU work for the workbench container (bf16 substrate

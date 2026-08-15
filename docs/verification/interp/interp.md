@@ -4,6 +4,12 @@
 
 **Entries: 5 verified, 2 blocked, 6 pending, of 13.**
 
+The 13 entries are I.1 through I.12 plus the interstitial I.9b
+("Chunked-capture crash recovery"); there is no entry numbered I.13, and none is
+missing. I.9b is numbered beside I.9 because it verifies crash recovery in the
+capture I.9 runs, so the highest entry number is one lower than the entry count.
+A tally over this file counts `Status:` lines, not entry numbers.
+
 I1 workbench, the PS1 Neuronpedia harness, the write-back path (W1 through
 W4), P4-D1 organisms, P4-D2 activation harvesting with garbage collection,
 and P4-D3 SAE training and evaluation. The interp anchor for pretrained
@@ -331,7 +337,7 @@ a scored record on disk, which holds. Task #171 owns the calibration gap.
 The reply `"2+2?\n18\n"` is a base checkpoint continuing text rather than
 answering, which is task #126, not a fault in the serving path.
 
-Status: VERIFIED 2026-08-13
+Status: VERIFIED 2026-08-14
 
 ## I.7 Probe monitor (W4)
 
@@ -398,7 +404,7 @@ miscalibrated probe described in I.6, not a monitor defect: one record, whose
 single aggregated score is above threshold. It is stated here so a later
 reader does not mistake it for a baseline.
 
-Status: VERIFIED 2026-08-13
+Status: VERIFIED 2026-08-14
 
 ## I.8 Organisms (P4-D1)
 
@@ -474,7 +480,7 @@ Caching activations: 100%|...| 3/3 [00:25<00:00,  8.46s/it]
      hooks ['model.language_model.layers.17'], 34125.6 tokens/s
 ```
 
-Status: VERIFIED
+Status: VERIFIED 2026-08-08
 
 ## I.9b Chunked-capture crash recovery (P4-D2, KB-58)
 
@@ -524,7 +530,7 @@ total. This run found a defect in the KB-58 fix itself (the interrupted
 chunk's directory was not cleared before recapture); the output above is
 from the repaired code.
 
-Status: VERIFIED
+Status: VERIFIED 2026-08-08
 
 ## I.10 Capture garbage collection (P4-D2)
 
@@ -613,7 +619,7 @@ token, and 1.173056 x 1536 = 1802 against W&B's 1938 on the training slice.
 `explained_variance` 0.3247 held-out against 0.3110 training is the expected
 small gap.
 
-Status: VERIFIED
+Status: VERIFIED 2026-08-08
 
 ## I.12 SAEBench isolated environment (P4-D3)
 
