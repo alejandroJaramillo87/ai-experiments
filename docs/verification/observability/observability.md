@@ -2,14 +2,20 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 7 verified, 0 blocked, 0 pending, of 7.**
+**Entries: 2 verified, 0 blocked, 5 pending, of 7.**
 
 Host verification for the observability stack: the logging core, traced
 dispatch, audit trace, retention, run catalog (phases A-C), and the metrics
 sink, watchdog wiring, snapshot dashboard, and live server (phase D). All of
 it passed the sandbox campaign — unit suites, cross-module integration
-through the real dispatch, and SIGKILL durability. **All seven closed on the
-workstation 2026-08-14.** The real-Chromium harness is no longer merely
+through the real dispatch, and SIGKILL durability. All seven were run on the
+workstation 2026-08-14. **Five reopened on 2026-08-15**, when each Observed
+block was read back against the clause it was meant to demonstrate: OBS-V2,
+OBS-V3, OBS-V4, OBS-V6, and OBS-V8 each show less than their expected signal
+claims. Every reopened entry keeps its 2026-08-14 output in place — the
+output is evidence of something, and deleting it would lose that — and states
+beside its status the one clause it does not cover. The real-Chromium harness
+is no longer merely
 sandbox context: it is OBS-V5 in
 [sandbox/sandbox-executable.md](../sandbox/sandbox-executable.md), verified
 the same day. The entries below were the host-only gaps: GPU sample values,
@@ -51,16 +57,17 @@ and pytest selector.
 ## What runs without the GPU
 
 The entries are not uniform in what they cost, and a session with no GPU slot
-can still close three of them. All three are closed.
+can still close three of them.
 
 - **No GPU, no shards:** OBS-V1, OBS-V4, OBS-V7. The first two are pytest
   runs whose assertion is that they execute rather than skip — torch must be
   importable, which is the host-only part. OBS-V7 drives a SIGKILL against a
-  writer and needs only a writable `/mnt/ai-data`. All three are VERIFIED as
-  of 2026-08-14.
+  writer and needs only a writable `/mnt/ai-data`. OBS-V1 and OBS-V7 are
+  VERIFIED as of 2026-08-14; OBS-V4 is PENDING, because passing is not by
+  itself the artifact claim its expected signal makes.
 - **Partly runnable ahead of a run:** OBS-V3. Its `training runs` listing and
   its `ls` of the log root work immediately; the `report --run` step consumes
-  the run OBS-V2 produces, so the entry closed only once OBS-V2 had.
+  the run OBS-V2 produces, so it comes after OBS-V2 rather than with it.
 - **GPU and shards:** OBS-V2, OBS-V6, OBS-V8. These train, so the one-GPU-
   consumer rule applies. OBS-V6 additionally needs a human at a browser.
 
@@ -165,13 +172,25 @@ $ uv run --no-sync python -m training train --config training/recipes/reference/
     tokenizer.path="$TOK" model.scratch.vocab=$VOCAB \
     run.output_root=/mnt/ai-data/training/verify/obs-run \
     schedule.total_steps=20 watchdog.enabled=true watchdog.interval_s=1.0
+$ echo "exit=$?"
 $ RUN=$(dirname "$(ls -t /mnt/ai-data/training/verify/obs-run/*/*/metrics.jsonl | head -1)")
+$ grep -h run.context /mnt/ai-data/logs/training/R-*.jsonl | tail -1
+$ jq -c 'select(.gpu_temp_c != null)' "$RUN/metrics.jsonl"
+$ jq -c 'select(.gpu_temp_c != null)' "$RUN/metrics.jsonl" | wc -l
 ```
 
 The run directory is resolved by locating `metrics.jsonl` rather than by
 globbing two levels down: `<root>/<recipe>/checkpoints` also matches
 `*/*` and sorts newer than the timestamped directory, so the positional
 glob selects the wrong one.
+
+The last three commands are what the 2026-08-14 block was missing. The
+expected signal is a claim about **every** sampler record in `metrics.jsonl`,
+so the record set has to come out of that file under a command a reader can
+see, and the count has to be printed rather than described. Piping through
+`jq -c` also keeps each record on one line, which is what the file holds:
+the earlier block's pretty-printed `run.context` could not have come from the
+`grep` above it.
 
 Observed (`TOK=HuggingFaceTB/SmolLM2-135M`, `VOCAB=49152`):
 
@@ -214,7 +233,11 @@ a 1.0-second interval yields only two ticks, so this entry confirms the
 sampler works rather than that it samples densely; a longer run would be
 needed for the latter.
 
-Status: VERIFIED 2026-08-14
+Status: PENDING (run 2026-08-14; reopened 2026-08-15 — "exit 0; every
+sampler record in `metrics.jsonl`" is unshown: no `echo "exit=$?"` output was
+pasted, the two sampler records were pasted under a prose heading rather than
+under a command reading `metrics.jsonl`, and no record count was printed, so
+"every" rests on an unbounded sample. The corrected block above prints both.)
 
 ## OBS-V3 Default log root, retention, and catalog on /mnt/ai-data
 
@@ -297,7 +320,12 @@ train at exit 130 and a validation failure at exit 1 — which is worth more
 than a clean table would have been. A catalog that only shows successes
 cannot be relied on to show a failure.
 
-Status: VERIFIED 2026-08-14
+Status: PENDING (run 2026-08-14; reopened 2026-08-15 — "report writes
+`run.html` next to the chosen run's `metrics.jsonl`" is unshown: the `ls -la
+"$RUN"/run.html` line was hand-elided to `.../run.html`, a form `ls` never
+prints, so the pasted output does not establish the directory the file
+landed in. Re-run with the path left intact, and list `metrics.jsonl`
+alongside it.)
 
 ## OBS-V4 External sinks (tensorboard, offline wandb)
 
@@ -330,7 +358,13 @@ tests/training/test_loop.py::test_tracking_writes_tensorboard_and_offline_wandb 
 Passed rather than skipped. Both optional sinks are installed on the
 workstation and wrote their artifacts; a missing wandb would have skipped.
 
-Status: VERIFIED 2026-08-14
+Status: PENDING (run 2026-08-14; reopened 2026-08-15 — "leaves
+`tensorboard/events.*` and `wandb/offline-run-*` under the run directory,
+with the jsonl sink unaffected" is unshown: the paste is one green test name,
+which demonstrates that the test ran rather than skipped and nothing about
+the two globs or the third property. Re-run with an `ls -R` of the run
+directory the test writes, or record which assertions in
+`test_tracking_writes_tensorboard_and_offline_wandb` cover each clause.)
 
 ## OBS-V6 Live dashboard against an in-flight run
 
@@ -403,7 +437,12 @@ Run `R-20260815-005434-9ab66c`, `scratch-2L-64d`, 20,000 steps, served at
 The last signal, the run finishing while the page stays open without
 errors, was observed as part of the same session.
 
-Status: VERIFIED 2026-08-14
+Status: PENDING (run 2026-08-14; reopened 2026-08-15 — "Ctrl-C on the server
+exits 0" is never addressed anywhere in the block, and the two screenshots
+the zoom and extension evidence rests on are cited with no path and no link,
+so no later auditor can retrieve them. Re-run recording the server's exit
+status after SIGINT, and commit the screenshots under a stated path or state
+that they were not retained.)
 
 ### Findings that are not this entry's criterion
 
@@ -429,7 +468,8 @@ this run emitted was `info`. Nothing in the observability system writes at
 `debug` level today, so the option filters a level that does not exist.
 
 **Why a human found all three.** `scripts/verify/obs_browser/check.mjs`
-makes thirteen assertions and none of them touches zoom, marker density,
+makes ten assertions — seven on the snapshot page, three on the live one —
+and none of them touches zoom, marker density,
 or level-filter behavior beyond the `warning` case. The one property
 OBS-V6 names explicitly — that a zoom survives incoming data — has no
 automated coverage at all. Extending that harness is worth more than the
@@ -550,10 +590,30 @@ measured. Timings go to a file, because `/usr/bin/time` writes to stderr
 and the run's own output has to be discarded:
 
 ```bash
-$ /usr/bin/time -f "$arm run$i %e s" -a -o /tmp/obs-overhead.txt \
-    uv run --no-sync python -m training train ... \
-    || echo "FAILED $arm run$i" >> /tmp/obs-overhead.txt
+$ rm -f /tmp/obs-overhead.txt
+$ for i in 1 2 3 4 5 6 7; do
+    for arm in on off; do
+      if [ "$arm" = off ]; then SINK=false; else SINK=true; fi
+      /usr/bin/time -f "$arm run$i %e s" -a -o /tmp/obs-overhead.txt \
+        uv run --no-sync python -m training train \
+          --config training/recipes/reference/tiny-e2e.yaml \
+          data.source=/mnt/ai-data/training/shards/verify-small \
+          tokenizer.path=HuggingFaceTB/SmolLM2-135M model.scratch.vocab=49152 \
+          checkpoint.interval_steps=200 \
+          run.output_root=/mnt/ai-data/training/verify/obs-overhead-$arm \
+          schedule.total_steps=200 tracking.metrics_jsonl=$SINK >/dev/null \
+        || echo "FAILED $arm run$i" >> /tmp/obs-overhead.txt
+    done
+  done
+$ cat /tmp/obs-overhead.txt
 ```
+
+The loop is what makes the timings comparable: the arms alternate within each
+iteration, so a thermal drift or a background process biases both arms
+equally rather than whichever arm ran last. `/usr/bin/time -a` appends, so the
+file holds **one line per run — fourteen lines, in execution order**,
+alternating `on run1`, `off run1`, `on run2`, and so on. Any other shape in
+the paste means the file was edited before it was pasted.
 
 The `|| echo FAILED` is not decoration. An earlier attempt produced
 fourteen plausible timings from fourteen runs that had all exited 1 on a
@@ -614,7 +674,13 @@ training on a real model. Re-run this against a Phase 1 recipe when one
 exists; until then, do not cite this entry as evidence about production
 throughput.
 
-Status: VERIFIED 2026-08-14
+Status: PENDING (run 2026-08-14; reopened 2026-08-15 — the pasted `cat
+/tmp/obs-overhead.txt` cannot be that file's contents: the harness appends
+one line per run, fourteen lines in execution order, and the paste is seven
+two-column rows grouped by arm, so it was reformatted by hand and the
+execution order and any `FAILED` line placement are no longer recoverable.
+The medians and spreads above are derived from it and inherit the doubt.
+Re-run the loop above and paste the file unedited.)
 
 ## Moved to another tier
 
@@ -623,6 +689,29 @@ Status: VERIFIED 2026-08-14
 `common/obs/viewer.js` rendering in a real browser — depends on a browser and not on this
 workstation, so running it on the RTX 5090 proved nothing that running it in a container
 does not. The identifier is not reused, and the numbering below keeps its gap.
+
+**OBS-V9, retention pruning an aged file while sparing a live one**, is also
+[sandbox/sandbox-executable.md](../sandbox/sandbox-executable.md), at the `OBS-V9` heading
+below OBS-V5. It needs a `mktemp -d` log root and two CLI invocations, and nothing about
+the property depends on this workstation. It is recorded here because retention is one of
+the phases this runbook covers: a reader auditing retention coverage against this document
+alone would otherwise conclude the operator-facing prune is unverified, when it is verified
+in the other tier.
+
+## Covered by the rust-harness runbooks
+
+Three entries outside this document verify parts of the same tree, and until now this
+runbook cited none of them. A reader deciding whether `common/obs` is covered needs them,
+because each exercises a producer or a consumer this campaign's own entries do not reach.
+
+| Entry | Runbook | What it covers here |
+|-------|---------|---------------------|
+| RH.13 | [rust-harness/rust-harness.md](../rust-harness/rust-harness.md), `docs/verification/rust-harness/rust-harness.md:1694` | A second writer of the shared obs contract: the Rust harness emits `${OBS_LOG_DIR}/harness/<run_id>.jsonl` and a catalog row through `common/obs/catalog.py`. |
+| RHX.4 | [rust-harness/rust-harness-ux.md](../rust-harness/rust-harness-ux.md), `docs/verification/rust-harness/rust-harness-ux.md:190` | The training dashboard (`common/obs/dashboard.py`, `common/obs/viewer.js`) rendering a harness `metrics.jsonl` — the same reader OBS-V6 drives, against a non-training producer. |
+| RHX.7 | [rust-harness/rust-harness-ux.md](../rust-harness/rust-harness-ux.md), `docs/verification/rust-harness/rust-harness-ux.md:327` | One catalog across the workspace: five harness binaries writing run records that `common/obs/runs.py` lists beside the training runs OBS-V3 checks. |
+
+Line numbers are accurate as of 2026-08-15; the entry identifiers are the durable
+reference.
 
 ## Deferred by design (not entries)
 

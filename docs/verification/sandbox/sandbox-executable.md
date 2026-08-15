@@ -57,6 +57,12 @@ $ PW_CHROMIUM=$(ls -d ~/.cache/ms-playwright/chromium-*/chrome-linux/chrome | he
 
 Expected signal: exit 0 and `ALL CHECKS PASSED`; all snapshot and live checks print `[OK]`.
 
+`check.mjs` prints eleven `[OK]` lines of its own — ten assertions (seven on the snapshot
+page, three on the live one) plus the fixture-build line — and `python -m training report`,
+which it calls to build the snapshot, prints a twelfth. Twelve `[OK]` lines is therefore the
+whole of a passing run, and the count is stated here so that a short paste is visible as
+one.
+
 Observed:
 
 ```
@@ -93,15 +99,18 @@ needs no torch.
 Re-run on the workstation the same day, after `npx playwright@1.54.1 install chromium`
 placed a version-matched build at `~/.cache/ms-playwright/chromium-1181`, with
 `PW_CHROMIUM` set explicitly because the autodetect scans only `/opt/pw-browsers`. All
-thirteen checks printed `[OK]` and the run ended `ALL CHECKS PASSED`, identical to the
+twelve `[OK]` lines printed and the run ended `ALL CHECKS PASSED`, identical to the
 container output above.
 
-That second run is the stronger of the two. Build 1181 is the revision
-`playwright-core@1.54.1` expects; the container's 1194 is a pairing nothing had
-exercised, and because `check.mjs` passes `executablePath` explicitly, playwright never
-validates the revision — a CDP mismatch would surface as a launch timeout rather than a
-version error. Two Chromium builds agreeing also separates `viewer.js` behaving
-correctly from one browser happening to tolerate it.
+**No output was pasted for that second run**, so the paragraph below argues from a run
+this document does not evidence. Build 1181 is the revision `playwright-core@1.54.1`
+expects; the container's 1194 is a pairing nothing had exercised, and because `check.mjs`
+passes `executablePath` explicitly, playwright never validates the revision — a CDP
+mismatch would surface as a launch timeout rather than a version error. Two Chromium
+builds agreeing would also separate `viewer.js` behaving correctly from one browser
+happening to tolerate it. The entry rests on the container run, whose output is above;
+paste the 1181 output here to make the second run part of the evidence rather than a
+claim about it.
 
 Status: VERIFIED 2026-08-14
 
