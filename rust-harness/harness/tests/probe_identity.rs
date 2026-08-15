@@ -128,6 +128,12 @@ impl Run {
 /// missing permissions.yaml routes any tool call to the interactive prompt,
 /// which must not block the test.
 fn run_with_probe(model_hash: &str) -> Run {
+    run_with_probe_args(model_hash, &[])
+}
+
+/// `run_with_probe` with `extra` appended to the argument list, for the cases
+/// that need a flag the identity tests do not.
+fn run_with_probe_args(model_hash: &str, extra: &[&std::ffi::OsStr]) -> Run {
     let dir = tempfile::tempdir().unwrap();
     let probe = write_probe(dir.path(), model_hash);
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_harness"))
@@ -136,6 +142,7 @@ fn run_with_probe(model_hash: &str) -> Run {
         .arg(fixture_model())
         .arg("--probe")
         .arg(&probe)
+        .args(extra)
         .arg("--max-tokens")
         .arg("1")
         .arg("say ok")
@@ -188,6 +195,35 @@ fn a_probe_recording_a_different_model_hash_is_refused_naming_both_hashes() {
     assert!(!err.contains(KV_CACHE_LINE), "{err}");
     assert!(!run.root.join("session.kv").exists());
     assert!(!run.root.join("probe-flags.jsonl").exists());
+}
+
+/// The default path is asserted three times above, so the flag that overrides
+/// it is the untested half: a run that parsed `--probe-out` and wrote to the
+/// default anyway would leave every one of them passing. Both directions are
+/// asserted here, because the file appearing where it was asked for says
+/// nothing on its own if a copy also appears where it was not.
+#[test]
+fn probe_out_puts_the_flag_file_where_it_names_and_leaves_the_default_unwritten() {
+    let dir = tempfile::tempdir().unwrap();
+    let named = dir.path().join("named-flags.jsonl");
+    let run = run_with_probe_args("unknown", &["--probe-out".as_ref(), named.as_os_str()]);
+    let err = run.stderr();
+    assert!(run.output.status.success(), "{err}");
+    assert!(
+        named.is_file(),
+        "--probe-out named {} and nothing was written there: {err}",
+        named.display()
+    );
+    assert!(
+        !run.root.join("probe-flags.jsonl").exists(),
+        "the default path was written as well as {}",
+        named.display()
+    );
+    // The report names the file it wrote, so a script reading stderr is
+    // pointed at the same path the flag asked for.
+    assert!(err.contains(&named.display().to_string()), "{err}");
+    // The directory is removed here, after the run has been read.
+    drop(dir);
 }
 
 #[test]
