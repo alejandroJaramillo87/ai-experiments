@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -115,3 +118,41 @@ def test_the_description_names_the_catalog_it_reads(cli):
     duplication this stage removed.
     """
     assert f"/{cli}/runs.jsonl" in runs.describe(cli)
+
+
+# The tests above call main() in-process, which leaves the last link untested:
+# `python -m common.obs.runs --cli harness` is the documented spelling for
+# browsing the rust harness catalog, and it depends on the module being
+# runnable and on the __main__ guard forwarding main()'s return as the exit
+# status. The two below drive that spelling as a subprocess.
+
+
+def _run_module(log_root: Path, *argv: str) -> subprocess.CompletedProcess[str]:
+    env = {**os.environ, "OBS_LOG_DIR": str(log_root)}
+    return subprocess.run(
+        [sys.executable, "-m", "common.obs.runs", *argv],
+        cwd=Path(__file__).parents[2],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+def test_module_entry_point_emits_only_json_on_stdout(log_root):
+    """The documented harness spelling, end to end through the __main__ guard.
+
+    stdout must carry the payload and nothing else, per the Python output
+    style guide, so the command composes with jq.
+    """
+    result = _run_module(log_root, "--cli", "harness", "--json", "-n", "0")
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) and len(json.loads(result.stdout)) == SAMPLE_ROWS
+    assert result.stderr == ""
+
+
+def test_module_entry_point_forwards_the_usage_exit_code(log_root):
+    """Exit 2 for bad arguments has to survive sys.exit(main())."""
+    result = _run_module(log_root, "--cli", "nosuchcli")
+    assert result.returncode == 2
+    assert result.stdout == ""

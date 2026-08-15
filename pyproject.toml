@@ -266,10 +266,14 @@ pythonpath = ["tests/training"]
 # the workstation opts in with -m hw_smoke / -m hw_full (a command-line -m
 # replaces this one). Every tests/hardware/ test carries exactly one tier
 # marker and at least one resource marker.
-addopts = "-m 'not hw_smoke and not hw_full'"
+# Every hw_* marker below must appear in this expression: a tier marker absent
+# from it runs by default, so a sandbox with no hardware fails on collection
+# rather than deselecting. tests/hardware/test_markers.py enforces the pairing.
+addopts = "-m 'not hw_smoke and not hw_full and not hw_e4b'"
 markers = [
     "hw_smoke: workstation smoke tier — under five minutes total, no model downloads, temporary-directory writes only; the before-every-session gate",
     "hw_full: workstation full tier — may allocate near-capacity VRAM/RAM/disk and load real models; run per verification phase and after environment changes",
+    "hw_e4b: needs the real Gemma 4 E4B checkpoint on disk rather than a transcript or fixture; a provisioning precondition carried alongside a tier marker, deselected by default because no sandbox has the checkpoint",
     "gpu: exercises the RTX 5090 (CUDA, VRAM, GPU-adjacent extensions)",
     "cpu: exercises the Ryzen 9950X (AVX-512, CPUAdam, affinity)",
     "ram: exercises host memory (huge pages, pinned buffers, replay residency)",

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from common.obs import core
-from common.obs.retention import prune
+from common.obs.retention import _is_live, prune
 
 # comfortably past the default 30-day window
 OLD_AGE_S = 40 * 86400
@@ -208,4 +208,69 @@ def test_a_live_run_in_another_process_survives_a_startup_prune(tmp_path):
 
     # the writer is gone, so the same file is now an ordinary aged candidate
     prune(log_dir / "training", 30)
+    assert not path.exists()
+
+
+# The test above crosses a process boundary but not a language one: both the
+# writer and the pruner are common/obs. The rust harness writes the same event
+# files under ${OBS_LOG_DIR}/harness/ and takes the same advisory lock from
+# rust-harness/obs/src/lib.rs (the only unsafe block in that workspace, a
+# libc::flock on the descriptor RunLog keeps open for the life of the run).
+# Each side unit-tests its own half; the pairing is what neither covers.
+
+RUST_STYLE_WRITER = """
+import fcntl, os, sys, time
+path = sys.argv[1]
+os.makedirs(os.path.dirname(path), exist_ok=True)
+# RunLog::begin_at: create-or-append, then LOCK_SH on the descriptor it keeps.
+fd = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_APPEND, 0o644)
+os.write(fd, b'{"event": "cmd.start", "cli": "harness"}\\n')
+fcntl.flock(fd, fcntl.LOCK_SH)
+# a long-idle harness run: mtime past any window, descriptor still open
+old = time.time() - 90 * 86400
+os.utime(path, (old, old))
+print("ready", flush=True)
+sys.stdin.readline()
+"""
+
+
+def test_prune_spares_a_harness_event_file_locked_the_rust_way(tmp_path):
+    """The cross-language case: a harness-side lock against a Python prune.
+
+    The subprocess *emulates* the Rust writer rather than being it -- it opens
+    and flocks the event file exactly as RunLog::begin_at does, but in Python,
+    because building the rust workspace is not a precondition of this suite.
+    What that still exercises is the only part that crosses the boundary: the
+    advisory LOCK_SH protocol itself, and common/obs/retention.py's reading of
+    it on a file under the harness catalog's directory and name pattern. A
+    change to either side's lock mode, or to the pruner's R-*.jsonl glob,
+    turns this red.
+    """
+    import subprocess
+    import sys
+
+    log_dir = tmp_path / "obs-logs" / "harness"
+    # mint_run_id()'s format, which the pruner's glob has to match
+    path = log_dir / "R-20250101-000000-a1b2c3.jsonl"
+    writer = subprocess.Popen(
+        [sys.executable, "-c", RUST_STYLE_WRITER, str(path)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert writer.stdout.readline().strip() == "ready"
+        assert path.exists()
+        assert path.stat().st_mtime < time.time() - 30 * 86400
+        assert _is_live(path), "the harness lock must read as live to the pruner"
+
+        prune(log_dir, 30)
+        assert path.exists(), "a live harness run must survive a Python prune"
+    finally:
+        writer.stdin.close()
+        writer.wait(timeout=10)
+
+    # the harness process is gone, so the lock is released with its descriptor
+    assert not _is_live(path)
+    prune(log_dir, 30)
     assert not path.exists()

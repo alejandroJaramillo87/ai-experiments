@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from common.obs import catalog
 from interp import cli
 from interp.commands import (
     harvest,
@@ -16,6 +17,7 @@ from interp.commands import (
     organism,
     probe_capture,
     probe_eval,
+    probe_export,
     probe_monitor,
     probe_train,
     sae_eval,
@@ -60,6 +62,7 @@ CASES = [
     ),
     (["probe-train", "--capture", "c", "--name", "n"], probe_train.cmd),
     (["probe-eval", "--probe", "p", "--label-name", "l"], probe_eval.cmd),
+    (["probe-export", "--probe", "p"], probe_export.cmd),
     (
         ["probe-monitor", "--probes", "a,b"],
         probe_monitor.cmd,
@@ -69,6 +72,9 @@ CASES = [
     (["steer-extract", "--model", "m", "--out", "o"], steer_extract.cmd),
     (["steer-scorecard", "--vector", "v", "--attribute", "a"], steer_scorecard.cmd),
     (["smoke"], smoke_test.cmd),
+    # `runs` is absent here on purpose: common/obs/runs.py binds it to a
+    # closure over the CLI name, so there is no module-level function to
+    # compare identity against. It is wired below instead.
 ]
 
 
@@ -78,6 +84,38 @@ CASES = [
 def test_subcommand_parses_to_handler(argv, func):
     args = cli.build_parser().parse_args(argv)
     assert args.func is func
+
+
+def test_runs_parses_its_four_selection_flags():
+    """The shared runs surface reaches this CLI with all four flags.
+
+    catalog.run_command reads limit, failed, all, and json off the namespace
+    unconditionally, so a flag missing from the interp registration is an
+    AttributeError at call time rather than a parse error.
+    """
+    args = cli.build_parser().parse_args(["runs"])
+    assert (args.limit, args.failed, args.all, args.json) == (20, False, False, False)
+    args = cli.build_parser().parse_args(
+        ["runs", "-n", "5", "--failed", "--all", "--json"]
+    )
+    assert (args.limit, args.failed, args.all, args.json) == (5, True, True, True)
+
+
+def test_runs_is_a_viewer_and_reads_the_interp_catalog(monkeypatch):
+    """Two contracts the closure carries: which catalog, and no pruning.
+
+    obs_retention=False is what stops the browser deleting the event files of
+    the runs it lists; the bound CLI name is what keeps it off the training
+    and harness catalogs.
+    """
+    seen = {}
+    monkeypatch.setattr(
+        catalog, "run_command", lambda cli_name, args: seen.setdefault("cli", cli_name)
+    )
+    args = cli.build_parser().parse_args(["runs"])
+    assert args.obs_retention is False
+    args.func(args)
+    assert seen["cli"] == "interp"
 
 
 def test_missing_subcommand_is_usage_error():
