@@ -17,7 +17,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{ensure, Context, Result};
+use runtime::cli::{Flag, Kind, Spec};
 
 use runtime::model::cpu::{AttentionRow, AttentionTap, CpuModel};
 use runtime::model::Model;
@@ -233,45 +234,113 @@ fn parse_indices(arg: &str, what: &str) -> Result<Vec<usize>> {
     Ok(idx)
 }
 
+const SPEC: Spec = Spec {
+    program: "attention-capture",
+    summary: "Write post-softmax attention weights for the requested layers and query\n\
+              heads over one prompt.",
+    positionals: "",
+    required: &["--model", "--prompt", "--layers", "--heads", "--out"],
+    flags: &[
+        Flag {
+            name: "--help",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "-h",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "--model",
+            kind: Kind::Value("<checkpoint-dir>"),
+            help: "the checkpoint to capture from; required",
+        },
+        Flag {
+            name: "--prompt",
+            kind: Kind::Value("<text>"),
+            help: "the single prompt the attention is captured over; required",
+        },
+        Flag {
+            name: "--layers",
+            kind: Kind::Value("<l0,l1,...>"),
+            help: "decoder layers to capture, comma separated and distinct; required",
+        },
+        Flag {
+            name: "--heads",
+            kind: Kind::Value("<h0,h1,...>"),
+            help: "query heads to capture, comma separated and distinct; required",
+        },
+        Flag {
+            name: "--out",
+            kind: Kind::Value("<dir>"),
+            help: "directory to write the attention shards and manifest into; required",
+        },
+        Flag {
+            name: "--text-only",
+            kind: Kind::Bare,
+            help: "treat a multimodal checkpoint as its text tower",
+        },
+        Flag {
+            name: "--single-thread",
+            kind: Kind::Bare,
+            help: "run the row split on one thread; results are bit-identical at every width",
+        },
+    ],
+};
+
 fn main() -> ExitCode {
-    const USAGE: &str = "usage: attention-capture --model <checkpoint-dir> \
-         --prompt <text> --layers <l0,l1,...> --heads <h0,h1,...> --out <dir> \
-         [--text-only] [--single-thread]";
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let get = |flag: &str| -> Option<String> {
-        args.iter()
-            .position(|a| a == flag)
-            .and_then(|i| args.get(i + 1).cloned())
+    if runtime::cli::handled_help(&SPEC, &args) {
+        return ExitCode::SUCCESS;
+    }
+    let (mut model, mut prompt, mut layers_arg, mut heads_arg, mut out) =
+        (None, None, None, None, None);
+    let parsed = {
+        let mut slots: [(&'static str, &mut Option<String>); 5] = [
+            ("--model", &mut model),
+            ("--prompt", &mut prompt),
+            ("--layers", &mut layers_arg),
+            ("--heads", &mut heads_arg),
+            ("--out", &mut out),
+        ];
+        match runtime::cli::extract(&SPEC, args, &mut slots) {
+            Ok(p) => p,
+            Err(e) => return runtime::cli::usage_error(&SPEC, &e),
+        }
     };
-    let parsed: Result<()> = (|| {
-        let (Some(model), Some(prompt), Some(out), Some(layers_arg), Some(heads_arg)) = (
-            get("--model").map(PathBuf::from),
-            get("--prompt"),
-            get("--out").map(PathBuf::from),
-            get("--layers"),
-            get("--heads"),
-        ) else {
-            bail!("missing required flag");
-        };
-        let layers = parse_indices(&layers_arg, "layers")?;
-        let heads = parse_indices(&heads_arg, "heads")?;
-        let text_only = args.iter().any(|a| a == "--text-only");
-        let single_thread = args.iter().any(|a| a == "--single-thread");
-        run(
-            &model,
-            &prompt,
-            &layers,
-            &heads,
-            &out,
-            text_only,
-            single_thread,
-        )
-    })();
-    match parsed {
+    if let Some(extra) = parsed.rest.first() {
+        return runtime::cli::usage_error(&SPEC, &format!("Unexpected argument: {extra}"));
+    }
+    // A command line that cannot be acted on is exit 2 through `usage_error`; a
+    // capture that was asked for correctly and then failed is exit 1 below.
+    // This binary used to return 1 for both.
+    if let Some(absent) = runtime::cli::missing_required(&SPEC, &parsed) {
+        return runtime::cli::usage_error(&SPEC, &absent);
+    }
+    let expect = |v: Option<String>| v.expect("checked by missing_required above");
+    let indices = |arg: String, what: &'static str| match parse_indices(&arg, what) {
+        Ok(v) => Ok(v),
+        Err(e) => Err(format!("--{what}: {e:#}")),
+    };
+    let (layers, heads) = match indices(expect(layers_arg), "layers")
+        .and_then(|l| indices(expect(heads_arg), "heads").map(|h| (l, h)))
+    {
+        Ok(pair) => pair,
+        Err(e) => return runtime::cli::usage_error(&SPEC, &e),
+    };
+    match run(
+        &PathBuf::from(expect(model)),
+        &expect(prompt),
+        &layers,
+        &heads,
+        &PathBuf::from(expect(out)),
+        parsed.has("--text-only"),
+        parsed.has("--single-thread"),
+    ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             runtime::status::error(&format!("Attention capture failed: {e:#}"));
-            runtime::status::plain(USAGE);
             ExitCode::from(1)
         }
     }
@@ -280,6 +349,11 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_flag_table_is_well_formed() {
+        SPEC.check().expect("this binary's own flag table");
+    }
 
     #[test]
     fn parse_indices_rejects_a_repeat_and_names_it() {

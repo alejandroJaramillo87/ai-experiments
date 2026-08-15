@@ -16,7 +16,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{ensure, Context, Result};
+use runtime::cli::{Flag, Kind, Spec};
 use runtime::digest::sha256_hex;
 
 use runtime::model::cpu::{CpuModel, LastRowTap};
@@ -254,36 +255,100 @@ fn parse_layers(arg: &str) -> Result<Vec<usize>> {
     Ok(layers)
 }
 
+const SPEC: Spec = Spec {
+    program: "activation-capture",
+    summary: "Write last-token residual activations for the requested layers in the\n\
+              interp capture shard format.",
+    positionals: "",
+    required: &["--model", "--dataset", "--layers", "--out"],
+    flags: &[
+        Flag {
+            name: "--help",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "-h",
+            kind: Kind::Bare,
+            help: "print this help and exit",
+        },
+        Flag {
+            name: "--model",
+            kind: Kind::Value("<checkpoint-dir>"),
+            help: "the checkpoint to capture from; required",
+        },
+        Flag {
+            name: "--dataset",
+            kind: Kind::Value("<examples.jsonl>"),
+            help: "one JSON object per line, each with a text field and a label; required",
+        },
+        Flag {
+            name: "--layers",
+            kind: Kind::Value("<l0,l1,...>"),
+            help: "decoder layers to tap, comma separated and distinct; required",
+        },
+        Flag {
+            name: "--out",
+            kind: Kind::Value("<dir>"),
+            help:
+                "capture directory to write shards, examples.jsonl and manifest.json into; required",
+        },
+        Flag {
+            name: "--text-only",
+            kind: Kind::Bare,
+            help: "treat a multimodal checkpoint as its text tower",
+        },
+        Flag {
+            name: "--single-thread",
+            kind: Kind::Bare,
+            help: "run the row split on one thread; results are bit-identical at every width",
+        },
+    ],
+};
+
 fn main() -> ExitCode {
-    const USAGE: &str = "usage: activation-capture --model <checkpoint-dir> \
-         --dataset <examples.jsonl> --layers <l0,l1,...> --out <dir> [--text-only] [--single-thread]";
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let get = |flag: &str| -> Option<String> {
-        args.iter()
-            .position(|a| a == flag)
-            .and_then(|i| args.get(i + 1).cloned())
+    if runtime::cli::handled_help(&SPEC, &args) {
+        return ExitCode::SUCCESS;
+    }
+    let (mut model, mut dataset, mut layers_arg, mut out) = (None, None, None, None);
+    let parsed = {
+        let mut slots: [(&'static str, &mut Option<String>); 4] = [
+            ("--model", &mut model),
+            ("--dataset", &mut dataset),
+            ("--layers", &mut layers_arg),
+            ("--out", &mut out),
+        ];
+        match runtime::cli::extract(&SPEC, args, &mut slots) {
+            Ok(p) => p,
+            Err(e) => return runtime::cli::usage_error(&SPEC, &e),
+        }
     };
-    let parsed: Result<()> = (|| {
-        let model = get("--model").map(PathBuf::from);
-        let dataset = get("--dataset").map(PathBuf::from);
-        let out = get("--out").map(PathBuf::from);
-        let layers_arg = get("--layers");
-        let (Some(model), Some(dataset), Some(out), Some(layers_arg)) =
-            (model, dataset, out, layers_arg)
-        else {
-            bail!("missing required flag");
-        };
-        let layers = parse_layers(&layers_arg)?;
-        // Bare presence flag, unlike the four above, which take a value.
-        let text_only = args.iter().any(|a| a == "--text-only");
-        let single_thread = args.iter().any(|a| a == "--single-thread");
-        run(&model, &dataset, &layers, &out, text_only, single_thread)
-    })();
-    match parsed {
+    if let Some(extra) = parsed.rest.first() {
+        return runtime::cli::usage_error(&SPEC, &format!("Unexpected argument: {extra}"));
+    }
+    // Two failure kinds, two exit codes. A command line that cannot be acted on
+    // is exit 2 through `usage_error`; a capture that was asked for correctly
+    // and then failed is exit 1 below. This binary used to return 1 for both.
+    if let Some(absent) = runtime::cli::missing_required(&SPEC, &parsed) {
+        return runtime::cli::usage_error(&SPEC, &absent);
+    }
+    let expect = |v: Option<String>| v.expect("checked by missing_required above");
+    let layers = match parse_layers(&expect(layers_arg)) {
+        Ok(l) => l,
+        Err(e) => return runtime::cli::usage_error(&SPEC, &format!("--layers: {e:#}")),
+    };
+    match run(
+        &PathBuf::from(expect(model)),
+        &PathBuf::from(expect(dataset)),
+        &layers,
+        &PathBuf::from(expect(out)),
+        parsed.has("--text-only"),
+        parsed.has("--single-thread"),
+    ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             runtime::status::error(&format!("Capture failed: {e:#}"));
-            runtime::status::plain(USAGE);
             ExitCode::from(1)
         }
     }
@@ -292,6 +357,11 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_flag_table_is_well_formed() {
+        SPEC.check().expect("this binary's own flag table");
+    }
 
     #[test]
     fn parse_layers_rejects_a_repeated_layer_and_names_it() {

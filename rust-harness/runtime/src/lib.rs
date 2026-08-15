@@ -27,6 +27,7 @@
 
 pub mod align;
 pub mod checkpoint;
+pub mod cli;
 pub mod conformance;
 pub mod digest;
 pub mod envelope;
