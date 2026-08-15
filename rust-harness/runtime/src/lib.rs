@@ -41,6 +41,7 @@ pub mod pyenv;
 pub mod reference;
 pub mod sampler;
 pub mod session;
+pub mod status;
 pub mod synth;
 pub mod tensor;
 pub mod testlog;
