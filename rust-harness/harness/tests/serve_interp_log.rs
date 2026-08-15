@@ -80,8 +80,61 @@ fn free_port() -> u16 {
         .port()
 }
 
-fn request(port: u16, method: &str, path: &str, body: Option<&str>) -> String {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+/// A spawned harness that dies with the test, however the test ends.
+///
+/// `std::process::Child` does not kill on drop, and every assertion below runs
+/// between the spawn and the explicit kill. A tripped assertion therefore used
+/// to orphan a server holding the fixture model, and orphans accumulate: each
+/// one competes for the cores the next run needs to answer /v1/health inside
+/// its deadline, so one failure here made the next failure likelier. That is a
+/// feedback loop rather than flakiness, and it cost four sessions before the
+/// cause was the process table rather than the code under test.
+struct Server {
+    child: std::process::Child,
+    port: u16,
+}
+
+impl Server {
+    /// Spawn the binary with `--model` and `--serve` already supplied, plus
+    /// whatever the caller adds. stderr is discarded rather than piped: nothing
+    /// reads it, and a full pipe would block the server mid-request.
+    fn spawn(dir: &Path, extra: &[&std::ffi::OsStr]) -> Server {
+        let port = free_port();
+        let child = std::process::Command::new(env!("CARGO_BIN_EXE_harness"))
+            .current_dir(dir)
+            .arg("--model")
+            .arg(fixture_model())
+            .args(extra)
+            .arg("--serve")
+            .arg(port.to_string())
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn harness");
+        Server { child, port }
+    }
+
+    /// Stop the server. Idempotent, so a test may end the process at the point
+    /// its assertions need it dead and still leave the drop guard in place.
+    fn kill(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        self.kill();
+    }
+}
+
+/// One request, with the transport errors returned rather than panicked on.
+///
+/// Separate from `request` because a server that is still starting refuses or
+/// resets a connection, and during startup that is the expected answer rather
+/// than a failure.
+fn try_request(port: u16, method: &str, path: &str, body: Option<&str>) -> std::io::Result<String> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     let head = match body {
         Some(b) => format!(
             "{method} {path} HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\n\r\n{b}",
@@ -89,30 +142,45 @@ fn request(port: u16, method: &str, path: &str, body: Option<&str>) -> String {
         ),
         None => format!("{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"),
     };
-    stream.write_all(head.as_bytes()).expect("write request");
-    stream.flush().unwrap();
+    stream.write_all(head.as_bytes())?;
+    stream.flush()?;
     let mut out = String::new();
-    stream.read_to_string(&mut out).expect("read response");
-    out
+    stream.read_to_string(&mut out)?;
+    Ok(out)
+}
+
+/// One request against a server already known to be up, where a transport
+/// error is a test failure.
+fn request(port: u16, method: &str, path: &str, body: Option<&str>) -> String {
+    try_request(port, method, path, body).expect("request")
 }
 
 /// Poll /v1/health until it answers. Loading the fixture checkpoint is fast,
 /// but not instant, and a fixed sleep is either flaky or slow.
-fn wait_healthy(port: u16, child: &mut std::process::Child) {
+///
+/// A transport error retries rather than failing. The loop used to probe with
+/// a throwaway `TcpStream::connect` and then issue the real request over a
+/// second connection, which asks the wrong question: a listener that accepted
+/// one connection a moment ago need not accept the next, so the request could
+/// be refused or reset while the server was still coming up. That raced at
+/// about one run in five, and it presented as an unrelated test being flaky
+/// under load, because load is what decides how often the race is lost.
+fn wait_healthy(server: &mut Server) {
+    let port = server.port;
     let deadline = Instant::now() + Duration::from_secs(60);
     while Instant::now() < deadline {
-        if let Ok(Some(status)) = child.try_wait() {
+        if let Ok(Some(status)) = server.child.try_wait() {
             panic!("harness exited before serving: {status}");
         }
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            let response = request(port, "GET", "/v1/health", None);
+        if let Ok(response) = try_request(port, "GET", "/v1/health", None) {
             if response.contains(" 200 ") {
                 return;
             }
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    let _ = child.kill();
+    // No kill here: the drop guard runs on the panic below, which is also what
+    // covers every assertion the callers make after this returns.
     panic!("harness never answered /v1/health on {port}");
 }
 
@@ -133,33 +201,29 @@ fn every_served_request_lands_in_the_interp_log_with_its_probe_scores() {
     // observable from the file.
     let probe = write_probe(dir.path(), "unknown", 0.0);
     let logs = dir.path().join("logs");
-    let port = free_port();
 
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_harness"))
-        .current_dir(dir.path())
-        .arg("--model")
-        .arg(fixture_model())
-        .arg("--probe")
-        .arg(&probe)
-        .arg("--interp-log")
-        .arg(&logs)
-        .arg("--serve")
-        .arg(port.to_string())
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .expect("spawn harness");
+    let mut server = Server::spawn(
+        dir.path(),
+        &[
+            "--probe".as_ref(),
+            probe.as_os_str(),
+            "--interp-log".as_ref(),
+            logs.as_os_str(),
+        ],
+    );
+    let port = server.port;
 
-    wait_healthy(port, &mut child);
+    wait_healthy(&mut server);
     for text in ["first question", "second question"] {
         let response = chat(port, text);
         assert!(response.contains(" 200 "), "chat failed: {response}");
     }
     // Killed, not signalled gracefully: this is how the service actually
     // ends, and the records must already be on disk. A writer that flushed
-    // at shutdown would pass a gentler test and lose every record here.
-    child.kill().expect("kill harness");
-    let _ = child.wait();
+    // at shutdown would pass a gentler test and lose every record here. The
+    // kill is explicit for that reason -- the drop guard would run too late,
+    // after the assertions that read the file.
+    server.kill();
 
     let day_files: Vec<PathBuf> = std::fs::read_dir(logs.join("harness"))
         .expect("log directory")
@@ -228,21 +292,10 @@ fn every_served_request_lands_in_the_interp_log_with_its_probe_scores() {
 #[test]
 fn serving_without_the_flag_writes_no_log() {
     let dir = tempfile::tempdir().unwrap();
-    let port = free_port();
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_harness"))
-        .current_dir(dir.path())
-        .arg("--model")
-        .arg(fixture_model())
-        .arg("--serve")
-        .arg(port.to_string())
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .expect("spawn harness");
-    wait_healthy(port, &mut child);
-    assert!(chat(port, "hello").contains(" 200 "));
-    child.kill().expect("kill harness");
-    let _ = child.wait();
+    let mut server = Server::spawn(dir.path(), &[]);
+    wait_healthy(&mut server);
+    assert!(chat(server.port, "hello").contains(" 200 "));
+    server.kill();
     // Recording traffic is opt-in. An endpoint that wrote a transcript of
     // every request to the working directory by default would be a surprise.
     assert!(
@@ -264,23 +317,10 @@ fn serving_without_the_flag_writes_no_log() {
 #[test]
 fn serve_addr_binds_the_address_it_is_given() {
     let dir = tempfile::tempdir().unwrap();
-    let port = free_port();
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_harness"))
-        .current_dir(dir.path())
-        .arg("--model")
-        .arg(fixture_model())
-        .arg("--serve")
-        .arg(port.to_string())
-        .arg("--serve-addr")
-        .arg("0.0.0.0")
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .expect("spawn harness");
-    wait_healthy(port, &mut child);
-    assert!(chat(port, "hello").contains(" 200 "));
-    child.kill().expect("kill harness");
-    let _ = child.wait();
+    let mut server = Server::spawn(dir.path(), &["--serve-addr".as_ref(), "0.0.0.0".as_ref()]);
+    wait_healthy(&mut server);
+    assert!(chat(server.port, "hello").contains(" 200 "));
+    server.kill();
 }
 
 /// A bind address without a server to bind is a mistake worth naming: the

@@ -503,6 +503,32 @@ though they might differ. `obs::Value` gained a `Num32` variant and the header c
 `runheader::tests::a_single_precision_temperature_reads_as_the_value_that_was_asked_for`, and
 mutation-checked by restoring the f64 widening.
 
+### U2a — the serve tests stop leaking, and the flake is named correctly (done)
+
+Bookkeeping debt paid during U2, where the serve suite failed the gate four times and each
+failure cost a manual `pkill` before the next run could pass.
+
+Two defects, one file (`harness/tests/serve_interp_log.rs`).
+
+**Every spawn site leaked its server on failure.** `std::process::Child` does not kill on
+drop, and all four tests called `child.kill()` as their last statement, with every assertion
+in between. A tripped assertion orphaned a server holding the fixture model, and orphans
+accumulate. A `Server` type now owns the child and kills it from `Drop`; the one test that
+must kill before its assertions still does so explicitly, the call being idempotent.
+
+**The flake was misattributed.** It was recorded as
+`every_served_request_lands_in_the_interp_log_with_its_probe_scores` failing under
+concurrency. Measured, it is `serve_addr_binds_the_address_it_is_given`, at **6 failures in
+30 runs**, and it never reached its own assertions: it died in `wait_healthy` with
+`ConnectionRefused` or `ConnectionReset`. The loop probed with a throwaway connection and
+then issued the real request over a second one, treating a transport error as fatal — so a
+server not yet ready for a second connection failed the test instead of being retried. The
+health probe now retries on any transport error, which is what a polling loop is for.
+**0 failures in 30 runs** after, on the same container.
+
+The earlier diagnosis — CPU starvation from accumulated orphans — was wrong about the cause
+and right about the symptom. Load does not create the race; it decides how often it is lost.
+
 ### U4 — `harness --status`
 
 Preflight checks as data: model directory, weights and config readable, probe and its
