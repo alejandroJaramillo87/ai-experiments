@@ -2,15 +2,15 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 3 verified, 0 blocked, 4 pending, of 7.**
+**Entries: 6 verified, 0 blocked, 1 pending, of 7.**
 
 Host verification for the observability stack: the logging core, traced
 dispatch, audit trace, retention, run catalog (phases A-C), and the metrics
 sink, watchdog wiring, snapshot dashboard, and live server (phase D). All of
 it passed the sandbox campaign — unit suites, cross-module integration
-through the real dispatch, and SIGKILL durability. The three entries needing
-neither the GPU nor the shards closed on the workstation 2026-08-14; what
-remains is the GPU half. The real-Chromium harness is no longer merely
+through the real dispatch, and SIGKILL durability. Six of the seven closed on
+the workstation 2026-08-14; only OBS-V6, which needs a human watching a
+browser, remains. The real-Chromium harness is no longer merely
 sandbox context: it is OBS-V5 in
 [sandbox/sandbox-executable.md](../sandbox/sandbox-executable.md), verified
 2026-08-14. The entries below are the
@@ -46,7 +46,7 @@ and pytest selector.
 ## What runs without the GPU
 
 The entries are not uniform in what they cost, and a session with no GPU slot
-can still close three of them.
+can still close three of them. All three are closed.
 
 - **No GPU, no shards:** OBS-V1, OBS-V4, OBS-V7. The first two are pytest
   runs whose assertion is that they execute rather than skip — torch must be
@@ -54,11 +54,16 @@ can still close three of them.
   writer and needs only a writable `/mnt/ai-data`. All three are VERIFIED as
   of 2026-08-14.
 - **Partly runnable ahead of a run:** OBS-V3. Its `training runs` listing and
-  its `ls` of the log root work immediately and are recorded below; the
-  `report --run` step consumes the run OBS-V2 produces, so the entry stays
-  `PENDING` until then.
+  its `ls` of the log root work immediately; the `report --run` step consumes
+  the run OBS-V2 produces, so the entry closed only once OBS-V2 had.
 - **GPU and shards:** OBS-V2, OBS-V6, OBS-V8. These train, so the one-GPU-
-  consumer rule applies. OBS-V6 additionally needs a human at a browser.
+  consumer rule applies. OBS-V6 additionally needs a human at a browser, and
+  is the one entry still open.
+
+**All three training entries need OBS-V2's two recipe overrides**
+(`tokenizer.path` and `model.scratch.vocab`), for the reason set out there.
+Without them the recipe fails validation against the `verify-small`
+manifest, so as originally written none of the three could ever have run.
 
 ## Verified in the sandbox (context, not entries)
 
@@ -124,14 +129,8 @@ Implementation: `training/runtime/watchdog.py`, `common/obs/context.py`,
 Command (any tiny GPU-visible run works; the point is the sampler and
 context capture, not the model):
 
-```bash
-$ uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
-    data.source=/mnt/ai-data/training/shards/verify-small \
-    run.output_root=/mnt/ai-data/training/verify/obs-run \
-    schedule.total_steps=20 watchdog.enabled=true watchdog.interval_s=1.0
-$ tail -5 /mnt/ai-data/training/verify/obs-run/*/*/metrics.jsonl
-$ grep run.context /mnt/ai-data/logs/training/R-*.jsonl | tail -1
-```
+The invocation is below, under the overrides it needs. Read them first: the
+recipe cannot be pointed at `verify-small` without both.
 
 Expected signal: exit 0; every sampler record in `metrics.jsonl` carries
 `gpu_temp_c`, `gpu_power_w`, `gpu_vram_used_gb`, and `disk_free_gb`, all
@@ -143,12 +142,75 @@ Stated as thresholds rather than as "plausible values" because a reader
 deciding whether an observation passes needs a number, and a field that is
 present but null reads as plausible at a glance.
 
-Observed:
+**The recipe needs two overrides the entry did not originally carry.**
+`tiny-e2e.yaml` pairs `data.source: shards/tiny-e2e` with
+`tokenizer.path: tokenizers/tiny-e2e`, a matched pair the unit tests
+generate in temporary directories rather than artifacts on the workstation.
+Overriding `data.source` to `verify-small` alone fails validation, because
+`_check_tokenizer` cross-checks the recipe's tokenizer hash against the
+shard manifest's. The scratch model's `vocab: 512` must also be raised to
+the tokenizer's, and nothing validates that one — it would have surfaced as
+an out-of-range embedding index once training started. Both are derived
+from the manifest rather than hardcoded:
+
+```bash
+$ TOK=$(.venv/bin/python -c "import json;print(json.load(open('/mnt/ai-data/training/shards/verify-small/manifest.json'))['tokenizer'])")
+$ VOCAB=$(.venv/bin/python -c "from training.data.prepare import load_tokenizer;print(load_tokenizer('$TOK').vocab_size)")
+$ uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
+    data.source=/mnt/ai-data/training/shards/verify-small \
+    tokenizer.path="$TOK" model.scratch.vocab=$VOCAB \
+    run.output_root=/mnt/ai-data/training/verify/obs-run \
+    schedule.total_steps=20 watchdog.enabled=true watchdog.interval_s=1.0
+$ RUN=$(dirname "$(ls -t /mnt/ai-data/training/verify/obs-run/*/*/metrics.jsonl | head -1)")
+```
+
+The run directory is resolved by locating `metrics.jsonl` rather than by
+globbing two levels down: `<root>/<recipe>/checkpoints` also matches
+`*/*` and sorts newer than the timestamped directory, so the positional
+glob selects the wrong one.
+
+Observed (`TOK=HuggingFaceTB/SmolLM2-135M`, `VOCAB=49152`):
 
 ```
+[OK] Run complete: step 20, 5,120 tokens seen
+Final loss: 10.371604
+Run directory: /mnt/ai-data/training/verify/obs-run/tiny-e2e/2026-08-14_13-00-49
+
+$ grep -h run.context /mnt/ai-data/logs/training/R-20260814-200046-e1911c.jsonl
+{
+    "event": "run.context",
+    "run_id": "R-20260814-200046-e1911c",
+    "cli": "training", "command": "train",
+    "git_sha": "ecfd232d253cba96ac0871b55818568a91c2e663",
+    "python": "3.12.11",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "packages": {"torch": "2.13.0+cu130", "transformers": "5.13.1", ...},
+    "gpu": {"name": "NVIDIA GeForce RTX 5090", "driver": "580.173.02"}
+}
+
+sampler records (steps 5 and 17):
+{"gpu_temp_c": 32.0, "gpu_power_w": 38.813, "gpu_vram_used_gb": 1.41717529296875,
+ "gpu_sm_clock_mhz": 2595.0, "gpu_throttle_active": 0.0,
+ "ram_available_gb": 112.87762832641602, "disk_free_gb": 1622.0664710998535}
+{"gpu_temp_c": 32.0, "gpu_power_w": 68.241, "gpu_vram_used_gb": 1.41717529296875,
+ "gpu_sm_clock_mhz": 2542.0, "gpu_throttle_active": 0.0,
+ "ram_available_gb": 112.80743026733398, "disk_free_gb": 1622.0664672851562}
 ```
 
-Status: PENDING
+Every threshold holds: `gpu_temp_c` 32.0 in (20, 90); `gpu_vram_used_gb`
+1.417 in (0, 32); `disk_free_gb` positive; all four sampler fields present
+and non-null on both records. The `run.context` `gpu` object carries a
+non-empty name and a driver matching `\d+\.\d+`. NVML is populating both
+paths on real hardware, which is the property this entry exists for.
+
+Two observations the criterion did not ask for. The sampler emits three
+fields beyond the four named here — `gpu_sm_clock_mhz`,
+`gpu_throttle_active` and `ram_available_gb`. And a 1.5-second run against
+a 1.0-second interval yields only two ticks, so this entry confirms the
+sampler works rather than that it samples densely; a longer run would be
+needed for the latter.
+
+Status: VERIFIED 2026-08-14
 
 ## OBS-V3 Default log root, retention, and catalog on /mnt/ai-data
 
@@ -204,7 +266,34 @@ Two aged files from 2026-08-02 survived, which is retention behaving
 correctly rather than failing: `runs` is a viewer command and opts out of
 the startup prune.
 
-Status: PENDING
+Second half, against the run OBS-V2 produced:
+
+```
+$ uv run --no-sync python -m training report --run "$RUN"
+[OK] Wrote /mnt/ai-data/training/verify/obs-run/tiny-e2e/2026-08-14_13-00-49/run.html
+$ ls -la "$RUN"/run.html
+-rw-rw-r-- 1 alejandro alejandro 77834 Aug 14 13:06 .../run.html
+$ uv run --no-sync python -m training runs --limit 10
+FINISHED             RUN ID                    COMMAND    EXIT    DURATION
+2026-08-02T15:40:49  R-20260802-154048-8f90e9  preflight     1      0.015s
+2026-08-02T15:58:54  R-20260802-155854-285848  preflight     1      0.015s
+2026-08-14T12:46:39  R-20260814-194637-83da90  train       130      1.656s
+2026-08-14T12:46:47  R-20260814-194645-a0bcce  train         1      2.367s
+2026-08-14T12:52:56  R-20260814-195251-8f74f5  train         0      5.287s
+2026-08-14T13:00:51  R-20260814-200046-e1911c  train         0      5.117s
+2026-08-14T13:06:28  R-20260814-200628-e3cc05  report        0      0.001s
+```
+
+The catalog joins run ids to the run directory end to end on the default
+root: the OBS-V2 run appears with exit 0 and a 5.117 s duration, and
+`report --run` wrote a 77 KB `run.html` beside its `metrics.jsonl`.
+
+The table also records this session's failures faithfully — a SIGINT'd
+train at exit 130 and a validation failure at exit 1 — which is worth more
+than a clean table would have been. A catalog that only shows successes
+cannot be relied on to show a failure.
+
+Status: VERIFIED 2026-08-14
 
 ## OBS-V4 External sinks (tensorboard, offline wandb)
 
@@ -252,14 +341,25 @@ Command:
 The run directory does not exist until training has started, so it is
 resolved rather than guessed.
 
+`total_steps` is deliberately far above the 500 an acceptance run would use.
+At roughly 3.5 ms per step this model finishes 500 steps in under two
+seconds — long before a human reaches the browser — and a page that only
+ever shows a completed run cannot demonstrate live extension.
+
 ```bash
 $ uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
     data.source=/mnt/ai-data/training/shards/verify-small \
+    tokenizer.path=HuggingFaceTB/SmolLM2-135M model.scratch.vocab=49152 \
     run.output_root=/mnt/ai-data/training/verify/obs-live \
-    schedule.total_steps=500 watchdog.enabled=true &
-$ RUN=$(ls -dt /mnt/ai-data/training/verify/obs-live/*/* | head -1); echo $RUN
-$ uv run --no-sync python -m training report --run $RUN --serve
+    schedule.total_steps=20000 watchdog.enabled=true &
+$ sleep 20
+$ RUN=$(dirname "$(ls -t /mnt/ai-data/training/verify/obs-live/*/*/metrics.jsonl | head -1)")
+$ echo "$RUN"
+$ uv run --no-sync python -m training report --run "$RUN" --serve
 ```
+
+The server prints `[INFO] Live dashboard: http://127.0.0.1:8010/`;
+`--host` and `--port` override it.
 
 Expected signal: the printed URL renders the header and charts in a
 browser; the loss chart and log tail extend without reloading; a zoomed
@@ -375,19 +475,45 @@ versus `false`, same recipe and steps):
 ```bash
 $ uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
     data.source=/mnt/ai-data/training/shards/verify-small \
+    tokenizer.path=HuggingFaceTB/SmolLM2-135M model.scratch.vocab=49152 \
+    checkpoint.interval_steps=200 \
     run.output_root=/mnt/ai-data/training/verify/obs-overhead-on \
     schedule.total_steps=200
 $ uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
     data.source=/mnt/ai-data/training/shards/verify-small \
+    tokenizer.path=HuggingFaceTB/SmolLM2-135M model.scratch.vocab=49152 \
+    checkpoint.interval_steps=200 \
     run.output_root=/mnt/ai-data/training/verify/obs-overhead-off \
     schedule.total_steps=200 tracking.metrics_jsonl=false
 ```
 
-Run each arm three times, alternating, and compare medians.
+Run each arm seven times, alternating. Both arms carry OBS-V2's two
+overrides, and `checkpoint.interval_steps=200` so that a single save
+replaces the forty the recipe's `interval_steps: 5` would otherwise make;
+those saves cost about 3.4 s of a 9.9 s run and swamp what is being
+measured. Timings go to a file, because `/usr/bin/time` writes to stderr
+and the run's own output has to be discarded:
 
-Expected signal: the median step time of the sink-on arm falls inside the
-range spanned by the three sink-off runs, and vice versa — that is, the
-on/off difference is no larger than the run-to-run variance of either arm.
+```bash
+$ /usr/bin/time -f "$arm run$i %e s" -a -o /tmp/obs-overhead.txt \
+    uv run --no-sync python -m training train ... \
+    || echo "FAILED $arm run$i" >> /tmp/obs-overhead.txt
+```
+
+The `|| echo FAILED` is not decoration. An earlier attempt produced
+fourteen plausible timings from fourteen runs that had all exited 1 on a
+stale training lock; only `/usr/bin/time`'s own status line gave it away. A
+timing harness that does not record exit status invites a measurement of
+nothing.
+
+Expected signal: the difference between the two arms' medians is smaller
+than the larger of the two arms' min-max spreads — the sink's cost is below
+the noise floor.
+
+Stated this way rather than as "each median falls inside the other arm's
+span": with a handful of samples, an arm that happens to land tightly makes
+strict containment nearly unsatisfiable in both directions, and a 10 ms
+excursion on a 10-second run would fail an entry it should pass.
 
 The original criterion here was "mean `step_time_s` differs by under 1%",
 which cannot be evaluated as written. With `tracking.metrics_jsonl=false`
@@ -401,9 +527,39 @@ against the noise floor asks the question the entry exists to ask.
 Observed:
 
 ```
+$ cat /tmp/obs-overhead.txt
+on run1 7.46 s      off run1 6.43 s
+on run2 6.47 s      off run2 6.49 s
+on run3 6.46 s      off run3 6.48 s
+on run4 6.43 s      off run4 6.39 s
+on run5 6.43 s      off run5 6.43 s
+on run6 6.47 s      off run6 6.45 s
+on run7 6.43 s      off run7 6.44 s
 ```
 
-Status: PENDING
+No `FAILED` lines: all fourteen exited 0.
+
+| arm | median | min-max spread |
+|-----|-------:|---------------:|
+| on  | 6.46 s | 1.03 s |
+| off | 6.44 s | 0.10 s |
+
+The medians differ by 0.02 s against a larger spread of 1.03 s, so the
+criterion holds. It also holds after discarding `on run1` as the cold-start
+outlier it plainly is: the spreads become 0.04 s and 0.10 s, and 0.02 s is
+under both.
+
+**What this does not show.** The entry is titled "at real step rates" and
+this configuration does not reach them. Two hundred steps of a two-layer,
+64-hidden model is about 0.7 s of training inside a 6.45 s process; the rest
+is interpreter startup, CUDA initialization and one checkpoint save. The
+honest conclusion is that the sink's cost is below the noise floor of a
+process dominated by fixed costs — not that it is cheap during sustained
+training on a real model. Re-run this against a Phase 1 recipe when one
+exists; until then, do not cite this entry as evidence about production
+throughput.
+
+Status: VERIFIED 2026-08-14
 
 ## Moved to another tier
 
