@@ -63,15 +63,25 @@ impl Drop for Server {
 }
 
 fn spawn(addr: &str, dir: &Path) -> Server {
+    spawn_with(Some(addr), dir)
+}
+
+/// `addr` of `None` omits `--serve-addr` entirely, which is the only way to
+/// observe the default. Passing the default's own value instead would assert
+/// nothing: deleting `default: Some("127.0.0.1")` from cli.rs would leave such
+/// a test green, because the value it needs arrived on the command line.
+fn spawn_with(addr: Option<&str>, dir: &Path) -> Server {
     let port = free_port();
-    let child = std::process::Command::new(env!("CARGO_BIN_EXE_harness"))
-        .current_dir(dir)
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_harness"));
+    cmd.current_dir(dir)
         .arg("--model")
         .arg(fixture_model())
         .arg("--serve")
-        .arg(port.to_string())
-        .arg("--serve-addr")
-        .arg(addr)
+        .arg(port.to_string());
+    if let Some(addr) = addr {
+        cmd.arg("--serve-addr").arg(addr);
+    }
+    let child = cmd
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
@@ -173,7 +183,7 @@ fn an_address_the_host_does_not_own_fails_the_bind_naming_it() {
 #[test]
 fn the_default_bind_address_is_loopback() {
     let dir = tempfile::tempdir().unwrap();
-    let mut server = spawn(&Ipv4Addr::LOCALHOST.to_string(), dir.path());
+    let mut server = spawn_with(None, dir.path());
     let port = server.port;
     wait_healthy(&mut server, SocketAddr::from((Ipv4Addr::LOCALHOST, port)));
 }

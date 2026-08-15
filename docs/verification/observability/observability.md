@@ -818,7 +818,7 @@ human, which is why it is a roster rather than eight more entries.
 | `runs --all` | `tests/common/test_obs_catalog.py::test_default_view_hides_runs_entries_until_all` |
 | `runs --json` | `tests/common/test_obs_catalog.py::test_runs_json_lists_runs_including_failed` |
 | `python -m common.obs.runs` as a module entry point | `tests/common/test_obs_runs.py::test_module_entry_point_emits_only_json_on_stdout`, `::test_module_entry_point_forwards_the_usage_exit_code` |
-| `OBS_RETENTION_DAYS` | Exercised operationally in [sandbox/sandbox-executable.md](../sandbox/sandbox-executable.md), OBS-V9, which sets `OBS_RETENTION_DAYS=30` across its prune invocations |
+| `OBS_RETENTION_DAYS` | `tests/common/test_obs_retention.py::test_invalid_retention_value_disables_pruning`, and `::test_a_live_run_in_another_process_survives_a_startup_prune` for the value being read at all. Also exercised operationally by OBS-V9 in [sandbox/sandbox-executable.md](../sandbox/sandbox-executable.md), which sets it across its prune invocations -- but the runbook cross-reference is context, not the gate check this column requires |
 
 The two module entry-point tests are new as of 2026-08-15. Every earlier test
 called `main()` in-process, so the module's `__main__` guard had no coverage:

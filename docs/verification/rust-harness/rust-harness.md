@@ -2743,7 +2743,7 @@ Asserted by `rust-harness/harness/tests/serve_bind_addr.rs`:
 |-----------------|---------------|
 | The endpoint answers on the bind address and not on the default | `the_endpoint_answers_on_the_bind_address_and_not_on_the_default` |
 | An address the host does not own fails the bind, naming it | `an_address_the_host_does_not_own_fails_the_bind_naming_it` |
-| The default bind address is loopback | `the_default_bind_address_is_loopback` |
+| The default bind address is loopback, with `--serve-addr` absent from the command line | `the_default_bind_address_is_loopback` |
 
 The third is a security property, not a convenience one: a harness that
 defaults to `0.0.0.0` serves a checkpoint to the local network without anyone
@@ -2758,9 +2758,21 @@ Status: PENDING
 
 ## Known defects
 
-Two defects measured during this campaign, recorded here rather than in an
-entry because neither is a check to run: each is a statement about the tree
-that a reader of the entries above needs.
+Three defects measured during this campaign, recorded here rather than in an
+entry because none is a check to run: each is a statement about the tree that
+a reader of the entries above needs.
+
+**The `--serve-addr` default is two independent literals.** The value `--help`
+prints comes from `default: Some("127.0.0.1")` in the flag table
+(`rust-harness/harness/src/cli.rs:380`), which is consumed only by the help
+renderer at `cli.rs:551`. The value a run actually binds is a separate
+hardcoded literal, `None => IpAddr::from([127, 0, 0, 1])`
+(`rust-harness/harness/src/main.rs:971`). Changing one leaves the other
+stale, so the documented default and the real one can disagree with nothing
+to notice. Found by mutation: editing the flag-table literal does not turn
+RH.31's default test red, because it changes only what `--help` prints, while
+editing the `main.rs` literal does. The same shape may hold for every other
+flag carrying a `default:` in that table.
 
 **`Lanes16` is not bit-identical to `Sequential` on the real fixture.** At
 logit 0 the two kernels return `1062660370` and `1062660362` as raw f32 bits.
