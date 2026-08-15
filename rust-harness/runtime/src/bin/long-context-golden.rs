@@ -42,18 +42,23 @@ use runtime::model::Model;
 
 fn main() -> ExitCode {
     let Some(out) = std::env::args_os().nth(1).map(PathBuf::from) else {
-        eprintln!("[ERROR] Destination: no path given");
-        eprintln!("  Solution: name the file to write");
-        eprintln!(
+        runtime::status::error("Destination: no path given");
+        // The two continuation lines are untagged by the repo's error shape
+        // (rust-harness/Makefile:70-86): one tagged statement of what failed,
+        // then indented remedy lines. `status::error_at` would tag each of
+        // them -- `  [ERROR] Solution: ...` -- which is a different message,
+        // so these stay `plain` with the indent in the literal.
+        runtime::status::plain("  Solution: name the file to write");
+        runtime::status::plain(
             "  Command: cargo run -p runtime --bin long-context-golden -- \
-             fixtures/long-context-logits.json"
+             fixtures/long-context-logits.json",
         );
         return ExitCode::from(2);
     };
     match write(&out) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("[ERROR] {e:#}");
+            runtime::status::error(&format!("{e:#}"));
             ExitCode::FAILURE
         }
     }
@@ -91,12 +96,12 @@ fn write(out: &PathBuf) -> Result<()> {
     });
     std::fs::write(out, serde_json::to_string(&payload)?)
         .with_context(|| format!("write {}", out.display()))?;
-    eprintln!(
-        "[OK] Wrote {}: {} rows of {} over {} tokens",
+    runtime::status::ok(&format!(
+        "Wrote {}: {} rows of {} over {} tokens",
         out.display(),
         runtime::conformance::golden::POSITIONS.len(),
         model.config().vocab_size,
         tokens.len()
-    );
+    ));
     Ok(())
 }

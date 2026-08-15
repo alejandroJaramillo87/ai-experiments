@@ -39,18 +39,22 @@ fn write(path: &Path, bytes: &[u8]) -> bool {
     if let Some(dir) = path.parent() {
         if !dir.as_os_str().is_empty() {
             if let Err(e) = std::fs::create_dir_all(dir) {
-                eprintln!("[ERROR] Create {}: {e}", dir.display());
+                runtime::status::error(&format!("Create {}: {e}", dir.display()));
                 return false;
             }
         }
     }
     match std::fs::write(path, bytes) {
         Ok(()) => {
-            eprintln!("[OK] Wrote {} bytes to {}", bytes.len(), path.display());
+            runtime::status::ok(&format!(
+                "Wrote {} bytes to {}",
+                bytes.len(),
+                path.display()
+            ));
             true
         }
         Err(e) => {
-            eprintln!("[ERROR] Write {}: {e}", path.display());
+            runtime::status::error(&format!("Write {}: {e}", path.display()));
             false
         }
     }
@@ -68,17 +72,17 @@ fn main() -> ExitCode {
                 .and_then(|bytes| Ok((std::fs::write(path, &bytes)?, bytes.len())))
             {
                 Ok((_, n)) => {
-                    eprintln!("[OK] Wrote {n} bytes to {path}");
+                    runtime::status::ok(&format!("Wrote {n} bytes to {path}"));
                     ExitCode::SUCCESS
                 }
                 Err(e) => {
-                    eprintln!("[ERROR] Write {path}: {e:#}");
+                    runtime::status::error(&format!("Write {path}: {e:#}"));
                     ExitCode::from(1)
                 }
             };
         }
         _ => {
-            eprintln!("usage: tiny-model <output-stem> [e4b] | <output.json> bpe");
+            runtime::status::plain("usage: tiny-model <output-stem> [e4b] | <output.json> bpe");
             return ExitCode::from(2);
         }
     };
@@ -103,7 +107,7 @@ fn main() -> ExitCode {
     })() {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("[ERROR] Build fixtures for {stem}: {e:#}");
+            runtime::status::error(&format!("Build fixtures for {stem}: {e:#}"));
             return ExitCode::from(1);
         }
     };

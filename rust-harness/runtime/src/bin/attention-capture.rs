@@ -101,12 +101,12 @@ fn run(
     // quadratic term is the whole cost discipline of this site.
     let pairs = layers.len() * heads.len();
     let bytes = pairs * n * n * F32_BYTES;
-    eprintln!(
-        "[INFO] Attention: {n} tokens, {} layers x {} heads = {pairs} matrices, {:.1} MiB",
+    runtime::status::info(&format!(
+        "Attention: {n} tokens, {} layers x {} heads = {pairs} matrices, {:.1} MiB",
         layers.len(),
         heads.len(),
         bytes as f64 / (1024.0 * 1024.0)
-    );
+    ));
 
     let tap = AttentionTap::new(layers.to_vec(), heads.to_vec());
     model.set_tap(Box::new(tap.clone()));
@@ -204,10 +204,10 @@ fn run(
     let tmp = out_dir.join("manifest.json.tmp");
     std::fs::write(&tmp, serde_json::to_string_pretty(&manifest)?)?;
     std::fs::rename(&tmp, out_dir.join("manifest.json"))?;
-    eprintln!(
-        "[OK] Attention: {pairs} matrices of {n}x{n} -> {}",
+    runtime::status::ok(&format!(
+        "Attention: {pairs} matrices of {n}x{n} -> {}",
         out_dir.display()
-    );
+    ));
     Ok(())
 }
 
@@ -270,8 +270,8 @@ fn main() -> ExitCode {
     match parsed {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("[ERROR] Attention capture failed: {e:#}");
-            eprintln!("{USAGE}");
+            runtime::status::error(&format!("Attention capture failed: {e:#}"));
+            runtime::status::plain(USAGE);
             ExitCode::from(1)
         }
     }

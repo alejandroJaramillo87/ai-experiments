@@ -143,12 +143,12 @@ fn run(
                 .expect("initialized above")
                 .extend(row.iter().copied());
         }
-        eprintln!(
-            "[RUN] Example {}/{}: {} tokens",
+        runtime::status::run(&format!(
+            "Example {}/{}: {} tokens",
             i + 1,
             examples.len(),
             tokens.len()
-        );
+        ));
     }
     check_row_counts(&collected, layers, config.embed_dim, examples.len())?;
 
@@ -227,13 +227,13 @@ fn run(
     let tmp = out_dir.join("manifest.json.tmp");
     std::fs::write(&tmp, serde_json::to_string_pretty(&manifest)?)?;
     std::fs::rename(&tmp, out_dir.join("manifest.json"))?;
-    eprintln!(
-        "[OK] Capture: {} examples, {} layers, {} shards -> {}",
+    runtime::status::ok(&format!(
+        "Capture: {} examples, {} layers, {} shards -> {}",
         examples.len(),
         layers.len(),
         shards,
         out_dir.display()
-    );
+    ));
     Ok(())
 }
 
@@ -282,8 +282,8 @@ fn main() -> ExitCode {
     match parsed {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("[ERROR] Capture failed: {e:#}");
-            eprintln!("{USAGE}");
+            runtime::status::error(&format!("Capture failed: {e:#}"));
+            runtime::status::plain(USAGE);
             ExitCode::from(1)
         }
     }
