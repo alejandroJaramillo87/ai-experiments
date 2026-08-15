@@ -2,7 +2,7 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 2 verified, 0 blocked, 5 pending, of 7.**
+**Entries: 2 verified, 0 blocked, 7 pending, of 9.**
 
 Host verification for the observability stack: the logging core, traced
 dispatch, audit trace, retention, run catalog (phases A-C), and the metrics
@@ -18,7 +18,12 @@ beside its status the one clause it does not cover. The real-Chromium harness
 is no longer merely
 sandbox context: it is OBS-V5 in
 [sandbox/sandbox-executable.md](../sandbox/sandbox-executable.md), verified
-the same day. The entries below were the host-only gaps: GPU sample values,
+the same day. **Two entries were added 2026-08-15**, from a surface inventory that found
+shipped functionality with no entry at all: OBS-V10 (retention against a real
+Rust writer) and OBS-V11 (the watchdog `alerts.jsonl` and the mlflow sink).
+The rest of what that inventory found is pinned by named gate checks and is
+listed in the roster below rather than as entries.
+The first seven entries were the host-only gaps: GPU sample values,
 NVML context capture, the `/mnt/ai-data` default log root, external sink
 artifacts, and the live server against an in-flight run.
 
@@ -68,8 +73,11 @@ can still close three of them.
 - **Partly runnable ahead of a run:** OBS-V3. Its `training runs` listing and
   its `ls` of the log root work immediately; the `report --run` step consumes
   the run OBS-V2 produces, so it comes after OBS-V2 rather than with it.
-- **GPU and shards:** OBS-V2, OBS-V6, OBS-V8. These train, so the one-GPU-
-  consumer rule applies. OBS-V6 additionally needs a human at a browser.
+- **GPU and shards:** OBS-V2, OBS-V6, OBS-V8, OBS-V11. These train, so the
+  one-GPU-consumer rule applies. OBS-V6 additionally needs a human at a
+  browser.
+- **No GPU, real mount:** OBS-V10. It needs a built rust workspace and a
+  writable `/mnt/ai-data/logs/harness`, and no GPU slot.
 
 **All three training entries need OBS-V2's two recipe overrides**
 (`tokenizer.path` and `model.scratch.vocab`), for the reason set out there.
@@ -681,6 +689,140 @@ two-column rows grouped by arm, so it was reformatted by hand and the
 execution order and any `FAILED` line placement are no longer recoverable.
 The medians and spreads above are derived from it and inherit the doubt.
 Re-run the loop above and paste the file unedited.)
+
+## OBS-V10 Retention spares a live flock'd Rust writer on /mnt/ai-data
+
+Implementation: `common/obs/retention.py` (`prune`), `rust-harness/obs/src/lib.rs`
+(`RunLog::begin_at`).
+
+The startup prune must not delete an event file a *Rust* process is still
+appending to. The sandbox half of this property is already covered by
+`tests/common/test_obs_retention.py::test_prune_spares_a_harness_event_file_locked_the_rust_way`,
+and that test's own docstring states plainly that the subprocess **emulates**
+`RunLog::begin_at` — it opens and flocks the file the same way, but in Python,
+because building the Rust workspace is not a precondition of the unit suite.
+This entry is the pairing the emulation cannot supply: the real Rust binary
+holding the real lock, on the real `/mnt/ai-data/logs/harness`, against the
+real Python prune. A lock convention that two implementations agree on only
+because one of them was written to imitate the other has not been tested
+across the boundary.
+
+Command:
+
+Any harness binary that runs longer than the prune takes will do; the property
+is the lock, not the workload. Pick one whose run lasts at least 30 seconds and
+confirm it is still alive at the moment the prune runs — a prune that spares a
+file because the writer had already exited proves nothing.
+
+```bash
+$ cargo build --release --manifest-path rust-harness/Cargo.toml
+$ ls -la /mnt/ai-data/logs/harness/ | tail -5
+$ rust-harness/target/release/ladder <args for a run of 30 s or more> & PID=$!
+$ sleep 5
+$ kill -0 $PID && echo "rust writer alive"
+$ LIVE=$(ls -t /mnt/ai-data/logs/harness/*.jsonl | head -1); echo "$LIVE"
+$ OBS_RETENTION_DAYS=0 uv run --no-sync python -c \
+    "from common.obs.retention import prune; print(prune('/mnt/ai-data/logs', 0))"
+$ kill -0 $PID && echo "rust writer still alive after prune"
+$ ls -la "$LIVE"
+$ wait $PID; echo "ladder exit: $?"
+$ uv run --no-sync python -c "import json,sys;[json.loads(l) for l in open('$LIVE')];print('all lines parse')"
+```
+
+`OBS_RETENTION_DAYS=0` makes every file on the mount eligible, including the
+live one, so the spare is attributable to the lock rather than to the file
+being too new to prune.
+
+Expected signal: `prune` returns without error; `rust writer still alive after
+prune` prints, so the writer was holding its lock across the prune; `$LIVE`
+still exists after the prune with a size no smaller than before; the Rust
+process exits 0; and every line of `$LIVE` parses as JSON afterwards, so the
+prune neither removed nor truncated the file it spared.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## OBS-V11 Watchdog alerts.jsonl and the mlflow sink in a real run
+
+Implementation: `training/runtime/watchdog.py:368` (the `_alert` write of
+`alerts.jsonl`), `training/runtime/tracking.py:179-208` (`_init_mlflow`).
+
+Two shipped per-run artifacts have no entry in this runbook. OBS-V4 is titled
+for tensorboard and offline wandb and covers only those two sinks, so the
+mlflow sink's `mlruns/` tree is uncovered; and no entry anywhere trips a
+watchdog signal and reads back the `alerts.jsonl` the alert path writes. Both
+need a real training run on the GPU: the watchdog samples NVML, and the mlflow
+sink is exercised only when a run actually logs metrics.
+
+Command:
+
+Uses OBS-V2's two recipe overrides, for the reason set out there. The
+threshold override is what makes the alert fire deterministically — a
+`gpu_temp_c` ceiling below room temperature trips on the first sampler tick
+rather than waiting for a hot GPU.
+
+```bash
+$ uv run --no-sync python -m training train --config training/recipes/reference/tiny-e2e.yaml \
+    data.source=/mnt/ai-data/training/shards/verify-small \
+    tokenizer.path=HuggingFaceTB/SmolLM2-135M model.scratch.vocab=49152 \
+    run.output_root=/mnt/ai-data/training/verify/obs-alerts \
+    schedule.total_steps=200 watchdog.enabled=true watchdog.interval_s=1.0 \
+    watchdog.signals.gpu_temp_c.max=1 tracking.mlflow=true
+$ echo "exit=$?"
+$ RUN=$(dirname "$(ls -t /mnt/ai-data/training/verify/obs-alerts/*/*/metrics.jsonl | head -1)")
+$ echo "$RUN"
+$ cat "$RUN/alerts.jsonl"
+$ wc -l < "$RUN/alerts.jsonl"
+$ find "$RUN/mlruns" -maxdepth 4 | head -20
+```
+
+Confirm the two override keys against `training/recipes/schema.py` before
+running: if the watchdog threshold key or `tracking.mlflow` is spelled
+differently the run fails validation, which is a precondition failure and not
+a result.
+
+Expected signal: exit 0; `alerts.jsonl` exists under the run directory with at
+least one record, each a single JSON object carrying the signal name, its
+value, the threshold, and the action; the run's stderr carries a matching
+`ALERT gpu_temp_c` line; `mlruns/` exists under the run directory with a
+non-empty experiment tree containing at least one run's `params/` and
+`metrics/` entries; and no `[tracking] WARN` line naming mlflow appears, which
+would mean the sink degraded rather than wrote.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## Covered by a named gate check (roster, not entries)
+
+A 2026-08-15 surface inventory found shipped observability functionality with
+no presence in this runbook at all. Each row below names the test function
+that pins it, which is the whole of the claim: an element whose evidence is
+"the gate was green" without a named check is not verified, and would need a
+full entry instead. Nothing in this table needs the GPU, the mount, or a
+human, which is why it is a roster rather than eight more entries.
+
+| Element | Pinned by |
+|---------|-----------|
+| Traced dispatch, `cmd.start`/`cmd.end` (`common/obs/dispatch.py`) | `tests/common/test_obs_dispatch.py::test_success_writes_start_and_end_with_shared_run_id`, and the exit-code cases beside it (`::test_uncaught_exception_records_exit_1_and_reraises`, `::test_keyboard_interrupt_records_130_and_reraises`, `::test_mid_run_system_exit_records_own_code`) |
+| Audit trace and `OBS_TRACE` (`common/obs/audit.py`) | `tests/common/test_obs_audit.py::test_trace_records_open_import_and_spawn`, `::test_trace_off_records_no_audit_events`, `::test_explicit_log_level_wins_over_trace` |
+| `OBS_LOG_LEVEL` | `tests/common/test_obs_core.py::test_obs_log_level_env_suppresses_info` |
+| `report --events` | `tests/training/test_report.py::test_report_events_override_wins` |
+| `runs --all` | `tests/common/test_obs_catalog.py::test_default_view_hides_runs_entries_until_all` |
+| `runs --json` | `tests/common/test_obs_catalog.py::test_runs_json_lists_runs_including_failed` |
+| `python -m common.obs.runs` as a module entry point | `tests/common/test_obs_runs.py::test_module_entry_point_emits_only_json_on_stdout`, `::test_module_entry_point_forwards_the_usage_exit_code` |
+| `OBS_RETENTION_DAYS` | Exercised operationally in [sandbox/sandbox-executable.md](../sandbox/sandbox-executable.md), OBS-V9, which sets `OBS_RETENTION_DAYS=30` across its prune invocations |
+
+The two module entry-point tests are new as of 2026-08-15. Every earlier test
+called `main()` in-process, so the module's `__main__` guard had no coverage:
+`python -m common.obs.runs` could have been broken without a red gate.
 
 ## Moved to another tier
 

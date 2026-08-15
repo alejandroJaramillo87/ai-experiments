@@ -2,13 +2,28 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 5 verified, 2 blocked, 6 pending, of 13.**
+**Entries: 8 verified, 3 blocked, 7 pending, of 18.**
 
-The 13 entries are I.1 through I.12 plus the interstitial I.9b
-("Chunked-capture crash recovery"); there is no entry numbered I.13, and none is
-missing. I.9b is numbered beside I.9 because it verifies crash recovery in the
-capture I.9 runs, so the highest entry number is one lower than the entry count.
+The 18 entries are I.1 through I.17 plus the interstitial I.9b
+("Chunked-capture crash recovery"); none is missing. I.9b is numbered beside I.9
+because it verifies crash recovery in the capture I.9 runs, so the highest entry
+number is one lower than the entry count. Numbering ran I.1 through I.12 with no
+I.13 until 2026-08-15, when a surface inventory found shipped functionality with
+no entry and I.13 through I.17 were added; the identifier had never been used.
 A tally over this file counts `Status:` lines, not entry numbers.
+
+Four of the entries below are gate-backed rather than operator-run: their
+expected signal is asserted by a named test function, and the named function is
+the evidence. An entry whose only evidence is that the gate was green, with no
+check named, is not verified.
+
+**Scope of the automated coverage.** Every test under `tests/interp/` runs
+against fakes — `tests/interp/conftest.py` states it outright: "Everything runs
+CPU-only, without network, GPU, or services: captures come from a deterministic
+fake capture function, services from injected callables." No test in this tree
+loads a real model, reaches a running service, or touches the GPU. The BLOCKED
+and PENDING entries therefore have no automated substitute; their status is the
+whole of what is known about them.
 
 I1 workbench, the PS1 Neuronpedia harness, the write-back path (W1 through
 W4), P4-D1 organisms, P4-D2 activation harvesting with garbage collection,
@@ -644,3 +659,182 @@ Observed:
 ```
 
 Status: PENDING
+
+## I.13 Workbench image build and the run browser (I1)
+
+Implementation: `make/interp.mk` (`interp-build`, `interp-up`, `interp-shell`,
+`interp-down`), `docker/interp/Dockerfile.interp`,
+`scripts/interp/preflight.sh`, `interp/commands/smoke_test.py`,
+`common/obs/runs.py`.
+
+`make interp-build` is where the smoke test gates a regression: line 130 of
+`docker/interp/Dockerfile.interp` runs `python -m interp smoke --build`, so a
+broken import or a torch build off the cu130 pin fails the image build rather
+than the first run. The `--build` mode degrades the CUDA and network asserts to
+`[SKIP]` on a GPU-less build host; `make interp-smoke` (I.1) is what enforces
+them. This entry covers the lifecycle end to end, which no other entry touches.
+
+Command:
+
+```bash
+$ make interp-build
+$ make interp-up
+$ make interp-shell
+$ python -m interp runs -n 5
+$ exit
+$ make interp-down
+```
+
+Expected signal: the build reaches the smoke step and every import step reports
+`[OK]`, with CUDA and network steps `[SKIP]` on a build host that has neither;
+`make interp-up` runs `scripts/interp/preflight.sh` and prints a JupyterLab URL
+on `127.0.0.1:8888` carrying a freshly generated 48-character hex token;
+`make interp-shell` opens a shell with the GPU attached; `python -m interp runs`
+inside it lists the recent interp invocations, most recent first, with the build
+smoke run absent (it ran in the image build, not against the host log root) and
+the shell's own dispatch present; `make interp-down` stops the workbench.
+
+Observed:
+
+```
+```
+
+Status: PENDING
+
+## I.14 Run browser surface (`python -m interp runs`)
+
+Implementation: `interp/cli.py`, `common/obs/runs.py`, `common/obs/catalog.py`.
+
+Expected signal: `runs` parses all four selection flags — `-n/--limit`
+(default 20), `--failed`, `--all`, `--json` — and reaches
+`catalog.run_command` with the CLI name `interp` and `obs_retention` false, so
+browsing the catalog never prunes the event files of the runs it is listing.
+
+Asserted by `tests/interp/test_interp_cli.py::test_runs_parses_its_four_selection_flags`
+(defaults and the all-flags namespace) and
+`::test_runs_is_a_viewer_and_reads_the_interp_catalog` (catalog identity and
+no pruning).
+
+Why `runs` is absent from the `CASES` table in that file, where every other
+subcommand is checked by handler identity: `common/obs/runs.py` binds the
+handler to a closure over the CLI name, so there is no module-level function to
+compare `args.func` against. The two functions above are its substitute, and
+they assert more than identity would.
+
+Status: VERIFIED 2026-08-15 by tests/interp/test_interp_cli.py::test_runs_parses_its_four_selection_flags and ::test_runs_is_a_viewer_and_reads_the_interp_catalog
+
+## I.15 Probe export artifact contract
+
+Implementation: `interp/commands/probe_export.py`, `interp/probes/export.py`,
+`schemas/probe_artifact.json`.
+
+Expected signal: `probe-export` parses to its handler, and the exported
+artifact round-trips — the safetensors image plus the JSON sidecar land
+together at the site the manifest records, a non-finite scalar is refused, and
+a tampered probe is refused rather than exported.
+
+Asserted by `tests/interp/test_probe_export.py`:
+`test_round_trip`, `test_writes_the_site_the_manifest_records`,
+`test_refuses_a_non_finite_scalar`, `test_refuses_tampered_probe`, and
+`test_the_sidecar_lands_beside_the_image`. Parser wiring is pinned separately by
+the `probe-export` row added to the `CASES` table in
+`tests/interp/test_interp_cli.py`.
+
+Status: VERIFIED 2026-08-15 by tests/interp/test_probe_export.py
+
+## I.16 Traced dispatch stamps every invocation
+
+Implementation: `common/obs/` (dispatch and catalog), `interp/__main__.py`,
+`interp/cli.py`.
+
+The preamble of this runbook states that every `make` target here runs through
+the traced dispatch, so every invocation stamps a `cmd.start` and a `cmd.end`
+event. No entry above verifies that claim.
+
+Expected signal: a successful run writes `cmd.start` and `cmd.end` sharing one
+run id; an integer return passes through as the exit code and `None` maps to
+zero; an uncaught exception records exit 1 and re-raises; `KeyboardInterrupt`
+records 130; a mid-run `SystemExit` records its own code; a usage error exits
+before any record is written; an uncreatable log root degrades to console-only
+rather than failing the command; and a phase records a span with its duration.
+
+Asserted by `tests/common/test_obs_dispatch.py`:
+`test_success_writes_start_and_end_with_shared_run_id`,
+`test_integer_return_passes_through`, `test_none_return_maps_to_zero`,
+`test_uncaught_exception_records_exit_1_and_reraises`,
+`test_keyboard_interrupt_records_130_and_reraises`,
+`test_mid_run_system_exit_records_own_code`,
+`test_usage_error_exits_before_any_record`,
+`test_uncreatable_log_root_degrades_to_console_only`, and
+`test_phase_records_span_with_duration`.
+
+Status: VERIFIED 2026-08-15 by tests/common/test_obs_dispatch.py
+
+## I.17 SAE-row steering extraction (`--method sae_row`)
+
+Implementation: `interp/commands/steer_extract.py`, `interp/steering/extract.py`,
+`interp/steering/export.py`.
+
+`steer-extract` carries two methods. I.3 exercises `repeng` and mentions
+`sae_row` in prose only; the route has never been run, and no test covers it.
+
+The four flags the route needs are `--sae-release`, `--sae-id`, `--feature`,
+and `--layer`, alongside the shared `--model` and `--out`.
+
+Command:
+
+```bash
+$ docker compose -f docker-compose.interp.yaml run --rm interp \
+    python -m interp steer-extract --method sae_row \
+    --model <E4B-width model> --sae-release <release> --sae-id <sae_id> \
+    --feature <index> --layer <layer> --out /mnt/ai-data/interp/vectors/<name>
+```
+
+Expected signal: the chosen decoder row exports as a control vector whose width
+equals the target model's `hidden_size`, and the harness accepts it.
+
+Why the route is not simply the cheaper alternative to `repeng`: there is no
+SAE of the right width to take a row from. Gemma Scope decoder rows are
+Gemma-2-2B-wide, and the SAE trained in I.11 is `d_in` 1536, against E4B's
+residual width of 2560. `set_control_vector` validates width against
+`config.hidden_size` (`rust-harness/harness/src/preflight.rs`), so it refuses
+both. Extracting an E4B-width row requires training an E4B-width SAE first,
+which is a P4-D3 harvest and training run, not a flag change.
+
+Observed:
+
+```
+```
+
+Status: BLOCKED 2026-08-15 on the absence of an E4B-width SAE. Unblocked by
+training one against an E4B capture; I.11's pipeline is the procedure, with the
+capture taken at an E4B residual hook.
+
+## Coverage roster
+
+Elements with no entry of their own, and the test that pins each. These are
+parser- and contract-level checks against fakes; none of them exercises a model.
+
+| Element | Pinned by |
+|---------|-----------|
+| `harvest`, `gc`, `organism` (four subcommands), `probe-capture`, `probe-train`, `probe-eval`, `probe-export`, `probe-monitor`, `sae-train`, `sae-eval`, `steer-extract`, `steer-scorecard`, `smoke` parse to their handlers | `tests/interp/test_interp_cli.py::test_subcommand_parses_to_handler` |
+| `runs` selection flags and viewer semantics | I.14 |
+| Probe artifact round-trip and refusals | I.15 |
+| Traced dispatch events and exit codes | I.16 |
+| Chunked-capture plan and consolidation | `tests/interp/test_saelens_contract.py` (see I.9b) |
+
+## Unexercised flags
+
+Flags reachable from the CLI that no entry above passes and no test exercises.
+Each is a gap in evidence, not a known defect.
+
+| Flag | Command | What is unevidenced |
+|------|---------|---------------------|
+| `--build` | `smoke` | The degraded build-time mode. I.13 covers it once run; until then the only evidence is that image builds succeed. |
+| `--validated` | `sae-train` | Sets `recipe.sae.mark_capture_validated`, the handoff that exempts a capture from garbage collection. I.10 verifies the collector, not this handoff. |
+| `--delta-loss-texts`, `--max-tokens` | `sae-eval` | The delta-LM-loss path (`delta_lm_loss` in `interp/sae/evaluate.py`) runs only when `--delta-loss-texts` is non-empty. I.11 omitted it, so that function has no evidence at all. `--max-tokens` ran only at its 1000000 default. |
+| `--revision`, `--model-hash`, `--batch-size` | `probe-capture` | Provenance fields written into the capture manifest, and the forward-pass batch size. I.5 ran at the defaults. |
+| `--behavior-prompts`, `--neutral-prompts`, `--system-prompt`, `--subject-url`, `--judge-url`, `--judge-model`, `--scales`, `--max-tokens`, `--perplexity-cmd` | `steer-scorecard` | Nine of the command's eleven flags. Only `--vector` and `--attribute` appear in I.4, which is itself blocked. |
+
+Note that the two `sae-eval` flag names differ from the make-target variables:
+the target passes `SAE=` and `CAPTURE=` into `--sae-dir` and `--capture-dir`.
