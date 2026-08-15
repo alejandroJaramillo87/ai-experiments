@@ -114,6 +114,7 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [observability/observability.md](observability/observability.md) | 7 | 0 | 0 | 7 |
 | [sandbox/sandbox-executable.md](sandbox/sandbox-executable.md) | 2 | 0 | 0 | 2 |
 | [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 16 | 5 | 1 | 22 |
+| [rust-harness/rust-harness-ux.md](rust-harness/rust-harness-ux.md) | 0 | 0 | 8 | 8 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
 | [interp/reference-captures.md](interp/reference-captures.md) | 0 | 0 | 2 | 2 |
 
@@ -166,7 +167,13 @@ passed.
    binary: the Python hardware smoke gate does not apply; entry RH.0 is
    this phase's gate. Its sandbox-executable sibling is
    [rust-harness/rust-harness-qa.md](rust-harness/rust-harness-qa.md), the code-quality campaign
-   (phases Q0-Q6) a Claude Code session runs with no GPU or model data.
+   (phases Q0-Q6) a Claude Code session runs with no GPU or model data. A third document,
+   [rust-harness/rust-harness-ux.md](rust-harness/rust-harness-ux.md) (entries `RHX.n`), covers
+   the user surface the `U` campaign built — the run header, the progress lines, the remedy
+   lines, the run records, and colour at a terminal. It is separate because its entries verify
+   what a person sees rather than whether the backend computes the right numbers, and because
+   almost all of that surface is already pinned in the sandbox: what is left needs real weights,
+   real durations, or a real TTY.
 
 Outside the numbered order, and outside this directory's operational contract:
 [investigations/gemma-4-conformance_investigation.md](investigations/gemma-4-conformance_investigation.md),
