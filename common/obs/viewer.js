@@ -21,6 +21,10 @@
       title: "Device memory (GB)",
       keys: ["gpu_mem_allocated_gb", "gpu_vram_used_gb"],
     },
+    // Host resident set size, written by the rust harness. Additive: a
+    // training run carries no rss_gb and renders this group empty, the same
+    // way a CPU-only harness run renders the device-memory group above.
+    { title: "Process memory (GB)", keys: ["rss_gb"] },
   ];
   var TRACKED = {};
   CHART_GROUPS.forEach(function (group) {

@@ -74,7 +74,10 @@ fn run(seed: &str) -> (String, Vec<serde_json::Value>) {
         .unwrap_or_else(|e| panic!("{}: {e}", harness_dir.display()))
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.file_name().is_some_and(|n| n != "runs.jsonl"))
+        // Event files only. The catalog is excluded by name; `is_file` excludes
+        // the run's own directory, `<run_id>/`, which now sits beside them and
+        // holds metrics.jsonl. Without it this reads a directory and panics.
+        .filter(|p| p.is_file() && p.file_name().is_some_and(|n| n != "runs.jsonl"))
         .flat_map(|p| {
             std::fs::read_to_string(&p)
                 .unwrap()

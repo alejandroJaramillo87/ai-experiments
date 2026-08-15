@@ -30,6 +30,21 @@ pub struct SessionGenerator {
     /// it. This is the one place the rendered prompt and the ids the model
     /// produced are both in hand, which is what building the table needs.
     alignment: Option<Arc<Mutex<Alignment>>>,
+    /// Per-step metrics for the run's `metrics.jsonl`, disabled by default.
+    ///
+    /// This type is the one seam every mode generates through -- the agent
+    /// loop and chat via `complete`, the server via `complete_sampled` -- so
+    /// instrumenting it covers all three without threading a run log into
+    /// any of them. That matters most for serve, which holds the generator
+    /// behind `Arc<ServerState>` and so can never produce a `&mut RunLog`.
+    metrics: obs::MetricsSink,
+    /// Monotonic step counter across the whole run, not per turn.
+    ///
+    /// `common/obs/viewer.js` plots against a shared step axis and inserts
+    /// null-padded points for keys a record lacks, so a counter that restarted
+    /// each turn would fold every turn onto the same few x positions and read
+    /// as one noisy series rather than a run.
+    step: u64,
 }
 
 impl SessionGenerator {
@@ -50,7 +65,49 @@ impl SessionGenerator {
             sampler: Sampler::new(params),
             max_tokens,
             alignment: None,
+            metrics: obs::MetricsSink::disabled(),
+            step: 0,
         })
+    }
+
+    /// Write per-step metrics into the run's `metrics.jsonl`.
+    ///
+    /// Takes an already-opened sink rather than a `&RunLog` so the server can
+    /// install one: `ServerState` owns the generator behind a `Mutex` inside
+    /// an `Arc`, and the run log stays with `main`.
+    pub fn observing_metrics(mut self, sink: obs::MetricsSink) -> Self {
+        self.metrics = sink;
+        self
+    }
+
+    /// One metrics record: throughput so far, and resident memory now.
+    ///
+    /// `tokens_per_s` is cumulative over the turn rather than instantaneous.
+    /// A per-token delta on a ~10 tok/s decode is a reciprocal of a few tens
+    /// of milliseconds, which renders as noise around the real figure; the
+    /// running mean is the number a human reads off a chart and compares
+    /// against another run.
+    ///
+    /// It therefore charges prefill to the denominator, so the series *climbs*
+    /// toward the decode rate rather than sitting at it -- the first sample is
+    /// one token divided by prefill plus one step. That is the honest shape of
+    /// an amortized figure and it is what end-to-end throughput means, but it
+    /// is not the steady-state decode rate, and a short turn never gets close
+    /// to one. Read the tail, not the head.
+    fn record_step(&mut self, produced: usize, elapsed: std::time::Duration) {
+        let secs = elapsed.as_secs_f64();
+        let mut fields = Vec::with_capacity(2);
+        if secs > 0.0 {
+            fields.push(("tokens_per_s", obs::Value::Num(produced as f64 / secs)));
+        }
+        if let Some(bytes) = runtime::resident_rss_bytes() {
+            fields.push((
+                "rss_gb",
+                obs::Value::Num(bytes as f64 / 1024.0 / 1024.0 / 1024.0),
+            ));
+        }
+        self.metrics.metric(self.step, &fields);
+        self.step += 1;
     }
 
     /// Begin recording token-to-text alignment, returning the handle it is
@@ -94,9 +151,15 @@ impl SessionGenerator {
     ) -> Result<Completion> {
         let ids = self.tokenizer.encode_prompt(prompt, PROMPT_SPECIALS)?;
         let mut sampler = Sampler::new(params);
+        let started = std::time::Instant::now();
         let generation =
             self.session
                 .generate(&ids, &self.vocab, None, &mut sampler, max_tokens, |_| {})?;
+        // One record per completed request, not per token: this is the served
+        // path, and a server has no run boundary to bound a per-token file
+        // against. `complete` below is the task and chat path, where
+        // --max-tokens is that bound.
+        self.record_step(generation.tokens.len(), started.elapsed());
         Ok(Completion {
             text: self.tokenizer.decode(&generation.tokens)?,
             prompt_tokens: ids.len(),
@@ -135,14 +198,39 @@ const PROMPT_SPECIALS: &[&str] = &[
 impl Generator for SessionGenerator {
     fn complete(&mut self, prompt: &str) -> Result<String> {
         let ids = self.tokenizer.encode_prompt(prompt, PROMPT_SPECIALS)?;
-        let generation = self.session.generate(
-            &ids,
-            &self.vocab,
-            None,
-            &mut self.sampler,
-            self.max_tokens,
-            |_| {},
-        )?;
+        // One record per decoded token, bounded by --max-tokens. The body
+        // mirrors `record_step`; see its comment for what tokens_per_s does
+        // and does not mean. It is inlined rather than called because the
+        // fields are destructured first, so the closure captures `metrics`
+        // and `step` disjointly from the `&mut session` the call itself
+        // takes -- a `self.record_step(..)` here would borrow all of `self`.
+        let Self {
+            session,
+            vocab,
+            sampler,
+            max_tokens,
+            metrics,
+            step,
+            ..
+        } = self;
+        let started = std::time::Instant::now();
+        let mut produced = 0usize;
+        let generation = session.generate(&ids, vocab, None, sampler, *max_tokens, |_| {
+            produced += 1;
+            let secs = started.elapsed().as_secs_f64();
+            let mut fields = Vec::with_capacity(2);
+            if secs > 0.0 {
+                fields.push(("tokens_per_s", obs::Value::Num(produced as f64 / secs)));
+            }
+            if let Some(bytes) = runtime::resident_rss_bytes() {
+                fields.push((
+                    "rss_gb",
+                    obs::Value::Num(bytes as f64 / 1024.0 / 1024.0 / 1024.0),
+                ));
+            }
+            metrics.metric(*step, &fields);
+            *step += 1;
+        })?;
         if let Some(handle) = self.alignment.as_ref() {
             let built =
                 Alignment::build(&self.tokenizer, prompt, PROMPT_SPECIALS, &generation.tokens)?;

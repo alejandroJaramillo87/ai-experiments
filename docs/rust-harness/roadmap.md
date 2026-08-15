@@ -572,11 +572,32 @@ run.
 
 ### U6 — phases, `metrics.jsonl`, and the existing dashboard
 
-Wire phases explicitly rather than bridging `tracing`, whose subscriber is installed only
-under `--trace-chrome` and whose installation is a hard `expect`. The dashboard needs no
-Python change: `report --run` takes a directory verbatim. Note the RH.6 span schema is
-partly fiction — `model.load`, `prefill` and `decode` do not exist as spans — so this stage
-creates those boundaries and corrects the documentation.
+Done. Phases are wired explicitly rather than bridged from `tracing`, whose subscriber is
+installed only under `--trace-chrome` and whose installation is a hard `expect`. The
+dashboard needed no Python change: `training report --run` pointed at a harness run
+directory writes `run.html`, joins the event file through the header's `run_id` and `cli`,
+and charts `tokens_per_s` and `rss_gb`. `common/obs/viewer.js` gained exactly one group.
+
+`RunLog` gained `phase`, `metrics_header`, `metric`, `run_dir` and — not in the design —
+`metrics_sink`. The sink is what makes the rest reachable: `Phase` borrows the log mutably,
+and the served generator lives behind `Arc<ServerState>`, so neither could write a metric
+through `&mut RunLog`. Per-step records needed only one wiring point rather than three,
+because the agent loop, chat and serve all generate through `SessionGenerator`, whose two
+`session.generate` calls were already passing an `on_token` closure and discarding it.
+
+Two [SCR] changes landed together: `phase.start`/`phase.end`, two-sided with
+`common/obs/core.py`, and `run_dir` changing from the process's cwd to the run's own
+directory — the first incompatible change `obs_record.json` has taken, and so the one that
+introduced its `schema_version`. `schemas/run_metrics.json` is new, because the report
+envelope stopped being a Python-only convention the moment a second language wrote it.
+
+**Only `model.load` became a phase, not the three the plan named.** `prefill` and `decode`
+happen inside `Session::generate` in the `runtime` crate, and `runtime` does not depend on
+`obs` — giving it that dependency is U9b. The documentation correction this stage owed was
+made against what is actually true: `docs/rust-harness/observability.md`'s span table was
+missing `model.forward`, the span that dominates every trace RH.6 recorded, and its
+acceptance line promised a "prefill/decode timeline" no span provides. RH.6 itself named the
+obs crate as its implementation, which it never was.
 
 ### U7 / U8 — errors that state the fix, and progress on long operations
 

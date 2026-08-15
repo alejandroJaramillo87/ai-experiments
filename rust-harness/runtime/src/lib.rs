@@ -75,6 +75,27 @@ pub fn peak_rss_bytes() -> Option<u64> {
     }
 }
 
+/// Resident set size *now*, in bytes, from `/proc/self/status` (`VmRSS`).
+///
+/// The companion to `peak_rss_bytes`, and not a substitute for it. `VmHWM` is
+/// a high-water mark, so a series built from it can only ever climb; a run
+/// that loads 14 GiB and then drops the checkpoint mapping renders as a
+/// staircase that never comes back down. This is the figure a memory chart
+/// wants, because the fall is the part worth seeing.
+///
+/// `None` off Linux, and on a Linux without `/proc`, for the same reason as
+/// its companion: an absent measurement must not read as a small one.
+pub fn resident_rss_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let field = status.lines().find(|l| l.starts_with("VmRSS:"))?;
+    let mut parts = field.split_whitespace().skip(1);
+    let value: u64 = parts.next()?.parse().ok()?;
+    match parts.next() {
+        Some("kB") => Some(value * 1024),
+        Some(_) | None => None,
+    }
+}
+
 #[cfg(test)]
 mod peak_rss_tests {
     /// A live process has touched pages, so the floor is "more than nothing".
@@ -89,5 +110,25 @@ mod peak_rss_tests {
             "VmHWM of {bytes} bytes is outside anything a test process could hold, \
              which means the unit conversion is wrong rather than the memory"
         );
+    }
+
+    /// The resident figure parses, and sits at or below the high-water mark.
+    ///
+    /// The ordering is the assertion worth making: it is the property that
+    /// distinguishes the two fields, so reading VmHWM into both -- the
+    /// copy-paste this function invites -- would still pass a bounds check
+    /// and fail here only if the bound were `<`. It is not: the two are equal
+    /// in a process that has never released a page, which is the common case
+    /// for a short test.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn resident_rss_is_never_above_the_peak() {
+        let now = super::resident_rss_bytes().expect("Linux with /proc reports VmRSS");
+        let peak = super::peak_rss_bytes().expect("Linux with /proc reports VmHWM");
+        assert!(
+            (1 << 20..1 << 40).contains(&now),
+            "VmRSS of {now} bytes is outside anything a test process could hold"
+        );
+        assert!(now <= peak, "resident {now} exceeds peak {peak}");
     }
 }

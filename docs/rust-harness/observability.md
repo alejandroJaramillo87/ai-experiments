@@ -108,12 +108,18 @@ existing stack is instrumented with structured spans:
 
 | Span | Location | Key fields |
 |------|----------|------------|
+| `model.forward` | `runtime/src/model/cpu.rs` | — |
 | `session.sync` | `runtime/src/session.rs` | delta length (tokens), cached length |
 | `session.step` | `runtime/src/session.rs` | position, chosen token |
 | `sampler.sample` | `runtime/src/sampler.rs` | temperature, candidate count |
 | `grammar.advance` | `runtime/src/grammar.rs` | state, allowed-token count |
 | `tool.exec` | `harness/src/tools.rs` | tool name, duration, output bytes |
 | `agent.fork` | `harness/src/subagents.rs` | parent cached length, task delta length |
+
+`model.forward` was missing from this table while being the span that dominates
+every trace RH.6 recorded — 31.15 s of a 176-token run against 0.87 s in the
+sampler. The first four are unconditional on any generation; `grammar.advance`
+and `tool.exec` are workload-conditional and absent from a plain completion.
 
 The span and field names form a stable schema — the Rust analogue of the
 Python `common/obs` vocabulary — shared by debugging, the blog write-ups, and
@@ -132,7 +138,33 @@ so that the phase 3 CPU code carries spans from its first commit.
 ### Acceptance
 
 Span structure is asserted in tests with a capturing test subscriber, and a
-mock-run Chrome trace renders the prefill/decode timeline in Perfetto.
+mock-run Chrome trace loads in Perfetto.
+
+**There is no `prefill` or `decode` span, and this sentence used to promise a
+"prefill/decode timeline" that no span provides.** What a trace carries is
+`session.sync`, which fires exactly once per run and *is* the prefill, and
+`session.step`, one per decoded token. The timeline is readable, but by
+reading those two rather than by finding spans under those names.
+
+### Phases are a separate mechanism from spans
+
+A span exists only while a `tracing` subscriber is installed, which happens
+only under `--trace-chrome`. A **phase** is an obs record — `phase.start` and
+`phase.end` in the run's event file, contracted in
+[`schemas/obs_record.json`](../../schemas/obs_record.json) and written by both
+this tier and `common/obs/core.py` — so it is present on every run whether or
+not anyone asked for a trace.
+
+They were deliberately not bridged. A subscriber `Layer` forwarding spans into
+the run log would make obs output depend on subscriber installation, and
+`--trace-chrome`'s `set_global_default` is a hard `expect`, so a second
+installation panics. Phases are called directly instead.
+
+The harness writes one phase today, `model.load`, which brackets the whole of
+`build_generator`. `prefill` and `decode` are not phases: both happen inside
+`Session::generate` in the `runtime` crate, and `runtime` does not depend on
+`obs`. Giving it that dependency is U9b's work, not a limitation worth a
+workaround here.
 
 ## Phase 3: rr-friendliness via a simple CPU backend
 
@@ -272,9 +304,24 @@ on the Python obs stack by contract rather than by code.
   capped at 4096 characters, `exit_code`), and `cmd.end` (`exit_code`,
   `duration_s`). Timestamps carry an explicit `+00:00` offset; `command`
   is `task` or `chat`.
+- `phase.start` and `phase.end` bracketing coarse spans, with `phase` and a
+  `duration_s` rounded to three decimals. Written by both stacks; see
+  "Phases are a separate mechanism from spans" above.
 - One catalog line appended to `${OBS_LOG_DIR}/harness/runs.jsonl` at run
   end, written as a single append so concurrent writers interleave whole
-  lines.
+  lines. Its `run_dir` is the run's own directory below.
+- A run directory `${OBS_LOG_DIR}/harness/<run_id>/`, holding
+  `metrics.jsonl`: one report-envelope header record carrying the run header's
+  fields, then one record per step with `tokens_per_s` and `rss_gb`. Task and
+  chat write one record per decoded token, bounded by `--max-tokens`; serve
+  writes one per completed request, because a server has no run boundary to
+  bound a per-token file against. Contracted in
+  [`schemas/run_metrics.json`](../../schemas/run_metrics.json).
+
+  The directory is created on the first metrics write rather than at run
+  start. The retention pruner globs `R-*.jsonl`, which a directory named
+  `<run_id>` never matches, so an eagerly created empty one would survive
+  forever.
 - A shared flock held on the event file for the run's duration, so the
   Python retention pruner treats it as live.
 
@@ -316,6 +363,28 @@ Browsing writes nothing. The standalone entry point does not route through the
 traced dispatch: a catalog query is not a run, and dispatching would both append
 rows the default view then filters out and prune the event files the command was
 asked to display.
+
+### The dashboard
+
+A run's charts come from the same command the training tier uses, pointed at the
+run directory the catalog names:
+
+```bash
+$ uv run --no-sync python -m training report --run ${OBS_LOG_DIR}/harness/<run_id>
+```
+
+It writes `run.html` beside `metrics.jsonl`, joins the event file through the
+header's `run_id` and `cli` for the log pane, and needs no harness-specific
+code: `report.py` takes `--run` verbatim and checks only that it is a
+directory. The command is spelled `training report` because that is where it
+lives, not because it is training-only — the same reasoning as the shared
+`runs` reader above, and the reason the two training-flavoured hint strings in
+that command were left alone rather than reworded.
+
+`common/obs/viewer.js` gained one chart group for this, `Process memory (GB)`
+over `rss_gb`. It is additive: a training run carries no `rss_gb` and renders
+the group empty, exactly as a CPU-only harness run renders the existing
+device-memory group empty.
 
 ## Parked: CPU-served subagents
 

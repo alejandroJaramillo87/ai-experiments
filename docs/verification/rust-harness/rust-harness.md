@@ -990,9 +990,15 @@ Status: VERIFIED 2026-08-14
 
 ## RH.6 Chrome trace in Perfetto
 
-Implementation: `rust-harness/obs/src/lib.rs`,
-`rust-harness/harness/tests/tracing_spans.rs`,
+Implementation: `rust-harness/harness/src/main.rs` (the `--trace-chrome`
+subscriber), `rust-harness/harness/tests/tracing_spans.rs`,
 `rust-harness/runtime/tests/tracing_spans.rs`.
+
+This entry named the obs crate as its implementation, which it never was:
+`tracing` spans and obs records are separate mechanisms with separate
+lifetimes, and the obs crate installs no subscriber. Spans exist only under
+`--trace-chrome`; obs records are written on every run. See
+[observability.md](../../rust-harness/observability.md#phases-are-a-separate-mechanism-from-spans).
 
 Command:
 

@@ -482,27 +482,35 @@ fn run(
     // delta prefill keeps working).
     let memory = std::fs::read_to_string(root.join("HARNESS.md")).ok();
     let snapshot_path = root.join("session.kv");
-    let (mut generator, monitor, model_hash, passes, header) = build_generator(
-        model,
-        tokenizer,
-        record,
-        control_vector,
-        control_scale,
-        control_layer_range,
-        probe,
-        sampling,
-        max_tokens,
-        context,
-        Some(&snapshot_path),
-        text_only,
-        single_thread,
-        alignment_out.is_some(),
-        // Serve mode keeps every clean score for the per-request maximum,
-        // but must not record passes: the pass list is the one artifact with
-        // no per-request drain, so under a long-lived server it would grow
-        // for the life of the process.
-        alignment_out.is_some() || serve.is_some(),
-    )?;
+    // `model.load` brackets the whole of `build_generator`, which is what a
+    // human waiting on a cold start is actually waiting for: E4B's ~14 GiB
+    // dominates it, and the probe and control vector it also resolves are
+    // small enough not to distort the figure. The span closes when the guard
+    // drops at the end of the statement.
+    let (generator, monitor, model_hash, passes, header) = {
+        let _span = run_log.phase("model.load");
+        build_generator(
+            model,
+            tokenizer,
+            record,
+            control_vector,
+            control_scale,
+            control_layer_range,
+            probe,
+            sampling,
+            max_tokens,
+            context,
+            Some(&snapshot_path),
+            text_only,
+            single_thread,
+            alignment_out.is_some(),
+            // Serve mode keeps every clean score for the per-request maximum,
+            // but must not record passes: the pass list is the one artifact with
+            // no per-request drain, so under a long-lived server it would grow
+            // for the life of the process.
+            alignment_out.is_some() || serve.is_some(),
+        )?
+    };
     // The resolved configuration, recorded once. The terminal already saw it
     // as `header.lines()` inside `build_generator`; this is the same facts
     // through the same struct, which is the property the stage is for.
@@ -512,6 +520,24 @@ fn run(
         "resolved run configuration",
         &header.fields(),
     );
+    // The metrics file's header, carrying the same struct the event above
+    // does, so the dashboard's header strip and the terminal agree. This is
+    // also what creates the run directory -- see `RunLog::metrics_header` --
+    // so it must precede the sink below, which opens a second handle onto the
+    // file it writes.
+    //
+    // The envelope's `git_sha` comes from the header rather than being
+    // appended here. `RunHeader` already carries it (from
+    // runtime::envelope::git_sha), and `obs::metrics_header` guards only its
+    // own six envelope keys -- so a second git_sha would be emitted, not
+    // skipped, leaving a duplicate key whose meaning depends on which one the
+    // reader keeps. That is the failure `schemas/obs_record.json`'s
+    // base_key_guard note is about, and it does not stop at the base keys.
+    //
+    // `obs` cannot derive the sha itself: it must not depend on `runtime`,
+    // which is the crate that will depend on it.
+    run_log.metrics_header(&header.fields());
+    let mut generator = generator.observing_metrics(run_log.metrics_sink());
     // Started here rather than in `build_generator`, which does not own the
     // handle the artifact is written from.
     let alignment = alignment_out.map(|_| generator.record_alignment());
