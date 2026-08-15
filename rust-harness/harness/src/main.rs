@@ -155,6 +155,16 @@ fn build_generator(
              the cuda backend (roadmap phase A) has not landed"
         )
     };
+    // Resolved before the load rather than after it, which is where this call
+    // used to sit. Two reasons, and the second is the one that matters:
+    // `CpuModel::load` resolves the same path internally, so hoisting removes
+    // a duplicate walk -- and it puts the failure under a frame this crate
+    // owns, which is the only place a remedy can attach without duplicating
+    // the message. `load`'s own context is the identical `read model {path}`
+    // string, so the chain a failing run records is unchanged; see
+    // `actionable::missing_checkpoint`.
+    let checkpoint_dir = runtime::checkpoint::resolve(model_path)
+        .with_context(|| harness::actionable::missing_checkpoint(model_path))?;
     // `load` drops the checkpoint mapping before returning, so nothing below
     // holds 15 GiB of page cache it will never read; see its doc comment.
     let (mut cpu, model_hash) = CpuModel::load(model_path, text_only)?;
@@ -166,8 +176,7 @@ fn build_generator(
     // artifact was fitted on. Hashed from the file rather than from memory,
     // and only when an artifact is actually present -- see
     // `check_model_identity` on why the digest arrives as a closure.
-    let weights_path =
-        runtime::checkpoint::resolve(model_path)?.join(runtime::checkpoint::WEIGHTS_FILE);
+    let weights_path = checkpoint_dir.join(runtime::checkpoint::WEIGHTS_FILE);
     if let Some(path) = control_vector {
         let cv_data = std::fs::read(path)
             .with_context(|| format!("read control vector {}", path.display()))?;
@@ -175,10 +184,16 @@ fn build_generator(
             .context("parse control-vector image")?;
         match harness::preflight::control_vector_model_hash(path) {
             Some(hash) => {
-                harness::preflight::check_model_identity("control vector", &hash, || {
-                    runtime::digest::sha256_file(&weights_path)
-                        .with_context(|| format!("hash {}", weights_path.display()))
-                })?;
+                harness::preflight::check_model_identity(
+                    "--control-vector",
+                    path,
+                    model_path,
+                    &hash,
+                    || {
+                        runtime::digest::sha256_file(&weights_path)
+                            .with_context(|| format!("hash {}", weights_path.display()))
+                    },
+                )?;
             }
             None => runtime::status::warn(&format!(
                 "Model identity: no readable manifest.json beside {}, \
@@ -195,15 +210,24 @@ fn build_generator(
     let monitor = match probe {
         Some(path) => {
             let p = std::sync::Arc::new(Probe::load(path).context("load probe")?);
-            harness::preflight::check_model_identity("probe", &p.model_hash, || {
-                runtime::digest::sha256_file(&weights_path)
-                    .with_context(|| format!("hash {}", weights_path.display()))
-            })?;
+            harness::preflight::check_model_identity(
+                "--probe",
+                path,
+                model_path,
+                &p.model_hash,
+                || {
+                    runtime::digest::sha256_file(&weights_path)
+                        .with_context(|| format!("hash {}", weights_path.display()))
+                },
+            )?;
             anyhow::ensure!(
                 p.width() == cpu.config().embed_dim,
-                "probe width {} does not match model embedding dimension {}",
-                p.width(),
-                cpu.config().embed_dim
+                harness::actionable::probe_width(
+                    p.width(),
+                    cpu.config().embed_dim,
+                    path,
+                    model_path
+                )
             );
             anyhow::ensure!(
                 p.layer < cpu.config().n_layers,
@@ -1061,6 +1085,14 @@ fn main() -> ExitCode {
         }
         Err(e) => {
             runtime::status::error(&format!("Task failed: {e:#}"));
+            // The remedy is a second emission rather than part of the line
+            // above, and that is what keeps this arm honest: `fail` records
+            // `exc_msg` as the same `{e:#}`, so advice folded into the
+            // diagnosis would be advice in every fail record. See
+            // `harness::actionable`.
+            if let Some(remedy) = harness::actionable::render(&e) {
+                runtime::status::plain(&remedy);
+            }
             run_log.fail(&e, 1);
             run_log.end(1);
             ExitCode::from(1)

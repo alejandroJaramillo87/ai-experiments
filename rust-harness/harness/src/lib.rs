@@ -12,6 +12,7 @@
 // attribute does not propagate.
 #![forbid(unsafe_code)]
 
+pub mod actionable;
 pub mod agent;
 pub mod alignment;
 pub mod chat;

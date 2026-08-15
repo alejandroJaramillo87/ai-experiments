@@ -138,11 +138,21 @@ pub fn compare_identity(
 ///
 /// The run path's renderer over `compare_identity`. It warns inline, which is
 /// why `checks` uses the comparison directly instead.
+///
+/// The artifact is named by its flag (`--probe`, `--control-vector`) rather
+/// than by a prose label, and the label the messages use is derived from it.
+/// The refusal carries a remedy naming the command that re-checks the pairing
+/// without loading the model, and that command needs the flag and the two
+/// paths -- so passing the flag is what lets the label and the command agree
+/// by construction instead of by two callers remembering to match.
 pub fn check_model_identity(
-    artifact: &str,
+    flag: &str,
+    path: &Path,
+    model: &Path,
     artifact_hash: &str,
     served_sha256: impl FnOnce() -> Result<String>,
 ) -> Result<()> {
+    let artifact = crate::actionable::label_of(flag);
     match compare_identity(artifact_hash, served_sha256)? {
         Identity::Sentinel => {
             runtime::status::warn(&format!(
@@ -155,10 +165,9 @@ pub fn check_model_identity(
         Identity::Differs {
             artifact: a,
             served,
-        } => anyhow::bail!(
-            "{artifact} was trained on a different model: {artifact} model_hash \
-             {a}, served model sha256 {served}"
-        ),
+        } => Err(anyhow::anyhow!(crate::actionable::model_identity(
+            flag, path, model, &a, &served,
+        ))),
     }
 }
 
@@ -604,21 +613,37 @@ mod tests {
             .unwrap_or_else(|| panic!("no check named {name} among {checks:?}"))
     }
 
-    // The three moved from main.rs unmodified, which is what says the move of
-    // `check_model_identity` was a move.
+    // These three moved from main.rs unmodified when `check_model_identity`
+    // moved, which is what said that move was a move. U7 changed the
+    // function's signature -- the flag and the two paths it needs to state a
+    // remedy -- so they are no longer verbatim. Every assertion is unchanged;
+    // the call lines are not.
+
+    /// The paths the refusal names in its remedy. Not on disk: the identity
+    /// comparison is over two hashes and never opens either file.
+    fn artifact_and_model() -> (PathBuf, PathBuf) {
+        (
+            PathBuf::from("/interp/probes/refusal/probe.safetensors"),
+            PathBuf::from("/models/hf/gemma-4-E4B"),
+        )
+    }
 
     #[test]
     fn model_identity_accepts_an_artifact_hash_equal_to_the_served_digest() {
+        let (probe, model) = artifact_and_model();
         let served = sha256_hex(b"gguf bytes");
-        check_model_identity("probe", &served, || Ok(sha256_hex(b"gguf bytes")))
-            .expect("an artifact fitted on the served weights is the matching case");
+        check_model_identity("--probe", &probe, &model, &served, || {
+            Ok(sha256_hex(b"gguf bytes"))
+        })
+        .expect("an artifact fitted on the served weights is the matching case");
     }
 
     #[test]
     fn model_identity_refuses_a_mismatch_and_names_both_hashes() {
+        let (probe, model) = artifact_and_model();
         let artifact = sha256_hex(b"weights the probe was trained on");
         let served = sha256_hex(b"weights actually loaded");
-        let err = check_model_identity("probe", &artifact, || Ok(served.clone()))
+        let err = check_model_identity("--probe", &probe, &model, &artifact, || Ok(served.clone()))
             .expect_err("two real hashes that disagree are a refusal")
             .to_string();
         assert!(err.contains(&artifact), "{err}");
@@ -626,9 +651,28 @@ mod tests {
     }
 
     #[test]
+    fn model_identity_refuses_in_the_same_words_it_always_has() {
+        // The refusal is now an `Actionable` rather than a `bail!` string, and
+        // `Display` is what decides whether that shows. This pins the
+        // diagnosis byte for byte, because it is also `exc_msg`: RH.13's
+        // evidence is that the recorded message and the printed one are one
+        // string, and a reworded refusal would change a verified record.
+        let (probe, model) = artifact_and_model();
+        let err = check_model_identity("--probe", &probe, &model, "aaaa", || Ok("bbbb".into()))
+            .expect_err("two real hashes that disagree are a refusal")
+            .to_string();
+        assert_eq!(
+            err,
+            "probe was trained on a different model: probe model_hash aaaa, \
+             served model sha256 bbbb"
+        );
+    }
+
+    #[test]
     fn model_identity_skips_the_unknown_sentinel_without_hashing_the_model() {
+        let (probe, model) = artifact_and_model();
         let mut hashed = false;
-        check_model_identity("probe", UNKNOWN_MODEL_HASH, || {
+        check_model_identity("--probe", &probe, &model, UNKNOWN_MODEL_HASH, || {
             hashed = true;
             Ok(String::new())
         })
