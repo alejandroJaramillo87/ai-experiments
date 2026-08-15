@@ -444,12 +444,15 @@ where
         .join("harness");
     let (outcome, detail) = directory_state(&obs_root);
     out.push(match outcome {
-        Outcome::Ok => Check::new("obs log directory", Outcome::Ok, detail),
-        _ => Check::new(
+        // An absent directory is the ordinary case and says so plainly: the
+        // run creates it, and records are written. Only a root that cannot be
+        // written carries the degradation note.
+        Outcome::Error => Check::new(
             "obs log directory",
             Outcome::Warn,
             format!("{detail}; run records degrade to a no-op"),
         ),
+        other => Check::new("obs log directory", other, detail),
     });
 
     out

@@ -47,6 +47,42 @@ type PassHandle = Option<std::sync::Arc<std::sync::Mutex<Vec<runtime::align::Pas
 // before a model is loaded. They are `pub` there rather than crate-private
 // because this binary is a separate crate from the library it consumes.
 
+/// Print a preflight report and turn it into an exit code.
+///
+/// The only renderer over `preflight::Check`, which is why `checks` returns
+/// data and tags nothing itself.
+///
+/// A check's first detail line goes on the tagged line; any further lines are
+/// indented and **untagged**. That is the repo's error shape
+/// (`rust-harness/Makefile:70-86`): one tagged statement of what happened,
+/// then detail. `status::error_at` would tag every continuation, turning one
+/// finding into what reads like several.
+///
+/// Exit 1, not 2, when something would stop the run: 2 is reserved for a
+/// command line that was wrong to ask, and the whole value of `--status` is
+/// that the two are different answers. Warnings and skips do not fail.
+fn report(checks: &[harness::preflight::Check]) -> ExitCode {
+    use harness::preflight::Outcome;
+    for check in checks {
+        let mut lines = check.detail.lines();
+        let first = lines.next().unwrap_or_default();
+        let head = format!("{}: {first}", check.name);
+        match check.outcome {
+            Outcome::Ok => runtime::status::ok(&head),
+            Outcome::Warn => runtime::status::warn(&head),
+            Outcome::Error => runtime::status::error(&head),
+            Outcome::Skip => runtime::status::skip(&head),
+        }
+        for line in lines {
+            runtime::status::plain(&format!("        {line}"));
+        }
+    }
+    match harness::preflight::failed(checks) {
+        true => ExitCode::from(1),
+        false => ExitCode::SUCCESS,
+    }
+}
+
 /// Parse `--control-vector-layer-range` as an inclusive pair of 0-based
 /// block indices.
 ///
@@ -832,6 +868,8 @@ fn main() -> ExitCode {
     let text_only = given("--text-only");
     let single_thread = given("--single-thread");
     let chat = given("--chat");
+    let status = given("--status");
+    let deep = given("--deep");
     // --serve <port>: the OpenAI-shaped endpoint on loopback instead of a
     // task or a REPL. Mutually exclusive with both, and like --chat it takes
     // no positional task text.
@@ -845,8 +883,13 @@ fn main() -> ExitCode {
         },
         None => None,
     };
-    if chat && serve.is_some() {
-        runtime::status::error("--chat and --serve are mutually exclusive");
+    if [chat, serve.is_some(), status]
+        .iter()
+        .filter(|m| **m)
+        .count()
+        > 1
+    {
+        runtime::status::error("--chat, --serve and --status are mutually exclusive");
         return ExitCode::from(2);
     }
     let serve_addr = match serve_addr_arg {
@@ -877,11 +920,39 @@ fn main() -> ExitCode {
             runtime::status::warn(&message);
         }
     }
-    // A task is positional text; the two flag modes take none. Exactly one of
-    // the three must be selected.
-    if args.is_empty() != (chat || serve.is_some()) {
+    // A task is positional text; the three flag modes take none. Exactly one
+    // of the four must be selected.
+    if args.is_empty() != (chat || serve.is_some() || status) {
         runtime::status::plain(&harness::cli::usage());
         return ExitCode::from(2);
+    }
+    // --status answers from the filesystem and returns. Placed here for two
+    // reasons: after every parse and range check, so it reports on the run
+    // that was actually asked for rather than on a half-validated one; and
+    // before `RunLog::begin` below, because a query is not a run and
+    // cataloguing it would pollute the runs table the way `command == "runs"`
+    // does on the Python side. Before the trace guard too, so no subscriber is
+    // installed and no trace file appears for a preflight.
+    if status {
+        // `REQUIRED` in the flag table feeds the usage line and nothing else,
+        // so nothing has rejected a missing --model by this point. A run
+        // discovers it inside `build_generator` and exits 1; here it is a
+        // usage mistake, which is what exit 2 is for.
+        let Some(model) = model.as_deref() else {
+            runtime::status::error("--status: no model to inspect, pass --model <checkpoint-dir>");
+            runtime::status::plain(&harness::cli::usage());
+            return ExitCode::from(2);
+        };
+        return report(&harness::preflight::checks(&harness::preflight::Request {
+            model,
+            probe: probe.as_deref(),
+            control_vector: control_vector.as_deref(),
+            control_scale,
+            control_layer_range,
+            interp_log: interp_log.as_deref(),
+            text_only,
+            deep,
+        }));
     }
     // The guard flushes the trace file on drop at the end of main.
     let _trace_guard = match trace_chrome {
