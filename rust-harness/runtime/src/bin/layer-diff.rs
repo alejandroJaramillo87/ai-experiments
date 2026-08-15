@@ -77,6 +77,64 @@ fn report(label: &str, got: &[f32], want: &[f32], floor: f64, ceiling: f64) -> R
     Ok(!mark.is_empty())
 }
 
+/// The resolved configuration of a comparison, as obs fields.
+///
+/// A per-binary header event, for the reason `schemas/obs_record.json`'s
+/// `per_tool_header_events` note gives. The two tolerances are why this one
+/// cannot share an event with anything: nothing else in the workspace has
+/// them, and they are the field a re-reader of a pasted verdict most needs --
+/// a pass at a loosened floor is a different claim from a pass at the default.
+///
+/// This binary writes no artifact at all, so unlike the two capture binaries
+/// it has no manifest carrying its provenance. The obs record is the only
+/// place the conditions of a quoted verdict survive the terminal.
+fn layer_diff_header(
+    model_path: &Path,
+    model_hash: u64,
+    reference_path: &Path,
+    reference_tokens: usize,
+    reference_dtype: &str,
+    text_only: bool,
+    floor: f64,
+    ceiling: f64,
+    model: &CpuModel,
+) -> Vec<(&'static str, obs::Value)> {
+    let (weight_bytes, width) = model.weight_bytes();
+    vec![
+        ("model", obs::Value::Str(model_path.display().to_string())),
+        ("model_hash", obs::Value::Str(format!("{model_hash:016x}"))),
+        ("n_layers", obs::Value::Int(model.config().n_layers as u64)),
+        (
+            "dtype",
+            obs::Value::Str(width.unwrap_or("mixed widths").to_string()),
+        ),
+        ("weight_bytes", obs::Value::Int(weight_bytes as u64)),
+        (
+            "reference",
+            obs::Value::Str(reference_path.display().to_string()),
+        ),
+        ("reference_tokens", obs::Value::Int(reference_tokens as u64)),
+        (
+            "reference_dtype",
+            obs::Value::Str(reference_dtype.to_string()),
+        ),
+        // Not rounded: 1e-3 survives `round3` and a tighter ceiling would not,
+        // and a tolerance recorded less precisely than it was applied is worse
+        // than one not recorded at all.
+        ("cosine_floor", obs::Value::Num(floor)),
+        ("rel_l2_ceiling", obs::Value::Num(ceiling)),
+        ("text_only", obs::Value::Bool(text_only)),
+        ("threads", obs::Value::Int(model.threads() as u64)),
+        ("dot", obs::Value::Str(model.dot().label().to_string())),
+        ("batch", obs::Value::Str(model.batch().label())),
+        (
+            "binary_version",
+            obs::Value::Str(env!("CARGO_PKG_VERSION").to_string()),
+        ),
+        ("git_sha", obs::Value::Str(runtime::envelope::git_sha())),
+    ]
+}
+
 fn run(
     model_path: &Path,
     reference_path: &Path,
@@ -84,6 +142,7 @@ fn run(
     single_thread: bool,
     floor: f64,
     ceiling: f64,
+    log: &mut obs::RunLog,
 ) -> Result<bool> {
     let reference = runtime::reference::load_capture(reference_path, &PRELUDE_STAGES)?
         .with_context(|| format!("reference {} does not exist", reference_path.display()))?;
@@ -94,7 +153,10 @@ fn run(
 
     // `load` drops the checkpoint mapping before returning; see its doc
     // comment for why no caller here should open one itself.
-    let (mut model, _fingerprint) = CpuModel::load(model_path, text_only)?;
+    let (mut model, fingerprint) = {
+        let _span = log.phase("model.load");
+        CpuModel::load(model_path, text_only)?
+    };
     if single_thread {
         model.set_threads(1);
     }
@@ -104,6 +166,27 @@ fn run(
         "reference captured {} layers, the checkpoint has {n_layers}: the two are not \
          the same model",
         reference.activations.layers.len()
+    );
+
+    // After `set_threads`, so the header reports the width the comparison
+    // actually ran at. It carries what the two `status::info` lines below
+    // print and the tolerances besides, which is the point: those lines are
+    // the run header this binary has always had and always lost.
+    log.event(
+        "info",
+        "layer-diff.header",
+        "resolved comparison configuration",
+        &layer_diff_header(
+            model_path,
+            fingerprint,
+            reference_path,
+            reference.token_ids.len(),
+            &reference.dtype.to_string(),
+            text_only,
+            floor,
+            ceiling,
+            &model,
+        ),
     );
 
     let tap = LastRowTap::new((0..n_layers).collect()).capturing_prelude();
@@ -275,6 +358,9 @@ fn main() -> ExitCode {
     if runtime::cli::handled_help(&SPEC, &args) {
         return ExitCode::SUCCESS;
     }
+    // Snapshotted before parsing, so the record carries what was typed rather
+    // than what survived it.
+    let argv_full = args.clone();
     let (mut model, mut reference, mut floor_arg, mut ceiling_arg) = (None, None, None, None);
     let parsed = {
         let mut slots: [(&'static str, &mut Option<String>); 4] = [
@@ -303,18 +389,36 @@ fn main() -> ExitCode {
     let expect = |v: Option<String>| PathBuf::from(v.expect("checked by missing_required above"));
     let (model, reference) = (expect(model), expect(reference));
 
-    match run(
+    // Opened only once the arguments are known good, so a usage mistake leaves
+    // no row in the catalog -- and after `handled_help` above, so a query is
+    // not a run.
+    let mut log = obs::RunLog::begin("layer-diff", &argv_full);
+    let verdict = run(
         &model,
         &reference,
         parsed.has("--text-only"),
         parsed.has("--single-thread"),
         floor,
         ceiling,
-    ) {
-        Ok(true) => ExitCode::SUCCESS,
-        Ok(false) => ExitCode::from(1),
+        &mut log,
+    );
+    match verdict {
+        Ok(true) => {
+            log.end(0);
+            ExitCode::SUCCESS
+        }
+        // A divergence found is a completed run that answered "no", not a
+        // crash, so it takes the ordinary exit path and no `fail` record --
+        // the same distinction the ladder draws for a red rung. A `fail` here
+        // would make every honest negative read as an error in the catalog.
+        Ok(false) => {
+            log.end(1);
+            ExitCode::from(1)
+        }
         Err(e) => {
             runtime::status::error(&format!("{e:#}"));
+            log.fail(&e, 1);
+            log.end(1);
             ExitCode::from(1)
         }
     }

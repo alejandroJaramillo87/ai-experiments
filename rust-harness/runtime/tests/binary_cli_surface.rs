@@ -5,8 +5,9 @@
  * mechanism works and nothing about whether a given program uses it. These are
  * the assertions that only a spawned process can make: that `--help` is
  * answered at all, that it reaches stdout and leaves stderr clean, that an
- * unrecognized flag exits 2, and -- for the two fixture writers -- that asking
- * for help writes nothing.
+ * unrecognized flag exits 2, that neither a help request nor a usage mistake
+ * opens a run log, and -- for the two fixture writers -- that asking for help
+ * writes nothing.
  *
  * That last one is the reason this file exists. `tiny-model` and
  * `long-context-golden` take their output path positionally and neither looked
@@ -154,29 +155,58 @@ fn asking_a_fixture_writer_for_help_writes_nothing() {
     }
 }
 
-/// `ladder` is the one instrumented binary of the seven, and help must not
-/// reach `RunLog::begin`. Same rule as `harness --help`: a query is not a run,
-/// so it leaves no row in the catalog for someone to find later and wonder
-/// about. True by the ordering of the intercept, and asserted rather than left
-/// to it.
+/// Four of the seven write run records -- `ladder` since U9b, the two capture
+/// binaries and `layer-diff` since U9c -- and for none of them may help reach
+/// `RunLog::begin`. Same rule as `harness --help`: a query is not a run, so it
+/// leaves no row in the catalog for someone to find later and wonder about.
+/// True by the ordering of the intercept, and asserted rather than left to it.
+///
+/// The other three are listed too. Asserting the property of all seven costs
+/// nothing and means an eighth binary, or an existing one newly instrumented,
+/// inherits the assertion instead of needing to be remembered.
 #[test]
-fn ladder_help_writes_no_run_record() {
-    let dir = tempfile::tempdir().expect("a scratch working directory");
-    let logs = tempfile::tempdir().expect("a scratch log root");
-    let out = Command::new(env!("CARGO_BIN_EXE_ladder"))
-        .arg("--help")
-        .env("OBS_LOG_DIR", logs.path())
-        .current_dir(dir.path())
-        .output()
-        .expect("ladder builds as a test binary");
-    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
-    assert!(
-        !logs.path().join("harness").exists(),
-        "help opened a run log: {:?}",
-        std::fs::read_dir(logs.path()).map(|d| d
-            .filter_map(|e| e.ok().map(|e| e.file_name()))
-            .collect::<Vec<_>>())
-    );
+fn help_writes_no_run_record() {
+    for (name, exe) in BINARIES {
+        let dir = tempfile::tempdir().expect("a scratch working directory");
+        let logs = tempfile::tempdir().expect("a scratch log root");
+        let out = Command::new(exe)
+            .arg("--help")
+            .env("OBS_LOG_DIR", logs.path())
+            .current_dir(dir.path())
+            .output()
+            .expect("the binary builds as a test binary");
+        assert_eq!(out.status.code(), Some(0), "{name}: {}", stderr(&out));
+        assert!(
+            !logs.path().join("harness").exists(),
+            "{name}: help opened a run log: {:?}",
+            std::fs::read_dir(logs.path()).map(|d| d
+                .filter_map(|e| e.ok().map(|e| e.file_name()))
+                .collect::<Vec<_>>())
+        );
+    }
+}
+
+/// A usage mistake is not a run either, and the distinction matters more here
+/// than for `--help`: a mistyped flag is the case where a row would actually
+/// get written, since the binary reached `main` with arguments it tried to
+/// act on. `RunLog::begin` sits after every check for that reason.
+#[test]
+fn a_usage_mistake_writes_no_run_record() {
+    for (name, exe) in BINARIES {
+        let dir = tempfile::tempdir().expect("a scratch working directory");
+        let logs = tempfile::tempdir().expect("a scratch log root");
+        let out = Command::new(exe)
+            .arg("--definitely-not-a-flag")
+            .env("OBS_LOG_DIR", logs.path())
+            .current_dir(dir.path())
+            .output()
+            .expect("the binary builds as a test binary");
+        assert_eq!(out.status.code(), Some(2), "{name}: {}", stderr(&out));
+        assert!(
+            !logs.path().join("harness").exists(),
+            "{name}: a usage error opened a run log"
+        );
+    }
 }
 
 /// The exit codes mean three different things and must not collapse: 2 for a
