@@ -14,6 +14,12 @@
  * that loads, passes, and quietly measures a third of what the header claims.
  * That is the direction this file exists for.
  *
+ * L5 adds a fourth of the same kind and the least forgiving: its scored
+ * positions are derived from the sliding window on both sides rather than
+ * written down, so a generator whose schedule drifts by one position produces
+ * an artifact that loads, compares each row against a position the reference
+ * never scored, and reports the result as a defect in the engine.
+ *
  * The values are read out of the real module rather than re-parsed from its
  * text, for the reason every cross-language test here gives: a second reader
  * written in Rust would agree with a Rust misunderstanding of the format.
@@ -21,7 +27,9 @@
 
 use std::path::{Path, PathBuf};
 
-use runtime::ladder::{Size, CHUNK, GREEDY_TOKENS};
+use runtime::ladder::{
+    min_long_context_tokens, window_schedule, Size, CHUNK, GREEDY_TOKENS, LONG_CONTEXT_POSITIONS,
+};
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -40,8 +48,15 @@ fn generator_constants() -> serde_json::Value {
          sys.path.insert(0, sys.argv[1])\n\
          import reference_greedy as g\n\
          import reference_perplexity as p\n\
+         import reference_long_context as lc\n\
          json.dump({'prompts': g.PROMPTS, 'tokens': g.TOKENS,\n\
-                    'chunk': p.CHUNK, 'corpus_tokens': p.TOKENS}, sys.stdout)\n";
+                    'chunk': p.CHUNK, 'corpus_tokens': p.TOKENS,\n\
+                    'long_context_positions': lc.POSITIONS,\n\
+                    'long_context_min': {str(w): lc.min_tokens(w)\n\
+                                         for w in (3, 512)},\n\
+                    'schedule': {f'{w}:{n}': lc.window_schedule(w, n)\n\
+                                 for w, n in ((3, 150), (4, 64), (512, 2052),\n\
+                                              (512, 4096))}}, sys.stdout)\n";
     let fixtures = root.join("rust-harness/fixtures");
     let out = std::process::Command::new(&python)
         .args(["-c", SCRIPT])
@@ -106,6 +121,52 @@ fn the_perplexity_generator_scores_the_windows_and_prefixes_the_rung_expects() {
             "size {} scores {} tokens and the generator writes {theirs}",
             size.label(),
             size.tokens()
+        );
+    }
+}
+
+#[test]
+fn the_long_context_generator_scores_the_positions_the_rung_reads() {
+    // The strongest of these three, because L5's schedule is not a convenience
+    // -- the rung pairs the artifact's rows with its own schedule by index, so
+    // a generator writing a different position list produces an artifact that
+    // loads, compares row i against a position the reference never scored, and
+    // reports the divergence as a defect in the engine.
+    let got = generator_constants();
+    assert_eq!(
+        got["long_context_positions"].as_u64().map(|n| n as usize),
+        Some(LONG_CONTEXT_POSITIONS),
+        "ladder::LONG_CONTEXT_POSITIONS is {LONG_CONTEXT_POSITIONS} and the \
+         generator writes {}",
+        got["long_context_positions"]
+    );
+    for (window, len) in [(3usize, 150usize), (4, 64), (512, 2052), (512, 4096)] {
+        let theirs: Vec<usize> = got["schedule"][format!("{window}:{len}")]
+            .as_array()
+            .unwrap_or_else(|| panic!("the generator declares no schedule for {window}:{len}"))
+            .iter()
+            .map(|v| v.as_u64().expect("a position is an integer") as usize)
+            .collect();
+        assert_eq!(
+            theirs,
+            window_schedule(window, len).unwrap(),
+            "window {window} over {len} tokens"
+        );
+    }
+    // And the refusal, which is half of the schedule's meaning: a reference
+    // that never outruns the window would be a green rung about the regime L5
+    // exists to measure.
+    for window in [3usize, 512] {
+        assert_eq!(
+            got["long_context_min"][window.to_string()]
+                .as_u64()
+                .map(|n| n as usize),
+            Some(min_long_context_tokens(window)),
+            "the shortest prompt for a {window}-token window disagrees"
+        );
+        assert!(
+            window_schedule(window, min_long_context_tokens(window) - 1).is_err(),
+            "a prompt one token short of the minimum must be refused"
         );
     }
 }

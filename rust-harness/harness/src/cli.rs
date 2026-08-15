@@ -477,7 +477,7 @@ pub const BINARIES: &[(&str, &str)] = &[
     ),
     (
         "ladder",
-        "the five-rung correctness gate against a transformers reference",
+        "the six-rung correctness gate against a transformers reference",
     ),
     (
         "layer-diff",

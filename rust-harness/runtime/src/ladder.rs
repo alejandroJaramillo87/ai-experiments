@@ -1,5 +1,5 @@
 /*
- * ladder — the five-rung correctness gate against a reference implementation.
+ * ladder — the six-rung correctness gate against a reference implementation.
  *
  * Every rung compares us against transformers. None compares us against our
  * own earlier output, which is the property the whole module exists for: the
@@ -13,6 +13,7 @@
  *   L2  the final-position distribution
  *   L3  perplexity over a token window
  *   L4  greedy continuations
+ *   L5  logits past the sliding window
  *
  * A library rather than only a binary, so the machinery -- ordering,
  * short-circuiting, thresholds, rendering -- is testable in the sandbox with
@@ -34,8 +35,8 @@ use crate::sampler::{Sampler, SamplingParams};
 /// The order is the whole design. Rung N is not evidence about anything if
 /// rung N-1 failed: wrong token ids make every residual wrong, a wrong
 /// residual stream makes every logit wrong, and wrong logits make perplexity
-/// and greedy decoding meaningless. Reporting all five regardless would
-/// produce four numbers that look like findings and are not.
+/// and greedy decoding meaningless. Reporting all six regardless would
+/// produce five numbers that look like findings and are not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Rung {
     L0Tokenizer,
@@ -43,16 +44,18 @@ pub enum Rung {
     L2Logits,
     L3Perplexity,
     L4Greedy,
+    L5LongContext,
 }
 
 impl Rung {
     /// Every rung, in climb order.
-    pub const ALL: [Rung; 5] = [
+    pub const ALL: [Rung; 6] = [
         Rung::L0Tokenizer,
         Rung::L1Layers,
         Rung::L2Logits,
         Rung::L3Perplexity,
         Rung::L4Greedy,
+        Rung::L5LongContext,
     ];
 
     /// Whether this rung reads the sized corpus.
@@ -72,6 +75,7 @@ impl Rung {
             Rung::L2Logits => "L2",
             Rung::L3Perplexity => "L3",
             Rung::L4Greedy => "L4",
+            Rung::L5LongContext => "L5",
         }
     }
 
@@ -83,6 +87,7 @@ impl Rung {
             Rung::L2Logits => "final distribution",
             Rung::L3Perplexity => "perplexity",
             Rung::L4Greedy => "greedy continuation",
+            Rung::L5LongContext => "logits past the window",
         }
     }
 
@@ -379,7 +384,7 @@ pub struct Ladder {
 ///
 /// Short-circuiting is structural rather than a `break` in the caller: every
 /// rung after the failure is recorded as `NotReached` and still printed, so
-/// the table always has five rows and the reader can see both what failed and
+/// the table always has six rows and the reader can see both what failed and
 /// what consequently went unmeasured.
 ///
 /// `run` returns `None` for a rung whose reference is absent; that becomes
@@ -585,7 +590,7 @@ pub fn summary(l: &Ladder) -> Vec<SummaryLine> {
     match l.first_failure() {
         // A run that measured nothing is not a pass. The status of each rung
         // is honest either way, but the summary line is what a reader takes
-        // away, and "every rung within tolerance" over five skips is a green
+        // away, and "every rung within tolerance" over six skips is a green
         // gate that compared nothing.
         None if l.skipped() == Rung::ALL.len() => vec![(
             Some(Tag::Warn),
@@ -1263,6 +1268,232 @@ pub fn rung_greedy(model: &mut dyn Model, references: &[GreedyReference]) -> Res
     ))
 }
 
+/// How many positions a long-context reference scores.
+///
+/// Fixed rather than derived from the prompt length, so a reference row list
+/// and our own schedule can be paired by index and a length disagreement is an
+/// artifact error rather than a silent short comparison.
+pub const LONG_CONTEXT_POSITIONS: usize = 6;
+
+/// The shortest prompt `window_schedule` can place its anchors in.
+///
+/// Four windows plus the pair either side of the second crossing. A prompt
+/// shorter than this cannot carry two crossings and a distinct interior
+/// position, and a schedule that silently collapsed onto duplicate positions
+/// would report agreement over fewer places than the header claims.
+pub fn min_long_context_tokens(window: usize) -> usize {
+    4 * window + 4
+}
+
+/// The positions a long-context reference scores, derived from the window.
+///
+/// **The window is the whole content of this rung**, and it enters here rather
+/// than through a threshold: both sides derive their scored positions from the
+/// checkpoint's `sliding_window`, so a run whose loader read a different
+/// window compares its own rows against the reference's at different places
+/// and diverges. Every other rung is blind to the window entirely -- L0 to L2
+/// score one short prompt and L3's 256-token perplexity window is shorter than
+/// E4B's 512-token attention window, so no rung before this one crossed a real
+/// one at Tier E.
+///
+/// The anchors, in order:
+///
+///   window - 1   the last position whose whole prefix is still in the window
+///   window       the first position whose oldest token has left it
+///   window + 1   one past that, so an off-by-one lands between two scored rows
+///   2*window + 1 a second crossing, since a convention can be right once by
+///                luck and cannot be right twice
+///   len / 2      an interior position, well past the window
+///   len - 1      the end, whose row depends on the mask at every layer
+///
+/// Errors rather than truncating when the prompt is too short: a reference
+/// that never outruns the window is not a long-context reference, and scoring
+/// it would produce a green rung about the regime it exists to measure.
+pub fn window_schedule(window: usize, len: usize) -> Result<Vec<usize>> {
+    ensure!(window > 0, "a sliding window of 0 has no boundary to score");
+    let need = min_long_context_tokens(window);
+    ensure!(
+        len >= need,
+        "a {len}-token prompt cannot cross a {window}-token window twice -- \
+         a long-context reference needs at least {need} tokens"
+    );
+    let positions = vec![
+        window - 1,
+        window,
+        window + 1,
+        2 * window + 1,
+        len / 2,
+        len - 1,
+    ];
+    // Strictly increasing by construction once `len >= 4*window + 4`. Asserted
+    // rather than assumed, because the alternative to noticing here is a rung
+    // that scores one position twice and calls it two agreements.
+    ensure!(
+        positions.windows(2).all(|p| p[0] < p[1]),
+        "window schedule {positions:?} is not strictly increasing for window \
+         {window} over {len} tokens"
+    );
+    Ok(positions)
+}
+
+/// Reference logits from a prefill that outruns the model's sliding window.
+///
+/// Carries `sliding_window` because the rung's verdict depends on it: the
+/// artifact states the window transformers attended under, and the run states
+/// the window our loader read from the same checkpoint. Those are two claims
+/// about one config, and until L5 nothing compared them.
+#[derive(Debug, Clone)]
+pub struct LongContextReference {
+    pub sliding_window: usize,
+    /// The prompt, as ids. Fed to the engine rather than re-derived from text,
+    /// for the reason every artifact here records ids: the tokenizer is itself
+    /// under test at L0.
+    pub token_ids: Vec<Token>,
+    /// The positions the reference scored, as it recorded them.
+    pub positions: Vec<usize>,
+    pub rows: Vec<Vec<f32>>,
+}
+
+/// L5: the output distribution at positions either side of the window.
+///
+/// `window` is what *this run* believes the checkpoint's sliding window is,
+/// read from the loaded config rather than from the artifact. Our own schedule
+/// is derived from it and the reference's rows are paired against it by index,
+/// so a one-position disagreement about the boundary compares two different
+/// positions and shows up as divergence rather than as a green rung over a
+/// mislabelled comparison.
+///
+/// Inside and past the window are reported separately, in L1's spirit of
+/// naming the term rather than the sum: divergence on both sides is ordinary
+/// numerics, and divergence only past the window is the eviction, the mask, or
+/// the shared-KV tail -- the three things that engage nowhere else in the
+/// ladder.
+pub fn rung_long_context(
+    model: &mut dyn Model,
+    window: usize,
+    reference: &LongContextReference,
+    tol: Tolerance,
+) -> Result<RungResult> {
+    ensure!(
+        reference.positions.len() == reference.rows.len(),
+        "reference names {} positions but carries {} rows",
+        reference.positions.len(),
+        reference.rows.len()
+    );
+    ensure!(
+        reference.rows.len() == LONG_CONTEXT_POSITIONS,
+        "reference carries {} rows and the schedule scores {LONG_CONTEXT_POSITIONS} \
+         positions -- regenerate it with the current generator",
+        reference.rows.len()
+    );
+
+    let prompt = &reference.token_ids;
+    // Our schedule, from our window. An error here is a prompt too short to
+    // cross our window, which is a mismatched artifact rather than evidence
+    // about the engine.
+    let ours_schedule = window_schedule(window, prompt.len())
+        .context("this run's window schedule over the reference prompt")?;
+    if let Some(&p) = ours_schedule.iter().find(|&&p| p >= prompt.len()) {
+        bail!(
+            "schedule scores position {p} of a {}-token prompt",
+            prompt.len()
+        );
+    }
+
+    model.truncate(0)?;
+    let ours = model.prefill_all(prompt)?;
+    ensure!(
+        ours.len() == prompt.len(),
+        "prefill_all returned {} rows for {} tokens",
+        ours.len(),
+        prompt.len()
+    );
+
+    let mut worst_inside = 0.0f64;
+    let mut worst_past = 0.0f64;
+    let mut worst = (0usize, 0.0f64);
+    let mut worst_overlap = f64::INFINITY;
+    let mut argmax_matches = 0usize;
+    for (&position, want) in ours_schedule.iter().zip(&reference.rows) {
+        let d = crate::metrics::logit_diff(want, &ours[position].0, tol.top_k)
+            .with_context(|| format!("position {position}"))?;
+        // Split by *our* boundary, which is the one the row was computed
+        // under. Splitting by the reference's would label our rows with a
+        // regime they did not run in.
+        match position < window {
+            true => worst_inside = worst_inside.max(d.kl),
+            false => worst_past = worst_past.max(d.kl),
+        }
+        if d.kl > worst.1 {
+            worst = (position, d.kl);
+        }
+        worst_overlap = worst_overlap.min(d.top_k);
+        if d.argmax_same {
+            argmax_matches += 1;
+        }
+    }
+
+    let n = reference.rows.len();
+    let aligned = ours_schedule
+        .iter()
+        .zip(&reference.positions)
+        .filter(|(a, b)| a == b)
+        .count();
+    let top_k_name: &'static str = match tol.top_k {
+        50 => "worst top-50 overlap",
+        _ => "worst top-k overlap",
+    };
+
+    let note = match window == reference.sliding_window {
+        false => format!(
+            "this run reads a {window}-token window and the reference recorded \
+             {}: the two scored different positions ({ours_schedule:?} against {:?})",
+            reference.sliding_window, reference.positions
+        ),
+        true => format!(
+            "{n} positions across a {window}-token window over {} tokens; worst at \
+             position {}",
+            prompt.len(),
+            worst.0
+        ),
+    };
+
+    Ok(RungResult::measured(
+        Rung::L5LongContext,
+        vec![
+            // First, because it is the one that explains the rest: rows
+            // compared at positions the two sides chose differently are not
+            // evidence about arithmetic.
+            Measure::new(
+                "scheduled positions agree",
+                aligned as f64 / n as f64,
+                1.0,
+                Cmp::AtLeast,
+            ),
+            Measure::new(
+                "worst kl inside window",
+                worst_inside,
+                tol.worst_kl,
+                Cmp::AtMost,
+            ),
+            Measure::new(
+                "worst kl past window",
+                worst_past,
+                tol.worst_kl,
+                Cmp::AtMost,
+            ),
+            Measure::new(top_k_name, worst_overlap, tol.overlap, Cmp::AtLeast),
+            Measure::new(
+                "argmax agreement",
+                argmax_matches as f64 / n as f64,
+                tol.argmax,
+                Cmp::AtLeast,
+            ),
+        ],
+        note,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1290,6 +1521,7 @@ mod tests {
                 Status::Pass,
                 Status::Pass,
                 Status::Fail,
+                Status::NotReached,
                 Status::NotReached,
                 Status::NotReached
             ],
@@ -1391,7 +1623,7 @@ mod tests {
 
     #[test]
     fn a_ladder_that_measured_nothing_does_not_summarize_as_a_pass() {
-        // Five skips and an [OK] line is a green gate that compared nothing,
+        // Six skips and an [OK] line is a green gate that compared nothing,
         // and the summary line is what a reader takes away from the table.
         let l = climb(Size::Quick, "m", "r", |_| None);
         let v = summary(&l);
@@ -1404,7 +1636,7 @@ mod tests {
         // which searched rendered text for a tag. Once the tags left `render`
         // it would have passed for the wrong reason and stopped guarding
         // anything. Against `summary` it states the property directly: no
-        // part of a five-skip verdict may be a pass.
+        // part of a six-skip verdict may be a pass.
         assert!(
             !v.iter()
                 .any(|(tag, _)| *tag == Some(crate::status::Tag::Ok)),
@@ -2027,5 +2259,155 @@ mod tests {
         // nothing at all.
         let err = rung_greedy(&mut peaked(4, 8, |p| p), &[]).expect_err("expected an error");
         assert!(err.to_string().contains("no greedy references"), "{err}");
+    }
+
+    /// A script whose row at every position is a distinct distribution.
+    ///
+    /// Distinct on purpose: L5 pairs rows by a schedule the window decides, so
+    /// a script with interchangeable rows would let a shifted boundary compare
+    /// the wrong position and agree anyway -- which is the one failure this
+    /// rung exists to be able to report.
+    fn positioned(vocab: usize, len: usize) -> Vec<Vec<f32>> {
+        (0..len)
+            .map(|p| (0..vocab).map(|j| ((p * 3 + j * 7) % 11) as f32).collect())
+            .collect()
+    }
+
+    /// The reference a run at `window` would have to reproduce exactly.
+    ///
+    /// `positions` is written out by the caller rather than taken from
+    /// `window_schedule`, which is the whole reason these tests can fail. An
+    /// artifact is a file of fixed numbers; a helper that recomputed them from
+    /// the function under test would shift both sides together and report
+    /// agreement under exactly the off-by-one the rung exists to catch.
+    fn long_context_reference(
+        script: &[Vec<f32>],
+        window: usize,
+        positions: &[usize],
+    ) -> LongContextReference {
+        LongContextReference {
+            sliding_window: window,
+            token_ids: (0..script.len()).map(|t| (t % 5) as Token).collect(),
+            rows: positions.iter().map(|&p| script[p].clone()).collect(),
+            positions: positions.to_vec(),
+        }
+    }
+
+    /// The schedule a 3-token window implies over the 40-token script below,
+    /// as an artifact would carry it: literal, and not recomputed here.
+    const TINY_SCHEDULE: [usize; LONG_CONTEXT_POSITIONS] = [2, 3, 4, 7, 20, 39];
+
+    #[test]
+    fn the_window_schedule_crosses_the_boundary_twice_and_ends_at_the_last_position() {
+        let s = window_schedule(3, 150).unwrap();
+        assert_eq!(s, vec![2, 3, 4, 7, 75, 149], "{s:?}");
+        // The property the anchors encode, stated so a future edit to them has
+        // to keep it: a position either side of the boundary, a second
+        // crossing, and the final row.
+        assert!(s[0] < 3 && s[1] >= 3, "{s:?}");
+        assert!(s.iter().any(|&p| p > 2 * 3), "{s:?}");
+        assert_eq!(*s.last().unwrap(), 149, "{s:?}");
+        assert_eq!(s.len(), LONG_CONTEXT_POSITIONS, "{s:?}");
+    }
+
+    #[test]
+    fn a_prompt_that_never_outruns_the_window_is_an_error_rather_than_a_rung() {
+        // A reference that stays inside the window says nothing about the
+        // regime L5 exists to measure, and scoring it would report a green
+        // rung about attention that never slid.
+        let err = window_schedule(512, 600).expect_err("expected an error");
+        assert!(err.to_string().contains("cannot cross"), "{err}");
+        assert!(err.to_string().contains("2052 tokens"), "{err}");
+    }
+
+    #[test]
+    fn long_context_rows_reproducing_the_reference_pass_at_every_scheduled_position() {
+        let script = positioned(6, 40);
+        let reference = long_context_reference(&script, 3, &TINY_SCHEDULE);
+        let mut m = MockModel::new(6, script);
+        let r = rung_long_context(&mut m, 3, &reference, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Pass, "{r:?} note={}", r.note);
+        assert!(r.note.contains("3-token window"), "{}", r.note);
+        assert!(r.note.contains("6 positions"), "{}", r.note);
+    }
+
+    #[test]
+    fn a_run_whose_window_is_one_position_wider_fails_and_the_note_names_both_windows() {
+        // The off-by-one this rung is for. Nothing about the arithmetic
+        // changed: the run read a 4-token window from the same config the
+        // reference read a 3-token one from, so the two scored different
+        // positions and the rows they compared are not the same rows.
+        //
+        // Every rung below L5 is blind to this. L0 through L2 score one short
+        // prompt, and L3's window is shorter than E4B's attention window.
+        let script = positioned(6, 40);
+        let reference = long_context_reference(&script, 3, &TINY_SCHEDULE);
+        let mut m = MockModel::new(6, script);
+        let r = rung_long_context(&mut m, 4, &reference, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Fail, "{r:?}");
+        assert!(
+            r.note.contains("4-token window") && r.note.contains("3"),
+            "the note must name both windows: {}",
+            r.note
+        );
+        let aligned = r
+            .measures
+            .iter()
+            .find(|m| m.name == "scheduled positions agree")
+            .unwrap();
+        assert!(!aligned.ok(), "{}", aligned.value);
+        // Not only the bookkeeping measure: the rows themselves diverge,
+        // because a shifted schedule compares different positions.
+        let past = r
+            .measures
+            .iter()
+            .find(|m| m.name == "worst kl past window")
+            .unwrap();
+        assert!(!past.ok(), "{}", past.value);
+    }
+
+    #[test]
+    fn a_wrong_row_past_the_window_fails_while_the_rows_inside_it_stay_clean() {
+        // The split the rung reports: divergence on both sides is ordinary
+        // numerics, and divergence only past the boundary is the eviction, the
+        // mask, or the shared-KV tail.
+        let script = positioned(6, 40);
+        let mut reference = long_context_reference(&script, 3, &TINY_SCHEDULE);
+        // Index 4 of the schedule is position 20, well past the window.
+        reference.rows[4][2] += 9.0;
+        let mut m = MockModel::new(6, script);
+        let r = rung_long_context(&mut m, 3, &reference, TIER_T).unwrap();
+        assert_eq!(r.status, Status::Fail, "{r:?}");
+        assert!(r.note.contains("worst at position 20"), "{}", r.note);
+        let inside = r
+            .measures
+            .iter()
+            .find(|m| m.name == "worst kl inside window")
+            .unwrap();
+        assert!(
+            inside.ok(),
+            "nothing inside the window moved: {}",
+            inside.value
+        );
+        let past = r
+            .measures
+            .iter()
+            .find(|m| m.name == "worst kl past window")
+            .unwrap();
+        assert!(!past.ok(), "{}", past.value);
+    }
+
+    #[test]
+    fn a_long_context_reference_with_the_wrong_row_count_is_an_error() {
+        // A mismatched artifact is not evidence about the engine: the rows are
+        // paired with the schedule by index, so a short list would compare a
+        // prefix and report agreement over the positions it dropped.
+        let script = positioned(6, 40);
+        let mut reference = long_context_reference(&script, 3, &TINY_SCHEDULE);
+        reference.rows.pop();
+        reference.positions.pop();
+        let mut m = MockModel::new(6, script);
+        let err = rung_long_context(&mut m, 3, &reference, TIER_T).expect_err("expected an error");
+        assert!(err.to_string().contains("schedule scores"), "{err}");
     }
 }

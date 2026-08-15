@@ -349,6 +349,57 @@ pub fn load_perplexity(
     )))
 }
 
+/// Load the L5 long-context rows written by
+/// `fixtures/reference_long_context.py`.
+///
+/// Same contract as the loaders above: absent is `Ok(None)` and a skipped
+/// rung, present and malformed is an error.
+///
+/// `sliding_window` is required rather than defaulted. It is what the
+/// reference attended under, and L5's verdict is a comparison against the
+/// window this run read from the same config -- an artifact that does not
+/// state it cannot take part in that comparison at all, and a default would
+/// silently supply one side of it.
+pub fn load_long_context(path: &Path) -> Result<Option<crate::ladder::LongContextReference>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("read reference {}", path.display()))?;
+    let v: serde_json::Value = serde_json::from_str(&text)
+        .with_context(|| format!("parse reference {}", path.display()))?;
+
+    let sliding_window =
+        v.get("sliding_window")
+            .and_then(serde_json::Value::as_u64)
+            .context("long-context artifact carries no sliding_window")? as usize;
+    let token_ids = required_ids(&v, "token_ids")?;
+
+    let rows = v
+        .get("rows")
+        .and_then(|t| t.as_array())
+        .context("long-context artifact carries no rows array")?;
+    let mut positions = Vec::with_capacity(rows.len());
+    let mut logits = Vec::with_capacity(rows.len());
+    for (i, row) in rows.iter().enumerate() {
+        positions.push(
+            row.get("position")
+                .and_then(serde_json::Value::as_u64)
+                .with_context(|| format!("row {i} has no integer position"))? as usize,
+        );
+        logits.push(
+            optional_row(row, "logits")?.with_context(|| format!("row {i} carries no logits"))?,
+        );
+    }
+
+    Ok(Some(crate::ladder::LongContextReference {
+        sliding_window,
+        token_ids,
+        positions,
+        rows: logits,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -570,6 +621,42 @@ mod tests {
         .unwrap();
         let err = load_perplexity(&path, &corpus).expect_err("expected an error");
         assert!(err.to_string().contains("scored entry 0"), "{err}");
+    }
+
+    #[test]
+    fn a_long_context_artifact_round_trips_its_window_tokens_and_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("long_context.json");
+        std::fs::write(
+            &path,
+            r#"{"sliding_window": 3, "token_ids": [2, 7, 9, 4],
+                "rows": [{"position": 2, "logits": [0.5, 0.25]},
+                         {"position": 3, "logits": [1.5, 2.0]}]}"#,
+        )
+        .unwrap();
+        let r = load_long_context(&path).unwrap().unwrap();
+        assert_eq!(r.sliding_window, 3);
+        assert_eq!(r.token_ids, vec![2, 7, 9, 4]);
+        assert_eq!(r.positions, vec![2, 3]);
+        assert_eq!(r.rows[1], vec![1.5, 2.0]);
+    }
+
+    #[test]
+    fn a_long_context_artifact_without_a_window_is_an_error() {
+        // The window is half of L5's comparison. Defaulting it would supply
+        // the reference's side of a disagreement the rung exists to find.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("long_context.json");
+        std::fs::write(&path, r#"{"token_ids": [1], "rows": []}"#).unwrap();
+        let err = load_long_context(&path).expect_err("expected an error");
+        assert!(err.to_string().contains("no sliding_window"), "{err}");
+    }
+
+    #[test]
+    fn an_absent_long_context_artifact_is_none_rather_than_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let got = load_long_context(&dir.path().join("nothing.json")).unwrap();
+        assert!(got.is_none());
     }
 
     #[test]

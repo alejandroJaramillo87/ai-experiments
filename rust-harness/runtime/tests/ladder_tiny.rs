@@ -20,7 +20,9 @@
  * L0 is not here: it needs the tokenizer-parity artifact, which is a separate
  * generator. L3 and L4 are Tier E rungs -- a perplexity over a corpus and a
  * 64-token greedy continuation are not statements a 4-layer model with random
- * weights can make.
+ * weights can make. L5 is here and is the reason the fixture's window is 3
+ * against a 150-token prompt, but its artifact is generated separately and is
+ * absent until a workstation has written it.
  */
 
 use std::path::{Path, PathBuf};
@@ -119,6 +121,63 @@ fn the_output_distribution_matches_the_reference() {
         "Tier T L2 diverged: {}\n{:#?}",
         result.note,
         result.measures
+    );
+}
+
+/// L5: the distribution either side of the sliding window.
+///
+/// The rung the fixture's 150-token prompt was lengthened for, and the only
+/// comparison against transformers anywhere in this workspace that crosses a
+/// window at all. L1 and L2 read the same prompt but score its last position
+/// alone, so a mask that is right at the end and wrong in the middle passes
+/// both.
+///
+/// Its artifact is committed like the capture beside it, and absent until the
+/// generator has been run on a workstation -- there is no torch in a sandbox
+/// to produce it with. Skipped rather than failed in that state, and skipped
+/// loudly: a rung that quietly reported nothing would be indistinguishable in
+/// the gate's output from one that ran.
+#[test]
+fn the_long_context_logits_match_the_reference_past_the_sliding_window() {
+    let dir = fixture_dir();
+    let path = dir.join("long_context.json");
+    let Some(reference) =
+        runtime::reference::load_long_context(&path).expect("read the long-context reference")
+    else {
+        runtime::testlog::skip(
+            "Tier T L5",
+            "fixtures/tiny-hf-gemma4/long_context.json has not been generated; \
+             run fixtures/reference_long_context.py --model \
+             rust-harness/fixtures/tiny-hf-gemma4 --source synthetic --length 150 \
+             on the workstation",
+        );
+        return;
+    };
+
+    let (mut model, _fingerprint) =
+        CpuModel::load(&dir, false).expect("load the fixture checkpoint");
+    // Our own reading of the checkpoint's window, which is what the rung
+    // compares against the reference's: two claims about one config, and
+    // nothing below L5 compares them.
+    let window = model.config().sliding_window;
+    let result = ladder::rung_long_context(&mut model, window, &reference, ladder::TIER_T)
+        .expect("compare the long-context rows");
+
+    assert_eq!(
+        result.status,
+        Status::Pass,
+        "Tier T L5 diverged: {}\n{:#?}",
+        result.note,
+        result.measures
+    );
+    // The fixture's window is 3 and its prompt is 150 tokens, so most of the
+    // schedule sits past the boundary. Asserted rather than assumed: a
+    // reference regenerated at a shorter length would still pass the rung
+    // while measuring almost nothing about the sliding regime.
+    assert!(
+        reference.token_ids.len() >= 4 * window + 4,
+        "the reference prompt is {} tokens over a {window}-token window",
+        reference.token_ids.len()
     );
 }
 

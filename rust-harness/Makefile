@@ -39,7 +39,7 @@ doc:
 test:
 	cargo test --workspace -- --nocapture
 
-# The correctness ladder (workstation only): the five rungs against the real
+# The correctness ladder (workstation only): the six rungs against the real
 # checkpoint and reference artifacts generated from transformers.
 #
 # Deliberately not part of `make quality`. The gate is mandatory before every

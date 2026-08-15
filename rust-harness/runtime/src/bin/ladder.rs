@@ -1,5 +1,5 @@
 /*
- * ladder — run the five-rung correctness gate against a real checkpoint.
+ * ladder — run the six-rung correctness gate against a real checkpoint.
  *
  * Loads whichever reference artifacts exist under --reference, climbs the
  * rungs in order, prints one table, and exits non-zero on the first failure.
@@ -115,8 +115,19 @@ fn run_rung(
                 return Ok(None);
             };
             ladder::rung_greedy(model, &references).map(Some)
+        }
+        Rung::L5LongContext => {
+            let path = reference_dir.join("long_context.json");
+            let Some(reference) = runtime::reference::load_long_context(&path)? else {
+                return Ok(None);
+            };
+            // The window this run read from the checkpoint, not the one the
+            // artifact recorded. Comparing the two is half of what L5
+            // measures, so the rung has to be handed our own answer.
+            let window = model.config().sliding_window;
+            ladder::rung_long_context(model, window, &reference, tol).map(Some)
         } // Every rung is wired; the match stays exhaustive by arm rather than
-          // by wildcard so a sixth rung has to be handled here rather than
+          // by wildcard so a seventh rung has to be handled here rather than
           // silently reporting skipped forever.
     }
 }
@@ -303,7 +314,7 @@ fn run(
     // closure, so it is the only figure here no rung body can under-report.
     //
     // `step` is the rung index, which makes this a category axis wearing a
-    // continuum's clothes -- five points, ordered but not spaced. That is
+    // continuum's clothes -- six points, ordered but not spaced. That is
     // honest for `rung_duration_s`, the series the dashboard charts, because
     // the rungs really do run in that order. It is why the measures ride
     // along un-charted: `worst kl` and `ppl delta` are different quantities
@@ -370,7 +381,7 @@ fn run(
 
 const SPEC: Spec = Spec {
     program: "ladder",
-    summary: "Run the five-rung correctness gate against a transformers reference.",
+    summary: "Run the six-rung correctness gate against a transformers reference.",
     positionals: "",
     required: &["--model", "--reference"],
     flags: &[
@@ -401,8 +412,8 @@ const SPEC: Spec = Spec {
         },
         Flag {
             name: "--rung",
-            kind: Kind::Value("L0|L1|L2|L3|L4"),
-            help: "climb one rung rather than all five",
+            kind: Kind::Value("L0|L1|L2|L3|L4|L5"),
+            help: "climb one rung rather than all six",
         },
         Flag {
             name: "--dot",
@@ -549,7 +560,7 @@ fn main() -> ExitCode {
             None => {
                 return runtime::cli::usage_error(
                     &SPEC,
-                    &format!("--rung {value}: expected one of L0 L1 L2 L3 L4"),
+                    &format!("--rung {value}: expected one of L0 L1 L2 L3 L4 L5"),
                 )
             }
         }
