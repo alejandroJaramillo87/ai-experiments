@@ -171,8 +171,16 @@ Command:
 ```bash
 $ ls -la /mnt/ai-data/models/hf/
 $ cd rust-harness
-$ cargo run -p runtime --bin checkpoint-info -- --text-only /mnt/ai-data/models/hf/<e4b>
+$ cargo run -p runtime --bin checkpoint-info -- --text-only /mnt/ai-data/models/hf/<e4b> \
+    2>&1 | tee /tmp/rh1-dump.txt
 ```
+
+`2>&1` is not optional either, and for a reason worth stating rather than
+copying. The dump is the tool's answer and goes to stdout; the compatibility
+verdict is a status line and goes to stderr. This entry asks for both — the
+verdict is the expected signal, the full dump is the evidence behind it — so a
+plain `| tee` would capture the 2624 lines of dump and lose the one line the
+entry turns on.
 
 `--text-only` is not optional against the published E4B checkpoint, and every
 later entry that loads it needs the flag for the same reason. The checkpoint

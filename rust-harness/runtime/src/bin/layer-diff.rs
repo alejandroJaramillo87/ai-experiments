@@ -111,14 +111,21 @@ fn run(
         .prefill(&reference.token_ids)
         .context("prefill the reference tokens")?;
 
-    println!(
+    // These two describe the run rather than reporting a measurement, so
+    // they are status and leave stdout to the table. The cost is real and
+    // worth stating: on a terminal they still print immediately above the
+    // table they qualify, but a redirect now separates them, and the
+    // tolerances are what make the table's `ok`/`FAIL` marks readable.
+    // `2>&1` is how a capture keeps them together.
+    runtime::status::info(&format!(
         "Reference: {} tokens, {} layers, {} precision",
         reference.token_ids.len(),
         n_layers,
         reference.dtype
-    );
-    println!("Cosine floor: {floor}, relative-L2 ceiling: {ceiling}");
-    println!();
+    ));
+    runtime::status::info(&format!(
+        "Cosine floor: {floor}, relative-L2 ceiling: {ceiling}"
+    ));
     println!("{:>12}  cosine       max_abs      rel_l2", "stage/layer");
 
     // The prelude rows first, and they are the rows to read first. A wrong
@@ -163,17 +170,21 @@ fn run(
         // divergence, and two wordings for one failure is how a reader ends
         // up believing they are two failures.
         let cause = runtime::ladder::stage_cause(stage);
-        println!("[ERROR] Residual stream: the stack's input diverges at '{stage}'");
-        println!("  Look at {cause}.");
-        println!(
+        runtime::status::error(&format!(
+            "Residual stream: the stack's input diverges at '{stage}'"
+        ));
+        runtime::status::plain(&format!("  Look at {cause}."));
+        runtime::status::plain(
             "  Every layer below is downstream of this; the layer rows are not \
-             evidence about the layers until this is clean."
+             evidence about the layers until this is clean.",
         );
         return Ok(false);
     }
     match first_bad {
         None => {
-            println!("[OK] Residual stream: all {n_layers} layers within tolerance");
+            runtime::status::ok(&format!(
+                "Residual stream: all {n_layers} layers within tolerance"
+            ));
             Ok(true)
         }
         Some(i) => {
@@ -182,15 +193,15 @@ fn run(
             // layer points at head width or RoPE base, and a layer at or past
             // the sharing point points at the donor path.
             let spec = model.layer_specs()[i];
-            println!(
-                "[ERROR] Residual stream: first divergence at layer {i} ({:?}, head {}, \
+            runtime::status::error(&format!(
+                "Residual stream: first divergence at layer {i} ({:?}, head {}, \
                  ffn {}, rope base {}, kv source {})",
                 spec.kind, spec.head_dim, spec.ffn_dim, spec.rope_freq_base, spec.kv_source
-            );
-            println!(
+            ));
+            runtime::status::plain(&format!(
                 "  Every later layer is downstream of this one; fix layer {i} before \
                  reading the rest of the table."
-            );
+            ));
             Ok(false)
         }
     }
@@ -231,8 +242,8 @@ fn main() -> ExitCode {
     let mut it = args.into_iter();
     while let Some(arg) = it.next() {
         let Some(value) = it.next() else {
-            eprintln!("[ERROR] {arg}: missing value");
-            eprintln!("{USAGE}");
+            runtime::status::error(&format!("{arg}: missing value"));
+            runtime::status::plain(USAGE);
             return ExitCode::from(2);
         };
         match arg.as_str() {
@@ -241,27 +252,27 @@ fn main() -> ExitCode {
             "--cosine-floor" => match value.parse::<f64>() {
                 Ok(v) => floor = v,
                 Err(e) => {
-                    eprintln!("[ERROR] --cosine-floor {value}: {e}");
+                    runtime::status::error(&format!("--cosine-floor {value}: {e}"));
                     return ExitCode::from(2);
                 }
             },
             "--rel-l2-ceiling" => match value.parse::<f64>() {
                 Ok(v) => ceiling = v,
                 Err(e) => {
-                    eprintln!("[ERROR] --rel-l2-ceiling {value}: {e}");
+                    runtime::status::error(&format!("--rel-l2-ceiling {value}: {e}"));
                     return ExitCode::from(2);
                 }
             },
             other => {
-                eprintln!("[ERROR] Unknown argument: {other}");
-                eprintln!("{USAGE}");
+                runtime::status::error(&format!("Unknown argument: {other}"));
+                runtime::status::plain(USAGE);
                 return ExitCode::from(2);
             }
         }
     }
 
     let (Some(model), Some(reference)) = (model, reference) else {
-        eprintln!("{USAGE}");
+        runtime::status::plain(USAGE);
         return ExitCode::from(2);
     };
 
@@ -269,7 +280,7 @@ fn main() -> ExitCode {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::from(1),
         Err(e) => {
-            eprintln!("[ERROR] {e:#}");
+            runtime::status::error(&format!("{e:#}"));
             ExitCode::from(1)
         }
     }

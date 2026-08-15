@@ -33,7 +33,7 @@ fn main() -> ExitCode {
         .iter()
         .partition(|a| a.as_str() == "--check" || a.as_str() == "--text-only");
     let [path] = rest.as_slice() else {
-        eprintln!("usage: checkpoint-info [--check] [--text-only] <checkpoint-dir>");
+        runtime::status::plain("usage: checkpoint-info [--check] [--text-only] <checkpoint-dir>");
         return ExitCode::from(2);
     };
     let check = flags.iter().any(|a| a.as_str() == "--check");
@@ -44,7 +44,7 @@ fn main() -> ExitCode {
     let files = match checkpoint::CheckpointFiles::read(Path::new(path)) {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("[ERROR] Read {path}: {e:#}");
+            runtime::status::error(&format!("Read {path}: {e:#}"));
             return ExitCode::from(1);
         }
     };
@@ -55,7 +55,7 @@ fn main() -> ExitCode {
     let mut ck = match checkpoint::parse(&files) {
         Ok(c) => c,
         Err(e) => {
-            println!("[ERROR] CPU backend compatibility: {e:#}");
+            runtime::status::error(&format!("CPU backend compatibility: {e:#}"));
             return match check {
                 true => ExitCode::from(1),
                 false => ExitCode::SUCCESS,
@@ -230,11 +230,11 @@ fn summarize(ck: &Checkpoint) -> bool {
         cpu::check_supported_checkpoint(ck, &s)
     }) {
         Ok(()) => {
-            println!("[OK] CPU backend compatibility: supported");
+            runtime::status::ok("CPU backend compatibility: supported");
             true
         }
         Err(e) => {
-            println!("[ERROR] CPU backend compatibility: {e:#}");
+            runtime::status::error(&format!("CPU backend compatibility: {e:#}"));
             false
         }
     }
