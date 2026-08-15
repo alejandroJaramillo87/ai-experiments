@@ -246,6 +246,12 @@ Every run appends a line to the shared observability catalog, browsable from the
 host with `make harness-runs` (the image carries no Python). It is the same
 reader training and interp use, pointed at this tier:
 `docs/rust-harness/observability.md` covers the record shapes and the flags.
+`ladder` writes there too, under the same catalog with its own name as the
+command, so a conformance climb is browsable beside the runs it judges and
+records the fold, the width and the thread count it used — the configuration
+whose absence let `DotKind` default to `Sequential` unnoticed for months. A run
+directory holding `metrics.jsonl` comes with it, which `python -m training
+report --run <dir>` renders with no code of its own.
 
 `--serve <port>` puts that whole stack behind the two HTTP paths the parent
 repository's interp pipeline calls, `/v1/chat/completions` and `/v1/health`, so

@@ -615,9 +615,27 @@ inline tests moved byte for byte, which is what makes the change a layout one; t
 integration test stayed in `harness/tests`, where it must, since it constructs
 `harness::runheader::RunHeader` — three import paths changed there and no assertion did.
 `harness` now forbids unsafe in both crate roots, which is the property the extraction buys.
-Then `ladder` (U9b) and the three capture binaries
-(U9c). All share `cli = "harness"` with the binary name as `command`, so one catalog and one
-`runs` view serve the whole workspace.
+U9b brought `ladder` under obs and is the stage that spends what U9a bought: `runtime` now
+depends on `obs`, which a crate carrying `#![forbid(unsafe_code)]` can do precisely because
+the run log no longer lives beside the agent loop. A climb writes a header naming the fold,
+the width and the thread count it actually used, a phase per rung, and five metrics records —
+one per rung, `step` being the rung index. That last part makes the ladder dashboardable
+through the same `training report --run` the harness uses, with one additive `viewer.js`
+group for `rung_duration_s`.
+
+**The header is `ladder.header`, not `run.header`, against the plan's own claim that U9b
+"adds no new keys".** Reusing `run.header` would mean moving `seed`, `temperature`,
+`max_tokens`, `max_context`, `kv_bytes` and `kv_batch_group` to `optional`, since a ladder
+has none of them — and that retires the key-set-equality assertion those fields exist for.
+Two events pinned exactly beats one event pinned loosely. The stage also surfaced two things
+the ladder already had and never said: the load fingerprint, which the binary discarded into
+`_fingerprint`, and the per-rung `elapsed` that `climb` has always stamped and `render`
+deliberately never printed.
+
+Then the three capture binaries (U9c). All share `cli = "harness"` with the binary name as
+`command`, so one catalog and one `runs` view serve the whole workspace — which makes `runs`
+a reserved binary name, since the catalog reader hides rows that claim it. `cli.rs` asserts
+none does.
 
 `checkpoint-info`, `long-context-golden` and `tiny-model` are deliberately not instrumented:
 the rule is to record a run someone will later want to find, not a question someone asked

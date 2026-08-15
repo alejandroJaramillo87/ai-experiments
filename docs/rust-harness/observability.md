@@ -160,11 +160,20 @@ the run log would make obs output depend on subscriber installation, and
 `--trace-chrome`'s `set_global_default` is a hard `expect`, so a second
 installation panics. Phases are called directly instead.
 
-The harness writes one phase today, `model.load`, which brackets the whole of
-`build_generator`. `prefill` and `decode` are not phases: both happen inside
-`Session::generate` in the `runtime` crate, and `runtime` does not depend on
-`obs`. Giving it that dependency is U9b's work, not a limitation worth a
-workaround here.
+The harness writes one phase, `model.load`, which brackets the whole of
+`build_generator`. The ladder writes `model.load` and then one per rung
+attempted — `rung.L0` through `rung.L4` — which is what makes the per-rung wall
+clock visible outside the run's own timing block; `render` deliberately keeps
+it out of the table, because it is the one figure in a result that is not
+reproducible.
+
+`prefill` and `decode` are still not phases. U9b gave `runtime` its dependency
+on `obs`, so the crate boundary that blocked them is gone, but the remaining
+obstacle is a design question rather than a layout one: both happen inside
+`Session::generate`, which has no run log and is called once per turn, so
+phases there would mean either threading a log through the generation seam or
+emitting a pair of records per turn. Neither is obviously right, and the token
+loop already has spans under `--trace-chrome`.
 
 ## Phase 3: rr-friendliness via a simple CPU backend
 
@@ -294,7 +303,17 @@ The three phases above cover the token loop; run-level observability —
 which invocations happened, how long they took, which failed — converges
 on the Python obs stack by contract rather than by code.
 `obs/src/lib.rs` writes the same JSONL shapes `common/obs` defines
-(see `docs/observability/design-and-roadmap.md`):
+(see `docs/observability/design-and-roadmap.md`).
+
+Two binaries write these records today: `harness` and `ladder`. Both use
+`cli = "harness"` with the binary name as `command`, so one catalog, one
+retention policy and one `runs` view serve the whole workspace — symmetric
+with how the training and interp tiers each own one. That makes `runs` a
+reserved command name: `common/obs/catalog.py` hides rows whose `command` is
+literally `runs`, so a binary of that name would log correctly and never
+appear in the table. `harness/src/cli.rs` asserts none is.
+
+What a run leaves behind:
 
 - A run id in the shared `R-YYYYMMDD-HHMMSS-xxxxxx` format (UTC stamp,
   six hex characters).
@@ -302,8 +321,15 @@ on the Python obs stack by contract rather than by code.
   keys `ts, level, run_id, cli, command, pid, event, msg`, holding
   `cmd.start` (with `argv`), `fail` on error (`exc_type`, `exc_msg`
   capped at 4096 characters, `exit_code`), and `cmd.end` (`exit_code`,
-  `duration_s`). Timestamps carry an explicit `+00:00` offset; `command`
-  is `task` or `chat`.
+  `duration_s`). Timestamps carry an explicit `+00:00` offset.
+- A resolved-configuration header, written once immediately after the model
+  loads: `run.header` from the harness, `ladder.header` from the ladder. Two
+  events rather than one, because `run.header`'s field set is asserted for
+  key-set equality against a real harness run — a ladder has no sampler, no KV
+  cache and no context window, and admitting it under the same event would
+  mean moving six fields to `optional`, retiring the assertion that catches a
+  field silently dropped from the harness header. The keys the two share are
+  spelled identically.
 - `phase.start` and `phase.end` bracketing coarse spans, with `phase` and a
   `duration_s` rounded to three decimals. Written by both stacks; see
   "Phases are a separate mechanism from spans" above.
@@ -311,12 +337,17 @@ on the Python obs stack by contract rather than by code.
   end, written as a single append so concurrent writers interleave whole
   lines. Its `run_dir` is the run's own directory below.
 - A run directory `${OBS_LOG_DIR}/harness/<run_id>/`, holding
-  `metrics.jsonl`: one report-envelope header record carrying the run header's
-  fields, then one record per step with `tokens_per_s` and `rss_gb`. Task and
-  chat write one record per decoded token, bounded by `--max-tokens`; serve
+  `metrics.jsonl`: one report-envelope header record carrying that run's header
+  fields, then one record per step. Task and chat write one record per decoded
+  token with `tokens_per_s` and `rss_gb`, bounded by `--max-tokens`; serve
   writes one per completed request, because a server has no run boundary to
-  bound a per-token file against. Contracted in
-  [`schemas/run_metrics.json`](../../schemas/run_metrics.json).
+  bound a per-token file against; the ladder writes exactly five, one per rung,
+  with `rung`, `status`, `rung_duration_s` and the rung's own measures.
+  Contracted in [`schemas/run_metrics.json`](../../schemas/run_metrics.json).
+
+  `step` is an ordering key and nothing more. The generation modes make it a
+  token index and the ladder makes it a rung index — five ordered categories,
+  not evenly spaced points — and no reader here assumes otherwise.
 
   The directory is created on the first metrics write rather than at run
   start. The retention pruner globs `R-*.jsonl`, which a directory named
@@ -381,10 +412,17 @@ lives, not because it is training-only — the same reasoning as the shared
 `runs` reader above, and the reason the two training-flavoured hint strings in
 that command were left alone rather than reworded.
 
-`common/obs/viewer.js` gained one chart group for this, `Process memory (GB)`
-over `rss_gb`. It is additive: a training run carries no `rss_gb` and renders
-the group empty, exactly as a CPU-only harness run renders the existing
-device-memory group empty.
+`common/obs/viewer.js` gained two chart groups for this: `Process memory (GB)`
+over `rss_gb`, and `Rung duration (s)` over `rung_duration_s`. Both are
+additive — a training run carries neither and renders them empty, exactly as a
+CPU-only harness run renders the existing device-memory group empty.
+
+A ladder run charts only its durations. The rungs' own numbers — `worst_cosine`,
+`mean_kl`, `ppl_delta` — are in `metrics.jsonl` under slugified names but
+deliberately not charted: they are different quantities in different units, and
+a line drawn through them at consecutive rung indices would mean nothing. They
+are there to be read with `jq` and diffed between two runs. The table on stdout
+remains the ladder's answer.
 
 ## Parked: CPU-served subagents
 

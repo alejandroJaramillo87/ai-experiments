@@ -828,11 +828,15 @@ stamp their own records, and passing the id as a request header to the
 inference services. This is explicitly deferred from the first version and is
 not required by any item above.
 
-The rust harness (`rust-harness/obs/src/lib.rs`) is a second,
+The rust workspace (`rust-harness/obs/src/lib.rs`) is a second,
 contract-compatible writer of this file layout: it mints the same run id
-format and writes `cmd.start`/`fail`/`cmd.end` events and a catalog line
+format and writes `cmd.start`/`fail`/`cmd.end` events, `phase.start`/`phase.end`
+spans, a `metrics.jsonl` under a per-run directory, and a catalog line
 under `${OBS_LOG_DIR}/harness/`, holding the same shared flock the
-retention pruner probes. The JSONL files are the integration seam — no
+retention pruner probes. Two of its binaries write today — `harness` and
+`ladder` — sharing one `cli` name with the binary name as `command`, so the
+whole workspace is one tier from a reader's point of view rather than one per
+tool. The JSONL files are the integration seam — no
 code is shared, and the stateless readers above consume harness runs
 unchanged. The rust writer also specifies the receiving half of the
 deferred propagation: when `OBS_RUN_ID` is set in its environment, the
