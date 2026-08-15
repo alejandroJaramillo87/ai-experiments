@@ -82,6 +82,66 @@ fn check_row_counts(
     Ok(())
 }
 
+/// The resolved configuration of a capture run, as obs fields.
+///
+/// A per-binary header event rather than a share of `run.header` or
+/// `ladder.header`, for the reason `schemas/obs_record.json`'s
+/// `per_tool_header_events` note gives: each of those field lists is asserted for
+/// key-set equality in both directions, and admitting a third writer with a
+/// different shape means moving the differences to `optional` -- an optional
+/// field being one no test can miss. Three events pinned exactly beats one
+/// pinned loosely. The keys shared with the other headers are spelled
+/// identically and carry the same units, so one `jq` filter reads all of them.
+///
+/// `model_hash` is the u64 load fingerprint, not the sha256 the manifest
+/// carries. The manifest's digest identifies the *weights the activations came
+/// from*, which is the claim the harness checks a probe against; this
+/// identifies the checkpoint the run loaded, and it is already computed. A
+/// second sha256 of ~14 GiB per run to say the same thing twice is the cost
+/// U2 declined for the harness header and this declines for the same reason.
+fn capture_header(
+    model_path: &Path,
+    model_hash: u64,
+    layers: &[usize],
+    dataset_path: &Path,
+    examples: usize,
+    out_dir: &Path,
+    text_only: bool,
+    model: &CpuModel,
+) -> Vec<(&'static str, obs::Value)> {
+    let (weight_bytes, width) = model.weight_bytes();
+    let requested: Vec<String> = layers.iter().map(usize::to_string).collect();
+    vec![
+        ("model", obs::Value::Str(model_path.display().to_string())),
+        ("model_hash", obs::Value::Str(format!("{model_hash:016x}"))),
+        ("n_layers", obs::Value::Int(model.config().n_layers as u64)),
+        (
+            "dtype",
+            obs::Value::Str(width.unwrap_or("mixed widths").to_string()),
+        ),
+        ("weight_bytes", obs::Value::Int(weight_bytes as u64)),
+        // In the order asked for, not the manifest's sorted spelling: a header
+        // records what the run was configured with, and `--layers 24,8` and
+        // `--layers 8,24` are the same capture asked for two ways.
+        ("layers", obs::Value::Str(requested.join(","))),
+        (
+            "dataset",
+            obs::Value::Str(dataset_path.display().to_string()),
+        ),
+        ("examples", obs::Value::Int(examples as u64)),
+        ("out", obs::Value::Str(out_dir.display().to_string())),
+        ("text_only", obs::Value::Bool(text_only)),
+        ("threads", obs::Value::Int(model.threads() as u64)),
+        ("dot", obs::Value::Str(model.dot().label().to_string())),
+        ("batch", obs::Value::Str(model.batch().label())),
+        (
+            "binary_version",
+            obs::Value::Str(env!("CARGO_PKG_VERSION").to_string()),
+        ),
+        ("git_sha", obs::Value::Str(runtime::envelope::git_sha())),
+    ]
+}
+
 fn run(
     model_path: &Path,
     dataset_path: &Path,
@@ -89,10 +149,14 @@ fn run(
     out_dir: &Path,
     text_only: bool,
     single_thread: bool,
+    log: &mut obs::RunLog,
 ) -> Result<()> {
     // `load` drops the checkpoint mapping before returning; see its doc
     // comment for why no caller here should open one itself.
-    let (mut model, _fingerprint) = CpuModel::load(model_path, text_only)?;
+    let (mut model, fingerprint) = {
+        let _span = log.phase("model.load");
+        CpuModel::load(model_path, text_only)?
+    };
     // The manifest records the identity of the weights these activations were
     // read from, and the harness refuses a probe whose recorded hash does not
     // match what it serves -- so this digest and `harness`'s must stay the
@@ -115,6 +179,29 @@ fn run(
     let tokenizer_path = runtime::tokenizer::resolve_tokenizer(model_path, None)?;
     let tokenizer = Tokenizer::from_file(&tokenizer_path).context("load tokenizer")?;
     let examples = load_dataset(dataset_path)?;
+
+    // After `set_threads`, so the header reports the width the capture actually
+    // ran at rather than the one it was asked for -- the distinction this
+    // record exists for, `DotKind` having defaulted to `Sequential` for months
+    // with nothing printing the fold. And after `load_dataset`, so `examples`
+    // is a required field rather than an optional one: a dataset that cannot be
+    // read is a failed run with a `fail` record, not a run with a header
+    // missing a key.
+    log.event(
+        "info",
+        "activation-capture.header",
+        "resolved capture configuration",
+        &capture_header(
+            model_path,
+            fingerprint,
+            layers,
+            dataset_path,
+            examples.len(),
+            out_dir,
+            text_only,
+            &model,
+        ),
+    );
 
     let tap = LastRowTap::new(layers.to_vec());
     model.set_tap(Box::new(tap.clone()));
@@ -311,6 +398,9 @@ fn main() -> ExitCode {
     if runtime::cli::handled_help(&SPEC, &args) {
         return ExitCode::SUCCESS;
     }
+    // Snapshotted before parsing, so the record carries what was typed rather
+    // than what survived it.
+    let argv_full = args.clone();
     let (mut model, mut dataset, mut layers_arg, mut out) = (None, None, None, None);
     let parsed = {
         let mut slots: [(&'static str, &mut Option<String>); 4] = [
@@ -338,17 +428,29 @@ fn main() -> ExitCode {
         Ok(l) => l,
         Err(e) => return runtime::cli::usage_error(&SPEC, &format!("--layers: {e:#}")),
     };
-    match run(
+    // Opened only once the arguments are known good, so a usage mistake leaves
+    // no row in the catalog -- and after `handled_help` above, so a query is
+    // not a run. `cli` is "harness" for the whole workspace, with the binary
+    // name as `command`.
+    let mut log = obs::RunLog::begin("activation-capture", &argv_full);
+    let outcome = run(
         &PathBuf::from(expect(model)),
         &PathBuf::from(expect(dataset)),
         &layers,
         &PathBuf::from(expect(out)),
         parsed.has("--text-only"),
         parsed.has("--single-thread"),
-    ) {
-        Ok(()) => ExitCode::SUCCESS,
+        &mut log,
+    );
+    match outcome {
+        Ok(()) => {
+            log.end(0);
+            ExitCode::SUCCESS
+        }
         Err(e) => {
             runtime::status::error(&format!("Capture failed: {e:#}"));
+            log.fail(&e, 1);
+            log.end(1);
             ExitCode::from(1)
         }
     }

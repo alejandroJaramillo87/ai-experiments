@@ -58,6 +58,69 @@ fn dense_matrix(n: usize, rows: &[(usize, &AttentionRow)]) -> Result<Vec<f32>> {
     Ok(m)
 }
 
+/// The resolved configuration of an attention capture, as obs fields.
+///
+/// A per-binary header event, for the reason `schemas/obs_record.json`'s
+/// `per_tool_header_events` note gives and `activation-capture.rs::capture_header`
+/// restates: each header's field list is asserted for key-set equality in both
+/// directions, and a shared event would have to move every difference to
+/// `optional`. `model_hash` is the u64 load fingerprint rather than the
+/// manifest's sha256, for the same reason.
+///
+/// **The prompt is recorded as a digest, not as text.** `argv` on `cmd.start`
+/// already carries the literal prompt, so a second copy in a header field
+/// doubles a potentially long string in the event file for no new fact. The
+/// digest is what makes two runs comparable without storing the text twice --
+/// and it is more than the manifest carries, which records the token count and
+/// never what was captured over.
+fn attention_header(
+    model_path: &Path,
+    model_hash: u64,
+    layers: &[usize],
+    heads: &[usize],
+    prompt: &str,
+    prompt_tokens: usize,
+    out_dir: &Path,
+    text_only: bool,
+    model: &CpuModel,
+) -> Vec<(&'static str, obs::Value)> {
+    let (weight_bytes, width) = model.weight_bytes();
+    let list = |v: &[usize]| {
+        v.iter()
+            .map(usize::to_string)
+            .collect::<Vec<String>>()
+            .join(",")
+    };
+    vec![
+        ("model", obs::Value::Str(model_path.display().to_string())),
+        ("model_hash", obs::Value::Str(format!("{model_hash:016x}"))),
+        ("n_layers", obs::Value::Int(model.config().n_layers as u64)),
+        (
+            "dtype",
+            obs::Value::Str(width.unwrap_or("mixed widths").to_string()),
+        ),
+        ("weight_bytes", obs::Value::Int(weight_bytes as u64)),
+        // In the order asked for, not the manifest's sorted spelling.
+        ("layers", obs::Value::Str(list(layers))),
+        ("heads", obs::Value::Str(list(heads))),
+        (
+            "prompt_sha256",
+            obs::Value::Str(runtime::digest::sha256_hex(prompt.as_bytes())),
+        ),
+        ("prompt_tokens", obs::Value::Int(prompt_tokens as u64)),
+        ("out", obs::Value::Str(out_dir.display().to_string())),
+        ("text_only", obs::Value::Bool(text_only)),
+        ("threads", obs::Value::Int(model.threads() as u64)),
+        ("dot", obs::Value::Str(model.dot().label().to_string())),
+        ("batch", obs::Value::Str(model.batch().label())),
+        (
+            "binary_version",
+            obs::Value::Str(env!("CARGO_PKG_VERSION").to_string()),
+        ),
+        ("git_sha", obs::Value::Str(runtime::envelope::git_sha())),
+    ]
+}
+
 fn run(
     model_path: &Path,
     prompt: &str,
@@ -66,8 +129,12 @@ fn run(
     out_dir: &Path,
     text_only: bool,
     single_thread: bool,
+    log: &mut obs::RunLog,
 ) -> Result<()> {
-    let (mut model, _fingerprint) = CpuModel::load(model_path, text_only)?;
+    let (mut model, fingerprint) = {
+        let _span = log.phase("model.load");
+        CpuModel::load(model_path, text_only)?
+    };
     if single_thread {
         model.set_threads(1);
     }
@@ -108,6 +175,19 @@ fn run(
         heads.len(),
         bytes as f64 / (1024.0 * 1024.0)
     ));
+
+    // After `set_threads` and after the prompt is tokenized, so the header
+    // reports the width the capture actually ran at and the token count it
+    // actually captured over -- and still before the one `prefill` below, which
+    // is the operation the record is worth having about.
+    log.event(
+        "info",
+        "attention-capture.header",
+        "resolved attention capture configuration",
+        &attention_header(
+            model_path, fingerprint, layers, heads, prompt, n, out_dir, text_only, &model,
+        ),
+    );
 
     let tap = AttentionTap::new(layers.to_vec(), heads.to_vec());
     model.set_tap(Box::new(tap.clone()));
@@ -294,6 +374,9 @@ fn main() -> ExitCode {
     if runtime::cli::handled_help(&SPEC, &args) {
         return ExitCode::SUCCESS;
     }
+    // Snapshotted before parsing, so the record carries what was typed rather
+    // than what survived it.
+    let argv_full = args.clone();
     let (mut model, mut prompt, mut layers_arg, mut heads_arg, mut out) =
         (None, None, None, None, None);
     let parsed = {
@@ -329,7 +412,11 @@ fn main() -> ExitCode {
         Ok(pair) => pair,
         Err(e) => return runtime::cli::usage_error(&SPEC, &e),
     };
-    match run(
+    // Opened only once the arguments are known good, so a usage mistake leaves
+    // no row in the catalog -- and after `handled_help` above, so a query is
+    // not a run.
+    let mut log = obs::RunLog::begin("attention-capture", &argv_full);
+    let outcome = run(
         &PathBuf::from(expect(model)),
         &expect(prompt),
         &layers,
@@ -337,10 +424,17 @@ fn main() -> ExitCode {
         &PathBuf::from(expect(out)),
         parsed.has("--text-only"),
         parsed.has("--single-thread"),
-    ) {
-        Ok(()) => ExitCode::SUCCESS,
+        &mut log,
+    );
+    match outcome {
+        Ok(()) => {
+            log.end(0);
+            ExitCode::SUCCESS
+        }
         Err(e) => {
             runtime::status::error(&format!("Attention capture failed: {e:#}"));
+            log.fail(&e, 1);
+            log.end(1);
             ExitCode::from(1)
         }
     }
