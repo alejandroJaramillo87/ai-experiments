@@ -113,7 +113,7 @@ Each runbook's own progress line is authoritative; this table is the index.
 | [interp/interp.md](interp/interp.md) | 5 | 2 | 6 | 13 |
 | [observability/observability.md](observability/observability.md) | 7 | 0 | 0 | 7 |
 | [sandbox/sandbox-executable.md](sandbox/sandbox-executable.md) | 2 | 0 | 0 | 2 |
-| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 16 | 5 | 0 | 21 |
+| [rust-harness/rust-harness.md](rust-harness/rust-harness.md) | 16 | 5 | 1 | 22 |
 | [hardware/hardware-stress.md](hardware/hardware-stress.md) | 0 | 0 | 6 | 6 |
 | [interp/reference-captures.md](interp/reference-captures.md) | 0 | 0 | 2 | 2 |
 
@@ -128,9 +128,11 @@ artifact rather than on hardware, and
 it. The shards were confirmed present on the workstation 2026-08-14, so those
 entries are now waiting only on a GPU slot.
 
-`rust-harness.md` has no pending entries: its five blocked ones need an rr that
-supports Zen 5, an instruction-tuned checkpoint, or a control vector extracted
-against E4B. None is waiting on someone to sit down and run it.
+`rust-harness.md` has one pending entry, RH.16, which is waiting only on
+someone to sit down and run it. Its five blocked ones are a different thing:
+they need an rr that supports Zen 5, an instruction-tuned checkpoint, or a
+control vector extracted against E4B, and no amount of sitting down produces
+those.
 
 ## Phase order
 

@@ -529,12 +529,46 @@ health probe now retries on any transport error, which is what a polling loop is
 The earlier diagnosis — CPU starvation from accumulated orphans — was wrong about the cause
 and right about the symptom. Load does not create the race; it decides how often it is lost.
 
-### U4 — `harness --status`
+### U4 — `harness --status` (done)
 
-Preflight checks as data: model directory, weights and config readable, probe and its
-mandatory sidecar, control vector and its manifest, log directories writable. `--deep` opts
-into the full sha256. Writes no obs record — a filesystem query is not a run, the same rule
-that keeps `--help` out of the catalog.
+Preflight checks as data: model directory, weights and config readable, the CPU backend's
+verdict on the checkpoint, probe and its mandatory sidecar, control vector and its manifest,
+log directories writable. `--deep` opts into the full sha256. Writes no obs record — a
+filesystem query is not a run, the same rule that keeps `--help` out of the catalog.
+
+**Six things the brief specified could not be built as written**, all found by reading the
+code rather than inferred:
+
+- `checks(cfg: &RunHeader)` is not a preflight. `RunHeader` is built from a loaded
+  `CpuModel`, so taking one means doing the ninety-second load the stage exists to avoid.
+  `checks` takes the resolved command line instead.
+- `pub(crate)` cannot work: `main.rs` is a binary crate consuming the `harness` library, so
+  a crate-private item there is invisible to it. The moved functions are `pub`.
+- Three outcomes cannot express "not checked". When `config.json` fails to parse there is no
+  embedding width to compare a probe against; `Ok` lies and `Error` invents a second failure
+  from one cause. `Outcome::Skip` is the fourth, and `runtime::status` already had the tag.
+- `check_model_identity` prints. Calling it from a renderer-free `checks` would emit stray
+  stderr beside the report, so it splits into a pure `compare_identity` and the printing
+  wrapper the run path keeps.
+- `OBS_LOG_DIR` can never be an `Error`: an unwritable root degrades to a silent no-op handle
+  by contract, so the run proceeds and claiming otherwise would be false.
+- `--model` is not enforced during parsing. `REQUIRED` feeds the usage line and nothing else,
+  so a run discovers a missing `--model` at load and exits 1. `--status` checks it and exits
+  2, an asymmetry taken deliberately: making the run path agree means moving a required-flag
+  check into parsing, which changes an exit code the container and runbooks may depend on.
+
+Three exit codes carry three answers — 0 clean, 1 the run would fail, 2 the command line was
+wrong to ask — and that separation is the reason to run `--status` rather than starting a run
+to see whether it starts. The report is on stderr with stdout empty, matching what U1b-3
+established for `checkpoint-info` and `layer-diff`.
+
+The one question shared with `checkpoint-info --check` — whether the CPU backend can serve
+these weights — is delegated to the same `check_supported_checkpoint` rather than re-derived,
+so the two cannot disagree. Deliberately not covered, and said so in the module banner:
+`set_control_vector`'s width and block-count validation, which needs a loaded model.
+
+**Acceptance:** RH.16, `docs/verification/rust-harness/rust-harness.md`, pending a workstation
+run.
 
 ### U6 — phases, `metrics.jsonl`, and the existing dashboard
 

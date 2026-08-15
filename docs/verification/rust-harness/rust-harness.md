@@ -2,7 +2,8 @@
 
 **Operational runbook. Executed against the workstation, not read for understanding: the operator's pasted output is the evidence. Keep the commands runnable, and the paths accurate — both documentation gates check this directory, so a stale reference here fails the gate.**
 
-**Entries: 16 verified, 5 blocked, 0 pending, of 21.** The five blocked are
+**Entries: 16 verified, 5 blocked, 1 pending, of 22.** The one pending is
+RH.16, which needs a workstation run. The five blocked are
 RH.7 (rr does not recognize Zen 5) and RH.8, RH.9d, RH.11 and RH.15, which
 need an instruction-tuned checkpoint or a control vector this repository does
 not yet have. Each says so in its own Status line; none is merely unrun.
@@ -1891,3 +1892,57 @@ repeng 0.4.0 cannot import under the pinned numpy and is deliberately absent
 from the interp image. `--method sae_row` may sidestep that and has not been
 tried. Unblocks when a vector extracted against this checkpoint exists and
 loads; the arms and the judge wiring are otherwise ready.
+
+## RH.16 The preflight answers before the model loads
+
+`harness --status` exists because every artifact check a run makes happens
+after `CpuModel::load` — ninety seconds and 14 GiB on E4B — so a missing probe
+sidecar or an unwritable log directory costs a full load to discover. The
+preflight reads `config.json` and the safetensors header only. This entry says
+its answers are the ones a run would give, on real weights rather than on the
+16-dimension fixture the sandbox uses.
+
+Run all four. The first three are the criterion; the fourth reads the whole
+checkpoint, so expect it to take about as long as a `sha256sum` of the weights
+and no longer. Substitute the E4B checkpoint directory for `$MODEL`.
+
+```bash
+cd ~/workspace/ai-experiments/rust-harness
+MODEL=<the gemma-4-E4B checkpoint directory>
+
+# 1. clean preflight: every check [OK] or [SKIP], exit 0, well under a second
+time cargo run --release -q -p harness -- --model "$MODEL" --text-only --status
+echo "exit=$?"
+
+# 2. stdout carries nothing; the report is a verdict, not payload
+cargo run --release -q -p harness -- --model "$MODEL" --text-only --status \
+  2>/dev/null | wc -c
+
+# 3. a checkpoint that is not there: exit 1, not 2
+cargo run --release -q -p harness -- --model /absent --status; echo "exit=$?"
+
+# 4. --deep hashes the weights; compare against the digest taken independently
+time cargo run --release -q -p harness -- \
+  --model "$MODEL" --text-only --status --deep
+echo "exit=$?"
+time sha256sum "$MODEL/model.safetensors"
+```
+
+Expected: (1) exit 0, with `[OK] backend compatibility: supported` and a
+config line naming **42 layers** — the same count RH.2's run header reports,
+which is what cross-checks that the preflight read the checkpoint the run
+reads. (2) `0` bytes on stdout. (3) exit 1, with one `[ERROR] model directory`
+line and the rest `[SKIP]`; exit 2 there would mean the mode misread a valid
+command line, which is a different defect. (4) exit 0, and an elapsed time
+close to the `sha256sum` beside it, since both read the same ~15 GB once.
+
+Record the elapsed times from (1) and (4). The gap between them is the entire
+argument for `--deep` being opt-in rather than the default, and this is the
+only place it is measured against real weights.
+
+Observed:
+
+```
+```
+
+Status: PENDING.

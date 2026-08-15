@@ -61,6 +61,21 @@ like `harness --modle m "do x"` stops rather than running a task named after the
 mistake. Task text that legitimately begins with a dash goes after a bare `--`,
 which ends flag parsing.
 
+`harness --model <dir> --status` reports what the run would fail on and exits
+without loading the model: the checkpoint and the CPU backend's verdict on it,
+each interp artifact given, and the directories the run writes to. It reads
+`config.json` and the safetensors header only, so it answers in milliseconds
+rather than the time a checkpoint takes to load. Add `--deep` to hash the
+weights and check each artifact's recorded `model_hash` against them; that is
+opt-in because it reads the whole file.
+
+Three exit codes mean three different things, which is the reason to prefer
+`--status` over starting a run to see whether it starts: **0** clean, or
+warnings only; **1** something would stop the run; **2** the command line was
+wrong to ask. The report goes to stderr and stdout stays empty. No run record
+is written — a query is not a run, the same rule that keeps `--help` out of the
+catalog.
+
 ## Testing
 
 Testing is test-first and tiered:
