@@ -12,6 +12,7 @@ pub mod generator;
 pub mod interplog;
 pub mod obs;
 pub mod permissions;
+pub mod preflight;
 pub mod runheader;
 pub mod server;
 pub mod stream;

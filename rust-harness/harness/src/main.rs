@@ -42,54 +42,10 @@ fn ask_stdin(call: &ToolCall) -> bool {
 /// "the model made no passes" stay distinguishable in the writer.
 type PassHandle = Option<std::sync::Arc<std::sync::Mutex<Vec<runtime::align::Pass>>>>;
 
-/// Sentinel an interp artifact carries when the weights it was fitted on
-/// have no recorded identity (`interp/probes/capture.py` defaults
-/// `model_hash` to it, and the exporters pass it through).
-const UNKNOWN_MODEL_HASH: &str = "unknown";
-
-/// Refuse an interp artifact fitted on weights other than the served ones.
-/// A probe scored against a different model, or a control vector added to
-/// its residual stream, produces meaningless output indistinguishable from
-/// a genuine flag or steer, so the pairing is refused the way every Python
-/// consumer refuses it (`interp/probes/registry.py` `require_match`,
-/// `interp/steering/wiring.py`). Only two real hashes can disagree: the
-/// `unknown` sentinel downgrades to a skipped check, which is what keeps
-/// Python-captured artifacts loading. The served digest arrives as a
-/// closure because producing it hashes multi-gigabyte weights, a cost a
-/// skipped check must not pay.
-fn check_model_identity(
-    artifact: &str,
-    artifact_hash: &str,
-    served_sha256: impl FnOnce() -> Result<String>,
-) -> Result<()> {
-    if artifact_hash == UNKNOWN_MODEL_HASH {
-        runtime::status::warn(&format!(
-            "Model identity: {artifact} records model hash \
-             \"{UNKNOWN_MODEL_HASH}\", check skipped"
-        ));
-        return Ok(());
-    }
-    let served = served_sha256()?;
-    anyhow::ensure!(
-        artifact_hash == served,
-        "{artifact} was trained on a different model: {artifact} model_hash \
-         {artifact_hash}, served model sha256 {served}"
-    );
-    Ok(())
-}
-
-/// The model hash recorded beside a control vector, when its artifact
-/// directory is intact. The image itself carries tensors and nothing else,
-/// so the sibling `manifest.json` the exporter writes
-/// (`interp/steering/export.py`) is the only hash available. A vector copied
-/// away from its manifest, or one whose manifest is unreadable, stays
-/// loadable and unchecked — the deliberate asymmetry with the probe's
-/// mandatory sidecar, which `schemas/control_vector_artifact.json` records.
-fn control_vector_model_hash(path: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(path.parent()?.join("manifest.json")).ok()?;
-    let manifest: serde_json::Value = serde_json::from_str(&text).ok()?;
-    manifest.get("model_hash")?.as_str().map(str::to_string)
-}
+// `UNKNOWN_MODEL_HASH`, `check_model_identity` and `control_vector_model_hash`
+// live in `harness::preflight`, which needs them to answer the same questions
+// before a model is loaded. They are `pub` there rather than crate-private
+// because this binary is a separate crate from the library it consumes.
 
 /// Parse `--control-vector-layer-range` as an inclusive pair of 0-based
 /// block indices.
@@ -177,9 +133,9 @@ fn build_generator(
             .with_context(|| format!("read control vector {}", path.display()))?;
         let cv_image = runtime::checkpoint::Image::parse(cv_data, "control vector")
             .context("parse control-vector image")?;
-        match control_vector_model_hash(path) {
+        match harness::preflight::control_vector_model_hash(path) {
             Some(hash) => {
-                check_model_identity("control vector", &hash, || {
+                harness::preflight::check_model_identity("control vector", &hash, || {
                     runtime::digest::sha256_file(&weights_path)
                         .with_context(|| format!("hash {}", weights_path.display()))
                 })?;
@@ -199,7 +155,7 @@ fn build_generator(
     let monitor = match probe {
         Some(path) => {
             let p = std::sync::Arc::new(Probe::load(path).context("load probe")?);
-            check_model_identity("probe", &p.model_hash, || {
+            harness::preflight::check_model_identity("probe", &p.model_hash, || {
                 runtime::digest::sha256_file(&weights_path)
                     .with_context(|| format!("hash {}", weights_path.display()))
             })?;
@@ -1001,36 +957,12 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runtime::digest::sha256_hex;
+    // Still used by the probe fixtures below, which write a sidecar carrying
+    // the sentinel so the identity check does not hash anything.
+    use harness::preflight::UNKNOWN_MODEL_HASH;
 
-    #[test]
-    fn model_identity_accepts_an_artifact_hash_equal_to_the_served_digest() {
-        let served = sha256_hex(b"gguf bytes");
-        check_model_identity("probe", &served, || Ok(sha256_hex(b"gguf bytes")))
-            .expect("an artifact fitted on the served weights is the matching case");
-    }
-
-    #[test]
-    fn model_identity_refuses_a_mismatch_and_names_both_hashes() {
-        let artifact = sha256_hex(b"weights the probe was trained on");
-        let served = sha256_hex(b"weights actually loaded");
-        let err = check_model_identity("probe", &artifact, || Ok(served.clone()))
-            .expect_err("two real hashes that disagree are a refusal")
-            .to_string();
-        assert!(err.contains(&artifact), "{err}");
-        assert!(err.contains(&served), "{err}");
-    }
-
-    #[test]
-    fn model_identity_skips_the_unknown_sentinel_without_hashing_the_model() {
-        let mut hashed = false;
-        check_model_identity("probe", UNKNOWN_MODEL_HASH, || {
-            hashed = true;
-            Ok(String::new())
-        })
-        .expect("unknown is the capture default, not a mismatch");
-        assert!(!hashed, "a skipped check must not hash the model");
-    }
+    // The model-identity and control-vector-manifest tests moved to
+    // `harness::preflight` with the functions they cover, unmodified.
 
     #[test]
     fn a_probe_report_failure_warns_and_leaves_a_completed_task_completed() {
@@ -1110,21 +1042,5 @@ mod tests {
         let out = dir.path().join("absent").join("flags.jsonl");
         report_probe(&monitor, &out).expect("a missing parent directory is created, not a failure");
         assert!(out.is_file(), "{}", out.display());
-    }
-
-    #[test]
-    fn control_vector_model_hash_reads_the_manifest_beside_the_vector() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let vector = dir.path().join("vector.safetensors");
-        assert_eq!(control_vector_model_hash(&vector), None);
-        std::fs::write(
-            dir.path().join("manifest.json"),
-            r#"{"artifact": "control_vector", "model_hash": "deadbeef"}"#,
-        )
-        .expect("write manifest");
-        assert_eq!(
-            control_vector_model_hash(&vector),
-            Some("deadbeef".to_string())
-        );
     }
 }
