@@ -1209,7 +1209,7 @@ with a separable attribute; record which dataset was used.
   Python-capture fingerprints, but no longer because the vocabulary came from
   a different container. Both sides now read the same checkpoint. It is a
   sha256 over the model path and vocabulary size with no chat template
-  (`activation-capture.rs:219-225`), so it identifies a rust capture rather
+  (`activation-capture.rs:188-194`), so it identifies a rust capture rather
   than describing a tokenizer, and probe training on rust captures must still
   go through artifacts produced by this chain only.
 

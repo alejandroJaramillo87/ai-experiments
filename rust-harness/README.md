@@ -63,6 +63,19 @@ like `harness --modle m "do x"` stops rather than running a task named after the
 mistake. Task text that legitimately begins with a dash goes after a bare `--`,
 which ends flag parsing.
 
+The other seven binaries answer `--help` and `-h` on the same terms, from their
+own tables in `runtime/src/cli.rs`: help on stdout at exit 0, a usage error on
+stderr at exit 2, and an unrecognized flag named rather than ignored. They do
+not take `--version`. Two of the changes are behavioural rather than additive.
+`activation-capture` and `attention-capture` used to scan for each flag by
+position and read no further, so a misspelling was silently dropped — with a
+required flag among the casualties they reported `missing required flag`, which
+named neither, and with every required flag present they ran with the wrong
+configuration and said nothing; their usage errors also now exit 2 rather than
+sharing exit 1 with a failed capture. And `tiny-model` and
+`long-context-golden` take their destination positionally, so until this each
+one wrote its fixtures to a file named `-h` when asked for help.
+
 `harness --model <dir> --status` reports what the run would fail on and exits
 without loading the model: the checkpoint and the CPU backend's verdict on it,
 each interp artifact given, and the directories the run writes to. It reads

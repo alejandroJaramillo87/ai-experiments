@@ -128,9 +128,16 @@ rust-harness/
       kv.rs             # per-layer cache allocation and delta prefill
       checkpoint.rs     # config.json and model.safetensors: weights and the interp artifacts
       tokenizer.rs      # wrapper over the `tokenizers` crate, reading tokenizer.json
+      cli.rs            # one binary's flags as data: --help, usage, unknown-arg rejection
       model/cpu.rs      # hand-rolled CPU backend, tap and steering seams
       model/mock.rs     # scripted backend the sandbox tests run against
+    src/bin/            # the seven utility binaries, rostered in rust-harness/README.md
 ```
+
+`cli.rs` serves `runtime/src/bin/` only. `harness` keeps its own table in
+`harness/src/cli.rs`, which carries flag groups, defaults, `requires` edges and
+inert conditions that a program with twenty-odd flags across six sections needs
+and none of the seven do.
 
 The harness-runtime boundary is one in-process API:
 

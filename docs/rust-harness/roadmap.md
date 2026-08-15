@@ -456,10 +456,40 @@ without its vector exits 2 instead of being ignored; `--top-k`/`--top-p` under g
 decoding and `--interp-log` outside `--serve` warn rather than staying silent. A bare `--`
 ends flag parsing, which is what makes rejecting unknown flags safe.
 
-### U3b — the same for the other seven binaries
+### U3b — the same for the other seven binaries (done)
 
-`--help` for all seven, unknown-argument rejection for the six that lack it. Promote
-`cli::Flag` into `runtime/` only when a second binary wants it, not pre-emptively.
+`runtime/src/cli.rs` holds one program's flags as data — name, arity, help, and the required
+list that both the usage line and the missing-flag check read, so a flag cannot be printed
+unbracketed and then not enforced. All seven answer `--help` and `-h` on stdout at exit 0,
+and refuse an unrecognized flag at exit 2 naming it.
+
+**Promoted reduced, not whole.** The roadmap's rule was to promote `cli::Flag` only when a
+second binary wanted it. Seven wanted something, and none wanted `cli::Flag`: `group`,
+`default`, `requires` and `inert_when` have no user among them, and importing four fields for
+zero callers is the unused ceremony `RUST_STYLE.md:84-86` rules out. `extract` did not promote
+either, for a parsing reason — every harness value slot is `Option<PathBuf>` so a path survives
+arbitrary bytes, a trade these seven declined long ago by collecting `Vec<String>` from
+`env::args()`, and one that means nothing to `--layers 8,16,24`. Two `Flag` types now exist;
+`harness/src/cli.rs` is untouched, and rewriting it onto the reduced table would move a
+460-line table and its pinned `USAGE_GOLDEN` across crates for no gain here.
+
+**The defect this closes is not the missing help text.** `tiny-model` and
+`long-context-golden` take their output path positionally and neither looked for `-h` first,
+so `tiny-model -h` wrote `-h.tokenizer.json` and a directory `-h/` holding `config.json` and
+`model.safetensors`. Asking a fixture writer how to use it produced a fixture set named after
+the question. `binary_cli_surface.rs` asserts the scratch directory is still empty rather than
+asserting the exit code, because a help request that exits 0 and still writes a file passes an
+exit-code test.
+
+Behaviour changes elsewhere: `activation-capture` and `attention-capture` scanned for each
+flag by position and read no further, so a stray `--textonly` was ignored and a misspelled
+required flag produced `missing required flag`, naming neither; their usage errors also move
+from exit 1 to exit 2, off the code a failed capture uses. `checkpoint-info`'s `partition`
+sorted every unrecognized token into the positional pile, so a lone `-h` was read as the
+checkpoint path. `ladder --help` is answered before `RunLog::begin` — a query is not a run.
+
+**Acceptance:** `cargo test -p runtime --test binary_cli_surface`, against all seven spawned
+behind pipes. Sandbox-verifiable end to end; no workstation step and no GPU consumer.
 
 ### U2 — the run header, built once and rendered twice (done)
 
