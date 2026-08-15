@@ -289,11 +289,7 @@ fn every_capture_binary_times_the_model_load() {
         );
         let end = r.one("phase.end");
         assert_eq!(end["phase"], "model.load", "{}", subject.command);
-        assert!(
-            end["duration_s"].is_number(),
-            "{}: {end}",
-            subject.command
-        );
+        assert!(end["duration_s"].is_number(), "{}: {end}", subject.command);
     }
 }
 

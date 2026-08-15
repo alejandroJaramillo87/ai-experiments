@@ -58,6 +58,21 @@ fn dense_matrix(n: usize, rows: &[(usize, &AttentionRow)]) -> Result<Vec<f32>> {
     Ok(m)
 }
 
+/// What the capture was asked to do, as the command line resolved it.
+///
+/// Grouped rather than passed as separate arguments because `run` and the
+/// header below want the same set, and two parameter lists over one set of
+/// facts is two things to keep in step.
+struct Request<'a> {
+    model: &'a Path,
+    prompt: &'a str,
+    layers: &'a [usize],
+    heads: &'a [usize],
+    out: &'a Path,
+    text_only: bool,
+    single_thread: bool,
+}
+
 /// The resolved configuration of an attention capture, as obs fields.
 ///
 /// A per-binary header event, for the reason `schemas/obs_record.json`'s
@@ -74,14 +89,9 @@ fn dense_matrix(n: usize, rows: &[(usize, &AttentionRow)]) -> Result<Vec<f32>> {
 /// and it is more than the manifest carries, which records the token count and
 /// never what was captured over.
 fn attention_header(
-    model_path: &Path,
+    req: &Request,
     model_hash: u64,
-    layers: &[usize],
-    heads: &[usize],
-    prompt: &str,
     prompt_tokens: usize,
-    out_dir: &Path,
-    text_only: bool,
     model: &CpuModel,
 ) -> Vec<(&'static str, obs::Value)> {
     let (weight_bytes, width) = model.weight_bytes();
@@ -92,7 +102,7 @@ fn attention_header(
             .join(",")
     };
     vec![
-        ("model", obs::Value::Str(model_path.display().to_string())),
+        ("model", obs::Value::Str(req.model.display().to_string())),
         ("model_hash", obs::Value::Str(format!("{model_hash:016x}"))),
         ("n_layers", obs::Value::Int(model.config().n_layers as u64)),
         (
@@ -101,15 +111,15 @@ fn attention_header(
         ),
         ("weight_bytes", obs::Value::Int(weight_bytes as u64)),
         // In the order asked for, not the manifest's sorted spelling.
-        ("layers", obs::Value::Str(list(layers))),
-        ("heads", obs::Value::Str(list(heads))),
+        ("layers", obs::Value::Str(list(req.layers))),
+        ("heads", obs::Value::Str(list(req.heads))),
         (
             "prompt_sha256",
-            obs::Value::Str(runtime::digest::sha256_hex(prompt.as_bytes())),
+            obs::Value::Str(runtime::digest::sha256_hex(req.prompt.as_bytes())),
         ),
         ("prompt_tokens", obs::Value::Int(prompt_tokens as u64)),
-        ("out", obs::Value::Str(out_dir.display().to_string())),
-        ("text_only", obs::Value::Bool(text_only)),
+        ("out", obs::Value::Str(req.out.display().to_string())),
+        ("text_only", obs::Value::Bool(req.text_only)),
         ("threads", obs::Value::Int(model.threads() as u64)),
         ("dot", obs::Value::Str(model.dot().label().to_string())),
         ("batch", obs::Value::Str(model.batch().label())),
@@ -121,16 +131,12 @@ fn attention_header(
     ]
 }
 
-fn run(
-    model_path: &Path,
-    prompt: &str,
-    layers: &[usize],
-    heads: &[usize],
-    out_dir: &Path,
-    text_only: bool,
-    single_thread: bool,
-    log: &mut obs::RunLog,
-) -> Result<()> {
+fn run(req: &Request, log: &mut obs::RunLog) -> Result<()> {
+    // Named for what the body below has always called them, so the request
+    // struct is a change to the signature and not to the capture.
+    let (model_path, prompt, out_dir) = (req.model, req.prompt, req.out);
+    let (layers, heads) = (req.layers, req.heads);
+    let (text_only, single_thread) = (req.text_only, req.single_thread);
     let (mut model, fingerprint) = {
         let _span = log.phase("model.load");
         CpuModel::load(model_path, text_only)?
@@ -184,9 +190,7 @@ fn run(
         "info",
         "attention-capture.header",
         "resolved attention capture configuration",
-        &attention_header(
-            model_path, fingerprint, layers, heads, prompt, n, out_dir, text_only, &model,
-        ),
+        &attention_header(req, fingerprint, n, &model),
     );
 
     let tap = AttentionTap::new(layers.to_vec(), heads.to_vec());
@@ -416,14 +420,21 @@ fn main() -> ExitCode {
     // no row in the catalog -- and after `handled_help` above, so a query is
     // not a run.
     let mut log = obs::RunLog::begin("attention-capture", &argv_full);
+    let (model, prompt, out) = (
+        PathBuf::from(expect(model)),
+        expect(prompt),
+        PathBuf::from(expect(out)),
+    );
     let outcome = run(
-        &PathBuf::from(expect(model)),
-        &expect(prompt),
-        &layers,
-        &heads,
-        &PathBuf::from(expect(out)),
-        parsed.has("--text-only"),
-        parsed.has("--single-thread"),
+        &Request {
+            model: &model,
+            prompt: &prompt,
+            layers: &layers,
+            heads: &heads,
+            out: &out,
+            text_only: parsed.has("--text-only"),
+            single_thread: parsed.has("--single-thread"),
+        },
         &mut log,
     );
     match outcome {

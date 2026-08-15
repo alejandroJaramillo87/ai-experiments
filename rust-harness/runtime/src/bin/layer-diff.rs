@@ -77,6 +77,20 @@ fn report(label: &str, got: &[f32], want: &[f32], floor: f64, ceiling: f64) -> R
     Ok(!mark.is_empty())
 }
 
+/// What the comparison was asked to do, as the command line resolved it.
+///
+/// Grouped rather than passed as separate arguments because `run` and the
+/// header below want the same set, and two parameter lists over one set of
+/// facts is two things to keep in step.
+struct Request<'a> {
+    model: &'a Path,
+    reference: &'a Path,
+    text_only: bool,
+    single_thread: bool,
+    floor: f64,
+    ceiling: f64,
+}
+
 /// The resolved configuration of a comparison, as obs fields.
 ///
 /// A per-binary header event, for the reason `schemas/obs_record.json`'s
@@ -89,19 +103,15 @@ fn report(label: &str, got: &[f32], want: &[f32], floor: f64, ceiling: f64) -> R
 /// it has no manifest carrying its provenance. The obs record is the only
 /// place the conditions of a quoted verdict survive the terminal.
 fn layer_diff_header(
-    model_path: &Path,
+    req: &Request,
     model_hash: u64,
-    reference_path: &Path,
     reference_tokens: usize,
     reference_dtype: &str,
-    text_only: bool,
-    floor: f64,
-    ceiling: f64,
     model: &CpuModel,
 ) -> Vec<(&'static str, obs::Value)> {
     let (weight_bytes, width) = model.weight_bytes();
     vec![
-        ("model", obs::Value::Str(model_path.display().to_string())),
+        ("model", obs::Value::Str(req.model.display().to_string())),
         ("model_hash", obs::Value::Str(format!("{model_hash:016x}"))),
         ("n_layers", obs::Value::Int(model.config().n_layers as u64)),
         (
@@ -111,7 +121,7 @@ fn layer_diff_header(
         ("weight_bytes", obs::Value::Int(weight_bytes as u64)),
         (
             "reference",
-            obs::Value::Str(reference_path.display().to_string()),
+            obs::Value::Str(req.reference.display().to_string()),
         ),
         ("reference_tokens", obs::Value::Int(reference_tokens as u64)),
         (
@@ -121,9 +131,9 @@ fn layer_diff_header(
         // Not rounded: 1e-3 survives `round3` and a tighter ceiling would not,
         // and a tolerance recorded less precisely than it was applied is worse
         // than one not recorded at all.
-        ("cosine_floor", obs::Value::Num(floor)),
-        ("rel_l2_ceiling", obs::Value::Num(ceiling)),
-        ("text_only", obs::Value::Bool(text_only)),
+        ("cosine_floor", obs::Value::Num(req.floor)),
+        ("rel_l2_ceiling", obs::Value::Num(req.ceiling)),
+        ("text_only", obs::Value::Bool(req.text_only)),
         ("threads", obs::Value::Int(model.threads() as u64)),
         ("dot", obs::Value::Str(model.dot().label().to_string())),
         ("batch", obs::Value::Str(model.batch().label())),
@@ -135,15 +145,12 @@ fn layer_diff_header(
     ]
 }
 
-fn run(
-    model_path: &Path,
-    reference_path: &Path,
-    text_only: bool,
-    single_thread: bool,
-    floor: f64,
-    ceiling: f64,
-    log: &mut obs::RunLog,
-) -> Result<bool> {
+fn run(req: &Request, log: &mut obs::RunLog) -> Result<bool> {
+    // Named for what the body below has always called them, so the request
+    // struct is a change to the signature and not to the comparison.
+    let (model_path, reference_path) = (req.model, req.reference);
+    let (text_only, single_thread) = (req.text_only, req.single_thread);
+    let (floor, ceiling) = (req.floor, req.ceiling);
     let reference = runtime::reference::load_capture(reference_path, &PRELUDE_STAGES)?
         .with_context(|| format!("reference {} does not exist", reference_path.display()))?;
     ensure!(
@@ -177,14 +184,10 @@ fn run(
         "layer-diff.header",
         "resolved comparison configuration",
         &layer_diff_header(
-            model_path,
+            req,
             fingerprint,
-            reference_path,
             reference.token_ids.len(),
             &reference.dtype.to_string(),
-            text_only,
-            floor,
-            ceiling,
             &model,
         ),
     );
@@ -394,12 +397,14 @@ fn main() -> ExitCode {
     // not a run.
     let mut log = obs::RunLog::begin("layer-diff", &argv_full);
     let verdict = run(
-        &model,
-        &reference,
-        parsed.has("--text-only"),
-        parsed.has("--single-thread"),
-        floor,
-        ceiling,
+        &Request {
+            model: &model,
+            reference: &reference,
+            text_only: parsed.has("--text-only"),
+            single_thread: parsed.has("--single-thread"),
+            floor,
+            ceiling,
+        },
         &mut log,
     );
     match verdict {

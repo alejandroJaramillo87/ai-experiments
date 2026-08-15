@@ -82,6 +82,21 @@ fn check_row_counts(
     Ok(())
 }
 
+/// What the capture was asked to do, as the command line resolved it.
+///
+/// Grouped rather than passed as separate arguments because `run` and the
+/// header below want the same set: two parameter lists over one set of facts
+/// is two things to keep in step, and the header going out of step with the
+/// run is the exact failure the header exists to prevent.
+struct Request<'a> {
+    model: &'a Path,
+    dataset: &'a Path,
+    layers: &'a [usize],
+    out: &'a Path,
+    text_only: bool,
+    single_thread: bool,
+}
+
 /// The resolved configuration of a capture run, as obs fields.
 ///
 /// A per-binary header event rather than a share of `run.header` or
@@ -100,19 +115,15 @@ fn check_row_counts(
 /// second sha256 of ~14 GiB per run to say the same thing twice is the cost
 /// U2 declined for the harness header and this declines for the same reason.
 fn capture_header(
-    model_path: &Path,
+    req: &Request,
     model_hash: u64,
-    layers: &[usize],
-    dataset_path: &Path,
     examples: usize,
-    out_dir: &Path,
-    text_only: bool,
     model: &CpuModel,
 ) -> Vec<(&'static str, obs::Value)> {
     let (weight_bytes, width) = model.weight_bytes();
-    let requested: Vec<String> = layers.iter().map(usize::to_string).collect();
+    let requested: Vec<String> = req.layers.iter().map(usize::to_string).collect();
     vec![
-        ("model", obs::Value::Str(model_path.display().to_string())),
+        ("model", obs::Value::Str(req.model.display().to_string())),
         ("model_hash", obs::Value::Str(format!("{model_hash:016x}"))),
         ("n_layers", obs::Value::Int(model.config().n_layers as u64)),
         (
@@ -126,11 +137,11 @@ fn capture_header(
         ("layers", obs::Value::Str(requested.join(","))),
         (
             "dataset",
-            obs::Value::Str(dataset_path.display().to_string()),
+            obs::Value::Str(req.dataset.display().to_string()),
         ),
         ("examples", obs::Value::Int(examples as u64)),
-        ("out", obs::Value::Str(out_dir.display().to_string())),
-        ("text_only", obs::Value::Bool(text_only)),
+        ("out", obs::Value::Str(req.out.display().to_string())),
+        ("text_only", obs::Value::Bool(req.text_only)),
         ("threads", obs::Value::Int(model.threads() as u64)),
         ("dot", obs::Value::Str(model.dot().label().to_string())),
         ("batch", obs::Value::Str(model.batch().label())),
@@ -142,15 +153,11 @@ fn capture_header(
     ]
 }
 
-fn run(
-    model_path: &Path,
-    dataset_path: &Path,
-    layers: &[usize],
-    out_dir: &Path,
-    text_only: bool,
-    single_thread: bool,
-    log: &mut obs::RunLog,
-) -> Result<()> {
+fn run(req: &Request, log: &mut obs::RunLog) -> Result<()> {
+    // Named for what the body below has always called them, so the request
+    // struct is a change to the signature and not to the capture.
+    let (model_path, dataset_path, out_dir) = (req.model, req.dataset, req.out);
+    let (layers, text_only, single_thread) = (req.layers, req.text_only, req.single_thread);
     // `load` drops the checkpoint mapping before returning; see its doc
     // comment for why no caller here should open one itself.
     let (mut model, fingerprint) = {
@@ -191,16 +198,7 @@ fn run(
         "info",
         "activation-capture.header",
         "resolved capture configuration",
-        &capture_header(
-            model_path,
-            fingerprint,
-            layers,
-            dataset_path,
-            examples.len(),
-            out_dir,
-            text_only,
-            &model,
-        ),
+        &capture_header(req, fingerprint, examples.len(), &model),
     );
 
     let tap = LastRowTap::new(layers.to_vec());
@@ -433,13 +431,20 @@ fn main() -> ExitCode {
     // not a run. `cli` is "harness" for the whole workspace, with the binary
     // name as `command`.
     let mut log = obs::RunLog::begin("activation-capture", &argv_full);
+    let (model, dataset, out) = (
+        PathBuf::from(expect(model)),
+        PathBuf::from(expect(dataset)),
+        PathBuf::from(expect(out)),
+    );
     let outcome = run(
-        &PathBuf::from(expect(model)),
-        &PathBuf::from(expect(dataset)),
-        &layers,
-        &PathBuf::from(expect(out)),
-        parsed.has("--text-only"),
-        parsed.has("--single-thread"),
+        &Request {
+            model: &model,
+            dataset: &dataset,
+            layers: &layers,
+            out: &out,
+            text_only: parsed.has("--text-only"),
+            single_thread: parsed.has("--single-thread"),
+        },
         &mut log,
     );
     match outcome {
