@@ -109,6 +109,15 @@ pub const GREEDY: &str = "temperature is 0";
 /// A run that is not serving, where the per-request log has no requests.
 pub const NOT_SERVING: &str = "there is no --serve";
 
+/// A preflight with no interp artifact, where hashing the weights produces a
+/// digest with nothing to compare it against.
+///
+/// `preflight::checks` produces the digest lazily and only an identity check
+/// consumes it, so with neither `--probe` nor `--control-vector` the weights
+/// are never read -- which is right, and was also completely silent until the
+/// first real workstation run passed `--deep` and got an answer in 45ms.
+pub const NO_ARTIFACT: &str = "there is no interp artifact to check";
+
 /// The one flag whose absence is an error rather than a default.
 ///
 /// Requiredness is a property of this program -- there is nothing to run
@@ -352,7 +361,10 @@ pub const FLAGS: &[Flag] = &[
                not fast",
         default: None,
         requires: Some("--status"),
-        inert_when: None,
+        // Both fields are true of it and they are independent: --deep has no
+        // meaning without --status, and no effect under --status when there is
+        // no artifact whose recorded hash the digest would be compared to.
+        inert_when: Some(NO_ARTIFACT),
     },
     Flag {
         // The bind address a container must override: binding the container's
@@ -766,7 +778,7 @@ mod tests {
         for flag in FLAGS {
             if let Some(condition) = flag.inert_when {
                 assert!(
-                    condition == GREEDY || condition == NOT_SERVING,
+                    condition == GREEDY || condition == NOT_SERVING || condition == NO_ARTIFACT,
                     "{} names an inert condition nothing evaluates",
                     flag.name
                 );
@@ -959,5 +971,15 @@ mod tests {
         let reported = inert(&["--interp-log"], NOT_SERVING);
         assert_eq!(reported.len(), 1, "{reported:?}");
         assert!(reported[0].contains("--interp-log"), "{reported:?}");
+    }
+
+    #[test]
+    fn the_deep_digest_is_reported_inert_with_no_artifact_to_check() {
+        let reported = inert(&["--deep", "--status"], NO_ARTIFACT);
+        assert_eq!(reported.len(), 1, "{reported:?}");
+        assert!(reported[0].contains("--deep"), "{reported:?}");
+        // The flags that give --deep something to do are not themselves
+        // inert, the way --seed is not inert under greedy decoding.
+        assert!(inert(&["--probe", "--control-vector"], NO_ARTIFACT).is_empty());
     }
 }

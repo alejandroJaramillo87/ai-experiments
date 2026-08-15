@@ -185,6 +185,25 @@ fn deep_hashes_the_fixture_and_reports_the_identity_it_would_otherwise_skip() {
 }
 
 #[test]
+fn deep_with_no_artifact_says_so_rather_than_passing_quietly() {
+    // Found by the first real workstation run: --deep against E4B returned in
+    // 45ms because the digest is produced lazily and, with neither artifact
+    // given, nothing asks for it. The laziness is correct -- hashing 15 GiB
+    // for a comparison nobody makes would be the defect -- but silence let a
+    // caller believe the weights had been verified.
+    let model = fixture_model();
+    let (out, _cwd) = run(&["--model", model.to_str().unwrap(), "--status", "--deep"]);
+    assert!(
+        stderr(&out).contains("[WARN] --deep"),
+        "--deep must name itself inert: {}",
+        stderr(&out)
+    );
+    // A warning, not an error: preflighting a checkpoint that has no artifacts
+    // yet is a coherent thing to do, and the checkpoint is still checked.
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+}
+
+#[test]
 fn status_without_a_model_is_a_usage_error() {
     let (out, _cwd) = run(&["--status"]);
     assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));

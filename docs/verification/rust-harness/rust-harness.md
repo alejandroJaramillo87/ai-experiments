@@ -1902,9 +1902,14 @@ preflight reads `config.json` and the safetensors header only. This entry says
 its answers are the ones a run would give, on real weights rather than on the
 16-dimension fixture the sandbox uses.
 
-Run all four. The first three are the criterion; the fourth reads the whole
-checkpoint, so expect it to take about as long as a `sha256sum` of the weights
-and no longer. Substitute the E4B checkpoint directory for `$MODEL`.
+Steps 1-3 are the preflight itself. Step 4 exercises `--deep`, and needs an
+artifact for the digest to be compared against — `compare_identity` is what
+consumes the hash, so a `--deep` with no probe and no control vector reads
+nothing at all. There is no probe on this workstation at a stable path today
+(RH.9c wrote its own to `/tmp/rh9` behind an `rm -rf`, and no control vector
+exists at all), so step 4 builds one from a copy.
+
+Substitute the E4B checkpoint directory for `$MODEL`.
 
 ```bash
 cd ~/workspace/ai-experiments/rust-harness
@@ -1921,11 +1926,38 @@ cargo run --release -q -p harness -- --model "$MODEL" --text-only --status \
 # 3. a checkpoint that is not there: exit 1, not 2
 cargo run --release -q -p harness -- --model /absent --status; echo "exit=$?"
 
-# 4. --deep hashes the weights; compare against the digest taken independently
-time cargo run --release -q -p harness -- \
-  --model "$MODEL" --text-only --status --deep
-echo "exit=$?"
+# 4a. the digest the comparison is measured against
 time sha256sum "$MODEL/model.safetensors"
+
+# 4b. a probe carrying that digest. Exported from a registered probe and then
+#     copied, so the width and layer stay the model's -- a hand-built probe of
+#     the wrong width fails the geometry check first and never reaches
+#     identity, which would look like a pass for the wrong reason.
+cd ~/workspace/ai-experiments
+make probe-export ARGS="--probe /mnt/ai-data/interp/probes/rust-e4b-verify-probe"
+mkdir -p /tmp/rh16 && cp \
+  /mnt/ai-data/interp/probes/rust-e4b-verify-probe/probe.safetensors \
+  /mnt/ai-data/interp/probes/rust-e4b-verify-probe/probe.json /tmp/rh16/
+DIGEST=$(sha256sum "$MODEL/model.safetensors" | cut -d' ' -f1)
+python3 - "$DIGEST" <<'PY'
+import json, sys
+p = "/tmp/rh16/probe.json"
+d = json.load(open(p))
+d["model_hash"] = sys.argv[1]
+json.dump(d, open(p, "w"))
+PY
+
+# 4c. --deep against a probe whose hash matches: [OK], and it costs a sha256
+cd rust-harness
+time cargo run --release -q -p harness -- --model "$MODEL" --text-only \
+  --probe /tmp/rh16/probe.safetensors --status --deep
+echo "exit=$?"
+
+# 4d. one character wrong: the comparison must decide, not merely hash
+sed -i 's/"model_hash": "4/"model_hash": "5/' /tmp/rh16/probe.json
+cargo run --release -q -p harness -- --model "$MODEL" --text-only \
+  --probe /tmp/rh16/probe.safetensors --status --deep
+echo "exit=$?"
 ```
 
 Expected: (1) exit 0, with `[OK] backend compatibility: supported` and a
@@ -1933,16 +1965,74 @@ config line naming **42 layers** — the same count RH.2's run header reports,
 which is what cross-checks that the preflight read the checkpoint the run
 reads. (2) `0` bytes on stdout. (3) exit 1, with one `[ERROR] model directory`
 line and the rest `[SKIP]`; exit 2 there would mean the mode misread a valid
-command line, which is a different defect. (4) exit 0, and an elapsed time
-close to the `sha256sum` beside it, since both read the same ~15 GB once.
+command line, which is a different defect. (4c) exit 0 with `[OK] probe
+identity: matches the served weights`, `[OK] probe geometry`, and an elapsed
+time close to 4a's, since both read the same ~15 GB once. (4d) exit **1** with
+`[ERROR] probe identity` naming both hashes.
 
-Record the elapsed times from (1) and (4). The gap between them is the entire
+Step 4d is the one that matters. Timing alone cannot distinguish a working
+comparison from one that hashes the weights and discards the answer.
+
+Record the elapsed times from (1) and (4c). The gap between them is the entire
 argument for `--deep` being opt-in rather than the default, and this is the
 only place it is measured against real weights.
 
-Observed:
+Observed, steps 1-3, 2026-08-15:
 
 ```
+$ time cargo run --release -q -p harness -- --model "$MODEL" --text-only --status
+[OK] model directory: /mnt/ai-data/models/hf/gemma-4-E4B
+[OK] checkpoint files: config.json and model.safetensors present, header names 2130 tensors
+[OK] config.json: 42 layers, hidden size 2560, context 131072
+[OK] backend compatibility: supported
+[SKIP] probe: no --probe given
+[SKIP] probe geometry: no --probe given
+[SKIP] probe identity: no --probe given
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[OK] obs log directory: /mnt/ai-data/logs/harness is writable
+cargo run ... 5.81s user 0.22s system 394% cpu 1.528 total
+exit=0
+
+$ cargo run --release -q -p harness -- --model "$MODEL" --text-only --status 2>/dev/null | wc -c
+0
+
+$ cargo run --release -q -p harness -- --model /absent --status; echo "exit=$?"
+[ERROR] model directory: no checkpoint at /absent: expected a directory holding config.json and model.safetensors, or a path to the weights file itself
+[SKIP] checkpoint files: not checked: the model path did not resolve
+[SKIP] config.json: not checked: the checkpoint files were unreadable
+[SKIP] backend compatibility: not checked: the checkpoint did not parse
+[SKIP] probe: no --probe given
+[SKIP] probe geometry: no --probe given
+[SKIP] probe identity: no --probe given
+[SKIP] control vector: no --control-vector given
+[SKIP] control vector identity: no --control-vector given
+[SKIP] interp log directory: no --interp-log given
+[OK] obs log directory: /mnt/ai-data/logs/harness is writable
+exit=1
+
+$ sha256sum "$MODEL/model.safetensors"
+43fb96cec3045b72852c787540300dc5b258634b7a025f7c80355ac0788b9651
+sha256sum ... 5.65s user 0.44s system 99% cpu 6.153 total
 ```
 
-Status: PENDING.
+Steps 1-3 pass. 42 layers, hidden size 2560 and context 131072 all agree with
+RH.2, stdout measured 0 bytes, and the absent checkpoint exited 1 rather than
+2.
+
+**The preflight costs ~45 ms.** Step 1's 1.528s wall is mostly cargo's build
+check (5.81s user at 394% CPU); the same command with nothing to rebuild
+returned in `0.045 total, 0.03s user`. Against a checkpoint load measured in
+tens of seconds, that is the number this stage was built to produce.
+
+**Finding: the original step 4 was unrunnable, and it exposed a defect.** It
+passed no artifact, so `--deep` read nothing and returned in 45 ms — the
+expected signal was right and the command could not produce it. The defect
+underneath: `--deep` reported nothing at all in that case, so a script passing
+it would believe the weights had been verified. Fixed by giving `--deep` an
+`inert_when` condition, so it now warns `--deep: no effect when there is no
+interp artifact to check`. The command block above is the corrected step 4;
+the expected signal is unchanged.
+
+Status: PENDING. Steps 1-3 verified above; the entry closes when step 4 runs.

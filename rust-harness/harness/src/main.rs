@@ -920,6 +920,17 @@ fn main() -> ExitCode {
             runtime::status::warn(&message);
         }
     }
+    // The digest is produced only when an identity check asks for it, so
+    // --deep with neither artifact reads nothing and reported nothing. The
+    // laziness is right -- hashing 15 GiB for a comparison nobody made would
+    // be the defect -- but a script that passed --deep and saw no complaint
+    // would believe the weights had been verified. No `status &&` guard: the
+    // requires edge has already refused --deep outside --status.
+    if probe.is_none() && control_vector.is_none() {
+        for message in harness::cli::inert(&parsed.given, harness::cli::NO_ARTIFACT) {
+            runtime::status::warn(&message);
+        }
+    }
     // A task is positional text; the three flag modes take none. Exactly one
     // of the four must be selected.
     if args.is_empty() != (chat || serve.is_some() || status) {
