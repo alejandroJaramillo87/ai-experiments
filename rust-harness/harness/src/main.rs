@@ -7,6 +7,10 @@
  * via --model; the cuda backend (phase A) will slot in at the same seam.
  */
 
+// See the note in lib.rs: the binary is its own crate root, so the attribute
+// has to be repeated to cover it.
+#![forbid(unsafe_code)]
+
 use std::io::Write;
 use std::path::Path;
 use std::process::ExitCode;
@@ -460,7 +464,7 @@ fn run(
     //
     // This hands `run` the general ability to write events. U2 writes exactly
     // one, `run.header`, immediately below.
-    run_log: &mut harness::obs::RunLog,
+    run_log: &mut obs::RunLog,
     sampling: runtime::sampler::SamplingParams,
     max_tokens: usize,
     context: Option<usize>,
@@ -997,7 +1001,7 @@ fn main() -> ExitCode {
         (true, _) => "chat",
         _ => "task",
     };
-    let mut run_log = harness::obs::RunLog::begin(kind, &argv_full);
+    let mut run_log = obs::RunLog::begin(kind, &argv_full);
     match run(
         &root,
         &task,

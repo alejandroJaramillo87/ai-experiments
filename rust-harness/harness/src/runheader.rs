@@ -24,7 +24,7 @@
  * contract would diverge for nothing.
  */
 
-use crate::obs::Value;
+use obs::Value;
 
 const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
 

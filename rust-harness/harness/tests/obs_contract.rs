@@ -22,7 +22,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use harness::obs::RunLog;
+use obs::RunLog;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -277,7 +277,7 @@ fn the_run_header_writes_exactly_the_fields_the_contract_declares() {
 /// which is worse than the malformed line the contract already guards against.
 #[test]
 fn a_caller_field_cannot_displace_a_base_key() {
-    use harness::obs::Value;
+    use obs::Value;
     let dir = tempfile::tempdir().unwrap();
     let mut log = RunLog::begin_at(dir.path(), "task", &[], None);
     let run_id = log
@@ -328,7 +328,7 @@ fn a_caller_field_cannot_displace_a_base_key() {
 /// duration_s and exit_code; this keeps the Rust side under the same contract.
 #[test]
 fn header_numbers_are_json_numbers_and_not_strings() {
-    use harness::obs::Value;
+    use obs::Value;
     let dir = tempfile::tempdir().unwrap();
     let mut log = RunLog::begin_at(dir.path(), "task", &[], None);
     let run_id = log.run_id().unwrap().to_string();

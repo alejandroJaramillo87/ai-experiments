@@ -1,5 +1,5 @@
 [workspace]
-members = ["harness", "runtime"]
+members = ["harness", "obs", "runtime"]
 resolver = "2"
 
 # Release optimization with debug info retained: required by cargo flamegraph
@@ -21,8 +21,8 @@ rust-version = "1.87"
 # Codifies the level the quality gate already enforces
 # (`cargo clippy --workspace --all-targets -- -D warnings`) so a plain
 # `cargo build` or an editor's rust-analyzer reports the same errors the gate
-# does, instead of warnings a person can scroll past. Both crates opt in with
-# `[lints] workspace = true`.
+# does, instead of warnings a person can scroll past. Every member opts in
+# with `[lints] workspace = true`.
 #
 # Deliberately not adopted: clippy::pedantic and clippy::nursery. Triage found
 # roughly 400 hits that are noise for this codebase, and two families are

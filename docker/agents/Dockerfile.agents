@@ -49,9 +49,11 @@ ENV CARGO_HOME=/opt/cargo
 WORKDIR /build
 COPY rust-harness/Cargo.toml rust-harness/Cargo.lock ./
 COPY rust-harness/harness/Cargo.toml harness/Cargo.toml
+COPY rust-harness/obs/Cargo.toml obs/Cargo.toml
 COPY rust-harness/runtime/Cargo.toml runtime/Cargo.toml
-RUN mkdir -p harness/src runtime/src \
+RUN mkdir -p harness/src obs/src runtime/src \
     && printf 'fn main() {}\n' > harness/src/main.rs \
+    && printf '' > obs/src/lib.rs \
     && printf '' > runtime/src/lib.rs \
     && cargo fetch --locked \
     && rm -rf /opt/cargo/registry/src

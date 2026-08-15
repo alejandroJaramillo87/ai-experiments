@@ -32,7 +32,7 @@ use serde::Serialize;
 
 use runtime::model::probe::{MonitorState, Probe};
 
-use crate::obs::civil_from_days;
+use obs::civil_from_days;
 
 /// A live probe monitor: the loaded probe plus the shared state its tap fills.
 ///

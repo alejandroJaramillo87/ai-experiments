@@ -1,6 +1,15 @@
 /*
- * obs.rs — run-level observability records, contract-compatible with the
+ * obs — run-level observability records, contract-compatible with the
  * repository's Python obs stack (common/obs).
+ *
+ * A workspace member rather than a module of `harness` because the seven
+ * binaries in `runtime` need to write these records too, and `runtime`
+ * carries `#![forbid(unsafe_code)]`. This crate is where that attribute
+ * cannot go: it holds the only `unsafe` in the workspace, two `libc::flock`
+ * calls on a descriptor `Inner` owns, whose obligation the `// SAFETY:`
+ * comment below reasons about. Confining them here is what lets every other
+ * member forbid unsafe outright rather than weaken to `deny`, which is the
+ * trade `.styles/RUST_STYLE.md` argues for after the memmap2 removal.
  *
  * The harness writes the same JSONL shapes the Python CLIs write, so the
  * existing stateless readers (runs catalog, retention pruner, dashboard)
@@ -23,7 +32,7 @@ const DEFAULT_LOG_DIR: &str = "/mnt/ai-data/logs";
 const EXC_MSG_CAP: usize = 4096;
 
 /// UTC civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
-pub(crate) fn civil_from_days(z: i64) -> (i64, u32, u32) {
+pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
     let doe = z - era * 146_097;
