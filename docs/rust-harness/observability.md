@@ -295,6 +295,28 @@ propagation is specified from the receiving side: when a parent process
 sets `OBS_RUN_ID`, the harness records it as `parent_run_id` on
 `cmd.start` while minting its own run id.
 
+## Browsing harness runs
+
+The harness image carries no Python, so browsing happens on the host, where
+training and interp runs are already browsed:
+
+```bash
+$ make harness-runs
+$ make harness-runs ARGS='-n 50 --failed'
+$ uv run --no-sync python -m common.obs.runs --cli harness --json
+```
+
+`common/obs/runs.py` is the shared command surface behind
+`python -m training runs` and `python -m interp runs`; `--cli harness` points the
+same reader at `${OBS_LOG_DIR}/harness/runs.jsonl`. Nothing in the reader is
+tier-specific — `catalog.run_command` uses the CLI name only to build the path —
+so the harness needed no reader of its own and gets no separate one.
+
+Browsing writes nothing. The standalone entry point does not route through the
+traced dispatch: a catalog query is not a run, and dispatching would both append
+rows the default view then filters out and prune the event files the command was
+asked to display.
+
 ## Parked: CPU-served subagents
 
 Recorded for later, deliberately out of scope until phase 3 exists and its

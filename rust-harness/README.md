@@ -210,6 +210,11 @@ the byte span of text each position produced, conversation compaction, and a KV 
 serialized on exit and restored at startup — continuation logits after a restore
 are bit-identical to an unbroken run.
 
+Every run appends a line to the shared observability catalog, browsable from the
+host with `make harness-runs` (the image carries no Python). It is the same
+reader training and interp use, pointed at this tier:
+`docs/rust-harness/observability.md` covers the record shapes and the flags.
+
 `--serve <port>` puts that whole stack behind the two HTTP paths the parent
 repository's interp pipeline calls, `/v1/chat/completions` and `/v1/health`, so
 an experiment can reach the model the way it already reaches llama.cpp while

@@ -1,46 +1,14 @@
 """List recent runs from the observability catalog (roadmap OBS-9).
 
-Reads ${OBS_LOG_DIR}/training/runs.jsonl, the per-CLI catalog the traced
-dispatch appends one summary line to when a command ends. Exit codes:
-0 success, 1 failure, 2 invalid usage.
+Reads ${OBS_LOG_DIR}/training/runs.jsonl. The command surface lives in
+common/obs/runs.py, shared with interp and the rust harness; this module binds
+it to this CLI's name.
 """
 
 from __future__ import annotations
 
-import argparse
-
-from common.obs import catalog
+from common.obs import runs
 
 
 def configure(sub) -> None:
-    p = sub.add_parser(
-        "runs",
-        help="list recent runs recorded in the observability catalog",
-        description=__doc__,
-    )
-    p.add_argument(
-        "-n",
-        "--limit",
-        type=int,
-        default=20,
-        help="most recent runs shown (default 20; 0 or less shows all)",
-    )
-    p.add_argument(
-        "--failed", action="store_true", help="only runs with a nonzero exit code"
-    )
-    p.add_argument(
-        "--all",
-        action="store_true",
-        help="include invocations of the runs command itself",
-    )
-    p.add_argument(
-        "--json",
-        action="store_true",
-        help="emit the selected records as JSON on stdout",
-    )
-    # viewer command: browsing the catalog must not prune event files
-    p.set_defaults(func=cmd, obs_retention=False)
-
-
-def cmd(args: argparse.Namespace) -> int:
-    return catalog.run_command("training", args)
+    runs.configure(sub, "training")

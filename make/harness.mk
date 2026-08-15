@@ -1,6 +1,6 @@
 ##@ Rust harness (separate compose file; interactive tool, never started by `make up`)
 
-.PHONY: harness-build harness-chat harness-run harness-serve harness-serve-down
+.PHONY: harness-build harness-chat harness-run harness-runs harness-serve harness-serve-down
 
 HARNESS_COMPOSE := docker-compose.rust-harness.yaml
 
@@ -16,6 +16,11 @@ harness-run: ## Run a one-shot harness task in the container (ARGS='--model /app
 harness-chat: ## Interactive chat REPL in the container (ARGS='--model /app/models/...')
 	@mkdir -p sessions/rust-harness
 	docker compose -f $(HARNESS_COMPOSE) run --rm harness $(ARGS) --chat
+
+# Runs on the host, not in the container: the harness image carries no Python.
+# The catalog is a host-side view of runs the container wrote to the shared log root.
+harness-runs: ## List recent harness runs from the observability catalog (ARGS='-n 50 --failed')
+	uv run --no-sync python -m common.obs.runs --cli harness $(ARGS)
 
 harness-serve: ## Serve /v1/chat/completions on 127.0.0.1:8005 (HARNESS_MODEL=/app/models/hf/<model>)
 	@mkdir -p sessions/rust-harness
