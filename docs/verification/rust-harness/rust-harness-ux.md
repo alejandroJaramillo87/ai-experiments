@@ -198,7 +198,11 @@ dashboard renders a harness run **with no Python change**. That claim is testabl
 sandbox at the contract level, and this entry is the part that is not — a human looking at the
 page and finding it populated and correct rather than merely valid.
 
-Run RHX.1 or RHX.2 first; this entry opens the run directory that produced.
+Run RHX.1 or RHX.2 first. This entry starts no run of its own; it opens the run directory that
+one produced, which the `ls -dt` below selects as the most recent under
+`/mnt/ai-data/logs/harness/`. Confirm the printed `RUN_DIR` is that run before reporting on it —
+RHX.3 also writes a run directory, so a ladder climb in between makes `head -1` pick the wrong
+one.
 
 ```bash
 cd ~/workspace/ai-experiments
@@ -386,19 +390,49 @@ NO_COLOR=1 cargo run --release -q -p harness -- --model "$MODEL" --text-only --s
 cargo run --release -q -p harness -- --model "$MODEL" --text-only --status 2>&1 \
   | cat -v | grep -c '\^\[' 
 
-# 4. the bytes of 2 and 3 are the same
-NO_COLOR=1 cargo run --release -q -p harness -- --model "$MODEL" --text-only \
-  --status 2>/tmp/rhx8-nocolor
-cargo run --release -q -p harness -- --model "$MODEL" --text-only \
-  --status 2>/tmp/rhx8-piped
-diff /tmp/rhx8-nocolor /tmp/rhx8-piped && echo "identical"
+# 4. the same three arms again, captured as bytes rather than read by eye.
+#    `script` allocates a pty, so 4a and 4b run against a real terminal; see
+#    the note below for why a plain redirect cannot stand in for it.
+cargo build --release -q -p harness   # so no build output lands in a capture
+RUN_STATUS="cargo run --release -q -p harness -- --model $MODEL --text-only --status"
+
+# 4a. a terminal, NO_COLOR unset: the true arm of color_enabled()
+script -qec "$RUN_STATUS" /dev/null | sed 's/\r$//' > /tmp/rhx8-tty-color
+
+# 4b. the same terminal, NO_COLOR set: colour off by the environment variable
+NO_COLOR=1 script -qec "$RUN_STATUS" /dev/null | sed 's/\r$//' > /tmp/rhx8-tty-plain
+
+# 4c. NO_COLOR unset, stderr redirected: colour off by the file descriptor
+sh -c "$RUN_STATUS" >/dev/null 2>/tmp/rhx8-pipe-plain
+
+# 4d. the three comparisons
+cat -v /tmp/rhx8-tty-color | grep -c '\^\['
+diff /tmp/rhx8-tty-plain /tmp/rhx8-pipe-plain && echo "plain arms identical"
+sed 's/\x1b\[[0-9;]*m//g' /tmp/rhx8-tty-color | diff - /tmp/rhx8-tty-plain \
+  && echo "colour strips to the same bytes"
 ```
+
+**The pty in step 4 is load-bearing; do not replace it with a redirect.** `color_enabled()` is
+`NO_COLOR` absent **and** `stderr().is_terminal()`, so redirecting stderr to a file forces the
+false arm no matter what `NO_COLOR` holds. A step 4 whose arms are both redirects compares two
+plain captures, reports them identical, and observes neither the colour branch nor the
+`NO_COLOR` branch — it passes without testing anything. `script -qec '<cmd>' /dev/null` gives
+the child a pty and still lets the session be captured, which is the only way 4a reaches the
+branch this entry exists for. The `sed 's/\r$//'` strips the CR that the pty line discipline
+adds; that CR is `ONLCR`, not harness output, and 4b would otherwise differ from 4c on every
+line. Both `script` arms merge stdout into the capture, which is safe here because `--status`
+renders entirely through `runtime::status` and writes nothing to stdout. Both `script` and
+`sh -c` take one command string, so `RUN_STATUS` embeds `$MODEL` unquoted; a checkpoint path
+containing a space needs quoting inside that string.
 
 Expected signal: step 1 shows green `[OK]`, blue `[SKIP]`, and — if any check warns — **bold**
 yellow `[WARN]`, with the colour on the bracketed tag only and never on the message or on an
-indent. Steps 2 and 3 are plain text. Step 3 counts zero escape sequences. Step 4 reports the
-files identical, which is the property that makes `grep` work the same on a pipe as at a
-terminal.
+indent. Steps 2 and 3 are plain text. Step 3 counts zero escape sequences. Step 4a's capture
+holds one escape-bearing line per tagged check, so 4d's `grep -c` matches the number of tagged
+lines and is never zero. The plain arms 4b and 4c are byte-identical, which is the property
+that makes `grep` work the same on a pipe as at a terminal. Stripping the SGR escapes from 4a
+yields exactly 4b, which is what "colour is display only" means as bytes: the two arms of
+`color_enabled()` differ by escapes and by nothing else.
 
 Note a divergence recorded rather than fixed: `NO_COLOR=` set but empty turns colour **off**
 here and leaves it **on** in `common/output.py`, which checks truthiness. Rust matches
