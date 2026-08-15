@@ -277,12 +277,17 @@ Every run appends a line to the shared observability catalog, browsable from the
 host with `make harness-runs` (the image carries no Python). It is the same
 reader training and interp use, pointed at this tier:
 `docs/rust-harness/observability.md` covers the record shapes and the flags.
-`ladder` writes there too, under the same catalog with its own name as the
-command, so a conformance climb is browsable beside the runs it judges and
-records the fold, the width and the thread count it used — the configuration
-whose absence let `DotKind` default to `Sequential` unnoticed for months. A run
-directory holding `metrics.jsonl` comes with it, which `python -m training
-report --run <dir>` renders with no code of its own.
+Four other binaries write there too, under the same catalog with their own names
+as the command: `ladder`, so a conformance climb is browsable beside the runs it
+judges, and `activation-capture`, `attention-capture` and `layer-diff`, so a
+capture directory or a pasted verdict can be traced back to the invocation that
+made it. All five record the fold, the width and the thread count they used —
+the configuration whose absence let `DotKind` default to `Sequential` unnoticed
+for months. `layer-diff` also records the two tolerances its verdict was reached
+under, being the one binary of the five that writes no artifact of its own. The
+ladder and the harness additionally get a run directory holding `metrics.jsonl`,
+which `python -m training report --run <dir>` renders with no code of its own;
+the three capture binaries write a header and a load timing and nothing more.
 
 `--serve <port>` puts that whole stack behind the two HTTP paths the parent
 repository's interp pipeline calls, `/v1/chat/completions` and `/v1/health`, so

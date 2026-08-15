@@ -162,7 +162,9 @@ installation panics. Phases are called directly instead.
 
 The harness writes three: `model.load` around the whole of `build_generator`,
 then `prefill` and `decode` around the two halves of every generation. The
-ladder writes `model.load` and one per rung attempted, `rung.L0` through
+three capture binaries write `model.load` and nothing else — they have one
+operation each worth bracketing, and it is the one they spend most of their
+wall clock on. The ladder writes `model.load` and one per rung attempted, `rung.L0` through
 `rung.L4` — which is what makes the per-rung wall clock visible outside the
 run's own timing block; `render` deliberately keeps it out of the table,
 because it is the one figure in a result that is not reproducible.
@@ -315,8 +317,16 @@ on the Python obs stack by contract rather than by code.
 `obs/src/lib.rs` writes the same JSONL shapes `common/obs` defines
 (see `docs/observability/design-and-roadmap.md`).
 
-Two binaries write these records today: `harness` and `ladder`. Both use
-`cli = "harness"` with the binary name as `command`, so one catalog, one
+Five binaries write these records today: `harness`, `ladder`, and the three the
+interp work runs — `activation-capture`, `attention-capture` and `layer-diff`.
+The other three are deliberately silent: `checkpoint-info` is a sub-second
+inspector run interactively dozens of times, `long-context-golden` and
+`tiny-model` are fixture writers whose artifact is the record, and `tiny-model`
+runs inside the gate, so instrumenting it would make `make quality` write to
+the log root. The rule is to record a run someone will later want to find, not
+a question someone asked and got an answer to.
+
+All five use `cli = "harness"` with the binary name as `command`, so one catalog, one
 retention policy and one `runs` view serve the whole workspace — symmetric
 with how the training and interp tiers each own one. That makes `runs` a
 reserved command name: `common/obs/catalog.py` hides rows whose `command` is
@@ -344,7 +354,8 @@ What a run leaves behind:
   `duration_s` rounded to three decimals. Written by both stacks; see
   "Phases are a separate mechanism from spans" above. The harness writes
   `model.load`, `prefill` and `decode`; the ladder writes `model.load` and one
-  per rung.
+  per rung; the three capture binaries write `model.load` alone, which is most
+  of what two of them spend.
 - One catalog line appended to `${OBS_LOG_DIR}/harness/runs.jsonl` at run
   end, written as a single append so concurrent writers interleave whole
   lines. Its `run_dir` is the run's own directory below.
@@ -356,6 +367,14 @@ What a run leaves behind:
   bound a per-token file against; the ladder writes exactly five, one per rung,
   with `rung`, `status`, `rung_duration_s` and the rung's own measures.
   Contracted in [`schemas/run_metrics.json`](../../schemas/run_metrics.json).
+
+  **The three capture binaries write no run directory at all.** Two of them
+  have no series to plot, and a capture's per-example count is a number its
+  manifest already carries; a run directory that exists only to hold a header
+  is one the retention pruner's `R-*.jsonl` glob would never reclaim.
+  `runtime/tests/capture_obs.rs` asserts the absence rather than leaving it to
+  the reader, because adding a `metrics_header` call is a one-line change whose
+  consequence is not local to the line.
 
   `step` is an ordering key and nothing more. The generation modes make it a
   token index and the ladder makes it a rung index — five ordered categories,

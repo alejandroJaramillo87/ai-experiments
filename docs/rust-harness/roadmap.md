@@ -737,10 +737,44 @@ the event file has no bound on a server. Two mechanics were needed and are worth
 that a forked session does *not* inherit the sink, because interleaved subagent spans carry
 no session identity and their durations would be wrong rather than absent.
 
-Then the three capture binaries (U9c). All share `cli = "harness"` with the binary name as
-`command`, so one catalog and one `runs` view serve the whole workspace — which makes `runs`
-a reserved binary name, since the catalog reader hides rows that claim it. `cli.rs` asserts
-none does.
+Then the three capture binaries (U9c, done). `activation-capture`, `attention-capture` and
+`layer-diff` each write a header event and bracket `CpuModel::load` as a phase. All share
+`cli = "harness"` with the binary name as `command`, so one catalog and one `runs` view serve
+the whole workspace — which makes `runs` a reserved binary name, since the catalog reader
+hides rows that claim it. `cli.rs` asserts none does.
+
+**The stage went one step past its own "header only" scope, and the step is the load
+timing.** Two of the three spend most of their wall clock inside `CpuModel::load` and none of
+them measured it; the phase is four lines per binary against a number every run of them
+wants. It stopped short of `metrics.jsonl` in the other direction, deliberately:
+`attention-capture` and `layer-diff` have no series to plot, and a run directory holding only
+a header is one `retention.py::prune`'s `R-*.jsonl` glob would never reclaim. The absence is
+a test rather than a comment, because adding a `metrics_header` call is a one-line change
+whose consequence is not local to the line.
+
+**Three header events, not one shared one**, extending U9b's argument rather than reopening
+it: each is pinned by key-set equality in both directions, and a shared event would move
+every difference to `optional` — `layer-diff` alone carries two tolerances, and each of the
+three has a different notion of what it was run over. `schemas/obs_record.json`'s note is
+renamed `per_tool_header_events`, being no longer about two.
+
+`layer-diff` is the one that most needed this and the one the phrase "capture binaries" least
+obviously covers: it writes no artifact at all, so its verdict gets quoted while the
+tolerances it was reached under survive only in the terminal that produced it. Its `Ok(false)`
+is `end(1)` with no `fail` record — a divergence found is a completed run that answered "no",
+the same distinction the ladder draws for a red rung.
+
+The two capture binaries' manifests already carried provenance about the *artifact* —
+`model_hash`, `dataset_sha256`, `git_sha` — and nothing about the *run*: no thread count, no
+dot kind, no load duration. The header's `model_hash` is the u64 load fingerprint rather than
+a second sha256 of the weights, which the manifest already has and which would cost a second
+14 GiB read to restate.
+
+**Acceptance:** `runtime/tests/capture_obs.rs`, five assertions over all three against the
+tiny fixtures — one header matching its declaration, one `model.load` phase with a duration,
+one catalog row naming the binary, no run directory, and the thread width the run actually
+used. `binary_cli_surface.rs` additionally pins that neither `--help` nor a usage mistake
+opens a run log, for all seven rather than for `ladder` alone.
 
 `checkpoint-info`, `long-context-golden` and `tiny-model` are deliberately not instrumented:
 the rule is to record a run someone will later want to find, not a question someone asked
