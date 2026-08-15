@@ -990,7 +990,7 @@ Status: VERIFIED 2026-08-14
 
 ## RH.6 Chrome trace in Perfetto
 
-Implementation: `rust-harness/harness/src/obs.rs`,
+Implementation: `rust-harness/obs/src/lib.rs`,
 `rust-harness/harness/tests/tracing_spans.rs`,
 `rust-harness/runtime/tests/tracing_spans.rs`.
 
@@ -1662,7 +1662,7 @@ Status: VERIFIED 2026-08-14
 
 ## RH.13 Run-level observability records
 
-Implementation: `rust-harness/harness/src/obs.rs`,
+Implementation: `rust-harness/obs/src/lib.rs`,
 `rust-harness/harness/tests/obs_contract.rs`, `common/obs/catalog.py`.
 
 The harness writes run-level records in the shared obs contract

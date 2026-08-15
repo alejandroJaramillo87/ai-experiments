@@ -50,7 +50,7 @@ so none of that reader's consistency guards had ever seen a Rust-written
 directory.
 
 The observability catalog line is formatted by hand in
-`/rust-harness/harness/src/obs.rs` rather than through serde. It matched
+`rust-harness/obs/src/lib.rs` rather than through serde. It matched
 `/common/obs/catalog.py` field for field, by coincidence of two people typing
 the same six keys. `read_runs` skips a line it cannot parse, so drift would
 have presented as an empty runs table rather than an error.

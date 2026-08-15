@@ -3,7 +3,7 @@
  * contract, and against the Python reader that consumes it.
  *
  * Run-level observability converges on the Python obs stack by contract
- * rather than by code: harness/src/obs.rs writes the JSONL shapes
+ * rather than by code: the obs crate writes the JSONL shapes
  * common/obs defines, and the Python runs, retention, and viewer tooling
  * reads them. Nothing connected the two. The catalog line in particular is
  * formatted by hand rather than through serde, and matched the Python

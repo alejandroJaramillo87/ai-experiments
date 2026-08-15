@@ -1,7 +1,7 @@
 """The Python obs writers against the cross-language record contract.
 
 Run-level observability is written by two implementations — common/obs for the
-Python CLIs, rust-harness/harness/src/obs.rs for the harness — and read by one,
+Python CLIs, rust-harness/obs/src/lib.rs for the harness — and read by one,
 the Python runs, retention, and viewer tooling. schemas/obs_record.json is the
 key set both must emit; this module holds the Python side to it, and
 rust-harness/harness/tests/obs_contract.rs holds the Rust side.

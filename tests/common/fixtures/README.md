@@ -10,7 +10,7 @@ whether the Rust writer and the Python reader agree on real bytes. These files c
 Captured 2026-08-14 from `/mnt/ai-data/logs/harness/` in the Claude Code cloud container,
 where the harness had accumulated 1,085 event files and a 993-row catalog across sessions
 dated 2026-08-08 through 2026-08-14. The corpus was written by
-`rust-harness/harness/src/obs.rs`, the second writer of the `schemas/obs_record.json`
+`rust-harness/obs/src/lib.rs`, the second writer of the `schemas/obs_record.json`
 contract.
 
 The full corpus is 4.5MB and is not committed. These samples total under 10KB.

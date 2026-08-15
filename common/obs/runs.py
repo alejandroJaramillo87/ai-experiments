@@ -10,7 +10,7 @@ Two consumers, deliberately different in shape:
 - `configure(sub, cli)` registers the subcommand the training and interp CLIs
   expose, keeping their existing `python -m training runs` spelling.
 - `main(argv)` is the standalone entry point, selected with `--cli`. The rust
-  harness writes the same catalog from `rust-harness/harness/src/obs.rs` but has
+  harness writes the same catalog from `rust-harness/obs/src/lib.rs` but has
   no Python package to host a subcommand, so `python -m common.obs.runs --cli
   harness` is how its runs are browsed.
 

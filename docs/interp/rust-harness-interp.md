@@ -322,7 +322,7 @@ the position that completes it.
 
 Every position gets a row, scaffolding included. Omitting one would renumber
 every position after it and the artifact's indices would stop being the run's.
-The run id is the one `harness::obs` mints, so this artifact and the run's
+The run id is the one `obs::mint_run_id` mints, so this artifact and the run's
 event log join without a second identifier.
 
 `pass` is there because the prefill/decode bit alone stopped being sufficient

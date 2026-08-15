@@ -3,7 +3,7 @@
   "description": "Run-level observability JSONL under ${OBS_LOG_DIR}/<cli>/: one event file per run plus an appended run catalog",
   "writers": [
     "common/obs/core.py (_JsonFormatter, record_run)",
-    "rust-harness/harness/src/obs.rs (RunLog)"
+    "rust-harness/obs/src/lib.rs (RunLog)"
   ],
   "readers": [
     "common/obs/catalog.py (read_runs, run_command)",
@@ -74,7 +74,7 @@
     "extra_fields": "Both required sets are exact for the base record. Emitters add named fields on top (argv on cmd.start, exit_code and duration_s on cmd.end, exc_type and exc_msg on fail); the Python formatter refuses to let a caller field overwrite a base key, so the correlation join cannot be corrupted from above.",
     "run_id_format": "R-YYYYMMDD-HHMMSS-xxxxxx, a UTC stamp and six hex characters, minted independently by each writer.",
     "silent_skip": "read_runs skips a line it cannot parse rather than raising, so a writer that drifts off this contract presents as an empty runs table and not as an error. That is why the contract is asserted at the writers rather than left to the reader.",
-    "hand_rolled_json": "The Rust catalog line is formatted by hand (obs.rs), not through serde, so nothing in the type system keeps it aligned with the Python writer. This file is what keeps them aligned.",
+    "hand_rolled_json": "The Rust catalog line is formatted by hand (the obs crate), not through serde, so nothing in the type system keeps it aligned with the Python writer. This file is what keeps them aligned.",
     "events_section": "An additive, optional top-level key: a reader that does not know about it is unaffected, which is why this landed without a schema_version. Declares per-event fields on top of event.required, which stays exact for the base record.",
     "unversioned": "This file carries no schema_version. Nothing has needed one yet -- every change so far has been additive and therefore compatible. The first incompatible change (a renamed, retyped or removed key) is what introduces the field; minting a versioning mechanism on a change that does not need it would leave a version number nobody has ever had to read.",
     "one_sided_events": "run.header is written by the Rust harness alone, and deliberately so rather than pending: the Python tiers carry equivalent provenance through common/obs/context.py::run_context(), and imitating that block from Rust would emit a packages/gpu section that reads true and is not. binary_version plus runtime::envelope::git_sha() is the honest subset.",

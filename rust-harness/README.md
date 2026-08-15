@@ -26,8 +26,10 @@ trees rather than specified in prose.
 ## Layout
 
 ```
-Cargo.toml        workspace: harness, runtime
-harness/          bin crate: agent loop, tools, permissions, chat, streaming, obs records
+Cargo.toml        workspace: harness, obs, runtime
+harness/          bin crate: agent loop, tools, permissions, chat, streaming
+obs/              lib crate: run-level observability records; the only member
+                  holding unsafe, two libc::flock calls
 runtime/          lib crate: sessions, sampler, grammar, KV cache, checkpoint, tokenizer, model
 fixtures/         committed fixtures: synthetic tiny-model checkpoints, numpy
                   reference logits and generator script, the probe

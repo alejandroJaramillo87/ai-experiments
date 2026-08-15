@@ -261,7 +261,7 @@ future backends are recorded in
 The three phases above cover the token loop; run-level observability —
 which invocations happened, how long they took, which failed — converges
 on the Python obs stack by contract rather than by code.
-`harness/src/obs.rs` writes the same JSONL shapes `common/obs` defines
+`obs/src/lib.rs` writes the same JSONL shapes `common/obs` defines
 (see `docs/observability/design-and-roadmap.md`):
 
 - A run id in the shared `R-YYYYMMDD-HHMMSS-xxxxxx` format (UTC stamp,

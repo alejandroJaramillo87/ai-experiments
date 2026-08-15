@@ -160,11 +160,11 @@ Lenses:
 ## Phase Q4: observability and interpretability seams
 
 Scope: `runtime/src/model/record.rs`, `runtime/src/model/probe.rs`,
-`harness/src/obs.rs`, `runtime/src/bin/activation-capture.rs`,
+`obs/src/lib.rs`, `runtime/src/bin/activation-capture.rs`,
 `runtime/src/npz.rs`, the tap and steering paths in
 `runtime/src/model/cpu.rs`.
 
-Implementation: `rust-harness/harness/src/obs.rs`,
+Implementation: `rust-harness/obs/src/lib.rs`,
 `rust-harness/runtime/src/model/probe.rs`, `rust-harness/runtime/src/npz.rs`.
 
 Lenses:

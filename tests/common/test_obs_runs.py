@@ -54,7 +54,7 @@ def test_add_arguments_defines_the_documented_defaults():
 def test_main_reads_the_harness_catalog(capsys, log_root):
     """The standalone path resolves ${OBS_LOG_DIR}/harness/runs.jsonl.
 
-    Bytes written by rust-harness/harness/src/obs.rs, read by the Python
+    Bytes written by rust-harness/obs/src/lib.rs, read by the Python
     reader -- the cross-language seam the whole stage exists to expose.
     """
     assert runs.main(["--cli", "harness", "--json", "-n", "0"]) == 0

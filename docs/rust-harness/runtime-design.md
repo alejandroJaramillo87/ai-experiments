@@ -111,13 +111,15 @@ Mapped onto an all-Rust local port, the code divides into thirds:
 
 ## Architecture
 
-A Cargo workspace with two crates and a model module:
+A Cargo workspace with three crates and a model module:
 
 ```
 rust-harness/
   Cargo.toml            # workspace
   harness/              # bin crate: agent loop, tools, permissions, transcript,
-                        # chat mode, subagents, obs records
+                        # chat mode, subagents
+  obs/                  # lib crate: run-level observability records, shared by
+                        # harness and the runtime binaries
   runtime/              # lib crate: inference engine
     src/
       session.rs        # Session handle owning the KV cache

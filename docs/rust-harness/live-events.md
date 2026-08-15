@@ -44,7 +44,7 @@ the CPU backend.
 
 ## Event stream
 
-`harness/src/obs.rs` already writes an event file at
+`obs/src/lib.rs` already writes an event file at
 `${OBS_LOG_DIR}/harness/<run_id>.jsonl` in the shared obs contract (fields
 `ts`, `level`, `run_id`, `cli`, `command`, `pid`, `event`, `msg`, plus
 per-event extras), bracketed by `cmd.start` and `cmd.end`. Live visibility

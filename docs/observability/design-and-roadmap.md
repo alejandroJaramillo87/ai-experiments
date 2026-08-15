@@ -828,7 +828,7 @@ stamp their own records, and passing the id as a request header to the
 inference services. This is explicitly deferred from the first version and is
 not required by any item above.
 
-The rust harness (`rust-harness/harness/src/obs.rs`) is a second,
+The rust harness (`rust-harness/obs/src/lib.rs`) is a second,
 contract-compatible writer of this file layout: it mints the same run id
 format and writes `cmd.start`/`fail`/`cmd.end` events and a catalog line
 under `${OBS_LOG_DIR}/harness/`, holding the same shared flock the

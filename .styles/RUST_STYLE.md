@@ -119,8 +119,9 @@ noise; a panicking test is a failing test.
 
 ## Unsafe code
 
-The `runtime` crate contains no unsafe code, and is written so that none can be added without
-editing the crate attribute:
+The `runtime` and `harness` crates contain no unsafe code, and are written so that none can be
+added without editing the crate attribute (`harness` carries it in both `lib.rs` and `main.rs`,
+since a binary is its own crate root and the attribute does not propagate):
 
 ```rust
 #![forbid(unsafe_code)]
@@ -149,8 +150,9 @@ and reach for `deny` only where a specific unavoidable call can be named in the 
 own comment — and write that comment so a later reader can tell whether the reason still
 holds.
 
-Where `unsafe` is unavoidable — as in the sibling `harness` crate, which calls `libc::flock`
-— confine it to the smallest possible block and precede every occurrence with a `// SAFETY:`
+Where `unsafe` is unavoidable — as in the `obs` crate, which calls `libc::flock`, and which
+exists as a separate member so that the crates depending on it need not — confine it to the
+smallest possible block and precede every occurrence with a `// SAFETY:`
 comment that reasons about the specific obligation: descriptor ownership, pointer validity,
 lifetime, external mutation. Do not assert that the call is safe. Where the obligation cannot
 be discharged in Rust, say so plainly and name the assumption being made instead:

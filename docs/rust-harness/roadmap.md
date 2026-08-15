@@ -391,7 +391,7 @@ unknown flags were swallowed into the task string, so `harness --modle m "do x"`
 named after the misspelling and exited 0. In each case the tool knew what it was doing and
 never said so.
 
-Alongside that, the observability integration was built but invisible: `harness/src/obs.rs`
+Alongside that, the observability integration was built but invisible: the obs writer
 has written the shared record contract since RH.13, and nothing surfaced a harness run to a
 human. The governing distinction is **centralize observation, not invocation** — one log
 root, one run-id format, one event schema, one catalog, one viewer, and deliberately no
@@ -587,10 +587,14 @@ block never carries a carriage-return smear.
 
 ### U9 — bring the other binaries under obs
 
-U9a is the crate-layout problem and lands alone: `obs.rs` uses `libc::flock` and lives in
-`harness`, while the seven other binaries live in `runtime`, which carries
-`#![forbid(unsafe_code)]`. A new workspace member takes `RunLog` with its tests unmodified,
-which is what makes it a pure refactor. Then `ladder` (U9b) and the three capture binaries
+U9a is the crate-layout problem and landed alone (done): the run log calls `libc::flock` and
+lived in `harness`, while the seven other binaries live in `runtime`, which carries
+`#![forbid(unsafe_code)]`. `RunLog` moved to a workspace member of its own, `obs`. Its seven
+inline tests moved byte for byte, which is what makes the change a layout one; the
+integration test stayed in `harness/tests`, where it must, since it constructs
+`harness::runheader::RunHeader` — three import paths changed there and no assertion did.
+`harness` now forbids unsafe in both crate roots, which is the property the extraction buys.
+Then `ladder` (U9b) and the three capture binaries
 (U9c). All share `cli = "harness"` with the binary name as `command`, so one catalog and one
 `runs` view serve the whole workspace.
 

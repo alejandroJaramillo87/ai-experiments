@@ -369,6 +369,10 @@ RETIRED: dict[str, tuple[str, str]] = {
             ("test_retired_names.py", "docs"),
         )
     },
+    "harness/src/obs.rs": (
+        "rust-harness/obs/src/lib.rs",
+        "the run log became a workspace member of its own. Its two libc::flock calls are the only unsafe in the workspace, and the seven binaries in runtime -- which carries forbid(unsafe_code) -- need to write the same records, so the writer moved rather than the attribute weakening. The short key matches both the bare and the rust-harness/-prefixed spelling",
+    ),
 }
 
 # Directories holding no text of ours.
