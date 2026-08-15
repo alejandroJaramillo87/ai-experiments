@@ -11,6 +11,7 @@ monitoring) on the `rust-harness` runtime instead of llama.cpp. Bridges the
 - [The tap seam](#the-tap-seam)
 - [Steering](#steering)
 - [Activation capture](#activation-capture)
+- [Finding the run behind a capture](#finding-the-run-behind-a-capture)
 - [In-band monitoring](#in-band-monitoring)
 - [What stays in Python](#what-stays-in-python)
 - [Validation](#validation)
@@ -263,6 +264,41 @@ their source texts; and the whole directory loads through
 repeated-layer guards are exercised against Rust-written output. The tests
 that reach the parent tree skip when it or numpy is unavailable; the
 artifact-shape half always runs.
+
+## Finding the run behind a capture
+
+`activation-capture`, `attention-capture` and `layer-diff` each write a run
+record to the shared observability catalog under
+`${OBS_LOG_DIR}/harness/`, so a capture directory is traceable to the
+invocation that produced it. `make harness-runs` lists them alongside harness
+and ladder runs.
+
+The manifest already carried provenance about the *artifact* — `model_hash`,
+`dataset_sha256`, `git_sha`, `created`. What it never carried was provenance
+about the *run*: the thread count, the dot kind, the batch kind and how long
+the load took are absent from every manifest, and their absence is what let
+the fold default to the reference kernel unnoticed for months. Each binary now
+emits one header event naming its resolved configuration, and brackets its
+checkpoint load as a `model.load` phase.
+
+`layer-diff` is the one this matters most for, because it writes no artifact
+at all: its output is a table and a verdict, so the tolerances a pass was
+reached under used to survive only in the terminal that produced it. Its
+header records `cosine_floor` and `rel_l2_ceiling`, which is what makes a
+quoted verdict re-readable. A divergence found exits 1 with no failure record
+— it is a completed run that answered no, not a crash.
+
+None of the three opens a per-run directory or writes a `metrics.jsonl`: two
+have no series to plot, and a directory holding only a header is one the
+retention pruner would never reclaim. See
+[../rust-harness/observability.md](../rust-harness/observability.md).
+
+**The three also answer `--help` now, and reject an unknown flag at exit 2
+naming it.** Before that, a misspelled flag was silently ignored and the
+capture proceeded with the wrong configuration, or failed with a message that
+named neither the missing flag nor the misspelling. Every command in this
+document is unaffected — the flags were already correct — but a command
+mistyped from one now fails at the argument, not in the middle of a load.
 
 ## In-band monitoring
 

@@ -4,8 +4,9 @@ Design and reference documentation for `rust-harness`, the single-binary Rust co
 with the Gemma 4 inference runtime linked in as a library crate.
 
 This directory holds documentation only. The workspace itself lives at `/rust-harness`, and its
-`README.md` covers layout, test tiers, and build commands. Verification records for the harness
-live in `/docs/verification/`, not here.
+`README.md` covers layout, test tiers, build commands, the command-line surface (`--help`,
+`--status`, exit codes), and what a run reports while it works. Verification records for the
+harness live in `/docs/verification/`, not here.
 
 ## Design
 
@@ -15,7 +16,7 @@ live in `/docs/verification/`, not here.
 | [runtime-design.md](runtime-design.md) | Harness and runtime architecture: agent loop, the library-crate runtime, and the implementation roadmap |
 | [observability.md](observability.md) | Observability and debuggability as first-class code, in three phases preceding the CUDA backend |
 | [observation-frames.md](observation-frames.md) | What the agent loop and chat mode contribute to the training and interpretability programs, and the acceptance bar for new features |
-| [live-events.md](live-events.md) | Live run-state events as JSONL, with a serve mode and HTML view that also replays finished runs |
+| [live-events.md](live-events.md) | Watching a run in progress: what the record stream already carries, and the unbuilt serve mode and polling view |
 
 ## Forward looking
 

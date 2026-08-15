@@ -495,8 +495,9 @@ behind pipes. Sandbox-verifiable end to end; no workstation step and no GPU cons
 
 `RunHeader::lines()` derives from `RunHeader::fields()`, so the terminal header and the obs
 record cannot disagree — two match arms would reintroduce exactly the drift the stage exists
-to prevent. `obs.rs` recorded no resolved configuration before this, only the command and raw
-argv, so the header is built rather than rendered from something already there.
+to prevent. The obs writer — a module in the harness crate then, the `obs/src/lib.rs` crate
+since U9a — recorded no resolved configuration before this, only the command and raw argv, so
+the header is built rather than rendered from something already there.
 
 `schemas/obs_record.json` gained an additive `events` section declaring `run.header`. No
 `schema_version` was introduced: the file has never carried one, every change so far has been
