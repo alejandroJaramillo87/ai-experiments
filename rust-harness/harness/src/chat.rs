@@ -74,12 +74,12 @@ pub fn run_chat(
         if text == "/compact" {
             if crate::compact::compact(generator, transcript)? {
                 rendered = render_all(memory, transcript);
-                eprintln!(
-                    "[INFO] Compacted: {} effective turns",
+                runtime::status::info(&format!(
+                    "Compacted: {} effective turns",
                     transcript.effective().len()
-                );
+                ));
             } else {
-                eprintln!("[SKIP] Compaction: transcript too short");
+                runtime::status::skip("Compaction: transcript too short");
             }
             continue;
         }

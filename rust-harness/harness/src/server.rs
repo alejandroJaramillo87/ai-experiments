@@ -254,7 +254,7 @@ pub fn serve(listener: TcpListener, state: Arc<ServerState>) -> Result<()> {
             Ok(s) => s,
             // One refused connection is not a reason to stop serving.
             Err(e) => {
-                eprintln!("[WARN] Connection failed: {e}");
+                runtime::status::warn(&format!("Connection failed: {e}"));
                 continue;
             }
         };
@@ -269,7 +269,7 @@ pub fn serve(listener: TcpListener, state: Arc<ServerState>) -> Result<()> {
         let live = Arc::clone(&live);
         std::thread::spawn(move || {
             if let Err(e) = converse(stream, &state) {
-                eprintln!("[WARN] Request failed: {e:#}");
+                runtime::status::warn(&format!("Request failed: {e:#}"));
             }
             live.fetch_sub(1, Ordering::SeqCst);
         });

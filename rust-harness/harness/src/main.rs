@@ -21,6 +21,11 @@ use harness::tools::ToolCall;
 use harness::transcript::Transcript;
 
 /// Interactive Ask resolution: prompt on stderr, read one line from stdin.
+///
+/// The one stderr write in this binary that does not go through
+/// `runtime::status`. A prompt is not a status line: it must leave the cursor
+/// on the same line for the answer, and `status` has no emitter that omits the
+/// newline -- deliberately, since a tag whose line never ends is unparseable.
 fn ask_stdin(call: &ToolCall) -> bool {
     eprint!("allow {} {}? [y/N] ", call.name(), call.target());
     let _ = std::io::stderr().flush();
@@ -58,10 +63,10 @@ fn check_model_identity(
     served_sha256: impl FnOnce() -> Result<String>,
 ) -> Result<()> {
     if artifact_hash == UNKNOWN_MODEL_HASH {
-        eprintln!(
-            "[WARN] Model identity: {artifact} records model hash \
+        runtime::status::warn(&format!(
+            "Model identity: {artifact} records model hash \
              \"{UNKNOWN_MODEL_HASH}\", check skipped"
-        );
+        ));
         return Ok(());
     }
     let served = served_sha256()?;
@@ -173,11 +178,11 @@ fn build_generator(
                         .with_context(|| format!("hash {}", weights_path.display()))
                 })?;
             }
-            None => eprintln!(
-                "[WARN] Model identity: no readable manifest.json beside {}, \
+            None => runtime::status::warn(&format!(
+                "Model identity: no readable manifest.json beside {}, \
                  control vector unchecked",
                 path.display()
-            ),
+            )),
         }
         let cv = ControlVector::from_image(&cv_image, control_scale, control_layer_range)
             .context("load control vector")?;
@@ -269,42 +274,42 @@ fn build_generator(
         // at its published width reports about the file's size; twice that
         // would mean the loader had expanded it.
         let (weight_bytes, width) = cpu.weight_bytes();
-        eprintln!(
-            "[INFO] Weights: {:.2} GiB resident at {}",
+        runtime::status::info(&format!(
+            "Weights: {:.2} GiB resident at {}",
             weight_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
             width.unwrap_or("mixed widths")
-        );
+        ));
         // Peak against the line above is the diagnostic, not the peak alone: a
         // load that left the checkpoint mapped reports roughly twice the
         // weights, because the map is still resident behind the copy.
         if let Some(peak) = runtime::peak_rss_bytes() {
-            eprintln!(
-                "[INFO] Peak RSS after load: {:.2} GiB",
+            runtime::status::info(&format!(
+                "Peak RSS after load: {:.2} GiB",
                 peak as f64 / (1024.0 * 1024.0 * 1024.0)
-            );
+            ));
         }
         let group = cpu.batch().chunk(max_context);
         let bytes = runtime::kv::budget_bytes(&layers, max_context, group);
         let gib = bytes as f64 / (1024.0 * 1024.0 * 1024.0);
-        eprintln!(
-            "[INFO] KV cache: {max_context} tokens, {gib:.2} GiB f32 resident \
+        runtime::status::info(&format!(
+            "KV cache: {max_context} tokens, {gib:.2} GiB f32 resident \
              (sliding layers capped at the window plus a batch of {group})"
-        );
+        ));
         // The rewind horizon, stated before the run rather than discovered
         // when a rewind fails. A windowed layer cannot return to a position it
         // has evicted, so once the cache is full the reachable past is bounded
         // -- and conversation compaction rewinds much further than this, which
         // is why `Session::sync` rebuilds instead of erroring.
         if let Some(horizon) = cpu.rewind_horizon(max_context) {
-            eprintln!(
-                "[INFO] Rewind horizon: {horizon} tokens behind the tip once the \
+            runtime::status::info(&format!(
+                "Rewind horizon: {horizon} tokens behind the tip once the \
                  window fills (compaction past it re-prefills)"
-            );
+            ));
         }
         if bytes > 2 << 30 {
-            eprintln!(
-                "[WARN] KV cache above 2 GiB: consider --context to cap it \
-                 (compaction keeps long sessions inside the cap)"
+            runtime::status::warn(
+                "KV cache above 2 GiB: consider --context to cap it \
+                 (compaction keeps long sessions inside the cap)",
             );
         }
     }
@@ -334,11 +339,11 @@ fn build_generator(
             Ok(f) => {
                 let mut reader = std::io::BufReader::new(f);
                 match session.restore(&mut reader, model_hash) {
-                    Ok(()) => eprintln!(
-                        "[INFO] Session restored: {} cached tokens from {}",
+                    Ok(()) => runtime::status::info(&format!(
+                        "Session restored: {} cached tokens from {}",
                         session.cached_len(),
                         path.display()
-                    ),
+                    )),
                     // A snapshot is a cache, and the only thing lost by
                     // discarding one is the prefill it would have saved. This
                     // used to abort and ask for a rerun, which removed the
@@ -350,11 +355,11 @@ fn build_generator(
                     // output rather than a failed startup.
                     Err(e) => {
                         let _ = std::fs::remove_file(path);
-                        eprintln!(
-                            "[WARN] Session snapshot {} discarded: {e:#} \
+                        runtime::status::warn(&format!(
+                            "Session snapshot {} discarded: {e:#} \
                              (starting with an empty cache)",
                             path.display()
-                        );
+                        ));
                     }
                 }
             }
@@ -395,14 +400,14 @@ fn report_probe(monitor: &MonitorHandle, out: &Path) -> Result<()> {
         });
         writeln!(file, "{record}").context("write probe flag record")?;
     }
-    eprintln!(
-        "[INFO] Probe {}: {} positions scored, {} flagged (threshold {}), flags at {}",
+    runtime::status::info(&format!(
+        "Probe {}: {} positions scored, {} flagged (threshold {}), flags at {}",
         monitor.probe.name,
         state.scored,
         state.flags.len(),
         monitor.probe.threshold,
         out.display()
-    );
+    ));
     Ok(())
 }
 
@@ -411,14 +416,16 @@ fn report_probe(monitor: &MonitorHandle, out: &Path) -> Result<()> {
 /// surfaces as a warning line; propagating it instead turned a completed,
 /// transcript-recorded task into exit 1 with the answer never printed.
 /// Returning the line rather than printing it keeps the policy testable
-/// without a live monitor.
+/// without a live monitor. The message is untagged: `runtime::status` owns the
+/// tag, and the caller applies it at the point of emission -- the same split
+/// `cli::extract` and `cli::inert` already use.
 fn fold_probe_report(
     task: Result<String>,
     reported: Result<()>,
 ) -> (Result<String>, Option<String>) {
     let warning = reported
         .err()
-        .map(|e| format!("[WARN] Probe flags not written: {e:#}"));
+        .map(|e| format!("Probe flags not written: {e:#}"));
     (task, warning)
 }
 
@@ -497,25 +504,30 @@ fn run(
         let model_name = model
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "synthetic".to_string());
-        eprintln!("[INFO] Serving on http://{serve_addr}:{port} (model {model_name})");
+        runtime::status::info(&format!(
+            "Serving on http://{serve_addr}:{port} (model {model_name})"
+        ));
         let log = match interp_log {
             Some(dir) => {
                 let log = InterpLog::open(dir, harness::server::SERVICE_NAME);
                 if log.is_enabled() {
-                    eprintln!("[INFO] Interp log: {}", dir.display());
+                    runtime::status::info(&format!("Interp log: {}", dir.display()));
                 } else {
                     // A warning, not a failure: the endpoint's contract is to
                     // answer requests, and it can still do that.
-                    eprintln!("[WARN] Interp log not opened under {}", dir.display());
+                    runtime::status::warn(&format!(
+                        "Interp log not opened under {}",
+                        dir.display()
+                    ));
                 }
                 log
             }
             None => InterpLog::disabled(),
         };
         if monitor.is_some() && !log.is_enabled() {
-            eprintln!(
-                "[WARN] --probe without --interp-log: scores are computed and discarded, \
-                 because a served run has no end at which to report them"
+            runtime::status::warn(
+                "--probe without --interp-log: scores are computed and discarded, \
+                 because a served run has no end at which to report them",
             );
         }
         let state = std::sync::Arc::new(
@@ -539,7 +551,7 @@ fn run(
         )
         .map(|turns| {
             // Replies were already streamed to stdout; the summary is status.
-            eprintln!("[INFO] Chat ended: {turns} model turns");
+            runtime::status::info(&format!("Chat ended: {turns} model turns"));
             String::new()
         })
     } else {
@@ -576,12 +588,12 @@ fn run(
                 Ok(())
             });
         match saved {
-            Ok(()) => eprintln!(
-                "[INFO] Session snapshot: {} cached tokens at {}",
+            Ok(()) => runtime::status::info(&format!(
+                "Session snapshot: {} cached tokens at {}",
                 generator.session().cached_len(),
                 snapshot_path.display()
-            ),
-            Err(e) => eprintln!("[WARN] Session snapshot not saved: {e:#}"),
+            )),
+            Err(e) => runtime::status::warn(&format!("Session snapshot not saved: {e:#}")),
         }
     }
     let result = match &monitor {
@@ -590,7 +602,7 @@ fn run(
             let reported = report_probe(monitor, probe_out.unwrap_or(&default_out));
             let (result, warning) = fold_probe_report(result, reported);
             if let Some(warning) = warning {
-                eprintln!("{warning}");
+                runtime::status::warn(&warning);
             }
             result
         }
@@ -618,13 +630,13 @@ fn run(
             probe_layer: monitor.as_ref().map(|m| m.probe.layer),
         };
         match harness::alignment::write(out, &header, &a, &passes, &scores) {
-            Ok(()) => eprintln!(
-                "[INFO] Alignment: {} positions, {} passes -> {}",
+            Ok(()) => runtime::status::info(&format!(
+                "Alignment: {} positions, {} passes -> {}",
                 a.rows.len(),
                 passes.len(),
                 out.display()
-            ),
-            Err(e) => eprintln!("[WARN] Alignment not written: {e:#}"),
+            )),
+            Err(e) => runtime::status::warn(&format!("Alignment not written: {e:#}")),
         }
     }
     result?;
@@ -707,7 +719,7 @@ fn main() -> ExitCode {
             Ok(parsed) => parsed,
             Err(error) => {
                 runtime::status::error(&error);
-                eprintln!("{}", harness::cli::usage());
+                runtime::status::plain(&harness::cli::usage());
                 return ExitCode::from(2);
             }
         }
@@ -727,7 +739,7 @@ fn main() -> ExitCode {
         Some(v) => match v.to_string_lossy().parse::<f32>() {
             Ok(s) if s.is_finite() => s,
             _ => {
-                eprintln!("[ERROR] --control-vector-scale: not a finite number");
+                runtime::status::error("--control-vector-scale: not a finite number");
                 return ExitCode::from(2);
             }
         },
@@ -737,7 +749,7 @@ fn main() -> ExitCode {
         Some(v) => match parse_layer_range(&v.to_string_lossy()) {
             Ok(range) => Some(range),
             Err(error) => {
-                eprintln!("[ERROR] {error}");
+                runtime::status::error(&error);
                 return ExitCode::from(2);
             }
         },
@@ -750,7 +762,7 @@ fn main() -> ExitCode {
         match v.to_string_lossy().parse::<f32>() {
             Ok(t) if t.is_finite() && t >= 0.0 => sampling.temperature = t,
             _ => {
-                eprintln!("[ERROR] --temperature: expected a finite number >= 0");
+                runtime::status::error("--temperature: expected a finite number >= 0");
                 return ExitCode::from(2);
             }
         }
@@ -759,7 +771,7 @@ fn main() -> ExitCode {
         match v.to_string_lossy().parse::<f32>() {
             Ok(p) if p > 0.0 && p <= 1.0 => sampling.top_p = p,
             _ => {
-                eprintln!("[ERROR] --top-p: expected a number in (0, 1]");
+                runtime::status::error("--top-p: expected a number in (0, 1]");
                 return ExitCode::from(2);
             }
         }
@@ -771,8 +783,8 @@ fn main() -> ExitCode {
         match v.to_string_lossy().parse::<usize>() {
             Ok(k) if k >= 1 => sampling.top_k = Some(k),
             _ => {
-                eprintln!(
-                    "[ERROR] --top-k: expected an integer >= 1 (omit the flag for no cutoff)"
+                runtime::status::error(
+                    "--top-k: expected an integer >= 1 (omit the flag for no cutoff)",
                 );
                 return ExitCode::from(2);
             }
@@ -782,7 +794,7 @@ fn main() -> ExitCode {
         match v.to_string_lossy().parse::<u64>() {
             Ok(s) => sampling.seed = s,
             _ => {
-                eprintln!("[ERROR] --seed: expected an unsigned integer");
+                runtime::status::error("--seed: expected an unsigned integer");
                 return ExitCode::from(2);
             }
         }
@@ -791,7 +803,7 @@ fn main() -> ExitCode {
         Some(v) => match v.to_string_lossy().parse::<usize>() {
             Ok(n) if n >= 1 => n,
             _ => {
-                eprintln!("[ERROR] --max-tokens: expected an integer >= 1");
+                runtime::status::error("--max-tokens: expected an integer >= 1");
                 return ExitCode::from(2);
             }
         },
@@ -801,7 +813,7 @@ fn main() -> ExitCode {
         Some(v) => match v.to_string_lossy().parse::<usize>() {
             Ok(n) if n >= 1 => Some(n),
             _ => {
-                eprintln!("[ERROR] --context: expected an integer >= 1");
+                runtime::status::error("--context: expected an integer >= 1");
                 return ExitCode::from(2);
             }
         },
@@ -811,7 +823,7 @@ fn main() -> ExitCode {
         Some(v) => match v.to_string_lossy().parse::<f32>() {
             Ok(f) if f > 0.0 && f <= 1.0 => f,
             _ => {
-                eprintln!("[ERROR] --compact-at: expected a number in (0, 1]");
+                runtime::status::error("--compact-at: expected a number in (0, 1]");
                 return ExitCode::from(2);
             }
         },
@@ -830,24 +842,24 @@ fn main() -> ExitCode {
         Some(v) => match v.to_string_lossy().parse::<u16>() {
             Ok(p) if p >= 1 => Some(p),
             _ => {
-                eprintln!("[ERROR] --serve: expected a port in 1..=65535");
+                runtime::status::error("--serve: expected a port in 1..=65535");
                 return ExitCode::from(2);
             }
         },
         None => None,
     };
     if chat && serve.is_some() {
-        eprintln!("[ERROR] --chat and --serve are mutually exclusive");
+        runtime::status::error("--chat and --serve are mutually exclusive");
         return ExitCode::from(2);
     }
     let serve_addr = match serve_addr_arg {
         Some(v) => match v.to_string_lossy().parse::<std::net::IpAddr>() {
             Ok(addr) => addr,
             Err(_) => {
-                eprintln!(
-                    "[ERROR] --serve-addr: expected an IP address, got {}",
+                runtime::status::error(&format!(
+                    "--serve-addr: expected an IP address, got {}",
                     v.display()
-                );
+                ));
                 return ExitCode::from(2);
             }
         },
@@ -871,7 +883,7 @@ fn main() -> ExitCode {
     // A task is positional text; the two flag modes take none. Exactly one of
     // the three must be selected.
     if args.is_empty() != (chat || serve.is_some()) {
-        eprintln!("{}", harness::cli::usage());
+        runtime::status::plain(&harness::cli::usage());
         return ExitCode::from(2);
     }
     // The guard flushes the trace file on drop at the end of main.
@@ -894,7 +906,7 @@ fn main() -> ExitCode {
     let root = match std::env::current_dir() {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("[ERROR] Working directory: {e}");
+            runtime::status::error(&format!("Working directory: {e}"));
             return ExitCode::from(1);
         }
     };
@@ -937,7 +949,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("[ERROR] Task failed: {e:#}");
+            runtime::status::error(&format!("Task failed: {e:#}"));
             run_log.fail(&e, 1);
             run_log.end(1, &root);
             ExitCode::from(1)
@@ -990,7 +1002,14 @@ mod tests {
             "the answer"
         );
         let warning = warning.expect("the discarded flags must still be reported");
-        assert!(warning.starts_with("[WARN] "), "{warning}");
+        // Untagged: the tag belongs to `runtime::status` at the emission
+        // site, so what this pins is the wording and the fact that a line is
+        // produced at all -- which is what the test was ever about.
+        assert!(!warning.contains("[WARN]"), "{warning}");
+        assert!(
+            warning.starts_with("Probe flags not written: "),
+            "{warning}"
+        );
         assert!(warning.contains("create probe output"), "{warning}");
     }
 
