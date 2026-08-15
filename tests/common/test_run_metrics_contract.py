@@ -144,3 +144,96 @@ class TestTheContractDescribesTheFixture:
                 assert os.path.exists(os.path.join(root, path)), (
                     f"{key} names a path that does not exist: {path}"
                 )
+
+
+class TestTheLadderWritesTheSameEnvelope:
+    """The second Rust writer of this contract, and a differently-shaped one.
+
+    U9b brings `ladder` under obs. It writes the same envelope through the
+    same `obs` crate, but its records are not a time series: `step` is a rung
+    index, there is no `tokens_per_s`, and each rung carries whichever
+    measures its own body produced. That makes it the case that says which
+    parts of this contract are the contract and which were merely true of the
+    first writer -- a distinction no single-writer fixture can draw.
+    """
+
+    @pytest.fixture
+    def ladder_path(self, tmp_path):
+        src = os.path.join(
+            os.path.dirname(__file__), "fixtures", "ladder_metrics_sample.jsonl"
+        )
+        dst = tmp_path / "metrics.jsonl"
+        with open(src, encoding="utf-8") as f:
+            dst.write_text(f.read(), encoding="utf-8")
+        return dst
+
+    def test_the_readers_take_it_whole(self, ladder_path):
+        from common.obs.dashboard import read_metrics
+        from common.reports import validate_report
+
+        header, records, skipped = read_metrics(ladder_path)
+        assert skipped == 0
+        assert header["report"] == "run_metrics"
+        # One per rung. `runtime::ladder::Rung::ALL` has five, and the ladder
+        # writes a record for every rung including the skipped ones -- a
+        # missing row would read as a rung that does not exist rather than
+        # one that had no reference.
+        assert len(records) == 5
+        # Raises ReportSchemaError listing every violation. git_sha is the
+        # field obs cannot supply for itself, so this is where a caller that
+        # forgot to pass it is caught.
+        validate_report(header)
+
+    def test_the_rung_index_is_a_number(self, ladder_path):
+        # Same trap as the harness fixture and a likelier one here: a rung
+        # index reads naturally as a label, and `"L1"` would be the obvious
+        # thing to write. viewer.js:109 drops any record whose step is not a
+        # number, silently, so the file would look complete and chart empty.
+        from common.obs.dashboard import read_metrics
+
+        _, records, _ = read_metrics(ladder_path)
+        for record in records:
+            assert isinstance(record["step"], int | float)
+            assert not isinstance(record["step"], bool)
+        assert [r["step"] for r in records] == list(range(5))
+
+    def test_every_rung_carries_the_series_the_dashboard_charts(self, ladder_path):
+        from common.obs.dashboard import read_metrics
+
+        _, records, _ = read_metrics(ladder_path)
+        assert [r["rung"] for r in records] == ["L0", "L1", "L2", "L3", "L4"]
+        for record in records:
+            assert isinstance(record["rung_duration_s"], int | float)
+
+    def test_a_rung_that_ran_carries_its_measures_under_slugified_names(
+        self, ladder_path
+    ):
+        """The display name `worst rel_l2` reaches the file as `worst_rel_l2`.
+
+        Pinned because the coupling runs the wrong way for safety: the key is
+        derived from a table column heading, so renaming the column renames
+        the key, and a saved `jq` filter would return null rather than error.
+        """
+        from common.obs.dashboard import read_metrics
+
+        _, records, _ = read_metrics(ladder_path)
+        by_rung = {r["rung"]: r for r in records}
+        assert set(by_rung["L1"]) >= {"worst_cosine", "worst_rel_l2"}
+        assert set(by_rung["L2"]) >= {"mean_kl", "worst_kl", "argmax_agreement"}
+        # A skipped rung has no measures, and must not invent zeroes for them:
+        # a zero divergence is the strongest possible pass, and reporting one
+        # for a rung that never ran is the worst available lie.
+        assert set(by_rung["L3"]) == {"step", "ts", "rung", "status", "rung_duration_s"}
+
+    def test_the_contract_declares_the_ladders_fields(self, ladder_path):
+        from common.obs.dashboard import read_metrics
+
+        path = os.path.join(
+            os.path.dirname(__file__), "..", "..", "schemas", "run_metrics.json"
+        )
+        with open(path, encoding="utf-8") as f:
+            contract = json.load(f)
+        _, records, _ = read_metrics(ladder_path)
+        for record in records:
+            assert set(contract["record"]["required"]) <= set(record)
+            assert set(contract["record"]["ladder_fields"]) <= set(record)

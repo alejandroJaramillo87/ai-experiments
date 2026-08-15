@@ -25,6 +25,12 @@
     // training run carries no rss_gb and renders this group empty, the same
     // way a CPU-only harness run renders the device-memory group above.
     { title: "Process memory (GB)", keys: ["rss_gb"] },
+    // Per-rung wall clock, written by the ladder. Its step axis is a rung
+    // index rather than a time step -- five ordered points, not a series --
+    // which is why only the duration is charted: the rungs' own measures are
+    // different quantities in different units, and a line through them would
+    // mean nothing. They stay in metrics.jsonl for jq.
+    { title: "Rung duration (s)", keys: ["rung_duration_s"] },
   ];
   var TRACKED = {};
   CHART_GROUPS.forEach(function (group) {

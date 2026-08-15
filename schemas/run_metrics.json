@@ -5,7 +5,8 @@
   "file": "<run_dir>/metrics.jsonl",
   "writers": [
     "training/runtime/tracking.py (JsonlSink._header_record, log)",
-    "rust-harness/obs/src/lib.rs (RunLog::metrics_header, RunLog::metric, MetricsSink::metric)"
+    "rust-harness/obs/src/lib.rs (RunLog::metrics_header, RunLog::metric, MetricsSink::metric)",
+    "rust-harness/runtime/src/bin/ladder.rs (one record per rung)"
   ],
   "readers": [
     "common/obs/dashboard.py (read_metrics, default_events_path)",
@@ -16,7 +17,8 @@
   "guarded_by": [
     "rust-harness/harness/tests/obs_contract.rs",
     "tests/common/test_run_metrics_contract.py",
-    "tests/training/test_report.py"
+    "tests/training/test_report.py",
+    "rust-harness/runtime/tests/ladder_obs.rs"
   ],
   "header": {
     "description": "The first record carrying report == 'run_metrics'. read_metrics takes it as the header and treats every other line as a step record, so exactly one record may carry the discriminator and it must come first.",
@@ -40,6 +42,11 @@
     "harness_fields": [
       "tokens_per_s",
       "rss_gb"
+    ],
+    "ladder_fields": [
+      "rung",
+      "status",
+      "rung_duration_s"
     ]
   },
   "notes": {
@@ -48,6 +55,8 @@
     "timestamp_shape": "The two writers spell the header timestamp differently, and deliberately. common/reports.py::report_header uses time.strftime('%Y-%m-%dT%H:%M:%S%z'), a local-offset stamp with no colon and no milliseconds; the harness uses obs::format_ts, UTC with milliseconds and an explicit +00:00. validate_report requires only a non-empty string, and no reader parses it. The harness reuses format_ts rather than imitating report_header so that every timestamp the Rust obs path writes -- event lines, catalog rows, and this header -- has one shape.",
     "git_sha_is_the_callers": "obs::RunLog::metrics_header does not supply git_sha; the caller passes it, and the envelope fails validate_report without it. The obs crate cannot call runtime::envelope::git_sha() because runtime is what will depend on obs, not the reverse, and re-deriving the shell-out inside obs would put a second implementation of provenance in the tree. envelope::git_sha() already matches common/provenance.py, including the 'unknown' fallback, which validate_report accepts.",
     "harness_cadence": "Task and chat runs write one record per decoded token, bounded by --max-tokens. Serve writes one record per completed request: per-token records from a server with no run boundary is an unbounded file, which is a defect rather than a feature.",
+    "ladder_cadence": "The ladder writes exactly five records, one per rung, with step as the rung index. That makes its step a category axis rather than a time axis -- five ordered points, not evenly spaced -- which is honest for rung_duration_s, the only series charted, because the rungs really do run in that order. The rungs' own measures ride along under slugified names (worst cosine -> worst_cosine) and are deliberately not charted: worst_kl and ppl_delta are different quantities in different units, and a line drawn through them would mean nothing. They are here to be read with jq and diffed between two runs. Slugifying couples a metrics key to a table column heading, so renaming a column renames a key; the measure name is the one a human reads, and a second name kept in step with it is a second thing to get wrong.",
+    "step_is_not_always_time": "Nothing in this contract requires step to be a time step. viewer.js and read_metrics treat it as an ordering key and nothing more, which is what lets the ladder index rungs with it. A reader that assumes even spacing is assuming something no writer here promises.",
     "append_contract": "Records are appended one write_all per whole line on O_APPEND descriptors, so the run log and a generator holding an independent MetricsSink interleave whole records rather than tearing one. This is the same contract the obs catalog relies on."
   }
 }

@@ -132,6 +132,83 @@ struct Tuning {
     batch: BatchKind,
 }
 
+/// The resolved configuration of a ladder run, as obs fields.
+///
+/// **Not `run.header`.** That event's field list is asserted for key-set
+/// equality in both directions against a real harness run
+/// (`harness/tests/obs_contract.rs`), and a ladder has no sampler, no KV
+/// cache and no context window to report -- it would have to leave `seed`,
+/// `temperature`, `max_tokens`, `max_context`, `kv_bytes` and
+/// `kv_batch_group` unwritten. Admitting both writers under one event means
+/// moving all six to `optional`, which retires exactly the assertion U2 added
+/// them for: that a field silently dropped from the harness header fails a
+/// test. Two events, each pinned exactly, is the stronger contract.
+///
+/// The keys this does share with `run.header` are spelled identically and
+/// carry the same units, so one `jq` filter reads both.
+fn ladder_header(
+    model_path: &Path,
+    model_hash: u64,
+    reference_dir: &Path,
+    size: Size,
+    only: Option<Rung>,
+    text_only: bool,
+    model: &CpuModel,
+) -> Vec<(&'static str, obs::Value)> {
+    let (weight_bytes, width) = model.weight_bytes();
+    let mut f = vec![
+        ("model", obs::Value::Str(model_path.display().to_string())),
+        ("model_hash", obs::Value::Str(format!("{model_hash:016x}"))),
+        ("n_layers", obs::Value::Int(model.config().n_layers as u64)),
+        (
+            "dtype",
+            obs::Value::Str(width.unwrap_or("mixed widths").to_string()),
+        ),
+        ("weight_bytes", obs::Value::Int(weight_bytes as u64)),
+        (
+            "reference",
+            obs::Value::Str(reference_dir.display().to_string()),
+        ),
+        ("size", obs::Value::Str(size.label().to_string())),
+        ("corpus_tokens", obs::Value::Int(size.tokens() as u64)),
+        ("text_only", obs::Value::Bool(text_only)),
+        ("threads", obs::Value::Int(model.threads() as u64)),
+        ("dot", obs::Value::Str(model.dot().label().to_string())),
+        ("batch", obs::Value::Str(model.batch().label())),
+        (
+            "binary_version",
+            obs::Value::Str(env!("CARGO_PKG_VERSION").to_string()),
+        ),
+        ("git_sha", obs::Value::Str(runtime::envelope::git_sha())),
+    ];
+    // Absent rather than null when the whole ladder ran: `--rung` names the
+    // one rung a run isolated to, and "no isolation" is not a rung.
+    if let Some(r) = only {
+        f.push(("only_rung", obs::Value::Str(r.label().to_string())));
+    }
+    f
+}
+
+/// A measure's display name as a JSON key: `worst rel_l2` -> `worst_rel_l2`.
+///
+/// The names are written for a table column, so they carry spaces and
+/// hyphens. Slugified rather than given a second `key` field on `Measure`,
+/// because a second name is a second thing to keep in step and the table is
+/// the one a human reads. The coupling is real and worth stating: renaming a
+/// column renames a metrics key.
+fn slug(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for c in name.chars() {
+        match c {
+            'a'..='z' | '0'..='9' => out.push(c),
+            'A'..='Z' => out.extend(c.to_lowercase()),
+            _ if out.ends_with('_') => {}
+            _ => out.push('_'),
+        }
+    }
+    out.trim_matches('_').to_string()
+}
+
 fn run(
     model_path: &Path,
     reference_dir: &Path,
@@ -139,15 +216,40 @@ fn run(
     only: Option<Rung>,
     text_only: bool,
     tuning: Tuning,
+    log: &mut obs::RunLog,
 ) -> Result<bool> {
     // `load` drops the checkpoint mapping before returning; see its doc
     // comment for why no caller here should open one itself.
-    let (mut model, _fingerprint) = CpuModel::load(model_path, text_only)?;
+    let (mut model, fingerprint) = {
+        let _span = log.phase("model.load");
+        CpuModel::load(model_path, text_only)?
+    };
     if let Some(n) = tuning.threads {
         model.set_threads(n);
     }
     model.set_dot(tuning.dot);
     model.set_batch(tuning.batch);
+
+    // After the tuning is applied, so the header reports the fold and the
+    // width the climb actually used rather than the ones it was asked for.
+    // That distinction is the whole reason this record exists: `DotKind`
+    // defaulted to `Sequential` for months with nothing printing the fold.
+    let header = ladder_header(
+        model_path,
+        fingerprint,
+        reference_dir,
+        size,
+        only,
+        text_only,
+        &model,
+    );
+    log.event(
+        "info",
+        "ladder.header",
+        "resolved ladder configuration",
+        &header,
+    );
+    log.metrics_header(&header);
 
     // A rung that errors is not a rung that failed: an unreadable or
     // mismatched artifact says nothing about the engine. It is raised rather
@@ -163,21 +265,28 @@ fn run(
             // vanishing, so the table still shows what was not run.
             _ if only.is_some_and(|r| r != rung) => None,
             Some(_) => None,
-            None => match run_rung(
-                rung,
-                &mut model,
-                model_path,
-                reference_dir,
-                size,
-                ladder::TIER_E,
-                &mut prompt_tokens,
-            ) {
-                Ok(result) => result,
-                Err(e) => {
-                    error = Some(e.context(rung.label()));
-                    None
+            None => {
+                // Only around a rung the closure actually attempts. A rung
+                // that `--rung` isolated away, or that a prior failure
+                // stopped, did no work, and a zero-length span in the event
+                // log would say it ran and was instant.
+                let _span = log.phase(&format!("rung.{}", rung.label()));
+                match run_rung(
+                    rung,
+                    &mut model,
+                    model_path,
+                    reference_dir,
+                    size,
+                    ladder::TIER_E,
+                    &mut prompt_tokens,
+                ) {
+                    Ok(result) => result,
+                    Err(e) => {
+                        error = Some(e.context(rung.label()));
+                        None
+                    }
                 }
-            },
+            }
         },
     );
     if let Some(e) = error {
@@ -187,6 +296,38 @@ fn run(
     l.threads = Some(model.threads());
     l.dot = Some(model.dot().label().to_string());
     l.batch = Some(model.batch().label());
+
+    // One metrics record per rung, written from the finished ladder rather
+    // than from inside the climb: `elapsed` is stamped by `climb` around the
+    // closure, so it is the only figure here no rung body can under-report.
+    //
+    // `step` is the rung index, which makes this a category axis wearing a
+    // continuum's clothes -- five points, ordered but not spaced. That is
+    // honest for `rung_duration_s`, the series the dashboard charts, because
+    // the rungs really do run in that order. It is why the measures ride
+    // along un-charted: `worst kl` and `ppl delta` are different quantities
+    // in different units, and a line through them would mean nothing. They
+    // are here to be read with `jq`, and to be diffed between two runs.
+    for (i, r) in l.results.iter().enumerate() {
+        let keys: Vec<String> = r.measures.iter().map(|m| slug(m.name)).collect();
+        let mut fields = vec![
+            ("rung", obs::Value::Str(r.rung.label().to_string())),
+            ("status", obs::Value::Str(r.status.label().to_string())),
+        ];
+        // Absent for a rung the climb never reached. An absent duration and a
+        // zero duration are different claims, which is why `elapsed` is an
+        // Option in the first place.
+        if let Some(d) = r.elapsed {
+            fields.push((
+                "rung_duration_s",
+                obs::Value::Num(obs::round3(d.as_secs_f64())),
+            ));
+        }
+        for (k, m) in keys.iter().zip(&r.measures) {
+            fields.push((k.as_str(), obs::Value::Num(m.value)));
+        }
+        log.metric(i as u64, &fields);
+    }
     // The table is the ladder's answer and stays on stdout, which is the
     // payload channel. The verdict is status: it goes to stderr through
     // `runtime::status`, so a redirect that captures the table for comparison
@@ -249,6 +390,10 @@ fn report_peak_rss() {
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // Snapshotted before the pre-pass below starts removing bare flags by
+    // position, so the record carries what was typed rather than what
+    // survived parsing.
+    let argv_full = args.clone();
 
     let text_only = match args.iter().position(|a| a == "--text-only") {
         Some(i) => {
@@ -355,17 +500,77 @@ fn main() -> ExitCode {
         dot,
         batch,
     };
-    let verdict = run(&model, &reference, size, only, text_only, tuning);
+    // Opened only once the arguments are known good, so a usage mistake
+    // leaves no row in the catalog. Same rule as `harness --help` and
+    // `--status`: a question that never started a climb is not a run.
+    //
+    // `cli` is "harness" for the whole workspace (obs::CLI_NAME) with the
+    // binary name as `command`, so one catalog and one `runs` view serve
+    // every tool here.
+    let mut log = obs::RunLog::begin("ladder", &argv_full);
+    let verdict = run(&model, &reference, size, only, text_only, tuning, &mut log);
     // After the run, so the figure is the whole run's high-water mark rather
     // than the loader's. Printed even on failure: a rung that failed because
     // the machine was swapping is worth being able to see.
     report_peak_rss();
     match verdict {
-        Ok(true) => ExitCode::SUCCESS,
-        Ok(false) => ExitCode::from(1),
-        Err(e) => {
-            runtime::status::error(&format!("{e:#}"));
+        Ok(true) => {
+            log.end(0);
+            ExitCode::SUCCESS
+        }
+        // A red rung is a completed run that answered "no", not a crash, so
+        // it takes the ordinary exit path and no `fail` record. The failing
+        // rung is already in the table and in this run's metrics.
+        Ok(false) => {
+            log.end(1);
             ExitCode::from(1)
         }
+        Err(e) => {
+            runtime::status::error(&format!("{e:#}"));
+            log.fail(&e, 1);
+            log.end(1);
+            ExitCode::from(1)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::slug;
+
+    /// The four shapes the real measure names take. These are the actual
+    /// strings `runtime::ladder` builds, so this is a golden of the keys that
+    /// reach `metrics.jsonl` rather than an exercise of the function on
+    /// invented input -- which is the difference between pinning the contract
+    /// and pinning the implementation.
+    #[test]
+    fn the_measure_names_slugify_to_the_keys_the_metrics_file_carries() {
+        assert_eq!(slug("worst cosine"), "worst_cosine");
+        assert_eq!(slug("worst rel_l2"), "worst_rel_l2");
+        assert_eq!(slug("argmax agreement"), "argmax_agreement");
+        // Built at runtime from the configured k, and the hyphen is why this
+        // needs a slug at all rather than a `replace(' ', "_")`.
+        assert_eq!(slug("worst top-50 overlap"), "worst_top_50_overlap");
+        assert_eq!(slug("mean common prefix"), "mean_common_prefix");
+        assert_eq!(slug("ppl delta"), "ppl_delta");
+    }
+
+    /// A run of separators collapses, and neither end keeps one. A key like
+    /// `worst__top_50_` is legal JSON and parses fine, which is exactly why
+    /// nothing downstream would report it -- it would simply be a different
+    /// key from the one a saved `jq` filter names.
+    #[test]
+    fn separators_collapse_and_never_bound_the_key() {
+        assert_eq!(slug("  worst   top-50  "), "worst_top_50");
+        assert_eq!(slug("(scaled)"), "scaled");
+    }
+
+    /// Uppercase folds rather than being dropped. `Status::label` returns
+    /// `PASS`, and while that is a value here rather than a key, a measure
+    /// named with a capital would otherwise lose the letter entirely and
+    /// silently shorten its key.
+    #[test]
+    fn capitals_fold_rather_than_vanish() {
+        assert_eq!(slug("KL divergence"), "kl_divergence");
     }
 }

@@ -36,7 +36,12 @@ const METRICS_FILE: &str = "metrics.jsonl";
 
 /// Round to three decimals, the precision `common/obs/core.py::phase` uses for
 /// `duration_s`. Shared so the two writers agree digit for digit.
-fn round3(seconds: f64) -> f64 {
+///
+/// Public because a caller writing its own duration into a metrics record --
+/// `ladder` does, from the wall clock `climb` already stamps per rung -- must
+/// round it the same way `phase.end` rounds its own, or the same interval
+/// reads as two different numbers depending on which record you looked at.
+pub fn round3(seconds: f64) -> f64 {
     (seconds * 1000.0).round() / 1000.0
 }
 

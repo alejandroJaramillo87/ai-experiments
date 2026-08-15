@@ -15,6 +15,11 @@ cuda = []
 
 [dependencies]
 anyhow = { workspace = true }
+# Run-level observability records. The edge points this way and never back:
+# obs reaches only std, libc and serde_json, so a crate that forbids unsafe
+# can depend on it -- which is the property the U9a extraction bought, and
+# `ladder` is the first binary to spend it.
+obs = { path = "../obs" }
 safetensors = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

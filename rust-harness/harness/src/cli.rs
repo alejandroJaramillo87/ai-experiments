@@ -817,6 +817,30 @@ mod tests {
         }
     }
 
+    /// `runs` is reserved: the catalog reader hides it.
+    ///
+    /// Every binary here writes its run record under `cli = "harness"` with
+    /// its own name as `command`, and `common/obs/catalog.py` filters out
+    /// rows whose `command` is literally `runs` -- the browsing command
+    /// omitting its own invocations from the table it prints. A binary named
+    /// `runs` would therefore log correctly and be invisible in `make
+    /// harness-runs`, which is the worst shape a defect can take here: the
+    /// records exist, so nothing looks broken.
+    ///
+    /// Asserted on this side because this is where a ninth binary gets
+    /// named. The reader's half of the bargain is recorded in
+    /// `schemas/obs_record.json`.
+    #[test]
+    fn no_binary_claims_the_name_the_catalog_reader_reserves() {
+        for (name, _) in BINARIES {
+            assert_ne!(
+                *name, "runs",
+                "common/obs/catalog.py hides catalog rows whose command is \
+                 `runs`, so this binary's runs would never appear in the table"
+            );
+        }
+    }
+
     /// The value slots a caller owns, named and filled, as `main.rs` holds them.
     type Slots = Vec<(&'static str, Option<PathBuf>)>;
 

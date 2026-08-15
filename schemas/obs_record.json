@@ -70,6 +70,31 @@
         "rust-harness/harness/src/runheader.rs (RunHeader::fields)"
       ]
     },
+    "ladder.header": {
+      "description": "The resolved configuration of a conformance-ladder run: the checkpoint, the reference directory, the size, and the engine tuning the climb actually used. Written once, immediately after the model is loaded and after the tuning is applied.",
+      "fields": [
+        "model",
+        "model_hash",
+        "n_layers",
+        "dtype",
+        "weight_bytes",
+        "reference",
+        "size",
+        "corpus_tokens",
+        "text_only",
+        "threads",
+        "dot",
+        "batch",
+        "binary_version",
+        "git_sha"
+      ],
+      "optional": [
+        "only_rung"
+      ],
+      "writers": [
+        "rust-harness/runtime/src/bin/ladder.rs (ladder_header)"
+      ]
+    },
     "phase.start": {
       "description": "Opens a coarse in-command span. File-only on both sides: the command's own status lines remain the human view of progress.",
       "fields": [
@@ -103,6 +128,8 @@
     "schema_version": "Introduced at 2 by the run_dir change below, which is the first incompatible change this contract has taken -- every earlier one was additive. Version 1 is the retroactive name for every state of this file before that, and no reader has ever branched on it.",
     "run_dir_semantic": "Changed in schema_version 2. run_dir was the process's working directory; it is now the run's own artifact directory, ${OBS_LOG_DIR}/<cli>/<run_id>/, which is what training/commands/report.py --run can open. The key and its type are unchanged, so a reader that only displays it is unaffected -- but one that resolved it against the filesystem now resolves somewhere else, which is why this is a bump and not an additive change. The Rust writer creates the directory lazily, on the first metrics write: common/obs/retention.py::prune globs R-*.jsonl and so would never reclaim an eagerly created empty directory. The path is recorded whether or not it exists, so run_dir carries one meaning rather than two.",
     "two_sided_events": "phase.start and phase.end are written by both stacks, which makes them the stronger kind of declaration here: the field names, the empty msg, and duration_s rounded to three decimals are asserted against this file from Python and from Rust independently, so neither writer can drift without a gate failing. run.header remains the one-sided case below.",
+    "one_cli_many_commands": "Every binary in the Rust workspace writes under cli = \"harness\" with its own name as command, so one catalog and one `runs` view serve the whole tool suite -- symmetric with training and interp, and one directory is also one retention policy. That makes `runs` a reserved command name: common/obs/catalog.py drops rows whose command is literally `runs`, so a binary of that name would log correctly and be invisible in the table. Guarded at the writer, where a ninth binary gets named, by harness/src/cli.rs::no_binary_claims_the_name_the_catalog_reader_reserves.",
+    "two_header_events": "ladder.header exists rather than the ladder reusing run.header, and the reason is the strength of the assertion rather than the shape of the data. run.header's field list is asserted for key-set equality in both directions against a real harness run, so a field silently dropped from the header fails a test -- which is the whole reason U2 added it, after DotKind defaulted to Sequential for months with nothing printing the fold. A ladder has no sampler, no KV cache and no context window, so admitting it under run.header means moving seed, temperature, max_tokens, max_context, kv_bytes and kv_batch_group to optional, and an optional field is one no test can miss. Two events, each pinned exactly, is the stronger contract. The keys the two share are spelled identically and carry the same units, so one jq filter reads both.",
     "one_sided_events": "run.header is written by the Rust harness alone, and deliberately so rather than pending: the Python tiers carry equivalent provenance through common/obs/context.py::run_context(), and imitating that block from Rust would emit a packages/gpu section that reads true and is not. binary_version plus runtime::envelope::git_sha() is the honest subset.",
     "base_key_guard": "RunLog::event skips any caller field whose key is in the base set, mirroring common/obs/core.py:121-124. Rust had no such guard while write_event was private and every caller was in-file; a public emitter is what makes the rule need stating."
   }

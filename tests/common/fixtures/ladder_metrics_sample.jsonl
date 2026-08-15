@@ -1,0 +1,6 @@
+{"schema_version":1,"report":"run_metrics","timestamp":"2026-08-15T14:52:06.160+00:00","run_id":"R-20260815-145206-db6c22","cli":"harness","command":"ladder","model":"/fixture/models/gemma-4-E4B","model_hash":"d3c54c949028d12f","n_layers":4,"dtype":"bf16","weight_bytes":154624,"reference":"/fixture/reference/e4b-quick","size":"quick","corpus_tokens":512,"text_only":false,"threads":4,"dot":"widen4","batch":"64","binary_version":"0.1.0","git_sha":"4a7c409f1d2e8b6035ca97fe2418d0b7c53e9a16"}
+{"step":0,"ts":"2026-08-15T14:52:06.666+00:00","rung":"L0","status":"skipped","rung_duration_s":0.0}
+{"step":1,"ts":"2026-08-15T14:52:06.666+00:00","rung":"L1","status":"PASS","rung_duration_s":0.235,"worst_cosine":0.9999999999998638,"worst_rel_l2":0.000000523339498328446}
+{"step":2,"ts":"2026-08-15T14:52:06.666+00:00","rung":"L2","status":"PASS","rung_duration_s":0.271,"mean_kl":0.0000000000005764439581842964,"worst_kl":0.0000000000005764439581842964,"worst_top_50_overlap":1.0,"argmax_agreement":1.0}
+{"step":3,"ts":"2026-08-15T14:52:06.666+00:00","rung":"L3","status":"skipped","rung_duration_s":0.0}
+{"step":4,"ts":"2026-08-15T14:52:06.666+00:00","rung":"L4","status":"skipped","rung_duration_s":0.0}
