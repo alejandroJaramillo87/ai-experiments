@@ -181,6 +181,38 @@ impl SessionGenerator {
     }
 }
 
+/// Say what the turn's prompt cost, when it cost anything.
+///
+/// Called from `complete` and deliberately not from `complete_sampled`: that
+/// is the served path, and a status line per request on an unbounded server
+/// is unbounded output. The same distinction `record_step`'s two call sites
+/// already draw.
+///
+/// Printed every turn rather than only the first. On turn two the delta is a
+/// handful of tokens against a prompt of thousands, and that small number is
+/// the point -- it is the only visible evidence that delta prefill is working.
+/// A silent optimization everything assumes and nothing displays is how
+/// `DotKind::Sequential` survived for months.
+///
+/// A zero-token prefill prints nothing: the cache covered the transcript, so
+/// there is no operation to report on and "0 tokens" would be noise.
+///
+/// The rate is derivable from the two figures beside it and is printed anyway.
+/// Prefill throughput is what a human compares across context lengths, and it
+/// is *not* the `tokens_per_s` in `metrics.jsonl`, which is the amortized
+/// end-to-end decode figure -- so this restates nothing.
+fn report_prefill(p: runtime::session::Prefill) {
+    if p.tokens == 0 || p.seconds <= 0.0 {
+        return;
+    }
+    runtime::status::info(&format!(
+        "Prefill: {} tokens in {:.2} s ({:.0} tok/s)",
+        p.tokens,
+        p.seconds,
+        p.tokens as f64 / p.seconds
+    ));
+}
+
 /// One completion and what it cost, for a caller that reports usage.
 ///
 /// `completion_tokens` counts the tokens returned, which excludes the EOS that
@@ -243,6 +275,7 @@ impl Generator for SessionGenerator {
             metrics.metric(*step, &fields);
             *step += 1;
         })?;
+        report_prefill(self.session.last_prefill());
         if let Some(handle) = self.alignment.as_ref() {
             let built =
                 Alignment::build(&self.tokenizer, prompt, PROMPT_SPECIALS, &generation.tokens)?;

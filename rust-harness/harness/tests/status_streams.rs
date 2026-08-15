@@ -32,6 +32,54 @@ fn run(args: &[&str]) -> Output {
         .expect("the harness builds as a test binary")
 }
 
+/// The synthetic checkpoint a full run can be driven against, and the
+/// tokenizer beside it. Small enough that a load and a prefill both complete
+/// in well under a second, which is what makes the timing lines testable in
+/// the gate at all.
+fn fixture(name: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../fixtures")
+        .join(name)
+}
+
+/// Run a complete task, returning both streams and the run's event file.
+///
+/// `OBS_LOG_DIR` points at a scratch tree so the run's records land there
+/// rather than in the real log root, and so this test can read back what it
+/// wrote.
+fn run_a_task() -> (Output, Vec<serde_json::Value>) {
+    let cwd = tempfile::tempdir().expect("a scratch working directory");
+    let logs = tempfile::tempdir().expect("a scratch log root");
+    let out = Command::new(env!("CARGO_BIN_EXE_harness"))
+        .args([
+            "--model".as_ref(),
+            fixture("tiny-gemma4").as_os_str(),
+            "--tokenizer".as_ref(),
+            fixture("tiny-gemma4.tokenizer.json").as_os_str(),
+            "--max-tokens".as_ref(),
+            "4".as_ref(),
+            "hi".as_ref(),
+        ])
+        .env("OBS_LOG_DIR", logs.path())
+        .current_dir(cwd.path())
+        .output()
+        .expect("the harness builds as a test binary");
+    let dir = logs.path().join("harness");
+    let events = std::fs::read_dir(&dir)
+        .expect("the run wrote an obs directory")
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .find(|p| p.extension().is_some_and(|x| x == "jsonl") && p != &dir.join("runs.jsonl"))
+        .map(|p| {
+            std::fs::read_to_string(p)
+                .expect("the event file is readable")
+                .lines()
+                .map(|l| serde_json::from_str(l).expect("each line is one JSON object"))
+                .collect()
+        })
+        .expect("the run wrote an event file");
+    (out, events)
+}
+
 fn stdout(out: &Output) -> String {
     String::from_utf8(out.stdout.clone()).expect("stdout is UTF-8")
 }
@@ -123,6 +171,73 @@ fn an_unrequested_usage_block_is_status_and_requested_help_is_payload() {
         asked.stderr.is_empty(),
         "help is not a diagnostic: {:?}",
         stderr(&asked)
+    );
+}
+
+/// The two waits a run makes a human sit through each say how long they took,
+/// once, in the order they happened.
+///
+/// One line each rather than a rewritten progress line: there is no animation
+/// at either site, so a terminal and a captured pipe get the same bytes and a
+/// runbook's `Observed` block cannot acquire a carriage-return smear. The
+/// `\r` assertion below is what holds that open -- nothing else in the tree
+/// guards it, and it is the tripwire any future animation lands against.
+#[test]
+fn a_completed_run_states_what_the_two_long_operations_cost() {
+    let (out, _) = run_a_task();
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert_stdout_is_payload(&out, "a completed run");
+    let err = stderr(&out);
+
+    let load: Vec<&str> = err.lines().filter(|l| l.contains("Model load:")).collect();
+    let prefill: Vec<&str> = err.lines().filter(|l| l.contains("Prefill:")).collect();
+    assert_eq!(
+        load.len(),
+        1,
+        "one load line, not none and not per layer: {err}"
+    );
+    assert_eq!(prefill.len(), 1, "one prefill line per turn: {err}");
+    assert!(load[0].starts_with("[INFO] "), "{:?}", load[0]);
+    assert!(prefill[0].starts_with("[INFO] "), "{:?}", prefill[0]);
+    assert!(
+        err.find("Model load:") < err.find("Prefill:"),
+        "the load finishes before the prompt is prefilled: {err}"
+    );
+
+    assert!(
+        !err.contains('\r'),
+        "a carriage return would smear a pasted Observed block: {err:?}"
+    );
+    assert!(!stdout(&out).contains('\r'), "{:?}", stdout(&out));
+}
+
+/// The printed load time is the recorded one.
+///
+/// `main.rs` reads it off the `model.load` phase guard rather than sampling a
+/// second `Instant`, so this is a test of that choice: two clocks would drift
+/// by however long the work took to start, and a human comparing the terminal
+/// against `<run_id>.jsonl` would find two answers to one question.
+#[test]
+fn the_load_time_on_the_terminal_is_the_one_in_the_record() {
+    let (out, events) = run_a_task();
+    let recorded = events
+        .iter()
+        .find(|e| e["event"] == "phase.end" && e["phase"] == "model.load")
+        .and_then(|e| e["duration_s"].as_f64())
+        .expect("the run recorded a model.load phase");
+
+    let printed: f64 = stderr(&out)
+        .lines()
+        .find_map(|l| l.split("Model load:").nth(1))
+        .and_then(|rest| rest.trim().trim_end_matches(" s").parse().ok())
+        .expect("the run printed a load time");
+
+    // The printed figure is rendered at two decimals from the same
+    // `Instant`, so it differs from the recorded one only by the rounding and
+    // by the microseconds between the read and the guard's drop.
+    assert!(
+        (printed - recorded).abs() < 0.02,
+        "printed {printed} against recorded {recorded}"
     );
 }
 

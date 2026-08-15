@@ -319,6 +319,20 @@ pub struct Phase<'a> {
     started: Instant,
 }
 
+impl Phase<'_> {
+    /// Seconds since this phase opened, rounded as `Drop` will round it.
+    ///
+    /// For a caller that wants to *show* a duration this span is already
+    /// recording. Reading it just before the guard drops means the printed
+    /// figure and the `duration_s` in the event file come from one clock, so
+    /// a human comparing the terminal against the record cannot find them
+    /// disagreeing. Sampling a second `Instant` around the same work would
+    /// put two answers to one question in the tree.
+    pub fn elapsed_s(&self) -> f64 {
+        round3(self.started.elapsed().as_secs_f64())
+    }
+}
+
 impl Drop for Phase<'_> {
     fn drop(&mut self) {
         let duration_s = round3(self.started.elapsed().as_secs_f64());
@@ -989,6 +1003,35 @@ mod tests {
         assert_eq!(end["phase"], "model.load");
         assert_eq!(end["msg"], "");
         assert!(end["duration_s"].is_number());
+    }
+
+    #[test]
+    fn the_elapsed_a_caller_shows_is_the_duration_the_record_keeps() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut log = RunLog::begin_at(tmp.path(), "task", &[], None);
+        let run_id = log.run_id().unwrap().to_string();
+        let shown = {
+            let span = log.phase("model.load");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            let shown = span.elapsed_s();
+            drop(span);
+            shown
+        };
+        log.end(0);
+
+        let events = read_lines(&tmp.path().join("harness").join(format!("{run_id}.jsonl")));
+        let recorded = events[2]["duration_s"].as_f64().unwrap();
+        assert_eq!(events[2]["event"], "phase.end");
+        // One clock, read twice a few microseconds apart. The tolerance is
+        // for the gap between the read and the drop, not for two independent
+        // measurements -- a second `Instant` around the same work would
+        // diverge by however long the work took to start, which no tolerance
+        // this tight would absorb.
+        assert!(
+            (shown - recorded).abs() < 0.01,
+            "shown {shown} against recorded {recorded}"
+        );
+        assert!(shown > 0.0, "a 5 ms sleep should not round to zero");
     }
 
     #[test]

@@ -512,8 +512,8 @@ fn run(
     // small enough not to distort the figure. The span closes when the guard
     // drops at the end of the statement.
     let (generator, monitor, model_hash, passes, header) = {
-        let _span = run_log.phase("model.load");
-        build_generator(
+        let span = run_log.phase("model.load");
+        let built = build_generator(
             model,
             tokenizer,
             record,
@@ -533,7 +533,16 @@ fn run(
             // no per-request drain, so under a long-lived server it would grow
             // for the life of the process.
             alignment_out.is_some() || serve.is_some(),
-        )?
+        )?;
+        // Read from the span rather than a second `Instant`, so the figure
+        // printed here and the `duration_s` the guard is about to write are
+        // one number. A failed load prints nothing: the `?` above returns,
+        // the guard still records the time spent, and the terminal gets the
+        // actionable error instead of a claim that something loaded.
+        let seconds = span.elapsed_s();
+        drop(span);
+        runtime::status::info(&format!("Model load: {seconds:.2} s"));
+        built
     };
     // The resolved configuration, recorded once. The terminal already saw it
     // as `header.lines()` inside `build_generator`; this is the same facts

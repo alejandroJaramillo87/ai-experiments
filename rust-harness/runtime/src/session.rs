@@ -92,6 +92,26 @@ pub struct Session {
     /// guard borrows the log, which would collide with the `&mut self` that
     /// `generate` needs for the work the span is measuring.
     events: obs::EventSink,
+    /// The most recent `sync`'s delta and how long it took. See `Prefill`.
+    last_prefill: Prefill,
+}
+
+/// What the most recent `sync` pushed through the forward pass.
+///
+/// `tokens` is the *delta*, not the transcript length: the cache covers
+/// whatever prefix matched, and only the remainder costs a forward pass. On
+/// the second turn of a chat that is a handful of tokens against a prompt of
+/// thousands, and reporting the prompt length instead would claim work delta
+/// prefill skipped. Zero is the honest answer for a transcript the cache
+/// already held.
+///
+/// `seconds` times the `Model::prefill` call alone. The one-token tail replay
+/// in `ensure_tail_logits` is not counted -- that token was charged to the
+/// sync that first appended it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Prefill {
+    pub tokens: usize,
+    pub seconds: f64,
 }
 
 /// Outcome of one generation: sampled tokens (EOS excluded) and whether EOS
@@ -116,6 +136,7 @@ impl Session {
             tokens: Vec::new(),
             tail_logits: None,
             events: obs::EventSink::disabled(),
+            last_prefill: Prefill::default(),
         })
     }
 
@@ -129,6 +150,17 @@ impl Session {
     /// is for.
     pub fn observing_phases(&mut self, sink: obs::EventSink) {
         self.events = sink;
+    }
+
+    /// What the most recent `sync` prefilled, for a caller that wants to show
+    /// it.
+    ///
+    /// This module prints nothing and gains no flag to make it print: the
+    /// library records, and the binary decides whether a human should see it.
+    /// That is what keeps `ladder`, `long-context-golden` and every test call
+    /// site silent without an opt-in to thread through them.
+    pub fn last_prefill(&self) -> Prefill {
+        self.last_prefill
     }
 
     pub fn cached_len(&self) -> usize {
@@ -198,8 +230,18 @@ impl Session {
         }
         let delta = &transcript[keep..];
         span.record("delta_len", delta.len());
+        // Recorded before the `?`: a sync that fails partway still spent the
+        // time, and a caller rendering the figure should not be told the work
+        // never happened.
+        self.last_prefill = Prefill {
+            tokens: delta.len(),
+            seconds: 0.0,
+        };
         if !delta.is_empty() {
-            self.tail_logits = Some(self.model.prefill(delta)?);
+            let started = std::time::Instant::now();
+            let logits = self.model.prefill(delta);
+            self.last_prefill.seconds = started.elapsed().as_secs_f64();
+            self.tail_logits = Some(logits?);
             self.tokens.extend_from_slice(delta);
         }
         Ok(delta.len())
@@ -412,6 +454,10 @@ impl Session {
             // was interleaved into is a wrong number rather than a missing
             // one. The `agent.fork` tracing span already marks the boundary.
             events: obs::EventSink::disabled(),
+            // A fork has prefilled nothing of its own yet. Inheriting the
+            // parent's figure would attribute its wait to a session that did
+            // not do the work.
+            last_prefill: Prefill::default(),
         })
     }
 }
@@ -535,6 +581,42 @@ mod tests {
         assert_eq!(s.sync(&[1, 2, 3]).unwrap(), 3);
         assert_eq!(s.sync(&[1, 2, 3, 4, 5]).unwrap(), 2);
         assert_eq!(s.cached_len(), 5);
+    }
+
+    #[test]
+    fn the_recorded_prefill_is_the_delta_and_not_the_transcript() {
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        assert_eq!(s.last_prefill().tokens, 0, "nothing prefilled yet");
+
+        s.sync(&[1, 2, 3]).unwrap();
+        assert_eq!(s.last_prefill().tokens, 3);
+
+        // The whole transcript is cached, so the forward pass runs on nothing.
+        // Reporting 5 here -- the transcript length -- would claim work delta
+        // prefill skipped, which is the specific lie this figure exists to
+        // avoid.
+        s.sync(&[1, 2, 3, 4, 5]).unwrap();
+        assert_eq!(s.last_prefill().tokens, 2);
+        s.sync(&[1, 2, 3, 4, 5]).unwrap();
+        assert_eq!(s.last_prefill().tokens, 0);
+
+        // A rewind re-prefills the suffix from the divergence, not the whole
+        // transcript.
+        s.sync(&[1, 2, 9, 9]).unwrap();
+        assert_eq!(s.last_prefill().tokens, 2);
+    }
+
+    #[test]
+    fn the_tail_replay_is_not_charged_to_the_next_prefill() {
+        let mut s = Session::new(Box::new(MockModel::new(27, vec![])), 4096).unwrap();
+        s.sync(&[1, 2, 3]).unwrap();
+        // Drop the cached logits so `ensure_tail_logits` has to replay the
+        // final token through `Model::prefill`. That token was counted when
+        // the sync above appended it; counting it again would inflate every
+        // figure taken after a restored session.
+        s.tail_logits = None;
+        s.ensure_tail_logits().unwrap();
+        assert_eq!(s.last_prefill().tokens, 3, "still the sync's own delta");
     }
 
     #[test]
